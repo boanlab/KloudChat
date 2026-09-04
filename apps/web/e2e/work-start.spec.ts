@@ -30,8 +30,6 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('채팅은 시작점 한 목록이고, 카드가 무엇을 적을지 묻는다', async ({ page }) => {
-  // 결과 서식 탭은 없어졌다 — 업무 시작점으로 접혔다. What is left is one
-  // list of jobs, and each card asks its own questions on the card.
   await page.goto('/new/chat')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
 
@@ -40,7 +38,7 @@ test('채팅은 시작점 한 목록이고, 카드가 무엇을 적을지 묻는
   await expect(dialog.getByRole('tab')).toHaveCount(0)
   await dialog.getByLabel('시작점 검색').fill('장애 원인')
   const card = dialog.locator('div.group', { hasText: '장애 원인 좁히기' }).first()
-  // 카드는 무엇을 물을지만 보여 준다; 빈칸은 입력창이 묻는다.
+  // The card lists its questions; the composer asks them.
   await expect(card.getByText('에러 로그')).toBeVisible()
   await expect(card.getByRole('textbox')).toHaveCount(0)
   await card.getByRole('button', { name: /시작점 선택/ }).click()
@@ -60,7 +58,7 @@ test('보고서 시작점은 결과 모양을 카드에서 고른다', async ({ 
   await dialog.getByLabel('시작점 검색').fill('문헌 동향')
   const card = dialog.locator('div.group', { hasText: '문헌 동향 조사' }).first()
   await expect(card).toBeVisible()
-  // 결과 모양은 카드의 고르개다 — 열일곱 서식이 전부 여기서 닿는다.
+  // The result shape is picked on the card.
   await card.getByRole('button', { name: /결과 모양 고르기/ }).click()
   await expect(page.getByRole('menuitem', { name: '한 장 요약' })).toBeVisible()
   await expect(page.getByRole('menuitem', { name: '주제에 맞게 새로 만들기' })).toBeVisible()

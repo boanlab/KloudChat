@@ -1,22 +1,7 @@
-"""Where an address is, when that can be answered without telling anyone.
+"""Offline IP-to-region lookup from a MaxMind DB file (`GEOIP_DATABASE`).
 
-Three surfaces ask the same question — the visits on a shared link, a person's
-own sign-in history, and the admin's audit trail — so they ask it here.
-
-**Offline only.** The obvious way to resolve an address is to POST it to a
-lookup service, and this deliberately does not: every visitor's address would
-leave the instance, which is the one thing a product that defaults to a local
-model and masks its own transcripts should not do quietly in the background.
-
-So the answer comes from a MaxMind DB file on disk or it does not come. With no
-file configured, `lookup` returns an empty string and every screen that shows a
-region simply shows an address instead — which is what they all showed before.
-To turn it on, download GeoLite2-City.mmdb (free, a MaxMind account) and set
-`GEOIP_DATABASE` to its path.
-
-Private ranges never reach the database. An address inside RFC 1918 is a
-machine on the same network as the server, and "미국 애슈번" for 10.0.0.4 would
-be a confident lie.
+Addresses never leave the instance: no database means an empty answer, and
+private ranges are never looked up.
 """
 
 from __future__ import annotations
@@ -30,13 +15,12 @@ from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
-#: The reader is opened once and kept: it mmaps the database, and reopening it
-#: per request would be a page-cache miss on every audit row.
+#: Opened once; the reader mmaps the database.
 _reader = None
 _reader_lock = threading.Lock()
 _tried = False
 
-#: Said in place of a location for an address that has none to look up.
+#: Shown for private, loopback and link-local addresses.
 _LOCAL = "내부망"
 
 
@@ -58,9 +42,7 @@ def _open():
             _reader = geoip2.database.Reader(path)
             log.info("geoip: reading %s", path)
         except Exception as exc:  # missing file, wrong format, library absent
-            # Warned rather than raised: a missing city database must not be
-            # able to take down sign-in, which is what an exception on this
-            # path would do.
+            # Warned, not raised: this runs on the sign-in path.
             log.warning("geoip: disabled (%s)", exc)
             _reader = None
     return _reader
@@ -81,11 +63,8 @@ def _resolve(ip: str) -> str:
         return ""
     try:
         found = reader.city(ip)
-    except Exception:
-        # Not in the database, or not a routable address. Nothing to say.
+    except Exception:  # not in the database, or not a routable address
         return ""
-    # Korean names where MaxMind has them, English otherwise — a row reading
-    # "Republic of Korea" beside "서울" is worse than either alone.
     country = found.country.names.get("ko") or found.country.names.get("en") or ""
     city = found.city.names.get("ko") or found.city.names.get("en") or ""
     if country and city:
@@ -94,12 +73,7 @@ def _resolve(ip: str) -> str:
 
 
 def lookup(ip: str) -> str:
-    """A place name for an address, or an empty string.
-
-    Empty is a real answer and the callers show it as one: no database
-    configured, an address the database does not cover, and a proxy that
-    stripped the address all end here, and none of them should invent a region.
-    """
+    """Place name for an address; empty when unknown or no database is configured."""
     ip = (ip or "").strip()
     if not ip:
         return ""

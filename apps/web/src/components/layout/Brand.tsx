@@ -1,10 +1,4 @@
-/**
- * Service name and logo. With nothing configured by an administrator, the
- * fallback mark is built from the first character of the name.
- *
- * The sign-in screen renders before authentication, when the store may still
- * be empty, so this takes the values it needs as props.
- */
+/** Service name and logo; takes props because the sign-in screen renders before the store is filled. */
 export function Brand({
   name,
   logo,
@@ -14,7 +8,7 @@ export function Brand({
   name: string
   logo?: string
   size?: 'sm' | 'md'
-  /** The mark without the words, for the 64px rail. */
+  /** Mark only, for the rail. */
   markOnly?: boolean
 }) {
   const box = size === 'md' ? 'size-8 rounded-card text-md' : 'size-7 rounded-control text-base'
@@ -27,7 +21,7 @@ export function Brand({
           src={logo}
           alt=""
           className={`${box} object-contain`}
-          // If the logo file has gone, render nothing rather than a broken image.
+          // A missing logo file renders nothing rather than a broken image.
           onError={(e) => {
             e.currentTarget.style.display = 'none'
           }}

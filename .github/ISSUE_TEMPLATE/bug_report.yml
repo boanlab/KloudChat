@@ -60,6 +60,6 @@ body:
     attributes:
       label: Relevant logs
       description: |
-        `docker compose logs kchat-api --tail=100`, or the browser console.
+        `docker compose logs api --tail=100`, or the browser console.
         Redact tokens — the master key and any `sk-` value are credentials.
       render: shell

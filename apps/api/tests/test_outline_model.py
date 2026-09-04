@@ -1,4 +1,4 @@
-"""The planner model: one call per document, chosen separately from the writer."""
+"""The planner model: one call per document, chosen and billed separately from the writer."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ async def test_without_one_the_writer_plans_as_before(gateway):
 
 @pytest.mark.asyncio
 async def test_a_flat_plan_is_asked_once_more_and_the_planner_is_asked_again(gateway):
-    """The retry is part of planning, so it is charged to the planner too."""
+    """The planning retry runs on the planner model."""
     seen: list[str] = []
     flat = (
         '{"title": "제목", "slides": ['
@@ -147,12 +147,7 @@ async def test_a_report_plans_with_it_too(gateway):
 
 @pytest.mark.asyncio
 async def test_the_planner_tokens_are_counted_apart_from_the_writer_tokens(gateway):
-    """A planner can be a different model, and its price is its own.
-
-    Counted together, an outline on a frontier model would be billed at the
-    local writer's rate — which is a ledger that says the wrong thing about
-    where the money went.
-    """
+    """Planner tokens are reported apart from writer tokens."""
     seen: list[str] = []
     replies = [_DECK_PLAN, *["<ul><li>내용</li></ul>"] * 6]
     gateway.setattr(deck.httpx, "AsyncClient", lambda **kw: _Client(replies, seen, **kw))
@@ -160,14 +155,12 @@ async def test_the_planner_tokens_are_counted_apart_from_the_writer_tokens(gatew
     events = await both_passes(
         deck, request="발표", model="writer", api_key="k", outline_model="planner"
     )
-    # The planning pass and the writing pass each end with their own `usage`.
-    # The first carries the planner's tokens and nothing else; the second
-    # carries the writer's.
+    # Each pass ends with its own `usage`: the planner's, then the writer's.
     planned, wrote = [e for e in events if e["type"] == "usage"]
 
     assert planned["outlineInputTokens"] > 0
     assert planned["outlineOutputTokens"] > 0
-    # The writer's own half counts every block call and none of the plan.
+    # The writer's half counts every block call and none of the plan.
     assert wrote["inputTokens"] > 0
     assert wrote["outlineInputTokens"] == 0
 
@@ -189,11 +182,7 @@ async def test_without_a_planner_the_outline_is_the_writer_s_own_cost(gateway):
 
 @pytest.mark.asyncio
 async def test_a_page_counts_its_blocks_the_way_the_other_tracks_do(gateway):
-    """`progress` is `{current, total}` on every track — one timeline draws all three.
-
-    The 서식 track said `done` where the others say `current`, so the surface
-    printed 「(/30)」 beside every block and could not say how many were left.
-    """
+    """`progress` is `{current, total}` on the 서식 track too."""
     seen: list[str] = []
     plan = (
         '{"title": "제목", "blocks": ['

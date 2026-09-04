@@ -1,11 +1,4 @@
-"""The composer's microphone: a recording in, its words out.
-
-`services/transcribe` has been able to do this since the Whisper shim was
-wired up, and nothing called it — the sign-in payload said `dictationEnabled`
-and no screen had a button. One endpoint, one recording at a time, and the
-seconds it took written to the usage ledger, because a free model is still
-work somebody may want to see the amount of.
-"""
+"""Dictation: a recording in, its transcript out. Seconds are written to the usage ledger."""
 
 from __future__ import annotations
 
@@ -22,7 +15,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["transcriptions"])
 
-#: What the shim reports the seconds under, and what the usage screen shows.
+#: Model name the usage ledger records seconds under.
 STT_MODEL = "whisper"
 
 
@@ -32,21 +25,15 @@ async def transcribe(
     db: DbSession,
     file: UploadFile = File(...),
     language: str | None = Form(None),
-    #: What was last said in the conversation — a vocabulary hint for Whisper.
+    #: Recent conversation text, as a vocabulary hint for Whisper.
     prompt: str = Form("", max_length=500),
 ):
-    """Audio → text, for pasting into the composer. Not stored.
-
-    The recording is not kept: it is a way of typing, and the transcript is
-    what the person then reads, edits and sends. Refused with the service's
-    own sentence when the backend is off or the clip is too long.
-    """
+    """Audio → text for the composer. The recording is not stored."""
     if not await transcribe_service.available():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="dictation_unavailable"
         )
-    # `ko`/`en` pins the language; anything else — including nothing — lets
-    # Whisper hear which of the two it is.
+    # Only `ko`/`en` pin the language; otherwise Whisper detects it.
     pinned = language if language in transcribe_service.SPOKEN else None
     data = await file.read()
     try:

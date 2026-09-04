@@ -26,25 +26,34 @@ For local work without Docker, see
 
 ## Endpoints
 
+All under `/api` except `/llm`.
+
 | | |
 | --- | --- |
-| `POST /api/auth/signup` · `login` · `refresh` · `logout` | Self-hosted authentication |
-| `GET /api/auth/config` | Public configuration the sign-in screen reads — branding, enabled surfaces, whether password reset exists |
-| `POST /api/auth/password/forgot` · `reset` | Active only when SMTP is configured |
-| `GET /api/models` · `POST /api/models/refresh` | Catalogue: LiteLLM merged with adapter declarations |
-| `GET /api/sessions` · `POST` · `GET/PATCH/DELETE {id}` | Shared by all five surfaces. The list returns titles; the detail returns the conversation |
-| `POST /api/sessions/{id}/messages` → SSE | Streaming turn for chat, report and slides |
-| `POST /api/sessions/{id}/images` · `audio` | Image and audio, generated inside the request |
-| `POST /api/sessions/{id}/jobs` · `POST /api/jobs/{id}/cancel` | Video — the only asynchronous work |
-| `GET /api/artifacts` · `PATCH {id}` · `GET {id}/export` | Outputs, version history, document export |
-| `GET /api/projects` · `skills` · `agents` · `memories` · `connectors` | Workspace |
-| `POST /api/shares` · `GET /api/shared/{token}` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
-| `GET /api/keys` · `POST` · `DELETE {id}` | API keys users take away with them |
-| `GET /api/usage` · `GET /api/credits` | Own usage, remaining credits |
-| `GET /api/admin/users` · `settings` · `usage` · `governance` | Administration |
-| `POST /api/admin/branding/logo` · `DELETE` | Logo upload and removal (`GET /api/branding/logo` is public) |
+| `POST /auth/signup` · `login` · `refresh` · `logout` · `password` | Self-hosted authentication and password change |
+| `GET /auth/config` | Public configuration the sign-in screen reads — branding, enabled surfaces, whether password reset exists |
+| `POST /auth/password/forgot` · `reset` · `POST /auth/verify-email` | Active only when SMTP is configured |
+| `GET/PATCH /auth/me` · `GET /auth/me/access` · `GET /auth/me/sessions` | Profile and preferences, own sign-in history, own refresh-token families |
+| `GET /models` · `POST /models/refresh` · `GET /credits` | Catalogue (LiteLLM merged with adapter declarations), remaining credits |
+| `GET /sessions` · `POST` · `GET/PATCH/DELETE {id}` | Shared by all five surfaces. The list returns titles; the detail returns the conversation |
+| `POST /sessions/{id}/messages` → SSE · `POST /sessions/{id}/stop` | Streaming turn for chat, report and slides; stop keeps the partial answer |
+| `POST /sessions/{id}/compare` · `POST /sessions/{id}/messages/{mid}/variant` | Model comparison and the chosen variant |
+| `POST /sessions/{id}/images` · `audio` | Image and audio, generated inside the request |
+| `POST /sessions/{id}/jobs` · `POST /jobs/{id}/cancel` | Video — the only asynchronous work |
+| `GET /artifacts` · `GET /artifacts/counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` | Outputs as a page of cards, version history, document export |
+| `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` | Rewrite, fact-check, picture and review on a finished document |
+| `GET /projects` · `files` · `skills` · `memory` · `agents` · `templates` · `designs` | Workspace |
+| `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` | The shared store and copying from it |
+| `GET /design-templates` · `GET /design-templates/{id}/preview` · `GET /prompt-templates` | The rendering catalogue (preview is unauthenticated) and prompt starters |
+| `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
+| `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
+| `GET /keys` · `POST` · `DELETE {id}` | API keys users take away with them |
+| `GET /me/usage` | Own usage |
+| `POST /transcriptions` | Composer microphone → speech-to-text |
+| `GET /admin/users` · `settings` · `usage` · `audit` · `governance` · `storage` | Administration |
+| `POST /admin/branding/logo` · `DELETE` | Logo upload and removal (`GET /branding/logo` is public) |
 | `/llm/*` | LiteLLM passthrough. Authenticates **by API key, not by session** |
-| `GET /api/health` | Reports KloudChat and LiteLLM status separately |
+| `GET /health` | Reports KloudChat and LiteLLM status separately |
 
 `/docs` serves interactive documentation when `ENV=dev`, and is disabled in
 `prod`.
@@ -107,42 +116,56 @@ app/
 │   ├── config.py           Settings — the only place the master key lives
 │   ├── db.py               Async engine and session dependency
 │   ├── security.py         argon2id, JWT, refresh token hashing
-│   └── deps.py             current_identity (allows pending) / current_viewer (also ?t=)
-│                           / current_user / require_admin
+│   ├── deps.py             current_identity (allows pending) / current_viewer (also ?t=)
+│   │                       / current_user / require_admin
+│   └── logs.py             Sanitising outside text for log lines
 ├── models/
 │   ├── user.py             users, refresh_tokens, credit_ledger, audit_events
 │   ├── chat.py             sessions, messages, jobs
 │   ├── workspace.py        projects, files, artifacts, skills, memories, agents, connectors
+│   ├── governance.py       Instance-wide policy, one row
 │   └── settings.py         Runtime settings an administrator edits
 ├── schemas/                camelCase wire format (1:1 with src/types.ts)
 ├── routers/                auth, admin, models, sessions, jobs, workspace, connectors,
-│                           keys, shares, usage, branding, llm
+│                           keys, shares, usage, branding, transcriptions, llm
+├── design_templates/       The rendering catalogue: template.toml, seed.html, sample.html per entry
 └── services/
     ├── credits.py          Allowance, monthly refill (1st, KST), pre-flight check, settlement
     ├── litellm.py          Master-key client — the only point of contact with LiteLLM
+    ├── models.py           Catalogue merge and USD→credit conversion
+    ├── adapters.py         Model facts LiteLLM does not know (adapters and overrides)
     ├── chat.py             chat/completions stream → SSE events, title generation
-    ├── report.py · deck.py Report and slide producers
+    ├── agent.py            Tool-calling loop (model ↔ tool round trips)
+    ├── context.py          System prompt assembly — surface defaults and tool rules
+    ├── workspace_context.py  Projects, skills, memories and design → system prompt blocks
+    ├── governance.py       Prohibited categories, PII masking, privacy guard, retention
+    ├── adaptive_routing.py Auto cost routing for sessions that opted in
+    ├── outline.py          Plan rules shared by the report, deck and HTML tracks
+    ├── report.py · deck.py · page.py   Report, deck and HTML-template producers
+    ├── research.py         Web research before a document is written
+    ├── grounding.py · revise.py · lint.py · critique.py   Request check, targeted rewrite, linter, review
+    ├── design.py · design_templates.py · design_extract.py   Design systems, the catalogue, extraction
+    ├── prompt_templates.py Prompt starters
+    ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
+    ├── printing.py         PDF via the print service; None when it is absent
+    ├── pictures.py · figures.py · diagram.py · charts.py · chart_code.py   Pictures and charts in documents
+    ├── richtext.py · hwpx_import.py · hangul.py · arithmetic.py   Editing and text fixes
     ├── imagegen.py · audiogen.py   Synchronous media producers
     ├── videogen.py         Video: submit, poll, fetch — the one job kind
-    ├── factcheck.py        Slide claim verification — no evidence downgrades the verdict
-    ├── adapters.py         Model facts LiteLLM does not know (adapters and overrides)
-    ├── models.py           Catalogue merge and USD→credit conversion
-    ├── agent.py            Tool-calling loop (model ↔ tool round trips)
+    ├── factcheck.py        Claim verification — no evidence downgrades the verdict
     ├── artifact_extract.py Hoisting substantial code out of a transcript — after the turn
     ├── auto_memory.py      Durable facts written from a finished conversation
-    ├── transcribe.py       Composer microphone → Whisper (never webkitSpeechRecognition)
-    ├── files.py            Upload storage and per-format text extraction
-    ├── report_export.py    DOCX, PDF and HWPX export
-    ├── deck_export.py      PPTX and PDF export, one slide per page at 16:9
-    ├── fonts.py            The Korean face every PDF embeds — CID fonts are only named
+    ├── thinking.py         Reasoning-model answer starvation
+    ├── transcribe.py       Composer microphone → Whisper, chat-model fallback
+    ├── files.py · storage.py   Upload storage, text extraction, reclaim of deleted accounts' files
+    ├── knowledge.py · index_client.py   Agent shelves: lexical retrieval and the vector index
+    ├── fonts.py            The Korean face every reportlab PDF embeds
     ├── mcp.py              MCP client (stdio and streamable-http)
-    ├── mail.py             Password reset mail — one message, no queue, no retry
-    ├── starter.py          Default agents and skills seeded into an account at approval
+    ├── mail.py             Account mail — one message, no queue, no retry
+    ├── geoip.py            Offline region lookup from a MaxMind file
+    ├── starter.py          Shared catalogue of agents and skills; seeded at approval
     ├── bootstrap.py        First administrator, created when there are no users
-    ├── governance.py       Prohibited categories, PII masking, body retention
     ├── settings_store.py   Database-first settings — swap the proxy without a restart
-    ├── context.py          System prompt assembly — surface defaults and tool rules
-    ├── workspace_context.py  Projects, skills and memories → system prompt blocks
     └── tools/              Built-in tools, MCP tools, connector catalogue
 ```
 

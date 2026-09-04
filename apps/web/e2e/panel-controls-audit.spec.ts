@@ -1,31 +1,9 @@
-/**
- * Every control on the report and deck panels, and what each one actually does.
- *
- * Written after a change that touched both panels heavily — new blocks, new
- * layouts, a new rewrite endpoint, a new fix button — and then landed on a
- * `main` that seventeen other pull requests had moved under it. Neither half
- * of that is the kind of thing a screenshot catches: a button that lights up,
- * opens a menu and does nothing looks exactly like one that works.
- *
- * So each case names a control and an *observable consequence*. Not "it did
- * not throw" — a panel state changed, a file arrived, the document is
- * different. A control with no consequence worth naming is a control this file
- * should not be asserting about.
- *
- * Opened on artifacts that already exist rather than generated: a sweep that
- * costs a model call per control is a sweep nobody runs.
- */
+/** Every control on the report and deck panels has an observable consequence.
+ *  Runs on existing artifacts; nothing is generated. */
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { E2E_ADMIN, signIn, openAndSeedReport } from './helpers'
 
-/**
- * Titles of the artifacts of one kind that are actually finished, newest first.
- *
- * A deck with an unwritten slide in it — left behind by a generation that was
- * interrupted — has 내보내기 and 발표 disabled, and that is the panel being
- * right. A sweep that opens one reports a dead button and means nothing by it.
- * So completeness is decided here, by the same rule the panel uses.
- */
+/** Titles of finished artifacts of one kind, newest first; an unwritten part disables 내보내기 and 발표. */
 async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
   return page.evaluate(
     async ([admin, want, least]: [typeof E2E_ADMIN, string, number]) => {
@@ -66,14 +44,7 @@ async function titles(page: Page, kind: string, least = 1): Promise<string[]> {
   )
 }
 
-/**
- * Opens one artifact by name.
- *
- * By its gallery card's `aria-label`, not by a substring of its title: on
- * `/artifacts` the sidebar lists every conversation, and a request that once
- * said 보고서 is a button too. A sweep that opened the wrong document would
- * report failures that are really about a document with nothing in it.
- */
+/** Opens one finished artifact by its gallery card's `aria-label` (title substrings also match sidebar rows). */
 async function open(page: Page, kind: string, least = 1): Promise<boolean> {
   await signIn(page)
   await page.goto('/artifacts')
@@ -89,14 +60,7 @@ async function ribbon(page: Page, name: string) {
   if (await tab.isVisible().catch(() => false)) await tab.click()
 }
 
-/**
- * Every enabled control on screen, by accessible name.
- *
- * The whole page rather than `<main>`: the deck panel is portalled outside it,
- * so a sweep scoped to `main` reported that 내보내기 had vanished from a panel
- * that was showing it. The gallery and sidebar names that come along do not
- * collide with anything asserted here.
- */
+/** Every enabled button in scope, by accessible name. */
 async function controls(scope: Locator): Promise<string[]> {
   return scope.getByRole('button').evaluateAll((els) =>
     els
@@ -120,43 +84,29 @@ test('보고서 패널이 약속한 컨트롤을 내놓는다', async ({ page })
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }
-  // A panel missing one of these lost a feature to a merge, which is the
-  // failure this sweep exists for.
   for (const label of ['내보내기', '페이지뷰', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
-  // Printing is one of the ways this document leaves, so it lives with the
-  // others rather than taking a button of its own and folding the toolbar onto
-  // a second row.
+  // 인쇄 lives inside 내보내기.
   await ribbon(page, '파일')
   await page.getByRole('button', { name: '내보내기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: '인쇄' })).toBeVisible()
 })
 
 test('페이지뷰 토글이 두 방향 모두 간다', async ({ page }) => {
-  // Its own document, not whichever is newest.
-  //
-  // The rest of this file audits the controls on a finished artifact and that
-  // is the point of it. This case is different: it is about a button, and the
-  // button behaves differently depending on the document — one written into a
-  // 서식 opens *in* the page view, because the panel reads `templateId` and
-  // starts there. Opening whatever was written last made the case pass or fail
-  // on which spec ran before it.
+  // Its own document: a report with a `templateId` opens in the page view already.
   await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
 
   await ribbon(page, '홈')
   const toggle = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })
   await toggle.click()
   await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' })).toBeVisible()
-  // The reverse action is named for its destination as well.
   await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
   await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })).toBeVisible()
 })
 
 test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }) => {
-  // Only where there is a drawer to open. With the panel wide the contents
-  // stand beside the document and the button is deliberately absent — asking
-  // for it at 1440px was asserting the opposite of what the panel promises.
+  // The drawer button exists only when the panel is too narrow for a side TOC.
   await page.setViewportSize({ width: 900, height: 800 })
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   await ribbon(page, '보기')
@@ -187,8 +137,7 @@ test('검사 결과가 열리고 내용을 보여준다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   await ribbon(page, '검토')
   await page.getByRole('button', { name: '검사 결과' }).click()
-  // Findings, or the offer to review — both are the panel working. An empty
-  // popover is not.
+  // Findings or the offer to review; an empty popover is a failure.
   await expect(page.getByText('자동 검사').or(page.getByText('검토')).first()).toBeVisible({
     timeout: 10_000,
   })
@@ -212,18 +161,14 @@ test('슬라이드 패널이 약속한 컨트롤을 내놓는다', async ({ page
     await ribbon(page, tab)
     named.push(...await controls(page.getByRole('dialog')))
   }
-  // `장 목록` is not here: it lives in the presentation header, not the panel
-  // toolbar, and is asserted in the presentation test below where it exists.
+  // `장 목록` lives in the presentation header, not the panel toolbar.
   for (const label of ['내보내기', '발표', '검사 결과']) {
     expect(named, `${label} 가 사라졌다`).toContain(label)
   }
 })
 
 test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다', async ({ page }) => {
-  // Two slides at least: this case is about moving between them, and a deck of
-  // one satisfies "every slide is written" while making the arrow keys a no-op.
-  // The counter then reads 1 / 1 before and after, and the failure claims the
-  // key does nothing when there is simply nowhere to go.
+  // At least two slides, or the arrow keys have nowhere to go.
   test.skip(!(await open(page, 'deck', 2)), '두 장 이상인 덱이 없습니다')
   await ribbon(page, '슬라이드 쇼')
   await page.getByRole('toolbar', { name: '슬라이드 쇼' }).getByRole('button', { name: '발표', exact: true }).click()
@@ -232,8 +177,6 @@ test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다'
   await expect(page.getByRole('button', { name: '발표 시간 다시 시작' })).toBeVisible()
   await expect(page.getByRole('button', { name: '전체 화면' })).toBeVisible()
 
-  // The counter is the observable consequence of an arrow key — a slide that
-  // changed and one that did not look identical in a screenshot.
   const counter = page.getByText(/^\d+ \/ \d+$/).first()
   const before = await counter.innerText()
   await page.keyboard.press('ArrowRight')
@@ -241,7 +184,6 @@ test('발표 모드가 켜지고, 넘어가고, 장 목록을 열고, 꺼진다'
   await page.keyboard.press('ArrowLeft')
   await expect(counter).toHaveText(before)
 
-  // `장 목록` belongs to this header, not to the panel toolbar.
   const list = page.getByRole('button', { name: '장 목록' })
   await expect(list).toBeVisible()
   await list.click()

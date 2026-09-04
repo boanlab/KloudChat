@@ -1,25 +1,12 @@
-"""Writes the 서식 folders that carry a persona's document, and nothing else.
+"""Generates the derived 서식 folders (toml, instructions, checklist) from `_SHEETS`.
 
 Run from the API image:
 
     docker compose run --rm --no-deps -v "$PWD/apps/api:/repo" -w /repo api \
         python scripts/scaffold_templates.py
 
-The catalogue grew out of shapes — 보고 문서, 한 장 요약, 회의록 — and shapes
-are what a designer sees. What a person coming to this has is a job: a 기말
-리포트 with Chicago citations, a 설문 분석 with cross-tabs, a 장애 보고 with a
-timeline. Those are the same three or four typesettings wearing different
-structures and different rules, and the structure and the rules are the whole
-of the difference.
-
-So the folders here are generated from one table. Each 서식 declares its own
-`template.toml`, its own instructions and its own checklist — the parts that
-differ — and shares a `seed.html` with the shape it is typeset in. The seeds
-read every colour and face from the design tokens (51 `var(--…)` and one
-`#ffffff`), so sharing one is sharing a typesetting rather than a palette.
-
-The Word and PowerPoint halves are `build_docx_templates.py` and
-`build_pptx_templates.py`, which read the folders this leaves behind.
+Each derived 서식 names a base 서식 via `seed_from` and shares its `seed.html`.
+`build_docx_templates.py` and `build_pptx_templates.py` read the folders this writes.
 """
 
 from __future__ import annotations
@@ -31,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "design_template
 
 
 class Sheet:
-    """One 서식, in the terms `template.toml` states one."""
+    """One derived 서식 as `template.toml` states it."""
 
     def __init__(
         self,
@@ -70,13 +57,7 @@ class Sheet:
 
 
 def _layouts_of(base: str) -> str:
-    """The layouts the base's seed actually draws.
-
-    Guessed once, and wrongly: a deck scaffolded with `["title", "section"]`
-    offers the outline call two shapes its seed has no typesetting for, so the
-    writer asks for slides that come out blank. The seed decides what layouts
-    exist, so the seed's own declaration is what travels with it.
-    """
+    """The `layouts` line of the base 서식's `template.toml`, verbatim."""
     for line in (ROOT / base / "template.toml").read_text(encoding="utf-8").splitlines():
         if line.startswith("layouts"):
             return line.split("=", 1)[1].strip()
@@ -112,10 +93,8 @@ example_prompt_en = {quote(sheet.example_prompt_en)}
 """
 
 
-#: Copied from the shape each one is typeset in. `[wrap]` is the seed's own
-#: contract with the writer, so it travels with the seed rather than being
-#: restated here.
 def _wrap_of(base: str) -> str:
+    """The base 서식's `[wrap]` section, copied verbatim."""
     text = (ROOT / base / "template.toml").read_text(encoding="utf-8")
     marker = "[wrap]"
     return text[text.index(marker) :].rstrip() if marker in text else ""
@@ -125,10 +104,6 @@ def write(sheet: Sheet) -> pathlib.Path:
     folder = ROOT / sheet.folder
     folder.mkdir(exist_ok=True)
     base = ROOT / sheet.base
-
-    # The typesetting is named, not copied. Copies drift — six of the ten
-    # document 서식 once carried byte-identical seeds — and nothing in a copy
-    # says it was ever meant to match. `seed_from` in the toml below says it.
 
     kind = (base / "template.toml").read_text(encoding="utf-8").split("\n", 1)[0]
     kind = kind.split("=", 1)[1].strip().strip('"')

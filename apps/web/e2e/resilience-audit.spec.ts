@@ -2,19 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Round three: what the screen says when it does not yet know, and what it
- * says when the answer never comes.
- *
- * Rounds one and two looked at a screen that had loaded and a keyboard that
- * worked. This one takes those away — it holds the API back, and then breaks
- * it — and reads what is left on screen. An empty state shown while the list
- * is still in flight is not a neutral placeholder; it is the app telling
- * somebody their work is gone.
- *
- * Discovery, like the others: writes `audit/resilience-audit.json`, never
- * fails the run.
- */
+/** Resilience sweep: slow lists, failed writes, menu keyboard handling. Writes `audit/resilience-audit.json`; never fails. */
 
 interface Defect {
   rule: string
@@ -49,15 +37,11 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
 
   await signIn(page)
 
-  /* ── R17: an empty screen and a slow one are different things ────────
-     Every list here renders "nothing yet" from `array.length === 0`, which is
-     also what an unanswered request looks like. Held for two seconds, the
-     screen should say it is working — not that the work is gone. */
+  // R17: a list still in flight must not read as empty.
   for (const [route, api, where] of LISTS) {
     await page.route(api, async (r) => {
       await new Promise((done) => setTimeout(done, 2500))
-      // The page may have moved on by the time this wakes; letting that throw
-      // would fail the audit for a reason that is not about the app.
+      // The page may have moved on by the time this wakes.
       await r.continue().catch(() => {})
     })
     await page.goto(route)
@@ -68,15 +52,12 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
     if (SAYS_EMPTY.test(text) && !SAYS_BUSY.test(text)) {
       note('loading-honesty', where, route, '아직 오지 않은 것을 없다고 말한다')
     }
-    // Let the held request land *before* dropping the handler — unrouting
-    // underneath a sleeping one leaves it with nothing to continue into.
+    // Let the held request land before unrouting.
     await page.waitForTimeout(2200)
     await page.unroute(api)
   }
 
-  /* ── R16: a failure has to be sayable and retryable ──────────────────
-     Not "did it log an error" — whether the person looking at it is told
-     something happened, in words, with a way to try again. */
+  // R16: a failed write is said on screen, in readable words.
   const FAILURES: [route: string, api: RegExp, act: (p: Page) => Promise<void>, where: string][] = [
     [
       '/skills',
@@ -124,31 +105,24 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
     await act(page).catch(() => {})
     await page.waitForTimeout(1200)
 
-    // Scoped to the form. Read off the whole page this matched a tooltip and a
-    // nav label, and reported a silent failure as handled — which is how the
-    // skills form kept swallowing rejections through three rounds of audits.
+    // Scoped to the form: the whole page also carries tooltips and nav labels.
     const text = await page
       .getByRole('dialog')
       .innerText()
       .catch(() => page.evaluate(() => document.body.innerText))
     checks++
-    // Something on screen has to admit it failed.
     const said = /실패|오류|되지 않|못했|없습니다/.test(text)
     if (!said) note('error-visible', where, route, '실패했는데 화면은 아무 말도 하지 않는다')
 
     checks++
-    // And it must not be the wire talking: a status code or a stack is not a
-    // sentence anybody can act on.
+    // Not the wire's own words.
     if (/upstream exploded|500|Internal Server Error|\{"detail"/.test(text)) {
       note('error-readable', where, route, '서버 원문이 그대로 사용자에게 나온다')
     }
     await page.unroute(api)
   }
 
-  /* ── R15: menus and the keyboard ─────────────────────────────────────
-     `role="menu"` is a promise about arrow keys. These are opened with the
-     keyboard by anyone who does not reach for the mouse, and then there is
-     nowhere to go. */
+  // R15: `role="menu"` promises arrow keys.
   const MENUS: [route: string, open: string, where: string][] = [
     ['/new/chat', '모델', '모델 선택기'],
   ]
@@ -161,7 +135,7 @@ test('회복력 감사 — 느릴 때와 실패할 때', async ({ page }) => {
     const menu = page.getByRole('menu')
     if ((await menu.count()) === 0) continue
 
-    // Focus should be in the menu, or reachable with one ArrowDown.
+    // In the menu, or reachable with one ArrowDown.
     checks++
     await page.keyboard.press('ArrowDown')
     const inMenu = await page.evaluate(() => {

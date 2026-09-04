@@ -1,14 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Slide fact-checking.
- *
- * **A confident verdict always carries a source.** That is the rule this spec
- * guards: a "supported" badge with no evidence behind it stops the reader
- * looking precisely where they should. Costs one search and one model call per
- * claim.
- */
+/** Slide fact-checking: a confident verdict always carries a source. One search and one model call per claim. */
 
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
@@ -21,7 +14,7 @@ const AS_USER = `async (path, init) => {
     ...(init || {}),
     headers: { ...((init || {}).headers || {}), Authorization: 'Bearer ' + accessToken },
   })
-  // 204 has no body — the cleanup DELETE at the end goes through here too.
+  // 204 has no body.
   if (!r.ok || r.status === 204) return null
   return await r.json()
 }`
@@ -30,8 +23,7 @@ test('확신 있는 판정에는 반드시 근거 링크가 붙는다', async ({
   test.setTimeout(300_000)
   await signIn(page)
 
-  // A slide built to exercise all three outcomes: a checkable number that is
-  // wrong, and a pure opinion that must not be extracted at all.
+  // A wrong checkable number, and an opinion that must not be extracted.
   const deck = await page.evaluate(async (fn) => {
     return await eval(fn)('/api/artifacts', {
       method: 'POST',
@@ -82,17 +74,13 @@ test('확신 있는 판정에는 반드시 근거 링크가 붙는다', async ({
     expect(['supported', 'unsupported', 'uncertain']).toContain(claim.verdict)
     expect(claim.note.length, `${claim.text} — 판정 근거 설명이 없습니다`).toBeGreaterThan(0)
     if (claim.verdict !== 'uncertain') {
-      // The whole point. Nothing is asserted confidently without something the
-      // reader can open and disagree with.
       expect(claim.sourceUrl, `"${claim.text}" 를 ${claim.verdict} 로 판정했는데 근거가 없습니다`)
         .toMatch(/^https?:\/\//)
     }
-    // Opinions are not verdicts. "our approach is better" has nothing to
-    // search for, and a verdict-shaped answer about it is worse than silence.
+    // Opinions are not claims.
     expect(claim.text).not.toContain('훨씬 낫다')
   }
 
-  // And it renders, with the source reachable.
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()

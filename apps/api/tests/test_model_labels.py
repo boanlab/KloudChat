@@ -1,9 +1,4 @@
-"""A model row says who built it and where it runs.
-
-`local/gemma-…` and `google/gemma-…` printed the same words at different
-prices, and `strict-local/qwen…` sat in its own STRICT LOCAL group beside the
-QWEN group holding the same model over the other route.
-"""
+"""Model labels and vendor grouping: route prefixes are not vendors."""
 
 from __future__ import annotations
 

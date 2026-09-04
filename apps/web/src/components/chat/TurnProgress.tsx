@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/** Counts from when the turn started. Ticks once a second; nothing needs finer. */
+/** Seconds since `since`, ticking once a second. */
 function useElapsed(since: number) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -27,7 +27,7 @@ export function TurnProgress({
   model,
 }: {
   sessionId: string
-  /** Epoch milliseconds. The turn's own start, not this component's mount. */
+  /** Epoch ms of the turn's start. */
   startedAt: number
   label: string
   model?: string
@@ -46,9 +46,6 @@ export function TurnProgress({
         <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
         <span className="animate-blink">{label}</span>
       </span>
-      {/* Who is doing it. The agent's name wins when there is one: on an
-          orchestrated run that is the thing being waited on, and the model
-          underneath it is an implementation detail of that. */}
       {(agent || model) && (
         <span className="truncate text-sm text-faint">{agent ? agent.name : model}</span>
       )}

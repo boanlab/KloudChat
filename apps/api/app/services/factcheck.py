@@ -1,20 +1,7 @@
-"""Checking the claims in a document against the web.
+"""Checks one passage's factual claims against SearXNG results.
 
-**Never manufacture confidence.** A wrong badge is worse than no badge: the
-reader stops looking exactly where they should have. The verdicts are therefore
-asymmetric:
-
-* `supported` requires a source that is shown. No source, no support.
-* `uncertain` is the default, and where every failure lands — no results, a bad
-  judgement, a model that would not answer.
-* `unsupported` means the search ran and found nothing backing the claim. Not a
-  claim of falsehood, and the note says so.
-
-Only checkable claims are extracted: a position run through a search engine
-produces a verdict-shaped opinion.
-
-One passage at a time on both surfaces — a whole-document run is a hundred
-unasked-for searches, and the reader cannot act on a hundred verdicts at once.
+Verdicts: `supported` and `unsupported` require a cited source; `uncertain`
+is the default and where every failure lands.
 """
 
 from __future__ import annotations
@@ -33,9 +20,9 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Per passage. Each claim costs one search plus one judgement.
+#: Claims per passage; each costs one search plus one judgement.
 MAX_CLAIMS = 4
-#: How many results the judge reads. Enough to disagree with itself.
+#: Search results the judge reads.
 _RESULTS = 5
 _TIMEOUT = 30.0
 
@@ -92,9 +79,6 @@ def _json_block(text: str, opener: str, closer: str) -> Any:
         return None
 
 
-#: A slide is one extraction plus one judgement per claim, so no single call
-#: knows what the slide cost. Every one of them reports its own tokens and the
-#: caller adds them up, the way the document writers already do.
 def _spend() -> dict[str, int]:
     return {"inputTokens": 0, "outputTokens": 0}
 
@@ -181,21 +165,7 @@ async def check_slide(*, slide: dict, model: str, api_key: str) -> tuple[dict, d
 async def check_text(
     *, title: str, body: str, model: str, api_key: str, limit: int = MAX_CLAIMS
 ) -> tuple[dict, dict[str, int]]:
-    """`(factCheck, usage)` for one passage — always `done`, possibly empty.
-
-    An empty claim list is a real answer: a passage of positions and
-    definitions has nothing a search engine can settle.
-
-    The tokens come back beside the verdicts because a caller who cannot see
-    them bills for none of them, and this is the most expensive thing on either
-    document screen: up to five calls and four searches for one passage.
-
-    Written against a title and a body rather than a slide, because the thing
-    being checked is a claim and a claim does not care what shape it was
-    printed in. A report section is the same call — and a report is where an
-    unchecked figure does the most damage, since it is the artifact that gets
-    exported and attached to a mail.
-    """
+    """`(factCheck, usage)` for one passage; always `done`, possibly with no claims."""
     usage = _spend()
     if not body.strip():
         return {"status": "done", "claims": []}, usage
@@ -237,11 +207,7 @@ async def check_text(
 
 
 async def _judge(claim: str, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
-    """One claim → `(verdict, usage)`. Every failure path returns `uncertain`.
-
-    A search that found nothing costs no tokens; a judgement that was read and
-    then thrown away still cost them, and is reported.
-    """
+    """One claim → `(verdict, usage)`. Every failure path returns `uncertain`."""
     hits = await _search(claim)
     if not hits:
         return {
@@ -280,9 +246,7 @@ async def _judge(claim: str, model: str, api_key: str) -> tuple[dict, dict[str, 
     if isinstance(index, (int, float)) and 1 <= int(index) <= len(hits):
         url = hits[int(index) - 1]["url"]
 
-    # Every confident verdict has to be attributable, `unsupported` included:
-    # one the reader cannot check does the same damage as a wrong `supported`.
-    # Without a source to click, both collapse to uncertain.
+    # A confident verdict without a citable source collapses to uncertain.
     if verdict in ("supported", "unsupported") and not url:
         verdict = "uncertain"
         note_suffix = " (근거로 지목된 자료가 없어 판정을 보류합니다)"

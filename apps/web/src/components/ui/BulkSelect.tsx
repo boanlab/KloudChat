@@ -4,17 +4,7 @@ import { Button, Modal } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/**
- * Selecting rows on a list screen, and removing them together.
- *
- * One hook and one bar for all six lists, because a checkbox that means
- * something slightly different on each screen is worse than no checkbox: the
- * ones that stay after a partial failure, whether a confirm appears, what the
- * count refers to.
- *
- * The selection is kept by id and pruned against the rows on screen, so a
- * filter or a delete elsewhere cannot leave a phantom in the count.
- */
+/** Row selection by id, pruned against the rows on screen. */
 export function useBulkSelect<T extends { id: string }>(rows: T[]) {
   const [picked, setPicked] = useState<Set<string>>(new Set())
 
@@ -40,7 +30,7 @@ export function useBulkSelect<T extends { id: string }>(rows: T[]) {
   return { picked, ids, count: ids.length, toggle, clear, allPicked, toggleAll }
 }
 
-/** The checkbox that goes on a card. Stops the click reaching what is under it. */
+/** Card checkbox; stops the click reaching the card. */
 export function PickBox({
   checked,
   onChange,
@@ -71,16 +61,7 @@ export function PickBox({
   )
 }
 
-/**
- * The bar that appears once something is selected.
- *
- * Above the list rather than floating over it: a list screen is scrolled, and
- * a bar that follows the viewport covers the very rows somebody is deciding
- * about.
- *
- * `note` is what this particular delete takes with it — a project's knowledge
- * files, an agent's search index — said before the button rather than after.
- */
+/** Selection bar with bulk delete and confirmation. */
 export function BulkBar({
   count,
   allPicked,
@@ -95,8 +76,9 @@ export function BulkBar({
   onToggleAll: () => void
   onClear: () => void
   onDelete: () => Promise<unknown>
-  /** Names what is being deleted: "프로젝트", "결과물". */
+  /** Noun for what is deleted: "프로젝트", "결과물". */
   title: string
+  /** What the delete takes with it, shown in the confirmation. */
   note?: string
 }) {
   const t = useT()

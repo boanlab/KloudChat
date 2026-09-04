@@ -1,14 +1,7 @@
-"""Turning a stored deck into something you can present from.
+"""Deck export to `.pptx` and `.pdf`, one 16:9 slide per page from the stored artifact fields.
 
-Two formats: `.pptx` for editing elsewhere, `.pdf` for projecting from a machine
-you do not control.
-
-Both render one slide per page at 16:9 from the same artifact fields the browser
-previews. The geometry is shared — 960×540 points is exactly 13.333×7.5 inches
-— so the PDF page and the PowerPoint slide are one rectangle and cannot drift.
-
-Speaker notes go to the .pptx notes pane and are dropped from the PDF: a note is
-what you say, not what the room reads.
+Both share the 960×540 pt geometry (13.333×7.5 in). Speaker notes go to the
+.pptx notes pane only.
 """
 
 from __future__ import annotations
@@ -38,7 +31,7 @@ log = logging.getLogger(__name__)
 
 
 class _InlineRuns(HTMLParser):
-    """Small, defensive reader for the editor's sanitised inline HTML."""
+    """Reads the editor's sanitised inline HTML into `(text, style)` runs."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -95,13 +88,10 @@ def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
     return parser.runs or [(fallback, {})]
 
 
-#: 16:9 in points — EMU/12700, and reportlab's default unit. Drives both
-#: exporters.
+#: 16:9 in points (EMU/12700, reportlab's default unit); drives both exporters.
 _W, _H = 960.0, 540.0
 
-#: How wide a picture gets when it shares the slide with words. Just under half
-#: the text column: smaller and it is decoration, wider and the lines beside it
-#: break every few words.
+#: Default width of a picture sharing the slide with text.
 _PICTURE_SPAN = 300.0
 
 
@@ -114,10 +104,7 @@ def _picture_span(data: dict) -> float:
 
 _EMU_PER_PT = 12700
 
-#: Korean is laid out with the *East Asian* font, which python-pptx does not
-#: set — see `_font`. Both pairs are present on any Windows that would open
-#: this; elsewhere the theme font applies. Keyed by `design.FONTS`, so a design
-#: system's face survives into PowerPoint rather than stopping at the preview.
+#: (latin, East Asian) faces keyed by `design.FONTS`; see `_font`.
 _FACES = {
     "gothic": ("Segoe UI", "맑은 고딕"),
     "serif": ("Georgia", "바탕"),
@@ -126,27 +113,19 @@ _FACES = {
 _INK = RGBColor(0x1A, 0x1A, 0x1A)
 _MUTED = RGBColor(0x66, 0x66, 0x66)
 
-#: The dark deck's ground and its two neutrals. Not tokens: the design system
-#: chooses colours for a document, and a projected slide inverts them.
+#: Dark-template ground and neutrals; not design tokens.
 _DARK_BG = RGBColor(0x0E, 0x11, 0x16)
 _WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 _DARK_INK = RGBColor(0xF5, 0xF6, 0xF7)
 _DARK_MUTED = RGBColor(0x9A, 0xA0, 0xA6)
 
-#: The greys this file drew before design systems existed. Kept as the literal
-#: fallbacks rather than folded into `design.DEFAULT_TOKENS`: a deck with no
-#: design system has to export byte for byte what it exported yesterday, and
-#: `#1a1a1a` is not exactly `(0.1, 0.1, 0.1)`.
+#: PDF fallbacks when no design system is attached (not exactly `#1a1a1a`).
 _PDF_INK = (0.1, 0.1, 0.1)
 _PDF_MUTED = (0.4, 0.4, 0.4)
 
 
 def _rgb(value: str | None) -> RGBColor:
-    """`#rrggbb` → RGBColor, falling back rather than raising.
-
-    The accent is per-slide and editable, so it can arrive as a CSS variable or
-    an empty string.
-    """
+    """`#rrggbb` or `#rgb` → RGBColor; the default accent for anything else."""
     text = (value or "").strip().lstrip("#")
     if len(text) == 3 and re.fullmatch(r"[0-9a-fA-F]{3}", text):
         text = "".join(c * 2 for c in text)
@@ -158,19 +137,13 @@ def _rgb(value: str | None) -> RGBColor:
 def _mix(
     colour: RGBColor, percent: float, *, onto: RGBColor = RGBColor(0xFF, 0xFF, 0xFF)
 ) -> RGBColor:
-    """`percent`% of `colour` over `onto`, the way CSS `color-mix` does it.
-
-    The preview writes `color-mix(in srgb, accent 7%, #fff)` for the same
-    surfaces. Both had to be able to say it, or one deck in green exports as
-    the same deck plus a blue table — and a .pptx that differs from the panel
-    is discovered in the room.
-    """
+    """`percent`% of `colour` over `onto`, matching the preview's CSS `color-mix`."""
     weight = max(0.0, min(1.0, percent / 100))
     return RGBColor(*(round(colour[i] * weight + onto[i] * (1 - weight)) for i in range(3)))
 
 
 def _block(slide, *, left: float, top: float, width: float, height: float, colour: RGBColor):
-    """A filled rectangle with no line and no shadow — the design's only shapes."""
+    """A filled rectangle with no line and no shadow."""
     shape = slide.shapes.add_shape(
         MSO_SHAPE.RECTANGLE,
         Emu(int(left * _EMU_PER_PT)),
@@ -192,11 +165,7 @@ def _hex_floats(value: str | None) -> tuple[float, float, float]:
 
 @dataclass(frozen=True)
 class Look:
-    """One of the faces a deck wears — the panel's `LOOKS`, in Python.
-
-    Every measurement is shared across them; what a look decides is the
-    ground, the neutrals, how the cover is composed, which ornament marks a
-    body slide, and whether a card is a filled block or an outlined one.
+    """A visual style, matching the panel's `LOOKS`: ground, neutrals, cover, ornament, card style.
     """
 
     bg: str
@@ -212,8 +181,7 @@ class Look:
     cover: str  # gradient | wash | glow | split | paper | brackets
     #: top-band | left-bar | corner-circle | bottom-rule | gutter | frame | bottom-band
     ornament: str
-    #: Whether the neutrals above replace the design system's. The three
-    #: original looks keep the tokens; the four newer ones are their own.
+    #: Whether the neutrals above replace the design system's.
     own_neutrals: bool = False
 
 
@@ -344,8 +312,7 @@ def _box(
     fill: RGBColor,
     line: RGBColor,
 ):
-    """A card, a band, a metric box — filled or outlined as the look says,
-    with its corners rounded as the look says."""
+    """A card, band or metric box, filled or outlined and rounded as the look says."""
     kind = MSO_SHAPE.ROUNDED_RECTANGLE if look.radius else MSO_SHAPE.RECTANGLE
     shape = _shape(slide, kind, left=left, top=top, width=width, height=height)
     if look.radius:
@@ -386,12 +353,8 @@ def _mix_floats(
 
 
 def _table_size(rows: int) -> float:
-    """The preview's fitted cell size, in its own 225-unit drawing.
-
-    `SlideView` derives it from the height left under the title rather than
-    from thresholds, because a six-row table at a comfortable size runs off the
-    bottom of a slide and through the foot. Both exporters scale their own base
-    size by the same ratio, so a table that fits on screen fits in the file.
+    """The preview's fitted table cell size in its 225-unit drawing; both exporters scale by the
+    same ratio.
     """
     per_row = 122 / (rows + 1.2)
     return max(7.5, min(12.0, per_row / 2.05))
@@ -405,11 +368,7 @@ def _font(
     colour: RGBColor = _INK,
     faces: tuple[str, str] = _FACES["gothic"],
 ) -> None:
-    """Sets a run's font, including the East Asian typeface.
-
-    `font.name` writes only `a:latin`, while PowerPoint picks Hangul from
-    `a:ea` — which is most of the text here.
-    """
+    """Sets a run's font; `font.name` writes only `a:latin`, Hangul is drawn from `a:ea`."""
     latin, east_asian = faces
     run.font.size = Pt(size)
     run.font.bold = bold
@@ -435,15 +394,7 @@ def _pptx_pairs(
     look: Look | None = None,
     hair: RGBColor | None = None,
 ) -> None:
-    """The three paired layouts, which are one shape drawn three ways.
-
-    `bands` is a filled name on the left against a tinted band on the right —
-    the row-label shape every Korean 사업 발표 opens with, and the one thing
-    bullets cannot say, because a bullet has no place to put the name of what
-    it is. `tiles` sets the mark large in a filled square with its name under
-    it. `timeline` hangs the entries off one rule, the date to its left and
-    what happened to its right.
-    """
+    """Draws a paired layout: bands, tiles, steps, cards, or timeline."""
     top = 150.0
     room = _H - 210
     look = look or _LOOKS["editorial"]
@@ -457,7 +408,7 @@ def _pptx_pairs(
                 slide, look, left=left, top=y, width=label, height=height, fill=accent, line=accent
             )
             if look.card == "outlined":
-                # The name's chip stays filled even when the band is a box.
+                # The name chip stays filled.
                 _block(slide, left=left, top=y, width=label, height=height, colour=accent)
             _box(
                 slide,
@@ -509,14 +460,11 @@ def _pptx_pairs(
         return
 
     if layout == "steps":
-        # Numbered by position, across the slide: a filled square with the
-        # step's number, its name under, what it does under that, and one
-        # tinted rule joining the squares so the eye reads left to right.
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
         side = 44.0
         if len(pairs) > 1:
-            # From the first square's centre to the last's.
+            # Rule from the first badge's centre to the last's.
             _block(
                 slide,
                 left=left + side / 2,
@@ -544,8 +492,6 @@ def _pptx_pairs(
         return
 
     if layout == "cards":
-        # Titled boxes side by side: a tinted card with an accent rule over
-        # it, the name at the top and the text under it.
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
         height = min(220.0, room - 20)
@@ -595,17 +541,7 @@ def _pptx_pairs(
 def _pptx_chart(
     slide, chart: dict, *, accent, muted, width: float, faces: tuple[str, str], left: float = 72.0
 ) -> None:
-    """A native PowerPoint chart, not a picture of one.
-
-    The difference is what the person presenting can do with it. A native chart
-    carries its own worksheet, so a number that turns out to be wrong the
-    morning of the talk is fixed in the file they already have; a raster is a
-    picture they have to come back to us to change.
-
-    Everything but the geometry is `services.charts`, which the report's `.docx`
-    charts go through as well — one accent, one zero floor, one set of
-    gridlines, whichever surface the reader is on.
-    """
+    """A native PowerPoint chart (editable worksheet), styled by `services.charts`."""
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE
 
@@ -633,15 +569,10 @@ def _pptx_chart(
 
 
 def _cell_rule(cell, colour: RGBColor, points: float) -> None:
-    """A line under one table cell, and nothing anywhere else on it.
+    """A bottom rule on one table cell, written as `a:lnB` XML.
 
-    `python-pptx` has no border API — a cell's lines live in `a:tcPr` and have
-    to be written as XML. Only the bottom is drawn, so a row of cells reads as
-    one rule across the table rather than as a row of boxes.
-
-    `a:tcPr` is schema-ordered and the line elements come first — left, right,
-    top, bottom — so this is inserted at the front. A cell whose `a:lnB` sits
-    after its fill is a file PowerPoint opens with a repair prompt.
+    `a:tcPr` is schema-ordered with line elements first; inserted at the
+    front, or PowerPoint offers to repair the file.
     """
     from pptx.oxml import parse_xml
     from pptx.oxml.ns import nsdecls, qn
@@ -660,9 +591,8 @@ def _cell_rule(cell, colour: RGBColor, points: float) -> None:
     )
 
 
-#: What PowerPoint reads to build the outline pane, and what a screen reader
-#: reads to say which slide it is on. Placeholder indices are per slide: a title
-#: is always 0, and the body that follows it is 1.
+#: Placeholder mark PowerPoint reads for the outline pane and screen readers.
+#: Indices are per slide: title 0, body 1.
 _PH = (
     '<p:ph xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
     ' type="{kind}" idx="{index}"/>'
@@ -670,21 +600,7 @@ _PH = (
 
 
 def _placeholder(box, kind: str, index: int) -> None:
-    """Mark a drawn textbox as a placeholder of `kind`.
-
-    The slides here are drawn — free boxes at measured positions — because the
-    design is the product and the built-in layouts have their own. The cost was
-    invisible until somebody opened the outline pane: a deck of nine slides
-    showed nine blank lines, because a textbox is not a placeholder and only a
-    placeholder is outline text. The same emptiness is what a screen reader
-    gets, and what 개요 보기 in Hancom Office 쇼 gets.
-
-    Marking rather than re-placing. `p:ph` is the whole of what makes a shape a
-    placeholder — PowerPoint reads the type off the shape, not off the layout —
-    so the box keeps the position and the type it was given here, and every run
-    in it already carries its own font, size and colour, which leaves nothing
-    for a layout to inherit into and change.
-    """
+    """Marks a drawn textbox as a placeholder of `kind`; only placeholders are outline text."""
     from pptx.oxml import parse_xml
 
     box._element.nvSpPr.nvPr.append(parse_xml(_PH.format(kind=kind, index=index)))
@@ -713,12 +629,8 @@ def _textbox(
 
 
 def _outline_placeholder(slide, kind: str, index: int, text: str, colour: RGBColor) -> None:
-    """Add outline metadata without letting a master move the drawn textbox.
-
-    LibreOffice and some PowerPoint templates re-apply a placeholder's master
-    geometry even when the slide XML contains explicit coordinates. Keeping a
-    hidden semantic placeholder and a normal visible textbox preserves both
-    the outline pane and the layout the browser previews.
+    """A hidden 1×1 placeholder carrying the outline text; masters re-apply placeholder geometry, so
+    the visible box stays a plain textbox.
     """
     frame = _textbox(slide, left=0, top=0, width=1, height=1, placeholder=(kind, index))
     frame.clear()
@@ -726,22 +638,15 @@ def _outline_placeholder(slide, kind: str, index: int, text: str, colour: RGBCol
         paragraph = frame.paragraphs[0] if line_index == 0 else frame.add_paragraph()
         run = paragraph.add_run()
         run.text = line
-        # LibreOffice ignores `cNvPr hidden` on placeholders. Explicit 1pt ink
-        # matching the cover keeps the compatibility renderer from painting
-        # the semantic copy while PowerPoint can still read it in the outline.
+        # LibreOffice ignores `cNvPr hidden` on placeholders; 1pt in the
+        # ground colour keeps it invisible there.
         run.font.size = Pt(1)
         run.font.color.rgb = colour
     frame._parent.element.nvSpPr.cNvPr.set("hidden", "1")
 
 
 def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
-    """The lists to lay side by side.
-
-    An HTML deck read back by `page_export` knows which column each line was
-    in and says so; a JSON deck only has one list, and halving it is the best
-    guess available. Preferring the explicit answer keeps a two-column slide
-    from being re-divided in the wrong place on its way to a file.
-    """
+    """Columns to lay side by side: explicit `columns` when given, else the bullets halved."""
     given = [list(c) for c in (data.get("columns") or []) if c]
     if layout == "two-column" and len(given) >= 2:
         return given
@@ -749,32 +654,20 @@ def _columns_of(data: dict, bullets: list[str], layout: str) -> list[list[str]]:
 
 
 def _split_columns(bullets: list[str]) -> list[list[str]]:
-    """A list in two columns, reading top-to-bottom then across.
-
-    Falls back to one column below five items: two columns of two is a gap
-    down the middle rather than a layout, and the model does occasionally
-    return a short list for a slide it planned as `two-column`.
-    """
+    """A list in two columns, top-to-bottom then across; one column below five items."""
     if len(bullets) < 5:
         return [bullets]
     half = (len(bullets) + 1) // 2
     return [bullets[:half], bullets[half:]]
 
 
-#: How tall the mark is drawn in the foot. Small on purpose: a logo that
-#: competes with the slide's own words is a slide about the logo.
+#: Logo height in the foot, and its width cap.
 _LOGO_HEIGHT = 18.0
-#: And how wide it is allowed to get before it is a banner rather than a mark.
 _LOGO_MAX_WIDTH = 120.0
 
 
 def _logo_of(tokens: dict[str, str] | None) -> tuple[bytes, float, float] | None:
-    """`(bytes, width, height)` for the design system's mark, drawn to height.
-
-    Decoded here rather than at each of the three renderers, and returning the
-    size with the bytes because every one of them has to place it and none of
-    them should be measuring a picture.
-    """
+    """`(bytes, width, height)` for the design system's logo drawn to `_LOGO_HEIGHT`, or None."""
     raw = (tokens or {}).get("logo") or ""
     if not raw.startswith("data:image/"):
         return None
@@ -783,7 +676,6 @@ def _logo_of(tokens: dict[str, str] | None) -> tuple[bytes, float, float] | None
         with PIL.Image.open(io.BytesIO(blob)) as picture:
             width, height = picture.size
     except Exception:  # noqa: BLE001 — a mark that will not decode is no mark
-        # A logo nobody can draw must not be the reason a deck fails to export.
         log.warning("could not read the design system's logo")
         return None
     if not width or not height:
@@ -792,26 +684,15 @@ def _logo_of(tokens: dict[str, str] | None) -> tuple[bytes, float, float] | None
     return blob, drawn_width, _LOGO_HEIGHT * min(1.0, _LOGO_MAX_WIDTH / max(drawn_width, 1e-6))
 
 
-#: The layouts that are a left thing and a right thing. Same data, three
-#: designs — see `deck._PAIRED`.
+#: Paired layouts; see `deck._PAIRED`.
 _PAIRED = ("bands", "tiles", "timeline", "steps", "cards")
 
-#: Drawn reversed out of the accent, like the cover: the deck's last word.
+#: Layouts drawn reversed out of the accent.
 _COVERS = ("title", "section", "closing")
 
 
 def _written(slides: list[dict]) -> list[dict]:
-    """The slides that got written. A panel is a workbench; a file is a room.
-
-    A slide the writer could not fill says so on screen, where 텍스트 수정 is
-    right there to fix it and the lint has already filed it P0. In a file that
-    same sentence is projected in front of an audience — a live run put "이 장을
-    쓰지 못했습니다." on slide three of a deck somebody was about to present.
-
-    Dropped rather than blanked: an empty slide in a deck is a pause nobody
-    planned, and the numbering here is by position, so what follows simply
-    moves up.
-    """
+    """Slides minus those still marked `deck.UNWRITTEN`; numbering is by position."""
     return [
         slide
         for slide in slides
@@ -825,12 +706,7 @@ def _filled(slide: dict) -> bool:
 
 
 def _pairs_of(slide: dict, layout: str) -> list[tuple[str, str]]:
-    """`[(왼쪽, 오른쪽)]` for a paired layout, or empty for anything else.
-
-    Checked here rather than trusted: both writers are handed artifacts written
-    before these layouts existed and artifacts somebody edited by hand, and a
-    half-filled pair draws a coloured band with nothing in it.
-    """
+    """`[(왼쪽, 오른쪽)]` for a paired layout with both halves filled; empty otherwise."""
     if layout not in _PAIRED:
         return []
     out: list[tuple[str, str]] = []
@@ -842,15 +718,7 @@ def _pairs_of(slide: dict, layout: str) -> list[tuple[str, str]]:
 
 
 def _chart_of(slide: dict) -> dict | None:
-    """A slide's chart, if it has one that can be drawn.
-
-    Checked here rather than trusted, because both writers are also handed
-    artifacts written before `deck._clean_chart` existed and artifacts a person
-    has edited by hand. A series shorter than the categories is the one that
-    matters: it is not a chart with a gap, it is a chart whose bars stand under
-    the wrong labels, and every reader takes away a fact that was never in the
-    data. Rather than guess the pairing, this draws only the part that pairs.
-    """
+    """A drawable chart, or None; categories and series are cut to the shortest paired length."""
     chart = slide.get("chart")
     if not isinstance(chart, dict):
         return None
@@ -881,11 +749,8 @@ def _chart_of(slide: dict) -> dict | None:
 
 
 def _picture_of(slide: dict) -> tuple[bytes, str] | None:
-    """The picture on a slide, whichever way it arrived.
-
-    Two tracks put one there. `page_export` reads an HTML artifact and hands
-    over decoded bytes; a JSON deck stores the `data:` URI itself, because its
-    slides are JSON in a JSONB column and bytes are not.
+    """`(bytes, caption)` from `image.data` (bytes, via `page_export`) or `image.src` (a `data:`
+    URI).
     """
     raw = slide.get("image")
     if not isinstance(raw, dict):
@@ -899,12 +764,7 @@ def _picture_of(slide: dict) -> tuple[bytes, str] | None:
 
 
 def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
-    """The size a picture takes inside `box`, in points, keeping its shape.
-
-    Read from the bytes rather than trusted from the markup: the artifact says
-    nothing about pixel dimensions, and a picture drawn to a box it does not
-    fit is either squashed or off the slide.
-    """
+    """The size a picture takes inside `box`, in points, keeping its aspect."""
     max_width, max_height = box
     try:
         with PIL.Image.open(io.BytesIO(data)) as picture:
@@ -920,12 +780,8 @@ def _fit(data: bytes, *, box: tuple[float, float]) -> tuple[float, float]:
 def _fill(
     data: bytes, *, box: tuple[float, float]
 ) -> tuple[float, float, float, float, float, float]:
-    """Size an image over ``box`` and return its centred crop fractions.
-
-    The first two values are the oversized dimensions used by PDF. The last
-    four are PowerPoint's 0–1 left/top/right/bottom crop values. Both therefore
-    show the same central window rather than one stretching what the other
-    crops.
+    """`(width, height, left, top, right, bottom)`: the cover-fit size and PowerPoint's 0–1 crop
+    fractions.
     """
     box_width, box_height = box
     try:
@@ -950,39 +806,26 @@ def to_pptx(
     dark: bool = False,
     template: str = "",
 ) -> bytes:
-    """The deck as a PowerPoint file.
+    """The deck as a PowerPoint file, drawn on the blank layout.
 
-    Blank layout, not the built-in title/content ones: those carry placeholder
-    prompts that show in the outline pane and in any empty slide.
-
-    `tokens` is the design system the deck was written under, copied onto the
-    artifact when it was made. Absent, the file is exactly what it was before
-    design systems existed.
+    `tokens` is the design system copied onto the artifact; `template` is the
+    서식's `.pptx`, whose master and theme the file is built on.
     """
     style = design.normalise_tokens(tokens) if tokens else None
     faces = _FACES[style["font"]] if style else _FACES["gothic"]
     ink = _rgb(style["ink"]) if style else _INK
     muted = _rgb(style["muted"]) if style else _MUTED
     if dark:
-        # A deck written for a room with the lights down. The design system's
-        # ink is a colour for paper; on this ground it would be unreadable, so
-        # the two neutrals swap rather than being taken from the tokens.
+        # Design-system ink is for paper; on a dark ground the neutrals swap.
         ink, muted = _DARK_INK, _DARK_MUTED
 
-    #: The design system's marks. Decoded once rather than per slide: a deck is
-    #: twenty slides and the logo is the same picture on every one of them.
     mark = _logo_of(style)
     footer = (style or {}).get("footer") or ""
 
-    #: The slide being drawn, so `paint` can honour its own type size. A list
-    #: because `paint` closes over it and closures cannot rebind an outer name.
+    #: Current slide's `textScale`; a list so `paint` can read the rebinding.
     typescale = [1.0]
 
     def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
-        # `textScale` is what somebody set on that slide in the panel — 크게 or
-        # 작게 on one slide, not the deck. Applied here rather than at each of
-        # the fifteen call sites below, which is also why every size in this
-        # file goes through one function.
         _font(
             run,
             size=max(8, round(size * typescale[0])),
@@ -1022,17 +865,7 @@ def to_pptx(
             run.font.italic = bool(inline.get("italic"))
             run.font.underline = bool(inline.get("underline"))
 
-    # The 서식's own PowerPoint file, when it has one.
-    #
-    # Same reasoning as `report_export.to_docx` opening the 서식's `.docx`: the
-    # shape reached the screen and then the file — the thing that is actually
-    # presented — came out in `python-pptx`'s defaults. Opening the template
-    # makes the master, its layouts and its theme the 서식's, so a deck saved
-    # from here carries them and 새 슬라이드 offers the same shapes.
-    #
-    # The slides below are still drawn rather than placed in the layouts'
-    # placeholders. That is the next thing to change and it is a bigger one;
-    # this much already moves the master, the theme and the page.
+    # Slides are drawn as free shapes, not placed in the template's placeholders.
     presentation = Presentation(template) if template else Presentation()
     presentation.slide_width = Emu(int(_W * _EMU_PER_PT))
     presentation.slide_height = Emu(int(_H * _EMU_PER_PT))
@@ -1045,33 +878,22 @@ def to_pptx(
         if dark:
             slide.background.fill.solid()
             slide.background.fill.fore_color.rgb = _DARK_BG
-        # The slide's own accent, and failing that the design system's. `deck`
-        # stamps every slide it writes, so this is for the ones it did not: an
-        # artifact from before design systems, and one somebody edited by hand.
         look = _look_of(visual_style)
         if look.own_neutrals and not dark:
             ink, muted = _rgb(look.ink), _rgb(look.muted)
+        # The slide's own accent, else the design system's.
         accent = _rgb(data.get("accent") or (style or {}).get("accent"))
         if visual_style == "mono":
-            # 흑백 is black and white: the accent survives only as marks.
             accent = ink
-        # The two derived surfaces, mixed exactly as the preview's `color-mix`
-        # does, onto this look's ground. See `_mix`.
         ground = _rgb(look.bg)
         tint = _mix(accent, look.tint, onto=ground) if look.tint else RGBColor(0xF2, 0xF2, 0xF2)
         hair = _rgb(look.hair)
         layout = data.get("layout") or "bullets"
 
-        # The band across the head, matching the preview. It replaced a 9pt
-        # stripe down the left edge: a rule that stands up is read as a margin
-        # mark, and one that lies across the top is read as the top of a slide.
-        # A cover takes the accent whole instead and reverses out of it.
         cover = layout in _COVERS
-        #: Whether the cover's words sit on the accent (white ink) or on the
-        #: look's own ground.
+        #: Cover text on the accent (white ink) rather than the look's ground.
         on_accent = look.cover in ("gradient", "glow")
         if cover:
-            # The ground, composed per look — the same six the panel draws.
             fill = slide.background.fill
             if look.cover == "gradient":
                 try:
@@ -1095,7 +917,6 @@ def to_pptx(
                 fill.solid()
                 fill.fore_color.rgb = ground
                 if look.cover == "glow":
-                    # The accent as a large soft disc off the lower right.
                     for ring, pct in ((520, 22), (400, 38), (280, 58)):
                         disc = _shape(
                             slide,
@@ -1184,9 +1005,7 @@ def to_pptx(
             and (bullets or rows or metrics or chart or body)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
-        # A picture takes the right half and the words keep the left. Alone, it
-        # takes the middle of the slide. Either way the text is narrowed here
-        # rather than overlapping it, which is what a slide would show.
+        # A picture beside text narrows the text column; alone, it is centred.
         text_width = (
             _W
             - 144
@@ -1198,11 +1017,9 @@ def to_pptx(
         )
         text_left = 72 + (picture_span + 24 if picture_left else 0)
 
-        #: Where the cover's words start: past the accent block on a split cover.
+        #: Past the accent block on a split cover.
         cover_left = 72 + 336 if look.cover == "split" else 72
         if layout == "closing":
-            # The last word, reversed out like the cover: the title, what to
-            # remember under it, and the line to end on at the foot.
             cover_ink = _WHITE if on_accent else ink
             cover_muted = _mix(_WHITE, 80, onto=accent) if on_accent else muted
             if look.cover == "split":
@@ -1256,7 +1073,6 @@ def to_pptx(
             cover_ink = _WHITE if on_accent else ink
             cover_muted = _mix(_WHITE, 80, onto=accent) if on_accent else muted
             if look.cover == "split":
-                # The part's number, large and pale, low in the accent block.
                 counter = _textbox(slide, left=60, top=_H - 130, width=200, height=80)
                 run = counter.paragraphs[0].add_run()
                 number_text = str(data.get("number") or "").replace(".", "") or "01"
@@ -1267,8 +1083,6 @@ def to_pptx(
                 and layout == "section"
                 and (number := str(data.get("number") or ""))
             ):
-                # `01.` over the title. A divider that only names the part
-                # leaves the reader counting backwards to place it.
                 counter = _textbox(slide, left=72, top=150, width=200, height=40)
                 run = counter.paragraphs[0].add_run()
                 run.text = number
@@ -1291,7 +1105,6 @@ def to_pptx(
                 slide,
                 left=cover_left,
                 top=210,
-                # Short of the accent disc on a paper cover.
                 width=(_W - 72 - cover_left) - (300 if look.cover == "paper" else 0),
                 height=180,
             )
@@ -1309,7 +1122,6 @@ def to_pptx(
                 paragraph = frame.add_paragraph()
                 paragraph.alignment = PP_ALIGN.LEFT
                 paragraph.space_before = Pt(14)
-                # 80% white over the accent — the preview's rgba(255,255,255,.8).
                 paint_rich(paragraph, data, "body", body, size=15, colour=cover_muted)
             _outline_placeholder(
                 slide,
@@ -1319,8 +1131,6 @@ def to_pptx(
                 accent if on_accent else ground,
             )
         elif layout == "statement":
-            # One phrase set large in the middle, a short rule over it and the
-            # sentence that unpacks it under — the presenter's own conclusion.
             _block(slide, left=(_W - 62) / 2, top=176, width=62, height=5, colour=accent)
             frame = _textbox(
                 slide, left=90, top=196, width=_W - 180, height=120, placeholder=("title", 0)
@@ -1366,7 +1176,7 @@ def to_pptx(
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
             paint_rich(frame.paragraphs[0], data, "title", heading, size=24, bold=True)
-            # The tab under the title — the preview's 26×2, at this scale.
+            # The tab under the title.
             _block(slide, left=text_left, top=126, width=62, height=5, colour=accent)
 
             if pairs:
@@ -1394,8 +1204,6 @@ def to_pptx(
                     left=text_left,
                 )
             elif metrics and layout == "big-number":
-                # One figure, very large, its name beside it and the line that
-                # says what it means under both.
                 figure, label = metrics[0]
                 box = _textbox(
                     slide,
@@ -1415,8 +1223,7 @@ def to_pptx(
                     under = _textbox(slide, left=text_left, top=300, width=text_width, height=80)
                     paint_rich(under.paragraphs[0], data, "body", body, size=18)
             elif bullets and layout == "agenda":
-                # The 목차: `01` in the accent beside each name, down one column,
-                # or two when there are more than four.
+                # Two columns above four entries.
                 columns = _split_columns(bullets) if len(bullets) > 4 else [bullets]
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 per = max(len(column) for column in columns)
@@ -1446,17 +1253,9 @@ def to_pptx(
                             slide, left=left, top=y + step - 6, width=span, height=0.75, colour=hair
                         )
             elif metrics:
-                # Figures set large, side by side, with what each one counts
-                # under it. The size is the whole point: a number typed into a
-                # bullet is read at the same weight as everything around it,
-                # and this slide exists because one of them is the thing to
-                # remember.
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
                 for position, (figure, label) in enumerate(metrics):
                     left = text_left + position * (span + 24)
-                    # A tinted card with a rule over it. Loose on the slide the
-                    # figures were three numbers in a white field; carded, they
-                    # read as one row of comparable things.
                     _box(
                         slide,
                         look,
@@ -1484,8 +1283,6 @@ def to_pptx(
                     run.text = label
                     paint(run, size=14, colour=muted)
             elif rows:
-                # A real table, because an HTML deck can carry one. Flattened
-                # into lines it is a comparison the reader has to rebuild.
                 shape = slide.shapes.add_table(
                     len(rows),
                     max(len(row) for row in rows),
@@ -1495,16 +1292,8 @@ def to_pptx(
                     Emu(int(min(_H - 220, 34 * len(rows)) * _EMU_PER_PT)),
                 )
                 table = shape.table
-                # The preview shrinks the type as the rows multiply so the
-                # table stays on the slide rather than running through the
-                # foot. Same thresholds, so the .pptx keeps the same shape.
                 cell_size = max(8, round(14 * _table_size(len(rows)) / 12))
-                # PowerPoint applies a theme table style to every new table:
-                # a banded blue that owes nothing to the deck's own accent. It
-                # made the .pptx the odd one out — the preview and the .pdf
-                # both draw accent-coloured headings over plain rows with a
-                # rule under the head — and a preview that differs from the
-                # .pptx is discovered in the room.
+                # Off, or PowerPoint applies its theme's banded table style.
                 table.first_row = False
                 table.horz_banding = False
                 for r, row in enumerate(rows):
@@ -1512,9 +1301,6 @@ def to_pptx(
                         if c >= len(table.columns):
                             continue
                         cell = table.cell(r, c)
-                        # The head is a block of colour rather than coloured
-                        # words: at eight metres a heading set in the accent
-                        # and a body row set in ink are the same grey line.
                         if r == 0:
                             cell.fill.solid()
                             cell.fill.fore_color.rgb = accent
@@ -1523,10 +1309,6 @@ def to_pptx(
                             cell.fill.fore_color.rgb = tint
                         else:
                             cell.fill.background()
-                        # The rule under the head row is what separates the
-                        # labels from the values; between the rows a hairline
-                        # is enough, and round the outside nothing at all — a
-                        # grid of thin lines closes up at projector distance.
                         if r == 0:
                             pass
                         elif r < len(rows) - 1:
@@ -1541,9 +1323,7 @@ def to_pptx(
                             colour=_WHITE if r == 0 else ink,
                         )
             elif bullets:
-                # Two boxes side by side rather than one wide one — PowerPoint
-                # has no column flow, so the split has to be geometry. Matches
-                # the preview's `columnCount: 2` and the .pdf below.
+                # PowerPoint has no column flow, so columns are separate boxes.
                 columns = _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
                 bullet_at = 0
@@ -1554,10 +1334,7 @@ def to_pptx(
                         top=150,
                         width=span,
                         height=_H - 210,
-                        # The first column is the slide's body, so the outline
-                        # pane shows what the slide says and not only that it
-                        # exists. A second column is a second box on the same
-                        # slide and cannot also be the body.
+                        # Only the first column is the body placeholder.
                         placeholder=("body", 1) if column_index == 0 else None,
                     )
                     for position, text in enumerate(column):
@@ -1614,9 +1391,6 @@ def to_pptx(
                     shape.crop_right = crop_right
                     shape.crop_bottom = crop_bottom
             except Exception as exc:  # noqa: BLE001 — one bad picture, not a failed export
-                # Bytes that are not a picture any more: truncated on the way
-                # in, or a format this library refuses. The slide loses its
-                # illustration; the deck still opens.
                 log.warning("could not place a picture in the pptx: %s", exc)
             else:
                 if image_caption:
@@ -1627,9 +1401,7 @@ def to_pptx(
                     run.text = image_caption
                     paint(run, size=11, colour=muted)
 
-        # The foot: whose deck this is on the left, where you are in it on the
-        # right — the two things somebody asks about from the floor. A cover
-        # has neither; it is not a page of the argument yet.
+        # Foot: logo, deck title and footer on the left, slide number on the right.
         if not cover:
             _block(slide, left=72, top=_H - 58, width=_W - 144, height=0.75, colour=hair)
             edge = 72.0
@@ -1652,9 +1424,6 @@ def to_pptx(
             run.text = title
             paint(run, size=9, colour=muted)
             if footer:
-                # Whose deck it is, opposite its name. A deck presented outside
-                # the room it was made in is read as belonging to whoever made
-                # it, and nothing here used to say who that was.
                 who = _textbox(slide, left=_W - 226, top=_H - 52, width=110, height=26)
                 who.paragraphs[0].alignment = PP_ALIGN.RIGHT
                 run = who.paragraphs[0].add_run()
@@ -1691,7 +1460,7 @@ def _pdf_box(
     line,
     bg,
 ) -> None:
-    """The `.pdf` twin of `_box`: filled or outlined, corners as the look says."""
+    """The `.pdf` twin of `_box`."""
     if look.card == "outlined":
         pdf.setFillColorRGB(*bg)
         pdf.setStrokeColorRGB(*line)
@@ -1734,12 +1503,7 @@ def _pdf_pairs(
     hair=None,
     bg=None,
 ) -> None:
-    """The same three shapes the `.pptx` draws, at the same measurements.
-
-    Written twice rather than shared because PowerPoint reflows a text box and
-    this canvas does not — the geometry is the same and the wrapping cannot be.
-    See `_pptx_pairs` for what each shape is for.
-    """
+    """The `.pdf` twin of `_pptx_pairs`: same geometry, explicit wrapping."""
     room = top - 80
     look = look or _LOOKS["editorial"]
     hair = hair or (0.902, 0.902, 0.902)
@@ -1876,16 +1640,7 @@ def _pdf_chart(
     font: str,
     left: float = 72.0,
 ) -> None:
-    """The same chart, drawn.
-
-    By hand rather than with `reportlab.graphics`: that package's charts bring
-    their own type scale, their own axis conventions and their own palette,
-    and reconciling those with the .pptx would take more code than the twenty
-    lines of arithmetic below. What has to match is the shape a reader sees —
-    the same bars in the same order over a zero floor — and that is arithmetic.
-
-    Zero floor, again. A printed chart is the one people photograph.
-    """
+    """The `.pdf` twin of `_pptx_chart`, drawn by hand over a zero floor."""
     bottom = 90.0
     height = top - bottom - 30
     if height < 60 or width < 100:
@@ -1898,7 +1653,6 @@ def _pdf_chart(
     categories = chart["categories"]
     step = width / len(categories)
 
-    # Four gridlines and their labels. More is a grid, fewer is not a scale.
     pdf.setFont(font, 11)
     for tick in range(5):
         y = bottom + height * tick / 4
@@ -1924,15 +1678,11 @@ def _pdf_chart(
             for position, (x, y) in enumerate(points):
                 path.moveTo(x, y) if position == 0 else path.lineTo(x, y)
             pdf.drawPath(path)
-            # The same circles the .pptx puts on its line series. A bare line
-            # hides where the readings actually are, and on a five-point series
-            # that is most of what the chart says.
             pdf.setFillColorRGB(*colour)
             for x, y in points:
                 pdf.circle(x, y, 3, stroke=0, fill=1)
         else:
-            # Bars share the slot between two category ticks, so two series
-            # stand side by side rather than one behind the other.
+            # Series share the category slot side by side.
             count = len(chart["series"])
             span = step * 0.6 / count
             pdf.setFillColorRGB(*colour)
@@ -1945,9 +1695,6 @@ def _pdf_chart(
     for position, label in enumerate(categories):
         pdf.drawCentredString(left + step * (position + 0.5), bottom - 18, label)
 
-    # A legend, when there is more than one line to tell apart. Without it the
-    # printed chart has two lines and no way to say which is which — the .pptx
-    # has had one since it was drawn.
     if len(chart["series"]) > 1:
         x = left
         pdf.setFont(font, 12)
@@ -1961,18 +1708,7 @@ def _pdf_chart(
 
 
 def _nice_ceiling(highest: float) -> float:
-    """A top of scale that is a number a reader recognises.
-
-    `highest * 1.15` gives gridlines at 132, 264, 397 — arithmetic nobody reads
-    as a scale. PowerPoint rounds the top of its own charts, so this has to as
-    well, or the same deck is read off two different scales depending on which
-    file somebody opened.
-
-    The *top* is rounded, not the step. Rounding the step is the obvious move
-    and it wastes the chart: a series topping out at 460 has a step of 115,
-    the next round step up is 200, and the bars end up filling a little over
-    half of a chart that runs to 800.
-    """
+    """Top of scale rounded up to 1, 2, 2.5, 5 or 10 × a power of ten, as PowerPoint does."""
     import math
 
     if highest <= 0:
@@ -1985,17 +1721,12 @@ def _nice_ceiling(highest: float) -> float:
 
 
 def _tick_label(value: float) -> str:
-    """A gridline's number, without a decimal point nobody asked for."""
+    """A gridline's number: integer at 10 and above, one decimal below."""
     return f"{value:,.0f}" if abs(value) >= 10 else f"{value:,.1f}".rstrip("0").rstrip(".")
 
 
 def _typescale(slide: dict) -> float:
-    """This slide's own type size, as a multiple, clamped to something sane.
-
-    Set in the panel — 크게 / 보통 / 작게 on one slide. Read here rather than
-    trusted: it arrives on an artifact a person can PATCH, and a slide whose
-    words are forty times the size of the paper is a file nobody can open.
-    """
+    """The slide's `textScale` clamped to 0.5–2.0; it arrives on a PATCHable artifact."""
     try:
         value = float(slide.get("textScale") or 1.0)
     except (TypeError, ValueError):
@@ -2004,11 +1735,7 @@ def _typescale(slide: dict) -> float:
 
 
 def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
-    """Greedy wrap by measured width.
-
-    Breaks between characters, not words: Korean has no spaces to break on, and
-    a word-only wrap runs off the right edge.
-    """
+    """Greedy wrap by measured width, breaking between characters (Korean has no spaces)."""
     lines: list[str] = []
     current = ""
     for char in text:
@@ -2034,20 +1761,11 @@ def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
 
 
 def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
-    """The deck as a PDF, one slide per page.
-
-    For projecting, so it is deliberately the presentation and not the notes:
-    what is on the page is what the room sees.
-
-    Same rule as `to_pptx`: with no design system this draws what it always
-    drew, down to the greys.
-    """
+    """The deck as a PDF, one slide per page, without notes."""
     style = design.normalise_tokens(tokens) if tokens else None
     font = fonts.korean(style["font"] if style else "gothic")
     ink = _hex_floats(style["ink"]) if style else _PDF_INK
     muted = _hex_floats(style["muted"]) if style else _PDF_MUTED
-    #: The design system's marks. Decoded once rather than per slide: a deck is
-    #: twenty slides and the logo is the same picture on every one of them.
     mark = _logo_of(style)
     footer = (style or {}).get("footer") or ""
     visual_style = (style or {}).get("visualStyle") or "editorial"
@@ -2082,8 +1800,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             and (bullets or rows or metrics or chart or body)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
-        # The same split the .pptx uses, so the printout and the projected deck
-        # put the same things in the same places.
+        # Same split as the .pptx.
         text_width = (
             _W
             - 144
@@ -2095,20 +1812,12 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         )
         text_left = 72 + (picture_span + 24 if picture_left else 0)
 
-        # The same shapes the preview and the .pptx draw. A cover takes the
-        # accent whole and reverses out of it; every other slide gets the band
-        # across the head, where a 9pt stripe down the left edge used to be.
-        # A section opener is a cover for the part that follows it. Same ground,
-        # same reversal — what tells them apart is the number, which is the one
-        # thing a reader wants from a divider: how far in are we.
         cover = layout in _COVERS
         on_accent = look.cover in ("gradient", "glow")
         cover_left = 72 + 336 if look.cover == "split" else 72
         tint = _mix_floats(accent, look.tint, onto=ground) if look.tint else (0.949, 0.949, 0.949)
         hair = _hex_floats(look.hair)
         if cover:
-            # The ground, composed per look — the same six the panel and the
-            # .pptx draw.
             if look.cover == "gradient":
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, 0, _W, _H, stroke=0, fill=1)
@@ -2183,11 +1892,8 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFillColorRGB(*tint)
                 pdf.rect(0, 0, _W, 53, stroke=0, fill=1)
 
-        # This slide's own type size, applied to the sizes *and* to the line
-        # advances they are paired with. Scaling only the glyphs would set 26pt
-        # words on 34pt leading and they would sit on each other — which is the
-        # reason the `.pptx` and the `.pdf` are scaled in different places at
-        # all: PowerPoint reflows a text box and this file does not.
+        # `textScale` applies to sizes and line advances alike: this canvas
+        # does not reflow.
         ts = _typescale(data)
 
         def S(n: float, _ts: float = ts) -> float:
@@ -2231,8 +1937,6 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFont(font, S(64))
                 pdf.drawString(60, 60, number.replace(".", "") or "01")
             if look.cover != "split" and layout == "section" and number:
-                # `01.` over the title. A divider that only says the name of
-                # the part leaves the reader counting backwards to place it.
                 pdf.setFillColorRGB(
                     *(_mix_floats((1.0, 1.0, 1.0), 70, onto=accent) if on_accent else accent)
                 )
@@ -2249,7 +1953,6 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.drawString(cover_left, y, line)
                 y -= S(50)
             if body:
-                # 80% white over the accent, as the preview and the .pptx have.
                 pdf.setFillColorRGB(
                     *(_mix_floats((1.0, 1.0, 1.0), 80, onto=accent) if on_accent else muted)
                 )
@@ -2289,10 +1992,8 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             for line in _wrap(heading, font, S(24), text_width):
                 pdf.drawString(72, y, line)
                 y -= S(32)
-            # The tab under the title — the preview's 26×2, at this scale.
+            # The tab under the title; `y` has already advanced past the last line.
             pdf.setFillColorRGB(*accent)
-            # Below the descenders, not through them: `y` has already stepped
-            # past the last line of the title by one advance.
             pdf.rect(text_left, y + S(4), 62, 5, stroke=0, fill=1)
             y -= 24
 
@@ -2340,12 +2041,9 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     for offset, line in enumerate(_wrap(body, font, S(18), text_width)[:2]):
                         pdf.drawString(text_left, y - S(130) - offset * S(26), line)
             elif metrics:
-                # The same geometry the .pptx uses, so the printout and the
-                # projected deck put the same figures in the same places.
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
                 for position, (figure, label) in enumerate(metrics):
                     left = text_left + position * (span + 24)
-                    # A tinted card with a rule over it — see the .pptx.
                     _pdf_box(
                         pdf,
                         look,
@@ -2364,22 +2062,12 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     pdf.drawString(left, y - S(40), figure)
                     pdf.setFillColorRGB(*muted)
                     pdf.setFont(font, S(14))
-                    # 30pt under a 44pt figure. At 22 the label sat on the
-                    # numeral's baseline and the two read as one word.
                     pdf.drawString(left, y - S(70), label)
             elif rows:
-                # Ruled rather than boxed: a printed grid of thin lines closes
-                # up at projector distance, and the rule under the header is
-                # what actually separates the labels from the values.
                 width = text_width / max(len(row) for row in rows)
-                # The preview's thresholds, in this file's sizes.
                 cell_size = S(max(9.0, 15 * _table_size(len(rows)) / 12))
                 step = cell_size * 2.0
                 for row_index, row in enumerate(rows):
-                    # The head is a block of colour rather than coloured words,
-                    # and the body is banded in the faintest tint of the same
-                    # accent. At eight metres a heading set in the accent and a
-                    # body row set in ink are the same grey line.
                     if row_index == 0:
                         pdf.setFillColorRGB(*accent)
                         pdf.rect(text_left, y - step * 0.3, text_width, step, stroke=0, fill=1)
@@ -2398,9 +2086,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                             text_left + 8 + cell_index * width, y, text[0] if text else ""
                         )
                     y -= step
-                    # The foot sits at 58. Stopping at 60 put the last row
-                    # through it, which is the one place an overflow is read as
-                    # a broken export rather than a long table.
+                    # Stop above the foot rule at 58.
                     if y < 84:
                         break
             elif bullets and layout == "agenda":
@@ -2424,8 +2110,6 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         pdf.setFillColorRGB(*hair)
                         pdf.rect(left, line_y - 14, span, 0.75, stroke=0, fill=1)
             elif bullets:
-                # Same split as the .pptx, so the printout and the projected
-                # deck put the same items in the same places.
                 columns = _columns_of(data, bullets, layout)
                 size = S(14 if len(columns) > 1 else 16)
                 step = S(20 if len(columns) > 1 else 24)
@@ -2509,8 +2193,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                         _wrap(image_caption, font, 11, box_width)[0],
                     )
 
-        # The foot: whose deck this is on the left, where you are in it on the
-        # right. A cover has neither; it is not a page of the argument yet.
+        # Foot: logo, deck title and footer on the left, slide number on the right.
         if not cover:
             pdf.setStrokeColorRGB(*hair)
             pdf.setLineWidth(0.75)
@@ -2533,9 +2216,6 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     left += mark_width + 10
             pdf.setFillColorRGB(0.55, 0.55, 0.55)
             pdf.setFont(font, 9)
-            # The deck's own name, and then whose it is. Two different facts —
-            # a reader outside the room needs the second one, and a KloudChat
-            # deck used to carry neither.
             foot = _wrap(title, font, 9, _W - 260 - (left - 72))[0] if title else ""
             pdf.drawString(left, 40, foot)
             if footer:

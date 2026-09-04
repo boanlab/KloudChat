@@ -3,24 +3,10 @@ import { crc32 as zlibCrc32, deflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * A picture made on the image surface, put inside a written document.
- *
- * The writing model can neither draw one nor point at one — `sanitise` drops
- * every address that is not already inside the file — so this is the path that
- * exists instead: a person picks a picture they already have, and the server
- * inlines its bytes. Nothing here costs a model call, so both the artifact and
- * the picture are seeded through the API and only the joining is driven
- * through the screen.
- */
+/** Inserting an existing image artifact into a document block; the server inlines its bytes.
+ *  Both artifacts are seeded through the API. */
 
-/**
- * A real PNG, built here.
- *
- * Pasted base64 is unreadable in a diff and easy to truncate — the first
- * version of this file carried a broken one, which the server refused only at
- * export time, hours later.
- */
+/** A valid PNG, built rather than pasted. */
 function png(width = 240, height = 160): string {
   const raw = Buffer.concat(
     Array.from({ length: height }, (_, y) =>
@@ -72,8 +58,7 @@ const SETUP = `async (png) => {
     return r.ok ? await r.json() : null
   }
 
-  // The blob first: an image artifact is a row that points at a stored file,
-  // and the endpoint reads that file rather than the artifact.
+  // An image artifact points at a stored file; the endpoint reads the file.
   const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0))
   const form = new FormData()
   form.append('file', new Blob([bytes], { type: 'image/png' }), 'e2e-picture.png')
@@ -148,22 +133,16 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
 
-  // Which block: the picture belongs to a place in the document, and the
-  // preview is sandboxed, so the choice is made from the plan it was written
-  // from — the same list the rewrite uses.
+  // The block is chosen from the plan, since the preview is sandboxed.
   await page.getByRole('button', { name: '그림 넣기' }).click()
   await page.getByRole('menuitem', { name: '현황' }).click()
 
-  // Exact: the gallery behind the dialog carries "{name} 열기" and
-  // "{name} 삭제" buttons for the same picture.
+  // Exact: the gallery behind the dialog has "{name} 열기" and "{name} 삭제" buttons.
   await page.getByRole('button', { name: pictureTitle, exact: true }).click()
   await page.getByLabel('설명').fill('그림 1. 시험용')
   await page.getByRole('button', { name: '넣기', exact: true }).click()
 
-  // The version is the visible half of "this edited the document", and it is
-  // what makes the change undoable. Read off the open dialog, which is also
-  // the assertion that the panel is looking at the document the server now
-  // holds rather than the copy it opened with.
+  // The version bump, read off the open dialog, shows the panel holds the server's copy.
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('HTML · v2')).toBeVisible({ timeout: 30_000 })
   await page.screenshot({ path: 'test-results/shots/14-block-image.png' })
@@ -173,15 +152,12 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
     [READ, pageId],
   )
   const data = (stored as { data: { blocks: { html: string }[]; content: string } }).data
-  // Inside the file, not a link to it: the artifact is downloaded and shared,
-  // and a reader opening it must not fetch anything.
+  // Inlined, not linked: a downloaded artifact must not fetch anything.
   expect(data.blocks[1].html).toContain('data:image/png;base64,')
   expect(data.content).toContain('<figcaption>그림 1. 시험용</figcaption>')
   expect(data.content).not.toContain('/api/files/')
 
-  // ── and it leaves in the file somebody downloads ────────────────────
-  // A zip stores its entry names uncompressed, so the presence of the media
-  // part is readable from the bytes without unpacking anything.
+  // Zip entry names are stored uncompressed, so the media part is readable from the bytes.
   const saved = page.waitForEvent('download', { timeout: 60_000 })
   await dialog.getByRole('button', { name: '내보내기' }).click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
@@ -191,21 +167,8 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
   expect(bytes.toString('latin1')).toContain('ppt/media/image1.png')
 })
 
-/**
- * The same control, on an account that has no pictures.
- *
- * It used to render only when there was something in it, which hid the one path
- * a picture has into a document from exactly the person who had not found it:
- * somebody who asked for pictures, got a document without any, and had nothing
- * on screen suggesting the feature exists. On a stock install that state is
- * permanent — the image surface is off by default, so no picture can be made at
- * all — and the difference between a dead end and an instruction is whether the
- * screen says which.
- *
- * The listing is filtered in flight rather than by deleting rows: this account
- * is shared with every other suite here, and a test that empties it would be a
- * trap rather than a check.
- */
+/** With no pictures the control still shows and says why. The listing is filtered in flight:
+ *  the account is shared with every other suite. */
 test('그림이 없어도 넣을 자리는 보이고, 왜 없는지 말한다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -217,8 +180,7 @@ test('그림이 없어도 넣을 자리는 보이고, 왜 없는지 말한다', 
   expect(seeded, '문서를 만들지 못했습니다').not.toBeNull()
   const { pageTitle } = seeded as { pageTitle: string }
 
-  // Every image row removed from the listing the store loads. The document
-  // itself is fetched by id on another path, so it still arrives.
+  // Image rows removed from the listing; the document is fetched by id on another path.
   await page.route('**/api/artifacts?*', async (route) => {
     const response = await route.fetch()
     const rows = await response.json()

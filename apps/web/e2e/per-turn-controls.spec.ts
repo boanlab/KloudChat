@@ -1,12 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * The composer toolbar reads as one row of switches for the message being
- * written. Two of them are not that: one keeps its light after the turn has
- * lost the ability to honour it, and one writes the whole account. These tests
- * hold both to saying which they are.
- */
+/** Composer toolbar switches say what the turn will do and which of them are account-wide. */
 
 const chatModel = (id: string, label: string, strictLocal = false) => ({
   id,
@@ -104,7 +99,7 @@ test('웹 검색은 strict-local 모델에서 켜진 척하지 않는다', async
   await page.getByRole('button', { name: /External One/ }).click()
   await page.getByRole('button', { name: /Local Strict/ }).click()
 
-  // The wish is still on file; the row now says what the turn will do with it.
+  // The wish stays on file; the row says what the turn will do.
   await expect(search).toBeDisabled()
   await expect(search).toHaveAttribute('aria-pressed', 'false')
   await expect(page.getByText('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')).toBeVisible()
@@ -158,8 +153,7 @@ test('작성 도구 옆의 커넥터 스위치는 계정 전체 설정이라고 
 })
 
 test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page }) => {
-  // One model every text surface may select, so the composer on each of them
-  // is otherwise complete and the only difference is the toggle itself.
+  // One model every text surface may select.
   await page.route('**/api/models', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.continue()
@@ -183,23 +177,12 @@ test('웹 검색 토글은 글을 쓰는 모든 화면에 있다', async ({ page
   await page.goto('/new/chat')
   await expect(search).toHaveCount(1)
 
-  // A report and a deck can search now, and should.
-  //
-  // This asserted the opposite for as long as the document writers were handed
-  // no tools: a lit globe promised a search that was never going to run, so it
-  // was hidden. Hiding it turned out to be the wrong half of that to fix — a
-  // chat answer that is out of date gets argued with, and a report gets
-  // exported and mailed. The writers were given the search instead, and this
-  // assertion outlived the reason for it. See `canWebSearch` in `Composer`.
+  // Document surfaces can search too (`canWebSearch` in `Composer`).
   for (const kind of ['report', 'slides']) {
     await page.goto(`/new/${kind}`)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     await expect(search).toHaveCount(1)
   }
 
-  // The two media surfaces still hide it, for the reason the document surfaces
-  // no longer do — an image endpoint takes a prompt and chips and has nowhere
-  // to put a page it found. Not asserted here: those surfaces are off by
-  // default, so an empty count would pass whether the globe is hidden or the
-  // whole composer is. `disabled-surface.spec.ts` is where that belongs.
+  // Media surfaces hide it; asserted in `disabled-surface.spec.ts`, since they are off by default.
 })

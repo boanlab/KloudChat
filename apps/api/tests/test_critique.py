@@ -1,11 +1,4 @@
-"""One reading of a finished document by somebody who did not write it.
-
-The score is an opinion and nothing is blocked by it, so what has to hold is
-the part that is rendered beside the linter's own findings: a made-up row there
-would make the whole list read as decoration. Everything the model sends is
-therefore normalised — a score off the scale, a severity that is not one of the
-two, a finding with no sentence in it — before it can be stored.
-"""
+"""Review replies are normalised (score range, severity, empty findings) before they are stored."""
 
 from __future__ import annotations
 
@@ -83,7 +76,7 @@ async def test_a_review_comes_back_as_a_score_and_things_to_fix(monkeypatch):
     assert result["score"] == 6.5
     assert [f["severity"] for f in result["findings"]] == ["P0", "P1"]
     assert result["findings"][0]["where"] == "대안"
-    # The linter's shape, so the panel renders one list rather than two.
+    # The linter's shape, so the panel renders one list.
     assert result["findings"][0]["rule"] == "critique"
     assert usage == {"inputTokens": 900, "outputTokens": 150}
 
@@ -116,7 +109,7 @@ async def test_a_finding_with_no_sentence_in_it_is_dropped(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_more_findings_than_a_review_holds_are_cut(monkeypatch):
-    """Beyond a handful this is a rewrite, not a review."""
+    """Findings are capped at the review's maximum."""
     many = ",".join(
         f'{{"severity": "P1", "message": "지적 {n} 입니다."}}' for n in range(20)
     )
@@ -132,17 +125,14 @@ async def test_an_answer_that_is_not_a_review_is_refused(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_reply_with_no_score_is_refused(monkeypatch):
-    """A review with no number is not the thing that was asked for."""
+    """A reply without a score is refused."""
     with pytest.raises(critique.CritiqueError):
         await _review(monkeypatch, '{"findings": [{"severity": "P0", "message": "가."}]}')
 
 
 # ── a reply that stops early ───────────────────────────────────────────
 #
-# Small models end their JSON a bracket short often enough to matter: the
-# reader pressed 검토 받기, the call was made and charged, and every word of
-# the answer is there except the last `}`. What the model finished saying is
-# kept; what it stopped in the middle of is dropped.
+# Truncated JSON: what the model finished is kept, what it stopped inside is dropped.
 
 
 @pytest.mark.asyncio
@@ -154,7 +144,7 @@ async def test_a_review_missing_its_last_bracket_is_still_read(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_finding_cut_off_mid_sentence_is_dropped_whole(monkeypatch):
-    """Half a sentence read as a finding is worse than no finding at all."""
+    """A finding truncated mid-sentence is dropped whole."""
     reply = (
         '{"score": 4, "findings": ['
         '{"severity": "P0", "where": "대안", "message": "같은 기준으로 견주지 않았다."},'
@@ -167,7 +157,7 @@ async def test_a_finding_cut_off_mid_sentence_is_dropped_whole(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_score_survives_a_reply_that_stops_in_the_first_finding(monkeypatch):
-    """The number is the part the panel shows; it arrives before the findings do."""
+    """The score survives a reply truncated inside its first finding."""
     (result, _), _ = await _review(
         monkeypatch, '{"score": 7, "findings": [{"severity": "P1", "message": "결론에'
     )
@@ -177,7 +167,7 @@ async def test_a_score_survives_a_reply_that_stops_in_the_first_finding(monkeypa
 
 @pytest.mark.asyncio
 async def test_a_brace_with_no_review_after_it_is_still_refused(monkeypatch):
-    """Closing what is open must not turn prose into a score of zero."""
+    """Closing an open brace must not turn prose into a score of zero."""
     with pytest.raises(critique.CritiqueError):
         await _review(monkeypatch, "{ 이 문서는 훌륭합니다.")
 
@@ -208,7 +198,7 @@ async def test_a_template_is_read_against_its_own_checklist(monkeypatch):
     prompt = posts[0]["messages"][0]["content"]
 
     assert "무엇을 결정해야 하는지 첫 줄에서 알 수 있는가" in prompt
-    # And the document itself, not a summary of it.
+    # The document itself, not a summary.
     assert "보증이 끝났고" in prompt
 
 
@@ -226,12 +216,12 @@ def test_a_document_reaches_the_reviewer_as_headings_and_words():
         ]
     )
     assert body == "## 현황\n보유 42대\n제목 없는 부분"
-    # Markup would be read as words the review then comments on.
+    # No markup reaches the reviewer.
     assert "<" not in body
 
 
 def test_every_writing_template_carries_a_rubric():
-    """A shape with no checklist would be reviewed against the generic one."""
+    """Every writing template carries its own rubric."""
     for template in dt.all_templates():
         if template.kind in dt.HTML_KINDS:
             assert template.checklist.strip(), template.id

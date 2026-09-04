@@ -1,12 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { openSidebar, signIn } from './helpers'
 
-/**
- * A draft stays with the place it was typed. It used to be lost on a home-tab
- * change (the composer remounts there) and carried into the next conversation
- * (the composer stays mounted there) — two opposite failures of the same
- * missing rule.
- */
+/** A composer draft stays with the tab or conversation it was typed in. */
 test('홈에서 탭을 오가도 각 탭의 초안은 그대로다', async ({ page }) => {
   await signIn(page)
   await page.goto('/')
@@ -52,17 +47,13 @@ test('대화를 오가도 초안은 자기 대화에만 남는다', async ({ pag
     return ids
   }, titles)
 
-  // Opened by URL, not by the sidebar from 홈: the session screen is a lazy
-  // route, and for the first ~100ms after the URL changes the home screen —
-  // and its composer — is still what is mounted. Typing into that box put the
-  // draft under the home key, and the test read a bug the app does not have.
+  // By URL: the session route is lazy, and typing during the swap would hit the home composer.
   await page.goto(`/s/${idA}`)
   const composer = page.getByLabel('프롬프트 입력')
   await expect(composer).toBeVisible()
   await composer.fill('A에서 쓰던 문장')
 
-  // A route change, not a reload: the composer stays mounted, which is exactly
-  // where the draft used to follow the person.
+  // A route change, not a reload: the composer stays mounted.
   await openSidebar(page)
   await page.locator('aside').getByText(titles[1]).first().click()
   await expect(composer).toHaveValue('')

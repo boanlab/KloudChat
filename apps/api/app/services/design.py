@@ -1,23 +1,8 @@
-"""The look a project's output wears, and the craft rules that come with it.
+"""Design system tokens (read by renderers), prompt blocks (read by the model), and craft rules.
 
-Two audiences, and they are kept apart on purpose.
-
-**Renderers read `tokens`.** Four values — accent, ink, muted, font — chosen
-because `.pptx`, `.pdf`, `.hwpx` and the browser preview can each express all
-four. A fifth that only PowerPoint can draw would make the preview lie, which
-is the one property the three deck renderers currently guarantee.
-
-**The model reads `prompt_block`.** Colours are not in it for the text
-surfaces: a model writing report prose cannot act on `#5b5bd6`, and a hex code
-in a system prompt is tokens spent on nothing. Image is the exception — there
-the colour is the instruction, so it goes out with `image_clause` instead.
-
-`CRAFT` is the brand-agnostic half: rules that hold whatever the brand is,
-carried only when a design system asks for them. They are deliberately about
-what the model actually controls — wording, emphasis, structure — rather than
-about pixels it never touches.
-
-Nothing here reads the database. `assemble` passes the row in.
+Tokens are limited to what `.pptx`, `.pdf`, `.hwpx` and the browser preview
+can all draw. Colours reach the model only through `image_clause`. Nothing
+here reads the database.
 """
 
 from __future__ import annotations
@@ -26,63 +11,37 @@ import re
 
 from app.models.chat import SessionKind
 
-#: The faces a deck can wear. The first three a report wears too; the other
-#: four compose a cover and number a slide, which a document has no place for.
+#: Deck styles; a report uses only the first three.
 VISUAL_STYLES = ("editorial", "poster", "minimal", "dark", "split", "warm", "mono")
 
-#: What a project with no design system already gets: `deck._ACCENT`, the
-#: exporters' ink, and the Gothic face `fonts` prefers for slides. Kept here so
-#: an explicit design system and the absent one describe the same thing.
+#: What a project with no design system gets; matches `deck._ACCENT` and the
+#: exporters' defaults.
 DEFAULT_TOKENS: dict[str, str] = {
     "accent": "#5b5bd6",
     "ink": "#1a1a1a",
     "muted": "#666666",
     "font": "gothic",
     "visualStyle": "editorial",
-    #: The two marks a deck carries on every slide but its cover. Empty by
-    #: default, which is exactly what the product drew before they existed.
-    #:
-    #: They are here rather than in `body` because `body` is read by the model
-    #: and these are read by the renderers, which is the split this table is.
-    #: And they pass the rule the table sets — all four surfaces can draw a
-    #: line of text and a picture — where a gradient or a corner cut could not.
-    #:
-    #: What they are for: a deck presented outside the room it was made in is
-    #: read as belonging to whoever made it, and nothing in a KloudChat deck
-    #: said who that was. A 사업설명회 자료 without the university's mark on it
-    #: is a draft of one.
+    #: Drawn on every deck slide but the cover.
     "footer": "",
     "logo": "",
 }
 
-#: A logo, as the bytes of the picture rather than a link to it.
-#:
-#: A deck is downloaded, mailed and opened on a machine that has never heard of
-#: this server, so a URL would be a broken image on exactly the day it matters.
-#: The cap is what one mark costs at the size a slide draws it: past this it is
-#: a photograph somebody dropped in the wrong field, and it would be carried in
-#: every row of the design system table.
+#: The logo is an inline data URI so an exported deck needs no server. SVG is
+#: excluded: the exporters decode with PIL, which cannot read it.
 _MAX_LOGO_BYTES = 256 * 1024
-#: No SVG: the preview draws one fine and the exporters decode with PIL, which
-#: cannot — so an SVG mark showed on screen and silently vanished from every
-#: file. A format only half the surfaces can draw is a preview that lies.
 _LOGO = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I)
 
-#: `fonts.py` keys. Gothic for slides, serif for documents — the two faces the
-#: image ships, so a third value would name a file that is not there.
+#: `fonts.py` keys; the two faces the image ships.
 FONTS = ("gothic", "serif")
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
-#: Free-text prose that reaches every turn in the project. Capped: a design
-#: system is the rule several projects share, and anything longer than this
-#: belongs to one project's own instructions, which have their own field.
+#: Free-text prose that reaches every turn in the project.
 MAX_BODY = 400
 MAX_IMAGE_STYLE = 200
 
-#: Brand-agnostic craft. `kinds` is which surfaces each rule can act on — a
-#: rule about heading depth means nothing to an image prompt, and shipping it
-#: there is prompt cost with no effect.
+#: Brand-agnostic craft rules; `kinds` is the surfaces each rule is sent to.
 CRAFT: dict[str, dict] = {
     "restraint": {
         "label": "군더더기 덜기",
@@ -106,11 +65,7 @@ CRAFT: dict[str, dict] = {
 
 
 def normalise_tokens(raw: dict | None) -> dict[str, str]:
-    """A complete, drawable token set from whatever was stored or sent.
-
-    Falls back per field rather than wholesale: a row with a good accent and a
-    font name nobody recognises should keep the accent.
-    """
+    """A complete token set; each invalid field falls back to its default independently."""
     out = dict(DEFAULT_TOKENS)
     for key in ("accent", "ink", "muted"):
         value = str((raw or {}).get(key) or "").strip()
@@ -122,8 +77,6 @@ def normalise_tokens(raw: dict | None) -> dict[str, str]:
     visual_style = str((raw or {}).get("visualStyle") or "").strip()
     if visual_style in VISUAL_STYLES:
         out["visualStyle"] = visual_style
-    # One line. A footer that wraps is a second line of body text at the foot of
-    # every slide, which is what the slide's own words are for.
     footer = " ".join(str((raw or {}).get("footer") or "").split())[:80]
     if footer:
         out["footer"] = footer
@@ -151,12 +104,7 @@ def craft_block(keys, kind: SessionKind) -> str:
 
 
 def prompt_block(design, kind: SessionKind) -> str:
-    """The trusted context block for one turn, or `""` when it would say nothing.
-
-    Empty is a real answer: a design system carrying only tokens has nothing to
-    tell a model, and a header with no rules under it is a header that costs
-    tokens on every turn.
-    """
+    """The trusted context block for one turn, or `""` when there is no body and no craft."""
     if design is None:
         return ""
     body = (design.body or "").strip()
@@ -172,11 +120,7 @@ def prompt_block(design, kind: SessionKind) -> str:
 
 
 def image_clause(design) -> str:
-    """The design's contribution to an image prompt, in the prompt's language.
-
-    Colour first because it is the part the picture model acts on most
-    reliably, then the house style phrase. Both are optional.
-    """
+    """Accent colour and house style phrase for an image prompt; empty when neither is set."""
     if design is None:
         return ""
     parts: list[str] = []
@@ -190,7 +134,7 @@ def image_clause(design) -> str:
 
 
 def visual_style_for(request: str) -> str:
-    """A stated visual direction should reach the first draft, not a later menu."""
+    """Visual style keyed off style words in the request; `"editorial"` by default."""
     text = (request or "").lower()
     if any(word in text for word in ("매거진", "포스터", "강렬", "임팩트", "피치", "홍보", "색면")):
         return "poster"

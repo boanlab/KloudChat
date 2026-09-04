@@ -6,13 +6,7 @@ import { adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
-/**
- * Service name and logo.
- *
- * Saving applies immediately to the sidebar and the sign-in screen. Clearing
- * the logo reverts to the default mark built from the first character of the
- * name.
- */
+/** Service name and logo; clearing the logo reverts to the default mark. */
 export function BrandingSection({
   settings,
   onSaved,

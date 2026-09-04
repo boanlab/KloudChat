@@ -6,19 +6,15 @@
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/workspace-test.sh
 #
-# The request payloads are deliberately Korean. They are the only place the
-# suite exercises multibyte text end to end — upload extraction, prompt
-# assembly and JSON round-tripping all pass through them.
+# Payloads are Korean on purpose: multibyte text through upload extraction,
+# prompt assembly and JSON round-tripping.
 set -u
 
 # shellcheck source=scripts/lib/env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/env.sh"
 
 API=${API:-http://localhost:8100/api}
-# `ADMIN_*` is what smoke-test.sh and e2e-seed.sh take, and having two names for
-# one credential across four scripts is how a correct run gets read as a broken
-# app — twenty of twenty-two checks "failed" here once, on a login that never
-# happened. The old names still work.
+# ADMIN_* as in the other scripts; EMAIL / PASS still accepted.
 EMAIL=${ADMIN_EMAIL:-${EMAIL:-admin@example.com}}
 PASS=${ADMIN_PASS:-${PASS:-KloudChat-Admin-1234}}
 J=$(mktemp -d); ok=0; fail=0
@@ -35,8 +31,7 @@ curl -s -o "$J/p.json" -w '' -X POST "$API/projects" -H "$A" -H "$JSON" \
 PID=$(jq_ "$J/p.json" "d['id']")
 chk "create" "$(jq_ "$J/p.json" "d['name']")" "스펙트럼 자기지도"
 chk "instructions stored" "$(jq_ "$J/p.json" "'출처' in d['instructions']")" "True"
-# The script has to be re-runnable, so this asserts that the project just
-# created is visible — not a count, which would drift with every run.
+# Re-runnable: asserts the new project is visible, not a count.
 chk "appears in list" "$(curl -s "$API/projects" -H "$A" | python3 -c "import json,sys;print(any(p['id']=='$PID' for p in json.load(sys.stdin)))")" "True"
 
 echo "== file upload and extraction =="
@@ -48,8 +43,7 @@ chk "token estimate"   "$(jq_ "$J/f.json" "d['tokens']>0")" "True"
 chk "no error"         "$(jq_ "$J/f.json" "d['error'] is None")" "True"
 printf 'not really a pdf' > "$J/fake.pdf"
 curl -s -o "$J/f2.json" -X POST "$API/files" -H "$A" -F "file=@$J/fake.pdf"
-# A corrupt upload is stored with the failure recorded rather than rejected:
-# the user should be able to see which of their files failed to extract.
+# A corrupt upload is stored with its error recorded, not rejected.
 chk "corrupt pdf stored with an error" "$(jq_ "$J/f2.json" "d['error'] is not None")" "True"
 chk "project file list" "$(curl -s "$API/files?project_id=$PID" -H "$A" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))')" "1"
 chk "download" "$(curl -s -o /dev/null -w '%{http_code}' "$API/files/$FID/content" -H "$A")" "200"
@@ -93,9 +87,7 @@ chk "connected"     "$(jq_ "$J/c.json" "d['status']")" "connected"
 echo "== isolation =="
 UTOK=$(curl -s -X POST "$API/auth/login" -H "$JSON" -d '{"email":"tester@example.com","password":"kchat-test-2026"}' | python3 -c 'import json,sys;print(json.load(sys.stdin).get("accessToken",""))')
 if [ -n "$UTOK" ]; then
-  # Both 404 (someone else's — existence is not disclosed) and 403 (account
-  # still pending) are correct. What is being asserted is "cannot read it",
-  # not a particular status code.
+  # 404 (existence not disclosed) and 403 (account pending) are both "cannot read".
   code=$(curl -s -o /dev/null -w '%{http_code}' "$API/projects/$PID" -H "Authorization: Bearer $UTOK")
   chk "another user cannot read the project" "$(case $code in 403|404) echo blocked;; *) echo "$code";; esac)" "blocked"
 fi

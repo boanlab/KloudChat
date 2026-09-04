@@ -1,13 +1,7 @@
 /**
- * 마이크를 16 kHz 모노 WAV 로 녹음한다.
- *
- * `MediaRecorder` was the first version, and what it produces — WebM/Opus in
- * Chrome, MP4/AAC in Safari — is exactly what the deployment's Whisper (vLLM)
- * refuses: 「Invalid or unsupported audio file」. There is no ffmpeg in the API
- * image to transcode with, so the browser makes the file Whisper reads
- * natively: PCM samples off an `AudioContext` opened at 16 kHz, written into a
- * WAV header. Small enough for a minute of speech and the same bytes on every
- * browser.
+ * Records the microphone as 16 kHz mono PCM WAV. Whisper (vLLM) rejects
+ * MediaRecorder's WebM/Opus and MP4/AAC, and the API image has no ffmpeg, so
+ * the browser writes the WAV itself.
  */
 
 const SAMPLE_RATE = 16_000
@@ -21,12 +15,10 @@ export async function startWavRecording(): Promise<WavRecorder> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
   })
-  // Asked for 16 kHz; a browser that cannot open the context at that rate
-  // reports its own, and the header below says whichever it was.
+  // A browser that cannot open 16 kHz reports its own rate; the header says whichever it was.
   const context = new AudioContext({ sampleRate: SAMPLE_RATE })
   const source = context.createMediaStreamSource(stream)
-  // ScriptProcessorNode is deprecated in favour of AudioWorklet, but it needs
-  // no separate module file and every browser still ships it.
+  // Deprecated in favour of AudioWorklet, but needs no separate module file.
   const processor = context.createScriptProcessor(4096, 1, 1)
   const chunks: Float32Array[] = []
   processor.onaudioprocess = (event) => {

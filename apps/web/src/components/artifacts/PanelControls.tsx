@@ -3,43 +3,28 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 
-/**
- * How much of the window the document is asking for.
- *
- * Three positions rather than two, because a document surface has three
- * honest answers. `narrow` is a document beside a conversation. `wide` — where
- * a document opens — is a reading width with the transcript still to hand.
- * `full` is the document alone: the conversation has said what it had to say
- * and the person is reading or writing now.
- */
+/** Panel width: `narrow` beside the chat, `wide` reading width, `full` document only. */
 export type PanelMode = 'narrow' | 'wide' | 'full'
 
-/** The order the button walks, and back to the start. */
 const NEXT: Record<PanelMode, PanelMode> = { narrow: 'wide', wide: 'full', full: 'narrow' }
 
 export function nextMode(mode: PanelMode): PanelMode {
   return NEXT[mode]
 }
 
-/**
- * The two things every artifact panel owes the reader: room, and a way out.
- *
- * Shared rather than per panel, so which of them a reader gets does not depend
- * on what the model happened to produce.
- */
+/** Width-cycle and close buttons shared by every artifact panel. */
 export function PanelControls({
   mode,
   onCycle,
   onClose,
 }: {
   mode: PanelMode
-  /** Omitted where the host cannot grow — inside a fixed-width preview. */
+  /** Omitted where the host cannot grow (fixed-width preview). */
   onCycle?: () => void
   onClose?: () => void
 }) {
   const t = useT()
-  // Named for what pressing it does, not for where it is. A control whose name
-  // is its current state leaves the reader to work out the rest.
+  // Labelled by what pressing it does, not by the current state.
   const label =
     mode === 'narrow' ? t('넓게 보기') : mode === 'wide' ? t('문서만 보기') : t('패널 좁히기')
   const hint =
@@ -76,18 +61,9 @@ export function PanelControls({
   )
 }
 
-/**
- * Panel-local width state, reported up so the host can actually grow.
- *
- * The panel owns whether it *wants* room; only the host knows whether there is
- * any — the same deck sits in a resizable side panel on one screen and in a
- * fixed-width preview dialog on another.
- */
+/** Panel-local width mode, reported up so the host can resize. */
 export function usePanelWidth(onModeChange?: (mode: PanelMode) => void) {
-  // Wide to begin with, for the reason `ReportPanel` states at length: a
-  // document column beside a transcript is not a reading width, and a deck's
-  // stage is not a viewing one. The parent holds the split and starts it
-  // narrow, so the opening position is announced once rather than assumed.
+  // Opens wide; the parent starts narrow, so the initial mode is announced once.
   const [mode, setMode] = useState<PanelMode>('wide')
   useEffect(() => {
     onModeChange?.('wide')

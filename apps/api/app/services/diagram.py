@@ -1,36 +1,10 @@
-"""논문·보고서에 넣을 도식 — 이름표가 있는 것.
+"""Labelled method/flow/concept figures as mermaid source, written by a model and drawn by the
+client.
 
-An image model draws shapes and cannot spell. That was the honest limit the
-image 서식 worked around: 「이름표 자리는 비워 둡니다」, and a figure without
-labels is a decoration, not a method figure. Nobody puts one in a paper.
-
-This is the other path. The method is described in words, a language model
-writes it as a *diagram* — nodes, zones, arrows, each with its name — and the
-client draws that with mermaid, in the house style, and rasterises it. What
-comes out has labels, is exactly the person's method rather than a pretty
-schematic of nothing, and can be edited by changing a word.
-
-The style rules are PaperBanana's (Zhu et al., 2026; `style_guides/
-neurips2025_diagram_style_guide.md`), translated into what mermaid can say:
-
-- **Zones, not boxes-in-boxes.** A `subgraph` per stage, filled with a pale
-  desaturated tint. That is the "Zone strategy" — colour groups logic.
-- **Rounded for processes, squared for data, cylinders for stores.** Mermaid's
-  `(...)`, `[...]`, `[(...)]`. "Softened geometry": sharp corners are for
-  data, rounded corners for processes.
-- **Solid for the forward path, dashed for the auxiliary one.** `-->` and
-  `-.->`. Gradient, feedback, skip connections are dashed. The reader tells
-  the two flows apart by line style, never by colour alone.
-- **Left to right.** `flowchart LR`. Narrative flow, and a landscape figure
-  fits a column.
-- **Sans-serif labels, and few of them.** Module names in the document's
-  face; variables in the caption, not in the box.
-- **One highlight.** The `hot` class for what is trained / the final output;
-  everything else in the pale palette.
-
-The mermaid is what is stored. A picture is derived from it, and can be
-derived again after an edit — which is the difference between a figure and a
-screenshot of one.
+Style rules follow PaperBanana's NeurIPS diagram guide (Zhu et al., 2026):
+zones as subgraphs, rounded processes / square data / cylinder stores, solid
+forward and dashed auxiliary edges, one `hot` highlight. The mermaid source is
+what is stored; the picture is derived from it.
 """
 
 from __future__ import annotations
@@ -43,7 +17,7 @@ from app.services.report import _complete
 
 log = logging.getLogger(__name__)
 
-#: What each kind of figure is, in the words the prompt uses.
+#: Figure kinds, as the prompt describes them.
 FIGURES: dict[str, str] = {
     "method": "제안 방법의 구조도 — 구성 요소와 그 사이의 데이터 흐름",
     "flow": "처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지",
@@ -116,8 +90,7 @@ def _parse(text: str) -> tuple[str, str]:
     """Pulls the mermaid source and the caption out of the answer."""
     block = _BLOCK.search(text)
     source = (block.group(1) if block else text).strip()
-    # Colour the model was told not to write. Stripped rather than trusted:
-    # one `style` line overrides the whole house palette.
+    # A `style` line would override the house palette.
     source = "\n".join(
         line
         for line in source.splitlines()
@@ -129,10 +102,7 @@ def _parse(text: str) -> tuple[str, str]:
     return source, (caption.group(1).strip() if caption else "")
 
 
-#: 모델이 자주 섞는 괄호. `{(x)}` is a diamond and a stadium at once, which
-#: mermaid refuses; the writer meant one of them, and a process is the safer
-#: reading — a decision node with a process name inside reads as a mistake
-#: either way.
+#: Mixed bracket shapes (`{(x)}`) that mermaid refuses, mapped to one shape.
 _MIXED = (
     (re.compile(r"\{\(([^)}]*)\)\}"), r"(\1)"),
     (re.compile(r"\(\{([^)}]*)\}\)"), r"{\1}"),
@@ -142,7 +112,7 @@ _MIXED = (
 
 
 def _mend(source: str) -> str:
-    """Fixes the bracket mistakes a model makes most, before they reach mermaid."""
+    """Rewrites mixed bracket shapes to a single valid one."""
     for pattern, replacement in _MIXED:
         source = pattern.sub(replacement, source)
     return source
@@ -160,10 +130,7 @@ async def draw(
 ) -> tuple[str, str, dict[str, Any]]:
     """Writes one figure as mermaid. Returns `(source, caption, usage)`.
 
-    `broken` and `error` are the Critic's half of PaperBanana's loop: the
-    client tried to draw the last answer and mermaid refused. The writer is
-    handed its own source and the refusal, and asked for the same figure
-    with the syntax fixed — once. A second refusal is reported, not retried.
+    `broken`/`error` carry a previous answer mermaid refused, for one retry.
     """
     messages = _messages(description, figure, language)
     if broken:

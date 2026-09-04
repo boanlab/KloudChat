@@ -6,11 +6,7 @@ import { formatDate } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * Name and password. Email is not editable — it is the login identity and the
- * key an admin approved, so changing it belongs behind a verification flow
- * rather than a text field.
- */
+/** Name and password; email is the login identity and is not editable here. */
 function ProfileFields() {
   const t = useT()
   const { user, updateProfile, changePassword } = useStore()

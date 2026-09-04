@@ -37,14 +37,7 @@ const sourceLabel: Record<Skill['source'], string> = {
   personal: '개인',
 }
 
-/**
- * One shared skill, and the button that makes it yours.
- *
- * A copy rather than a reference: the author keeps editing theirs, and an edit
- * over there never rewrites a procedure somebody here is relying on. Which is
- * also why an installed entry stays on this list, greyed — the store is a
- * catalogue of originals, not a list of things you are missing.
- */
+/** A shared skill with an install button; installing takes a copy. */
 function StoreCard({ skill }: { skill: StoreSkill }) {
   const t = useT()
   const { installSkill } = useStore()
@@ -57,8 +50,6 @@ function StoreCard({ skill }: { skill: StoreSkill }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-base font-medium">{t(skill.name)}</span>
           <span className="font-mono text-xs text-faint">{skill.slug}</span>
-          {/* 누가 올린 것인지가 이 화면에서 가장 먼저 필요한 정보입니다 —
-              관리자가 올린 기본 목록과 동료가 쓴 것은 다르게 읽힙니다. */}
           <Badge tone={skill.official ? 'accent' : 'neutral'}>
             {skill.official ? t('공식') : skill.ownerName || t('워크스페이스')}
           </Badge>
@@ -128,11 +119,7 @@ export function SkillsPage() {
   const [detail, setDetail] = useState<Skill | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
-  //: 저장이 거절돼도 아무 말이 없었다. 대화상자는 열린 채였지만 이유가 없어,
-  //: 남는 선택은 같은 버튼을 다시 누르는 것뿐이었다.
   const [saveError, setSaveError] = useState<string | null>(null)
-    /** The skill being written. `editing` holding an id means edit; null
-     *  means create. */
   const [draft, setDraft] = useState({
     name: '',
     description: '',
@@ -141,8 +128,8 @@ export function SkillsPage() {
     requiredTools: [] as string[],
     visibility: 'private' as Skill['visibility'],
   })
+  // Id being edited; null means create.
   const [editing, setEditing] = useState<string | null>(null)
-  //: 지우기 전에 무엇을 지우는지 묻는다. 되돌릴 곳이 서버에 없다.
   const [confirming, setConfirming] = useState<Skill | null>(null)
   const toolOptions = [
     ...availableTools,
@@ -176,19 +163,13 @@ export function SkillsPage() {
     setCreating(true)
   }
 
-  // Newest first, and then held there. With a paged list the ordering decides
-  // what exists as far as the user is concerned — a skill created a moment ago
-  // that sorts to position sixty is indistinguishable from one that failed to
-  // save — but re-ranking on every write moved the card out from under the
-  // switch that had just been flipped.
   const ordered = useStableOrder(skills)
   const all =
     filter === 'all' || filter === 'store' ? ordered : ordered.filter((s) => s.source === filter)
   const { visible, hidden, more } = usePaged(all, [filter, skills.length])
   const storePaged = usePaged(skillStore, [filter, skillStore.length])
   const anySelectable = visible.some((s) => s.source !== 'built-in')
-  // Only the rows a delete can actually reach, so 전체 선택 does not pick a
-  // built-in skill and then have the request refuse it.
+  // Built-in skills cannot be deleted.
   const pick = useBulkSelect(visible.filter((s) => s.source !== 'built-in'))
 
   return (
@@ -214,8 +195,6 @@ export function SkillsPage() {
             { id: 'built-in', label: t('기본') },
             { id: 'workspace', label: t('워크스페이스') },
             { id: 'personal', label: t('개인') },
-            // The one tab that is not a filter over your own rows: these are
-            // somebody else's, and nothing here happens until you take a copy.
             { id: 'store', label: t('워크스페이스 스토어'), count: skillStore.length },
           ]}
         />
@@ -252,16 +231,12 @@ export function SkillsPage() {
           />
         </div>
         <div className="space-y-2">
-          {/* 기본 스킬은 지울 수 없어 고르는 칸이 없습니다. 목록이 전부 기본이면
-              그 칸은 아무것도 담지 못하면서 본문을 28px 밀어 좌우를 어긋나게
-              합니다. 고를 수 있는 것이 하나라도 있을 때만 칸을 둡니다. */}
           {visible.map((s) => (
             <Card
               key={s.id}
               className="group flex items-start gap-3 p-4 transition-colors hover:border-line-strong hover:bg-elevated"
             >
-              {/* Only where a delete is possible. A checkbox on a built-in
-                  skill would put it in 전체 선택 and then refuse it. */}
+              {/* Checkbox column only when something on the page is deletable. */}
               {anySelectable &&
                 (s.source !== 'built-in' ? (
                   <PickBox
@@ -273,8 +248,6 @@ export function SkillsPage() {
                 ) : (
                   <span className="size-4 shrink-0" />
                 ))}
-              {/* 아이콘은 모든 행이 같은 그림이라 어느 스킬인지 말해 주지 않으면서
-                  본문 앞에 40px 을 먹고 있었습니다. */}
               <button
                 onClick={() => setDetail(s)}
                 title={t('자세히 보기')}
@@ -285,8 +258,6 @@ export function SkillsPage() {
                   <span className="font-mono text-xs text-faint">{s.slug}</span>
                   <Badge>{t(sourceLabel[s.source])}</Badge>
                   <Badge>v{s.version}</Badge>
-                  {/* 공유한 것만 배지를 답니다. 개인이 기본값이라 모든 행에
-                      "개인" 을 붙이면 알려 주는 것 없이 줄만 길어집니다. */}
                   {s.visibility === 'org' && (
                     <Badge tone="success">
                       <Globe size={10} />
@@ -304,11 +275,6 @@ export function SkillsPage() {
                   {t('사용 시점')}: {t(s.whenToUse)} · {t('{when} 수정').replace('{when}', relativeTime(s.updatedAt))}
                 </span>
               </button>
-              {/* 카드 전체가 상세를 여는데 그렇게 보이는 데가 없었습니다. 호버로만
-                  드러내면 손가락으로 읽는 화면에서는 끝내 안 보입니다. */}
-              {/* Delete lives on the card, like memory and connectors. It used
-                  to be reachable only by opening the detail modal, so the same
-                  action sat in two different places depending on the screen. */}
               {s.source !== 'built-in' && (
                 <Button
                   variant="ghost"
@@ -320,18 +286,13 @@ export function SkillsPage() {
                   <Trash2 size={14} />
                 </Button>
               )}
-              {/* 켜고 끄는 것과 열어 보는 것을 세로로 겹쳐 둡니다. 나란히 놓으면
-                  카드 오른쪽이 그만큼 넓어지고, 세 줄짜리 카드의 세로는 비어
-                  있었습니다. */}
               <div className="flex shrink-0 flex-col items-end justify-between self-stretch">
                 <ChevronRight
                   size={16}
                   aria-hidden
                   className="mr-1.5 text-faint transition-transform group-hover:translate-x-0.5"
                 />
-                {/* 스위치의 히트 영역은 36px 인데 보이는 트랙은 그 안에서 20px
-                    입니다. 상자를 기준으로 맞추면 눈에는 아래가 8px 넓어 보여,
-                    그 8px 을 되돌려 트랙과 화살표의 여백을 같게 둡니다. */}
+                {/* `-mb-2` offsets the switch's hit area so the visible track aligns. */}
                 <span className="-mb-2 flex">
                   <Switch
                     checked={s.enabled}
@@ -342,9 +303,6 @@ export function SkillsPage() {
               </div>
             </Card>
           ))}
-          {/* 승인만 받으면 스킬 여덟 개가 들어와 있던 시절이 끝났습니다. 빈
-              화면이 "기능이 없다" 로 읽히지 않도록, 나머지가 어디 있는지 여기서
-              말합니다. */}
           {workspaceLoading && all.length === 0 ? (
             <LoadingState label={t('스킬을 불러오는 중…')} />
           ) : all.length === 0 && (
@@ -380,8 +338,6 @@ export function SkillsPage() {
         title={detail?.name ?? ''}
         description={detail?.description}
         width="max-w-2xl"
-        /* 기본 스킬에는 편집도 삭제도 없습니다. 빈 조각을 넘기면 Modal 이
-           아무것도 안 든 바를 하나 그립니다. */
         footer={
           detail && detail.source !== 'built-in' ? (
             <>
@@ -430,16 +386,10 @@ export function SkillsPage() {
                 {t(detail.whenToUse)}
               </p>
             </div>
-            {/* 무엇을 지시하는 스킬인지는 이 본문이 전부인데, 여기에는 파일
-                이름만 있고 본문은 수정 폼 안에만 있었습니다 — 읽으려면 편집
-                모드로 들어가야 했습니다. */}
             {detail.body.trim() && (
               <div>
                 <p className="mb-1.5 flex items-center gap-1.5 text-base font-medium">
                   <FileCode2 size={14} className="text-faint" />
-                  {/* 스킬은 본문 한 벌이 전부다. 파일 목록이라 부를 것이
-                      서버에 없어, 곁들여 오는 파일을 그리던 자리는 늘 비어
-                      있었다 — 없는 기능을 화면이 지어내지 않게 걷어낸다. */}
                   <span className="font-mono">SKILL.md</span>
                 </p>
                 <div className="max-h-80 overflow-y-auto rounded-control border border-line bg-elevated px-3 py-2">
@@ -477,9 +427,7 @@ export function SkillsPage() {
                 setSaveError(null)
                 try {
                   const current = editing ? skills.find((s) => s.id === editing) : undefined
-                  // A blank id means "create" — the server assigns id and slug.
-                  // Editing keeps everything the form does not cover, so a
-                  // revision cannot silently reset a skill's surfaces or state.
+                  // Blank id means create; edits keep fields the form does not cover.
                   await upsertSkill({
                     id: editing ?? '',
                     slug: current?.slug ?? '',
@@ -521,9 +469,6 @@ export function SkillsPage() {
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             placeholder={t('예: 배포 전 리스크 검토')}
-            // The server refuses anything longer. Offering the extra
-            // characters and then rejecting them is a round trip spent to say
-            // no to something the form could have declined to take.
             maxLength={NAME_LIMIT}
           />
         </Field>
@@ -553,9 +498,6 @@ export function SkillsPage() {
             placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
           />
         </Field>
-        {/* 공개 범위. 에이전트 화면과 같은 두 상태이고, 같은 뜻입니다 — 공유는
-            "여기서 쓰라" 가 아니라 "가져다 쓰라" 입니다. 스킬은 언제나 소유자의
-            계정에서 실행되므로, 공유된 스킬은 복사할 수 있을 뿐입니다. */}
         <Field
           label={t('공개 범위')}
           hint={t('공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.')}

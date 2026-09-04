@@ -1,15 +1,4 @@
-"""올린 한글 문서를 편집할 수 있는 문서로 여는 길.
-
-The half that was missing. This server could already *write* `.hwpx` — the
-report exporter builds OWPML — and *read* one as flat text for a model to refer
-to. What it could not do was the thing somebody actually wants with a file they
-uploaded: change it. The flat reader is right for its job and wrong for this
-one, because it drops exactly what a person edits by: the headings that say
-where to look and the tables that hold the numbers.
-
-These check the shape survives, which is the only claim worth making. Whether
-the words came through was never in doubt.
-"""
+"""hwpx_import keeps an uploaded document's headings, tables and lists as editable sections."""
 
 from __future__ import annotations
 
@@ -41,7 +30,7 @@ def _para(text: str, *, style: str = "0", char: str = "1", para: str = "1") -> s
     )
 
 
-#: 9pt body, 14pt heading — the sizes the real 계획서 this was built against uses.
+#: 9pt body, 14pt heading.
 _HEADER = (
     '<hh:charProperties><hh:charPr id="1" height="900"/><hh:charPr id="2" height="1400"/>'
     "</hh:charProperties>"
@@ -68,8 +57,7 @@ def test_a_heading_starts_a_section_and_the_prose_goes_under_it() -> None:
 
 
 def test_a_table_stays_a_table() -> None:
-    """Flattened to lines it is a comparison the reader has to rebuild — and
-    cannot edit back, which is the difference between reading and opening."""
+    """A table becomes `<table>` and its cells are not repeated as paragraphs."""
     rows = (
         "<hp:tbl>"
         "<hp:tr><hp:tc>" + _para("구분") + "</hp:tc><hp:tc>" + _para("기존") + "</hp:tc></hp:tr>"
@@ -81,27 +69,22 @@ def test_a_table_stays_a_table() -> None:
     html = parts[0].html
     assert "<table>" in html and "<th>구분</th>" in html
     assert "<td>6학점</td>" in html
-    # And the cells are not also loose paragraphs beside it: `iter()` walks
-    # into a table, so 구분 and 기존 arrived as two more headings once.
     assert html.count("<p>") == 0
     assert len(parts) == 1
 
 
 def test_a_cell_holding_two_lines_keeps_them_apart() -> None:
-    """Run together they made 교육AI이론 — a word that does not exist."""
+    """Two paragraphs in one cell are joined with `<br>`, not run together."""
     cell = "<hp:tc>" + _para("SW 중심 교육") + _para("AI이론 실습") + "</hp:tc>"
     rows = f"<hp:tbl><hp:tr>{cell}</hp:tr></hp:tbl>"
     parts = hwpx_import.sections(_archive(_HEADER, _para("표", style="1", char="2") + rows))
 
     assert "교육AI이론" not in parts[0].html
-    # Two lines, kept as two. Joined with a space they read as one sentence
-    # the writer never wrote; `<br>` is what a cell holds a break in.
     assert "SW 중심 교육<br>AI이론 실습" in parts[0].html
 
 
 def test_the_document_says_which_paragraphs_are_list_items() -> None:
-    """The bullet is drawn by the word processor and is not in the text, so
-    nothing about the words can tell you. `hh:heading type="BULLET"` can."""
+    """Paragraphs whose paraPr has `hh:heading type="BULLET"` become list items."""
     data = _archive(
         _HEADER,
         _para("항목", style="1", char="2")
@@ -116,7 +99,7 @@ def test_the_document_says_which_paragraphs_are_list_items() -> None:
 
 
 def test_a_list_item_is_never_promoted_to_a_heading() -> None:
-    """Even set large. A document that calls it a list item has answered."""
+    """A bullet paragraph stays a list item even at heading size."""
     data = _archive(
         _HEADER,
         _para("제목", style="1", char="2") + _para("크게 쓴 항목", char="2", para="2"),
@@ -129,7 +112,7 @@ def test_a_list_item_is_never_promoted_to_a_heading() -> None:
 
 
 def test_a_document_with_no_headings_is_still_a_document() -> None:
-    """Refusing it would refuse a file over a convention its author never used."""
+    """A heading-less document yields one section titled 개요."""
     parts = hwpx_import.sections(_archive(_HEADER, _para("한 문단뿐이다.")))
 
     assert len(parts) == 1
@@ -143,7 +126,7 @@ def test_a_file_that_is_not_a_zip_says_so() -> None:
 
 
 def _tc(text: str, *, col: int, row: int, across: int = 1, down: int = 1) -> str:
-    """One cell with the address and span OWPML actually carries."""
+    """One cell with OWPML cell address and span."""
     return (
         "<hp:tc>"
         + _para(text)
@@ -154,12 +137,7 @@ def _tc(text: str, *, col: int, row: int, across: int = 1, down: int = 1) -> str
 
 
 def test_a_row_under_a_vertical_merge_is_not_shifted_left():
-    """The bug that was hard to see, because the table still looked like one.
-
-    A 계열 cell merged down three rows means the two rows under it hold one
-    cell fewer. Read in document order, 법과대학 lands in the 계열 column and
-    every value on that row sits one column left of where it belongs.
-    """
+    """Cells are placed by address, so rows under a rowspan keep their columns."""
     rows = (
         "<hp:tbl>"
         "<hp:tr>"
@@ -174,16 +152,12 @@ def test_a_row_under_a_vertical_merge_is_not_shifted_left():
 
     html = parts[0].html
     assert "<td>법과대학</td>" in html
-    # The 계열 column of that row is empty — the value belongs to the row above.
-    # The merge itself, rather than the hole it used to leave: 인문계열
-    # reaches down three rows and the rows under it hold what is theirs.
     assert '<th rowspan="3">인문계열</th>' in html
     assert "<tr><td>법과대학</td><td>빅데이터와법</td></tr>" in html
 
 
 def test_a_heading_spanning_the_table_keeps_its_column_count():
-    """A cell across all five columns is one value and four empty squares, not
-    a row of one that shifts everything after it."""
+    """A colSpan cell becomes `colspan` and does not shift later rows."""
     rows = (
         "<hp:tbl>"
         "<hp:tr>" + _tc("1. 수요 조사", col=0, row=0, across=3) + "</hp:tr>"
@@ -202,8 +176,7 @@ def test_a_heading_spanning_the_table_keeps_its_column_count():
 
 
 def test_a_table_with_no_addresses_is_still_read():
-    """A producer is not obliged to write them, and dropping every cell of such
-    a table is worse than reading it in document order."""
+    """Cells without addresses are read in document order."""
     rows = (
         "<hp:tbl><hp:tr><hp:tc>"
         + _para("가")

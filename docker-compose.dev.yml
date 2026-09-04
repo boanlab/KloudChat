@@ -1,19 +1,12 @@
-# Development overlay — serves the web app from Vite instead of a built bundle.
-#
-# The web image contains compiled static files, so editing source has no effect
-# on it. Here the source tree is mounted and HMR does the work. The service name
-# is unchanged, so ports and URLs match production; the only difference is what
-# is listening.
-#
-# Layer it over the build overlay, so the API also comes from this checkout:
+# Development overlay — the web app from Vite with HMR instead of the built
+# bundle. Same service name, so ports and URLs match production.
 #
 #   docker compose -f docker-compose.yml \
 #                  -f docker-compose.build.yml \
 #                  -f docker-compose.dev.yml up -d
 services:
   web:
-    # Nothing is built for the web service here, whether or not the build
-    # overlay is also in play — this container runs Vite off the mounted tree.
+    # Vite runs off the mounted tree; nothing is built for this service.
     build: !reset null
     image: node:22-alpine
     pull_policy: missing
@@ -22,10 +15,8 @@ services:
     environment:
       # Vite's dev proxy forwards /api in place of nginx.
       API_BASE_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
-      # Hostnames the dev server will answer to, comma-separated. Needed when
-      # this overlay sits behind a proxy: the built image serves static files
-      # and does not care, while Vite refuses a Host header it was not told
-      # about. Set `KCHAT_WEB_HOST=kchat.example.org` before `make dev`.
+      # Comma-separated Host headers Vite will answer to; needed behind a
+      # reverse proxy. `KCHAT_WEB_HOST=kchat.example.org make dev`.
       WEB_ALLOWED_HOSTS: ${KCHAT_WEB_HOST:-}
     volumes:
       - ./apps/web:/app

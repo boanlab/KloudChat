@@ -1,13 +1,4 @@
-"""서식이 제 양식을 모델에게 보여 준다.
-
-A 서식 told the model its rules and showed it nothing. The rules are prose —
-"결정마다 왜 그렇게 정했는지 한 줄이라도 남긴다" — and the form beside them is
-the same thing as a shape: the headings in order, the columns of each table,
-the line under each heading naming what goes there.
-
-The file already ships. Describing it a second time in prose would be a second
-copy to keep in step with the first.
-"""
+"""A 서식's form file (headings, columns, directions) reaches the model beside its rules."""
 
 from __future__ import annotations
 
@@ -27,9 +18,7 @@ def test_every_form_yields_the_words_it_is_made_of() -> None:
     for row in _documents():
         text = templates.form_text(row)
         assert text, f"{row.id}: 양식에서 글을 뽑지 못했습니다"
-        # Headings and column names, not a document. A form that came back
-        # thousands of characters long would be one carrying sample prose,
-        # and that prose would end up in every document written from it.
+        # Headings and column names only; a long form is one carrying sample prose.
         assert len(text) < 2000, f"{row.id}: 양식에서 뽑은 글이 {len(text)}자입니다"
 
 
@@ -38,44 +27,34 @@ def test_the_form_reaches_the_model_beside_the_rules() -> None:
     guide = page._guide(row)
 
     assert row.instructions in guide, "지시가 그대로 남아 있어야 합니다"
-    # Its own headings, in the order the form puts them.
     for heading in ("참석", "논의", "결정 사항", "남은 쟁점", "실행 항목"):
         assert heading in guide, f"양식의 '{heading}' 이 모델에 가지 않습니다"
-    # And the columns, which are the part prose describes worst.
     for column in ("근거", "담당", "기한"):
         assert column in guide
 
 
 def test_the_form_says_which_of_its_lines_are_directions() -> None:
-    """안내문은 지시이지 본문이 아니다.
-
-    The lines under each heading are addressed to a person filling the form in
-    by hand. A model handed them without warning writes them into the document
-    as though they were the text — so the form arrives labelled.
-    """
+    """The form's direction lines are labelled as directions, not body text."""
     guide = page._guide(templates.get("doc-minutes"))
     assert "빈 양식" in guide
     assert "안내이지" in guide and "실제 내용" in guide
 
 
 def test_a_template_without_a_form_is_unchanged() -> None:
-    """A 서식 that ships no form is the rules alone, exactly as before."""
+    """A 서식 without a form yields its rules and markup vocabulary only."""
 
     import dataclasses
 
     row = templates.get("doc-report")
     bare = dataclasses.replace(row, form_file="")
     guide = page._guide(bare)
-    # The rules and the seed's own markup vocabulary, and nothing else. The
-    # vocabulary is not the form: it describes the elements the typesetting
-    # stands up, and every 서식 gets it whether or not it ships a form.
     assert guide == f"{row.instructions}\n\n{row.markup}"
     assert "빈 양식" not in guide
     assert templates.form_text(bare) == ""
 
 
 def test_an_unreadable_form_does_not_take_the_rules_down_with_it(monkeypatch) -> None:
-    """The instructions still stand, and they are the half that says why."""
+    """A form that fails to read leaves the instructions intact."""
 
     row = templates.get("doc-minutes")
 
@@ -95,7 +74,7 @@ def test_an_unreadable_form_does_not_take_the_rules_down_with_it(monkeypatch) ->
 
 
 def test_the_form_is_read_once(monkeypatch) -> None:
-    """A turn does not re-open a 38KB zip to read 250 characters."""
+    """Form text is extracted once and cached."""
 
     row = templates.get("doc-minutes")
     templates._FORM_TEXT.clear()

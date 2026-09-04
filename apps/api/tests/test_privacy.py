@@ -86,8 +86,7 @@ def test_detector_accepts_valid_ipv6_and_rejects_malformed_ipv6() -> None:
 
 
 def test_legacy_mask_preserves_the_preexisting_broad_rules() -> None:
-    # Neither value passes the new checksum/TLD constraints, but an
-    # organisation that enabled the old always-mask setting must not regress.
+    # Neither value passes the checksum/TLD constraints; always-mask still applies.
     text = "card 1234-5678-9012-3456 and mail person@example.x"
 
     assert governance.mask(text) == (text, 0)
@@ -805,13 +804,7 @@ async def test_mask_raw_and_legacy_upper_bound_actions(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypatch) -> None:
-    """Raw egress is not a raw record.
-
-    `send_raw_external` sends the sentence untouched and stores the Message
-    masked all the same. The transcript explains that substitution from the
-    findings kept on the routing, so they have to survive the one action whose
-    name says nothing was hidden.
-    """
+    """`send_raw_external` sends the text untouched but stores the Message masked, findings kept."""
     monkeypatch.setattr(governance.settings, "jwt_secret", "test-secret-that-is-at-least-32-bytes")
     user = User(email="person@example.test", password_hash="hash", name="Person")
     session = ChatSession(user_id=user.id)
@@ -847,7 +840,7 @@ async def test_raw_external_still_carries_what_the_record_was_masked_by(monkeypa
     assert raw.routing["findingCounts"] == [
         {"category": "email", "source": "current_input", "count": 1}
     ]
-    # What is written where the person's sentence used to be.
+    # What replaces the person's sentence.
     assert governance.mask(sources["current_input"])[0] == "send [이메일]"
 
 
@@ -869,8 +862,7 @@ async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) 
     }
     policy = Governance(
         external_data_guard=True,
-        # Deliberately opposite to the visible catalogue order. Legacy rows
-        # are normalized at resolution as well as on the next admin save.
+        # Opposite to the catalogue order; rows are normalized at resolution.
         privacy_safe_model_ids=[strict_b["id"], strict_a["id"]],
     )
     sources = {"current_input": "send person@example.com"}
@@ -1387,10 +1379,8 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
         **_external_model("external/economy"),
         "inputCreditCost": 1,
         "creditCost": 2,
-        # 16k, not 4k. The context-fit gate measures the envelope in UTF-8
-        # bytes, and the chat system turn — house rules included — is ~4.5k
-        # bytes on its own. A 4k window disqualified every economy model
-        # before the classifier ran, which is a different test from this one.
+        # 16k: the context-fit gate measures UTF-8 bytes and the chat system
+        # turn alone is ~4.5k, so a 4k window would fail before the classifier.
         "contextWindow": 16_000,
         "supportsTools": False,
     }
@@ -1559,8 +1549,7 @@ async def test_auto_turn_model_override_does_not_replace_quality_ceiling(
         model=quality["id"],
         routing_mode=sessions_router.RoutingMode.auto,
     )
-    # The database column is String, so production hydration may yield the raw
-    # value even though the model annotation is RoutingMode.
+    # The column is String; hydration may yield the raw value, not RoutingMode.
     session.routing_mode = sessions_router.RoutingMode.auto.value
     await _patch_guard_dependencies(
         monkeypatch,
@@ -1665,8 +1654,7 @@ async def test_tool_schema_is_preflighted_and_mask_retry_sends_only_clean_snapsh
     async def tools(*_args, **_kwargs):
         nonlocal builds
         builds += 1
-        # Opposite registry order on retry must not invalidate an otherwise
-        # identical decision token.
+        # Registry order must not affect the decision token.
         return [sensitive, clean] if builds == 1 else [clean, sensitive]
 
     monkeypatch.setattr(sessions_router, "build_tools", tools)
@@ -1887,14 +1875,7 @@ async def test_send_stale_model_fallback_stays_inside_allowlist(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_a_revoked_model_says_so_and_does_not_become_the_session(monkeypatch) -> None:
-    """A fallback the person can see, and that ends when the revocation does.
-
-    The turn still runs — refusing it would be worse — but on another model at
-    another price, so the routing metadata reports the model that was asked for
-    rather than the one that answered, which is what the transcript's badge
-    compares. And the substitute is not written back: a session silently moved
-    to the cheapest row would stay there long after the allowlist was restored.
-    """
+    """A revoked model's substitute is reported on the turn and not written to the session."""
     user = User(
         email="person@example.test",
         password_hash="hash",
@@ -1960,13 +1941,7 @@ async def test_a_revoked_model_says_so_and_does_not_become_the_session(monkeypat
 async def test_a_revoked_model_says_so_on_report_and_slides(
     monkeypatch, kind, runner_name: str
 ) -> None:
-    """A substitution is news on every surface, not only the one that resolves privacy.
-
-    Report and slide turns build no privacy resolution, so there was nothing on
-    the turn to carry the swap: the document came out written by a model nobody
-    chose and the transcript agreed with itself. The note the runner is handed
-    is what the reader's badge compares.
-    """
+    """Report and slide turns also carry the substitution note."""
     user = User(
         email="person@example.test",
         password_hash="hash",
@@ -2027,7 +2002,7 @@ async def test_a_revoked_model_says_so_on_report_and_slides(
         if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.user
     )
     assert user_message.routing["requestedModels"] == [revoked["id"]]
-    # The revocation owns this turn only, exactly as it does on chat.
+    # The revocation owns this turn only.
     assert session.model == revoked["id"]
 
 
@@ -2035,7 +2010,7 @@ async def test_a_revoked_model_says_so_on_report_and_slides(
 async def test_a_document_turn_on_the_model_it_asked_for_carries_no_route_note(
     monkeypatch,
 ) -> None:
-    """Nothing happened, so the turn says nothing — an empty badge row is noise."""
+    """A document turn on the requested model carries no route note."""
     user = User(email="person@example.test", password_hash="hash", name="Person")
     allowed = {**_external_model("external/allowed"), "kinds": ["report"]}
     session = ChatSession(
@@ -2166,11 +2141,7 @@ async def test_strict_privacy_route_does_not_persist_over_requested_session_mode
 
 @pytest.mark.asyncio
 async def test_strict_local_turn_admits_it_could_not_search(monkeypatch) -> None:
-    """A privacy route removes the search tool; the answer has to say so.
-
-    Dropping the toggle quietly produced a turn indistinguishable from a
-    searched one, which is how a remembered fact ends up read as a checked one.
-    """
+    """A privacy route that removes the search tool says so in the answer."""
     user = User(
         email="person@example.test",
         password_hash="hash",
@@ -2287,9 +2258,7 @@ async def test_strict_local_never_exposes_network_backed_code_or_vector_tools(
         calls += 1
         acc = agent._Accumulator()
         if calls == 1:
-            # A model can still hallucinate a function it was not offered.
-            # The agent must answer "unknown tool" rather than dispatching the
-            # configured HTTP code interpreter.
+            # A hallucinated tool is answered "unknown tool", never dispatched.
             acc.calls[0] = {
                 "id": "call_0",
                 "name": "execute_code",
@@ -2805,8 +2774,7 @@ async def test_strict_tool_detail_is_masked_for_storage_but_raw_result_stays_loc
         )
     ]
 
-    # The local model may use the raw result; its next proxy spend-log request
-    # is nevertheless redacted, while the persisted/SSE step never has it.
+    # The local model sees the raw result; the spend log and persisted step are redacted.
     assert "person@example.com" in json.dumps(calls[1][1])
     assert [redact for redact, _ in calls] == [False, True]
     step_events = [event for event in events if event["type"] == "step"]
@@ -2840,8 +2808,7 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
         ctx,
     )
     assert result.failed is False
-    # Exercise future nested metadata as well as create_artifact's current
-    # title and content. Persistence must not depend on a fixed payload shape.
+    # Persistence must not depend on a fixed payload shape.
     ctx.pending_artifacts[0]["data"]["metadata"] = {
         "owner": sensitive,
         "labels": [sensitive, {"note": sensitive}],
@@ -2903,8 +2870,7 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
     assert session.artifact_id == stored.id
     assert sensitive not in encoded
     assert encoded.count("[이메일]") >= 5
-    # A detached tree was persisted; the strict-local tool context was not
-    # mutated after the agent loop finished using the raw local request.
+    # A detached tree was persisted; the tool context was not mutated afterwards.
     assert json.dumps(ctx.pending_artifacts, ensure_ascii=False) == raw_request
     assert sensitive in raw_request
 
@@ -3080,7 +3046,7 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
 async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
     monkeypatch,
 ) -> None:
-    """The stored answer is masked; the streamed one is not. Say so."""
+    """The stream announces what the guard masked in the stored answer."""
     raw_email = "answer-owner@example.com"
     user = User(
         id="user",
@@ -3169,7 +3135,7 @@ async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
         for row in added
         if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
     )
-    # The record is still masked — this test is about the silence, not the mask.
+    # The record is still masked.
     assert raw_email not in message.content
     assert {"category": "email", "source": "assistant_output", "count": 2} in (
         message.routing["findingCounts"]
@@ -3184,7 +3150,7 @@ async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
 async def test_clean_answer_under_the_guard_announces_no_answer_findings(
     monkeypatch,
 ) -> None:
-    """No finding, no claim: an untouched answer must not grow a warning."""
+    """An untouched answer gets no answer-findings warning."""
     user = User(
         id="user",
         email="person@example.test",
@@ -3370,19 +3336,14 @@ async def test_comparison_masks_variants_and_persists_provider_actual_model(
 
 
 def test_a_value_from_outside_cannot_forge_a_log_entry():
-    """A newline in a logged value ends the entry and starts another.
-
-    The forged line carries the server's own timestamp and level, and nothing
-    downstream can tell it from a real one — so the characters that structure a
-    log never reach one from outside.
-    """
+    """Newlines in logged values are stripped so no entry can be forged."""
     forged = "hello\nERROR:kchat:admin password reset by nobody"
 
     cleaned = logs.safe(forged)
 
     assert "\n" not in cleaned
     assert "\r" not in cleaned
-    # Legible, not silently glued together: the words stay two words.
+    # The words stay two words.
     assert cleaned.startswith("hello ERROR")
 
 
@@ -3397,12 +3358,7 @@ def test_a_short_clean_value_is_left_exactly_as_it_is():
 
 @pytest.mark.anyio
 async def test_the_index_refuses_a_document_id_that_is_not_one(monkeypatch):
-    """The id lands in a URL path, so it decides where the request goes.
-
-    Every caller passes a `files.id`, which is 32 hex characters. The check is
-    made rather than assumed, because `../` is a legal filename and a value
-    that reaches a URL chooses the host as well as the path.
-    """
+    """A document id that is not 32 hex characters never reaches a URL path."""
     called: list[str] = []
 
     class _Client:
@@ -3435,7 +3391,7 @@ def _always(value):
 
 @pytest.mark.anyio
 async def test_the_index_refuses_a_collection_name_that_is_not_one(monkeypatch):
-    """Same rule for the shelf's name, which also lands in a URL path."""
+    """A collection name that is not one never reaches a URL path."""
     called: list[str] = []
 
     class _Client:
@@ -3456,7 +3412,7 @@ async def test_the_index_refuses_a_collection_name_that_is_not_one(monkeypatch):
     assert await index_client.forget_collection(collection="") is False
     assert called == []
 
-    # And a real key still goes through.
+    # A real key still goes through.
     real = index_client.new_collection_key()
 
     class _Ok(_Client):

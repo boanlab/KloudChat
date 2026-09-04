@@ -1,19 +1,8 @@
-"""The Korean font used by every PDF this service produces.
+"""Korean font registration for reportlab PDFs.
 
-reportlab bundles CID fonts, which is why exporting Korean never needed a font
-file. What they do not do is embed anything: the PDF names `Adobe-Korea1` and
-leaves it to the reader to supply the CMaps and a substitute face. Acrobat and
-Chrome do. A Linux box without `poppler-data` does not, and it draws nothing at
-all — not a fallback glyph, not a box, just empty white where the text was.
-
-That failure is invisible from this end. The file is the right size, the page
-count is right, and `pdffonts` lists the font — so the export looks fine until
-it is opened somewhere that cannot resolve it, which for a deck is a projector
-in front of a room.
-
-So the TTF is embedded when one is present, and the CID font stays as the
-fallback for an image built without it. `available()` says which happened, so
-this cannot degrade silently the way it did before.
+A Nanum TTF is embedded when installed; otherwise the non-embedded CID font
+`HYSMyeongJo-Medium` is used, which renders blank in viewers without the
+Adobe-Korea1 CMaps. `embedded()` reports which happened.
 """
 
 from __future__ import annotations
@@ -27,9 +16,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 log = logging.getLogger(__name__)
 
-#: Installed by `fonts-nanum` in the image. Ordered by preference: Gothic for
-#: slides, Myeongjo for documents — both are checked so a partial install still
-#: yields something embeddable.
+#: Installed by `fonts-nanum` in the image, in order of preference.
 _CANDIDATES = {
     "gothic": (
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
@@ -41,18 +28,14 @@ _CANDIDATES = {
     ),
 }
 
-#: reportlab's own, embedded in no PDF. See the module docstring.
+#: reportlab's bundled CID fonts; never embedded in the PDF.
 _CID_FALLBACK = {"gothic": "HYSMyeongJo-Medium", "serif": "HYSMyeongJo-Medium"}
 
 _resolved: dict[str, str] = {}
 
 
 def korean(style: str = "gothic") -> str:
-    """The registered font name to pass to `setFont`, embedding one if possible.
-
-    Registration is global to reportlab and idempotent per name, so the result
-    is cached rather than re-registered per export.
-    """
+    """Registered font name for `setFont`; registration is global, so the result is cached."""
     if style in _resolved:
         return _resolved[style]
 
@@ -63,10 +46,8 @@ def korean(style: str = "gothic") -> str:
         name = f"Nanum-{style}"
         try:
             pdfmetrics.registerFont(TTFont(name, str(file)))
-            # ReportLab's `<b>`/`<i>` markup asks the family for a variant.
-            # Nanum's regular face still carries the Korean glyphs when a
-            # dedicated weight is unavailable, which is preferable to a
-            # missing-family exception that aborts an export.
+            # `<b>`/`<i>` markup looks up family variants; map all to the
+            # regular face rather than raise a missing-family error.
             pdfmetrics.registerFontFamily(
                 name, normal=name, bold=name, italic=name, boldItalic=name
             )
@@ -88,12 +69,7 @@ def korean(style: str = "gothic") -> str:
 
 
 def embedded(style: str = "gothic") -> bool:
-    """Whether `korean(style)` returned a font that is embedded in the file.
-
-    The health check reads this: an image built without the font package
-    produces PDFs that are blank in some viewers, and that should be visible
-    here rather than discovered in a lecture hall.
-    """
+    """Whether `korean(style)` resolved to an embedded TTF; read by the health check."""
     return korean(style).startswith("Nanum-")
 
 

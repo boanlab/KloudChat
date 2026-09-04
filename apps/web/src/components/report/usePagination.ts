@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
 
-/** A4 at 96dpi. The paper the document is written onto. */
+/** A4 at 96dpi. */
 export const A4_HEIGHT_PX = 1123
 export const A4_WIDTH_PX = 794
 
 /** Read-only page-break estimates for the continuous web preview. */
 export function usePagination(
-  /** The document's root, or null before the portal has rendered it. */
+  /** Document root, or null before the portal has rendered it. */
   root: HTMLElement | null,
-  /** Changes whenever the document's content does, to force a re-measure. */
+  /** Changes with the content to force a re-measure. */
   revision: unknown,
 ) {
   const [height, setHeight] = useState(0)
-  //: Content height on one page, from the seed's own vertical padding — a
-  //: template with a deep top margin fits fewer lines, on screen and on paper.
+  // Content height per page after the template's vertical padding.
   const [usable, setUsable] = useState(A4_HEIGHT_PX)
   const [breaks, setBreaks] = useState<number[]>([])
 
@@ -26,10 +25,7 @@ export function usePagination(
     const contentHeight = root.scrollHeight
     setHeight(contentHeight)
 
-    // Put every guide between rendered lines, never through the middle of a
-    // paragraph line. A paragraph may continue on the next page, but no glyph
-    // should sit on the cut. Range rectangles are the browser's own line
-    // layout, so this also follows font loading, zoom and inline formatting.
+    // Cuts fall between rendered lines, never through one; Range rects are the browser's own line layout.
     const rootTop = root.getBoundingClientRect().top
     const lines: { top: number; bottom: number }[] = []
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
@@ -61,7 +57,7 @@ export function usePagination(
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(root)
-    // Web fonts land after first paint, and every measurement under them moves.
+    // Re-measure once web fonts land.
     void document.fonts?.ready.then(measure)
     return () => observer.disconnect()
   }, [root, measure, revision])

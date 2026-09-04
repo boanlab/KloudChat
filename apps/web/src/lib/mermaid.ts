@@ -1,60 +1,29 @@
 /**
- * Drawing a mermaid diagram, and keeping what was drawn.
- *
- * Its own module because two screens need it and they need it for opposite
- * reasons. The web view draws a diagram *to show it*, and stores the picture
- * on the way past. The page view cannot show an SVG at all — its document is a
- * Tiptap document, and a subtree ProseMirror believes it owns is not a place
- * to render into — so it draws off-screen purely to *get* the picture, and
- * shows that instead.
- *
- * One implementation, or the two surfaces disagree about what a diagram looks
- * like and the digest a picture is stored under stops matching the digest it
- * is looked up by.
+ * Mermaid rendering shared by the web view (draws to show, stores the picture)
+ * and the page view (draws off-screen to get the picture). One implementation,
+ * so the stored digest matches on both surfaces.
  */
 
-/**
- * The diagram as an SVG string, or `null` if mermaid would not draw it.
- *
- * `look` comes from the caller because the two surfaces have different ones:
- * in the page view the tokens are the 서식's, read off an element inside its
- * shadow root; in the web view they are the app's.
- */
+/** The diagram as an SVG string, or `null` if mermaid would not draw it. `look` is the surface's theme. */
 export async function draw(source: string, look: object): Promise<string | null> {
   try {
     const { default: mermaid } = await import('mermaid')
     mermaid.initialize({
       startOnLoad: false,
-      // `securityLevel: strict` is the default and is what keeps a diagram
-      // from being a script — the source comes from a model and passes through
-      // no sanitiser of ours.
+      // The source comes from a model through no sanitiser of ours.
       securityLevel: 'strict',
-      // On a parse error mermaid throws — which the catch below handles — and
-      // *also* appends its own "Syntax error in text" bomb straight into
-      // `document.body`, outside anything React owns. A report whose model
-      // wrote one bad diagram got the caller's tidy fallback in place and a
-      // full-width bomb at the foot of the screen. This tells it to only
-      // throw.
+      // Otherwise mermaid appends its own error box to `document.body` on a parse error.
       suppressErrorRendering: true,
       ...look,
     })
-    // The hash names the diagram; the counter names *this* drawing of it. The
-    // hash alone was the whole id, so two draws of the same source that overlap
-    // — the panel and the thumbnail beside it, or a re-render landing on a
-    // source that had been drawn before — shared one id, and mermaid tore the
-    // scratch element of the first out from under the second. One of the two
-    // came back empty, which read as a diagram that would not render.
+    // The counter keeps overlapping draws of the same source from sharing a scratch element.
     draws += 1
     const id = `d${Math.abs(hash(source))}x${draws}`
     try {
       const { svg } = await mermaid.render(id, plain(source))
       return svg
     } finally {
-      // Belt to the suppress flag's braces: whatever scratch element this
-      // mermaid version left behind, it does not belong to the page. Both
-      // names, because the container is not always the id we asked for —
-      // some versions of mermaid prefix it with `d` — and the one we do not
-      // remove is left in the document for the life of the page.
+      // Mermaid's scratch element; some versions prefix the id with `d`.
       document.getElementById(id)?.remove()
       document.getElementById(`d${id}`)?.remove()
     }
@@ -63,11 +32,7 @@ export async function draw(source: string, look: object): Promise<string | null>
   }
 }
 
-/**
- * `draw`, but the refusal comes back as words. The diagram path hands
- * mermaid's own parse error back to the writer and asks for a repair —
- * which needs the sentence, not a null.
- */
+/** `draw`, but a parse failure comes back as mermaid's message so the writer can be asked for a repair. */
 export async function drawOrExplain(
   source: string,
   look: object,
@@ -88,23 +53,7 @@ export async function drawOrExplain(
   }
 }
 
-/**
- * The diagram without its own colours.
- *
- * `style`, `classDef` and `linkStyle` are the three ways a mermaid source can
- * set its own fills, and a model reaches for them constantly — which is where
- * the pink boxes and the yellow database come from. They win over the theme,
- * so one figure in a report comes out in a palette nothing else on the page
- * uses, and it reads as pasted in from another program.
- *
- * Stripped here rather than forbidden in the prompt alone. The prompt already
- * says not to, and a rule the writer breaks silently is a rule the reader pays
- * for. Same principle as the HTML sanitiser dropping `style=`: the 서식 owns
- * every colour in the document, and the only way to mean that is to enforce it.
- *
- * The declarations are removed, not the nodes — a `style A fill:#f9f` line is
- * dropped and the node `A` stays exactly where it was.
- */
+/** Strips `style`, `classDef` and `linkStyle` lines so the 서식 owns every colour; nodes are untouched. */
 function plain(source: string): string {
   return source
     .split('\n')
@@ -112,10 +61,7 @@ function plain(source: string): string {
     .join('\n')
 }
 
-/**
- * How many diagrams this page has drawn. Mixed into the render id so that no
- * two live renders can be given the same one — see `draw`.
- */
+/** Render counter, mixed into the id so no two live renders share one. */
 let draws = 0
 
 /** Stable enough to name one render. Not the storage key — that is the server's. */
@@ -125,13 +71,7 @@ function hash(text: string): number {
   return value
 }
 
-/**
- * The SVG as a PNG `data:` URI, or `null`.
- *
- * A raster rather than the SVG itself because that is what the three exporters
- * can place: `python-docx` and reportlab both want pixels, and neither reads
- * SVG. Drawn at twice the size so the figure is not soft on paper.
- */
+/** The SVG as a 2x PNG `data:` URI, or `null`. The exporters (python-docx, reportlab) place pixels, not SVG. */
 export async function rasterise(svg: string): Promise<string | null> {
   try {
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
@@ -149,8 +89,7 @@ export async function rasterise(svg: string): Promise<string | null> {
       canvas.height = Math.max(1, Math.round((image.height || 400) * scale))
       const context = canvas.getContext('2d')
       if (!context) return null
-      // White, not transparent: a diagram on a transparent ground turns into a
-      // black rectangle in a `.docx` viewer with a dark theme.
+      // White ground: transparent turns black in a dark-themed .docx viewer.
       context.fillStyle = '#ffffff'
       context.fillRect(0, 0, canvas.width, canvas.height)
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
@@ -164,22 +103,10 @@ export async function rasterise(svg: string): Promise<string | null> {
 }
 
 /**
- * The diagram in the document's own palette and face.
- *
- * Mermaid's default theme is a set of pastels with a hand-drawn feel, sized to
- * whatever the renderer picks. Dropped into a report it reads as something
- * pasted in from another program — which is exactly what a reader concludes.
- * A figure in a submitted document has to look like it belongs to the document
- * around it.
- *
- * The values are read off the element it will be drawn into rather than
- * configured, so one function serves both surfaces: in the page view that
- * element is inside the template's shadow root and the tokens are the 서식's;
- * in the web view they are the app's. Neither has to know about the other.
- *
- * `fontSize` is raised above what looks right on screen on purpose. Mermaid
- * fits its SVG to the column, so a diagram wider than the text column is
- * scaled down — and everything set at reading size lands below it.
+ * Mermaid theme read off the target element's CSS tokens (`--ink`, `--accent`,
+ * `--muted`, `--paper`, `--font-body`), so one function serves the app and a
+ * 서식's shadow root. `fontSize` is above reading size because wide diagrams
+ * are scaled down to the column.
  */
 export function theme(node: HTMLElement) {
   const read = (name: string, fallback: string) =>
@@ -194,26 +121,11 @@ export function theme(node: HTMLElement) {
   return {
     theme: 'base' as const,
     fontFamily: face,
-    // `<text>`, not `<foreignObject>` — the single most load-bearing line here.
-    //
-    // With HTML labels mermaid puts each node's words in a `foreignObject`,
-    // and a canvas that has been handed an SVG containing foreign content is
-    // *tainted*: the drawing succeeds and `toDataURL` then throws. So
-    // `rasterise` returned null, no picture was ever stored, and the failure
-    // was invisible from both ends — the web view had drawn the diagram and
-    // showed it, while the page view and the three exporters, which have only
-    // the stored picture to go on, showed a placeholder promising it would
-    // appear as soon as somebody opened the web view. Somebody had.
-    //
-    // It survived the tests because the one that covered this path drew a
-    // `pie`, and pie labels are plain `<text>`. Only flowcharts were lost.
-    //
-    // Set here at the top level rather than under `flowchart`, which is where
-    // it reads naturally: mermaid resolves `htmlLabels ?? flowchart.htmlLabels`
-    // and warns that the second is deprecated.
+    // `<text>`, not `<foreignObject>`: foreign content taints the canvas and
+    // `toDataURL` throws in `rasterise`. Top-level; `flowchart.htmlLabels` is deprecated.
     htmlLabels: false,
     themeVariables: {
-      // Flat, and the document's ink. No fills that compete with the prose.
+      // Flat, in the document's ink.
       background: paper,
       primaryColor: paper,
       primaryTextColor: ink,
@@ -232,8 +144,7 @@ export function theme(node: HTMLElement) {
       clusterBorder: muted,
       edgeLabelBackground: paper,
       fontSize: '18px',
-      // Charts. Mermaid reads pie slices off numbered variables and the xy
-      // plot off a comma-joined list, so both are written from one palette.
+      // Pie slices are read off numbered variables, the xy plot off a comma-joined list.
       ...Object.fromEntries(
         shades(accent, paper, 6).map((colour, i) => [`pie${i + 1}`, colour]),
       ),
@@ -258,25 +169,14 @@ export function theme(node: HTMLElement) {
       },
     },
     flowchart: {
-      // Fitted to the text column. A figure that needs a horizontal scrollbar
-      // is a figure nobody sees the right-hand half of, and one that runs past
-      // the margin is one the printer cuts.
+      // Fitted to the text column.
       useMaxWidth: true,
       curve: 'linear' as const,
       padding: 12,
-      // Flat rather than tall. `useMaxWidth` scales a diagram to the column,
-      // so a portrait one is scaled *down* to fit its width and then runs half
-      // a page down — the shape a reader gets is set by the drawing, not by
-      // the fitting. Tightening the gap between ranks and widening the gap
-      // between siblings pushes the same graph outward instead of downward.
+      // Tight ranks, wide siblings: pushes the graph outward rather than down the page.
       rankSpacing: 30,
       nodeSpacing: 45,
-      // Wide enough that a label the prompt allows — ten Korean characters —
-      // stays on one line. Wrapping was tried at 140 on the reasoning that
-      // narrower nodes let siblings sit side by side, and it does the
-      // opposite: a label broken over two lines makes its node *taller*, every
-      // node on that rank matches the tallest, and the diagram grows down the
-      // page. A broken word in a box also just reads as a mistake.
+      // A ten-character Korean label stays on one line; a wrapped label makes the whole rank taller.
       wrappingWidth: 320,
     },
     pie: { useMaxWidth: true, textPosition: 0.6 },
@@ -292,19 +192,7 @@ export function theme(node: HTMLElement) {
   }
 }
 
-/**
- * The palette a chart is drawn in, from the one colour a 서식 declares.
- *
- * A flow chart needs no fills — its nodes are outlined and its text is ink.
- * A pie chart is nothing but fills, and drawn in the palette above every slice
- * came out `--paper` on `--paper`: a white circle. So charts need a series of
- * colours, and a report is allowed exactly one accent.
- *
- * They are mixed from that accent toward the paper, so a document keeps a
- * single hue and the slices stay told apart by weight. Twelve steps would be
- * indistinguishable; six is already past what a reader can hold, which is why
- * the prompt caps a pie at six slices.
- */
+/** Chart palette mixed from the one accent toward the paper: slices differ by weight, the document keeps one hue. */
 function shades(accent: string, paper: string, count: number): string[] {
   const rgb = (hex: string): [number, number, number] => {
     const clean = hex.replace('#', '').trim()
@@ -324,27 +212,16 @@ function shades(accent: string, paper: string, count: number): string[] {
   const [pr, pg, pb] = rgb(paper)
   const hex = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0')
   return Array.from({ length: count }, (_, i) => {
-    // Never all the way to the paper: the last slice has to stay visible
-    // against it, and a 70% mix still reads as a colour.
+    // Never all the way to the paper: the last slice must stay visible against it.
     const mix = count === 1 ? 0 : (i / (count - 1)) * 0.7
     return `#${hex(ar + (pr - ar) * mix)}${hex(ag + (pg - ag) * mix)}${hex(ab + (pb - ab) * mix)}`
   })
 }
 
 /**
- * 논문 그림의 얼굴. PaperBanana 의 NeurIPS 2025 도식 가이드가 말하는 것:
- *
- * "Soft tech & scientific pastels" — a high-value background organising
- * complexity, saturation reserved for the one thing that matters. Zones in
- * very light desaturated pastel (the "zone strategy"), process nodes rounded,
- * thin uniform strokes, sans-serif labels, and one highlight colour for the
- * trained part or the final output. Everything the base theme does, with the
- * fills that base theme deliberately leaves out — a document's own figure
- * should not compete with its prose, but a figure that *is* the deliverable
- * should look like the ones in the proceedings.
- *
- * `hot` is the one class the prompt may write (`node:::hot`); everything
- * else the model is told not to colour, and `diagram._parse` strips it.
+ * Figure theme for a paper, after PaperBanana's NeurIPS 2025 guide: light
+ * desaturated pastel zones, rounded nodes, thin uniform strokes, one highlight
+ * colour. `hot` is the one class the prompt may write (`node:::hot`).
  */
 export function paperTheme(node: HTMLElement) {
   const base = theme(node)
@@ -354,12 +231,10 @@ export function paperTheme(node: HTMLElement) {
   const ink = read('--ink', '#1a1a1a')
   return {
     ...base,
-    // A print figure is read at its own size; the column-fitting that serves
-    // a document paragraph makes a figure grow downward instead.
     fontFamily: "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
     themeVariables: {
       ...base.themeVariables,
-      // 존은 옅은 얼음색, 노드는 옅은 회청색 면에 중간 채도 테두리.
+      // Zones in light ice, nodes in light grey-blue with mid-saturation borders.
       clusterBkg: '#eef4fb',
       clusterBorder: '#b7c7de',
       mainBkg: '#f7f9fc',
@@ -375,11 +250,8 @@ export function paperTheme(node: HTMLElement) {
     },
     flowchart: {
       ...base.flowchart,
-      // 제 크기로 그린다. `useMaxWidth` fits a diagram to the column it is
-      // read in, which is right for a paragraph's figure and wrong for a
-      // figure that *is* the deliverable: the SVG then says `width="100%"`,
-      // the rasteriser has no size to draw at, and the file comes out as a
-      // thumbnail of itself.
+      // Drawn at its own size: with `useMaxWidth` the SVG says `width="100%"`
+      // and the rasteriser has no size to draw at.
       useMaxWidth: false,
       curve: 'basis' as const,
       padding: 16,
@@ -391,16 +263,9 @@ export function paperTheme(node: HTMLElement) {
   }
 }
 
-/**
- * The one highlight, and the stroke discipline mermaid's theme variables do
- * not reach. Injected into the SVG after drawing: `:::hot` is a class, and a
- * class needs a rule.
- */
+/** Highlight and stroke rules injected into the SVG after drawing; `:::hot` needs a class rule. */
 export function paperStyles(hot: string): string {
-  // `!important` because mermaid writes its own rules as `#<svg id> .node
-  // rect` — an id selector outranks any class this sheet can name, and the
-  // highlight never showed. There is no other stylesheet to fight; this one
-  // is only ever inside the figure it was written for.
+  // `!important`: mermaid's own rules use `#<svg id>` selectors, which outrank any class.
   return [
     `.node.hot rect, .node.hot polygon, .node.hot path, .node.hot circle { fill: ${hot}22 !important; stroke: ${hot} !important; stroke-width: 2px !important; }`,
     `.node rect, .node polygon, .node path, .node circle { stroke-width: 1.4px; }`,

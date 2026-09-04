@@ -1,11 +1,5 @@
-"""A chart as a picture, drawn from code rather than by a picture model.
-
-A picture model paints a chart: the bars are roughly the right height and the
-axis numbers are whatever looked plausible. A chart is the one picture where
-"roughly" is wrong. So the 차트 style asks a language model for matplotlib
-code instead, runs it in the code sandbox, and takes the PNG it saved — the
-same road paper-banana takes for its statistical plots. The code is kept
-beside the picture, so the figure can be corrected and drawn again.
+"""Chart images for the 차트 style: a model writes matplotlib code, the code sandbox
+runs it, the PNG is kept with the code.
 """
 
 from __future__ import annotations
@@ -23,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 class ChartError(RuntimeError):
-    """Written for the person who asked."""
+    """Drawing failed; the message is user-facing."""
 
 
 @dataclass(slots=True)
@@ -34,9 +28,7 @@ class Chart:
     output_tokens: int
 
 
-#: What the writer is told. The figure size follows the aspect that was asked
-#: for; the Korean face is the one the sandbox has; the look is the restrained
-#: publication style a picture model cannot hold to.
+#: NanumGothic is the Korean face installed in the sandbox.
 _PROMPT = """너는 matplotlib 로 차트를 그리는 파이썬 코드를 쓴다. 아래 요청의 차트 하나를 그리는
 완전한 파이썬 스크립트를 출력하라.
 
@@ -66,7 +58,7 @@ _RETRY = """앞의 코드가 실행 중 오류를 냈다. 고쳐서 전체 코�
 앞의 코드:
 {code}"""
 
-#: Figure size in inches by aspect. Wide enough that labels do not crowd.
+#: Figure size in inches by aspect.
 _SIZES = {
     "16:9": (9.6, 5.4),
     "4:3": (8.0, 6.0),
@@ -87,9 +79,8 @@ async def draw(
 ) -> Chart:
     """The chart for `request`, or `ChartError`.
 
-    `code` runs as given — somebody edited the script the last picture was
-    drawn from and wants exactly that. Otherwise the model writes it, and a
-    script that fails is handed back to the model once with its error.
+    `code`, when given, runs as-is; otherwise the model writes it and gets one
+    retry with the error.
     """
     width, height = _SIZES.get(aspect, _SIZES["16:9"])
     tokens = {"in": 0, "out": 0}

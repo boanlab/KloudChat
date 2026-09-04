@@ -715,7 +715,7 @@ const EN: Record<string, string> = {
   '주민등록번호·카드번호·전화번호·이메일을 모델로 보내기 전에 가립니다. 가려진 상태로 저장되므로 원문은 서버에도 남지 않습니다.': 'Masks national ID, card, phone and email before anything reaches a model. It is stored masked, so the original is not kept on the server either.',
   '지정한 일수가 지난 대화 본문을 지웁니다. 모델·토큰·크레딧 기록과 감사 로그는 남습니다 — 무엇이 있었는지가 아니라 내용만 지우는 것입니다. 0 은 계속 보관.': 'Clears conversation bodies older than the given number of days. Model, token and credit records and the audit log stay — the content goes, not the fact that it existed. 0 keeps everything.',
 
-  // ── added by the screen-by-screen audit ─────────────────────────────
+  // ── screens ─────────────────────────────────────────────────────────
   '### 소제목': '### Subheading',
   '1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다':
     '1. Check the inputs and decision criteria\n2. Separate results, evidence, and unverified items',
@@ -1072,8 +1072,6 @@ const EN: Record<string, string> = {
   '웹뷰': 'Web view',
   '페이지뷰': 'Page view',
   '서식이 적용된 A4 문서로 봅니다': 'See it as an A4 document in its format',
-  // A page-layout view, the way Word names the same toggle. "Real pages"
-  // was a literal reading of 실제 and named nothing anybody looks for.
   '실제 페이지': 'Page layout',
   '내용 편집': 'Edit content',
   '페이지': 'Page',
@@ -1336,7 +1334,7 @@ const EN: Record<string, string> = {
   '계속하면 이 장에서 바꾼 내용이 사라집니다.': 'Carrying on loses what you changed on this slide.',
   '저장하지 않고 닫기': 'Close without saving',
   '변경 내용 버리기': 'Discard the changes',
-  // 작업 시작하기 — 서식 탭이 사라지고 한 가지만 묻게 된 뒤의 문구들.
+  // ── 작업 시작하기 ──────────────────────────────────────
   '하려는 일을 고르면 필요한 자료와 결과물의 모양까지 함께 준비됩니다.':
     'Pick the job and the material it needs — and the shape it comes in — are set with it.',
   '어떤 일을 시작할까요?': 'What are you starting?',
@@ -1682,11 +1680,7 @@ const EN: Record<string, string> = {
   '열람 기록을 불러오지 못했습니다.': 'Could not load the visits.',
   '아직 아무도 열지 않았습니다.': 'Nobody has opened it yet.',
   '계정 없는 방문자': 'Visitor without an account',
-  // Written by the server, not by a call site: `services/geoip.py` says this
-  // in place of a place name for an address inside RFC 1918. It reaches the
-  // screen as data, so the three screens that show a region put it through
-  // `t()` — a real place name has no entry here and falls through as itself,
-  // which is the intended behaviour rather than a gap.
+  // Written by the server (`services/geoip.py`) for RFC 1918 addresses; reaches the screen as data and goes through `t()`.
   '내부망': 'Private network',
   '주소 없음': 'No address',
   '이 인스턴스에 로그인하면 누구나 열 수 있습니다.':
@@ -1925,7 +1919,6 @@ const EN: Record<string, string> = {
   '도구 사용': 'Using a tool',
 
   // ── 보고서 ──────────────────────────────────────────────────────────
-  // A save point is a thing in games. What this lists is versions.
   '저장 시점': 'Versions',
   '넓게 보기': 'Widen',
   '패널 좁히기': 'Narrow',
@@ -1946,7 +1939,7 @@ const EN: Record<string, string> = {
   '다음 장': 'Next slide',
   '노트': 'Notes',
   '← → 로 넘기고 Esc 로 끝냅니다': '← → to move, Esc to exit',
-  // ── 디테일 감사: 도구 설명과 비활성 사유 ──────────────────────────
+  // ── 도구 설명과 비활성 사유 ───────────────────────────────────────
   '패널을 넓혀 크게 봅니다': 'Widen the panel',
   '원래 너비로 되돌립니다': 'Back to the normal width',
   '패널을 닫습니다': 'Close the panel',
@@ -2031,7 +2024,7 @@ const EN: Record<string, string> = {
   '고친 내용은 다음에 이 시작점을 고를 때부터 반영됩니다.':
     'Your edits apply the next time you pick this starting point.',
 
-  // ── 죽어 있던 컨트롤 ────────────────────────────────────────────
+  // ── 컨트롤 상태 ─────────────────────────────────────────────────
   '이 답변이 도움이 되었습니다': 'This answer helped',
   '이 답변이 잘못되었습니다': 'This answer was wrong',
   '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.':
@@ -2348,13 +2341,7 @@ export function translate(lang: Lang, text: string): string {
   return EN[text] ?? text
 }
 
-/**
- * The current language, readable from places that cannot use hooks.
- *
- * The date and relative-time formatters are pure functions rather than
- * components, so they cannot subscribe to the store. The store updates
- * `<html lang>` whenever the language changes, and this reads that.
- */
+/** The current language for non-hook code: reads `<html lang>`, which the store keeps updated. */
 export function currentLang(): Lang {
   return document.documentElement.lang === 'en' ? 'en' : 'ko'
 }

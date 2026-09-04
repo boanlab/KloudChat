@@ -21,8 +21,7 @@ test('문서 개요에서 절을 찾고 편집 위치로 바로 이동한다', a
   await openAndSeedReport(page, '개요 이동을 검증할 본문이다.')
   await enterPageEditor(page)
 
-  // 개요는 접힌 채로 열린다 — 좁은 패널에서 224px 를 먼저 가져가면 문서가
-  // 잘리기 때문이다. 손잡이로 편다.
+  // The outline opens folded.
   const outline = page.getByRole('navigation', { name: '문서 개요' })
   await expect(outline).toBeHidden()
   await page.getByRole('button', { name: '문서 개요' }).click()
@@ -48,11 +47,10 @@ test('커서 위치의 쪽 나누기를 표시·삭제·복원하고 저장한�
   await page.getByRole('button', { name: '쪽 나누기' }).click()
   const pageBreak = editor.locator('[data-page-break="true"]')
   await expect(pageBreak).toHaveCount(1)
-  // Tiptap groups transactions that occur within 500ms into one undo unit.
-  // A real click takes longer; keep insertion and deletion distinct here too.
+  // Tiptap groups transactions within 500ms into one undo unit.
   await page.waitForTimeout(600)
 
-  // An atomic editor node: clicking and Delete removes exactly the break.
+  // An atomic node: Delete removes exactly the break.
   await pageBreak.click()
   await page.keyboard.press('Delete')
   await expect(pageBreak).toHaveCount(0)
@@ -190,11 +188,7 @@ test('선택 문장에 검토 메모를 달고 해결·다시 열기 상태를 �
   expect(stored[0]).toMatchObject({ quote: '검토가 필요한 핵심 문장이다.', body: '수치의 출처를 다시 확인하세요.', status: 'open' })
 })
 
-/**
- * The operations people expect after generation: cite at the caret, reshape a
- * table, and reuse a section. Assertions end at the stored artifact so a
- * toolbar that only changes the browser cannot pass.
- */
+/** Cite at the caret, reshape a table, reuse a section; asserted on the stored artifact. */
 test('보고서에서 인용·표·절 구조를 직접 고치고 다시 열 수 있다', async ({ page }) => {
   test.setTimeout(180_000)
   const seeded = await openAndSeedReport(page, '시장 규모는 전년보다 증가했다.')
@@ -249,7 +243,6 @@ test('보고서에서 인용·표·절 구조를 직접 고치고 다시 열 수
   await expect(page.locator('.ProseMirror').first()).toContainText('[1]')
   await expect(page.locator('.ProseMirror').first().locator('tr')).toHaveCount(2)
 
-  // Page view's toggle says the destination in its visible text.
   await page.getByRole('tab', { name: '홈', exact: true }).click()
   await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '실제 페이지' }).click()
   await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()

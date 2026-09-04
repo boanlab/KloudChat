@@ -55,23 +55,8 @@ import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { copyText } from '@/lib/clipboard'
 
-
-/**
- * Is there anything on this slide yet?
- *
- * Every field a slide can carry content in, not the two it could carry when
- * this was written. `bullets` and `body` were the whole list; a table's `rows`,
- * a strip's `metrics` and a chart's numbers live nowhere near them — so a
- * finished table slide was indistinguishable from one the model had not
- * written yet, and a deck containing one was "still being written" forever.
- * 내보내기, 발표 and 텍스트 수정 stayed disabled on a deck that was complete.
- *
- * Mirrors `deck.has_content` on the server, which drops contentless slides
- * from the stored deck and was dropping the same three layouts.
- */
+/** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
 export function hasContent(slide: Slide): boolean {
-  // A divider says the name of the part and nothing else, which is all a
-  // divider is for — asked to fill one it would be a table of contents.
   if (STRUCTURAL.includes(slide.layout)) return true
   return Boolean(
     slide.bullets?.length ||
@@ -87,7 +72,7 @@ export function hasContent(slide: Slide): boolean {
   )
 }
 
-/** A cheap whole-deck preflight; the selected slide is then measured in pixels. */
+/** Cheap overflow estimate for the whole deck; the selected slide is measured in pixels. */
 function overflowRisk(slide: Slide): boolean {
   const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
   const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
@@ -143,57 +128,30 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
   return null
 }
 
-/**
- * The three layouts that are a left thing and a right thing — see `Slide.bands`.
- *
- * Named once because three places have to agree about them: the drawing, the
- * editable text, and the save that reads that text back. They did not, and the
- * save was the one that lost.
- */
+/** Layouts made of [left, right] pairs; see `Slide.bands`. */
 const PAIRED = ['bands', 'tiles', 'timeline', 'steps', 'cards'] as const
 
-/** Slides that say where the deck is: the cover, the dividers, the 목차. */
+/** Layouts that count as content without a body: cover, dividers, agenda. */
 const STRUCTURAL: Slide['layout'][] = ['title', 'section', 'agenda']
-/** Drawn reversed out of the accent, like the cover. */
+/** Layouts drawn as a cover. */
 const COVERS: Slide['layout'][] = ['title', 'section', 'closing']
 
-/**
- * How Korean breaks across lines, set once on each slide root.
- *
- * The default splits a Korean line anywhere at all, so a cover reading
- * 「전교생 AI 기초 교육 의무화 추진 전략」 came out as 「… 교육 의무」 / 「화 추진
- * 전략」 — a word cut in half at the widest type on the deck. `keep-all` moves
- * the break to a space, and `break-word` keeps the one case `keep-all` cannot
- * help — a single token wider than the slide — from running off the edge.
- *
- * Both properties inherit, so the root is the whole of it; the exporters' seed
- * (`_deck/seed.html`) says the same thing for the file that leaves.
- */
+// Korean line breaking, inherited from each slide root; `_deck/seed.html` matches.
 const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as const
 
-export type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
 
-/**
- * The seven faces a deck can wear.
- *
- * Every measurement on a slide is the same across them; what changes is the
- * ground, the ink, how the cover is composed, which ornament marks a body
- * slide, and whether a card is a filled block or an outlined one. `deck_export`
- * keeps an identical table in Python — a face the panel shows and the file
- * does not is a preview that lies.
- */
+/** Visual style parameters; `deck_export` keeps an identical table. */
 interface Look {
   bg: string
   ink: string
   muted: string
   faint: string
   hair: string
-  /** How much accent goes into a tint, and onto what. */
+  /** Accent percentage in the tint. */
   tint: number
-  /** Cards, bands and metrics: a filled block or a hairline box. */
   card: 'filled' | 'outlined'
   radius: number
-  /** Number badges on steps and tiles. */
   badge: 'square' | 'circle'
   cover: 'gradient' | 'wash' | 'glow' | 'split' | 'paper' | 'brackets'
   ornament: 'top-band' | 'left-bar' | 'corner-circle' | 'bottom-rule' | 'gutter' | 'frame' | 'bottom-band'
@@ -243,10 +201,8 @@ function cleanInlineHtml(html: string): string {
       Array.from(node.childNodes).forEach((child) => { const next = clean(child); if (next) fragment.append(next) })
       return fragment
     }
-    // Browser `execCommand(fontSize)` emits the 1990s `<font size="5">`.
-    // That means an absolute 24px, which can be *smaller* than a scaled slide's
-    // 32px body. Convert it to a relative size so "크게" means larger than the
-    // text around the selection at every preview scale.
+    // `execCommand(fontSize)` emits `<font size>`; converted to a relative size
+    // so it scales with the slide.
     const element = document.createElement(node.tagName === 'FONT' ? 'span' : node.tagName.toLowerCase())
     if (node.tagName === 'FONT') {
       const size = node.getAttribute('size')
@@ -275,20 +231,14 @@ function inlineText(html: string): string {
   return new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
 }
 
-/** Which of the three this slide is, or `null`. */
+/** The slide's paired layout, or `null`. */
 function pairedLayout(slide: Slide): Paired | null {
   return (PAIRED as readonly string[]).includes(slide.layout)
     ? (slide.layout as Paired)
     : null
 }
 
-/**
- * The pairs written onto the field the layout names, and the other two cleared.
- *
- * One slide carries one shape. A `bands` slide that kept a `timeline` array
- * from an earlier edit counts as having content on a layout that never draws
- * it, which is how an empty slide reads as a full one.
- */
+/** Pairs on the field the layout names; the other paired fields cleared. */
 function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<Slide> {
   return {
     bands: layout === 'bands' ? pairs : undefined,
@@ -350,15 +300,7 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
   return { ...clean, bullets: lines }
 }
 
-/**
- * The slide a finding was found on, or `undefined`.
- *
- * Matched on the title, which is all a finding carries. Exact first, then
- * ignoring whitespace — a title somebody has retyped differs from the one the
- * checks ran against by exactly that much, and refusing to fix a slide because
- * its title gained a space is a worse answer than fixing the one it obviously
- * means.
- */
+/** Slide matching a finding's `where` title: exact first, then ignoring whitespace. */
 function slideFor(slides: Slide[], where: string): Slide | undefined {
   if (!where) return undefined
   const exact = slides.find((s) => s.title === where)
@@ -367,30 +309,15 @@ function slideFor(slides: Slide[], where: string): Slide | undefined {
   return slides.find((s) => loose(s.title) === loose(where))
 }
 
-/**
- * One slide, drawn in the same rectangle the exporter uses. The geometry is
- * kept in step with `deck_export.py` — a preview that differs from the .pptx
- * is discovered in the room.
- */
-/**
- * One slide, drawn at whatever scale the caller has room for.
- *
- * Exported because the artifact gallery draws the first slide as a deck's
- * thumbnail — the same drawing, so a deck looks in the gallery like the deck
- * it opens as.
- */
-/**
- * The fields the caller owns, when a slide is being typed over.
- *
- * A new `slide` prop arrives whenever the deck reloads, and the working copy
- * must not lose what is half-typed — but it must pick up a slide that is
- * genuinely different (somebody moved to the next one).
- */
+/** Keeps the half-typed working copy unless a different slide arrived. */
 function pick(next: Slide, working: Slide): Slide {
   return next.id === working.id ? working : next
 }
 
-
+/**
+ * One slide in a 400x225 unit space, scaled. Geometry matches `deck_export.py`.
+ * Also draws gallery thumbnails.
+ */
 export function SlideView({
   slide,
   scale = 1,
@@ -407,49 +334,15 @@ export function SlideView({
 }: {
   slide: Slide
   scale?: number
-  /**
-   * Whether the run that fills this deck is still going. Defaults to true so a
-   * caller that cannot know says the softer of the two things.
-   *
-   * An empty slide means one of two opposite things and they must not read the
-   * same. While the deck is being written it has not been reached yet, and the
-   * answer is to wait. Once the run has ended it came back unusable, and
-   * "쓰는 중…" on a deck that finished ten minutes ago is a screen telling
-   * somebody to keep waiting for something that is never coming.
-   */
+  /** Whether the deck is still being written; decides what an empty slide says. */
   writing?: boolean
-  /**
-   * The deck's name and where this slide falls in it, for the footer.
-   *
-   * Optional because a thumbnail 400px wide draws a footer nobody can read;
-   * the rail passes neither and gets a slide without one.
-   */
+  /** Footer fields; omitted for thumbnails. */
   deckTitle?: string
   index?: number
   total?: number
-  /**
-   * The design system's marks: a line at the foot saying whose deck this is,
-   * and the picture beside it.
-   *
-   * Here rather than on the slide because they belong to the deck, not to one
-   * 장 of it. `deck_export` draws the same two in the same corner, so the panel
-   * and the file agree — a preview that omits the logo is a preview that lies
-   * about what will be handed round the room.
-   */
+  /** Deck-level design: accent, footer line, logo, visual style. */
   brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: VisualStyle }
-  /**
-   * Whether the words on this slide can be typed over.
-   *
-   * The panel's editor was a textarea with a syntax: first line the title, one
-   * line per bullet, and `|` between cells for a table row. So somebody looking
-   * at a comparison table on screen, wanting to change one cell, had to find
-   * that cell inside `| 기존 | 개선 | 적용 시기 |` and count pipes. The slide
-   * was right there and could not be touched.
-   *
-   * Edits are handed back as a whole slide, and the panel turns that back into
-   * the same lines the textarea holds — so the two are one draft and `save()`
-   * did not have to learn anything new.
-   */
+  /** Makes the text `contentEditable`; edits come back through `onEdit` as a whole slide. */
   editable?: boolean
   onEdit?: (next: Slide) => void
   selectedElement?: SlideElement | null
@@ -457,15 +350,7 @@ export function SlideView({
   onOverflow?: (overflowing: boolean) => void
 }) {
   const t = useT()
-  /*
-   * The slide as it is being typed.
-   *
-   * Held in a ref rather than in state: re-rendering a `contentEditable` while
-   * somebody is inside it moves the caret to the front, and the browser is
-   * already holding the characters. What this accumulates is the *other*
-   * fields — edit the title, then a bullet, and the second edit has to carry
-   * the first or it would hand back a slide with the old title.
-   */
+  // The slide as typed; a ref so re-renders do not move the caret.
   const working = useRef(slide)
   const canvas = useRef<HTMLDivElement>(null)
   working.current = editable ? { ...working.current, ...pick(slide, working.current) } : slide
@@ -483,7 +368,6 @@ export function SlideView({
         'data-selected': selectedElement === element ? 'true' : undefined,
       } as const)
     : {}
-  /** What a `contentEditable` needs to be one, and nothing when it is not. */
   const typed = (key: string, read: (text: string) => Partial<Slide>) =>
     editable
       ? ({
@@ -508,32 +392,14 @@ export function SlideView({
   }
   const visualStyle: VisualStyle = brand?.visualStyle && brand.visualStyle in LOOKS ? brand.visualStyle : 'editorial'
   const look = LOOKS[visualStyle]
-  // 흑백 is black and white: the theme's accent survives only as the page
-  // chip and the tab under a title, everything else is ink.
+  // `mono` uses ink for the accent.
   const accent = visualStyle === 'mono' ? look.ink : (slide.accent ?? brand?.accent ?? 'var(--accent)')
   const px = (n: number) => `${n * scale}px`
-  /**
-   * Type, which a person can make bigger or smaller on one slide.
-   *
-   * Separate from `px` on purpose: the ask was for the words, and growing the
-   * padding and the gaps with them would only push the same amount of text off
-   * the same edge. The gutter is the 서식's decision and stays where it is.
-   *
-   * `deck_export` multiplies its own sizes by the same number, so the `.pptx`
-   * and the `.pdf` come out the size the screen showed. A control that only
-   * changed the preview would be worse than no control.
-   */
+  // Type size only; `textScale` does not touch padding or gaps. `deck_export` applies the same factor.
   const type = (n: number) => `${n * scale * (slide.textScale ?? 1)}px`
-  /*
-   * Every surface is a mix of the slide's own accent, so one deck in green and
-   * one in navy are the same design rather than the same design plus a blue
-   * table. `deck_export` computes the identical mixes in Python and draws them
-   * into the .pptx and .pdf — see `_mix` there. Change a percentage here and
-   * change it there, or the room sees a different deck from the panel.
-   */
+  // Tint percentages match `deck_export._mix`.
   const tint = look.tint ? `color-mix(in srgb, ${accent} ${look.tint}%, ${look.bg})` : '#f2f2f2'
   const hair = look.hair
-  /** A card, a band, a metric box: filled in the tint, or drawn as a box. */
   const boxed = (extra?: React.CSSProperties): React.CSSProperties =>
     look.card === 'outlined'
       ? { background: look.bg, border: `1px solid ${hair}`, borderRadius: px(look.radius), ...extra }
@@ -547,9 +413,6 @@ export function SlideView({
   })
   const rows = slide.rows ?? []
   const metrics = slide.metrics ?? []
-  /* The three shapes that are a left thing and a right thing. Read as one
-     because they are one — see `Slide.bands`. `deck_export` draws the same
-     three at the same measurements, so the room sees what the panel showed. */
   const paired = pairedLayout(slide)
   const pairs = (paired ? (slide[paired] ?? []) : []).filter(
     ([left, right]) => left?.trim() && right?.trim(),
@@ -577,69 +440,29 @@ export function SlideView({
     observer.observe(root)
     return () => observer.disconnect()
   }, [onOverflow, slide])
-  // Two columns are only two columns when there is enough to fill them; four
-  // bullets split in half reads as a mistake.
+  // Two columns only with enough bullets to fill them.
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
-  /*
-   * How tight the table has to be to stay on the slide.
-   *
-   * A slide is 225 units tall in this drawing and the body gets about 125 of
-   * them. Seven rows at one comfortable size is 190, so the table ran off the
-   * bottom edge and through the footer — which is exactly what a filled head
-   * row makes obvious, because the overflow now has a colour. The row count is
-   * known before anything is drawn, so the size follows it rather than the
-   * slide losing its last row. `deck_export` scales the same way.
-   */
+  // Table type size from the row count, so it stays on the slide; `deck_export` scales the same way.
   const dense = (() => {
-    // What is left under the title once the head band, the title, the tab and
-    // the foot have taken theirs, in this drawing's 225 units.
+    // Body height under the title, in the 225-unit slide.
     const body = 122
-    // One row in reserve for the cell that wraps to two lines — 시스템 전역
-    // 또는 프로젝트 does, in a column sized for 도구.
+    // One row in reserve for a cell that wraps.
     const perRow = body / (rows.length + 1.2)
     const size = Math.max(7.5, Math.min(12, perRow / 2.05))
     return { size, pad: Math.max(2, (perRow - size * 1.4) / 2) }
   })()
-  /*
-   * The same arithmetic for the two paired shapes that stack down the slide.
-   *
-   * They were drawn at one size whatever they held: a band was three lines of
-   * padding and type tall and there could be six of them, so a four-band slide
-   * ran through the footer and a seven-entry timeline lost its last two
-   * entries off the bottom edge. Nothing said so — the panel clips, and the
-   * .pptx is where somebody finds out.
-   *
-   * `deck_export` divides the same way (`min(72, room/n)` for a band,
-   * `min(56, room/n)` for a timeline step, in its 540-unit slide); these are
-   * those two numbers in this drawing's 225, so the room sees the slide the
-   * panel showed. `tiles` is not here: it lays its marks across rather than
-   * down, and flex already shares the width between them.
-   */
+  // Band and timeline rows divide the body height; matches `deck_export`
+  // (`min(72, room/n)` and `min(56, room/n)` in its 540-unit slide).
   const stack = (() => {
     const body = 122
     const count = Math.max(pairs.length, 1)
-    // A band and the 10-unit gap under it, capped where the export caps them.
     const gap = 4
     const height = Math.min(30, (body - gap * (count - 1)) / count)
     const band = Math.max(7, Math.min(10, height / 3))
-    // A timeline entry is a line of type and the air under it, no box.
     const step = Math.min(23, body / count)
     const line = Math.max(7, Math.min(10, step / 2.3))
-    /**
-     * 왼쪽 이름표의 폭 — 글자 수에서 잰다.
-     *
-     * It was 52 units, fixed, and the shape was designed for a date. The
-     * outline prompt then learned to reach for `timeline` on 절차·단계·로드맵
-     * too, where the left column holds a phrase — 「개편 방향 확정」 — and a
-     * phrase in a date's width wraps to three lines inside a row that is
-     * `overflow-hidden` and 23 units tall. The label came out sliced in half
-     * horizontally, which is what a person sees as 「개편 방향 확」.
-     *
-     * A Korean glyph is about one em wide, so the characters say what the
-     * column needs. Bounded at both ends: never narrower than the date it was
-     * built for, never wider than a third of the slide, because past that the
-     * label has taken the space the entry was supposed to explain itself in.
-     */
+    // Left label width from character count (a Korean glyph is about 1em),
+    // bounded between the floor and a third of the slide.
     const widest = (index: number, floor: number, size: number) =>
       Math.round(
         Math.max(
@@ -663,27 +486,9 @@ export function SlideView({
     }
   })()
 
-  /**
-   * The cover, and every 장 that opens a section.
-   *
-   * Reversed out of the accent rather than set on white. A title slide has one
-   * job — say what this is before anybody reads a word of it — and the deck
-   * that came before this one opened on a white rectangle with a 4px stripe
-   * down the edge, which is the same rectangle the seventeen slides behind it
-   * were on. The block is the only thing here that is not type, and it is what
-   * makes a deck look like a deck at a glance.
-   */
   if (COVERS.includes(slide.layout)) {
     const closing = slide.layout === 'closing'
-    /*
-     * The cover, composed per look. `gradient` is the accent falling half a
-     * step onto ink; `wash` a tenth of it fading to white; `glow` the dark
-     * ground with the accent as a large soft disc; `split` the accent as a
-     * block down the left two-fifths with the words on white beside it;
-     * `paper` the warm ground with a large accent disc bleeding off the right;
-     * `brackets` white, the title alone between two bracket marks.
-     * `deck_export` composes the same six.
-     */
+    // Cover composition per look; `deck_export` composes the same six.
     const onAccent = look.cover === 'gradient' || look.cover === 'glow'
     const coverInk = onAccent ? '#fff' : look.ink
     const coverMuted = onAccent ? 'rgba(255,255,255,0.8)' : look.muted
@@ -728,8 +533,6 @@ export function SlideView({
           </>
         )}
         {slide.layout === 'section' && slide.number && !inSplit ? (
-          /* `01.` over the title. A divider that only names the part leaves
-             the reader counting backwards to place it. */
           <div
             style={{
               fontSize: type(15),
@@ -758,8 +561,6 @@ export function SlideView({
           {rich('title', slide.title || (closing ? t('마무리') : ''))}
         </h3>
         {closing && slide.bullets && slide.bullets.length > 0 && (
-          /* What to remember, under the title: a dash and a line each. The
-             farewell goes at the foot, below, set larger. */
           <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
             {slide.bullets.slice(0, 3).map((b, i) => (
               <li key={i} className="flex gap-2">
@@ -810,15 +611,11 @@ export function SlideView({
         paddingTop: px(24),
         paddingLeft: px(look.ornament === 'gutter' ? 40 : 28),
         paddingRight: px(28),
-        // Room for the footer, which is drawn against the bottom edge.
         paddingBottom: px(28),
         ...KOREAN_WRAP,
       }}
     >
-      {/* The ornament that marks a body slide, one per look. A band across the
-          head, a bar down the edge, a soft disc in the corner, a rule at the
-          foot, a gutter with the slide's number, a hairline frame, a tinted
-          band under the foot. */}
+      {/* Body-slide ornament, one per look. */}
       {look.ornament === 'top-band' && <div className="absolute inset-x-0 top-0" style={{ height: px(6), background: accent }} />}
       {look.ornament === 'left-bar' && <div className="absolute inset-y-0 left-0" style={{ width: px(8), background: accent }} />}
       {look.ornament === 'corner-circle' && <div className="absolute rounded-full" style={{ width: px(70), height: px(70), right: px(-30), top: px(-35), background: `color-mix(in srgb, ${accent} 12%, transparent)` }} />}
@@ -834,8 +631,6 @@ export function SlideView({
       {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(28), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
 
       {slide.layout === 'statement' ? (
-        /* One phrase set large in the middle, a short rule over it and the
-           sentence that unpacks it under — the presenter's own conclusion. */
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <div style={{ width: px(26), height: px(2), background: accent, marginBottom: px(14) }} />
           <p
@@ -875,9 +670,6 @@ export function SlideView({
           >
             {rich('title', slide.title)}
           </h3>
-          {/* The tab under the title. Two by twenty-six, and the only accent
-              on a slide of prose — enough that the eye finds the same corner
-              on every 장, not enough to compete with the words. */}
           <div
             style={{
               width: px(26),
@@ -887,19 +679,12 @@ export function SlideView({
               marginBottom: px(14),
             }}
           />
-          {/* Words left, picture right — the geometry `deck_export` uses, so
-              the preview and the .pptx put them in the same places. */}
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
             <div
               className={cn(
                 'flex min-w-0 flex-1 flex-col',
-                // Centred only for the three paired shapes. `stack` divides the
-                // room between their entries, so they cannot overflow — and a
-                // two-band slide otherwise sat in the top half with the bottom
-                // half blank, which reads as a slide that failed to finish
-                // rather than one with two things to say. Bullets are left
-                // alone: they can outgrow the box, and content that overflows a
-                // centred column is clipped at both ends instead of the bottom.
+                // Paired shapes cannot overflow (see `stack`), so they centre;
+                // bullets can, and a centred overflow clips at both ends.
                 PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
               )}
               data-overflow-box
@@ -907,9 +692,6 @@ export function SlideView({
               {...selectable(contentElement)}
             >
               {pairs.length > 0 && slide.layout === 'bands' && (
-                /* A filled name on the left against a tinted band on the right.
-                   Bullets have nowhere to put the name of what they are, which
-                   is the whole of why this shape exists. */
                 <div className="flex flex-col" style={{ gap: px(stack.gap) }}>
                   {pairs.map(([name, text], i) => (
                     <div
@@ -946,7 +728,6 @@ export function SlideView({
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'tiles' && (
-                /* The mark set large in a filled square, its name under it. */
                 <div className="flex" style={{ gap: px(11), marginTop: px(8) }}>
                   {pairs.map(([mark, name], i) => (
                     <div key={i} className="flex min-w-0 flex-1 flex-col items-center">
@@ -974,9 +755,6 @@ export function SlideView({
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'steps' && (
-                /* Numbered by position, across the slide: a filled square with
-                   the number, the step's name under, what it does under that,
-                   and one tinted rule joining the squares left to right. */
                 <div className="relative flex" style={{ gap: px(8), marginTop: px(8) }}>
                   {pairs.length > 1 && (
                     <div className="absolute" style={{ left: px(11), right: `calc(${100 / pairs.length}% - ${px(11)})`, top: px(10), height: px(1), background: tint }} />
@@ -996,8 +774,6 @@ export function SlideView({
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'cards' && (
-                /* Titled boxes side by side: a tinted card with an accent rule
-                   over it, the name at the top and the text under it. */
                 <div className="flex" style={{ gap: px(8), marginTop: px(4), height: px(100) }}>
                   {pairs.map(([name, text], i) => (
                     <div
@@ -1012,8 +788,6 @@ export function SlideView({
                 </div>
               )}
               {pairs.length > 0 && slide.layout === 'timeline' && (
-                /* Hung off one rule: the date to its left, what happened to its
-                   right. Order is the point, so nothing here reflows it. */
                 <div className="flex flex-col">
                   {pairs.map(([when, what], i) => (
                     <div
@@ -1029,7 +803,6 @@ export function SlideView({
                           fontSize: type(stack.line),
                           fontWeight: 700,
                           paddingTop: px(2),
-                          // Tight, so a two-line label still clears the row.
                           lineHeight: 1.2,
                         }}
                       >
@@ -1065,8 +838,6 @@ export function SlideView({
               )}
               {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
               {metrics.length > 0 && slide.layout === 'big-number' && (
-                /* One figure, very large, its name beside it, and the line
-                   that says what it means under both. */
                 <div className="flex flex-1 flex-col justify-center">
                   <div className="flex items-baseline" style={{ gap: px(8) }}>
                     <span
@@ -1090,11 +861,6 @@ export function SlideView({
                 </div>
               )}
               {metrics.length > 0 && slide.layout !== 'big-number' && (
-                /* One card each: the figure large, what it counts under it, and
-                   a rule over the top in the accent. Set on the open slide they
-                   were three numbers floating in a white field; carded, the eye
-                   reads them as one row of comparable things. The same shape
-                   `deck_export` draws into the .pptx and .pdf. */
                 <div className="flex" style={{ gap: px(12), marginTop: px(6) }}>
                   {metrics.map(([figure, label], i) => (
                     <div
@@ -1135,17 +901,7 @@ export function SlideView({
                 </div>
               )}
               {rows.length > 0 && (
-                /* Clipped rather than allowed to run: a table one row too long
-                   used to draw straight through the foot, and a slide whose
-                   page number has a table row across it reads as a broken
-                   export rather than a long table. */
                 <div className="min-h-0 overflow-hidden">
-                {/* The head row filled and reversed out, the body banded in the
-                    faintest tint of the same accent, hairlines between and
-                    nothing round the outside. A slide table is read at eight
-                    metres: the head has to be a block of colour rather than
-                    coloured words, and a full grid at that distance is a grey
-                    blur. Kept in step with `deck_export`. */}
                 <table
                   style={{
                     fontSize: type(dense.size),
@@ -1190,8 +946,6 @@ export function SlideView({
                 </div>
               )}
               {slide.bullets && slide.layout === 'agenda' && (
-                /* The 목차: `01` in the accent beside each name, down one
-                   column, or two when there are more than four. */
                 <ol
                   style={{
                     fontSize: type(11),
@@ -1228,10 +982,6 @@ export function SlideView({
                   style={{
                     fontSize: type(11.5),
                     lineHeight: 1.65,
-                    // A long list down one edge wastes the right half of the
-                    // rectangle and pushes the last item off the bottom.
-                    // Splitting it is the same content, read in the shape it
-                    // fits.
                     ...(twoColumn ? { columnCount: 2, columnGap: px(20) } : null),
                   }}
                 >
@@ -1253,10 +1003,6 @@ export function SlideView({
               )}
               {slide.body &&
                 !slide.bullets?.length &&
-                /* Not on top of a slide that has something on it. A `bands`
-                   slide whose prose failed still has four filled bands, and
-                   the sentence saying it was not written was drawn under
-                   them. */
                 pairs.length === 0 &&
                 rows.length === 0 &&
                 metrics.length === 0 &&
@@ -1268,7 +1014,6 @@ export function SlideView({
                   {rich('body', slide.body)}
                 </p>
               )}
-              {/* 빈 장. 흰 화면만 두면 다 만들어진 것처럼 보인다 */}
               {pending && !slide.image && (
                 <p style={{ fontSize: type(12), color: '#aaa', marginTop: px(6) }}>
                   {writing ? t('쓰는 중…') : t('내용이 비었습니다 — 텍스트 수정으로 채워 주세요.')}
@@ -1300,10 +1045,6 @@ export function SlideView({
         </div>
       )}
 
-      {/* The foot. What deck this is on the left, where you are in it on the
-          right — the two things somebody asks about from the floor. The rail
-          passes the same values, so its preview is a scaled copy rather than a
-          different, footerless slide. */}
       {index !== undefined && total !== undefined && (
         <div
           className="absolute flex items-center justify-between"
@@ -1332,8 +1073,6 @@ export function SlideView({
             </span>
           </span>
           {brand?.footer && (
-            /* Whose deck it is, opposite its name. A deck presented outside the
-               room it was made in is read as belonging to whoever made it. */
             <span
               className="min-w-0 truncate"
               style={{
@@ -1367,14 +1106,7 @@ export function SlideView({
   )
 }
 
-/**
- * Putting a picture on a slide of a JSON deck.
- *
- * The same path an HTML document has, on the track that never was HTML: the
- * picture was made on the image surface and the server embeds it as a `data:`
- * URI, so the deck stays one thing that previews, presents and exports with
- * the picture in it.
- */
+/** Inserts an image artifact into a slide; the server embeds it as a `data:` URI. */
 function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -1444,8 +1176,6 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
           onCaption={setCaption}
           about={slide.title || t('이 장')}
           title={deck.title}
-          /* What this 장 already says, so the suggestion draws what the words
-             cannot rather than illustrating them a second time. */
           context={[
             slide.body,
             ...(slide.bullets ?? []),
@@ -1462,28 +1192,9 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
 }
 
 /**
- * The editable text of a slide: the title, then whatever the slide is made of.
- *
- * A table row comes out as `| 구분 | 탐지 |`, the shape anybody who has written
- * Markdown already knows, and goes back in the same way. Before this, a slide's
- * table was simply absent from the box: somebody opened 텍스트 수정 on a table
- * slide, saw a title and nothing else, typed the lines they wanted, and saved.
- * The save turned the slide into `bullets` — and `SlideView` draws bullets only
- * where `rows` is empty, so the table stayed and every word they typed was
- * swallowed with no error and no trace.
- *
- * Metrics go out the same way, as `| 99.5% | 대응률 |`, so a KPI strip is
- * editable for the first time as well.
- *
- * So do the three paired layouts, one pair a line: a band's name and its text,
- * a tile's mark and its caption, a date and what happened. They were the same
- * bug the table had and worse — absent from the box, and `save` then rebuilt
- * the slide as `bullets`, so opening 텍스트 수정 on a `bands` slide and pressing
- * 저장 without typing a character emptied it and PATCHed that over the deck.
- *
- * A paired slide's `bullets` and `body` are left out on purpose: `SlideView`
- * draws neither while there are pairs, and putting invisible text in the box
- * invites somebody to edit words that will never appear.
+ * The slide as editable lines: title, then bullets/body, then rows, metrics
+ * and pairs as `| a | b |`. A paired slide omits bullets and body, which
+ * `SlideView` does not draw.
  */
 function toLines(slide: Slide): string {
   const rows = (slide.rows ?? []).map((row) => `| ${row.join(' | ')} |`)
@@ -1509,8 +1220,7 @@ function toCells(line: string): string[] | null {
   const trimmed = line.trim()
   if (!trimmed.startsWith('|')) return null
   const cells = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
-  // `| --- | --- |` is a Markdown rule, not data. Somebody pasting a table
-  // from elsewhere brings one with them.
+  // `| --- |` is a Markdown rule, not data.
   if (cells.every((c) => /^:?-{2,}:?$/.test(c))) return null
   return cells.length > 1 ? cells : null
 }
@@ -1607,13 +1317,7 @@ function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: S
   )
 }
 
-/**
- * The room a deck is shown in: black, full-screen, and holding the keyboard.
- *
- * Shared with the HTML deck panel, where a deck is markup rather than slide
- * objects. What stands on the stage differs; the counter, the keys and the way
- * out are the same job.
- */
+/** Full-screen presentation chrome; shared with the HTML deck panel. */
 export function PresentStage({
   title,
   index,
@@ -1629,9 +1333,9 @@ export function PresentStage({
   count: number
   onIndex: (i: number) => void
   onClose: () => void
-  /** The presenter's own screen. Left out by a deck that carries no notes. */
+  /** Presenter notes; omitted for decks without them. */
   notes?: ReactNode
-  /** Slide titles, so a long deck can be jumped through rather than stepped. */
+  /** Slide titles for the jump list. */
   outline?: string[]
   children: ReactNode
 }) {
@@ -1660,8 +1364,7 @@ export function PresentStage({
       if (document.fullscreenElement) await document.exitFullscreen()
       else await stageRef.current?.requestFullscreen()
     } catch {
-      // Browsers can refuse fullscreen (embedded previews and managed devices
-      // commonly do). Presentation still works as a viewport-sized overlay.
+      // Fullscreen can be refused; the overlay still works.
     }
   }
 
@@ -1672,10 +1375,7 @@ export function PresentStage({
 
   const clock = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`
 
-  /**
-   * Keyboard, owned while presenting. Capture phase and stopped here: an
-   * Escape left to bubble would also close the dialog the deck opened from.
-   */
+  // Capture phase, stopped here: a bubbling Escape would also close the host dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const keys = ['Escape', 'ArrowRight', 'ArrowLeft', ' ', 'n', 'N']
@@ -1694,10 +1394,7 @@ export function PresentStage({
     return () => document.removeEventListener('keydown', onKey, true)
   }, [index, count, onIndex, onClose])
 
-  /* Portalled to the body rather than left where the panel sits. The deck can
-     be opened inside a dialog, and an animated ancestor makes `fixed` resolve
-     against *that box* — which turns full-screen rehearsal into a slide shown
-     in a 500px window. */
+  // Portalled to body: an animated ancestor would make `fixed` resolve against itself.
   return createPortal(
     <div ref={stageRef} role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
@@ -1751,8 +1448,6 @@ export function PresentStage({
         </button>
       </div>
       <div className="flex min-h-0 flex-1">
-        {/* 어디까지 왔고 다음이 무엇인지. 스무 장짜리 덱을 한 장씩 넘겨
-            찾는 것은 방에 사람이 앉아 있을 때 할 일이 아니다. */}
         {outline && showList && (
           <nav
             aria-label={t('장 목록')}
@@ -1808,11 +1503,7 @@ export function PresentStage({
   )
 }
 
-/**
- * Full-screen rehearsal. A deck is checked by walking it at the size it will
- * be shown at — text too small to read from the back of the room is legible
- * in a 400px thumbnail.
- */
+/** Full-screen presentation of a JSON deck. */
 function PresentMode({
   deck,
   index,
@@ -1825,30 +1516,17 @@ function PresentMode({
   onClose: () => void
 }) {
   const t = useT()
-  // Measured, not chosen. `SlideView` sizes every rule, every gap and every
-  // type size as `n * scale`, so the drawing only looks like itself when
-  // `scale` is the stage's own width over 400 — the relationship
-  // `useStageScale` exists to keep. This screen had a hard 2.4 instead, tuned
-  // for some window nobody wrote down, and on a 1152px stage the right answer
-  // is 2.88: every word, the accent bar and all the padding came out 17%
-  // small. Presenting a deck and reading it in the panel showed two different
-  // designs of the same slide, which also meant rehearsing at a size the room
-  // would never see.
   const stage = useStageScale()
   const slide = deck.slides[index]
   if (!slide) return null
   return (
-    // `outline` is what draws the slide list in the presentation header. The
-    // HTML artifact panel has always passed it and this one never did, so the
-    // same deck presented from here had no way to jump to a slide — the one
-    // thing a presenter reaches for when a question comes from the floor.
     <PresentStage
       title={deck.title}
       index={index}
       count={deck.slides.length}
       onIndex={onIndex}
       onClose={onClose}
-            outline={deck.slides.map((s) => s.title)}
+      outline={deck.slides.map((s) => s.title)}
       notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
     >
       <div
@@ -1869,14 +1547,7 @@ function PresentMode({
   )
 }
 
-/**
- * Stage width → `scale`. `SlideView` sizes everything off it, so a fixed value
- * tuned for a 460px desktop stage overflows a 210px phone one and the preview
- * stops matching the `.pptx`.
- */
-/** The widest a 16:9 box can be inside the measured element without
- *  overflowing its height — so a slide shrinks to fit the row it sits in
- *  rather than taking the full width and pushing the notes off screen. */
+/** Widest 16:9 box that fits the measured element's width and height. */
 function useFitWidth() {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState<number | null>(null)
@@ -1893,6 +1564,7 @@ function useFitWidth() {
   return { ref, width }
 }
 
+/** Stage width over 400 units, as `SlideView`'s `scale`. */
 function useStageScale(minScale = 0.45) {
   const ref = useRef<HTMLDivElement>(null)
   const [scale, setScale] = useState(1.15)
@@ -1909,12 +1581,8 @@ function useStageScale(minScale = 0.45) {
   return { ref, scale }
 }
 
-/** A rail preview drawn by the exact same renderer and width rule as the stage. */
+/** Rail preview drawn by the same renderer as the stage. */
 function SlideThumbnail({ deck, slide, index, writing }: { deck: DeckArtifact; slide: Slide; index: number; writing: boolean }) {
-  // A rail card is about 116px wide. The stage's 45% minimum was intended to
-  // keep the main editor usable, but here it enlarged a 29% preview and then
-  // clipped its right and bottom edges. Let the shared renderer reach the
-  // thumbnail's real scale instead.
   const stage = useStageScale(0.2)
   return (
     <div ref={stage.ref} className="size-full">
@@ -1939,29 +1607,14 @@ export function DeckPanel({
 }: {
   deck: DeckArtifact
   onClose?: () => void
-  /** Fires when the reader asks for room. A deck is checked by looking at it,
-   *  and the stage beside a transcript is about 330px wide. */
+  /** Reports the width the deck wants; the host decides whether there is room. */
   onModeChange?: (mode: PanelMode) => void
   onDirtyChange?: (dirty: boolean) => void
 }) {
   const t = useT()
   const width = usePanelWidth(onModeChange)
 
-  /**
-   * One finding from the checks, fixed.
-   *
-   * Rewrites the slide it was found on, through the endpoint that mirrors the
-   * report's — so the deck changes, a snapshot is kept, and a rewrite that
-   * reads worse is one press of 되돌리기 from undone.
-   *
-   * The deck could not do this until now. `deck.rewrite_slide` existed and was
-   * reachable only by asking in the conversation, which is a request rather
-   * than an action: the deck does not change, and the reader has to watch the
-   * transcript and work out for themselves whether anything happened.
-   *
-   * A finding about the deck as a whole names no slide and has nowhere to go,
-   * so it keeps the button hidden rather than pretending.
-   */
+  // Rewrites the slide a finding names; a deck-wide finding has nowhere to go.
   const fixFinding = async (finding: LintFinding) => {
     const slide = slideFor(deck.slides, finding.where)
     if (!slide) throw new Error(t('어느 장을 고쳐야 하는지 알 수 없습니다.'))
@@ -1971,31 +1624,16 @@ export function DeckPanel({
       t('검사에서 지적된 문제를 고쳐 주세요: {message}').replace('{message}', finding.message),
     )
     const data = (row.data ?? {}) as { slides?: Slide[] }
-    // Written onto the object this panel holds as well as into the store — the
-    // artifacts screen opens its modal on a copy it took when the card was
-    // clicked, so a store refresh alone leaves the new slide invisible exactly
-    // where it was asked for.
+    // Written onto the prop too: the artifacts screen renders a copy, not the store row.
     if (data.slides) deck.slides = data.slides
     deck.version = row.version
   }
-  /**
-   * Every finding at once, one rewrite per slide.
-   *
-   * Not a loop over `fixFinding`: two findings about one slide would be two
-   * rewrites of it, and the second lands on what the first produced — asked to
-   * fix a line that is no longer there, it writes the first fix back out.
-   * Grouped, a slide is rewritten once and told everything found in it.
-   *
-   * One after another, not together: the slides share a deck and a version, so
-   * two rewrites in flight means the second saves over the first.
-   */
+  // One rewrite per slide (see `byWhere`), sequential because they share a version.
   const fixAllFindings = async (findings: LintFinding[]) => {
     const failed: string[] = []
     for (const [where, group] of byWhere(findings)) {
       const slide = where ? slideFor(deck.slides, where) : undefined
       if (!slide) {
-        // A deck has no conversation path of its own for a finding about the
-        // whole thing, so it is named rather than silently dropped.
         failed.push(where || t('덱 전체'))
         continue
       }
@@ -2029,12 +1667,11 @@ export function DeckPanel({
   const [selected, setSelected] = useState(0)
   const [ribbon, setRibbon] = useState<'home' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
   const [editing, setEditing] = useState(false)
-  //: 리본의 편집 칸. 없으면 도구는 제자리에 그려진다.
+  // Ribbon slot for the edit tools; without it they render in place.
   const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
   const [discardAction, setDiscardAction] = useState<'cancel' | 'close' | null>(null)
   const [draft, setDraft] = useState('')
-  // Structured fields such as chart series cannot make a safe round trip
-  // through the line-based text box. This is the live slide shown on stage.
+  // The live slide on stage; structured fields do not round-trip through the text box.
   const [slideDraft, setSlideDraft] = useState<Slide | null>(null)
   const [editHistory, setEditHistory] = useState<Slide[]>([])
   const [editFuture, setEditFuture] = useState<Slide[]>([])
@@ -2056,26 +1693,10 @@ export function DeckPanel({
   const [reviewDraft, setReviewDraft] = useState('')
   const [reviewComments, setReviewComments] = useState(deck.reviewComments ?? [])
   const [reviewSaving, setReviewSaving] = useState(false)
-  //: The rail shows the deck either as pictures or as an outline. Both answer
-  //: different questions — "which slide was the chart on" and "does the
-  //: argument run in the right order".
   const [rail, setRail] = useState<'thumbs' | 'outline'>('thumbs')
-  //: In a panel narrower than the deck asks for, the rail becomes a drawer,
-  //: the same way the report's contents do. Beside the stage it is 132px of a
-  //: 390px panel, which leaves the slide 119px — a picture of a slide rather
-  //: than the slide.
-  /**
-   * 장 목록을 접었는가.
-   *
-   * The two widths start opposite ways round: on a narrow panel the list is a
-   * drawer that starts closed, on a wide one it is a rail that starts open. One
-   * flag for "the person has pressed the toggle" keeps both honest — what the
-   * screen shows, and what `aria-pressed` says, are both read off `railShown`
-   * below rather than off the flag.
-   */
+  // The rail is a drawer (closed by default) on a narrow panel and a column
+  // (open by default) otherwise; the toggle flips whichever default applies.
   const [railToggled, setRailToggled] = useState(false)
-  //: 좁으면 서랍이라 닫힌 채로 시작하고, 넓으면 옆줄이라 펼친 채로 시작한다.
-  //: 누르면 어느 쪽이든 반대가 된다.
   const railShown = panel.narrow ? railToggled : !railToggled
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set())
@@ -2109,7 +1730,7 @@ export function DeckPanel({
       setChecking(false)
     }
   }
-  // Slides arrive one at a time, so the selection can point past the end.
+  // Slides stream in, so the selection can point past the end.
   const index = Math.min(selected, Math.max(deck.slides.length - 1, 0))
   const slide = deck.slides[index] as Slide | undefined
   const weakSlides = deck.slides
@@ -2120,18 +1741,7 @@ export function DeckPanel({
     .filter((i) => i >= 0)
   const unresolvedReviews = reviewComments.filter((comment) => comment.status === 'open')
   const exportWarningCount = weakSlides.length + overflowRisks.length + unresolvedReviews.length
-  // Still being written, which is the only thing these controls need to wait
-  // for: export would 404 on a document the server does not have yet, and an
-  // edit would be overwritten by the next slide event of a run still going.
-  //
-  // This asked whether every slide had content, which answers the same
-  // question almost always and answers it wrong in the one case that matters.
-  // A slide whose model call came back unusable stays empty — the writer falls
-  // back to bullets and salvages what it can, and sometimes there is nothing
-  // to salvage — and the deck was then locked for good: no export, no
-  // 발표, and no 텍스트 수정, which is the control that exists to fix exactly
-  // this. The deck had finished writing; only its result was disappointing,
-  // and a disappointing result is the reader's to repair.
+  // Export and editing wait only for the run to finish, not for every slide to have content.
   const writing = deck.draft === true || deck.slides.length === 0
 
   useEffect(() => {
@@ -2202,8 +1812,7 @@ export function DeckPanel({
     setEditFuture([])
   }, [editing, slideDraft])
 
-  //: The deck as it stood when this edit began, for the same comparison the
-  //: report panel makes.
+  // Deck as it stood when editing began; saves compare content, not version.
   const baseline = useRef('')
   const formattingRange = useRef<Range | null>(null)
 
@@ -2267,16 +1876,10 @@ export function DeckPanel({
     return () => document.removeEventListener('selectionchange', changed)
   }, [editing])
 
-  /**
-   * Refetch before editing. The panel opens ahead of the store's refresh, and
-   * an editor opened in that gap would baseline on older text and save into a
-   * phantom conflict.
-   */
+  // Refetches first so the baseline is current.
   const startEditing = async () => {
     if (!slide) return
     setError(null)
-    // Editing has its own focused command surface. Returning to Home prevents
-    // an empty Insert/Review panel from lingering above it.
     setRibbon('home')
     const latest = await artifactsApi.get(deck.id).catch(() => null)
     const onServer = (latest?.data as { slides?: Slide[] } | null)?.slides
@@ -2319,7 +1922,7 @@ export function DeckPanel({
     setNotes(next.notes ?? '')
   }
 
-  /** Rebuild only the selected slide, preserving the rest of the deck. */
+  /** Rewrites only the selected slide. */
   const regenerateSlide = async () => {
     if (!slide || rewritingSlide) return
     setRewritingSlide(true)
@@ -2353,50 +1956,27 @@ export function DeckPanel({
     const [title, ...rest] = lines
     const table = rest.map(toCells).filter(Boolean) as string[][]
     const words = rest.filter((line) => toCells(line) === null)
-    /*
-     * The pairs of a `bands`, `tiles` or `timeline` slide, read out of the same
-     * `|` lines a table row uses — the syntax `toLines` sent them out in.
-     *
-     * Read before `table` is taken for a table, or the three shapes would be
-     * saved as one. Anything past the second cell is rejoined rather than
-     * dropped, so a pair whose text contains a pipe survives the round trip
-     * unchanged instead of losing its tail.
-     */
+    // Pairs read from the same `|` lines as table rows; extra cells are rejoined.
     const sourceSlide = slideDraft ?? slide
     const paired = pairedLayout(sourceSlide)
     const pairs: [string, string][] = paired
       ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')])
       : []
 
-    // Layout follows the shape that arrived: on a quote slide one line is a
-    // quotation and several are bullets, since quote renders only the first.
-    //
-    // The rows a person typed replace the rows that were there, and typing none
-    // on a slide that had a table removes it. Both are the same rule — what is
-    // in the box is what the slide becomes — and it is the rule that was
-    // missing: the table used to survive an edit that never mentioned it and
-    // then hide the bullets that did get typed.
+    // What is in the box is what the slide becomes; typing no rows removes the table.
     const shaped: Slide =
       table.length > 0 && !paired
-        ? // `metrics` is a table of exactly two columns whose left side is a
-          // figure. Kept as metrics only if that is what the slide already was;
-          // otherwise two columns are two columns.
+        ? // Two-column rows stay metrics only if the slide already was.
           sourceSlide.metrics?.length && table.every((row) => row.length === 2)
           ? { ...sourceSlide, metrics: table.map(([f, l]) => [f, l] as [string, string]), rows: undefined }
           : { ...sourceSlide, layout: 'table', rows: table, metrics: undefined }
-        : // Emptying the box of its pairs empties the slide of them, the same
-          // rule the table follows — and the array has to go with them or the
-          // slide still counts as having content nothing draws.
-          { ...sourceSlide, rows: undefined, metrics: undefined, ...(paired ? pairFields(null) : null) }
+        : { ...sourceSlide, rows: undefined, metrics: undefined, ...(paired ? pairFields(null) : null) }
 
     const edited: Slide =
       sourceSlide.layout === 'chart' && sourceSlide.chart
         ? { ...sourceSlide, title, notes, body: undefined, bullets: undefined }
       : paired && pairs.length > 0
-        ? // The layout is kept. It used to be forced to `bullets` here, so a
-          // typo fixed in the title of a bands slide saved four bands as
-          // nothing and PATCHed that over the deck.
-          {
+        ? {
             ...sourceSlide,
             ...pairFields(paired, pairs),
             title,
@@ -2408,11 +1988,7 @@ export function DeckPanel({
           }
         : sourceSlide.layout === 'quote' && words.length <= 1
           ? { ...shaped, title, body: words[0] ?? '', bullets: undefined, notes }
-          : // A cover and a 장 divider are a title over a line of prose. `section`
-            // is here rather than falling through because the fall-through
-            // rewrote it as `bullets`, and a divider that is no longer a divider
-            // takes the deck's numbering with it — `number` is on the slide and
-            // nowhere else.
+          : // `section` must keep its layout: `number` lives on the slide.
             sourceSlide.layout === 'title' || sourceSlide.layout === 'section'
             ? { ...shaped, title, body: words.join(' ') || undefined, notes }
             : table.length > 0
@@ -2425,9 +2001,6 @@ export function DeckPanel({
                 }
               : {
                   ...shaped,
-                  // A two-column slide is still written as ordinary lines.
-                  // Saving those lines used to silently turn it back into a
-                  // bullet slide, undoing a layout choice made moments before.
                   layout: sourceSlide.layout === 'two-column' ? 'two-column' : 'bullets',
                   title,
                   bullets: words,
@@ -2440,10 +2013,7 @@ export function DeckPanel({
     setSaving(true)
     setError(null)
     try {
-      // Same check the report panel makes, and for the same reason: this PATCH
-      // carries every slide, so saving over somebody else's edit throws their
-      // work away silently. Compared by content — a version number from a
-      // list fetched minutes ago says nothing about who edited what.
+      // Conflict check by content, not version (the panel's version may be stale).
       const latest = await artifactsApi.get(deck.id).catch(() => null)
       const latestData = latest?.data as Partial<DeckArtifact> | null
       const onServer = latestData?.slides
@@ -2455,18 +2025,14 @@ export function DeckPanel({
         )
         return
       }
-      // PATCHing `data` as one deck is what snapshots the previous revision
-      // server-side, which is the way back from a bad edit.
       const row = await artifactsApi.update(deck.id, {
         data: { ...latestData, kind: 'deck', theme: deck.theme, slides, ...(savedDesign ? { design: savedDesign } : {}) },
         summary: t('{n}장 편집').replace('{n}', String(index + 1)),
-        // The version the check above read. See ReportPanel for why.
+        // The version just read, not the panel's possibly stale copy.
         expectedVersion: latest?.version ?? deck.version,
       })
       deck.slides = slides
       if (savedDesign) deck.design = savedDesign
-      // Kept in step with the server, or the next save on this panel sends a
-      // version that is one behind and is refused as somebody else's edit.
       deck.version = row.version
       baseline.current = JSON.stringify(slides)
       setSlideDraft(null)
@@ -2516,19 +2082,7 @@ export function DeckPanel({
     }
   }
 
-  /**
-   * Adding, removing and reordering slides.
-   *
-   * A deck arrives with the shape the model chose and there was no way to
-   * change it: not one control on either surface added a slide, removed one, or
-   * moved one. Everything a person could do to the structure of a document they
-   * had to do by asking for the whole thing again, which throws away every edit
-   * they had made to the slides they were keeping.
-   *
-   * Saved through the same door `save` uses — the whole deck as one PATCH,
-   * checked against the server first — so a structural edit is snapshotted and
-   * one click from undone like any other.
-   */
+  // Structural edits: the whole deck as one PATCH, checked against the server first.
   const restructure = async (next: Slide[], summary: string, land: number) => {
     if (savingLock.current) return
     savingLock.current = true
@@ -2539,9 +2093,7 @@ export function DeckPanel({
       const latestData = latest?.data as Partial<DeckArtifact> | null
       const onServer = latestData?.slides
       const savedDesign = latestData?.design ?? deck.design
-      // 구조 편집은 텍스트 편집기를 먼저 열 필요가 없다. 그 전에는 baseline
-      // 이 비어 있으므로 패널이 들고 있는 현재 덱을 기준으로 삼는다. 빈 문자열과
-      // 서버 덱을 비교하면 첫 장 추가·이동·삭제가 언제나 충돌로 거절됐다.
+      // `baseline` is empty until the editor has opened; fall back to the panel's deck.
       const expected = baseline.current || JSON.stringify(deck.slides)
       if (onServer && JSON.stringify(onServer) !== expected) {
         setError(
@@ -2560,9 +2112,7 @@ export function DeckPanel({
       baseline.current = JSON.stringify(next)
       setEditing(false)
       setSlideDraft(null)
-      // Follow the slide, not the number. After a move the thing somebody was
-      // looking at is somewhere else, and a panel that stayed on the index
-      // would show them a different slide as though nothing had happened.
+      // Follow the slide, not the index.
       setSelected(Math.max(0, Math.min(land, next.length - 1)))
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2717,7 +2267,7 @@ export function DeckPanel({
       ...structuredClone(slide),
       id: `sl${Date.now().toString(36)}`,
       title: t('{name} 사본').replace('{name}', slide.title || t('제목 없음')),
-      // 판정은 원본 문장과 검색 시점에 묶여 있으므로 새 장에서는 다시 한다.
+      // Verdicts are tied to the original's sentences; the copy starts unchecked.
       factCheck: undefined,
     }
     const next = [...deck.slides.slice(0, index + 1), copy, ...deck.slides.slice(index + 1)]
@@ -2730,7 +2280,7 @@ export function DeckPanel({
     void restructure(next, t('{n}장 레이아웃 변경').replace('{n}', String(index + 1)), index)
   }
 
-  /** 크게 / 보통 / 작게, on this slide only. */
+  /** Text scale for this slide only. */
   const setTextScale = (value: number) => {
     const next = deck.slides.map((row, i) =>
       i === index ? { ...row, textScale: value === 1 ? undefined : value } : row,
@@ -2739,9 +2289,6 @@ export function DeckPanel({
   }
 
   const removeSlide = () => {
-    // The last one is not removable: a deck of no slides has nothing to open,
-    // nothing to present and nothing to export, and the way to get rid of it is
-    // to delete the deck.
     if (deck.slides.length <= 1) {
       setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 결과물 목록에서 지우세요.'))
       return
@@ -2754,8 +2301,6 @@ export function DeckPanel({
     setSelected(Math.max(0, Math.min(i, deck.slides.length - 1)))
     setEditing(false)
     setSlideDraft(null)
-    // Picking one is the end of the errand: what you wanted to see is the
-    // stage the drawer is covering.
     setRailToggled(false)
   }
 
@@ -2843,10 +2388,7 @@ export function DeckPanel({
   const editedDeckSnapshot = slideDraft
     ? JSON.stringify(deck.slides.map((candidate, at) => at === index ? { ...slideDraft, notes } : candidate))
     : baseline.current
-  // The bulk text box is intentionally parsed only when saving, so its value
-  // can differ from `slideDraft` while the stage still shows the last
-  // structured shape. That difference is nevertheless an unsaved edit: close,
-  // restore and Escape must protect it just like a direct canvas edit.
+  // The text box is parsed only on save, so it can differ from `slideDraft`; that counts as unsaved too.
   const textDraftChanged = Boolean(slideDraft && draft !== toLines(slideDraft))
   const hasUnsavedEdit = editing && (textDraftChanged || editedDeckSnapshot !== baseline.current)
   useEffect(() => {
@@ -2868,14 +2410,7 @@ export function DeckPanel({
     else { setEditing(false); setSlideDraft(null) }
   }
 
-  /**
-   * 편집 도구는 리본 안으로 들어간다.
-   *
-   * 보고서와 슬라이드의 메뉴가 서로 달랐다. Editing a slide added a second
-   * sticky bar under a ribbon whose 편집 tab was empty — the same fourth-row
-   * stacking the report had, and the reason the two panels did not look like
-   * one product. The tab that says 편집 now holds the editing tools.
-   */
+  // Edit tools, portalled into the ribbon slot when there is one.
   const editBar = !slide ? null : (
             <div
               aria-label={t('슬라이드 편집 도구')}
@@ -3078,9 +2613,6 @@ export function DeckPanel({
         if (hasUnsavedEdit) void save()
       }}
     >
-      {/* 접히는 머리말. 390px 에서는 이 줄이 화면보다 넓고, flex 는 그럴 때
-          자식을 줄여서 "내보내기" 를 한 자씩 네 줄로 세운다. 제목은 줄어들되
-          버튼은 줄어들지 않는 것이 옳은 순서다. */}
       <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
           <Presentation size={15} className="shrink-0 text-accent" />
@@ -3102,9 +2634,7 @@ export function DeckPanel({
         <ArtifactRibbon
           label={t('슬라이드 메뉴')}
           tabs={(editing
-            // 편집 중에도 검토는 남긴다. 저장 시점이 그 안에 있고, 되돌리고
-            // 싶어지는 때는 대개 고치고 있는 중이다 — 고치던 것을 저장하거나
-            // 버려야만 되돌릴 곳에 닿는다면 그 길은 없는 것과 같다.
+            // Review stays while editing: version history lives there.
             ? [
                 { id: 'home', label: t('편집') },
                 { id: 'review', label: t('검토') },
@@ -3118,10 +2648,6 @@ export function DeckPanel({
           active={ribbon}
           onChange={setRibbon}
         >
-        {/* 장수 배지가 여기 있었다. 누를 수 없는 숫자였고, 바로 옆 목록이
-            여덟 장을 그려 놓고 「1/8」 이라고 적어 두는 자리다 — 리본은
-            할 일을 두는 곳이지 이미 보이는 것을 다시 적는 곳이 아니다. */}
-        {/* 장마다 눌러 보지 않아도 확인이 필요한 곳이 몇 군데인지 보이게 한다 */}
         {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
         {weakSlides.length > 0 && (
           <Button
@@ -3145,11 +2671,6 @@ export function DeckPanel({
           </Button>
         )}
         </RibbonGroup>}
-        {/* 셋뿐인 선택은 메뉴 뒤에 두지 않는다.
-            드롭다운은 고른 것 하나만 보이고 나머지는 눌러 봐야 안다 — 세
-            가지를 나란히 세우면 무엇을 고를 수 있는지가 곧 화면이고, 지금
-            어느 것인지도 같은 자리에서 읽힌다. 색은 여섯이고 이름보다 색이
-            빠르니 그대로 메뉴에 둔다. */}
         {ribbon === 'home' && (editing || bulkMode) && (
           <RibbonGroup label={t('슬라이드 편집')}>
             <div ref={setEditToolbarSlot} className="flex items-center" />
@@ -3222,13 +2743,6 @@ export function DeckPanel({
           <MessageSquare size={13} />
           {t('검토')} {reviewComments.filter((comment) => comment.status === 'open').length}
         </Button></RibbonGroup>}
-        {/* Only where there is a drawer to open: with the rail standing beside
-            the stage this button opens what is already on screen. */}
-        {/* 보고서의 보기 탭이 「목차」 하나로 서 있는 자리, 그 짝.
-            좁을 때만 세웠더니 넓은 화면에서는 보기 탭을 눌러도 아무것도 없는
-            탭이었다 — 그 자리를 채우고 있던 것은 장수 배지 하나였고, 그것은
-            누를 수 없는 숫자였다. 목록을 접었다 펴는 것은 넓은 화면에서도
-            할 일이다: 한 장을 크게 볼 때 옆줄은 자리를 차지한다. */}
         {ribbon === 'view' && <RibbonGroup label={t('탐색')}>
           <Button
             size="sm"
@@ -3241,7 +2755,6 @@ export function DeckPanel({
             {t('장 목록')} {deck.slides.length ? index + 1 : 0}/{deck.slides.length}
           </Button>
         </RibbonGroup>}
-        {/* 발표 모드. 덱은 방에서 보이는 크기로 한 번 넘겨 봐야 끝난다 */}
         {ribbon === 'show' && !editing && <RibbonGroup label={t('재생')}><Button size="sm" disabled={writing} onClick={() => setPresenting(true)}>
           <Play size={13} />
           {t('발표')}
@@ -3290,16 +2803,11 @@ export function DeckPanel({
             {t('텍스트 (노트 포함)')}
           </MenuItem>
         </Dropdown></RibbonGroup>}
-        {/* 저장 시점. 한 장을 고쳐 놓고 원래가 나았다는 것은 고친 뒤에야
-            알게 되고, 그때 되돌릴 곳이 이 줄 말고는 없다. */}
-        {/* 편집 중에도 선다. 되돌리고 싶어지는 때는 대개 고치고 있는 중이고,
-            `VersionHistory` 는 저장하지 않은 편집이 있으면 그것부터 말한다. */}
         {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
           artifact={deck}
           hasUnsavedChanges={hasUnsavedEdit}
           currentData={deck}
-          // 되돌린 덱의 몇째 장인지는 편집기가 열릴 때 잡아 둔 것과 다르다.
-          // 열어 둔 초안을 그대로 저장하면 방금 되돌린 장을 덮어쓴다.
+          // An open editor still holds the pre-restore slide; drop it.
           onRestored={() => {
             setEditing(false)
             setSlideDraft(null)
@@ -3361,10 +2869,7 @@ export function DeckPanel({
             onClick={() => setRailToggled(false)}
           />
         )}
-        {/* ── 장 목록 레일 ───────────────────────────────────────────────
-            Slides are ordered argument, and the order is the thing under
-            revision for as long as the deck exists. A rail keeps the whole
-            sequence beside the slide being worked on rather than below it. */}
+        {/* Slide rail. */}
         <nav
           className={cn(
             'w-[132px] shrink-0 flex-col border-r border-line bg-sidebar/40',
@@ -3472,24 +2977,9 @@ export function DeckPanel({
           </div>
         </nav>
 
-        {/* ── 무대 ─────────────────────────────────────────────────────── */}
-        {/* The slide takes the room, the notes take the rest.
-            Both used to sit in one band capped at `max-w-lg` — 32rem — so on a
-            940px panel the slide was drawn a third of the width it had and
-            everything below the notes was empty. That cap made sense when this
-            lived beside a transcript in a 330px column; it stopped making sense
-            the moment the panel could be widened, and nothing followed.
-            A column instead: the slide keeps its 16:9 across the full width,
-            and the notes are their own band under a rule, growing into whatever
-            height is left rather than trailing the slide as a caption. */}
+        {/* Stage (3/4 of the height) over the notes band (1/4); the slide fits 16:9 within its row. */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {editTools}
-          {/* 패널을 넓히면 슬라이드가 가로를 다 차지하며 키를 키웠고, 발표
-              노트는 화면 아래로 밀려 스크롤해야 보였다. 이제 슬라이드 줄은
-              높이의 3/4 를, 노트 띠는 1/4 을 나눠 갖고, 슬라이드는 그 줄의
-              폭과 높이 중 먼저 닿는 쪽에 맞춰 16:9 로 줄어든다 — 슬라이드와
-              노트가 한 화면에 들어온다. 편집 폼이 길어 넘칠 때만 세로로
-              흐른다. */}
           <div className="flex min-h-[45%] flex-[3] basis-0 items-center gap-2 p-4">
               <button
                 onClick={() => go(index - 1)}
@@ -3514,9 +3004,6 @@ export function DeckPanel({
                     brand={deck.design ?? undefined}
                     index={index}
                     total={deck.slides.length}
-                    /* 텍스트 수정을 누른 동안에는 슬라이드가 곧 편집기다.
-                       고친 것은 아래 상자와 같은 초안으로 흘러가므로 저장은
-                       한 곳에서만 일어난다. */
                     editable={editing}
                     selectedElement={selectedElement}
                     onSelectElement={setSelectedElement}
@@ -3528,10 +3015,7 @@ export function DeckPanel({
                   />
                 ) : (
                   <div className="grid size-full place-items-center bg-white text-base text-[#6b6b6b]">
-                    {/* 흰 종이 위의 회색. 슬라이드는 테마를 따르지 않으므로
-                        색이 값이다 — #999 는 흰 바탕에서 2.85:1 이라 WCAG 의
-                        4.5:1 에 못 미쳤다. #6b6b6b 는 5.3:1 이면서 여전히
-                        물러나 있다. */}
+                    {/* Literal colour: slides ignore the theme. #6b6b6b on white is 5.3:1. */}
                     {t('구성을 잡는 중…')}
                   </div>
                 )}
@@ -3789,8 +3273,6 @@ export function DeckPanel({
                     )}
                   </div>
                 ) : (
-                  /* The band owns the rest of the panel, so the note scrolls
-                     inside it rather than pushing the slide off the top. */
                   <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto">
                     <p className="text-base text-muted">
                       {slide.notes || <span className="text-faint">{t('노트 없음')}</span>}

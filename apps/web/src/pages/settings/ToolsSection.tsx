@@ -4,16 +4,6 @@ import { Badge, Button, Card, Field, Input } from '@/components/ui'
 import { adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/**
- * Feature integration — one backend address wires up all six features.
- *
- * The backend splits its features by path behind a single gateway port, so in
- * principle there is one field to fill in here; the per-feature fields are for
- * the case where one of them lives somewhere else. A blank field is derived
- * from the backend address, and a badge says which of the two a value came
- * from.
- */
-
 type Feature = SystemSettings['tools']['features'][number]
 type ProbeResult = { ok: boolean; detail: string }
 
@@ -45,9 +35,7 @@ export function ToolsSection({
   const [busy, setBusy] = useState(false)
   const [probes, setProbes] = useState<Partial<Record<Feature['key'], ProbeResult>>>({})
 
-  // After saving, the form is reconciled with what the server returned. A
-  // derived value has to leave its field empty, or "inherited" and "typed in
-  // by hand" look the same on screen.
+  // Derived values leave their field empty so they read as inherited, not typed.
   useEffect(() => {
     if (!settings) return
     setBackendUrl(settings.tools.backendBaseUrl)

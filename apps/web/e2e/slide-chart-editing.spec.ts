@@ -53,7 +53,7 @@ test('차트의 축·계열·수치를 고치면 차트 레이아웃과 데이�
   expect(stored.layout).toBe('chart')
   expect(stored.chart).toEqual({ kind: 'line', unit: '%', categories: ['상반기', '하반기'], series: [{ name: '달성률', values: [72, 91] }] })
 
-  // The same deck, now exercising the grid editor rather than pipe syntax.
+  // Grid editor rather than pipe syntax.
   await page.evaluate(async ([admin, artifactId]) => {
     const login = await fetch('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: admin.email, password: admin.password }) })
     const auth = await login.json()

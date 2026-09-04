@@ -1,5 +1,4 @@
-# KloudChat — one entry point for the commands CI runs, so that "green locally"
-# and "green in CI" mean the same thing.
+# KloudChat — the commands CI runs, so "green locally" and "green in CI" match.
 #
 #   make help     list targets
 #   make check    everything CI checks, in the order CI checks it
@@ -24,7 +23,7 @@ help: ## List available targets
 up: ## Start the published images (web :5173, api :8100, db :5433)
 	$(COMPOSE) up -d
 
-build: ## Start with both images built from this checkout
+build: ## Start with every image built from this checkout
 	$(BUILD) up -d --build
 
 dev: ## Build, plus the Vite overlay — web source edits reload live

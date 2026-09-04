@@ -1,12 +1,4 @@
-"""What an agent's own settings reach.
-
-An agent screen has always been able to name a model and drag a temperature,
-and both were stored the moment they were set. Whether either one arrived at the
-upstream call is a separate question, and for a long time the answer to the
-second was no: `temperature` was a column, a slider and a badge with nothing
-downstream of it. These pin the wiring so it cannot quietly come undone again —
-one turn's worth of settings, all the way to the request body.
-"""
+"""An agent's model and temperature reach the upstream request body on every hop."""
 
 from __future__ import annotations
 
@@ -92,9 +84,7 @@ async def test_the_agents_temperature_is_sent_with_the_turn(monkeypatch) -> None
 
 @pytest.mark.asyncio
 async def test_a_turn_with_no_agent_leaves_the_upstream_default_alone(monkeypatch) -> None:
-    # Not "0.7 by default": a chat nobody attached an agent to has to keep
-    # sampling exactly as it did before temperature was carried at all, or this
-    # change would have rewritten every ordinary conversation on the instance.
+    # No agent: no temperature in the request.
     seen = _capture(monkeypatch)
 
     _ = [
@@ -112,8 +102,7 @@ async def test_a_turn_with_no_agent_leaves_the_upstream_default_alone(monkeypatc
 
 @pytest.mark.asyncio
 async def test_every_hop_of_one_turn_samples_alike(monkeypatch) -> None:
-    # A tool-calling turn is several requests. If only the first carried the
-    # setting, an answer would change voice at the point a tool ran.
+    # A tool-calling turn is several requests; all carry the setting.
     async def runner(_arguments):
         return ToolResult(content="ok")
 
@@ -153,7 +142,7 @@ async def test_every_hop_of_one_turn_samples_alike(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_the_router_hands_the_agents_temperature_to_the_loop(monkeypatch) -> None:
-    """The other half of the wire: `_run_turn` is where the agent's value enters."""
+    """`_run_turn` passes the agent's temperature to the loop."""
     session = ChatSession(id="session-1", user_id="user-1", model="")
     user = User(
         id="user-1",
@@ -241,10 +230,7 @@ class _AgentDb:
 
 @pytest.mark.asyncio
 async def test_an_agent_that_pins_no_model_overrides_nothing() -> None:
-    # The state the agent screen recommends and every seeded agent is in: an
-    # empty column is "no opinion", and it has to reach the router as one. Come
-    # back as "" and it would be an override of the empty string, which is the
-    # turn asking the proxy for a model by that name.
+    # An empty model column is None, never "".
     user = User(
         id="user-1",
         email="person@example.test",
@@ -257,8 +243,7 @@ async def test_an_agent_that_pins_no_model_overrides_nothing() -> None:
     model, _tools, temperature = await agent_settings(_AgentDb(unpinned), user, session)
 
     assert model is None
-    # The other half of the same row still arrives — an agent with no model is
-    # not an agent with no settings.
+    # The temperature still arrives.
     assert temperature == unpinned.temperature
 
     pinned = Agent(id="agent-1", owner_id=user.id, name="Pinned", model="vendor/model")

@@ -10,10 +10,6 @@ import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
 
-/**
- * How a navigation row says it is the one you are on: a ground that separates
- * from the sidebar, and the full text colour at medium weight.
- */
 const rowBase =
   'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
 
@@ -31,17 +27,11 @@ interface NavRow {
   icon: typeof Bot
 }
 
-/**
- * What the sidebar keeps: the two places conversations are filed. Everything
- * else the workspace holds — agents, skills, connectors, memory, designs — is
- * set up once and then used from the composer, so it lives in the account menu
- * and leaves this column to the list it exists for.
- */
+// The rest of the workspace (agents, skills, connectors, memory, designs) lives in the account menu.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
 ]
-
 
 function SessionRow({
   session,
@@ -67,7 +57,6 @@ function SessionRow({
   const t = useT()
   const meta = kindMeta[session.kind]
   const Icon = meta.icon
-    /** Rename in place; a generated title is not always the right one. */
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(session.title)
 
@@ -121,11 +110,6 @@ function SessionRow({
       <Dropdown
         align="right"
         trigger={({ open }) => (
-          /* Fading in on hover keeps the list quiet, but hover is a thing only a
-             mouse has: on a tablet this was the only way to rename, pin or
-             delete a conversation, and it never appeared. So the row shows it
-             outright where the pointer cannot hover, on keyboard focus, and for
-             as long as its own menu is open. */
           <button
             className={cn(
               'mr-1 grid size-8 shrink-0 place-items-center rounded-control text-faint transition-colors hover:bg-line hover:text-fg',
@@ -153,9 +137,6 @@ function SessionRow({
         >
           {session.pinned ? t('고정 해제') : t('고정')}
         </MenuItem>
-        {/* Filing an existing conversation. A project could only be filled by
-            starting work inside it, so anything begun the ordinary way was
-            stranded outside — which is most of what anybody has. */}
         {projects.length > 0 && (
           <>
             <MenuSeparator />
@@ -206,23 +187,11 @@ export function Sidebar() {
 
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
-    /**
-     * Cap on rendered unpinned conversations. The sidebar is on every screen,
-     * so the full list would be hundreds of buttons reconciled on every store
-     * change. Search still looks at all of them.
-     */
+  // Rendered unpinned rows are capped; search still covers all of them.
   const [shown, setShown] = useState(PAGE)
-  /**
-   * The row waiting for a yes. 삭제 sits one row under 고정 in the same menu
-   * and the server delete is final — there is no soft delete to restore from
-   * — so the question is asked before the request goes, with the title in it.
-   */
+  // Row awaiting delete confirmation.
   const [confirming, setConfirming] = useState<Session | null>(null)
-  /**
-   * The list goes to the end of the history now that 대화 기록 is not a
-   * separate screen, so the last page has to arrive on its own rather than on
-   * a click every forty rows.
-   */
+  // The next page loads when the "more" button scrolls into view.
   const moreRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     const el = moreRef.current
@@ -240,7 +209,6 @@ export function Sidebar() {
   const visible = unpinned.slice(0, shown)
   const hidden = unpinned.length - visible.length
 
-
   const renderRow = (session: Session) => (
     <SessionRow
       key={session.id}
@@ -256,12 +224,7 @@ export function Sidebar() {
     />
   )
 
-  /**
-   * Which row is the screen you are on — a question about the route, not about
-   * store state. `activeSessionId` outlives the conversation screen: nothing
-   * clears it on the way out, so leaving a chat for 홈 left its row lit beside
-   * the newly lit 새로 만들기.
-   */
+  // From the route, not `activeSessionId`, which outlives the conversation screen.
   const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
 
   const rail = useStore((s) => s.sidebar) === 'rail'
@@ -270,7 +233,6 @@ export function Sidebar() {
   const total = user?.monthlyCredits ?? 0
   const pct = total > 0 ? Math.min((used / total) * 100, 100) : 0
 
-  /** Collapsed navigation rail with persistent account access. */
   if (rail) {
     return (
       <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
@@ -307,7 +269,6 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-[268px] shrink-0 flex-col border-r border-line bg-sidebar transition-[width] duration-300">
-      {/* 이름은 이름일 뿐입니다. 시작하는 행동은 바로 아래 새로 만들기가 맡습니다. */}
       <div className="flex items-center gap-2 px-3 py-3">
         <Brand name={brand.name} logo={brand.logo} />
       </div>
@@ -326,10 +287,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 시작하는 곳 하나와 대화가 놓이는 두 곳. 세 줄이 한 덩어리로 읽히도록
-          같은 간격을 씁니다 — 예전에는 스크롤 경계가 사이에 있어 첫 줄과 둘째
-          줄만 16px 떨어져 있었습니다. 워크스페이스가 여덟 줄이던 시절 목록의
-          높이를 지키려고 스크롤 안에 두었던 것이고, 지금은 두 줄입니다. */}
       <nav className="space-y-0.5 px-3 pb-2">
         <NavLink
           to="/"
@@ -355,12 +312,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* 관리자 항목은 계정 메뉴 안에 있다. 대기 건수는 계정 버튼에 붙어 있어,
-          내비게이션을 한 벌 더 두지 않고도 승인 큐가 스스로 드러난다. */}
-
-      {/* `min-h-0`, not a floor: with a minimum height the region refuses to
-          shrink, and on a short window it pushes the credits and the account
-          below the fold — the two things that must not go missing. */}
+      {/* `min-h-0` so a short window shrinks the list, not the footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
@@ -379,9 +331,6 @@ export function Sidebar() {
               <div className="space-y-0.5">{visible.map(renderRow)}</div>
             </section>
           )}
-          {/* Reaching the end of the list is the request for more of it. The
-              count stays as the label, so a reader still knows how much is
-              behind them, and a keyboard can page without a pointer. */}
           {hidden > 0 && (
             <button
               ref={moreRef}
@@ -399,15 +348,10 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* 크레딧 + 계정 — always on screen, at any height. */}
       <div className="shrink-0 border-t border-line p-2">
         <button
           aria-label={t('이번 달 사용량')}
           onClick={() => navigate('/usage')}
-          /* A number with no unit and no consequence. Somebody seeing 크레딧
-             for the first time cannot tell whether 1,812,679 is a lot, what
-             spends it, or what happens at zero — and the answer is one
-             sentence, so there is no reason for it to be a page away. */
           title={t(
             '크레딧은 모델을 쓸 때마다 줄어듭니다. 글은 조금, 그림과 영상은 많이 듭니다. 다 쓰면 다음 달까지 새 요청을 보낼 수 없고, 만든 것은 그대로 남습니다. 눌러서 무엇에 얼마나 썼는지 봅니다.',
           )}

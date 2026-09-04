@@ -419,7 +419,6 @@ test('새 대화에서 Auto는 실모델과 함께 한 번만 생성되고 라�
     '요청 모델: Mock · Premium (external/premium) · 선택 모델: Mock · Economy A (external/economy-a) · 실행 모델: openrouter/economy-a',
   )
   await captureAutoRouting(page, 'simple-request-routed.png')
-  // Routing transparency is independent of the user's hidden usage footer.
   await expect(page.getByText(/3 in.*1 out/)).toHaveCount(0)
   await page.reload()
   await expect(routeBadge).toBeVisible()
@@ -634,9 +633,7 @@ test('관리자 라우팅 설정은 실패를 성공으로 표시하지 않고 �
 
   state.failGovernance = true
   await page.getByRole('button', { name: '라우팅 설정 저장' }).click()
-  // Said as a failure, not shown as the API's own code: `detail` here is a
-  // machine string, and an administrator is a reader too. What has to hold is
-  // that the refusal is visible and the save is not claimed.
+  // The refusal is visible and the save is not claimed.
   await expect(page.getByRole('alert')).toContainText('라우팅 설정을 저장하지 못했습니다.')
   await expect(page.getByText('저장했습니다.')).toHaveCount(0)
 
@@ -687,14 +684,7 @@ test('사라진 모델이 남은 정책도 식별자를 다시 보내지 않고 
     'false',
   )
   expect(sent).toMatchObject({ adaptiveRoutingEnabled: false })
-  // The claim, stated against what it is about rather than against the exact
-  // set of keys the form happens to send. Pinned to `{ adaptiveRoutingEnabled:
-  // false }` alone, this broke the day a sibling toggle was added beside it —
-  // and a sibling toggle is not the failure it exists to catch.
-  //
-  // What must not happen is a model that no longer exists being named back up:
-  // the form is holding two dead identifiers to show them, and sending either
-  // would write them into the policy as though somebody had chosen them.
+  // Dead model ids the form holds for display must not be written back into the policy.
   expect(Object.keys(sent)).not.toContain('adaptiveClassifierModelId')
   expect(Object.keys(sent)).not.toContain('adaptiveEconomyModelIds')
   expect(JSON.stringify(sent), '사라진 모델 식별자가 다시 올라갔다').not.toContain('deleted')

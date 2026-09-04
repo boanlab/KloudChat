@@ -1,15 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signIn, surfaceOn } from './helpers'
 
-/**
- * '취소' has to reach the server.
- *
- * Rewriting the card locally is not cancelling: the clip goes on being made
- * upstream, is charged on delivery, and comes back as 만드는 중 on reload.
- *
- * The job is stubbed rather than generated — a real clip is 12,000 credits and
- * several minutes, and what is under test is the call, not the video.
- */
+/** 취소 on a clip job reaches the server, and a failed cancel leaves the card running. Job stubbed. */
 
 const JOB_ID = 'cafe0000000000000000000000000001'
 
@@ -34,39 +26,26 @@ function jobRow(sessionId: string, over: Record<string, unknown> = {}) {
   }
 }
 
-/** The conversation the card is rendered under, which the stubbed rows have to
- *  carry or the page filters them away. */
+/** The session id the stubbed rows must carry, or the page filters them away. */
 function sessionIdOf(page: Page) {
   return new URL(page.url()).pathname.split('/').pop() ?? ''
 }
 
-/**
- * Puts a running clip on the screen without asking any provider for one. The
- * poll that follows the card is refused rather than answered, so nothing but
- * the store itself decides what the card says next.
- */
+/** Puts a stubbed running clip on screen. Returns false when the av surface is off. */
 async function startStubbedJob(page: Page): Promise<boolean> {
   await page.route('**/api/sessions/*/jobs', async (route) => {
     const parts = new URL(route.request().url()).pathname.split('/')
     const row = jobRow(parts[parts.length - 2])
-    // The poll that follows the card is answered with the same row rather than
-    // refused: refusing it threw inside the turn that creates the session, and
-    // the screen never got as far as the card this test is about.
+    // The poll is answered with the same row.
     await route.fulfill({ json: route.request().method() === 'POST' ? row : [row] })
   })
 
-  // The clip surface, when this workspace has it on. It spends credits per
-  // generation and defaults to off, and the screen for a surface that is off
-  // carries no option chips to press.
   if (!(await surfaceOn(page, 'av'))) return false
   await page.getByRole('button', { name: /^해상도/ }).click()
   await page.getByRole('menuitem', { name: '720p' }).click()
   await page.keyboard.press('Escape')
 
-  // The model is named rather than left to whatever the account last used:
-  // every (model × resolution × sound × length) is priced separately and an
-  // unlisted combination is refused in the composer, so a test about
-  // cancelling would otherwise fail for having nothing to start.
+  // A named model: an unpriced (model × resolution × sound × length) is refused in the composer.
   await page.getByRole('button', { name: /Veo/ }).first().click()
   await page.getByRole('button', { name: /Veo 3\.1 Lite/ }).first().click()
   await expect(page.getByText(/예상 [\d,]+ 크레딧/).first()).toBeVisible({ timeout: 15_000 })
@@ -114,8 +93,7 @@ test('취소가 실패하면 카드는 되던 대로 돌아간다', async ({ pag
 
   await page.getByRole('button', { name: '취소', exact: true }).first().click()
 
-  // The clip is still being made and will still be charged on delivery, so the
-  // card must not sit there claiming it was stopped.
+  // Still being made and still to be charged, so the card must not claim it stopped.
   await expect(page.getByText('작업을 취소하지 못했습니다.')).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('만드는 중').first()).toBeVisible()
   await expect(page.getByText('취소됨')).toHaveCount(0)

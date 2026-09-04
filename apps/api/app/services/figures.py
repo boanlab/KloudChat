@@ -1,26 +1,6 @@
-"""Pictures a document asks for, proposed before it is written.
+"""Proposes and prices document figures at outline time, before the prose is written.
 
-A report of nothing but prose is the complaint this answers. The writers could
-never make a figure — the surfaces that produce a document leave the chat
-pipeline at submit and are handed no tools, the image model is a different
-model on a different endpoint, and nothing joined the two.
-
-Two things decide the shape of this.
-
-**Asked before the writing, not after.** The obvious place is at the end: write
-the document, then offer to illustrate it. It is the wrong place. The prose
-refers to what is beside it — 아래 그림과 같이, 표 1에서 보듯 — so a document
-written expecting figures and then declined reads as broken, and one written
-without them and illustrated afterwards has pictures nobody referred to. The
-figures belong in the outline, where the person is already being asked to
-approve a shape.
-
-**Priced in the question.** A picture costs multiples of what the whole report
-costs to write, and on a per-image model the charge is per picture. An approval
-that does not say how many and how much is not an approval.
-
-Nothing here draws anything. It proposes, prices, and — once somebody has said
-yes — hands each prompt to `imagegen` and the results back to the writer.
+Nothing here draws; approved prompts go to `imagegen`.
 """
 
 from __future__ import annotations
@@ -37,18 +17,10 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Pictures one document may propose. Past this the deck is illustration with
-#: prose between it, and the bill stops being something anybody skims.
 MAX_FIGURES = 4
 
-#: What one picture is assumed to cost, in output tokens, for the estimate
-#: shown on the approval card.
-#:
-#: The models bill a picture as completion tokens and the count varies with
-#: size and detail; measured across the catalogue's image models it lands near
-#: a thousand. The card says 약, and the ledger charges what actually ran —
-#: this number only has to be close enough that nobody is surprised by the
-#: order of magnitude.
+#: Assumed completion tokens per picture, for the approval-card estimate only;
+#: the ledger charges actual usage.
 _TOKENS_PER_IMAGE = 1000
 
 _PROMPT = """다음 문서에 그림을 넣는다면 어디에 무엇을 넣어야 하는지 판정하라.
@@ -83,14 +55,7 @@ diagram of a three-tier architecture, flat vector style, labelled boxes, \
 white background"}}]"""
 
 
-#: For a picture somebody has already decided to put here.
-#:
-#: `_PROMPT` judges whether a document wants pictures at all and is right to
-#: answer "none" most of the time. This is the other question: the person has
-#: opened the picker on one 장 and the only thing left to decide is what to
-#: draw. Answering "nothing" there would be answering a question nobody asked,
-#: so this one always proposes — and says so in the caption, which the person
-#: reads before spending a credit on it.
+#: For the picker on one section: always proposes, unlike `_PROMPT`.
 _ONE_PROMPT = """다음 자리에 넣을 그림 하나를 제안하라.
 
 문서 제목: {title}
@@ -128,8 +93,7 @@ lighting, shallow depth of field", "description": ""}}
 엔진에서 상태를 읽는다."}}"""
 
 
-#: What the picker draws with, per document look. A minimal document wants a
-#: minimal picture; the others take the 서식's own default.
+#: Style chip per document look; looks not listed use the 서식's own default.
 _LOOK_STYLE = {"minimal": "미니멀"}
 _LOOK_NAMES = {
     "editorial": "편집형",
@@ -143,7 +107,7 @@ _LOOK_NAMES = {
 
 
 def _catalogue_lines() -> str:
-    """The image 서식 on offer, one per line, for the suggestion prompt."""
+    """Image 서식 catalogue, one per line, for `_ONE_PROMPT`."""
     from app.services import design_templates
 
     rows = []
@@ -157,36 +121,33 @@ def _catalogue_lines() -> str:
 
 @dataclass(slots=True)
 class Figure:
-    """One proposed picture, before anybody has agreed to pay for it."""
+    """One proposed picture."""
 
     #: Zero-based index into the document's parts.
     section: int
     caption: str
     prompt: str
-    #: The image 서식 chosen for this place, when the suggestion chose one.
     template_id: str = ""
-    #: `flow` / `method` / `concept` when that 서식 draws a mermaid figure.
+    #: `flow` / `method` / `concept` when the 서식 draws a mermaid figure.
     figure: str = ""
-    #: The figure's description, for the diagram path.
+    #: Diagram description, for the mermaid path.
     description: str = ""
-    #: The style chip to draw a picture with.
     style: str = ""
 
 
 @dataclass(slots=True)
 class Proposal:
-    """What was proposed, and what it will cost to say yes."""
+    """Proposed figures and their estimated cost."""
 
     figures: list[Figure] = field(default_factory=list)
-    #: Credits, as shown on the approval card. Approximate on purpose.
+    #: Approximate credits shown on the approval card.
     credits: int = 0
-    #: The image model's display name, so the card names what will draw them.
+    #: The image model's display name.
     model: str = ""
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
 
     def wire(self) -> dict[str, Any]:
-        # Keys the pending row carries straight through to the card, so the
-        # names are the card's rather than this module's.
+        # Key names are the approval card's.
         return {
             "figures": [
                 {"section": f.section, "caption": f.caption, "prompt": f.prompt}
@@ -198,12 +159,7 @@ class Proposal:
 
 
 def estimate(model: dict, count: int) -> int:
-    """Credits for `count` pictures on this model. Never understates.
-
-    Rounded up per picture rather than over the total: somebody reading `약 2`
-    beside two pictures and being charged 3 has been told the wrong thing, and
-    the rounding that produces that is the one worth avoiding.
-    """
+    """Credits for `count` pictures on this model, rounded up per picture."""
     per_out = model.get("creditCost") or 0
     if per_out == 0:
         return 0  # self-hosted
@@ -220,12 +176,7 @@ async def propose(
     image_model: dict | None,
     limit: int = MAX_FIGURES,
 ) -> Proposal:
-    """Where this document wants pictures, if anywhere. Never raises.
-
-    An empty proposal is the common answer and the right one. Most work
-    documents need no figure at all, and a planner that finds one every time is
-    a planner nobody will read the card of.
-    """
+    """Figures for this document's outline; empty is the common answer. Never raises."""
     if not parts or not image_model:
         return Proposal()
 
@@ -283,14 +234,7 @@ async def suggest(
     api_key: str,
     look: str = "",
 ) -> Figure | None:
-    """One picture for one place. `None` on any failure, never raises.
-
-    The picker used to open on an empty box with the 장 title in the
-    placeholder, which asks somebody who wanted a picture to first become the
-    person who can describe one. The suggestion arrives filled in and editable:
-    the decision left is whether to spend the credit, which is the decision
-    that was theirs to make in the first place.
-    """
+    """One picture for one place, pre-filled for the picker. `None` on any failure, never raises."""
     base, _ = await settings_store.litellm_config()
     try:
         async with httpx.AsyncClient(
@@ -334,15 +278,13 @@ async def suggest(
     prompt = str(parsed.get("prompt") or "").strip()
     description = str(parsed.get("description") or "").strip()
     template_id = str(parsed.get("template") or "").strip()
-    # 서식은 카탈로그에 있는 것만. A name the model made up draws nothing.
     from app.services import design_templates
 
     template = design_templates.get(template_id)
     if template is None or template.kind != "image":
         template, template_id = None, ""
     figure = template.figure if template else ""
-    if figure and not description:
-        # A figure with nothing to draw: fall back to a picture of it.
+    if figure and not description:  # nothing to diagram; fall back to a picture
         figure = ""
     if not figure and not prompt:
         return None
@@ -380,8 +322,7 @@ def _parse(text: str, count: int, limit: int) -> list[Figure]:
         prompt = str(item.get("prompt") or "").strip()
         if not (0 <= section < count) or not prompt:
             continue
-        # One picture per part. Two figures in one section is a section that
-        # wanted a diagram, not two.
+        # One picture per part.
         if any(f.section == section for f in out):
             continue
         out.append(
@@ -397,11 +338,7 @@ def _parse(text: str, count: int, limit: int) -> list[Figure]:
 
 
 def note_for(figure: Figure) -> str:
-    """What the writer is told about the picture beside its section.
-
-    Given to the section prompt so the prose can refer to the figure — which is
-    the whole reason this is asked before the writing rather than after it.
-    """
+    """Section-prompt note so the prose can refer to the figure."""
     return (
         f"이 절에는 그림이 한 장 들어갑니다: {figure.caption or '도해'}. "
         "본문에서 그 그림을 한 번 언급하되, 그림이 말하는 것을 글로 다시 "

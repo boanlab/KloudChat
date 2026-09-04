@@ -271,8 +271,7 @@ async def test_patch_auto_validates_current_and_proposed_quality_model(monkeypat
     assert patched.routing_mode is RoutingMode.auto
     assert db.commits == 1
 
-    # SQLAlchemy's String column may hydrate this field as the raw value. An
-    # unrelated patch must still validate the existing Auto quality ceiling.
+    # The String column may hydrate routing_mode as its raw value.
     session.routing_mode = RoutingMode.auto.value
     session.model = "gone"
     with pytest.raises(Exception) as caught:
@@ -319,8 +318,7 @@ def test_economy_candidates_fail_closed_and_keep_admin_order() -> None:
         requires_tools=True,
     )
 
-    # hybrid rides along: the quality model is external, so a candidate that
-    # may fall back outside sends nothing further than the turn already could.
+    # hybrid qualifies: the quality model is already external.
     assert [model["id"] for model in candidates] == ["second", "hybrid", "first", "strict"]
 
 
@@ -706,9 +704,7 @@ async def test_models_catalogue_reports_user_scoped_auto_availability(monkeypatc
         "reason": None,
         "classifierModelId": "classifier",
         "economyModelIds": ["economy"],
-        # The upgrade lane has a switch of its own and it is off, which is
-        # what every installation starts with; the cost lane above is
-        # unaffected either way.
+        # The quality lane has its own switch, off by default.
         "qualityAvailable": False,
         "qualityReason": "disabled",
         "qualityModelIds": [],
@@ -882,11 +878,6 @@ async def test_run_turn_emits_only_full_auto_routes_and_persists_savings(monkeyp
 
 
 # ── the quality lane ────────────────────────────────────────────────────
-#
-# Same classifier, same envelope, opposite half of the answer. What these pin
-# is that the upgrade is as unwilling to act on a guess as the downgrade is,
-# and that it never sends a turn further than the person's own model already
-# does.
 
 
 async def _quality_route(
@@ -904,9 +895,7 @@ async def _quality_route(
     )
     user = User(email="person@example.test", password_hash="hash", name="Person")
     policy = Governance(
-        # The cost lane is deliberately left off: the upgrade lane answers to
-        # its own switch, and a test that turned both on could not tell which
-        # one the turn had been let through by.
+        # Cost lane off so only the quality switch is under test.
         adaptive_routing_enabled=False,
         adaptive_quality_enabled=quality_on,
         adaptive_classifier_model_id=classifier["id"],
@@ -952,7 +941,7 @@ async def test_quality_lane_routes_up_on_confident_high(monkeypatch) -> None:
 
 
 async def test_quality_lane_keeps_the_model_on_a_low_turn(monkeypatch) -> None:
-    """The half of the answer the cost lane acts on is the half this one ignores."""
+    """A low-classified turn stays on the chosen model under the quality lane."""
     stronger = _model("stronger", input_cost=40, output_cost=80)
     selected, route = await _quality_route(
         monkeypatch,
@@ -977,11 +966,7 @@ async def test_quality_lane_will_not_act_on_an_unconfident_high(monkeypatch) -> 
 
 
 async def test_the_quality_lane_is_off_until_it_is_switched_on(monkeypatch) -> None:
-    """Its own switch, not the cost lane's.
-
-    The two are opposite decisions about money. Sharing one flag meant an
-    upgrade path could only be had by turning cost routing on beside it.
-    """
+    """The quality lane is gated by adaptive_quality_enabled, not the cost lane's flag."""
     stronger = _model("stronger", input_cost=40, output_cost=80)
     selected, route = await _quality_route(
         monkeypatch,
@@ -995,7 +980,7 @@ async def test_the_quality_lane_is_off_until_it_is_switched_on(monkeypatch) -> N
 
 
 async def test_quality_lane_never_sends_further_than_the_chosen_model(monkeypatch) -> None:
-    """An upgrade is about capability, never about where the turn travels."""
+    """An upgrade never crosses a data boundary the chosen model stays inside."""
     local = _model("local-quality", boundary="self_hosted", strict=True)
     external = _model("external-stronger", boundary="external")
     selected, route = await _quality_route(
@@ -1010,7 +995,7 @@ async def test_quality_lane_never_sends_further_than_the_chosen_model(monkeypatc
 
 
 async def test_quality_lane_needs_a_candidate_that_keeps_the_tools(monkeypatch) -> None:
-    """Charging more for a turn stripped of its tools would be the wrong trade."""
+    """An upgrade candidate must keep the turn's tools."""
     toolless = _model("stronger-no-tools", input_cost=40, output_cost=80, tools=False)
     selected, route = await _quality_route(
         monkeypatch,

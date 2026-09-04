@@ -15,7 +15,7 @@ function pointsOf(one: ChartArtifact['series'][number]) {
   return Array.isArray(one?.points) ? one.points : []
 }
 
-/** The series, likewise: a chart with none is empty rather than fatal. */
+/** Series with an empty fallback. */
 function seriesOf(chart: ChartArtifact) {
   return Array.isArray(chart.series) ? chart.series : []
 }
@@ -29,13 +29,7 @@ function categories(chart: ChartArtifact): string[] {
   return out
 }
 
-/**
- * Snaps the tick interval to a round number.
- *
- * Dividing by `max / 4` produces steps like 0.5, which round on display into a
- * repeated axis such as "0 1 1 2 2" — indistinguishable, to the reader, from a
- * flat series.
- */
+/** Snaps the tick interval to a round number so labels never repeat. */
 function niceStep(range: number, count: number): number {
   if (range <= 0) return 1
   const rough = range / count
@@ -46,18 +40,14 @@ function niceStep(range: number, count: number): number {
   return magnitude * 10
 }
 
-/**
- * Dependency-free SVG rather than a charting library: the whole plot is on this
- * page. The underlying rows stay one tab away, so the numbers are checkable.
- */
+/** Dependency-free SVG plot. */
 function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive?: boolean }) {
   const t = useT()
   const [hover, setHover] = useState<string | null>(null)
   const keys = categories(chart)
   const series = seriesOf(chart)
 
-  // Inside the SVG, not in HTML: an exported .png/.svg would otherwise carry
-  // colours and no names.
+  // Legend is drawn inside the SVG so exports carry series names.
   const legend = series.length > 1
   const W = 560
   const H = 280
@@ -133,7 +123,6 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
         </g>
       ))}
 
-      {/* 축 이름. 데이터 옆 각주가 아니라 축에 붙어 있어야 읽힌다 */}
       {chart.yLabel && (
         <text
           transform={`translate(13 ${padT + plotH / 2}) rotate(-90)`}
@@ -192,8 +181,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
                   strokeLinecap="round"
                   points={drawn.map((d) => `${centre(d.i)},${y(d.v)}`).join(' ')}
                 />
-                {/* 점을 찍는다. 값이 하나뿐인 계열은 선이 그려지지 않아
-                    그리지 않은 것과 구분이 안 됐다 */}
+                {/* Points make a single-value series visible. */}
                 {drawn.map((d) => (
                   <circle key={d.i} cx={centre(d.i)} cy={y(d.v)} r={3} fill={one.color} />
                 ))}
@@ -211,7 +199,7 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
                 : centre(i) - (width * series.length) / 2 + width * si
               const height = Math.abs(y(value) - zero)
               const topEdge = stacked
-                ? y(cursor + Math.max(value, 0)) // 아래에서 위로 쌓는다
+                ? y(cursor + Math.max(value, 0))
                 : Math.min(y(value), zero)
               if (stacked) cursor += Math.max(value, 0)
               return (
@@ -242,7 +230,6 @@ function Plot({ chart, interactive = true }: { chart: ChartArtifact; interactive
         </text>
       ))}
 
-      {/* 값 읽기. 숫자를 데이터 탭에만 두면 차트만 캡처해 간 사람은 읽을 수 없다 */}
       {interactive &&
         keys.map((key, i) => (
           <rect
@@ -307,8 +294,7 @@ export function ChartThumb({ chart }: { chart: ChartArtifact }) {
   )
 }
 
-
-/** Hands `data` to the browser as a file. Same shape the report exports use. */
+/** Hands `data` to the browser as a file download. */
 function save(data: BlobPart, mime: string, filename: string) {
   const url = URL.createObjectURL(new Blob([data], { type: mime }))
   const anchor = document.createElement('a')
@@ -322,11 +308,7 @@ function stem(title: string) {
   return title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'chart'
 }
 
-/**
- * The rendered SVG with theme variables resolved. `var(--border)` and friends
- * mean nothing once the file leaves the page, so they are substituted for their
- * computed values at save time.
- */
+/** Serialises the SVG with theme variables resolved to literal colours. */
 function svgSource(node: SVGSVGElement): string {
   const clone = node.cloneNode(true) as SVGSVGElement
   const computed = getComputedStyle(document.documentElement)
@@ -358,7 +340,7 @@ function svgSource(node: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone)
 }
 
-/** The table as CSV, with a BOM so Excel opens Korean without mangling it. */
+/** The table as CSV; the BOM makes Excel decode Korean as UTF-8. */
 function csvSource(chart: ChartArtifact): string {
   const escape = (v: string | number) => {
     const text = String(v)
@@ -390,8 +372,7 @@ export function ChartPanel({
     if (node) save(svgSource(node), 'image/svg+xml', `${stem(chart.title)}.svg`)
   }
 
-  // Rasterised through a canvas; the SVG is already the picture. 2× so it
-  // stays sharp in a deck.
+  // Rasterised through a canvas at 2x.
   const exportPng = () => {
     const node = svg()
     if (!node) return
@@ -438,14 +419,10 @@ export function ChartPanel({
           <MenuItem hint="SVG" onClick={exportSvg}>
             {t('벡터')}
           </MenuItem>
-          {/* CSV rather than XLSX: the menu offered 엑셀 and nothing behind it
-              could write a workbook. A BOM makes Excel read the Korean. */}
           <MenuItem hint="CSV" onClick={exportCsv}>
             {t('데이터')}
           </MenuItem>
         </Dropdown>
-        {/* 차트 패널만 닫는 버튼이 없었다. 세션에서 열면 대화를 떠나기 전에는
-            치울 방법이 없었고, 그건 패널이 아니라 벽이다. */}
         <PanelControls mode={width.mode} onCycle={width.cycle} onClose={onClose} />
       </header>
 
@@ -471,14 +448,10 @@ export function ChartPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4" ref={plot}>
-        {/* Hidden rather than unmounted. The image exports serialise the live
-            <svg>, so unmounting it on the data tab meant 이미지 and 벡터 did
-            nothing at all from there — the menu opened, the item was clicked,
-            and no file was ever produced. */}
+        {/* Hidden, not unmounted: image exports serialise the live <svg>. */}
         <div className={cn(tab === 'chart' ? '' : 'hidden')}>
             <Plot chart={chart} interactive={tab === 'chart'} />
             {chart.caption && <p className="mt-3 text-base text-muted">{chart.caption}</p>}
-            {/* 축 이름은 축에 그려지므로 여기서는 출처만 */}
             {chart.sourceFile && (
               <p className="mt-2 text-xs text-faint">출처 {chart.sourceFile}</p>
             )}

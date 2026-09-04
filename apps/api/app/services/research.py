@@ -1,36 +1,7 @@
-"""What a document is written from, when it is written from the web.
+"""Web research step for the document surfaces: plan queries, search, read pages.
 
-The surfaces that produce a document — report, slides, page — leave the chat
-pipeline at submit and are handed no tools. That was deliberate: a lit globe
-over a writer that cannot search promises a search that will never happen. But
-the conclusion drawn from it was to hide the globe, and what that left is a
-report written entirely from what the model remembers.
-
-It is the worst failure mode this product has. A chat answer that is out of
-date gets argued with — somebody says "인터넷 검색해봐" and the next turn fixes
-it. A report does not get argued with. It gets exported, attached to a mail,
-and read by people who were not there when it was written.
-
-So the document surfaces research first and write second, and this is the
-research step. It differs from the tool loop in three ways that matter:
-
-* **The queries are planned, not typed.** A request is a request, not a search
-  term. `"96GB GPU 한 장으로 돌릴 오픈소스 LLM"` run verbatim through a search
-  engine returns blog posts about the GPU; the facts the document needs are
-  spread over several narrower questions, and a planning call is what finds
-  them.
-* **Bodies are read, not snippets.** A 300-character snippet supports a
-  citation and nothing else — it cannot correct a wrong recollection, which is
-  the entire point of searching. Pages are fetched the way `web_search` fetches
-  them.
-* **It cannot be skipped.** There is no `tool_choice` for the model to decline.
-  Research either runs or the document is marked as unresearched, and the two
-  are never confused for each other.
-
-Failure is soft everywhere: a search backend that is not configured, a planner
-that will not answer, a scraper that times out. Each of those yields fewer
-sources, never an exception — a document written from thin material is still a
-document, and `Findings.searched` is what tells the writer to say so.
+Never raises. `Findings.searched` is False when no search backend ran, and the
+document prompts say so.
 """
 
 from __future__ import annotations
@@ -45,24 +16,20 @@ from typing import Any
 
 import httpx
 
-from app.core.config import settings
 from app.services import settings_store
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
 
-#: Planned queries per document. Four covers a request with a couple of
-#: distinct factual axes without turning one document into a crawl.
+#: Planned queries per document.
 MAX_QUERIES = 4
 #: Results kept per query, before cross-query de-duplication.
 _PER_QUERY = 5
-#: Bodies fetched per query. The rest stay as title and snippet, which is
-#: enough for a citation the prose does not lean on.
+#: Bodies fetched per query; the rest stay as title and snippet.
 _BODIES = 2
-#: Characters of any one page handed to the writer. Past this a single source
-#: crowds out the others.
+#: Characters of any one page body handed to the writer.
 _BODY_CHARS = 6_000
-#: Sources on the shelf, across every query.
+#: Sources kept across every query.
 MAX_SOURCES = 10
 
 _PLAN_PROMPT = """다음 요청으로 문서를 쓰려고 한다. 사실 확인이 필요한 지점을 찾아
@@ -82,22 +49,14 @@ JSON 배열로만 답하라. 예: ["검색어1", "검색어2"]"""
 
 
 def _publisher(url: str) -> str:
-    """Host without `www.` — what a reader recognises."""
+    """Host without `www.`, truncated to 80 characters."""
     host = re.sub(r"^https?://", "", url).split("/")[0]
     return re.sub(r"^www\.", "", host)[:80]
 
 
-#: Hosts that are never evidence for a work, study or research document.
-#:
-#: Not a quality judgement about the sites — a lyrics page is a fine lyrics
-#: page. It is that a report citing `lyrics.co.kr` is a report whose reader
-#: stops trusting every other citation in it, and this list is cheaper than
-#: that. Measured, not guessed: searching `사내 회의실 예약 시스템 교체 검토`
-#: returned a 나훈아 song called 「사내」 twice in the top four, because the
-#: engine matched one word of the request.
+#: Host substrings never cited in a work, study or research document.
 _NEVER = (
-    # Video and music, which match a company name or a common noun and never
-    # carry the figure a report needs.
+    # Video and music.
     "youtube.com",
     "youtu.be",
     "tiktok.com",
@@ -106,12 +65,12 @@ _NEVER = (
     "music.bugs.co.kr",
     "genie.co.kr",
     "melon.com",
-    # Lyrics, the specific trap this list was written for.
+    # Lyrics.
     "lyrics.co.kr",
     "klyrics",
     "azlyrics.com",
     "genius.com",
-    # Shopping and classifieds: a price on a listing is not a source for one.
+    # Shopping and classifieds.
     "coupang.com",
     "11st.co.kr",
     "gmarket.co.kr",
@@ -119,8 +78,7 @@ _NEVER = (
     "aliexpress.com",
     "amazon.",
     "ebay.",
-    # Social and short-form. A post may be true and cannot be cited as
-    # established; a document that leans on one has not been researched.
+    # Social and short-form.
     "facebook.com",
     "instagram.com",
     "x.com",
@@ -128,7 +86,7 @@ _NEVER = (
     "threads.net",
     "pinterest.",
     "reddit.com",
-    # Content farms and scrapers that republish other pages without a date.
+    # Content farms and scrapers.
     "wikiwand.com",
     "dbpedia.org",
     "coursehero.com",
@@ -137,9 +95,7 @@ _NEVER = (
     "studocu.com",
 )
 
-#: Hosts whose material is usually citable in a Korean work document. A boost,
-#: never a requirement: a blog post can be the only place a fact is written
-#: down, and refusing it would be its own kind of wrong.
+#: Host substrings ranked first; a boost, never a requirement.
 _PREFERRED = (
     ".go.kr",
     ".or.kr",
@@ -163,8 +119,7 @@ _PREFERRED = (
     "kisa.or.kr",
 )
 
-#: Below this a hit is dropped as unrelated. One shared term out of a
-#: multi-word query is what the 나훈아 result scored.
+#: Relevance below which a hit is dropped as unrelated.
 _FLOOR = 0.34
 
 _WORD = re.compile(r"[0-9A-Za-z가-힣]{2,}")
@@ -175,14 +130,7 @@ def _terms(text: str) -> set[str]:
 
 
 def relevance(query: str, hit: dict[str, str]) -> float:
-    """How much of the query this hit actually answers, 0 to 1.
-
-    Term overlap rather than a model call. It runs on every hit of every query
-    — a judgement call each would cost more than the search did — and what it
-    has to catch is coarse: a result that shares one word of a five-word
-    question. Anything subtler is the query planner's job upstream and the
-    writer's judgement downstream.
-    """
+    """Fraction of the query's terms found in the hit's title and snippet, 0 to 1."""
     wanted = _terms(query)
     if not wanted:
         return 1.0
@@ -191,13 +139,7 @@ def relevance(query: str, hit: dict[str, str]) -> float:
 
 
 def _carries(text: str, term: str) -> bool:
-    """Whether the text has this word — as a substring, so 「전고체 배터리」
-    answers 「고체 배터리」 and 「기업들이」 answers 「기업」.
-
-    Token equality was the test, and it threw away every hit for a report on
-    전고체 배터리: the planner searched 「고체 배터리 주요 기업 기술 현황」, the
-    titles said 전고체 and 기업들, and two words in seven fell under the floor.
-    """
+    """Substring match; a trailing Korean particle on the term is also tried without."""
     if term in text:
         return True
     return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도들" and term[:-1] in text
@@ -221,28 +163,20 @@ def score(query: str, hit: dict[str, str]) -> float:
 
 @dataclass(slots=True)
 class Findings:
-    """What research produced, in the two shapes the callers need.
-
-    `sources` is the citation shelf the artifact stores and the panel renders.
-    `context` is the same material as prose, for the user-role data block —
-    kept separate because the shelf is numbered and the block is not, and the
-    numbering has to survive into the artifact unchanged.
-    """
+    """What research produced: the numbered source shelf and the same material as prose."""
 
     sources: list[dict[str, Any]] = field(default_factory=list)
     context: str = ""
     queries: list[str] = field(default_factory=list)
-    #: Whether a search backend was reachable and actually ran. False means the
-    #: document was written from the model's memory, and must say so.
+    #: False means no search backend ran and the document is written from memory.
     searched: bool = False
-    #: Hits thrown away by selection. Kept so an empty shelf can say which kind
-    #: of empty it is: nothing found, or nothing worth citing.
+    #: Hits thrown away by selection.
     dropped: int = 0
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
 
     @property
     def detail(self) -> str:
-        """Step subtitle: the publishers, which is what says 'this is real'."""
+        """Step subtitle: the publishers, joined."""
         return " · ".join(str(s["publisher"]) for s in self.sources)
 
 
@@ -253,12 +187,7 @@ async def available() -> bool:
 
 
 def _parse_queries(text: str, request: str) -> list[str]:
-    """Planned queries, or the request itself when the planner gave nothing.
-
-    Falling back to the raw request is worse than a planned query and much
-    better than no search: it is what `gather_sources` did for every report
-    before this module existed.
-    """
+    """Planned queries, or the request itself when the planner gave nothing."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in text and "]" in text else ""
     try:
         parsed = json.loads(block)
@@ -271,7 +200,7 @@ def _parse_queries(text: str, request: str) -> list[str]:
 
 
 async def _plan(request: str, model: str, api_key: str) -> tuple[list[str], dict[str, int]]:
-    """Search terms for this request. The request itself on any failure."""
+    """Search terms for this request; the request itself on any failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not model:
         return [request[:300]], spent
@@ -311,7 +240,7 @@ async def _plan(request: str, model: str, api_key: str) -> tuple[list[str], dict
 
 
 async def _gather(base_url: str, query: str) -> list[dict[str, str]]:
-    """One query's hits. `[]` on any failure — one dead query is not fatal."""
+    """One query's hits; `[]` on any failure."""
     try:
         return await searxng(base_url, query, _PER_QUERY)
     except (httpx.HTTPError, ValueError) as exc:
@@ -326,11 +255,7 @@ async def run(
     api_key: str = "",
     max_sources: int = MAX_SOURCES,
 ) -> Findings:
-    """Plan queries, search them concurrently, read the top pages.
-
-    Never raises. `Findings.searched` is False when no search ran, which is the
-    signal the document prompts key their honesty rule off.
-    """
+    """Plan queries, search them concurrently, read the top pages. Never raises."""
     backends = await settings_store.tools_config()
     if not backends.search:
         return Findings()
@@ -338,15 +263,11 @@ async def run(
     queries, spent = await _plan(request, model, api_key)
     hit_lists = await asyncio.gather(*(_gather(backends.search, q) for q in queries))
 
-    # De-duplicated across queries by publisher, taking one round from each in
-    # turn: a shelf filled query-by-query lets the first search spend every
-    # slot, and the axes after it are the ones the model got wrong.
+    # Filtered and ranked per query before anything is fetched; picked
+    # round-robin across queries, one publisher and one URL at most.
     sources: list[dict[str, Any]] = []
     seen_hosts: set[str] = set()
     seen_urls: set[str] = set()
-    # Selected before anything is fetched. A page that will not be cited is a
-    # page not worth the round trip, and a shelf assembled from whatever the
-    # engine put first is how a report ends up citing a song called 「사내」.
     ranked: list[list[tuple[float, dict[str, str]]]] = []
     dropped: dict[str, int] = {"차단": 0, "무관": 0}
     for query_index, hits in enumerate(hit_lists):
@@ -363,14 +284,10 @@ async def run(
                 dropped["무관"] += 1
                 continue
             keep.append((score(query, hit), hit))
-        # Highest first, so the round-robin below takes each query's best.
         keep.sort(key=lambda pair: pair[0], reverse=True)
         ranked.append(keep)
 
     if any(dropped.values()):
-        # Said out loud rather than left as a quieter shelf. A caller looking at
-        # two sources needs to know whether the web has two or whether eight
-        # were thrown away here.
         log.info(
             "research dropped %d hits (차단 %d · 무관 %d)",
             sum(dropped.values()),
@@ -398,9 +315,7 @@ async def run(
         if len(picks) >= max_sources:
             break
 
-    # Bodies for the strongest few of each query, fetched together. A shelf of
-    # snippets is what the reports had, and it is what let a remembered fact
-    # stand next to a citation that did not support it.
+    # Bodies for the first `_BODIES` picks of each query, fetched together.
     wanted = [
         index
         for index, (query_index, _) in enumerate(picks)
@@ -451,9 +366,7 @@ async def run(
     )
 
 
-#: Wrapper for the user-role data block. The provenance line matters: the
-#: writer has to be able to tell a page it fetched from a file somebody
-#: attached, because only one of the two is allowed to be wrong quietly.
+#: Header of the user-role data block; names the provenance as a web search.
 CONTEXT_HEADER = (
     "# 웹 검색 결과\n"
     "아래는 이 문서를 쓰기 위해 방금 웹에서 찾은 자료입니다. "
@@ -469,36 +382,16 @@ def context_block(findings: Findings) -> str:
     return CONTEXT_HEADER + "\n" + findings.context
 
 
-#: Told to the writer when research could not run. Silence here is what lets a
-#: remembered fact pass for a searched one — the same reason the chat surface
-#: says it out loud when the toggle is on and the tool is missing.
-#: Searched, and came back with nothing worth citing.
-#:
-#: A different thing from `UNRESEARCHED_RULE` and it has to read differently.
-#: "검색을 쓸 수 없었다" tells the reader the machinery was off; this tells them
-#: the machinery ran and the web had nothing — which is a fact about the
-#: subject, and one a reader of a work document needs. Conflating the two was
-#: how a search backend that had been dead for days looked like a run of
-#: obscure topics.
+#: Told to the writer when a search ran and found nothing worth citing.
 EMPTY_RULE = (
     "웹을 검색했지만 인용할 만한 자료를 찾지 못했습니다. "
     "확인되지 않은 수치나 제품명을 단정하지 말고, 확인하지 못했다는 사실을 "
     "본문에 밝히세요."
 )
 
+#: Told to the writer when no search backend could run.
 UNRESEARCHED_RULE = (
     "웹 검색을 쓸 수 없어 이 문서는 검색 없이 작성됩니다. "
     "최신 정보나 제품명·버전·수치를 단정하지 말고, 확인하지 못한 항목은 "
     "확인이 필요하다고 밝히세요."
 )
-
-
-def settings_summary() -> dict[str, int]:
-    """What the deployment is configured to fetch. Used by tests and /health."""
-    return {
-        "maxQueries": MAX_QUERIES,
-        "perQuery": _PER_QUERY,
-        "bodies": _BODIES,
-        "maxSources": MAX_SOURCES,
-        "resultsPerToolCall": settings.web_search_results,
-    }

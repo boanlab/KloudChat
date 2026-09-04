@@ -1,7 +1,7 @@
 import { Children, type ReactNode, useEffect, useId, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
-export type RibbonTab<T extends string = string> = {
+type RibbonTab<T extends string = string> = {
   id: T
   label: string
 }
@@ -87,9 +87,7 @@ export function ArtifactRibbon<T extends string>({
           </button>
         ))}
       </div>
-      {commands.length > 0 && <div id={`${ribbonId}-panel`} role="tabpanel" aria-labelledby={`${ribbonId}-tab-${active}`} /* 넘치면 스크롤한다. 데스크톱에서만 `overflow-visible` 이었고, 편집기의
-           서식 줄이 들어오자 그 줄이 리본 오른쪽 밖으로 흘러 나가 웹뷰 버튼이
-           패널 가장자리에서 잘렸다. 메뉴는 portal 로 뜨므로 잘릴 것이 없다. */
+      {commands.length > 0 && <div id={`${ribbonId}-panel`} role="tabpanel" aria-labelledby={`${ribbonId}-tab-${active}`}
         className="min-h-11 min-w-0 overflow-x-auto border-t border-line bg-panel px-2 py-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
         <div
           role="toolbar"

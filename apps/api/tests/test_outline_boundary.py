@@ -1,10 +1,4 @@
-"""The planner may not send further than the writer already does.
-
-`governance.outline_model_id` redirects one call per document. That call
-carries the same request and the same context the body does, so a policy row
-naming an external model would otherwise widen the egress of every document —
-including turns that privacy had deliberately routed inward.
-"""
+"""`governance.outline_model_id` may not send further than the writer already does."""
 
 from __future__ import annotations
 
@@ -30,14 +24,13 @@ def test_a_planner_that_stays_inside_is_allowed(planner):
 
 
 def test_strict_local_is_a_stronger_claim_than_self_hosted():
-    """No external fallback exists for a strict-local model, and a planner
-    that merely runs on our own hardware may still have one."""
+    """A strict-local turn accepts no self-hosted planner with an external fallback."""
     assert _widens_boundary(LOCAL, STRICT) is True
     assert _widens_boundary(STRICT, STRICT) is False
 
 
 def test_an_external_turn_may_plan_anywhere():
-    """The text is already going out; where it plans changes nothing."""
+    """An external turn may plan on any model."""
     assert _widens_boundary(LOCAL, EXTERNAL) is False
     assert _widens_boundary(HYBRID, EXTERNAL) is False
 
@@ -66,8 +59,7 @@ CATALOGUE = [
 
 
 def planner(wanted, *, allowed=None, kind="slides", writer=EXTERNAL, strict_local=False):
-    """The chosen planner's id, or `""` — the row itself is what the caller
-    needs (it is billed at its own price), and its id is what a test reads."""
+    """The chosen planner's id, or `""`."""
     from app.routers.sessions import _planner_model
 
     chosen = _planner_model(
@@ -91,7 +83,7 @@ def test_a_named_planner_is_used():
 
 
 def test_a_privacy_routed_turn_gets_no_planner_at_all():
-    """The route exists so the text does not leave; planning is text leaving."""
+    """A privacy-routed turn gets no separate planner."""
     assert planner("vendor/b", writer=STRICT, strict_local=True) == ""
 
 

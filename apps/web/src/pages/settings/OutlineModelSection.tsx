@@ -5,16 +5,7 @@ import { errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * Which model plans a document, when it should not be the one that writes it.
- *
- * A deck is one outline call and one call per slide. The outline decides the
- * shape — how many slides and what each one is — and it is the call a small
- * model gets visibly wrong: on this instance `bullets` was 77% of every body
- * slide it planned, with four layouts available. Naming a stronger model here
- * buys that single call and leaves the per-block cost alone, which is why it
- * is a separate setting rather than a better default model.
- */
+/** Model for the single outline call that plans a document; per-block calls keep the surface model. */
 export function OutlineModelSection() {
   const t = useT()
   const { governance, loadGovernance, saveGovernance, models, loadModels } = useStore()
@@ -34,8 +25,6 @@ export function OutlineModelSection() {
     setModelId(governance.outlineModelId ?? '')
   }, [governance])
 
-  // Whatever can write a document can plan one; the plan is a shorter answer
-  // in the same language about the same request.
   const planners = models.filter(
     (model) => model.kinds.includes('slides') || model.kinds.includes('report'),
   )
@@ -84,9 +73,7 @@ export function OutlineModelSection() {
             }}
           >
             <option value="">{t('화면의 모델을 그대로 사용')}</option>
-            {/* A model that has been removed from the catalogue still has to be
-                visible here, or the screen would silently show "same model" for
-                a policy that names something else. */}
+            {/* A stored model missing from the catalogue stays selectable so the policy is not misread. */}
             {modelId && !planners.some((model) => model.id === modelId) && (
               <option value={modelId}>
                 {modelId} · {t('현재 사용 불가')}

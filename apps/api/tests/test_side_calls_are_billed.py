@@ -1,15 +1,4 @@
-"""Model calls nobody watches, and the tokens they have to report.
-
-Three of these run beside a turn rather than as one: the slide fact-check, the
-session title, and the memory extractor. None of them streams, none of them
-shows a spinner, and each was returning its answer without its usage — which is
-a call that cannot be billed, because the caller has nothing to bill from.
-
-What is pinned here is the reporting, not the price: every one of them hands
-back tokens, including on the paths where the answer was thrown away. Whether
-those tokens cost anything is `charge_for_tokens`' business and depends on
-which model ran, which is the point of billing them separately at all.
-"""
+"""Side calls (fact-check, title, memory extractor) report their tokens and reach the ledger."""
 
 from __future__ import annotations
 
@@ -52,12 +41,7 @@ _VERDICT = '{"verdict": "supported", "note": "자료로 확인된다", "source":
 
 
 class _CheckClient:
-    """Stands in for both halves of a check: the search and the completion.
-
-    The reply is chosen by what the prompt asks for rather than by call order,
-    because the judgements run concurrently and an ordered script would pin the
-    scheduler instead of the arithmetic.
-    """
+    """Both halves of a check; replies chosen by prompt text because judgements run concurrently."""
 
     def __init__(self, posts: list[dict], *, hits: bool = True, **_kwargs):
         self.posts = posts
@@ -131,8 +115,7 @@ async def test_a_checked_slide_reports_every_call_it_made(monkeypatch) -> None:
     )
 
     assert [claim["verdict"] for claim in result["claims"]] == ["supported", "supported"]
-    # One extraction plus one judgement per claim. Billing the extraction alone
-    # would charge for a fifth of the slide.
+    # One extraction plus one judgement per claim.
     assert len(posts) == 3
     assert usage == {"inputTokens": 300 + 40 * 2, "outputTokens": 30 + 10 * 2}
 
@@ -141,11 +124,7 @@ async def test_a_checked_slide_reports_every_call_it_made(monkeypatch) -> None:
 async def test_a_slide_with_nothing_to_check_still_reports_the_call_that_said_so(
     monkeypatch,
 ) -> None:
-    """The extraction runs on every slide, including the ones it clears.
-
-    A deck of positions and definitions is the case where the checker finds
-    nothing at all, and it is not free — the model still read the slide.
-    """
+    """A cleared slide still reports the extraction call's tokens."""
     posts: list[dict] = []
     _patch_factcheck(monkeypatch, posts, client=_EmptyExtraction)
 
@@ -161,12 +140,7 @@ async def test_a_slide_with_nothing_to_check_still_reports_the_call_that_said_so
 async def test_a_slide_nothing_could_be_found_for_reports_the_extraction(
     monkeypatch,
 ) -> None:
-    """A search that returned nothing costs no tokens; the extraction did.
-
-    This is the path the checker takes most often on a deck about work nobody
-    has published, and it used to look identical to a slide that was never
-    checked at all.
-    """
+    """An empty search reports the extraction's tokens."""
     posts: list[dict] = []
     _patch_factcheck(monkeypatch, posts, hits=False)
 
@@ -176,7 +150,7 @@ async def test_a_slide_nothing_could_be_found_for_reports_the_extraction(
 
     assert [claim["verdict"] for claim in result["claims"]] == ["uncertain", "uncertain"]
     assert usage == {"inputTokens": 300, "outputTokens": 30}
-    # And a priced model is never billed nothing for work it actually did.
+    # A priced model is never billed nothing for work it did.
     priced = {"creditCost": 2, "inputCreditCost": 1}
     assert charge_for_tokens(priced, usage["inputTokens"], usage["outputTokens"]) == 1
 
@@ -203,13 +177,7 @@ class _ArtifactDb:
 
 @pytest.mark.asyncio
 async def test_a_fact_checked_slide_reaches_the_ledger(monkeypatch) -> None:
-    """The endpoint charges, the way the critique beside it already does.
-
-    Both are asked for by name and both spend real calls answering; the only
-    difference was that one of them settled. The price is the checker's own
-    model — the cheapest row the account may use — and not whatever the deck
-    happened to be written with.
-    """
+    """The fact-check endpoint settles at the checker model's price."""
     user = User(
         email="person@example.test",
         password_hash="hash",
@@ -280,8 +248,7 @@ async def test_a_fact_checked_slide_reaches_the_ledger(monkeypatch) -> None:
     entry = next(row for row in db.added if isinstance(row, CreditLedger))
     assert entry.reason == "deck.factcheck"
     assert entry.session_id == "session-1"
-    # 4_000 input and 500 output at the checker's own price, not the deck's:
-    # the dear model would have made the same slide cost a hundred.
+    # 4_000 input and 500 output at the checker's price, not the deck's.
     assert entry.delta == -5
     assert user.credits_used == 5
 
@@ -362,11 +329,7 @@ class _MemoryDb:
 async def test_a_turn_worth_remembering_nothing_from_still_cost_a_call(
     monkeypatch,
 ) -> None:
-    """The common answer is the empty list, and it is the same price.
-
-    Billing by what was written would leave the extractor almost entirely
-    unbilled while it read every turn the person had.
-    """
+    """An empty extraction still reports the call's tokens."""
 
     async def litellm_config():
         return "http://litellm.test", "master"
@@ -422,14 +385,7 @@ class _TurnDb:
 
 @pytest.mark.asyncio
 async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
-    """Two lines for one turn, because two models did the work.
-
-    The answer's line keeps explaining the answer's own tokens; the title's
-    says what a title cost, on the model that wrote it. Blending them would
-    leave the message carrying a credits figure its usage cannot account for,
-    and leave the person no way to see they paid for something they never
-    asked for.
-    """
+    """The title is a separate ledger line at the title model's price."""
     session = ChatSession(id="session-1", user_id="user-1")
     user = User(
         id="user-1",
@@ -457,8 +413,7 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
         return "전기차 등록 현황", {"inputTokens": 4_000, "outputTokens": 500}
 
     async def enrich(**_kwargs):
-        # `(artifact_id, memory_step)` — the second half is the timeline line
-        # the extractor leaves behind, which this test does not look at.
+        # `(artifact_id, memory_step)`; the step is not looked at here.
         return None, None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
@@ -497,13 +452,7 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
 async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
     monkeypatch,
 ) -> None:
-    """The extractor runs unasked on every turn, so it gets its own line.
-
-    Folding it into the answer's figure was never possible — it runs after the
-    assistant message is already committed — and leaving it out is the one
-    option that is not honest. Its price is the enrichment model's, which on a
-    deployment with a free local one comes to nothing at all.
-    """
+    """The memory extraction is a separate ledger line at the enrichment model's price."""
     session = ChatSession(id="session-1", user_id="user-1")
     user = User(
         id="user-1",
@@ -553,8 +502,7 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
     entry = next(row for row in db.added if isinstance(row, CreditLedger))
     assert entry.reason == "chat.memory"
     assert entry.session_id == session.id
-    # The extractor's own price. At the turn's model the same read would have
-    # cost a hundred, and the turn's model is not what ran.
+    # The extractor's own price, not the turn's.
     assert entry.delta == -5
 
 
@@ -562,7 +510,7 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
 async def test_an_extraction_that_never_reached_the_model_costs_nothing(
     monkeypatch,
 ) -> None:
-    """The one honest zero: the store is full, so no call was made."""
+    """A full memory store means no call and no charge."""
 
     async def litellm_config():  # pragma: no cover - the point is it is unused
         raise AssertionError("a full memory store must not reach the gateway")

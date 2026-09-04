@@ -1,20 +1,4 @@
-"""파워포인트 개요 창에 슬라이드가 잡힌다.
-
-The slides this exporter writes are drawn: free boxes at measured positions,
-because the design is the product and PowerPoint's built-in layouts have their
-own. The cost of that was invisible until somebody opened 개요 보기 — a deck of
-nine slides showed nine blank lines, because a textbox is not a placeholder and
-only a placeholder is outline text.
-
-It is not a cosmetic pane. The outline is how a presenter re-orders a deck the
-night before, how text is pulled into Word, and what a screen reader reads to
-say which slide it is on. A deck that cannot say what is on it is a deck of
-pictures of words.
-
-So the boxes are marked rather than replaced: `p:ph` is the whole of what makes
-a shape a placeholder, and the drawing, the positions and the type are
-untouched.
-"""
+"""Exported .pptx slides carry `p:ph` placeholders so PowerPoint's outline pane reads them."""
 
 from __future__ import annotations
 
@@ -56,15 +40,14 @@ def _opened(slides: list[dict]) -> Presentation:
 
 
 def test_every_slide_says_what_it_is() -> None:
-    """Nine blank lines in the outline pane was the whole of the bug."""
+    """Every slide has at least one placeholder shape."""
     deck = _opened(_SLIDES)
     titled = [s for s in deck.slides if _placeholders(s)]
     assert len(titled) == len(_SLIDES)
 
 
 def test_the_cover_is_a_centred_title_and_the_rest_are_titles() -> None:
-    """`ctrTitle` and `title` are different placeholder types, and PowerPoint
-    reads the first slide's as the deck's name."""
+    """The cover is `ctrTitle`; every other slide is `title`."""
     kinds = [_placeholders(s)[0][0] for s in _opened(_SLIDES).slides]
     assert kinds[0] == "ctrTitle"
     assert set(kinds[1:]) == {"title"}
@@ -89,8 +72,7 @@ def test_the_cover_placeholder_keeps_the_drawn_left_alignment() -> None:
 
 
 def test_the_bullets_are_the_body_so_the_outline_holds_the_content() -> None:
-    """A title alone tells a presenter re-ordering a deck nothing about what is
-    on the slide."""
+    """Bullets are the `body` placeholder."""
     bullets = _opened(_SLIDES).slides[1]
     kinds = dict(_placeholders(bullets))
     assert "이수체계가 학과마다 다르다" in kinds["body"]
@@ -98,9 +80,7 @@ def test_the_bullets_are_the_body_so_the_outline_holds_the_content() -> None:
 
 
 def test_the_words_still_read_the_way_they_were_drawn() -> None:
-    """Marking a box, not re-placing it. Every run carries its own font, size
-    and colour, which leaves nothing for a layout to inherit into and change —
-    but the text has to be exactly what it was, and in the box it was in."""
+    """The title placeholder text is exactly the slide's title."""
     slide = _opened(_SLIDES).slides[1]
     title = next(text for kind, text in _placeholders(slide) if kind == "title")
     assert title == "현행의 문제"

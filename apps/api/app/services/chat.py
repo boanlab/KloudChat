@@ -1,14 +1,4 @@
-"""LiteLLM chat streaming, translated into KloudChat's SSE event shape.
-
-The upstream is OpenAI-compatible, so this module's whole job is:
-
-* forward the assembled conversation with `stream=True`
-* turn content deltas into `delta` events
-* turn tool calls into `step` events the UI can show inline while they run
-* capture the final usage block so the turn can be settled against credits
-
-Tool routing needs no special case here: the model names the tool, the agent loop
-runs it, and this module only reports what happened.
+"""LiteLLM chat streaming translated into KloudChat SSE events, plus titles and media-turn messages.
 """
 
 from __future__ import annotations
@@ -31,8 +21,7 @@ class ChatStreamError(RuntimeError):
     pass
 
 
-# Tool name → what the user should see while it runs. Anything unlisted falls
-# back to the raw name, which is ugly but honest.
+# Tool name → progress label shown while it runs.
 _STEP_LABELS: dict[str, str] = {
     "web_search": "웹 검색 중",
     "search": "웹 검색 중",
@@ -50,8 +39,7 @@ def step_label(tool_name: str) -> str:
     return _STEP_LABELS.get(base, base.replace("_", " "))
 
 
-# The same tools as nouns — what a finished step says. The progress form stays
-# on the running row only.
+# Tool name → noun form shown on a finished step.
 _STEP_TITLES: dict[str, str] = {
     "web_search": "웹 검색",
     "search": "웹 검색",
@@ -73,38 +61,19 @@ def sse(event: dict[str, Any]) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-#: How much of the opening sentence a provisional title keeps. Long enough to
-#: tell two requests apart in a sidebar, short enough that the row does not
-#: have to truncate it a second time.
 TITLE_CHARS = 40
 
 
 def provisional_title(prompt: str) -> str:
-    """The name a session carries before anything better exists.
-
-    Chat, report and deck sessions overwrite this with `generate_title`'s
-    output once the turn has both halves to summarise. A picture, a clip or a
-    narration never gets that far — there is no reply to summarise, and the
-    prompt already *is* the sentence the person wrote — so on those surfaces
-    this is the final name. One rule rather than two, because two would drift
-    and the sidebar would start naming the same request differently depending
-    on which screen made it.
+    """Session title from the prompt's first `TITLE_CHARS`; final on media surfaces, replaced by
+    `generate_title` elsewhere.
     """
     return " ".join((prompt or "").split())[:TITLE_CHARS]
 
 
 def media_prompt(session_id: str, prompt: str, *, unanswered: bool = False) -> Message:
-    """The person's own sentence, on a surface whose reply is not a sentence.
-
-    Stored for the same reason it is stored everywhere else: it is the half of
-    the conversation somebody wrote themselves, and a screen that swallows it
-    is a screen that lost what they asked for. That it was once left out here
-    is the whole of why these conversations opened blank.
-
-    `unanswered` marks the request that came back with nothing — the model
-    refused, the gateway was down — exactly as a chat turn that dies before its
-    first word marks the question rather than inventing a reply to carry the
-    bad news.
+    """The user turn of a media (image/audio/video) session; `unanswered` marks a request that
+    produced nothing.
     """
     return Message(
         session_id=session_id,
@@ -122,17 +91,10 @@ def media_answer(
     credits: int = 0,
     partial: bool = False,
 ) -> Message:
-    """What came back, as the thing itself rather than a sentence about it.
+    """The assistant turn of a media session: artifact ids, no prose.
 
-    The content is empty on purpose and must stay empty. A picture is not a
-    sentence, and prose written here — "이미지를 만들었습니다" — would be the
-    model quoted saying something no model said. The ids are the answer; the
-    transcript renders them where an answer goes.
-
-    `partial` is the batch that broke in the middle: three of four pictures
-    arrived and the fourth call failed. What arrived is kept and said to be
-    less than what was asked for, which is the same thing a half-written chat
-    answer does with `interrupted`.
+    `content` must stay empty; the transcript renders the artifacts. `partial`
+    marks a batch that failed midway and is stored as `interrupted`.
     """
     return Message(
         session_id=session_id,
@@ -140,9 +102,6 @@ def media_answer(
         content="",
         artifact_ids=list(artifact_ids),
         model=model or None,
-        # Only the charge. There are no tokens worth printing under a picture,
-        # and the figure a reader wants beside one they paid for is what it
-        # cost.
         usage={"credits": credits},
         failure=TurnFailure.interrupted if partial else None,
     )
@@ -167,24 +126,18 @@ async def stream_completion(
         "model": model,
         "messages": messages,
         "stream": True,
-        # Without this the final chunk carries no usage and the turn cannot be
-        # billed on real numbers.
-        "stream_options": {"include_usage": True},
-        # Redundant with the virtual key, and cheap: it also tags the spend row
-        # when a call has fallen back to the master key.
-        "user": user_id,
+        "stream_options": {"include_usage": True},  # else the final chunk carries no usage
+        "user": user_id,  # tags the spend row even when a call fell back to the master key
     }
     if strict_local:
         payload["disable_fallbacks"] = True
 
     usage: dict[str, int] | None = None
     reported_model: str | None = None
-    # Tool call fragments arrive spread across chunks, keyed by index.
+    # Tool call fragments arrive across chunks, keyed by index.
     open_steps: dict[int, dict[str, Any]] = {}
 
     try:
-        # Base URL from the settings store, not the environment — an administrator
-        # who repoints the proxy expects chat to follow.
         base, _ = await settings_store.litellm_config()
         async with httpx.AsyncClient(
             base_url=base.rstrip("/"),
@@ -251,8 +204,7 @@ async def stream_completion(
 
                         text = delta.get("content")
                         if text:
-                            # The first visible token means every tool call that
-                            # was open has produced its answer.
+                            # First visible token: every open tool call has answered.
                             for step in open_steps.values():
                                 if not step.get("closed"):
                                     step["closed"] = True
@@ -285,12 +237,8 @@ async def generate_title(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[str | None, dict[str, int]]:
-    """`(title, usage)` from one short non-streaming call.
-
-    Best effort — a session with no title is a cosmetic problem, and blocking
-    the turn on it would not be. The tokens are reported either way: nobody
-    asks for a title, so the call that writes one has to be visible in the
-    ledger rather than absorbed.
+    """`(title, usage)` from one short non-streaming call; title is None on failure, usage is
+    reported either way.
     """
     spent = {"inputTokens": 0, "outputTokens": 0}
     if masker is not None:
@@ -342,5 +290,4 @@ async def generate_title(
     title = title.strip().strip("\"'").splitlines()[0].strip() if title.strip() else ""
     if masker is not None:
         title = masker(title)[0]
-    # The tokens go back even when the reply was unusable: they were spent.
     return title[:80] or None, spent

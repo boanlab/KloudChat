@@ -1,15 +1,7 @@
-"""Speech and music, through the same proxy as everything else.
+"""Speech and music generation via `chat/completions` with `modalities: ["text", "audio"]`.
 
-Both come from `chat/completions` with `modalities: ["text", "audio"]`, and
-both require **`stream: true`** — a plain request is refused — so the clip is
-collected from the stream rather than read off a response.
-
-What arrives differs:
-
-* **Music** (Lyria) — a finished MP3 in a handful of chunks.
-* **Speech** (GPT Audio) — raw 24 kHz PCM16, the only format it accepts while
-  streaming. A WAV header is added here; without it the browser has bytes it
-  cannot play.
+Both require `stream: true`. Music (Lyria) arrives as a finished file; speech
+(GPT Audio) arrives as raw 24 kHz PCM16 and is wrapped in a WAV header here.
 """
 
 from __future__ import annotations
@@ -28,11 +20,10 @@ from app.services import files as file_service
 
 log = logging.getLogger(__name__)
 
-#: A 30-second clip takes its time, and speech is generated in real time.
+#: Speech is generated in real time.
 _TIMEOUT = 240.0
 
-#: What GPT Audio streams, and what the WAV header is built from. The only
-#: format it accepts with `stream: true`.
+#: PCM format GPT Audio streams; the WAV header is built from these.
 _PCM_RATE = 24_000
 _PCM_CHANNELS = 1
 _PCM_BITS = 16
@@ -41,7 +32,7 @@ VOICES = ("alloy", "echo", "fable", "onyx", "nova", "shimmer")
 
 
 class AudioError(RuntimeError):
-    """Generation failed. The message is written for the person who asked."""
+    """Generation failed; the message is user-facing."""
 
 
 @dataclass(slots=True)
@@ -51,16 +42,12 @@ class GeneratedAudio:
     extension: str
     input_tokens: int
     output_tokens: int
-    #: What the model said it was reading, when it says. Stored as the
-    #: artifact's transcript, so a clip is searchable by its words.
+    #: Stored as the artifact's transcript; empty when the model sends none.
     transcript: str
 
 
 def _wav(pcm: bytes) -> bytes:
-    """A RIFF header around raw samples.
-
-    44 bytes of struct rather than a transcoding dependency.
-    """
+    """A 44-byte RIFF header around raw PCM samples."""
     byte_rate = _PCM_RATE * _PCM_CHANNELS * _PCM_BITS // 8
     block_align = _PCM_CHANNELS * _PCM_BITS // 8
     return (
@@ -77,12 +64,7 @@ def _wav(pcm: bytes) -> bytes:
 
 
 def compose_prompt(prompt: str, *, speech: bool, seconds: int = 0) -> str:
-    """The request as the model will read it.
-
-    Separate from the caller so the stored prompt stays what the person typed.
-    A length is a sentence here rather than a parameter: neither the speech nor
-    the music endpoint takes one, and asking for it in the prompt is what the
-    image surface already does with an aspect ratio.
+    """The prompt as sent; neither endpoint takes a length parameter, so it is asked for in words.
     """
     text = prompt.strip()
     if seconds > 0:
@@ -104,11 +86,8 @@ async def generate(
     payload: dict = {
         "model": model,
         "modalities": ["text", "audio"],
-        # Refused without this, whatever the model.
-        "stream": True,
-        # Without it the stream carries no usage block and the turn bills as
-        # one credit regardless of what the clip cost.
-        "stream_options": {"include_usage": True},
+        "stream": True,  # required by the audio endpoints
+        "stream_options": {"include_usage": True},  # else the stream carries no usage
         "messages": [
             {"role": "user", "content": compose_prompt(prompt, speech=speech, seconds=seconds)}
         ],
@@ -163,8 +142,7 @@ async def generate(
     if speech:
         data, mime, extension = _wav(body), "audio/wav", "wav"
     else:
-        # Lyria returns a finished file with no `format` field, so the
-        # container is read from the bytes.
+        # Lyria sends no `format` field; sniff the container.
         if body[:3] == b"ID3" or body[:2] == b"\xff\xfb":
             data, mime, extension = body, "audio/mpeg", "mp3"
         elif body[:4] == b"RIFF":
@@ -185,8 +163,7 @@ async def generate(
 
 
 def duration_seconds(audio: GeneratedAudio) -> int:
-    """Best effort: exact for the WAV built here, absent for MP3 — which would
-    mean parsing frame headers for a number that only labels a card."""
+    """Exact for the WAV built here; 0 for other containers."""
     if audio.mime != "audio/wav":
         return 0
     samples = max(0, len(audio.data) - 44)

@@ -1,19 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signInAs } from './helpers'
 
-/**
- * 상용 수준 UI 가 어기지 않는 것들을, 화면마다 기계로 잰다.
- *
- * Not taste. Every rule here is something a person can see going wrong and a
- * machine can measure: text clipped by its own box, a row of cards that do not
- * line up, a page that scrolls sideways, a control too small to hit, a label
- * that overlaps the thing beside it. Judgement calls — spacing rhythm, colour,
- * where the emphasis belongs — are not in here, because a test that encodes
- * taste fails on every redesign and teaches nobody anything.
- *
- * The audit reports every screen and asserts only on the defects, so one bad
- * page names itself instead of hiding in a pass.
- */
+/** Measurable layout rules on every route: no horizontal overflow, no clipped text,
+ *  no tap target under 24px, no ragged grid rows. Reports every screen, asserts on defects. */
 
 const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }
 const USER = { email: 'test@kloud.zone', password: 'KloudChat-Test-2026' }
@@ -68,8 +57,7 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
       return text || node.className?.toString().slice(0, 40) || node.tagName
     }
 
-    // ── 가로 스크롤 ────────────────────────────────────────────────
-    // A page that scrolls sideways is a layout that did not fit, every time.
+    // Horizontal overflow.
     if (document.documentElement.scrollWidth > window.innerWidth + 2) {
       found.push({
         kind: 'page-overflow',
@@ -80,15 +68,9 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
     const main = document.querySelector('main')
     if (!main) return found
 
-    // A thumbnail is a whole document shrunk into a card, and cropping it is
-    // the entire point — so nothing inside one counts as clipped or as too
-    // small to press. Identified by the scale on it rather than by a class
-    // name, because that is what makes it a preview.
+    // Inside a scaled-down thumbnail nothing counts as clipped or too small.
     const shrunk = (style: CSSStyleDeclaration): boolean => {
-      // Two spellings of the same thing: `transform: matrix(...)` and the
-      // standalone `scale` property Tailwind v4 emits for `scale-[0.45]`.
-      // Reading only the first meant the artifact thumbnails — which are whole
-      // documents at 45% — were audited as if they were page content.
+      // Both `transform: matrix(...)` and the standalone `scale` property Tailwind v4 emits.
       if (style.transform && style.transform.startsWith('matrix')) {
         const value = Number(style.transform.split('(')[1]?.split(',')[0])
         if (Number.isFinite(value) && value > 0 && value < 0.95) return true
@@ -108,10 +90,7 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
       return false
     }
 
-    // ── 잘린 글자 ──────────────────────────────────────────────────
-    // Real clipping only: the box hides overflow, and the text is wider or
-    // taller than the box by more than a rounding error. Scroll containers are
-    // excluded — a list that scrolls is not a list that is clipped.
+    // Clipped text: overflow hidden and content larger than the box; scroll containers excluded.
     for (const node of Array.from(main.querySelectorAll<HTMLElement>('h1,h2,h3,p,span,button,th,td,label,a'))) {
       if (!node.offsetParent) continue
       if (node.children.length) continue
@@ -119,21 +98,14 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
       const style = getComputedStyle(node)
       if (style.overflow === 'visible' && style.overflowX === 'visible') continue
       if (style.overflowY === 'auto' || style.overflowY === 'scroll') continue
-      // An ellipsis is a deliberate truncation, not a defect.
+      // An ellipsis is deliberate.
       if (style.textOverflow === 'ellipsis') continue
       if (node.scrollWidth > node.clientWidth + 2 || node.scrollHeight > node.clientHeight + 2) {
         found.push({ kind: 'clipped-text', detail: say(node) })
       }
     }
 
-    // ── 손가락으로 누를 수 없는 것 ───────────────────────────────────
-    // 24px is the WCAG 2.2 minimum for a target that has no spacing exemption.
-    //
-    // Measured on the *target*, not on the painted control. A 16px checkbox
-    // inside a 32px `<label>` is a 32px target, because pressing anywhere in
-    // the label toggles it — the same split `Switch` already makes between its
-    // 44×36 button and the 36×20 track it draws. Reading the input alone
-    // reported every list in the product as broken and named nothing.
+    // Tap targets: 24px is the WCAG 2.2 minimum. An input inside a `<label>` is as big as the label.
     const target = (node: HTMLElement): DOMRect => {
       let box = node.getBoundingClientRect()
       if (node.tagName !== 'INPUT') return box
@@ -145,9 +117,7 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
       return box
     }
 
-    // WCAG 2.2 exempts a target set in a line of running text — its height is
-    // the line-height of the sentence around it, and growing it would break the
-    // paragraph. 「…따로 집계됩니다. 사용량」 is that case, not a small button.
+    // WCAG 2.2 exempts an inline link in running text.
     const inSentence = (node: HTMLElement): boolean => {
       if (node.tagName !== 'A') return false
       if (!getComputedStyle(node).display.startsWith('inline')) return false
@@ -172,9 +142,7 @@ async function audit(page: Page, route: string): Promise<Defect[]> {
       }
     }
 
-    // ── 어긋난 격자 ─────────────────────────────────────────────────
-    // Cards in one row of a grid have to end at the same line. Ragged rows are
-    // the single most common reason a competent layout still looks unfinished.
+    // Ragged grid rows.
     for (const grid of Array.from(main.querySelectorAll<HTMLElement>('[class*="grid"]'))) {
       const cells = Array.from(grid.children) as HTMLElement[]
       if (cells.length < 2) continue
@@ -243,14 +211,7 @@ test('일반 사용자 화면의 레이아웃 품질', async ({ page }) => {
   expect(small, '24px 보다 작은 조작 대상').toEqual([])
 })
 
-/**
- * 아이디가 있어야 열리는 화면들.
- *
- * `/projects/:id` and `/share/:token` cannot be listed beside the fixed routes
- * because neither exists until something is made — and a screen that is never
- * audited is where the defects collect. The share page especially: it is the
- * one screen people who are not users of this instance ever see.
- */
+/** Screens that need an id: `/projects/:id` and `/share/:token`. */
 test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
   test.setTimeout(600_000)
   await signInAs(page, USER.email, USER.password)
@@ -262,14 +223,14 @@ test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
     }
   }
 
-  // 프로젝트 상세: 목록에서 첫 칸을 연다.
+  // Project detail: the first card.
   await page.goto('/projects')
   await page.waitForTimeout(1_200)
   const project = page.locator('main a[href^="/projects/"]').first()
   const href = await project.getAttribute('href').catch(() => null)
   if (href) await check(href, '프로젝트 상세')
 
-  // 공유 화면: 문서 하나를 공유해 그 링크를 연다.
+  // Share page: share one document and open its link.
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^보고서/ }).click()
   await page.waitForTimeout(1_200)
@@ -277,11 +238,7 @@ test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
   if (await open.isVisible().catch(() => false)) {
     await open.click()
     await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
-    // A conversation title may contain words such as 「경영진 공유용」.  On a
-    // narrow viewport that sidebar button remains in the accessibility tree
-    // while sitting off-screen, so a substring match can pick it instead of
-    // the visible toolbar action.  The action's accessible name is exactly
-    // 「공유」; test the control a person can actually press.
+    // Exact: a sidebar title may contain 공유 too.
     await page.getByRole('button', { name: '공유', exact: true }).click()
     await page.waitForTimeout(1_500)
     const link = await page
@@ -301,16 +258,7 @@ test('아이디로 여는 화면의 레이아웃 품질', async ({ page }) => {
   expect(real, '아이디로 여는 화면의 결함').toEqual([])
 })
 
-/**
- * 결과물 화면도 화면이다.
- *
- * The sweep above walks the routes a person navigates to, and the document and
- * deck panels are on none of them — they open inside `/s/:id`. So the screen
- * people spend the longest looking at was the one screen never audited, and it
- * was carrying a real defect: a `timeline` slide's left-hand labels were laid
- * out at a date's width, so 「개편 방향 확정」 wrapped inside a row that clips
- * and came out as 「개편 방향 확」.
- */
+/** The document and deck panels, which open inside `/s/:id` rather than on a route. */
 test('문서와 덱 패널의 레이아웃 품질', async ({ page }) => {
   test.setTimeout(600_000)
   await signInAs(page, ADMIN.email, ADMIN.password)
@@ -334,7 +282,7 @@ test('문서와 덱 패널의 레이아웃 품질', async ({ page }) => {
     await expect(page.getByLabel('중지')).toBeHidden({ timeout: 180_000 })
     await page.waitForTimeout(2_500)
 
-    // 장을 넘겨 가며 잰다 — 잘림은 대개 한 장에만 있다.
+    // Page through: clipping is usually on one slide.
     for (let n = 0; n < 8; n++) {
       const clipped = await panel.evaluate((root) => {
         const bad: string[] = []
@@ -347,7 +295,7 @@ test('문서와 덱 패널의 레이아웃 품질', async ({ page }) => {
           if (style.overflow === 'visible' && style.overflowY === 'visible') continue
           if (style.overflowY === 'auto' || style.overflowY === 'scroll') continue
           if (style.textOverflow === 'ellipsis') continue
-          // 세로로 잘린 것만. 가로 잘림은 말줄임이나 스크롤이 흔하다.
+          // Vertical clipping only; horizontal is usually ellipsis or scroll.
           if (node.scrollHeight > node.clientHeight + 3) {
             bad.push(`${text.slice(0, 30)} (${node.clientHeight}px 안에 ${node.scrollHeight}px)`)
           }

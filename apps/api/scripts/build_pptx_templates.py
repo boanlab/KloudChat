@@ -1,31 +1,13 @@
-"""Generates one real PowerPoint template and one blank form per 덱 서식.
+"""Generates `template.pptx` (master and layouts, no slides) and `form.pptx` per 덱 서식.
 
 Run from the API image:
 
     docker compose run --rm --no-deps -v "$PWD/apps/api:/repo" -w /repo api \
         python scripts/build_pptx_templates.py
 
-The Word half of this lives in `build_docx_templates.py` and the reasoning is
-the same one: a 서식 that shapes the screen and then hands over a file in the
-library's defaults has not shaped the thing that actually gets sent.
-
-What PowerPoint calls a master and its layouts is what Word calls styles. A
-deck built by dropping text boxes onto blank slides carries its design in
-every box: changing the title face means walking forty shapes, the outline
-pane is empty because none of that text is in a placeholder, and 새 슬라이드
-offers nothing because there is no layout describing what a slide here looks
-like. So the design goes on the master, the slides are made *from* layouts,
-and every line of text goes into a placeholder that layout already positioned.
-
-Two files come out, for the same reason as the Word half:
-
-* `template.pptx` — master and layouts, no slides. What the writer builds on.
-* `form.pptx` — the blank form somebody downloads, its slides made from those
-  layouts with a line of guidance in each placeholder.
-
-Fonts name Korean faces every Hangul Windows and Hancom install carries. A
-template that names a face the reader does not have is one PowerPoint silently
-substitutes, which is worse than not setting one.
+Design lives on the master; every line of text goes into a layout placeholder.
+Word counterpart: `build_docx_templates.py`. Fonts must be faces every Hangul
+Windows and Hancom install carries, or PowerPoint substitutes silently.
 """
 
 from __future__ import annotations
@@ -40,13 +22,12 @@ from pptx.util import Emu
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "design_templates"
 
-#: 16:9 at PowerPoint's own metrics. The decks this writes are shown on a
-#: projector, and 4:3 leaves a band down each side of every modern one.
+#: 16:9 slide size in EMU.
 WIDE = (Emu(12192000), Emu(6858000))
 
 
 class Slide:
-    """One slide of the blank form, named by the layout it is made from."""
+    """One slide of the blank form, made from the named layout."""
 
     def __init__(self, layout: str, title: str, *body: str, second: tuple[str, ...] = ()) -> None:
         self.layout = layout
@@ -86,9 +67,7 @@ class Spec:
         self.form = form
 
 
-#: Kept beside the seeds, the way the Word specs are. When a seed's type scale
-#: changes this is the other half of that change — a deck that reads one way on
-#: screen and another in PowerPoint is two decks wearing one name.
+#: Mirrors each 서식's `seed.html` type scale; keep the two in step.
 _SPECS = (
     Spec(
         "deck-lecture",
@@ -313,13 +292,7 @@ _THEME_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationship
 
 
 def _theme(presentation):
-    """The master's theme part, as a parsed tree and the part holding it.
-
-    `python-pptx` gives the theme back as a raw part rather than as objects, so
-    the design goes in by hand — which is the whole of the difference between
-    a deck whose face lives on the master and one that names a font on every
-    run.
-    """
+    """Returns the master's theme part and its parsed XML tree."""
     part = presentation.slide_masters[0].part.part_related_by(_THEME_REL)
     return part, etree.fromstring(part.blob)
 
@@ -329,13 +302,11 @@ def _seal(part, tree) -> None:
 
 
 def _design(presentation, spec: Spec) -> None:
-    """The theme's fonts and colours, in the slots that name them."""
+    """Writes fonts and colours into the theme."""
     part, tree = _theme(presentation)
     elements = tree.find(qn("a:themeElements"))
 
-    # A Hangul run reads `ea` and falls back to PowerPoint's default without
-    # it, which is how a deck that looks right in the theme pane comes out in
-    # the wrong face on the screen.
+    # Hangul runs read `a:ea`, not `a:latin`.
     scheme = elements.find(qn("a:fontScheme"))
     for tag, font in (("a:majorFont", spec.heading_font), ("a:minorFont", spec.body_font)):
         block = scheme.find(qn(tag))
@@ -357,18 +328,10 @@ def _design(presentation, spec: Spec) -> None:
 
 
 def _sizes(presentation, spec: Spec) -> None:
-    """Type sizes on the master's own text styles, not on the slides.
+    """Sets type sizes on the master's text styles.
 
-    The master declares three lists — the title, the body and everything else
-    — and a slide made from a layout inherits whichever applies to the
-    placeholder it filled. So a deck's scale is one place rather than one per
-    shape, which is the whole reason for a master.
-
-    The size lives on `a:defRPr` inside each level, not on the level itself.
-    Set on `a:lvl1pPr` it parses, saves, and means nothing: the file keeps
-    PowerPoint's own 44pt title and 32pt body, and a 서식 that declared 40 and
-    20 comes out looking like every other deck. It did, until this was read
-    back out of the file rather than assumed.
+    The size must go on `a:defRPr` inside each level; set on `a:lvlNpPr`
+    itself it is silently ignored.
     """
     master = presentation.slide_masters[0]
     styles = master.element.find(qn("p:txStyles"))
@@ -383,9 +346,7 @@ def _sizes(presentation, spec: Spec) -> None:
         if block is None:
             continue
         for level, properties in enumerate(block):
-            # Each level steps down from the one above, the way a deck's own
-            # outline does. Nothing goes below 12pt: a bullet nobody in the
-            # room can read is not a bullet.
+            # 2pt per outline level, floor 12pt.
             step = max(size - level * 2, 12)
             run = properties.find(qn("a:defRPr"))
             if run is None:
@@ -394,47 +355,22 @@ def _sizes(presentation, spec: Spec) -> None:
 
 
 def _widen(presentation) -> None:
-    """Moves the master and its layouts onto the wider canvas.
+    """Scales master and layout placeholders horizontally from python-pptx's 4:3 default to `WIDE`.
 
-    Setting `slide_width` changes the canvas and nothing else. The template
-    `python-pptx` starts from is 4:3 — 9,144,000 EMU wide against the same
-    6,858,000 tall — so every placeholder in the master and in all eleven
-    layouts keeps its 4:3 geometry and stops at 8,686,800 on a slide that runs
-    to 12,192,000. The deck is 16:9 and its contents are 4:3, with a band of
-    nothing down the right-hand side of every slide.
-
-    Only the horizontal scales, because only the width changed. Positions and
-    widths move by the same factor, so the margins stay the proportion the
-    template chose rather than becoming a fixed gap that shrinks as the canvas
-    grows.
-
-    Before any slide is made: a slide clones its layout's placeholders, so one
-    added first would carry the old geometry no matter what happened after.
+    Must run before any slide is added: slides clone their layout's geometry.
     """
     factor = WIDE[0] / Emu(9144000)
 
-    # Every geometry read before any is written. A layout placeholder with no
-    # geometry of its own reports the master's, so scaling the master first and
-    # then walking the layouts multiplies those twice — the title of a
-    # `Title and Content` slide ran to 127% of the canvas while `Title Slide`,
-    # which carries its own numbers, came out right. One pass of reads, then
-    # one of writes.
+    # Read all geometry before writing any: a layout placeholder without its
+    # own geometry reports the master's and would otherwise be scaled twice.
     held = [
         (shape, shape.left, shape.top, shape.width, shape.height)
         for holder in [presentation.slide_masters[0], *presentation.slide_layouts]
         for shape in holder.shapes
         if None not in (shape.left, shape.top, shape.width, shape.height)
     ]
-    # All four written, though only two change.
-    #
-    # A placeholder with no geometry of its own carries no `a:xfrm` at all, and
-    # setting one value makes the element — with the other half of each pair at
-    # zero. Writing `left` alone gave `<a:off x="…" y="0"/>` and writing
-    # `width` alone gave `<a:ext cx="…" cy="0"/>`, so every layout that
-    # inherited came out pinned to the top edge with no height: the title sat
-    # on the first bullet at the very top of the slide. `Title Slide` was fine
-    # and hid it, because that layout states its own geometry and had all four
-    # values already.
+    # Write all four: setting one value on a shape without `a:xfrm` creates
+    # the element with the other half of the pair at zero.
     for shape, left, top, width, height in held:
         shape.left = Emu(int(left * factor))
         shape.top = Emu(int(top))
@@ -452,12 +388,7 @@ def _blank(spec: Spec) -> Presentation:
 
 
 def build(spec: Spec) -> pathlib.Path:
-    """`template.pptx` — master and layouts, and not one slide.
-
-    Empty for the same reason the Word template is: the writer builds on this,
-    and a slide left inside would arrive at the front of every deck written
-    from it.
-    """
+    """Writes `template.pptx`: master and layouts, no slides (the writer appends to it)."""
     out = ROOT / spec.folder / "template.pptx"
     _blank(spec).save(out)
     return out
@@ -471,14 +402,7 @@ def _layout(presentation, name: str):
 
 
 def build_form(spec: Spec) -> pathlib.Path | None:
-    """`form.pptx` — the blank form somebody downloads.
-
-    Every slide is made from a layout and every line goes into a placeholder
-    that layout already positioned. Nothing here draws a text box or names a
-    font: the design is on the master, so the reader who replaces the master
-    replaces the deck, and 새 슬라이드 offers these same shapes because they
-    are layouts rather than drawings.
-    """
+    """Writes `form.pptx`, the downloadable blank form. Placeholders only, no text boxes."""
     if not spec.form:
         return None
     presentation = _blank(spec)
@@ -498,20 +422,15 @@ def build_form(spec: Spec) -> pathlib.Path | None:
             for line in wanted.body[1:]:
                 frame.add_paragraph().text = line
         elif body is not None:
-            # A placeholder with nothing in it is dropped by PowerPoint when
-            # the file opens, taking its position with it. Left with a space,
-            # the shape stays where the layout put it.
+            # PowerPoint drops an empty placeholder on open; a space keeps it.
             body.text_frame.text = " "
 
-        # `Comparison` and `Two Content` carry a second column; the ones that
-        # do not simply have no placeholder here to fill.
+        # Second column of `Comparison` / `Two Content` layouts.
         for index, line in zip((2, 3, 4), wanted.second, strict=False):
             if index in placeholders:
                 placeholders[index].text_frame.text = line
 
-        # Date, footer and slide-number placeholders inherit from the master
-        # and are left alone: a form that stamps today's date is a form that is
-        # wrong from the day after it is downloaded.
+        # Date, footer and slide-number placeholders are left to the master.
 
     out = ROOT / spec.folder / "form.pptx"
     presentation.save(out)

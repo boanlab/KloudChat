@@ -90,8 +90,6 @@ export function MemoryPage() {
                       <button
                         onClick={() => setDraft(m)}
                         title={t('이 기억을 엽니다')}
-                        /* 이름 자체가 여는 버튼이다. 글자 높이(18px)가 곧
-                           누르는 높이여서, 손가락으로는 옆의 배지를 눌렀다. */
                         className="-my-2 py-2 font-mono text-sm text-accent hover:underline"
                       >
                         {m.name}

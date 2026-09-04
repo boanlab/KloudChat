@@ -16,14 +16,7 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/**
- * What a project's design system does to each surface, in that surface's own
- * terms.
- *
- * Four entries and not six: audio and video are rendered by something the
- * design never reaches. Chat gets the voice alone — an accent colour is not
- * something a sentence can be written in.
- */
+/** What a design system changes on each surface; audio and video are unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   chat: '이 대화의 말투를 이 디자인에 맞춥니다',
   report: '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다',
@@ -31,20 +24,7 @@ const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   image: '그림의 색과 스타일을 이 디자인에 맞춥니다',
 }
 
-/**
- * What this conversation is already carrying, before a word is typed.
- *
- * An agent, a project or a 디자인 is chosen on another screen and arrives here
- * as a badge in the top bar. Pressing 실행 on an agent is the clearest case:
- * the screen that opens looks exactly like a blank session. So it is said in
- * the middle of the empty screen, in the terms the choice was made in — an
- * agent's own description rather than its name repeated.
- *
- * A 서식 is deliberately absent: it lands as a named chip inside the composer
- * carrying the × that takes it off again, so naming it here too would put the
- * same two words at both ends of an empty screen with only the lower one
- * actionable. The shared page keeps its 서식 row — no composer there.
- */
+/** Agent, project and design this empty session carries; the 서식 chip lives in the composer instead. */
 function StartingFrom({
   sessionId,
   kind,
@@ -52,7 +32,7 @@ function StartingFrom({
 }: {
   sessionId?: string | null
   kind: SessionKind
-  /** The agent is the headline above, so listing it here would say it twice. */
+  /** Omit the agent row when the agent is already the headline. */
   withoutAgent?: boolean
 }) {
   const t = useT()
@@ -60,19 +40,12 @@ function StartingFrom({
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  // The design comes with the project or not at all, so it is looked up from
-  // the project rather than the session.
+  // The design comes with the project.
   const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
   const designReach = DESIGN_REACHES[kind]
 
-  // The 디자인 row rides on the project, so a card with neither an agent nor a
-  // project has nothing of its own left to say.
   if (!agent && !project) return null
 
-  // Each row says what the thing will *do* to this conversation rather than
-  // naming its category. "프로젝트" over a project's name says nothing the
-  // name did not; "이 프로젝트의 지침과 자료를 함께 씁니다" is the reason it
-  // is worth telling somebody about before they type.
   const rows = [
     agent && {
       key: 'agent',
@@ -136,13 +109,7 @@ function StartingFrom({
   )
 }
 
-/**
- * How to use the agent, and a few sentences to start with.
- *
- * 「에이전트로 시작하면 에이전트 사용법 같은 것을 첫 화면에서 보여줄 수
- * 없나」 — the screen had a name and one line. The guide says what to bring
- * and what a turn does; a starter is a first message, sent as it stands.
- */
+/** The agent's guide text and starter sentences; a starter is sent as-is. */
 function AgentGuide({
   agent,
   sessionId,
@@ -209,9 +176,6 @@ function Intro({
   )
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-4 pb-8">
-      {/* Pressing 실행 on an agent is a decision about what this conversation
-          is for, so the agent says who it is and the product does not greet
-          the person over the top of it. */}
       <div className="animate-fade-up mb-7 text-center">
         <div
           className="mx-auto mb-4 grid size-11 place-items-center rounded-panel text-white"
@@ -226,8 +190,6 @@ function Intro({
               ? t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')
               : t(meta.label)}
         </h1>
-        {/* 챗은 인사하고 나머지는 설명한다. 인사를 `tagline` 에 두면 홈 카드와
-            로그인 목록이 기능 나열 한가운데서 독자에게 인사하게 된다. */}
         <p className="mt-1.5 text-base text-muted">
           {agent
             ? agent.description || t('이 에이전트로 대화를 시작합니다.')
@@ -244,8 +206,6 @@ function Intro({
       {agent && <AgentGuide agent={agent} sessionId={sessionId ?? null} kind={kind} />}
       <StartingFrom sessionId={sessionId} kind={kind} withoutAgent={Boolean(agent)} />
       <div className="mt-4 flex flex-wrap justify-center gap-2">
-        {/* The cards are drawn in this project's look, which is the one the
-            composer under them will render the answer in. */}
         <DesignGallery kind={kind} sessionId={sessionId ?? null} />
       </div>
     </div>
@@ -255,29 +215,19 @@ function Intro({
 export function SessionPage() {
   const t = useT()
   const { sessionId } = useParams()
-  // Selectors, not the whole store: this screen re-renders on every streamed
-  // chunk regardless (the session row changes), but nothing here should make
-  // it re-render for a change in some other conversation or an unrelated
-  // slice, and the rows below are what `MessageItem`'s memo keys on.
+  // Selectors, not the whole store: `MessageItem`'s memo keys on these rows.
   const jobs = useStore((s) => s.jobs)
   const projects = useStore((s) => s.projects)
   const agents = useStore((s) => s.agents)
   const artifacts = useStore((s) => s.artifacts)
   const setActiveSession = useStore((s) => s.setActiveSession)
   const openSession = useStore((s) => s.openSession)
-  // Whether *this* conversation has a turn in flight.
   const streaming = useStore((s) => !!sessionId && !!s.running[sessionId])
   const openArtifactId = useStore((s) => s.openArtifactId)
   const openArtifact = useStore((s) => s.openArtifact)
 
   const [searchParams, setSearchParams] = useSearchParams()
-    /**
-     * A document named by whoever sent us here — the 작업 목록's 원본 작업 열기.
-     *
-     * The panel otherwise follows `session.artifactId`, this conversation's
-     * *latest* result: right while you are working, wrong when somebody arrives
-     * asking for a particular file.
-     */
+  // `?artifact=` opens a specific document instead of the session's latest.
   const requestedArtifactId = searchParams.get('artifact')
   const session = useStore((s) => s.sessions.find((c) => c.id === sessionId) ?? null)
   const kind: SessionKind = session?.kind ?? 'chat'
@@ -287,27 +237,8 @@ export function SessionPage() {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
 
-  /**
-   * A conversation nobody put anything into. 새 채팅 시작 and 이 프로젝트에서
-   * 새로 만들기 create the row on the server before there is a sentence, so
-   * leaving before the first send left an empty chat sitting in every list
-   * that reads sessions — the project's own tab and the sidebar are one
-   * array, so removing it here clears both without touching either.
-   *
-   * A typed-but-unsent draft is the one thing that keeps an empty session:
-   * it already survives navigation on its own (Composer's in-memory map),
-   * and deleting the row out from under it would make that draft
-   * unreachable rather than merely unsent.
-   *
-   * The actual check runs a tick later, in a timer cancelled by whatever
-   * mounts next for the same id. Deleting straight from the cleanup would
-   * also catch StrictMode's dev-only mount → cleanup → mount, which tests
-   * that an effect survives being repeated by repeating it once, in the same
-   * tick, on the same session — a delete fired there removes what the second
-   * mount was about to show. Returning to the same still-empty session before
-   * the timer fires cancels it exactly the same way, which is also correct:
-   * being looked at is reason enough not to go.
-   */
+  // Deletes an empty session on leave, unless it holds an unsent draft.
+  // Deferred a tick so StrictMode's mount/cleanup/mount and a return to the same id cancel it.
   const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
   useEffect(() => {
     const id = sessionId
@@ -334,18 +265,13 @@ export function SessionPage() {
     }
   }, [sessionId])
 
-  // The sidebar list carries titles only, so a session opened by URL (a reload,
-  // a shared link, a back button) has to fetch its own transcript.
+  // The session list carries no transcript; a session opened by URL fetches its own.
   const loaded = session !== null && session.messages.length > 0
   useEffect(() => {
     if (sessionId && !loaded) void openSession(sessionId)
   }, [sessionId, loaded, openSession])
 
-  /**
-   * Messages and jobs share one timeline. For image and video the job card is
-   * the visible unit of work, so it has to sit inline with the prompt that
-   * started it rather than in a separate pane.
-   */
+  // Messages and jobs share one timeline, ordered by creation.
   const timeline = useMemo(() => {
     if (!session) return []
     const sessionJobs = jobs.filter((j) => j.sessionId === session.id)
@@ -356,15 +282,7 @@ export function SessionPage() {
     return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
   }, [session, jobs])
 
-  /**
-   * The outline sits under the message that proposed it. While the answer is
-   * still awaited that is the end of the transcript, above the composer where
-   * the decision is: read what it means to write, then press the button or
-   * type what to change. Once the button is pressed the transcript keeps
-   * reading in order — proposal, outline, 「이대로 생성해 주세요」, the work —
-   * so the card moves above the question that started the running turn
-   * instead of trailing the steps.
-   */
+  // Outline card index: end of the transcript while pending, above the running turn once accepted.
   const proposalAt = useMemo(() => {
     if (!session?.pending) return -1
     if (!streaming) return timeline.length
@@ -389,12 +307,7 @@ export function SessionPage() {
     el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' })
   }, [timeline.length, lastLength, runningProgress, streaming])
 
-  /**
-   * Spent on arrival, and only once the session it names is in hand:
-   * `setActiveSession` above opens the panel on the session's own document,
-   * and that runs again when a reload finally loads the list. Clearing the
-   * query afterwards is what lets a closed panel stay closed.
-   */
+  // Applied once the session is loaded, then cleared so a closed panel stays closed.
   useEffect(() => {
     if (!requestedArtifactId || !session) return
     openArtifact(requestedArtifactId)
@@ -406,8 +319,7 @@ export function SessionPage() {
       },
       { replace: true },
     )
-    // The session is a dependency by id: its object identity changes on every
-    // streamed token, and reopening the panel mid-answer is not what this is.
+    // Session by id: its identity changes on every streamed token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedArtifactId, session?.id, openArtifact, setSearchParams])
 
@@ -460,8 +372,7 @@ export function SessionPage() {
             <>
               <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-                  {/* Per-message: one malformed turn loses its own bubble, not
-                      the conversation around it. */}
+                  {/* Per-message boundary: one malformed turn loses only its own bubble. */}
                   {timeline.map((item, i) =>
                     item.type === 'message' ? (
                       <Fragment key={item.m.id}>
@@ -491,10 +402,7 @@ export function SessionPage() {
           ) : (
             <>
               <Intro kind={kind} sessionId={session?.id ?? sessionId ?? null} />
-              {/* The URL is authoritative, not the store lookup. On `/s/:id`
-                  the row may not have arrived yet — falling back to `null` there
-                  makes the composer start a *new* conversation, silently
-                  discarding the agent or project the old one carried. */}
+              {/* URL id first: the row may not have arrived yet, and `null` would start a new session. */}
               <Composer
                 sessionId={session?.id ?? sessionId ?? null}
                 kind={kind}

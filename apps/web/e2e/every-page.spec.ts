@@ -1,15 +1,7 @@
 import { expect, test, type ConsoleMessage, type Page } from '@playwright/test'
 import { signInAs } from './helpers'
 
-/**
- * Every route in the product, walked as the two real accounts.
- *
- * Not a feature test: nothing here knows what a page is *for*. It asks the
- * three questions that hold for all of them — did it render something a person
- * can act on, did it do so without throwing, and does the role boundary hold —
- * and it names the page that failed rather than a selector, because the point
- * of a sweep is to say where to look next.
- */
+/** Every route, as user and admin: renders something actionable, throws nothing, holds the role boundary. */
 
 const ADMIN = { email: 'admin@kloud.zone', password: 'KloudChat-Admin-2026' }
 const USER = { email: 'test@kloud.zone', password: 'KloudChat-Test-2026' }
@@ -96,8 +88,7 @@ async function visit(page: Page, route: string): Promise<Report> {
   const sink = { errors: [] as string[], failed: [] as string[] }
   collect(page, sink)
   await page.goto(route)
-  // The shell is a Suspense boundary; wait for the spinner to go before
-  // judging emptiness.
+  // Wait for the Suspense spinner before judging emptiness.
   await page
     .locator('[data-testid="spinner"], [role="status"]')
     .first()

@@ -1,10 +1,4 @@
-"""HWP 5.x record parsing.
-
-The format is read byte by byte rather than through a library, so what these
-tests cover is not the container (that is olefile's job) but the record tree
-inside it and the paragraph encoding. Get this wrong and the extracted text
-comes out with an embedded object's raw bytes mixed into the prose.
-"""
+"""HWP 5.x record splitting and paragraph text decoding."""
 
 from __future__ import annotations
 
@@ -43,8 +37,7 @@ def test_paragraphs_are_utf16le():
 
 
 def test_an_extended_control_occupies_eight_characters():
-    # One table control (11) followed by body text. Skipping fewer than eight
-    # characters leaks the object's own bytes into the text as characters.
+    # Table control (11) followed by body text.
     body = struct.pack("<H", 11) + b"\xff" * 14 + "본문".encode("utf-16-le")
     assert _hwp_paragraph(body) == "본문"
 

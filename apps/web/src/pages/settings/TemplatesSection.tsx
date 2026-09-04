@@ -8,22 +8,14 @@ import type { SessionKind } from '@/types'
 import { upsertById } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 
-/** Surfaces a template can start. Chat included: a prompt is a starting point too. */
+/** Surfaces a template can start. */
 const KINDS: readonly SessionKind[] = ['chat', 'report', 'slides', 'image', 'av']
 
-/**
- * Templates the whole instance sees.
- *
- * The gallery already lets anybody write one for themselves. This is the other
- * case: an organisation's own 공문 or 발표 양식, entered once and offered to
- * every account. Shared rather than copied, so a correction to the form reaches
- * everybody who has not started yet.
- */
+/** Instance-wide shared templates. */
 export function TemplatesSection() {
   const t = useT()
   const [rows, setRows] = useState<TemplateRow[]>([])
   const [adding, setAdding] = useState(false)
-  /** The template being corrected. Null while adding or listing. */
   const [editing, setEditing] = useState<TemplateRow | null>(null)
 
   const load = async () => setRows(await templatesApi.list().catch(() => []))
@@ -31,8 +23,7 @@ export function TemplatesSection() {
     void load()
   }, [])
 
-  // Only the shared ones. An administrator's own private templates belong in
-  // the gallery with everybody else's.
+  // An administrator's private templates belong in the gallery.
   const shared = rows.filter((r) => r.shared)
 
   const remove = async (id: string) => {
@@ -49,8 +40,7 @@ export function TemplatesSection() {
     setEditing(null)
   }
 
-  // Named region: three inputs on this screen answer to "이름" (branding, SMTP,
-  // and this form), so the section has to be addressable on its own.
+  // Named region: several inputs on the admin screens are labelled "이름".
   if (adding || editing) {
     return (
       <section aria-label={t('공용 템플릿')}>
@@ -90,9 +80,6 @@ export function TemplatesSection() {
                 </span>
               )}
               <Badge>{t(kindMeta[row.kind].label)}</Badge>
-              {/* A shared form is the one nobody wants to retype: a wrong
-                  수신처 in it has to be correctable in place, or the fix means
-                  deleting the row every account is already starting from. */}
               <Button
                 variant="ghost"
                 size="icon"

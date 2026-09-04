@@ -1,11 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { openSidebar, signIn } from './helpers'
 
-/**
- * The sidebar's 삭제 sits one row under 고정 in the same menu, and the server
- * delete is final. The row must ask first, with the conversation's name in
- * the question, and 취소 must leave it exactly where it was.
- */
+/** The sidebar asks before deleting a conversation, naming it; 취소 keeps it. */
 test('사이드바에서 대화를 지우기 전에 물어본다', async ({ page }) => {
   test.setTimeout(90_000)
   await signIn(page)

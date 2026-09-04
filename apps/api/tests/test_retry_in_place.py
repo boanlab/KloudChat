@@ -1,14 +1,4 @@
-"""다시 시도 runs the failed turn again, in place.
-
-It used to be a plain send: the question was written a second time, a second
-failure landed under it, and both copies were carried into the context of
-every later turn. `SendMessage.retry_of` names the question instead. The row
-is reused, whatever failed under it is replaced, and the model's history stops
-before the question so it is not shown the same sentence twice.
-
-Only the latest question qualifies — a later question is a conversation that
-moved on, and rerunning an earlier turn would have to erase it.
-"""
+"""`SendMessage.retry_of` reruns the latest failed question in place, reusing its row."""
 
 from __future__ import annotations
 
@@ -21,7 +11,7 @@ from app.schemas.chat import SendMessage
 
 
 class _Transcript(_Db):
-    """A chat with its rows on the table, and a delete that is remembered."""
+    """A `_Db` that serves message rows and records deletes."""
 
     def __init__(self, session: ChatSession, messages: list[Message]):
         super().__init__(session)
@@ -78,7 +68,7 @@ async def _send(db: _Transcript, payload: SendMessage) -> None:
 
 @pytest.mark.asyncio
 async def test_a_retry_reuses_the_question_and_replaces_what_failed_under_it(monkeypatch):
-    """The whole complaint: one question, not two, and no second error block."""
+    """A retry reuses the question row, deletes the failed reply, and sends the question once."""
     earlier_q, earlier_a = _question("q0", "첫 질문"), _reply("a0", "첫 답")
     failed_q = _question("q1", "로마 제국의 역사를 3000단어로")
     failed_a = _reply("a1", "", failure=TurnFailure.interrupted)
@@ -87,22 +77,18 @@ async def test_a_retry_reuses_the_question_and_replaces_what_failed_under_it(mon
 
     await _send(db, SendMessage(content="로마 제국의 역사를 3000단어로", retry_of="q1"))
 
-    # No second user row was written; the one that failed is the one reused.
     written = [r for r in db.added if isinstance(r, Message) and r.role is Role.user]
     assert written == [failed_q]
     assert failed_q.failure is None
     assert captured["user_message_id"] == "q1"
-    # The failed reply is gone, and nothing else is.
     assert db.deleted == [failed_a]
-    # The model sees the conversation up to the question, then the question
-    # once — not the stored copy and the echoed copy back to back.
     wire = [m for m in captured["messages"] if m["role"] in ("user", "assistant")]
     assert [m["content"] for m in wire] == ["첫 질문", "첫 답", "로마 제국의 역사를 3000단어로"]
 
 
 @pytest.mark.asyncio
 async def test_a_retry_uses_the_stored_words_not_the_echo(monkeypatch):
-    """The turn that reran is the turn that failed, whatever the client sent."""
+    """A retry runs the stored question text, not the client's echo."""
     failed_q = _question("q1", "저장된 질문", failure=TurnFailure.no_answer)
     db = _Transcript(_chat(), [failed_q])
     captured = _capture_chat_turn(monkeypatch)
@@ -116,7 +102,7 @@ async def test_a_retry_uses_the_stored_words_not_the_echo(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_only_the_latest_question_can_be_rerun(monkeypatch):
-    """A question with another one after it belongs to a conversation that moved on."""
+    """A retry of anything but the latest question is refused with 409."""
     db = _Transcript(
         _chat(),
         [_question("q1", "먼저", failure=TurnFailure.no_answer), _question("q2", "나중에")],
@@ -144,7 +130,7 @@ async def test_a_question_from_another_conversation_cannot_be_rerun_here(monkeyp
 
 @pytest.mark.asyncio
 async def test_a_plain_send_still_writes_a_new_question(monkeypatch):
-    """Nothing changes for a turn that is not a retry."""
+    """A send without `retry_of` writes a new question row."""
     db = _Transcript(_chat(), [_question("q1", "먼저"), _reply("a1", "답")])
     captured = _capture_chat_turn(monkeypatch)
 

@@ -6,13 +6,7 @@ import type { Variant } from '@/types'
 import { Markdown } from './Markdown'
 import { useT } from '@/lib/useT'
 
-/**
- * Puts the chosen models' answers side by side.
- *
- * On a shared proxy the real question is "is the expensive model worth it for
- * this prompt", so each column carries its own cost and choosing one is an
- * explicit action. The conversation continues from the answer picked.
- */
+/** Side-by-side model answers with cost; the conversation continues from the chosen one. */
 export function CompareView({
   variants,
   sessionId,
@@ -97,8 +91,6 @@ export function CompareView({
               ) : (
                 <span className="text-xs text-faint">{t('집계 중')}</span>
               )}
-              {/* The chosen column's button is a statement, not a pending state:
-                  이어가는 중 read as a spinner that never resolved. */}
               <Button
                 size="sm"
                 variant={v.chosen ? 'primary' : 'secondary'}

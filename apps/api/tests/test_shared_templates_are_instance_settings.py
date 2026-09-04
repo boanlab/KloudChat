@@ -1,16 +1,4 @@
-"""공용 템플릿을 다른 관리자가 지울 수 있는가.
-
-공용 템플릿 sits on the 시스템 page beside the proxy and the mail server: it is
-what everybody on the instance starts from, registered once. But the row still
-belongs to whichever administrator added it, and ownership was the only test —
-so a second administrator saw the list, saw a pencil and a bin on every row,
-pressed the bin, and watched the row come back. The delete answered 404 and the
-screen reloaded the list over it, which from the screen's side is nothing
-happening at all.
-
-Private templates stay private. Somebody's own drafts are not instance
-configuration and an administrator has no business in them.
-"""
+"""Any administrator may delete a 공용 템플릿; private templates stay their owner's."""
 
 from __future__ import annotations
 
@@ -68,7 +56,7 @@ async def test_an_ordinary_account_still_cannot_touch_a_shared_template():
 
 @pytest.mark.asyncio
 async def test_a_private_template_is_nobodys_business_but_its_owners():
-    """Including an administrator's. A draft is not instance configuration."""
+    """A private template cannot be deleted by an administrator."""
     db = _Db(_template("someone", shared=False))
 
     with pytest.raises(HTTPException):

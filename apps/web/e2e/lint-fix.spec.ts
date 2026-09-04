@@ -1,16 +1,4 @@
-/**
- * The checks panel, and whether anything can be done from it.
- *
- * It listed problems and offered 다시 검토 — which is a button that finds the
- * same problems again. So the panel was a place to be told about a problem
- * twice, and the work of acting on one was left where it started: find the
- * passage, decide what it should say, type it.
- *
- * What this asserts is that pressing 고치기 changes the document. Not that a
- * request was sent, not that a spinner ran — the section's text is different
- * afterwards and the version has moved, which is the only difference between a
- * button that fixes something and a button that says it will.
- */
+/** 고치기 on a finding changes the section and bumps the version. */
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN, artifactReady, signIn } from './helpers'
 
@@ -52,8 +40,7 @@ async function state(page: Page) {
 test('고치기를 누르면 그 절이 실제로 바뀐다', async ({ page }) => {
   await signIn(page)
 
-  // Seed a fault and the finding that names it, so the test does not depend on
-  // whatever a real generation happened to leave behind.
+  // Seed a fault and the finding that names it.
   const before = await page.evaluate(
     async ([admin, body]: [typeof E2E_ADMIN, string]) => {
       const login = await fetch('/api/auth/login', {
@@ -103,7 +90,6 @@ test('고치기를 누르면 그 절이 실제로 바뀐다', async ({ page }) =
 
   await page.goto('/artifacts')
   await page.getByRole('button', { name: /보고/ }).first().click()
-  // 결과물이 다 나온 뒤에 검토 칸을 연다.
   await artifactReady(page, 30_000)
   await page.getByRole('tab', { name: '검토', exact: true }).click()
 
@@ -111,13 +97,12 @@ test('고치기를 누르면 그 절이 실제로 바뀐다', async ({ page }) =
   const finding = page.getByText('威胁').first()
   await expect(finding).toBeVisible({ timeout: 10_000 })
 
-  // The button appears on hover, which is deliberate — eight of them at rest
-  // is a list of buttons rather than a list of findings.
+  // The button appears on hover.
   const row = page.locator('li', { hasText: '威胁' }).last()
   await row.hover()
   await row.getByRole('button', { name: '고치기' }).click()
 
-  // The document changed. Not a request sent, not a spinner run.
+  // The document changed.
   await expect
     .poll(async () => (await state(page)).content, { timeout: 120_000 })
     .not.toContain('威胁')

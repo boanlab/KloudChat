@@ -1,14 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * 버전 기록은 종류를 가리지 않는다.
- *
- * The endpoints do not: every write snapshots the revision it replaces, and
- * `versions`/`restore` take an id and nothing else. So the same control has to
- * answer on all three panels, and a restore has to behave the way the server
- * describes it — an edit, leaving the revision it replaced in the list.
- */
+/** Version history works on html, deck and report panels; a restore is itself an edit. */
 
 const AS_USER = `async (path, init) => {
   const login = await fetch('/api/auth/login', {
@@ -24,8 +17,7 @@ const AS_USER = `async (path, init) => {
   return r.ok ? await r.json() : null
 }`
 
-/** Creates an artifact and edits it once, so there is exactly one revision
- *  behind the document to go back to. */
+/** Creates an artifact and edits it once, so there is one revision to go back to. */
 async function seedEdited(
   page: import('@playwright/test').Page,
   kind: string,
@@ -51,8 +43,7 @@ async function seedEdited(
       }),
     [AS_USER, (made as { id: string }).id, second, summary] as const,
   )
-  // The PATCH is what makes the history: v1 is now a stored revision and the
-  // document on screen is v2.
+  // v1 is now a stored revision; the document is v2.
   expect((edited as { version: number }).version).toBe(2)
   return (made as { id: string }).id
 }
@@ -82,24 +73,20 @@ test('HTML 문서도 되돌릴 수 있고, 되돌리기 자체가 판으로 남�
   await dialog.getByRole('button', { name: '소스' }).click()
   await expect(dialog.locator('pre')).toContainText('고쳐 쓴 문단', { timeout: 20_000 })
 
-  // 이 버튼이 이 화면에 있다는 것이 이 수정의 전부다. HTML 패널에는 리본이
-  // 없으므로 탭 없이 바로 있다.
+  // The HTML panel has no ribbon, so the button is directly on it.
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await expect(history).toContainText('v2')
   await history.click()
 
-  // The summary the edit was saved under is what tells one revision from
-  // another; without it the dialog is a column of version numbers.
+  // The edit's summary tells revisions apart.
   await expect(page.getByText('블록 다시 쓰기')).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'v1 로 되돌리기' }).click()
 
-  // The document, not just the number: a restore that moved the version and
-  // left the markup alone would pass a version-only assertion.
+  // The document, not just the version number.
   await expect(dialog.locator('pre')).toContainText('처음 쓴 문단', { timeout: 20_000 })
   await expect(history).toContainText('v3')
 
-  // 되돌리기도 편집이다. 되돌리기 직전의 판이 목록에 남아 있어야, 되돌린 것을
-  // 다시 되돌릴 수 있다.
+  // A restore is an edit: the revision it replaced stays in the list.
   await history.click()
   await expect(page.getByRole('button', { name: 'v2 로 되돌리기' })).toBeVisible({
     timeout: 20_000,
@@ -134,15 +121,13 @@ test('덱도 같은 버튼으로 되돌린다', async ({ page }) => {
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고친 제목').first()).toBeVisible({ timeout: 20_000 })
 
-  // 버전 기록은 리본의 검토 칸에 있다 — 되돌리고 싶어지는 때는 대개
-  // 고치던 중이고, 검토는 편집 중에도 남는 탭이다.
   await dialog.getByRole('tab', { name: '검토', exact: true }).click()
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await expect(history).toContainText('v2')
   await history.click()
   await page.getByRole('button', { name: 'v1 로 되돌리기' }).click()
 
-  // 무대에 걸린 장이 돌아온다 — 목록의 판 이름이 아니라 슬라이드 자체로 본다.
+  // The slide itself comes back.
   await expect(dialog.getByText('처음 제목').first()).toBeVisible({ timeout: 20_000 })
   await expect(history).toContainText('v3')
 })
@@ -176,8 +161,6 @@ test('보고서의 되돌리기는 옮겨진 뒤에도 그대로다', async ({ p
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('고쳐 쓴 본문입니다.')).toBeVisible({ timeout: 20_000 })
 
-  // 버전 기록은 리본의 검토 칸에 있다 — 되돌리고 싶어지는 때는 대개
-  // 고치던 중이고, 검토는 편집 중에도 남는 탭이다.
   await dialog.getByRole('tab', { name: '검토', exact: true }).click()
   const history = dialog.getByRole('button', { name: '버전 기록' })
   await history.click()

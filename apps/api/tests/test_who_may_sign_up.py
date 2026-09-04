@@ -1,11 +1,4 @@
-"""Who may sign up is the administrator's to say, not the environment's alone.
-
-「회원 가입할 때 가입 가능한 이메일 도메인들 지정할 수 있는 부분을 관리자
-메뉴에 추가해줘」 — the domains are a CSV in system settings; an empty list
-means anyone. And 「smtp가 설정되어 있다면 이메일 인증도 가능하게」 — the
-switch is the administrator's, but it only does anything with a mail server
-behind it.
-"""
+"""Sign-up domain allow-list and email verification are administrator settings."""
 
 from __future__ import annotations
 

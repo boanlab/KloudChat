@@ -1,18 +1,4 @@
-"""The rendering catalogue: what it promises, and what it refuses to pass on.
-
-Three properties carry the feature, and each has a test that fails without the
-code it guards:
-
-1. Every shipped template is complete enough to be offered — a card with no
-   preview, or an outline prompt naming a layout the seed does not style, is a
-   promise the product cannot keep.
-2. The model writes content and never layout. What it sends is reduced to the
-   seed's vocabulary before it reaches a file somebody downloads.
-3. A session with no template produces exactly what it produced before.
-4. A format belongs to the project as much as to the conversation: work
-   started inside a project begins in that project's format, and the composer
-   still decides the conversation it is opened in.
-"""
+"""`design_templates`: catalogue completeness, `sanitise`, assembly, and project defaults."""
 
 from __future__ import annotations
 
@@ -34,9 +20,7 @@ from app.services import imagegen, page, research
 # ── the shipped catalogue ──────────────────────────────────────────────
 
 
-#: What an id begins with, per kind. A convention the loader does not enforce,
-#: kept because a folder listing is where the catalogue is actually browsed
-#: while it is being written.
+#: Id prefix per kind; a convention the loader does not enforce.
 _PREFIX = {
     "deck": "deck-",
     "document": "doc-",
@@ -47,12 +31,7 @@ _PREFIX = {
 
 
 def test_every_surface_that_can_be_shaped_has_something_to_offer():
-    """A property, not an inventory.
-
-    Listing the ids here would mean editing this test every time a template is
-    added, which teaches everybody to edit it without reading it. What has to
-    hold is that no surface is left with an empty gallery behind its button.
-    """
+    """No surface has an empty gallery."""
     for surface in set(dt.SURFACE.values()):
         assert dt.for_surface(surface), surface
 
@@ -67,18 +46,13 @@ def test_a_template_lands_on_the_surface_its_kind_names(template):
 def test_a_shipped_template_is_complete(template):
     assert template.name and template.description and template.category
     assert template.example_prompt.strip()
-    # Instructions are what `page.write` composes into a writing turn. A media
-    # template has no such turn — its whole expertise is the prompt and the
-    # suffix — so requiring a file nothing reads would only invite drift.
+    # Only writing templates carry instructions and a seed.
     if template.kind in dt.HTML_KINDS:
         assert template.instructions.strip()
     else:
         assert not template.instructions
-    # Both halves of the card, or an English UI shows a Korean one.
     assert template.name_en and template.description_en and template.category_en
     assert template.example_prompt_en.strip()
-    # The gallery renders the seed around the sample; either missing is a card
-    # advertising a shape nobody can see.
     if template.kind in dt.HTML_KINDS:
         assert template.seed
         assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
@@ -88,35 +62,20 @@ def test_a_shipped_template_is_complete(template):
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_writing_template_says_what_it_will_be_read_against(template):
-    """A rubric is a writing template's third file, not an optional one.
-
-    A media template has nothing to review — the picture or the clip comes back
-    whole — so it ships none, and a card that showed an empty heading for it
-    would be worse than one that shows nothing.
-    """
+    """Writing templates ship at least three unbulleted checks; media templates ship none."""
     if template.kind in dt.HTML_KINDS:
         assert len(template.checks) >= 3, template.id
-        # Read as sentences on the card, so nothing may arrive still bulleted.
         assert not any(line.startswith("-") for line in template.checks), template.id
     else:
         assert not template.checks
 
 
 def test_the_card_carries_the_rules_the_result_will_be_read_against():
-    """The one thing that separates two shapes of the same kind.
-
-    회의록 and 안내문 are both documents with a title and a description; what
-    makes them different choices is that one keeps decisions apart from
-    discussion and the other wants grounds and an effective date. That lived
-    only in `checklist.md` until it went on the wire.
-    """
+    """`DesignTemplateOut.checks` carries the template's checks; an image template's is empty."""
     card = DesignTemplateOut.of(dt.get("doc-minutes"))
     assert card.checks == list(dt.get("doc-minutes").checks)
     assert any("실행 항목" in line for line in card.checks)
-    # camelCase out, like every other field on this card.
     assert card.model_dump(by_alias=True)["checks"] == card.checks
-    # No English half exists, and the card must not invent one — an image
-    # template has no checklist at all and says so with an empty list.
     assert DesignTemplateOut.of(dt.get("image-poster")).checks == []
 
 
@@ -124,48 +83,25 @@ def test_the_card_carries_the_rules_the_result_will_be_read_against():
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
 def test_a_template_that_can_hold_code_says_so(template):
-    """The tag list in `instructions.md` is the only list the model reads.
-
-    A seed that styles `<code>` and instructions that do not mention it is a
-    face nothing ever reaches — 최도현 and 오지훈 could not put a command or an
-    exception name into any 서식, and the survey called that the thing to
-    decide before adding another shape.
-    """
+    """Every writing template's instructions mention `code`."""
     assert "code" in template.instructions
 
 
 def test_what_is_inside_a_code_element_arrives_as_characters():
-    """Its contents are text. That is the whole of what makes it a `<code>`.
-
-    Every other rule in `sanitise` reads the fragment as markup, so left alone
-    a sample of `<div>` became a real division and one of `<b>` real bold —
-    the quotation stopped being the thing it was quoting.
-    """
+    """`<code>` contents are escaped as text, never double-escaped; `<pre>` is not allowed."""
     kept = dt.sanitise('<p>이렇게 <code><div class="x"></code> 쓴다</p>')
     assert kept == '<p>이렇게 <code>&lt;div class="x"&gt;</code> 쓴다</p>'
-    # A model writes a sample both ways, and neither may be escaped twice.
     assert dt.sanitise("<code>&lt;b&gt;</code>") == "<code>&lt;b&gt;</code>"
     assert dt.sanitise("<code>a &amp;&amp; b</code>") == "<code>a &amp;&amp; b</code>"
     assert dt.sanitise("<code>a & b</code>") == "<code>a &amp; b</code>"
-    # And a script in there is a script somebody is reading about, not one
-    # anything runs — it is shown rather than removed.
     assert dt.sanitise("<code><script>x()</script></code>") == (
         "<code>&lt;script&gt;x()&lt;/script&gt;</code>"
     )
-    # The shape that was refused: a block of it. What is inside a `<pre>` is
-    # whitespace-significant and arbitrarily long, and the file exporters read
-    # markdown lines — a stack trace would arrive re-indented with half of it
-    # read back as a bullet list, which is the loss this batch set out to fix.
     assert "pre" not in dt._ALLOWED_TAGS
 
 
 def test_the_categories_group_the_catalogue_the_same_way_in_both_languages():
-    """The chip row is a filter, so a category is a grouping key, not a label.
-
-    Two templates that share 발표 have to share whatever the English side calls
-    it: otherwise the same gallery offers one chip in Korean and three in
-    English, and picking one hides templates that the other language keeps.
-    """
+    """Templates sharing a Korean category share its English name."""
     seen: dict[str, str] = {}
     for template in dt.all_templates():
         assert seen.setdefault(template.category, template.category_en) == template.category_en, (
@@ -175,30 +111,20 @@ def test_the_categories_group_the_catalogue_the_same_way_in_both_languages():
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_seed_carries_no_script(template):
-    """`sandbox=""` blocks it anyway; the file is also downloaded and opened."""
+    """No seed contains a script or an inline handler."""
     assert "<script" not in template.seed.lower()
     assert "onclick" not in template.seed.lower()
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_seed_breaks_korean_lines_between_words(template):
-    """The catalogue writes Korean, and Korean breaks between syllables.
-
-    Left alone, a browser puts the second half of a word on the next line —
-    which on a slide reads as a typo. `keep-all` is one line in a seed and easy
-    to leave out of the next one, so it is asserted rather than remembered.
-    """
-    # Only the two that have one. A picture 서식 is a prompt and a suffix — its
-    # kind never reaches a renderer, so the seed it used to carry was drawn
-    # nowhere and has gone with the previews.
+    """Every writing seed sets `word-break: keep-all`."""
     if template.kind not in dt.HTML_KINDS:
         return
     assert "keep-all" in template.seed
 
 
-#: Tags a block may contain that a seed has to have an opinion about. Left
-#: unstyled they render as browser defaults in the middle of a designed page,
-#: which is exactly what makes generated documents look generated.
+#: Block tags every seed must style.
 _MUST_STYLE = (
     "h3",
     "table",
@@ -226,36 +152,24 @@ def test_a_seed_styles_every_tag_a_block_may_reach_for(template):
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
 def test_a_picture_cannot_grow_past_the_page_it_is_on(template):
-    """A portrait picture at full width is twice the height of a slide.
-
-    Measured before this rule: a 600×1200 image took a `deck-editorial` slide
-    from 100vh to 2154px, which stops scroll-snap landing on slide boundaries
-    and puts one slide across two printed pages. Width is the obvious
-    constraint and the wrong one; height is what has to be capped.
-    """
+    """Every writing seed caps `figure img` height."""
     assert re.search(r"figure img \{[^}]*max-height", template.seed), template.id
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_no_seed_justifies_korean(template):
-    """`keep-all` breaks Korean at spaces, and a Korean line has few of them.
-
-    Justifying then stretches those few into rivers running down the page —
-    the one alignment that looks tidy in English and ragged here.
-    """
+    """No seed justifies text; with `keep-all` that leaves rivers in Korean."""
     assert "text-align: justify" not in template.seed
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_every_blank_is_one_the_prompt_actually_has(template):
-    """A blank nobody substitutes is a `{name}` printed into the sentence."""
+    """Every argument appears in both example prompts with labels, defaults and matching options."""
     for argument in template.arguments:
         assert f"{{{argument.name}}}" in template.example_prompt, argument.name
         assert f"{{{argument.name}}}" in template.example_prompt_en, argument.name
         assert argument.label and argument.label_en
         assert argument.default and argument.default_en
-        # A picker's options are a closed list; both sides have to line up or
-        # one language silently offers fewer choices.
         assert len(argument.options) == len(argument.options_en)
         assert not argument.options or argument.default in argument.options
 
@@ -271,7 +185,7 @@ def test_a_prompt_has_no_blank_without_an_argument_behind_it(template):
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
 def test_a_writing_arguments_are_only_for_media(template):
-    """A deck's brief is a sentence somebody writes, not a form they fill."""
+    """Writing templates have no arguments or defaults."""
     assert not template.arguments
     assert not template.defaults
 
@@ -280,19 +194,13 @@ def test_a_writing_arguments_are_only_for_media(template):
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
 def test_a_writing_template_can_print(template):
-    """No rendering engine on the server, so print *is* the PDF path."""
+    """Every writing seed has print and `@page` rules."""
     assert "@media print" in template.seed
     assert "@page" in template.seed
 
 
 def test_only_image_templates_hide_a_clause_from_the_composer():
-    """Guardrails stay invisible; a brief stays visible.
-
-    An image template's `no lettering, no logos` is true of every picture it
-    makes and would be noise in the composer. A video or audio template has no
-    such standing rule — its whole prompt is the brief, and the brief belongs
-    where the person can read and edit it.
-    """
+    """Only picture (non-figure) image templates carry a hidden `prompt_suffix`."""
     for template in dt.all_templates():
         if template.kind == "image" and not template.figure:
             assert template.prompt_suffix.strip(), template.id
@@ -304,7 +212,7 @@ def test_only_image_templates_hide_a_clause_from_the_composer():
 
 
 def test_media_templates_carry_the_settings_they_imply():
-    """Picking a shape and then setting its aspect by hand is asking twice."""
+    """Media templates ship the settings their shape implies."""
     assert dt.get("video-product").defaults["aspect"] == "16:9"
     assert dt.get("video-opening").defaults["resolution"] == "1080p"
     assert dt.get("audio-narration").defaults["audioKind"] == "narration"
@@ -320,7 +228,6 @@ def test_a_script_is_removed_with_its_payload():
 def test_handlers_and_remote_references_are_stripped():
     assert "onclick" not in dt.sanitise('<p onclick="x()">본문</p>')
     assert "evil.example" not in dt.sanitise('<img src="https://evil.example/p.png">')
-    # A style block would let the model rewrite the seed's own layout.
     assert dt.sanitise("<style>body{display:none}</style><p>본문</p>") == "<p>본문</p>"
 
 
@@ -339,7 +246,6 @@ def test_blocks_land_inside_the_structure_the_seed_styles():
     )
     assert body.startswith('<section class="slide cover"><h2>표지</h2>')
     assert '<section class="slide quote">' in body
-    # Numbered in order, which is what the seed prints in the corner.
     assert '<span class="num">2</span>' in body
 
 
@@ -389,19 +295,7 @@ def test_a_title_cannot_break_out_of_the_document():
 
 
 def test_a_card_shows_the_shape_the_form_actually_has():
-    """The gallery card's sample and the 양식 file are one shape or none.
-
-    The card is not a decoration: it says "this is what comes out", and beside
-    it is a button that hands over the blank form. Every 문서 서식 shipped with
-    a sample that had been scaffolded and never written — one `개요` on all ten
-    cards — while the forms underneath said 결정할 것, 권고, 요약, 목적, 참석,
-    근거, 고객의 과제, 검토 범위, 조사 개요, 서론. Somebody comparing the two
-    found a card advertising a 서식 that does not exist.
-
-    Headings only. The words in the example are the example's own business;
-    the section names are the shape, and the shape is what the two files have
-    to agree on.
-    """
+    """Every `<h2>` in a card's sample is a heading in the template's .docx form."""
     import zipfile
     from xml.etree import ElementTree as ET
 
@@ -453,7 +347,7 @@ def test_an_unknown_layout_is_coerced_rather_than_dropped():
 
 
 def test_the_first_block_is_always_the_cover():
-    """A body layout in the first position gives a document with no title page."""
+    """`_parse_outline` forces the first block to `cover`."""
     _, blocks = page._parse_outline(
         '{"title":"제목","blocks":[{"title":"본문","layout":"bullets"}]}', dt.get("deck-editorial")
     )
@@ -464,7 +358,7 @@ def test_a_count_stated_in_the_request_is_honoured_within_bounds():
     assert page.requested_blocks("8장짜리 발표") == 8
     assert page.requested_blocks("발표 자료") is None
     assert page.requested_blocks("200장") == 24  # clamped to the runtime ceiling
-    # A deck 서식 has the plain slide track's room: 30장 is thirty, not 24.
+    # A deck 서식 has the slide track's ceiling of 50.
     deck = dt.get("deck-lecture")
     assert page.requested_blocks("30장", deck) == 30
     assert page.requested_blocks("200장", deck) == 50
@@ -484,8 +378,7 @@ def test_an_image_template_shapes_the_prompt_after_the_chip_and_before_the_desig
     )
     assert composed.index("photorealistic") < composed.index("poster composition")
     assert composed.index("poster composition") < composed.index("#7a1f3d")
-    # 비율만이 아니라 방향까지 — 그림 모델이 흘려듣는 쪽이 비율이라,
-    # 보고서·슬라이드에 넣을 그림이 세로로 길게 돌아오곤 했다.
+    # Orientation is spelled out as well as the ratio.
     assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
 
 
@@ -514,7 +407,7 @@ class _Payload:
 
 
 class _Client:
-    """Enough of `httpx.AsyncClient` for an outline and its blocks."""
+    """`httpx.AsyncClient` double that answers each post with the next reply."""
 
     def __init__(self, replies: list[str], posts: list[dict], **_kwargs):
         self.replies = replies
@@ -579,9 +472,7 @@ async def test_a_turn_writes_one_file_out_of_one_call_per_block(monkeypatch):
     assert len(page.filled(finished["blocks"])) == 3
     assert "--accent: #7a1f3d;" in html
     assert '<section class="slide cover"><h2>연구실 장비 관리</h2>' in html
-    # A fenced answer is unwrapped rather than printed as literal backticks.
     assert "```" not in html and "<li>보유 42대</li>" in html
-    # And the script the model appended never reaches the file.
     assert "<script>" not in html and "x()" not in html
 
 
@@ -602,7 +493,6 @@ async def test_a_failed_block_leaves_a_gap_and_the_rest_still_lands(monkeypatch)
 
     assert len(page.filled(finished["blocks"])) == 2
     assert "한 줄" in finished["html"]
-    # The empty block is absent from the file rather than present and hollow.
     assert finished["html"].count('class="slide') == 2
 
 
@@ -616,35 +506,19 @@ async def test_an_outline_that_cannot_be_parsed_ends_the_turn_without_billing(mo
 
 
 def test_a_heading_the_model_repeats_is_dropped_rather_than_printed_twice():
-    """The wrapper writes the block's title; a body `<h2>` renders it again.
-
-    Dropped with its words, not unwrapped: leaving the text behind keeps the
-    duplication, which is the part a reader actually sees.
-    """
+    """`<h1>`/`<h2>` in a block are dropped with their text; `<h3>` stays."""
     assert dt.sanitise("<h2>판단 결과</h2><p>본문</p>") == "<p>본문</p>"
     assert dt.sanitise("<h1>표지 제목</h1><p>부제</p>") == "<p>부제</p>"
-    # Sub-headings inside a block are still the model's to write.
     assert dt.sanitise("<h3>세부</h3>") == "<h3>세부</h3>"
 
 
 def test_the_layout_name_the_model_was_given_is_not_printed_back():
-    """A small model answers the brief before it answers the request.
-
-    Asked for the inside of a `bullets` block it writes `bullets` and then the
-    list, and the wrapper puts that word straight after the heading — a slide
-    that reads `측정 환경과 방법` `bullets` on the screen behind a speaker.
-    Dropped for the same reason a repeated `<h2>` is: the wrapper already said
-    it, and the model was told it rather than asked for it.
-    """
+    """Leading lines naming any layout in the template's vocabulary are dropped."""
     assert dt.sanitise("bullets\n<ul><li>항목</li></ul>", layouts=("bullets",)) == (
         "<ul><li>항목</li></ul>"
     )
-    # Any name in the template's own vocabulary, not only this block's — the
-    # block that printed `layout: "bullets"` was a `table`.
     assert dt.sanitise('layout: "bullets"\n<p>본문</p>', layouts=("table",)) == "<p>본문</p>"
     assert dt.sanitise("layout = quote\n<p>본문</p>", layouts=("quote",)) == "<p>본문</p>"
-    # More than one line of preamble, which is what a model that restates the
-    # whole brief produces.
     assert (
         dt.sanitise('cover\nlayout: "cover"\n<p class="lead">부제</p>', layouts=("cover",))
         == '<p class="lead">부제</p>'
@@ -652,44 +526,29 @@ def test_the_layout_name_the_model_was_given_is_not_printed_back():
 
 
 def test_a_word_that_happens_to_be_a_layout_name_is_left_alone():
-    """The rule is a line that is *only* the name, and only before the content.
-
-    A deck about presentation software says `bullets` in a sentence, and a
-    checker that reached into prose would quietly delete somebody's words.
-    """
+    """Only a leading line that is solely a layout name is dropped."""
     assert dt.sanitise("<p>bullets 는 항목을 뜻한다</p>", layouts=("bullets",)) == (
         "<p>bullets 는 항목을 뜻한다</p>"
     )
     assert dt.sanitise("<ul><li>bullets</li></ul>", layouts=("bullets",)) == (
         "<ul><li>bullets</li></ul>"
     )
-    # Trailing, not leading: past the content it is the model's own word.
     assert dt.sanitise("<p>본문</p>\nbullets", layouts=("bullets",)) == "<p>본문</p>\nbullets"
-    # Nothing declared, nothing stripped.
     assert dt.sanitise("bullets\n<p>본문</p>") == "bullets\n<p>본문</p>"
 
 
 def test_a_block_that_came_back_as_its_own_envelope_is_unwrapped():
-    """The model answers with the shape it was shown instead of filling it.
-
-    `page` already salvages an outline that will not parse rather than
-    abandoning a call somebody paid for, and this is the same trade one block
-    down: the words are there, wrapped in the schema. Left alone they print on
-    the slide as `{"layout":"bullets","body":"…` behind a speaker.
-    """
+    """A JSON envelope with one string payload is unwrapped, whatever the key is called."""
     assert (
         dt.sanitise('{"layout": "bullets", "body": "<ul><li>항목</li></ul>"}', layouts=("bullets",))
         == "<ul><li>항목</li></ul>"
     )
-    # Order is the model's, and so is the key name — nothing ever specified
-    # one, and the same model called it `body` in one run and `content` in the
-    # next. What is read is the shape: metadata out, one string left.
     assert dt.sanitise('{"body": "<p>본문</p>", "layout": "quote"}') == "<p>본문</p>"
     assert dt.sanitise('{"layout": "cover", "content": "<p>본문</p>"}') == "<p>본문</p>"
 
 
 def test_an_envelope_with_nothing_to_unwrap_is_left_alone():
-    """Metadata only, or two payloads: neither is one answer in a wrapper."""
+    """An envelope with no payload, or two, is left as is."""
     only_meta = '{"layout": "table", "title": "비교"}'
     assert dt.sanitise(only_meta) == only_meta
     ambiguous = '{"layout": "quote", "body": "<p>a</p>", "notes": "b"}'
@@ -697,12 +556,7 @@ def test_an_envelope_with_nothing_to_unwrap_is_left_alone():
 
 
 def test_an_envelope_that_will_not_parse_is_left_for_the_checker():
-    """Truncated JSON is not guessed at.
-
-    A block cut off at the token limit has no readable `body`, and inventing
-    where it ended would put words on a slide nobody wrote. It arrives intact
-    and `lint` names it instead.
-    """
+    """Truncated JSON is left intact for `lint` to flag."""
     cut = '{"layout": "bullets", "body": "<ul><li>항목'
     assert dt.sanitise(cut, layouts=("bullets",)).startswith("{")
 
@@ -715,7 +569,7 @@ def test_a_brace_in_somebody_s_writing_is_not_an_envelope():
 
 
 def test_clearing_and_omitting_are_both_no_template():
-    """`""` is somebody clearing the choice; `None` is a payload that was silent."""
+    """Both `""` and `None` resolve to no template."""
     assert sessions_router._resolved_template_id("", SessionKind.slides) is None
     assert sessions_router._resolved_template_id(None, SessionKind.slides) is None
 
@@ -731,7 +585,6 @@ def test_a_template_is_resolved_for_the_surface_that_can_use_it():
     ("template_id", "kind", "expected"),
     [
         ("nope", SessionKind.slides, 404),
-        # An image template shapes a prompt; it never becomes a session's shape.
         ("image-poster", SessionKind.image, 404),
         ("deck-editorial", SessionKind.report, 422),
         ("doc-brief", SessionKind.slides, 422),
@@ -744,12 +597,7 @@ def test_a_template_the_surface_cannot_use_is_refused(template_id, kind, expecte
 
 
 def test_the_session_routes_are_still_mounted():
-    """Guards the shape of this module, not its logic.
-
-    `_resolved_template_id` was first written between `@router.patch` and the
-    handler it decorates, which unregisters the route without failing anything
-    that only imports the module.
-    """
+    """The PATCH /sessions/{session_id} route is registered."""
     patchable = {
         route.path
         for route in sessions_router.router.routes
@@ -759,11 +607,7 @@ def test_the_session_routes_are_still_mounted():
 
 
 def test_a_plan_is_salvaged_out_of_malformed_json():
-    """One dropped quote should not cost the whole call.
-
-    Observed: a small model answered `{"title: "…"` — legible to anybody
-    reading it, and `json.loads` refuses it. The outline is already paid for.
-    """
+    """`_parse_outline` salvages an outline with a dropped quote."""
     mangled = (
         '{"title": "학과 서버 교체", "blocks": ['
         '{"title": "학과 서버 교체", "layout": "cover"}, '
@@ -778,7 +622,7 @@ def test_a_plan_is_salvaged_out_of_malformed_json():
 
 
 def test_nothing_is_salvaged_from_prose():
-    """Salvage must not invent a plan out of an answer that refused to make one."""
+    """Prose salvages to no plan."""
     title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-brief"))
     assert not blocks and not title
 
@@ -803,7 +647,7 @@ def test_researched_document_blocks_are_told_which_citation_numbers_exist():
 
 @pytest.mark.asyncio
 async def test_a_rewrite_sees_the_document_around_it(monkeypatch):
-    """Otherwise the new block repeats what the one before it already said."""
+    """A rewrite prompt carries the plan, the neighbours, and the labelled note, not the target."""
     blocks = [
         {"layout": "cover", "title": "표지", "html": "<p class='lead'>부제</p>"},
         {"layout": "bullets", "title": "현황", "html": "<ul><li>보유 42대</li></ul>"},
@@ -831,8 +675,6 @@ async def test_a_rewrite_sees_the_document_around_it(monkeypatch):
     assert fragment == "<ul><li>새 항목</li></ul>"
     assert usage["outputTokens"] == 20
     prompt = posts[0]["messages"][-1]["content"]
-    # The plan, the neighbours as written, and the note — labelled, so it does
-    # not read as part of the original request.
     assert "1. 표지" in prompt and "3. 한 줄" in prompt
     assert "부제" in prompt and "말" in prompt
     assert "현황: 보유 42대" not in prompt  # the target itself is not fed back
@@ -864,14 +706,10 @@ async def test_a_rewrite_is_reduced_to_the_seed_vocabulary_like_any_other_block(
 
 
 # ── pictures ───────────────────────────────────────────────────────────
-#
-# The writing model cannot make a picture and is not allowed to point at one.
-# What a person can do is put a picture this workspace already made *into* a
-# page, which the server does by inlining the bytes — so the one `src` that
-# survives sanitising is one that fetches nothing.
+# The only `src` that survives sanitising is an inlined raster data URI.
 
 
-#: One transparent pixel, PNG. Small enough to read in a diff.
+#: One transparent PNG pixel.
 _PIXEL = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
     "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -904,23 +742,13 @@ def test_a_caption_cannot_smuggle_markup():
 
 
 def test_inline_presentation_is_dropped_but_class_survives():
-    """The seed owns the look; a `style=` is the one thing that could beat it.
-
-    `class` stays, because that is how a block reaches the names its own seed
-    styles — `lead` on a cover, `cols` on a split slide.
-    """
+    """`style=` is stripped; `class` survives."""
     kept = dt.sanitise('<p class="lead" style="color:#f0f">표지 한 줄</p>')
     assert kept == '<p class="lead">표지 한 줄</p>'
 
 
 def test_a_rewrite_keeps_the_picture_and_not_the_described_figure():
-    """A rewrite is about the words, and the model cannot write a picture.
-
-    Without this, asking for better wording on a block would silently delete
-    the illustration somebody put in it. A figure written *in words* is a
-    different thing: the model can write that again, and keeping it would
-    leave the block saying it twice.
-    """
+    """`pictures_in` keeps figures with a data URI image and drops text-only figures."""
     block = "<ul><li>보유 42대</li></ul>" + dt.figure(
         mime="image/png", data_b64=_PIXEL, alt="자물쇠", caption="그림 1"
     )
@@ -931,12 +759,7 @@ def test_a_rewrite_keeps_the_picture_and_not_the_described_figure():
 
 
 def test_a_cover_that_came_back_empty_is_still_a_cover():
-    """The title page is structural; the block that fills it is not.
-
-    A cover call that returns nothing used to drop the whole `<section>`, and
-    the document opened on a body slide — no title page, and the exports key
-    off slide one being the cover.
-    """
+    """An empty cover block is still assembled; an empty body block is left out."""
     template = dt.get("deck-editorial")
     html = dt.assemble(
         template,
@@ -947,7 +770,6 @@ def test_a_cover_that_came_back_empty_is_still_a_cover():
     )
     assert html.startswith('<section class="slide cover">')
     assert "연구실 장비 점검" in html
-    # A body block that failed is still left out.
     gapped = dt.assemble(
         template,
         [
@@ -962,7 +784,7 @@ def test_a_cover_that_came_back_empty_is_still_a_cover():
 
 
 class _Rows:
-    """`db.get` and nothing else — the fallback asks for nothing else."""
+    """A db double serving `get` only."""
 
     def __init__(self, rows: dict):
         self.rows = rows
@@ -976,16 +798,15 @@ def _project(**kwargs) -> Project:
 
 
 def test_a_project_starts_with_no_format_of_its_own():
-    """The migration's safety argument in one line: nothing existing moves."""
+    """`render_templates` defaults to None."""
     assert Project(user_id="u1", name="p").render_templates is None
 
 
 def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
-    """Why the column is a map: two surfaces, two answers, one lookup."""
+    """`default_for` answers per surface and None for a surface not set."""
     defaults = {"report": "doc-notice", "slides": "deck-proposal"}
     assert dt.default_for(defaults, SessionKind.report) == "doc-notice"
     assert dt.default_for(defaults, SessionKind.slides) == "deck-proposal"
-    # A surface the project said nothing about keeps the built-in track.
     assert dt.default_for(defaults, SessionKind.image) is None
     assert dt.default_for({"report": "doc-notice"}, SessionKind.slides) is None
 
@@ -995,10 +816,8 @@ def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
     [
         None,
         {},
-        # Written by a version of this image that shipped a template this one
-        # no longer has — the one case the router's refusal cannot reach.
+        # Stored ids the catalogue no longer has, or has on another surface.
         {"report": "doc-gone"},
-        # Or one that moved to another surface since it was chosen.
         {"report": "deck-editorial"},
     ],
 )
@@ -1007,12 +826,11 @@ def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
 
 
 async def test_a_new_session_begins_in_its_projects_format():
-    """The finding itself: the shape is said once, in the project."""
+    """A new session takes its project's format for that surface only."""
     db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
 
     started = await sessions_router._project_render_template(db, "p1", SessionKind.report)
     assert started == "doc-notice"
-    # The same project's slides were never given one.
     assert await sessions_router._project_render_template(db, "p1", SessionKind.slides) is None
 
 
@@ -1022,12 +840,7 @@ async def test_work_outside_a_project_is_not_a_lookup():
 
 
 async def test_the_composer_still_decides_this_conversation():
-    """Precedence, at the two functions that hold it.
-
-    The project seeds a session that has not chosen. Picking a format in the
-    composer is a decision about that one conversation, which is why it is
-    written onto the session and never asked of the project again.
-    """
+    """The project seeds the session; the composer's choice still resolves on its own."""
     db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
 
     seeded = await sessions_router._project_render_template(db, "p1", SessionKind.report)
@@ -1045,10 +858,8 @@ def test_clearing_one_surface_leaves_the_other_alone():
     ("defaults", "expected"),
     [
         ({"report": "nope"}, 404),
-        # An image template shapes a prompt; there is no document to start.
         ({"image": "image-poster"}, 404),
         ({"report": "deck-editorial"}, 422),
-        # Chat produces no document, so no surface of it can carry a format.
         ({"chat": "doc-brief"}, 422),
     ],
 )
@@ -1059,16 +870,7 @@ def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(d
 
 
 def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
-    """A padded fragment is sanitised in the time a fragment takes.
-
-    `\\s+` before an attribute name is quadratic — the engine consumes a whole
-    run of whitespace at every position in it and then fails on the next
-    literal. Model output reaching a regex like that is a request that costs
-    the server seconds of CPU and the caller one space bar.
-
-    The ceiling is generous on purpose: what it catches is the difference
-    between linear and quadratic, not a slow machine.
-    """
+    """Attribute stripping stays linear in the whitespace before an attribute."""
     padded = "<p" + " " * 60_000 + 'onclick="steal()" style="color:red" href="http://x">hi</p>'
 
     started = time.perf_counter()
@@ -1076,22 +878,13 @@ def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
     elapsed = time.perf_counter() - started
 
     assert elapsed < 1.0, f"{elapsed:.1f}s"
-    # And it is still doing the job it was slow at.
     assert "onclick" not in cleaned
     assert "style=" not in cleaned
     assert "href=" not in cleaned
 
 
 def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
-    """논문에 들어갈 그림은 그림 모델의 기본값과 다르다.
-
-    A method figure needs its labels, and a picture model cannot spell. So
-    the three that *are* diagrams — 개념도, 처리 흐름도, 방법 구조도 — do not
-    go to the picture model at all: they declare `figure`, take the method as
-    a paragraph, and are written as mermaid with the labels on
-    (`services/diagram.py`). The teaser stays a picture, and keeps the rules
-    a printed illustration needs.
-    """
+    """Research diagram templates declare `figure` and take a description; the teaser does not."""
     from app.services import design_templates
 
     family = {
@@ -1102,24 +895,19 @@ def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
     assert {"image-diagram", "image-method", "image-pipeline", "image-teaser"} <= set(family)
 
     figures = {"image-diagram": "concept", "image-pipeline": "flow", "image-method": "method"}
-    # 도식 chip 의 둘도 같은 길을 간다 — 단계 인포그래픽과 시스템 아키텍처.
     drawn = {t.id: t for t in design_templates.all_templates() if t.kind == "image"}
     assert drawn["image-infographic"].figure == "flow"
     assert drawn["image-architecture"].figure == "method"
     for template_id, figure in figures.items():
         template = family[template_id]
         assert template.figure == figure, template_id
-        # 그림 프롬프트가 없다 — 도식은 언어 모델이 쓴다.
         assert not template.prompt_suffix, template_id
-        # 설명은 문단으로 받는다. 다섯 글자 주제와 「결」 고르기가 아니라.
         assert template.arguments[0].name == "description", template_id
         assert template.arguments[0].long, template_id
-        # 강조할 것과 이름표 언어는 고르는 값이다.
         names = [argument.name for argument in template.arguments]
         assert names == ["description", "highlight", "language"], template_id
         for argument in template.arguments[1:]:
             assert len(argument.options) >= 2, f"{template_id}.{argument.name}"
-        # 채운 값이 전부 요청에 들어간다.
         for argument in template.arguments:
             assert f"{{{argument.name}}}" in template.example_prompt, argument.name
 
@@ -1133,19 +921,11 @@ def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
 
 
 def test_a_research_figure_prompt_carries_both_halves() -> None:
-    """사람이 쓴 설명과 서식의 규칙이 함께 모델에 간다.
-
-    On the diagram path the person's paragraph is the whole subject and the
-    house rules are the system message. If only one half reached the model
-    the figure would be either a method with no style or a style with nothing
-    in it — and the reply has to come back as a fenced mermaid block, which
-    is the only thing the client knows how to draw.
-    """
+    """Diagram rules go in the system message and the description in the user message."""
     from app.services import diagram
 
     messages = diagram._messages("인코더가 입력을 임베딩으로 바꾼다.", "method", "ko")
     system, user = messages[0]["content"], messages[1]["content"]
     assert "flowchart" in system and "subgraph" in system
     assert "인코더가 입력을 임베딩으로 바꾼다." in user
-    # 사람이 쓴 말은 사용자 메시지에, 규칙은 시스템 메시지에 — 섞이지 않는다.
     assert "subgraph" not in user

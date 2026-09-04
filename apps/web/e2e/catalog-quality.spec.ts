@@ -34,15 +34,7 @@ test('발표 시작점은 시각 서식과 별개인 발표 절차를 제공한�
   )
 })
 
-/**
- * 이미지에서는 서식이 곧 시작점이다.
- *
- * On 챗 · 보고서 · 슬라이드 a 시작점 is a job and a 서식 is the shape it comes
- * in. On 이미지 there is no such split — 방법 구조도, 티저 그림, 포스터 *are*
- * the jobs, and their example sentence is the prompt. The surface ships no
- * 시작점 at all, so a dialogue that only ever draws 시작점 came up empty on it:
- * 「조건에 맞는 시작점이 없습니다」 on a screen with six 서식 behind it.
- */
+/** On 이미지 the 서식 are the starting points: the surface ships no 시작점 of its own. */
 test('이미지에는 서식이 시작점 자리에 선다', async ({ page }) => {
   await page.goto('/new/image')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
@@ -54,7 +46,6 @@ test('이미지에는 서식이 시작점 자리에 선다', async ({ page }) =>
   await expect(dialog.getByRole('button', { name: '이 서식으로 시작' }).first()).toBeVisible({
     timeout: 20_000,
   })
-  // 논문 도판 계열이 실제로 골라진다.
   await dialog.getByLabel('서식 검색').fill('방법 구조도')
   await expect(dialog.locator('.grid > *').filter({ hasText: '방법 구조도' })).toBeVisible({
     timeout: 20_000,

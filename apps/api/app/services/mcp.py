@@ -1,16 +1,8 @@
-"""Minimal MCP client — JSON-RPC over stdio or streamable HTTP.
+"""Minimal MCP client: `initialize`, `tools/list` and `tools/call` over stdio or streamable HTTP.
 
-Hand-written rather than taken from the SDK: only `initialize`, `tools/list`
-and `tools/call` are needed, plus per-caller process isolation that the SDK's
-session model does not express directly.
-
-**Tenancy.** A stdio server is spawned per call with the caller's substituted
-environment (`{{USER_ID}}`, `{{USER_EMAIL}}`). A shared long-lived process
-would answer one person's question with another's credentials, so the spawn
-cost is accepted.
-
-**Trust.** Server output is data. It reaches the agent loop as a `tool` message,
-never as an instruction — see `services/agent.py`.
+A stdio server is spawned per call with the caller's substituted environment
+(`{{USER_ID}}`, `{{USER_EMAIL}}`); a shared process would leak one person's
+credentials to another. Server output is data, never an instruction.
 """
 
 from __future__ import annotations
@@ -44,13 +36,8 @@ _ENV_REF = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
 def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> dict[str, str]:
     """Resolves a connector's environment for one caller.
 
-    Two substitutions of different kinds:
-
-    * `{{USER_ID}}` / `{{USER_EMAIL}}` — the tenancy boundary. A server that
-      reports "my usage" gets the caller's identity here and nowhere else.
-    * `${LITELLM_MASTER_KEY}` — deployment secrets, read from the API's own
-      environment at spawn time rather than stored on the row, so a rotation
-      does not mean reinstalling every connector.
+    `{{USER_ID}}`/`{{USER_EMAIL}}` carry the caller's identity; `${VAR}` reads
+    deployment secrets from the API's own environment at spawn time.
     """
     values = {
         "{{USER_ID}}": user_id,
@@ -61,8 +48,7 @@ def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> 
         text = str(raw)
         for token, value in values.items():
             text = text.replace(token, value)
-        # Unset becomes empty, not a literal `${FOO}` a server would treat as
-        # a real value.
+        # Unset becomes empty, not a literal `${FOO}`.
         text = _ENV_REF.sub(lambda m: os.environ.get(m.group(1), ""), text)
         out[key] = text
     return out
@@ -110,7 +96,6 @@ class _StdioSession:
             self.proc.terminate()
             await asyncio.wait_for(self.proc.wait(), timeout=5)
         except (ProcessLookupError, TimeoutError):
-            # A server ignoring SIGTERM would leak for the life of the API.
             with contextlib.suppress(ProcessLookupError):
                 self.proc.kill()
 
@@ -157,10 +142,7 @@ class _StdioSession:
 async def _http_request(url: str, method: str, params: dict[str, Any] | None = None) -> Any:
     """One MCP call over streamable HTTP, handshake included.
 
-    The transport is stateful: a server may hand back an `Mcp-Session-Id` on
-    `initialize` and reject anything that arrives without it. Skipping the
-    handshake and POSTing `tools/list` straight at the endpoint gets a 400 from
-    every server that enforces it, which reads as a broken connector.
+    A server may return `Mcp-Session-Id` on `initialize` and reject requests without it.
     """
     async with httpx.AsyncClient(timeout=settings.tool_timeout_sec) as client:
         headers = {"Accept": "application/json, text/event-stream"}
@@ -186,8 +168,7 @@ async def _http_request(url: str, method: str, params: dict[str, Any] | None = N
         if session:
             headers["Mcp-Session-Id"] = session
 
-        # Notification: no id, no response expected. Servers that require it
-        # refuse real work until they have seen it.
+        # Notification: no id, no response expected; some servers require it.
         await client.post(
             url,
             json={"jsonrpc": "2.0", "method": "notifications/initialized"},
@@ -240,20 +221,13 @@ def _flatten(result: Any) -> str:
             resource = item.get("resource") or {}
             parts.append(resource.get("text") or resource.get("uri") or "")
         else:
-            # Images and other blobs cannot go into a text tool result; naming
-            # the type beats silently dropping it.
+            # Non-text content is named rather than dropped.
             parts.append(f"[{item.get('type')} 콘텐츠]")
     return "\n".join(p for p in parts if p).strip()
 
 
 def expand(endpoint: str, env: dict[str, str] | None) -> str:
-    """Substitutes `${VAR}` inside the command line itself.
-
-    Some servers take their credential as an argv element rather than an
-    environment variable (`server-postgres <url>`), so the same resolution has to
-    reach the command string — otherwise the process starts with a literal
-    `${PG_URL}` and fails somewhere far less obvious.
-    """
+    """Substitutes `${VAR}` inside the command line, for servers that take credentials in argv."""
     merged = {**os.environ, **(env or {})}
     return _ENV_REF.sub(lambda m: merged.get(m.group(1), ""), endpoint)
 

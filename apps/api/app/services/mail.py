@@ -1,12 +1,7 @@
-"""Outgoing account mail.
+"""Outgoing account mail: password reset and signup verification.
 
-One correspondent — the person who asked for a password reset — and one message.
-There is no queue, no template engine and no retry: a reset link is worth almost
-nothing ten minutes later, so a failed send is reported to the caller rather than
-parked somewhere to be dealt with.
-
-`smtplib` is blocking, so every send goes through a worker thread. The alternative
-is another dependency for one message a week.
+No queue and no retry; a failed send is reported to the caller. `smtplib` is
+blocking, so every send goes through a worker thread.
 """
 
 from __future__ import annotations
@@ -22,8 +17,6 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Long enough for a slow relay, short enough that an administrator pressing
-#: "Test" gets an answer rather than a spinner.
 _TIMEOUT = 15.0
 
 
@@ -32,7 +25,7 @@ class MailError(RuntimeError):
 
 
 def _describe(exc: Exception) -> str:
-    """SMTP errors are precise and unreadable; these are the ones that happen."""
+    """Administrator-readable message for an SMTP failure."""
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return "인증에 실패했습니다. 사용자 이름과 비밀번호를 확인하세요."
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
@@ -71,11 +64,7 @@ def _send_blocking(config: dict[str, str], message: EmailMessage) -> None:
 
 
 async def send(*, to: str, subject: str, body: str) -> None:
-    """Delivers one plain-text message, or raises `MailError`.
-
-    Plain text on purpose. A reset mail is a sentence and a link; sending it as
-    HTML would buy a font and cost the reader a phishing-shaped email.
-    """
+    """Delivers one plain-text message, or raises `MailError`."""
     config = await settings_store.smtp_config()
     if not config["host"] or not config["sender"]:
         raise MailError("메일 서버가 설정되지 않았습니다.")
@@ -98,12 +87,7 @@ async def send(*, to: str, subject: str, body: str) -> None:
 
 
 def reset_message(*, name: str, link: str, minutes: int) -> tuple[str, str]:
-    """Subject and body for a password reset.
-
-    Says who asked and what to do if it was not them. A reset mail that arrives
-    unbidden is the first sign someone is trying an account, and the reader can
-    only act on that if the mail says so.
-    """
+    """Subject and body for a password reset."""
     subject = "KloudChat 비밀번호 재설정"
     body = (
         f"{name}님,\n\n"

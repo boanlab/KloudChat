@@ -2,18 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { openSidebar, signIn } from './helpers'
 
-/**
- * Round four: the connection drops, two people edit the same thing, and the
- * list gets long.
- *
- * Round three held the API back and then broke it. This one takes the network
- * away entirely, puts two tabs on the same document, and hands the screen more
- * rows than anybody built it for — the three states a workspace reaches on its
- * own, given a few months of use.
- *
- * Discovery, like the others: writes `audit/durability-audit.json`, never
- * fails the run.
- */
+/** Durability sweep: offline navigation, concurrent edits, a 400-row list. Writes `audit/durability-audit.json`; never fails. */
 
 interface Defect {
   rule: string
@@ -23,7 +12,7 @@ interface Defect {
 }
 
 const SAYS_EMPTY = /없습니다|비어 있습니다/
-/** Anything that admits the connection, rather than the workspace, is at fault. */
+/** Wording that blames the connection, not the workspace. */
 const SAYS_OFFLINE = /연결|네트워크|오프라인|불러오지 못|다시 시도/
 
 const AS_USER = `async (path, init) => {
@@ -50,34 +39,20 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
 
   await signIn(page)
 
-  /* ── R18: the network is gone ────────────────────────────────────────
-     A failed fetch and an empty workspace are the same `[]`. Round three
-     taught these screens to wait; this asks what they say when the answer
-     never arrives at all — because "아직 아티팩트가 없습니다" to somebody on a
-     dropped connection is the app reporting their work destroyed. */
-  // 메모리 is not a sidebar row any more — it moved into the account menu, and
-  // the sidebar is left to the conversation list. The route under test is the
-  // same; only the control that reaches it changed.
+  // R18: offline, a screen must not report an empty workspace.
   for (const [route, where, link, via] of [
     ['/artifacts', '아티팩트', '아티팩트', 'sidebar'],
     ['/memory', '메모리', '메모리', 'account'],
     ['/projects', '프로젝트', '프로젝트', 'sidebar'],
   ] as const) {
-    // Loaded online first, then cut off, then navigated *inside* the app. A
-    // cold `goto` while offline never reaches the app at all — it lands on the
-    // browser's error page, and reading that measures Chrome, not KloudChat.
+    // Loaded online, then cut off, then navigated inside the app: a cold offline `goto` measures Chrome.
     await page.goto('/')
     await page.waitForTimeout(600)
-    // The link is in the sidebar, and below 1024px the sidebar is a drawer
-    // that starts closed. Opened while still online, so the navigation under
-    // test is the only thing the cut connection touches.
     await openSidebar(page)
     await page.context().setOffline(true)
     if (via === 'sidebar') {
       await page.getByRole('link', { name: link, exact: true }).first().click()
     } else {
-      // Opening the menu asks nothing of the network, so the navigation it
-      // fires is still the only thing the cut connection has to answer for.
       await page.getByRole('button', { name: '계정 메뉴' }).first().click()
       await page.getByRole('menuitem', { name: link, exact: true }).first().click()
     }
@@ -97,9 +72,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
   await page.goto('/artifacts')
   await page.waitForTimeout(600)
 
-  /* ── R19: two tabs, one document ─────────────────────────────────────
-     Both panels hold the version they loaded. Whoever saves second writes over
-     the first with no sign that anything was there. */
+  // R19: two tabs, one document; the second save must not silently overwrite.
   const report = await page.evaluate(
     async ([fn, body]) =>
       await eval(fn as string)('/api/artifacts', {
@@ -150,7 +123,6 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
       await p.waitForTimeout(1200)
     }
 
-    // Both open the same document at the same version.
     await openReport(page)
     await openReport(second)
     await rewrite(page, '첫 번째 사람이 쓴 문장.')
@@ -174,9 +146,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     )
   }
 
-  /* ── R20: the list after a year ──────────────────────────────────────
-     Served synthetically rather than seeded, so the measurement costs nothing
-     and leaves nothing behind. */
+  // R20: a 400-row list, served synthetically.
   const many = Array.from({ length: 400 }, (_, i) => ({
     id: `${i.toString(16).padStart(32, '0')}`,
     kind: 'chat',
@@ -207,8 +177,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
     note('long-list-speed', `${drawn}ms`, '/history', '목록이 길어지면 화면이 늦게 뜬다')
   }
   checks++
-  // Paging exists so the DOM does not grow with the workspace. If all four
-  // hundred rows are in the document, it is not doing its job.
+  // Paging keeps the DOM from growing with the workspace.
   if (nodes > 6_000) {
     note('long-list-dom', `${nodes} nodes`, '/history', '보이지 않는 행까지 전부 그린다')
   }

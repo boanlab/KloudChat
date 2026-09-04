@@ -1,11 +1,4 @@
-/**
- * The workspace screens against a real backend: does a project survive a
- * reload, is an uploaded file actually read, does a connector start a server.
- * `personas.spec.ts` asks whether the capability exists; this asks whether it
- * works.
- *
- * Requires the API running. Run: npm run test:workspace
- */
+/** Workspace screens against a real backend: projects, skills, memories, agents, connectors, attachments, web search. */
 
 import { expect, test } from '@playwright/test'
 import { answerText, pickToolModel, signIn } from './helpers'
@@ -16,11 +9,10 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
 
-/** Unique per run so repeated runs never collide on a name. */
+/** Unique per run. */
 const stamp = () => Math.random().toString(36).slice(2, 8)
 
-/** Sends from `/new/chat` and waits for the session: navigation follows the
- *  round trip, so asserting on the URL immediately races it. */
+/** Sends from `/new/chat` and waits for the session to be created. */
 async function askFromNew(page: import('@playwright/test').Page, prompt: string) {
   await page.getByLabel('프롬프트 입력').fill(prompt)
   await Promise.all([
@@ -32,14 +24,7 @@ async function askFromNew(page: import('@playwright/test').Page, prompt: string)
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 }
 
-/** Removes what the tests created, so the suite can be pointed at a real
- *  instance without filling its screens with debris. */
-/**
- * Deletes a row and waits for the request, not just the screen.
- *
- * The row leaves at once and the call is held for the undo window, so a
- * context closed in between leaves the row on the instance.
- */
+/** Deletes a row and waits for the DELETE, which is held for the undo window. */
 async function removeNamed(page: import('@playwright/test').Page, label: string) {
   await page.getByRole('button', { name: `${label} 삭제` }).first().click()
   const dialog = page.getByRole('dialog')
@@ -62,10 +47,7 @@ test('프로젝트를 만들고 지침을 저장하면 새로고침 후에도 �
   if (await instructions.isVisible().catch(() => false)) {
     await instructions.fill('모든 수치에 단위를 붙인다.')
   }
-  // Scoped to the dialog. `.last()` on the whole page picks up whatever else
-  // happens to be labelled "add" or "save" — and when the dialog is a frame
-  // slower than the click, it picks one of those instead and nothing is
-  // created.
+  // Scoped to the dialog.
   await page.getByRole('dialog').getByRole('button', { name: /^만들기$|^생성$|^추가$|^저장$/ }).last().click()
 
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
@@ -98,9 +80,7 @@ test('메모리를 만들면 새로고침 후에도 남는다', async ({ page })
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
   await page.reload()
   await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 })
-  // Memories are `global` scope, so one left behind joins every later turn's
-  // prompt — on a long-lived instance the suite ends up testing against its own
-  // debris.
+  // A leftover memory is `global` and joins every later turn.
   await removeNamed(page, name)
 })
 
@@ -122,9 +102,7 @@ test('에이전트를 만들면 새로고침 후에도 남는다', async ({ page
 test('커넥터를 설치하면 MCP 서버가 실제로 도구를 보고한다', async ({ page }) => {
   await page.goto('/connectors')
 
-  // Asked of the catalogue, not by searching for 시간 elsewhere: "22시간 전"
-  // is on that screen too. Scoped to the 시간 card, never `.first()` — the
-  // first entry sorts arbitrarily and may open a credential modal.
+  // Scoped to the 시간 card: "22시간 전" is on the screen too, and the first entry may need credentials.
   const mine = page.getByRole('tab', { name: /내 커넥터/ })
   await page.getByRole('tab', { name: /카탈로그/ }).click()
   const install = page
@@ -133,15 +111,13 @@ test('커넥터를 설치하면 MCP 서버가 실제로 도구를 보고한다',
   await expect(install).toBeVisible({ timeout: 15_000 })
 
   if (await install.isEnabled()) {
-    // Installing spawns the server and asks it for tools; uv may fetch the
-    // package on a cold cache, so this is genuinely slow the first time.
+    // Installing spawns the server; uv may fetch the package on a cold cache.
     await install.click()
   }
   await mine.click()
 
   await expect(page.getByText('시간').first()).toBeVisible({ timeout: 180_000 })
-  // "connected" plus a non-zero tool count means the server answered tools/list.
-  // A flag flip alone would show neither.
+  // 연결됨 plus a non-zero tool count means the server answered tools/list.
   await expect(page.getByText('연결됨').first()).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(/도구 [1-9]/).first()).toBeVisible({ timeout: 60_000 })
 

@@ -7,20 +7,14 @@ import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/**
- * Gate for accounts that are not `active`. Signup creates a `pending` user, and
- * nothing in the app is reachable until an admin approves and assigns a monthly
- * credit allowance.
- */
+/** Gate for accounts that are not `active`: unverified, pending, or suspended. */
 export function PendingApprovalPage() {
   const t = useT()
   const { user, logout, refreshMe } = useStore()
   const suspended = user?.status === 'suspended'
-  //: The mailed link has not been clicked yet. Verifying happens in a mail
-  //: client and lands in another tab; the poll below is what moves this one.
+  // Verification lands in another tab; the poll below advances this one.
   const unverified = !suspended && user?.emailVerifiedAt === null
-  //: Whom 관리자에게 문의 reaches — the address the administrator set, or the
-  //: first administrator's own. It was `admin@example.com`, literally.
+  // Configured contact address, or the first administrator's.
   const [contact, setContact] = useState<string>('')
   useEffect(() => {
     void authConfig
@@ -50,9 +44,7 @@ export function PendingApprovalPage() {
     }
   }
 
-  // Approval happens in another browser, on someone else's schedule. Polling is
-  // what turns "reload until it works" into a screen that just opens. Suspension
-  // is terminal, so there is nothing to wait for there.
+  // Poll until approved or verified; suspension is terminal.
   useEffect(() => {
     if (suspended) return
     const timer = setInterval(() => void refreshMe(), 15_000)

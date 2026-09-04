@@ -140,14 +140,7 @@ function costRoutePresentation(
   }
 }
 
-/**
- * How a turn ended, when it did not end in an answer.
- *
- * `error` is this tab's live account and wins while it is there; `failure` is
- * what the server recorded, and the only thing left after a reload. The words
- * follow the surface, because "답변을 받지 못했습니다" is not what happened when
- * a picture was asked for.
- */
+/** Failure notice for a turn; the live `error` wins over the stored `failure`. */
 function turnFailureNotice(
   message: Message,
   media: boolean,
@@ -168,17 +161,7 @@ function turnFailureNotice(
   return undefined
 }
 
-/**
- * One turn of the transcript.
- *
- * Memoised, and reading the store through selectors, for the same reason: a
- * streamed delta patches one message, and everything else in the conversation
- * must not re-render — and re-parse its markdown — for it. Subscribing to the
- * whole store (`useStore()`) re-rendered every row on every chunk, and the
- * `session` row it read changed identity on every chunk too, so a memo alone
- * would not have held. The reads below are primitives or rows that only
- * change when they change.
- */
+/** One turn of the transcript. Memoised; reads the store through narrow selectors so streaming re-renders one row. */
 function MessageItemInner({
   message,
   sessionId,
@@ -200,14 +183,7 @@ function MessageItemInner({
   const renderTemplateId = useStore(
     (s) => s.sessions.find((c) => c.id === sessionId)?.renderTemplateId,
   )
-  /**
-   * The question this answer was for.
-   *
-   * Read back off the transcript rather than carried on the message: an
-   * assistant row does not know its prompt, and a retry that had to guess it
-   * would ask the wrong thing. Selected as the row itself — the retry needs
-   * its id — which keeps its identity until it changes.
-   */
+  // The user row this answer was for; the retry needs its id.
   const askedAbove = useStore((s) => {
     const list = s.sessions.find((c) => c.id === sessionId)?.messages ?? []
     const at = list.findIndex((m) => m.id === message.id)
@@ -215,23 +191,14 @@ function MessageItemInner({
     for (let i = at - 1; i >= 0; i--) if (list[i].role === 'user') return list[i]
     return undefined
   })
-  // The two surfaces whose answer is a thing rather than a sentence. They are
-  // read differently at both ends of the turn: what a failure says, and what
-  // stands where an answer would be.
+  // Surfaces whose answer is media rather than text.
   const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
-  //: Which attachment is being read into a document, so its own button spins.
   const [opening, setOpening] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  /**
-   * Opens an attached `.hwpx` as a document somebody can edit.
-   *
-   * Reads the file rather than asking a model about it, so it costs nothing
-   * and takes as long as unzipping does. What comes back is an ordinary
-   * report — same editor, same printer, same `.hwpx` on the way out.
-   */
+  /** Opens an attached `.hwpx` as an editable report; no model call. */
   const openAsDocument = async (id: string) => {
     setFileError(null)
     setOpening(id)
@@ -245,7 +212,6 @@ function MessageItemInner({
     }
   }
 
-  /** Hands an attachment back to the person who attached it. */
   const take = async (id: string, name: string) => {
     setFileError(null)
     try {
@@ -283,31 +249,16 @@ function MessageItemInner({
   )
 
   if (message.role === 'user') {
-    /**
-     * What the turn was begun from, named rather than quoted.
-     *
-     * This is the line somebody reads a year later to remember what they did,
-     * and it is the whole reason the framing stopped being typed into the box:
-     * the prompt above it is theirs, and the machinery is here, separately, by
-     * name. The 서식 comes off the session because it is sticky there; the
-     * 시작점 is stored on the turn, because it was only ever about this one.
-     */
+    // The template comes off the session (sticky); the starting point is stored on the turn.
     const shape = designTemplates.find((row) => row.id === renderTemplateId)
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
-    // What the detector found in this sentence, which is also what the stored
-    // copy no longer contains: routers/sessions.py writes the user's Message
-    // masked whenever there is a finding, whichever action was accepted. The
-    // bubble still holds the typed original until the session is reopened, so
-    // the difference is said here rather than discovered a week later by
-    // whoever presses 프롬프트 복사.
+    // The stored copy is masked whenever there is a finding; the bubble holds
+    // the typed original until the session is reopened.
     const redacted = (message.routing?.findingCounts ?? []).filter(
       (finding) => finding.source === 'current_input',
     )
     return (
-      // A prompt is worth copying as often as an answer is — to run again with
-      // one word changed, to paste into a colleague's chat, to keep. It was
-      // reachable only by selecting the text by hand.
       <div className="group animate-fade-up flex items-start justify-end gap-1">
         <span className="mt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {copyButton('프롬프트 복사')}
@@ -333,14 +284,6 @@ function MessageItemInner({
             )
             const shell =
               'ml-auto flex w-fit max-w-full items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base'
-            // The file is still on the server, under this id. Without a way
-            // back to it the chip was a receipt for something the reader could
-            // no longer have — it named a document and then kept it.
-            // A `.hwpx` can be opened rather than only taken back. The
-            // server reads its headings, tables and lists into an ordinary
-            // report, so the file somebody attached becomes a document they
-            // can edit here and export back to `.hwpx` — which is the half
-            // that was missing between reading one and writing one.
             const hangul = Boolean(a.id) && /\.hwpx$/i.test(a.name)
             return a.id ? (
               <span key={a.id} className="ml-auto flex w-fit max-w-full items-center gap-1.5">
@@ -379,17 +322,13 @@ function MessageItemInner({
           <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap">
             {message.content}
           </div>
-          {/* A request that came back with nothing says so here, under the
-              sentence that asked. Nothing spoke, so there is no reply to put
-              it in — and a conversation that ends on a prompt with silence
-              beneath it is the state this whole surface was in. */}
+          {/* A turn with no reply reports its failure under the question. */}
           {failed && (
             <div
               role="status"
               className={cn(
                 'flex items-center justify-end gap-2 text-base',
-                // Stopped before the first token is still the reader's own
-                // doing, and reads in the page's colours, not the error's.
+                // A stop the reader chose is not an error.
                 message.failure === 'stopped' && !message.error ? 'text-muted' : 'text-danger',
               )}
             >
@@ -399,11 +338,6 @@ function MessageItemInner({
                 <TriangleAlert size={14} className="shrink-0" />
               )}
               <span>{failed}</span>
-              {/* A clip's job card has always had a retry; a conversation turn
-                  had none, so the only way back from a question nobody
-                  answered was to type it again. Asked again rather than
-                  repaired: the turn that went unanswered stays in the record
-                  beside the one that did not. */}
               {madeHere ? (
                 <Button size="sm" onClick={() => void retryMediaTurn(sessionId, message.content)}>
                   <RotateCcw size={13} />
@@ -444,9 +378,7 @@ function MessageItemInner({
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
     .filter((a) => a !== undefined)
-  // A picture, a clip or a player is shown; a document is named. The
-  // difference is whether the artifact can be read where it stands: a report
-  // cannot, and a chip that opens it is the honest offer.
+  // Media is shown inline; documents are named as chips.
   const shown = linked.filter(isMedia)
   const named = linked.filter((a) => !isMedia(a))
   const failed = turnFailureNotice(message, madeHere, t)
@@ -530,26 +462,7 @@ function MessageItemInner({
         ) : message.content ? (
           <Markdown>{message.content}</Markdown>
         ) : (
-          // Not while an error is showing: a failed turn with a blinking
-          // "thinking…" under it reads as still running. Nor once the turn has
-          // its answer in hand — on these surfaces the answer is the picture
-          // below, and no sentence ever arrives to replace this line.
-          //
-          // `steps` used to end this line. The idea was that a timeline says
-          // more than 생각하는 중 does, and it does — about what has already
-          // happened. What it does not say is that anything is still going on,
-          // so the moment the first step landed the answer area went blank and
-          // stayed blank for as long as the model reasoned: a step chip at the
-          // top, a composer at the bottom, and half a screen of white between
-          // them. On a local 35B that is half a minute of looking at a page
-          // that appears to have stopped. So the line stays for as long as the
-          // turn is running and there is nothing yet to read.
-          //
-          // And only while it is running. A turn that stopped to ask — a file
-          // read short, a question the outline needed answered — ends with an
-          // empty bubble and a card underneath it, and this line went on
-          // saying 생각하는 중 over a turn that was waiting for a person. The
-          // timer kept counting.
+          // Only while the turn is running and nothing is there to read yet.
           !failed &&
           streaming &&
           shown.length === 0 &&
@@ -557,7 +470,6 @@ function MessageItemInner({
             <TurnProgress
               sessionId={sessionId}
               startedAt={new Date(message.createdAt).getTime()}
-              /* 그림과 클립은 생각하는 게 아니라 만들어진다. */
               label={madeHere ? t('만드는 중…') : t('생각하는 중…')}
               model={message.model}
             />
@@ -567,7 +479,6 @@ function MessageItemInner({
           <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-blink bg-accent" />
         )}
 
-        {/* Where the answer goes, because here it is the answer. */}
         {shown.length > 0 && (
           <div className="mt-1">
             <MediaResult
@@ -578,17 +489,13 @@ function MessageItemInner({
           </div>
         )}
 
-        {/* Below the answer, not instead of it. A turn that failed halfway has
-            two things to say — what it managed to write or make, and that it
-            stopped — and the reader needs both to decide whether to run it
-            again. */}
+        {/* Below the partial answer, not instead of it. */}
         {failed && (
           <div
             role="status"
             className={cn(
               'mt-3 flex items-start gap-2 rounded-card border px-3 py-2.5 text-base',
-              // A stop the reader chose is not an error, and must not look like
-              // one: the same box, in the page's own colours.
+              // A stop the reader chose is not an error.
               stopped
                 ? 'border-line bg-elevated text-muted'
                 : 'border-danger/30 bg-danger/5 text-danger',
@@ -600,10 +507,6 @@ function MessageItemInner({
               <TriangleAlert size={14} className="mt-0.5 shrink-0" />
             )}
             <span className="min-w-0 flex-1">{failed}</span>
-            {/* The retry lives here too, not only under the question. This is
-                where the reader's eye already is when the turn fails, and the
-                sentence that asked can be scrolled off the top of a long
-                answer that broke halfway. */}
             {!madeHere && askedAbove && (
               <RetryActions
                 sessionId={sessionId}
@@ -642,16 +545,6 @@ function MessageItemInner({
 
         {!streaming && message.content && !message.variants && (
           <div className="mt-2 flex items-center gap-1 text-faint">
-            {/* Visible at rest.
-                It used to appear only on hover, and the row holds 복사 — the
-                thing people reach for most on an answer and the one they cannot
-                reach for if finding it means sweeping a mouse across the text.
-                The report panel settled this for its own edit button and wrote
-                down why: a control that only hover reveals leaves "is this even
-                possible" answerable only by accident.
-                Muted rather than loud, so a page of turns does not become a
-                page of buttons; a rating that has been given keeps its colour
-                and reads back as the verdict it is. */}
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
@@ -677,13 +570,9 @@ function MessageItemInner({
               <ThumbsDown size={14} />
             </Button>
             </span>
-            {/* Which model answered and what it cost. Kept visible rather than
-                behind a hover: on a shared proxy with a monthly allowance, "what
-                did that just cost me" is not a detail you go looking for. */}
             {message.usage && user?.preferences.showUsage !== false && (
               <span className="ml-1 text-xs">
                 {model?.label ?? message.model} ·{' '}
-                {/* An estimate is said to be one. */}
                 {message.usage.estimated ? '≈ ' : ''}
                 {formatTokens(message.usage.inputTokens)} in ·{' '}
                 {formatTokens(message.usage.outputTokens)} out ·{' '}

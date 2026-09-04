@@ -1,13 +1,8 @@
-"""Image generation, through the same proxy as everything else.
+"""Image generation via `chat/completions` with `modalities: ["image", "text"]`.
 
-OpenRouter serves picture models on `chat/completions` with
-`modalities: ["image", "text"]`, so this is an ordinary completion whose answer
-is a PNG — same client, billed from reported usage.
-
-**Aspect ratio and style have no parameters.** Both are folded into the prompt
-in words and honoured approximately — so what came back is measured rather than
-assumed, and the requested aspect is kept beside it. A 16:9 label over a square
-picture is the kind of small lie that makes a person stop trusting the panel.
+Style is folded into the prompt; aspect is sent as `image_config` (honoured
+by Gemini only) and also said in the prompt. The produced size is measured
+and kept beside the requested aspect.
 """
 
 from __future__ import annotations
@@ -33,15 +28,7 @@ log = logging.getLogger(__name__)
 #: Per image; the surface generates them one at a time.
 _TIMEOUT = 180.0
 
-#: The style chips, and the whole sentence each one becomes.
-#:
-#: They were five art-style words — "clean minimal flat illustration" for
-#: 미니멀, and so on — appended to whatever was asked for. That made a
-#: 시스템 구조도 a flat illustration of one, and a 시장 사진 a flat
-#: illustration of one: the chip said what a picture *looks like* and never
-#: what kind of picture it is. These say both, the way a good figure prompt
-#: ends — palette, ground, line, type, and what it is for. 자동 leaves the
-#: choice to the planner, which reads it off the request.
+#: Style chip → the `Style:` sentence it becomes in the prompt.
 _STYLE_PHRASE = {
     "도식": (
         "Style: clean academic vector diagram, white background, rounded boxes with thin "
@@ -76,9 +63,8 @@ _STYLE_PHRASE = {
     ),
 }
 
-#: What the chips are called on the wire and on screen, in order. 자동 and
-#: 없음 are not phrases: the first hands the choice to the planner, the second
-#: withholds it.
+#: Chip names on the wire and on screen, in order. 자동 leaves the choice to
+#: the planner; 없음 sends no style; 차트 is drawn by `chart_code`.
 STYLE_CHOICES = [
     "자동",
     "도식",
@@ -92,11 +78,7 @@ STYLE_CHOICES = [
     "없음",
 ]
 
-#: How the words in a picture are handled. `auto` lets the planner decide from
-#: the request and the kind of picture; a photograph gets none, a diagram gets
-#: labels in the request's language.
-LABEL_CHOICES = ("auto", "ko", "en", "none")
-
+#: Label handling by `labels` value; any other value lets the planner decide.
 _LABEL_RULE = {
     "ko": "Labels are allowed and must be the exact Korean strings from the request, written "
     'into the prompt in quotes beside each element — e.g. Intake ("취수") — never translated '
@@ -105,10 +87,8 @@ _LABEL_RULE = {
     "none": "No text anywhere: no labels, no captions, no letters, no numbers",
 }
 
-#: What the planner is taught by. Written in the shape a picture model follows
-#: best — one line of subject, the composition placed on the canvas, every
-#: element named, relations spelled out, the words settled, and a closing
-#: Style line — rather than a heap of adjectives.
+#: Rewrites a request into the structured prompt a picture model follows:
+#: subject, composition, relations, labels, closing Style line.
 _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬프트를 쓰는 기획자다.
 아래 요청을 그림 모델이 그대로 따를 수 있는 **영어 프롬프트 하나**로 바꿔라.
 
@@ -171,17 +151,7 @@ _FIGURE_RULE = (
     "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
 )
 
-#: What a picture bound for a slide or a document section has to be told.
-#:
-#: Asked only for "a picture for 시장 전망", an image model draws the whole
-#: slide — a title across the top, a chart, three labelled cards down the side.
-#: Dropped into a slide that already has a title and bullets, that is a slide
-#: inside a slide, and the first one somebody made looked exactly like that.
-#:
-#: "No text" is the load-bearing half. Whatever an image model writes it writes
-#: badly, and in Korean it writes glyphs that are not words — so a picture with
-#: words in it is a picture that has to be thrown away, and the words are the
-#: document's job anyway.
+#: For a picture inside a slide or section: one figure, no text, no page frame.
 _FIGURE_CLAUSE = (
     "a single illustrative figure to sit inside a document, not a page of its "
     "own: no text, no words, no letters, no title, no caption, no labels or "
@@ -193,7 +163,7 @@ _DATA_URL = re.compile(r"^data:(image/[a-z+]+);base64,(.+)$", re.S)
 
 
 class ImageError(RuntimeError):
-    """Generation failed. The message is written for the person who asked."""
+    """Generation failed; the message is user-facing."""
 
 
 @dataclass(slots=True)
@@ -202,13 +172,13 @@ class GeneratedImage:
     mime: str
     input_tokens: int
     output_tokens: int
-    #: Measured off the bytes, `0` when they could not be read.
+    #: Measured from the bytes; `0` when unreadable.
     width: int = 0
     height: int = 0
 
     @property
     def aspect(self) -> str:
-        """The ratio actually produced, as `"16:9"`, or `""` when unmeasured."""
+        """The ratio produced, as `"16:9"`, or `""` when unmeasured."""
         if not self.width or not self.height:
             return ""
         divisor = gcd(self.width, self.height)
@@ -216,11 +186,7 @@ class GeneratedImage:
 
 
 def _measure(data: bytes) -> tuple[int, int]:
-    """`(width, height)`, or `(0, 0)` for bytes Pillow cannot open.
-
-    Never raises: a picture that arrived is worth keeping even if it cannot be
-    measured, so this degrades to "unknown" rather than failing the generation.
-    """
+    """`(width, height)`, or `(0, 0)` for bytes Pillow cannot open. Never raises."""
     try:
         with Image.open(io.BytesIO(data)) as image:
             return int(image.width), int(image.height)
@@ -230,29 +196,18 @@ def _measure(data: bytes) -> tuple[int, int]:
 
 
 def honours_aspect(model_id: str) -> bool:
-    """Whether the model takes the ratio as a parameter and keeps it.
-
-    Gemini's image models do. The OpenAI ones, reached through chat
-    completions, return a square whatever is asked — and told "16:9, wider
-    than tall" they compose a wide picture and clip it into the square, which
-    is worse than a square picture: the edges of the diagram are gone.
+    """Whether the model honours `image_config.aspect_ratio`. Gemini does; the OpenAI image models
+    return a square.
     """
     return "gemini" in model_id.lower() or model_id.lower().startswith("google/")
 
 
-#: The ratios the composer offers, widest first, 16:9 being the default.
+#: Ratios the composer offers; 16:9 is the default.
 OFFERED_ASPECTS: tuple[str, ...] = ("16:9", "9:16", "4:3", "1:1")
 
 
 def aspects_for(model_id: str) -> list[str]:
-    """The ratios a picture from this model can actually have.
-
-    Published with the model so the composer offers only these — a 16:9 chip
-    beside a model that returns squares is a promise the picture then breaks,
-    and no sentence of small print under it reads as well as the chip simply
-    not being there. Measured against OpenRouter: the OpenAI image models
-    return 1024² whatever `image_config` says, directly or through LiteLLM.
-    """
+    """Ratios the composer offers for this model; published with the model catalogue."""
     return list(OFFERED_ASPECTS) if honours_aspect(model_id) else ["1:1"]
 
 
@@ -266,28 +221,16 @@ def compose_prompt(
     figure: bool = False,
     square_only: bool = False,
 ) -> str:
-    """The request as the model will read it.
+    """The prompt as sent: request, figure clause, style, template, design system, aspect note.
 
-    Separate from the caller so the stored prompt stays what the person typed.
-
-    Ordered from the particular to the standing: what the person asked for,
-    then the style chip they picked for this picture, then the shape the
-    design template gives it, then the project's design system, and last the
-    aspect note, which is mechanical. Where two disagree the later phrase is
-    the one a picture model tends to honour, and the project's look should
-    outlast one picture's chip.
+    Later phrases win where two disagree. The stored prompt stays what the
+    person typed.
     """
-    # A planned prompt ends on a full stop, and the joiner below adds one.
     parts = [prompt.strip().rstrip(".").strip()]
-    # Directly after what the person asked for, and before the style chip: it
-    # says what kind of thing to make, and the chip only says what it looks
-    # like. A chip that disagrees is still allowed to — "사진" of one subject is
-    # a fine figure — but it cannot turn the figure back into a page.
     if figure:
         parts.append(_FIGURE_CLAUSE)
     phrase = _STYLE_PHRASE.get(style)
-    # A planned prompt already ends on its own Style line; a second one
-    # would argue with it.
+    # A planned prompt already ends on its own Style line.
     if phrase and "\nStyle:" not in prompt:
         parts.append(phrase)
     if template.strip():
@@ -295,9 +238,7 @@ def compose_prompt(
     if design.strip():
         parts.append(design.strip())
     if square_only:
-        # The canvas will be square whatever is asked. Said so, the model
-        # composes for it instead of drawing a wide picture and losing its
-        # edges to the frame.
+        # Said so, the model composes for the square instead of clipping a wide picture.
         parts.append(
             "The canvas is square: compose everything to fit fully inside it with a clear "
             "margin on all sides; nothing may touch or cross the edge"
@@ -316,16 +257,10 @@ async def plan(
     model: str,
     api_key: str,
 ) -> tuple[str, dict[str, int]]:
-    """The request, rewritten as the prompt a picture model follows.
+    """`(prompt, usage)`: the request rewritten by a language model into a structured picture
+    prompt.
 
-    「스타일 쪽이 오히려 생성되는 이미지를 망친다」 — a chip's five words could
-    not tell the model what to draw, only what to smear over it. This asks a
-    language model to say where everything goes, what each thing is called,
-    what the arrows mean and what the words are, then to close on the style
-    line. The person's sentence stays the stored prompt; this is what is sent.
-
-    Returns `(prompt, usage)`. Falls back to the request itself when the
-    planner fails, so a picture is still made.
+    Falls back to the request itself when the planner fails.
     """
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
@@ -389,18 +324,8 @@ def _unfenced(text: str) -> str:
 
 
 def _shape_note(aspect: str) -> str:
-    """The shape, said as an orientation and not only as a ratio.
-
-    `aspect ratio 4:3` on its own is a line picture models drop often enough
-    that this product stores what came back — `actualAspect` — beside what was
-    asked for. Dropped, a report figure comes back taller than it is wide and
-    eats a whole page; a slide figure comes back square and leaves the layout
-    with a hole beside it. Both surfaces ask for a landscape shape (4:3 and
-    16:9) and neither could insist on it.
-
-    Orientation is the half a model does honour, because it is a word rather
-    than an arithmetic constraint. Said both ways, the ratio has something to
-    fall back on.
+    """The aspect as ratio plus orientation word; models honour the word more reliably than the
+    ratio.
     """
     try:
         wide, tall = (float(part) for part in aspect.split(":", 1))
@@ -416,7 +341,7 @@ def _shape_note(aspect: str) -> str:
 def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
     images = message.get("images") or []
     if not images:
-        # Prose instead of an image: a refusal, or a prompt read as a question.
+        # Prose instead of an image: a refusal.
         text = (message.get("content") or "").strip()
         raise ImageError(text[:200] or "이미지를 만들지 못했습니다.")
 
@@ -430,21 +355,14 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
         raise ImageError("이미지 데이터가 손상되었습니다.") from exc
 
 
-#: The ratios the Gemini image models take as a parameter. Others ignore the
-#: field, which is why it is always sent: for them the orientation note in the
-#: prompt is still the only lever, and it costs nothing to say both.
+#: Ratios `image_config.aspect_ratio` accepts; other models ignore the field.
 _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
 
 
 async def generate(
     *, base_url: str, api_key: str, model: str, prompt: str, aspect: str = ""
 ) -> GeneratedImage:
-    """One picture, or `ImageError`.
-
-    `aspect` is sent as a parameter as well as said in the prompt. A ratio in
-    the prompt is a line picture models drop often enough that this product
-    stores what came back beside what was asked for; Gemini honours the
-    parameter every time, and the others ignore it.
+    """One picture, or `ImageError`. `aspect` is sent as `image_config` in addition to the prompt.
     """
     payload: dict = {
         "model": model,
@@ -482,8 +400,7 @@ async def generate(
         width=width,
         height=height,
         input_tokens=int(usage.get("prompt_tokens") or 0),
-        # Billed as completion tokens. `image_tokens` is the same number broken
-        # out, so counting both doubles the charge.
+        # `image_tokens` is already included in `completion_tokens`.
         output_tokens=int(usage.get("completion_tokens") or 0),
     )
 

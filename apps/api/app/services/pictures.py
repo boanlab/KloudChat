@@ -1,16 +1,7 @@
-"""A picture inside a document: the one form of it this product allows.
+"""Pictures inside documents: embedded `data:` URIs only, raster only.
 
-Artifacts render in a `sandbox=""` iframe, are downloaded, opened outside it
-and shared by link. An address in one is a request made on the reader's behalf
-from a document they did not write — so the only picture a document may carry
-is one already inside it, as a `data:` URI.
-
-Raster only. `image/svg+xml` is a document that can carry script, which is the
-thing that rule exists to keep out.
-
-The same fact was being stated in four places — the sanitiser, the HTML
-reader, the deck renderer and the router that embeds one — so it is stated
-here instead.
+Documents are downloaded and shared by link, so a remote address would be a
+request made on the reader's behalf. SVG is excluded because it can carry script.
 """
 
 from __future__ import annotations
@@ -19,24 +10,15 @@ import base64
 import binascii
 import re
 
-#: What a picture may be. Also what the embedding endpoint accepts, so a file
-#: this cannot draw is refused where it is chosen rather than where it fails.
+#: MIME types a document may carry; also what the embedding endpoint accepts.
 EMBEDDABLE = ("image/png", "image/jpeg", "image/gif", "image/webp")
 
-#: The most a picture may weigh before a turn leaves it out.
-#:
-#: Base64 adds a third again on the way into a prompt, and a context window
-#: spent on one screenshot is a conversation that stops answering. Four
-#: megabytes is a full-page scan at a readable resolution.
+#: Largest picture a turn will hand to a model.
 MAX_PICTURE_BYTES = 4_000_000
 
 
 def can_be_seen(mime: str, size: int) -> bool:
-    """Whether a model could be handed this file as a picture.
-
-    The same list a document is allowed to carry, for the same reason: raster
-    only, because `image/svg+xml` is a document that can carry script.
-    """
+    """Whether a model could be handed this file as a picture."""
     return (mime or "").lower() in EMBEDDABLE and 0 < size <= MAX_PICTURE_BYTES
 
 
@@ -49,7 +31,7 @@ def is_embedded(src: str) -> bool:
 
 
 def data_uri(mime: str, encoded: str) -> str:
-    """The address form: what goes in an `<img src>`."""
+    """The `<img src>` form."""
     return f"data:{mime};base64,{encoded}"
 
 
@@ -58,11 +40,7 @@ def encode(mime: str, data: bytes) -> str:
 
 
 def decode(src: str) -> tuple[str, bytes] | None:
-    """`(mime, bytes)` for an embedded picture, or `None` for anything else.
-
-    Anything else includes a remote address, which cannot be stored and must
-    not be fetched if it somehow is.
-    """
+    """`(mime, bytes)` for an embedded picture, or `None` for anything else (never fetched)."""
     match = _DATA_URI.match((src or "").strip())
     if not match:
         return None

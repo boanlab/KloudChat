@@ -2,35 +2,22 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   # <2: the SDK moved `mcp.server.fastmcp` out in 2.0, and an
-#   # unpinned range silently upgraded every cold start into a
-#   # ModuleNotFoundError that the connector reported as "the server exited
-#   # without responding".
+#   # <2: 2.0 removed `mcp.server.fastmcp`.
 #   "mcp>=1.2.0,<2",
 #   "httpx>=0.27.0",
 #   "youtube-transcript-api>=0.6.2",
 #   "yt-dlp>=2024.1.0",
 # ]
 # ///
-"""YouTube transcript MCP — caption-first, whisper(GPU)-fallback.
+"""YouTube transcript MCP server: captions first, Whisper fallback.
 
-Single tool `transcript(url, language=None)`:
-  1. Try captions via youtube-transcript-api (no GPU used when the video has
-     captions — returns immediately).
-  2. If captions are missing/private, extract audio (m4a/opus) with yt-dlp.
-  3. Transcribe via WHISPER_URL — KloudChat-LLM's speech-to-text address
-     (/tools/stt on the gateway). The shim load-balances across the WHISPER_URLS
-     backends by inflight requests and VRAM; a backend is the faster-whisper
-     systemd unit installed on the GPU node(s) by scripts/install-whisper.sh.
+One tool, `transcript(url, language=None)`: official captions via
+youtube-transcript-api; otherwise audio via yt-dlp, transcribed at WHISPER_URL.
 
-     Whisper is GPU-only — there is no OpenRouter STT fallback. Unset or
-     unavailable, only videos that have captions work. (With WHISPER_URLS
-     empty, this tool is not attached to agents at all — manage.sh gates it.)
-
-Environment variables:
-  WHISPER_URL          Substituted with the speech-to-text address configured
-                       in the admin screen. A single-node deployment may
-                       bypass the shim with http://host.docker.internal:9000.
+Environment:
+  WHISPER_URL  OpenAI-compatible `/v1/audio/transcriptions` base. Filled in by
+               the connector runtime from the admin screen's speech-to-text
+               address. Unset: only videos with captions work.
 """
 from __future__ import annotations
 
@@ -66,9 +53,7 @@ def _video_id(url: str) -> str | None:
 
 
 def _try_captions(vid: str, language: str | None) -> str | None:
-    """Try official YouTube captions. Priority: explicit language → ko → en → first available.
-    Returns None → caller falls back to whisper. Uses the youtube-transcript-api
-    ≥1.0 new API (instance method)."""
+    """Official captions: explicit language → ko → en → first available. None: fall back to Whisper."""
     try:
         ytt = YouTubeTranscriptApi()
         listing = ytt.list(vid)
@@ -79,7 +64,7 @@ def _try_captions(vid: str, language: str | None) -> str | None:
         return None
 
     def _join(fetched) -> str:
-        # ≥1.0: FetchedTranscriptSnippet object (.text attribute). Keep old-version dict compatibility.
+        # ≥1.0 yields snippet objects (.text); <1.0 yielded dicts.
         out = []
         for s in fetched:
             txt = getattr(s, "text", None) if not isinstance(s, dict) else s.get("text")
@@ -97,7 +82,7 @@ def _try_captions(vid: str, language: str | None) -> str | None:
             return _join(t.fetch())
         except NoTranscriptFound:
             continue
-    # Last try: anything available (including auto-generated captions)
+    # Anything available, auto-generated included.
     try:
         t = next(iter(listing))
         return _join(t.fetch())
@@ -106,7 +91,7 @@ def _try_captions(vid: str, language: str | None) -> str | None:
 
 
 def _download_audio(vid: str, dest_dir: str) -> str:
-    """Fetch audio-only with yt-dlp. Returns: downloaded file path."""
+    """Audio-only download via yt-dlp; returns the file path."""
     from yt_dlp import YoutubeDL
     out_tmpl = os.path.join(dest_dir, "%(id)s.%(ext)s")
     opts = {
@@ -138,8 +123,7 @@ async def _post_audio(url: str, audio_path: str) -> str | None:
 
 
 async def _whisper(audio_path: str) -> str:
-    """Audio → transcript via WHISPER_URL. Local backend only; no OpenRouter
-    fallback."""
+    """Audio → transcript via WHISPER_URL."""
     if not WHISPER_URL:
         raise RuntimeError("Whisper backend unavailable: WHISPER_URL not set (GPU-only, no OR fallback).")
     text = await _post_audio(WHISPER_URL, audio_path)
@@ -152,9 +136,8 @@ async def _whisper(audio_path: str) -> str:
 async def transcript(url: str, language: str | None = None) -> str:
     """Returns the full transcript text of a YouTube video.
 
-    This docstring is the tool description the model reads, so the Korean
-    trigger phrases below are functional rather than decorative: they are what
-    match a Korean-speaking user's request to this tool.
+    This docstring is the tool description the model reads; the Korean trigger
+    phrases are functional.
 
     한국어 트리거: "유튜브 자막", "유튜브 스크립트", "영상 내용 알려줘",
     "유튜브 요약해줘"(먼저 transcript 수신 → 그 본문을 모델이 요약), "영상 텍스트",
@@ -174,12 +157,12 @@ async def transcript(url: str, language: str | None = None) -> str:
     if not vid:
         return f"Error: cannot extract video ID from {url!r}"
 
-    # 1. captions first
+    # Captions first.
     txt = await asyncio.to_thread(_try_captions, vid, language)
     if txt:
         return txt
 
-    # 2. no captions → download audio + whisper
+    # No captions: download audio and transcribe.
     with tempfile.TemporaryDirectory() as tmp:
         try:
             audio = await asyncio.to_thread(_download_audio, vid, tmp)

@@ -8,12 +8,7 @@ import { KeyboardShortcuts } from './KeyboardShortcuts'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
 
-/**
- * The few seconds after a delete, in which it has not happened.
- *
- * Sits in the shell rather than on each screen: the delete that needs undoing
- * most is the one that navigated away from the thing it deleted.
- */
+/** Undo toast for a pending delete; lives in the shell so it survives navigation. */
 function UndoBar() {
   const t = useT()
   const pending = useStore((s) => s.pendingDelete)
@@ -36,11 +31,7 @@ function UndoBar() {
   )
 }
 
-/**
- * One sentence about something that failed with no screen of its own to say
- * so on — a card that starts a conversation and is refused. Until now that
- * refusal was an unhandled promise in the console and nothing on the page.
- */
+/** Transient error toast for failures with no screen of their own. */
 function NoticeBar() {
   const t = useT()
   const notice = useStore((s) => s.notice)
@@ -75,8 +66,7 @@ export function AppShell() {
   const open = sidebar !== 'hidden'
   const location = useLocation()
 
-  // On narrow layouts the sidebar covers the content, so navigating has to
-  // dismiss it — otherwise the user taps a link and sees the same panel.
+  // On narrow layouts the sidebar overlays the content, so navigation closes it.
   useEffect(() => {
     if (narrow && open) cycleSidebar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,9 +74,7 @@ export function AppShell() {
 
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
-      {/* The panel stays mounted and moves, rather than appearing and vanishing:
-          a drawer that is simply gone on the next frame reads as a glitch. Both
-          transitions collapse under the reduced-motion guard in index.css. */}
+      {/* The drawer stays mounted and slides; transitions collapse under the reduced-motion guard in index.css. */}
       {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
@@ -108,9 +96,7 @@ export function AppShell() {
               )
             : cn(
                 'shrink-0 transition-[width] duration-300',
-                // Clipping only where something has to be clipped. Applied at
-                // every width it would also cut off the menus the panel opens,
-                // which at 64px is the whole of them.
+                // `overflow-hidden` only when hidden; it would clip the rail's menus.
                 sidebar === 'hidden'
                   ? 'w-0 overflow-hidden'
                   : sidebar === 'rail'
@@ -118,14 +104,11 @@ export function AppShell() {
                     : 'w-[268px]',
               )
         }
-        // Off-screen is out of reach: without this the collapsed panel keeps
-        // every one of its rows in the tab order.
+        // Keeps the collapsed panel out of the tab order.
         inert={!open ? true : undefined}
       >
         <Sidebar />
       </div>
-      {/* The one landmark the shell had no element for. A reader jumping by
-          landmark had the panel and nothing to jump *to*. */}
       <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
       </main>

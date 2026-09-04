@@ -1,9 +1,4 @@
-"""Model catalogue and the caller's credit balance.
-
-Both are gated behind an active account: a pending user has no allowance yet, so
-showing them a priced model list would only invite the question of why nothing
-works.
-"""
+"""Model catalogue and the caller's credit balance. Active accounts only."""
 
 from __future__ import annotations
 
@@ -18,7 +13,7 @@ router = APIRouter(tags=["models"])
 
 
 async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
-    """Shape both catalogue endpoints with the same user-scoped Auto contract."""
+    """Catalogue filtered to the user's allowlist, plus the auto-routing availability block."""
     catalogue = (
         await model_service.list_models(force=True) if force else await model_service.list_models()
     )
@@ -37,11 +32,7 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             by_id.get(model_id), allowed_model_ids=allowed
         )
     ]
-    # Coarse on purpose. Whether an upgrade candidate is usable also depends on
-    # the model the person is currently on — an upgrade may not send a turn
-    # further than that model already does — and this endpoint serves a
-    # catalogue, not a turn. The per-turn check in `quality_candidates` is the
-    # one that decides; this only says whether an administrator set the lane up.
+    # Coarse check only; the per-turn decision is `quality_candidates`.
     quality_ids = [
         model_id
         for model_id in list(policy.adaptive_quality_model_ids or [])[:3]
@@ -66,8 +57,7 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             "reason": reason,
             "classifierModelId": classifier_id if classifier_ok else None,
             "economyModelIds": economy_ids,
-            # The upgrade lane shares the classifier and the on/off switch; only
-            # the candidate list is its own.
+            # The upgrade lane shares the classifier; only the candidate list is its own.
             "qualityAvailable": bool(
                 policy.adaptive_quality_enabled and classifier_ok and quality_ids
             ),
@@ -87,20 +77,13 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
 
 @router.get("/models")
 async def list_models(user: CurrentUser):
-    """The catalogue this account may actually use.
-
-    Filtered here as well as on the proxy: the proxy is what makes the limit
-    real, but a picker offering models that answer 401 is a worse way to learn
-    about a restriction than simply not seeing them.
-    """
+    """Catalogue filtered to the allowlist (the proxy enforces it; this trims the picker)."""
     return await _catalogue_for_user(user)
 
 
 @router.post("/models/refresh")
 async def refresh_models(admin: AdminUser):
-    """Drops the 30-second cache. For when an operator has just edited
-    `litellm-config.yaml` and does not want to wait for it to age out.
-    """
+    """Drops the catalogue cache and re-reads LiteLLM."""
     model_service.invalidate_cache()
     return await _catalogue_for_user(admin, force=True)
 
@@ -117,8 +100,6 @@ async def credits(user: CurrentUser):
 
 @router.post("/credits/refill")
 async def run_refill(admin: AdminUser, db: DbSession):
-    """Manual trigger for the monthly reset. A daily cron calls the same service;
-    this exists so an operator can prove it works without waiting for the 1st.
-    """
+    """Manual trigger for the monthly credit reset."""
     count = await refill_due(db)
     return {"refilled": count}

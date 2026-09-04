@@ -1,11 +1,4 @@
-"""Reading an HTML artifact back into files.
-
-There is no rendering engine in this image, so the conversion is structural
-rather than pixel-faithful. What has to hold is that nothing is lost on the
-way: every block becomes a slide or a section, in order, with its words, its
-columns and its tables intact — and that a deck stays a deck and a document
-stays a document.
-"""
+"""`page_export`: an HTML artifact reads back into slides or sections without losing content."""
 
 from __future__ import annotations
 
@@ -60,9 +53,7 @@ _DOC_BLOCKS = [
     },
 ]
 
-#: The rest of what a document may hold: the cover's own 목적/독자, a margin
-#: note against the paragraph it sources, and a command somebody has to be
-#: able to copy. Every one of these reached the `.html` and stopped there.
+#: Cover definition list, a footnote, and a code line.
 _HELD_BLOCKS = [
     {
         "layout": "cover",
@@ -132,19 +123,19 @@ def test_each_kind_of_content_lands_where_its_renderer_looks_for_it():
 
 
 def test_a_split_slide_keeps_which_column_each_line_was_in():
-    """Halving a merged list would put the wrong items on the wrong side."""
+    """A split slide keeps its explicit columns."""
     split = next(s for s in page_export.to_slides(_deck_html()) if s["layout"] == "two-column")
 
     assert split["columns"] == [
         ["유지", "비용 없음", "복구 경로 없음"],
         ["교체", "예산 필요"],
     ]
-    # Flattened too, so a renderer that only knows bullets still draws them.
+    # Also flattened for renderers that only know bullets.
     assert split["bullets"] == ["유지", "비용 없음", "복구 경로 없음", "교체", "예산 필요"]
 
 
 def test_the_slide_number_is_not_read_as_content():
-    """The seed prints it; it is furniture, and the exporters draw their own."""
+    """The seed's slide number is not read as content."""
     for slide in page_export.to_slides(_deck_html()):
         assert "1" not in (slide.get("bullets") or [])
         assert slide.get("body") != "1"
@@ -155,34 +146,23 @@ def test_a_document_becomes_sections_the_report_exporters_understand():
 
     assert [s["heading"] for s in sections] == ["서버 교체 검토", "배경"]
     assert sections[0]["content"] == "2분기 기술 검토\n\n<!-- pagebreak -->"
-    # Markdown, because that is what `report_export._markdown_to_lines` reads.
+    # Content is Markdown, as `report_export._markdown_to_lines` reads.
     assert "- 장애 3회" in sections[1]["content"]
 
 
 def test_the_one_pager_grid_does_not_swallow_its_cards():
-    """Its sections sit inside a `div.grid`; each must still be a section."""
+    """Sections inside a `div.grid` are still read as sections."""
     sections = page_export.to_sections(_doc_html("doc-brief"))
     assert [s["heading"] for s in sections] == ["서버 교체 검토", "배경"]
 
 
 def test_every_tag_the_catalogue_admits_is_accounted_for():
-    """The two vocabularies must not be allowed to drift apart again.
-
-    `small`, `dl`, `dt` and `dd` were admitted by `sanitise` and read by
-    nothing here, so a margin note and a report cover's 목적/독자/기간 reached
-    the `.html` and then not the `.docx`, the `.pdf` or the `.hwpx`. Nothing
-    said so; the reader found out by opening the download. Every tag the
-    catalogue lets through is therefore read for its words, read for its
-    structure, or named as dropped on purpose — and a tag named here that the
-    catalogue has stopped admitting fails this too.
-    """
+    """Every tag `sanitise` admits is read as text, carried as structure, or dropped on purpose."""
     known = (
         page_export._TEXT_TAGS | page_export._CARRIED_TAGS | page_export._DROPPED_TAGS
     )
     assert not dt._ALLOWED_TAGS - known
-    # `h2` is the one the other way round: the block wrapper writes it, so
-    # `sanitise` strips it out of a body while this reader still has to find
-    # it in the assembled document.
+    # `h2` is written by the block wrapper, so `sanitise` strips it but the reader needs it.
     assert known - dt._ALLOWED_TAGS == {"h2"}
     assert not page_export._TEXT_TAGS & page_export._CARRIED_TAGS
     assert not page_export._DROPPED_TAGS & (
@@ -191,7 +171,7 @@ def test_every_tag_the_catalogue_admits_is_accounted_for():
 
 
 def test_a_footnote_is_a_note_and_not_the_next_claim():
-    """It sources the paragraph above it, so it has to stay above the next one."""
+    """A footnote stays after the paragraph it sources and before the next."""
     sections = page_export.to_sections(_held_html())
     lines = sections[1]["content"].split("\n\n")
 
@@ -203,13 +183,7 @@ def test_a_footnote_is_a_note_and_not_the_next_claim():
 
 
 def test_footnote_markers_count_up_and_restart_each_section():
-    """The marker is written here because the seed's is a CSS counter.
-
-    Generated content is not text: `*`, `**` come from `::before` on screen and
-    would reach neither the `.docx` nor the `.pdf`. The body carries its own
-    `<sup>*</sup>` either way, so a note exported without one leaves a marker
-    in the prose pointing at a line with nothing to match it.
-    """
+    """Footnote markers are written as text (the seed uses CSS counters) and restart per section."""
     html = (
         "<div class='page'>"
         "<section><h2>가</h2><p>첫째<sup>*</sup></p><small>하나</small>"
@@ -221,22 +195,17 @@ def test_footnote_markers_count_up_and_restart_each_section():
 
     assert "* 하나" in first["content"]
     assert "** 둘" in first["content"]
-    # The reference survives into the prose, or the note below has no referent.
     assert "첫째*" in first["content"]
-    # Counted per section, exactly as the seed resets its counter per section.
     assert "* 셋" in second["content"]
     assert "** " not in second["content"]
 
 
 def test_a_definition_list_is_a_list_of_labelled_items_rather_than_a_table():
-    """Two cells, but a name and what it stands for only read as one line."""
+    """A `dl` becomes `- term: definition` bullets, not a table."""
     cover = page_export.to_sections(_held_html())[0]
 
     assert "- 목적: 교체 여부 판단" in cover["content"]
     assert "- 독자: 인프라팀" in cover["content"]
-    # And not as a table: `report_export` would draw the term in a row of its
-    # own, one column wide, which is a definition list somebody has to read
-    # twice to pair up.
     assert page_export.read(_held_html())[0]["rows"] == []
 
 
@@ -251,7 +220,7 @@ def test_a_hard_line_break_does_not_join_the_two_halves_of_a_line():
 
 
 def test_a_note_on_a_slide_goes_where_a_presentation_keeps_one():
-    """No slide layout has a subordinate voice; the notes pane is the one place."""
+    """A `small` note on a slide goes to the notes pane."""
     blocks = [
         {
             "layout": "quote",
@@ -300,7 +269,7 @@ def test_an_html_deck_becomes_one_powerpoint_slide_per_section():
 
 
 def test_a_table_slide_becomes_a_real_powerpoint_table():
-    """Flattened to bullets it would be a list somebody has to reassemble."""
+    """A table slide exports as a PowerPoint table."""
     slides = page_export.to_slides(_deck_html())
     xml = _slide_xml(deck_export.to_pptx("t", slides, tokens=_TOKENS), 5)
 
@@ -311,14 +280,12 @@ def test_a_table_slide_becomes_a_real_powerpoint_table():
 def test_a_two_column_slide_draws_the_columns_it_was_given():
     slides = page_export.to_slides(_deck_html())
     xml = _slide_xml(deck_export.to_pptx("t", slides, tokens=_TOKENS), 4)
-    # Both headings survive as the first line of their own column.
     assert "유지" in xml and "교체" in xml
 
 
 def test_a_json_deck_still_halves_its_own_list():
-    """The explicit columns are an HTML deck's; nothing else gained a field."""
-    # Six, because `_split_columns` keeps a short list in one column — two of
-    # two is a gap down the middle rather than a layout.
+    """A JSON deck without explicit columns still halves its list."""
+    # `_split_columns` keeps a list shorter than six in one column.
     columns = deck_export._columns_of({}, ["가", "나", "다", "라", "마", "바"], "two-column")
     assert columns == [["가", "나", "다"], ["라", "마", "바"]]
 
@@ -351,12 +318,7 @@ def _hwpx_text(blob: bytes) -> str:
 
 @pytest.mark.parametrize("template_id", ["doc-report", "doc-lab", "doc-brief"])
 def test_nothing_a_document_may_hold_is_dropped_on_the_way_to_a_file(template_id):
-    """The whole point of the vocabulary check above, read end to end.
-
-    A reader who downloads the report has to find the same words in it as the
-    one who read it in the browser — the cover's own facts, the source line
-    beside the figure, and the command they were told to run.
-    """
+    """Cover facts, footnotes and code reach the .docx, .hwpx and .pdf."""
     sections = page_export.to_sections(_held_html(template_id))
     for text in (
         _docx_text(report_export.to_docx("t", sections, tokens=_TOKENS)),
@@ -365,12 +327,12 @@ def test_nothing_a_document_may_hold_is_dropped_on_the_way_to_a_file(template_id
         assert "교체 여부 판단" in text
         assert "구매 계약서 3항" in text
         assert "systemctl restart kc-api" in text
-    # The PDF is compressed, so it is checked for building rather than read.
+    # The PDF is compressed; only its header is checked.
     assert report_export.to_pdf("t", sections, tokens=_TOKENS)[:4] == b"%PDF"
 
 
 def test_a_dark_template_presents_on_a_dark_ground():
-    """The design system picks colours for a document; a projector inverts them."""
+    """A dark template exports slides on a dark ground."""
     slides = page_export.to_slides(_deck_html("deck-signal"))
     light = _slide_xml(deck_export.to_pptx("t", slides, tokens=_TOKENS), 2)
     dark = _slide_xml(deck_export.to_pptx("t", slides, tokens=_TOKENS, dark=True), 2)

@@ -1,17 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Reading a design system out of a document somebody already has.
- *
- * The four colours and the paragraph of style rules are the part nobody types
- * from scratch, so this is the path that decides whether design systems get
- * used at all. What it must not do is save on somebody's behalf: the draft is
- * one model's reading of a document, and the person who owns that document is
- * the one who can say whether it read it right.
- *
- * Costs one call on the cheapest chat model.
- */
+/** Extracting a design system draft from an uploaded document; nothing is saved until 저장. One model call. */
 
 const 공문 = [
   '○○대학교 정보시스템팀',
@@ -32,9 +22,7 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
   await page.goto('/designs')
 
   const designs = page.getByRole('region', { name: '디자인 시스템' })
-  // Counted after the list has arrived: it loads from its own request, and a
-  // count taken before that is zero for reasons that have nothing to do with
-  // what this test is about.
+  // Count after the list has loaded.
   await expect(designs.locator('li').first()).toBeVisible({ timeout: 20_000 })
   const before = await designs.locator('li').count()
   await designs.getByRole('button', { name: '문서에서 가져오기' }).click()
@@ -47,22 +35,20 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
     buffer: Buffer.from(공문, 'utf8'),
   })
 
-  // The editor opens on the draft — with a note naming what it was read from,
-  // so whoever edits it knows which fields a document is answerable for.
+  // The editor opens on the draft, naming its source.
   const editor = page.getByRole('region', { name: '디자인 시스템' })
   await expect(editor.getByLabel('이름', { exact: true })).not.toHaveValue('', {
     timeout: 240_000,
   })
   await expect(page.getByText(/연구실-장비-관리-공문\.txt.*에서 읽었습니다/)).toBeVisible()
 
-  // Colours arrive drawable rather than as whatever the model typed.
+  // Colours are normalised hex.
   await expect(editor.getByLabel('강조색 색상 코드')).toHaveValue(/^#[0-9a-f]{6}$/)
   await expect(editor.getByLabel('본문색 색상 코드')).toHaveValue(/^#[0-9a-f]{6}$/)
-  // An official document is a printed one; the face it proposes should say so.
   await expect(editor.getByLabel('서체')).toHaveValue('serif')
   await page.screenshot({ path: 'test-results/shots/11-design-extract.png' })
 
-  // Nothing was stored on the way here: the list is unchanged until Save.
+  // Nothing stored until 저장.
   const name = `읽어온 공문 ${Date.now()}`
   await editor.getByLabel('이름', { exact: true }).fill(name)
   await editor.getByRole('button', { name: '저장', exact: true }).click()
@@ -71,15 +57,13 @@ test('올린 공문에서 디자인 시스템 초안을 읽고, 확인한 뒤에
   await expect(row).toBeVisible({ timeout: 20_000 })
   expect(await designs.locator('li').count()).toBe(before + 1)
 
-  // And it is usable where design systems are used.
   await page.goto('/projects')
   await page.getByRole('button', { name: '새 프로젝트' }).click()
   await page.getByLabel('이름', { exact: true }).fill(`읽어온 디자인 확인 ${Date.now()}`)
   await page.getByRole('button', { name: '만들기', exact: true }).click()
   await expect(page).toHaveURL(/\/projects\/[0-9a-f]{32}/, { timeout: 20_000 })
   const projectId = page.url().split('/projects/')[1]
-  // Attaching is an optimistic write, so the screen alone proves nothing: wait
-  // for the request, then read it back from a fresh load.
+  // Optimistic write: wait for the PATCH, then read back after a reload.
   const saved = page.waitForResponse(
     (r) => r.url().endsWith(`/projects/${projectId}`) && r.request().method() === 'PATCH',
     { timeout: 20_000 },
@@ -109,7 +93,7 @@ test('읽을 수 없는 파일은 이유를 말하고 아무것도 저장하지 
     buffer: Buffer.from('   ', 'utf8'),
   })
 
-  // Said, not swallowed: a silent failure here reads as a slow model.
+  // The failure is said.
   await expect(form.getByText(/못했습니다|짧습니다/)).toBeVisible({ timeout: 60_000 })
   await form.getByRole('button', { name: '취소' }).click()
   expect(await designs.locator('li').count()).toBe(before)

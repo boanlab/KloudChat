@@ -1,16 +1,13 @@
 name: CI
 
-# Runs on every push and pull request that touches code. The jobs are split by
-# app so a change to the web bundle does not wait on the Python toolchain, and
-# a red job names the surface that broke rather than "CI failed".
+# One job per app, so a red job names the surface that broke.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
 
-# A new push to a PR makes the in-flight run obsolete. `main` is exempt so the
-# history of what was green on the default branch stays complete.
+# A new push to a PR cancels the in-flight run; `main` keeps its full history.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -34,15 +31,13 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
 
-      # `ci` rather than `install`: the lockfile is the contract, and a build
-      # that silently resolves a different tree is not the build we ship.
+      # `ci`: the lockfile is the contract.
       - run: npm ci --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
 
-      # `npm run build` is `tsc -b && vite build` — the type check is part of
-      # the build, so a type error fails here rather than at image build time.
+      # `tsc -b && vite build`: the type check is part of the build.
       - name: Typecheck and build
         run: npm run build
 
@@ -61,8 +56,7 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/pyproject.toml
 
-      # The runtime dependencies come along because the unit tests import
-      # `app.services.*` directly; the dev extra adds pytest and ruff.
+      # Runtime dependencies too: the tests import `app.services.*`.
       - name: Install
         run: pip install -e '.[dev]'
 
@@ -78,14 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The integration scripts under scripts/ are run by hand against a live
-      # stack, so nothing else checks them. shellcheck (preinstalled on the
-      # runner) is the only gate they get.
-      #
-      # Pinned at `error` rather than `warning`: these scripts pass unquoted
-      # ids and URLs around by design, and the informational findings that
-      # produces would drown the ones that mean something. Raise the severity
-      # once the existing findings are cleared.
+      # The only gate the hand-run integration scripts get. `error` only:
+      # they pass unquoted ids and URLs by design.
       - name: shellcheck
         run: shellcheck --severity=error scripts/*.sh scripts/lib/*.sh
 
@@ -96,7 +84,7 @@ jobs:
       matrix: ${{ steps.pick.outputs.matrix }}
       any: ${{ steps.pick.outputs.any }}
     steps:
-      # Full history: the diff base is a commit the shallow clone omits.
+      # Full history: the diff base is not in a shallow clone.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
@@ -121,8 +109,7 @@ jobs:
           if [ "$EVENT" = "workflow_dispatch" ]; then
             build_all "manual run — building all"; exit 0
           fi
-          # No usable base: first commit, new branch, or a force push that
-          # removed the previous tip.
+          # No usable base: first commit, new branch, or force push.
           if [ -z "${BASE:-}" ] \
              || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
@@ -170,9 +157,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4
 
-      # Build only — publishing happens in release.yml, on the default branch
-      # and on tags. A pull request from a fork must never be able to push an
-      # image, so no registry credentials are available in this workflow.
+      # Build only; release.yml publishes. No registry credentials here, so a
+      # fork's pull request cannot push an image.
       - name: Build ${{ matrix.name }} image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
@@ -188,9 +174,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Catches interpolation and schema mistakes in the compose files without
-      # starting anything. KCHAT_JWT_SECRET is declared required (`:?`), so it
-      # has to be present for the file to render at all.
+      # Interpolation and schema check. KCHAT_JWT_SECRET is required (`:?`).
       - name: Validate compose files
         env:
           KCHAT_JWT_SECRET: ci-placeholder-not-a-secret

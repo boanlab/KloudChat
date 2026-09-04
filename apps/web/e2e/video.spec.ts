@@ -1,13 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn, surfaceOn } from './helpers'
 
-/**
- * Video generation and playback on the audio/video surface.
- *
- * Expensive: a 4-second 720p silent clip on the cheapest model is 12,000
- * credits. So one clip is generated and generation, pricing and playback are
- * all asserted against it.
- */
+/** One video clip is generated (about 12,000 credits); generation, billing and playback are asserted against it. */
 
 const AS_USER = `async (path) => {
   const login = await fetch('/api/auth/login', {
@@ -21,7 +15,7 @@ const AS_USER = `async (path) => {
 }`
 
 test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', async ({ page }) => {
-  // The upstream takes minutes and the worker polls every six seconds.
+  // The upstream takes minutes.
   test.setTimeout(900_000)
   await signIn(page)
 
@@ -35,21 +29,15 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
     AS_USER,
   )
 
-  // Skipped where the workspace has this surface off. `image` and `av` spend
-  // credits per generation and default to off, and the screen for a surface
-  // that is off carries no composer to drive.
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await page.getByRole('button', { name: /^종류/ }).click()
   await page.getByRole('menuitemcheckbox', { name: '영상' }).click()
 
-  // Switching to video has to bring a video model with it. The cheapest model on
-  // this surface is a speech model, and it stayed selected — so the composer
-  // sat there refusing every clip with a message about the combination.
   await page.getByRole('button', { name: /^해상도/ }).click()
   await page.getByRole('menuitem', { name: '720p' }).click()
   await page.keyboard.press('Escape')
 
-  // 4 seconds, 720p, silent, on the cheapest model: 3,000 credits a second.
+  // 4 seconds, 720p, silent: 3,000 credits a second on the cheapest model.
   const quoted = await page
     .getByText(/예상 [\d,]+ 크레딧/)
     .first()
@@ -61,8 +49,7 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
-  // The card appears immediately and carries the job while the clip is made —
-  // a request that is being paid for is never invisible.
+  // The job card appears immediately.
   await expect(page.getByText(/만드는 중|대기/).first()).toBeVisible({ timeout: 60_000 })
 
   const fresh = async () =>
@@ -87,27 +74,17 @@ test('영상을 만들면 견적대로 걷히고 앱 안에서 재생된다', as
   expect(stored.data.src).toContain('/api/files/')
   expect(stored.data.durationSec).toBeGreaterThan(0)
 
-  // Billed what was quoted. `duration_seconds` is silently ignored upstream —
-  // the accepted field is `duration` — and a request that used the wrong name
-  // produced an eight-second clip nobody asked for at twice the price.
+  // Billed what was quoted.
   const after = await page.evaluate(
     async (fn) => (await eval(fn)('/api/me/usage?days=1')).cycle.used,
     AS_USER,
   )
   const charged = after - before
   expect(charged, '영상 생성이 과금되지 않았습니다').toBeGreaterThan(0)
-  // Within a tenth: the upstream's own figure is authoritative and can differ
-  // slightly from the pass-through's fixed price, but not by a multiple.
+  // Within a tenth: the upstream's figure may differ slightly, never by a multiple.
   expect(Math.abs(charged - quote) / quote).toBeLessThan(0.1)
 
-  // And it plays, in the app — not only by opening the file.
-  //
-  // In the transcript, which is where a clip now lives: a picture or a clip is
-  // what the turn *said*, so `setActiveSession` leaves the artifact panel shut
-  // for image and av sessions that have one and lets the answer carry the
-  // player. The panel's copy was the one watched while this test was written;
-  // it is not opened for these two surfaces any more, and asserting on it was
-  // waiting for a column the app had stopped drawing here.
+  // Plays in the transcript; the panel stays shut for image and av sessions.
   const player = page.locator('video[controls]').first()
   await expect(player).toBeVisible({ timeout: 30_000 })
   await expect(player).toHaveAttribute('src', /\/api\/files\/[0-9a-f]+\/content/)

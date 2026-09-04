@@ -18,42 +18,25 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   const t = useT()
   const navigate = useNavigate()
   const { user, sessions, jobs, agents, enabledKinds, newSession, setNotice } = useStore()
-  // Session kind before creation
   const [kind, setKind] = useState<SessionKind>(initialKind ?? 'chat')
 
-  /**
-   * The route can change while this screen stays mounted. `/` and `/new/:kind`
-   * both render this component, so React keeps it in place and the initial
-   * value above is read once — 서식에서 시작 navigates from one to the other,
-   * and without this the surface stays whatever it already was. The pick then
-   * lands on a composer of the wrong kind, where `shownTemplate` discards it
-   * for not matching and the chip never appears.
-   */
+  // `/` and `/new/:kind` share this mounted component, so a route change must resync the kind.
   useEffect(() => {
     if (initialKind) setKind(initialKind)
   }, [initialKind])
 
-  // Empty-session artifact reset
   const openArtifact = useStore((s) => s.openArtifact)
   useEffect(() => {
     openArtifact(null)
   }, [openArtifact])
 
   const surfaces = kindOrder.filter((k) => enabledKinds.includes(k))
-  /**
-   * A surface an administrator has switched off, asked for by name. The chip
-   * row simply would not contain it, so falling back silently would answer a
-   * request for 이미지 with a chat box and no reason given.
-   */
+  // A disabled kind requested by URL gets an explanation, not a silent fallback.
   const offHere = initialKind !== undefined && !enabledKinds.includes(initialKind)
-  //: The kind can be switched off by an administrator while this screen is
-  //: open, or arrive disabled on a reload. Falling back keeps the composer on
-  //: something that exists rather than on a surface that will refuse the turn.
   const active = surfaces.includes(kind) ? kind : (surfaces[0] ?? 'chat')
 
   const running = jobs.filter((j) => j.status === 'running' || j.status === 'queued')
-  //: Only the ones that can take this surface, and only the ones switched on.
-  //: An agent listed here and refused on click is worse than one not listed.
+  // Enabled agents that accept the active surface.
   const usableAgents = agents
     .filter((a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(active)))
     .slice(0, 6)
@@ -61,9 +44,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   if (offHere) {
     const meta = kindMeta[initialKind]
     const Icon = meta.icon
-    // An administrator is not somebody to ask an administrator. They are the
-    // person who can turn it on, and the switch is two clicks away — so the
-    // screen says which switch instead of who to petition.
     const canSwitch = user?.role === 'admin'
     return (
       <>
@@ -107,8 +87,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
         </div>
 
-        {/* The surface row sits directly above the box it governs, so the two
-            read as one control: pick the shape, write the sentence. */}
         <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4">
           {surfaces.map((k) => {
             const meta = kindMeta[k]
@@ -134,19 +112,12 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
           })}
         </div>
 
-        {/* `key` remounts on a surface change. The composer holds a draft, an
-            attachment list and a one-turn skill choice, and every one of those
-            is about the surface it was made for — carrying an image prompt's
-            aspect chips into a report is not a saved draft, it is a bug. */}
+        {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
 
-        {/* Empty-session starting points. */}
         <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4">
           <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
-              {/* 무엇을 해 주는지를 말한다. 「빈 화면에서 시작하지 않아도
-                  됩니다」 was a negation — it said what you need not do and
-                  nothing about what pressing the button does. */}
               <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
               <p className="mt-0.5 text-sm text-muted">
                 {active === 'chat'
@@ -178,8 +149,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
               {usableAgents.map((a) => (
                 <Card
                   key={a.id}
-                  // Runs it, rather than navigating to a list where it would
-                  // have to be found again. This card *is* the run button.
                   onClick={() =>
                     void newSession(a.kinds[0] ?? active, { agentId: a.id })
                       .then((id) => navigate(`/s/${id}`))

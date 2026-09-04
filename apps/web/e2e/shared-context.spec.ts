@@ -1,26 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN, signIn } from './helpers'
 
-/**
- * What a stranger holding the link is told about the document they were sent.
- *
- * The shared page put 질문 over every user turn and said nothing else. A
- * recipient could read a report written by an agent, inside a project, into a
- * shape chosen before the first word — and see none of the three, with nobody
- * to ask. The empty screen inside the app has explained exactly this since a
- * 시작점 stopped being typed into the composer; the reader outside got the
- * result and no account of it.
- *
- * The other half is what must never cross: two of those three names have a
- * body behind them, and an agent's system prompt on a public URL is the
- * workspace leaking through a link that bought one conversation.
- *
- * Everything here is set up through the API. A model turn costs credits and
- * says nothing about the header this test is reading.
- */
+/** A shared page names the agent, project and 서식 behind a conversation, and leaks none of their bodies.
+ *  Set up through the API. */
 
-/** The API takes a bearer token the app holds in memory, so a test asking for
- *  one of its own is the only way to reach the API beside the app. */
+/** A bearer token of the test's own; the app holds its token in memory. */
 async function token(page: Page) {
   return page.evaluate(async (account) => {
     const res = await fetch('/api/auth/login', {
@@ -76,14 +60,13 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   })
   const { token: link } = (await share.json()) as { token: string }
 
-  // A brand-new context: no cookie, no account, nothing this instance has seen.
+  // A brand-new context: no cookie, no account.
   const stranger = await browser.newContext()
   const guest = await stranger.newPage()
   await guest.goto(`/share/${link}`)
   await expect(guest.getByText('읽기 전용')).toBeVisible({ timeout: 20_000 })
 
-  // The three names, each said in the terms the choice was made in — the same
-  // sentences the person who started the conversation was shown.
+  // The three names, in the same sentences the conversation's owner was shown.
   await expect(guest.getByText('이 대화가 가지고 시작하는 것')).toBeVisible()
   await expect(guest.getByText(`감사 담당 ${stamp}`)).toBeVisible()
   await expect(guest.getByText('이 에이전트가 답합니다')).toBeVisible()
@@ -91,9 +74,7 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   await expect(guest.getByText('한 장 요약')).toBeVisible()
   await expect(guest.getByText('결과물이 이 서식으로 나옵니다')).toBeVisible()
 
-  // And nothing behind them. Read off the response rather than the screen: a
-  // body that arrived and was merely not rendered is still a body that left
-  // the workspace.
+  // Nothing behind them, read off the response: an unrendered body still left the workspace.
   const payload = await guest.request.get(`/api/shared/${link}`)
   const wire = await payload.text()
   expect(wire).not.toContain('내부 감사 절차대로')
@@ -102,13 +83,7 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   await stranger.close()
 })
 
-/**
- * A conversation that started with nothing claims nothing.
- *
- * The panel is an account of what shaped the answers, so a header that appears
- * over a plain chat with three empty rows would be the same product noise the
- * page is otherwise free of.
- */
+/** A conversation that started with nothing shows no header. */
 test('가지고 시작한 것이 없으면 공유 화면은 그 자리를 비워 둔다', async ({ page, browser }) => {
   test.setTimeout(120_000)
   await signIn(page)

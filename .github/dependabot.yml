@@ -1,8 +1,6 @@
 version: 2
 
-# Grouped, weekly, and quiet. Ungrouped updates on a repository with four
-# ecosystems produce a dozen pull requests a week, which is how a security
-# update ends up buried under patch bumps nobody read.
+# Grouped and weekly, so a security update is not buried under patch bumps.
 updates:
   - package-ecosystem: npm
     directory: /apps/web
@@ -11,8 +9,7 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
-      # React and its type packages move together; splitting them produces a
-      # pull request that cannot pass `tsc -b` on its own.
+      # React and its type packages move together, or `tsc -b` fails.
       react:
         patterns: ['react', 'react-dom', '@types/react', '@types/react-dom', 'react-router-dom']
       build-tooling:
@@ -39,11 +36,11 @@ updates:
       actions:
         patterns: ['*']
 
-  # Both Dockerfiles pin base image tags, so this is the only thing that will
-  # ever notice that python:3.12-slim has moved on.
+  # The Dockerfiles pin base image tags; this is what notices they moved.
   - package-ecosystem: docker
     directories:
       - /apps/api
+      - /apps/print
       - /apps/web
     schedule:
       interval: weekly

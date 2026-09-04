@@ -1,21 +1,8 @@
-"""Turning finished conversations into durable facts.
+"""Extracts durable facts about the user from a finished turn into Memory rows.
 
-After a turn ends, a cheap model is asked whether the *user* said anything worth
-remembering, and at most a couple of short facts are written.
-
-Three rules keep it from becoming noise:
-
-* **Only about the user.** What earns a row is what KloudChat cannot look up —
-  their lab, their conventions, their stated preferences.
-* **At most two per turn**, and nothing at all is the common answer.
-* **Never a near-duplicate.** Existing memories go into the prompt, because
-  only the model separates "the same fact, said differently" from "the same
-  sentence, different value" — on real pairs, character overlap puts a
-  rewording at 0.50 and two different lab codes at 0.43. The string check is a
-  backstop for the identical case only.
-
-Failures are swallowed: a missing memory is a small loss, a turn that failed to
-return is a large one.
+At most two facts per turn. Existing memories go into the prompt so the model
+avoids rewordings; the string check below catches only near-identical text.
+Failures are swallowed so the turn still returns.
 """
 
 from __future__ import annotations
@@ -36,7 +23,6 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Two is enough for one exchange. More than that and the extractor is padding.
 _MAX_PER_TURN = 2
 _MAX_TOTAL = 200
 
@@ -66,17 +52,13 @@ def _norm(text: str) -> str:
 
 
 def _shingles(text: str) -> set[str]:
-    """Character bigrams of the normalised text.
-
-    Catches rewordings without embeddings, which matters for Korean where the
-    difference is mostly particles and endings.
-    """
+    """Character bigrams of the normalised text."""
     n = _norm(text)
     return {n[i : i + 2] for i in range(len(n) - 1)} or {n}
 
 
-#: Near-identical strings only. High on purpose: two facts sharing a sentence
-#: frame but differing in the part that matters already overlap around 0.60.
+#: Bigram overlap threshold. Facts sharing a frame but differing in the value
+#: overlap around 0.60, so this must stay well above that.
 _NEAR_IDENTICAL = 0.9
 
 
@@ -103,12 +85,9 @@ async def extract(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[int, dict[str, int]]:
-    """Writes any new facts and returns `(how many, usage)`. Caller commits.
+    """Writes any new facts and returns `(count, usage)`. Caller commits.
 
-    The tokens are reported separately from the count because the two do not
-    move together: the common answer is nothing worth remembering, and it costs
-    exactly as much as the answer that fills two rows. A caller billing only
-    for what was written would bill for almost none of this.
+    Usage is non-zero even when nothing is written.
     """
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not user_message.strip() or not assistant_message.strip():
@@ -116,13 +95,11 @@ async def extract(
 
     existing = (await db.exec(select(Memory).where(Memory.user_id == user.id))).all()
     if len(existing) >= _MAX_TOTAL:
-        # Past this size the store stops helping and needs pruning by hand.
         log.info("auto-memory skipped for user %s: %d memories already", user.id, len(existing))
         return 0, spent
     seen = [(_norm(m.body or m.name), _shingles(m.body or m.name)) for m in existing]
 
     base, _ = await settings_store.litellm_config()
-    # Newest first — the prompt has room for a few dozen.
     recent = sorted(existing, key=lambda m: m.updated_at, reverse=True)[:40]
     sensitive = redact_logging
 
@@ -201,8 +178,6 @@ async def extract(
             Memory(
                 user_id=user.id,
                 name=name,
-                # Provenance, so the memory screen is not a list of facts the
-                # user does not remember writing.
                 description="대화에서 자동으로 기록됨",
                 type=MemoryType.user,
                 body=body,

@@ -15,9 +15,5 @@ export function useMediaQuery(query: string) {
   return matches
 }
 
-/**
- * Below this width the sidebar and the artifact panel cannot both sit beside the
- * conversation — three columns in 820px leaves the middle one unusable. They
- * become overlays instead.
- */
+/** Below 1024px the sidebar and the artifact panel become overlays. */
 export const useNarrowLayout = () => useMediaQuery('(max-width: 1023px)')

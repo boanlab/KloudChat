@@ -22,8 +22,8 @@ make build       # or: docker compose -f docker-compose.yml \
 ```
 
 `make up` runs the images published to Docker Hub, which is what a deployment
-does. `make build` builds both from this checkout, which is what you want while
-working on either one.
+does. `make build` builds every image from this checkout, which is what you
+want while working on any of them.
 
 `make help` lists everything below as a target. `make check` runs exactly what
 CI runs, in the same order.
@@ -150,12 +150,13 @@ bash scripts/smoke-test.sh      # auth, approval, rotation, suspension
 bash scripts/workspace-test.sh  # workspace CRUD
 bash scripts/context-test.sh    # context assembly reaches the answer
 bash scripts/e2e-seed.sh        # create and approve the Playwright account
+bash scripts/load-test.sh       # concurrent reads from two accounts; 5xx and isolation
 ```
 
 `context-test.sh` makes real model calls, so it is slow and needs a backend.
 The others do not.
 
-**Credentials.** All four sign in as an administrator, resolved in this order
+**Credentials.** All five sign in as an administrator, resolved in this order
 (see [`scripts/lib/env.sh`](../scripts/lib/env.sh)):
 
 1. `ADMIN_EMAIL` / `ADMIN_PASS` already exported

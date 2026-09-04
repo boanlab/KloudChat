@@ -1,11 +1,5 @@
-"""Long-running generation, as rows that outlive their request.
-
-Video only: pictures and speech finish inside the call that asked for them.
-
-One poll task per job rather than a sweeper — a handful run at a time, and a
-task that dies takes one clip with it. Jobs still running after a restart are
-recovered on the next list request, which is what `provider_job_id` is for.
-"""
+"""Video jobs: one poll task per job; jobs left running by a restart are
+recovered on the next list request via `provider_job_id`."""
 
 from __future__ import annotations
 
@@ -34,13 +28,10 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["jobs"])
 
-#: Between polls. A clip takes minutes, so a tighter loop only spends rate limit.
 _POLL_SECONDS = 6.0
-#: Ceiling on one job: past this the upstream has lost it, and a row stuck on
-#: "running" is worse than one that gave up.
+#: Past this the job is marked failed rather than left on "running".
 _MAX_WAIT_SECONDS = 900.0
 
-#: Credits to one dollar. Same figure the rest of the ledger uses.
 _CREDITS_PER_USD = settings.credits_per_usd
 
 _running: set[asyncio.Task] = set()
@@ -65,8 +56,7 @@ async def _finish(job_id: str, **fields) -> None:
         job = await db.get(Job, job_id)
         if job is None:
             return
-        # A settled job is not this loop's to change. Two loops can exist for
-        # one clip when a restart recovers it beside a still-running task.
+        # A settled job is final; two loops can exist for one clip after a restart.
         if job.status in (JobStatus.succeeded, JobStatus.failed, JobStatus.canceled):
             return
         for key, value in fields.items():
@@ -76,8 +66,7 @@ async def _finish(job_id: str, **fields) -> None:
 
 
 async def _poll_until_done(job_id: str) -> None:
-    # Instance key, resolved here: the caller's is refused on these routes, and
-    # a worker outliving the request should not hold one.
+    # Instance key: a worker outliving the request must not hold the caller's.
     base_url, master_key = await settings_store.litellm_config()
     waited = 0.0
     while waited < _MAX_WAIT_SECONDS:
@@ -101,13 +90,7 @@ async def _poll_until_done(job_id: str) -> None:
 
         if progress.status in ("failed", "error", "canceled"):
             # Not charged: the upstream does not bill for an undelivered clip.
-            #
-            # The prompt keeps no failure mark of its own. Unlike a picture,
-            # a clip has a row of its own that outlives the request, and that
-            # row already carries what broke, that nothing was charged and the
-            # way to try again — under the prompt, where the answer would have
-            # gone. Marking the message too would put the same news in two
-            # places and the way back under the wrong one.
+            # The job row carries the failure; the prompt message is not marked.
             await _finish(
                 job_id,
                 status=JobStatus.failed,
@@ -165,16 +148,11 @@ async def _poll_until_done(job_id: str) -> None:
                 await db.flush()
                 session = await db.get(ChatSession, session_id)
                 if session is not None:
-                    # Here and not at submission: until the upstream hands the
-                    # clip back there is nothing to point at, and a session
-                    # pointing at an artifact that does not exist opens an
-                    # empty panel — which is worse than opening none.
+                    # Linked on delivery: before that there is no artifact to point at.
                     session.artifact_id = artifact.id
                     session.updated_at = _now()
                     db.add(session)
-                # Charged on delivery. The upstream's reported figure wins when
-                # it reports one; the pass-through's per-path price is a floor to
-                # quote from, not the figure to charge.
+                # Charged on delivery; the upstream's reported cost wins over the estimate.
                 charged = (
                     round(progress.cost_usd * _CREDITS_PER_USD) if progress.cost_usd else estimated
                 )
@@ -187,11 +165,7 @@ async def _poll_until_done(job_id: str) -> None:
                     model=model_id,
                     surface="av",
                 )
-                # The clip lands in the conversation, under the prompt that
-                # asked for it minutes ago. Written on delivery because until
-                # now there was nothing to write: an answer row naming an
-                # artifact that does not exist yet would render as a turn with
-                # a hole in it.
+                # The answer row is written on delivery, under the prompt that asked.
                 db.add(
                     chat_service.media_answer(
                         session_id,
@@ -234,11 +208,7 @@ def _now():
 
 @router.post("/sessions/{session_id}/jobs", response_model=JobOut)
 async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession):
-    """Starts a video and returns immediately.
-
-    The row exists before the poll loop, so a clip being paid for is never
-    invisible — including after a restart, when this id is the only way back.
-    """
+    """Starts a video and returns immediately. The row is committed before the poll loop starts."""
     session = await db.get(ChatSession, session_id)
     if session is None or session.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
@@ -284,16 +254,8 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     if not session.title:
-        # Named now rather than on delivery. A clip takes minutes, and for
-        # those minutes this row is the only place the person can find the
-        # thing they are being charged twelve thousand credits for. A clip that
-        # never arrives still leaves a record of what was asked for, which is
-        # the honest thing for the list to say about it.
         session.title = chat_service.provisional_title(payload.prompt)
-    # The prompt goes into the conversation now, for the same reason the title
-    # does: what the person typed belongs on the screen they typed it on, and
-    # for the next few minutes it is all there is to put there. The card
-    # underneath it is the clip being made; the answer arrives beneath both.
+    # Title and prompt are written at submission; the answer arrives on delivery.
     db.add(chat_service.media_prompt(session.id, payload.prompt))
     session.updated_at = _now()
     db.add(session)
@@ -326,11 +288,7 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
 
 @router.get("/sessions/{session_id}/jobs", response_model=list[JobOut])
 async def list_jobs(session_id: str, user: CurrentUser, db: DbSession):
-    """This session's jobs, newest first.
-
-    Also the recovery point: a job left running by a restart has no poll loop
-    behind it, and this is where one is started again.
-    """
+    """This session's jobs, newest first. Also restarts poll loops lost to a restart."""
     rows = (
         await db.exec(
             select(Job)
@@ -339,8 +297,6 @@ async def list_jobs(session_id: str, user: CurrentUser, db: DbSession):
         )
     ).all()
 
-    # Restart recovery. `_watching` is keyed by job id, not task name, so a list
-    # request does not start a second loop for the same clip.
     for job in rows:
         if job.status == JobStatus.running and job.provider_job_id and job.id not in _watching:
             _watch(job.id)
@@ -349,11 +305,7 @@ async def list_jobs(session_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobOut)
 async def cancel_job(job_id: str, user: CurrentUser, db: DbSession):
-    """Stops watching, locally.
-
-    The upstream keeps going and still bills; this stops the wait and the
-    on-delivery charge, and does not claim to have cancelled anything there.
-    """
+    """Stops watching locally; the upstream is not cancelled, only the on-delivery charge."""
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")

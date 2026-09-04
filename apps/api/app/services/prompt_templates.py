@@ -1,29 +1,9 @@
-"""The starting points: a sentence somebody begins from, before a shape.
+"""Built-in starting points: the request a card opens with, resolved on the server.
 
-A **design template** (`services.design_templates`) decides what the answer
-comes out looking like. A starting point decides how the request opens — what
-is being made, and what the person still has to supply. It is the shorter half
-of the same idea, and until now it lived only in the frontend bundle.
-
-It moved here because a starting point is no longer typed into the composer.
-It is carried by the turn, the way an activated skill is: the message stays
-the words the person wrote, and the template arrives beside it as its own
-context block. That resolution happens on the server, so the catalogue it
-resolves against has to be here too — an id only the client knows is an id the
-server can only take on trust.
-
-Written as literals rather than kept in a table, for the same reason the
-rendering catalogue is read out of the image: these are versioned workflows
-that ship with a release and change when the product changes, not rows anybody
-edits at runtime. Somebody who wants a starting point of their own writes a
-`templates` row, which is what that table is for, and both lists reach the
-gallery in one shape.
-
-The English half is declared and empty. The wire and the client's
-fallback-to-Korean rule are worth having before the translations exist —
-`design_templates` established exactly that pattern, and a card with a Korean
-title in an English UI is readable, while a card waiting on a schema change is
-not.
+A design template decides what the answer looks like; a starting point decides
+what is being made and what the person must supply. User-made ones live in the
+`templates` table; both reach the gallery in one shape. English fields are
+declared and empty; the client falls back to Korean.
 """
 
 from __future__ import annotations
@@ -38,60 +18,31 @@ class PromptTemplate:
     """One built-in starting point, named after the document it produces."""
 
     id: str
-    #: The surface it starts. A starting point is a request, so its kind *is*
-    #: the session kind — unlike a rendering template, whose `deck` has to be
-    #: mapped onto the slides surface.
+    #: The session kind it starts.
     kind: SessionKind
-    #: The gallery's filter chip: 학업(대학생), 연구(대학원생), 업무(직장인).
+    #: The gallery's filter chip: 학업, 연구, 업무.
     group: str
     title: str
-    #: What you get. One line, no feature list.
+    #: One line, no feature list.
     description: str
-    #: What you have to bring, shown as chips before anybody commits, and what
-    #: the composer asks for in its placeholder once the card is attached.
+    #: What the person must bring; shown as chips and in the composer placeholder.
     fills: tuple[str, ...]
-    #: Ends mid-sentence, where the person takes over. That is the whole shape
-    #: of a starting point: it says what is being made and hands the turn back.
+    #: Ends where the person takes over.
     prompt: str
-    #: The 서식 this job comes out wearing, when one of them is right for it.
-    #:
-    #: 결과 서식 used to be the other half of a two-tab dialogue: pick what you
-    #: are doing, then pick what it looks like. Two decisions for one job, and
-    #: the second one is a question about typography asked of somebody who came
-    #: to write an incident report. A 실험 노트 has a shape — that shape *is*
-    #: `doc-lab`, and nobody starting one wants a different answer.
-    #:
-    #: Empty is a real answer and the common one: a 동향 조사 has no house
-    #: style, so the writing surfaces choose the colour and the impression from
-    #: the subject instead (`deck._theme_style`, `report._outline_style`).
+    #: The design template this job renders with; empty lets the surface choose.
     render_template_id: str = ""
-    #: The English half. Empty until somebody writes it; the client falls back
-    #: to the Korean, which leaves a card readable rather than blank.
     title_en: str = ""
     description_en: str = ""
     fills_en: tuple[str, ...] = ()
     prompt_en: str = ""
-    #: 빈칸마다 하나씩, 어떻게 적으면 되는지 보여 주는 예.
-    #:
-    #: 「기간·언어」 alone is a noun; 「예: 2020~2024, 영어·한국어」 is an
-    #: instruction. The card used to hand five nouns to a placeholder and hope,
-    #: and the placeholder vanished at the first keystroke — so the person was
-    #: left inventing a format for a thing they had never been shown. One
-    #: example per blank, in the order of `fills`; missing ones stay blank.
+    #: One example per blank, in the order of `fills`; missing ones stay blank.
     examples: tuple[str, ...] = ()
     examples_en: tuple[str, ...] = ()
-    #: What the job cannot be done without. `web` — the answer has to come from
-    #: sources found now, not remembered; `file` — the person has to bring the
-    #: document the job is about. Shown on the card before anybody commits,
-    #: and enforced by the composer once they do: 문헌 동향 조사 with web
-    #: search switched off is a survey of the model's memory, and nothing on
-    #: screen used to say so.
+    #: `web` (sources found now) and/or `file` (the person brings the document).
+    #: Shown on the card and enforced by the composer.
     needs: tuple[str, ...] = ()
-    #: The catalogue skills this job runs with, by catalogue key
-    #: (`starter._SKILLS`). Resolved on the server when the turn carries the
-    #: starting point, so a person who never copied 인용 형식 맞추기 into
-    #: their own list still gets it — the card promised it. The wire carries
-    #: the names, which is what the composer shows and matches.
+    #: Catalogue skill keys (`starter._SKILLS`), resolved on the server; the
+    #: wire carries the names.
     skills: tuple[str, ...] = ()
 
 
@@ -109,8 +60,7 @@ def _t(
     skills: tuple[str, ...] = (),
     render: str = "",
 ) -> PromptTemplate:
-    """One card, positionally — the catalogue below is long enough that the
-    keyword form doubled its length without making a row easier to read."""
+    """One card, positionally."""
     return PromptTemplate(
         id=id,
         kind=kind,
@@ -1515,8 +1465,6 @@ _ALL: tuple[PromptTemplate, ...] = (
 )
 
 
-#: Indexed once, by id — the process reads this at import and nothing edits it
-#: cannot have changed since the process started.
 _TEMPLATES: dict[str, PromptTemplate] = {t.id: t for t in _ALL}
 
 

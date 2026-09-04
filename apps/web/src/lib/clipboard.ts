@@ -1,10 +1,6 @@
 /**
- * Copies to the clipboard and reports whether it worked.
- *
- * `navigator.clipboard` exists only in a secure context, so on plain HTTP it is
- * undefined and the button would claim success having copied nothing. Falls
- * back to a temporary textarea and `execCommand`; false when both fail, so the
- * caller shows no success state.
+ * Copies to the clipboard; false when it failed. `navigator.clipboard` exists
+ * only in a secure context, so plain HTTP falls back to a textarea and `execCommand`.
  */
 export async function copyText(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -12,7 +8,7 @@ export async function copyText(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text)
       return true
     } catch {
-      // Permission denied, or the document is not focused — fall through.
+      // Permission denied or document not focused: fall through.
     }
   }
 

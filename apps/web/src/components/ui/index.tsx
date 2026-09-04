@@ -45,10 +45,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   return (
     <button
-      // Which variant this is, readable from CSS. A ribbon flattens the
-      // buttons inside it to look like ribbon commands, and it needs a way to
-      // say "all of them except the filled one" — without this it wiped the
-      // background off a primary button and left the white label on white.
+      // Read by the ribbon's CSS, which restyles every variant but primary.
       data-variant={variant}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors',
@@ -63,10 +60,7 @@ export function Button({
   )
 }
 
-/**
- * A link that looks like a button, for downloads: `<a download>` hands the file
- * over in one attribute, where a button has to fetch, blob and revoke.
- */
+/** Button-styled anchor, for `<a download>`. */
 export function ButtonLink({
   variant = 'secondary',
   size = 'md',
@@ -93,8 +87,7 @@ const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
   'transition-colors focus:border-accent focus:outline-none'
 
-// `ComponentProps` rather than `InputHTMLAttributes`: it carries `ref`, so a
-// form can focus the field it just said was missing.
+// `ComponentProps` carries `ref`.
 export function Input({ className, ...props }: ComponentProps<'input'>) {
   return <input className={cn(fieldBase, 'h-9', className)} {...props} />
 }
@@ -103,20 +96,7 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return <textarea className={cn(fieldBase, 'resize-y leading-relaxed', className)} {...props} />
 }
 
-/**
- * A dropdown that looks like the fields beside it.
- *
- * A bare `<select>` is drawn by the operating system: its own font, its own
- * height, its own arrow, its own focus ring. Put next to `Input` it reads as a
- * control from a different product — 설정 · 환경설정 had a row of custom model
- * pickers and then one grey system dropdown under them, which is the kind of
- * seam people notice without being able to name.
- *
- * Still a real `<select>`. The native control is what gives keyboard support,
- * type-ahead, and a usable list on a phone; a div rebuilt to look like one
- * loses all three. Only the chrome is replaced — `appearance-none` takes the
- * platform's arrow off, and a chevron is drawn in its place.
- */
+/** Native `<select>` styled like `Input`; only the chrome is replaced. */
 export function Select({ className, children, ...props }: ComponentProps<'select'>) {
   return (
     <div className="relative">
@@ -124,7 +104,6 @@ export function Select({ className, children, ...props }: ComponentProps<'select
         className={cn(
           fieldBase,
           'h-9 cursor-pointer appearance-none pr-9',
-          // A disabled field must not look pressable.
           'disabled:cursor-not-allowed disabled:opacity-60',
           className,
         )}
@@ -179,10 +158,7 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        // The button is the *hit area*, not the track. At 36×20 the track was
-        // the whole target, which is under a fingertip on the tablet these
-        // lists are read on — so the control grew to 44×36 and the track moved
-        // into `::before`, unchanged at 36×20.
+        // The button is the 44x36 hit area; the 36x20 track is drawn in `::before`.
         'relative h-9 w-11 shrink-0 border-0 bg-transparent p-0',
         'disabled:pointer-events-none disabled:opacity-45',
         "before:absolute before:top-1/2 before:left-1 before:h-5 before:w-9 before:-translate-y-1/2 before:rounded-full before:transition-colors before:content-['']",
@@ -191,9 +167,7 @@ export function Switch({
     >
       <span
         className={cn(
-          // Track 36, knob 16, inset 2 → 16px of travel. Vertical position is
-          // `top`, never a transform: mixing translate axes collapses to
-          // `translate: -50%`, which CSS applies on x.
+          // Track 36, knob 16, inset 2: 16px of travel. Vertical position via `top`, not transform.
           'absolute top-2.5 left-1.5 h-4 w-4 rounded-full bg-white shadow-raised transition-transform',
           checked ? 'translate-x-4' : 'translate-x-0',
         )}
@@ -255,7 +229,7 @@ export function Card({
 
 /* ── Modal ──────────────────────────────────────────────────────────── */
 
-/** What the keyboard can land on. Shared by the focus trap and the restore. */
+/** Focusable elements, for the focus trap. */
 const FOCUSABLE =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), ' +
   'select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -277,22 +251,19 @@ export function Modal({
   children?: ReactNode
   footer?: ReactNode
   width?: string
-  /** The child owns its title bar and close control (document/deck editors). */
+  /** The child draws its own title bar and close control. */
   bare?: boolean
 }) {
   const t = useT()
   const panelRef = useRef<HTMLDivElement>(null)
-  /** Whatever had focus when this opened, so it can be given back. */
+  /** Element to return focus to on close. */
   const returnTo = useRef<HTMLElement | null>(null)
   const closeRef = useRef(onClose)
   useLayoutEffect(() => {
     closeRef.current = onClose
   }, [onClose])
 
-  /**
-   * Focus trap and restore. `aria-modal` claims the rest of the page is inert;
-   * this is what makes it true for the keyboard.
-   */
+  // Focus trap and restore.
   useEffect(() => {
     if (!open) return
     returnTo.current = document.activeElement as HTMLElement | null
@@ -311,7 +282,6 @@ export function Modal({
       )
       if (items.length === 0) return
       const edge = e.shiftKey ? items[0] : items[items.length - 1]
-      // Wrapping at the edges is what makes it a loop rather than an exit.
       if (document.activeElement === edge || !panel.contains(document.activeElement)) {
         e.preventDefault()
         ;(e.shiftKey ? items[items.length - 1] : items[0]).focus()
@@ -320,19 +290,14 @@ export function Modal({
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('keydown', onKey)
-      // Back to the control that opened it — not to the top of the document,
-      // which is where the browser drops you when the focused node vanishes.
       returnTo.current?.focus?.()
     }
   }, [open])
 
   if (!open) return null
   return (
-    /* Centred, with `my-auto` on the panel rather than `items-center` alone:
-       a flex item centred in a scrolling container has its overflowing top cut
-       off and out of reach, and the edit forms here are taller than a short
-       window. Auto margins centre it while it fits and stop at the padding
-       when it does not. */
+    /* `my-auto` on the panel, not `items-center`: a centred flex item taller
+       than the scroll container gets its top clipped. */
     <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4 max-sm:p-2">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
@@ -340,8 +305,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        // Focusable as a fallback: a dialog whose body is only text still has
-        // to be somewhere the keyboard can land.
+        // Focus fallback for a dialog with no focusable child.
         tabIndex={-1}
         className={cn(
           'animate-fade-up relative my-auto w-full rounded-panel border border-line bg-panel shadow-float outline-none',
@@ -368,12 +332,7 @@ export function Modal({
   )
 }
 
-/**
- * Confirmation before a destructive action. Nothing on the server restores what
- * a card's delete removes, and that button sits beside a toggle.
- *
- * The name goes in the question: "Delete this?" is answered yes by everyone.
- */
+/** Confirmation before a destructive action. */
 export function ConfirmDialog({
   open,
   onClose,
@@ -419,10 +378,7 @@ export function ConfirmDialog({
 
 const MenuCtx = createContext<{ close: () => void }>({ close: () => {} })
 
-/**
- * Closes the enclosing Dropdown from a custom menu body. `MenuItem` closes
- * itself; a menu rendering its own rows — the model picker — cannot.
- */
+/** Closes the enclosing Dropdown from a custom menu body. */
 export function useMenuClose() {
   return useContext(MenuCtx).close
 }
@@ -439,11 +395,7 @@ export function Dropdown({
   className?: string
 }) {
   const [open, setOpen] = useState(false)
-  /**
-   * Which way the panel opens, and how tall it may be. The composer's menus sit
-   * a few pixels above the bottom of the window, so downward-only with no
-   * height cap puts them off-screen.
-   */
+  // Opening direction and height cap, measured against the viewport.
   const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number }>({
     up: false,
     maxHeight: 0,
@@ -460,7 +412,6 @@ export function Dropdown({
     const margin = 12
     const below = window.innerHeight - rect.bottom - margin
     const above = rect.top - margin
-    // Downward by preference; flipped only when the other side has more room.
     const up = below < 220 && above > below
     const menuWidth = menuRef.current?.getBoundingClientRect().width ?? 208
     const left = align === 'right'
@@ -493,10 +444,7 @@ export function Dropdown({
     return () => cancelAnimationFrame(frame)
   }, [open])
 
-  /**
-   * Arrow-key navigation, as `role="menu"` promises. Down/Up walk the items,
-   * Home/End jump to the ends, Escape restores focus to the trigger.
-   */
+  // Outside-click close and arrow-key navigation.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
@@ -511,7 +459,6 @@ export function Dropdown({
         e.preventDefault()
         e.stopImmediatePropagation()
         setOpen(false)
-        // Back to the trigger, which is the only landmark the reader has.
         ref.current?.querySelector<HTMLElement>('button')?.focus()
         return
       }
@@ -536,7 +483,6 @@ export function Dropdown({
     }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    // A resize while open changes which side fits.
     window.addEventListener('resize', measure)
     return () => {
       document.removeEventListener('mousedown', onDown)
@@ -546,13 +492,7 @@ export function Dropdown({
   }, [open, measure])
 
   return (
-    /* `shrink-0`: this wrapper is a flex item in every toolbar it sits in, and
-       without it the wrapper shrinks while the button inside keeps its own
-       `shrink-0` — so the label wraps one character per line and spills out of
-       the button, which is what a narrow artifact panel showed. */
     <div ref={ref} className={cn('relative shrink-0', open && 'z-50')}>
-      {/* The trigger is whatever the caller rendered — usually a button — so the
-          menu semantics are declared on the wrapper and the panel instead. */}
       <div
         onClick={() => setOpen((o) => !o)}
       >
@@ -600,15 +540,10 @@ export function MenuItem({
   icon?: ReactNode
   hint?: ReactNode
   disabled?: boolean
-  /** Accessible toggle state with a leading selection mark. */
+  /** Renders as a checkbox item with a selection mark. */
   checked?: boolean
-  /**
-   * Leave the menu up after this row is picked. A command closes its menu; a
-   * row in a multi-select does not — closing on every tick made choosing
-   * three skills three trips to the same menu.
-   */
+  /** Leaves the menu open after the click (multi-select). */
   keepOpen?: boolean
-  /** Why a row is disabled, on hover — instead of a sentence in the hint slot that pushed the name out. */
   title?: string
 }) {
   const { close } = useContext(MenuCtx)
@@ -668,7 +603,7 @@ export function EmptyState({
   title: string
   description?: string
   action?: ReactNode
-  /** Use h1 only when the empty state is itself the whole named screen. */
+  /** h1 only when the empty state is the whole screen. */
   headingLevel?: 'h1' | 'h2'
 }) {
   const Heading = headingLevel ?? 'p'
@@ -686,10 +621,6 @@ export function EmptyState({
   )
 }
 
-/**
- * "Not here yet", as distinct from "not here". `length === 0` is equally true
- * of a request that has not answered.
- */
 export function LoadingState({ label }: { label?: string }) {
   const t = useT()
   return (
@@ -703,10 +634,7 @@ export function LoadingState({ label }: { label?: string }) {
   )
 }
 
-/**
- * Stale-data notice with a retry. A failed refresh keeps the list — an empty
- * screen would be the worse lie — so the staleness has to be said.
- */
+/** Stale-list notice with a retry. */
 export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
   const t = useT()
   return (

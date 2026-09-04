@@ -1,26 +1,4 @@
-"""A question with nothing under it, and a record that admits it.
-
-A quarter of the conversations on the test account are one user message and no
-reply. The question is written before the model answers, so a turn that breaks,
-is refused, or has its connection closed leaves the sentence behind on its own
-— and until now nothing anywhere said the answer never came. Opened, such a
-conversation was a prompt with silence under it; in the list it looked exactly
-like one that worked.
-
-Keeping the question is right. The person did ask, and deleting their words
-would be the dishonest repair. What these tests hold is the other half:
-
-1. A turn that produces nothing marks the question, and does not invent an
-   assistant message to say so. Nothing spoke, so nothing may read as though it
-   had.
-2. A turn that writes some of an answer and then breaks keeps what it wrote and
-   labels it, because half an answer that looks whole is the same lie in a
-   quieter voice.
-3. A turn that answers marks nothing, on either row. An ordinary conversation
-   must not learn to look failed.
-4. The mark comes back out with the transcript, which is the whole point: the
-   browser already says this while it is happening, in one tab, until reload.
-"""
+"""An unanswered turn marks the question row; nothing is invented and the mark is served back."""
 
 from __future__ import annotations
 
@@ -52,11 +30,7 @@ def _model(model_id: str = "vendor/model") -> dict:
 
 
 class _Turn:
-    """One conversation mid-turn: the question committed, the answer not yet.
-
-    Mirrors the only state `_run_turn` ever opens its own session onto — the
-    route has already written the user's sentence and closed its transaction.
-    """
+    """One conversation mid-turn: the question committed, the answer not yet."""
 
     def __init__(self) -> None:
         self.session = ChatSession(id="session-1", user_id="user-1", model="vendor/model")
@@ -153,8 +127,7 @@ async def test_a_turn_that_breaks_before_a_word_marks_the_question(monkeypatch) 
     await _drain(turn, monkeypatch, [chat_service.ChatStreamError("upstream 502")])
 
     assert turn.question.failure is TurnFailure.no_answer
-    # Nothing spoke, so nothing may be stored as having spoken. An empty
-    # assistant row would have been the easy fix and the wrong one.
+    # No empty assistant row.
     assert turn.answer is None
 
 
@@ -162,7 +135,7 @@ async def test_a_turn_that_breaks_before_a_word_marks_the_question(monkeypatch) 
 async def test_a_stream_that_ends_saying_nothing_is_still_a_turn_without_an_answer(
     monkeypatch,
 ) -> None:
-    """The quietest variant: no exception, no text, no reply row, no complaint."""
+    """A stream with no exception and no text still marks the question unanswered."""
     turn = _Turn()
     await _drain(turn, monkeypatch, [{"type": "usage", "inputTokens": 12, "outputTokens": 0}])
 
@@ -184,22 +157,16 @@ async def test_half_an_answer_is_kept_and_said_to_be_half(monkeypatch) -> None:
 
     answer = turn.answer
     assert answer is not None
-    # What it managed to write survives; the label is the difference between a
-    # short answer and an answer that stopped.
+    # Partial text survives, labelled.
     assert answer.content == "보조금은 지자체마다 "
     assert answer.failure is TurnFailure.interrupted
-    # The question was answered, as far as it goes. Marking it too would put the
-    # notice in two places and the way back under the wrong one.
+    # Only the answer row is marked.
     assert turn.question.failure is None
 
 
 @pytest.mark.asyncio
 async def test_a_step_is_stored_once_with_the_words_it_finished_on(monkeypatch) -> None:
-    """The running event and the done event share an id.
-
-    Both were appended, so a reload showed every tool call twice — the first
-    copy still saying 검색 중 under a header that said 작업 완료.
-    """
+    """A step's running and done events share an id and are stored once."""
     turn = _Turn()
     await _drain(
         turn,
@@ -237,12 +204,7 @@ async def test_an_ordinary_turn_marks_neither_row(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_done_names_the_stored_answer(monkeypatch) -> None:
-    """The browser's made-up id is not one the server knows.
-
-    A rating or a comparison's choice sent under it met a 404 until the session
-    was reopened, and the reload then showed the server's default rather than
-    the click. `done` carries the row's id so the tab can adopt it.
-    """
+    """`done` carries the stored answer row's id."""
     turn = _Turn()
     chunks = await _drain(
         turn,
@@ -278,14 +240,7 @@ def _press_stop(session_id: str) -> None:
 
 @pytest.mark.asyncio
 async def test_a_stopped_turn_is_marked_stopped_and_still_charged(monkeypatch) -> None:
-    """The person pressed 중단; the row must say so, and the tokens were spent.
-
-    Two things were wrong. A pressed button and a dropped socket were stored as
-    the same `interrupted`, so the notice for a stop the reader chose came up
-    in the error colour. And the proxy reports usage on its final chunk, which
-    a stopped stream never reaches — so the turn settled as 0 in · 0 out under
-    a paid model.
-    """
+    """A stopped turn is stored as `stopped`, not `interrupted`, and usage is estimated."""
     turn = _Turn()
 
     async def run_turn(*_args, **_kwargs):
@@ -301,7 +256,7 @@ async def test_a_stopped_turn_is_marked_stopped_and_still_charged(monkeypatch) -
     assert answer.content == "보조금은 지자체마다 다르고, "
     assert answer.failure is TurnFailure.stopped
     assert turn.question.failure is None
-    # Estimated from what went up and what came down, and said to be.
+    # Estimated from the traffic, and flagged as an estimate.
     assert answer.usage["estimated"] is True
     assert answer.usage["inputTokens"] > 0
     assert answer.usage["outputTokens"] > 0
@@ -312,7 +267,7 @@ async def test_a_stopped_turn_is_marked_stopped_and_still_charged(monkeypatch) -
 async def test_a_completed_hop_keeps_its_reported_usage_when_a_later_one_is_stopped(
     monkeypatch,
 ) -> None:
-    """An estimate fills a gap; it does not overwrite a figure the proxy gave."""
+    """An estimate fills a gap; it never overwrites usage the proxy reported."""
     turn = _Turn()
 
     async def run_turn(*_args, **_kwargs):
@@ -359,14 +314,7 @@ def _error_events(chunks: list[str]) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_the_error_event_says_why(monkeypatch) -> None:
-    """The reason went to the log and a fixed sentence went to the screen.
-
-    A backend that is down, a model that is missing and a key that is wrong
-    all read as 모델 응답을 받지 못했습니다; the person could not tell which,
-    and neither could whoever they asked. The event now carries the machine
-    code and the upstream's own sentence — with any key in it blanked, because
-    it is about to be shown.
-    """
+    """The error event carries the machine code and the upstream sentence, keys blanked."""
     turn = _Turn()
     chunks = await _drain(
         turn,
@@ -400,17 +348,12 @@ async def test_a_crash_still_carries_a_code(monkeypatch) -> None:
 
     (error,) = _error_events(chunks)
     assert error["code"] == "internal_error"
-    # Not an upstream sentence, so nothing to quote — and nothing invented.
+    # No upstream sentence, so nothing quoted.
     assert "reason" not in error
 
 
 def test_the_mark_travels_with_the_transcript() -> None:
-    """Otherwise it says nothing to the only person who needs it.
-
-    The browser already puts a notice on screen when a stream dies under it.
-    That notice lives in one tab's memory and is gone on reload, which is the
-    entire complaint — so the stored outcome has to come back down the wire.
-    """
+    """The stored outcome is returned with the transcript."""
     question = Message(
         session_id="session-1",
         role=Role.user,
@@ -420,5 +363,5 @@ def test_the_mark_travels_with_the_transcript() -> None:
 
     assert MessageOut.of(question).failure is TurnFailure.no_answer
     assert MessageOut.of(question).model_dump(by_alias=True)["failure"] == "no_answer"
-    # Every row written before any of this existed, and every ordinary turn.
+    # Rows without an outcome, and every ordinary turn.
     assert MessageOut.of(Message(session_id="s", role=Role.user, content="질문")).failure is None

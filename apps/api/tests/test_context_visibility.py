@@ -1,22 +1,4 @@
-"""Three things every answer is built on that the conversation never mentions.
-
-Memories, attached files and project knowledge all reach the model without
-passing through the transcript. A person who asks "why did it say that" could
-not find the answer in the turn — and worse, could not tell that the document
-they had just watched a chip appear for went out cut in half, or not at all.
-
-Each of those now leaves one quiet line in the timeline the applied skills
-already use. What the tests here hold to is the shape of that line:
-
-1. The memories are named and never quoted. The name is what lets somebody go
-   and find the fact; the body is the private half, and the timeline is a
-   surface people screen-share.
-2. Every attached file gets its own verdict — included, cut, or dropped for
-   size — because "3개 중 1개" does not say which document is missing.
-3. Project knowledge is reported the same way, out of the same code.
-4. A memory written out of a finished turn says so where it happened, and the
-   line survives a reload.
-"""
+"""Timeline steps reporting memories, attachments and project knowledge fed into a turn."""
 
 from __future__ import annotations
 
@@ -32,12 +14,7 @@ from app.services.workspace_context import assemble
 
 
 async def test_the_turn_names_the_memories_it_answered_from_and_quotes_none():
-    """The line is the index; the block is the content.
-
-    Somebody reading "메모리 2건 참고 — 말투 · 소속" can go and look at those two
-    rows. Printing the bodies instead would put a private fact on screen every
-    time a turn ran, which is the failure the memory drawer exists to avoid.
-    """
+    """The memories step names memories and never carries their bodies."""
     db = _Db(memories=[_memory("소속", "단국대학교"), _memory("말투", "존댓말을 쓴다")])
     context = await assemble(db, _user(), _session())
 
@@ -46,12 +23,12 @@ async def test_the_turn_names_the_memories_it_answered_from_and_quotes_none():
     step = _one(_context_steps(context), "context-memories")
     assert step["label"] == "메모리 2건 참고"
     assert "단국대학교" not in repr(step)
-    # The bodies did go upstream — the block is the model's copy, not this one.
+    # The bodies go to the model in the block only.
     assert "단국대학교" in next(b.text for b in context.blocks if b.source == "memory")
 
 
 async def test_a_turn_that_could_only_carry_some_of_them_says_which_some():
-    """Forty of sixty is a different answer from sixty of sixty."""
+    """A partial memory load reports loaded-of-total."""
     db = _Db(memories=[_memory(f"사실 {i:02d}", "본문") for i in range(45)])
     context = await assemble(db, _user(), _session())
 
@@ -63,7 +40,7 @@ async def test_a_turn_that_could_only_carry_some_of_them_says_which_some():
 
 
 async def test_a_turn_with_nothing_remembered_adds_no_line():
-    """Quiet: the timeline is for what happened, not for what did not."""
+    """No memories means no memories step."""
     context = await assemble(_Db(), _user(), _session())
     assert _context_steps(context) == []
 
@@ -72,12 +49,7 @@ async def test_a_turn_with_nothing_remembered_adds_no_line():
 
 
 async def test_each_attached_file_reports_what_survived_the_budget(monkeypatch):
-    """The budget is spent in order, so the last file pays for the first.
-
-    Before this the only notice was a sentence inside the prompt, addressed to
-    the model. The person waited, paid, and read an answer built on half of
-    their document with the chip still saying it was attached.
-    """
+    """The char budget is spent in attachment order; each file reports its own state."""
     monkeypatch.setattr(settings, "file_context_chars", 30)
     files = [
         _file("첫째.txt", "가" * 20),
@@ -95,7 +67,6 @@ async def test_each_attached_file_reports_what_survived_the_budget(monkeypatch):
     assert context.attachments[1].total_chars == 40
 
     step = _one(_context_steps(context), "context-attachments")
-    # Both fates named: one document arrived at half length, another not at all.
     assert step["label"] == "첨부 3개 중 1개 잘림, 1개 빠짐"
     assert step["detail"] == "둘째.txt 10자만 반영 · 셋째.txt 분량을 넘겨 제외"
     assert step["files"][2] == {
@@ -114,12 +85,7 @@ async def test_a_file_that_fit_whole_still_gets_its_line():
 
 
 async def test_a_file_nothing_could_be_read_out_of_is_reported_where_it_was_attached():
-    """The order is the person's, not the assembler's.
-
-    The block is built from the readable files and then the unreadable ones,
-    but the list on screen is the order they were attached in, and that is the
-    list this line will be read against.
-    """
+    """Attachments are reported in attachment order, unreadable ones included."""
     files = [_file("보고서.pdf", "", error="스캔본"), _file("메모.txt", "읽힌다")]
     context = await _assembled_with(files)
 
@@ -136,7 +102,7 @@ async def test_a_file_nothing_could_be_read_out_of_is_reported_where_it_was_atta
 
 
 async def test_project_knowledge_dropped_for_size_gets_the_same_line(monkeypatch):
-    """Same failure, same code, same line — under its own name."""
+    """Project knowledge reports truncation and omission under its own step id."""
     monkeypatch.setattr(settings, "file_context_chars", 5)
     project = Project(id="project-1", user_id="user-1", name="연구")
     db = _Db(project=project, files=[_file("규정.md", "가" * 50), _file("연혁.md", "나" * 50)])
@@ -180,19 +146,12 @@ async def test_large_project_shelf_selects_relevant_passages_instead_of_oldest_f
 
 
 async def test_the_prompt_the_model_reads_is_unchanged_by_the_reporting(monkeypatch):
-    """The account is new; what goes upstream is not.
-
-    The notices inside the block were the whole mechanism before this, and they
-    are still the model's copy of the same facts — it has to know the document
-    it is quoting stops early.
-    """
+    """The prompt block still carries its own truncation and omission notices."""
     monkeypatch.setattr(settings, "file_context_chars", 10)
     context = await _assembled_with([_file("긴글.txt", "가" * 30), _file("남은글.txt", "나" * 5)])
 
     block = next(b.text for b in context.blocks if b.source == "attachment")
-    # Not "the last 20 characters are missing" any more: an excerpt chosen
-    # around what somebody asked for can leave out the beginning too, and a
-    # notice that named only the tail would be wrong exactly when it mattered.
+    # An excerpt may omit the beginning too, so the notice does not name the tail.
     assert "…(전체 30자 중 일부입니다)" in block
     assert "## 포함되지 않은 파일\n남은글.txt" in block
 
@@ -201,12 +160,7 @@ async def test_the_prompt_the_model_reads_is_unchanged_by_the_reporting(monkeypa
 
 
 def test_a_step_is_stored_by_category_and_sent_by_event_name():
-    """One shape, two envelopes.
-
-    A stored step spends `type` on the display category the timeline reads; a
-    stream event has already spent it on the event name, so the category rides
-    alongside. Backwards, every context line renders as a tool call.
-    """
+    """Stored steps keep the category in `type`; wire events use `type: step` + `category`."""
     stored = {"id": "context-memories", "type": "thinking", "label": "메모리 1건 참고"}
     wire = _step_event(stored)
 
@@ -216,7 +170,7 @@ def test_a_step_is_stored_by_category_and_sent_by_event_name():
 
 
 def test_the_turn_opens_with_what_it_was_given_skills_first():
-    """The prelude is the given, in the order it was decided."""
+    """Prelude steps are skills first, then context lines."""
     skills = {
         "type": "skills_applied",
         "skills": [{"id": "s1", "name": "검증", "catalogKey": None, "estimatedTokens": 12}],
@@ -235,10 +189,7 @@ def test_the_turn_opens_with_what_it_was_given_skills_first():
 
 
 async def test_a_written_memory_says_so_on_the_row_it_came_from(monkeypatch):
-    """The answer is already durable when auto-memory runs, so the step is an
-    edit to the message it belongs to as well as an event. Streamed only, it
-    would vanish on the next reload.
-    """
+    """A memory-written step is stored on the answer row as well as returned."""
     answer = Message(id="message-1", session_id="session-1", role=Role.assistant, content="네")
     db = _EnrichDb(answer)
     _patch_enrichment(monkeypatch, db, written=2)
@@ -304,7 +255,7 @@ class _Result:
 
 
 class _Db:
-    """Enough of the session to assemble one context."""
+    """In-memory db for `assemble`."""
 
     def __init__(
         self,
@@ -334,7 +285,7 @@ class _Db:
 
 
 class _EnrichDb:
-    """The enrichment transaction: one message row and a commit count."""
+    """In-memory db for `_enrich`: one message row and a commit count."""
 
     def __init__(self, message: Message):
         self.message = message
@@ -374,9 +325,7 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
         return None
 
     async def remember(*_args, **_kwargs):
-        # `(written, usage)` since the extractor started reporting what it
-        # spent — its own line on the ledger is a separate property, tested in
-        # tests/test_side_calls_are_billed.py.
+        # `(written, usage)`; billing is covered in test_side_calls_are_billed.py.
         return written, {"inputTokens": 0, "outputTokens": 0}
 
     async def enrichment_model():

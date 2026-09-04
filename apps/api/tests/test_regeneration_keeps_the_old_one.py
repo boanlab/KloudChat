@@ -1,17 +1,4 @@
-"""Regenerating a document keeps the one it replaces.
-
-Editing an artifact has always snapshotted the old body into
-`artifact_versions` first. Generating never did, although it is the more
-destructive of the two: a request produced a fresh artifact row and moved the
-session's pointer onto it. Nothing was deleted — the previous row stayed in the
-gallery — but from inside the conversation the earlier document was simply
-gone, with no 되돌리기 anywhere on the screen. A deck built over an afternoon
-could be displaced by one sentence.
-
-So a document produced into a session that already holds one of the same kind
-now becomes the next version of that artifact, and every version before it
-stays restorable through the history the panel already draws.
-"""
+"""Regenerating into a session holding an artifact of the same kind versions it, not replaces it."""
 
 from __future__ import annotations
 
@@ -127,8 +114,7 @@ async def test_regenerating_versions_the_same_artifact(db):
     )
     await db.commit()
 
-    # The same artifact, not a second one — so the panel's own version history
-    # is where the earlier deck went, and 되돌리기 reaches it.
+    # The same artifact, so the earlier deck is in its version history.
     assert again == first.id
     assert len((await db.exec(select(Artifact))).all()) == 1
 
@@ -136,8 +122,7 @@ async def test_regenerating_versions_the_same_artifact(db):
     assert len(kept) == 1
     assert kept[0].version == 1
     assert kept[0].data["slides"] == [{"title": "원래 있던 장"}]
-    # Named by the request that replaced it: a history of "재생성" six times
-    # over is a list nobody can choose from.
+    # The version is named by the request that replaced it.
     assert "평가 결과 중심으로 다시" in kept[0].summary
 
     current = await db.get(Artifact, first.id)
@@ -146,11 +131,7 @@ async def test_regenerating_versions_the_same_artifact(db):
 
 
 async def test_a_different_kind_gets_its_own_artifact(db):
-    """A report in a session that last made a deck is a different thing.
-
-    A version history alternating between two documents is a history of
-    neither.
-    """
+    """A different kind gets its own artifact, not a version."""
     session, deck = await _session_with_deck(db)
 
     report_id = await _store_document(
@@ -171,11 +152,7 @@ async def test_a_different_kind_gets_its_own_artifact(db):
 
 
 async def test_somebody_elses_artifact_is_never_versioned_into(db):
-    """`artifact_id` is a pointer, and a pointer can be stale or wrong.
-
-    Writing into a row this account does not own would be a data leak dressed
-    as a version.
-    """
+    """A stale or foreign `artifact_id` is never versioned into."""
     session = ChatSession(user_id="u1", kind=SessionKind.slides)
     theirs = Artifact(
         user_id="someone-else",

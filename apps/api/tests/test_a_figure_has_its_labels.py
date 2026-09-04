@@ -1,11 +1,4 @@
-"""논문에 넣을 도식은 이름표가 있다.
-
-The image path draws shapes and cannot spell; the diagram path writes the
-figure as mermaid, which is nothing but names and arrows. What is asserted
-here is the part that does not need a model: the answer is read correctly,
-colour the model was told not to write is stripped, and a starting point
-says what it needs before anybody commits.
-"""
+"""Diagram-path and draft-normalisation invariants of the report writer."""
 
 from __future__ import annotations
 
@@ -58,12 +51,7 @@ def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
 
 
 def test_an_edit_recomputes_the_findings() -> None:
-    """검사 결과는 지금 있는 절만 가리킨다.
-
-    Findings were computed once, at generation, and a report edited by hand
-    kept naming sections it no longer had — so 모두 고치기 found nothing to
-    rewrite and reported success. Recomputed from the text on every write.
-    """
+    """검사 결과는 매 저장마다 현재 절에서 다시 계산된다."""
     from app.models.workspace import ArtifactKind
     from app.routers.workspace import _relint
 
@@ -80,8 +68,7 @@ def test_an_edit_recomputes_the_findings() -> None:
 
 
 def test_a_source_without_a_publisher_does_not_fail_the_rewrite() -> None:
-    """A hand-typed source has a title and a url. One missing `publisher`
-    used to be a KeyError that failed every rewrite of the document."""
+    """A hand-typed source without `publisher` does not fail a rewrite."""
     from app.services.report import _refs_block
 
     block = _refs_block([{"title": "출처 하나", "url": "https://example.org"}])
@@ -145,8 +132,7 @@ def test_sections_named_after_alternatives_fold_into_one_comparison() -> None:
 
 
 def test_bullets_that_arrive_as_objects_become_lines() -> None:
-    """모델이 불릿을 `{"left","right"}` 객체로 내면 그 값을 한 줄로 잇는다 —
-    버리면 그 장이 「쓰지 못했습니다」가 된다."""
+    """모델이 불릿을 `{"left","right"}` 객체로 내면 한 줄로 잇는다."""
     from app.services.deck import _clean_bullets
 
     out = _clean_bullets(

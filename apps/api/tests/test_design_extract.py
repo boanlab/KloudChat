@@ -1,11 +1,4 @@
-"""Reading a design system out of a document.
-
-The value of this feature is that somebody does not have to type four colours
-and a paragraph of style rules. The risk is the same thing: a draft that looks
-observed but was invented. So what these pin is mostly the normalising — that
-whatever comes back, what reaches the editor is drawable, and a field the model
-made up in the wrong shape becomes a default rather than a stored value.
-"""
+"""`design_extract`: a design-system draft read from a document is normalised before storing."""
 
 from __future__ import annotations
 
@@ -86,18 +79,13 @@ async def test_a_document_becomes_a_draft(monkeypatch):
         "ink": "#111827",
         "muted": "#6b7280",
         "font": "serif",
-        # Not extracted either: a page of prose carries no evidence of how a
-        # slide from the same design system should be laid out, so the draft
-        # keeps the default and the person changes it if they disagree.
+        # visualStyle, footer and logo are never extracted; they keep their defaults.
         "visualStyle": "editorial",
-        # A document read for its design says nothing about whose it is: the
-        # mark and the line at the foot are set by the person, not extracted.
         "footer": "",
         "logo": "",
     }
     assert draft["craft"] == ["restraint", "typography"]
     assert usage == {"inputTokens": 800, "outputTokens": 120}
-    # The document itself is what it read, not a summary of it.
     assert "연구실 장비 관리 지침" in posts[0]["messages"][0]["content"]
     assert posts[0]["reasoning"] == design_extract.thinking.NO_REASONING
 
@@ -110,7 +98,7 @@ async def test_a_fenced_answer_is_still_read(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_an_invented_colour_becomes_a_default_rather_than_a_value(monkeypatch):
-    """The draft is saved by somebody who cannot see which fields were observed."""
+    """A malformed token value becomes the default; well-formed neighbours survive."""
     reply = (
         '{"name": "무언가", "tokens": {"accent": "짙은 남색", "ink": "#111827",'
         ' "font": "바탕"}, "craft": ["restraint", "홍보용"]}'
@@ -119,7 +107,6 @@ async def test_an_invented_colour_becomes_a_default_rather_than_a_value(monkeypa
 
     assert draft["tokens"]["accent"] == design.DEFAULT_TOKENS["accent"]
     assert draft["tokens"]["font"] == design.DEFAULT_TOKENS["font"]
-    # …while the field it did get right survives.
     assert draft["tokens"]["ink"] == "#111827"
     assert draft["craft"] == ["restraint"]
 
@@ -139,7 +126,7 @@ async def test_an_answer_that_is_not_a_draft_is_refused(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_an_answer_with_no_name_is_refused(monkeypatch):
-    """A nameless draft would open the editor on a form nobody can save."""
+    """A draft without a name is refused."""
     with pytest.raises(design_extract.ExtractError):
         await _extract(monkeypatch, '{"tokens": {"accent": "#1e3a8a"}}')
 

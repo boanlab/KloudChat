@@ -16,11 +16,7 @@ const AS_USER = `async (path, init) => {
   return await r.json()
 }`
 
-/**
- * The reader works in a half-width browser window, so the chat column and the
- * artifact split at whatever ratio *they* need — and the ratio has to survive
- * the reload, or it is a setting they re-make every session.
- */
+/** The chat/artifact split ratio is draggable and survives a reload. */
 test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
@@ -28,8 +24,7 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   const session = await page.evaluate(async (fn) => {
     const rows = await eval(fn)('/api/sessions')
     const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
-    // 패널이 있는 표면만. An image session shows its pictures in the
-    // transcript and has no column to split.
+    // Only surfaces with a panel: an image session has no column to split.
     return (
       list.find(
         (s: { artifactId: string | null; kind: string }) =>
@@ -44,10 +39,7 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   await expect(panel).toBeVisible({ timeout: 20_000 })
   const before = (await panel.boundingBox())!.width
 
-  // Below 1024px the panel stops being a column: it covers the conversation
-  // instead of standing beside it, so there is no boundary between the two to
-  // drag and no ratio to remember. What has to hold at that width is that it
-  // takes the whole width rather than a stripe of it.
+  // Below 1024px the panel covers the conversation: nothing to drag, and it takes the whole width.
   const viewport = page.viewportSize()!.width
   if (viewport < 1024) {
     expect(before, `겹쳐 열린 패널이 폭을 다 쓰지 않음 ${before}/${viewport}`).toBeGreaterThan(
@@ -65,8 +57,7 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   await page.mouse.move(box.x - 260, box.y + box.height / 2, { steps: 12 })
   await page.mouse.up()
   const after = (await panel.boundingBox())!.width
-  // 대화 칸의 최소 폭(560px)까지는 넓어진다. A panel that opened wide already
-  // has less than 150px of room, so the drag is judged against the ceiling.
+  // The chat column keeps at least 560px, so the drag is judged against that ceiling.
   const ceiling = viewport - 560
   expect(after, `끌어도 안 넓어짐 ${before}→${after}`).toBeGreaterThan(Math.min(before + 150, ceiling - 8))
 
@@ -75,7 +66,7 @@ test('분할선은 끌어 옮긴 자리를 새로고침 뒤에도 지킨다', as
   const kept = (await panel.boundingBox())!.width
   expect(Math.abs(kept - after), `새로고침 뒤 ${after}→${kept}`).toBeLessThan(24)
 
-  // Double-click hands the default back, so a drag is never a one-way door.
+  // Double-click restores the default.
   await handle.dblclick()
   expect((await panel.boundingBox())!.width).toBeLessThan(after - 100)
 })

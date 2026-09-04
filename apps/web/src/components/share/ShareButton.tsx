@@ -13,11 +13,7 @@ type Scope = 'workspace' | 'link'
 const options: { id: Scope; label: string; description: string; icon: typeof Users }[] = [
   {
     id: 'workspace',
-    // Not "workspace members": there are no members. There is no team, no
-    // group and no invite anywhere in this product — `ShareScope.workspace`
-    // asks whether the reader is signed in and never asks who they are. A
-    // label promising a named roster would be read as one by somebody sharing
-    // a draft, which is the kind of misreading that does not come back.
+    // `workspace` means any signed-in account; there is no membership roster.
     label: '계정이 있는 사람',
     description: '이 인스턴스에 로그인하면 누구나 열 수 있습니다.',
     icon: Users,
@@ -30,7 +26,6 @@ const options: { id: Scope; label: string; description: string; icon: typeof Use
   },
 ]
 
-//: The top bar's standing statement, in words rather than in colour alone.
 const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' | 'warn' }> = {
   workspace: {
     label: '공유 중',
@@ -44,17 +39,7 @@ const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' 
   },
 }
 
-/**
- * Read-only sharing of one conversation and the artifacts it produced.
- *
- * Nothing is rendered until the link actually exists: it is minted when the
- * create button is pressed, so the URL on screen is always a working URL.
- *
- * The state stands in the top bar beside the button, not behind it. A
- * conversation anybody with the URL can read must not look like a private one,
- * and somebody who has forgotten they shared it never opens the dialog to find
- * out.
- */
+/** Read-only sharing of a session; the shared state shows in the top bar beside the button. */
 export function ShareButton({ session }: { session: Session }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -66,8 +51,7 @@ export function ShareButton({ session }: { session: Session }) {
 
   const url = share ? `${window.location.origin}/share/${share.token}` : ''
 
-  // Asked on arrival rather than when the dialog opens, and asked again for
-  // each conversation: the top bar is where the answer has to be.
+  // Fetched on mount so the badge is right before the dialog opens.
   useEffect(() => {
     let live = true
     setShare(null)
@@ -89,8 +73,7 @@ export function ShareButton({ session }: { session: Session }) {
       const rows = await sharesApi.list()
       setShare(rows.find((r) => r.sessionId === session.id) ?? null)
     } catch {
-      // Offline: the button keeps saying what it last knew, which is truer
-      // than saying nothing is shared.
+      // Offline: keep the last known state.
     }
   }
 
@@ -209,20 +192,7 @@ export function ShareButton({ session }: { session: Session }) {
   )
 }
 
-
-/**
- * Who has opened this link.
- *
- * The count above answers "is anyone reading it". This answers "who", which is
- * the question somebody actually asks — usually right after realising they
- * shared the wrong thing, or the right thing with the wrong scope.
- *
- * What each row can say depends on how the reader arrived. Signed in, it names
- * them. Not signed in — which is the entire point of a link share — the
- * address is the only thing this server ever learned, so the address is what
- * it says. A row with neither is a reader behind a proxy that forwards
- * nothing, and it says that too rather than inventing a label.
- */
+/** Who opened the link: name for signed-in readers, IP for anonymous ones. */
 function ShareViews({ shareId }: { shareId: string }) {
   const t = useT()
   const [rows, setRows] = useState<ShareViewRow[] | null>(null)
@@ -277,8 +247,6 @@ function ShareViews({ shareId }: { shareId: string }) {
                     {t(v.region)}
                   </span>
                 )}
-                {/* The raw string on hover: the short form drops exactly what
-                    would matter if this ever became a serious question. */}
                 {browser && <span title={v.userAgent}>{browser}</span>}
                 <span className="font-mono text-faint tabular-nums">
                   {v.ip || t('주소 없음')}

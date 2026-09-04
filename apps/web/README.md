@@ -43,13 +43,13 @@ src/
 │   ├── useT.ts                       Hook translating into the current language
 │   ├── clipboard.ts                  Copy, with a fallback outside secure contexts
 │   ├── reportMarkdown.ts             Markdown round-trip for the document editor
-│   ├── templates.ts                  Prompt starter templates
 │   └── brand.ts                      Branding resolution and logo URL
-├── pages/                            One per route
+├── pages/                            One per route, plus settings/ tabs and sections
 ├── store/useStore.ts                 Single zustand store
-├── types.ts                          Domain types (discriminated unions)
-└── e2e/                              Playwright specs
+└── types.ts                          Domain types (discriminated unions)
 ```
+
+Playwright specs live in `e2e/`, beside `src/`.
 
 ## Conventions
 

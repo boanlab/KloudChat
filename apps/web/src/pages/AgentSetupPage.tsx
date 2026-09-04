@@ -9,17 +9,6 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { ModelInfo } from '@/types'
 
-/**
- * How to attach a coding agent to this instance.
- *
- * The address is built from the origin currently being viewed rather than
- * written into the copy: people reach the instance on different addresses, and
- * a hard-coded one is right for exactly one of them.
- *
- * The model is picked from the catalogue for the same reason. A list written
- * into prose starts handing out wrong names the moment the line-up changes.
- */
-
 function Snippet({ text }: { text: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
@@ -33,8 +22,6 @@ function Snippet({ text }: { text: string }) {
         size="icon"
         aria-label={t('복사')}
         title={t('명령을 클립보드로 복사합니다')}
-        /* 호버로만 드러나던 버튼. 이 화면은 명령을 복사하러 오는 곳이고,
-           태블릿에는 호버가 없어서 그 한 가지 일을 할 방법이 없었다. */
         className="absolute top-1.5 right-1.5 opacity-60 transition-opacity hover:opacity-100 focus:opacity-100"
         onClick={async () => {
           if (!(await copyText(text))) return
@@ -55,13 +42,12 @@ function priceLabel(m: ModelInfo, t: (s: string) => string): string {
     .replace('{out}', m.creditCost.toLocaleString())
 }
 
+/** Coding-agent setup snippets; address and model come from the live origin and catalogue. */
 export function AgentSetupPage() {
   const t = useT()
   const { models } = useStore()
   const base = `${window.location.origin}/llm`
 
-  // Every model that handles conversation. Image- and audio-only models are
-  // no use to a coding agent.
   const chat = models.filter((m) => m.kinds.includes('chat'))
   const [picked, setPicked] = useState<string | null>(null)
   const model = chat.find((m) => m.id === picked) ?? chat[0]

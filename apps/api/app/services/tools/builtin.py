@@ -1,11 +1,7 @@
-"""The tools KloudChat runs itself.
+"""Built-in tools: SearXNG search, Crawl4AI fetch (Firecrawl-shaped shim), sandboxed code,
+artifacts, charts and shared notes.
 
-None calls a commercial API: search is self-hosted SearXNG, fetch is Crawl4AI
-behind a Firecrawl-compatible shim, code runs in a sandboxed container. Every
-turn touches these, so no prompt leaves for a third party through them.
-
-Addresses come from the admin screen (`settings_store.tools_config`). A tool
-with no address is left out of the list rather than offered and failing.
+Backend addresses come from `settings_store.tools_config`; a tool with no address is not offered.
 """
 
 from __future__ import annotations
@@ -25,8 +21,6 @@ from app.services.tools.base import Tool, ToolContext, ToolResult
 
 log = logging.getLogger(__name__)
 
-# Long enough for a slow page, short enough that one dead host does not consume
-# the turn's tool budget.
 _FETCH_TIMEOUT = httpx.Timeout(45.0, connect=10.0)
 
 
@@ -40,7 +34,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _terms(query: str) -> list[str]:
-    """The words a result has to carry to be about the query."""
+    """Query words a result is scored against."""
     words = re.findall(r"[\w가-힣-]+", query.lower())
     return [w for w in words if len(w) >= 2 and not w.isdigit()]
 
@@ -48,23 +42,12 @@ def _terms(query: str) -> list[str]:
 def _covers(text: str, term: str) -> bool:
     if term in text:
         return True
-    # 「청소년의」 in the query and 「청소년」 in the title: drop a trailing
-    # particle before giving up on a Korean word.
+    # Drop a trailing Korean particle (청소년의 → 청소년) before giving up.
     return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도" and term[:-1] in text
 
 
 def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
-    """Results that carry more of the query first.
-
-    The engines behind the shim rank oddly: 「social media depression
-    meta-analysis」 came back with Social Blade and the Rockstar Social Club
-    ahead of the Springer meta-analysis, and 「adolescent social media use
-    depression effect size」 returned eight dictionary entries for
-    *adolescent*. The model read the top three, found statistics sites and
-    a game launcher, and told the person no research existed. Scoring each
-    hit by how many query words its title, snippet and URL carry — and
-    keeping the engine's order among equals — puts the paper first.
-    """
+    """Results carrying more query words first; engine order kept among equals."""
     terms = _terms(query)
     if len(terms) < 2:
         return rows
@@ -78,13 +61,7 @@ def _overlap(row: dict[str, str], terms: list[str]) -> int:
 
 
 def _off_topic(rows: list[dict[str, str]], query: str) -> bool:
-    """Not one result carries even one word of a multi-word query.
-
-    The engines behind the shim, when suspended or captcha'd, still answer —
-    with UPS parcel tracking for 「전고체 배터리 양산 일정」 and Bihar river
-    news for 「고체 배터리 주요 기업」. Handing those to the model costs it
-    three page reads and a hop before it decides nothing exists.
-    """
+    """No result carries even one word of a multi-word query (engine suspended or captcha'd)."""
     terms = _terms(query)
     return len(terms) >= 2 and all(_overlap(row, terms) == 0 for row in rows)
 
@@ -98,7 +75,7 @@ async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]
         response.raise_for_status()
         data = response.json()
     hits = []
-    # Three times what is wanted, then the best of those — see `_rank`.
+    # Over-fetch, then keep the best `count` after `_rank`.
     for row in (data.get("results") or [])[: count * 3]:
         hits.append(
             {
@@ -111,11 +88,9 @@ async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]
 
 
 async def _scrape(base_url: str, url: str) -> str:
-    """Page body as Markdown, through the shim. Empty string on failure.
+    """Page body as Markdown through the shim; empty string on failure.
 
-    When the call goes through the gateway, it substitutes its own internal key
-    for the Authorization header. The configured key is still sent for
-    deployments that point straight at a bare shim.
+    The gateway replaces the Authorization header; the key is still sent for bare-shim deployments.
     """
     if not base_url:
         return ""
@@ -135,15 +110,8 @@ async def _scrape(base_url: str, url: str) -> str:
     return (data.get("markdown") or data.get("content") or "").strip()
 
 
-#: The scraper, for callers outside the tool loop. Ingesting a URL into an
-#: agent's shelf is the same fetch the `fetch_url` tool makes, and a second
-#: implementation would be a second set of timeouts and headers to keep in step.
+#: Shared with callers outside the tool loop (shelf ingestion, `services.research`).
 scrape = _scrape
-
-#: The search, for the same reason. `services.research` runs the document
-#: surfaces' pre-pass against this one so a report and a chat answer are
-#: looking at the same index with the same parameters — a second client here
-#: is a second place for `language` or `safesearch` to drift.
 searxng = _searxng
 
 
@@ -172,8 +140,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             empty=True,
         )
 
-    # Top few read in full — snippets alone are too thin to answer from. The
-    # rest stay as titles the model can request by URL.
+    # Top few read in full; the rest stay as titles the model can fetch by URL.
     bodies = await asyncio.gather(
         *(_scrape(backends.fetch, h["url"]) for h in hits[: settings.web_search_scrape])
     )
@@ -237,8 +204,6 @@ async def execute_code(args: dict[str, Any]) -> ToolResult:
     if stderr:
         parts.append(f"stderr:\n{_truncate(stderr, 4000)}")
     if not parts:
-        # Said explicitly, so the model does not invent output for a script
-        # that printed nothing.
         parts.append("실행되었지만 출력이 없습니다. 결과를 보려면 print() 를 쓰세요.")
     return ToolResult(content="\n\n".join(parts), failed=bool(stderr and not stdout))
 
@@ -300,14 +265,10 @@ EXECUTE_CODE = Tool(
     title="코드 실행",
 )
 
-#: What chat can produce as a standalone document. Report and deck are excluded:
-#: they have their own pipelines, and an artifact minted here could not be
-#: regenerated or exported by those screens.
+#: Report and deck are excluded: they have their own pipelines.
 _ARTIFACT_KINDS = {"html", "code"}
 
-#: Tags that only mark up running text. Markup drawn from nothing but these is
-#: prose in an HTML costume. `table`, `main`, `div` and the rest stay out:
-#: they suggest a page, and letting a page through is the cheaper mistake.
+#: Tags that only mark up running text; HTML using nothing else is treated as prose.
 _PROSE_TAGS = frozenset(
     {
         "p",
@@ -334,20 +295,13 @@ _PROSE_TAGS = frozenset(
     }
 )
 
-#: Languages that name prose rather than something a program reads back. Only
-#: honoured when the model states one: `language` defaults to "text" further
-#: down, so treating an absent value as prose would refuse the short shell
-#: script whose author simply left the field off.
+#: Languages that name prose; only honoured when the model states one.
 _PROSE_LANGUAGES = frozenset({"text", "txt", "plain", "md", "markdown"})
 
-#: Prose shorter than this is an answer even when the user said "만들어 줘" —
-#: reading it is the whole use, and a panel puts a click in front of that. Set
-#: generously: refusing a real document costs more than one needless click.
+#: Prose shorter than this is returned as an answer, not an artifact.
 _PROSE_MAX_CHARS = 1000
 
-#: Below this the panel holds so little that the answer can carry it too, and
-#: above it repeating the body would double the turn's output for a reader who
-#: is going to scroll the panel anyway.
+#: Below this the model is told to repeat the artifact body in the answer.
 _ECHO_MAX_CHARS = 600
 
 _TAG_NAME = re.compile(r"<\s*/?\s*([A-Za-z][\w-]*)")
@@ -355,14 +309,12 @@ _ANY_TAG = re.compile(r"<[^>]*>")
 
 
 def _visible_length(kind: str, content: str) -> int:
-    """How much a reader actually sees, markup and entities discounted."""
+    """Visible character count, markup and entities discounted."""
     text = _ANY_TAG.sub(" ", content) if kind == "html" else content
     return len(" ".join(unescape(text).split()))
 
 
-#: 사람이 "파일" 이나 "문서" 를 달라고 했다는 표시. 글의 내용이 아니라 요청의
-#: 말을 본다 — 무엇을 써 달라는 것과 그것을 파일로 달라는 것은 다른 부탁이고,
-#: 둘을 가르는 것은 payload 에 남지 않는다.
+#: Words in the user's request that ask for a file or document.
 _FILE_WORDS = re.compile(
     r"파일|문서로|문서를|다운로드|내려받|내보내|첨부|저장해|"
     r"\.(?:txt|md|docx|pptx|xlsx|csv|pdf|html|ya?ml|json)\b|"
@@ -372,31 +324,12 @@ _FILE_WORDS = re.compile(
 
 
 def _asked_for_a_file(request: str) -> bool:
-    """Whether the person's own words asked for a file rather than for writing.
-
-    `userRequested` is the model's report of this, and it is the one field a
-    model gets wrong in the direction that costs something: asked for a mail
-    draft it sets the flag — a draft *was* requested — and three sentences land
-    behind a preview tab, a source tab, an export menu and a version history,
-    which is the failure this file's own docstring opens with.
-
-    So the flag no longer decides on its own. It still matters: a person may
-    ask for a file in words this pattern does not know, and the model reading
-    the conversation is better at that than a regular expression. What it
-    cannot do any more is open the gate while the person was only asking to be
-    written to.
-    """
+    """Whether the user's own words asked for a file; `userRequested` alone is not trusted."""
     return bool(_FILE_WORDS.search(request or ""))
 
 
 def _is_prose(kind: str, content: str, language: str) -> bool:
-    """Whether this is writing to be read rather than a file to be used.
-
-    The question a length test cannot answer: a four-line docker-compose.yml is
-    a document because a program reads it back, and twelve paragraphs of an
-    explanation are an answer because reading them is the point. So this asks
-    what the payload is made of, and leaves length to the caller.
-    """
+    """Whether the payload is writing to be read rather than a file a program uses."""
     if kind == "code":
         return language in _PROSE_LANGUAGES
     if "<!doctype" in content.lower():
@@ -405,12 +338,7 @@ def _is_prose(kind: str, content: str, language: str) -> bool:
 
 
 async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
-    """Records an artifact for the turn to store once it finishes.
-
-    Complements post-hoc extraction of fenced code blocks: extraction depends on
-    how the answer happened to be formatted, while a tool call is a decision
-    made where the request is understood.
-    """
+    """Records an artifact for the turn to store once it finishes."""
     kind = str(args.get("kind") or "").strip().lower()
     title = str(args.get("title") or "").strip()
     content = str(args.get("content") or "")
@@ -426,25 +354,14 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
-    # HTML with no HTML in it. The commonest way this arrives is a model asked
-    # for "HTML 문서" answering in Markdown — headings as `##`, emphasis as
-    # `**`, and not one tag — and the artifact then wore an HTML badge over a
-    # page that rendered as a wall of unstyled text in the panel and in every
-    # thumbnail. Renamed rather than refused: the content is fine and it is
-    # Markdown, so saying so is the whole fix.
+    # "html" with no tags is Markdown; relabel rather than refuse.
     if kind == "html" and not _TAG_NAME.search(content):
         kind = "code"
         language = "markdown"
 
     visible = _visible_length(kind, content)
-    # The one call the description cannot prevent, the model having already
-    # decided by the time it reads one. Only the model's own guess is
-    # overruled; `userRequested` carries an explicit ask through. Not `failed`,
-    # because nothing went wrong — an errored step paints the whole turn 중단됨.
-    # `userRequested` alone used to skip this whole check, which made
-    # `_PROSE_MAX_CHARS` — "prose shorter than this is an answer **even when the
-    # user said 만들어 줘**" — a comment describing something the code did not
-    # do. The flag now needs the person's own words behind it.
+    # Short prose is sent back to the answer unless the user's words asked for a file.
+    # Not `failed`: an errored step marks the whole turn 중단됨.
     requested = bool(args.get("userRequested")) and _asked_for_a_file(ctx.request)
     if not requested and visible < _PROSE_MAX_CHARS and _is_prose(kind, content, language):
         return ToolResult(
@@ -470,10 +387,6 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             },
         }
     )
-    # What the answer still owes the reader, which is never nothing. A panel is
-    # where a deliverable is kept, not where it is read: a person who asked for
-    # three sentences and got one sentence about three sentences was not
-    # answered at all.
     if visible < _ECHO_MAX_CHARS:
         carry = (
             "짧으니 답변에도 본문을 그대로 옮겨 적으세요. 패널은 내보내고 버전을 "
@@ -548,17 +461,12 @@ CREATE_ARTIFACT = Tool(
 )
 
 
-#: One per series, in order. Assigned here rather than asked of the model,
-#: which returns "blue" as readily as "#3b82f6".
+#: One per series, in order; assigned here rather than asked of the model.
 _SERIES_COLOURS = ("#5b5bd6", "#e8834a", "#2ea88a", "#c74e8e", "#6b7280")
 
 
 def _chart_table(series: list[dict], x_label: str) -> dict:
-    """The rows the chart was drawn from, derived rather than asked for.
-
-    Computed from the same points the chart renders, so the table and the plot
-    cannot disagree.
-    """
+    """Table rows derived from the same points the chart renders."""
     keys: list[str] = []
     for one in series:
         for point in one["points"]:
@@ -577,8 +485,7 @@ def _chart_table(series: list[dict], x_label: str) -> dict:
 async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     """Records a chart artifact for the turn to store once it finishes.
 
-    Only the data comes from the model: colours are assigned and the table is
-    derived, so the two halves of the artifact cannot contradict each other.
+    Colours are assigned and the table derived here, not taken from the model.
     """
     chart_type = str(args.get("chartType") or "bar").strip().lower()
     if chart_type not in ("bar", "line", "stacked"):
@@ -602,8 +509,7 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             try:
                 value = float(point.get("y"))
             except (TypeError, ValueError):
-                # Dropped rather than plotted as zero, which would read as a
-                # measured "none" instead of missing data.
+                # Dropped rather than plotted as zero.
                 continue
             label = str(point.get("x") or "").strip()
             if label:
@@ -705,31 +611,13 @@ CREATE_CHART = Tool(
 )
 
 
-#: How much of one finding is worth carrying to the next agent. A handoff is a
-#: conclusion, not a transcript: past this the note stops being something the
-#: next turn can act on and starts being context it has to read first.
 _NOTE_MAX_CHARS = 4000
 
 
 async def share_note(args: dict, ctx: ToolContext) -> ToolResult:
-    """Leaves a finding where whatever runs next will read it.
+    """Queues a shared note for later turns; scope is the project if any, else this session.
 
-    The gap this closes: agents in this product could each do their own work and
-    hand back their own answer, and there was no way for one of them to give
-    another anything. A researcher agent's sources, a reviewer's verdict, the
-    schema somebody's analyst worked out — all of it ended when the turn ended,
-    and the person had to copy it into the next conversation by hand. Sequential
-    execution with a human clipboard in between is not orchestration.
-
-    Scope is not asked of the model, it is decided by where the turn is running.
-    Inside a project the note is the project's, which is what makes it a handoff:
-    every conversation and every agent in that project is given it from then on.
-    Outside a project it is scoped to this conversation, so a note is never
-    quietly broadcast into work it has nothing to do with.
-
-    `key` makes a note revisable. The same key overwrites — a running total, a
-    verdict that changed after more evidence — rather than leaving the reader to
-    work out which of four notes is current.
+    The same `key` overwrites an earlier note.
     """
     title = str(args.get("title") or "").strip()
     body = str(args.get("body") or "").strip()
@@ -807,25 +695,16 @@ SHARE_NOTE = Tool(
 
 
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
-    """The built-in tools this deployment can actually run.
-
-    Two filters:
-
-    * **Configured.** A tool with no address is left out rather than offered
-      and failing on every call.
-    * **The composer toggle.** `web_search` is per turn and user-controlled —
-      it changes the character of the answer and costs seconds.
-    """
+    """Built-in tools with a configured backend; web search also needs the per-turn toggle."""
     backends = await settings_store.tools_config()
     tools: list[Tool] = []
     if backends.fetch:
         tools.append(FETCH_URL)
         if web_search_enabled and backends.search:
-            # Attached as a pair: search without fetch yields snippets only.
+            # Search without fetch yields snippets only.
             tools.insert(0, WEB_SEARCH)
     if backends.exec:
         tools.append(EXECUTE_CODE)
-    # No backend required — these write rows this instance already owns.
     tools.append(CREATE_ARTIFACT)
     tools.append(CREATE_CHART)
     tools.append(SHARE_NOTE)
@@ -833,23 +712,12 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
 
 
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
-    """Search inside the documents attached to the agent running this turn.
+    """Search tool over the agent's preloaded documents (tools hold no DB session).
 
-    Built per turn around a preloaded shelf rather than reaching for a database:
-    tools run inside the streaming loop, which holds no session of its own, and
-    a tool that opened one would be writing and reading against a turn that may
-    still fail.
-
-    Offered only when the agent has documents. A tool that always answers "이
-    에이전트에는 자료가 없습니다" teaches the model to stop calling it, and then
-    it is ignored on the agent that does have a shelf.
+    `collection`: vector index collection merged in when set.
     """
 
-    # Contents list per document: filenames are often meaningless, and a model
-    # choosing tools by description needs to know what the shelf covers.
-    #
-    # Headings, not an excerpt — given a sample the model reads it as the
-    # material and rules the shelf out without searching.
+    # The description lists each document's headings so the model knows what the shelf covers.
     def _outline(text: str, limit: int = 12) -> str:
         seen: list[str] = []
         for line in text.splitlines():
@@ -862,8 +730,6 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
             if len(seen) >= limit:
                 break
         if not seen:
-            # No headings: fall back to the opening line, which at least names
-            # the subject in a document that has no structure to show.
             first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
             seen = [first[:60]] if first else []
         return f" — {' / '.join(seen)}" if seen else ""
@@ -876,18 +742,12 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
         if not query:
             return ToolResult(content="검색어가 비어 있습니다.", failed=True)
         passages, ranked = knowledge.gather(documents, query)
-        # The vector half, when the shelf has one and the index answers. Merged
-        # rather than preferred: the index finds meaning and the scorer finds
-        # exact wording — a 조문 number or a figure comes back from the scorer
-        # and nowhere else.
+        # Vector hits are merged with, not preferred over, the lexical scorer's.
         if collection and ranked:
             hits = await index_client.search(collection=collection, query=query)
             if hits:
                 passages = knowledge.merge(hits, passages)
         if not passages:
-            # Said plainly, and distinguished from "there is nothing here": the
-            # model should be able to tell "I looked and the shelf is silent on
-            # this" from "this agent has no material at all".
             return ToolResult(
                 content=(
                     f"자료 {len(documents)}건을 찾아봤지만 '{query}' 와 겹치는 대목이 "
@@ -896,9 +756,6 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
                 detail="해당 없음",
             )
         body = knowledge.render(passages)
-        # Said differently on purpose: "read all 3 documents" and "found 4
-        # passages" are different claims, and only the second one can have
-        # missed something.
         detail = f"{len(passages)}개 대목" if ranked else f"자료 {len(passages)}건 전문"
         return ToolResult(content=body, detail=detail)
 

@@ -1,10 +1,4 @@
-"""What a listing carries, and what it deliberately leaves behind.
-
-The gallery draws every artifact as a thumbnail and used to be handed every
-artifact whole: 385 rows came to 4.0 MB on this instance, 2.8 MB of it the
-markup of 69 HTML documents nobody was reading yet. These are the rules that
-decide what a card is.
-"""
+"""`ArtifactOut.card`: the trimmed projection a listing carries per artifact kind."""
 
 from __future__ import annotations
 
@@ -68,7 +62,7 @@ def test_a_report_card_keeps_the_top_of_the_first_sections():
     )
     card = ArtifactOut.card(row)
     assert card.partial is True
-    assert card.data["wordCount"] == 900  # what the card actually prints
+    assert card.data["wordCount"] == 900
     assert card.data["sources"] == []
     assert len(card.data["sections"]) == 4
     assert len(card.data["sections"][0]["content"]) == 400
@@ -80,8 +74,7 @@ def test_a_report_card_keeps_the_top_of_the_first_sections():
     [ArtifactKind.image, ArtifactKind.video, ArtifactKind.audio, ArtifactKind.chart],
 )
 def test_a_media_card_travels_whole(kind):
-    """A `src` and a duration are already card-sized, and the thumbnail is the
-    artifact itself — trimming would leave a card with nothing to show."""
+    """Media cards carry their full data."""
     data = {"kind": kind.value, "src": "/api/files/x/content", "durationSec": 8}
     card = ArtifactOut.card(artifact(kind, data))
     assert card.partial is False
@@ -89,7 +82,7 @@ def test_a_media_card_travels_whole(kind):
 
 
 def test_the_full_row_is_still_the_full_row():
-    """`of()` is what a fetch by id returns, and nothing about it changed."""
+    """`of()` carries the full data with `partial` false."""
     data = {"kind": "html", "content": "<html>x</html>", "blocks": [{"html": "<p>x</p>"}]}
     full = ArtifactOut.of(artifact(ArtifactKind.html, data))
     assert full.partial is False
@@ -108,11 +101,6 @@ def test_the_full_row_is_still_the_full_row():
     ],
 )
 def test_a_card_keeps_every_field_and_only_shrinks_it(kind, data):
-    """The client's types declare these fields and its renderers read them.
-
-    The first version of this projection dropped keys instead of emptying them,
-    and a report card with no `sources` took the whole screen down on
-    `sources.length`. A card is the same shape, smaller.
-    """
+    """A card keeps every key of the full data; fields are emptied, never dropped."""
     card = ArtifactOut.card(Artifact(user_id="u", kind=kind, title="t", data=data))
     assert set(card.data) == set(data)

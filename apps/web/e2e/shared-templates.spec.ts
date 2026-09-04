@@ -1,25 +1,17 @@
 import { test, expect } from '@playwright/test'
 import { signIn } from './helpers'
 
-/**
- * Templates an administrator provides to the whole instance.
- *
- * Anybody can write one for themselves from the gallery. This is the other
- * case: an organisation's own form, entered once and offered to every account.
- */
+/** Templates an administrator provides to the whole instance: added, found in the gallery, edited, removed. */
 test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 자리에서 고쳐진다', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)
   await page.goto('/admin/system/templates')
 
-  // Scoped to the section even though it now has the tab to itself: the form
-  // inside it carries its own 이름 and its own 저장, and the queries below say
-  // which ones they mean.
+  // Scoped to the section: the form inside it has its own 이름 and 저장.
   const section = page.getByRole('region', { name: '공용 템플릿' })
   const title = `기관 공문 ${Date.now()}`
   await section.getByRole('button', { name: '공용 템플릿 추가' }).click()
-  // The surface picker only exists here — the gallery already knows which one
-  // it is opening from.
+  // The surface picker exists only here.
   await section.getByRole('button', { name: '보고서', exact: true }).click()
   await section.getByLabel('이름', { exact: true }).fill(title)
   await section.getByLabel('설명').fill('기관 표준 공문 양식')
@@ -29,33 +21,23 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
 
   const row = section.locator('li', { hasText: title })
   await expect(row).toBeVisible({ timeout: 20_000 })
-  // The surface it starts is on the row: a shared list mixing report and
-  // slides templates is unreadable without it.
+  // The surface is on the row.
   await expect(row.getByText('보고서')).toBeVisible()
 
-  // It reaches the gallery, where it is marked as everybody's.
+  // In the gallery, marked as shared.
   await page.goto('/new/report')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
-  // Searched for. The gallery is paged four to a screen, so a card is on some
-  // page rather than on the page.
+  // Searched: the gallery pages.
   await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(title)
-  // A 시작점 is a panel with its own button now — it grew a 준비할 자료 list
-  // and a 실제 작업 방식 보기 fold, and neither of those belongs inside a
-  // control you press.
   const card = page.getByRole('dialog').locator('.grid > *').filter({ hasText: title })
   await expect(card).toBeVisible({ timeout: 20_000 })
   await expect(card).toContainText('공용')
 
-  // Picking it works like any other card.
-  // By its accessible name, which carries the 시작점's own title — the visible
-  // words on every card are the same three, so anything matching those picks
-  // whichever card sorts first.
+  // By accessible name: every card's visible button text is the same.
   await page.getByRole('button', { name: `${title} 시작점 선택` }).click()
   await expect(page.getByRole('button', { name: `${title} 시작점 해제` })).toBeVisible()
 
-  // Corrected from the same screen it was added on. This is the whole point of
-  // sharing rather than copying: one edit, and every account that has not
-  // started yet gets the right form.
+  // Edited from the same screen.
   await page.goto('/admin/system/templates')
   await section.getByRole('button', { name: `${title} 수정` }).click()
   await expect(section.getByLabel('이름', { exact: true })).toHaveValue(title)
@@ -63,17 +45,15 @@ test('관리자가 등록한 공용 템플릿이 갤러리에 함께 보이고, 
   await section.getByLabel('이름', { exact: true }).fill(fixed)
   await section.getByRole('button', { name: '저장', exact: true }).click()
   await expect(section.locator('li', { hasText: fixed })).toBeVisible({ timeout: 20_000 })
-  // Still shared, not quietly turned private by the edit.
+  // Still shared after the edit.
   await page.goto('/new/report')
   await page.getByRole('button', { name: '작업 시작하기' }).click()
   await page.getByLabel(/시작점 검색|결과 서식 검색/).fill(fixed)
-  // `filter`, not a name regex: the revised title ends in "(개정)" and those
-  // are regex metacharacters — the pattern matched a group, never the words.
+  // `filter`, not a name regex: "(개정)" contains regex metacharacters.
   const revised = page.getByRole('dialog').locator('.grid > *').filter({ hasText: fixed })
   await expect(revised).toBeVisible({ timeout: 20_000 })
   await expect(revised).toContainText('공용')
 
-  // Removed from the same screen it was added on.
   await page.goto('/admin/system/templates')
   await section.getByRole('button', { name: `${fixed} 삭제` }).click()
   await expect(section.locator('li', { hasText: fixed })).toHaveCount(0, { timeout: 15_000 })

@@ -1,14 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { signInAs } from './helpers'
 
-/**
- * The ordinary account's workspace, made and unmade through the screens.
- *
- * Every case ends by asking the *server* what it holds, not the list it just
- * watched re-render. A row that appears on an optimistic update and is gone on
- * the next login is the failure this is built to catch, and only a reload can
- * tell the two apart.
- */
+/** The ordinary account's workspace through the screens, checked against the server. */
 
 const USER = { email: 'test@kloud.zone', password: 'KloudChat-Test-2026' }
 const stamp = () => Math.random().toString(36).slice(2, 8)
@@ -48,19 +41,16 @@ test('에이전트를 만들고 고치고 지운다', async ({ page }) => {
   await dlg.getByRole('button', { name: '저장' }).click()
   await expect(dlg).toBeHidden({ timeout: 15_000 })
 
-  // Stored, not merely drawn.
   await expect
     .poll(async () => (await rowsFrom(page, 'agents')).map((r) => r.name), { timeout: 15_000 })
     .toContain(name)
 
-  // And still there after a reload — the list is served, not remembered.
+  // After a reload.
   await page.reload()
   await expect(page.getByText(name, { exact: false }).first()).toBeVisible({ timeout: 20_000 })
 
-  // Rename through 편집.
   const renamed = `${name} 수정`
-  // Scoped from the row's own delete button — 편집 is its next sibling — so the
-  // press lands on this agent's card and not on whichever one renders first.
+  // 편집 is the next sibling of the row's delete button.
   await page
     .getByRole('button', { name: `${name} 삭제` })
     .locator('xpath=following-sibling::button[1]')
@@ -74,7 +64,6 @@ test('에이전트를 만들고 고치고 지운다', async ({ page }) => {
     .poll(async () => (await rowsFrom(page, 'agents')).map((r) => r.name), { timeout: 15_000 })
     .toContain(renamed)
 
-  // Delete, confirming the dialog.
   await page.reload()
   await page.getByRole('button', { name: `${renamed} 삭제` }).click()
   await page
@@ -151,8 +140,7 @@ test('프로젝트를 만들고 지침이 남는다', async ({ page }) => {
   const made = rows.find((r) => r.name === name)
   expect(made, '만든 프로젝트가 서버에 있다').toBeTruthy()
 
-  // The instruction survives the round trip — a project whose rule is dropped
-  // looks identical in the list and behaves differently in every turn.
+  // The instruction survives the round trip.
   await page.goto(`/projects/${made!.id}`)
   await expect(page.getByText(rule).first()).toBeVisible({ timeout: 20_000 })
 })

@@ -64,19 +64,13 @@ const kindLabel: Record<ArtifactKind, string> = {
   html: 'HTML',
 }
 
-/**
- * The icon a rendering template asks for, by what it makes.
- *
- * Finer than the artifact's own kind, where a deck and a document are both
- * `html`. A kind this does not know — an image template, or one added later —
- * falls back to the artifact's icon.
- */
+/** Icon by template kind; unknown kinds fall back to the artifact's icon. */
 const templateIcon: Record<string, typeof FileText> = {
   deck: Presentation,
   document: FileText,
 }
 
-/** The template a document was written into, while it is still in the catalogue. */
+/** The template a document was written into, if still in the catalogue. */
 function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
   const id = artifact.kind === 'html' || artifact.kind === 'code' ? artifact.templateId : undefined
   return id ? templates.find((row) => row.id === id) : undefined
@@ -84,15 +78,7 @@ function templateOf(artifact: Artifact, templates: DesignTemplateRow[]) {
 
 type Filter = ArtifactKind | 'all'
 
-/**
- * A card's thumbnail, fetched when it is about to be seen.
- *
- * The listing carries a card-sized body — enough for a title, a slide list, the
- * top of a report — but an HTML document's thumbnail *is* the document, and
- * sending all of them cost 2.8 MB before anybody scrolled. So those hydrate on
- * approach: one fetch per card that actually reaches the screen, and none for
- * the ninety below it.
- */
+/** Card thumbnail; partial HTML/code bodies are fetched when the card nears the viewport. */
 function CardThumb({ artifact }: { artifact: Artifact }) {
   const refreshArtifact = useStore((s) => s.refreshArtifact)
   const ref = useRef<HTMLDivElement>(null)
@@ -108,7 +94,6 @@ function CardThumb({ artifact }: { artifact: Artifact }) {
           void refreshArtifact(artifact.id)
         }
       },
-      // A screen ahead: the picture is there by the time it is scrolled to.
       { rootMargin: '600px' },
     )
     observer.observe(node)
@@ -162,9 +147,7 @@ export function ArtifactsPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
-  // One request per settled keystroke, and one on every tab. The list is a
-  // server query now, so the filter row cannot be a client-side `.filter()` —
-  // it would search the page instead of the workspace.
+  // Server-side filter and search; debounced while typing.
   useEffect(() => {
     const timer = setTimeout(
       () => void loadArtifacts({ kind: filter === 'all' ? undefined : filter, q: query }),
@@ -172,14 +155,8 @@ export function ArtifactsPage() {
     )
     return () => clearTimeout(timer)
   }, [loadArtifacts, filter, query])
-  //: The open document by id rather than by copy. A copy goes stale the moment
-  //: the panel edits it — a rewritten block, a review, a picture added — and
-  //: the dialog would keep showing the version before the edit while the grid
-  //: behind it showed the one after.
+  // By id, not by copy: the panel edits the artifact in place.
   const [previewId, setPreviewId] = useState<string | null>(null)
-  //: Set by the report panel when it opens an editor or focus mode. Both need
-  //: the room, and a dialog that cannot grow makes the control that asks for
-  //: it a button that does nothing.
   const [previewMode, setPreviewMode] = useState<PanelMode>('wide')
   const [previewDirty, setPreviewDirty] = useState(false)
   const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
@@ -192,15 +169,12 @@ export function ArtifactsPage() {
     setPreviewDirty(false)
   }
   const requestPreviewClose = () => previewDirty ? setConfirmPreviewClose(true) : closePreview()
-  // The server already applied the filter; the store holds exactly this page.
-  const visible = artifacts
-  // Undefined until the counts arrive, so a tab shows no number rather than a
-  // wrong one: "슬라이드 0" beside ninety slides is worse than "슬라이드".
+  // Undefined until counts arrive, so tabs show no number rather than 0.
   const count = (k: ArtifactKind) => (artifactCounts ? (artifactCounts[k] ?? 0) : undefined)
   const total = artifactCounts
     ? Object.values(artifactCounts).reduce((sum, n) => sum + n, 0)
     : undefined
-  const pick = useBulkSelect(visible)
+  const pick = useBulkSelect(artifacts)
 
   return (
     <>
@@ -211,8 +185,6 @@ export function ArtifactsPage() {
           description={t('만든 결과물이 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
         />
 
-        {/* Search before the filter row: with hundreds of these, the kind is
-            how you narrow and the title is how you find. */}
         <div className="mb-3 max-w-sm">
           <Input
             value={query}
@@ -227,9 +199,6 @@ export function ArtifactsPage() {
           onChange={setFilter}
           tabs={[
             { id: 'all', label: t('전체'), count: total },
-            // Code and HTML are what chat actually produces today. Without
-            // tabs they existed only under "all", so the one kind the app can
-            // make was the one kind you could not filter to.
             { id: 'code', label: t('코드'), count: count('code') },
             { id: 'html', label: 'HTML', count: count('html') },
             { id: 'report', label: t('보고서'), count: count('report') },
@@ -246,7 +215,7 @@ export function ArtifactsPage() {
         <div className="pt-4">
           {artifactsLoading ? (
             <LoadingState />
-          ) : visible.length === 0 ? (
+          ) : artifacts.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
               title={query ? t('찾는 결과물이 없습니다') : t('아직 아티팩트가 없습니다')}
@@ -271,11 +240,7 @@ export function ArtifactsPage() {
               }}
             />
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {visible.map((a) => {
-                // What it was made with, when it was made with something: a
-                // 회의록 and a 제안 덱 are both HTML, and a card that says so
-                // says nothing about either. A template that has since left the
-                // catalogue leaves the artifact to speak for itself.
+              {artifacts.map((a) => {
                 const template = templateOf(a, designTemplates)
                 const Icon = (template && templateIcon[template.kind]) ?? kindIcon[a.kind]
                 const label = template
@@ -286,13 +251,8 @@ export function ArtifactsPage() {
                 return (
                   <Card key={a.id} className="overflow-hidden">
                     <button
-                      // Named, because for a picture or a clip the thumbnail is
-                      // the whole button — no text inside it, so a screen
-                      // reader announced "button" and nothing else.
                       aria-label={t('{name} 열기').replace('{name}', a.title)}
-                      // Opened on the server's copy, not the list's: two
-                      // loaders write that list and the later reply can be the
-                      // older one, which is invisible until an edit is refused.
+                      // Refetch on open: the list copy may be stale.
                       onClick={() => {
                         setPreviewId(a.id)
                         void refreshArtifact(a.id)
@@ -335,11 +295,6 @@ export function ArtifactsPage() {
                           size="sm"
                           variant="ghost"
                           className="mt-2 -ml-2"
-                          // Which document, not just which conversation. Left
-                          // to itself the session opens whatever it produced
-                          // last — three turns on that is a different file, and
-                          // for a session whose result was deleted it is none
-                          // at all, so the card opened on an empty panel.
                           onClick={() => navigate(`/s/${session.id}?artifact=${a.id}`)}
                         >
                           {t('원본 작업 열기 →')}
@@ -353,8 +308,6 @@ export function ArtifactsPage() {
             </>
           )}
 
-          {/* Asked for rather than fetched on scroll: an endless list is one
-              nobody can reach the bottom of, and this one has a bottom. */}
           {artifactsHasMore && (
             <div className="mt-4 flex justify-center">
               <Button
@@ -366,7 +319,7 @@ export function ArtifactsPage() {
                   ? t('불러오는 중…')
                   : t('{n}개 더 보기').replace(
                       '{n}',
-                      String(Math.max(0, (total ?? visible.length) - visible.length)),
+                      String(Math.max(0, (total ?? artifacts.length) - artifacts.length)),
                     )}
               </Button>
             </div>
@@ -392,11 +345,7 @@ export function ArtifactsPage() {
       >
         {preview && (
           <div className="flex h-[64vh] flex-col overflow-hidden rounded-card border border-line">
-            {/* 보고서·슬라이드·차트는 자기 머리말에 이 버튼을 갖고 있다. 나머지
-                종류에는 머리말이 없어서, 넓혀 보는 일만 할 수 없었다. HTML은
-                미리보기·소스 탭 줄이 머리말처럼 보이지만 넓히기 버튼은 그 줄이
-                아니라 세션 쪽 패널 껍데기에 있다. 갤러리에는 그 껍데기가 없어,
-                여기서 연 HTML만 좁은 폭에 갇혀 있었다. */}
+            {/* Report, deck, chart and HTML panels carry their own width control. */}
             {!(
               preview.kind === 'report' ||
               preview.kind === 'deck' ||
@@ -420,12 +369,8 @@ export function ArtifactsPage() {
             ) : preview.kind === 'image' ||
               preview.kind === 'audio' ||
               preview.kind === 'video' ? (
-                            // The panel, not a thumbnail: a clip opened from
-                            // the gallery has to be playable.
               <MediaPanel artifact={preview} />
             ) : preview.kind === 'html' || preview.kind === 'code' ? (
-              // The whole panel, not the preview: the same document must not
-              // lose its check, rewrite, picture and export controls here.
               <CodePanel
                 artifact={preview}
                 headerControls={

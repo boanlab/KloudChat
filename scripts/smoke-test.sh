@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
-# kchat API smoke test — exercises the auth, approval, rotation and suspension
-# paths over real HTTP.
+# kchat API smoke test — auth, approval, rotation and suspension over real HTTP.
 #
 # **Non-destructive.** Every run creates accounts under a unique address and
-# deletes them again; existing users and conversations are never touched. An
-# earlier version required an empty database, which meant one test run wiped a
-# production account — that is a trap, not a test.
+# deletes them again; existing users and conversations are never touched.
 #
 #   ADMIN_EMAIL=you@example.com ADMIN_PASS=… bash scripts/smoke-test.sh
 #
-# The administrator account is used to check the approval, suspension and role
-# paths. Without one, only those checks are skipped.
-#
-# ADMIN_EMAIL / ADMIN_PASS are read from the repository's .env when they are not
-# already set — see scripts/lib/env.sh for the precedence.
+# Without an administrator account, only the approval, suspension and role
+# checks are skipped. Credentials fall back to .env — see scripts/lib/env.sh.
 set -u
 
 # shellcheck source=scripts/lib/env.sh
@@ -27,8 +21,7 @@ J=$(mktemp -d)
 RUN=$(date +%s)$$
 ok=0; fail=0; skipped=0
 
-# Accounts this script created. They are removed on exit — left behind, half a
-# dozen pile up per run and fill the approval queue.
+# Accounts this script created; removed on exit.
 MADE=""
 cleanup_accounts() {
   [ "$HAS_ADMIN" = "yes" ] || return 0
@@ -42,8 +35,7 @@ chk()  { if [ "$2" = "$3" ]; then echo "  ok   $1 ($2)"; ok=$((ok+1)); else echo
 skip() { echo "  skip $1 — $2"; skipped=$((skipped+1)); }
 jf()   { python3 -c "import json,sys; d=json.load(open('$1')); print($2)" 2>/dev/null; }
 
-# `.test` is a special-use TLD and email-validator rejects it. example.com is
-# reserved by RFC 2606, so no mail can ever actually leave for it.
+# `.test` is rejected by email-validator; example.com is reserved (RFC 2606).
 email() { echo "smoke-$1-$RUN@example.com"; }
 PASS='smoke-test-password'
 
@@ -110,7 +102,6 @@ done
 chk "exactly one created" "$created"  "1"
 chk "the rest conflict"   "$conflict" "3"
 chk "no server errors"    "$other"    "0"
-# This is the account that used to be left sitting in the approval queue.
 if [ "$HAS_ADMIN" = "yes" ]; then
   RACE_ID=$(curl -s "$API/admin/users" -H "$AH" | python3 -c "
 import json,sys
@@ -143,9 +134,7 @@ else
   chk "credits assigned"     "$(jf "$J/ap.json" "d['monthlyCredits']")" "5000"
   chk "approval does not grant admin" "$(curl -s -o /dev/null -w '%{http_code}' "$API/admin/users" -H "Authorization: Bearer $PT")" "403"
 
-  # Approval creates the LiteLLM user and that person's own key. Without the
-  # key, model calls would go out under the shared master key and proxy-side
-  # spend could not be attributed to anyone.
+  # Approval creates the LiteLLM user and a per-user key; spend is attributed to it.
   chk "approval issues a per-user key" "$(jf "$J/ap.json" "'yes' if d.get('litellmKeyPreview') else 'no'")" "yes"
   chk "the key itself is not in the response" "$(python3 -c "import json;print('yes' if 'sk-' not in open('$J/ap.json').read() else 'no')")" "yes"
 
@@ -157,8 +146,7 @@ else
   chk "a normal user cannot rotate" "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/admin/users/$PENDING_ID/litellm-key" -H "Authorization: Bearer $PT")" "403"
 
   echo "== 6c. the credit limit reaches the proxy =="
-  # kchat is the limit people see; LiteLLM follows it. If the backstop is left
-  # on an old number, raising the allowance only half takes effect.
+  # kchat is the limit people see; the LiteLLM budget must follow it.
   curl -s -o "$J/ec.json" "$API/admin/settings" -H "$AH"
   PER_USD=$(jf "$J/ec.json" "d['credits']['perUsd']")
   HEAD=$(jf "$J/ec.json" "d['credits']['budgetHeadroom']")
@@ -167,8 +155,7 @@ else
   curl -s -o /dev/null -X POST "$API/admin/users/$PENDING_ID/credits" \
     -H "$AH" -H "$JSON" -d '{"monthlyCredits":300000}'
 
-  # The proxy-side assertion needs the master key. Without it the check is
-  # skipped rather than quietly passed.
+  # Needs the master key; skipped rather than quietly passed without it.
   if [ -z "${LITELLM_BASE_URL:-}" ] || [ -z "${LITELLM_MASTER_KEY:-}" ]; then
     skip "proxy budget matches" "LITELLM_BASE_URL / LITELLM_MASTER_KEY not set"
   else
@@ -186,8 +173,7 @@ else
   DEID=$(jf "$J/de.json" "d['user']['id']")
   MADE="$MADE $DEID"
   curl -s -o /dev/null -X POST "$API/admin/users/$DEID/approve" -H "$AH" -H "$JSON" -d '{"monthlyCredits":1000}'
-  # The account being deleted has to actually own something, or the cleanup
-  # path is never exercised.
+  # The account must own something, or the cleanup path is not exercised.
   DT=$(curl -s -X POST "$API/auth/login" -H "$JSON" -d "{\"email\":\"$DE\",\"password\":\"$PASS\"}" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("accessToken",""))')
   curl -s -o /dev/null -X POST "$API/projects" -H "Authorization: Bearer $DT" -H "$JSON" -d '{"name":"지워질 프로젝트"}'
@@ -250,14 +236,12 @@ if [ "$HAS_ADMIN" = "yes" ]; then
 
   echo "== 11. reinstatement =="
   chk "reinstate 200" "$(curl -s -o "$J/ri.json" -w '%{http_code}' -X POST "$API/admin/users/$PENDING_ID/reinstate" -H "$AH")" "200"
-  # Suspension blocks the key rather than revoking it — if recovery meant
-  # reissuing, suspension would stop being a reversible action.
+  # Suspension blocks the key rather than revoking it, so reinstatement keeps it.
   chk "the same key after recovery" "$(jf "$J/ri.json" "'kept' if d.get('litellmKeyPreview') else 'lost'")" "kept"
   chk "can sign in again"           "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/auth/login" -H "$JSON" -d "{\"email\":\"$UE\",\"password\":\"$PASS\"}")" "200"
 fi
 
 echo "== 11b. preferences persist on the account =="
-# There was a period when the screen had the switches and nowhere to store them.
 chk "defaults are exposed" "$(curl -s "$API/auth/me" -H "$AH" | python3 -c '
 import json,sys; p=json.load(sys.stdin)["preferences"]
 print("ok" if {"streamResponses","autoMemory","showUsage"} <= set(p) else "no")')" "ok"
@@ -272,7 +256,6 @@ print(str(p['showUsage']) + '/' + str(p['autoMemory']))")" "False/True"
 curl -s -o /dev/null -X PATCH "$API/auth/me" -H "$AH" -H "$JSON" -d '{"preferences":{"showUsage":true,"autoMemory":false}}'
 
 echo "== 11c. governance policy is enforced =="
-# These toggles used to exist on the screen with nothing enforcing them.
 curl -s -o /dev/null -X PUT "$API/admin/governance" -H "$AH" -H "$JSON" \
   -d '{"piiMasking":true,"intentFilter":true,"blockedCategories":["스모크차단"]}'
 sleep 1

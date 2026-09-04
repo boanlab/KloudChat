@@ -1,25 +1,4 @@
-"""One agent's finding, reaching the next one.
-
-Before this, agents in this workspace could each do their work and hand back
-their own answer, and there was no way for one of them to give another
-anything. A researcher's sources, a reviewer's verdict, a schema somebody's
-analyst worked out — all of it ended when the turn ended, and the person had to
-carry it to the next conversation by hand. Running agents one after another
-with a human clipboard in between is not orchestration, and this is the piece
-that was missing.
-
-`share_note` is the write side. What these tests hold:
-
-1. A note is scoped by where the turn is running, not by what the model asks
-   for. Inside a project it reaches every conversation and agent in it; outside
-   one it belongs to that conversation alone and is not broadcast.
-2. The same `key` revises rather than accumulates, so a finding that changed
-   leaves one current note instead of three that disagree.
-3. Whatever is in scope comes back in the next turn's context, which is the
-   whole point — a handoff nobody is handed is not a handoff.
-4. A turn that failed leaves nothing. A conclusion nobody reached must not be
-   passed on as one.
-"""
+"""`share_note`: scoped by where the turn runs, revised by key, returned in the next context."""
 
 from __future__ import annotations
 
@@ -37,9 +16,7 @@ from app.services.tools.base import ToolContext
 from app.services.tools.builtin import share_note
 from app.services.workspace_context import _memory_block
 
-#: Hand-written because the models use JSONB, which SQLite cannot compile.
-#: Only the columns these tests read — a fuller schema here would be a second
-#: copy of the model file to keep in step for no gain.
+#: Hand-written DDL: the models use JSONB, which SQLite cannot compile.
 _DDL = (
     """
     CREATE TABLE users (
@@ -136,11 +113,7 @@ async def _user(db: AsyncSession) -> User:
 
 
 async def test_the_tool_only_collects_and_says_where_it_will_reach():
-    """Nothing is written during the stream; the turn's own transaction does it.
-
-    Same deferral as `create_artifact`, and for the same reason: a row committed
-    mid-turn belongs to a turn that may still fail.
-    """
+    """Nothing is written during the stream; the turn's own transaction commits notes."""
     ctx = ToolContext(user_id="u", session_id="s", project_id="p", agent_name="조사원")
 
     result = await share_note({"title": "출처 3건", "body": "A, B, C"}, ctx)
@@ -149,8 +122,7 @@ async def test_the_tool_only_collects_and_says_where_it_will_reach():
     assert ctx.pending_notes == [
         {"key": "출처 3건", "title": "출처 3건", "body": "A, B, C", "author": "조사원"}
     ]
-    # The sentence the model reads back has to say how far this went, or it
-    # cannot tell the user.
+    # The tool result says how far the note reaches.
     assert "프로젝트" in result.content
 
 
@@ -227,8 +199,8 @@ async def test_the_same_key_revises_rather_than_piles_up(db):
     rows = (await db.exec(select(Memory).where(Memory.scope == project.id))).all()
     assert len(rows) == 1
     assert rows[0].body == "수정본"
-    # Found by the work rather than told to us by the person.
+    # Found by the work, not told by the person.
     assert rows[0].type is MemoryType.reference
-    # And the byline stays on the description, out of the body the next agent acts on.
+    # The byline stays on the description, out of the body.
     assert "검토자" in rows[0].description
     assert "검토자" not in rows[0].body

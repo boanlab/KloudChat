@@ -6,12 +6,8 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
 /**
- * Proxy configuration, editable without a redeploy.
- *
- * Two rules. **The master key is never shown again** — even when one is
- * stored, the field is empty and only the last four characters are displayed;
- * leaving it blank keeps the stored value. And **clearing a field falls back
- * to the environment**, with the provenance of each value displayed beside it.
+ * LiteLLM proxy settings. The master key is never shown again: blank keeps the
+ * stored value. A cleared base URL falls back to the environment.
  */
 export function ProxySection({
   settings,
@@ -27,16 +23,8 @@ export function ProxySection({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [probe, setProbe] = useState<{ ok: boolean; detail: string } | null>(null)
-  //: Kept apart from `busy` so the spinner turns on the control that is doing
-  //: the work, while the disabled gate still covers the whole card.
   const [refreshing, setRefreshing] = useState(false)
-    /**
-     * True once typing has begun, so a late-arriving fetch cannot overwrite a
-     * value being edited.
-     *
-     * A ref rather than state because the document is refetched by the screen
-     * around this one, at moments no render here can anticipate.
-     */
+  // Typing wins over a fetch that lands late.
   const dirty = useRef(false)
 
   useEffect(() => {
@@ -45,7 +33,6 @@ export function ProxySection({
     setMasterKey('')
   }, [settings])
 
-  /** Give the boxes back to the server's copy after a save of our own. */
   const resetForm = async () => {
     dirty.current = false
     await reload()
@@ -56,8 +43,7 @@ export function ProxySection({
   return (
     <div className="space-y-5">
       <Card className="flex flex-wrap items-center gap-3 p-4">
-        {/* `settings` 가 null 이면 아직 아무것도 묻지 않은 상태다. 여기에 실패
-            상태를 그리면 화면을 열 때마다 빨간 "연결되지 않았습니다" 가 뜬다. */}
+        {/* Null settings means not fetched yet, not disconnected. */}
         <Server
           size={18}
           className={!settings ? 'text-muted' : connected ? 'text-success' : 'text-danger'}
@@ -96,9 +82,7 @@ export function ProxySection({
         >
           {t('연결 테스트')}
         </Button>
-        {/* 프록시 설정 파일을 방금 고친 운영자를 위한 버튼이다. 서버는 30초
-            동안 목록을 들고 있어서, 이것이 없으면 그 시간을 기다리는 수밖에
-            없다. */}
+        {/* Bypasses the server's 30s catalogue cache. */}
         <Button
           disabled={busy}
           title={busy ? t('설정을 불러오거나 저장하는 중입니다') : undefined}
@@ -108,8 +92,7 @@ export function ProxySection({
             setProbe(null)
             try {
               const { models } = await modelsApi.refresh()
-              // The reply already carries the fresh catalogue, but every picker
-              // reads it from the store, so pull it through there too.
+              // Pickers read the catalogue from the store.
               await loadModels()
               setProbe({
                 ok: true,
@@ -248,11 +231,10 @@ export function ProxySection({
             try {
               await adminApi.updateSettings({
                 baseUrl,
-                // Omitted rather than empty: an empty string clears the key.
+                // Omitted, not empty: an empty string clears the key.
                 ...(masterKey ? { masterKey } : {}),
               })
               await resetForm()
-              // The catalogue was fetched with the old connection.
               await loadModels()
             } catch (err) {
               setError(err instanceof ApiError ? err.detail : t('저장에 실패했습니다.'))
@@ -269,7 +251,7 @@ export function ProxySection({
           onClick={async () => {
             setBusy(true)
             try {
-              // Empty base URL clears the override; the key is left alone.
+              // Empty base URL clears the override; the key is untouched.
               await adminApi.updateSettings({ baseUrl: '' })
               await resetForm()
               await loadModels()

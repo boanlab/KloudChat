@@ -1,3 +1,5 @@
+"""Wire schemas for sessions, messages, jobs and media requests."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -27,23 +29,12 @@ class MessageOut(Wire):
     variants: list | None = None
     model: str | None = None
     routing: dict | None = None
-    #: What this turn made, as artifact ids, for the turns whose answer is a
-    #: thing rather than a sentence. The browser renders them where the answer
-    #: would be, which is why they travel with the transcript rather than being
-    #: looked up from the session — the session points at the newest result
-    #: only, and a conversation that made four pictures in two batches has two
-    #: answers to show, each under the prompt that asked for it.
+    #: Artifacts this turn produced, rendered in place of the answer.
     artifact_ids: list | None = None
-    #: The 시작점 this turn was begun from, as `{templateId, title}`. Names it
-    #: rather than quoting it: the transcript is where what somebody said is
-    #: kept, and the template's own sentence was never said by anybody.
+    #: The 시작점 this turn began from, as `{templateId, title}`.
     started_from: dict | None = None
-    #: What the reader thought of this answer, or null if nobody has said. Sent
-    #: with the transcript so a rating outlives the tab it was left in.
     rating: MessageRating | None = None
-    #: How this turn ended when it did not end in an answer. On the wire for
-    #: the same reason the rating is: the browser already says so while it is
-    #: happening, and that notice lives in one tab and is gone on reload.
+    #: How the turn ended when it did not end in an answer.
     failure: TurnFailure | None = None
     created_at: datetime
 
@@ -53,84 +44,65 @@ class MessageOut(Wire):
 
 
 class MessageRatingIn(Wire):
-    """One verdict, or its withdrawal.
-
-    Null is a first-class value here: pressing the lit thumb again takes the
-    rating off, and that has to be expressible rather than merely absent.
-    """
+    """A rating; explicit null withdraws it."""
 
     rating: MessageRating | None = None
 
 
 class ImageRequest(Wire):
-    """What the image surface sends.
-
-    `aspect` and `style` have no API parameter and are folded into the prompt,
-    so they record what was asked for rather than what came back.
-    """
+    """Image generation request. `aspect` and `style` are folded into the prompt."""
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
-    #: An `image` design template. It shapes the prompt rather than producing a
-    #: file, so unlike the deck and document templates nothing is stored under
-    #: its name — the picture is the whole output.
+    #: An `image` design template; shapes the prompt only.
     template_id: str | None = Field(default=None, max_length=60)
-    #: Up to four. Each is a separate upstream call and a separate charge.
+    #: Each picture is a separate upstream call and charge.
     count: int = Field(default=1, ge=1, le=4)
-    #: Asked for from inside a document — a slide's picker or a report's — rather
-    #: than from the image surface. It changes the prompt, not the model: a
-    #: picture going *into* a slide must not be a picture *of* a slide. See
-    #: `imagegen._FIGURE_CLAUSE`.
+    #: Requested from inside a document; adds `imagegen._FIGURE_CLAUSE` to the prompt.
     figure: bool = False
-    #: How the words in the picture are handled: `auto`, `ko`, `en`, `none`.
+    #: In-picture text language: `auto`, `ko`, `en`, `none`.
     labels: str = Field(default="auto", max_length=8)
-    #: Send the prompt as typed. Set when somebody has edited the planned
-    #: prompt and wants exactly that — the planner would rewrite it again.
+    #: Send the prompt as typed, skipping the planner.
     raw: bool = False
 
 
 class FigureSuggestRequest(Wire):
-    """What the picker asks for when it opens on one 장 or one 절."""
+    """Figure suggestion request for one slide or section."""
 
-    #: The document's own title, so the suggestion belongs to this document.
+    #: Document title.
     title: str = Field(default="", max_length=300)
-    #: The name of the place the picture is going into.
+    #: Heading of the slide or section the picture goes into.
     about: str = Field(default="", max_length=300)
-    #: What that place already says, so the picture does not repeat it.
+    #: Existing text of that slide or section.
     context: str = Field(default="", max_length=4000)
-    #: The document's look — `editorial`, `poster`, `minimal` — so the picture
-    #: comes out in the same register. Empty when the document has none.
+    #: Document look: `editorial`, `poster`, `minimal`, or empty.
     visual_style: str = Field(default="", max_length=20)
 
 
 class FigureSuggestion(Wire):
     caption: str
     prompt: str
-    #: The image 서식 the suggestion chose for this place — `image-scene`,
-    #: `image-architecture`… Empty when none fits; the picker then draws a
-    #: plain picture from `prompt` as before.
+    #: Image 서식 chosen, e.g. `image-scene`; empty draws a plain picture from `prompt`.
     template_id: str = ""
-    #: Set when the chosen 서식 is a figure drawn as mermaid (`flow`, `method`,
-    #: `concept`) rather than a picture: the client takes the diagram path.
+    #: Mermaid figure kind (`flow`, `method`, `concept`) when the client should draw a diagram.
     figure: str = ""
-    #: What to draw, in Korean, for the diagram path. Empty for pictures.
+    #: Diagram description, in Korean. Empty for pictures.
     description: str = ""
-    #: The style chip to draw with — the 서식's default, or 미니멀 for a
-    #: minimal document.
+    #: Style chip to draw with.
     style: str = ""
 
 
 class DiagramRequest(Wire):
-    """A figure asked for in words — the method, not the picture."""
+    """Diagram generation request."""
 
     description: str = Field(min_length=1, max_length=6000)
-    #: `method` · `flow` · `concept`. What kind of figure the words describe.
+    #: `method`, `flow` or `concept`.
     figure: str = Field(default="method", max_length=20)
     model: str | None = None
     language: str = Field(default="ko", max_length=5)
-    #: The Critic's half: the source the client could not draw, and why.
+    #: Mermaid source the client failed to render, and the renderer's error.
     broken: str = Field(default="", max_length=20000)
     error: str = Field(default="", max_length=500)
 
@@ -143,7 +115,7 @@ class DiagramOut(Wire):
 
 
 class DiagramStore(Wire):
-    """A rendered figure, sent back to be kept beside its source."""
+    """A client-rendered diagram stored beside its source."""
 
     source: str = Field(min_length=1, max_length=20000)
     caption: str = Field(default="", max_length=500)
@@ -151,34 +123,28 @@ class DiagramStore(Wire):
     figure: str = Field(default="method", max_length=20)
     title: str = Field(default="", max_length=200)
     model: str = Field(default="", max_length=120)
-    #: PNG bytes, base64. Drawn by the client in the document's face.
+    #: PNG bytes, base64.
     png: str = Field(min_length=1)
     width: int = Field(default=0, ge=0, le=10000)
     height: int = Field(default=0, ge=0, le=10000)
 
 
 class AudioRequest(Wire):
-    """What the a/v surface sends for a sound clip.
-
-    `kind` picks the model family: speech and music are different products from
-    different providers. There is no sound-effect option — nothing serves it.
-    """
+    """Audio generation request. `audio_kind` picks the model family."""
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
     audio_kind: Literal["narration", "music"] = "narration"
     voice: str = "alloy"
-    #: How long the clip should be. No audio model here takes a duration
-    #: parameter, so it is folded into the prompt the way an image's aspect
-    #: ratio is — which makes it a request rather than a setting, and the
-    #: artifact records both what was asked for and what came back.
+    #: Requested length; folded into the prompt, no model takes it as a parameter.
     seconds: int = Field(default=0, ge=0, le=300)
 
 
 class VideoJobRequest(Wire):
-    """One clip. Every field is priced: the pass-through charges a fixed figure
-    per (model × resolution × audio × duration), and an unlisted combination is
-    refused rather than billed at a guess."""
+    """Video generation request.
+
+    Priced per (model × resolution × audio × seconds); unlisted combinations are refused.
+    """
 
     prompt: str = Field(min_length=1, max_length=2000)
     model: str | None = None
@@ -201,8 +167,7 @@ class JobOut(Wire):
     artifact_id: str | None
     created_at: datetime
     finished_at: datetime | None
-    #: What was asked for. On the wire because a failed job's card offers a
-    #: retry, which needs the request to rebuild.
+    #: Original request, so a failed job can be retried.
     prompt: str
     model: str
     params: dict | None
@@ -213,62 +178,34 @@ class JobOut(Wire):
 
 
 class SessionBulkDelete(Wire):
-    """Ids to remove, or every conversation the caller owns.
-
-    `all` is resolved server-side at request time, so a conversation started in
-    another tab is not silently spared.
-    """
+    """Ids to delete, or every session the caller owns; `all` is resolved server-side."""
 
     ids: list[str] = []
     all: bool = False
-    #: Delete what the conversations produced as well. Off by default: the
-    #: gallery presents an artifact as a thing in its own right, and a document
-    #: somebody put in a project or shared by link should not disappear because
-    #: the conversation that started it was tidied away.
+    #: Also delete the artifacts those sessions produced.
     artifacts: bool = False
 
 
 class SessionMade(Wire):
-    """What a session produced, for the line under its title in a list.
+    """Summary of the media a session produced, for list rows that have no text preview.
 
-    A picture or clip session answers with the thing itself, so its newest
-    message is a wordless row and `preview` — the last thing said — has nothing
-    to offer. Its name is already the person's prompt, so echoing that
-    underneath would say one thing twice. What the list is actually missing is
-    the other half: what came back. That is what tells seven clips of one
-    request apart.
-
-    Counted rather than described, and sent as measurements rather than as a
-    finished sentence, because the sentence has to be written in the reader's
-    language and this is the API.
+    Measurements only; the client writes the sentence in the reader's language.
     """
 
-    #: The noun the row prints: `image`, `video`, `narration` or `music`.
-    #: Narration and music are separated here although both are `audio`
-    #: artifacts, because "내레이션 3개" and "음악 3곡" are what somebody would say.
     kind: Literal["image", "video", "narration", "music"]
     count: int
-    #: Zero when unknown and — deliberately — when the artifacts disagree. An
-    #: MP3's length is never measured, and four pictures made in two batches at
-    #: two ratios have no single ratio; printing one of them would be a claim
-    #: about the others.
+    #: Zero when unknown or when the artifacts disagree.
     seconds: int = 0
+    #: Empty when unknown or when the artifacts disagree.
     aspect: str = ""
 
 
-#: Artifact kinds a row names after themselves. Audio is deliberately not one
-#: of them: it splits into narration and music on its own `audioKind`. Anything
-#: absent here — a report, a deck, a chart — is not summarised this way at all.
+#: Artifact kinds summarised as-is; `audio` splits into narration/music by `audioKind`.
 _MEDIA_KINDS = ("image", "video")
 
 
 def _agreed(rows: list[dict], *keys: str):
-    """The one value every row gives for a key, or None where they differ.
-
-    A falsy value is not an answer: a missing ratio is stored as `""` and an
-    unmeasured length as `0`, so a set of rows where only some carry the fact
-    does not agree on it.
-    """
+    """The one truthy value every row gives for a key, else None."""
     for key in keys:
         seen = {row.get(key) for row in rows}
         if len(seen) == 1:
@@ -279,12 +216,7 @@ def _agreed(rows: list[dict], *keys: str):
 
 
 def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | None:
-    """`(kind, data)` for one session, newest first, as one summary.
-
-    Only the newest artifact's own kind is counted. A session that made three
-    pictures and then a clip is, to the person looking for it, the clip one,
-    and "이미지 3장 · 영상 1개" is a row nobody reads.
-    """
+    """Summarises `(kind, data)` rows, newest first; only the newest artifact's kind is counted."""
     if not rows:
         return None
     kind, newest = rows[0][0], rows[0][1] or {}
@@ -296,9 +228,7 @@ def made_from_artifacts(rows: list[tuple[str, dict | None]]) -> SessionMade | No
     else:
         return None
     seconds = _agreed(same, "durationSec") if noun != "image" else None
-    # What came back before what was asked for: `actualAspect` is measured off
-    # the picture while `aspect` is the phrase the prompt asked in, and the two
-    # disagree often enough that the artifact panel already shows both.
+    # `actualAspect` is measured off the picture; `aspect` is what was asked for.
     aspect = _agreed(same, "actualAspect", "aspect") if noun != "narration" else None
     return SessionMade(
         kind=noun,
@@ -317,27 +247,18 @@ class SessionOut(Wire):
     model: str
     routing_mode: RoutingMode
     artifact_id: str | None
-    #: The rendering template this session writes into, if one was picked.
     render_template_id: str | None = None
-    #: A generation waiting to be answered or approved, or null.
-    #:
-    #: Travels with the session rather than with the message that announced it,
-    #: because that is where it lives: a reload has to find it, and the screen
-    #: has to know that the next thing typed is a note on this rather than a
-    #: fresh document.
+    #: A generation awaiting an answer or approval, or null.
     pending: dict | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
-    # Omitted from list responses — the sidebar needs titles, not transcripts.
+    #: Omitted from list responses.
     messages: list[MessageOut] | None = None
-    #: First line of the latest message. The list needs it because a list
-    #: response must not carry transcripts.
+    #: First line of the latest message.
     preview: str | None = None
     message_count: int = 0
-    #: What this session produced, for the rows `preview` cannot serve. Set
-    #: only where there is no transcript, so a conversation that happens to
-    #: have made a picture still shows what was last said about it.
+    #: Media summary; set only when there is no text transcript.
     made: SessionMade | None = None
 
     @classmethod
@@ -363,7 +284,7 @@ class SessionOut(Wire):
 
 
 def snippet(content: str, limit: int = 120) -> str | None:
-    """One line, short. Newlines in a list row render as a run-on sentence."""
+    """Collapses whitespace and truncates to `limit` characters."""
     text = " ".join((content or "").split())
     if not text:
         return None
@@ -380,12 +301,9 @@ class SessionCreate(Wire):
 
 class CompareRequest(Wire):
     content: str = Field(min_length=1)
-    #: Two or three. One is an ordinary turn; more is a wall of columns and an
-    #: unexpected bill.
     models: list[str] = Field(min_length=2, max_length=3)
-    #: Installed skills explicitly selected for this one comparison.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: A 시작점 attached to this one comparison. See `SendMessage`.
+    #: See `SendMessage.starting_template_id`.
     starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
     privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
@@ -409,8 +327,7 @@ class SessionPatch(Wire):
     @field_validator("routing_mode", mode="before")
     @classmethod
     def routing_mode_cannot_be_null(cls, value):
-        # Omitted means "leave unchanged"; explicit null would otherwise be
-        # assigned to the non-null database column and surface as a 500.
+        # Omitted means unchanged; the column is non-null.
         if value is None:
             raise ValueError("routing_mode_must_not_be_null")
         return value
@@ -419,62 +336,30 @@ class SessionPatch(Wire):
 class SendMessage(Wire):
     content: str = Field(min_length=1, max_length=200_000)
     attachments: list[str] | None = None
-    #: Model override for this turn only; falls back to the session's.
+    #: Model override for this turn only.
     model: str | None = None
-    #: The composer's toggle, off by default: searching changes the latency and
-    #: the character of the answer.
     web_search: bool = False
-    #: Installed skills explicitly selected for this one turn. Empty means no
-    #: skill; installation alone never injects a procedure.
+    #: Installed skills selected for this turn; installation alone injects nothing.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: A 시작점 — a built-in from `/prompt-templates`, or a `templates` row the
-    #: caller can see. Carried by the turn the way an activated skill is: it
-    #: reaches the model as its own context block, and `content` stays the words
-    #: the person typed.
-    #:
-    #: Not sticky, unlike `render_template_id`: a starting point starts one
-    #: turn, and a shape is worn by the whole conversation.
+    #: A 시작점: a built-in from `/prompt-templates` or a visible `templates` row.
+    #: Applies to this turn only; reaches the model as its own context block.
     starting_template_id: str | None = Field(default=None, max_length=64)
-    #: A rendering template from `/design-templates`. Sticky: it is stored on
-    #: the session, so a follow-up turn keeps the shape without resending it.
-    #: `""` clears it, which is how somebody goes back to the built-in track.
+    #: A rendering template from `/design-templates`. Stored on the session;
+    #: `""` clears it.
     render_template_id: str | None = Field(default=None, max_length=60)
-    #: Write the outline that is waiting on this session rather than planning
-    #: another one. What 이대로 생성 sends. Ignored where nothing is pending,
-    #: and on the surfaces that do not plan first.
-    #:
-    #: The point of it is that approval is explicit: without this flag every
-    #: request plans and offers, so nothing a person has not looked at can
-    #: replace a document they already have.
+    #: Write the pending outline instead of planning again. Ignored when
+    #: nothing is pending.
     approve: bool = False
-    #: The outline as the person edited it on the card, when they did.
-    #:
-    #: Approval used to write whatever the planner had stored, so changing one
-    #: section heading meant re-prompting and getting a whole new outline back
-    #: — a different document, to fix a word. Sent with the approval rather
-    #: than saved first: the edit and the decision to write are one gesture,
-    #: and a plan stored and then not approved would outlive the card it was
-    #: typed on. Sanitised on arrival; see `_edited_plan`.
+    #: The pending outline as edited on the card. Sanitised by `_edited_plan`.
     plan: dict[str, Any] | None = None
-    #: The failed question to run again, by message id — what 다시 시도 sends.
-    #: The row is reused rather than written twice: the transcript keeps one
-    #: copy of the question, whatever failed under it is replaced, and the model
-    #: is not shown the same sentence twice in its history. Only the latest
-    #: question qualifies; anything after it would be a conversation that moved
-    #: on. `content` and `attachments` are taken from the stored row.
+    #: Message id of the failed latest question to run again; its row is
+    #: reused and `content`/`attachments` come from it.
     retry_of: str | None = Field(default=None, max_length=64)
-    #: Answer to the figure card, which is the second of the two questions a
-    #: document asks before it is written.
-    #:
-    #: Three states and they are all different. `True` writes the document with
-    #: the pictures that were proposed; `False` writes it without them, and the
-    #: prose is told so — a section that mentions 아래 그림 with no figure under
-    #: it is the failure this whole two-step exists to avoid. `None` is a
-    #: message that is not answering the card at all.
+    #: Figure-card answer: `True` writes with the proposed pictures, `False`
+    #: without, `None` is not answering the card.
     include_figures: bool | None = None
-    #: Answers to the questions a stopped turn asked, keyed by question id.
-    #: Folded into the request as conditions on it — never substituted for it,
-    #: because the sentence they typed is the thing they asked for.
+    #: Answers to a stopped turn's questions, keyed by question id; added as
+    #: conditions on the request.
     answers: dict[str, str] | None = None
     privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
         None
@@ -483,8 +368,8 @@ class SendMessage(Wire):
 
 
 class Transcription(Wire):
-    """What the microphone heard, and how long it listened."""
+    """Transcription result."""
 
     text: str
-    #: Seconds of audio the backend reported, or 0 when it did not say.
+    #: Audio length reported by the backend, or 0.
     seconds: int = 0

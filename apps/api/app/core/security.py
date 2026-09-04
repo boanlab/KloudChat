@@ -1,12 +1,8 @@
 """Password hashing, access tokens, and refresh-token material.
 
-Deliberately asymmetric:
-
-* **Access tokens are stateless** — a 15-minute JWT verified from the signature
-  alone, with no DB round-trip per request.
-* **Refresh tokens are stateful** — only a SHA-256 hash is stored, so a database
-  leak yields no usable tokens and rotation can detect replay
-  (see `routers/auth.py`).
+Access tokens are stateless JWTs verified from the signature alone. Refresh
+tokens are stored as SHA-256 digests only, so a database leak yields no usable
+tokens and rotation can detect replay (`routers/auth.py`).
 """
 
 from __future__ import annotations
@@ -55,9 +51,7 @@ def needs_rehash(password_hash: str) -> bool:
 def create_access_token(user_id: str, role: str) -> tuple[str, int]:
     """Returns the encoded token and its lifetime in seconds.
 
-    `jti` is not for revocation — access tokens stay stateless — but without it
-    two tokens minted in the same second are byte-identical and cannot be
-    correlated in a log.
+    `jti` only keeps same-second tokens distinct in logs; access tokens are never revoked.
     """
     ttl = timedelta(minutes=settings.access_token_ttl_min)
     now = datetime.now(UTC)
