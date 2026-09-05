@@ -108,7 +108,68 @@ _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중�
   · 흑백 — 디자인·건축·연구·전시. 검정 선과 큰 제목, 색은 쓰지 않는다.
   요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라. 같은 주제라도
   자리가 다르면 다른 인상이다 — 늘 편집형으로 도망가지 마라.
+- 이 요청에는 theme "{theme}", style "{style}" 이 어울린다. 요청이 다른 색이나 인상을
+  말하지 않는 한 이 둘을 그대로 써라.
 """
+
+#: Stored `visualStyle` value → prompt label, for the suggestion the outline is shown.
+_STYLE_LABELS = {
+    "editorial": "편집형",
+    "poster": "포스터형",
+    "minimal": "미니멀",
+    "dark": "다크",
+    "split": "분할형",
+    "warm": "따뜻한",
+    "mono": "흑백",
+}
+
+#: Topic words → accent name. Checked in order; the first topic named wins. A deck
+#: about nothing on this list takes a colour keyed off its request, so two decks on
+#: different subjects do not come out the same colour.
+_TOPIC_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("남색", ("보안", "금융", "법", "정책", "경영진", "이사회", "투자", "은행")),
+    (
+        "파랑",
+        (
+            "기술",
+            "시스템",
+            "소프트웨어",
+            "개발",
+            "데이터",
+            "인공지능",
+            "ai",
+            "클라우드",
+            "네트워크",
+        ),
+    ),
+    ("초록", ("환경", "에너지", "농업", "생태", "탄소", "지속가능", "친환경")),
+    ("청록", ("의료", "건강", "병원", "바이오", "제약", "간호")),
+    ("주황", ("교육", "수업", "강의", "학생", "청소년", "학습")),
+    ("자주", ("문화", "예술", "디자인", "패션", "공연", "미디어")),
+    ("빨강", ("홍보", "행사", "축제", "캠페인", "모집", "마케팅")),
+)
+#: What a request naming no topic draws from; the product's own purple stays out so a
+#: deck does not look like the app's chrome.
+_ROTATION = ("파랑", "청록", "남색", "초록", "주황", "자주")
+
+
+def suggest_look(request: str) -> tuple[str, str]:
+    """`(theme name, style label)` the outline is shown as this request's default.
+
+    The room decides the style (`design.venue_style_for`), the subject decides the
+    colour; a request naming neither gets a colour keyed off its own words, never the
+    same one every time. The outline may still override both when the request says so.
+    """
+    text = (request or "").lower()
+    style = design.visual_style_for(request)
+    if style == "editorial":
+        style = design.venue_style_for(request) or "editorial"
+    theme = next((name for name, words in _TOPIC_THEMES if any(w in text for w in words)), "")
+    if not theme:
+        digest = sum(ord(ch) for ch in re.sub(r"\s+", "", text)[:200])
+        theme = _ROTATION[digest % len(_ROTATION)]
+    return theme, _STYLE_LABELS[style]
+
 
 #: Prompt label → stored `visualStyle` value.
 _STYLES = {
@@ -786,10 +847,10 @@ def _theme_style(text: str) -> str:
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
-def _theme_accent(text: str) -> str:
-    """Accent named by the outline, or the default. Regex, so a salvaged outline keeps it."""
+def _theme_accent(text: str, default: str = _ACCENT) -> str:
+    """Accent named by the outline, or `default`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"theme"\s*:\s*"([^"]+)"', text)
-    return _THEMES.get((match.group(1).strip() if match else ""), _ACCENT)
+    return _THEMES.get((match.group(1).strip() if match else ""), default)
 
 
 def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
@@ -1023,8 +1084,7 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight.
-    """
+    """Agenda lines: the dividers when there are two or more, else the body slides; up to eight."""
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
@@ -1321,8 +1381,7 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps.
-    """
+    """Writes slide bodies for an approved outline: one draft call, then per-slide gap calls."""
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
@@ -1663,6 +1722,9 @@ async def write(
     }
     wanted = requested_slides(request)
     fixed_accent = (tokens or {}).get("accent") or ""
+    # The look this request would get on its own; the outline is shown it and may override.
+    suggested_theme, suggested_style = suggest_look(request)
+    suggested_accent = _THEMES[suggested_theme]
 
     # Both passes research: the approved outline names the slides, not their facts.
     findings = research.Findings()
@@ -1739,10 +1801,16 @@ async def write(
                     lo=wanted or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
                     theme_rule=(
-                        "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
+                        ""
+                        if fixed_accent
+                        else _THEME_RULE.format(
+                            themes=" / ".join(_THEMES), theme=suggested_theme, style=suggested_style
+                        )
                     ),
                     theme_example=(
-                        "" if fixed_accent else '"theme": "청록",\n  "style": "편집형",\n  '
+                        ""
+                        if fixed_accent
+                        else f'"theme": "{suggested_theme}",\n  "style": "{suggested_style}",\n  '
                     ),
                     request=request[:2000],
                 )
@@ -1802,7 +1870,7 @@ async def write(
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
-    accent = fixed_accent or _theme_accent(text)
+    accent = fixed_accent or _theme_accent(text, suggested_accent)
     # Grounded before the variety check, so it does not ask for layouts that
     # would then be stripped.
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
@@ -1828,7 +1896,7 @@ async def write(
                 title = retry_title or title
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
-                accent = fixed_accent or _theme_accent(retry_text) or accent
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
     # An unreadable outline gets one retry.
@@ -1848,7 +1916,7 @@ async def write(
                 title = retry_title or title
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
-                accent = fixed_accent or _theme_accent(retry_text) or accent
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
 
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -1874,10 +1942,11 @@ async def write(
         "subtitle": subtitle[:200],
         "accent": accent,
         # A style the request names wins; otherwise the outline's choice.
+        # A style the request names wins; then the outline's choice; then the room's.
         "visualStyle": (
             design.visual_style_for(request)
             if design.visual_style_for(request) != "editorial"
-            else (_theme_style(text) or "editorial")
+            else (_theme_style(text) or _STYLES[suggested_style])
         ),
         "density": (
             "reading"
