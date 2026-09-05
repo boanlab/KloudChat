@@ -558,7 +558,7 @@ export function SlideView({
           />
         )}
         <h3
-          style={{ ...BALANCED, fontSize: type(closing ? TYPE.closing : visualStyle === 'poster' ? TYPE.coverPoster : visualStyle === 'mono' ? TYPE.coverMono : TYPE.cover), fontWeight: visualStyle === 'minimal' ? 600 : look.titleWeight + 50, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: px(look.tracking * 1.5) }}
+          style={{ ...BALANCED, fontSize: pt(closing ? TYPE.closing : visualStyle === 'poster' ? TYPE.coverPoster : visualStyle === 'mono' ? TYPE.coverMono : TYPE.cover), fontWeight: visualStyle === 'minimal' ? 600 : look.titleWeight + 50, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: px(look.tracking * 1.5) }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
@@ -991,7 +991,7 @@ export function SlideView({
                 !chart && (
                 <ul
                   style={{
-                    fontSize: type(twoColumn ? TYPE.bodyNarrow : TYPE.body),
+                    fontSize: pt(twoColumn ? TYPE.bodyNarrow : TYPE.body),
                     lineHeight: look.leading,
                     ...(twoColumn ? { columnCount: 2, columnGap: px(20) } : null),
                   }}
