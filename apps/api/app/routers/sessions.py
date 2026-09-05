@@ -1421,6 +1421,7 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
                 figure=payload.figure,
                 model=str(planner["id"]),
                 api_key=api_key,
+                template=picture_template.prompt_suffix if picture_template else "",
             )
     composed = imagegen.compose_prompt(
         planned,
