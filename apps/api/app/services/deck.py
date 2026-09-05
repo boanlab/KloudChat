@@ -1922,6 +1922,31 @@ async def write(
                 accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
+    # A talk with a stated length or count planned too short gets one retry, no shorter.
+    needed = wanted or slides_for_minutes(request)
+    if plan and needed and len(plan) < needed:
+        log.info("deck outline short: %d of %d slides, asking once more", len(plan), needed)
+        try:
+            retry_text, retry_spent = await ask(
+                f"\n\n앞선 구성은 {len(plan)}장이었다. 이 발표에는 최소 {needed}장이 필요하다. "
+                "다시 짜라 — 있는 장을 둘로 쪼개지 말고, 요청이 말한 흐름에서 아직 장이 없는 "
+                "대목(사례, 비교, 남은 문제, 정리)에 장을 주어라."
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            retry_plan = _named_dividers(
+                _rationed_quotes(_grounded_layouts(retry_plan, request, document_context))
+            )
+            if len(retry_plan) > len(plan):
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+            else:
+                log.info("deck outline still short, keeping the first")
     # An unreadable outline gets one retry.
     if not plan:
         log.info("deck outline unreadable, asking once more")
