@@ -194,7 +194,7 @@ async def test_a_written_memory_says_so_on_the_row_it_came_from(monkeypatch):
     db = _EnrichDb(answer)
     _patch_enrichment(monkeypatch, db, written=2)
 
-    artifact_id, step = await sessions_router._enrich(
+    step = await sessions_router._enrich_memory(
         user_id="user-1",
         session_id="session-1",
         content="네",
@@ -205,7 +205,6 @@ async def test_a_written_memory_says_so_on_the_row_it_came_from(monkeypatch):
         message_id=answer.id,
     )
 
-    assert artifact_id is None
     assert step["label"] == "메모리 2건 저장"
     assert answer.steps == [step]
     assert db.commits == 1
@@ -216,7 +215,7 @@ async def test_a_turn_that_remembered_nothing_leaves_the_row_alone(monkeypatch):
     db = _EnrichDb(answer)
     _patch_enrichment(monkeypatch, db, written=0)
 
-    _artifact_id, step = await sessions_router._enrich(
+    step = await sessions_router._enrich_memory(
         user_id="user-1",
         session_id="session-1",
         content="네",
@@ -285,7 +284,7 @@ class _Db:
 
 
 class _EnrichDb:
-    """In-memory db for `_enrich`: one message row and a commit count."""
+    """In-memory db for `_store_artifacts`/`_enrich_memory`: one message row and a commit count."""
 
     def __init__(self, message: Message):
         self.message = message

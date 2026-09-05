@@ -412,9 +412,12 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
         seen["title"] = model_id
         return "전기차 등록 현황", {"inputTokens": 4_000, "outputTokens": 500}
 
-    async def enrich(**_kwargs):
-        # `(artifact_id, memory_step)`; the step is not looked at here.
-        return None, None
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**_kwargs):
+        # The step is not looked at here.
+        return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
@@ -423,7 +426,8 @@ async def test_a_generated_title_gets_its_own_ledger_line(monkeypatch) -> None:
     )
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
 
     async for _ in sessions_router._run_turn(
         user_id=user.id,
@@ -487,7 +491,7 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
     monkeypatch.setattr(sessions_router.model_service, "list_models", catalogue)
     monkeypatch.setattr(sessions_router.auto_memory_service, "extract", extract)
 
-    await sessions_router._enrich(
+    await sessions_router._enrich_memory(
         user_id=user.id,
         session_id=session.id,
         content="답변",
@@ -495,7 +499,6 @@ async def test_a_memory_extraction_is_billed_at_the_model_that_read_the_turn(
         api_key="key",
         model=turn_model,
         auto_memory=True,
-        requested_artifacts=[],
     )
 
     assert seen["model"] == cheap["id"]
