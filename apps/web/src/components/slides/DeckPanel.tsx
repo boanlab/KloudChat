@@ -31,6 +31,7 @@ import {
   Underline,
   Undo2,
   X,
+  ChevronDown,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -141,7 +142,7 @@ const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as con
 /** Titles wrap with even lines, so the last line is never one stranded word. */
 const BALANCED = { ...KOREAN_WRAP, textWrap: 'balance' } as const
 
-type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono' | 'pastel' | 'forest' | 'slate' | 'paper'
 
 /** Visual style parameters; `deck_export` keeps an identical table. */
 interface Look {
@@ -171,6 +172,10 @@ const LOOKS: Record<VisualStyle, Look> = {
   split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter', titleWeight: 700, tracking: -0.2, leading: 1.6 },
   warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band', titleWeight: 700, tracking: 0, leading: 1.7 },
   mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame', titleWeight: 700, tracking: 0.3, leading: 1.6 },
+  pastel: { bg: '#f3f0fa', ink: '#2b2540', muted: '#6b6480', faint: '#9a93ad', hair: '#e3ddf0', tint: 14, card: 'filled', radius: 12, badge: 'circle', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.2, leading: 1.65 },
+  forest: { bg: '#f1f5f0', ink: '#1f2d22', muted: '#5c6b5e', faint: '#8e9a90', hair: '#d9e2da', tint: 10, card: 'filled', radius: 6, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  slate: { bg: '#eef1f5', ink: '#1c2431', muted: '#55617a', faint: '#8b96ab', hair: '#d5dbe6', tint: 8, card: 'outlined', radius: 2, badge: 'square', cover: 'split', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
+  paper: { bg: '#fbfaf6', ink: '#2a2622', muted: '#6b655c', faint: '#9b948a', hair: '#e6e1d6', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'paper', ornament: 'frame', titleWeight: 600, tracking: 0, leading: 1.7 },
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
@@ -192,6 +197,66 @@ const LAYOUTS: { id: Slide['layout']; label: string }[] = [
   { id: 'tiles', label: '표식' },
   { id: 'timeline', label: '연표' },
   { id: 'closing', label: '마무리' },
+]
+
+/** The looks in the order the picker shows them, with what each one does to a slide. */
+const LOOK_CHOICES: { id: VisualStyle; label: string; why: string }[] = [
+  { id: 'editorial', label: '편집형', why: '흰 바탕, 위쪽 색 띠, 선과 넓은 여백' },
+  { id: 'minimal', label: '미니멀', why: '옅은 색과 절제된 제목, 모서리의 동그라미' },
+  { id: 'poster', label: '포스터형', why: '강한 색면 표지와 큰 번호' },
+  { id: 'split', label: '분할형', why: '왼쪽 색면과 큰 번호, 회색 선' },
+  { id: 'dark', label: '다크', why: '어두운 바탕에 빛나는 강조색' },
+  { id: 'slate', label: '강철', why: '차가운 회색 바탕, 분할 표지, 얇은 선' },
+  { id: 'warm', label: '따뜻한', why: '크림색 종이 바탕과 둥근 상자' },
+  { id: 'pastel', label: '파스텔', why: '연한 보랏빛 바탕과 둥근 모서리' },
+  { id: 'forest', label: '숲', why: '초록빛 바탕과 색면 표지, 왼쪽 세로 띠' },
+  { id: 'paper', label: '학술', why: '종이 바탕에 테두리 선, 넓은 행간' },
+  { id: 'mono', label: '흑백', why: '검정 선과 큰 제목, 강조색 없음' },
+]
+
+/** A thumbnail of a look: its cover on the left, a body slide on the right. */
+function LookSwatch({ look, accent, size = 1 }: { look: Look; accent: string; size?: number }) {
+  const w = 30 * size
+  const h = 17 * size
+  const mono = look.hair === look.ink
+  const tone = mono ? look.ink : accent
+  const coverBackground =
+    look.cover === 'gradient' ? `linear-gradient(135deg, ${tone}, color-mix(in srgb, ${tone} 60%, #111827))`
+    : look.cover === 'glow' ? `radial-gradient(circle at 80% 90%, color-mix(in srgb, ${tone} 70%, transparent), ${look.bg} 70%)`
+    : look.cover === 'wash' ? `linear-gradient(145deg, color-mix(in srgb, ${tone} 14%, #fff), ${look.bg} 70%)`
+    : look.bg
+  const onAccent = look.cover === 'gradient' || look.cover === 'glow'
+  const coverInk = onAccent ? '#fff' : look.ink
+  return (
+    <span className="inline-flex shrink-0 overflow-hidden rounded-[3px] ring-1 ring-black/10" style={{ width: w * 2 + 2, height: h, gap: 2, background: look.hair }} aria-hidden>
+      <span className="relative block" style={{ width: w, height: h, background: coverBackground }}>
+        {look.cover === 'split' && <span className="absolute inset-y-0 left-0" style={{ width: w * 0.36, background: tone }} />}
+        {look.cover === 'paper' && <span className="absolute rounded-full" style={{ width: h * 0.7, height: h * 0.7, right: -h * 0.15, top: h * 0.1, background: tone }} />}
+        {look.cover === 'brackets' && <span className="absolute" style={{ left: 2, top: 2, width: 4, height: 4, borderLeft: `1px solid ${look.ink}`, borderTop: `1px solid ${look.ink}` }} />}
+        <span className="absolute" style={{ left: look.cover === 'split' ? w * 0.44 : w * 0.16, top: h * 0.42, width: w * 0.42, height: 2 * size, background: coverInk }} />
+        <span className="absolute" style={{ left: look.cover === 'split' ? w * 0.44 : w * 0.16, top: h * 0.62, width: w * 0.3, height: 1.5 * size, background: coverInk, opacity: 0.6 }} />
+      </span>
+      <span className="relative block" style={{ width: w, height: h, background: look.bg }}>
+        {look.ornament === 'top-band' && <span className="absolute inset-x-0 top-0" style={{ height: 1.5 * size, background: tone }} />}
+        {look.ornament === 'left-bar' && <span className="absolute inset-y-0 left-0" style={{ width: 1.5 * size, background: tone }} />}
+        {look.ornament === 'corner-circle' && <span className="absolute rounded-full" style={{ width: h * 0.5, height: h * 0.5, right: -h * 0.2, top: -h * 0.25, background: `color-mix(in srgb, ${tone} 14%, transparent)` }} />}
+        {look.ornament === 'bottom-rule' && <span className="absolute inset-x-0 bottom-0" style={{ height: 1.5 * size, background: `linear-gradient(90deg, ${tone}, transparent)` }} />}
+        {look.ornament === 'gutter' && <span className="absolute inset-y-0 left-0" style={{ width: 1 * size, background: tone }} />}
+        {look.ornament === 'frame' && <span className="absolute" style={{ inset: 1.5 * size, border: `0.5px solid ${look.ink}` }} />}
+        {look.ornament === 'bottom-band' && <span className="absolute inset-x-0 bottom-0" style={{ height: h * 0.14, background: `color-mix(in srgb, ${tone} ${look.tint || 8}%, ${look.bg})` }} />}
+        <span className="absolute" style={{ left: w * 0.16, top: h * 0.2, width: w * 0.5, height: 2 * size, background: look.ink }} />
+        <span className="absolute" style={{ left: w * 0.16, top: h * 0.45, width: w * 0.66, height: 1 * size, background: look.muted }} />
+        <span className="absolute" style={{ left: w * 0.16, top: h * 0.6, width: w * 0.58, height: 1 * size, background: look.muted }} />
+        <span className="absolute" style={{ left: w * 0.16, top: h * 0.75, width: w * 0.62, height: 1 * size, background: look.muted }} />
+      </span>
+    </span>
+  )
+}
+
+/** Accent colours by name; `deck._THEMES` on the server lists the same nine. */
+const ACCENTS: [string, string][] = [
+  ['#1e3a8a', '남색'], ['#1f6feb', '파랑'], ['#0f766e', '청록'], ['#15803d', '초록'],
+  ['#5b5bd6', '보라'], ['#a21caf', '자주'], ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹'],
 ]
 
 /** Keep only the inline markup the toolbar can create. */
@@ -2684,45 +2749,49 @@ export function DeckPanel({
             <div ref={setEditToolbarSlot} className="flex items-center" />
           </RibbonGroup>
         )}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('인상')}>
-          {([
-            ['editorial', '편집형', '선과 넓은 여백'],
-            ['poster', '포스터형', '강한 색면과 큰 번호'],
-            ['minimal', '미니멀', '옅은 색과 절제된 제목'],
-            ['dark', '다크', '어두운 바탕에 빛나는 강조색'],
-            ['split', '분할형', '왼쪽 색면과 큰 번호'],
-            ['warm', '따뜻한', '크림색 종이 바탕과 둥근 상자'],
-            ['mono', '흑백', '검정 선과 큰 제목'],
-          ] as const).map(([value, label, why]) => (
-            <Button
-              key={value}
-              size="sm"
-              disabled={saving}
-              aria-pressed={visualStyle === value}
-              title={t(why)}
-              onClick={() => void saveDeckVisualStyle(value)}
-            >
-              {t(label)}
-            </Button>
-          ))}
-        </RibbonGroup>}
-        {ribbon === 'home' && !editing && <RibbonGroup label={t('색')}><Dropdown
-          align="right"
+        {ribbon === 'home' && !editing && <RibbonGroup label={t('디자인')}><Dropdown
+          align="left"
           trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('덱 색 고르기')}>
-              <span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
-              {t('색')}
+            <Button size="sm" disabled={saving} aria-label={t('슬라이드 디자인 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
+              <LookSwatch look={LOOKS[visualStyle]} accent={bulkAccent} />
+              {t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
+              <ChevronDown size={13} className="text-muted" />
             </Button>
           )}
         >
-          {([
-            ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
-            ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹색'],
-          ] as const).map(([colour, label]) => (
-            <MenuItem key={colour} icon={<span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
+          <MenuLabel>{t('같은 내용, 다른 인상')}</MenuLabel>
+          {LOOK_CHOICES.map(({ id, label, why }) => (
+            <MenuItem
+              key={id}
+              icon={<LookSwatch look={LOOKS[id]} accent={bulkAccent} size={1.3} />}
+              checked={visualStyle === id}
+              hint={t(why)}
+              onClick={() => void saveDeckVisualStyle(id)}
+            >
               {t(label)}
             </MenuItem>
           ))}
+        </Dropdown></RibbonGroup>}
+        {ribbon === 'home' && !editing && <RibbonGroup label={t('강조색')}><Dropdown
+          align="left"
+          trigger={() => (
+            <Button size="sm" disabled={saving} aria-label={t('강조색 고르기')} title={t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}>
+              <span className="size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
+              {t(ACCENTS.find(([colour]) => colour.toLowerCase() === bulkAccent.toLowerCase())?.[1] ?? '직접 고른 색')}
+              <ChevronDown size={13} className="text-muted" />
+            </Button>
+          )}
+        >
+          <MenuLabel>{t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}</MenuLabel>
+          {ACCENTS.map(([colour, label]) => (
+            <MenuItem key={colour} icon={<span className="size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
+              {t(label)}
+            </MenuItem>
+          ))}
+          <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm text-fg hover:bg-elevated">
+            <input type="color" value={bulkAccent} onChange={(event) => void saveDeckAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
+            {t('직접 고르기')}
+          </label>
         </Dropdown></RibbonGroup>}
         {ribbon === 'home' && !editing && <RibbonGroup label={t('슬라이드 작업')}><Button
           size="sm"
@@ -2826,7 +2895,7 @@ export function DeckPanel({
             setError(null)
           }}
         /></RibbonGroup>}
-        {editing && <RibbonGroup label={t('저장')}>
+        {ribbon === 'edit' && editing && <RibbonGroup label={t('저장')}>
           <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
             <X size={14} />{t('취소')}
           </Button>

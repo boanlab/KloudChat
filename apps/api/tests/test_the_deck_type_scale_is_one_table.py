@@ -228,3 +228,27 @@ def test_the_title_holds_still_at_every_scale() -> None:
         )
 
     assert title_size(1.25) == title_size(1.0) == title_size(0.8) == deck_type.TYPE["title"]
+
+
+def test_every_look_the_panel_offers_can_be_exported() -> None:
+    """A look listed for the panel has an export twin, a prompt label and a style word."""
+    from app.services import design
+
+    assert set(deck_export._LOOKS) == set(design.VISUAL_STYLES)
+    assert set(deck._STYLES.values()) == set(design.VISUAL_STYLES)
+    assert set(deck._STYLE_LABELS) == set(design.VISUAL_STYLES)
+    panel = (
+        Path(__file__).resolve().parents[3] / "apps/web/src/components/slides/DeckPanel.tsx"
+    ).read_text(encoding="utf-8")
+    for look in design.VISUAL_STYLES:
+        assert f"\n  {look}: {{ bg:" in panel, f"{look} is missing from the panel's LOOKS"
+        assert f"{{ id: '{look}'," in panel, f"{look} is missing from the panel's picker"
+    slides = [
+        {"layout": "title", "title": "표지"},
+        {"layout": "bullets", "title": "본문", "bullets": ["한 줄"]},
+        {"layout": "cards", "title": "카드", "cards": [["이름", "설명"]] * 2},
+    ]
+    for look in ("pastel", "forest", "slate", "paper"):
+        tokens = {"visualStyle": look, "accent": "#15803d"}
+        assert deck_export.to_pdf("확인", slides, tokens=tokens).startswith(b"%PDF")
+        assert deck_export.to_pptx("확인", slides, tokens=tokens)

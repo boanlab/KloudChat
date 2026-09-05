@@ -122,6 +122,10 @@ _STYLE_LABELS = {
     "split": "분할형",
     "warm": "따뜻한",
     "mono": "흑백",
+    "pastel": "파스텔",
+    "forest": "숲",
+    "slate": "강철",
+    "paper": "학술",
 }
 
 #: Topic words → accent name. Checked in order; the first topic named wins. A deck
@@ -181,6 +185,10 @@ _STYLES = {
     "분할형": "split",
     "따뜻한": "warm",
     "흑백": "mono",
+    "파스텔": "pastel",
+    "숲": "forest",
+    "강철": "slate",
+    "학술": "paper",
 }
 
 #: Accent palette the outline picks from by name; each carries white text.
