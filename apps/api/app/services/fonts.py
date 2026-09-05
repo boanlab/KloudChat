@@ -26,6 +26,15 @@ _CANDIDATES = {
         "/usr/share/fonts/truetype/nanum/NanumMyeongjo.ttf",
         "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
     ),
+    # Bold faces, for titles and table heads; the regular face stands in when absent.
+    "gothic-bold": (
+        "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumBarunGothicBold.ttf",
+    ),
+    "serif-bold": (
+        "/usr/share/fonts/truetype/nanum/NanumMyeongjoBold.ttf",
+        "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+    ),
 }
 
 #: reportlab's bundled CID fonts; never embedded in the PDF.
@@ -34,10 +43,36 @@ _CID_FALLBACK = {"gothic": "HYSMyeongJo-Medium", "serif": "HYSMyeongJo-Medium"}
 _resolved: dict[str, str] = {}
 
 
-def korean(style: str = "gothic") -> str:
-    """Registered font name for `setFont`; registration is global, so the result is cached."""
+def korean(style: str = "gothic", *, bold: bool = False) -> str:
+    """Registered font name for `setFont`; registration is global, so the result is cached.
+
+    `bold=True` names the bold face, or the regular one when no bold file is installed.
+    """
+    if bold:
+        face = f"{style}-bold"
+        if face not in _resolved:
+            _resolved[face] = _register(face) or korean(style)
+        return _resolved[face]
     if style in _resolved:
         return _resolved[style]
+    registered = _register(style)
+    if registered:
+        _resolved[style] = registered
+        return registered
+
+    fallback = _CID_FALLBACK[style]
+    log.warning(
+        "no embeddable Korean font found; PDFs will use %s, which renders only "
+        "where the viewer supplies the Adobe-Korea1 CMaps",
+        fallback,
+    )
+    pdfmetrics.registerFont(UnicodeCIDFont(fallback))
+    _resolved[style] = fallback
+    return fallback
+
+
+def _register(style: str) -> str | None:
+    """Registers the first installed candidate for `style`; None when none is."""
 
     for path in _CANDIDATES.get(style, ()):
         file = Path(path)
@@ -54,18 +89,8 @@ def korean(style: str = "gothic") -> str:
         except Exception:  # noqa: BLE001 — a bad font file must not fail the export
             log.warning("could not register %s, falling back to the CID font", path)
             continue
-        _resolved[style] = name
         return name
-
-    fallback = _CID_FALLBACK[style]
-    log.warning(
-        "no embeddable Korean font found; PDFs will use %s, which renders only "
-        "where the viewer supplies the Adobe-Korea1 CMaps",
-        fallback,
-    )
-    pdfmetrics.registerFont(UnicodeCIDFont(fallback))
-    _resolved[style] = fallback
-    return fallback
+    return None
 
 
 def embedded(style: str = "gothic") -> bool:
