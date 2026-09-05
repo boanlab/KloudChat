@@ -259,9 +259,9 @@ export function AgentsPage() {
                   {a.visibility === 'org' ? t('공유됨') : t('개인')}
                 </Badge>
                 {(a.sealed || (a.shareMode === 'sealed' && a.visibility === 'org')) && (
-                  <Badge title={t('지침은 작성자만 봅니다. 가져가면 원본의 지침으로 동작합니다.')}>
+                  <Badge title={t('내용은 작성자만 봅니다. 가져간 복사본은 편집할 수 없고 원본의 지침으로 동작합니다.')}>
                     <Lock size={10} />
-                    {t('지침 비공개')}
+                    {t('내용 비공개')}
                   </Badge>
                 )}
                 <Badge>{models.find((m) => m.id === a.model)?.label ?? t('화면 기본 모델')}</Badge>
@@ -297,9 +297,12 @@ export function AgentsPage() {
                       >
                         <Trash2 size={14} />
                       </Button>
-                      <Button size="sm" onClick={() => setDraft(a)}>
-                        {t('편집')}
-                      </Button>
+                      {/* A sealed copy has nothing to show: its prompt lives in the original. */}
+                      {!a.sealed && (
+                        <Button size="sm" onClick={() => setDraft(a)}>
+                          {t('편집')}
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <Button
@@ -520,12 +523,15 @@ export function AgentsPage() {
                       {
                         id: 'open',
                         label: t('가져가서 편집할 수 있게'),
-                        note: t('복사본에 지침이 함께 가고, 가져간 사람이 마음대로 고칩니다.'),
+                        note: [t('복사본에 지침이 함께 가고, 가져간 사람이 마음대로 고칩니다.')],
                       },
                       {
                         id: 'sealed',
-                        label: t('가져갈 수 있지만 지침은 비공개'),
-                        note: t('복사본은 내 원본의 지침으로 동작하되 지침을 보거나 고칠 수 없습니다. 내가 원본을 고치면 복사본도 따라옵니다.'),
+                        label: t('가져갈 수 있지만 내용은 비공개'),
+                        note: [
+                          t('복사본은 편집할 수 없고 내 원본의 지침으로 동작합니다.'),
+                          t('가져간 사람은 실행과 삭제만 할 수 있고, 내가 원본을 고치면 복사본도 따라옵니다.'),
+                        ],
                       },
                     ] as const
                   ).map((o) => (
@@ -542,7 +548,11 @@ export function AgentsPage() {
                       />
                       <span className="min-w-0">
                         <span className="text-base">{o.label}</span>
-                        <span className="block text-sm text-muted">{o.note}</span>
+                        {o.note.map((line) => (
+                          <span key={line} className="block text-sm text-muted">
+                            {line}
+                          </span>
+                        ))}
                       </span>
                     </label>
                   ))}
@@ -579,18 +589,11 @@ export function AgentsPage() {
             </Field>
 
             <Field label={t('시스템 프롬프트')}>
-              {draft.sealed ? (
-                <p className="flex items-start gap-2 rounded-control border border-line bg-elevated px-3 py-2.5 text-base text-muted">
-                  <Lock size={14} className="mt-0.5 shrink-0" />
-                  {t('작성자가 지침을 비공개로 공유한 에이전트입니다. 지침은 원본에서 읽어 오며, 여기서 보거나 고칠 수 없습니다. 이름·모델·스킬은 바꿀 수 있습니다.')}
-                </p>
-              ) : (
-                <Textarea
-                  rows={6}
-                  value={draft.systemPrompt}
-                  onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
-                />
-              )}
+              <Textarea
+                rows={6}
+                value={draft.systemPrompt}
+                onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
+              />
             </Field>
 
             <Field
