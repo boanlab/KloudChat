@@ -100,5 +100,6 @@ def test_the_pdf_is_gothic_at_the_scale_unless_the_design_says_serif() -> None:
     serif = report_export.to_pdf("제목", _SECTIONS, tokens={"font": "serif"})
     assert serif.startswith(b"%PDF")
     if fonts.embedded("gothic") and fonts.embedded("serif"):
-        assert b"Nanum-gothic" in plain and b"Nanum-serif" not in plain
-        assert b"Nanum-serif" in serif
+        # reportlab writes the face's own name, subset-prefixed, as the BaseFont.
+        assert b"NanumGothic" in plain and b"Myeongjo" not in plain
+        assert b"Myeongjo" in serif
