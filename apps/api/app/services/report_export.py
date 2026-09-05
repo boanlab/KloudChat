@@ -658,6 +658,7 @@ def _docx_type_scale(document) -> None:
 def _korean_fonts(document) -> None:
     """맑은 고딕 for Hangul and Calibri for Latin on the default styles; python-docx names no East Asian font."""
     from docx.oxml.ns import qn
+    from docx.shared import RGBColor
 
     for name in ("Normal", "Body Text", "Title", "Heading 1", "Heading 2", "Heading 3"):
         try:
@@ -665,10 +666,10 @@ def _korean_fonts(document) -> None:
         except KeyError:
             continue
         style.font.name = "Calibri"
-        # Headings inherit a blue theme colour from Word's defaults; the accent or ink
-        # is set per heading, so the style itself goes neutral.
+        # Headings inherit a theme colour from Word's defaults; ink here, and the accent
+        # is set per heading where the design asks for it.
         if name.startswith("Heading") or name == "Title":
-            style.font.color.rgb = None
+            style.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
         rpr = style.element.get_or_add_rPr()
         fonts = rpr.find(qn("w:rFonts"))
         if fonts is None:
@@ -990,6 +991,8 @@ def _docx_kpi(document, figures: list[tuple[str, str]]) -> None:
     for column, (value, label) in enumerate(figures):
         top = table.cell(0, column).paragraphs[0]
         top.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # The label row stays on the page with its figure.
+        top.paragraph_format.keep_with_next = True
         run = top.add_run(value)
         run.bold = True
         run.font.size = Pt(doc_type.TYPE["kpi"])
@@ -1676,10 +1679,12 @@ def to_pdf(
         }
     )
     styles = {
+        # Left, as on the page view; reportlab's own Title is centred.
         "title": ParagraphStyle(
             "t",
             parent=base["Title"],
             fontName=bold_face,
+            alignment=TA_LEFT,
             **title_options,
         ),
         "h1": ParagraphStyle(
