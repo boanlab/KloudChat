@@ -118,6 +118,7 @@ from app.services.workspace_context import (
     agent_settings,
     assemble,
     design_for,
+    file_budget,
     reads_pictures,
 )
 
@@ -1414,7 +1415,9 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             planned, _ = await imagegen.plan(
                 payload.prompt,
                 style=payload.style,
-                labels=payload.labels,
+                # A wordless 서식 (poster, cover, banner) outranks the label chip: the
+                # planner would otherwise write a title and captions the suffix then forbids.
+                labels="none" if picture_template and picture_template.wordless else payload.labels,
                 figure=payload.figure,
                 model=str(planner["id"]),
                 api_key=api_key,
@@ -2319,6 +2322,11 @@ async def send_message(
     # A sentence can request search as the toggle does; resolved before tools are built.
     explicit_web_search = requests_web_search(content)
     effective_web_search = payload.web_search or explicit_web_search
+    # An agent whose allowlist leaves web search out chose that on purpose. The toggle
+    # is moot for it, and a 「웹 검색 없이 답합니다」 preamble on every answer would
+    # only be noise about a tool the agent was never meant to have.
+    if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
+        effective_web_search = False
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         if not requested_is_strict:
             candidate_tools = sorted(
@@ -2358,6 +2366,7 @@ async def send_message(
             attachment_ids=payload.attachments,
             # Chat re-assembles below against the model privacy settles on.
             vision=reads_pictures(requested_model),
+            file_budget=file_budget(requested_model),
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
             # Empty focus takes the head of the file.
@@ -2484,6 +2493,7 @@ async def send_message(
                 session,
                 attachment_ids=payload.attachments,
                 vision=reads_pictures(model),
+                file_budget=file_budget(model),
                 activated_skill_ids=payload.activated_skill_ids,
                 starting_template_id=payload.starting_template_id,
                 available_tool_names={tool.name for tool in tools},
@@ -3550,6 +3560,8 @@ async def compare_models(
             user,
             session,
             attachment_ids=payload.attachments,
+            # The smallest window among the compared models decides how much file goes in.
+            file_budget=min(file_budget(m) for m in chosen),
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
             # Comparison exposes no tools.
@@ -3899,9 +3911,7 @@ async def _store_artifacts(
     text was already sitting on screen looking done.
     """
     privacy_masker = (
-        (governance.mask_legacy if legacy_masking else governance.mask)
-        if protect_privacy
-        else None
+        (governance.mask_legacy if legacy_masking else governance.mask) if protect_privacy else None
     )
     artifact_id: str | None = None
     async with SessionLocal() as db:
@@ -4517,8 +4527,43 @@ async def _revise_document(
             return
         kind = artifact.kind
         data = dict(artifact.data)
-        request = str(session.title or "")
         title = artifact.title or ""
+        # The request the document was written from and the files it drew on. A rewrite
+        # given only the title reaches for the pen where the original read the material,
+        # and a table of measured values comes back as a table of plausible ones.
+        turns = (
+            await db.exec(
+                select(Message)
+                .where(Message.session_id == session_id)
+                .order_by(col(Message.created_at))
+            )
+        ).all()
+        asked = [m for m in turns if m.role is Role.user and (m.content or "").strip()]
+        request = str(asked[0].content if asked else session.title or "")
+        file_ids = list(
+            dict.fromkeys(
+                str(a.get("id"))
+                for m in asked
+                for a in (m.attachments or [])
+                if isinstance(a, dict) and a.get("id")
+            )
+        )
+        material: list[str] = []
+        if file_ids:
+            files = (
+                await db.exec(
+                    select(StoredFile).where(
+                        col(StoredFile.id).in_(file_ids), StoredFile.user_id == user_id
+                    )
+                )
+            ).all()
+            budget = file_budget(model)
+            for stored in sorted(files, key=lambda f: file_ids.index(f.id)):
+                if not stored.text or budget <= 0:
+                    continue
+                text = stored.text[:budget]
+                budget -= len(text)
+                material.append(f"## {stored.name}\n{text}")
 
     is_deck = kind is ArtifactKind.deck
     parts = list(data.get("slides") if is_deck else data.get("sections") or [])
@@ -4577,6 +4622,7 @@ async def _revise_document(
                     model=model["id"],
                     api_key=api_key,
                     note=plan.note,
+                    material=material,
                 )
                 parts[index] = written
                 yield chat_service.sse({"type": "slide", "slide": written, "done": True})
@@ -4590,6 +4636,7 @@ async def _revise_document(
                     api_key=api_key,
                     note=plan.note,
                     sources=list(data.get("sources") or []),
+                    material=material,
                 )
                 if not body.strip():
                     raise ValueError("빈 결과")

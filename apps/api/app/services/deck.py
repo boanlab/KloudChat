@@ -1023,8 +1023,7 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight.
-    """
+    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight."""
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
@@ -1321,8 +1320,7 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps.
-    """
+    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps."""
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
@@ -1929,9 +1927,11 @@ async def rewrite_slide(
     model: str,
     api_key: str,
     note: str = "",
+    material: list[str] | None = None,
 ) -> tuple[dict, dict]:
     """Rewrites one slide with the rest of the deck as context. Returns `(slide, usage)`; same shape
-    as the report's.
+    as the report's. `material` is the request's own data, carried again so the numbers come
+    from where the original did.
     """
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
@@ -1954,10 +1954,15 @@ async def rewrite_slide(
     )
     if note.strip():
         # Labelled, or it reads as part of the request.
-        prompt +=f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
-        model, build_document_messages(SessionKind.slides, prompt, request=request), api_key, 600
+        model,
+        build_document_messages(
+            SessionKind.slides, prompt, request=request, untrusted_context=material
+        ),
+        api_key,
+        600,
     )
     parsed = _json_object(text)
     bullets = _clean_bullets(parsed.get("bullets"))
