@@ -7,27 +7,23 @@
  * 표본과 문항은 문서의 신뢰를 정하는 값이므로 각주가 아니라 표지에 세운다.
  * 기본 조판의 표지 목록을 그대로 쓰되 눈에 들어오게 키운다. */
 
-.page { font-size: 0.96rem; }
 
 .cover { min-height: 0; padding: 0 0 1rem; margin: 0 0 1.7rem; }
-.cover h1 { font-size: 1.55rem; }
 .cover dl {
   max-width: none;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 0.9rem 1.4rem;
   padding-top: 0.9rem;
   border-top: 1px solid var(--hair);
-  font-size: 0.9rem;
-}
-.cover dt { font-size: 0.76rem; letter-spacing: 0.06em; }
-.cover dd { font-weight: 650; font-size: 1.05rem; }
+  }
+.cover dt { letter-spacing: 0.06em; }
+.cover dd { font-weight: 650; }
 
-h2 { font-size: 1.06rem; }
-h3 { font-size: 0.98rem; margin-top: 1.4rem; }
+h3 { margin-top: 1.4rem; }
 
 /* 표. 이 문서에서 가장 자주 읽히는 요소이므로 조판이 여기에 쓰인다. */
-table { font-size: 0.85rem; line-height: 1.45; margin: 0.9rem 0 1rem; }
-th { padding: 0.35em 0.6em 0.35em 0; font-size: 0.78rem; }
+table { line-height: 1.45; margin: 0.9rem 0 1rem; }
+th { padding: 0.35em 0.6em 0.35em 0; }
 td { padding: 0.32em 0.6em 0.32em 0; }
 table tbody tr:nth-child(odd) td {
   background: var(--wash);
@@ -42,7 +38,7 @@ table td:not(:first-child), table th:not(:first-child) {
 }
 
 /* 백분율과 표본 수가 한 칸에 같이 오는 표가 많다. 괄호 안은 눌러 둔다. */
-table td small { display: inline; font-size: 0.86em; }
+table td small { display: inline; }
 
 @media print {
   .cover { min-height: 0; padding: 0 0 1rem; page-break-after: auto; break-after: auto; }

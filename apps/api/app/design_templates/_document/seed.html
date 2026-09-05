@@ -87,8 +87,8 @@
     background: var(--wash);
     color: var(--ink);
     font-family: var(--font-body);
-    font-size: 1rem;
-    line-height: 1.78;
+    font-size: var(--doc-body);
+    line-height: var(--doc-leading-body);
     -webkit-font-smoothing: antialiased;
   }
   /* Korean breaks between syllables unless it is told not to, which puts the
@@ -121,9 +121,9 @@
   .cover h1 {
     margin: 0 0 0.9rem;
     max-width: 22ch;
-    font-size: clamp(1.9rem, 4vw, 2.7rem);
+    font-size: var(--doc-title);
     font-weight: 650;
-    line-height: 1.2;
+    line-height: var(--doc-leading-title);
     letter-spacing: -0.02em;
     text-wrap: balance;
   }
@@ -133,7 +133,7 @@
     margin: 0 0 2.6rem;
     max-width: 52ch;
     color: var(--muted);
-    font-size: 1.02rem;
+    font-size: var(--doc-lead);
     line-height: 1.65;
   }
   /* 목적 · 독자 · 기간 · 작성. Two columns, because a reader scans the left
@@ -144,7 +144,7 @@
     gap: 0.4rem 1.2rem;
     margin: 0;
     max-width: 30rem;
-    font-size: 0.88rem;
+    font-size: var(--doc-small);
     line-height: 1.6;
   }
   .cover dt { color: var(--muted); font-weight: 600; }
@@ -218,21 +218,21 @@
   section > * { min-width: 0; }
   h2 {
     margin: 0 0 0.9rem;
-    font-size: 1.3rem;
+    font-size: var(--doc-h1);
     font-weight: 650;
-    line-height: 1.35;
+    line-height: var(--doc-leading-heading);
     letter-spacing: -0.01em;
     text-wrap: balance;
   }
   /* The section number is inline, in the accent, and smaller than the words it
      numbers — a label, not a headline. No box and no bar: an accent bar down
      the left of every heading is the default this template exists without. */
+  h2 { counter-increment: sec; }
   h2::before {
-    counter-increment: sec;
     content: counter(sec) ".";
     margin-right: 0.5rem;
     color: var(--accent);
-    font-size: 0.95rem;
+    font-size: var(--doc-sectionNumber);
     font-weight: 650;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
@@ -241,22 +241,20 @@
      as a caption somebody left behind. */
   h3 {
     margin: 1.7rem 0 0.4rem;
-    font-size: 1.12rem;
+    font-size: var(--doc-h2);
     font-weight: 650;
     color: var(--ink);
-    text-wrap: balance;
-  }
+    text-wrap: balance; line-height: var(--doc-leading-heading); }
   /* One step under `h3`, and the last one. The editor's heading picker offers
      it and the sanitiser now keeps it, so it needs a rule of its own — without
      one it lands at the browser's `h4`, which is smaller than the paragraph
      under it and reads as a mistake. */
   h4 {
     margin: 1.2rem 0 0.3rem;
-    font-size: 1rem;
+    font-size: var(--doc-h3);
     font-weight: 650;
     color: var(--ink);
-    text-wrap: balance;
-  }
+    text-wrap: balance; line-height: var(--doc-leading-heading); }
   /* Not justified. Korean with `keep-all` breaks at spaces, so justifying
      stretches the few spaces a line has into rivers down the page. */
   p { margin: 0 0 0.95rem; text-wrap: pretty; }
@@ -273,15 +271,15 @@
     width: 100%;
     border-collapse: collapse;
     margin: 1.1rem 0 1.2rem;
-    font-size: 0.95rem;
-    line-height: 1.55;
+    font-size: var(--doc-table);
+    line-height: var(--doc-leading-table);
   }
   th {
     padding: 0.4em 0.7em 0.4em 0;
     border-bottom: 2px solid var(--rule);
     color: var(--muted);
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--doc-small);
     letter-spacing: 0.04em;
     text-align: left;
   }
@@ -299,7 +297,7 @@
      the thing it explains. Here it also decides which column it lives in. */
   small, figcaption, dd {
     color: var(--muted);
-    font-size: 0.84em;
+    font-size: var(--doc-small);
     line-height: 1.55;
     font-style: normal;
     max-width: 54ch;
@@ -425,12 +423,12 @@
   .kpi > div { flex: 1 1 0; min-width: 5.5rem; text-align: center; }
   .kpi strong {
     display: block; font-family: var(--font-num);
-    font-size: 1.55rem; line-height: 1.15; color: var(--accent);
+    font-size: var(--doc-kpi); line-height: 1.15; color: var(--accent);
     font-variant-numeric: tabular-nums;
   }
   .kpi span {
     display: block; margin-top: 0.2rem;
-    font-size: 0.72rem; color: var(--muted); letter-spacing: 0.01em;
+    font-size: var(--doc-kpiLabel); color: var(--muted); letter-spacing: 0.01em;
   }
   /* 카드 격자. `report_export._cards`가 같은 블록을 세 파일 형식에서 두 단
      표로 그린다. 읽는 사람이 훑는 대목 — 산출물 옆에 목표, 이해관계자 옆에

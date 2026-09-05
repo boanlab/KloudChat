@@ -9,9 +9,7 @@
  * 않으면 큰 수가 작아 보인다. */
 
 .cover { min-height: 0; padding: 0 0 1.1rem; margin: 0 0 1.8rem; }
-.cover h1 { font-size: 1.62rem; }
 
-h2 { font-size: 1.14rem; }
 
 /* 견주기 표. 줄무늬는 눈이 한 줄을 가로로 따라가게 하는 장치다. */
 table tbody tr:nth-child(even) td {

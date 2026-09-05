@@ -12,7 +12,6 @@ import {
   Loader2,
   RefreshCw,
   Paperclip,
-  Palette,
   Pencil,
   Plug,
   FileType2,
@@ -22,7 +21,9 @@ import {
   Sparkles,
   TriangleAlert,
   X,
+  ChevronDown,
 } from 'lucide-react'
+import { docVariables } from '@/components/report/docType'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -47,6 +48,41 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+
+/** The document looks in the order the picker shows them. */
+const DOC_LOOKS: { id: 'editorial' | 'poster' | 'minimal'; label: string; why: string }[] = [
+  { id: 'editorial', label: '편집형', why: '제목 밑줄과 번호 붙은 절, 선명한 절 구분' },
+  { id: 'poster', label: '매거진형', why: '색면 표지 띠와 강조색 절 제목' },
+  { id: 'minimal', label: '미니멀', why: '먹색 제목과 회색 절 제목, 넓은 여백' },
+]
+
+/** Accent colours by name; the same nine the slide picker offers. */
+const DOC_ACCENTS: [string, string][] = [
+  ['#1e3a8a', '남색'], ['#1f6feb', '파랑'], ['#0f766e', '청록'], ['#15803d', '초록'],
+  ['#5b5bd6', '보라'], ['#a21caf', '자주'], ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹'],
+]
+
+/** A thumbnail of a document look: the first page, title and two sections. */
+function DocLookSwatch({ look, accent, size = 1 }: { look: string; accent: string; size?: number }) {
+  const w = 22 * size
+  const h = 28 * size
+  const ink = '#1a1a1a'
+  const line = (top: number, width: number, height: number, color: string, left = w * 0.14) => (
+    <span className="absolute" style={{ left, top, width, height, background: color }} />
+  )
+  return (
+    <span className="relative block shrink-0 overflow-hidden rounded-[2px] bg-white ring-1 ring-black/15" style={{ width: w, height: h }} aria-hidden>
+      {look === 'poster' && <span className="absolute inset-x-0 top-0" style={{ height: h * 0.3, background: accent }} />}
+      {line(h * (look === 'poster' ? 0.1 : 0.12), w * 0.5, 2 * size, look === 'poster' ? '#fff' : ink)}
+      {look === 'editorial' && line(h * 0.24, w * 0.72, 1 * size, accent)}
+      {line(h * 0.42, w * 0.34, 1.5 * size, look === 'minimal' ? '#666' : look === 'poster' ? accent : ink)}
+      {line(h * 0.52, w * 0.72, 1 * size, '#9a9a9a')}
+      {line(h * 0.6, w * 0.66, 1 * size, '#9a9a9a')}
+      {line(h * 0.74, w * 0.34, 1.5 * size, look === 'minimal' ? '#666' : look === 'poster' ? accent : ink)}
+      {line(h * 0.84, w * 0.72, 1 * size, '#9a9a9a')}
+    </span>
+  )
+}
 
 /** Inserts a picture into one section; the server appends a Markdown image line. */
 function AddSectionImage({ report }: { report: ReportArtifact }) {
@@ -1461,44 +1497,50 @@ export function ReportPanel({
             </RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('인상')}>
-              {([
-                ['editorial', '편집형', '선명한 절 구분'],
-                ['poster', '매거진형', '색면 표지와 큰 제목'],
-                ['minimal', '미니멀', '작은 제목과 넓은 여백'],
-              ] as const).map(([value, label, why]) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  disabled={templateSaving}
-                  aria-pressed={visualStyle === value}
-                  title={t(why)}
-                  onClick={() => void afterSaving(() => chooseVisualStyle(value))}
-                >
-                  {t(label)}
-                </Button>
-              ))}
-            </RibbonGroup>
-          )}
-          {ribbon === 'home' && (
-            <RibbonGroup label={t('색')}><Dropdown
+            <RibbonGroup label={t('디자인')}><Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('보고서 색 고르기')}>
-                  <Palette size={13} />
-                  <span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: documentAccent }} />
+                <Button size="sm" disabled={templateSaving} aria-label={t('문서 디자인 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
+                  <DocLookSwatch look={visualStyle} accent={documentAccent} />
+                  {t(DOC_LOOKS.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
+                  <ChevronDown size={13} className="text-muted" />
                 </Button>
               )}
             >
-              <MenuLabel>{t('색 구성')}</MenuLabel>
-              {([
-                ['#5b5bd6', '보라'], ['#1f6feb', '파랑'], ['#0f766e', '청록'],
-                ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹색'],
-              ] as const).map(([colour, label]) => (
-                <MenuItem key={colour} icon={<span className="size-3 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={documentAccent.toLowerCase() === colour} onClick={() => void chooseDocumentAccent(colour)}>{t(label)}</MenuItem>
+              <MenuLabel>{t('같은 내용, 다른 인상')}</MenuLabel>
+              {DOC_LOOKS.map(({ id, label, why }) => (
+                <MenuItem
+                  key={id}
+                  icon={<DocLookSwatch look={id} accent={documentAccent} size={1.3} />}
+                  checked={visualStyle === id}
+                  hint={t(why)}
+                  onClick={() => void afterSaving(() => chooseVisualStyle(id))}
+                >
+                  {t(label)}
+                </MenuItem>
               ))}
             </Dropdown></RibbonGroup>
           )}
-          {ribbon === 'home' && view === 'page' && (
+          {ribbon === 'home' && (
+            <RibbonGroup label={t('강조색')}><Dropdown
+              trigger={() => (
+                <Button size="sm" disabled={templateSaving} aria-label={t('강조색 고르기')} title={t('제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색')}>
+                  <span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: documentAccent }} />
+                  {t(DOC_ACCENTS.find(([colour]) => colour.toLowerCase() === documentAccent.toLowerCase())?.[1] ?? '직접 고른 색')}
+                  <ChevronDown size={13} className="text-muted" />
+                </Button>
+              )}
+            >
+              <MenuLabel>{t('제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색')}</MenuLabel>
+              {DOC_ACCENTS.map(([colour, label]) => (
+                <MenuItem key={colour} icon={<span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={documentAccent.toLowerCase() === colour} onClick={() => void chooseDocumentAccent(colour)}>{t(label)}</MenuItem>
+              ))}
+              <label className="mt-1 flex cursor-pointer items-center gap-2 border-t border-line px-3 py-2 text-sm text-fg hover:bg-elevated">
+                <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
+                {t('직접 고르기')}
+              </label>
+            </Dropdown></RibbonGroup>
+          )}
+          {ribbon === 'home' && (
             <RibbonGroup label={t('양식')}><Dropdown
               trigger={() => (
                 <Button size="sm" variant="secondary" disabled={templateSaving} onClick={() => void afterSaving(() => {})}>
@@ -1599,7 +1641,7 @@ export function ReportPanel({
               {t('인쇄')}
             </MenuItem>
           </Dropdown></RibbonGroup>}
-          {editing && <RibbonGroup label={t('저장')}>
+          {ribbon === 'edit' && editing && <RibbonGroup label={t('저장')}>
             <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
               <X size={13} />{t('취소')}
             </Button>
@@ -1607,7 +1649,7 @@ export function ReportPanel({
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
             </Button>
           </RibbonGroup>}
-          {view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && <RibbonGroup label={t('저장')}>
+          {ribbon === 'edit' && view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && <RibbonGroup label={t('저장')}>
             <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
               {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
               {t('저장')}
@@ -1771,13 +1813,13 @@ export function ReportPanel({
               )}
             </div>
           ) : (
-          <article className="mx-auto max-w-2xl px-6 py-6">
-            <h1 className="mb-6 text-2xl font-semibold tracking-tight">{report.title}</h1>
+          <article className="doc-web mx-auto max-w-2xl px-6 py-6" style={docVariables() as React.CSSProperties}>
+            <h1 className="mb-6 font-semibold tracking-tight">{report.title}</h1>
             {report.sections.map((s, sectionIndex) => (
               <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4">
                 <div className="group/sec mb-2 flex items-center gap-2">
                   <h2
-                    className={cn('text-lg font-semibold', s.status === 'pending' && 'text-faint')}
+                    className={cn('font-semibold', s.status === 'pending' && 'text-faint')}
                   >
                     {s.heading}
                   </h2>

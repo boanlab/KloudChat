@@ -29,7 +29,7 @@ from reportlab.platypus import (
 from reportlab.platypus import Image as RLImage
 
 from app.services import charts as chartkit
-from app.services import design, fonts, pictures, richtext
+from app.services import design, doc_type, fonts, pictures, richtext
 
 log = logging.getLogger(__name__)
 
@@ -625,6 +625,36 @@ def _update_fields_on_open(document) -> None:
         settings_element.append(flag)
 
 
+def _docx_type_scale(document) -> None:
+    """Word's built-in styles at the document scale, so the file matches the page view.
+
+    Only on a plain document: a 서식's own Word file keeps its styles.
+    """
+    from docx.shared import Pt
+
+    sizes = {
+        "Title": ("title", True),
+        "Heading 1": ("h1", True),
+        "Heading 2": ("h2", True),
+        "Heading 3": ("h3", True),
+        "Normal": ("body", False),
+        "Body Text": ("body", False),
+        "List Bullet": ("body", False),
+        "List Number": ("body", False),
+        "Caption": ("caption", False),
+    }
+    for name, (key, bold) in sizes.items():
+        try:
+            style = document.styles[name]
+        except KeyError:
+            continue
+        style.font.size = Pt(doc_type.TYPE[key])
+        if bold:
+            style.font.bold = True
+        if key == "body":
+            style.paragraph_format.line_spacing = doc_type.LEADING["body"]
+
+
 def _korean_fonts(document) -> None:
     """맑은 고딕 for Hangul and Calibri for Latin on the default styles; python-docx names no East Asian font."""
     from docx.oxml.ns import qn
@@ -635,6 +665,10 @@ def _korean_fonts(document) -> None:
         except KeyError:
             continue
         style.font.name = "Calibri"
+        # Headings inherit a blue theme colour from Word's defaults; the accent or ink
+        # is set per heading, so the style itself goes neutral.
+        if name.startswith("Heading") or name == "Title":
+            style.font.color.rgb = None
         rpr = style.element.get_or_add_rPr()
         fonts = rpr.find(qn("w:rFonts"))
         if fonts is None:
@@ -661,6 +695,30 @@ def _table_of_contents(document) -> None:
     # No page break after it: an unexpanded field would leave the first page empty.
 
 
+def _docx_cell_margins(table, vertical_pt: float = 3.0, horizontal_pt: float = 6.0) -> None:
+    """Room between a cell's border and its text; Word's default is a hair."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    properties = table._tbl.tblPr
+    margins = properties.find(qn("w:tblCellMar"))
+    if margins is None:
+        margins = OxmlElement("w:tblCellMar")
+        properties.append(margins)
+    for side, points in (
+        ("top", vertical_pt),
+        ("bottom", vertical_pt),
+        ("left", horizontal_pt),
+        ("right", horizontal_pt),
+    ):
+        node = margins.find(qn(f"w:{side}"))
+        if node is None:
+            node = OxmlElement(f"w:{side}")
+            margins.append(node)
+        node.set(qn("w:w"), str(int(points * 20)))
+        node.set(qn("w:type"), "dxa")
+
+
 def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "") -> None:
     """A real Word table, head row emphasised, merges merged.
 
@@ -679,6 +737,7 @@ def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "
     width = grid.width
     table = document.add_table(rows=len(grid.rows), cols=width)
     table.style = "Table Grid"
+    _docx_cell_margins(table)
 
     covered: set[tuple[int, int]] = set()
     for r, row in enumerate(grid.rows):
@@ -701,6 +760,10 @@ def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "
             cell.text = lines[0]
             for extra in lines[1:]:
                 cell.add_paragraph(extra)
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_after = Pt(0)
+                for run in paragraph.runs:
+                    run.font.size = Pt(doc_type.TYPE["table"])
             if r == 0:
                 if accent:
                     properties = cell._tc.get_or_add_tcPr()
@@ -929,12 +992,12 @@ def _docx_kpi(document, figures: list[tuple[str, str]]) -> None:
         top.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = top.add_run(value)
         run.bold = True
-        run.font.size = Pt(20)
+        run.font.size = Pt(doc_type.TYPE["kpi"])
 
         bottom = table.cell(1, column).paragraphs[0]
         bottom.alignment = WD_ALIGN_PARAGRAPH.CENTER
         note = bottom.add_run(label)
-        note.font.size = Pt(9)
+        note.font.size = Pt(doc_type.TYPE["kpiLabel"])
         note.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
     document.add_paragraph().paragraph_format.space_after = Pt(4)
 
@@ -1086,11 +1149,11 @@ def to_docx(
 
         for run in paragraph.runs:
             if visual_style == "poster":
-                run.font.size = Pt(28 if level == 0 else 17)
+                run.font.size = Pt(doc_type.TYPE["title" if level == 0 else "h1"])
                 run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF) if level == 0 else accent
                 run.font.bold = True
             else:
-                run.font.size = Pt(20 if level == 0 else 11)
+                run.font.size = Pt(doc_type.TYPE["title" if level == 0 else "h1"])
                 run.font.color.rgb = (
                     RGBColor(0x1A, 0x1A, 0x1A) if level == 0 else RGBColor(0x66, 0x66, 0x66)
                 )
@@ -1107,6 +1170,7 @@ def to_docx(
         _update_fields_on_open(document)
     if document_is_plain:
         _korean_fonts(document)
+        _docx_type_scale(document)
 
     footnotes = _Footnotes()
     #: Charts are numbered across the document; each is its own part.
@@ -1440,16 +1504,16 @@ def _pdf_kpi(figures: list[tuple[str, str]], styles: dict, style: dict | None) -
     big = ParagraphStyle(
         "kpiValue",
         parent=styles["body"],
-        fontSize=18,
-        leading=22,
+        fontSize=doc_type.TYPE["kpi"],
+        leading=doc_type.TYPE["kpi"] * 1.2,
         alignment=TA_CENTER,
         textColor=accent,
     )
     small = ParagraphStyle(
         "kpiLabel",
         parent=styles["body"],
-        fontSize=8.5,
-        leading=11,
+        fontSize=doc_type.TYPE["kpiLabel"],
+        leading=doc_type.TYPE["kpiLabel"] * 1.3,
         alignment=TA_CENTER,
         textColor=muted,
     )
@@ -1556,70 +1620,80 @@ def to_pdf(
     tokens: dict[str, str] | None = None,
     page_settings: dict | None = None,
 ) -> bytes:
-    # Embedded Korean face — see services/fonts.py. Serif is the default for print.
+    # Embedded Korean face — see services/fonts.py. Gothic unless the design says serif,
+    # as on the page view; the sizes are the document scale every renderer reads.
     style = design.normalise_tokens(tokens) if tokens else None
-    korean = fonts.korean(style["font"] if style else "serif")
+    korean = fonts.korean(style["font"] if style else "gothic")
+    bold_face = fonts.korean(style["font"] if style else "gothic", bold=True)
+    T, L = doc_type.TYPE, doc_type.LEADING
     # Without a design system the headings stay black.
     heading_colour = {"textColor": HexColor(style["accent"])} if style else {}
 
     visual_style = (style or {}).get("visualStyle") or "editorial"
     accent_colour = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
     base = getSampleStyleSheet()
+    title_size, h1_size = T["title"], T["h1"]
     title_options = (
         {
-            "fontSize": 26,
-            "leading": 34,
+            "fontSize": title_size,
+            "leading": title_size * L["title"],
             "textColor": HexColor("#ffffff"),
             "backColor": accent_colour,
             "borderPadding": 18,
         }
         if visual_style == "poster"
         else {
-            "fontSize": 18,
-            "leading": 24,
+            "fontSize": title_size,
+            "leading": title_size * L["title"],
             "textColor": HexColor(style["ink"] if style else "#1a1a1a"),
         }
         if visual_style == "minimal"
-        else {"fontSize": 20, "leading": 26, **heading_colour}
+        else {"fontSize": title_size, "leading": title_size * L["title"], **heading_colour}
     )
     h1_options = (
         {
-            "fontSize": 18,
-            "leading": 23,
+            "fontSize": h1_size,
+            "leading": h1_size * L["heading"],
             "textColor": accent_colour,
             "spaceBefore": 18,
             "spaceAfter": 9,
         }
         if visual_style == "poster"
         else {
-            "fontSize": 11,
-            "leading": 16,
+            "fontSize": h1_size,
+            "leading": h1_size * L["heading"],
             "textColor": HexColor(style["muted"] if style else "#666666"),
             "spaceBefore": 16,
             "spaceAfter": 5,
         }
         if visual_style == "minimal"
-        else {"fontSize": 14, "leading": 20, "spaceBefore": 14, "spaceAfter": 6, **heading_colour}
+        else {
+            "fontSize": h1_size,
+            "leading": h1_size * L["heading"],
+            "spaceBefore": 14,
+            "spaceAfter": 6,
+            **heading_colour,
+        }
     )
     styles = {
         "title": ParagraphStyle(
             "t",
             parent=base["Title"],
-            fontName=korean,
+            fontName=bold_face,
             **title_options,
         ),
         "h1": ParagraphStyle(
             "h1",
             parent=base["Heading1"],
-            fontName=korean,
+            fontName=bold_face,
             **h1_options,
         ),
         "h2": ParagraphStyle(
             "h2",
             parent=base["Heading2"],
-            fontName=korean,
-            fontSize=12,
-            leading=17,
+            fontName=bold_face,
+            fontSize=T["h2"],
+            leading=T["h2"] * L["heading"],
             spaceBefore=10,
             spaceAfter=4,
         ),
@@ -1629,8 +1703,8 @@ def to_pdf(
             "b",
             parent=base["BodyText"],
             fontName=korean,
-            fontSize=10.5,
-            leading=17,
+            fontSize=T["body"],
+            leading=T["body"] * L["body"],
             alignment=TA_LEFT,
             spaceAfter=6,
         ),
@@ -1638,8 +1712,8 @@ def to_pdf(
             "li",
             parent=base["BodyText"],
             fontName=korean,
-            fontSize=10.5,
-            leading=17,
+            fontSize=T["body"],
+            leading=T["body"] * L["body"],
             leftIndent=10 * mm,
             bulletIndent=4 * mm,
             spaceAfter=3,
@@ -1649,8 +1723,8 @@ def to_pdf(
             "note",
             parent=base["BodyText"],
             fontName=korean,
-            fontSize=8.5,
-            leading=12,
+            fontSize=T["note"],
+            leading=T["note"] * L["note"],
             textColor=HexColor(style["muted"]) if style else HexColor("#666666"),
             leftIndent=6 * mm,
             firstLineIndent=-6 * mm,
@@ -1661,8 +1735,8 @@ def to_pdf(
             "cap",
             parent=base["BodyText"],
             fontName=korean,
-            fontSize=9,
-            leading=13,
+            fontSize=T["caption"],
+            leading=T["caption"] * L["note"],
             alignment=TA_CENTER,
             textColor=HexColor(style["muted"]) if style else HexColor("#666666"),
             spaceBefore=2,
@@ -1713,6 +1787,7 @@ def to_pdf(
                 continue
             if kind == "kpi":
                 if strip := _pdf_kpi(text, styles, style):
+                    strip = KeepTogether(strip)
                     story.append(Spacer(1, 3 * mm))
                     story.append(strip)
                     story.append(Spacer(1, 4 * mm))
@@ -1996,13 +2071,13 @@ _HWPX_CELL_MARGIN = 141
 
 #: `charPr@height` is in 1/100 pt.
 _HWPX_CHAR_SHAPES = (
-    # (id, height, bold)
-    (0, 1000, False),  # body
-    (1, 1000, True),  # body, bold
-    (2, 1600, True),  # document title
-    (3, 1300, True),  # section heading  (h1)
-    (4, 1100, True),  # sub-heading      (h2)
-    (5, 850, False),  # footnote — smaller than the prose, and not bold
+    # (id, height in 1/100 pt, bold) — the document scale, as the page view and the .docx.
+    (0, doc_type.hwp("body"), False),  # body
+    (1, doc_type.hwp("body"), True),  # body, bold
+    (2, doc_type.hwp("title"), True),  # document title
+    (3, doc_type.hwp("h1"), True),  # section heading  (h1)
+    (4, doc_type.hwp("h2"), True),  # sub-heading      (h2)
+    (5, doc_type.hwp("note"), False),  # footnote — smaller than the prose, and not bold
 )
 
 #: (id, horizontal align, left indent, space-before, space-after) in HWPUNIT

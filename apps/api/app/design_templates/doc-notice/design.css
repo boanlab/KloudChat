@@ -19,7 +19,6 @@
   max-width: none;
   margin: 0 0 0.8rem;
   padding-bottom: 0.8rem;
-  font-size: 1.72rem;
   font-weight: 700;
   letter-spacing: 0.22em;
   /* 이중선. `border-style: double` 은 3px 이상이라야 두 줄로 그려진다. */
@@ -31,7 +30,7 @@
 .cover dl { text-align: left; max-width: 26rem; }
 
 /* 계단 첫 칸: 1. */
-h2 { font-size: 1.06rem; font-weight: 700; margin-bottom: 0.6rem; }
+h2 { font-weight: 700; margin-bottom: 0.6rem; }
 h2::before { color: var(--ink); }
 section { margin-bottom: 1.9rem; }
 section > p, section > ul, section > ol, section > table { margin-left: 1.3rem; }
@@ -47,7 +46,6 @@ section > p, section > ul, section > ol, section > table { margin-left: 1.3rem; 
 section { counter-reset: note step2; }
 h3 {
   margin-left: 1.3rem;
-  font-size: 1rem;
   font-weight: 650;
 }
 h3::before {

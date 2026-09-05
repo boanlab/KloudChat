@@ -11,12 +11,10 @@
 .page { line-height: 1.6; }
 
 .cover { min-height: 0; padding: 0 0 1rem; margin: 0 0 1.8rem; }
-.cover h1 { font-size: 1.5rem; }
 .cover::after { height: 1px; }
 
 /* 표지가 아니라 표지판. */
 h2 {
-  font-size: 0.86rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   color: var(--muted);
@@ -24,11 +22,11 @@ h2 {
   padding-bottom: 0.35rem;
   border-bottom: 1px solid var(--hair);
 }
-h2::before { color: var(--accent); font-size: 0.86rem; }
-h3 { font-size: 1rem; margin-top: 1.3rem; }
+h2::before { color: var(--accent); }
+h3 { margin-top: 1.3rem; }
 
 /* 측정값. 머리와 몸이 같은 규칙으로 정렬되어야 열이 선다. */
-table { font-size: 0.9rem; font-variant-numeric: tabular-nums lining-nums; }
+table { font-variant-numeric: tabular-nums lining-nums; }
 table th:not(:first-child),
 table td:not(:first-child) {
   text-align: right;
