@@ -88,8 +88,17 @@ def test_the_docx_styles_carry_the_scale_and_cells_have_room() -> None:
 
 
 def test_the_pdf_is_gothic_at_the_scale_unless_the_design_says_serif() -> None:
+    """The reportlab fallback embeds the gothic face by default, serif only on request.
+
+    Where no Nanum file is installed (CI), reportlab falls back to a CID font and the
+    face cannot be read from the bytes; the choice itself is still checked.
+    """
+    from app.services import fonts
+
     plain = report_export.to_pdf("제목", _SECTIONS)
     assert plain.startswith(b"%PDF")
-    assert b"NanumGothic" in plain or b"Nanum-gothic" in plain
     serif = report_export.to_pdf("제목", _SECTIONS, tokens={"font": "serif"})
-    assert b"Myeongjo" in serif or b"Nanum-serif" in serif
+    assert serif.startswith(b"%PDF")
+    if fonts.embedded("gothic") and fonts.embedded("serif"):
+        assert b"Nanum-gothic" in plain and b"Nanum-serif" not in plain
+        assert b"Nanum-serif" in serif

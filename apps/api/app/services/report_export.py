@@ -628,7 +628,7 @@ def _update_fields_on_open(document) -> None:
 def _docx_type_scale(document) -> None:
     """Word's built-in styles at the document scale, so the file matches the page view.
 
-    Only on a plain document: a 서식's own Word file keeps its styles.
+    A 서식's own Word file keeps its faces and colours; only the sizes are set here.
     """
     from docx.shared import Pt
 
@@ -1173,7 +1173,9 @@ def to_docx(
         _update_fields_on_open(document)
     if document_is_plain:
         _korean_fonts(document)
-        _docx_type_scale(document)
+    # A 서식's own Word file keeps its faces and colours; the sizes are the document
+    # scale either way, so the file reads at the size the page view showed.
+    _docx_type_scale(document)
 
     footnotes = _Footnotes()
     #: Charts are numbered across the document; each is its own part.
