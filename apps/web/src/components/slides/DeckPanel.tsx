@@ -137,6 +137,8 @@ const COVERS: Slide['layout'][] = ['title', 'section', 'closing']
 
 // Korean line breaking, inherited from each slide root; `_deck/seed.html` matches.
 const KOREAN_WRAP = { wordBreak: 'keep-all', overflowWrap: 'break-word' } as const
+/** Titles wrap with even lines, so the last line is never one stranded word. */
+const BALANCED = { ...KOREAN_WRAP, textWrap: 'balance' } as const
 
 type VisualStyle = 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
 
@@ -553,7 +555,7 @@ export function SlideView({
           />
         )}
         <h3
-          style={{ fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : visualStyle === 'mono' ? 32 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: visualStyle === 'mono' ? px(-0.5) : undefined }}
+          style={{ ...BALANCED, fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : visualStyle === 'mono' ? 32 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: visualStyle === 'mono' ? px(-0.5) : undefined }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
@@ -633,7 +635,7 @@ export function SlideView({
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <div style={{ width: px(26), height: px(2), background: accent, marginBottom: px(14) }} />
           <p
-            style={{ fontSize: type(26), fontWeight: 750, lineHeight: 1.25, color: accent, maxWidth: '86%' }}
+            style={{ ...BALANCED, fontSize: type(26), fontWeight: 750, lineHeight: 1.25, color: accent, maxWidth: '86%' }}
             {...typed('title', (text) => ({ title: text }))}
             {...selectable('title')}
           >
@@ -1664,7 +1666,7 @@ export function DeckPanel({
   const stage = useStageScale()
   const fit = useFitWidth()
   const [selected, setSelected] = useState(0)
-  const [ribbon, setRibbon] = useState<'home' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
+  const [ribbon, setRibbon] = useState<'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'>('home')
   const [editing, setEditing] = useState(false)
   // Ribbon slot for the edit tools; without it they render in place.
   const [editToolbarSlot, setEditToolbarSlot] = useState<HTMLElement | null>(null)
@@ -1746,6 +1748,11 @@ export function DeckPanel({
   useEffect(() => {
     if (writing) setEditing(false)
   }, [writing])
+
+  // The edit tab has nothing to show once the editor closes; go back to 홈.
+  useEffect(() => {
+    if (!editing && !bulkMode) setRibbon((tab) => (tab === 'edit' ? 'home' : tab))
+  }, [editing, bulkMode])
 
   useEffect(() => {
     setOverflowing(false)
@@ -1879,7 +1886,7 @@ export function DeckPanel({
   const startEditing = async () => {
     if (!slide) return
     setError(null)
-    setRibbon('home')
+    setRibbon('edit')
     const latest = await artifactsApi.get(deck.id).catch(() => null)
     const onServer = (latest?.data as { slides?: Slide[] } | null)?.slides
     if (latest && onServer) {
@@ -2624,21 +2631,20 @@ export function DeckPanel({
         </QuickAccess>
         <ArtifactRibbon
           label={t('슬라이드 메뉴')}
-          tabs={(editing
-            // Review stays while editing: version history lives there.
-            ? [
-                { id: 'home', label: t('편집') },
-                { id: 'review', label: t('검토') },
-                { id: 'file', label: t('파일') },
-              ]
-            : [
-                { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
-                { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
-                { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
-              ]) as Array<{ id: 'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
+          // The same tabs whether or not a slide is being edited: 「편집」 holds the editor.
+          tabs={[
+            { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
+            { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
+            { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
+          ] as Array<{ id: 'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
           active={ribbon}
-          // 「편집」 is a tab like the others: picking it opens the slide editor on the home row.
-          onChange={(tab) => (tab === 'edit' ? void startEditing() : setRibbon(tab))}
+          onChange={(tab) => {
+            if (tab === 'edit' && !editing && !bulkMode) {
+              void startEditing()
+              return
+            }
+            setRibbon(tab)
+          }}
         >
         {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
         {weakSlides.length > 0 && (
@@ -2663,7 +2669,7 @@ export function DeckPanel({
           </Button>
         )}
         </RibbonGroup>}
-        {ribbon === 'home' && (editing || bulkMode) && (
+        {ribbon === 'edit' && (editing || bulkMode) && (
           <RibbonGroup label={t('슬라이드 편집')}>
             <div ref={setEditToolbarSlot} className="flex items-center" />
           </RibbonGroup>
@@ -2903,7 +2909,7 @@ export function DeckPanel({
               </button>
             ))}
             <button
-              onClick={() => { setBulkMode((value) => !value); setBulkSelected(new Set()) }}
+              onClick={() => { const next = !bulkMode; setBulkMode(next); setBulkSelected(new Set()); if (next) setRibbon('edit') }}
               aria-pressed={bulkMode}
               aria-label={t('여러 장 선택')}
               title={t('여러 장 선택')}

@@ -530,7 +530,7 @@ export function ReportPanel({
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [mode, setMode] = useState<PanelMode>('wide')
-  const [ribbon, setRibbon] = useState<'home' | 'insert' | 'layout' | 'review' | 'view' | 'file'>('home')
+  const [ribbon, setRibbon] = useState<'home' | 'edit' | 'insert' | 'layout' | 'review' | 'view' | 'file'>('home')
   const [documentLayout, setDocumentLayout] = useState<'pages' | 'edit'>('pages')
   const [pageSettingsOpen, setPageSettingsOpen] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
@@ -1368,7 +1368,6 @@ export function ReportPanel({
                 setView('page')
                 setDocumentLayout('edit')
                 setPageSettingsOpen(false)
-                return
               }
               setRibbon(tab)
             }}
