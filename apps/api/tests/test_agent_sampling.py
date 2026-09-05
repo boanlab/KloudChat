@@ -181,13 +181,17 @@ async def test_the_router_hands_the_agents_temperature_to_the_loop(monkeypatch) 
     async def title(*_args, **_kwargs):
         return None, {"inputTokens": 0, "outputTokens": 0}
 
-    async def enrich(**_kwargs):
-        return None, None
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**_kwargs):
+        return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", Db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
 
     chunks = [
         chunk

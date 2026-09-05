@@ -3298,7 +3298,30 @@ async def _run_turn(
         routing = {**(routing or {}), "costRouting": cost_routing}
     stored_routing = _mask_text_tree(routing, masker) if protect_persistence else routing
 
+    # Stored and announced before the title call and the message transaction
+    # below, both of which are free of this turn's artifact — so the panel
+    # catches up close to when the closing text does, not well after it.
     new_artifact: str | None = None
+    if stored_content and not failed:
+        new_artifact = await _store_artifacts(
+            user_id=user_id,
+            session_id=session_id,
+            project_id=project_id,
+            content=stored_content,
+            requested_artifacts=ctx.pending_artifacts,
+            protect_privacy=protect_enrichment,
+            legacy_masking=legacy_masking,
+        )
+        if new_artifact:
+            yield chat_service.sse(
+                {
+                    "type": "artifact",
+                    "artifactId": new_artifact,
+                    # Whether the panel should open: only for an artifact that was asked for.
+                    "deliberate": bool(ctx.pending_artifacts),
+                }
+            )
+
     title: str | None = None
     title_credits = 0
     title_model: str | None = None
@@ -3335,6 +3358,7 @@ async def _run_turn(
                     usage={**usage, "credits": credits},
                     model=stored_actual_model,
                     routing=stored_routing,
+                    artifact_ids=[new_artifact] if new_artifact else None,
                     # A partial answer is kept and labelled by who ended it.
                     failure=(
                         TurnFailure.stopped
@@ -3391,6 +3415,8 @@ async def _run_turn(
                     routing_audit.event_metadata = dict(cost_routing or {})
                     db.add(routing_audit)
             session.updated_at = utcnow()
+            if new_artifact:
+                session.artifact_id = new_artifact
             db.add(session)
             if tool_output_findings:
                 db.add(
@@ -3423,10 +3449,12 @@ async def _run_turn(
                 )
             await db.commit()
 
-    # Own transaction, after the answer is durable.
+    # Own transaction, after the answer is durable. The artifact itself was
+    # already stored and announced above; this is only the auto-memory pass,
+    # which needs `answer_id` and is unrelated to what the panel shows.
     memory_step: dict | None = None
     if stored_content and not failed:
-        new_artifact, memory_step = await _enrich(
+        memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,
             content=stored_content,
@@ -3434,7 +3462,6 @@ async def _run_turn(
             api_key=api_key,
             model=model,
             auto_memory=auto_memory,
-            requested_artifacts=ctx.pending_artifacts,
             protect_privacy=protect_enrichment,
             strict_local=strict_local,
             disable_fallbacks=disable_fallbacks,
@@ -3445,15 +3472,6 @@ async def _run_turn(
 
     if memory_step:
         yield chat_service.sse(_step_event(memory_step))
-    if new_artifact:
-        yield chat_service.sse(
-            {
-                "type": "artifact",
-                "artifactId": new_artifact,
-                # Whether the panel should open: only for an artifact that was asked for.
-                "deliberate": bool(ctx.pending_artifacts),
-            }
-        )
     if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
@@ -3862,7 +3880,58 @@ async def choose_variant(
     return MessageOut.of(message)
 
 
-async def _enrich(
+async def _store_artifacts(
+    *,
+    user_id: str,
+    session_id: str,
+    project_id: str,
+    content: str,
+    requested_artifacts: list[dict] | None = None,
+    protect_privacy: bool = False,
+    legacy_masking: bool = False,
+) -> str | None:
+    """Artifacts derived from a finished turn; never raises.
+
+    Its own transaction, committed the moment it is done, and called before
+    the turn's message is even persisted — not after auto-memory, which has
+    nothing to do with what this panel shows. The version this replaced ran
+    both in one pass, so the panel only caught up well after the closing
+    text was already sitting on screen looking done.
+    """
+    privacy_masker = (
+        (governance.mask_legacy if legacy_masking else governance.mask)
+        if protect_privacy
+        else None
+    )
+    artifact_id: str | None = None
+    async with SessionLocal() as db:
+        try:
+            # A `create_artifact` call wins over extraction from the transcript.
+            # Both run: a turn can do each once.
+            requested_id = await artifact_extract.store_requested(
+                db,
+                user_id=user_id,
+                session_id=session_id,
+                project_id=project_id,
+                requests=requested_artifacts or [],
+                masker=privacy_masker,
+            )
+            extracted_id = await artifact_extract.extract(
+                db,
+                user_id=user_id,
+                session_id=session_id,
+                project_id=project_id,
+                content=privacy_masker(content)[0] if privacy_masker else content,
+            )
+            artifact_id = requested_id or extracted_id
+            await db.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("artifact extraction failed for session %s", session_id)
+            return None
+    return artifact_id
+
+
+async def _enrich_memory(
     *,
     user_id: str,
     session_id: str,
@@ -3871,103 +3940,73 @@ async def _enrich(
     api_key: str,
     model: dict,
     auto_memory: bool,
-    requested_artifacts: list[dict] | None = None,
     protect_privacy: bool = False,
     strict_local: bool = False,
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
     legacy_masking: bool = False,
     message_id: str | None = None,
-) -> tuple[str | None, dict | None]:
-    """Artifacts and memories derived from a finished turn; never raises.
+) -> dict | None:
+    """Facts auto-memory pulls from a finished turn; never raises.
 
-    Returns `(new artifact id, memory step)`; the step is also appended to the stored message.
+    Own transaction, after the answer is durable — the memory step is
+    appended to the stored message. Unrelated to the artifact, which is
+    stored separately by `_store_artifacts` before this even starts.
     """
-    artifact_id: str | None = None
+    if not auto_memory:
+        return None
     memory_step: dict | None = None
     async with SessionLocal() as db:
-        session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
-        if session is None or user is None:
-            return None, None
+        if user is None:
+            return None
         privacy_masker = (
             (governance.mask_legacy if legacy_masking else governance.mask)
             if protect_privacy
             else None
         )
         try:
-            # A `create_artifact` call wins over extraction from the transcript.
-            # Both run: a turn can do each once.
-            requested_id = await artifact_extract.store_requested(
+            enrichment = await _enrichment_model(
+                model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
+            )
+            written, spent = await auto_memory_service.extract(
                 db,
-                user_id=user_id,
-                session_id=session_id,
-                project_id=session.project_id,
-                requests=requested_artifacts or [],
+                user,
+                user_message=first_user_message,
+                assistant_message=content,
+                api_key=api_key,
+                model=enrichment["id"],
                 masker=privacy_masker,
+                strict_local=strict_local,
+                disable_fallbacks=disable_fallbacks,
+                redact_logging=redact_logging,
             )
-            extracted_id = await artifact_extract.extract(
-                db,
-                user_id=user_id,
-                session_id=session_id,
-                project_id=session.project_id,
-                content=privacy_masker(content)[0] if privacy_masker else content,
-            )
-            artifact_id = requested_id or extracted_id
-            if artifact_id:
-                session.artifact_id = artifact_id
-                db.add(session)
-                # Also on the message that made it.
+            if written:
+                log.info("auto-memory wrote %d fact(s) for user %s", written, user.id)
+                memory_step = _memory_saved_step(written)
                 message = await db.get(Message, message_id) if message_id else None
                 if message is not None:
-                    message.artifact_ids = [*(message.artifact_ids or []), artifact_id]
+                    message.steps = [*(message.steps or []), memory_step]
                     db.add(message)
+            # Charged whether or not a fact came out.
+            settle(
+                db,
+                user,
+                charge_for_tokens(enrichment, spent["inputTokens"], spent["outputTokens"]),
+                reason="chat.memory",
+                session_id=session_id,
+                model=enrichment["id"],
+            )
         except Exception:  # noqa: BLE001
-            log.exception("artifact extraction failed for session %s", session_id)
-            artifact_id = None
-
-        if auto_memory:
-            try:
-                enrichment = await _enrichment_model(
-                    model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
-                )
-                written, spent = await auto_memory_service.extract(
-                    db,
-                    user,
-                    user_message=first_user_message,
-                    assistant_message=content,
-                    api_key=api_key,
-                    model=enrichment["id"],
-                    masker=privacy_masker,
-                    strict_local=strict_local,
-                    disable_fallbacks=disable_fallbacks,
-                    redact_logging=redact_logging,
-                )
-                if written:
-                    log.info("auto-memory wrote %d fact(s) for user %s", written, user.id)
-                    memory_step = _memory_saved_step(written)
-                    message = await db.get(Message, message_id) if message_id else None
-                    if message is not None:
-                        message.steps = [*(message.steps or []), memory_step]
-                        db.add(message)
-                # Charged whether or not a fact came out.
-                settle(
-                    db,
-                    user,
-                    charge_for_tokens(enrichment, spent["inputTokens"], spent["outputTokens"]),
-                    reason="chat.memory",
-                    session_id=session_id,
-                    model=enrichment["id"],
-                )
-            except Exception:  # noqa: BLE001
-                log.exception("auto-memory failed for session %s", session_id)
+            log.exception("auto-memory failed for session %s", session_id)
+            return None
 
         try:
             await db.commit()
         except Exception:  # noqa: BLE001
-            log.exception("enrichment commit failed for session %s", session_id)
-            return None, None
-    return artifact_id, memory_step
+            log.exception("memory commit failed for session %s", session_id)
+            return None
+    return memory_step
 
 
 async def _audit_policy(

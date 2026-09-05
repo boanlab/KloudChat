@@ -2848,18 +2848,13 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
             return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", ArtifactDb)
-    artifact_id, _memory_step = await sessions_router._enrich(
+    artifact_id = await sessions_router._store_artifacts(
         user_id=user.id,
         session_id=session.id,
+        project_id=session.project_id,
         content="safe assistant reply",
-        first_user_message="safe user request",
-        api_key="key",
-        model={"id": "strict-local/model"},
-        auto_memory=False,
         requested_artifacts=ctx.pending_artifacts,
         protect_privacy=True,
-        strict_local=True,
-        redact_logging=True,
     )
 
     artifacts = [row for row in added if isinstance(row, Artifact)]
@@ -2867,7 +2862,6 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
     stored = artifacts[0]
     encoded = json.dumps({"title": stored.title, "data": stored.data}, ensure_ascii=False)
     assert artifact_id == stored.id
-    assert session.artifact_id == stored.id
     assert sensitive not in encoded
     assert encoded.count("[이메일]") >= 5
     # A detached tree was persisted; the tool context was not mutated afterwards.
@@ -2979,12 +2973,16 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
         async def commit(self):
             return None
 
-    async def enrich(**_kwargs):
-        return None, None
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**_kwargs):
+        return None
 
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
     routing = {
         "requestedModels": ["external/model"],
         "routedModels": ["external/model"],
@@ -3082,13 +3080,16 @@ async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
         async def commit(self):
             return None
 
-    async def enrich(**_kwargs):
-        # `(artifact_id, memory_step)`; neither matters here.
-        return None, None
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**_kwargs):
+        return None
 
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
     routing = {
         "requestedModels": ["external/model"],
         "routedModels": ["external/model"],
@@ -3185,13 +3186,16 @@ async def test_clean_answer_under_the_guard_announces_no_answer_findings(
         async def commit(self):
             return None
 
-    async def enrich(**_kwargs):
-        # `(artifact_id, memory_step)`; neither matters here.
-        return None, None
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**_kwargs):
+        return None
 
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router, "SessionLocal", TurnDb)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
     _ = [
         event
         async for event in sessions_router._run_turn(

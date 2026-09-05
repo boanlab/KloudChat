@@ -815,14 +815,18 @@ async def test_run_turn_emits_only_full_auto_routes_and_persists_savings(monkeyp
         seen["title"] = (model_id, kwargs)
         return None, {"inputTokens": 0, "outputTokens": 0}
 
-    async def enrich(**kwargs):
+    async def store_artifacts(**_kwargs):
+        return None
+
+    async def enrich_memory(**kwargs):
         seen["enrich"] = kwargs
-        return None, None
+        return None
 
     monkeypatch.setattr(sessions_router, "SessionLocal", Db)
     monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
     monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
-    monkeypatch.setattr(sessions_router, "_enrich", enrich)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", store_artifacts)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", enrich_memory)
 
     routing = {
         "requestedModels": ["quality"],
