@@ -4624,6 +4624,7 @@ async def _revise_document(
                     api_key=api_key,
                     note=plan.note,
                     material=material,
+                    typed=instruction,
                 )
                 parts[index] = written
                 yield chat_service.sse({"type": "slide", "slide": written, "done": True})

@@ -2006,10 +2006,12 @@ async def rewrite_slide(
     api_key: str,
     note: str = "",
     material: list[str] | None = None,
+    typed: str = "",
 ) -> tuple[dict, dict]:
     """Rewrites one slide with the rest of the deck as context. Returns `(slide, usage)`; same shape
     as the report's. `material` is the request's own data, carried again so the numbers come
-    from where the original did.
+    from where the original did; `typed` is the instruction as the person wrote it, read for a
+    layout change the planner's paraphrase may have dropped.
     """
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
@@ -2023,7 +2025,7 @@ async def rewrite_slide(
     )
     layout = str(target.get("layout") or "bullets")
     # 「표로 바꿔 줘」 changes the layout, not just the words: write it with the table prompt.
-    if re.search(r"표(로|를|가| 하나)|\btable\b", note or "", re.I):
+    if re.search(r"표(로|를|가| 하나)|\btable\b", f"{note} {typed}", re.I):
         layout = "table"
     template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
@@ -2046,10 +2048,14 @@ async def rewrite_slide(
         600,
     )
     parsed = _json_object(text)
-    rows = _clean_rows(parsed.get("rows")) if layout == "table" else []
+    rows = _clean_rows(parsed.get("rows"))
+    pairs = _clean_pairs(parsed.get(layout), layout) if layout in _PAIRED else []
     bullets = _clean_bullets(parsed.get("bullets"))
     body = str(parsed.get("body") or "").strip()
-    if not bullets and not body and not rows:
+    notes = str(parsed.get("notes") or "").strip()
+    # Whatever the layout's prompt asked for counts as content; a notes-only answer to a
+    # notes-only instruction keeps the slide and changes the notes.
+    if not (rows or pairs or bullets or body or notes):
         raise ValueError("빈 슬라이드")
 
     # Merged, so the slide's id, accent and picture survive.
@@ -2057,6 +2063,11 @@ async def rewrite_slide(
     if rows:
         result["rows"] = rows
         result["layout"] = "table"
+        for field in ("bullets", "body", *_PAIRED):
+            result.pop(field, None)
+        bullets, body = [], ""
+    elif pairs:
+        result[layout] = pairs
         result.pop("bullets", None)
         result.pop("body", None)
         bullets, body = [], ""
@@ -2067,7 +2078,7 @@ async def rewrite_slide(
     if body:
         result["body"] = body
         result.pop("bullets", None)
-    if notes := str(parsed.get("notes") or "").strip():
+    if notes:
         result["notes"] = notes
     # The verdicts belonged to the old text.
     result.pop("factCheck", None)
