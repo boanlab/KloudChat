@@ -546,8 +546,9 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
 _NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
 
 
-#: Waits between retries of a rate-limited call, in seconds.
-_BACKOFF = (2.0, 6.0)
+#: Seconds between retries of a rate-limited call. Four rounds, about forty seconds in
+#: all: long enough to outlast a burst of parallel document turns on one key.
+_BACKOFF = (2.0, 6.0, 12.0, 20.0)
 
 
 async def _complete(

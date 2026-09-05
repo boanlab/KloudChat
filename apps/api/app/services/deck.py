@@ -726,8 +726,9 @@ JSON 객체로만 답하라.
 원래 요청: {request}"""
 
 
-#: Waits between retries of a rate-limited call, in seconds.
-_BACKOFF = (2.0, 6.0)
+#: Seconds between retries of a rate-limited call. Four rounds, about forty seconds in
+#: all: long enough to outlast a burst of parallel document turns on one key.
+_BACKOFF = (2.0, 6.0, 12.0, 20.0)
 
 
 async def _complete(
@@ -1084,7 +1085,10 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: the dividers when there are two or more, else the body slides; up to eight."""
+    """Agenda lines: the dividers when there are two or more, else the body slides.
+
+    At most eight.
+    """
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
@@ -1381,7 +1385,10 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies for an approved outline: one draft call, then per-slide gap calls."""
+    """Writes slide bodies for an approved outline.
+
+    One draft call, then per-slide calls for the gaps it left.
+    """
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
@@ -1483,7 +1490,7 @@ async def _write_slides(
                 "status": "done",
                 "progress": progress,
             }
-            yield {"type": "slide", "slide": slide, "done": True}
+            yield {"type": "slide", "slide": auto_fit(slide), "done": True}
             continue
 
         yield {
@@ -1678,7 +1685,7 @@ async def _write_slides(
             "status": "done",
             "progress": progress,
         }
-        yield {"type": "slide", "slide": slide, "done": True}
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
     yield {"type": "deck", "slides": slides}
     yield {"type": "usage", **usage}
@@ -2015,7 +2022,10 @@ async def rewrite_slide(
         if s.get("id") != target_id
     )
     layout = str(target.get("layout") or "bullets")
-    template = _PROMPTS.get(layout, _BULLETS_PROMPT)
+    # 「표로 바꿔 줘」 changes the layout, not just the words: write it with the table prompt.
+    if re.search(r"표(로|를|가| 하나)|\btable\b", note or "", re.I):
+        layout = "table"
+    template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
         heading=target.get("title") or "",
         outline=outline,
@@ -2036,13 +2046,20 @@ async def rewrite_slide(
         600,
     )
     parsed = _json_object(text)
+    rows = _clean_rows(parsed.get("rows")) if layout == "table" else []
     bullets = _clean_bullets(parsed.get("bullets"))
     body = str(parsed.get("body") or "").strip()
-    if not bullets and not body:
+    if not bullets and not body and not rows:
         raise ValueError("빈 슬라이드")
 
     # Merged, so the slide's id, accent and picture survive.
     result = {**target}
+    if rows:
+        result["rows"] = rows
+        result["layout"] = "table"
+        result.pop("bullets", None)
+        result.pop("body", None)
+        bullets, body = [], ""
     if bullets:
         result["bullets"] = bullets
         # The old body (possibly UNWRITTEN) must not survive beside the rewrite.
@@ -2054,7 +2071,8 @@ async def rewrite_slide(
         result["notes"] = notes
     # The verdicts belonged to the old text.
     result.pop("factCheck", None)
-    return result, usage
+    result.pop("textScale", None)
+    return auto_fit(result), usage
 
 
 #: Every field a slide's content can arrive in. A layout that stores content
@@ -2079,6 +2097,74 @@ def has_content(slide: dict) -> bool:
 def filled(slides: list[dict]) -> list[dict]:
     """The slides that actually have something on them."""
     return [s for s in slides if has_content(s)]
+
+
+#: Vertical room a slide body has, in the units `_load` counts (one bullet line ≈ 1).
+_FIT_CAPACITY = 10.0
+_FIT_FLOOR = 0.65
+
+
+def _lines(text: str, per_line: int) -> int:
+    return max(1, -(-len(str(text or "").strip()) // per_line))
+
+
+def _load(slide: dict) -> float:
+    """How much of a slide's height the content asks for, at `textScale` 1.
+
+    A rough mirror of the preview's `overflowRisk` in `DeckPanel.tsx`, made aware of the
+    layouts that wrap narrow: the agenda's two columns and the two-column list.
+    """
+    layout = str(slide.get("layout") or "bullets")
+    # The heading, its rule and the gap under it; the cover has no body to crowd.
+    title = _lines(slide.get("title") or "", 34) * 1.5 + (0 if layout == "title" else 0.8)
+    bullets = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
+    if layout == "agenda" and len(bullets) > 4:
+        # Two columns of tall rows: each item wraps at ~15 characters and carries its own
+        # padded, ruled row. Calibrated on a seven-item agenda that ran into the footer.
+        body = sum(_lines(b, 15) + 0.8 for b in bullets) / 2
+    elif layout == "agenda":
+        body = sum(_lines(b, 40) + 0.8 for b in bullets)
+    elif layout == "two-column":
+        body = sum(_lines(b, 19) for b in bullets) / 2
+    else:
+        body = float(sum(_lines(b, 38) for b in bullets))
+    if slide.get("body"):
+        body += _lines(slide["body"], 60)
+    rows = slide.get("rows") or []
+    table = len(rows) * 1.35 + (0.5 if any(len(str(c)) > 24 for r in rows for c in r) else 0)
+    pairs = (
+        max(
+            len(slide.get(k) or [])
+            for k in ("metrics", "bands", "tiles", "timeline", "steps", "cards")
+        )
+        * 1.6
+    )
+    chart = slide.get("chart") or {}
+    graph = len(chart.get("categories") or []) * 0.8 + len(chart.get("series") or []) * 0.8
+    return title + body + table + pairs + graph
+
+
+def auto_fit(slide: dict) -> dict:
+    """Sets `textScale` so the slide's text stays above the footer, in place.
+
+    The preview and both exporters read the same field, so a deck looks the same in the
+    panel, the `.pptx` and the `.pdf`. A slide that fits keeps no scale; one that does not
+    is shrunk in steps of 0.05 down to 0.65, below which splitting the slide is the answer.
+    A scale a person set by hand is left alone.
+    """
+    if (
+        slide.get("textScale") not in (None, 1, 1.0)
+        or slide.get("layout") in _STRUCTURAL
+        and slide.get("layout") != "agenda"
+    ):
+        return slide
+    load = _load(slide)
+    if load <= _FIT_CAPACITY:
+        slide.pop("textScale", None)
+        return slide
+    scale = max(_FIT_FLOOR, int(_FIT_CAPACITY / load * 20) / 20)
+    slide["textScale"] = scale
+    return slide
 
 
 def to_markdown(title: str, slides: list[dict]) -> str:
