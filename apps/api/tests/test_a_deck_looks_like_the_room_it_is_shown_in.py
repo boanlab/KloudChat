@@ -35,3 +35,13 @@ def test_the_suggestion_is_a_valid_prompt_label() -> None:
     theme, style = suggest_look("")
     assert theme in _THEMES
     assert style in ("편집형", "포스터형", "미니멀", "다크", "분할형", "따뜻한", "흑백")
+
+
+def test_a_stated_length_sets_a_floor_on_the_slide_count() -> None:
+    from app.services.deck import slides_for_minutes
+
+    assert slides_for_minutes("연구실 세미나 발표, 20분") == 10
+    assert slides_for_minutes("12분 학회 발표") == 6
+    assert slides_for_minutes("3분 라이트닝 토크") is None
+    assert slides_for_minutes("분기 실적 보고") is None
+    assert slides_for_minutes("60분 강의") == 12

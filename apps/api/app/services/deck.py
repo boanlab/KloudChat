@@ -842,6 +842,22 @@ def requested_slides(request: str) -> int | None:
     return max(_MIN_SLIDES, min(asked, _MAX_SLIDES)) if asked > 0 else None
 
 
+def slides_for_minutes(request: str) -> int | None:
+    """The fewest slides a talk of the stated length needs — about one every two minutes,
+    never above the default ceiling. `None` when no length is stated.
+
+    A 20-minute seminar planned as six slides leaves the speaker three minutes a slide;
+    the floor keeps the outline honest about the room's time without dictating the count.
+    """
+    match = re.search(r"(\d{1,3})\s*분(?!기|류|석|산|리|야|할|량|배|담|위|과)", request)
+    if not match:
+        return None
+    minutes = int(match.group(1))
+    if minutes < 4:
+        return None
+    return max(_MIN_SLIDES, min(minutes // 2, _DEFAULT_MAX))
+
+
 def _theme_style(text: str) -> str:
     """The `style` the outline chose, or `""`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
@@ -1805,7 +1821,7 @@ async def write(
                 SessionKind.slides,
                 _OUTLINE_PROMPT.format(
                     ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
-                    lo=wanted or _MIN_SLIDES,
+                    lo=wanted or slides_for_minutes(request) or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
                     theme_rule=(
                         ""
