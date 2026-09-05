@@ -5,52 +5,86 @@
  * exporters (multiplied by 2.4 for their 960x540-point page); a test keeps the two equal,
  * so what fits in the panel fits in the file. Change a number in both.
  */
+/** Points per slide unit: the exporters' 960-point page over this 400-unit panel. */
+export const K = 2.4
+
+/**
+ * Sizes in PowerPoint points. Slide titles are 32pt; the body starts at 22pt and steps
+ * down `STEPS` when a slide overflows, never up; nothing is drawn under 12pt.
+ */
 export const TYPE = {
   // Covers.
-  cover: 27,
-  coverPoster: 30,
-  coverMono: 32,
-  closing: 24,
-  coverBody: 13,
-  closingBody: 15,
-  closingBullets: 12,
-  sectionNumber: 15,
-  splitNumber: 34,
+  cover: 36,
+  coverPoster: 40,
+  coverMono: 40,
+  closing: 32,
+  coverBody: 18,
+  closingBody: 18,
+  closingBullets: 18,
+  sectionNumber: 18,
+  splitNumber: 80,
   // Body slides.
-  title: 18,
-  body: 12,
-  bodyNarrow: 10.5,
-  paragraph: 11.5,
-  agenda: 11,
-  agendaNumber: 13,
-  statement: 26,
-  statementBody: 11,
-  quote: 20,
-  quoteBy: 12,
-  bigNumber: 46,
-  bigNumberLabel: 11,
-  bigNumberBody: 11,
-  metric: 30,
-  metricLabel: 11,
-  cardName: 11,
-  cardText: 9.5,
-  stepBadge: 9,
-  stepName: 11,
-  stepText: 9.5,
-  tileMark: 26,
-  tileName: 10,
-  bandMin: 7,
-  bandMax: 10,
-  lineMin: 7,
-  lineMax: 10,
-  tableMin: 7.5,
-  tableMax: 12,
-  caption: 10,
-  footer: 7.5,
-  pageNumber: 8,
-  posterNumber: 28,
-  gutterNumber: 18,
+  title: 32,
+  body: 22,
+  bodyNarrow: 18,
+  paragraph: 18,
+  agenda: 18,
+  agendaNumber: 22,
+  statement: 32,
+  statementBody: 18,
+  quote: 28,
+  quoteBy: 16,
+  bigNumber: 64,
+  bigNumberLabel: 18,
+  bigNumberBody: 18,
+  metric: 44,
+  metricLabel: 16,
+  cardName: 18,
+  cardText: 16,
+  stepBadge: 16,
+  stepName: 18,
+  stepText: 16,
+  tileMark: 36,
+  tileName: 16,
+  bandMin: 14,
+  bandMax: 18,
+  lineMin: 14,
+  lineMax: 18,
+  tableMin: 12,
+  tableMax: 16,
+  caption: 14,
+  footer: 12,
+  pageNumber: 12,
+  posterNumber: 30,
+  gutterNumber: 22,
 } as const
+
+/** The body ladder in points, and the same ladder as `textScale` values. */
+export const STEPS = [22, 18, 16, 14, 12] as const
+export const SCALES = STEPS.map((step) => Math.round((step / STEPS[0]) * 10000) / 10000)
+/** No text is drawn smaller than this, whatever the scale. */
+export const FLOOR_PT = 12
+
+/** A size in points as slide units. */
+export function units(pt: number): number {
+  return pt / K
+}
+
+/** Slide titles are 32pt; one that would wrap steps down to 30, then 28, and stays at 28. */
+export const TITLE_STEPS = [32, 30, 28] as const
+
+/** How many lines `text` takes at `size` slide units in a column `width` units wide. */
+export function lines(text: string, size: number, width: number): number {
+  if (!text?.trim()) return 0
+  const perLine = Math.max(1, width / size)
+  return Math.max(1, Math.ceil(Math.floor(em(text) * 100) / Math.floor(perLine * 100)))
+}
+
+/** The title's size in points for its column width in slide units. */
+export function titlePt(title: string, width: number = 400 - 2 * PAD_X): number {
+  for (const size of TITLE_STEPS) if (lines(title, size / K, width) <= 1) return size
+  return TITLE_STEPS[TITLE_STEPS.length - 1]
+}
 
 /** Line heights, as a multiple of the size. */
 export const LEADING = {
@@ -76,7 +110,7 @@ export const PAD_X = 28
 /** Table cell size from the row count, one row in reserve for a cell that wraps. */
 export function tableSize(rows: number): number {
   const perRow = (BODY_BOTTOM - BODY_TOP) / (rows + 1.6)
-  return Math.max(TYPE.tableMin, Math.min(TYPE.tableMax, perRow / 2.05))
+  return Math.max(units(TYPE.tableMin), Math.min(units(TYPE.tableMax), perRow / 2.05))
 }
 
 /** Cell padding that goes with `tableSize`. */

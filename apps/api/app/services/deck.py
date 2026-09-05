@@ -1704,7 +1704,7 @@ async def _write_slides(
         }
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
-    yield {"type": "deck", "slides": slides}
+    yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
 
 
@@ -2127,7 +2127,15 @@ async def rewrite_slide(
     # The verdicts belonged to the old text.
     result.pop("factCheck", None)
     result.pop("textScale", None)
-    return auto_fit(result), usage
+    fitted = auto_fit(result)
+    # A rewritten slide keeps the deck's body size unless it needs a smaller step.
+    own = float(fitted.get("textScale") or 1.0)
+    scale = min(own, deck_scale(slides))
+    if scale >= 1.0:
+        fitted.pop("textScale", None)
+    else:
+        fitted["textScale"] = scale
+    return fitted, usage
 
 
 #: Every field a slide's content can arrive in. A layout that stores content
@@ -2155,12 +2163,12 @@ def filled(slides: list[dict]) -> list[dict]:
 
 
 #: The type scale is shared with the panel and the exporters (`deck_type`); the fit below
-#: reasons in its slide units, so what it decides holds in all three.
-_FIT_FLOOR = 0.65
-_FIT_CEILING = 1.25
-#: Layouts whose body may grow when the slide is sparse. Paired shapes and tables size
-#: themselves from their count; growing their text would overflow their boxes.
-_GROWABLE = ("bullets", "two-column")
+#: reasons in its slide units, so what it decides holds in all three. A slide only ever
+#: steps down the body ladder (22 → 18 → 16 → 14 → 12pt); nothing grows to fill a slide.
+_SCALES = deck_type.SCALES
+#: The deck-wide body size never drops below this step on account of one crowded slide;
+#: that slide keeps its own smaller step instead.
+_COMMON_FLOOR = _SCALES[1]
 
 #: Slide layouts that must vary: a run of these gets every other one re-planned.
 _MONOTONE = "bullets"
@@ -2184,15 +2192,16 @@ def _need(slide: dict, scale: float) -> float:
     Mirrors `SlideView`: bullets wrap in the text column at the body size, the agenda
     lays two ruled columns above four entries, cards and steps keep fixed boxes.
     """
-    T, L = deck_type.TYPE, deck_type.LEADING
+    U, L = deck_type.units, deck_type.LEADING
     layout = str(slide.get("layout") or "bullets")
     width = _body_width(slide)
-    title_size = T["title"] * min(1.0, scale)
-    title_lines = deck_type.lines(str(slide.get("title") or ""), title_size, deck_type.TITLE_WIDTH)
+    title = str(slide.get("title") or "")
+    title_size = deck_type.title_pt(title) / deck_type.K
+    title_lines = deck_type.lines(title, title_size, deck_type.TITLE_WIDTH)
     need = max(0, title_lines - 1) * title_size * L["title"]
     bullets = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
     if layout == "agenda":
-        size = T["agenda"] * scale
+        size = U("agenda") * scale
         columns = 2 if len(bullets) > 4 else 1
         column_width = (width - 20 * (columns - 1)) / columns - 22
         rows = [
@@ -2202,7 +2211,7 @@ def _need(slide: dict, scale: float) -> float:
         per_column = -(-len(rows) // columns)
         need += max(sum(rows[:per_column]), sum(rows[per_column:]))
     elif layout == "two-column" and len(bullets) >= 5:
-        size = T["bodyNarrow"] * scale
+        size = U("bodyNarrow") * scale
         column_width = (width - 20) / 2 - 12
         half = -(-len(bullets) // 2)
         cost = [deck_type.lines(b, size, column_width) * size * L["body"] for b in bullets]
@@ -2211,11 +2220,11 @@ def _need(slide: dict, scale: float) -> float:
             sum(cost[:half]) + gap * (half - 1), sum(cost[half:]) + gap * (len(bullets) - half - 1)
         )
     elif bullets:
-        size = T["body"] * scale
+        size = U("body") * scale
         need += sum(deck_type.lines(b, size, width - 12) * size * L["body"] for b in bullets)
         need += size * deck_type.BULLET_GAP * (len(bullets) - 1)
     if slide.get("body") and not bullets:
-        size = T["paragraph"] * scale
+        size = U("paragraph") * scale
         need += deck_type.lines(str(slide["body"]), size, width) * size * L["paragraph"] + 2
     for key, fixed in (
         ("cards", 104.0),
@@ -2229,17 +2238,17 @@ def _need(slide: dict, scale: float) -> float:
             continue
         if key == "steps":
             span = (width - 8 * (len(pairs) - 1)) / len(pairs)
-            text = max(deck_type.lines(str(p[1]), T["stepText"] * scale, span) for p in pairs)
+            text = max(deck_type.lines(str(p[1]), U("stepText") * scale, span) for p in pairs)
             need += (
                 8
                 + 22
                 + 7
-                + T["stepName"] * scale * 1.3
+                + U("stepName") * scale * 1.3
                 + 3
-                + text * T["stepText"] * scale * L["stepText"]
+                + text * U("stepText") * scale * L["stepText"]
             )
         elif key == "tiles":
-            need += 8 + 62 + 7 + T["tileName"] * scale * 1.5 * 2
+            need += 8 + 62 + 7 + U("tileName") * scale * 1.5 * 2
         else:
             # Bands and timelines divide the body height among themselves.
             need += fixed
@@ -2249,17 +2258,18 @@ def _need(slide: dict, scale: float) -> float:
         need += deck_type.table_row_height(len(rows)) * len(rows)
     metrics = slide.get("metrics") or []
     if metrics and layout != "big-number":
-        need += 6 + 14 + T["metric"] * scale * 1.1 + 5 + T["metricLabel"] * scale * 1.5 + 16
+        need += 6 + 14 + U("metric") * scale * 1.1 + 5 + U("metricLabel") * scale * 1.5 + 16
     return need
 
 
 def auto_fit(slide: dict) -> dict:
-    """Sets `textScale` so the slide's body fills its box without crossing the footer.
+    """Sets `textScale` to the first step of the body ladder at which the slide fits.
 
     The panel and both exporters read the same field and the same type scale, so a deck
-    looks the same in the panel, the `.pptx` and the `.pdf`. A sparse list grows in steps
-    of 0.05 up to 1.25 (the title stays put); a crowded slide shrinks down to 0.65, below
-    which splitting the slide is the answer. A scale a person set by hand is left alone.
+    looks the same in the panel, the `.pptx` and the `.pdf`. The title stays at its size;
+    the body starts at 22pt and steps down to 18, 16, 14 and 12 only when it would cross
+    the footer. A slide that fits keeps no scale; a scale a person set by hand is left
+    alone.
     """
     if (
         slide.get("textScale") not in (None, 1, 1.0)
@@ -2268,20 +2278,55 @@ def auto_fit(slide: dict) -> dict:
     ):
         return slide
     room = deck_type.BODY_BOTTOM - deck_type.BODY_TOP
-    layout = str(slide.get("layout") or "bullets")
-    ceiling = _FIT_CEILING if layout in _GROWABLE and slide.get("bullets") else 1.0
-    steps = int(round((ceiling - _FIT_FLOOR) / 0.05))
-    for step in range(steps + 1):
-        scale = round(ceiling - step * 0.05, 2)
+    for scale in _SCALES:
         if _need(slide, scale) <= room:
             break
     else:
-        scale = _FIT_FLOOR
+        scale = _SCALES[-1]
     if scale == 1.0:
         slide.pop("textScale", None)
     else:
         slide["textScale"] = scale
     return slide
+
+
+def _body_slides(slides: list[dict]) -> list[dict]:
+    return [
+        s
+        for s in slides
+        if (s.get("layout") not in _STRUCTURAL or s.get("layout") == "agenda")
+        and s.get("layout") != "closing"
+    ]
+
+
+def harmonize(slides: list[dict]) -> list[dict]:
+    """One body size for the whole deck, in place.
+
+    Slides fitted one by one come out at different steps of the ladder, and a deck that
+    changes size from slide to slide reads as careless. The deck takes the smallest step
+    any body slide needed, but not below 18pt: a slide crowded enough to need 16 or less
+    keeps its own step, and the rest stay at 18.
+    """
+    body = _body_slides(slides)
+    needed = [float(s.get("textScale") or 1.0) for s in body]
+    common = max(min(needed, default=1.0), _COMMON_FLOOR)
+    for slide in body:
+        own = float(slide.get("textScale") or 1.0)
+        scale = min(own, common)
+        if scale >= 1.0:
+            slide.pop("textScale", None)
+        else:
+            slide["textScale"] = scale
+    return slides
+
+
+def deck_scale(slides: list[dict]) -> float:
+    """The body size the deck settled on: the step most of its body slides use."""
+    body = _body_slides(slides)
+    if not body:
+        return 1.0
+    seen = [float(s.get("textScale") or 1.0) for s in body]
+    return max(set(seen), key=lambda value: (seen.count(value), value))
 
 
 def vary_layouts(plan: list[dict]) -> list[dict]:

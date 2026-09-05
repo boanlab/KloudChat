@@ -123,9 +123,9 @@ def test_powerpoint_sets_the_figures_large() -> None:
     for text in ("32%", "오탐 감소", "99.2%"):
         assert f"<a:t>{text}</a:t>" in slide
     sizes = {int(size) for size in re.findall(r'sz="(\d+)"', slide)}
-    assert round(deck_type.pt("metric")) * 100 in sizes
-    assert round(deck_type.pt("metricLabel")) * 100 in sizes
-    assert deck_type.pt("metric") > 2 * deck_type.pt("metricLabel")
+    assert deck_type.TYPE["metric"] * 100 in sizes
+    assert deck_type.TYPE["metricLabel"] * 100 in sizes
+    assert deck_type.TYPE["metric"] > 2 * deck_type.TYPE["metricLabel"]
 
 
 def test_the_pdf_draws_the_same_figures() -> None:

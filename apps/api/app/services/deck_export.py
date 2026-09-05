@@ -104,7 +104,7 @@ _FOOT_RULE = 32 * _K
 
 def _u(name: str) -> float:
     """A size from the shared type scale, in points."""
-    return deck_type.pt(name)
+    return deck_type.TYPE[name]
 
 
 #: Default width of a picture sharing the slide with text.
@@ -890,13 +890,14 @@ def to_pptx(
         size: float,
         bold: bool = False,
         colour: RGBColor | None = None,
-        grow: bool = True,
+        fixed: bool = False,
     ) -> None:
-        # A title shrinks with the slide but never grows: growth is for the body.
-        factor = typescale[0] if grow else min(1.0, typescale[0])
+        # Titles keep their size; everything else follows the slide's scale, never
+        # under the floor.
+        factor = 1.0 if fixed else typescale[0]
         _font(
             run,
-            size=max(8, round(size * factor)),
+            size=max(deck_type.FLOOR_PT, round(size * factor)),
             bold=bold,
             colour=colour or ink,
             faces=faces,
@@ -911,7 +912,7 @@ def to_pptx(
         size: float,
         bold: bool = False,
         colour: RGBColor | None = None,
-        grow: bool = True,
+        fixed: bool = False,
     ) -> None:
         html = (data.get("richText") or {}).get(key)
         scale = {1: 0.65, 2: 0.8, 3: 1.0, 4: 1.2, 5: 1.5, 6: 2.0, 7: 3.0}
@@ -930,7 +931,7 @@ def to_pptx(
                 ),
                 bold=bool(inline.get("bold", bold)),
                 colour=run_colour,
-                grow=grow,
+                fixed=fixed,
             )
             run.font.italic = bool(inline.get("italic"))
             run.font.underline = bool(inline.get("underline"))
@@ -1278,7 +1279,7 @@ def to_pptx(
                 run.text = heading
                 paint(run, size=_u("quoteBy"), colour=muted)
         else:
-            title_size = _u("title") * min(1.0, typescale[0])
+            title_size = deck_type.title_pt(heading, text_width / _K)
             title_line = title_size * deck_type.LEADING["title"]
             title_lines = max(1, len(_wrap(heading, measure, title_size, text_width)))
             frame = _textbox(
@@ -1292,7 +1293,7 @@ def to_pptx(
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
             frame.paragraphs[0].line_spacing = Pt(title_line)
             paint_rich(
-                frame.paragraphs[0], data, "title", heading, size=_u("title"), bold=True, grow=False
+                frame.paragraphs[0], data, "title", heading, size=title_size, bold=True, fixed=True
             )
             # The tab under the title; the body box starts below it and loses one line for
             # each extra title line.
@@ -1470,17 +1471,9 @@ def to_pptx(
                 columns = _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
                 size = _u("bodyNarrow") if len(columns) > 1 else _u("body")
-                drawn = size * typescale[0]
+                drawn = max(deck_type.FLOOR_PT, size * typescale[0])
                 line_pt = drawn * look.leading
                 gap_pt = drawn * deck_type.BULLET_GAP
-                # A list that fits sits in the middle of its box, as in the panel; one
-                # measured to overflow anchors at the top so it spills one way only.
-                tallest = max(
-                    sum(len(_wrap(t, measure, drawn, span - 26)) * line_pt + gap_pt for t in column)
-                    - gap_pt
-                    for column in columns
-                )
-                centred = typescale[0] >= 1 and not picture and tallest <= room
                 bullet_at = 0
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
@@ -1492,8 +1485,6 @@ def to_pptx(
                         # Only the first column is the body placeholder.
                         placeholder=("body", 1) if column_index == 0 else None,
                     )
-                    if centred:
-                        listing.vertical_anchor = MSO_ANCHOR.MIDDLE
                     for position, text in enumerate(column):
                         paragraph = (
                             listing.paragraphs[0] if position == 0 else listing.add_paragraph()
@@ -1514,13 +1505,7 @@ def to_pptx(
                     height=room,
                     placeholder=("body", 1),
                 )
-                drawn = _u("paragraph") * typescale[0]
-                if (
-                    typescale[0] >= 1
-                    and not picture
-                    and len(_wrap(body, measure, drawn, text_width)) * drawn * look.leading <= room
-                ):
-                    paragraph_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+                drawn = max(deck_type.FLOOR_PT, _u("paragraph") * typescale[0])
                 paragraph_frame.paragraphs[0].line_spacing = Pt(drawn * look.leading)
                 paint_rich(
                     paragraph_frame.paragraphs[0],
@@ -2094,11 +2079,8 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         ts = _typescale(data)
 
         def S(n: float, _ts: float = ts) -> float:
-            return n * _ts
-
-        def T(n: float, _ts: float = ts) -> float:
-            # A title shrinks with the slide but never grows.
-            return n * min(1.0, _ts)
+            # A size at the slide's scale, never under the floor.
+            return max(float(deck_type.FLOOR_PT), n * _ts)
 
         cover_size = _u(
             "coverPoster"
@@ -2204,7 +2186,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 pdf.setFont(font, S(_u("quoteBy")))
                 pdf.drawString(90, y - 8, heading)
         else:
-            title_size = T(_u("title"))
+            title_size = deck_type.title_pt(heading, text_width / _K)
             title_line = title_size * deck_type.LEADING["title"]
             title_lines = _wrap(heading, bold, title_size, text_width) or [""]
             pdf.setFillColorRGB(*ink)
@@ -2380,13 +2362,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 wrapped_columns = [
                     [_wrap(text, font, size, span - 26) for text in column] for column in columns
                 ]
-                # A list that fits sits in the middle of its box, as in the panel.
-                tallest = max(
-                    sum(len(lines) * step + gap for lines in column) - gap
-                    for column in wrapped_columns
-                )
-                offset_top = max(0.0, (room - tallest) / 2) if ts >= 1 and not picture else 0.0
-                top = y - offset_top - size * 0.85
+                top = y - size * 0.85
                 for column_index, column in enumerate(wrapped_columns):
                     left = text_left + column_index * (span + 24)
                     y = top
@@ -2402,10 +2378,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 size = S(_u("paragraph"))
                 step = size * look.leading
                 wrapped = _wrap(body, font, size, text_width)
-                offset_top = (
-                    max(0.0, (room - step * len(wrapped)) / 2) if ts >= 1 and not picture else 0.0
-                )
-                y = y - offset_top - size * 0.85
+                y = y - size * 0.85
                 pdf.setFillColorRGB(*muted)
                 pdf.setFont(font, size)
                 for line in wrapped:

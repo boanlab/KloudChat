@@ -31,13 +31,14 @@ def test_the_panel_and_the_exporters_read_one_table() -> None:
     assert f"export const BODY_BOTTOM = {deck_type.BODY_BOTTOM}" in text
 
 
-def test_a_sparse_list_grows_and_a_crowded_one_shrinks() -> None:
+def test_a_sparse_list_keeps_its_size_and_a_crowded_one_steps_down() -> None:
+    """Nothing grows to fill a slide; a crowded slide takes the next step of the ladder."""
     sparse = {
         "layout": "bullets",
         "title": "왜 문제인가",
         "bullets": ["에이전트는 입력을 명령으로 오인할 수 있음"] * 3,
     }
-    assert deck.auto_fit(dict(sparse))["textScale"] == 1.25
+    assert "textScale" not in deck.auto_fit(dict(sparse))
 
     crowded = {
         "layout": "bullets",
@@ -47,30 +48,75 @@ def test_a_sparse_list_grows_and_a_crowded_one_shrinks() -> None:
         ]
         * 9,
     }
-    assert deck.auto_fit(dict(crowded))["textScale"] < 1
+    scale = deck.auto_fit(dict(crowded))["textScale"]
+    assert scale in deck_type.SCALES and scale < 1
+    # Six such lines need one step, nine need more: the ladder is walked, not jumped.
+    six = deck.auto_fit({**crowded, "bullets": crowded["bullets"][:6]})["textScale"]
+    assert six > scale
 
-    # Four medium lines grow until one would wrap, and stop there.
-    four = {**sparse, "bullets": ["기존 웹 보안 기법으로는 자연어 공격 차단이 어려움"] * 4}
-    scale = deck.auto_fit(dict(four)).get("textScale", 1.0)
-    assert 1.0 < scale < 1.25
+
+def test_the_ladder_is_the_powerpoint_sizes() -> None:
+    assert deck_type.STEPS == (22, 18, 16, 14, 12)
+    assert deck_type.TYPE["title"] == 32 and deck_type.TYPE["body"] == 22
+    assert [round(22 * s) for s in deck_type.SCALES] == [22, 18, 16, 14, 12]
+
+
+def test_a_title_that_would_wrap_steps_down_to_28_and_no_further() -> None:
+    assert deck_type.title_pt("요약") == 32
+    assert deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론 정리") == 32
+    assert deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론과 권고 사항") == 30
+    assert (
+        deck_type.title_pt("문서 검색 시스템 도입 검토 보고서의 주요 결론과 권고 사항 정리") == 28
+    )
+    two_lines = (
+        "문서 검색 시스템 도입 검토 보고서의 주요 결론 정리 및 후속 조치 권고 사항과 일정 계획"
+    )
+    assert deck_type.title_pt(two_lines) == 28
+    assert deck_type.lines(two_lines, 28 / deck_type.K, deck_type.TITLE_WIDTH) == 2
 
 
 def test_a_long_title_takes_its_room_from_the_body() -> None:
-    short = {"layout": "bullets", "title": "요약", "bullets": ["한 줄"] * 4}
+    short = {
+        "layout": "bullets",
+        "title": "요약",
+        "bullets": ["짧지 않은 글머리표 한 줄 설명 문장입니다"] * 6,
+    }
     long = {
         **short,
         "title": "문서 검색 시스템 도입 검토 보고서의 주요 결론과 후속 조치 권고 사항 정리",
     }
-    assert deck.auto_fit(dict(long)).get("textScale", 1.0) < deck.auto_fit(dict(short))["textScale"]
+    assert deck.auto_fit(dict(long)).get("textScale", 1.0) <= deck.auto_fit(dict(short)).get(
+        "textScale", 1.0
+    )
 
 
-def test_growth_is_for_lists_only() -> None:
+def test_tables_and_cards_size_themselves() -> None:
     table = {"layout": "table", "title": "비교", "rows": [["구분", "값"], ["가", "1"], ["나", "2"]]}
     assert "textScale" not in deck.auto_fit(dict(table))
     cards = {"layout": "cards", "title": "네 가지", "cards": [["이름", "설명"]] * 2}
     assert "textScale" not in deck.auto_fit(dict(cards))
     cover = {"layout": "title", "title": "표지", "bullets": []}
     assert "textScale" not in deck.auto_fit(dict(cover))
+
+
+def test_a_deck_settles_on_one_body_size() -> None:
+    """One crowded slide pulls the deck to 18pt, no lower; it alone goes smaller."""
+    line = "시스템 권한이 부여된 에이전트는 외부 문서에 숨은 악성 지시를 수행할 위험이 크다"
+    slides = [
+        {"layout": "title", "title": "표지"},
+        {"layout": "bullets", "title": "하나", "bullets": ["짧은 줄"] * 3},
+        {"layout": "bullets", "title": "둘", "bullets": [line] * 9},
+        {"layout": "bullets", "title": "셋", "bullets": ["짧은 줄"] * 4},
+        {"layout": "closing", "title": "마무리"},
+    ]
+    for slide in slides:
+        deck.auto_fit(slide)
+    deck.harmonize(slides)
+    eighteen = deck_type.SCALES[1]
+    assert slides[1]["textScale"] == eighteen and slides[3]["textScale"] == eighteen
+    assert slides[2]["textScale"] < eighteen
+    assert "textScale" not in slides[0] and "textScale" not in slides[4]
+    assert deck.deck_scale(slides) == eighteen
 
 
 def test_a_hand_set_scale_is_left_alone() -> None:
@@ -165,8 +211,8 @@ def test_every_layout_exports_at_both_ends_of_the_scale() -> None:
             assert deck_export.to_pdf("확인", slides, tokens=tokens).startswith(b"%PDF")
 
 
-def test_the_title_holds_still_while_the_body_grows() -> None:
-    """A grown list keeps its heading size in the file, as in the panel."""
+def test_the_title_holds_still_at_every_scale() -> None:
+    """The heading is 32pt in the file whatever the body's step, as in the panel."""
     from pptx import Presentation
 
     def title_size(scale: float) -> float:
@@ -181,5 +227,4 @@ def test_the_title_holds_still_while_the_body_grows() -> None:
             if run.text == "요약"
         )
 
-    assert title_size(1.25) == title_size(1.0) == round(deck_type.pt("title"))
-    assert title_size(0.8) < title_size(1.0)
+    assert title_size(1.25) == title_size(1.0) == title_size(0.8) == deck_type.TYPE["title"]
