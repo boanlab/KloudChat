@@ -1023,7 +1023,8 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight."""
+    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight.
+    """
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
         names = [s["title"] for s in slides if s.get("layout") not in (*_STRUCTURAL, "closing")]
@@ -1320,7 +1321,8 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps."""
+    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps.
+    """
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
     yield {
