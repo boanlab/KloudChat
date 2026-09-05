@@ -112,8 +112,10 @@ def test_metrics_are_cut_to_what_fits_across_a_slide() -> None:
 
 
 def test_powerpoint_sets_the_figures_large() -> None:
-    """Metric figures are set at 44pt with labels well below 20pt."""
+    """Metric figures are set at the shared scale's `metric` size, labels well below it."""
     import re
+
+    from app.services import deck_type
 
     slides = [{"id": "s1", "layout": "metrics", "title": "성과", "metrics": _METRICS}]
     with zipfile.ZipFile(io.BytesIO(deck_export.to_pptx("제목", slides))) as archive:
@@ -121,8 +123,9 @@ def test_powerpoint_sets_the_figures_large() -> None:
     for text in ("32%", "오탐 감소", "99.2%"):
         assert f"<a:t>{text}</a:t>" in slide
     sizes = {int(size) for size in re.findall(r'sz="(\d+)"', slide)}
-    assert 4400 in sizes
-    assert min(sizes) < 2000
+    assert round(deck_type.pt("metric")) * 100 in sizes
+    assert round(deck_type.pt("metricLabel")) * 100 in sizes
+    assert deck_type.pt("metric") > 2 * deck_type.pt("metricLabel")
 
 
 def test_the_pdf_draws_the_same_figures() -> None:
@@ -189,15 +192,13 @@ def test_powerpoint_gets_a_chart_it_can_edit() -> None:
 
     for label in ("1분기", "4분기", "처리 건수"):
         assert label in chart
-    assert "<c:min val=\"0\"/>" in chart or "<c:min val=\"0.0\"/>" in chart
+    assert '<c:min val="0"/>' in chart or '<c:min val="0.0"/>' in chart
 
 
 def test_the_pdf_draws_the_same_chart() -> None:
     slides = [{"id": "s1", "layout": "chart", "title": "처리 추이", "chart": _CHART}]
     assert deck_export.to_pdf("제목", slides).startswith(b"%PDF")
-    line = [
-        {"id": "s1", "layout": "chart", "title": "추이", "chart": dict(_CHART, kind="line")}
-    ]
+    line = [{"id": "s1", "layout": "chart", "title": "추이", "chart": dict(_CHART, kind="line")}]
     assert deck_export.to_pdf("제목", line).startswith(b"%PDF")
 
 
@@ -259,6 +260,7 @@ def test_the_printed_chart_names_its_lines() -> None:
 
 
 # ── 완성 판정 ──────────────────────────────────────────────────────────
+
 
 def test_a_slide_of_the_new_kinds_counts_as_written() -> None:
     """A slide whose content is rows, metrics or a chart counts as written."""

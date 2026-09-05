@@ -17,7 +17,7 @@ import PIL.Image
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml.ns import qn
 from pptx.util import Emu, Pt
 from reportlab.lib.colors import Color
@@ -25,7 +25,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
-from app.services import charts, deck, design, fonts, pictures
+from app.services import charts, deck, deck_type, design, fonts, pictures
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +90,22 @@ def _inline_runs(html: str | None, fallback: str) -> list[tuple[str, dict]]:
 
 #: 16:9 in points (EMU/12700, reportlab's default unit); drives both exporters.
 _W, _H = 960.0, 540.0
+
+#: Body-slide geometry from the shared type scale (`deck_type`), in points: the panel's
+#: 400x225 units times `K`. The title starts at `_TITLE_TOP`; the body box runs from
+#: `_BODY_TOP` (lower by one title line for each extra line) to `_BODY_BOTTOM`, above the
+#: foot rule.
+_K = deck_type.K
+_TITLE_TOP = 24 * _K
+_BODY_TOP = deck_type.BODY_TOP * _K
+_BODY_BOTTOM = deck_type.BODY_BOTTOM * _K
+_FOOT_RULE = 32 * _K
+
+
+def _u(name: str) -> float:
+    """A size from the shared type scale, in points."""
+    return deck_type.pt(name)
+
 
 #: Default width of a picture sharing the slide with text.
 _PICTURE_SPAN = 300.0
@@ -165,7 +181,8 @@ def _hex_floats(value: str | None) -> tuple[float, float, float]:
 
 @dataclass(frozen=True)
 class Look:
-    """A visual style, matching the panel's `LOOKS`: ground, neutrals, cover, ornament, card style.
+    """A visual style, matching the panel's `LOOKS`: ground, neutrals, cover, ornament, card
+    style, body line height.
     """
 
     bg: str
@@ -183,6 +200,8 @@ class Look:
     ornament: str
     #: Whether the neutrals above replace the design system's.
     own_neutrals: bool = False
+    #: Body line height; the panel's `leading`.
+    leading: float = 1.6
 
 
 _LOOKS: dict[str, Look] = {
@@ -213,6 +232,7 @@ _LOOKS: dict[str, Look] = {
         cover="gradient",
         ornament="left-bar",
         own_neutrals=False,
+        leading=1.55,
     ),
     "minimal": Look(
         bg="#ffffff",
@@ -227,6 +247,7 @@ _LOOKS: dict[str, Look] = {
         cover="wash",
         ornament="corner-circle",
         own_neutrals=False,
+        leading=1.7,
     ),
     "dark": Look(
         bg="#0f172a",
@@ -269,6 +290,7 @@ _LOOKS: dict[str, Look] = {
         cover="paper",
         ornament="bottom-band",
         own_neutrals=True,
+        leading=1.7,
     ),
     "mono": Look(
         bg="#ffffff",
@@ -356,8 +378,7 @@ def _table_size(rows: int) -> float:
     """The preview's fitted table cell size in its 225-unit drawing; both exporters scale by the
     same ratio.
     """
-    per_row = 122 / (rows + 1.2)
-    return max(7.5, min(12.0, per_row / 2.05))
+    return deck_type.table_size(rows)
 
 
 def _font(
@@ -393,15 +414,16 @@ def _pptx_pairs(
     paint,
     look: Look | None = None,
     hair: RGBColor | None = None,
+    top: float = _BODY_TOP,
+    room: float = _BODY_BOTTOM - _BODY_TOP,
 ) -> None:
     """Draws a paired layout: bands, tiles, steps, cards, or timeline."""
-    top = 150.0
-    room = _H - 210
     look = look or _LOOKS["editorial"]
     hair = hair or RGBColor(0xE6, 0xE6, 0xE6)
     if layout == "bands":
         label = 96.0
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
+        band = max(_u("bandMin"), min(_u("bandMax"), height / 3))
         for index, (name, text) in enumerate(pairs):
             y = top + index * (height + 10)
             _box(
@@ -424,7 +446,7 @@ def _pptx_pairs(
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = name
-            paint(run, size=15, bold=True, colour=_WHITE)
+            paint(run, size=band, bold=True, colour=_WHITE)
             body = _textbox(
                 slide,
                 left=left + label + 24,
@@ -432,9 +454,10 @@ def _pptx_pairs(
                 width=width - label - 40,
                 height=height - 20,
             )
+            body.vertical_anchor = MSO_ANCHOR.MIDDLE
             run = body.paragraphs[0].add_run()
             run.text = text
-            paint(run, size=13)
+            paint(run, size=band)
         return
 
     if layout == "tiles":
@@ -449,14 +472,14 @@ def _pptx_pairs(
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = mark
-            paint(run, size=40, bold=True, colour=_WHITE)
+            paint(run, size=_u("tileMark"), bold=True, colour=_WHITE)
             under = _textbox(
                 slide, left=item_left - 8, top=top + 32 + side, width=side + 16, height=44
             )
             under.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = under.paragraphs[0].add_run()
             run.text = name
-            paint(run, size=12, colour=muted)
+            paint(run, size=_u("tileName"), colour=muted)
         return
 
     if layout == "steps":
@@ -480,21 +503,22 @@ def _pptx_pairs(
             box.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = box.paragraphs[0].add_run()
             run.text = f"{index + 1:02d}"
-            paint(run, size=18, bold=True, colour=_WHITE)
-            title = _textbox(slide, left=item_left, top=top + 20 + side + 12, width=span, height=30)
+            paint(run, size=_u("stepBadge"), bold=True, colour=_WHITE)
+            title = _textbox(slide, left=item_left, top=top + 20 + side + 12, width=span, height=36)
             run = title.paragraphs[0].add_run()
             run.text = name
-            paint(run, size=15, bold=True)
-            body = _textbox(slide, left=item_left, top=top + 20 + side + 42, width=span, height=120)
+            paint(run, size=_u("stepName"), bold=True)
+            body = _textbox(slide, left=item_left, top=top + 20 + side + 50, width=span, height=140)
+            body.paragraphs[0].line_spacing = deck_type.LEADING["stepText"]
             run = body.paragraphs[0].add_run()
             run.text = text
-            paint(run, size=12, colour=muted)
+            paint(run, size=_u("stepText"), colour=muted)
         return
 
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min(220.0, room - 20)
+        height = min(100 * _K, room - 10)
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _box(
@@ -508,38 +532,50 @@ def _pptx_pairs(
                 line=hair,
             )
             _block(slide, left=item_left, top=top + 10, width=span, height=5, colour=accent)
-            title = _textbox(slide, left=item_left + 14, top=top + 26, width=span - 28, height=34)
+            title = _textbox(slide, left=item_left + 14, top=top + 26, width=span - 28, height=40)
             run = title.paragraphs[0].add_run()
             run.text = name
-            paint(run, size=16, bold=True, colour=accent)
+            paint(run, size=_u("cardName"), bold=True, colour=accent)
             body = _textbox(
-                slide, left=item_left + 14, top=top + 60, width=span - 28, height=height - 70
+                slide, left=item_left + 14, top=top + 66, width=span - 28, height=height - 76
             )
+            body.paragraphs[0].line_spacing = deck_type.LEADING["cardText"]
             run = body.paragraphs[0].add_run()
             run.text = text
-            paint(run, size=13)
+            paint(run, size=_u("cardText"))
         return
 
     # timeline
     axis = 128.0
     step = min(56.0, room / max(len(pairs), 1))
+    line = max(_u("lineMin"), min(_u("lineMax"), step / 2.3))
     _block(slide, left=left + axis, top=top, width=1.5, height=step * len(pairs), colour=tint)
     for index, (when, what) in enumerate(pairs):
         y = top + index * step
-        date = _textbox(slide, left=left, top=y, width=axis - 12, height=26)
+        date = _textbox(slide, left=left, top=y, width=axis - 12, height=30)
         date.paragraphs[0].alignment = PP_ALIGN.RIGHT
         run = date.paragraphs[0].add_run()
         run.text = when
-        paint(run, size=13, bold=True, colour=accent)
-        _block(slide, left=left + axis - 3.5, top=y + 6, width=8, height=8, colour=accent)
+        paint(run, size=line, bold=True, colour=accent)
+        _block(slide, left=left + axis - 3.5, top=y + 8, width=8, height=8, colour=accent)
         body = _textbox(slide, left=left + axis + 16, top=y, width=width - axis - 16, height=step)
+        body.paragraphs[0].line_spacing = deck_type.LEADING["line"]
         run = body.paragraphs[0].add_run()
         run.text = what
-        paint(run, size=13)
+        paint(run, size=line)
 
 
 def _pptx_chart(
-    slide, chart: dict, *, accent, muted, width: float, faces: tuple[str, str], left: float = 72.0
+    slide,
+    chart: dict,
+    *,
+    accent,
+    muted,
+    width: float,
+    faces: tuple[str, str],
+    left: float = 72.0,
+    top: float = _BODY_TOP,
+    room: float = _BODY_BOTTOM - _BODY_TOP,
 ) -> None:
     """A native PowerPoint chart (editable worksheet), styled by `services.charts`."""
     from pptx.chart.data import CategoryChartData
@@ -553,9 +589,9 @@ def _pptx_chart(
     frame = slide.shapes.add_chart(
         XL_CHART_TYPE.LINE_MARKERS if chart["kind"] == "line" else XL_CHART_TYPE.COLUMN_CLUSTERED,
         Emu(int(left * _EMU_PER_PT)),
-        Emu(int(150 * _EMU_PER_PT)),
+        Emu(int(top * _EMU_PER_PT)),
         Emu(int(width * _EMU_PER_PT)),
-        Emu(int((_H - 220) * _EMU_PER_PT)),
+        Emu(int(room * _EMU_PER_PT)),
         payload,
     )
     charts.apply(
@@ -824,11 +860,22 @@ def to_pptx(
 
     #: Current slide's `textScale`; a list so `paint` can read the rebinding.
     typescale = [1.0]
+    #: The `.pdf` face, for measuring how many lines a title takes.
+    measure = fonts.korean(style["font"] if style else "gothic")
 
-    def paint(run, *, size: int, bold: bool = False, colour: RGBColor | None = None) -> None:
+    def paint(
+        run,
+        *,
+        size: float,
+        bold: bool = False,
+        colour: RGBColor | None = None,
+        grow: bool = True,
+    ) -> None:
+        # A title shrinks with the slide but never grows: growth is for the body.
+        factor = typescale[0] if grow else min(1.0, typescale[0])
         _font(
             run,
-            size=max(8, round(size * typescale[0])),
+            size=max(8, round(size * factor)),
             bold=bold,
             colour=colour or ink,
             faces=faces,
@@ -840,9 +887,10 @@ def to_pptx(
         key: str,
         text: str,
         *,
-        size: int,
+        size: float,
         bold: bool = False,
         colour: RGBColor | None = None,
+        grow: bool = True,
     ) -> None:
         html = (data.get("richText") or {}).get(key)
         scale = {1: 0.65, 2: 0.8, 3: 1.0, 4: 1.2, 5: 1.5, 6: 2.0, 7: 3.0}
@@ -861,6 +909,7 @@ def to_pptx(
                 ),
                 bold=bool(inline.get("bold", bold)),
                 colour=run_colour,
+                grow=grow,
             )
             run.font.italic = bool(inline.get("italic"))
             run.font.underline = bool(inline.get("underline"))
@@ -975,7 +1024,7 @@ def to_pptx(
                 counter = _textbox(slide, left=22, top=_H - 118, width=80, height=50)
                 run = counter.paragraphs[0].add_run()
                 run.text = f"{index + 1:02d}"
-                paint(run, size=30, bold=True, colour=accent)
+                paint(run, size=_u("gutterNumber"), bold=True, colour=accent)
             elif look.ornament == "frame":
                 frame_line = _shape(
                     slide, MSO_SHAPE.RECTANGLE, left=24, top=24, width=_W - 48, height=_H - 48
@@ -1019,6 +1068,15 @@ def to_pptx(
 
         #: Past the accent block on a split cover.
         cover_left = 72 + 336 if look.cover == "split" else 72
+        cover_size = _u(
+            "coverPoster"
+            if visual_style == "poster"
+            else "coverMono"
+            if visual_style == "mono"
+            else "cover"
+        )
+        #: Body box for this slide; a long title lowers its top.
+        body_top, room = _BODY_TOP, _BODY_BOTTOM - _BODY_TOP
         if layout == "closing":
             cover_ink = _WHITE if on_accent else ink
             cover_muted = _mix(_WHITE, 80, onto=accent) if on_accent else muted
@@ -1026,7 +1084,7 @@ def to_pptx(
                 counter = _textbox(slide, left=60, top=_H - 130, width=200, height=80)
                 run = counter.paragraphs[0].add_run()
                 run.text = "END"
-                paint(run, size=64, bold=True, colour=_mix(_WHITE, 35, onto=accent))
+                paint(run, size=_u("splitNumber"), bold=True, colour=_mix(_WHITE, 35, onto=accent))
             if look.cover != "brackets":
                 _block(
                     slide,
@@ -1036,8 +1094,17 @@ def to_pptx(
                     height=7,
                     colour=_WHITE if on_accent else accent,
                 )
+            closing_size = _u("closing") * typescale[0]
+            closing_lines = len(
+                _wrap(heading or "마무리", measure, closing_size, _W - 72 - cover_left)
+            )
             frame = _textbox(
-                slide, left=cover_left, top=140, width=_W - 144, height=70, placeholder=("title", 0)
+                slide,
+                left=cover_left,
+                top=140,
+                width=_W - 72 - cover_left,
+                height=closing_size * 1.2 * max(1, closing_lines) + 8,
+                placeholder=("title", 0),
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
             paint_rich(
@@ -1045,13 +1112,18 @@ def to_pptx(
                 data,
                 "title",
                 heading or "마무리",
-                size=36,
+                size=_u("closing"),
                 bold=True,
                 colour=cover_ink,
             )
             if bullets:
                 listing = _textbox(
-                    slide, left=72, top=220, width=_W - 144, height=200, placeholder=("body", 1)
+                    slide,
+                    left=cover_left,
+                    top=140 + closing_size * 1.2 * max(1, closing_lines) + 20,
+                    width=_W - 72 - cover_left,
+                    height=200,
+                    placeholder=("body", 1),
                 )
                 for position, text in enumerate(bullets[:3]):
                     paragraph = listing.paragraphs[0] if position == 0 else listing.add_paragraph()
@@ -1059,15 +1131,26 @@ def to_pptx(
                     paragraph.space_after = Pt(10)
                     marker = paragraph.add_run()
                     marker.text = "— "
-                    paint(marker, size=18, bold=True, colour=cover_muted)
+                    paint(marker, size=_u("closingBullets"), bold=True, colour=cover_muted)
                     paint_rich(
-                        paragraph, data, f"bullets.{position}", text, size=18, colour=cover_ink
+                        paragraph,
+                        data,
+                        f"bullets.{position}",
+                        text,
+                        size=_u("closingBullets"),
+                        colour=cover_ink,
                     )
             if body:
                 foot = _textbox(slide, left=cover_left, top=_H - 120, width=_W - 144, height=50)
                 foot.paragraphs[0].alignment = PP_ALIGN.LEFT
                 paint_rich(
-                    foot.paragraphs[0], data, "body", body, size=22, bold=True, colour=cover_ink
+                    foot.paragraphs[0],
+                    data,
+                    "body",
+                    body,
+                    size=_u("closingBody"),
+                    bold=True,
+                    colour=cover_ink,
                 )
         elif cover:
             cover_ink = _WHITE if on_accent else ink
@@ -1077,7 +1160,7 @@ def to_pptx(
                 run = counter.paragraphs[0].add_run()
                 number_text = str(data.get("number") or "").replace(".", "") or "01"
                 run.text = "END" if layout == "closing" else number_text
-                paint(run, size=64, bold=True, colour=_mix(_WHITE, 35, onto=accent))
+                paint(run, size=_u("splitNumber"), bold=True, colour=_mix(_WHITE, 35, onto=accent))
             if (
                 look.cover != "split"
                 and layout == "section"
@@ -1088,7 +1171,7 @@ def to_pptx(
                 run.text = number
                 paint(
                     run,
-                    size=22,
+                    size=_u("sectionNumber"),
                     bold=True,
                     colour=_mix(_WHITE, 70, onto=accent) if on_accent else accent,
                 )
@@ -1114,7 +1197,7 @@ def to_pptx(
                 data,
                 "title",
                 heading or title,
-                size=40,
+                size=cover_size,
                 bold=True,
                 colour=cover_ink,
             )
@@ -1122,7 +1205,7 @@ def to_pptx(
                 paragraph = frame.add_paragraph()
                 paragraph.alignment = PP_ALIGN.LEFT
                 paragraph.space_before = Pt(14)
-                paint_rich(paragraph, data, "body", body, size=15, colour=cover_muted)
+                paint_rich(paragraph, data, "body", body, size=_u("coverBody"), colour=cover_muted)
             _outline_placeholder(
                 slide,
                 "ctrTitle",
@@ -1133,18 +1216,26 @@ def to_pptx(
         elif layout == "statement":
             _block(slide, left=(_W - 62) / 2, top=176, width=62, height=5, colour=accent)
             frame = _textbox(
-                slide, left=90, top=196, width=_W - 180, height=120, placeholder=("title", 0)
+                slide, left=90, top=196, width=_W - 180, height=160, placeholder=("title", 0)
             )
             frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             paint_rich(
-                frame.paragraphs[0], data, "title", heading, size=44, bold=True, colour=accent
+                frame.paragraphs[0],
+                data,
+                "title",
+                heading,
+                size=_u("statement"),
+                bold=True,
+                colour=accent,
             )
             if body:
                 under = _textbox(
-                    slide, left=120, top=320, width=_W - 240, height=80, placeholder=("body", 1)
+                    slide, left=120, top=360, width=_W - 240, height=80, placeholder=("body", 1)
                 )
                 under.paragraphs[0].alignment = PP_ALIGN.CENTER
-                paint_rich(under.paragraphs[0], data, "body", body, size=18, colour=muted)
+                paint_rich(
+                    under.paragraphs[0], data, "body", body, size=_u("statementBody"), colour=muted
+                )
         elif layout == "quote":
             frame = _textbox(
                 slide,
@@ -1158,26 +1249,36 @@ def to_pptx(
             paragraph.alignment = PP_ALIGN.LEFT
             run = paragraph.add_run()
             run.text = f"“{body}”" if body else heading
-            paint(run, size=30, bold=True, colour=accent)
+            paint(run, size=_u("quote"), bold=True, colour=accent)
             if body and heading:
                 caption = frame.add_paragraph()
                 caption.space_before = Pt(16)
                 run = caption.add_run()
                 run.text = heading
-                paint(run, size=13, colour=muted)
+                paint(run, size=_u("quoteBy"), colour=muted)
         else:
+            title_size = _u("title") * min(1.0, typescale[0])
+            title_line = title_size * deck_type.LEADING["title"]
+            title_lines = max(1, len(_wrap(heading, measure, title_size, text_width)))
             frame = _textbox(
                 slide,
                 left=text_left,
-                top=64,
+                top=_TITLE_TOP,
                 width=text_width,
-                height=60,
+                height=title_line * title_lines + 6,
                 placeholder=("title", 0),
             )
             frame.paragraphs[0].alignment = PP_ALIGN.LEFT
-            paint_rich(frame.paragraphs[0], data, "title", heading, size=24, bold=True)
-            # The tab under the title.
-            _block(slide, left=text_left, top=126, width=62, height=5, colour=accent)
+            frame.paragraphs[0].line_spacing = deck_type.LEADING["title"]
+            paint_rich(
+                frame.paragraphs[0], data, "title", heading, size=_u("title"), bold=True, grow=False
+            )
+            # The tab under the title; the body box starts below it and loses one line for
+            # each extra title line.
+            tab_top = _TITLE_TOP + title_line * title_lines + 6 * _K
+            _block(slide, left=text_left, top=tab_top, width=62, height=5, colour=accent)
+            body_top = _BODY_TOP + title_line * (title_lines - 1)
+            room = _BODY_BOTTOM - body_top
 
             if pairs:
                 _pptx_pairs(
@@ -1192,6 +1293,8 @@ def to_pptx(
                     paint=paint,
                     look=look,
                     hair=hair,
+                    top=body_top,
+                    room=room,
                 )
             elif chart:
                 _pptx_chart(
@@ -1202,53 +1305,57 @@ def to_pptx(
                     width=text_width,
                     faces=faces,
                     left=text_left,
+                    top=body_top,
+                    room=room,
                 )
             elif metrics and layout == "big-number":
                 figure, label = metrics[0]
                 box = _textbox(
                     slide,
                     left=text_left,
-                    top=160,
+                    top=body_top,
                     width=text_width,
-                    height=120,
+                    height=140,
                     placeholder=("body", 1),
                 )
                 run = box.paragraphs[0].add_run()
                 run.text = figure
-                paint(run, size=96, bold=True, colour=accent)
+                paint(run, size=_u("bigNumber"), bold=True, colour=accent)
                 run = box.paragraphs[0].add_run()
                 run.text = f"  {label}"
-                paint(run, size=20, colour=muted)
+                paint(run, size=_u("bigNumberLabel"), colour=muted)
                 if body:
-                    under = _textbox(slide, left=text_left, top=300, width=text_width, height=80)
-                    paint_rich(under.paragraphs[0], data, "body", body, size=18)
+                    under = _textbox(
+                        slide, left=text_left, top=body_top + 150, width=text_width, height=80
+                    )
+                    paint_rich(under.paragraphs[0], data, "body", body, size=_u("bigNumberBody"))
             elif bullets and layout == "agenda":
                 # Two columns above four entries.
                 columns = _split_columns(bullets) if len(bullets) > 4 else [bullets]
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 per = max(len(column) for column in columns)
-                step = min(56.0, (_H - 210) / max(per, 1))
+                step = min(66.0, room / max(per, 1))
                 number = 0
                 for column_index, column in enumerate(columns):
                     left = text_left + column_index * (span + 24)
                     for position, text in enumerate(column):
                         number += 1
-                        y = 150 + position * step
-                        counter = _textbox(slide, left=left, top=y, width=52, height=step)
+                        y = body_top + position * step
+                        counter = _textbox(slide, left=left, top=y, width=64, height=step)
                         run = counter.paragraphs[0].add_run()
                         run.text = f"{number:02d}"
-                        paint(run, size=22, bold=True, colour=accent)
+                        paint(run, size=_u("agendaNumber"), bold=True, colour=accent)
                         name = _textbox(
                             slide,
-                            left=left + 52,
+                            left=left + 64,
                             top=y + 4,
-                            width=span - 52,
+                            width=span - 64,
                             height=step,
                             placeholder=("body", 1) if number == 1 else None,
                         )
                         run = name.paragraphs[0].add_run()
                         run.text = text
-                        paint(run, size=18)
+                        paint(run, size=_u("agenda"))
                         _block(
                             slide, left=left, top=y + step - 6, width=span, height=0.75, colour=hair
                         )
@@ -1260,39 +1367,47 @@ def to_pptx(
                         slide,
                         look,
                         left=left,
-                        top=170,
+                        top=body_top + 8,
                         width=span,
-                        height=124,
+                        height=150,
                         fill=tint,
                         line=hair,
                     )
-                    _block(slide, left=left, top=170, width=span, height=5, colour=accent)
+                    _block(slide, left=left, top=body_top + 8, width=span, height=5, colour=accent)
                     box = _textbox(
                         slide,
                         left=left,
-                        top=180,
+                        top=body_top + 20,
                         width=span,
-                        height=110,
+                        height=130,
                     )
                     run = box.paragraphs[0].add_run()
                     run.text = figure
-                    paint(run, size=44, bold=True, colour=accent)
+                    paint(run, size=_u("metric"), bold=True, colour=accent)
                     under = box.add_paragraph()
                     under.space_before = Pt(6)
                     run = under.add_run()
                     run.text = label
-                    paint(run, size=14, colour=muted)
+                    paint(run, size=_u("metricLabel"), colour=muted)
             elif rows:
+                row_height = deck_type.table_row_height(len(rows)) * _K
                 shape = slide.shapes.add_table(
                     len(rows),
                     max(len(row) for row in rows),
                     Emu(int(text_left * _EMU_PER_PT)),
-                    Emu(int(150 * _EMU_PER_PT)),
+                    Emu(int(body_top * _EMU_PER_PT)),
                     Emu(int(text_width * _EMU_PER_PT)),
-                    Emu(int(min(_H - 220, 34 * len(rows)) * _EMU_PER_PT)),
+                    Emu(int(row_height * len(rows) * _EMU_PER_PT)),
                 )
                 table = shape.table
-                cell_size = max(8, round(14 * _table_size(len(rows)) / 12))
+                # Columns by their widest cell, rows by the shared row height; the panel
+                # draws the same shares.
+                for column_index, share in enumerate(deck_type.column_shares(rows)):
+                    table.columns[column_index].width = Emu(int(text_width * share * _EMU_PER_PT))
+                for table_row in table.rows:
+                    table_row.height = Emu(int(row_height * _EMU_PER_PT))
+                cell_size = deck_type.table_size(len(rows)) * _K
+                cell_pad = deck_type.table_pad(len(rows)) * _K
                 # Off, or PowerPoint applies its theme's banded table style.
                 table.first_row = False
                 table.horz_banding = False
@@ -1314,60 +1429,72 @@ def to_pptx(
                         elif r < len(rows) - 1:
                             _cell_rule(cell, muted, 0.5)
                         cell.text = ""
+                        cell.margin_left = cell.margin_right = Emu(int(9 * _K * _EMU_PER_PT))
+                        cell.margin_top = cell.margin_bottom = Emu(int(cell_pad * _EMU_PER_PT))
+                        cell.text_frame.paragraphs[0].line_spacing = deck_type.LEADING["table"]
                         run = cell.text_frame.paragraphs[0].add_run()
                         run.text = text
                         paint(
                             run,
                             size=cell_size,
-                            bold=r == 0,
+                            bold=r == 0 or c == 0,
                             colour=_WHITE if r == 0 else ink,
                         )
             elif bullets:
                 # PowerPoint has no column flow, so columns are separate boxes.
                 columns = _columns_of(data, bullets, layout)
                 span = (text_width - (24 * (len(columns) - 1))) / len(columns)
+                size = _u("bodyNarrow") if len(columns) > 1 else _u("body")
                 bullet_at = 0
                 for column_index, column in enumerate(columns):
                     listing = _textbox(
                         slide,
                         left=text_left + column_index * (span + 24),
-                        top=150,
+                        top=body_top,
                         width=span,
-                        height=_H - 210,
+                        height=room,
                         # Only the first column is the body placeholder.
                         placeholder=("body", 1) if column_index == 0 else None,
                     )
+                    # A list that fits sits in the middle of its box, as in the panel.
+                    if typescale[0] >= 1 and not picture:
+                        listing.vertical_anchor = MSO_ANCHOR.MIDDLE
                     for position, text in enumerate(column):
                         paragraph = (
                             listing.paragraphs[0] if position == 0 else listing.add_paragraph()
                         )
-                        paragraph.space_after = Pt(12)
+                        paragraph.line_spacing = look.leading
+                        paragraph.space_after = Pt(size * deck_type.BULLET_GAP * typescale[0])
                         marker = paragraph.add_run()
                         marker.text = "• "
-                        paint(marker, size=16, bold=True, colour=accent)
-                        paint_rich(
-                            paragraph,
-                            data,
-                            f"bullets.{bullet_at}",
-                            text,
-                            size=14 if len(columns) > 1 else 16,
-                        )
+                        paint(marker, size=size, bold=True, colour=accent)
+                        paint_rich(paragraph, data, f"bullets.{bullet_at}", text, size=size)
                         bullet_at += 1
             elif body:
                 paragraph_frame = _textbox(
                     slide,
                     left=text_left,
-                    top=150,
+                    top=body_top,
                     width=text_width,
-                    height=_H - 210,
+                    height=room,
                     placeholder=("body", 1),
                 )
-                paint_rich(paragraph_frame.paragraphs[0], data, "body", body, size=16, colour=muted)
+                if typescale[0] >= 1 and not picture:
+                    paragraph_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+                paragraph_frame.paragraphs[0].line_spacing = look.leading
+                paint_rich(
+                    paragraph_frame.paragraphs[0],
+                    data,
+                    "body",
+                    body,
+                    size=_u("paragraph"),
+                    colour=muted,
+                )
 
         if picture:
             image_bytes, image_caption = picture
             alone = not (bullets or rows or metrics or chart or body)
-            box = (_W - 260, _H - 230) if alone else (picture_span, _H - 230)
+            box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:
                 _, _, crop_left, crop_top, crop_right, crop_bottom = _fill(image_bytes, box=box)
@@ -1376,7 +1503,7 @@ def to_pptx(
                 width, height = _fit(image_bytes, box=box)
                 crop_left = crop_top = crop_right = crop_bottom = 0.0
             left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
-            top = 150 + max(0.0, (_H - 230 - height) / 2)
+            top = body_top + max(0.0, (room - height) / 2)
             try:
                 shape = slide.shapes.add_picture(
                     io.BytesIO(image_bytes),
@@ -1399,7 +1526,7 @@ def to_pptx(
                     )
                     run = frame.paragraphs[0].add_run()
                     run.text = image_caption
-                    paint(run, size=11, colour=muted)
+                    paint(run, size=_u("caption"), colour=muted)
 
         # Foot: logo, deck title and footer on the left, slide number on the right.
         if not cover:
@@ -1411,7 +1538,7 @@ def to_pptx(
                     slide.shapes.add_picture(
                         io.BytesIO(blob),
                         Emu(int(edge * _EMU_PER_PT)),
-                        Emu(int((_H - 52) * _EMU_PER_PT)),
+                        Emu(int((_H - 60) * _EMU_PER_PT)),
                         Emu(int(mark_width * _EMU_PER_PT)),
                         Emu(int(mark_height * _EMU_PER_PT)),
                     )
@@ -1419,17 +1546,18 @@ def to_pptx(
                     log.warning("could not place the logo on a pptx slide: %s", exc)
                 else:
                     edge += mark_width + 10
-            name = _textbox(slide, left=edge, top=_H - 52, width=_W - 188 - edge, height=26)
+            _block(slide, left=72, top=_H - _FOOT_RULE, width=_W - 144, height=0.75, colour=hair)
+            name = _textbox(slide, left=edge, top=_H - 62, width=_W - 320 - edge, height=30)
             run = name.paragraphs[0].add_run()
             run.text = title
-            paint(run, size=9, colour=muted)
+            paint(run, size=_u("footer"), colour=muted)
             if footer:
-                who = _textbox(slide, left=_W - 226, top=_H - 52, width=110, height=26)
+                who = _textbox(slide, left=_W - 330, top=_H - 62, width=210, height=30)
                 who.paragraphs[0].alignment = PP_ALIGN.RIGHT
                 run = who.paragraphs[0].add_run()
                 run.text = footer
-                paint(run, size=9, colour=muted)
-            chip = _block(slide, left=_W - 106, top=_H - 52, width=34, height=22, colour=accent)
+                paint(run, size=_u("footer"), colour=muted)
+            chip = _block(slide, left=_W - 108, top=_H - 60, width=36, height=36, colour=accent)
             frame = chip.text_frame
             frame.word_wrap = False
             frame.margin_left = frame.margin_right = 0
@@ -1437,7 +1565,7 @@ def to_pptx(
             frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             run = frame.paragraphs[0].add_run()
             run.text = str(index + 1)
-            paint(run, size=10, bold=True, colour=_WHITE)
+            paint(run, size=_u("pageNumber"), bold=True, colour=_WHITE)
 
         notes = str(data.get("notes") or "").strip()
         if notes:
@@ -1502,9 +1630,10 @@ def _pdf_pairs(
     look: Look | None = None,
     hair=None,
     bg=None,
+    room: float | None = None,
 ) -> None:
     """The `.pdf` twin of `_pptx_pairs`: same geometry, explicit wrapping."""
-    room = top - 80
+    room = room if room is not None else top - (_H - _BODY_BOTTOM)
     look = look or _LOOKS["editorial"]
     hair = hair or (0.902, 0.902, 0.902)
     bg = bg or (1.0, 1.0, 1.0)
@@ -1515,6 +1644,8 @@ def _pdf_pairs(
     if layout == "bands":
         label = 96.0
         height = min(72.0, (room - 10 * (len(pairs) - 1)) / max(len(pairs), 1))
+        band = max(_u("bandMin"), min(_u("bandMax"), height / 3))
+        lead = band * deck_type.LEADING["band"]
         for index, (name, text) in enumerate(pairs):
             bottom = top - height - index * (height + 10)
             pdf.setFillColorRGB(*accent)
@@ -1531,14 +1662,14 @@ def _pdf_pairs(
                 bg=bg,
             )
             pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont(font, S(15))
-            pdf.drawCentredString(left + label / 2, bottom + height / 2 - S(5), name)
+            pdf.setFont(font, S(band))
+            pdf.drawCentredString(left + label / 2, bottom + height / 2 - S(band) * 0.35, name)
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, S(13))
-            lines = _wrap(text, font, S(13), width - label - 40)[:3]
-            line_top = bottom + height / 2 + S(18) * (len(lines) - 1) / 2 - S(5)
+            pdf.setFont(font, S(band))
+            lines = _wrap(text, font, S(band), width - label - 40)[:3]
+            line_top = bottom + height / 2 + S(lead) * (len(lines) - 1) / 2 - S(band) * 0.35
             for offset, line in enumerate(lines):
-                pdf.drawString(left + label + 24, line_top - offset * S(18), line)
+                pdf.drawString(left + label + 24, line_top - offset * S(lead), line)
         return
 
     if layout == "tiles":
@@ -1548,12 +1679,18 @@ def _pdf_pairs(
             item_left = left + index * (span + 16)
             _pdf_badge(pdf, look, left=item_left, bottom=top - side - 20, side=side, colour=accent)
             pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont(font, S(40))
-            pdf.drawCentredString(item_left + side / 2, top - side / 2 - 20 - S(14), mark)
+            pdf.setFont(font, S(_u("tileMark")))
+            pdf.drawCentredString(
+                item_left + side / 2, top - side / 2 - 20 - S(_u("tileMark")) * 0.35, mark
+            )
             pdf.setFillColorRGB(*muted)
-            pdf.setFont(font, S(12))
-            for offset, line in enumerate(_wrap(name, font, S(12), side + 16)[:2]):
-                pdf.drawCentredString(item_left + side / 2, top - side - 40 - offset * S(15), line)
+            pdf.setFont(font, S(_u("tileName")))
+            for offset, line in enumerate(_wrap(name, font, S(_u("tileName")), side + 16)[:2]):
+                pdf.drawCentredString(
+                    item_left + side / 2,
+                    top - side - 20 - S(_u("tileName")) * 1.5 - offset * S(_u("tileName")) * 1.5,
+                    line,
+                )
         return
 
     if layout == "steps":
@@ -1570,24 +1707,32 @@ def _pdf_pairs(
                 pdf, look, left=item_left, bottom=square_top - side, side=side, colour=accent
             )
             pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont(font, S(18))
+            pdf.setFont(font, S(_u("stepBadge")))
             pdf.drawCentredString(
-                item_left + side / 2, square_top - side / 2 - S(6), f"{index + 1:02d}"
+                item_left + side / 2,
+                square_top - side / 2 - S(_u("stepBadge")) * 0.35,
+                f"{index + 1:02d}",
             )
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, S(15))
-            pdf.drawString(item_left, square_top - side - S(24), name)
+            pdf.setFont(font, S(_u("stepName")))
+            name_base = square_top - side - 12 - S(_u("stepName"))
+            pdf.drawString(item_left, name_base, name)
             pdf.setFillColorRGB(*muted)
-            pdf.setFont(font, S(12))
-            for offset, line in enumerate(_wrap(text, font, S(12), span - 4)[:4]):
-                pdf.drawString(item_left, square_top - side - S(44) - offset * S(16), line)
+            text_size = S(_u("stepText"))
+            text_lead = text_size * deck_type.LEADING["stepText"]
+            pdf.setFont(font, text_size)
+            for offset, line in enumerate(_wrap(text, font, text_size, span - 4)[:4]):
+                pdf.drawString(item_left, name_base - 8 - text_size - offset * text_lead, line)
         return
 
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min(220.0, room - 20)
+        height = min(100 * _K, room - 10)
         card_top = top - 10
+        name_size = S(_u("cardName"))
+        text_size = S(_u("cardText"))
+        text_lead = text_size * deck_type.LEADING["cardText"]
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _pdf_box(
@@ -1603,30 +1748,36 @@ def _pdf_pairs(
             )
             pdf.setFillColorRGB(*accent)
             pdf.rect(item_left, card_top - 5, span, 5, stroke=0, fill=1)
-            pdf.setFont(font, S(16))
-            pdf.drawString(item_left + 14, card_top - S(34), name)
+            pdf.setFont(font, name_size)
+            name_base = card_top - 20 - name_size
+            pdf.drawString(item_left + 14, name_base, name)
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, S(13))
-            lines = _wrap(text, font, S(13), span - 28)[: max(1, int((height - 70) / S(18)))]
+            pdf.setFont(font, text_size)
+            first = name_base - 12 - text_size
+            lines = _wrap(text, font, text_size, span - 28)[
+                : max(1, int((first - (card_top - height) - 10) / text_lead) + 1)
+            ]
             for offset, line in enumerate(lines):
-                pdf.drawString(item_left + 14, card_top - S(60) - offset * S(18), line)
+                pdf.drawString(item_left + 14, first - offset * text_lead, line)
         return
 
     # timeline
     axis = 128.0
     step = min(56.0, room / max(len(pairs), 1))
+    line_size = S(max(_u("lineMin"), min(_u("lineMax"), step / 2.3)))
+    line_lead = line_size * deck_type.LEADING["line"]
     pdf.setFillColorRGB(*tint)
     pdf.rect(left + axis, top - step * len(pairs), 1.5, step * len(pairs), stroke=0, fill=1)
     for index, (when, what) in enumerate(pairs):
-        line_top = top - 14 - index * step
+        line_top = top - 4 - line_size - index * step
         pdf.setFillColorRGB(*accent)
-        pdf.setFont(font, S(13))
+        pdf.setFont(font, line_size)
         pdf.drawRightString(left + axis - 12, line_top, when)
         pdf.rect(left + axis - 3.25, line_top - 1, 8, 8, stroke=0, fill=1)
         pdf.setFillColorRGB(*ink)
-        pdf.setFont(font, S(13))
-        for offset, line in enumerate(_wrap(what, font, S(13), width - axis - 16)[:2]):
-            pdf.drawString(left + axis + 16, line_top - offset * S(16), line)
+        pdf.setFont(font, line_size)
+        for offset, line in enumerate(_wrap(what, font, line_size, width - axis - 16)[:2]):
+            pdf.drawString(left + axis + 16, line_top - offset * line_lead, line)
 
 
 def _pdf_chart(
@@ -1641,7 +1792,7 @@ def _pdf_chart(
     left: float = 72.0,
 ) -> None:
     """The `.pdf` twin of `_pptx_chart`, drawn by hand over a zero floor."""
-    bottom = 90.0
+    bottom = _H - _BODY_BOTTOM + 6
     height = top - bottom - 30
     if height < 60 or width < 100:
         return
@@ -1882,7 +2033,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             elif look.ornament == "gutter":
                 pdf.setFillColorRGB(*accent)
                 pdf.rect(0, 0, 7, _H, stroke=0, fill=1)
-                pdf.setFont(font, 30)
+                pdf.setFont(font, _u("gutterNumber"))
                 pdf.drawString(22, 80, f"{index + 1:02d}")
             elif look.ornament == "frame":
                 pdf.setStrokeColorRGB(*ink)
@@ -1899,103 +2050,131 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         def S(n: float, _ts: float = ts) -> float:
             return n * _ts
 
+        def T(n: float, _ts: float = ts) -> float:
+            # A title shrinks with the slide but never grows.
+            return n * min(1.0, _ts)
+
+        cover_size = _u(
+            "coverPoster"
+            if visual_style == "poster"
+            else "coverMono"
+            if visual_style == "mono"
+            else "cover"
+        )
+        #: Body box for this slide; a long title lowers its top.
+        body_top, room = _BODY_TOP, _BODY_BOTTOM - _BODY_TOP
+
         if layout == "closing":
             cover_ink = (1.0, 1.0, 1.0) if on_accent else ink
             cover_muted = _mix_floats((1.0, 1.0, 1.0), 80, onto=accent) if on_accent else muted
             if look.cover == "split":
                 pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 35, onto=accent))
-                pdf.setFont(font, S(64))
+                pdf.setFont(font, S(_u("splitNumber")))
                 pdf.drawString(60, 60, "END")
             if look.cover != "brackets":
                 pdf.setFillColorRGB(*((1, 1, 1) if on_accent else accent))
                 pdf.rect(cover_left, _H - 127, 106, 7, stroke=0, fill=1)
             pdf.setFillColorRGB(*cover_ink)
-            pdf.setFont(font, S(36))
-            y = _H - 176
-            for line in _wrap(heading or "마무리", font, S(36), _W - 72 - cover_left)[:2]:
+            closing_size = S(_u("closing"))
+            pdf.setFont(font, closing_size)
+            y = _H - 140 - closing_size
+            for line in _wrap(heading or "마무리", font, closing_size, _W - 72 - cover_left)[:2]:
                 pdf.drawString(cover_left, y, line)
-                y -= S(44)
+                y -= closing_size * 1.2
             y -= 6
+            bullet_size = S(_u("closingBullets"))
+            bullet_lead = bullet_size * deck_type.LEADING["body"]
             for text in bullets[:3]:
                 pdf.setFillColorRGB(*cover_muted)
-                pdf.setFont(font, S(18))
+                pdf.setFont(font, bullet_size)
                 pdf.drawString(cover_left, y, "—")
                 pdf.setFillColorRGB(*cover_ink)
-                for offset, line in enumerate(_wrap(text, font, S(18), _W - 128 - cover_left)[:2]):
-                    pdf.drawString(cover_left + 28, y - offset * S(24), line)
-                    y -= S(24)
-                y -= 10
+                for offset, line in enumerate(
+                    _wrap(text, font, bullet_size, _W - 128 - cover_left)[:2]
+                ):
+                    pdf.drawString(cover_left + 28, y - offset * bullet_lead, line)
+                    y -= bullet_lead
+                y -= 6
             if body:
                 pdf.setFillColorRGB(*cover_ink)
-                pdf.setFont(font, S(22))
-                pdf.drawString(cover_left, 92, _wrap(body, font, S(22), _W - 72 - cover_left)[0])
+                pdf.setFont(font, S(_u("closingBody")))
+                pdf.drawString(
+                    cover_left, 92, _wrap(body, font, S(_u("closingBody")), _W - 72 - cover_left)[0]
+                )
         elif cover:
             cover_ink = (1.0, 1.0, 1.0) if on_accent else ink
             number = str(data.get("number") or "")
             if look.cover == "split":
                 pdf.setFillColorRGB(*_mix_floats((1.0, 1.0, 1.0), 35, onto=accent))
-                pdf.setFont(font, S(64))
+                pdf.setFont(font, S(_u("splitNumber")))
                 pdf.drawString(60, 60, number.replace(".", "") or "01")
             if look.cover != "split" and layout == "section" and number:
                 pdf.setFillColorRGB(
                     *(_mix_floats((1.0, 1.0, 1.0), 70, onto=accent) if on_accent else accent)
                 )
-                pdf.setFont(font, S(22))
+                pdf.setFont(font, S(_u("sectionNumber")))
                 pdf.drawString(cover_left, _H / 2 + 100, number)
             elif look.cover != "brackets":
                 pdf.setFillColorRGB(*((1, 1, 1) if on_accent else accent))
                 pdf.rect(cover_left + 10, _H / 2 + 74, 106, 7, stroke=0, fill=1)
             pdf.setFillColorRGB(*cover_ink)
-            pdf.setFont(font, S(40))
+            pdf.setFont(font, S(cover_size))
             y = _H / 2 + 20
             title_width = (_W - 72 - cover_left) - (300 if look.cover == "paper" else 0)
-            for line in _wrap(heading or title, font, S(40), title_width):
+            for line in _wrap(heading or title, font, S(cover_size), title_width):
                 pdf.drawString(cover_left, y, line)
-                y -= S(50)
+                y -= S(cover_size) * 1.2
             if body:
                 pdf.setFillColorRGB(
                     *(_mix_floats((1.0, 1.0, 1.0), 80, onto=accent) if on_accent else muted)
                 )
-                pdf.setFont(font, S(15))
-                for line in _wrap(body, font, S(15), _W - 72 - cover_left)[:2]:
+                pdf.setFont(font, S(_u("coverBody")))
+                for line in _wrap(body, font, S(_u("coverBody")), _W - 72 - cover_left)[:2]:
                     pdf.drawString(cover_left, y - 6, line)
-                    y -= S(22)
+                    y -= S(_u("coverBody")) * 1.5
         elif layout == "statement":
             pdf.setFillColorRGB(*accent)
             pdf.rect((_W - 62) / 2, _H - 181, 62, 5, stroke=0, fill=1)
-            pdf.setFont(font, S(44))
+            pdf.setFont(font, S(_u("statement")))
             y = _H / 2 + 10
-            for line in _wrap(heading, font, S(44), _W - 180)[:2]:
+            for line in _wrap(heading, font, S(_u("statement")), _W - 180)[:2]:
                 pdf.drawCentredString(_W / 2, y, line)
-                y -= S(54)
+                y -= S(_u("statement")) * 1.25
             if body:
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, S(18))
-                for line in _wrap(body, font, S(18), _W - 240)[:2]:
+                pdf.setFont(font, S(_u("statementBody")))
+                for line in _wrap(body, font, S(_u("statementBody")), _W - 240)[:2]:
                     pdf.drawCentredString(_W / 2, y - 4, line)
-                    y -= S(26)
+                    y -= S(_u("statementBody")) * 1.5
         elif layout == "quote":
             pdf.setFillColorRGB(*accent)
-            pdf.setFont(font, S(30))
+            pdf.setFont(font, S(_u("quote")))
             y = _H / 2 + 40
-            for line in _wrap(f"“{body or heading}”", font, S(30), _W - 200):
+            for line in _wrap(f"“{body or heading}”", font, S(_u("quote")), _W - 200):
                 pdf.drawString(90, y, line)
-                y -= S(40)
+                y -= S(_u("quote")) * 1.4
             if body and heading:
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, S(13))
+                pdf.setFont(font, S(_u("quoteBy")))
                 pdf.drawString(90, y - 8, heading)
         else:
+            title_size = T(_u("title"))
+            title_line = title_size * deck_type.LEADING["title"]
+            title_lines = _wrap(heading, font, title_size, text_width) or [""]
             pdf.setFillColorRGB(*ink)
-            pdf.setFont(font, S(24))
-            y = _H - 96
-            for line in _wrap(heading, font, S(24), text_width):
-                pdf.drawString(72, y, line)
-                y -= S(32)
-            # The tab under the title; `y` has already advanced past the last line.
+            pdf.setFont(font, title_size)
+            y = _H - _TITLE_TOP - title_size * 0.9
+            for line in title_lines:
+                pdf.drawString(text_left, y, line)
+                y -= title_line
+            # The tab under the title; the body box starts below it and loses one line for
+            # each extra title line.
             pdf.setFillColorRGB(*accent)
-            pdf.rect(text_left, y + S(4), 62, 5, stroke=0, fill=1)
-            y -= 24
+            tab_top = _TITLE_TOP + title_line * len(title_lines) + 6 * _K
+            pdf.rect(text_left, _H - tab_top - 5, 62, 5, stroke=0, fill=1)
+            body_top = _BODY_TOP + title_line * (len(title_lines) - 1)
+            room = _BODY_BOTTOM - body_top
+            y = _H - body_top
 
             if pairs:
                 _pdf_pairs(
@@ -2014,6 +2193,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     look=look,
                     hair=hair,
                     bg=ground,
+                    room=room,
                 )
             elif chart:
                 _pdf_chart(
@@ -2028,116 +2208,157 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 )
             elif metrics and layout == "big-number":
                 figure, label = metrics[0]
+                figure_size = S(_u("bigNumber"))
                 pdf.setFillColorRGB(*accent)
-                pdf.setFont(font, S(96))
-                pdf.drawString(text_left, y - S(90), figure)
-                figure_width = pdf.stringWidth(figure, font, S(96))
+                pdf.setFont(font, figure_size)
+                pdf.drawString(text_left, y - figure_size, figure)
+                figure_width = pdf.stringWidth(figure, font, figure_size)
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, S(20))
-                pdf.drawString(text_left + figure_width + 14, y - S(90), label)
+                pdf.setFont(font, S(_u("bigNumberLabel")))
+                pdf.drawString(text_left + figure_width + 14, y - figure_size, label)
                 if body:
+                    body_size = S(_u("bigNumberBody"))
                     pdf.setFillColorRGB(*ink)
-                    pdf.setFont(font, S(18))
-                    for offset, line in enumerate(_wrap(body, font, S(18), text_width)[:2]):
-                        pdf.drawString(text_left, y - S(130) - offset * S(26), line)
+                    pdf.setFont(font, body_size)
+                    for offset, line in enumerate(_wrap(body, font, body_size, text_width)[:2]):
+                        pdf.drawString(
+                            text_left,
+                            y - figure_size - 24 - body_size - offset * body_size * 1.5,
+                            line,
+                        )
             elif metrics:
                 span = (text_width - 24 * (len(metrics) - 1)) / len(metrics)
+                figure_size = S(_u("metric"))
+                label_size = S(_u("metricLabel"))
+                box_height = figure_size * 1.1 + 6 + label_size * 1.5 + 30
                 for position, (figure, label) in enumerate(metrics):
                     left = text_left + position * (span + 24)
                     _pdf_box(
                         pdf,
                         look,
                         left=left,
-                        bottom=y - S(86),
+                        bottom=y - 8 - box_height,
                         width=span,
-                        height=S(86) + 18,
+                        height=box_height,
                         fill=tint,
                         line=hair,
                         bg=ground,
                     )
                     pdf.setFillColorRGB(*accent)
-                    pdf.rect(left, y + 13, span, 5, stroke=0, fill=1)
+                    pdf.rect(left, y - 8 - 5, span, 5, stroke=0, fill=1)
                     pdf.setFillColorRGB(*accent)
-                    pdf.setFont(font, S(44))
-                    pdf.drawString(left, y - S(40), figure)
+                    pdf.setFont(font, figure_size)
+                    pdf.drawString(left + 14, y - 8 - 14 - figure_size, figure)
                     pdf.setFillColorRGB(*muted)
-                    pdf.setFont(font, S(14))
-                    pdf.drawString(left, y - S(70), label)
+                    pdf.setFont(font, label_size)
+                    pdf.drawString(
+                        left + 14, y - 8 - 14 - figure_size * 1.1 - 6 - label_size, label
+                    )
             elif rows:
-                width = text_width / max(len(row) for row in rows)
-                cell_size = S(max(9.0, 15 * _table_size(len(rows)) / 12))
-                step = cell_size * 2.0
+                # Columns by their widest cell and rows by the shared row height, as in the
+                # panel; a cell that wraps makes its row taller, up to two lines.
+                widths = [text_width * share for share in deck_type.column_shares(rows)]
+                cell_size = S(deck_type.table_size(len(rows)) * _K)
+                cell_pad = S(deck_type.table_pad(len(rows)) * _K)
+                line_height = cell_size * deck_type.LEADING["table"]
+                pad_x = 9 * _K
+                row_top = y
                 for row_index, row in enumerate(rows):
+                    wrapped = [
+                        _wrap(cell, font, cell_size, widths[c] - 2 * pad_x)[:2]
+                        for c, cell in enumerate(row)
+                        if c < len(widths)
+                    ]
+                    step = max(1, *(len(w) for w in wrapped)) * line_height + 2 * cell_pad
+                    if row_top - step < _H - _BODY_BOTTOM - 2:
+                        break
                     if row_index == 0:
                         pdf.setFillColorRGB(*accent)
-                        pdf.rect(text_left, y - step * 0.3, text_width, step, stroke=0, fill=1)
+                        pdf.rect(text_left, row_top - step, text_width, step, stroke=0, fill=1)
                     elif row_index % 2 == 0:
                         pdf.setFillColorRGB(*tint)
-                        pdf.rect(text_left, y - step * 0.3, text_width, step, stroke=0, fill=1)
+                        pdf.rect(text_left, row_top - step, text_width, step, stroke=0, fill=1)
                     else:
                         pdf.setStrokeColorRGB(*hair)
                         pdf.setLineWidth(0.75)
-                        pdf.line(text_left, y - step * 0.3, text_left + text_width, y - step * 0.3)
+                        pdf.line(text_left, row_top - step, text_left + text_width, row_top - step)
                     pdf.setFillColorRGB(*((1.0, 1.0, 1.0) if row_index == 0 else ink))
                     pdf.setFont(font, cell_size)
-                    for cell_index, cell in enumerate(row):
-                        text = _wrap(cell, font, cell_size, width - 16)
-                        pdf.drawString(
-                            text_left + 8 + cell_index * width, y, text[0] if text else ""
-                        )
-                    y -= step
-                    # Stop above the foot rule at 58.
-                    if y < 84:
-                        break
+                    x = text_left
+                    for c, lines in enumerate(wrapped):
+                        baseline = row_top - cell_pad - cell_size * 0.85
+                        for offset, line in enumerate(lines):
+                            pdf.drawString(x + pad_x, baseline - offset * line_height, line)
+                        x += widths[c]
+                    row_top -= step
             elif bullets and layout == "agenda":
                 columns = _split_columns(bullets) if len(bullets) > 4 else [bullets]
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
                 per = max(len(column) for column in columns)
-                step = min(56.0, (_H - 210) / max(per, 1))
+                step = min(66.0, room / max(per, 1))
+                agenda_size = S(_u("agenda"))
                 number = 0
                 top = y
                 for column_index, column in enumerate(columns):
                     left = text_left + column_index * (span + 24)
                     for position, text in enumerate(column):
                         number += 1
-                        line_y = top - 20 - position * step
+                        line_y = top - 10 - agenda_size - position * step
                         pdf.setFillColorRGB(*accent)
-                        pdf.setFont(font, S(22))
+                        pdf.setFont(font, S(_u("agendaNumber")))
                         pdf.drawString(left, line_y, f"{number:02d}")
                         pdf.setFillColorRGB(*ink)
-                        pdf.setFont(font, S(18))
-                        pdf.drawString(left + 52, line_y, _wrap(text, font, S(18), span - 52)[0])
+                        pdf.setFont(font, agenda_size)
+                        pdf.drawString(
+                            left + 64, line_y, _wrap(text, font, agenda_size, span - 64)[0]
+                        )
                         pdf.setFillColorRGB(*hair)
-                        pdf.rect(left, line_y - 14, span, 0.75, stroke=0, fill=1)
+                        pdf.rect(left, line_y - 12, span, 0.75, stroke=0, fill=1)
             elif bullets:
                 columns = _columns_of(data, bullets, layout)
-                size = S(14 if len(columns) > 1 else 16)
-                step = S(20 if len(columns) > 1 else 24)
+                size = S(_u("bodyNarrow") if len(columns) > 1 else _u("body"))
+                step = size * look.leading
+                gap = size * deck_type.BULLET_GAP
                 span = (text_width - 24 * (len(columns) - 1)) / len(columns)
-                top = y
-                for column_index, column in enumerate(columns):
+                wrapped_columns = [
+                    [_wrap(text, font, size, span - 26) for text in column] for column in columns
+                ]
+                # A list that fits sits in the middle of its box, as in the panel.
+                tallest = max(
+                    sum(len(lines) * step + gap for lines in column) - gap
+                    for column in wrapped_columns
+                )
+                offset_top = max(0.0, (room - tallest) / 2) if ts >= 1 and not picture else 0.0
+                top = y - offset_top - size * 0.85
+                for column_index, column in enumerate(wrapped_columns):
                     left = text_left + column_index * (span + 24)
                     y = top
-                    for text in column:
-                        wrapped = _wrap(text, font, size, span - 26)
+                    for wrapped in column:
                         pdf.setFillColorRGB(*accent)
                         pdf.setFont(font, size)
                         pdf.drawString(left + 4, y, "•")
                         pdf.setFillColorRGB(*ink)
                         for offset, line in enumerate(wrapped):
                             pdf.drawString(left + 26, y - offset * step, line)
-                        y -= step * len(wrapped) + 14
+                        y -= step * len(wrapped) + gap
             elif body:
+                size = S(_u("paragraph"))
+                step = size * look.leading
+                wrapped = _wrap(body, font, size, text_width)
+                offset_top = (
+                    max(0.0, (room - step * len(wrapped)) / 2) if ts >= 1 and not picture else 0.0
+                )
+                y = y - offset_top - size * 0.85
                 pdf.setFillColorRGB(*muted)
-                pdf.setFont(font, S(16))
-                for line in _wrap(body, font, S(16), text_width):
+                pdf.setFont(font, size)
+                for line in wrapped:
                     pdf.drawString(text_left, y, line)
-                    y -= S(24)
+                    y -= step
 
         if picture:
             image_bytes, image_caption = picture
             alone = not (bullets or rows or metrics or chart or body)
-            box = (_W - 260, _H - 230) if alone else (picture_span, _H - 230)
+            box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:
                 width, height, *_ = _fill(image_bytes, box=box)
@@ -2147,7 +2368,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     if not alone
                     else (_W - box_width) / 2
                 )
-                box_bottom = 90
+                box_bottom = _H - body_top - room
                 left = box_left - (width - box_width) / 2
                 bottom = box_bottom - (height - box_height) / 2
             else:
@@ -2158,7 +2379,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     if not alone
                     else (_W - width) / 2
                 )
-                box_bottom = 90 + max(0.0, (_H - 230 - height) / 2)
+                box_bottom = _H - body_top - room + max(0.0, (room - height) / 2)
                 left, bottom = box_left, box_bottom
             try:
                 if fill:
@@ -2186,18 +2407,18 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             else:
                 if image_caption:
                     pdf.setFillColorRGB(*muted)
-                    pdf.setFont(font, 11)
+                    pdf.setFont(font, S(_u("caption")))
                     pdf.drawString(
                         box_left,
-                        box_bottom - 16,
-                        _wrap(image_caption, font, 11, box_width)[0],
+                        box_bottom - 6 - S(_u("caption")),
+                        _wrap(image_caption, font, S(_u("caption")), box_width)[0],
                     )
 
         # Foot: logo, deck title and footer on the left, slide number on the right.
         if not cover:
             pdf.setStrokeColorRGB(*hair)
             pdf.setLineWidth(0.75)
-            pdf.line(72, 58, _W - 72, 58)
+            pdf.line(72, _FOOT_RULE, _W - 72, _FOOT_RULE)
             left = 72.0
             if mark:
                 blob, mark_width, mark_height = mark
@@ -2205,7 +2426,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     pdf.drawImage(
                         ImageReader(io.BytesIO(blob)),
                         left,
-                        34,
+                        30,
                         width=mark_width,
                         height=mark_height,
                         mask="auto",
@@ -2214,17 +2435,18 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     log.warning("could not draw the logo on a pdf slide: %s", exc)
                 else:
                     left += mark_width + 10
+            foot_size = _u("footer")
             pdf.setFillColorRGB(0.55, 0.55, 0.55)
-            pdf.setFont(font, 9)
-            foot = _wrap(title, font, 9, _W - 260 - (left - 72))[0] if title else ""
-            pdf.drawString(left, 40, foot)
+            pdf.setFont(font, foot_size)
+            foot = _wrap(title, font, foot_size, _W - 400 - (left - 72))[0] if title else ""
+            pdf.drawString(left, 36, foot)
             if footer:
-                pdf.drawRightString(_W - 116, 40, _wrap(footer, font, 9, 240)[0])
+                pdf.drawRightString(_W - 120, 36, _wrap(footer, font, foot_size, 240)[0])
             pdf.setFillColorRGB(*accent)
-            pdf.rect(_W - 106, 34, 34, 22, stroke=0, fill=1)
+            pdf.rect(_W - 108, 24, 36, 36, stroke=0, fill=1)
             pdf.setFillColorRGB(1, 1, 1)
-            pdf.setFont(font, 10)
-            pdf.drawCentredString(_W - 89, 41, str(index + 1))
+            pdf.setFont(font, _u("pageNumber"))
+            pdf.drawCentredString(_W - 90, 24 + 18 - _u("pageNumber") * 0.35, str(index + 1))
         pdf.showPage()
 
     pdf.save()

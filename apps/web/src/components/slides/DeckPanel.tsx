@@ -49,6 +49,7 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
+import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
@@ -156,16 +157,20 @@ interface Look {
   badge: 'square' | 'circle'
   cover: 'gradient' | 'wash' | 'glow' | 'split' | 'paper' | 'brackets'
   ornament: 'top-band' | 'left-bar' | 'corner-circle' | 'bottom-rule' | 'gutter' | 'frame' | 'bottom-band'
+  /** Title weight, title letter-spacing in slide units, and body line height; `deck_export` reads `leading`. */
+  titleWeight: number
+  tracking: number
+  leading: number
 }
 
 const LOOKS: Record<VisualStyle, Look> = {
-  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band' },
-  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar' },
-  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle' },
-  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#64748b', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule' },
-  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter' },
-  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band' },
-  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame' },
+  editorial: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e6e6e6', tint: 7, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'top-band', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  poster: { bg: '#f7f3ed', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#e2ddd4', tint: 9, card: 'filled', radius: 0, badge: 'square', cover: 'gradient', ornament: 'left-bar', titleWeight: 800, tracking: -0.4, leading: 1.55 },
+  minimal: { bg: '#ffffff', ink: '#1a1a1a', muted: '#666666', faint: '#8a8a8a', hair: '#ececec', tint: 5, card: 'outlined', radius: 0, badge: 'square', cover: 'wash', ornament: 'corner-circle', titleWeight: 600, tracking: -0.3, leading: 1.7 },
+  dark: { bg: '#0f172a', ink: '#f1f5f9', muted: '#a3b1c6', faint: '#64748b', hair: '#273449', tint: 22, card: 'filled', radius: 6, badge: 'circle', cover: 'glow', ornament: 'bottom-rule', titleWeight: 700, tracking: 0, leading: 1.6 },
+  split: { bg: '#ffffff', ink: '#111827', muted: '#5b6472', faint: '#9aa3b2', hair: '#e5e7eb', tint: 6, card: 'outlined', radius: 0, badge: 'square', cover: 'split', ornament: 'gutter', titleWeight: 700, tracking: -0.2, leading: 1.6 },
+  warm: { bg: '#f6f1e8', ink: '#3f3328', muted: '#7a6a5a', faint: '#a8998a', hair: '#e2d8c8', tint: 12, card: 'filled', radius: 10, badge: 'circle', cover: 'paper', ornament: 'bottom-band', titleWeight: 700, tracking: 0, leading: 1.7 },
+  mono: { bg: '#ffffff', ink: '#111111', muted: '#555555', faint: '#8a8a8a', hair: '#111111', tint: 0, card: 'outlined', radius: 0, badge: 'square', cover: 'brackets', ornament: 'frame', titleWeight: 700, tracking: 0.3, leading: 1.6 },
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
@@ -398,6 +403,10 @@ export function SlideView({
   const px = (n: number) => `${n * scale}px`
   // Type size only; `textScale` does not touch padding or gaps. `deck_export` applies the same factor.
   const type = (n: number) => `${n * scale * (slide.textScale ?? 1)}px`
+  // The title shrinks with the slide but never grows: growth is for the body.
+  const titleType = (n: number) => `${n * scale * Math.min(1, slide.textScale ?? 1)}px`
+  // Whether the server grew or kept the type: the body then fits and centres in its box.
+  const fits = (slide.textScale ?? 1) >= 1
   // Tint percentages match `deck_export._mix`.
   const tint = look.tint ? `color-mix(in srgb, ${accent} ${look.tint}%, ${look.bg})` : '#f2f2f2'
   const hair = look.hair
@@ -444,24 +453,17 @@ export function SlideView({
   // Two columns only with enough bullets to fill them.
   const twoColumn = slide.layout === 'two-column' && (slide.bullets?.length ?? 0) >= 5
   // Table type size from the row count, so it stays on the slide; `deck_export` scales the same way.
-  const dense = (() => {
-    // Body height under the title, in the 225-unit slide.
-    const body = 122
-    // One row in reserve for a cell that wraps.
-    const perRow = body / (rows.length + 1.2)
-    const size = Math.max(7.5, Math.min(12, perRow / 2.05))
-    return { size, pad: Math.max(2, (perRow - size * 1.4) / 2) }
-  })()
+  const dense = { size: tableSize(rows.length), pad: tablePad(rows.length), shares: columnShares(rows) }
   // Band and timeline rows divide the body height; matches `deck_export`
   // (`min(72, room/n)` and `min(56, room/n)` in its 540-unit slide).
   const stack = (() => {
-    const body = 122
+    const body = BODY_BOTTOM - BODY_TOP - 4
     const count = Math.max(pairs.length, 1)
     const gap = 4
     const height = Math.min(30, (body - gap * (count - 1)) / count)
-    const band = Math.max(7, Math.min(10, height / 3))
+    const band = Math.max(TYPE.bandMin, Math.min(TYPE.bandMax, height / 3))
     const step = Math.min(23, body / count)
-    const line = Math.max(7, Math.min(10, step / 2.3))
+    const line = Math.max(TYPE.lineMin, Math.min(TYPE.lineMax, step / 2.3))
     // Left label width from character count (a Korean glyph is about 1em),
     // bounded between the floor and a third of the slide.
     const widest = (index: number, floor: number, size: number) =>
@@ -522,7 +524,7 @@ export function SlideView({
         {inSplit && (
           <>
             <div className="absolute inset-y-0 left-0" style={{ width: px(160), background: accent }} />
-            <div className="absolute font-black tabular-nums" style={{ left: px(26), bottom: px(22), fontSize: type(34), color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>
+            <div className="absolute font-black tabular-nums" style={{ left: px(26), bottom: px(22), fontSize: type(TYPE.splitNumber), color: 'rgba(255,255,255,0.35)', lineHeight: 1 }}>
               {slide.layout === 'section' && slide.number ? slide.number.replace('.', '') : closing ? 'END' : '01'}
             </div>
           </>
@@ -536,7 +538,7 @@ export function SlideView({
         {slide.layout === 'section' && slide.number && !inSplit ? (
           <div
             style={{
-              fontSize: type(15),
+              fontSize: type(TYPE.sectionNumber),
               fontWeight: 700,
               color: onAccent ? 'rgba(255,255,255,0.7)' : accent,
               marginBottom: px(6),
@@ -555,14 +557,14 @@ export function SlideView({
           />
         )}
         <h3
-          style={{ ...BALANCED, fontSize: type(closing ? 24 : visualStyle === 'poster' ? 30 : visualStyle === 'mono' ? 32 : 27), fontWeight: visualStyle === 'minimal' ? 600 : 750, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: visualStyle === 'mono' ? px(-0.5) : undefined }}
+          style={{ ...BALANCED, fontSize: type(closing ? TYPE.closing : visualStyle === 'poster' ? TYPE.coverPoster : visualStyle === 'mono' ? TYPE.coverMono : TYPE.cover), fontWeight: visualStyle === 'minimal' ? 600 : look.titleWeight + 50, lineHeight: 1.2, color: coverInk, maxWidth: visualStyle === 'editorial' ? '78%' : look.cover === 'paper' ? '62%' : undefined, letterSpacing: px(look.tracking * 1.5) }}
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
           {rich('title', slide.title || (closing ? t('마무리') : ''))}
         </h3>
         {closing && slide.bullets && slide.bullets.length > 0 && (
-          <ul style={{ marginTop: px(12), fontSize: type(12), lineHeight: 1.6, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
+          <ul style={{ marginTop: px(12), fontSize: type(TYPE.closingBullets), lineHeight: LEADING.body, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
             {slide.bullets.slice(0, 3).map((b, i) => (
               <li key={i} className="flex gap-2">
                 <span style={{ color: onAccent ? 'rgba(255,255,255,0.6)' : accent }}>—</span>
@@ -580,7 +582,7 @@ export function SlideView({
         {closing && slide.body ? (
           <p
             className="absolute"
-            style={{ left: inSplit ? px(34 + 180) : px(34), bottom: px(30), fontSize: type(15), fontWeight: 700, color: onAccent ? '#fff' : accent }}
+            style={{ left: inSplit ? px(34 + 180) : px(34), bottom: px(30), fontSize: type(TYPE.closingBody), fontWeight: 700, color: onAccent ? '#fff' : accent }}
             {...typed('body', (text) => ({ body: text }))}
           >
             {rich('body', slide.body)}
@@ -588,7 +590,7 @@ export function SlideView({
         ) : slide.body && (
           <p
             style={{
-              fontSize: type(13),
+              fontSize: type(TYPE.coverBody),
               marginTop: px(12),
               lineHeight: 1.5,
               color: coverMuted,
@@ -609,10 +611,11 @@ export function SlideView({
       style={{
         background: look.bg,
         color: look.ink,
+        // Title at 24; the body box ends at `BODY_BOTTOM`, above the foot rule.
         paddingTop: px(24),
-        paddingLeft: px(look.ornament === 'gutter' ? 40 : 28),
-        paddingRight: px(28),
-        paddingBottom: px(28),
+        paddingLeft: px(look.ornament === 'gutter' ? 40 : PAD_X),
+        paddingRight: px(PAD_X),
+        paddingBottom: px(225 - BODY_BOTTOM),
         ...KOREAN_WRAP,
       }}
     >
@@ -624,18 +627,18 @@ export function SlideView({
       {look.ornament === 'gutter' && (
         <>
           <div className="absolute inset-y-0 left-0" style={{ width: px(3), background: accent }} />
-          {index !== undefined && <span className="absolute font-black tabular-nums" style={{ left: px(12), bottom: px(30), fontSize: type(18), color: accent, lineHeight: 1 }}>{String(index + 1).padStart(2, '0')}</span>}
+          {index !== undefined && <span className="absolute font-black tabular-nums" style={{ left: px(12), bottom: px(30), fontSize: type(TYPE.gutterNumber), color: accent, lineHeight: 1 }}>{String(index + 1).padStart(2, '0')}</span>}
         </>
       )}
       {look.ornament === 'frame' && <div className="pointer-events-none absolute" style={{ inset: px(10), border: `1px solid ${look.ink}` }} />}
       {look.ornament === 'bottom-band' && <div className="absolute inset-x-0 bottom-0" style={{ height: px(22), background: tint }} />}
-      {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(28), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
+      {visualStyle === 'poster' && index !== undefined && <span className="absolute font-black tabular-nums" style={{ right: px(22), top: px(13), fontSize: type(TYPE.posterNumber), color: `color-mix(in srgb, ${accent} 14%, transparent)` }}>{String(index + 1).padStart(2, '0')}</span>}
 
       {slide.layout === 'statement' ? (
         <div className="flex flex-1 flex-col items-center justify-center text-center">
           <div style={{ width: px(26), height: px(2), background: accent, marginBottom: px(14) }} />
           <p
-            style={{ ...BALANCED, fontSize: type(26), fontWeight: 750, lineHeight: 1.25, color: accent, maxWidth: '86%' }}
+            style={{ ...BALANCED, fontSize: type(TYPE.statement), fontWeight: look.titleWeight + 50, lineHeight: 1.25, color: accent, maxWidth: '86%', letterSpacing: px(look.tracking) }}
             {...typed('title', (text) => ({ title: text }))}
             {...selectable('title')}
           >
@@ -643,7 +646,7 @@ export function SlideView({
           </p>
           {slide.body && (
             <p
-              style={{ fontSize: type(11), marginTop: px(10), color: look.muted, lineHeight: 1.5, maxWidth: '74%' }}
+              style={{ fontSize: type(TYPE.statementBody), marginTop: px(10), color: look.muted, lineHeight: 1.5, maxWidth: '74%' }}
               {...typed('body', (text) => ({ body: text }))}
             >
               {rich('body', slide.body)}
@@ -652,11 +655,11 @@ export function SlideView({
         </div>
       ) : slide.layout === 'quote' && slide.body ? (
         <div className="flex flex-1 flex-col justify-center">
-          <p style={{ fontSize: type(20), fontWeight: 600, lineHeight: 1.4, color: accent }}>
+          <p style={{ fontSize: type(TYPE.quote), fontWeight: 600, lineHeight: 1.4, color: accent }}>
             “<span {...typed('body', (text) => ({ body: text }))}>{rich('body', slide.body)}</span>”
           </p>
           <p
-            style={{ fontSize: type(12), marginTop: px(10), color: look.muted }}
+            style={{ fontSize: type(TYPE.quoteBy), marginTop: px(10), color: look.muted }}
             {...typed('title', (text) => ({ title: text }))}
           >
             {rich('title', slide.title)}
@@ -665,7 +668,7 @@ export function SlideView({
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <h3
-            style={{ fontSize: type(18), fontWeight: 700, lineHeight: 1.25 }}
+            style={{ ...BALANCED, fontSize: titleType(TYPE.title), fontWeight: look.titleWeight, lineHeight: LEADING.title, letterSpacing: px(look.tracking) }}
             {...typed('title', (text) => ({ title: text }))}
             {...selectable('title')}
           >
@@ -676,8 +679,8 @@ export function SlideView({
               width: px(26),
               height: px(2),
               background: accent,
-              marginTop: px(8),
-              marginBottom: px(14),
+              marginTop: px(6),
+              marginBottom: px(12),
             }}
           />
           <div className="flex min-h-0 flex-1" style={{ gap: px(16) }}>
@@ -686,7 +689,9 @@ export function SlideView({
                 'flex min-w-0 flex-1 flex-col',
                 // Paired shapes cannot overflow (see `stack`), so they centre;
                 // bullets can, and a centred overflow clips at both ends.
-                PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
+                (PAIRED.includes(slide.layout as (typeof PAIRED)[number]) ||
+                  (fits && !slide.image && (slide.layout === 'bullets' || slide.layout === 'two-column' || (!slide.bullets?.length && Boolean(slide.body))))) &&
+                  'justify-center',
               )}
               data-overflow-box
               style={{ order: slide.image?.position === 'left' ? 2 : 1 }}
@@ -738,7 +743,7 @@ export function SlideView({
                           maxWidth: px(62),
                           background: accent,
                           color: visualStyle === 'mono' ? look.bg : '#fff',
-                          fontSize: type(26),
+                          fontSize: type(TYPE.tileMark),
                           fontWeight: 700,
                           borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
                         }}
@@ -747,7 +752,7 @@ export function SlideView({
                       </div>
                       <div
                         className="text-center"
-                        style={{ fontSize: type(9), marginTop: px(7), color: look.muted }}
+                        style={{ fontSize: type(TYPE.tileName), marginTop: px(7), color: look.muted }}
                       >
                         {name}
                       </div>
@@ -764,12 +769,12 @@ export function SlideView({
                     <div key={i} className="relative flex min-w-0 flex-1 flex-col">
                       <div
                         className="grid place-items-center"
-                        style={{ ...badge(22), fontSize: type(9), fontWeight: 700 }}
+                        style={{ ...badge(22), fontSize: type(TYPE.stepBadge), fontWeight: 700 }}
                       >
                         {String(i + 1).padStart(2, '0')}
                       </div>
-                      <div style={{ fontSize: type(10), fontWeight: 700, marginTop: px(7), lineHeight: 1.3 }}>{name}</div>
-                      <div style={{ fontSize: type(8), marginTop: px(3), color: look.muted, lineHeight: 1.5 }}>{text}</div>
+                      <div style={{ fontSize: type(TYPE.stepName), fontWeight: 700, marginTop: px(7), lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(TYPE.stepText), marginTop: px(3), color: look.muted, lineHeight: LEADING.stepText }}>{text}</div>
                     </div>
                   ))}
                 </div>
@@ -782,8 +787,8 @@ export function SlideView({
                       className="flex min-w-0 flex-1 flex-col overflow-hidden"
                       style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(8)} ${px(7)}` })}
                     >
-                      <div style={{ fontSize: type(10.5), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
-                      <div style={{ fontSize: type(8.5), marginTop: px(5), lineHeight: 1.5 }}>{text}</div>
+                      <div style={{ fontSize: type(TYPE.cardName), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                      <div style={{ fontSize: type(TYPE.cardText), marginTop: px(5), lineHeight: LEADING.cardText }}>{text}</div>
                     </div>
                   ))}
                 </div>
@@ -842,20 +847,20 @@ export function SlideView({
                 <div className="flex flex-1 flex-col justify-center">
                   <div className="flex items-baseline" style={{ gap: px(8) }}>
                     <span
-                      style={{ fontSize: type(46), fontWeight: 750, lineHeight: 1, color: accent }}
+                      style={{ fontSize: type(TYPE.bigNumber), fontWeight: 750, lineHeight: 1, color: accent }}
                       {...typed('metrics.0.0', (text) => ({ metrics: [[text, working.current.metrics?.[0]?.[1] ?? '']] }))}
                     >
                       {rich('metrics.0.0', metrics[0][0])}
                     </span>
                     <span
-                      style={{ fontSize: type(11), color: look.muted }}
+                      style={{ fontSize: type(TYPE.bigNumberLabel), color: look.muted }}
                       {...typed('metrics.0.1', (text) => ({ metrics: [[working.current.metrics?.[0]?.[0] ?? '', text]] }))}
                     >
                       {rich('metrics.0.1', metrics[0][1])}
                     </span>
                   </div>
                   {slide.body && (
-                    <p style={{ fontSize: type(11), marginTop: px(10), lineHeight: 1.5 }} {...typed('body', (text) => ({ body: text }))}>
+                    <p style={{ fontSize: type(TYPE.bigNumberBody), marginTop: px(10), lineHeight: 1.5 }} {...typed('body', (text) => ({ body: text }))}>
                       {rich('body', slide.body)}
                     </p>
                   )}
@@ -874,7 +879,7 @@ export function SlideView({
                     >
                       <div
                         style={{
-                          fontSize: type(30),
+                          fontSize: type(TYPE.metric),
                           fontWeight: 700,
                           lineHeight: 1.1,
                           color: accent,
@@ -888,7 +893,7 @@ export function SlideView({
                         {rich(`metrics.${i}.0`, figure)}
                       </div>
                       <div
-                        style={{ fontSize: type(11), marginTop: px(5), color: look.muted }}
+                        style={{ fontSize: type(TYPE.metricLabel), marginTop: px(5), color: look.muted }}
                         {...typed(`metrics.${i}.1`, (text) => ({
                           metrics: (working.current.metrics ?? []).map((m, at) =>
                             at === i ? ([m[0], text] as [string, string]) : m,
@@ -906,12 +911,17 @@ export function SlideView({
                 <table
                   style={{
                     fontSize: type(dense.size),
-                    lineHeight: 1.4,
+                    lineHeight: LEADING.table,
                     width: '100%',
                     borderCollapse: 'collapse',
                     tableLayout: 'fixed',
                   }}
                 >
+                  <colgroup>
+                    {dense.shares.map((share, c) => (
+                      <col key={c} style={{ width: `${share * 100}%` }} />
+                    ))}
+                  </colgroup>
                   <tbody>
                     {rows.map((row, r) => (
                       <tr
@@ -949,7 +959,8 @@ export function SlideView({
               {slide.bullets && slide.layout === 'agenda' && (
                 <ol
                   style={{
-                    fontSize: type(11),
+                    fontSize: type(TYPE.agenda),
+                    lineHeight: LEADING.agenda,
                     ...(slide.bullets.length > 4 ? { columnCount: 2, columnGap: px(20) } : null),
                   }}
                 >
@@ -959,7 +970,7 @@ export function SlideView({
                       className="flex items-baseline"
                       style={{ gap: px(10), padding: `${px(5)} 0`, borderBottom: `1px solid ${hair}`, breakInside: 'avoid' }}
                     >
-                      <span className="tabular-nums" style={{ color: accent, fontWeight: 700, fontSize: type(13) }}>
+                      <span className="tabular-nums" style={{ color: accent, fontWeight: 700, fontSize: type(TYPE.agendaNumber) }}>
                         {String(i + 1).padStart(2, '0')}
                       </span>
                       <span
@@ -981,13 +992,13 @@ export function SlideView({
                 !chart && (
                 <ul
                   style={{
-                    fontSize: type(11.5),
-                    lineHeight: 1.65,
+                    fontSize: type(twoColumn ? TYPE.bodyNarrow : TYPE.body),
+                    lineHeight: look.leading,
                     ...(twoColumn ? { columnCount: 2, columnGap: px(20) } : null),
                   }}
                 >
                   {slide.bullets.map((b, i) => (
-                    <li key={i} className="flex gap-2" style={{ breakInside: 'avoid' }}>
+                    <li key={i} className="flex gap-2" style={{ breakInside: 'avoid', marginTop: i === 0 || (twoColumn && i === Math.ceil(slide.bullets!.length / 2)) ? 0 : `${BULLET_GAP}em` }}>
                       <span style={{ color: accent }}>•</span>
                       <span
                         {...typed(`bullets.${i}`, (text) => ({
@@ -1009,7 +1020,7 @@ export function SlideView({
                 metrics.length === 0 &&
                 !chart && (
                 <p
-                  style={{ fontSize: type(11), color: look.muted, marginTop: px(2), lineHeight: 1.6 }}
+                  style={{ fontSize: type(TYPE.paragraph), color: look.muted, marginTop: px(2), lineHeight: look.leading }}
                   {...typed('body', (text) => ({ body: text }))}
                 >
                   {rich('body', slide.body)}
@@ -1036,7 +1047,7 @@ export function SlideView({
                   )}
                 />
                 {slide.image.caption && (
-                  <p style={{ fontSize: type(10), color: look.muted, marginTop: px(4) }}>
+                  <p style={{ fontSize: type(TYPE.caption), color: look.muted, marginTop: px(4) }}>
                     {slide.image.caption}
                   </p>
                 )}
@@ -1068,7 +1079,7 @@ export function SlideView({
             )}
             <span
               className="min-w-0 truncate"
-              style={{ fontSize: type(8), letterSpacing: px(0.3), color: look.faint }}
+              style={{ fontSize: type(TYPE.footer), letterSpacing: px(0.3), color: look.faint }}
             >
               {deckTitle}
             </span>
@@ -1077,7 +1088,7 @@ export function SlideView({
             <span
               className="min-w-0 truncate"
               style={{
-                fontSize: type(8),
+                fontSize: type(TYPE.footer),
                 letterSpacing: px(0.3),
                 color: look.faint,
                 marginLeft: px(8),
@@ -1095,7 +1106,7 @@ export function SlideView({
               padding: `0 ${px(4)}`,
               background: accent,
               color: '#fff',
-              fontSize: type(8),
+              fontSize: type(TYPE.pageNumber),
               fontWeight: 700,
             }}
           >

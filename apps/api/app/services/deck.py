@@ -39,6 +39,7 @@ import httpx
 from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
+    deck_type,
     design,
     figures,
     grounding,
@@ -1965,6 +1966,8 @@ async def write(
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
                 accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+    # Whatever the model settled on, three bullet lists in a row become two and a shape.
+    plan = vary_layouts(plan)
 
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -2151,58 +2154,112 @@ def filled(slides: list[dict]) -> list[dict]:
     return [s for s in slides if has_content(s)]
 
 
-#: Vertical room a slide body has, in the units `_load` counts (one bullet line ≈ 1).
-_FIT_CAPACITY = 10.0
+#: The type scale is shared with the panel and the exporters (`deck_type`); the fit below
+#: reasons in its slide units, so what it decides holds in all three.
 _FIT_FLOOR = 0.65
+_FIT_CEILING = 1.25
+#: Layouts whose body may grow when the slide is sparse. Paired shapes and tables size
+#: themselves from their count; growing their text would overflow their boxes.
+_GROWABLE = ("bullets", "two-column")
+
+#: Slide layouts that must vary: a run of these gets every other one re-planned.
+_MONOTONE = "bullets"
 
 
-def _lines(text: str, per_line: int) -> int:
-    return max(1, -(-len(str(text or "").strip()) // per_line))
-
-
-def _load(slide: dict) -> float:
-    """How much of a slide's height the content asks for, at `textScale` 1.
-
-    A rough mirror of the preview's `overflowRisk` in `DeckPanel.tsx`, made aware of the
-    layouts that wrap narrow: the agenda's two columns and the two-column list.
-    """
-    layout = str(slide.get("layout") or "bullets")
-    # The heading, its rule and the gap under it; the cover has no body to crowd.
-    title = _lines(slide.get("title") or "", 34) * 1.5 + (0 if layout == "title" else 0.8)
-    bullets = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
-    if layout == "agenda" and len(bullets) > 4:
-        # Two columns of tall rows: each item wraps at ~15 characters and carries its own
-        # padded, ruled row. Calibrated on a seven-item agenda that ran into the footer.
-        body = sum(_lines(b, 15) + 0.8 for b in bullets) / 2
-    elif layout == "agenda":
-        body = sum(_lines(b, 40) + 0.8 for b in bullets)
-    elif layout == "two-column":
-        body = sum(_lines(b, 19) for b in bullets) / 2
-    else:
-        body = float(sum(_lines(b, 38) for b in bullets))
-    if slide.get("body"):
-        body += _lines(slide["body"], 60)
-    rows = slide.get("rows") or []
-    table = len(rows) * 1.35 + (0.5 if any(len(str(c)) > 24 for r in rows for c in r) else 0)
-    pairs = (
-        max(
-            len(slide.get(k) or [])
-            for k in ("metrics", "bands", "tiles", "timeline", "steps", "cards")
+def _body_width(slide: dict) -> float:
+    """The text column's width in slide units, narrowed by a picture beside it."""
+    width = float(deck_type.TITLE_WIDTH)
+    image = slide.get("image") or {}
+    if image.get("src") and slide.get("layout") != "title":
+        share = {"small": 0.32, "medium": 0.42, "large": 0.54}.get(
+            str(image.get("size") or ""), 0.42
         )
-        * 1.6
-    )
-    chart = slide.get("chart") or {}
-    graph = len(chart.get("categories") or []) * 0.8 + len(chart.get("series") or []) * 0.8
-    return title + body + table + pairs + graph
+        width = width * (1 - share) - 16
+    return width
+
+
+def _need(slide: dict, scale: float) -> float:
+    """Slide units of height the body asks for at `scale`, plus the title's extra lines.
+
+    Mirrors `SlideView`: bullets wrap in the text column at the body size, the agenda
+    lays two ruled columns above four entries, cards and steps keep fixed boxes.
+    """
+    T, L = deck_type.TYPE, deck_type.LEADING
+    layout = str(slide.get("layout") or "bullets")
+    width = _body_width(slide)
+    title_size = T["title"] * min(1.0, scale)
+    title_lines = deck_type.lines(str(slide.get("title") or ""), title_size, deck_type.TITLE_WIDTH)
+    need = max(0, title_lines - 1) * title_size * L["title"]
+    bullets = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
+    if layout == "agenda":
+        size = T["agenda"] * scale
+        columns = 2 if len(bullets) > 4 else 1
+        column_width = (width - 20 * (columns - 1)) / columns - 22
+        rows = [
+            deck_type.lines(b, size, column_width) * size * L["agenda"] + 10 * scale + 1
+            for b in bullets
+        ]
+        per_column = -(-len(rows) // columns)
+        need += max(sum(rows[:per_column]), sum(rows[per_column:]))
+    elif layout == "two-column" and len(bullets) >= 5:
+        size = T["bodyNarrow"] * scale
+        column_width = (width - 20) / 2 - 12
+        half = -(-len(bullets) // 2)
+        cost = [deck_type.lines(b, size, column_width) * size * L["body"] for b in bullets]
+        gap = size * deck_type.BULLET_GAP
+        need += max(
+            sum(cost[:half]) + gap * (half - 1), sum(cost[half:]) + gap * (len(bullets) - half - 1)
+        )
+    elif bullets:
+        size = T["body"] * scale
+        need += sum(deck_type.lines(b, size, width - 12) * size * L["body"] for b in bullets)
+        need += size * deck_type.BULLET_GAP * (len(bullets) - 1)
+    if slide.get("body") and not bullets:
+        size = T["paragraph"] * scale
+        need += deck_type.lines(str(slide["body"]), size, width) * size * L["paragraph"] + 2
+    for key, fixed in (
+        ("cards", 104.0),
+        ("steps", 0.0),
+        ("tiles", 0.0),
+        ("bands", 0.0),
+        ("timeline", 0.0),
+    ):
+        pairs = [p for p in (slide.get(key) or []) if isinstance(p, (list, tuple)) and len(p) >= 2]
+        if not pairs:
+            continue
+        if key == "steps":
+            span = (width - 8 * (len(pairs) - 1)) / len(pairs)
+            text = max(deck_type.lines(str(p[1]), T["stepText"] * scale, span) for p in pairs)
+            need += (
+                8
+                + 22
+                + 7
+                + T["stepName"] * scale * 1.3
+                + 3
+                + text * T["stepText"] * scale * L["stepText"]
+            )
+        elif key == "tiles":
+            need += 8 + 62 + 7 + T["tileName"] * scale * 1.5 * 2
+        else:
+            # Bands and timelines divide the body height among themselves.
+            need += fixed
+    rows = slide.get("rows") or []
+    if rows:
+        # The table sizes itself from its row count; a wrapped long cell takes the reserve.
+        need += deck_type.table_row_height(len(rows)) * len(rows)
+    metrics = slide.get("metrics") or []
+    if metrics and layout != "big-number":
+        need += 6 + 14 + T["metric"] * scale * 1.1 + 5 + T["metricLabel"] * scale * 1.5 + 16
+    return need
 
 
 def auto_fit(slide: dict) -> dict:
-    """Sets `textScale` so the slide's text stays above the footer, in place.
+    """Sets `textScale` so the slide's body fills its box without crossing the footer.
 
-    The preview and both exporters read the same field, so a deck looks the same in the
-    panel, the `.pptx` and the `.pdf`. A slide that fits keeps no scale; one that does not
-    is shrunk in steps of 0.05 down to 0.65, below which splitting the slide is the answer.
-    A scale a person set by hand is left alone.
+    The panel and both exporters read the same field and the same type scale, so a deck
+    looks the same in the panel, the `.pptx` and the `.pdf`. A sparse list grows in steps
+    of 0.05 up to 1.25 (the title stays put); a crowded slide shrinks down to 0.65, below
+    which splitting the slide is the answer. A scale a person set by hand is left alone.
     """
     if (
         slide.get("textScale") not in (None, 1, 1.0)
@@ -2210,13 +2267,46 @@ def auto_fit(slide: dict) -> dict:
         and slide.get("layout") != "agenda"
     ):
         return slide
-    load = _load(slide)
-    if load <= _FIT_CAPACITY:
+    room = deck_type.BODY_BOTTOM - deck_type.BODY_TOP
+    layout = str(slide.get("layout") or "bullets")
+    ceiling = _FIT_CEILING if layout in _GROWABLE and slide.get("bullets") else 1.0
+    steps = int(round((ceiling - _FIT_FLOOR) / 0.05))
+    for step in range(steps + 1):
+        scale = round(ceiling - step * 0.05, 2)
+        if _need(slide, scale) <= room:
+            break
+    else:
+        scale = _FIT_FLOOR
+    if scale == 1.0:
         slide.pop("textScale", None)
-        return slide
-    scale = max(_FIT_FLOOR, int(_FIT_CAPACITY / load * 20) / 20)
-    slide["textScale"] = scale
+    else:
+        slide["textScale"] = scale
     return slide
+
+
+def vary_layouts(plan: list[dict]) -> list[dict]:
+    """Breaks runs of three or more bullet slides: every other one becomes bands or cards.
+
+    The outline model reaches for `bullets` by habit; a deck of nine bullet lists reads
+    as one slide repeated. Bands and cards carry the same content as a labelled list,
+    and the writer falls back to bullets when a slide has nothing to pair.
+    """
+    run: list[int] = []
+
+    def close() -> None:
+        if len(run) >= 3:
+            for position, index in enumerate(run):
+                if position % 2 == 1:
+                    plan[index]["layout"] = "bands" if position % 4 == 1 else "cards"
+        run.clear()
+
+    for index, item in enumerate(plan):
+        if item.get("layout") == _MONOTONE:
+            run.append(index)
+        else:
+            close()
+    close()
+    return plan
 
 
 def to_markdown(title: str, slides: list[dict]) -> str:

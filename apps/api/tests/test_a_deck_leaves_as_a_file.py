@@ -161,27 +161,33 @@ def test_the_export_is_built_on_the_template_it_was_written_in() -> None:
 
 
 def test_a_slide_can_be_set_larger_or_smaller_and_the_file_follows() -> None:
-    """글자 크기 on one slide is honoured by the `.pptx`, scaled once in `paint`."""
+    """글자 크기 on one slide is honoured by the `.pptx`, scaled once in `paint`.
+
+    The body grows and shrinks with the scale; the title only shrinks, so a grown list
+    does not push its heading into a second line.
+    """
     from pptx import Presentation
 
     from app.services import deck_export
 
     body = [{"id": "s1", "layout": "bullets", "title": "비밀번호", "bullets": ["12자 이상"]}]
 
-    def sizes(scale: float | None) -> list[float]:
+    def sizes(scale: float | None) -> dict[str, float]:
         slides = [{**body[0], **({"textScale": scale} if scale else {})}]
         deck = Presentation(io.BytesIO(deck_export.to_pptx("확인", slides)))
-        return sorted(
-            run.font.size.pt
+        return {
+            run.text: run.font.size.pt
             for slide in deck.slides
             for shape in slide.shapes
             if shape.has_text_frame
             for para in shape.text_frame.paragraphs
             for run in para.runs
-            if run.font.size
-        )
+            if run.font.size and run.text in ("비밀번호", "12자 이상")
+        }
 
-    assert sizes(1.25)[-1] > sizes(None)[-1] > sizes(0.8)[-1]
+    large, plain, small = sizes(1.25), sizes(None), sizes(0.8)
+    assert large["12자 이상"] > plain["12자 이상"] > small["12자 이상"]
+    assert large["비밀번호"] == plain["비밀번호"] > small["비밀번호"]
 
 
 def test_selected_text_formatting_survives_into_powerpoint() -> None:
