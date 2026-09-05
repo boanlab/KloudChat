@@ -46,7 +46,14 @@ function plainText(body: string): string {
 }
 
 /** Thumbnail-safe render of any artifact; used by the panel and the gallery. */
-export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
+export function ArtifactPreview({
+  artifact,
+  interactive = false,
+}: {
+  artifact: Artifact
+  /** True for the one full-size panel a person opens to use the artifact, not a gallery card — lets scripts run. */
+  interactive?: boolean
+}) {
   const t = useT()
   switch (artifact.kind) {
     case 'image':
@@ -97,7 +104,7 @@ export function ArtifactPreview({ artifact }: { artifact: Artifact }) {
         <iframe
           title={artifact.title}
           srcDoc={artifact.content}
-          sandbox=""
+          sandbox={interactive ? 'allow-scripts' : ''}
           className="size-full border-0 bg-white"
         />
       )
@@ -213,7 +220,7 @@ function PagePresent({ artifact }: { artifact: CodeArtifact }) {
             <iframe
               title={slides[at].title || artifact.title}
               srcDoc={slides[at].doc}
-              sandbox=""
+              sandbox="allow-scripts"
               className="size-full border-0"
             />
           </div>
@@ -514,11 +521,11 @@ export function CodePanel({
                here. No `max-h`: a height cap would break the ratio; the column scrolls. */
             <div className="h-full overflow-auto p-4">
               <div className="mx-auto aspect-video w-full max-w-6xl overflow-hidden rounded-card border border-line shadow-raised">
-                <ArtifactPreview artifact={artifact} />
+                <ArtifactPreview artifact={artifact} interactive />
               </div>
             </div>
           ) : (
-            <ArtifactPreview artifact={artifact} />
+            <ArtifactPreview artifact={artifact} interactive />
           )
         ) : (
           <pre className="h-full overflow-auto bg-elevated px-4 py-3 text-base leading-relaxed">

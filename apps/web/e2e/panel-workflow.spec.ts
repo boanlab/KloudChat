@@ -507,7 +507,7 @@ test.describe('서식으로 만든 덱', () => {
     await expect(stage.getByText('1 / 3')).toBeVisible()
 
     // Each shown page carries the seed's stylesheet and only that slide. Read via
-    // `srcdoc`: the frame is `sandbox=""`.
+    // `srcdoc`: the frame is sandboxed to `allow-scripts` with no `allow-same-origin`.
     const shown = async () => (await stage.locator('iframe').getAttribute('srcdoc')) ?? ''
     let doc = await shown()
     expect(doc).toContain('scroll-snap-align')
