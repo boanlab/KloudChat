@@ -140,10 +140,10 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('button', { name: '편집 도구' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('tab', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
 
   const edited = `수정한 제목 ${Date.now()}`
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await page.getByLabel('슬라이드 텍스트').fill(`${edited}\n첫째 항목\n둘째 항목`)
   await page.getByLabel('발표 노트').fill('여기서는 이렇게 말한다')
   await page.getByRole('button', { name: '저장', exact: true }).click()

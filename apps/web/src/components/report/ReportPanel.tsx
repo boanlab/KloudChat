@@ -1352,31 +1352,26 @@ export function ReportPanel({
             </p>
           </div>
           <QuickAccess label={t('빠른 도구')}>
-            {editing && <>
-              <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-                <X size={13} />{t('취소')}
-              </Button>
-              <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-                {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
-              </Button>
-            </>}
-            {view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && (
-              <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-                {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                {t('저장')}
-              </Button>
-            )}
             <PanelControls mode={mode} onCycle={onModeChange && cycleMode} onClose={() => discardOr('close')} />
           </QuickAccess>
           <ArtifactRibbon
             label={t('보고서 메뉴')}
             tabs={[
-              { id: 'home', label: t('홈') }, { id: 'insert', label: t('삽입') },
+              { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
               { id: 'layout', label: t('레이아웃') }, { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
               { id: 'file', label: t('파일') },
             ] as const}
             active={ribbon}
-            onChange={setRibbon}
+            // 「편집」 is a tab like the others: picking it opens the page editor.
+            onChange={(tab) => {
+              if (tab === 'edit') {
+                setView('page')
+                setDocumentLayout('edit')
+                setPageSettingsOpen(false)
+                return
+              }
+              setRibbon(tab)
+            }}
           >
           {ribbon === 'view' && <RibbonGroup label={t('탐색')}><Button size="sm" onClick={() => setTocOpen((o) => !o)}>
             <ListTree size={13} />
@@ -1605,6 +1600,20 @@ export function ReportPanel({
               {t('인쇄')}
             </MenuItem>
           </Dropdown></RibbonGroup>}
+          {editing && <RibbonGroup label={t('저장')}>
+            <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+              <X size={13} />{t('취소')}
+            </Button>
+            <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
+            </Button>
+          </RibbonGroup>}
+          {view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && <RibbonGroup label={t('저장')}>
+            <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+              {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+              {t('저장')}
+            </Button>
+          </RibbonGroup>}
           </ArtifactRibbon>
         </header>
 

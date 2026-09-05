@@ -29,7 +29,7 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   await page.getByRole('tab', { name: '검토', exact: true }).click()
   await expect(page.getByRole('button', { name: '잘림 위험 장으로 이동' })).toBeVisible()
   await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
   await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
   await expect(page.getByText('한 장에 넣기 어렵습니다.')).toBeVisible({ timeout: 15_000 })
@@ -53,7 +53,7 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   ])
   expect(result.files.every((file) => file.size > 1_000)).toBeTruthy()
 
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
   await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
   await expect(page.getByRole('button', { name: '내용을 다음 장으로 나누기' })).toBeVisible()

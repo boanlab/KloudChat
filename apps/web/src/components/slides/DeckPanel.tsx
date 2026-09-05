@@ -18,7 +18,6 @@ import {
   PanelLeft,
   PanelRight,
   Palette,
-  Pencil,
   Play,
   Presentation,
   Rows3,
@@ -2621,14 +2620,6 @@ export function DeckPanel({
           </p>
         </div>
         <QuickAccess label={t('빠른 도구')}>
-          {editing && <>
-            <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-              <X size={14} />{t('취소')}
-            </Button>
-            <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{t('저장')}
-            </Button>
-          </>}
           <PanelControls mode={width.mode} onCycle={width.cycle} onClose={() => discardOr('close')} />
         </QuickAccess>
         <ArtifactRibbon
@@ -2641,12 +2632,13 @@ export function DeckPanel({
                 { id: 'file', label: t('파일') },
               ]
             : [
-                { id: 'home', label: t('홈') }, { id: 'insert', label: t('삽입') },
+                { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
                 { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
                 { id: 'show', label: t('슬라이드 쇼') }, { id: 'file', label: t('파일') },
-              ]) as Array<{ id: 'home' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
+              ]) as Array<{ id: 'home' | 'edit' | 'insert' | 'review' | 'view' | 'show' | 'file'; label: string }>}
           active={ribbon}
-          onChange={setRibbon}
+          // 「편집」 is a tab like the others: picking it opens the slide editor on the home row.
+          onChange={(tab) => (tab === 'edit' ? void startEditing() : setRibbon(tab))}
         >
         {ribbon === 'review' && (weakSlides.length > 0 || overflowRisks.length > 0) && <RibbonGroup label={t('검사')}>
         {weakSlides.length > 0 && (
@@ -2681,6 +2673,10 @@ export function DeckPanel({
             ['editorial', '편집형', '선과 넓은 여백'],
             ['poster', '포스터형', '강한 색면과 큰 번호'],
             ['minimal', '미니멀', '옅은 색과 절제된 제목'],
+            ['dark', '다크', '어두운 바탕에 빛나는 강조색'],
+            ['split', '분할형', '왼쪽 색면과 큰 번호'],
+            ['warm', '따뜻한', '크림색 종이 바탕과 둥근 상자'],
+            ['mono', '흑백', '검정 선과 큰 제목'],
           ] as const).map(([value, label, why]) => (
             <Button
               key={value}
@@ -2721,9 +2717,6 @@ export function DeckPanel({
         >
           <RefreshCw size={14} className={rewritingSlide ? 'animate-spin' : undefined} />
           {rewritingSlide ? t('다시 만드는 중…') : t('이 장 다시 만들기')}
-        </Button>
-        <Button size="sm" variant="primary" disabled={writing || rewritingSlide} onClick={() => void startEditing()} aria-label={t('편집 도구')}>
-          <Pencil size={14} />{t('편집 도구')}
         </Button></RibbonGroup>}
         {ribbon === 'insert' && !editing && slide && <RibbonGroup label={t('콘텐츠')}>
           <SlidePicture deck={deck} slide={slide} />
@@ -2817,6 +2810,14 @@ export function DeckPanel({
             setError(null)
           }}
         /></RibbonGroup>}
+        {editing && <RibbonGroup label={t('저장')}>
+          <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+            <X size={14} />{t('취소')}
+          </Button>
+          <Button variant="primary" size="sm" disabled={saving} onClick={() => void save()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}{t('저장')}
+          </Button>
+        </RibbonGroup>}
         </ArtifactRibbon>
       </header>
 
