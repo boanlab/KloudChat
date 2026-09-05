@@ -2776,7 +2776,7 @@ export function DeckPanel({
           align="left"
           trigger={() => (
             <Button size="sm" disabled={saving} aria-label={t('강조색 고르기')} title={t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}>
-              <span className="size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
+              <span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: bulkAccent }} />
               {t(ACCENTS.find(([colour]) => colour.toLowerCase() === bulkAccent.toLowerCase())?.[1] ?? '직접 고른 색')}
               <ChevronDown size={13} className="text-muted" />
             </Button>
@@ -2784,7 +2784,7 @@ export function DeckPanel({
         >
           <MenuLabel>{t('제목 밑줄, 표 머리, 번호, 표지에 쓰는 색')}</MenuLabel>
           {ACCENTS.map(([colour, label]) => (
-            <MenuItem key={colour} icon={<span className="size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
+            <MenuItem key={colour} icon={<span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: colour }} />} checked={bulkAccent.toLowerCase() === colour} onClick={() => void saveDeckAccent(colour)}>
               {t(label)}
             </MenuItem>
           ))}
