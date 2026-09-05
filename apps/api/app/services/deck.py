@@ -108,7 +108,68 @@ _THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중�
   · 흑백 — 디자인·건축·연구·전시. 검정 선과 큰 제목, 색은 쓰지 않는다.
   요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라. 같은 주제라도
   자리가 다르면 다른 인상이다 — 늘 편집형으로 도망가지 마라.
+- 이 요청에는 theme "{theme}", style "{style}" 이 어울린다. 요청이 다른 색이나 인상을
+  말하지 않는 한 이 둘을 그대로 써라.
 """
+
+#: Stored `visualStyle` value → prompt label, for the suggestion the outline is shown.
+_STYLE_LABELS = {
+    "editorial": "편집형",
+    "poster": "포스터형",
+    "minimal": "미니멀",
+    "dark": "다크",
+    "split": "분할형",
+    "warm": "따뜻한",
+    "mono": "흑백",
+}
+
+#: Topic words → accent name. Checked in order; the first topic named wins. A deck
+#: about nothing on this list takes a colour keyed off its request, so two decks on
+#: different subjects do not come out the same colour.
+_TOPIC_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("남색", ("보안", "금융", "법", "정책", "경영진", "이사회", "투자", "은행")),
+    (
+        "파랑",
+        (
+            "기술",
+            "시스템",
+            "소프트웨어",
+            "개발",
+            "데이터",
+            "인공지능",
+            "ai",
+            "클라우드",
+            "네트워크",
+        ),
+    ),
+    ("초록", ("환경", "에너지", "농업", "생태", "탄소", "지속가능", "친환경")),
+    ("청록", ("의료", "건강", "병원", "바이오", "제약", "간호")),
+    ("주황", ("교육", "수업", "강의", "학생", "청소년", "학습")),
+    ("자주", ("문화", "예술", "디자인", "패션", "공연", "미디어")),
+    ("빨강", ("홍보", "행사", "축제", "캠페인", "모집", "마케팅")),
+)
+#: What a request naming no topic draws from; the product's own purple stays out so a
+#: deck does not look like the app's chrome.
+_ROTATION = ("파랑", "청록", "남색", "초록", "주황", "자주")
+
+
+def suggest_look(request: str) -> tuple[str, str]:
+    """`(theme name, style label)` the outline is shown as this request's default.
+
+    The room decides the style (`design.venue_style_for`), the subject decides the
+    colour; a request naming neither gets a colour keyed off its own words, never the
+    same one every time. The outline may still override both when the request says so.
+    """
+    text = (request or "").lower()
+    style = design.visual_style_for(request)
+    if style == "editorial":
+        style = design.venue_style_for(request) or "editorial"
+    theme = next((name for name, words in _TOPIC_THEMES if any(w in text for w in words)), "")
+    if not theme:
+        digest = sum(ord(ch) for ch in re.sub(r"\s+", "", text)[:200])
+        theme = _ROTATION[digest % len(_ROTATION)]
+    return theme, _STYLE_LABELS[style]
+
 
 #: Prompt label → stored `visualStyle` value.
 _STYLES = {
@@ -665,8 +726,9 @@ JSON 객체로만 답하라.
 원래 요청: {request}"""
 
 
-#: Waits between retries of a rate-limited call, in seconds.
-_BACKOFF = (2.0, 6.0)
+#: Seconds between retries of a rate-limited call. Four rounds, about forty seconds in
+#: all: long enough to outlast a burst of parallel document turns on one key.
+_BACKOFF = (2.0, 6.0, 12.0, 20.0)
 
 
 async def _complete(
@@ -780,16 +842,32 @@ def requested_slides(request: str) -> int | None:
     return max(_MIN_SLIDES, min(asked, _MAX_SLIDES)) if asked > 0 else None
 
 
+def slides_for_minutes(request: str) -> int | None:
+    """The fewest slides a talk of the stated length needs — about one every two minutes,
+    never above the default ceiling. `None` when no length is stated.
+
+    A 20-minute seminar planned as six slides leaves the speaker three minutes a slide;
+    the floor keeps the outline honest about the room's time without dictating the count.
+    """
+    match = re.search(r"(\d{1,3})\s*분(?!기|류|석|산|리|야|할|량|배|담|위|과)", request)
+    if not match:
+        return None
+    minutes = int(match.group(1))
+    if minutes < 4:
+        return None
+    return max(_MIN_SLIDES, min(minutes // 2, _DEFAULT_MAX))
+
+
 def _theme_style(text: str) -> str:
     """The `style` the outline chose, or `""`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
-def _theme_accent(text: str) -> str:
-    """Accent named by the outline, or the default. Regex, so a salvaged outline keeps it."""
+def _theme_accent(text: str, default: str = _ACCENT) -> str:
+    """Accent named by the outline, or `default`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"theme"\s*:\s*"([^"]+)"', text)
-    return _THEMES.get((match.group(1).strip() if match else ""), _ACCENT)
+    return _THEMES.get((match.group(1).strip() if match else ""), default)
 
 
 def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
@@ -1023,7 +1101,9 @@ _PROMPTS.update(
 
 
 def _agenda_lines(slides: list[dict]) -> list[str]:
-    """Agenda lines: the dividers when there are two or more, else the body slides; at most eight.
+    """Agenda lines: the dividers when there are two or more, else the body slides.
+
+    At most eight.
     """
     names = [s["title"] for s in slides if s.get("layout") == "section"]
     if len(names) < 2:
@@ -1321,7 +1401,9 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Writes slide bodies for an approved outline: one draft call, then per-slide calls for gaps.
+    """Writes slide bodies for an approved outline.
+
+    One draft call, then per-slide calls for the gaps it left.
     """
     #: Approved pictures by slide index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
@@ -1424,7 +1506,7 @@ async def _write_slides(
                 "status": "done",
                 "progress": progress,
             }
-            yield {"type": "slide", "slide": slide, "done": True}
+            yield {"type": "slide", "slide": auto_fit(slide), "done": True}
             continue
 
         yield {
@@ -1619,7 +1701,7 @@ async def _write_slides(
             "status": "done",
             "progress": progress,
         }
-        yield {"type": "slide", "slide": slide, "done": True}
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
     yield {"type": "deck", "slides": slides}
     yield {"type": "usage", **usage}
@@ -1663,6 +1745,9 @@ async def write(
     }
     wanted = requested_slides(request)
     fixed_accent = (tokens or {}).get("accent") or ""
+    # The look this request would get on its own; the outline is shown it and may override.
+    suggested_theme, suggested_style = suggest_look(request)
+    suggested_accent = _THEMES[suggested_theme]
 
     # Both passes research: the approved outline names the slides, not their facts.
     findings = research.Findings()
@@ -1736,13 +1821,19 @@ async def write(
                 SessionKind.slides,
                 _OUTLINE_PROMPT.format(
                     ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
-                    lo=wanted or _MIN_SLIDES,
+                    lo=wanted or slides_for_minutes(request) or _MIN_SLIDES,
                     hi=wanted or _DEFAULT_MAX,
                     theme_rule=(
-                        "" if fixed_accent else _THEME_RULE.format(themes=" / ".join(_THEMES))
+                        ""
+                        if fixed_accent
+                        else _THEME_RULE.format(
+                            themes=" / ".join(_THEMES), theme=suggested_theme, style=suggested_style
+                        )
                     ),
                     theme_example=(
-                        "" if fixed_accent else '"theme": "청록",\n  "style": "편집형",\n  '
+                        ""
+                        if fixed_accent
+                        else f'"theme": "{suggested_theme}",\n  "style": "{suggested_style}",\n  '
                     ),
                     request=request[:2000],
                 )
@@ -1802,7 +1893,7 @@ async def write(
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
-    accent = fixed_accent or _theme_accent(text)
+    accent = fixed_accent or _theme_accent(text, suggested_accent)
     # Grounded before the variety check, so it does not ask for layouts that
     # would then be stripped.
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
@@ -1828,9 +1919,34 @@ async def write(
                 title = retry_title or title
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
-                accent = fixed_accent or _theme_accent(retry_text) or accent
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
+    # A talk with a stated length or count planned too short gets one retry, no shorter.
+    needed = wanted or slides_for_minutes(request)
+    if plan and needed and len(plan) < needed:
+        log.info("deck outline short: %d of %d slides, asking once more", len(plan), needed)
+        try:
+            retry_text, retry_spent = await ask(
+                f"\n\n앞선 구성은 {len(plan)}장이었다. 이 발표에는 최소 {needed}장이 필요하다. "
+                "다시 짜라 — 있는 장을 둘로 쪼개지 말고, 요청이 말한 흐름에서 아직 장이 없는 "
+                "대목(사례, 비교, 남은 문제, 정리)에 장을 주어라."
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            retry_plan = _named_dividers(
+                _rationed_quotes(_grounded_layouts(retry_plan, request, document_context))
+            )
+            if len(retry_plan) > len(plan):
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+            else:
+                log.info("deck outline still short, keeping the first")
     # An unreadable outline gets one retry.
     if not plan:
         log.info("deck outline unreadable, asking once more")
@@ -1848,7 +1964,7 @@ async def write(
                 title = retry_title or title
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
-                accent = fixed_accent or _theme_accent(retry_text) or accent
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
 
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -1874,10 +1990,11 @@ async def write(
         "subtitle": subtitle[:200],
         "accent": accent,
         # A style the request names wins; otherwise the outline's choice.
+        # A style the request names wins; then the outline's choice; then the room's.
         "visualStyle": (
             design.visual_style_for(request)
             if design.visual_style_for(request) != "editorial"
-            else (_theme_style(text) or "editorial")
+            else (_theme_style(text) or _STYLES[suggested_style])
         ),
         "density": (
             "reading"
@@ -1929,9 +2046,13 @@ async def rewrite_slide(
     model: str,
     api_key: str,
     note: str = "",
+    material: list[str] | None = None,
+    typed: str = "",
 ) -> tuple[dict, dict]:
     """Rewrites one slide with the rest of the deck as context. Returns `(slide, usage)`; same shape
-    as the report's.
+    as the report's. `material` is the request's own data, carried again so the numbers come
+    from where the original did; `typed` is the instruction as the person wrote it, read for a
+    layout change the planner's paraphrase may have dropped.
     """
     target = next((s for s in slides if s.get("id") == target_id), None)
     if target is None:
@@ -1944,7 +2065,10 @@ async def rewrite_slide(
         if s.get("id") != target_id
     )
     layout = str(target.get("layout") or "bullets")
-    template = _PROMPTS.get(layout, _BULLETS_PROMPT)
+    # 「표로 바꿔 줘」 changes the layout, not just the words: write it with the table prompt.
+    if re.search(r"표(로|를|가| 하나)|\btable\b", f"{note} {typed}", re.I):
+        layout = "table"
+    template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
         heading=target.get("title") or "",
         outline=outline,
@@ -1954,19 +2078,40 @@ async def rewrite_slide(
     )
     if note.strip():
         # Labelled, or it reads as part of the request.
-        prompt +=f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
-        model, build_document_messages(SessionKind.slides, prompt, request=request), api_key, 600
+        model,
+        build_document_messages(
+            SessionKind.slides, prompt, request=request, untrusted_context=material
+        ),
+        api_key,
+        600,
     )
     parsed = _json_object(text)
+    rows = _clean_rows(parsed.get("rows"))
+    pairs = _clean_pairs(parsed.get(layout), layout) if layout in _PAIRED else []
     bullets = _clean_bullets(parsed.get("bullets"))
     body = str(parsed.get("body") or "").strip()
-    if not bullets and not body:
+    notes = str(parsed.get("notes") or "").strip()
+    # Whatever the layout's prompt asked for counts as content; a notes-only answer to a
+    # notes-only instruction keeps the slide and changes the notes.
+    if not (rows or pairs or bullets or body or notes):
         raise ValueError("빈 슬라이드")
 
     # Merged, so the slide's id, accent and picture survive.
     result = {**target}
+    if rows:
+        result["rows"] = rows
+        result["layout"] = "table"
+        for field in ("bullets", "body", *_PAIRED):
+            result.pop(field, None)
+        bullets, body = [], ""
+    elif pairs:
+        result[layout] = pairs
+        result.pop("bullets", None)
+        result.pop("body", None)
+        bullets, body = [], ""
     if bullets:
         result["bullets"] = bullets
         # The old body (possibly UNWRITTEN) must not survive beside the rewrite.
@@ -1974,11 +2119,12 @@ async def rewrite_slide(
     if body:
         result["body"] = body
         result.pop("bullets", None)
-    if notes := str(parsed.get("notes") or "").strip():
+    if notes:
         result["notes"] = notes
     # The verdicts belonged to the old text.
     result.pop("factCheck", None)
-    return result, usage
+    result.pop("textScale", None)
+    return auto_fit(result), usage
 
 
 #: Every field a slide's content can arrive in. A layout that stores content
@@ -2003,6 +2149,74 @@ def has_content(slide: dict) -> bool:
 def filled(slides: list[dict]) -> list[dict]:
     """The slides that actually have something on them."""
     return [s for s in slides if has_content(s)]
+
+
+#: Vertical room a slide body has, in the units `_load` counts (one bullet line ≈ 1).
+_FIT_CAPACITY = 10.0
+_FIT_FLOOR = 0.65
+
+
+def _lines(text: str, per_line: int) -> int:
+    return max(1, -(-len(str(text or "").strip()) // per_line))
+
+
+def _load(slide: dict) -> float:
+    """How much of a slide's height the content asks for, at `textScale` 1.
+
+    A rough mirror of the preview's `overflowRisk` in `DeckPanel.tsx`, made aware of the
+    layouts that wrap narrow: the agenda's two columns and the two-column list.
+    """
+    layout = str(slide.get("layout") or "bullets")
+    # The heading, its rule and the gap under it; the cover has no body to crowd.
+    title = _lines(slide.get("title") or "", 34) * 1.5 + (0 if layout == "title" else 0.8)
+    bullets = [str(b) for b in (slide.get("bullets") or []) if str(b).strip()]
+    if layout == "agenda" and len(bullets) > 4:
+        # Two columns of tall rows: each item wraps at ~15 characters and carries its own
+        # padded, ruled row. Calibrated on a seven-item agenda that ran into the footer.
+        body = sum(_lines(b, 15) + 0.8 for b in bullets) / 2
+    elif layout == "agenda":
+        body = sum(_lines(b, 40) + 0.8 for b in bullets)
+    elif layout == "two-column":
+        body = sum(_lines(b, 19) for b in bullets) / 2
+    else:
+        body = float(sum(_lines(b, 38) for b in bullets))
+    if slide.get("body"):
+        body += _lines(slide["body"], 60)
+    rows = slide.get("rows") or []
+    table = len(rows) * 1.35 + (0.5 if any(len(str(c)) > 24 for r in rows for c in r) else 0)
+    pairs = (
+        max(
+            len(slide.get(k) or [])
+            for k in ("metrics", "bands", "tiles", "timeline", "steps", "cards")
+        )
+        * 1.6
+    )
+    chart = slide.get("chart") or {}
+    graph = len(chart.get("categories") or []) * 0.8 + len(chart.get("series") or []) * 0.8
+    return title + body + table + pairs + graph
+
+
+def auto_fit(slide: dict) -> dict:
+    """Sets `textScale` so the slide's text stays above the footer, in place.
+
+    The preview and both exporters read the same field, so a deck looks the same in the
+    panel, the `.pptx` and the `.pdf`. A slide that fits keeps no scale; one that does not
+    is shrunk in steps of 0.05 down to 0.65, below which splitting the slide is the answer.
+    A scale a person set by hand is left alone.
+    """
+    if (
+        slide.get("textScale") not in (None, 1, 1.0)
+        or slide.get("layout") in _STRUCTURAL
+        and slide.get("layout") != "agenda"
+    ):
+        return slide
+    load = _load(slide)
+    if load <= _FIT_CAPACITY:
+        slide.pop("textScale", None)
+        return slide
+    scale = max(_FIT_FLOOR, int(_FIT_CAPACITY / load * 20) / 20)
+    slide["textScale"] = scale
+    return slide
 
 
 def to_markdown(title: str, slides: list[dict]) -> str:

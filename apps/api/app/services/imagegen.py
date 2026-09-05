@@ -106,7 +106,7 @@ _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬
 - 사진·장면·인물이면 구도·조명·렌즈·시간대를 적고, 화살표나 상자를 넣지 마라.
 - 슬라이드나 문서 화면 전체를 그리지 마라 — 그림 하나만.
 - 120~220 단어. 프롬프트만 출력하고 설명·머리말·따옴표·코드펜스는 붙이지 마라.
-{figure_rule}
+{figure_rule}{template_rule}
 형식 보기 — **모양만 따르고 낱말은 옮기지 마라.** 아래 보기의 요소·화살표 이름·용도는
 보기의 것이고, 네 답의 요소·이름은 전부 요청에서 가져온다:
 ---
@@ -149,6 +149,14 @@ _STYLE_RULE_AUTO = (
 _FIGURE_RULE = (
     "- 이 그림은 문서나 슬라이드 **안에** 들어간다. 제목·캡션·범례·페이지 틀 없이 그림 "
     "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
+)
+
+#: The picture 서식's own composition rule, handed to the planner so a poster is planned
+#: as a poster — one subject, space for a title — and not as the diagram the format
+#: guide above leans toward.
+_TEMPLATE_RULE = (
+    "- 이 그림은 다음 서식으로 만든다. 구도·분위기·여백을 이 규칙대로 잡고, 서식이 도식이 "
+    "아니면 상자·화살표·단계 배열로 짜지 마라: {suffix}\n"
 )
 
 #: For a picture inside a slide or section: one figure, no text, no page frame.
@@ -256,11 +264,13 @@ async def plan(
     figure: bool,
     model: str,
     api_key: str,
+    template: str = "",
 ) -> tuple[str, dict[str, int]]:
     """`(prompt, usage)`: the request rewritten by a language model into a structured picture
     prompt.
 
-    Falls back to the request itself when the planner fails.
+    `template` is the picture 서식's prompt suffix; the planner composes to it instead of
+    defaulting to a diagram. Falls back to the request itself when the planner fails.
     """
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
@@ -277,6 +287,7 @@ async def plan(
         label_rule=label_rule,
         style_rule=style_rule,
         figure_rule=_FIGURE_RULE if figure else "",
+        template_rule=_TEMPLATE_RULE.format(suffix=template.strip()) if template.strip() else "",
         request=request.strip()[:2000],
     )
     base, _ = await settings_store.litellm_config()

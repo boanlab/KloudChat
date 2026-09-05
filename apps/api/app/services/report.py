@@ -378,6 +378,84 @@ def _without_invented_money(text: str) -> str:
     return _MONEY.sub("(미정)", text)
 
 
+_OWNER_HEADER = re.compile(r"담당|책임|owner", re.I)
+_DUE_HEADER = re.compile(r"기한|마감|완료일|납기|due|deadline", re.I)
+_TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{2,}")
+_MONTH_DAY = re.compile(r"(\d{1,2})\s*[/.월]\s*(\d{1,2})\s*일?")
+_ISO_DAY = re.compile(r"\d{4}-(\d{2})-(\d{2})")
+_BLANK_CELLS = {"", "미정", "(미정)", "-", "—", "tbd", "n/a", "없음"}
+
+
+def _cell_sourced(cell: str, compact: str) -> bool:
+    """Whether an owner or due-date cell names something the request or material names.
+
+    A date matches by month and day in any of the usual spellings (9/10 · 9월 10일 ·
+    2026-09-10); a person or team by any word of two characters or more.
+    """
+    flat = re.sub(r"\s+", "", cell)
+    if flat.lower().strip("*_`") in _BLANK_CELLS or flat in compact:
+        return True
+    days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
+        (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
+    ]
+    for month, day in days:
+        if not (1 <= month <= 12 and 1 <= day <= 31):
+            continue
+        spellings = (
+            f"{month}/{day}",
+            f"{month:02d}/{day:02d}",
+            f"{month}월{day}일",
+            f"{month:02d}월{day:02d}일",
+            f"{month}.{day}",
+            f"-{month:02d}-{day:02d}",
+        )
+        if any(sp in compact for sp in spellings):
+            return True
+    if days:
+        return False
+    words = [w.strip("*_`()") for w in re.split(r"[\s,·/()]+", cell)]
+    return any(len(w) >= 2 and w in compact for w in words)
+
+
+def _unsourced_owner_dates(text: str, source: str) -> str:
+    """In a table with a 담당 or 기한 column, a cell the request and material never
+    mention becomes 「미정」.
+
+    The action-item table is where a writer fills blanks with a plausible team and a
+    plausible date; the surfaces promise 「담당자나 기한이 나오지 않았으면 미정」, and a
+    promise kept only in the prose is a table nobody can act on.
+    """
+    compact = re.sub(r"\s+", "", source)
+    if not compact or "|" not in text:
+        return text
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.lstrip().startswith("|") and i + 1 < len(lines) and _TABLE_RULE.match(lines[i + 1]):
+            header = [c.strip() for c in line.strip().strip("|").split("|")]
+            guarded = [
+                k for k, h in enumerate(header) if _OWNER_HEADER.search(h) or _DUE_HEADER.search(h)
+            ]
+            out.extend((line, lines[i + 1]))
+            i += 2
+            while i < len(lines) and lines[i].lstrip().startswith("|"):
+                if guarded:
+                    cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                    for k in guarded:
+                        if k < len(cells) and not _cell_sourced(cells[k], compact):
+                            cells[k] = "미정"
+                    out.append("| " + " | ".join(cells) + " |")
+                else:
+                    out.append(lines[i])
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
     """The closed list of numbers the document may use, read off the request and the sources."""
     found: list[str] = []
@@ -468,8 +546,9 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
 _NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
 
 
-#: Waits between retries of a rate-limited call, in seconds.
-_BACKOFF = (2.0, 6.0)
+#: Seconds between retries of a rate-limited call. Four rounds, about forty seconds in
+#: all: long enough to outlast a burst of parallel document turns on one key.
+_BACKOFF = (2.0, 6.0, 12.0, 20.0)
 
 
 async def _complete(
@@ -1207,6 +1286,13 @@ async def write(
         clean = hangul.tidy_spacing(clean)
         if not grounded:
             clean = _without_invented_money(clean)
+        # Owners and dates come from the request, the material or a source — never the pen.
+        clean = _unsourced_owner_dates(
+            clean,
+            "\n".join(
+                [request, *document_context, *[str(s.get("quote") or "") for s in sources or []]]
+            ),
+        )
         if unverified and index == 0:
             # 첫 절 머리에 밝힌다.
             clean = _UNVERIFIED_NOTE + "\n\n" + clean
@@ -1276,8 +1362,13 @@ async def rewrite_section(
     api_key: str,
     note: str = "",
     sources: list[dict] | None = None,
+    material: list[str] | None = None,
 ) -> tuple[str, dict]:
-    """Rewrites one section with the rest of the document as context."""
+    """Rewrites one section with the rest of the document as context.
+
+    `material` is the request's own data — attached files, pasted tables — carried
+    again so the rewrite draws its numbers from where the original did.
+    """
     outline = "\n".join(f"{i + 1}. {s.get('heading') or ''}" for i, s in enumerate(sections))
     written = "\n\n".join(
         f"## {s.get('heading')}\n{s.get('content') or ''}"
@@ -1296,9 +1387,12 @@ async def rewrite_section(
         role=role,
         blocks=blocks,
         others=_others_line([str(x.get("heading") or "") for x in sections], position),
-        # Numbers already in the document are allowed too.
+        # Numbers already in the document, and in the material it was written from, are allowed too.
         facts=_facts_line(
-            "\n".join([request, *[str(s.get("content") or "") for s in sections]]), sources or []
+            "\n".join(
+                [request, *(material or []), *[str(s.get("content") or "") for s in sections]]
+            ),
+            sources or [],
         ),
         genre=_genre_rule(request),
     )
@@ -1311,7 +1405,9 @@ async def rewrite_section(
         )
     body, spent = await _complete(
         model,
-        build_document_messages(SessionKind.report, prompt, request=request),
+        build_document_messages(
+            SessionKind.report, prompt, request=request, untrusted_context=material
+        ),
         api_key,
         1200,
     )
