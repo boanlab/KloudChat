@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from html.parser import HTMLParser
 
 import pytest
 from conftest import both_passes
@@ -229,6 +230,64 @@ def test_handlers_and_remote_references_are_stripped():
     assert "onclick" not in dt.sanitise('<p onclick="x()">본문</p>')
     assert "evil.example" not in dt.sanitise('<img src="https://evil.example/p.png">')
     assert dt.sanitise("<style>body{display:none}</style><p>본문</p>") == "<p>본문</p>"
+
+
+class _Markup(HTMLParser):
+    """Every tag and attribute name in a fragment, as a browser would read it."""
+
+    def __init__(self):
+        super().__init__()
+        self.tags: set[str] = set()
+        self.attributes: set[str] = set()
+
+    def handle_starttag(self, tag, attrs):
+        self.tags.add(tag)
+        self.attributes.update(name for name, _ in attrs)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        # Attributes a regex pass did not know about.
+        '<table><tr><td background="javascript:alert(1)">셀</td></tr></table>',
+        '<p title="x" onmouseover="alert(1)" data-x="javascript:alert(1)">본문</p>',
+        '<img srcset="x onerror=alert(1)" src="data:image/png;base64,iVBORw0KGgo=">',
+        # An open quote that once swallowed the markup after it.
+        '<img srcset="x onerror=alert(1)><p>after</p>',
+        '<p class="a" style="color:red" onclick=alert(1)>본문</p>',
+        # Parser-level tricks: a tag inside a tag, a comment, foreign content, an unclosed element.
+        "<p><scr<script>ipt>alert(1)</script>본문</p>",
+        "<!-- <script>alert(1)</script> --><p>본문</p>",
+        "<p><svg><script>alert(1)</script></svg>본문",
+        '<p><math><mi xlink:href="javascript:alert(1)">x</mi></math>본문</p>',
+        '<p><a href="javascript:alert(1)">링크</a></p>',
+        '<form action="javascript:alert(1)"><button>x</button></form><p>본문</p>',
+        '<div data-page-break="true" data-evil="x" id="i" contenteditable="true"></div>',
+    ],
+)
+def test_no_attribute_or_parser_trick_carries_anything_past_the_allow_lists(payload):
+    """The block is parsed as a browser would parse it, and only listed tags with their listed
+    attributes are written back; what was said survives as text."""
+    kept = dt.sanitise(payload)
+    seen = _Markup()
+    seen.feed(kept)
+    assert seen.tags <= dt._ALLOWED_TAGS
+    allowed = set().union(*dt._ALLOWED_ATTRIBUTES.values())
+    assert seen.attributes <= allowed, seen.attributes
+    assert "javascript" not in kept.lower() and "<script" not in kept.lower()
+    for word in ("본문", "셀", "뒤 문단", "링크"):
+        if word in payload:
+            assert word in kept
+
+
+def test_a_table_keeps_its_cells_and_spans_and_nothing_else():
+    kept = dt.sanitise(
+        '<table><thead><tr><th colspan="2" style="x">머리</th></tr></thead>'
+        '<tbody><tr><td rowspan="2" bgcolor="red">a</td><td>b</td></tr></tbody></table>'
+    )
+    assert '<th colspan="2">머리</th>' in kept
+    assert '<td rowspan="2">a</td>' in kept
+    assert "bgcolor" not in kept and "style" not in kept
 
 
 def test_tags_outside_the_vocabulary_lose_their_markup_and_keep_their_words():

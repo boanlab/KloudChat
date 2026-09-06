@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import nh3
+
 from app.models.chat import SessionKind
 from app.services import design, doc_type, pictures
 
@@ -77,17 +79,22 @@ _ALLOWED_TAGS = {
     "sup",  # footnote reference; `<small>` carries the note
 }
 
-_TAG = re.compile(r"</?([A-Za-z][A-Za-z0-9]*)\b[^>]*>")
 #: Removed with their contents. `h1`/`h2` in a body would duplicate the
 #: wrapper's heading.
-_SCRIPTISH = re.compile(
-    r"<(script|style|iframe|object|embed|link|meta|h1|h2)\b.*?(</\1\s*>|$)", re.S | re.I
-)
-#: Single leading `\s` and possessive quantifiers: `\s+` is quadratic on
-#: whitespace-padded input, and these fragments are model-generated.
-_EVENT_ATTR = re.compile(r"\son[a-z]++\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
-#: `class` survives (it reaches the seed's own names); `style` is filtered.
-_STYLE_ATTR = re.compile(r"\sstyle\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
+_REMOVED_WITH_CONTENT = {"script", "style", "iframe", "object", "embed", "link", "meta", "h1", "h2"}
+#: Attributes a block may carry, by tag. `class` reaches the seed's own names;
+#: `style` is filtered per declaration (person-edited blocks only) and `src`
+#: survives only as an embedded `data:` picture — both in `_attribute`.
+_ALLOWED_ATTRIBUTES = {
+    "*": {"class", "style"},
+    "img": {"src", "alt"},
+    # A chart's numbers or a diagram's source; the file exporters read it.
+    "figure": {"data-source"},
+    # A page break a person inserted; `richtext` turns it into the exporters' break.
+    "div": {"data-page-break"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan"},
+}
 
 #: Declarations a person may set in the editor. No layout properties: the
 #: seed owns position, display, spacing and background.
@@ -105,7 +112,6 @@ _EDITABLE_STYLE = {
 #: Property/value pair with no parentheses in the value, so `url(`,
 #: `expression(` and `calc(` never match. Security invariant.
 _DECLARATION = re.compile(r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$")
-_URL_ATTR = re.compile(r"\s(href|src)\s*+=\s*+(\"[^\"]*\"|'[^']*'|[^\s>]+)", re.I)
 #: `<code>` contents are text, escaped before the tag rules run. Closing tag
 #: required.
 _CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
@@ -447,11 +453,10 @@ def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
         return text
 
 
-def _kept_style(match: re.Match[str]) -> str:
-    """A `style=` reduced to `_EDITABLE_STYLE` declarations matching `_DECLARATION`; dropped when
-    empty.
+def _editable_style(raw: str) -> str:
+    """A `style=` value reduced to `_EDITABLE_STYLE` declarations matching `_DECLARATION`; empty
+    when nothing qualifies.
     """
-    raw = match.group(1).strip().strip("\"'")
     kept = []
     for part in raw.split(";"):
         if not part.strip():
@@ -471,40 +476,45 @@ def _kept_style(match: re.Match[str]) -> str:
         found = _DECLARATION.match(part)
         if found and found.group(1).lower() in _EDITABLE_STYLE:
             kept.append(f"{found.group(1).lower()}: {found.group(2).strip()}")
-    return f' style="{"; ".join(kept)}"' if kept else ""
-
-
-#: `class="cover"` on a body block; only `wrap_cover` may produce the cover
-#: frame. `\s?` rather than `\s*`: the latter is quadratic on whitespace.
-_COVER_CLASS = re.compile(r'\sclass\s?=\s?(["\'])cover\1', re.I)
+    return "; ".join(kept)
 
 
 def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False) -> str:
     """One block of authored HTML reduced to what the seed styles; artifacts are also opened outside
     the sandbox.
 
+    The markup is parsed the way a browser parses it (nh3, an HTML5 parser) and written
+    back from the tree, so an attribute a regex would not know about (`background=`,
+    `srcset=`) or a quote left open cannot carry anything past the allow lists. Tags outside
+    `_ALLOWED_TAGS` lose their markup and keep their words; `_REMOVED_WITH_CONTENT` go
+    whole.
+
     `layouts`: the template's layout names to strip from the front.
     `editable_styles`: keep `_EDITABLE_STYLE` declarations (person-edited
     blocks); model-written blocks get no inline style.
     """
     text = _CODE.sub(_quoted_code, _without_layout_preamble(_unwrapped(fragment), layouts))
-    text = _SCRIPTISH.sub("", text)
-    text = _EVENT_ATTR.sub("", text)
-    text = _STYLE_ATTR.sub(_kept_style if editable_styles else "", text)
 
-    def address(match: re.Match[str]) -> str:
-        """`href` is dropped; `src` survives only as an embedded `data:` image."""
-        if match.group(1).lower() != "src":
-            return ""
-        value = match.group(2).strip().strip("\"'")
-        return match.group(0) if pictures.is_embedded(value) else ""
+    def attribute(element: str, name: str, value: str) -> str | None:
+        if name == "style":
+            return (_editable_style(value) if editable_styles else "") or None
+        if name == "src":
+            # `href` is not admitted at all; `src` only as a picture already in the file.
+            return value if pictures.is_embedded(value) else None
+        if name == "class" and value.strip().lower() == "cover":
+            # Only `wrap_cover` may produce the cover frame.
+            return None
+        return value
 
-    text = _URL_ATTR.sub(address, text)
-
-    def keep(match: re.Match[str]) -> str:
-        return match.group(0) if match.group(1).lower() in _ALLOWED_TAGS else ""
-
-    return _COVER_CLASS.sub("", _TAG.sub(keep, text)).strip()
+    return nh3.clean(
+        text,
+        tags=_ALLOWED_TAGS,
+        clean_content_tags=_REMOVED_WITH_CONTENT,
+        attributes=_ALLOWED_ATTRIBUTES,
+        attribute_filter=attribute,
+        url_schemes={"data"},
+        strip_comments=True,
+    ).strip()
 
 
 def _token_declarations(tokens: dict[str, str]) -> str:

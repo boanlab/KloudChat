@@ -291,10 +291,14 @@ answer are otherwise the same silence.
 **The model never writes layout.** It is given the
 block's layout name and returns the *inside* of that block; `design_templates.
 assemble` puts it inside the markup the seed styles, and `sanitise` reduces it
-to a fixed tag vocabulary first. Script elements, event handlers, remote
-`src`/`href`, and `h1`/`h2` are removed with their contents: the first three
-because the file is downloaded and opened outside the sandbox, the last because
-the wrapper already wrote that heading and a second one prints the title twice.
+to a fixed tag vocabulary first. It parses the block the way a browser does
+(nh3, an HTML5 parser) and writes it back from the tree, so only listed tags
+and, per tag, listed attributes survive; a regex pass would have to know every
+attribute that can carry a URL or a handler, and an unclosed quote could carry
+markup past it. Script elements, event handlers, remote `src`/`href`, and
+`h1`/`h2` are removed with their contents: the first three because the file is
+downloaded and opened outside the sandbox, the last because the wrapper already
+wrote that heading and a second one prints the title twice.
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
