@@ -1223,17 +1223,22 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
       }
       // Mermaid theme variables do not reach `:::hot`; the highlight is a stylesheet.
       const styled = svg.replace(/<svg([^>]*)>/, (m) => `${m}<style>${paperStyles(accent)}</style>`)
-      node.innerHTML = styled
-      const drawn = node.querySelector('svg')
-      if (drawn) {
-        // Sized by the box, not by mermaid: the viewBox keeps the aspect.
-        drawn.removeAttribute('width')
-        drawn.removeAttribute('height')
-        drawn.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-        drawn.style.width = '100%'
-        drawn.style.height = '100%'
-        drawn.style.maxWidth = 'none'
+      // Parsed as SVG and adopted as a node: mermaid drew it under `securityLevel: 'strict'`,
+      // and the document never reinterprets it as HTML.
+      const parsed = new DOMParser().parseFromString(styled, 'image/svg+xml').documentElement
+      if (!(parsed instanceof SVGSVGElement)) {
+        setFailed(true)
+        return
       }
+      const drawn = document.importNode(parsed, true)
+      // Sized by the box, not by mermaid: the viewBox keeps the aspect.
+      drawn.removeAttribute('width')
+      drawn.removeAttribute('height')
+      drawn.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+      drawn.style.width = '100%'
+      drawn.style.height = '100%'
+      drawn.style.maxWidth = 'none'
+      node.replaceChildren(drawn)
       if (artifactId && !stored) {
         const png = await rasterise(styled)
         if (!png || !live) return
