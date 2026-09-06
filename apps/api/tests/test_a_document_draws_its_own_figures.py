@@ -83,7 +83,7 @@ async def test_the_planner_reads_only_the_eligible_parts_and_a_failure_is_an_emp
     assert [row.index for row in rows] == [1]
     assert usage == {"inputTokens": 10, "outputTokens": 5}
     assert "[2] 생성 흐름" in seen[0] and "[1] 표지" not in seen[0] and "[3] 결과" not in seen[0]
-    assert "(표 있음)" not in seen[0] and "(표 있음)」이라고 적힌" in seen[0]
+    assert "생성 흐름 (표 있음)" not in seen[0] and "(표 있음)」이라고 적힌" in seen[0]
     assert "발표 슬라이드" in seen[0] and "12자" in seen[0]
 
     async def broken(*args):
