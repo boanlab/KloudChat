@@ -397,3 +397,13 @@ body {
     height: auto;
   }
 }
+
+/* The report's web view at the document type scale (`docType.ts` sets the variables). */
+.doc-web { font-size: var(--doc-body); line-height: var(--doc-leading-body); }
+.doc-web > h1 { font-size: var(--doc-title); line-height: var(--doc-leading-title); text-wrap: balance; }
+.doc-web section > div > h2 { font-size: var(--doc-h1); line-height: var(--doc-leading-heading); }
+.doc-web section h3 { font-size: var(--doc-h2); }
+.doc-web section h4 { font-size: var(--doc-h3); }
+.doc-web section p, .doc-web section li, .doc-web section .text-md { font-size: var(--doc-body); line-height: var(--doc-leading-body); }
+.doc-web section table { font-size: var(--doc-table); line-height: var(--doc-leading-table); }
+.doc-web section figcaption, .doc-web section small { font-size: var(--doc-small); }

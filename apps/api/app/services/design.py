@@ -12,7 +12,19 @@ import re
 from app.models.chat import SessionKind
 
 #: Deck styles; a report uses only the first three.
-VISUAL_STYLES = ("editorial", "poster", "minimal", "dark", "split", "warm", "mono")
+VISUAL_STYLES = (
+    "editorial",
+    "poster",
+    "minimal",
+    "dark",
+    "split",
+    "warm",
+    "mono",
+    "pastel",
+    "forest",
+    "slate",
+    "paper",
+)
 
 #: What a project with no design system gets; matches `deck._ACCENT` and the
 #: exporters' defaults.
@@ -148,6 +160,14 @@ def visual_style_for(request: str) -> str:
         return "warm"
     if any(word in text for word in ("흑백", "모노톤", "블랙앤화이트", "black and white")):
         return "mono"
+    if any(word in text for word in ("파스텔", "연한 색", "부드러운 색감", "라벤더")):
+        return "pastel"
+    if any(word in text for word in ("숲", "초록 배경", "자연 느낌", "에코", "친환경 느낌")):
+        return "forest"
+    if any(word in text for word in ("강철", "회색 톤", "차가운 색", "슬레이트", "메탈")):
+        return "slate"
+    if any(word in text for word in ("종이 서식", "논문 서식", "고전적", "테두리 선", "학술지")):
+        return "paper"
     return "editorial"
 
 

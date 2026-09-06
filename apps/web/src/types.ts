@@ -116,7 +116,7 @@ export interface PendingPlan {
   questions?: PendingQuestion[]
   plan?: {
     title?: string
-    visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+    visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono' | 'pastel' | 'forest' | 'slate' | 'paper'
     /** Whether the deck is meant to support a speaker or stand alone when shared. */
     density?: 'speaker' | 'reading'
     /** Slides and template blocks carry a layout; report sections are titles. */
@@ -400,7 +400,7 @@ export interface DesignTokens {
   ink: string
   muted: string
   font: 'gothic' | 'serif'
-  visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono'
+  visualStyle?: 'editorial' | 'poster' | 'minimal' | 'dark' | 'split' | 'warm' | 'mono' | 'pastel' | 'forest' | 'slate' | 'paper'
   /** Footer line on every slide and page. */
   footer?: string
   /** `data:` URI, so exported files carry the mark with them. */

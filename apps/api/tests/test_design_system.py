@@ -28,9 +28,7 @@ def test_absent_tokens_are_the_previous_defaults():
 
 
 def test_a_bad_field_falls_back_without_taking_the_good_ones_with_it():
-    tokens = design.normalise_tokens(
-        {"accent": "#0F766E", "ink": "not-a-colour", "font": "comic"}
-    )
+    tokens = design.normalise_tokens({"accent": "#0F766E", "ink": "not-a-colour", "font": "comic"})
     assert tokens["accent"] == "#0f766e"
     assert tokens["ink"] == design.DEFAULT_TOKENS["ink"]
     assert tokens["font"] == design.DEFAULT_TOKENS["font"]
@@ -92,9 +90,7 @@ def test_no_design_system_adds_no_block():
 
 
 def test_the_image_prompt_carries_the_colour_and_the_house_style():
-    clause = design.image_clause(
-        _system(tokens={"accent": "#7a1f3d"}, image_style="bold graphic")
-    )
+    clause = design.image_clause(_system(tokens={"accent": "#7a1f3d"}, image_style="bold graphic"))
     composed = imagegen.compose_prompt("표지 그림", aspect="16:9", style="사진", design=clause)
 
     assert composed.startswith("표지 그림")
@@ -103,9 +99,7 @@ def test_the_image_prompt_carries_the_colour_and_the_house_style():
     # Order: the picked chip, the design's instruction, the aspect last.
     assert composed.index("photorealistic") < composed.index("bold graphic")
     # 비율만이 아니라 방향까지 말한다.
-    assert composed.endswith(
-        "aspect ratio 16:9, landscape orientation, wider than it is tall"
-    )
+    assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
 
 
 def test_an_image_prompt_without_a_design_system_is_unchanged():
@@ -278,10 +272,15 @@ def test_one_deck_can_export_in_three_distinct_visual_styles():
     assert len({editorial, poster, minimal}) == 3
     assert "F7F3ED" in poster  # warm paper and a vertical accent rail
     assert "F7F3ED" not in editorial
-    assert len({
-        _drawn(deck_export.to_pdf("제목", _SLIDES, tokens={**base, "visualStyle": style}))
-        for style in ("editorial", "poster", "minimal")
-    }) == 3
+    assert (
+        len(
+            {
+                _drawn(deck_export.to_pdf("제목", _SLIDES, tokens={**base, "visualStyle": style}))
+                for style in ("editorial", "poster", "minimal")
+            }
+        )
+        == 3
+    )
 
 
 def test_one_report_can_export_in_three_distinct_visual_styles():
@@ -295,10 +294,19 @@ def test_one_report_can_export_in_three_distinct_visual_styles():
             document_xml.append(archive.read("word/document.xml"))
     assert len(set(document_xml)) == 3
     assert b'w:fill="7a1f3d"' in document_xml[1]
-    assert len({
-        _drawn(report_export.to_pdf("제목", _SECTIONS, tokens={**_TOKENS, "visualStyle": style}))
-        for style in ("editorial", "poster", "minimal")
-    }) == 3
+    assert (
+        len(
+            {
+                _drawn(
+                    report_export.to_pdf(
+                        "제목", _SECTIONS, tokens={**_TOKENS, "visualStyle": style}
+                    )
+                )
+                for style in ("editorial", "poster", "minimal")
+            }
+        )
+        == 3
+    )
     hwpx_headers = []
     for visual_style in ("editorial", "poster", "minimal"):
         built = report_export.to_hwpx(
@@ -316,16 +324,17 @@ def test_report_headings_take_the_accent_and_the_body_stays_black():
     ) as archive:
         header = archive.read("Contents/header.xml").decode()
 
-    # Title (id 2) and section heading (id 3) carry it; body (id 0) does not.
-    assert 'id="2" height="1600" textColor="#7a1f3d"' in header
-    assert 'id="3" height="1300" textColor="#7a1f3d"' in header
-    assert 'id="0" height="1000" textColor="#000000"' in header
+    # Title (id 2) and section heading (id 3) carry it; body (id 0) does not. Heights are
+    # the document scale in 1/100 pt.
+    from app.services import doc_type
+
+    assert f'id="2" height="{doc_type.hwp("title")}" textColor="#7a1f3d"' in header
+    assert f'id="3" height="{doc_type.hwp("h1")}" textColor="#7a1f3d"' in header
+    assert f'id="0" height="{doc_type.hwp("body")}" textColor="#000000"' in header
 
 
 def test_a_report_without_a_design_system_stays_black():
-    with zipfile.ZipFile(
-        io.BytesIO(report_export.to_hwpx("제목", _SECTIONS))
-    ) as archive:
+    with zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("제목", _SECTIONS))) as archive:
         header = archive.read("Contents/header.xml").decode()
     assert "#7a1f3d" not in header
     assert header.count('textColor="#000000"') == len(report_export._HWPX_CHAR_SHAPES)

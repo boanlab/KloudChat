@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from app.models.chat import SessionKind
-from app.services import design, pictures
+from app.services import design, doc_type, pictures
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -180,6 +180,7 @@ class DesignTemplate:
         """An image 서식 whose suffix forbids lettering: the planner must not write any
         text into the picture either, or the two halves of the prompt contradict."""
         return "no text" in self.prompt_suffix.lower()
+
     #: The shell every slide or section is placed into.
     seed: str
     #: Layout names this template describes; the first is the cover.
@@ -507,10 +508,15 @@ def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: boo
 
 
 def _token_declarations(tokens: dict[str, str]) -> str:
-    """Design tokens as CSS custom properties, shared by `render` and `stylesheet`."""
+    """Design tokens as CSS custom properties, shared by `render` and `stylesheet`.
+
+    The document type scale (`doc_type.CSS_VARIABLES`) rides along, so the seeds and
+    every 서식 draw their type from the one table the exporters read.
+    """
     return "\n".join(
         f"      --{name}: {value};"
         for name, value in (
+            *doc_type.CSS_VARIABLES,
             ("accent", tokens.get("accent", "#5b5bd6")),
             ("ink", tokens.get("ink", "#1a1a1a")),
             ("muted", tokens.get("muted", "#666666")),
@@ -540,7 +546,8 @@ _STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
 
 
 def stylesheet(template: DesignTemplate, tokens: dict[str, str]) -> str:
-    """The seed's `<style>` blocks alone with `{{TOKENS}}` resolved, for the editor's shadow root.
+    """The seed's `<style>` blocks alone with `{{TOKENS}}` resolved, for the editor's shadow
+    root.
     """
     seed = template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
     return "\n\n".join(match.group(1) for match in _STYLE_BLOCK.finditer(seed)).strip()

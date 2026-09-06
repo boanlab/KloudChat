@@ -10,17 +10,17 @@
 .page { line-height: 1.85; }
 
 .cover { padding-top: 30vh; }
-.cover h1 { font-size: clamp(1.8rem, 3.6vw, 2.4rem); font-weight: 600; }
+.cover h1 { font-weight: 600; }
 .cover::after { height: 1px; background: var(--border); }
 
 /* 절 번호는 로마자. 장식이 아니라 인용될 때 쓰는 이름이다. */
-h2 { font-size: 1.1rem; font-weight: 650; margin-bottom: 1rem; }
+h2 { font-weight: 650; margin-bottom: 1rem; }
 h2::before {
   content: counter(sec, upper-roman) ".";
   color: var(--ink);
   margin-right: 0.6rem;
 }
-h3 { font-size: 1rem; font-weight: 650; font-style: italic; }
+h3 { font-weight: 650; font-style: italic; }
 
 /* 이어지는 산문. 첫 문단은 들여쓰지 않는다 — 들여쓰기는 앞 문단이 있다는
    표시이므로, 절의 첫 줄에서는 의미가 없다.
@@ -38,14 +38,12 @@ blockquote {
   padding: 0;
   border-left: 0;
   color: var(--ink);
-  font-size: 0.95rem;
   line-height: 1.7;
 }
 blockquote p { text-indent: 0; }
 
 /* 출처. 본문과 거의 같은 크기, 규칙선 하나. */
 section > small {
-  font-size: 0.9rem;
   line-height: 1.7;
   color: var(--ink);
   max-width: none;

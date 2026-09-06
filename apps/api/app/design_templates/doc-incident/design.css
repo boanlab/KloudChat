@@ -15,9 +15,7 @@
   padding-top: 1rem;
 }
 .cover::after { display: none; }
-.cover h1 { font-size: 1.6rem; }
 
-h2 { font-size: 1.1rem; }
 
 /* 시간축. 점과 선으로 그리므로 인쇄기가 배경을 빼도 남는다. */
 ol.steps {
@@ -59,8 +57,7 @@ ol.steps > li::before {
 ol.steps > li strong {
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
-  font-size: 0.94em;
-}
+  }
 ol.steps > li span { color: var(--ink); }
 
 /* 무엇을 바꾸는가. 마지막 절이 이 문서의 목적이다. */

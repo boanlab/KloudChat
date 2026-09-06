@@ -12,10 +12,8 @@
 
 .cover { min-height: 0; padding: 0 0 0.9rem; margin: 0 0 1.6rem; }
 .cover::after { height: 1px; background: var(--border); }
-.cover h1 { font-size: 1.5rem; }
-.cover dl { grid-template-columns: 4.5rem minmax(0, 1fr); font-size: 0.85rem; }
+.cover dl { grid-template-columns: 4.5rem minmax(0, 1fr); }
 
-h2 { font-size: 1.08rem; }
 
 /* 담당과 기한. 두 열을 오른쪽에 세우고, 폭을 내용에 맞춰 좁힌다. */
 table th:nth-last-child(-n + 2),
@@ -29,7 +27,6 @@ table td:nth-last-child(-n + 2) {
 table td:nth-last-child(-n + 2) { font-variant-numeric: tabular-nums; }
 /* 담당자 이름은 기한보다 한 칸 앞이고, 이 문서에서 사람 이름은 강조다. */
 table td:nth-last-child(2) { font-weight: 650; color: var(--accent); }
-table th { font-size: 0.8rem; }
 
 /* 결정과 할 일은 번호가 붙은 줄이다. 기본 조판의 세로 강조선을 지우고
    왼쪽을 비워, 오른쪽 가장자리가 유일한 정렬선으로 남게 한다. */

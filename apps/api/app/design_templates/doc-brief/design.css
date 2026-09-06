@@ -14,7 +14,6 @@
   column-gap: 2.2rem;
   column-rule: 1px solid var(--hair);
   padding-bottom: 2rem;
-  font-size: 0.94rem;
   line-height: 1.62;
 }
 
@@ -27,17 +26,15 @@
   border-bottom: 2px solid var(--accent);
 }
 .cover::after { display: none; }
-.cover h1 { font-size: 1.6rem; max-width: none; margin-bottom: 0.5rem; }
-.cover .lead, .cover > p { margin-bottom: 0.9rem; font-size: 0.92rem; }
-.cover dl { max-width: none; font-size: 0.82rem; }
+.cover h1 { max-width: none; margin-bottom: 0.5rem; }
+.cover .lead, .cover > p { margin-bottom: 0.9rem; }
+.cover dl { max-width: none; }
 
 section { margin: 0 0 1.5rem; break-inside: avoid; }
-h2 { font-size: 1.02rem; margin-bottom: 0.5rem; }
-h2::before { font-size: 0.82rem; }
+h2 { margin-bottom: 0.5rem; }
 p { margin-bottom: 0.6rem; }
-table { margin: 0.7rem 0; font-size: 0.86rem; }
+table { margin: 0.7rem 0; }
 .kpi { margin: 0.9rem 0; padding: 0.5rem 0; }
-.kpi strong { font-size: 1.2rem; }
 
 /* 마지막 칸은 언제나 다음 행동. 서식이 그렇게 약속했으므로 조판이 그 자리를
    비워 두지 않고 표시한다 — 어느 절이 마지막인지는 글이 아니라 위치가 정한다. */
