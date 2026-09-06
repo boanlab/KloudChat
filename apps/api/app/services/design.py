@@ -151,6 +151,51 @@ def visual_style_for(request: str) -> str:
     return "editorial"
 
 
+#: Where a deck will be shown → the look that suits that room. Checked in order;
+#: the first room named in the request wins. Empty when nothing is named.
+_VENUES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("minimal", ("학술", "학회", "세미나", "심사", "논문", "디펜스", "연구실", "컨퍼런스", "저널")),
+    (
+        "dark",
+        ("데모", "시연", "제품 소개", "출시", "해커톤", "개발자", "기술 발표", "런칭", "쇼케이스"),
+    ),
+    (
+        "split",
+        (
+            "경영진",
+            "임원",
+            "이사회",
+            "사업",
+            "제안",
+            "현황 보고",
+            "킥오프",
+            "투자",
+            "기관",
+            "성과 보고",
+        ),
+    ),
+    (
+        "warm",
+        ("교육", "강의", "수업", "워크숍", "복지", "문화", "학부모", "동아리", "오리엔테이션"),
+    ),
+    ("poster", ("홍보", "설명회", "발표회", "전시", "모집", "캠페인", "박람회", "행사")),
+    ("mono", ("디자인", "건축", "사진전", "갤러리")),
+)
+
+
+def venue_style_for(request: str) -> str:
+    """The look the room calls for, read off the request; `""` when no room is named.
+
+    A style word in the request (`visual_style_for`) outranks this: the person said
+    how it should look. This only answers where it will be shown.
+    """
+    text = (request or "").lower()
+    for style, words in _VENUES:
+        if any(word in text for word in words):
+            return style
+    return ""
+
+
 __all__ = [
     "CRAFT",
     "VISUAL_STYLES",
@@ -165,4 +210,5 @@ __all__ = [
     "prompt_block",
     "tokens_of",
     "visual_style_for",
+    "venue_style_for",
 ]

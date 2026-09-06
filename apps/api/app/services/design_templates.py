@@ -174,6 +174,12 @@ class DesignTemplate:
     cover_page: bool
     #: Path to the blank `form.docx` / `form.pptx` for download; empty when none.
     form_file: str
+
+    @property
+    def wordless(self) -> bool:
+        """An image 서식 whose suffix forbids lettering: the planner must not write any
+        text into the picture either, or the two halves of the prompt contradict."""
+        return "no text" in self.prompt_suffix.lower()
     #: The shell every slide or section is placed into.
     seed: str
     #: Layout names this template describes; the first is the cover.
