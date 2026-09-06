@@ -88,6 +88,7 @@ from app.services import (
     hwpx_import,
     index_client,
     lint,
+    netguard,
     page_export,
     pictures,
     printing,
@@ -415,6 +416,8 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
     url = payload.url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_url")
+    if reason := await netguard.refusal(url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
     backends = await settings_store.tools_config()
     if not backends.fetch:
         raise HTTPException(
@@ -2363,6 +2366,8 @@ async def extract_design(payload: DesignExtractIn, user: CurrentUser, db: DbSess
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="fetch_unavailable"
             )
+        if reason := await netguard.refusal(payload.url or ""):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
         source = await builtin_tools.scrape(backends.fetch, payload.url or "")
         read_from = payload.url or ""
         if not source.strip():
@@ -2645,6 +2650,8 @@ async def add_agent_url(agent_id: str, payload: KnowledgeUrl, user: CurrentUser,
     url = payload.url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_url")
+    if reason := await netguard.refusal(url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
 
     backends = await settings_store.tools_config()
     if not backends.fetch:

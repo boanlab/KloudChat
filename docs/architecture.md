@@ -192,6 +192,15 @@ Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
 `create_chart`, `share_note`, and `search_knowledge` over an agent's own
 documents (§8). Tools from installed MCP connectors are added to these.
 
+**A fetch reaches the public internet only.** Every page read on a reader's
+behalf — the `fetch_url` tool, search-result bodies, research picks, project
+and agent knowledge from a URL, a design read from a page — passes
+`services/netguard.py` first: http(s) only, and every address the host
+resolves to must be public (no loopback, private, link-local, CGNAT or
+metadata addresses; no dotless service names). The Crawl4AI shim applies the
+same rule again, including to the address it lands on after redirects, since
+the tool gateway reaches it without authentication.
+
 **Tool count is what sizes the connector catalogue.** Every active tool ships
 its full schema on every turn, and model tool-choice degrades well before
 twenty of them. A server enters the catalogue once it has been started against
