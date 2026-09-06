@@ -385,7 +385,8 @@ async def upload_file(
         session_id=session_id,
         name=file_service.safe_name(file.filename or "file"),
         size=len(data),
-        mime=file.content_type or "",
+        # The client's `Content-Type` is a claim; the bytes decide.
+        mime=file_service.detected_mime(file.filename or "file", file.content_type, data),
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
 
@@ -445,19 +446,13 @@ async def download_file(file_id: str, user: CurrentViewer, db: DbSession):
         data = file_service.read_blob(stored.storage_key)
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="blob_missing") from None
-    # `inline` for media and PDF so `<img>`/`<audio>`/`<video>` can render it.
-    mime = stored.mime or "application/octet-stream"
-    inline = mime.startswith(("image/", "audio/", "video/")) or mime == "application/pdf"
-    # RFC 5987: non-ASCII filenames must be percent-encoded in this header.
-    filename = quote(stored.name)
+    # Inline only for what the bytes prove to be a picture, PDF or media; the stored type is
+    # not trusted for this, and a rendered response gets no script and no origin.
+    media, inline = file_service.served_as(stored.name, stored.mime, data)
     return Response(
         content=data,
-        media_type=mime,
-        headers={
-            "Content-Disposition": (
-                f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{filename}"
-            )
-        },
+        media_type=media,
+        headers=file_service.download_headers(media, inline, stored.name),
     )
 
 
@@ -2008,7 +2003,10 @@ def _attachment(body: bytes, media: str, stem: str, suffix: str) -> Response:
     return Response(
         content=body,
         media_type=media,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -2617,7 +2615,8 @@ async def add_agent_file(
         agent_id=agent_id,
         name=file_service.safe_name(file.filename or "file"),
         size=len(data),
-        mime=file.content_type or "",
+        # The client's `Content-Type` is a claim; the bytes decide.
+        mime=file_service.detected_mime(file.filename or "file", file.content_type, data),
     )
     stored.storage_key = file_service.write_blob(user.id, stored.id, stored.name, data)
     # Extraction failure is recorded, not raised.
