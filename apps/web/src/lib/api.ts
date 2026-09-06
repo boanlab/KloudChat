@@ -1075,6 +1075,9 @@ export const artifactsApi = {
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
+  /** Stores this browser's raster of a slide's own figure (`slide.diagram`) as the slide picture for the exporters. Free, adds no version. */
+  storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */

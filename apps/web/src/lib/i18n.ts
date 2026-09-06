@@ -1399,6 +1399,8 @@ const EN: Record<string, string> = {
   '목소리': 'Voice',
   '그림': 'Picture',
   '그림 바꾸기': 'Replace the picture',
+  '그림 모델로 바꾸기': 'Replace with a drawn picture',
+  '이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.': 'This slide’s figure was drawn from its words. A picture from the image model replaces it.',
   '이 장': 'this slide',
   '아티팩트 검색': 'Search artifacts',
   '찾는 결과물이 없습니다': 'Nothing matches',

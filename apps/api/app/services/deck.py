@@ -41,6 +41,7 @@ from app.models.chat import SessionKind
 from app.services import (
     deck_type,
     design,
+    diagrams,
     figures,
     grounding,
     hangul,
@@ -1494,6 +1495,35 @@ async def _write_slides(
         log.warning("deck draft failed, writing slide by slide: %s", exc)
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
 
+    # Structure, flow, comparison and concept figures the deck draws for itself, beside
+    # the words. A slide with an approved picture keeps the picture.
+    planned, spent = await diagrams.plan(
+        parts=[
+            (str(slide["title"]), _drafted_text(drafted.get(i))) for i, slide in enumerate(slides)
+        ],
+        eligible=[
+            i
+            for i, slide in enumerate(slides)
+            if slide["layout"] in _DIAGRAM_LAYOUTS and i not in wanted_figures
+        ],
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=lambda prompt: build_document_messages(
+            SessionKind.slides,
+            prompt,
+            request=request,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+            research_rule=research_rule,
+        ),
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    wanted_diagrams = {row.index: row for row in planned}
+
     for index, slide in enumerate(slides):
         # Position goes in `progress`, not in the label.
         label = str(slide["title"])
@@ -1614,6 +1644,39 @@ async def _write_slides(
                     "type": "step",
                     "id": f"fig{index}",
                     "label": drawing.get("caption") or "그림",
+                    "status": "done",
+                    "progress": progress,
+                }
+        if (wanted := wanted_diagrams.get(index)) is not None and not slide.get("image"):
+            name = wanted.caption or diagrams.FIGURES[wanted.figure]
+            yield {
+                "type": "step",
+                "id": f"dia{index}",
+                "label": f"{name} 그리는 중",
+                "status": "running",
+                "progress": progress,
+            }
+            try:
+                made, spent = await diagrams.make(wanted, model=model, api_key=api_key, slide=True)
+            except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
+                log.warning("slide figure %r not drawn: %s", name, exc)
+                made = None
+            if made is None:
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
+                    "status": "error",
+                    "progress": progress,
+                }
+            else:
+                usage["inputTokens"] += spent["inputTokens"]
+                usage["outputTokens"] += spent["outputTokens"]
+                slide["diagram"] = made
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
                     "status": "done",
                     "progress": progress,
                 }
@@ -2186,13 +2249,33 @@ _COMMON_FLOOR = _SCALES[1]
 _MONOTONE = "bullets"
 
 
+#: Layouts a drawn figure may share: words that can narrow to make room.
+_DIAGRAM_LAYOUTS = ("bullets", "two-column")
+
+
+def _drafted_text(data: dict | None) -> str:
+    """The words a drafted slide holds, for the figure planner to read."""
+    if not data:
+        return ""
+    parts: list[str] = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
+    if data.get("body"):
+        parts.append(str(data["body"]))
+    for key in ("cards", "steps", "bands", "tiles", "timeline"):
+        for pair in data.get(key) or []:
+            if isinstance(pair, list):
+                parts.append(" — ".join(str(cell) for cell in pair))
+    return "\n".join(parts)
+
+
 def _body_width(slide: dict) -> float:
     """The text column's width in slide units, narrowed by a picture beside it."""
     width = float(deck_type.TITLE_WIDTH)
     image = slide.get("image") or {}
-    if image.get("src") and slide.get("layout") != "title":
+    # A figure the deck drew for itself takes the picture's place until the browser
+    # stores its raster; the default is the large share.
+    if (image.get("src") or slide.get("diagram")) and slide.get("layout") != "title":
         share = {"small": 0.32, "medium": 0.42, "large": 0.54}.get(
-            str(image.get("size") or ""), 0.42
+            str(image.get("size") or ""), 0.54 if not image.get("src") else 0.42
         )
         width = width * (1 - share) - 16
     return width

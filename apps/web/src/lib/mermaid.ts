@@ -263,6 +263,45 @@ export function paperTheme(node: HTMLElement) {
   }
 }
 
+/**
+ * The paper look with the deck's own colours, for a figure drawn beside a slide's words.
+ * Larger type than the page: the picture is scaled to a box a third of the slide wide.
+ */
+export function slideTheme(colours: { accent: string; ink: string; muted: string; font?: string }) {
+  return {
+    theme: 'base' as const,
+    // `<text>`, not `<foreignObject>`: foreign content taints the canvas `rasterise` draws to.
+    htmlLabels: false,
+    fontFamily: colours.font || "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
+    themeVariables: {
+      background: '#ffffff',
+      clusterBkg: '#eef4fb',
+      clusterBorder: '#b7c7de',
+      mainBkg: '#f7f9fc',
+      primaryColor: '#f7f9fc',
+      primaryBorderColor: '#7f96b8',
+      primaryTextColor: colours.ink,
+      nodeBorder: '#7f96b8',
+      secondaryColor: '#fff8ec',
+      tertiaryColor: '#eef7f2',
+      lineColor: '#5b6b82',
+      textColor: colours.ink,
+      edgeLabelBackground: '#ffffff',
+      fontSize: '22px',
+    },
+    flowchart: {
+      // Drawn at its own size so the rasteriser has a size to draw at; the slide scales it.
+      useMaxWidth: false,
+      htmlLabels: false,
+      curve: 'basis' as const,
+      padding: 14,
+      rankSpacing: 40,
+      nodeSpacing: 34,
+    },
+    hot: colours.accent,
+  }
+}
+
 /** Highlight and stroke rules injected into the SVG after drawing; `:::hot` needs a class rule. */
 export function paperStyles(hot: string): string {
   // `!important`: mermaid's own rules use `#<svg id>` selectors, which outrank any class.

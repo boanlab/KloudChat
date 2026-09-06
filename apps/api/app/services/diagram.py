@@ -22,6 +22,7 @@ FIGURES: dict[str, str] = {
     "method": "제안 방법의 구조도 — 구성 요소와 그 사이의 데이터 흐름",
     "flow": "처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지",
     "concept": "개념도 — 개념들의 관계와 층위",
+    "compare": "비교도 — 기존(또는 A안)과 제안(B안)의 대비를 나란히",
 }
 
 _RULES = """
@@ -36,6 +37,9 @@ _RULES = """
   층(세로 깊이)은 3개 이하.
 - 개념도는 `flowchart TB`. 바탕이 되는 개념이 위, 갈래가 가운데, 목표가
   아래. 위계는 위아래로 읽힌다.
+- 비교도는 `flowchart LR` 에 subgraph 둘(기존/제안, A안/B안)을 나란히 두고,
+  같은 자리의 요소가 마주 보게 같은 순서로 놓는다. 두 subgraph 사이에는 선을
+  긋지 않거나 `-.->|대비|` 하나만 둔다. 제안 쪽의 달라진 요소 하나에 `:::hot`.
 - **자기 자신으로 가는 화살표는 없다.** 「A 는 x·y 를 포함한다」는 x·y 를
   A 아래의 노드로 두거나, 이름에 넣어라(`a[정보 리터러시: 검색·평가]`).
   고리는 되먹임에만 쓰고, 되먹임은 다른 노드로 돌아가는 점선이다.
@@ -68,11 +72,25 @@ _RULES = """
 """
 
 
-def _messages(description: str, figure: str, language: str) -> list[dict[str, str]]:
+#: A figure that shares a slide with words: a box about 3:2, read from the back of a room.
+_SLIDE_RULES = """
+## 슬라이드용
+이 그림은 발표 슬라이드에서 글 옆의 칸(가로:세로 약 3:2)에 들어가고, 뒷자리에서도
+읽혀야 한다.
+- 노드 7개 이하, 이름은 8자 안쪽, subgraph 는 2개 이하, 층은 2개 이하.
+- 비교도는 양쪽 각각 3개 이하.
+- 선 위 글자는 꼭 필요할 때만, 4자 안쪽.
+- 캡션은 12자 안쪽의 이름. 「그림: 」 뒤에 이름만.
+"""
+
+
+def _messages(
+    description: str, figure: str, language: str, slide: bool = False
+) -> list[dict[str, str]]:
     what = FIGURES.get(figure, FIGURES["method"])
     lang = "영어로" if language == "en" else "한국어로"
     return [
-        {"role": "system", "content": _RULES},
+        {"role": "system", "content": _RULES + (_SLIDE_RULES if slide else "")},
         {
             "role": "user",
             "content": (
@@ -127,12 +145,14 @@ async def draw(
     language: str = "ko",
     broken: str = "",
     error: str = "",
+    slide: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
     """Writes one figure as mermaid. Returns `(source, caption, usage)`.
 
-    `broken`/`error` carry a previous answer mermaid refused, for one retry.
+    `broken`/`error` carry a previous answer mermaid refused, for one retry. `slide`
+    adds the size rules for a figure that shares a slide with words.
     """
-    messages = _messages(description, figure, language)
+    messages = _messages(description, figure, language, slide)
     if broken:
         messages.append({"role": "assistant", "content": f"```mermaid\n{broken}\n```"})
         messages.append(

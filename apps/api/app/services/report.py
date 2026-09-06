@@ -17,6 +17,7 @@ from app.models.chat import SessionKind
 from app.services import deck as deck_rules
 from app.services import (
     design,
+    diagrams,
     figures,
     grounding,
     hangul,
@@ -1197,6 +1198,30 @@ async def write(
     #: Approved pictures by section index.
     wanted_figures = {int(f.get("section", -1)): f for f in (figures_plan or []) if f.get("prompt")}
 
+    # Structure, flow, comparison and concept figures the report draws for itself as
+    # mermaid; the editor renders and stores them. A section with an approved picture
+    # keeps the picture.
+    planned, spent = await diagrams.plan(
+        parts=[(h, drafted.get(h, "")) for h in headings],
+        eligible=[i for i in range(len(headings)) if i not in wanted_figures],
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=False,
+        wrap=lambda prompt: build_document_messages(
+            SessionKind.report,
+            prompt,
+            request=request,
+            trusted_context=trusted_context,
+            untrusted_context=document_context,
+            research_rule=research_rule,
+        ),
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    wanted_diagrams = {row.index: row for row in planned}
+
     for index, section in enumerate(sections):
         # The position lives in `progress` only; the surface renders it.
         label = str(section["heading"])
@@ -1332,6 +1357,41 @@ async def write(
                     "type": "step",
                     "id": f"fig{index}",
                     "label": drawing.get("caption") or "그림",
+                    "status": "done",
+                    "progress": progress,
+                }
+        if (wanted := wanted_diagrams.get(index)) is not None and index not in wanted_figures:
+            name = wanted.caption or diagrams.FIGURES[wanted.figure]
+            yield {
+                "type": "step",
+                "id": f"dia{index}",
+                "label": f"{name} 그리는 중",
+                "status": "running",
+                "progress": progress,
+            }
+            try:
+                made, spent = await diagrams.make(wanted, model=model, api_key=api_key, slide=False)
+            except Exception as exc:  # noqa: BLE001 — a section without its figure is still a section
+                log.warning("report figure %r not drawn: %s", name, exc)
+                made = None
+            if made is None:
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
+                    "status": "error",
+                    "progress": progress,
+                }
+            else:
+                usage["inputTokens"] += spent["inputTokens"]
+                usage["outputTokens"] += spent["outputTokens"]
+                # A mermaid fence in the body: the panel renders it, stores the raster,
+                # and the exporters place that raster by key.
+                section["content"] = f"{section['content'].rstrip()}\n\n{diagrams.fence(made)}"
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
                     "status": "done",
                     "progress": progress,
                 }
