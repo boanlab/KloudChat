@@ -51,7 +51,9 @@ async def lifespan(app: FastAPI):
             async with SessionLocal() as db:
                 moved = await settings_store.rotate_secrets(db)
             if moved:
-                log.info("re-sealed %d stored secrets under SECRET_KEY", moved)
+                # The count stays out of the log: CodeQL reads any value out of
+                # `rotate_secrets` as secret material.
+                log.info("stored secrets re-sealed under SECRET_KEY")
         except Exception as exc:  # noqa: BLE001 — old rows still open with the old key
             log.warning("stored secrets were not re-sealed: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
