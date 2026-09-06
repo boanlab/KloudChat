@@ -188,6 +188,18 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
             )
         if max_tokens > 2000:
             raise ValueError("no draft this time")
+        if "생성 흐름" in text.split("\n")[0]:
+            body = {
+                "steps": [
+                    ["검색기", "질문과 가까운 문서 조각을 찾는다"],
+                    ["계획기", "찾은 조각으로 답의 뼈대를 세운다"],
+                    ["스타일 조정기", "독자에 맞춰 문장을 고른다"],
+                    ["검토기", "근거 없는 문장을 되돌린다"],
+                    ["출력", "최종 답"],
+                ],
+                "notes": "",
+            }
+            return json.dumps(body, ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
         return json.dumps({"bullets": ["첫째", "둘째"], "notes": ""}, ensure_ascii=False), {
             "inputTokens": 1,
             "outputTokens": 1,
@@ -212,7 +224,7 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
 
     plan = [
         {"title": "표지", "layout": "title"},
-        {"title": "생성 흐름", "layout": "bullets"},
+        {"title": "생성 흐름", "layout": "steps"},
         {"title": "결과 사진", "layout": "bullets"},
         {"title": "마무리", "layout": "closing"},
     ]
@@ -238,6 +250,11 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["diagram"]["source"].startswith("flowchart LR")
     assert final[1]["diagram"]["caption"] == "생성 흐름"
     assert final[1]["diagram"]["key"] == "abcdef0123456789"
+    # The steps slide gave its room to the figure: a few short lines beside it, no shape.
+    assert final[1]["layout"] == "bullets" and "steps" not in final[1]
+    assert len(final[1]["bullets"]) == 4
+    assert final[1]["bullets"][0].startswith("검색기: ")
+    assert all(len(line) <= 48 for line in final[1]["bullets"])
     # The picture slide was never offered to the planner and keeps its picture.
     assert final[2]["image"]["src"].startswith("data:image/png")
     assert "diagram" not in final[2]

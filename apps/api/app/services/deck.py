@@ -1647,39 +1647,6 @@ async def _write_slides(
                     "status": "done",
                     "progress": progress,
                 }
-        if (wanted := wanted_diagrams.get(index)) is not None and not slide.get("image"):
-            name = wanted.caption or diagrams.FIGURES[wanted.figure]
-            yield {
-                "type": "step",
-                "id": f"dia{index}",
-                "label": f"{name} 그리는 중",
-                "status": "running",
-                "progress": progress,
-            }
-            try:
-                made, spent = await diagrams.make(wanted, model=model, api_key=api_key, slide=True)
-            except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
-                log.warning("slide figure %r not drawn: %s", name, exc)
-                made = None
-            if made is None:
-                yield {
-                    "type": "step",
-                    "id": f"dia{index}",
-                    "label": name,
-                    "status": "error",
-                    "progress": progress,
-                }
-            else:
-                usage["inputTokens"] += spent["inputTokens"]
-                usage["outputTokens"] += spent["outputTokens"]
-                slide["diagram"] = made
-                yield {
-                    "type": "step",
-                    "id": f"dia{index}",
-                    "label": name,
-                    "status": "done",
-                    "progress": progress,
-                }
         data = _json_object(body)
         # Same number check as the draft path.
         if index not in drafted:
@@ -1757,6 +1724,46 @@ async def _write_slides(
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
 
+        # After the words are settled: a paired layout that gets a figure becomes bullets
+        # beside it (`_words_beside_figure`), and an unwritten slide gets no figure.
+        if (
+            (wanted := wanted_diagrams.get(index)) is not None
+            and not slide.get("image")
+            and slide.get("body") != UNWRITTEN
+        ):
+            name = wanted.caption or diagrams.FIGURES[wanted.figure]
+            yield {
+                "type": "step",
+                "id": f"dia{index}",
+                "label": f"{name} 그리는 중",
+                "status": "running",
+                "progress": progress,
+            }
+            try:
+                made, spent = await diagrams.make(wanted, model=model, api_key=api_key, slide=True)
+            except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
+                log.warning("slide figure %r not drawn: %s", name, exc)
+                made = None
+            if made is None:
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
+                    "status": "error",
+                    "progress": progress,
+                }
+            else:
+                usage["inputTokens"] += spent["inputTokens"]
+                usage["outputTokens"] += spent["outputTokens"]
+                slide["diagram"] = made
+                _words_beside_figure(slide)
+                yield {
+                    "type": "step",
+                    "id": f"dia{index}",
+                    "label": name,
+                    "status": "done",
+                    "progress": progress,
+                }
         if notes:
             slide["notes"] = notes[:800]
 
@@ -2249,8 +2256,35 @@ _COMMON_FLOOR = _SCALES[1]
 _MONOTONE = "bullets"
 
 
-#: Layouts a drawn figure may share: words that can narrow to make room.
-_DIAGRAM_LAYOUTS = ("bullets", "two-column")
+#: Layouts a drawn figure may share. Paired shapes (cards, steps, bands…) are where the
+#: planner puts structures and flows, so they are offered too; one that gets a figure is
+#: rewritten as short bullets beside it (`_words_beside_figure`).
+_DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "steps", "bands", "tiles", "timeline")
+
+#: Words a figure leaves beside itself: this many lines, this long.
+_BESIDE_LINES = 4
+_BESIDE_CHARS = 48
+
+
+def _words_beside_figure(slide: dict) -> None:
+    """Turns a paired slide into a few bullets so its figure has the room; bullets stay."""
+    layout = str(slide.get("layout") or "")
+    if layout not in _PAIRED:
+        return
+    pairs = slide.pop(layout, None) or []
+    lines: list[str] = []
+    for pair in pairs:
+        if not isinstance(pair, list) or not pair:
+            continue
+        name = str(pair[0]).strip()
+        text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
+        line = f"{name}: {text}" if name and text else name or text
+        if len(line) > _BESIDE_CHARS:
+            line = line[: _BESIDE_CHARS - 1].rstrip() + "…"
+        if line:
+            lines.append(line)
+    slide["layout"] = "bullets"
+    slide["bullets"] = lines[:_BESIDE_LINES]
 
 
 def _drafted_text(data: dict | None) -> str:
