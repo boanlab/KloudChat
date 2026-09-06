@@ -32,7 +32,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   await page.locator('button.aspect-video').first().click()
   await expect(page.getByLabel('슬라이드 편집 도구')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '이 장 다시 만들기' })).toBeVisible()
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await expect(page.getByLabel('슬라이드 편집 도구')).toBeVisible()
   await page.getByLabel('도구막대 강조색').fill('#123456')
   await page.getByLabel('도구막대 레이아웃').selectOption('two-column')
@@ -64,7 +64,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   expect(stored.image.size).toBe('large')
   expect(stored.image.position).toBe('left')
 
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await page.locator('[data-slide-element="image"]').click()
   await page.keyboard.press('Delete')
   await expect(page.locator('[data-slide-element="image"]')).toHaveCount(0)
@@ -78,7 +78,7 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   expect(stored.image).toBeUndefined()
 
   await page.getByRole('tab', { name: '홈' }).click()
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await page.getByLabel('로컬 그림 업로드').setInputFiles({
     name: '내그림.png',
     mimeType: 'image/png',
@@ -86,11 +86,11 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   })
   await expect(page.locator('img[src^="data:image/png;base64,"]').first()).toBeVisible()
   await page.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(page.getByRole('button', { name: '편집 도구' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('tab', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
   stored = await storedSlide(page, id)
   expect(stored.image.src).toContain('data:image/png;base64,')
 
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   await page.locator('[contenteditable="true"]').filter({ hasText: '선택한 부분만 바뀌어야 합니다' }).evaluate((element) => {
     const text = element.firstChild?.firstChild ?? element.firstChild
     if (!text) throw new Error('제목 텍스트를 찾지 못했습니다.')
@@ -105,14 +105,14 @@ test('장별 강조색과 그림 설명을 수정하고 그림을 제거할 수 
   await expect(page.getByRole('button', { name: '선택한 글자 굵게' })).toHaveAttribute('aria-pressed', 'true')
   await page.getByLabel('선택한 글자 크기').selectOption('140')
   await page.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(page.getByRole('button', { name: '편집 도구' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('tab', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
   stored = await storedSlide(page, id)
   expect(stored.bullets[0]).toBe('선택한 부분만 바뀌어야 합니다')
   expect(stored.richText['bullets.0']).toMatch(/^선택한 /)
   expect(stored.richText['bullets.0']).toMatch(/ 바뀌어야 합니다$/)
   expect(stored.richText['bullets.0']).toMatch(/<(b|strong)>/)
   expect(stored.richText['bullets.0']).toContain('font-size:1.4em')
-  await page.getByRole('button', { name: '편집 도구' }).click()
+  await page.getByRole('tab', { name: '편집', exact: true }).click()
   const visibleFormatting = await page.locator('[contenteditable="true"]').filter({ hasText: '선택한 부분만 바뀌어야 합니다' }).evaluate((element) => {
     const selected = element.querySelector('[style*="font-size:1.4em"]') as HTMLElement | null
     if (!selected) return null
