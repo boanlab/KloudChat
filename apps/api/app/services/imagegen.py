@@ -96,7 +96,9 @@ _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬
 1. 첫 문장: 무엇을 그리는지와 쓰임 (a system diagram of …, for a lecture slide).
 2. 구도: 화면 어디에 무엇이 오는지 — top-left, center, right, bottom — 요소마다 이름과
    생김새(rounded rectangle, cylinder, circle, icon of …). 요소는 요청에 있는 것만.
-3. 관계: 화살표·연결의 방향과 그 위에 적을 말 (도식·흐름일 때). 화살표마다 이름을 붙여라.
+3. 관계: 화살표·연결의 방향 (도식·흐름일 때). 화살표 위의 말은 요청이 그 흐름에 이름을
+   준 경우에만 적는다(「원수」, 「100ms 윈도」). 이름이 없으면 화살표는 글자 없이 그리고,
+   양끝 요소의 이름이나 "A -> B" 같은 관계 설명을 화살표 위에 쓰지 마라.
 4. 글자: {label_rule}.
 5. 마지막 줄 "Style: …" — 팔레트(색 이름 2~4개), 배경, 선 굵기, 글꼴 계열, 무엇에 쓸
    그림인지. {style_rule}
@@ -119,8 +121,9 @@ wide low rectangle) -> Sand Filter ("여과", rectangle with a dotted fill) ->
 Chlorination ("소독", small cylinder) -> Storage Tower ("배수지", tall cylinder, drawn
 larger). Below the basin, a small Sludge Out box ("슬러지 배출").
 
-Labeled arrows: "원수" Intake -> Coagulation; "침전물" Basin -> Sludge Out, dashed;
-"정수" Filter -> Chlorination -> Storage.
+Arrows: Intake -> Coagulation labeled "원수"; Basin -> Sludge Out, dashed, labeled
+"침전물"; Filter -> Chlorination -> Storage labeled "정수". Every other arrow is plain,
+with no text on it.
 
 Labels in Korean, exactly the quoted strings, short. No other text.
 
@@ -373,7 +376,8 @@ _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:
 async def generate(
     *, base_url: str, api_key: str, model: str, prompt: str, aspect: str = ""
 ) -> GeneratedImage:
-    """One picture, or `ImageError`. `aspect` is sent as `image_config` in addition to the prompt.
+    """One picture, or `ImageError`. `aspect` is sent as `image_config` in addition to the
+    prompt.
     """
     payload: dict = {
         "model": model,
