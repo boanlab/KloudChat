@@ -14,6 +14,8 @@ dependencies = [
     "pyjwt>=2.10",
     "httpx>=0.28",
     "email-validator>=2.2",
+    # HTML5 parser behind `design_templates.sanitise`; a browser-grade parse, not a regex.
+    "nh3>=0.2",
     "python-multipart>=0.0.20",
     "pypdf>=5.1",
     # `.hwp` OLE container reader; `.hwpx` is a plain XML zip.
