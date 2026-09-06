@@ -43,7 +43,7 @@ import {
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
-import { draw, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
+import { drawInto, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
@@ -1215,22 +1215,18 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
     if (!node || !source.trim()) return
     setFailed(false)
     void (async () => {
-      const svg = await draw(source, slideTheme({ accent, ink: look.ink, muted: look.muted }))
-      if (!live || !node) return
-      if (!svg) {
+      const drawn = await drawInto(node, source, slideTheme({ accent, ink: look.ink, muted: look.muted }))
+      if (!live) return
+      if (!drawn) {
         setFailed(true)
         return
       }
       // Mermaid theme variables do not reach `:::hot`; the highlight is a stylesheet.
-      const styled = svg.replace(/<svg([^>]*)>/, (m) => `${m}<style>${paperStyles(accent)}</style>`)
-      // Parsed as SVG and adopted as a node: mermaid drew it under `securityLevel: 'strict'`,
-      // and the document never reinterprets it as HTML.
-      const parsed = new DOMParser().parseFromString(styled, 'image/svg+xml').documentElement
-      if (!(parsed instanceof SVGSVGElement)) {
-        setFailed(true)
-        return
-      }
-      const drawn = document.importNode(parsed, true)
+      const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+      style.textContent = paperStyles(accent)
+      drawn.prepend(style)
+      // The raster is drawn at mermaid's own size, so it is read before the box resizes it.
+      const styled = new XMLSerializer().serializeToString(drawn)
       // Sized by the box, not by mermaid: the viewBox keeps the aspect.
       drawn.removeAttribute('width')
       drawn.removeAttribute('height')
@@ -1238,7 +1234,6 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
       drawn.style.width = '100%'
       drawn.style.height = '100%'
       drawn.style.maxWidth = 'none'
-      node.replaceChildren(drawn)
       if (artifactId && !stored) {
         const png = await rasterise(styled)
         if (!png || !live) return

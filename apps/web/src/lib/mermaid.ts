@@ -32,6 +32,37 @@ export async function draw(source: string, look: object): Promise<string | null>
   }
 }
 
+/**
+ * Draws the diagram into `node` and returns the SVG element, or `null` if mermaid would not
+ * draw it. Mermaid writes the element itself (`run`), so no string of markup passes through
+ * the caller; the caller styles and sizes the element with DOM calls.
+ */
+export async function drawInto(node: HTMLElement, source: string, look: object): Promise<SVGSVGElement | null> {
+  try {
+    const { default: mermaid } = await import('mermaid')
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      suppressErrorRendering: true,
+      ...look,
+    })
+    const easel = document.createElement('div')
+    easel.className = 'mermaid'
+    easel.textContent = plain(source)
+    node.replaceChildren(easel)
+    await mermaid.run({ nodes: [easel], suppressErrors: true })
+    const svg = easel.querySelector('svg')
+    if (!svg) {
+      node.replaceChildren()
+      return null
+    }
+    return svg
+  } catch {
+    node.replaceChildren()
+    return null
+  }
+}
+
 /** `draw`, but a parse failure comes back as mermaid's message so the writer can be asked for a repair. */
 export async function drawOrExplain(
   source: string,
