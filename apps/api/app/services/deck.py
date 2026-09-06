@@ -1974,8 +1974,9 @@ async def write(
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
                 accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
-    # Whatever the model settled on, three bullet lists in a row become two and a shape.
-    plan = vary_layouts(plan)
+    # Whatever the model settled on: a long deck opens with an agenda, and three bullet
+    # lists in a row become two and a shape.
+    plan = vary_layouts(ensure_agenda(plan))
 
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -2335,6 +2336,28 @@ def deck_scale(slides: list[dict]) -> float:
         return 1.0
     seen = [float(s.get("textScale") or 1.0) for s in body]
     return max(set(seen), key=lambda value: (seen.count(value), value))
+
+
+#: What the outline calls its table of contents.
+_AGENDA_TITLE = re.compile(r"목차|발표\s*순서|차례|순서|agenda|contents|overview", re.I)
+
+
+def ensure_agenda(plan: list[dict]) -> list[dict]:
+    """A deck of more than six slides opens with an `agenda` slide, in place.
+
+    The outline rule asks for one, and the model usually writes the title — 「발표 순서」 —
+    but now and then labels it `bullets`, which the writer then fills with four
+    sentences instead of the section list. The title says what the slide is; the
+    layout follows. A long deck with no such slide at all gets one after the cover.
+    """
+    if len(plan) <= 6 or any(item.get("layout") == "agenda" for item in plan):
+        return plan
+    for item in plan[1:4]:
+        if _AGENDA_TITLE.search(str(item.get("title") or "")):
+            item["layout"] = "agenda"
+            return plan
+    plan.insert(1, {"title": "발표 순서", "layout": "agenda"})
+    return plan
 
 
 def vary_layouts(plan: list[dict]) -> list[dict]:
