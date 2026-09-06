@@ -18,6 +18,7 @@ const ERRORS: Record<string, string> = {
   reset_token_expired: '링크가 만료되었습니다. 다시 요청하세요.',
   email_unavailable: '이미 사용 중인 이메일입니다.',
   account_suspended: '정지된 계정입니다. 관리자에게 문의하세요.',
+  account_locked: '로그인에 다섯 번 연속 실패해 잠시 잠겼습니다. 15분 뒤에 다시 시도하세요.',
   signup_closed: '지금은 회원가입을 받지 않습니다. 관리자에게 문의하세요.',
   signup_domain_not_allowed: '이 이메일 도메인으로는 가입할 수 없습니다. 허용된 주소를 쓰세요.',
   invalid_verify_token: '확인 링크가 올바르지 않습니다. 로그인해서 확인 메일을 다시 받으세요.',

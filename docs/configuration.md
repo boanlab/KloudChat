@@ -137,6 +137,8 @@ Four of them compose already passes through from `.env`: `ENV` as
 | `ENV` | `dev` | `prod` disables `/docs`. Set through `KCHAT_ENV`. |
 | `ACCESS_TOKEN_TTL_MIN` | `15` | |
 | `REFRESH_TOKEN_TTL_DAYS` | `30` | |
+| `LOGIN_MAX_FAILURES` | `5` | Failed sign-ins in a row, on one address, before it is locked. Counted from the audit log, so no extra table; a success ends the run. Unknown addresses are locked the same way so the response does not say which exist. |
+| `LOGIN_LOCKOUT_MIN` | `15` | How long a locked address refuses sign-in, measured from the last failure. Attempts while locked are logged as `locked` and neither verify the password nor extend the lock. |
 | `REFRESH_GRACE_SEC` | `15` | Window in which a just-rotated refresh token may be replayed without being treated as theft. Two tabs restoring a session at once send the same cookie; without the leeway, the loser is logged out of everything. |
 | `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a local 122B model genuinely runs for minutes. |
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |

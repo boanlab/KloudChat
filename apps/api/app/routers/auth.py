@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
@@ -316,9 +316,51 @@ async def resend_verification(user: CurrentIdentity, request: Request, db: DbSes
     await _mail_verification(user, token)
 
 
+async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
+    """When a run of failed sign-ins on `email` stops refusing logins, or None if not locked.
+
+    The last `login_max_failures` sign-in events for the address are read from the audit
+    log; when every one of them failed and the newest is inside the lockout window, the
+    address is locked until that window ends. A success anywhere in the run ends it.
+    Attempts made while locked are recorded as `locked`, not `failed`, so hammering a
+    locked address cannot keep it locked forever.
+    """
+    limit = max(1, settings.login_max_failures)
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(
+                AuditEvent.action == "login",
+                AuditEvent.target == email,
+                col(AuditEvent.detail).in_(("", "failed")),
+            )
+            .order_by(col(AuditEvent.at).desc())
+            .limit(limit)
+        )
+    ).all()
+    if len(rows) < limit or any(row.detail != "failed" for row in rows):
+        return None
+    newest = rows[0].at
+    if newest.tzinfo is None:
+        newest = newest.replace(tzinfo=UTC)
+    until = newest + timedelta(minutes=settings.login_lockout_min)
+    return until if until > utcnow() else None
+
+
 @router.post("/login", response_model=SessionOut)
 async def login(payload: LoginRequest, request: Request, response: Response, db: DbSession):
     email = payload.email.lower().strip()
+
+    # Five failures in a row lock the address for a while, before any password work.
+    if (until := await _locked_until(db, email)) is not None:
+        await _audit(db, request, "login", None, target=email, detail="locked", severity="warn")
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="account_locked",
+            headers={"Retry-After": str(max(1, int((until - utcnow()).total_seconds())))},
+        )
+
     user = (await db.exec(select(User).where(User.email == email))).first()
 
     # Verified even for a missing user so timing does not leak registration.

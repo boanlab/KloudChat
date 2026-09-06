@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 15
     refresh_token_ttl_days: int = 30
+    #: Failed sign-ins in a row before an address is locked, and for how long.
+    login_max_failures: int = 5
+    login_lockout_min: int = 15
     # Window in which a just-rotated refresh token is accepted again without
     # counting as replay (two tabs restoring a session send the same cookie).
     refresh_grace_sec: int = 15
