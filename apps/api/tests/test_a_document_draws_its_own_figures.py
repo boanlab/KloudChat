@@ -83,7 +83,7 @@ async def test_the_planner_reads_only_the_eligible_parts_and_a_failure_is_an_emp
     assert [row.index for row in rows] == [1]
     assert usage == {"inputTokens": 10, "outputTokens": 5}
     assert "[2] 생성 흐름" in seen[0] and "[1] 표지" not in seen[0] and "[3] 결과" not in seen[0]
-    assert "(표 있음)" not in seen[0] and "표 있음」이라고 적힌" in seen[0]
+    assert "(표 있음)" not in seen[0] and "(표 있음)」이라고 적힌" in seen[0]
     assert "발표 슬라이드" in seen[0] and "12자" in seen[0]
 
     async def broken(*args):
@@ -198,7 +198,7 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
             raise ValueError("no draft this time")
         if "생성 흐름" in text.split("\n")[0]:
             body = {
-                "steps": [
+                "cards": [
                     ["검색기", "질문과 가까운 문서 조각을 찾는다"],
                     ["계획기", "찾은 조각으로 답의 뼈대를 세운다"],
                     ["스타일 조정기", "독자에 맞춰 문장을 고른다"],
@@ -232,7 +232,7 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
 
     plan = [
         {"title": "표지", "layout": "title"},
-        {"title": "생성 흐름", "layout": "steps"},
+        {"title": "생성 흐름", "layout": "cards"},
         {"title": "결과 사진", "layout": "bullets"},
         {"title": "마무리", "layout": "closing"},
     ]
@@ -258,8 +258,8 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["diagram"]["source"].startswith("flowchart LR")
     assert final[1]["diagram"]["caption"] == "생성 흐름"
     assert final[1]["diagram"]["key"] == "abcdef0123456789"
-    # The steps slide gave its room to the figure: a few short lines beside it, no shape.
-    assert final[1]["layout"] == "bullets" and "steps" not in final[1]
+    # The cards slide gave its room to the figure: a few short lines beside it, no shape.
+    assert final[1]["layout"] == "bullets" and "cards" not in final[1]
     assert len(final[1]["bullets"]) == 4
     assert final[1]["bullets"][0].startswith("검색기: ")
     assert all(len(line) <= 48 for line in final[1]["bullets"])

@@ -2256,10 +2256,10 @@ _COMMON_FLOOR = _SCALES[1]
 _MONOTONE = "bullets"
 
 
-#: Layouts a drawn figure may share. Paired shapes (cards, steps, bands…) are where the
-#: planner puts structures and flows, so they are offered too; one that gets a figure is
-#: rewritten as short bullets beside it (`_words_beside_figure`).
-_DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "steps", "bands", "tiles", "timeline")
+#: Layouts a drawn figure may share. Cards, bands and tiles are where the planner puts
+#: structures, so they are offered too; one that gets a figure is rewritten as short bullets
+#: beside it (`_words_beside_figure`). Steps and timelines already draw their flow.
+_DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 
 #: Words a figure leaves beside itself: this many lines, this long.
 _BESIDE_LINES = 4
