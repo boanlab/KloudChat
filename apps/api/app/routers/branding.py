@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFil
 from app.core.config import settings
 from app.core.deps import AdminUser, DbSession, client_ip
 from app.models.user import AuditEvent
-from app.services import settings_store
+from app.services import files, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +70,13 @@ async def upload_logo(
     data = await file.read()
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일입니다.")
+    # The declared type is the client's word; the bytes must agree before the logo is
+    # served to every visitor.
+    if files.sniff(file.filename or "", data) != mime:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="파일 내용이 PNG, JPG, WebP 가 아닙니다.",
+        )
     if len(data) > MAX_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

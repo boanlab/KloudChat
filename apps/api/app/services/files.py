@@ -16,6 +16,7 @@ import unicodedata
 import zipfile
 import zlib
 from pathlib import Path
+from urllib.parse import quote
 
 from app.core.config import settings
 from app.services import pictures, transcribe
@@ -69,6 +70,139 @@ def delete_blob(key: str) -> None:
         (storage_root() / key).unlink(missing_ok=True)
     except OSError as exc:
         log.warning("could not remove blob %s: %s", key, exc)
+
+
+#: What a browser may render in place: raster pictures, PDF and media. Never SVG
+#: or HTML, which can carry script and would run on the API's own origin.
+INLINE_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "application/pdf"}
+)
+
+#: Types a browser would execute or style rather than display as data.
+_ACTIVE_TYPES = frozenset(
+    {"text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml"}
+)
+
+#: Zip and OLE containers are told apart by the name; the bytes alone cannot.
+_ZIP_SUFFIXES = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".hwpx": "application/hwp+zip",
+}
+_OLE_SUFFIXES = {
+    ".hwp": "application/x-hwp",
+    ".doc": "application/msword",
+    ".xls": "application/vnd.ms-excel",
+    ".ppt": "application/vnd.ms-powerpoint",
+}
+
+#: Leading bytes that settle the type on their own.
+_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    (b"BM", "image/bmp"),
+    (b"II*\x00", "image/tiff"),
+    (b"MM\x00*", "image/tiff"),
+    (b"%PDF-", "application/pdf"),
+    (b"ID3", "audio/mpeg"),
+    (b"OggS", "audio/ogg"),
+    (b"fLaC", "audio/flac"),
+    (b"#!AMR", "audio/amr"),
+    (b"\x1aE\xdf\xa3", "video/webm"),
+)
+
+_MARKUP_HEAD = re.compile(rb"<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>]|<script[\s>]", re.I)
+
+
+def sniff(name: str, data: bytes) -> str | None:
+    """The MIME type the first bytes say, or None when they say nothing.
+
+    The browser's `Content-Type` is whatever the client chose to send; what is stored and
+    served is decided here so a script dressed as a picture is never rendered as one.
+    """
+    head = data[:2048]
+    for magic, mime in _SIGNATURES:
+        if head.startswith(magic):
+            return mime
+    if head[:4] == b"RIFF" and len(head) >= 12:
+        return {b"WEBP": "image/webp", b"WAVE": "audio/wav", b"AVI ": "video/x-msvideo"}.get(
+            head[8:12]
+        )
+    if head[4:8] == b"ftyp":
+        brand = head[8:12]
+        if brand.startswith(b"M4A"):
+            return "audio/mp4"
+        return "video/quicktime" if brand.startswith(b"qt") else "video/mp4"
+    if head[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "audio/mpeg"
+    if head[:2] in (b"\xff\xf1", b"\xff\xf9"):
+        return "audio/aac"
+    suffix = Path(name).suffix.lower()
+    if head.startswith(b"PK\x03\x04"):
+        return _ZIP_SUFFIXES.get(suffix, "application/zip")
+    if head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        return _OLE_SUFFIXES.get(suffix, "application/x-ole-storage")
+    text = head.lstrip(b"\xef\xbb\xbf\xff\xfe \t\r\n").lower()
+    if text.startswith(b"<svg") or (text.startswith(b"<?xml") and b"<svg" in text):
+        return "image/svg+xml"
+    if _MARKUP_HEAD.search(text):
+        return "text/html"
+    return None
+
+
+def detected_mime(name: str, declared: str | None, data: bytes) -> str:
+    """The type to record for an upload: what the bytes say, else the declared type when it
+    is harmless.
+
+    A declared picture type the bytes do not confirm becomes `application/octet-stream`, so
+    nothing downstream (the model's picture hand-off, inline serving) trusts it.
+    """
+    declared = (declared or "").split(";")[0].strip().lower()
+    found = sniff(name, data)
+    if found:
+        # An `.m4a`/`.webm` audio file shares its container with video; the client knows.
+        if found.startswith("video/") and declared.startswith("audio/"):
+            return "audio/" + found.split("/", 1)[1]
+        return found
+    if declared.startswith("image/") or declared in _ACTIVE_TYPES:
+        return "application/octet-stream"
+    return declared or "application/octet-stream"
+
+
+def served_as(name: str, mime: str, data: bytes) -> tuple[str, bool]:
+    """`(media type, inline)` for a download: inline only when the bytes prove a type a browser
+    renders as data.
+
+    Anything else goes as an attachment; a type a browser would execute (HTML, SVG) is
+    served as an opaque stream.
+    """
+    found = sniff(name, data)
+    if found and (found in INLINE_TYPES or found.startswith(("audio/", "video/"))):
+        return found, True
+    mime = (mime or "").split(";")[0].strip().lower()
+    if not mime or mime.startswith("image/") or mime in _ACTIVE_TYPES:
+        return "application/octet-stream", False
+    return mime, False
+
+
+def download_headers(media: str, inline: bool, filename: str) -> dict[str, str]:
+    """Headers for a stored file's bytes: disposition, no type sniffing, no script or origin."""
+    # RFC 5987: non-ASCII filenames are percent-encoded in this header.
+    headers = {
+        "Content-Disposition": (
+            f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(filename)}"
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+    }
+    # `sandbox` denies a rendered response script, forms and its origin. A PDF is exempt:
+    # browsers show PDFs through a plugin that a sandboxed document may not load.
+    if media != "application/pdf":
+        headers["Content-Security-Policy"] = "sandbox"
+    return headers
 
 
 def estimate_tokens(text: str) -> int:
