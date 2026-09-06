@@ -535,6 +535,12 @@ const EN: Record<string, string> = {
   '고른 모델의 이름이 아래 설정에 그대로 들어갑니다.': 'The model you pick goes straight into the settings below.',
   '사용 가능한 모델 없음': 'No models available',
   'Anthropic 형식으로 주고받습니다.': 'Speaks the Anthropic format.',
+  '이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.':
+    'Applies to this terminal only. To keep it, add it to ~/.bashrc or ~/.zshrc.',
+  'PowerShell 기준입니다. 이 창에서만 유효하며, cmd.exe 에서는 set 이름=값 을 씁니다.':
+    'PowerShell syntax. Applies to this window only; in cmd.exe use set NAME=value.',
+  'PowerShell 에서는 curl 이 Invoke-WebRequest 의 별칭이라 curl.exe 로 부릅니다.':
+    'In PowerShell, curl is an alias of Invoke-WebRequest, so call curl.exe.',
   'OpenAI 형식으로 주고받습니다. 주소 끝에 /v1 이 붙는 것에 주의하세요.': 'Speaks the OpenAI format. Note the /v1 at the end of the address.',
   '이 키로 쓴 양은 사용량 화면의 API 키 항목에 따로 집계됩니다.': 'What this key spends is counted separately under API keys on the usage screen.',
   '월 한도는 계정에 걸려 있습니다. 키를 여러 개 만들어도 한도가 늘지 않고, 다 쓰면 요청이 거부됩니다.':

@@ -1,39 +1,13 @@
-import { Check, ChevronDown, Copy, ExternalLink, KeyRound } from 'lucide-react'
+import { ChevronDown, ExternalLink, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Dropdown, MenuItem } from '@/components/ui'
-import { copyText } from '@/lib/clipboard'
+import { ShellSnippet, Snippet } from '@/components/ShellSnippet'
 import { TopBar } from '@/components/layout/TopBar'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { ModelInfo } from '@/types'
-
-function Snippet({ text }: { text: string }) {
-  const t = useT()
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="group relative">
-      <pre className="overflow-x-auto rounded-control border border-line bg-elevated px-3 py-2.5 text-sm leading-relaxed">
-        <code className="font-mono">{text}</code>
-      </pre>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={t('복사')}
-        title={t('명령을 클립보드로 복사합니다')}
-        className="absolute top-1.5 right-1.5 opacity-60 transition-opacity hover:opacity-100 focus:opacity-100"
-        onClick={async () => {
-          if (!(await copyText(text))) return
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1400)
-        }}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </Button>
-    </div>
-  )
-}
 
 function priceLabel(m: ModelInfo, t: (s: string) => string): string {
   if (m.creditCost === 0 && m.inputCreditCost === 0) return t('무료')
@@ -98,6 +72,15 @@ export function ApiSetupPage() {
     `curl ${base}/v1/chat/completions \\`,
     `  -H "Authorization: Bearer <${t('발급받은 키')}>" \\`,
     '  -H "Content-Type: application/json" \\',
+    `  -d '{"model": "${modelId}", "messages": [{"role": "user", "content": "ping"}]}'`,
+  ].join('\n')
+
+  // PowerShell: backtick continues a line, and `curl` there is an alias of
+  // Invoke-WebRequest, so the real binary is called as curl.exe.
+  const curlPowershell = [
+    `curl.exe ${base}/v1/chat/completions \``,
+    `  -H "Authorization: Bearer <${t('발급받은 키')}>" \``,
+    '  -H "Content-Type: application/json" `',
     `  -d '{"model": "${modelId}", "messages": [{"role": "user", "content": "ping"}]}'`,
   ].join('\n')
 
@@ -183,7 +166,10 @@ export function ApiSetupPage() {
           <p className="mt-1 mb-2 text-base text-muted">
             {t('키와 주소가 맞는지 코드를 쓰기 전에 한 줄로 확인합니다.')}
           </p>
-          <Snippet text={curlSnippet} />
+          <ShellSnippet
+            commands={{ linux: curlSnippet, mac: curlSnippet, windows: curlPowershell }}
+            note={{ windows: t('PowerShell 에서는 curl 이 Invoke-WebRequest 의 별칭이라 curl.exe 로 부릅니다.') }}
+          />
         </section>
 
         <section className="mt-6">
