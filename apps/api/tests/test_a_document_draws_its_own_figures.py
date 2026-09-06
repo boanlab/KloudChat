@@ -83,6 +83,7 @@ async def test_the_planner_reads_only_the_eligible_parts_and_a_failure_is_an_emp
     assert [row.index for row in rows] == [1]
     assert usage == {"inputTokens": 10, "outputTokens": 5}
     assert "[2] 생성 흐름" in seen[0] and "[1] 표지" not in seen[0] and "[3] 결과" not in seen[0]
+    assert "(표 있음)" not in seen[0] and "표 있음」이라고 적힌" in seen[0]
     assert "발표 슬라이드" in seen[0] and "12자" in seen[0]
 
     async def broken(*args):
@@ -137,10 +138,17 @@ def test_a_report_carries_the_figure_as_a_fence_with_its_caption():
     assert diagrams.fence({"source": "flowchart LR\n  a --> b", "caption": ""}).endswith("```")
 
 
+def test_a_part_that_already_has_a_table_is_marked_for_the_planner():
+    table = "| 기준 | 기존 | 제안 |\n| --- | --- | --- |\n| 지식 | 내재 | 외부 |"
+    assert diagrams._has_table(table)
+    assert not diagrams._has_table("단계 1 → 단계 2\n- 항목")
+
+
 def test_the_house_rules_know_comparison_and_slide_sizes():
     assert "compare" in diagram.FIGURES
     paper = diagram._messages("기존과 제안", "compare", "ko")[0]["content"]
-    assert "비교도" in paper and "subgraph 둘" in paper
+    assert "비교도" in paper and "subgraph 둘" in paper and "direction TB" in paper
+    assert "6개를 넘으면 `flowchart TB`" in paper
     assert "슬라이드용" not in paper
     slide = diagram._messages("기존과 제안", "compare", "ko", slide=True)[0]["content"]
     assert "슬라이드용" in slide and "7개 이하" in slide

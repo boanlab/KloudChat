@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -47,6 +48,8 @@ _PROMPT = """아래는 {what}의 부분들이다. 각 부분의 제목과 내용
 
 규칙:
 - 수치의 비교는 표나 차트지 도식이 아니다. 제안하지 마라.
+- 「(표 있음)」이라고 적힌 부분은 이미 표로 비교한 곳이다. 거기에 비교도를 다시
+  그리지 마라. 비교도는 구조나 흐름 자체가 다를 때만 그린다.
 - 내용이 나열이나 서술뿐이고 구조·흐름·대비·층위가 없으면 제안하지 마라.
   **없는 것이 정상이다.** 억지로 채우지 마라.
 - 한 부분에 하나, 서로 다른 부분에, 최대 {limit}개.
@@ -59,6 +62,14 @@ JSON 배열로만 답하라. 없으면 [].
 예: [{{"part": 3, "figure": "flow", "description": "입력 문서가 검색기 → 계획기 → \
 스타일 조정기를 차례로 거쳐 초안이 되고, 검토기의 의견이 계획기로 되돌아간다", \
 "caption": "생성 흐름"}}]"""
+
+
+_TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{3,}", re.M)
+
+
+def _has_table(text: str) -> bool:
+    """Whether a part already carries a Markdown table (a rule row under a head)."""
+    return bool(_TABLE_RULE.search(text or ""))
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +106,8 @@ async def plan(
     if not allowed:
         return [], {"inputTokens": 0, "outputTokens": 0}
     listed = "\n\n".join(
-        f"[{index + 1}] {parts[index][0]}\n{parts[index][1][:1200] or '(내용 없음)'}"
+        f"[{index + 1}] {parts[index][0]}{' (표 있음)' if _has_table(parts[index][1]) else ''}\n"
+        f"{parts[index][1][:1200] or '(내용 없음)'}"
         for index in allowed
     )
     prompt = _PROMPT.format(
