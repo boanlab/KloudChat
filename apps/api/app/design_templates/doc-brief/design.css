@@ -30,7 +30,12 @@
 .cover .lead, .cover > p { margin-bottom: 0.9rem; }
 .cover dl { max-width: none; }
 
-section { margin: 0 0 1.5rem; break-inside: avoid; }
+/* 절은 단 사이에서 끊겨도 된다. 긴 절 하나를 통째로 다음 단·다음 쪽으로 밀면
+   Paged.js 가 그 절 뒤의 콜아웃과 마지막 절을 새 쪽으로 던져, 한 장 요약이
+   반쯤 빈 세 장이 된다. 끊기면 안 되는 것은 표·콜아웃·수치 띠 같은 작은 덩어리다. */
+section { margin: 0 0 1.5rem; break-inside: auto; }
+h2 { break-after: avoid; }
+table, .callout, .kpi, .cards > div { break-inside: avoid; }
 h2 { margin-bottom: 0.5rem; }
 p { margin-bottom: 0.6rem; }
 table { margin: 0.7rem 0; }
@@ -38,9 +43,11 @@ table { margin: 0.7rem 0; }
 
 /* 마지막 칸은 언제나 다음 행동. 서식이 그렇게 약속했으므로 조판이 그 자리를
    비워 두지 않고 표시한다 — 어느 절이 마지막인지는 글이 아니라 위치가 정한다. */
+/* 강제 단 나눔은 쓰지 않는다. 두 단이 이미 균형 잡힌 뒤의 `break-before: column`
+   은 넘침 단을 만들고, Paged.js 는 그것을 새 쪽으로 옮긴다. 자리는 선이 말한다. */
 section:last-of-type {
-  break-before: column;
   margin-bottom: 0;
+  margin-top: 0.4rem;
   padding-top: 0.7rem;
   border-top: 2px solid var(--accent);
 }
