@@ -14,14 +14,15 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings as env_settings
 from app.core.db import SessionLocal
 from app.models.settings import SystemSetting
-from app.models.user import User, UserRole, UserStatus, utcnow
+from app.models.user import ApiKey, User, UserRole, UserStatus, utcnow
+from app.models.workspace import Connector
 
 log = logging.getLogger(__name__)
 
@@ -91,24 +92,136 @@ _TTL = 15.0
 _cache: dict[str, Any] = {"at": 0.0, "values": None}
 
 
-def _fernet() -> Fernet:
-    """Fernet key derived from `JWT_SECRET`; rotating it makes stored secrets unreadable."""
-    digest = hashlib.sha256(env_settings.jwt_secret.encode()).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+def _derived(secret: str) -> Fernet:
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest()))
+
+
+_rings: dict[tuple[str, str], tuple[MultiFernet, Fernet]] = {}
+
+
+def _ring() -> tuple[MultiFernet, Fernet]:
+    """`(opens, seals)`: secrets are sealed with `SECRET_KEY` and opened with it or, for rows
+    written before it was set, with the key derived from `JWT_SECRET`.
+
+    Without `SECRET_KEY` both are the derived key, as before; `has_own_key` says which.
+    """
+    pair = (env_settings.secret_key, env_settings.jwt_secret)
+    ring = _rings.get(pair)
+    if ring is None:
+        primary = _derived(pair[0] or pair[1])
+        keys = [primary, _derived(pair[1])] if pair[0] else [primary]
+        ring = _rings[pair] = (MultiFernet(keys), primary)
+    return ring
+
+
+def has_own_key() -> bool:
+    """Whether stored secrets have a key of their own rather than one derived from `JWT_SECRET`."""
+    return bool(env_settings.secret_key)
 
 
 def encrypt_secret(value: str) -> str:
-    """Encrypts a secret at rest; also used for per-user LiteLLM keys."""
-    return _fernet().encrypt(value.encode()).decode()
+    """Seals a secret at rest: secret settings, LiteLLM keys, issued API keys, connector
+    credentials."""
+    return _ring()[1].encrypt(value.encode()).decode()
 
 
 def decrypt_secret(value: str) -> str:
     try:
-        return _fernet().decrypt(value.encode()).decode()
+        return _ring()[0].decrypt(value.encode()).decode()
     except InvalidToken:
-        # Almost always a rotated JWT_SECRET; empty reads as "not configured".
-        log.warning("stored secret could not be decrypted — JWT_SECRET may have changed")
+        # Almost always a rotated key; empty reads as "not configured".
+        log.warning(
+            "stored secret could not be decrypted — SECRET_KEY or JWT_SECRET may have changed"
+        )
         return ""
+
+
+#: Every Fernet token starts with the version byte 0x80, base64 `gAAAAA`.
+_SEALED = "gAAAAA"
+
+
+def is_sealed(value: str) -> bool:
+    """Whether `value` is a sealed secret rather than something written in the clear."""
+    return value.startswith(_SEALED)
+
+
+def encrypt_env(env: dict[str, str] | None) -> dict[str, str] | None:
+    """A connector's environment with every value sealed.
+
+    Everything is sealed, placeholders included, so a row never says which of its values
+    is the credential.
+    """
+    if env is None:
+        return None
+    return {key: encrypt_secret(str(value)) for key, value in env.items()}
+
+
+def decrypt_env(env: dict[str, str] | None) -> dict[str, str]:
+    """A connector's environment in the clear. A value written before sealing passes through."""
+    return {
+        key: decrypt_secret(str(value)) if is_sealed(str(value)) else str(value)
+        for key, value in (env or {}).items()
+    }
+
+
+def resealed(value: str, *, plain: bool = False) -> str | None:
+    """`value` sealed under `SECRET_KEY`, or None when it already is, cannot be opened, or
+    `SECRET_KEY` is unset.
+
+    `plain`: a value in the clear is sealed too (connector environments predate sealing).
+    """
+    if not value or not has_own_key():
+        return None
+    opens, seals = _ring()
+    if not is_sealed(value):
+        return seals.encrypt(value.encode()).decode() if plain else None
+    try:
+        seals.decrypt(value.encode())
+        return None
+    except InvalidToken:
+        pass
+    try:
+        secret = opens.decrypt(value.encode())
+    except InvalidToken:
+        return None
+    return seals.encrypt(secret).decode()
+
+
+async def rotate_secrets(db: AsyncSession) -> int:
+    """Re-seals stored secrets under `SECRET_KEY`: rows sealed with the `JWT_SECRET`-derived key
+    and connector credentials written in the clear. Returns how many rows changed.
+
+    Run at startup; nothing happens without `SECRET_KEY`.
+    """
+    if not has_own_key():
+        return 0
+    changed = 0
+    for setting in (await db.exec(select(SystemSetting))).all():
+        if setting.secret and (new := resealed(setting.value or "")) is not None:
+            setting.value = new
+            db.add(setting)
+            changed += 1
+    for user in (await db.exec(select(User))).all():
+        if (new := resealed(user.litellm_key or "")) is not None:
+            user.litellm_key = new
+            db.add(user)
+            changed += 1
+    for key in (await db.exec(select(ApiKey))).all():
+        if (new := resealed(key.secret or "")) is not None:
+            key.secret = new
+            db.add(key)
+            changed += 1
+    for connector in (await db.exec(select(Connector))).all():
+        env = {k: str(v) for k, v in (connector.env or {}).items()}
+        sealed = {k: resealed(v, plain=True) or v for k, v in env.items()}
+        if sealed != env:
+            connector.env = sealed
+            db.add(connector)
+            changed += 1
+    if changed:
+        await db.commit()
+        _cache["values"] = None
+    return changed
 
 
 async def _load(db: AsyncSession) -> dict[str, str]:

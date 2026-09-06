@@ -65,6 +65,7 @@ Edit `.env`. At minimum:
 
 ```bash
 KCHAT_JWT_SECRET=$(openssl rand -hex 32)   # generate, never reuse the example
+KCHAT_SECRET_KEY=$(openssl rand -hex 32)   # seals stored secrets; a second key, not the same one
 KCHAT_COOKIE_SECURE=true                   # you are behind TLS
 KCHAT_CORS_ORIGINS=["https://kchat.example.com"]
 KCHAT_DB_PASSWORD=<something long>
@@ -233,10 +234,11 @@ tar xzf kloudchat-files-<date>.tar.gz
 docker compose up -d
 ```
 
-`.env` is not in a backup by design. Keep `KCHAT_JWT_SECRET` in your secret
-store — restoring a database with a different secret invalidates every issued
-access token, and, because `system_settings` secrets are encrypted with a key
-derived from it, makes the stored master key unreadable.
+`.env` is not in a backup by design. Keep `KCHAT_JWT_SECRET` and
+`KCHAT_SECRET_KEY` in your secret store — restoring a database with a different
+signing key invalidates every issued access token, and with a different
+`KCHAT_SECRET_KEY` makes every stored secret (the master key, users' model keys,
+connector credentials) unreadable.
 
 ## Upgrades
 

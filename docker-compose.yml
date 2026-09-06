@@ -57,6 +57,7 @@ services:
       ENV: ${KCHAT_ENV:-dev}
       DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
+      SECRET_KEY: ${KCHAT_SECRET_KEY:-}
       SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
       DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.6-35b}
       # Per-surface defaults. Empty falls back to DEFAULT_CHAT_MODEL.

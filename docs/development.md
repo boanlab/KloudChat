@@ -16,6 +16,7 @@ cd KloudChat
 
 cp .env.example .env
 sed -i "s/^KCHAT_JWT_SECRET=.*/KCHAT_JWT_SECRET=$(openssl rand -hex 32)/" .env
+sed -i "s/^KCHAT_SECRET_KEY=.*/KCHAT_SECRET_KEY=$(openssl rand -hex 32)/" .env
 
 make build       # or: docker compose -f docker-compose.yml \
                  #                    -f docker-compose.build.yml up -d --build

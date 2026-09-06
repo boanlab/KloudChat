@@ -32,7 +32,7 @@ from app.models.workspace import (
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
-from app.services import geoip
+from app.services import geoip, settings_store
 from app.services.prompt_templates import PromptTemplate, skill_names
 
 #: Nullable JSONB list column read as a list.
@@ -599,7 +599,9 @@ class ConnectorOut(Wire):
         out.kinds = list(c.kinds or [])
         out.tools = [ConnectorToolOut.of(t) for t in (tools or [])]
         # `{{...}}` placeholders are substituted at spawn time, not re-entered.
-        out.env_keys = [k for k, v in (c.env or {}).items() if not str(v).startswith("{{")]
+        out.env_keys = [
+            k for k, v in settings_store.decrypt_env(c.env).items() if not v.startswith("{{")
+        ]
         return out
 
 
