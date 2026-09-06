@@ -252,3 +252,18 @@ def test_every_look_the_panel_offers_can_be_exported() -> None:
         tokens = {"visualStyle": look, "accent": "#15803d"}
         assert deck_export.to_pdf("확인", slides, tokens=tokens).startswith(b"%PDF")
         assert deck_export.to_pptx("확인", slides, tokens=tokens)
+
+
+def test_a_long_deck_opens_with_an_agenda_whatever_the_model_called_it() -> None:
+    """The title 「발표 순서」 makes the slide an agenda even when the outline said bullets."""
+    plan = [{"title": f"{i}", "layout": "bullets"} for i in range(8)]
+    plan[0]["layout"] = "title"
+    plan[1]["title"] = "발표 순서"
+    assert deck.ensure_agenda(plan)[1]["layout"] == "agenda"
+    # No such slide at all: one is put after the cover.
+    bare = [{"title": f"{i}", "layout": "bullets"} for i in range(8)]
+    bare[0]["layout"] = "title"
+    assert deck.ensure_agenda(bare)[1] == {"title": "발표 순서", "layout": "agenda"}
+    # A short deck is left alone.
+    short = [{"title": "표지", "layout": "title"}, {"title": "발표 순서", "layout": "bullets"}]
+    assert deck.ensure_agenda(short)[1]["layout"] == "bullets"
