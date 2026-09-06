@@ -21,7 +21,12 @@ _TIMEOUT = 15.0
 
 
 class MailError(RuntimeError):
-    """Delivery failed. The message is written for an administrator to act on."""
+    """Delivery failed. `detail` is written for an administrator to act on — one of the
+    sentences in `_describe`, never the underlying exception's text."""
+
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
 
 
 def _describe(exc: Exception) -> str:

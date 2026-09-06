@@ -310,7 +310,7 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
             ),
         )
     except mail_service.MailError as exc:
-        return {"ok": False, "detail": str(exc)}
+        return {"ok": False, "detail": exc.detail}
     if not config.get("baseUrl"):
         return {
             "ok": True,
