@@ -237,6 +237,10 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
   }
+  /* In the paged preview Paged.js clones `.page` onto every sheet, so the CSS counter
+     restarts per page; it also writes each heading's running number into
+     `data-counter-sec-value`, which is the one to show there. */
+  .pagedjs_page h2[data-counter-sec-value]::before { content: attr(data-counter-sec-value) "."; }
   /* Ink rather than muted: a sub-heading fainter than its own paragraph reads
      as a caption somebody left behind. */
   h3 {
