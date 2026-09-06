@@ -46,6 +46,7 @@ from app.services import (
     hangul,
     imagegen,
     pictures,
+    ratelimit,
     research,
     settings_store,
     thinking,
@@ -735,9 +736,9 @@ JSON 객체로만 답하라.
 원래 요청: {request}"""
 
 
-#: Seconds between retries of a rate-limited call. Four rounds, about forty seconds in
-#: all: long enough to outlast a burst of parallel document turns on one key.
-_BACKOFF = (2.0, 6.0, 12.0, 20.0)
+#: Seconds between retries of a rate-limited call when the gateway names no reset time.
+#: Five rounds, about seventy seconds in all: past a token-per-minute window.
+_BACKOFF = (2.0, 6.0, 12.0, 20.0, 30.0)
 
 
 async def _complete(
@@ -766,8 +767,10 @@ async def _complete(
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
-            log.info("deck call rate limited, retrying in %ss", _BACKOFF[attempt])
-            await asyncio.sleep(_BACKOFF[attempt])
+            # A token-per-minute 429 names when its window resets; wait for that.
+            delay = ratelimit.retry_delay(response.text, dict(response.headers), _BACKOFF[attempt])
+            log.info("deck call rate limited, retrying in %.0fs", delay)
+            await asyncio.sleep(delay)
         response.raise_for_status()
         payload = response.json()
 

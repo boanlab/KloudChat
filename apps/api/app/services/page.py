@@ -19,7 +19,7 @@ import httpx
 
 from app.core.config import settings
 from app.services import design_templates as templates
-from app.services import grounding, hangul, research, settings_store, thinking
+from app.services import grounding, hangul, ratelimit, research, settings_store, thinking
 from app.services import outline as plan_rules
 from app.services.context import build_document_messages
 from app.services.design_templates import DesignTemplate
@@ -117,8 +117,10 @@ async def _complete(
             )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
-            log.info("page call rate limited, retrying in %ss", _BACKOFF[attempt])
-            await asyncio.sleep(_BACKOFF[attempt])
+            # A token-per-minute 429 names when its window resets; wait for that.
+            delay = ratelimit.retry_delay(response.text, dict(response.headers), _BACKOFF[attempt])
+            log.info("page call rate limited, retrying in %.0fs", delay)
+            await asyncio.sleep(delay)
         response.raise_for_status()
         payload = response.json()
 
