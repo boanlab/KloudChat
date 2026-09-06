@@ -16,7 +16,7 @@ import httpx
 
 from app.core import logs
 from app.core.config import settings
-from app.services import index_client, knowledge, settings_store
+from app.services import index_client, knowledge, netguard, settings_store
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
 log = logging.getLogger(__name__)
@@ -94,6 +94,11 @@ async def _scrape(base_url: str, url: str) -> str:
     """
     if not base_url:
         return ""
+    # Search results and model-picked addresses pass through here too: nothing on the
+    # deployment's own network is fetched on a reader's behalf.
+    if reason := await netguard.refusal(url):
+        log.info("scrape refused for %s: %s", logs.safe(url), reason)
+        return ""
     try:
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
             response = await client.post(
@@ -164,6 +169,9 @@ async def fetch_url(args: dict[str, Any]) -> ToolResult:
     url = str(args.get("url") or "").strip()
     if not url.startswith(("http://", "https://")):
         return ToolResult(content="오류: http(s) URL 이 필요합니다.", failed=True)
+    # Told apart from an unreadable page so the model does not try the address again.
+    if reason := await netguard.refusal(url):
+        return ToolResult(content=f"오류: {reason} ({url})", failed=True)
     backends = await settings_store.tools_config()
     body = await _scrape(backends.fetch, url)
     if not body:
