@@ -39,6 +39,9 @@ class ToolResult:
     failed: bool = False
     #: Ran but found nothing usable; the loop counts these per turn.
     empty: bool = False
+    #: A trusted in-process tool may finish the turn without another model hop.
+    #: The loop applies the same output/privacy masking before showing this text.
+    final_text: str | None = None
 
 
 @dataclass(slots=True)

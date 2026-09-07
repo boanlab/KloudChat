@@ -730,6 +730,7 @@ async def run_turn(
             return await _run_tool(tool, call["arguments"], ctx)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
+        terminal_text: str | None = None
 
         for (index, call, tool), result in zip(planned, results, strict=True):
             if preflight_tool and call["name"] == preflight_tool and not result.failed:
@@ -752,11 +753,16 @@ async def run_turn(
             collect(result.content)
             if result.detail:
                 collect(result.detail)
+            if result.final_text is not None:
+                collect(result.final_text)
             if sanitize_tool_output is not None:
                 result.content, protected = sanitize_tool_output(result.content)
                 if result.detail:
                     result.detail, detail_protected = sanitize_tool_output(result.detail)
                     protected += detail_protected
+                if result.final_text is not None:
+                    result.final_text, terminal_protected = sanitize_tool_output(result.final_text)
+                    protected += terminal_protected
                 if protected:
                     # The next request carries privacy labels: redact its log.
                     redact_next_request = True
@@ -770,10 +776,13 @@ async def run_turn(
                             for (category, source), count in sorted(finding_counts.items())
                         ],
                     }
-            elif sanitize_step_detail is not None and result.detail:
+            elif sanitize_step_detail is not None:
                 # Strict-local: the model sees the raw result, but the
-                # persisted timeline detail is sanitised.
-                result.detail, _ = sanitize_step_detail(result.detail)
+                # persisted timeline detail and direct terminal answer are sanitised.
+                if result.detail:
+                    result.detail, _ = sanitize_step_detail(result.detail)
+                if result.final_text is not None:
+                    result.final_text, _ = sanitize_step_detail(result.final_text)
             if finding_counts and sanitize_tool_output is None:
                 # Strict-local hop with findings: LiteLLM's log must still redact it.
                 redact_next_request = True
@@ -807,6 +816,13 @@ async def run_turn(
             if call["name"] == "web_search":
                 searches += 1
                 empty_searches += int(result.empty)
+            if terminal_text is None and result.final_text is not None:
+                terminal_text = result.final_text
+
+        if terminal_text is not None:
+            answer_text.append(terminal_text)
+            yield {"type": "delta", "text": terminal_text}
+            break
 
         if searches >= MAX_WEB_SEARCHES:
             conversation.append(

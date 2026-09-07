@@ -18,10 +18,14 @@ def _call(name=PREFLIGHT, arguments="{}"):
     return {"id": f"call_{name}", "name": name, "arguments": arguments}
 
 
-def _tool(name, ran, *, failed=False):
+def _tool(name, ran, *, failed=False, final_text=None):
     async def run(arguments):
         ran.append((name, arguments))
-        return ToolResult(content=json.dumps({"value": "80"}), failed=failed)
+        return ToolResult(
+            content=json.dumps({"value": "80"}),
+            failed=failed,
+            **({"final_text": final_text} if final_text is not None else {}),
+        )
 
     return Tool(
         name=name,
@@ -302,6 +306,62 @@ async def test_an_exhausted_failed_preflight_does_not_publish_the_closing_answer
     assert snapshots[-1][1] == []
     assert "force_tool" not in snapshots[-1][2]
     assert _text(events) == REFUSAL
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed", [False, True])
+async def test_a_terminal_gate_answer_ends_without_another_model_hop(monkeypatch, failed):
+    ran, snapshots = [], []
+    _stream(monkeypatch, [{"text": ["UNVERIFIED_82.5"], "calls": [_call()]}], snapshots)
+    terminal = "정답을 확정할 자료가 부족합니다. 누락된 조건을 알려 주세요."
+    events = await _turn(
+        [_tool(PREFLIGHT, ran, failed=failed, final_text=terminal), _tool("web_search", ran)],
+        preflight_tool=PREFLIGHT,
+        force_tool="web_search",
+    )
+    assert len(snapshots) == 1
+    assert [name for name, _ in ran] == [PREFLIGHT]
+    assert _text(events) == terminal
+    assert "UNVERIFIED" not in json.dumps(events)
+    assert [event["status"] for event in events if event["type"] == "step"] == [
+        "running",
+        "error" if failed else "done",
+    ]
+    assert events[-1] == {"type": "usage", "inputTokens": 7, "outputTokens": 11}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strict_local", [False, True])
+async def test_terminal_tool_text_obeys_the_existing_privacy_masker(monkeypatch, strict_local):
+    ran, snapshots = [], []
+    _stream(monkeypatch, [{"calls": [_call()]}], snapshots)
+    raw = "synthetic-learner@example.test"
+
+    def mask(value):
+        return value.replace(raw, "[MASKED]"), value.count(raw)
+
+    def classify(value):
+        return (
+            [{"category": "email", "source": "tool_output", "count": value.count(raw)}]
+            if raw in value
+            else []
+        )
+
+    kwargs = {"sanitize_step_detail" if strict_local else "sanitize_tool_output": mask}
+    events = await _turn(
+        [_tool(PREFLIGHT, ran, final_text=f"자료 확인 필요: {raw}")],
+        preflight_tool=PREFLIGHT,
+        strict_local=strict_local,
+        classify_tool_output=classify,
+        **kwargs,
+    )
+    assert len(snapshots) == 1
+    assert _text(events) == "자료 확인 필요: [MASKED]"
+    assert raw not in json.dumps(events)
+    routes = [event for event in events if event["type"] == "privacy_route"]
+    assert len(routes) == 1
+    assert routes[0]["action"] == ("strict_local" if strict_local else "mask_external")
+    assert routes[0]["count"] == 1
 
 
 @pytest.mark.asyncio
