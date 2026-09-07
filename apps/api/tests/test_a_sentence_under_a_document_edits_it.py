@@ -57,6 +57,21 @@ def test_the_note_carries_the_typed_sentence_when_the_model_writes_none():
     assert plan.note == "표를 하나 넣어줘"
 
 
+def test_changing_the_skeleton_is_planned_again_rather_than_patched():
+    """「20장으로 늘려줘」 is not a rewrite of any part: the outline is drawn again."""
+    plan = _plan('{"scope": "outline", "note": "6장에서 20장으로 늘린다"}')
+    assert plan.restructures
+    assert not plan.revises
+    assert plan.note == "6장에서 20장으로 늘린다"
+
+
+def test_the_planner_is_handed_the_current_skeleton():
+    block = revise.outline_block(PARTS)
+    assert "1. 서론" in block
+    assert "4. 권고와 다음 행동" in block
+    assert "출발점" in block
+
+
 # ── the sentences that are plainly not a revision ──────────────────────
 
 

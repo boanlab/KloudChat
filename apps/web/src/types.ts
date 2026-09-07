@@ -163,6 +163,9 @@ export interface Preferences {
   /** 개인 맞춤 설정; empty strings when unset. */
   aboutMe?: string
   responseStyle?: string
+  /** The model picked on each surface, kept with the account across browsers. */
+  modelByKind?: Partial<Record<SessionKind, string>>
+  avModelByMode?: Partial<Record<'audio' | 'video', string>>
 }
 
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'

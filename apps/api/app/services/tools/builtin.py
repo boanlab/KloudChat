@@ -17,7 +17,9 @@ import httpx
 from app.core import logs
 from app.core.config import settings
 from app.services import index_client, knowledge, netguard, settings_store
+from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import Tool, ToolContext, ToolResult
+from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 log = logging.getLogger(__name__)
 
@@ -588,7 +590,14 @@ CREATE_ARTIFACT = Tool(
             "title": {"type": "string", "description": "문서 이름. 파일명처럼 짧게."},
             "content": {
                 "type": "string",
-                "description": "문서 전체 내용. 마크다운 코드펜스로 감싸지 마세요.",
+                "description": (
+                    "문서 전체 내용. 마크다운 코드펜스로 감싸지 마세요. "
+                    'kind=html일 때 미리보기는 sandbox="allow-scripts"입니다. '
+                    "form submit과 이를 통한 외부 요청은 차단되므로 "
+                    'type="button"과 click/input 이벤트로 계산·검증을 구현하세요. '
+                    "localStorage나 부모 창(parent) 접근에 의존하지 말고, "
+                    "내려받은 파일도 작동하도록 CSS/JS를 같은 문서에 담으세요."
+                ),
             },
             "language": {
                 "type": "string",
@@ -850,9 +859,9 @@ SHARE_NOTE = Tool(
 
 
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
-    """Built-in tools with a configured backend; web search also needs the per-turn toggle."""
+    """Local tools plus configured backends; web search needs the per-turn toggle too."""
     backends = await settings_store.tools_config()
-    tools: list[Tool] = []
+    tools: list[Tool] = [CALCULATE, CHECK_NCS_ANSWER]
     if backends.fetch:
         tools.append(FETCH_URL)
         if web_search_enabled and backends.search:
@@ -870,7 +879,8 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
 
 
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
-    """Search tool over the agent's preloaded documents (tools hold no DB session).
+    """Search tool over preloaded documents — an agent's knowledge, a conversation's
+    uploads — since tools hold no DB session.
 
     `collection`: vector index collection merged in when set.
     """
@@ -920,7 +930,7 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
     return Tool(
         name="search_knowledge",
         description=(
-            "이 에이전트에 첨부된 자료 안에서 검색합니다. 붙어 있는 자료: "
+            "이 대화나 에이전트에 첨부된 자료 안에서 검색합니다. 붙어 있는 자료: "
             f"{listed}{more}. "
             "위 목록은 각 자료의 목차일 뿐 내용이 아닙니다. 목차만 보고 "
             "'자료에 없다'고 판단하지 말고, 이 자료가 다룰 만한 주제이면 반드시 "

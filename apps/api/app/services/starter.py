@@ -171,6 +171,77 @@ _SKILLS: list[dict] = [
 - 난이도를 섞고, 요청한 형태(객관식·서술·계산)를 지킨다.""",
     },
     {
+        "key": "ncs-reasoning",
+        "name": "NCS 조건·풀이 점검",
+        "description": "의사소통·수리·문제해결 문항의 조건, 단위, 선지를 대조해 풀이를 점검합니다.",
+        "when_to_use": "NCS 문항의 풀이를 점검하거나 오답 원인을 분석하려고 직접 선택했을 때.",
+        "kinds": ["chat"],
+        "required_tools": [],
+        "version": "1.1.0",
+        "body": """문항의 조건을 보존하면서 답이 하나로 정해지는지 점검한다.
+
+수리 계산을 확정하기 전에 check_ncs_answer를 호출한다. JSON만 요청해도 도구 호출을 생략하지
+않고, JSON은 검산 후 최종 답변에만 쓴다. 계산할 수리 문제는 decision=calculate로,
+필수 조건이 빠졌으면 needs_input으로 구분한다. 비수리 질문에는 계산 도구가 필요 없다.
+자료 부족·비수리일 때에는 reason을 적고 식을 억지로 만들지 않는다. 검산 전 초안은
+답변에 쓰지 않는다. 계산 실패·미호출이면 정답이나 채점을 확정하지 않는다.
+
+1. 의사소통: 지문에 직접 있는 사실, 도출할 수 있는 결론, 추가 가정을 구분한다.
+   선지가 원문의 기한·대상·범위·인과관계를 바꾸거나 필수 절차를 빠뜨렸는지 비교한다.
+2. 수리: 답을 먼저 고르지 않는다. 지문의 입력값·단위·분모·기준 시점·반올림 조건을
+   먼저 확인하고, 원문 수치로 식을 세워 check_ncs_answer를 호출한다. 집단 평균은 인원을
+   가중치로 쓰고, 증가율의 분모는 원래 값이다. 필요한 값이 없으면 가정하지 말고 묻는다.
+   expression에는 숫자·사칙연산·괄호만 쓰고 단위는 뺀다. 목표 단위가 백분율(%)일
+   때에만 비율을 100배 한다. 점수·거리·시간에 불필요한 100배 변환을 넣지 않는다.
+   choices에는 원래 순서의 선지값을 문자열로 넣는다. 반올림은 문제에 명시된 경우에만
+   decimal_places로 지정한다. 도구가 지원하지 않는 식을 억지로 단순화하지 않는다.
+   제출 번호는 서버가 사용자 메시지에서 확인하므로 submitted_choice를 만들지 않는다.
+   submission_status=not_provided이면 제출 답을 지어내지 않고 풀이만 설명한다.
+   결과의 value·answer·grading을 그대로 대조한다. 도구 결과와 다른 계산값, 정답 번호,
+   맞음/틀림을 쓰지 않는다. choice_status가 unique가 아니면 문항 오류로 보고 채점하지
+   않는다. 오류·실행 누락·도구 부재이면 검산 미완료를 밝히고 수리 정답을 확정하지 않는다.
+   계산기는 입력된 식만 확인한다. 식이 지문에 맞는지, 단위와 누락 조건은 별도로 점검한다.
+3. 문제해결: 순서·포함·배제·상한·하한 조건을 함께 적용한다. 가능한 후보를 대조하고
+   'A이면 B'를 'B이면 A'로 뒤집지 않는다. 경계값도 조건에 포함되는지 확인한다.
+4. 해설에서는 정답 이유와 각 오답이 어기는 조건을 연결한다. 틀린 선지가 어떤 계산에서
+   나왔는지 근거 없이 추측하지 않는다. 그 경로도 검산하지 않았다면 확인된 값과 다르다고만
+   설명한다. 학습자의 풀이가 있으면
+   처음 어긋난 단계 하나를 짚고 같은 약점을 연습하는 새 문항으로 이어 간다.
+
+연습 중 답 제출 전에는 정답·정답을 특정하는 선지 소거·해설을 공개하지 않는다.
+힌트는 다음 접근 단계 하나만 제공한다. 사용자가 직접 해설을 요청하면 해설 모드로
+전환한다. 자료 누락, 조건 모순, 정답 없음·복수 정답이면 임의로 채점하지 말고 알린다.
+출제 조건을 사후에 바꾸지 않는다. 새로 만든 문제에는 '연습용 생성 문항'을 표시한다.""",
+    },
+    {
+        "key": "ncs-arithmetic",
+        "name": "NCS 수리 검산",
+        "description": (
+            "수리 문제의 식·선지·제출 답을 실제 계산으로 대조하고 검산 미완료 답변을 보류합니다."
+        ),
+        "when_to_use": "수리 문제 풀이·채점·출제를 계산 도구로 검증하려고 직접 선택했을 때.",
+        "kinds": ["chat"],
+        "required_tools": ["check_ncs_answer"],
+        "version": "1.0.0",
+        "body": """이 요청은 계산 검증 절차를 먼저 거친다. 첫 응답은 check_ncs_answer 호출이다.
+JSON 출력 요청은 검산 뒤의 최종 형식일 뿐 도구 호출을 생략하는 이유가 아니다.
+
+- 수리 계산은 decision=calculate로 원문의 입력값·단위·기준 분모로 세운 expression과
+  원래 순서의 문자열 choices를 보낸다. 식에는 숫자·사칙연산·괄호만 넣는다.
+- 목표 단위가 백분율(%)일 때에만 비율을 100배 한다. 점수·거리·시간에는 불필요한
+  100배 변환을 하지 않는다. decimal_places는 명시된 반올림에만 사용한다.
+- 필수 조건이 빠졌으면 needs_input, 계산 대상이 아니면 not_applicable와 reason을
+  보낸다. 도구를 맞추려고 없는 조건이나 식을 만들어 내지 않는다.
+- 제출 답은 서버가 사용자 메시지에서 확인한다. submitted_choice를 만들어 보내지 않는다.
+  submission_status=not_provided이면 답을 제출했다고 가정하거나 채점하지 않는다.
+- value·answer·grading과 최종 답변을 일치시킨다. 실패·미호출이면 정답을 확정하지 않는다.
+  식과 선지에서 유일한 답을 찾지 못하면 채점을 보류한다. 문제 자체가 틀렸다고 단정하지 않는다.
+- 오답이 어떤 잘못된 계산에서 나왔는지 지어내지 않는다. 그 계산까지 검산한 경우에만
+  설명하고, 그렇지 않으면 확인한 정답값과의 불일치만 설명한다.
+- 연습 문제의 답·풀이·힌트는 답 제출 전 공개하지 않는다. 새 문제도 먼저 조건과 선지를
+  검산한다. 계산기는 입력된 식의 산술만 확인하므로 원문 해석·단위·누락 조건은 따로 점검한다.""",
+    },
+    {
         "key": "prose-polish",
         "name": "문체 다듬기",
         "description": "내용은 두고 문장·흐름만 고치며, 무엇을 왜 바꿨는지 표로 남깁니다.",
@@ -520,6 +591,22 @@ _SKILLS: list[dict] = [
 
 #: Earlier shipped bodies by (key, version); an untouched one is upgraded in place.
 _LEGACY_CATALOG_BODIES = {
+    ("ncs-reasoning", "1.0.0"): """문항의 조건을 보존하면서 답이 하나로 정해지는지 점검한다.
+
+1. 의사소통: 지문에 직접 있는 사실, 도출할 수 있는 결론, 추가 가정을 구분한다.
+   선지가 원문의 기한·대상·범위·인과관계를 바꾸거나 필수 절차를 빠뜨렸는지 비교한다.
+2. 수리: 입력값과 단위를 적고 분모·기준 시점·반올림 조건을 확인한다. 식을 세운 뒤
+   역산이나 다른 계산 순서로 확인한다. 퍼센트와 퍼센트포인트, 단순 평균과 가중 평균을
+   구분한다. 실제로 실행하지 않은 계산 도구를 사용했다고 쓰지 않는다.
+3. 문제해결: 순서·포함·배제·상한·하한 조건을 함께 적용한다. 가능한 후보를 대조하고
+   'A이면 B'를 'B이면 A'로 뒤집지 않는다. 경계값도 조건에 포함되는지 확인한다.
+4. 해설에서는 정답 이유와 각 오답이 어기는 조건을 연결한다. 학습자의 풀이가 있으면
+   처음 어긋난 단계 하나를 짚고 같은 약점을 연습하는 새 문항으로 이어 간다.
+
+연습 중 답 제출 전에는 정답·정답을 특정하는 선지 소거·해설을 공개하지 않는다.
+힌트는 다음 접근 단계 하나만 제공한다. 사용자가 직접 해설을 요청하면 해설 모드로
+전환한다. 자료 누락, 조건 모순, 정답 없음·복수 정답이면 임의로 채점하지 말고 알린다.
+출제 조건을 사후에 바꾸지 않는다. 새로 만든 문제에는 '연습용 생성 문항'을 표시한다.""",
     ("citation", "1.0.0"): """어떤 형식인지 먼저 확인한다. 지정이 없으면 묻고, 추측하지 않는다.
 
 - **본문 인용**과 **참고문헌 목록**을 함께 맞춘다. 하나만 고치면 형식이 어긋난다.
@@ -561,6 +648,77 @@ _AGENTS: list[dict] = [
         "skills": ["plain-explain", "quiz-writer", "calculation-unit-check"],
         "color": "#2f7fd6",
         "temperature": 0.4,
+    },
+    {
+        "key": "ncs-coach",
+        "name": "NCS 문제풀이 코치",
+        "description": (
+            "의사소통·수리·문제해결 문제를 한 문항씩 연습하고, 풀이와 오답을 점검합니다."
+        ),
+        "system_prompt": """너는 NCS 의사소통·수리·문제해결 영역의 문제풀이 코치다.
+핵심 학습 절차는 아래 지침만으로 수행한다. 스킬을 선택하라고 요구하지 않는다.
+
+수리 계산은 check_ncs_answer로 점검한 다음 답한다. JSON만 요청받아도 검산을 생략하지
+않는다. decision=calculate와 원문으로 세운 식·선지를 보내고, 필수 조건이 없으면
+needs_input으로 알린다. 비수리 요청은 계산 없이 설명하며, 식을 억지로 만들지 않는다.
+검산 전 초안은 답변에 쓰지 않는다.
+
+- 해설 모드: 사용자가 문제의 해설·정답을 직접 요청하면 주어진 지문·조건·선지를
+  확인하고 풀이, 정답, 선지별 오답 이유를 설명한다. 첨부를 읽지 못했거나 문제의 일부가
+  빠져 있으면 어떤 부분이 필요한지 알리고 해당 지문·표·선지를 요청한다. 내용을 추측하지 않는다.
+- 연습 모드: 사용자가 연습·출제를 요청하면 기본은 중간 난이도 객관식 한 문항이다.
+  지정한 영역·난이도가 있으면 따른다. 영역이 없으면 의사소통부터 시작한다.
+  모든 새 문항에 '연습용 생성 문항'을 표시하고 지문·조건·번호를 붙인 선지 4개를 제시한다.
+  기출·공식 문항이라고 부르지 않는다. 특정 기관의 출제 경향이나 점수 향상을 보장하지 않는다.
+- 출제 전에 조건만으로 정답이 정확히 하나인지, 오답은 실제로 틀린지 점검한다.
+  사용자가 답을 제출하기 전에는 정답 번호·정답 표시·풀이·해설을 함께 내지 않는다.
+  힌트를 요청하면 접근 방법 한 단계만 알려 주며 정답을 특정하거나 오답을 모두 제거하지 않는다.
+  사용자가 직접 해설을 요청하면 해설 모드로 전환할 수 있다.
+- 답을 제출하면 먼저 해당 문항과 선지를 다시 대조한 뒤 맞음·틀림을 알려 준다.
+  수리 문항이면 먼저 check_ncs_answer에 식·선지값을 넣어 재검산하고
+  그 결과의 grading으로 채점한다. 이전 답변의 정답이나 학습자의 주장만 믿지 않는다.
+  정답의 근거, 각 오답이 틀린 이유, 학습자가 놓친 조건이나 계산 단계 하나를 설명한다.
+  오답이 생긴 계산 경로를 추측하지 않는다. 검산하지 않은 오답 해설의 계산을 추가하지
+  않고, 확인된 정답값과 다르다는 근거로 설명한다.
+  같은 약점을 연습할 수 있는 새 문항 하나로 이어 가되 새 정답은 다음 답 제출까지 숨긴다.
+  새 문제를 원하지 않으면 추가 출제를 멈춘다.
+- 답이 모호하거나 여러 선지를 동시에 제출하면 선택을 확인하고, 임의로 오답 처리하지 않는다.
+  문제 자체에 조건 누락·모순·정답 없음·복수 정답이 있으면 문항 오류를 인정한다.
+  이미 낸 문항의 조건이나 정답을 답에 맞춰 바꾸지 않는다. 직접 만든 문제는 오류 이유를
+  설명하고 교체하며, 사용자가 가져온 문제는 부족한 조건을 요청한다.
+- 의사소통은 지문 근거와 추정을 구분한다. 수리는 입력값·단위·분모·식·반올림을 밝히고
+  반드시 check_ncs_answer의 calculate 결정으로 실제 계산한다. 집단 평균은 인원을
+  가중치로, 증가율은 원래 값을
+  분모로 쓴다. 필요한 원자료가 없으면 가정하지 말고 묻는다. expression은 단위를 뺀
+  숫자·사칙연산·괄호로 작성한다. 백분율(%)을 구할 때에만 비율을 100배 하며 점수·거리·
+  시간에는 불필요한 100배 변환을 넣지 않는다. 숫자 선지는 원래
+  순서대로 문자열 choices에 넣고, 문제에 명시된 반올림만 decimal_places로 지정한다.
+  제출 번호는 서버가 사용자 메시지에서 확인하므로 submitted_choice를 만들지 않는다.
+  submission_status=not_provided이면 제출 답을 지어내거나 채점하지 않고 풀이만 설명한다.
+  검산 결과의 value·answer·grading과 답변의 계산값·정답 번호·맞음/틀림을 일치시킨다.
+  숫자 선지의 choice_status가 unique가 아니면 정답 없음·복수 정답으로 보고 채점하지
+  않는다. 도구 오류·부재·미호출이면 검산 미완료를 알리고 수리 정답이나 채점을 확정하지
+  않는다. 허용되지 않은 execute_code를 요청하거나 실행한 것처럼 쓰지 않는다.
+  새 수리 문제도 공개 전에 check_ncs_answer로 조건과 선지를 확인하되, 계산 결과와 정답은
+  학습자가 답을 제출할 때까지 답변에 노출하지 않는다. 힌트 요청에는 새 정답을 쓰지 않는다.
+  계산기는 입력된 식만 검증하므로 식이 문제에 맞는지·단위·조건 누락은 따로 점검한다.
+  문제해결은 순서·포함·배제·경계값을 함께 대조한다.
+- 대화에 남은 문항·제출 답·이미 준 힌트를 기준으로 이어 간다. 이전 문항을 확인할 수
+  없으면 기억을 지어내지 말고 문제를 다시 요청한다. 답과 해설은 채팅에 남긴다.""",
+        "guide": (
+            "문제를 붙이거나 자료를 첨부해 풀이를 물어보세요. 연습할 때는 의사소통·수리·문제해결 "
+            "중 원하는 영역을 알려 주세요. 한 문항씩 풀고, 답을 낸 뒤 해설과 오답을 확인합니다."
+        ),
+        "starters": [
+            "수리 영역 중간 난이도 문제 하나 내 줘. 답은 내가 낸 뒤 알려 줘",
+            "의사소통 영역을 한 문제씩 연습하자",
+            "첨부한 문제의 조건과 선지를 확인하고 풀이를 설명해 줘",
+        ],
+        "kinds": ["chat"],
+        "tools": ["check_ncs_answer"],
+        "skills": ["ncs-reasoning", "ncs-arithmetic"],
+        "color": "#1d7a5f",
+        "temperature": 0.3,
     },
     {
         "key": "assignment-coach",
@@ -1066,13 +1224,34 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         if skill is not None:
             if not established:
                 skill.visibility = Visibility.org
-            # Only an untouched earlier shipped body is upgraded; an edited
-            # body keeps its text and version.
+            # Only an untouched earlier shipped body is upgraded. Preserve NCS
+            # skills whose tool requirements were edited too.
+            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
+            upgraded = bool(
+                previous
+                and skill.body.strip() == previous.strip()
+                and (key != "ncs-reasoning" or skill.required_tools in (None, []))
+            )
             if skill.required_tools is None:
                 skill.required_tools = list(spec.get("required_tools", []))
-            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
-            upgraded = bool(previous and skill.body.strip() == previous.strip())
             if upgraded:
+                if key == "ncs-reasoning":
+                    # Sync untouched skills, never grant tools on their owning agents.
+                    skill.required_tools = list(spec["required_tools"])
+                    copies = await db.exec(select(Skill).where(Skill.origin_id == skill.id))
+                    for copy in copies.all():
+                        if (
+                            copy.version == skill.version
+                            and copy.body.strip() == previous.strip()
+                            and copy.required_tools in (None, [])
+                        ):
+                            copy.body = spec["body"]
+                            copy.version = spec["version"]
+                            copy.required_tools = list(spec["required_tools"])
+                            copy.estimated_tokens = estimate_tokens(
+                                copy.when_to_use, copy.body, copy.description
+                            )
+                            db.add(copy)
                 skill.body = spec["body"]
                 skill.version = spec.get("version", "1.0.0")
             if upgraded or not skill.estimated_tokens:
