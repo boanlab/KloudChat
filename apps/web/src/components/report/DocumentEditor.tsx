@@ -608,6 +608,12 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     target.replaceChildren()
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
+    // The seeds size the cover from the sheet height — here A4 less the margins. Set on the
+    // element, not in the sheet: the scoping below would prefix a `:root` rule into nothing.
+    target.style.setProperty(
+      '--page-h',
+      `${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px`,
+    )
     const sheet = URL.createObjectURL(new Blob([`
       @page {
         size: A4;
@@ -619,8 +625,6 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
       html, body { margin: 0; padding: 0; background: white; }
       h1 { string-set: document-title content(text); }
-      /* The seeds size the cover from the sheet height; here that is A4 less the margins. */
-      :root { --page-h: ${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px; }
       ${css}
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
