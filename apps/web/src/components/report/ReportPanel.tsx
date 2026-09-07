@@ -1782,7 +1782,6 @@ export function ReportPanel({
             </div>
           ) : (
           view === 'page' ? (
-            {/* `min-w-0`: the A4 sheet inside must not widen this column past the panel. */}
             <div className="relative min-h-0 min-w-0 flex-1">
               <DocumentEditor
                 key={`${report.id}-${report.version}`}
