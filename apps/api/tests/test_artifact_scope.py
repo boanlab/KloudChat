@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.tools import builtin as builtin_tools
-from app.services.tools.base import ToolContext
+from app.services.tools.base import ToolContext, to_openai
 
 #: A short mail draft, as stored.
 EMAIL_DRAFT = (
@@ -161,3 +161,17 @@ def test_the_flag_the_model_sets_is_described_as_the_person_s_words():
     flag = builtin_tools.CREATE_ARTIFACT.parameters["properties"]["userRequested"]
     assert "파일이나 문서 자체를" in flag["description"]
     assert "메일 초안" in flag["description"]
+
+
+def test_html_authoring_names_the_preview_s_script_and_form_boundaries():
+    """The model must not depend on browser capabilities the preview denies."""
+    definition = to_openai([builtin_tools.CREATE_ARTIFACT])[0]["function"]
+    content = definition["parameters"]["properties"]["content"]["description"]
+    assert "kind=html" in content
+    assert 'sandbox="allow-scripts"' in content
+    assert 'type="button"' in content
+    assert "click/input" in content
+    assert "submit" in content
+    assert "localStorage" in content
+    assert "parent" in content
+    assert "마크다운 코드펜스로 감싸지" in content

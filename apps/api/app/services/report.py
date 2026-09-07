@@ -38,6 +38,12 @@ log = logging.getLogger(__name__)
 _MIN_SECTIONS = 3
 _MAX_SECTIONS = 12
 
+
+def requested_sections(request: str) -> int | None:
+    """An explicit section count; page counts do not imply a number of sections."""
+    return plan_rules.requested_count(request, ("섹션", "절"), maximum=_MAX_SECTIONS)
+
+
 _OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
 
 규칙:
@@ -981,18 +987,21 @@ async def write(
 
     if approved_plan is None:
         yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "running"}
-        try:
-            text, spent = await _complete(
+        wanted = requested_sections(request)
+
+        async def ask(nudge: str = "") -> tuple[str, dict[str, int]]:
+            return await _complete(
                 outline_model or model,
                 build_document_messages(
                     SessionKind.report,
                     _OUTLINE_PROMPT.format(
                         ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
-                        lo=_MIN_SECTIONS,
-                        hi=_MAX_SECTIONS,
+                        lo=wanted or _MIN_SECTIONS,
+                        hi=wanted or _MAX_SECTIONS,
                         genre=_genre_rule(request),
                         request=request[:2000],
-                    ),
+                    )
+                    + nudge,
                     request=request,
                     trusted_context=trusted_context,
                     untrusted_context=document_context,
@@ -1001,6 +1010,9 @@ async def write(
                 api_key,
                 400,
             )
+
+        try:
+            text, spent = await ask()
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("report outline failed: %s", exc)
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
@@ -1067,7 +1079,28 @@ async def write(
             and _from_the_web(request)
         )
         title, headings = _parse_outline(text)
-        if len(headings) < _MIN_SECTIONS:
+        if wanted and len(headings) != wanted:
+            try:
+                retry_text, retry_spent = await ask(
+                    f"\n\n앞선 목차는 {len(headings)}절이었다. 요청한 전체 목차는 정확히 "
+                    f"{wanted}절이다. 요청한 항목을 빠뜨리지 말고 그 수에 맞춰 다시 구성하라."
+                )
+            except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                log.warning("report outline size retry failed: %s", exc)
+            else:
+                plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+                retry_title, retry_headings = _parse_outline(retry_text)
+                if len(retry_headings) == wanted:
+                    title, headings = retry_title or title, retry_headings
+            if len(headings) != wanted:
+                yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
+                yield {
+                    "type": "error",
+                    "message": f"요청한 {wanted}절에 맞는 목차를 만들지 못했습니다. 다시 시도해 주세요.",
+                }
+                yield {"type": "usage", **usage}
+                return
+        if len(headings) < (1 if wanted else _MIN_SECTIONS):
             yield {"type": "step", "id": "outline", "label": "개요 잡는 중", "status": "error"}
             yield {
                 "type": "error",

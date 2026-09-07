@@ -564,24 +564,37 @@ function sameFilter(filter: ArtifactFilter): ArtifactFilter {
 
 const MODEL_STORAGE_KEY = 'kchat-models'
 
-function readRememberedModels(): Partial<Record<SessionKind, string>> | null {
+/** The picks this browser kept, under the account's own where it has any. */
+function readRememberedModels(
+  account: Partial<Record<SessionKind, string>> = {},
+): Partial<Record<SessionKind, string>> | null {
+  let local: Partial<Record<SessionKind, string>> = {}
   try {
     const raw = localStorage.getItem(MODEL_STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : null
+    local = raw ? (JSON.parse(raw) as Partial<Record<SessionKind, string>>) : {}
   } catch {
-    return null
+    local = {}
   }
+  const merged = { ...local, ...account }
+  return Object.keys(merged).length ? merged : null
+}
+
+/** Keeps the picks on the account; a failure leaves the browser copy, which still works here. */
+function rememberOnAccount(patch: Partial<Preferences>) {
+  void auth.updateMe({ preferences: patch }).catch(() => {})
 }
 
 type AvMode = 'audio' | 'video'
 const AV_MODEL_STORAGE_KEY = 'kchat-av-models'
 
-function readRememberedAvModels(): Partial<Record<AvMode, string>> {
+function readRememberedAvModels(
+  account: Partial<Record<AvMode, string>> = {},
+): Partial<Record<AvMode, string>> {
   try {
     const raw = localStorage.getItem(AV_MODEL_STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Partial<Record<AvMode, string>>) : {}
+    return { ...(raw ? (JSON.parse(raw) as Partial<Record<AvMode, string>>) : {}), ...account }
   } catch {
-    return {}
+    return { ...account }
   }
 }
 
@@ -595,8 +608,9 @@ const initialAvModelByMode: Record<AvMode, string> = {
 function reconcileAvModels(
   available: ModelInfo[],
   byMode: Partial<Record<AvMode, string>> = {},
+  account: Partial<Record<AvMode, string>> = {},
 ): Record<AvMode, string> {
-  const remembered = readRememberedAvModels()
+  const remembered = readRememberedAvModels(account)
   const next = { audio: '', video: '' }
   for (const mode of ['audio', 'video'] as const) {
     const usable = available
@@ -728,9 +742,10 @@ function reconcileDefaults(
   available: ModelInfo[],
   instanceDefault = '',
   byKind: Partial<Record<SessionKind, string>> = {},
+  account: Partial<Record<SessionKind, string>> = {},
 ): Record<SessionKind, string> {
   const next = { ...current }
-  const remembered = readRememberedModels()
+  const remembered = readRememberedModels(account)
   for (const kind of Object.keys(next) as SessionKind[]) {
     const kept = remembered?.[kind]
     if (kept && available.some((m) => m.id === kept && m.kinds.includes(kind))) {
@@ -1112,7 +1127,11 @@ export const useStore = create<State>((set, get) => ({
       } = await modelsApi.list()
       set((s) => ({
         models: live,
-        avModelByMode: reconcileAvModels(live, defaultAvModelByMode),
+        avModelByMode: reconcileAvModels(
+          live,
+          defaultAvModelByMode,
+          s.user?.preferences.avModelByMode,
+        ),
         litellmAvailable,
         autoRouting: autoRouting ?? {
           enabled: false,
@@ -1125,9 +1144,22 @@ export const useStore = create<State>((set, get) => ({
           qualityModelIds: [],
         },
         modelsLoading: false,
-        modelByKind: reconcileDefaults(s.modelByKind, live, defaultChatModel, defaultModelByKind),
+        modelByKind: reconcileDefaults(
+          s.modelByKind,
+          live,
+          defaultChatModel,
+          defaultModelByKind,
+          s.user?.preferences.modelByKind,
+        ),
         compareModels: reconcileCompareModels(s.compareModels, live),
       }))
+      // An account with no picks of its own adopts this browser's, once; from then
+      // on the account copy leads and every browser opens on the same model.
+      const prefs = get().user?.preferences
+      if (prefs && !Object.keys(prefs.modelByKind ?? {}).length) {
+        const local = readRememberedModels()
+        if (local) rememberOnAccount({ modelByKind: local, avModelByMode: readRememberedAvModels() })
+      }
     } catch {
       // Keep what is loaded. `litellmAvailable` describes the list, not this request.
       set((s) => ({
@@ -1154,16 +1186,21 @@ export const useStore = create<State>((set, get) => ({
     set((s) => {
       const next = { ...s.modelByKind, [kind]: id }
       localStorage.setItem(MODEL_STORAGE_KEY, JSON.stringify(next))
-      if (kind !== 'av') return { modelByKind: next }
       // An av pick is also remembered for its own mode.
-      const modality = s.models.find((m) => m.id === id)?.modality
-      if (modality !== 'audio' && modality !== 'video') return { modelByKind: next }
-      const byMode = { ...s.avModelByMode, [modality]: id }
-      localStorage.setItem(
-        AV_MODEL_STORAGE_KEY,
-        JSON.stringify({ ...readRememberedAvModels(), [modality]: id }),
-      )
-      return { modelByKind: next, avModelByMode: byMode }
+      const modality = kind === 'av' ? s.models.find((m) => m.id === id)?.modality : undefined
+      const byMode =
+        modality === 'audio' || modality === 'video'
+          ? { ...readRememberedAvModels(), [modality]: id }
+          : undefined
+      if (byMode) localStorage.setItem(AV_MODEL_STORAGE_KEY, JSON.stringify(byMode))
+      // The pick follows the account, so the next browser opens on it too.
+      const kept = { modelByKind: next, ...(byMode ? { avModelByMode: byMode } : {}) }
+      if (s.user) rememberOnAccount(kept)
+      return {
+        modelByKind: next,
+        ...(byMode ? { avModelByMode: { ...s.avModelByMode, ...byMode } } : {}),
+        ...(s.user ? { user: { ...s.user, preferences: { ...s.user.preferences, ...kept } } } : {}),
+      }
     }),
   setSessionModel: async (sessionId, modelId) => {
     const previous = get().sessions.find((session) => session.id === sessionId)
@@ -2482,7 +2519,12 @@ function retold(step: Step): Partial<Step> {
     }
   }
   if (step.files) {
-    const subject = step.id === 'context-knowledge' ? tr('프로젝트 지식') : tr('첨부 파일')
+    const subject =
+      step.id === 'context-knowledge'
+        ? tr('프로젝트 지식')
+        : step.id === 'context-earlier'
+          ? tr('이전 턴 첨부')
+          : tr('첨부 파일')
     const short = step.files.filter((file) => file.state !== 'included')
     const cut = short.filter((file) => file.state === 'truncated').length
     const dropped = short.length - cut

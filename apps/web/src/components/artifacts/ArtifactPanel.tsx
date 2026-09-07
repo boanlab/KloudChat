@@ -11,6 +11,7 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { htmlPreviewDocument } from '@/components/artifacts/htmlPreview'
 import { DeckPanel, PresentStage } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
 import { sectionText } from '@/components/report/SectionBody'
@@ -103,7 +104,7 @@ export function ArtifactPreview({
       return (
         <iframe
           title={artifact.title}
-          srcDoc={artifact.content}
+          srcDoc={htmlPreviewDocument(artifact.content)}
           sandbox={interactive ? 'allow-scripts' : ''}
           className="size-full border-0 bg-white"
         />
@@ -219,7 +220,7 @@ function PagePresent({ artifact }: { artifact: CodeArtifact }) {
           <div className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control bg-white shadow-float">
             <iframe
               title={slides[at].title || artifact.title}
-              srcDoc={slides[at].doc}
+              srcDoc={htmlPreviewDocument(slides[at].doc)}
               sandbox="allow-scripts"
               className="size-full border-0"
             />

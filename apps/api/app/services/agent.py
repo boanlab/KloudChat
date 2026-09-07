@@ -514,13 +514,16 @@ async def run_turn(
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
-    #: A tool the first hop must call; later hops return to `tool_choice: auto`.
+    #: A tool the first ordinary hop must call, after any successful preflight.
     #: A named `tool_choice` is only a request — vLLM answers in prose about
     #: half the time under a long system prompt — so a search the toggle
     #: demands goes through `preset_call` instead.
     force_tool: str | None = None,
+    #: Required, exclusive gate until it succeeds; all tool-hop prose stays private.
+    preflight_tool: str | None = None,
     #: `(tool name, arguments)` the server calls itself before the model is
-    #: asked anything; the model then starts with the result in hand.
+    #: asked anything; the model then starts with the result in hand. Not
+    #: used under a preflight gate, which must be the first call.
     preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
@@ -529,9 +532,17 @@ async def run_turn(
     exactly one `usage`. `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
+    if preflight_tool and (
+        preflight_tool not in by_name
+        or (ctx.allowed and preflight_tool not in ctx.allowed)
+        or settings.max_tool_hops < 1
+    ):
+        raise ChatStreamError("preflight_tool_unavailable")
     conversation = list(messages)
     usage = {"inputTokens": 0, "outputTokens": 0}
     hop = 0
+    preflight_completed = False
+    post_preflight_force_sent = False
     redact_next_request = redact_logging
     reported_models: set[str] = set()
 
@@ -575,9 +586,22 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
-        if force_tool and hop == 0:
+        if preflight_tool and not preflight_completed and not closing:
+            stream_kwargs["force_tool"] = preflight_tool
+        elif force_tool and not preflight_tool and hop == 0:
             stream_kwargs["force_tool"] = force_tool
-        if preset_call and hop == 0:
+        elif (
+            preflight_tool
+            and preflight_completed
+            and force_tool
+            and force_tool != preflight_tool
+            and not post_preflight_force_sent
+            and not closing
+        ):
+            # Keep an explicit search toggle after, never ahead of, a successful gate.
+            stream_kwargs["force_tool"] = force_tool
+            post_preflight_force_sent = True
+        if preset_call and hop == 0 and not preflight_tool:
             # The first hop is the server's own call: no model request, the
             # loop below runs the tool and hands its result to the model.
             name, arguments = preset_call
@@ -593,9 +617,10 @@ async def run_turn(
                 **stream_kwargs,
             ):
                 if kind == "delta":
-                    answer_text.append(value)
                     hop_text.append(value)
-                    yield {"type": "delta", "text": value}
+                    if not preflight_tool:
+                        answer_text.append(value)
+                        yield {"type": "delta", "text": value}
                 else:
                     acc = value
         assert acc is not None
@@ -610,7 +635,35 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
-        if acc.calls and not closing and "".join(hop_text).strip():
+        if preflight_tool:
+            # No other call may run beside the required gate. Waiting for the
+            # complete hop also keeps ignored tool_choice and runaway drafts private.
+            missed_preflight = not preflight_completed and (
+                len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
+            )
+            if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
+                note = (
+                    "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
+                    "다시 시도해 주세요."
+                )
+                yield {
+                    "type": "step",
+                    "id": "preflight",
+                    "label": visible_label(by_name[preflight_tool], preflight_tool, done=True),
+                    "status": "error",
+                }
+                answer_text.append(note)
+                yield {"type": "delta", "text": note}
+                break
+            if acc.calls:
+                # A discarded calculation draft must not reinforce the next model hop.
+                acc.content.clear()
+            else:
+                answer_text.extend(hop_text)
+                for text in hop_text:
+                    yield {"type": "delta", "text": text}
+
+        if not preflight_tool and acc.calls and not closing and "".join(hop_text).strip():
             # Text spoken while calling tools: short is narration and goes now;
             # long may be the answer and is held until the end.
             spoken = "".join(hop_text)
@@ -720,8 +773,11 @@ async def run_turn(
             return await _run_tool(tool, call["arguments"], ctx)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
+        terminal_text: str | None = None
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if preflight_tool and call["name"] == preflight_tool and not result.failed:
+                preflight_completed = True
             finding_counts: dict[tuple[str, str], int] = {}
 
             def collect(
@@ -740,11 +796,16 @@ async def run_turn(
             collect(result.content)
             if result.detail:
                 collect(result.detail)
+            if result.final_text is not None:
+                collect(result.final_text)
             if sanitize_tool_output is not None:
                 result.content, protected = sanitize_tool_output(result.content)
                 if result.detail:
                     result.detail, detail_protected = sanitize_tool_output(result.detail)
                     protected += detail_protected
+                if result.final_text is not None:
+                    result.final_text, terminal_protected = sanitize_tool_output(result.final_text)
+                    protected += terminal_protected
                 if protected:
                     # The next request carries privacy labels: redact its log.
                     redact_next_request = True
@@ -758,10 +819,13 @@ async def run_turn(
                             for (category, source), count in sorted(finding_counts.items())
                         ],
                     }
-            elif sanitize_step_detail is not None and result.detail:
+            elif sanitize_step_detail is not None:
                 # Strict-local: the model sees the raw result, but the
-                # persisted timeline detail is sanitised.
-                result.detail, _ = sanitize_step_detail(result.detail)
+                # persisted timeline detail and direct terminal answer are sanitised.
+                if result.detail:
+                    result.detail, _ = sanitize_step_detail(result.detail)
+                if result.final_text is not None:
+                    result.final_text, _ = sanitize_step_detail(result.final_text)
             if finding_counts and sanitize_tool_output is None:
                 # Strict-local hop with findings: LiteLLM's log must still redact it.
                 redact_next_request = True
@@ -797,6 +861,13 @@ async def run_turn(
                 empty_searches += int(result.empty)
             elif call["name"] == "fetch_url":
                 fetches += 1
+            if terminal_text is None and result.final_text is not None:
+                terminal_text = result.final_text
+
+        if terminal_text is not None:
+            answer_text.append(terminal_text)
+            yield {"type": "delta", "text": terminal_text}
+            break
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(

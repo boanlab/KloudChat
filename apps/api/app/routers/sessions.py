@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -88,6 +88,7 @@ from app.services import (
     governance,
     grounding,
     imagegen,
+    index_client,
     lint,
     revise,
     richtext,
@@ -155,11 +156,49 @@ def _strict_model(model: dict) -> bool:
 _STRICT_LOCAL_TOOL_NAMES = frozenset(
     {
         # No network egress; a "builtin" source alone is not proof of that.
+        "calculate",
+        "check_ncs_answer",
         "search_knowledge",
         "create_artifact",
         "create_chart",
     }
 )
+
+
+async def _knowledge_shelf(
+    db: AsyncSession, user: User, session: ChatSession, agent: WorkspaceAgent | None
+) -> tuple[list[tuple[str, str, str | None]], str]:
+    """Documents `search_knowledge` can look through this turn, and their index collection.
+
+    An agent's knowledge and the files uploaded into this conversation, whole text
+    because the tool runs inside the stream with no DB session. The collection is
+    the agent's when there is one — the tool searches one — else the conversation's.
+    """
+    rows = (
+        await db.exec(
+            select(StoredFile)
+            .where(
+                StoredFile.user_id == user.id,
+                or_(
+                    StoredFile.session_id == session.id,
+                    StoredFile.agent_id == (session.agent_id or ""),
+                ),
+            )
+            .order_by(col(StoredFile.created_at))
+        )
+    ).all()
+    shelf = [
+        (row.name, row.text, row.source_url)
+        for row in rows
+        if row.text
+        and (
+            (row.agent_id and row.agent_id == session.agent_id)
+            or (row.session_id == session.id and row.project_id is None and row.agent_id is None)
+        )
+    ]
+    if session.agent_id:
+        return shelf, (agent.index_key or "") if agent else ""
+    return shelf, session.index_key or ""
 
 
 def _strict_local_tools(tools: list[Tool]) -> list[Tool]:
@@ -946,6 +985,7 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
         _personal_context_step(workspace),
         _memory_context_step(workspace),
         _file_context_step("context-attachments", "첨부", workspace.attachments),
+        _file_context_step("context-earlier", "이전 첨부", workspace.carried),
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
     ]
     return [step for step in steps if step]
@@ -1287,6 +1327,8 @@ async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     # Job rows reference the session without cascade.
     await db.exec(delete(Job).where(Job.session_id == session.id))
     await _delete_artifacts_of(db, [session.id])
+    if session.index_key:
+        await index_client.forget_collection(collection=session.index_key)
     await db.delete(session)
     await db.commit()
 
@@ -1895,6 +1937,9 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
     artifacts_deleted = await _delete_artifacts_of(db, ids)
+    for row in rows:
+        if row.index_key:
+            await index_client.forget_collection(collection=row.index_key)
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     await db.commit()
@@ -2296,25 +2341,8 @@ async def send_message(
     shelf_key = ""
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
-    if (
-        session.kind is SessionKind.chat
-        and requested_model.get("supportsTools")
-        and session.agent_id
-    ):
-        shelf_key = (agent_row.index_key or "") if agent_row else ""
-        # Whole shelf text: the tool runs inside the stream, with no DB session.
-        shelf = [
-            (row.name, row.text, row.source_url)
-            for row in (
-                await db.exec(
-                    select(StoredFile).where(
-                        StoredFile.agent_id == session.agent_id,
-                        StoredFile.user_id == user.id,
-                    )
-                )
-            ).all()
-            if row.text
-        ]
+    if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+        shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
 
     requested_is_strict = _strict_model(requested_model)
     strict_candidate_available = (
@@ -2386,6 +2414,7 @@ async def send_message(
             starting_template_id=payload.starting_template_id,
             # Empty focus takes the head of the file.
             focus=focus or (content if session.kind is not SessionKind.chat else ""),
+            question=content,
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -2511,6 +2540,7 @@ async def send_message(
                 file_budget=file_budget(model),
                 activated_skill_ids=payload.activated_skill_ids,
                 starting_template_id=payload.starting_template_id,
+                question=content,
                 available_tool_names={tool.name for tool in tools},
             )
         except WorkspaceContextError as exc:
@@ -2619,6 +2649,11 @@ async def send_message(
             tool_definitions = []
             messages = economy_messages
         strict_local = resolved.strict_local
+
+    preflight_tool = _ncs_preflight_tool(
+        {skill.catalog_key for skill in workspace.applied_skills},
+        tools,
+    )
 
     if not has_headroom(user, model):
         raise HTTPException(
@@ -2776,24 +2811,39 @@ async def send_message(
 
     # See `revising` above.
     if revising and session.kind in (SessionKind.report, SessionKind.slides):
-        return StreamingResponse(
-            _survive_disconnect(
-                _revise_document(
-                    user_id=user.id,
-                    api_key=api_key,
-                    session_id=session.id,
-                    model=model,
-                    instruction=content,
-                    routing=document_routing,
-                )
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+        revision, skeleton = await _revision_plan(
+            db, session, instruction=content, model=model, api_key=api_key
         )
+        if revision is not None and revision.restructures:
+            # The skeleton itself changes — more slides, a merged section, a new
+            # order. That is planned again from the current one, through the same
+            # outline-and-confirm pass a new document gets, rather than patched
+            # part by part. The judge's note states the target shape in absolute
+            # terms, so the planner reads 「9장」 where the person typed 「3장 더」.
+            content = grounding.merge_answers(
+                await _original_request(db, session) or content, {"_note": revision.note}
+            )
+            trusted_context = [*trusted_context, revise.outline_block(skeleton)]
+        else:
+            return StreamingResponse(
+                _survive_disconnect(
+                    _revise_document(
+                        user_id=user.id,
+                        api_key=api_key,
+                        session_id=session.id,
+                        model=model,
+                        instruction=content,
+                        routing=document_routing,
+                        plan=revision,
+                    )
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
     if session.kind is SessionKind.report:
         return StreamingResponse(
@@ -2935,6 +2985,7 @@ async def send_message(
                     if forced_tool and preset_call is None and forced_tool in tool_names
                     else None
                 ),
+                preflight_tool=preflight_tool,
             )
         ),
         media_type="text/event-stream",
@@ -3103,6 +3154,15 @@ async def _store_notes(
         )
 
 
+def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) -> str | None:
+    if "ncs-arithmetic" not in skill_catalog_keys:
+        return None
+    name = "check_ncs_answer"
+    if not any(tool.name == name and tool.source == "builtin" for tool in tools):
+        raise HTTPException(status_code=409, detail="ncs_verification_tool_unavailable")
+    return name
+
+
 async def _run_turn(
     *,
     user_id: str,
@@ -3132,6 +3192,7 @@ async def _run_turn(
     routing_audit_id: str | None = None,
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
+    preflight_tool: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
@@ -3210,6 +3271,7 @@ async def _run_turn(
                 disable_fallbacks=disable_fallbacks,
                 redact_logging=mask_at_rest,
                 force_tool=force_tool,
+                **({"preflight_tool": preflight_tool} if preflight_tool else {}),
                 preset_call=preset_call,
             ),
             stopping,
@@ -3594,6 +3656,7 @@ async def compare_models(
             file_budget=min(file_budget(m) for m in chosen),
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
+            question=content,
             # Comparison exposes no tools.
             available_tool_names=set(),
         )
@@ -4530,6 +4593,56 @@ async def _run_deck(
     yield chat_service.sse({"type": "done"})
 
 
+def _skeleton(artifact: Artifact) -> list[str]:
+    """The document's part names in order: slide titles, or section headings."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.deck:
+        return [str(p.get("title") or "") for p in data.get("slides") or []]
+    return [str(p.get("heading") or "") for p in data.get("sections") or []]
+
+
+async def _revision_plan(
+    db: AsyncSession,
+    session: ChatSession,
+    *,
+    instruction: str,
+    model: dict,
+    api_key: str,
+) -> tuple[revise.Plan | None, list[str]]:
+    """Where an instruction under the document lands, and the document's skeleton.
+
+    `(None, [])` when there is no document to read it against; `_revise_document`
+    then reports that itself.
+    """
+    artifact = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    if artifact is None or not artifact.data:
+        return None, []
+    skeleton = _skeleton(artifact)
+    if not skeleton:
+        return None, []
+    plan = await revise.plan(
+        message=instruction,
+        title=artifact.title or "",
+        parts=skeleton,
+        model=model["id"],
+        api_key=api_key,
+    )
+    return plan, skeleton
+
+
+async def _original_request(db: AsyncSession, session: ChatSession) -> str:
+    """What the document was first asked for: the conversation's first user message."""
+    first = (
+        await db.exec(
+            select(Message)
+            .where(Message.session_id == session.id, Message.role == Role.user)
+            .order_by(col(Message.created_at))
+            .limit(1)
+        )
+    ).first()
+    return str(first.content or "").strip() if first else ""
+
+
 async def _revise_document(
     *,
     user_id: str,
@@ -4538,11 +4651,13 @@ async def _revise_document(
     model: dict,
     instruction: str,
     routing: dict[str, Any] | None = None,
+    plan: revise.Plan | None = None,
 ) -> AsyncIterator[str]:
     """Applies one instruction to the document on screen.
 
-    `services.revise` says which parts it lands on; those are rewritten with the
-    surface's own machinery. Failures are reported, never turned into a regeneration.
+    `services.revise` says which parts it lands on (`plan`, when the caller already
+    asked); those are rewritten with the surface's own machinery. Failures are
+    reported, never turned into a regeneration.
     """
     usage = {"inputTokens": 0, "outputTokens": 0}
     if routing:
@@ -4606,7 +4721,7 @@ async def _revise_document(
     yield chat_service.sse(
         {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
     )
-    plan = await revise.plan(
+    plan = plan or await revise.plan(
         message=instruction, title=title, parts=names, model=model["id"], api_key=api_key
     )
     usage["inputTokens"] += plan.usage["inputTokens"]

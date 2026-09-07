@@ -895,6 +895,11 @@ async def test_safe_route_priority_matches_visible_catalogue_order(monkeypatch) 
     assert routed.models == [strict_a]
 
 
+class _NoRows:
+    def all(self) -> list:
+        return []
+
+
 class _NoWriteDb:
     def __init__(self) -> None:
         self.added: list[object] = []
@@ -902,6 +907,10 @@ class _NoWriteDb:
 
     def add(self, value) -> None:
         self.added.append(value)
+
+    async def exec(self, _query) -> _NoRows:
+        # The knowledge shelf: no uploads in this conversation.
+        return _NoRows()
 
     async def commit(self) -> None:
         self.commits += 1
@@ -2392,6 +2401,8 @@ async def test_strict_registry_does_not_resolve_remote_tools_or_backends(
     )
 
     assert [tool.name for tool in tools] == [
+        "calculate",
+        "check_ncs_answer",
         "create_artifact",
         "create_chart",
         "search_knowledge",

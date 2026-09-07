@@ -191,7 +191,21 @@ Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
 `fetch_url` (Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo
 forecast, keyless), `execute_code` (sandboxed), `create_artifact`,
 `create_chart`, `share_note`, and `search_knowledge` over an agent's own
-documents (§8). Tools from installed MCP connectors are added to these.
+documents and the files uploaded into the conversation (§8). Tools from
+installed MCP connectors are added to these.
+
+**The web-search toggle has three positions.** `context.search_plan` turns the
+toggle and the user's words into two facts: whether the web tools (`web_search`,
+`weather`) are offered this turn, and which tool the first hop must call. 「켬」
+offers them and forces a search every turn; 「끔」 offers nothing unless the
+words explicitly ask for research; 「자동」, the default, offers them and forces
+the first hop only when the words ask for research, for something that changes
+with time (news, prices, versions, schedules, a year), or for the weather —
+otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
+what to look up and what to answer outright. A strict-local route offers none of
+this, whatever the toggle says. Weather questions force the `weather` tool
+rather than a search, since a search engine returns encyclopaedia pages for
+「분당 날씨」.
 
 **A search runs two lanes and reads dates.** `web_search` asks SearXNG's
 general lane and, when the query carries a time-sensitive word (a year, 최신,
@@ -815,7 +829,15 @@ default-length clip at twice the quoted price.
 
 What goes into one turn, in order: the system prompt (per surface) → agent
 instructions → project instructions → design system → memories → skills → files
-attached to this turn → project knowledge → tool rules → conversation history.
+attached to this turn → files attached earlier in the conversation → project
+knowledge → tool rules → conversation history.
+
+A file uploaded into a chat stays readable for the rest of that chat. This
+turn's own attachments take the file budget first and go whole where they fit;
+earlier ones take what is left, excerpted around the question once they no
+longer fit, and are always named in the file report so the model does not deny
+having received them. Reports and decks author one document and do not carry
+earlier uploads.
 
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
@@ -912,6 +934,14 @@ They are **searched, not injected**. Project knowledge goes into every turn
 whole inside a character budget; past that budget the block degrades to a list
 of filenames. An agent's shelf is reached through a `search_knowledge` tool
 instead, so retrieval happens when the model asks for it.
+
+Files uploaded into a conversation sit on the same shelf. They are injected
+(§7) *and* searchable: the tool is what finds the passage the injected excerpt
+missed, with a query the model wrote from the whole conversation rather than
+the last short message. Each conversation gets an index collection of its own
+(`sessions.index_key`, minted on the first indexed upload, dropped with the
+conversation); in an agent's conversation the vector half searches the agent's
+collection and the uploads are covered lexically.
 
 Three tiers, chosen by size and by what is available:
 

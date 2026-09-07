@@ -1,0 +1,198 @@
+"""A structured NCS check; arithmetic evidence is not proof of model interpretation."""
+
+from __future__ import annotations
+
+import json
+from copy import deepcopy
+from typing import Any
+
+from app.services.ncs_submission import submitted_choice_from_request
+from app.services.tools import arithmetic
+from app.services.tools.base import Tool, ToolContext, ToolResult
+
+_ARITHMETIC_FIELDS = ("expression", "choices", "submitted_choice", "decimal_places")
+_CALCULATE_FIELDS = frozenset(("decision", *_ARITHMETIC_FIELDS))
+_REASON_FIELDS = frozenset({"decision", "reason"})
+_DECISIONS = ("calculate", "needs_input", "not_applicable")
+_MAX_REASON_CHARS = 500
+_MAX_ENCODED_CHOICES_BYTES = 10 * 1024
+_MAX_ADAPTER_INTEGER_BITS = 512
+_CHOICE_SCHEMA = arithmetic.CALCULATE.parameters["properties"]["choices"]
+_SCOPE = (
+    "계산 필요 여부의 분류와 식 작성은 모델의 판단입니다. "
+    "이 도구는 제공된 식의 산술만 확인하며 문제 해석의 정확성을 보장하지 않습니다."
+)
+_NEEDS_INPUT = (
+    "필요한 조건이 부족하여 정답이나 채점을 확정할 수 없습니다. 문제의 누락된 조건을 보완해 주세요."
+)
+_NON_UNIQUE = (
+    "계산기에 입력된 식과 선지에서 유일한 정답을 확인하지 못했습니다. "
+    "채점을 보류하고 문제 조건·계산식·단위·선지를 다시 확인해야 합니다."
+)
+_ERROR = json.dumps(
+    {
+        "error": "invalid_ncs_check",
+        "arithmetic_verified": False,
+        "message": (
+            "문항 검산 입력이 올바르지 않습니다. calculate에는 식과 계산 옵션만, "
+            "needs_input 또는 not_applicable에는 1~500자의 이유만 입력하세요."
+        ),
+    },
+    ensure_ascii=False,
+)
+_CHOICES_ERROR = json.dumps(
+    {
+        "error": "invalid_ncs_choices",
+        "decision": "calculate",
+        "arithmetic_verified": False,
+        "message": (
+            "choices에는 원래 순서대로 2~10개의 숫자 식을 배열로 입력하세요. "
+            '예: choices=["80","82.5"]. 쉼표로 연결한 문장, 중첩 배열, 참/거짓은 '
+            "사용하지 말고 각 식의 길이는 1024자 이내로 제한하세요."
+        ),
+    },
+    ensure_ascii=False,
+)
+
+
+def _invalid() -> ToolResult:
+    return ToolResult(content=_ERROR, detail="문항 검산 미완료", failed=True)
+
+
+def _normalize_choices(raw: object) -> list[str] | None:
+    if isinstance(raw, str):
+        try:
+            if (
+                len(raw) > _MAX_ENCODED_CHOICES_BYTES
+                or len(raw.encode("utf-8")) > _MAX_ENCODED_CHOICES_BYTES
+            ):
+                return None
+            # Preserve JSON decimal spelling instead of first rounding through float.
+            raw = json.loads(raw, parse_int=str, parse_float=str)
+        except (json.JSONDecodeError, UnicodeError, RecursionError):
+            return None
+    if (
+        not isinstance(raw, list)
+        or not _CHOICE_SCHEMA["minItems"] <= len(raw) <= _CHOICE_SCHEMA["maxItems"]
+    ):
+        return None
+    choices = []
+    for item in raw:
+        if type(item) is int:
+            # Bound conversion work; the calculator still applies its stricter digit limit.
+            if item.bit_length() > _MAX_ADAPTER_INTEGER_BITS:
+                return None
+            item = str(item)
+        if not isinstance(item, str) or not 0 < len(item) <= _CHOICE_SCHEMA["items"]["maxLength"]:
+            return None
+        choices.append(item)
+    return choices
+
+
+async def check_ncs_answer(arguments: dict[str, Any], ctx: ToolContext | None = None) -> ToolResult:
+    if not isinstance(arguments, dict) or len(arguments) > len(_CALCULATE_FIELDS):
+        return _invalid()
+    decision = arguments.get("decision")
+    if not isinstance(decision, str) or decision not in _DECISIONS:
+        return _invalid()
+
+    if decision == "calculate":
+        if set(arguments) - _CALCULATE_FIELDS:
+            return _invalid()
+        calculation = {
+            name: arguments[name]
+            for name in _ARITHMETIC_FIELDS
+            if name in arguments
+            and name != "submitted_choice"
+            and not (name in {"choices", "decimal_places"} and arguments[name] is None)
+        }
+        if "choices" in calculation:
+            choices = _normalize_choices(calculation["choices"])
+            if choices is None:
+                return ToolResult(content=_CHOICES_ERROR, detail="문항 검산 미완료", failed=True)
+            calculation["choices"] = choices
+        submitted = submitted_choice_from_request(ctx.request) if ctx is not None else None
+        if submitted is not None:
+            calculation["submitted_choice"] = submitted
+        result = await arithmetic.calculate(calculation)
+        data = {
+            **json.loads(result.content),
+            "decision": decision,
+            "arithmetic_verified": not result.failed,
+            "submission_status": "explicit" if submitted is not None else "not_provided",
+            "scope": _SCOPE,
+        }
+        return ToolResult(
+            content=json.dumps(data, ensure_ascii=False),
+            detail="문항 검산 미완료" if result.failed else "문항 검산 완료",
+            failed=result.failed,
+            final_text=(
+                _NON_UNIQUE if data.get("choice_status") in {"no_match", "ambiguous"} else None
+            ),
+        )
+
+    reason = arguments.get("reason")
+    if (
+        set(arguments) - _REASON_FIELDS
+        or not isinstance(reason, str)
+        or not 0 < len(reason) <= _MAX_REASON_CHARS
+        or not reason.strip()
+    ):
+        return _invalid()
+    return ToolResult(
+        content=json.dumps(
+            {
+                "decision": decision,
+                "reason": reason.strip(),
+                "arithmetic_verified": False,
+                "scope": _SCOPE,
+            },
+            ensure_ascii=False,
+        ),
+        detail="문항 검산 미완료",
+        final_text=_NEEDS_INPUT if decision == "needs_input" else None,
+    )
+
+
+_ARITHMETIC_PARAMETERS = deepcopy(arithmetic.CALCULATE.parameters["properties"])
+del _ARITHMETIC_PARAMETERS["submitted_choice"]
+
+
+CHECK_NCS_ANSWER = Tool(
+    name="check_ncs_answer",
+    description=(
+        "NCS 답변 전에 문항의 검산 상태를 구조화합니다. "
+        "수리 풀이·채점·출제는 calculate와 숫자 식을 사용하고 필요한 선지를 숫자 문자열 "
+        "배열로 보내세요. 조건 누락·모순이면 needs_input, 계산이 필요 없는 문항이면 "
+        "not_applicable로 이유만 보내세요. 숫자 식은 사칙연산·괄호만 허용하며 "
+        "단위는 제외하고 퍼센트는 *100으로 계산하세요. 반올림은 문제에 명시된 경우에만 "
+        "지정하세요. 모델의 문제 해석이나 식 작성 자체의 정확성은 보장하지 않습니다."
+        "제출 답은 서버가 사용자의 현재 요청에서 확인한 선택만 채점합니다. "
+        "submission_status가 not_provided이면 "
+        "사용자가 답을 제출했다고 말하거나 정오를 판정하지 마세요."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "decision": {
+                "type": "string",
+                "enum": list(_DECISIONS),
+                "description": "Use calculate for arithmetic, needs_input for missing conditions.",
+            },
+            **_ARITHMETIC_PARAMETERS,
+            "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": _MAX_REASON_CHARS,
+                "description": "Required for non-calculation decisions; omit arithmetic fields.",
+            },
+        },
+        "required": ["decision"],
+        "additionalProperties": False,
+    },
+    run=check_ncs_answer,
+    label="문항 검산 중",
+    title="문항 검산",
+    read_only=True,
+    wants_context=True,
+)
