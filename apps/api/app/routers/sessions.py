@@ -2641,7 +2641,6 @@ async def send_message(
         strict_local = resolved.strict_local
 
     preflight_tool = _ncs_preflight_tool(
-        agent_row.catalog_key if agent_row else None,
         {skill.catalog_key for skill in workspace.applied_skills},
         tools,
     )
@@ -3120,9 +3119,9 @@ async def _store_notes(
 
 
 def _ncs_preflight_tool(
-    agent_catalog_key: str | None, skill_catalog_keys: set[str | None], tools: list[Tool]
+    skill_catalog_keys: set[str | None], tools: list[Tool]
 ) -> str | None:
-    if agent_catalog_key != "ncs-coach" and "ncs-reasoning" not in skill_catalog_keys:
+    if "ncs-arithmetic" not in skill_catalog_keys:
         return None
     name = "check_ncs_answer"
     if not any(tool.name == name and tool.source == "builtin" for tool in tools):

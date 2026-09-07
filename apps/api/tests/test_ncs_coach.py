@@ -83,9 +83,14 @@ async def test_ncs_catalogue_and_installation_are_idempotent(db):
     assert installed.visibility is Visibility.private
     assert copied_skill.owner_id == learner.id
     assert copied_skill.origin_id == original_skill.id
-    assert copied_skill.required_tools == ["check_ncs_answer"]
+    assert copied_skill.required_tools == []
     assert copied_skill.version == "1.1.0"
     assert copied_skill.kinds == ["chat"]
+    assert len(installed.skill_ids) == 2
+    arithmetic_skill = await db.get(Skill, installed.skill_ids[1])
+    assert arithmetic_skill.catalog_key == "ncs-arithmetic"
+    assert arithmetic_skill.required_tools == ["check_ncs_answer"]
+    assert arithmetic_skill.owner_id == learner.id
     assert (await ws.install_skill(original_skill.id, learner, db)).id == copied_skill.id
     agents = (await db.exec(select(Agent).where(Agent.catalog_key == "ncs-coach"))).all()
     skills = (await db.exec(select(Skill).where(Skill.catalog_key == "ncs-reasoning"))).all()
@@ -180,6 +185,8 @@ async def test_ncs_verification_skill_cannot_silently_run_without_calculator(db)
     _, learner, original, _ = await _catalogue(db)
     installed = await ws.install_agent(original.id, learner, db)
     session = ChatSession(user_id=learner.id, agent_id=installed.id, kind=SessionKind.chat)
+    verification = await db.get(Skill, installed.skill_ids[1])
+    assert verification.catalog_key == "ncs-arithmetic"
     with pytest.raises(
         workspace_context.WorkspaceContextError, match="skill_tools_unavailable:check_ncs_answer"
     ):
@@ -187,7 +194,7 @@ async def test_ncs_verification_skill_cannot_silently_run_without_calculator(db)
             db,
             learner,
             session,
-            activated_skill_ids=installed.skill_ids,
+            activated_skill_ids=[verification.id],
             available_tool_names={"execute_code"},
         )
 
@@ -231,7 +238,7 @@ async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(
     await starter.seed_catalog(db, admin.id)
     await db.commit()
     assert skill.version == "1.1.0"
-    assert skill.required_tools == ["check_ncs_answer"]
+    assert skill.required_tools == []
     if edited:
         assert copy.body == "내가 수정한 검산 절차"
         assert copy.version == "1.0.0"
@@ -239,7 +246,7 @@ async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(
     else:
         assert copy.body == skill.body
         assert copy.version == "1.1.0"
-        assert copy.required_tools == ["check_ncs_answer"]
+        assert copy.required_tools == []
     assert await starter.seed_catalog(db, admin.id) == 0
 
 
@@ -272,7 +279,7 @@ async def test_ncs_skill_upgrade_preserves_edited_tool_requirements(db, edited):
             assert copy.required_tools == []
         else:
             assert skill.version == "1.1.0"
-            assert skill.required_tools == ["check_ncs_answer"]
+            assert skill.required_tools == []
             assert copy.body == previous
             assert copy.version == "1.0.0"
             assert copy.required_tools == ["execute_code"]

@@ -10,18 +10,17 @@ from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 
-@pytest.mark.parametrize("catalogue,skills", [("ncs-coach", set()), (None, {"ncs-reasoning"})])
-def test_preflight_requires_explicit_ncs_context_and_allowed_tool(catalogue, skills):
-    assert _ncs_preflight_tool(catalogue, skills, [CHECK_NCS_ANSWER]) == "check_ncs_answer"
+def test_preflight_requires_explicit_arithmetic_skill_and_allowed_tool():
+    assert _ncs_preflight_tool({"ncs-arithmetic"}, [CHECK_NCS_ANSWER]) == "check_ncs_answer"
     with pytest.raises(HTTPException) as error:
-        _ncs_preflight_tool(catalogue, skills, [CALCULATE])
+        _ncs_preflight_tool({"ncs-arithmetic"}, [CALCULATE])
     assert error.value.status_code == 409
     assert error.value.detail == "ncs_verification_tool_unavailable"
 
 
 def test_unrelated_agent_or_no_selected_skill_does_not_force_verification():
-    assert _ncs_preflight_tool("assignment-coach", set(), [CHECK_NCS_ANSWER]) is None
-    assert _ncs_preflight_tool(None, set(), []) is None
+    assert _ncs_preflight_tool(set(), [CHECK_NCS_ANSWER]) is None
+    assert _ncs_preflight_tool({"ncs-reasoning"}, []) is None
 
 
 @pytest.mark.asyncio
