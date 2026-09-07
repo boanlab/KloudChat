@@ -683,6 +683,11 @@ def _without_own_heading(body: str, heading: str) -> str:
     """The section's text minus a repeat of its own heading on the first line."""
     lines = body.lstrip().split("\n", 1)
     first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
+    if first != heading.strip() and (
+        re.match(r"^#{1,6}\s+", lines[0]) or re.fullmatch(r"\*\*.+\*\*\s*", lines[0])
+    ):
+        # Numbered headings may repeat the outline; plain numbered lists remain body text.
+        first = re.sub(r"^\d+[.)]\s+", "", first)
     if first and first == heading.strip():
         return lines[1].lstrip() if len(lines) > 1 else ""
     return body
