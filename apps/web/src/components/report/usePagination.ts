@@ -53,7 +53,8 @@ export function usePagination(
     const next: number[] = []
     let target = room
     while (target < contentHeight) {
-      const wall = forced.find((edge) => edge > (next.at(-1) ?? 0) + 20 && edge <= target + 1)
+      // A wall a little past the target still wins: the cover is sized to the page, give or take.
+      const wall = forced.find((edge) => edge > (next.at(-1) ?? 0) + 20 && edge <= target + room * 0.12)
       if (wall !== undefined) {
         next.push(wall)
         target = wall + room
