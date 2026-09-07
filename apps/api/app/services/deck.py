@@ -1480,7 +1480,9 @@ async def _write_slides(
         given = "\n".join([request, *(untrusted_context or [])])
         drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
         retold = _retold(slides, drafted)
-        if retold:
+        # An explicit total preserves every approved slot, including user edits.
+        # Keep its valid draft rather than shortening the deck or adding model calls.
+        if retold and requested_slides(request) is None:
             log.info("deck retold slides dropped: %s", ",".join(str(i) for i in sorted(retold)))
             kept = [i for i in range(len(slides)) if i not in retold]
             slides[:] = [slides[i] for i in kept]

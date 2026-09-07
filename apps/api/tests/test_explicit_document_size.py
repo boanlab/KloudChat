@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import json
 
 import httpx
 import pytest
+from pptx import Presentation
+from pypdf import PdfReader
 
-from app.services import deck, report
+from app.services import deck, deck_export, report
 
 
 @pytest.mark.parametrize(
@@ -231,3 +234,78 @@ async def test_approved_deck_is_not_replanned_or_trimmed(monkeypatch):
     ]
     assert len(written) == 5 and events[-1]["type"] == "deck"
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("prompt", "approved_count", "expected_count"),
+    [
+        ("동아리 신청 안내, 표지 포함 4장", 4, 4),
+        ("동아리 신청 안내, 표지 포함 4장", 5, 5),
+        ("동아리 신청 안내", 4, 3),
+        ("2026년 동아리 신청 안내, 3분 발표", 4, 3),
+    ],
+)
+async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
+    monkeypatch, prompt, approved_count, expected_count
+):
+    rows = [
+        {"title": "Application guide", "layout": "title"},
+        {
+            "title": "Application steps",
+            "layout": "steps",
+            "steps": [
+                ["Apply", "Students submit registration forms and event descriptions"],
+                ["Confirm", "Staff verify receipt attendance venue location and guidance"],
+            ],
+        },
+        {
+            "title": "Roles",
+            "layout": "table",
+            "rows": [
+                ["Role", "Students", "Staff"],
+                [
+                    "Action",
+                    "Submit registration forms and event descriptions",
+                    "Verify receipt attendance venue location and guidance",
+                ],
+            ],
+        },
+        {"title": "Summary", "layout": "bullets", "bullets": ["Bring the completed form"]},
+    ]
+    if approved_count == 5:
+        rows.append({"title": "Questions", "layout": "closing", "body": "Thank you"})
+    plan = [{"title": row["title"], "layout": row["layout"]} for row in rows]
+    draft = json.dumps({"slides": rows})
+    drafted = deck._split_deck_draft(draft, plan, set(), prompt)
+    # The real overlap detector prefers the table and would remove the earlier steps.
+    assert deck._retold(plan, drafted) == {1}
+
+    calls = _planner(monkeypatch, deck, [draft])
+
+    async def no_figures(**kwargs):
+        return [], {"inputTokens": 0, "outputTokens": 0}
+
+    monkeypatch.setattr(deck.diagrams, "plan", no_figures)
+    events = [
+        event
+        async for event in deck.write(
+            request=prompt,
+            model="synthetic",
+            api_key="synthetic",
+            web_search=False,
+            approved_plan={"title": "Application guide", "slides": plan},
+        )
+    ]
+    slides = next(event["slides"] for event in events if event["type"] == "deck")
+    expected_titles = [row["title"] for row in plan]
+    if expected_count != approved_count:
+        expected_titles.pop(1)
+    assert [slide["title"] for slide in slides] == expected_titles
+    assert len(slides) == expected_count
+    assert len(calls) == 1
+    assert len([e for e in events if e["type"] == "slide" and e.get("done")]) == expected_count
+    assert all(e["progress"]["total"] == expected_count for e in events if "progress" in e)
+    assert all(deck.has_content(slide) or slide["layout"] in deck._STRUCTURAL for slide in slides)
+    pptx = Presentation(io.BytesIO(deck_export.to_pptx("Guide", slides)))
+    pdf = PdfReader(io.BytesIO(deck_export.to_pdf("Guide", slides)))
+    assert len(pptx.slides) == len(pdf.pages) == expected_count
