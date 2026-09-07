@@ -626,6 +626,9 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       html, body { margin: 0; padding: 0; background: white; }
       h1 { string-set: document-title content(text); }
       ${css}
+      /* The sheet height the seeds size the cover from: A4 less the margins. On the element
+         itself, since the scoping below would prefix a \`:root\` rule into nothing. */
+      .cover { --page-h: ${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
