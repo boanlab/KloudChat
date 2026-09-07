@@ -1688,7 +1688,7 @@ export function PresentStage({
             ))}
           </nav>
         )}
-        <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-4">{children}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-6 pb-4">{children}</div>
       </div>
       {notes !== undefined && showNotes && (
         <div className="max-h-40 overflow-y-auto border-t border-white/10 px-6 py-3 text-base leading-relaxed text-white/75">
@@ -1732,7 +1732,8 @@ function PresentMode({
   onClose: () => void
 }) {
   const t = useT()
-  const stage = useStageScale()
+  const { ref: fitRef, width: fitWidth } = useFitWidth()
+  const { ref: stageRef, scale } = useStageScale(0)
   const slide = deck.slides[index]
   if (!slide) return null
   return (
@@ -1745,19 +1746,22 @@ function PresentMode({
       outline={deck.slides.map((s) => s.title)}
       notes={slide.notes || <span className="text-white/35">{t('노트 없음')}</span>}
     >
-      <div
-        ref={stage.ref}
-        className="aspect-video max-h-full w-full max-w-6xl overflow-hidden rounded-control shadow-float"
-      >
-        <SlideView
-          slide={slide}
-          scale={stage.scale}
-          writing={false}
-          deckTitle={deck.title}
-          brand={deck.design ?? undefined}
-          index={index}
-          total={deck.slides.length}
-        />
+      <div ref={fitRef} className="flex size-full min-h-0 min-w-0 items-center justify-center">
+        <div
+          ref={stageRef}
+          className="aspect-video w-full min-w-0 max-w-6xl shrink-0 overflow-hidden rounded-control shadow-float"
+          style={{ width: fitWidth ?? '100%' }}
+        >
+          <SlideView
+            slide={slide}
+            scale={scale}
+            writing={false}
+            deckTitle={deck.title}
+            brand={deck.design ?? undefined}
+            index={index}
+            total={deck.slides.length}
+          />
+        </div>
       </div>
     </PresentStage>
   )
