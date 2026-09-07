@@ -608,12 +608,8 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     target.replaceChildren()
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
-    // The seeds size the cover from the sheet height — here A4 less the margins. Set on the
-    // element, not in the sheet: the scoping below would prefix a `:root` rule into nothing.
-    target.style.setProperty(
-      '--page-h',
-      `${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px`,
-    )
+    //: Height of the page box in CSS pixels: A4 less the top and bottom margins.
+    const pageBox = A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM
     const sheet = URL.createObjectURL(new Blob([`
       @page {
         size: A4;
@@ -626,9 +622,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       html, body { margin: 0; padding: 0; background: white; }
       h1 { string-set: document-title content(text); }
       ${css}
-      /* The sheet height the seeds size the cover from: A4 less the margins. On the element
-         itself, since the scoping below would prefix a \`:root\` rule into nothing. */
-      .cover { --page-h: ${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px; }
+      /* The cover is one sheet exactly: padding, content and the margin below add up to the
+         page box (A4 less the margins). Pixels rather than the seed's \`--page-h\` maths, which
+         Paged.js resolves against the viewport. */
+      .cover { min-height: ${Math.round(pageBox * 0.68 - 90)}px !important; padding-top: ${Math.round(pageBox * 0.32)}px !important; padding-bottom: 35px !important; margin-bottom: 54px !important; box-sizing: content-box !important; break-after: page; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
