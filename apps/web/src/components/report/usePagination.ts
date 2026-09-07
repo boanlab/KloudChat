@@ -23,7 +23,12 @@ export function usePagination(
     const style = getComputedStyle(root)
     const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0)
     const room = A4_HEIGHT_PX - padding
-    if (room > 0) setUsable(room)
+    if (room > 0) {
+      setUsable(room)
+      // The seeds size the cover from `--page-h`; the guides cut at `room`, so they must agree
+      // or the second guide falls through the cover.
+      root.style.setProperty('--page-h', `${room}px`)
+    }
     const contentHeight = root.scrollHeight
     setHeight(contentHeight)
 

@@ -452,6 +452,19 @@ export const adminApi = {
     call<User>(`/admin/users/${id}/password`, body({ password })),
   /** The whole catalogue, for the restriction picker: not narrowed to the administrator's own list. */
   catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
+  /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
+  userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
+  /** Revokes one key the person issued. */
+  revokeUserKey: (id: string, keyId: string) =>
+    call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
+  /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
+  replaceLitellmKey: (id: string, key: string) =>
+    call<User>(`/admin/users/${id}/litellm-key`, { ...body({ key }), method: 'PUT' }),
+}
+
+export interface AdminKeys {
+  kloudchat: { preview: string | null; issuedAt: string | null } | null
+  named: { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null }[]
 }
 
 /* ── admin: usage & audit ──────────────────────────────────────────────

@@ -25,7 +25,7 @@ import {
   PageHeader,
   Tabs,
 } from '@/components/ui'
-import { adminApi, errorMessage } from '@/lib/api'
+import { adminApi, errorMessage, type AdminKeys } from '@/lib/api'
 import { cn, formatDate, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
@@ -86,6 +86,7 @@ export function AdminUsersPage() {
     setUserCredits,
     updateUser,
     resetUserPassword,
+    replaceLitellmKey,
   } = useStore()
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
@@ -97,9 +98,31 @@ export function AdminUsersPage() {
   const [draftPassword, setDraftPassword] = useState('')
   const [profileNote, setProfileNote] = useState<string | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
-  // A key rotation revokes the old key at once, so it asks first and says what it did.
-  const [rotating, setRotating] = useState<User | null>(null)
+  // 키 관리: KloudChat's own key (reissue or replace) and the keys the person issued (revoke).
+  const [keysFor, setKeysFor] = useState<User | null>(null)
+  const [keys, setKeys] = useState<AdminKeys | null>(null)
+  const [keyDraft, setKeyDraft] = useState('')
+  const [keyNote, setKeyNote] = useState<string | null>(null)
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [confirmRotate, setConfirmRotate] = useState(false)
+  const [revokingKey, setRevokingKey] = useState<AdminKeys['named'][number] | null>(null)
   const [rotated, setRotated] = useState<{ id: string; preview: string | null } | null>(null)
+  const loadKeys = async (id: string) => {
+    try {
+      setKeys(await adminApi.userKeys(id))
+    } catch (err) {
+      setKeyError(errorMessage(err, t('키 목록을 불러오지 못했습니다.')))
+    }
+  }
+  const openKeys = (u: User) => {
+    setKeysFor(u)
+    setKeys(null)
+    setKeyDraft('')
+    setKeyNote(null)
+    setKeyError(null)
+    setConfirmRotate(false)
+    void loadKeys(u.id)
+  }
   // The whole catalogue for the restriction picker; the store's list is the caller's own.
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
@@ -367,14 +390,10 @@ export function AdminUsersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={u.litellmKeyPreview ? t('LiteLLM 키 재발급') : t('LiteLLM 키 발급')}
-                        title={
-                          u.litellmKeyPreview
-                            ? t('이 사용자의 LiteLLM 키를 새로 발급하고 기존 키를 폐기합니다')
-                            : t('이 사용자의 전용 LiteLLM 키를 발급합니다')
-                        }
+                        aria-label={t('{name} 키 관리').replace('{name}', u.name)}
+                        title={t('KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다')}
                         disabled={busy.includes(u.id)}
-                        onClick={() => setRotating(u)}
+                        onClick={() => openKeys(u)}
                       >
                         <KeyRound size={14} />
                       </Button>
@@ -586,25 +605,131 @@ export function AdminUsersPage() {
         )}
       </Modal>
 
+      <Modal
+        open={!!keysFor}
+        onClose={() => setKeysFor(null)}
+        title={t('키 관리')}
+        description={keysFor ? `${keysFor.name} · ${keysFor.email}` : undefined}
+        width="max-w-2xl"
+        footer={<Button onClick={() => setKeysFor(null)}>{t('닫기')}</Button>}
+      >
+        {keysFor && (
+          <div className="space-y-5">
+            <section>
+              <h3 className="text-sm font-semibold text-muted">{t('KloudChat 키')}</h3>
+              <p className="mt-0.5 text-sm text-faint">{t('이 사용자의 모든 호출이 이 키로 프록시를 지납니다. 브라우저에는 끝 네 자리만 옵니다.')}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="font-mono text-base">{keys?.kloudchat?.preview ?? keysFor.litellmKeyPreview ?? t('없음')}</span>
+                {keys?.kloudchat?.issuedAt && <span className="text-sm text-faint">{t('발급')} {formatDate(keys.kloudchat.issuedAt)}</span>}
+                {!confirmRotate ? (
+                  <Button size="sm" disabled={busy.includes(keysFor.id)} onClick={() => setConfirmRotate(true)}>
+                    {keys?.kloudchat ? t('재발급') : t('발급')}
+                  </Button>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-sm">
+                    <span className="text-danger">{t('기존 키는 즉시 폐기됩니다.')}</span>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        const id = keysFor.id
+                        setConfirmRotate(false)
+                        setKeyError(null)
+                        void run(id, async () => {
+                          try {
+                            await rotateLitellmKey(id)
+                            const fresh = useStore.getState().users.find((x) => x.id === id)
+                            setRotated({ id, preview: fresh?.litellmKeyPreview ?? null })
+                            setKeyNote(t('새 키를 발급했습니다.'))
+                            await loadKeys(id)
+                          } catch (err) {
+                            setKeyError(errorMessage(err, t('키를 발급하지 못했습니다.')))
+                          }
+                        })
+                      }}
+                    >
+                      {t('확인')}
+                    </Button>
+                    <Button size="sm" onClick={() => setConfirmRotate(false)}>{t('취소')}</Button>
+                  </span>
+                )}
+              </div>
+              <Field label={t('교체')} hint={t('이미 갖고 있는 LiteLLM 키를 이 계정의 키로 씁니다. 프록시가 아는 키여야 하고, 기존 키는 폐기됩니다.')}>
+                <div className="flex gap-2">
+                  <Input value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} placeholder="sk-…" aria-label={t('교체할 키')} autoComplete="off" className="font-mono" />
+                  <Button
+                    size="sm"
+                    disabled={busy.includes(keysFor.id) || keyDraft.trim().length < 8}
+                    onClick={() => {
+                      const id = keysFor.id
+                      const key = keyDraft.trim()
+                      setKeyError(null)
+                      void run(id, async () => {
+                        try {
+                          await replaceLitellmKey(id, key)
+                          setKeyDraft('')
+                          setKeyNote(t('키를 교체했습니다.'))
+                          await loadKeys(id)
+                        } catch (err) {
+                          setKeyError(errorMessage(err, t('키를 교체하지 못했습니다. 프록시가 아는 키인지 확인하세요.')))
+                        }
+                      })
+                    }}
+                  >
+                    {t('교체')}
+                  </Button>
+                </div>
+              </Field>
+            </section>
+            <section>
+              <h3 className="text-sm font-semibold text-muted">{t('이 사용자가 발급한 키')}</h3>
+              {keys === null ? (
+                <p className="mt-2 text-sm text-faint">{t('불러오는 중…')}</p>
+              ) : keys.named.length === 0 ? (
+                <p className="mt-2 text-sm text-faint">{t('발급한 키가 없습니다.')}</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-line rounded-card border border-line">
+                  {keys.named.map((k) => (
+                    <li key={k.id} className="flex items-center gap-3 px-3 py-2 text-base">
+                      <span className="min-w-0 flex-1 truncate">{k.name}</span>
+                      <span className="font-mono text-sm text-muted">{k.preview}</span>
+                      <span className="text-sm text-faint">{t('발급')} {formatDate(k.createdAt)}</span>
+                      <span className="text-sm text-faint">{k.lastUsedAt ? `${t('마지막 사용')} ${relativeTime(k.lastUsedAt)}` : t('사용 기록 없음')}</span>
+                      <Button variant="ghost" size="icon" aria-label={t('{name} 키 삭제').replace('{name}', k.name)} title={t('삭제')} className="text-danger hover:bg-danger/10 hover:text-danger" disabled={busy.includes(keysFor.id)} onClick={() => setRevokingKey(k)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {keyNote && <p className="text-base text-success">{keyNote}</p>}
+            {keyError && <p className="text-base text-danger">{keyError}</p>}
+          </div>
+        )}
+      </Modal>
+
       <ConfirmDialog
-        open={!!rotating}
-        onClose={() => setRotating(null)}
+        open={!!revokingKey}
+        onClose={() => setRevokingKey(null)}
         onConfirm={() => {
-          const target = rotating
-          setRotating(null)
-          if (!target) return
-          void run(target.id, async () => {
-            await rotateLitellmKey(target.id)
-            const fresh = useStore.getState().users.find((x) => x.id === target.id)
-            setRotated({ id: target.id, preview: fresh?.litellmKeyPreview ?? null })
+          const target = revokingKey
+          const owner = keysFor
+          setRevokingKey(null)
+          if (!target || !owner) return
+          setKeyError(null)
+          void run(owner.id, async () => {
+            try {
+              await adminApi.revokeUserKey(owner.id, target.id)
+              setKeyNote(t('「{name}」 키를 삭제했습니다.').replace('{name}', target.name))
+              await loadKeys(owner.id)
+            } catch (err) {
+              setKeyError(errorMessage(err, t('키를 삭제하지 못했습니다.')))
+            }
           })
         }}
-        title={rotating?.litellmKeyPreview ? t('LiteLLM 키를 재발급할까요?') : t('LiteLLM 키를 발급할까요?')}
-        description={
-          rotating?.litellmKeyPreview
-            ? t('기존 키는 즉시 폐기되어, 이 사용자가 밖에서 쓰던 API 키가 있다면 새로 발급받아야 합니다.')
-            : t('이 사용자의 호출이 전용 키로 기록됩니다.')
-        }
+        title={t('「{name}」 키를 삭제할까요?').replace('{name}', revokingKey?.name ?? '')}
+        description={t('되돌릴 수 없습니다. 이 키로 호출하던 도구나 스크립트는 즉시 멈춥니다.')}
       />
 
       <Modal

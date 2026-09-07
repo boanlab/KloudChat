@@ -43,8 +43,11 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.schemas.admin import (
+    AdminKeysOut,
     AllowedModelsRequest,
     ApproveRequest,
+    KloudChatKeyOut,
+    ReplaceKeyRequest,
     ResetPasswordRequest,
     SetCreditsRequest,
     SetRoleRequest,
@@ -53,6 +56,7 @@ from app.schemas.admin import (
     UpdateUserRequest,
 )
 from app.schemas.auth import UserOut
+from app.schemas.workspace import ApiKeyOut
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
@@ -484,6 +488,74 @@ async def reset_password(
     db.add(user)
     await db.exec(delete(RefreshToken).where(RefreshToken.user_id == user.id))
     _audit(db, request, admin, "user.password_reset", user.email)
+    await db.commit()
+    await db.refresh(user)
+    return UserOut.of(user)
+
+
+@router.get("/users/{user_id}/keys", response_model=AdminKeysOut)
+async def list_user_keys(user_id: str, admin: AdminUser, db: DbSession):
+    """Every key the account holds: KloudChat's own (preview only) and the live named keys."""
+    user = await _load(db, user_id)
+    rows = (
+        await db.exec(
+            select(ApiKey)
+            .where(ApiKey.user_id == user.id, col(ApiKey.revoked_at).is_(None))
+            .order_by(col(ApiKey.created_at).desc())
+        )
+    ).all()
+    return AdminKeysOut(
+        kloudchat=KloudChatKeyOut(
+            preview=user.litellm_key_preview, issued_at=user.litellm_key_issued_at
+        )
+        if user.litellm_key
+        else None,
+        named=[ApiKeyOut.of(row) for row in rows],
+    )
+
+
+@router.delete("/users/{user_id}/keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_user_key(
+    user_id: str, key_id: str, request: Request, admin: AdminUser, db: DbSession
+):
+    """Revokes a key the person issued: deleted on the proxy, kept as a revoked row."""
+    user = await _load(db, user_id)
+    row = await db.get(ApiKey, key_id)
+    if row is None or row.user_id != user.id or row.revoked_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key_not_found")
+    await litellm_service.delete_key(settings_store.decrypt_secret(row.secret))
+    row.revoked_at = utcnow()
+    db.add(row)
+    _audit(db, request, admin, "key.revoke", user.email, row.name)
+    await db.commit()
+
+
+@router.put("/users/{user_id}/litellm-key", response_model=UserOut)
+async def replace_litellm_key(
+    user_id: str, payload: ReplaceKeyRequest, request: Request, admin: AdminUser, db: DbSession
+):
+    """Binds a key the administrator already holds as the account's KloudChat key.
+
+    The proxy must know the key (`/key/info` answers); the old key is revoked first.
+    """
+    user = await _load(db, user_id)
+    if not await litellm_service.health():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="litellm_unavailable"
+        )
+    key = payload.key.strip()
+    if await litellm_service.key_spend(key) is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="key_unknown")
+
+    await litellm_service.revoke_key(user)
+    user.litellm_key = settings_store.encrypt_secret(key)
+    user.litellm_key_preview = settings_store.preview(key)
+    user.litellm_key_issued_at = utcnow()
+    await litellm_service.sync_budget(user)
+    if user.status is UserStatus.suspended:
+        await litellm_service.set_key_blocked(user, True)
+    db.add(user)
+    _audit(db, request, admin, "user.litellm_key", user.email, "replaced")
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)

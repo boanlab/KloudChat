@@ -537,6 +537,7 @@ interface State {
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
   updateUser: (id: string, patch: { name?: string; email?: string }) => Promise<void>
   resetUserPassword: (id: string, password: string) => Promise<void>
+  replaceLitellmKey: (id: string, key: string) => Promise<void>
 }
 
 /** Bumped on every workspace write, so a stale fetch cannot overwrite newer state. */
@@ -2320,6 +2321,7 @@ export const useStore = create<State>((set, get) => ({
     applyUserChange(set, adminApi.setCredits(id, monthlyCredits)),
   updateUser: (id, patch) => applyUserChange(set, adminApi.updateUser(id, patch)),
   resetUserPassword: (id, password) => applyUserChange(set, adminApi.resetPassword(id, password)),
+  replaceLitellmKey: (id, key) => applyUserChange(set, adminApi.replaceLitellmKey(id, key)),
 }))
 
 /** Admin mutations return the updated row; a self-edit also updates `user`. */
