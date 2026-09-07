@@ -309,6 +309,16 @@ markup past it. Script elements, event handlers, remote `src`/`href`, and
 downloaded and opened outside the sandbox, the last because the wrapper already
 wrote that heading and a second one prints the title twice.
 
+**Figures a document draws for itself.** After the draft, one planning call
+(`services/diagrams.py`) names the parts where a structure, flow, comparison
+or concept figure says more than the words; `services/diagram.py` writes each
+as mermaid in the house style. A deck keeps it beside the slide's words
+(`slide.diagram`), the panel renders it live and stores its raster on the
+slide (`POST /artifacts/{id}/slides/diagram`) for the exporters; a report
+appends a mermaid fence the editor already renders and caches. No image
+model and no card: the only cost is the writer's tokens. A picture a person
+places on that slide replaces the figure.
+
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
 inside the file. What a person can do is put a picture this workspace made on
@@ -695,6 +705,15 @@ aggregated at different moments, so adding them makes neither correct.
 **Enabled surfaces** turn screens off in the UI *and* make the server refuse
 sessions of that kind — hiding alone leaves the feature on for anyone who types
 the URL. Chat cannot be disabled.
+
+**Accounts** can be corrected from the users screen: name and address
+(`PATCH /admin/users/{id}`, an address in use is refused) and a password reset
+(`POST /admin/users/{id}/password`) that hashes the new password and deletes
+every refresh token the account holds, so a person who lost their password gets
+back in and any session that was still open is ended. Both are audited. The
+model-restriction picker reads `GET /admin/models`, the whole catalogue, rather
+than the administrator's own (possibly restricted) list. Reissuing a LiteLLM key
+asks first, since the old key is revoked at once.
 
 **Branding** logos are served without authentication, because the sign-in
 screen renders one before anybody is authenticated. The filename carries a

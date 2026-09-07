@@ -263,6 +263,18 @@ class SectionFactCheck(Wire):
     section_id: str
 
 
+class SlideDiagramPicture(Wire):
+    """The browser's raster of a figure the deck drew for itself (`slide["diagram"]`).
+
+    `key` is `report_export.diagram_key` of the diagram's source; a stale key is refused.
+    """
+
+    slide_id: str = Field(min_length=1, max_length=64)
+    key: str = Field(min_length=8, max_length=64)
+    #: A `data:` URL; anything else is refused.
+    src: str = Field(min_length=1, max_length=6_000_000)
+
+
 class SlideImage(Wire):
     """Places an existing `image` artifact on one slide."""
 

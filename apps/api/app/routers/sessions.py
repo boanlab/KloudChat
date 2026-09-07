@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import func, update
+from sqlalchemy import func
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -1278,11 +1278,26 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
 async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
     await db.exec(delete(Message).where(Message.session_id == session.id))
-    # Job rows reference the session without cascade; artifacts are detached, not deleted.
+    # Job rows reference the session without cascade.
     await db.exec(delete(Job).where(Job.session_id == session.id))
-    await db.exec(update(Artifact).where(Artifact.session_id == session.id).values(session_id=None))
+    await _delete_artifacts_of(db, [session.id])
     await db.delete(session)
     await db.commit()
+
+
+async def _delete_artifacts_of(db: DbSession, session_ids: list[str]) -> int:
+    """Deletes what these conversations produced and returns how many artifacts went.
+
+    A conversation and its artifacts are one record: deleting the one deletes the other,
+    so nothing outlives the request that made it. Versions go first; shares cascade.
+    """
+    made = (
+        await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(session_ids)))
+    ).all()
+    if made:
+        await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(made)))
+        await db.exec(delete(Artifact).where(col(Artifact.id).in_(made)))
+    return len(made)
 
 
 def _record_media(
@@ -1873,20 +1888,11 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
     # Job rows reference the session without cascade.
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
-    made = (await db.exec(select(Artifact.id).where(col(Artifact.session_id).in_(ids)))).all()
-    if payload.artifacts and made:
-        # Versions first, then rows; shares cascade.
-        await db.exec(delete(ArtifactVersion).where(col(ArtifactVersion.artifact_id).in_(made)))
-        await db.exec(delete(Artifact).where(col(Artifact.id).in_(made)))
-    else:
-        # Detached, not deleted.
-        await db.exec(
-            update(Artifact).where(col(Artifact.session_id).in_(ids)).values(session_id=None)
-        )
+    artifacts_deleted = await _delete_artifacts_of(db, ids)
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     await db.commit()
-    return {"deleted": len(ids), "artifactsDeleted": len(made) if payload.artifacts else 0}
+    return {"deleted": len(ids), "artifactsDeleted": artifacts_deleted}
 
 
 @router.get("/{session_id}/messages", response_model=list[MessageOut])

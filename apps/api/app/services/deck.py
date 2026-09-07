@@ -41,6 +41,7 @@ from app.models.chat import SessionKind
 from app.services import (
     deck_type,
     design,
+    diagrams,
     figures,
     grounding,
     hangul,
@@ -1715,8 +1716,96 @@ async def _write_slides(
         }
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
+    # Structure, flow, comparison and concept figures the deck draws for itself, beside the
+    # words. Planned on the written slides, so the planner reads what is actually there; a
+    # slide with an approved picture keeps the picture, an unwritten one gets nothing.
+    async for event in _draw_figures(
+        slides,
+        request=request,
+        model=model,
+        api_key=api_key,
+        usage=usage,
+        wrap=lambda prompt: build_document_messages(
+            SessionKind.slides,
+            prompt,
+            request=request,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+            research_rule=research_rule,
+        ),
+    ):
+        yield event
+
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
+
+
+async def _draw_figures(
+    slides: list[dict[str, Any]],
+    *,
+    request: str,
+    model: str,
+    api_key: str,
+    usage: dict[str, int],
+    wrap: diagrams.Wrap,
+) -> AsyncIterator[dict[str, Any]]:
+    """Plans and draws the deck's own figures; each figured slide is announced again."""
+    eligible = [
+        i
+        for i, slide in enumerate(slides)
+        if slide["layout"] in _DIAGRAM_LAYOUTS
+        and not slide.get("image")
+        and slide.get("body") != UNWRITTEN
+    ]
+    planned, spent = await diagrams.plan(
+        parts=[(str(slide["title"]), _drafted_text(slide)) for slide in slides],
+        eligible=eligible,
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=wrap,
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    if not planned:
+        log.info("deck figures: none planned for %d eligible slides", len(eligible))
+    for row in planned:
+        slide = slides[row.index]
+        name = row.caption or diagrams.FIGURES[row.figure]
+        progress = {"current": row.index + 1, "total": len(slides)}
+        yield {
+            "type": "step",
+            "id": f"dia{row.index}",
+            "label": f"{name} 그리는 중",
+            "status": "running",
+            "progress": progress,
+        }
+        try:
+            made, spent = await diagrams.make(row, model=model, api_key=api_key, slide=True)
+        except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
+            log.warning("slide figure %r not drawn: %s", name, exc)
+            yield {
+                "type": "step",
+                "id": f"dia{row.index}",
+                "label": name,
+                "status": "error",
+                "progress": progress,
+            }
+            continue
+        usage["inputTokens"] += spent["inputTokens"]
+        usage["outputTokens"] += spent["outputTokens"]
+        slide["diagram"] = made
+        _words_under_figure(slide)
+        yield {
+            "type": "step",
+            "id": f"dia{row.index}",
+            "label": name,
+            "status": "done",
+            "progress": progress,
+        }
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
 async def write(
@@ -2152,7 +2241,8 @@ async def rewrite_slide(
 
 #: Every field a slide's content can arrive in. A layout that stores content
 #: under its own name must be here; the paired ones come from `_PAIRED`.
-_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
+#: A figure the deck drew for itself is content too: a figured slide carries no other words.
+_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", "diagram", *_PAIRED)
 
 
 def has_content(slide: dict) -> bool:
@@ -2184,6 +2274,84 @@ _COMMON_FLOOR = _SCALES[1]
 
 #: Slide layouts that must vary: a run of these gets every other one re-planned.
 _MONOTONE = "bullets"
+
+
+#: Layouts a drawn figure may replace. Cards, bands and tiles are where the planner puts
+#: structures, so they are offered too. Steps and timelines already draw their flow.
+_DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
+
+
+def _drafted_text(data: dict | None) -> str:
+    """The words a slide holds, for the figure planner to read."""
+    if not data:
+        return ""
+    parts: list[str] = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
+    if data.get("body"):
+        parts.append(str(data["body"]))
+    for key in ("cards", "steps", "bands", "tiles", "timeline"):
+        for pair in data.get(key) or []:
+            if isinstance(pair, list):
+                parts.append(" — ".join(str(cell) for cell in pair))
+    return "\n".join(parts)
+
+
+#: Height of the figure band above a figured slide's words, in slide units.
+_FIGURE_BAND = 70.0
+
+#: Words that stay under a figure: cards (this many, this long) or bullets (this many lines).
+_UNDER_CARDS = 4
+_CARD_CHARS = 44
+_UNDER_LINES = 3
+_LINE_CHARS = 60
+
+
+def _clipped(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _words_under_figure(slide: dict) -> None:
+    """A figured slide keeps a few words under its figure and moves the rest to the notes.
+
+    Cards stay cards (four at most, short); every other shape becomes up to three bullets.
+    The figure takes the top of the body, the words the strip beneath, so nothing beside
+    the figure narrows it.
+    """
+    layout = str(slide.get("layout") or "")
+    spill: list[str] = []
+    if layout == "cards":
+        pairs = [p for p in (slide.get("cards") or []) if isinstance(p, list) and p]
+        kept: list[list[str]] = []
+        for pair in pairs:
+            name = str(pair[0]).strip()
+            text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
+            if len(kept) < _UNDER_CARDS:
+                kept.append([name, _clipped(text, _CARD_CHARS)])
+                if len(text) > _CARD_CHARS:
+                    spill.append(f"{name}: {text}")
+            else:
+                spill.append(f"{name}: {text}")
+        slide["cards"] = kept
+    else:
+        lines: list[str] = []
+        for key in _PAIRED:
+            for pair in slide.pop(key, None) or []:
+                if not isinstance(pair, list) or not pair:
+                    continue
+                name = str(pair[0]).strip()
+                text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
+                lines.append(f"{name}: {text}" if name and text else name or text)
+        lines.extend(str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip())
+        if body := str(slide.get("body") or "").strip():
+            lines.append(body)
+        slide["layout"] = "bullets"
+        slide["bullets"] = [_clipped(line, _LINE_CHARS) for line in lines[:_UNDER_LINES]]
+        slide["body"] = ""
+        spill = [line for line in lines[:_UNDER_LINES] if len(line) > _LINE_CHARS] + lines[
+            _UNDER_LINES:
+        ]
+    if spill:
+        notes = str(slide.get("notes") or "").strip()
+        slide["notes"] = "\n".join(filter(None, [notes, *spill]))[:800]
 
 
 def _body_width(slide: dict) -> float:
@@ -2238,8 +2406,12 @@ def _need(slide: dict, scale: float) -> float:
     if slide.get("body") and not bullets:
         size = U("paragraph") * scale
         need += deck_type.lines(str(slide["body"]), size, width) * size * L["paragraph"] + 2
+    # A figure the deck drew for itself sits above the words as a band.
+    figured = bool(slide.get("diagram"))
+    if figured:
+        need += _FIGURE_BAND + 6
     for key, fixed in (
-        ("cards", 104.0),
+        ("cards", 36.0 if figured else 104.0),
         ("steps", 0.0),
         ("tiles", 0.0),
         ("bands", 0.0),

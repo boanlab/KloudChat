@@ -444,6 +444,27 @@ export const adminApi = {
   /** Sets the monthly allowance. Takes effect now and at every refill. */
   setCredits: (id: string, monthlyCredits: number) =>
     call<User>(`/admin/users/${id}/credits`, body({ monthlyCredits })),
+  /** Corrects a name or address; a field left out is left alone. */
+  updateUser: (id: string, patch: { name?: string; email?: string }) =>
+    call<User>(`/admin/users/${id}`, { ...body(patch), method: 'PATCH' }),
+  /** Sets a new password and signs the account out everywhere. */
+  resetPassword: (id: string, password: string) =>
+    call<User>(`/admin/users/${id}/password`, body({ password })),
+  /** The whole catalogue, for the restriction picker: not narrowed to the administrator's own list. */
+  catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
+  /** Every key an account holds: KloudChat's own (preview only) and the ones the person issued. */
+  userKeys: (id: string) => call<AdminKeys>(`/admin/users/${id}/keys`),
+  /** Revokes one key the person issued. */
+  revokeUserKey: (id: string, keyId: string) =>
+    call<void>(`/admin/users/${id}/keys/${keyId}`, { method: 'DELETE' }),
+  /** Binds a LiteLLM key the administrator already holds as the account's KloudChat key. */
+  replaceLitellmKey: (id: string, key: string) =>
+    call<User>(`/admin/users/${id}/litellm-key`, { ...body({ key }), method: 'PUT' }),
+}
+
+export interface AdminKeys {
+  kloudchat: { preview: string | null; issuedAt: string | null } | null
+  named: { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null }[]
 }
 
 /* ── admin: usage & audit ──────────────────────────────────────────────
@@ -1075,6 +1096,9 @@ export const artifactsApi = {
   /** The same, for a slide of a JSON deck. Addressed by slide id, not position. */
   addSlideImage: (id: string, slideId: string, artifactId: string, caption: string) =>
     call<ArtifactRow>(`/artifacts/${id}/slides/image`, body({ slideId, artifactId, caption })),
+  /** Stores this browser's raster of a slide's own figure (`slide.diagram`) as the slide picture for the exporters. Free, adds no version. */
+  storeSlideDiagram: (id: string, slideId: string, key: string, src: string) =>
+    call<ArtifactRow>(`/artifacts/${id}/slides/diagram`, body({ slideId, key, src })),
   /** One reading by a reviewer. Costs a model call; annotates, never edits. */
   critique: (id: string) => call<ArtifactRow>(`/artifacts/${id}/critique`, body({})),
   /** Puts a superseded revision back. Itself an edit, so it adds a version. */

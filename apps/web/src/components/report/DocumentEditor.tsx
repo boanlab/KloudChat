@@ -30,6 +30,8 @@ import {
   Trash2,
   Underline,
   Undo2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -37,7 +39,7 @@ import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
 import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
-import { draw, rasterise, theme } from '@/lib/mermaid'
+import { FRAMES, drawFitting, framed, rasterise, theme } from '@/lib/mermaid'
 import { parseCallout, parseCards } from '@/components/report/CardGrid'
 import { parse as parsePairs } from '@/components/report/StepList'
 import { SectionEditor } from '@/components/report/SectionEditor'
@@ -576,6 +578,24 @@ const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
 /** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
 
+/**
+ * The editor's continuous sheet laid out like the printed page: A4 wide with the page margins
+ * as padding, the cover at its print size, sections spaced as in print. Line breaks, type
+ * and the position of the body then match the page view; only the sheet being one long
+ * page differs. The seed's `body` typography is repeated on the sheet, since a shadow root
+ * has no body. `.page.paginated` outranks the seed's own `.paginated` rules.
+ */
+function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
+  return `
+  .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
+  .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
+  .page.paginated .cover { min-height: 232mm; padding: 74mm 0 0; margin: 0; }
+  .page.paginated section { margin: 0 0 12mm; }
+  /* The editor keeps a paragraph inside every cell; the finished file has bare text there. */
+  .page.paginated td > p, .page.paginated th > p { margin: 0; }
+`
+}
+
 // Installed into the DocumentShell shadow root, where global CSS cannot reach.
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
@@ -591,6 +611,8 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
   const [pages, setPages] = useState(0)
   const [pageSize, setPageSize] = useState({ width: A4_WIDTH_PX, height: A4_HEIGHT_PX })
   const [pageScale, setPageScale] = useState(1)
+  // 'fit' follows the viewport width; a number is a zoom the reader chose.
+  const [zoom, setZoom] = useState<'fit' | number>('fit')
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
 
@@ -604,6 +626,11 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
     const sheet = URL.createObjectURL(new Blob([`
+      html, body { margin: 0; padding: 0; background: white; }
+      h1 { string-set: document-title content(text); }
+      ${css}
+      /* After the template's css: its own @page (20mm 18mm) would otherwise outrank these
+         margins, and the page settings would have no effect. */
       @page {
         size: A4;
         margin: ${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm;
@@ -612,9 +639,18 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
         @bottom-right { content: ${settings.pageNumbers === 'none' ? 'none' : settings.pageNumbers === 'page' ? 'counter(page)' : 'counter(page) " / " counter(pages)'}; color: #777; font-size: 8pt; }
       }
       @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
-      html, body { margin: 0; padding: 0; background: white; }
-      h1 { string-set: document-title content(text); }
-      ${css}
+      /* The sheet's screen box (viewport-high, padded) must not reach Paged.js, or the cover
+         inside it is pushed to page two and page one comes out blank. The cover keeps the
+         seed's print size (232mm); what puts the first section on page two is a break
+         *before* it — Paged.js honours break-before, as the manual page breaks below show,
+         but not the cover's break-after. */
+      .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+      /* The seed repeats the document name on every printed sheet as a fixed element; Paged.js
+         pulls fixed elements into the flow of each page and the running header above already
+         carries the name, so the copy would only push the text down page by page. */
+      .doc-foot { display: none !important; }
+      .cover { margin: 0 !important; }
+      .cover + * { break-before: page; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
@@ -666,6 +702,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     const node = viewport.current
     if (!node) return
     const fit = () => {
+      if (zoom !== 'fit') {
+        setPageScale(zoom)
+        return
+      }
       const gutter = node.clientWidth < 640 ? 16 : 48
       const room = Math.max(1, node.clientWidth - gutter)
       setPageScale(Math.min(1, room / pageSize.width))
@@ -674,11 +714,21 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     const observer = new ResizeObserver(fit)
     observer.observe(node)
     return () => observer.disconnect()
-  }, [pageSize.width])
+  }, [pageSize.width, zoom])
+
+  const step = (direction: 1 | -1) =>
+    setZoom(Math.min(2, Math.max(0.5, Math.round((pageScale + direction * 0.1) * 10) / 10)))
 
   return (
     <div ref={viewport} className="relative min-h-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
       <div className="sticky top-0 z-20 mb-3 flex flex-wrap justify-end gap-2">
+        {!busy && !failure && (
+          <div className="flex items-center gap-0.5 rounded-control border border-line bg-panel p-0.5 shadow-sm" role="group" aria-label={t('확대/축소')}>
+            <button type="button" aria-label={t('축소')} title={t('축소')} disabled={pageScale <= 0.5} onClick={() => step(-1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomOut size={15} /></button>
+            <button type="button" aria-label={t('폭에 맞춤')} title={t('폭에 맞춤')} onClick={() => setZoom((current) => (current === 'fit' ? 1 : 'fit'))} className={cn('h-8 min-w-14 rounded-control px-2 text-xs tabular-nums hover:bg-elevated', zoom === 'fit' ? 'text-muted' : 'text-fg')}>{Math.round(pageScale * 100)}%</button>
+            <button type="button" aria-label={t('확대')} title={t('확대')} disabled={pageScale >= 2} onClick={() => step(1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomIn size={15} /></button>
+          </div>
+        )}
         {settingsOpen && (
           <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1010,14 +1060,14 @@ export function DocumentEditor({
   )
   const tools = toolbarSlot
     ? createPortal(<div className="flex items-center">{bar}</div>, toolbarSlot)
-    : <div className="flex min-w-0 items-center border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
+    : <div className="flex min-w-0 items-center overflow-x-auto border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
 
   if (layoutMode === 'pages') {
     return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden">
       {tools}
       {findOpen && (
         <div role="search" aria-label={t('찾기 및 바꾸기')} className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
@@ -1074,7 +1124,7 @@ export function DocumentEditor({
             }}
           >
           <div className="relative">
-            <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}`} className="report-page-shell">
+            <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}\n${sheetGeometryCss(pageSettings.margins)}`} className="report-page-shell">
               {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
               <div
                 ref={setPage}
@@ -1394,10 +1444,11 @@ function useDiagramPictures(
       look.appendChild(easel)
       try {
         for (const { section, source, key } of missing) {
-          const svg = await draw(source, theme(easel))
+          const svg = await drawFitting(source, theme(easel), FRAMES.page)
           if (!live) return
           if (!svg) continue
-          const png = await rasterise(svg)
+          // The same frame the page view shows, so the export matches the screen.
+          const png = await rasterise(framed(svg, FRAMES.page), 1)
           if (!live) return
           if (!png) continue
           found.set(source, png)

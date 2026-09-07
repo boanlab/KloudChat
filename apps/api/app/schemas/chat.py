@@ -182,8 +182,8 @@ class SessionBulkDelete(Wire):
 
     ids: list[str] = []
     all: bool = False
-    #: Also delete the artifacts those sessions produced.
-    artifacts: bool = False
+    #: Accepted from older clients and ignored: a conversation's artifacts always go with it.
+    artifacts: bool = True
 
 
 class SessionMade(Wire):

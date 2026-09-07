@@ -2,6 +2,7 @@ import {
   Check,
   SlidersHorizontal,
   KeyRound,
+  UserPen,
   Loader2,
   RefreshCw,
   Search,
@@ -17,13 +18,14 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Modal,
   PageHeader,
   Tabs,
 } from '@/components/ui'
-import { adminApi, errorMessage } from '@/lib/api'
+import { adminApi, errorMessage, type AdminKeys } from '@/lib/api'
 import { cn, formatDate, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
@@ -82,10 +84,47 @@ export function AdminUsersPage() {
     setUserModels,
     models,
     setUserCredits,
+    updateUser,
+    resetUserPassword,
+    replaceLitellmKey,
   } = useStore()
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
+  // 정보 수정: name, address and a password reset, one dialog.
+  const [profile, setProfile] = useState<User | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const [draftEmail, setDraftEmail] = useState('')
+  const [draftPassword, setDraftPassword] = useState('')
+  const [profileNote, setProfileNote] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  // 키 관리: KloudChat's own key (reissue or replace) and the keys the person issued (revoke).
+  const [keysFor, setKeysFor] = useState<User | null>(null)
+  const [keys, setKeys] = useState<AdminKeys | null>(null)
+  const [keyDraft, setKeyDraft] = useState('')
+  const [keyNote, setKeyNote] = useState<string | null>(null)
+  const [keyError, setKeyError] = useState<string | null>(null)
+  const [confirmRotate, setConfirmRotate] = useState(false)
+  const [revokingKey, setRevokingKey] = useState<AdminKeys['named'][number] | null>(null)
+  const [rotated, setRotated] = useState<{ id: string; preview: string | null } | null>(null)
+  const loadKeys = async (id: string) => {
+    try {
+      setKeys(await adminApi.userKeys(id))
+    } catch (err) {
+      setKeyError(errorMessage(err, t('키 목록을 불러오지 못했습니다.')))
+    }
+  }
+  const openKeys = (u: User) => {
+    setKeysFor(u)
+    setKeys(null)
+    setKeyDraft('')
+    setKeyNote(null)
+    setKeyError(null)
+    setConfirmRotate(false)
+    void loadKeys(u.id)
+  }
+  // The whole catalogue for the restriction picker; the store's list is the caller's own.
+  const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
@@ -98,6 +137,7 @@ export function AdminUsersPage() {
 
   useEffect(() => {
     void loadUsers()
+    adminApi.catalogue().then(setCatalogue).catch(() => setCatalogue(null))
     adminApi
       .settings()
       .then((s) => s.credits && setEconomics(s.credits))
@@ -248,6 +288,9 @@ export function AdminUsersPage() {
                           ) : (
                             <span className="text-warn">{t('전용 키 없음')}</span>
                           )}
+                          {rotated?.id === u.id && (
+                            <span className="text-success">{t('방금 재발급됨')}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -298,6 +341,23 @@ export function AdminUsersPage() {
                         </Button>
                       )}
                       <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 정보 수정').replace('{name}', u.name)}
+                        title={t('이름·이메일을 고치거나 비밀번호를 초기화합니다')}
+                        disabled={busy.includes(u.id)}
+                        onClick={() => {
+                          setProfile(u)
+                          setDraftName(u.name)
+                          setDraftEmail(u.email)
+                          setDraftPassword('')
+                          setProfileNote(null)
+                          setProfileError(null)
+                        }}
+                      >
+                        <UserPen size={14} />
+                      </Button>
+                      <Button
                         size="sm"
                         onClick={() => {
                           setEditing(u)
@@ -330,14 +390,10 @@ export function AdminUsersPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={u.litellmKeyPreview ? t('LiteLLM 키 재발급') : t('LiteLLM 키 발급')}
-                        title={
-                          u.litellmKeyPreview
-                            ? t('이 사용자의 LiteLLM 키를 새로 발급하고 기존 키를 폐기합니다')
-                            : t('이 사용자의 전용 LiteLLM 키를 발급합니다')
-                        }
+                        aria-label={t('{name} 키 관리').replace('{name}', u.name)}
+                        title={t('KloudChat 키를 재발급·교체하고, 이 사용자가 발급한 키를 확인·삭제합니다')}
                         disabled={busy.includes(u.id)}
-                        onClick={() => void run(u.id, () => rotateLitellmKey(u.id))}
+                        onClick={() => openKeys(u)}
                       >
                         <KeyRound size={14} />
                       </Button>
@@ -388,7 +444,7 @@ export function AdminUsersPage() {
       >
         {restricting && (
           <div className="flex flex-wrap gap-1.5">
-            {models.map((m) => {
+            {(catalogue ?? models).map((m) => {
               const on = restricting.allowedModels.includes(m.id)
               return (
                 <button
@@ -458,6 +514,223 @@ export function AdminUsersPage() {
           </span>
         </label>
       </Modal>
+
+      <Modal
+        open={!!profile}
+        onClose={() => setProfile(null)}
+        title={t('정보 수정')}
+        description={profile ? `${profile.email}` : undefined}
+        footer={<Button onClick={() => setProfile(null)}>{t('닫기')}</Button>}
+      >
+        {profile && (
+          <div className="space-y-4">
+            <Field label={t('이름')}>
+              <Input value={draftName} onChange={(e) => setDraftName(e.target.value)} aria-label={t('이름')} />
+            </Field>
+            <Field label={t('이메일')}>
+              <Input type="email" value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} aria-label={t('이메일')} />
+            </Field>
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={busy.includes(profile.id) || (!draftName.trim() || draftName.trim() === profile.name) && draftEmail.trim().toLowerCase() === profile.email}
+                onClick={() => {
+                  const id = profile.id
+                  const patch: { name?: string; email?: string } = {}
+                  if (draftName.trim() && draftName.trim() !== profile.name) patch.name = draftName.trim()
+                  if (draftEmail.trim().toLowerCase() !== profile.email) patch.email = draftEmail.trim()
+                  setProfileError(null)
+                  void run(id, async () => {
+                    try {
+                      await updateUser(id, patch)
+                      setProfileNote(t('저장했습니다.'))
+                      setProfile((current) => current ? { ...current, ...patch } : current)
+                    } catch (err) {
+                      setProfileError(errorMessage(err, t('저장하지 못했습니다.')))
+                    }
+                  })
+                }}
+              >
+                {t('저장')}
+              </Button>
+            </div>
+            <div className="border-t border-line pt-4">
+              <Field label={t('비밀번호 초기화')} hint={t('새 비밀번호를 정해 본인에게 따로 전달하세요. 저장하면 이 계정의 모든 로그인이 풀립니다.')}>
+                <div className="flex gap-2">
+                  <Input
+                    value={draftPassword}
+                    onChange={(e) => setDraftPassword(e.target.value)}
+                    placeholder={t('8자 이상')}
+                    aria-label={t('새 비밀번호')}
+                    autoComplete="off"
+                    className="font-mono"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+                      const bytes = crypto.getRandomValues(new Uint8Array(14))
+                      setDraftPassword(Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(''))
+                    }}
+                  >
+                    {t('임의 생성')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={busy.includes(profile.id) || draftPassword.length < 8}
+                    onClick={() => {
+                      const id = profile.id
+                      const password = draftPassword
+                      setProfileError(null)
+                      void run(id, async () => {
+                        try {
+                          await resetUserPassword(id, password)
+                          setProfileNote(t('비밀번호를 바꿨습니다. 이 계정의 기존 로그인은 모두 풀렸습니다.'))
+                        } catch (err) {
+                          setProfileError(errorMessage(err, t('비밀번호를 바꾸지 못했습니다.')))
+                        }
+                      })
+                    }}
+                  >
+                    {t('초기화')}
+                  </Button>
+                </div>
+              </Field>
+            </div>
+            {profileNote && <p className="text-base text-success">{profileNote}</p>}
+            {profileError && <p className="text-base text-danger">{profileError}</p>}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!keysFor}
+        onClose={() => setKeysFor(null)}
+        title={t('키 관리')}
+        description={keysFor ? `${keysFor.name} · ${keysFor.email}` : undefined}
+        width="max-w-2xl"
+        footer={<Button onClick={() => setKeysFor(null)}>{t('닫기')}</Button>}
+      >
+        {keysFor && (
+          <div className="space-y-5">
+            <section>
+              <h3 className="text-sm font-semibold text-muted">{t('KloudChat 키')}</h3>
+              <p className="mt-0.5 text-sm text-faint">{t('이 사용자의 모든 호출이 이 키로 프록시를 지납니다. 브라우저에는 끝 네 자리만 옵니다.')}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="font-mono text-base">{keys?.kloudchat?.preview ?? keysFor.litellmKeyPreview ?? t('없음')}</span>
+                {keys?.kloudchat?.issuedAt && <span className="text-sm text-faint">{t('발급')} {formatDate(keys.kloudchat.issuedAt)}</span>}
+                {!confirmRotate ? (
+                  <Button size="sm" disabled={busy.includes(keysFor.id)} onClick={() => setConfirmRotate(true)}>
+                    {keys?.kloudchat ? t('재발급') : t('발급')}
+                  </Button>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-sm">
+                    <span className="text-danger">{t('기존 키는 즉시 폐기됩니다.')}</span>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        const id = keysFor.id
+                        setConfirmRotate(false)
+                        setKeyError(null)
+                        void run(id, async () => {
+                          try {
+                            await rotateLitellmKey(id)
+                            const fresh = useStore.getState().users.find((x) => x.id === id)
+                            setRotated({ id, preview: fresh?.litellmKeyPreview ?? null })
+                            setKeyNote(t('새 키를 발급했습니다.'))
+                            await loadKeys(id)
+                          } catch (err) {
+                            setKeyError(errorMessage(err, t('키를 발급하지 못했습니다.')))
+                          }
+                        })
+                      }}
+                    >
+                      {t('확인')}
+                    </Button>
+                    <Button size="sm" onClick={() => setConfirmRotate(false)}>{t('취소')}</Button>
+                  </span>
+                )}
+              </div>
+              <Field label={t('교체')} hint={t('이미 갖고 있는 LiteLLM 키를 이 계정의 키로 씁니다. 프록시가 아는 키여야 하고, 기존 키는 폐기됩니다.')}>
+                <div className="flex gap-2">
+                  <Input value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} placeholder="sk-…" aria-label={t('교체할 키')} autoComplete="off" className="font-mono" />
+                  <Button
+                    size="sm"
+                    disabled={busy.includes(keysFor.id) || keyDraft.trim().length < 8}
+                    onClick={() => {
+                      const id = keysFor.id
+                      const key = keyDraft.trim()
+                      setKeyError(null)
+                      void run(id, async () => {
+                        try {
+                          await replaceLitellmKey(id, key)
+                          setKeyDraft('')
+                          setKeyNote(t('키를 교체했습니다.'))
+                          await loadKeys(id)
+                        } catch (err) {
+                          setKeyError(errorMessage(err, t('키를 교체하지 못했습니다. 프록시가 아는 키인지 확인하세요.')))
+                        }
+                      })
+                    }}
+                  >
+                    {t('교체')}
+                  </Button>
+                </div>
+              </Field>
+            </section>
+            <section>
+              <h3 className="text-sm font-semibold text-muted">{t('이 사용자가 발급한 키')}</h3>
+              {keys === null ? (
+                <p className="mt-2 text-sm text-faint">{t('불러오는 중…')}</p>
+              ) : keys.named.length === 0 ? (
+                <p className="mt-2 text-sm text-faint">{t('발급한 키가 없습니다.')}</p>
+              ) : (
+                <ul className="mt-2 divide-y divide-line rounded-card border border-line">
+                  {keys.named.map((k) => (
+                    <li key={k.id} className="flex items-center gap-3 px-3 py-2 text-base">
+                      <span className="min-w-0 flex-1 truncate">{k.name}</span>
+                      <span className="font-mono text-sm text-muted">{k.preview}</span>
+                      <span className="text-sm text-faint">{t('발급')} {formatDate(k.createdAt)}</span>
+                      <span className="text-sm text-faint">{k.lastUsedAt ? `${t('마지막 사용')} ${relativeTime(k.lastUsedAt)}` : t('사용 기록 없음')}</span>
+                      <Button variant="ghost" size="icon" aria-label={t('{name} 키 삭제').replace('{name}', k.name)} title={t('삭제')} className="text-danger hover:bg-danger/10 hover:text-danger" disabled={busy.includes(keysFor.id)} onClick={() => setRevokingKey(k)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {keyNote && <p className="text-base text-success">{keyNote}</p>}
+            {keyError && <p className="text-base text-danger">{keyError}</p>}
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!revokingKey}
+        onClose={() => setRevokingKey(null)}
+        onConfirm={() => {
+          const target = revokingKey
+          const owner = keysFor
+          setRevokingKey(null)
+          if (!target || !owner) return
+          setKeyError(null)
+          void run(owner.id, async () => {
+            try {
+              await adminApi.revokeUserKey(owner.id, target.id)
+              setKeyNote(t('「{name}」 키를 삭제했습니다.').replace('{name}', target.name))
+              await loadKeys(owner.id)
+            } catch (err) {
+              setKeyError(errorMessage(err, t('키를 삭제하지 못했습니다.')))
+            }
+          })
+        }}
+        title={t('「{name}」 키를 삭제할까요?').replace('{name}', revokingKey?.name ?? '')}
+        description={t('되돌릴 수 없습니다. 이 키로 호출하던 도구나 스크립트는 즉시 멈춥니다.')}
+      />
 
       <Modal
         open={!!editing}

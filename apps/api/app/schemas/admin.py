@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from pydantic import Field
+from datetime import datetime
+
+from pydantic import EmailStr, Field
 
 from app.models.user import UserRole
 from app.schemas.auth import Wire
+from app.schemas.workspace import ApiKeyOut
 
 
 class SystemSettingsIn(Wire):
@@ -57,6 +60,39 @@ class SmtpTestRequest(Wire):
 
 class SetRoleRequest(Wire):
     role: UserRole
+
+
+class UpdateUserRequest(Wire):
+    """Name and address as an administrator sets them; a field left out is left alone."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    email: EmailStr | None = None
+
+
+class ReplaceKeyRequest(Wire):
+    """A LiteLLM virtual key the administrator already holds, to bind to an account."""
+
+    key: str = Field(min_length=8, max_length=300)
+
+
+class KloudChatKeyOut(Wire):
+    """The key KloudChat issued for the account's own calls; never the key itself."""
+
+    preview: str | None = None
+    issued_at: datetime | None = None
+
+
+class AdminKeysOut(Wire):
+    """Every key an account holds: KloudChat's own, and the ones the person issued."""
+
+    kloudchat: KloudChatKeyOut | None = None
+    named: list[ApiKeyOut] = Field(default_factory=list)
+
+
+class ResetPasswordRequest(Wire):
+    """A password an administrator hands to the person; every sign-in they hold ends."""
+
+    password: str = Field(min_length=8, max_length=200)
 
 
 class SetCreditsRequest(Wire):

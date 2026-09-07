@@ -535,6 +535,9 @@ interface State {
   /** Empty means the whole catalogue. */
   setUserModels: (id: string, models: string[]) => Promise<void>
   setUserCredits: (id: string, monthlyCredits: number) => Promise<void>
+  updateUser: (id: string, patch: { name?: string; email?: string }) => Promise<void>
+  resetUserPassword: (id: string, password: string) => Promise<void>
+  replaceLitellmKey: (id: string, key: string) => Promise<void>
 }
 
 /** Bumped on every workspace write, so a stale fetch cannot overwrite newer state. */
@@ -1726,13 +1729,13 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteSessions: async (payload) => {
     const { deleted } = await sessionsApi.deleteMany(payload)
-    // `all` is resolved server-side.
+    // `all` is resolved server-side. The artifacts those conversations made went with them.
     await get().loadSessions()
     set((s) => ({
       activeSessionId: null,
       jobs: payload.all ? [] : s.jobs,
     }))
-    if (payload.artifacts) await get().loadArtifacts()
+    await get().loadArtifacts()
     return deleted
   },
   deleteSession: async (id) => {
@@ -1745,6 +1748,8 @@ export const useStore = create<State>((set, get) => ({
         ...p,
         sessionIds: p.sessionIds.filter((x) => x !== id),
       })),
+      // What the conversation made goes with it.
+      artifacts: s.artifacts.filter((a) => a.sessionId !== id),
     }))
     await sessionsApi.remove(id).catch(() => get().loadSessions())
   },
@@ -2314,6 +2319,9 @@ export const useStore = create<State>((set, get) => ({
   },
   setUserCredits: (id, monthlyCredits) =>
     applyUserChange(set, adminApi.setCredits(id, monthlyCredits)),
+  updateUser: (id, patch) => applyUserChange(set, adminApi.updateUser(id, patch)),
+  resetUserPassword: (id, password) => applyUserChange(set, adminApi.resetPassword(id, password)),
+  replaceLitellmKey: (id, key) => applyUserChange(set, adminApi.replaceLitellmKey(id, key)),
 }))
 
 /** Admin mutations return the updated row; a self-edit also updates `user`. */
