@@ -89,10 +89,13 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
 export function StepTimeline({
   steps,
   live,
+  failed,
   startedAt,
 }: {
   steps: Step[]
   live: boolean
+  /** The turn's end state, not a recoverable error in an individual tool call. */
+  failed: boolean
   /** Epoch ms the turn started; drives the clock. */
   startedAt?: number
 }) {
@@ -103,7 +106,6 @@ export function StepTimeline({
   if (steps.length === 0) return null
 
   const done = steps.filter((s) => s.status === 'done').length
-  const failed = steps.some((s) => s.status === 'error')
   const current = steps.find((s) => s.status === 'running')
   const expanded = manual ?? live
   // Steps remaining, from the running step's own denominator.
@@ -171,4 +173,3 @@ export function StepTimeline({
     </div>
   )
 }
-
