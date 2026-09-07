@@ -50,6 +50,9 @@ class _Accumulator:
         self.actual_model: str | None = None
         #: Stream cut off by `_is_looping`.
         self.looped = False
+        #: Stream cut off by `_runaway`: the run of one repeated character
+        #: that was already emitted and has to be taken back.
+        self.runaway: str | None = None
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Returns newly emitted visible text, if any."""
@@ -170,6 +173,10 @@ async def _stream_once(
                             # The stream is closed here; `run_turn` adds a note.
                             acc.looped = True
                             break
+                        run = _runaway(acc.content)
+                        if run:
+                            acc.runaway = run
+                            break
             finally:
                 await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
@@ -208,6 +215,44 @@ def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool
         return False
     needle = text[-window:].strip()
     return len(needle) >= window // 2 and text.count(needle) >= times
+
+
+#: One letter or digit repeated this often in a row is a stuck decoder — a
+#: URL whose id trails off into 「000000…」 — never text a person meant.
+_RUN_LIMIT = 40
+_RUN_RE = re.compile(rf"([^\W_])\1{{{_RUN_LIMIT - 1},}}$")
+
+
+def _runaway(pieces: list[str]) -> str | None:
+    """The run of one repeated character the recent text ends in, once it is too long."""
+    match = _RUN_RE.search("".join(pieces[-200:]))
+    return match.group(0) if match else None
+
+
+def _repair_runaway(answer: str, run: str, seen_urls: set[str]) -> tuple[str, str | None]:
+    """Takes the `run` off the end of `answer`. When the run broke a URL that a
+    tool result knows, the kept text ends where the two agree and the second
+    value is what completes it (with the link's closing bracket)."""
+    if not answer.endswith(run):
+        return answer, None
+    answer = answer[: -len(run)]
+    match = re.search(r"https?://\S*$", answer)
+    if not match:
+        return answer, None
+    prefix, char = match.group(0), run[0]
+    linked = answer[max(match.start() - 2, 0) : match.start()] == "]("
+    # Some of the repeated character may be the model's own: try the prefix
+    # as written, then with its trailing copies of that character trimmed.
+    cut = len(prefix)
+    while cut > 0:
+        head = prefix[:cut]
+        known = sorted((u for u in seen_urls if u.startswith(head) and u != head), key=len)
+        if known:
+            return answer[: match.start() + cut], known[0][cut:] + (")" if linked else "")
+        if prefix[cut - 1] != char:
+            break
+        cut -= 1
+    return answer, None
 
 
 _URL = re.compile(r"https?://[^\s)\]>\"'」』,]+")
@@ -421,6 +466,28 @@ async def run_turn(
             )
             answer_text.append(note)
             yield {"type": "delta", "text": note}
+            break
+        if acc.runaway:
+            # One character repeating without end: take the run back, and
+            # when it ate a URL the tools saw, finish that URL properly.
+            before = "".join(answer_text)
+            answer, tail = _repair_runaway(before, acc.runaway, seen_urls)
+            yield {"type": "retract", "text": before[len(answer) :]}
+            if tail is not None:
+                answer += tail
+                yield {"type": "delta", "text": tail}
+                note = (
+                    "\n\n_주소가 같은 글자를 되풀이해 여기서 멈추고, "
+                    "검색 결과에 있던 주소로 바로잡았습니다._"
+                )
+            else:
+                note = (
+                    "\n\n_같은 글자가 되풀이되어 여기서 멈췄습니다. "
+                    "다시 시도하거나 다른 모델을 골라 보세요._"
+                )
+            answer += note
+            yield {"type": "delta", "text": note}
+            answer_text[:] = [answer]
             break
         if closing:
             break
