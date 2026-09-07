@@ -171,7 +171,7 @@ export interface Preferences {
 export type PrivacyAction = 'route_strict_local' | 'mask_external' | 'send_raw_external'
 
 export interface CostRouting {
-  mode: 'auto'
+  mode: 'auto' | 'auto_quality'
   decision: 'routed' | 'kept_quality' | 'bypassed' | 'classifier_unavailable'
   reasonCode: string
   requestedModel: string

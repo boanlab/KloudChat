@@ -63,6 +63,33 @@ function costRouteDecisionLabel(
   route: CostRouting,
   t: (text: string) => string,
 ): string {
+  if (route.mode === 'auto_quality') {
+    if (route.decision === 'routed') {
+      return t('Auto · 품질 우선 · 상위 모델 선택')
+    }
+    if (route.decision === 'classifier_unavailable') {
+      return t('Auto · 품질 우선 · 분류기를 사용할 수 없어 현재 모델 유지')
+    }
+    switch (route.reasonCode) {
+      case 'low_complexity':
+        return t('Auto · 품질 우선 · 간단한 요청으로 현재 모델 유지')
+      case 'no_quality_model':
+      case 'no_quality_models':
+        return t('Auto · 품질 우선 · 사용할 상위 모델이 없어 현재 모델 유지')
+      case 'input_too_long':
+        return t('Auto · 품질 우선 · 긴 대화이므로 현재 모델 유지')
+      case 'privacy_detected':
+        return t('Auto · 품질 우선 · 개인정보 감지로 난이도 판정 생략')
+      case 'unsupported_turn':
+        return t('Auto · 품질 우선 · 기능 사용으로 현재 모델 유지')
+      case 'disabled':
+        return t('Auto · 품질 우선 · 관리 정책이 꺼져 현재 모델 유지')
+      default:
+        return route.decision === 'bypassed'
+          ? t('Auto · 품질 우선 · 난이도 판정을 생략하고 현재 모델 유지')
+          : t('Auto · 품질 우선 · 확실하지 않아 현재 모델 유지')
+    }
+  }
   if (route.decision === 'routed') {
     return t('Auto 절약')
   }
@@ -421,6 +448,7 @@ function MessageItemInner({
               <Badge
                 tone={costRoute.decision === 'routed' ? 'success' : 'warn'}
                 title={costRouteDisplay.title}
+                className="max-w-full whitespace-normal! [overflow-wrap:anywhere]"
               >
                 {costRouteDisplay.label}
               </Badge>

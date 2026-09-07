@@ -303,7 +303,7 @@ function ModelMenu({
                 </span>
                 <span className="mt-0.5 block text-sm text-muted">{lane.blurb}</span>
                 <span className="mt-1 block truncate text-xs text-faint">
-                  {t('품질 모델')}: {active.label}
+                  {lane.mode === 'auto_quality' ? t('현재 모델') : t('품질 모델')}: {active.label}
                 </span>
               </span>
             </button>

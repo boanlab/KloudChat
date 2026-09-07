@@ -756,17 +756,19 @@ export function Composer({
         skill !== undefined && skillUnavailableReason(skill) === null,
     )
     .slice(0, 3)
+  const autoActive =
+    kind === 'chat' && (session?.routingMode === 'auto' || session?.routingMode === 'auto_quality')
   const autoBypassPreview =
-    session?.routingMode === 'auto' &&
+    autoActive &&
+    !compareMode &&
     Boolean(
       project ||
         sessionAgent ||
         attachments.length > 0 ||
-        effectiveWebSearch ||
+        (effectiveWebSearch && webSearchMode === 'on') ||
         activeSkills.length > 0,
     )
-  const autoPausedForCompare =
-    session?.routingMode === 'auto' && compareMode && kind === 'chat'
+  const autoPausedForCompare = autoActive && compareMode
   // Empty `kinds` means every surface.
   const usableAgents = agents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
@@ -1101,13 +1103,15 @@ export function Composer({
           (compareMode && kind === 'chat')) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
-              <Badge tone="warn">
+              <Badge tone="warn" className="max-w-full whitespace-normal!">
                 <Gauge size={11} />
-                {t('Auto · 이번 요청은 기능 사용으로 품질 모델 유지')}
+                {session?.routingMode === 'auto_quality'
+                  ? t('Auto · 품질 우선 · 이번 요청은 기능 사용으로 현재 모델 유지')
+                  : t('Auto · 이번 요청은 기능 사용으로 품질 모델 유지')}
               </Badge>
             )}
             {autoPausedForCompare && (
-              <Badge tone="warn">
+              <Badge tone="warn" className="max-w-full whitespace-normal!">
                 <Gauge size={11} />
                 {t('Auto 일시 중지 · 비교할 모델을 직접 실행')}
               </Badge>
