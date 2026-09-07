@@ -140,10 +140,10 @@
 }
 
 /* On a phone the whole type scale steps up with the root: the desktop's compact
-   13px base reads as 15px, menus and captions with it, and running text as 18px. */
+   13px base reads as 17px, menus and captions with it, and running text as 20px. */
 @media (max-width: 40rem) {
   html {
-    font-size: 118.75%;
+    font-size: 131.25%;
   }
 }
 

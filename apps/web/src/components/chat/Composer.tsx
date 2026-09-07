@@ -1659,7 +1659,7 @@ export function Composer({
             </Dropdown>
           )}
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex min-w-0 items-center gap-1">
             {!(compareMode && kind === 'chat') && (
               <ModelPicker
                 kind={kind}

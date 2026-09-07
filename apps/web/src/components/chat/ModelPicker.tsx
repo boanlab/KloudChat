@@ -167,14 +167,14 @@ export function ModelPicker({
                   open ? 'border-accent' : 'border-line hover:border-line-strong',
                 )
               : cn(
-                  'shrink-0 px-2.5',
+                  'min-w-0 px-2.5',
                   open ? 'bg-elevated text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
                 ),
           )}
         >
           <span className="flex min-w-0 items-center gap-1.5">
             {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
-            <span className={cn('truncate', !field && 'max-w-[220px]')}>
+            <span className={cn('truncate', !field && 'max-w-[220px] max-sm:max-w-[38vw]')}>
               {autoActive
                 ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${active.label}`
                 : active.label}
