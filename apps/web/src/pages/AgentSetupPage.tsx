@@ -1,39 +1,13 @@
-import { Check, ChevronDown, Copy, ExternalLink, KeyRound } from 'lucide-react'
+import { ChevronDown, ExternalLink, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { Badge, Button, Card, Dropdown, MenuItem } from '@/components/ui'
-import { copyText } from '@/lib/clipboard'
+import { ShellSnippet, envCommands } from '@/components/ShellSnippet'
 import { TopBar } from '@/components/layout/TopBar'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { ModelInfo } from '@/types'
-
-function Snippet({ text }: { text: string }) {
-  const t = useT()
-  const [copied, setCopied] = useState(false)
-  return (
-    <div className="group relative">
-      <pre className="overflow-x-auto rounded-control border border-line bg-elevated px-3 py-2.5 text-sm leading-relaxed">
-        <code className="font-mono">{text}</code>
-      </pre>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={t('복사')}
-        title={t('명령을 클립보드로 복사합니다')}
-        className="absolute top-1.5 right-1.5 opacity-60 transition-opacity hover:opacity-100 focus:opacity-100"
-        onClick={async () => {
-          if (!(await copyText(text))) return
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1400)
-        }}
-      >
-        {copied ? <Check size={14} /> : <Copy size={14} />}
-      </Button>
-    </div>
-  )
-}
 
 function priceLabel(m: ModelInfo, t: (s: string) => string): string {
   if (m.creditCost === 0 && m.inputCreditCost === 0) return t('무료')
@@ -52,6 +26,12 @@ export function AgentSetupPage() {
   const [picked, setPicked] = useState<string | null>(null)
   const model = chat.find((m) => m.id === picked) ?? chat[0]
   const modelId = model?.id ?? 'local/qwen3.6-35b'
+  const key = `<${t('발급받은 키')}>`
+  const shellNote = {
+    linux: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.'),
+    mac: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.'),
+    windows: t('PowerShell 기준입니다. 이 창에서만 유효하며, cmd.exe 에서는 set 이름=값 을 씁니다.'),
+  }
 
   return (
     <>
@@ -109,8 +89,13 @@ export function AgentSetupPage() {
         <section className="mt-6">
           <h2 className="text-base font-medium">Claude Code</h2>
           <p className="mt-1 mb-2 text-base text-muted">{t('Anthropic 형식으로 주고받습니다.')}</p>
-          <Snippet
-            text={`export ANTHROPIC_BASE_URL=${base}\nexport ANTHROPIC_AUTH_TOKEN=<${t('발급받은 키')}>\nexport ANTHROPIC_MODEL=${modelId}`}
+          <ShellSnippet
+            commands={envCommands([
+              ['ANTHROPIC_BASE_URL', base],
+              ['ANTHROPIC_AUTH_TOKEN', key],
+              ['ANTHROPIC_MODEL', modelId],
+            ])}
+            note={shellNote}
           />
         </section>
 
@@ -119,8 +104,13 @@ export function AgentSetupPage() {
           <p className="mt-1 mb-2 text-base text-muted">
             {t('OpenAI 형식으로 주고받습니다. 주소 끝에 /v1 이 붙는 것에 주의하세요.')}
           </p>
-          <Snippet
-            text={`export OPENAI_BASE_URL=${base}/v1\nexport OPENAI_API_KEY=<${t('발급받은 키')}>\nexport OPENAI_MODEL=${modelId}`}
+          <ShellSnippet
+            commands={envCommands([
+              ['OPENAI_BASE_URL', `${base}/v1`],
+              ['OPENAI_API_KEY', key],
+              ['OPENAI_MODEL', modelId],
+            ])}
+            note={shellNote}
           />
         </section>
 
