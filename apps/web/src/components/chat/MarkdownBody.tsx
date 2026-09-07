@@ -132,16 +132,38 @@ export function MarkdownBody({
           ),
           li: ({ children }) => <li className="pl-0.5">{children}</li>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-          a: ({ children, href }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent underline underline-offset-2"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            // A source citation the server linked: `[[3]](url)` renders as a small badge.
+            const citation =
+              Array.isArray(children) && children.length === 1
+                ? String(children[0])
+                : typeof children === 'string'
+                  ? children
+                  : ''
+            if (/^\[\d{1,2}\]$/.test(citation)) {
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={href}
+                  className="mx-0.5 inline-block rounded border border-line-strong px-1 align-baseline text-[0.72em] leading-snug text-accent no-underline hover:bg-elevated"
+                >
+                  {citation.slice(1, -1)}
+                </a>
+              )
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline underline-offset-2"
+              >
+                {children}
+              </a>
+            )
+          },
           blockquote: ({ children }) => (
             <blockquote className="my-3 border-l-2 border-line-strong pl-3 text-muted">
               {children}

@@ -192,6 +192,17 @@ Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
 `create_chart`, `share_note`, and `search_knowledge` over an agent's own
 documents (§8). Tools from installed MCP connectors are added to these.
 
+**Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
+entries of every search result so the numbers run across the whole turn and
+gives a fetched page a number of its own; the prompt asks the model to cite
+`[3]` at the end of a sentence and not to copy URLs. After the answer,
+`_link_citations` turns each `[n]` into a link to that source and a numbered
+「출처」 list is appended; numbers no result carries stay as text. A model that
+types a URL anyway is checked against the tool results as before. A stream
+that repeats one letter or digit forty times in a row (a decoder stuck on a
+long article id) is closed there: the run is retracted, and a URL it broke is
+completed when exactly one tool result starts the same way, dropped otherwise.
+
 **A fetch reaches the public internet only.** Every page read on a reader's
 behalf — the `fetch_url` tool, search-result bodies, research picks, project
 and agent knowledge from a URL, a design read from a page — passes

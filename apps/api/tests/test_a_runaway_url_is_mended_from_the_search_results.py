@@ -132,15 +132,28 @@ async def test_a_run_outside_any_url_is_only_cut(monkeypatch) -> None:
 
 def test_the_repair_helper_trims_the_models_own_zeros() -> None:
     seen = {"https://x.test/a?id=2010042"}
-    kept, tail = agent._repair_runaway(
+    kept, tail, outcome = agent._repair_runaway(
         "본문 [링크](https://x.test/a?id=201000" + "0" * 40, "0" * 40, seen
     )
     # The agreement reaches one of the model's zeros; the rest were the run.
-    assert kept == "본문 [링크](https://x.test/a?id=20100"
-    assert tail == "42)"
+    assert (kept, tail, outcome) == ("본문 [링크](https://x.test/a?id=20100", "42)", "completed")
 
 
-def test_the_repair_helper_leaves_unknown_urls_alone() -> None:
-    kept, tail = agent._repair_runaway("https://y.test/" + "9" * 40, "9" * 40, {"https://x.test/"})
-    assert kept == "https://y.test/"
-    assert tail is None
+def test_an_ambiguous_prefix_is_not_guessed() -> None:
+    seen = {"https://x.test/a?id=2010042", "https://x.test/a?id=2010099"}
+    kept, tail, outcome = agent._repair_runaway(
+        "본문 [링크](https://x.test/a?id=2010" + "0" * 40, "0" * 40, seen
+    )
+    assert (kept, tail, outcome) == ("본문 ", "링크", "dropped")
+
+
+def test_an_unknown_bare_url_is_dropped_whole() -> None:
+    kept, tail, outcome = agent._repair_runaway(
+        "출처: https://y.test/" + "9" * 40, "9" * 40, {"https://x.test/"}
+    )
+    assert (kept, tail, outcome) == ("출처: ", "", "dropped")
+
+
+def test_a_run_outside_a_url_is_only_cut() -> None:
+    kept, tail, outcome = agent._repair_runaway("아" + "a" * 40, "a" * 40, set())
+    assert (kept, tail, outcome) == ("아", "", "cut")
