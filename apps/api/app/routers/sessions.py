@@ -150,6 +150,8 @@ def _strict_model(model: dict) -> bool:
 _STRICT_LOCAL_TOOL_NAMES = frozenset(
     {
         # No network egress; a "builtin" source alone is not proof of that.
+        "calculate",
+        "check_ncs_answer",
         "search_knowledge",
         "create_artifact",
         "create_chart",
@@ -2638,6 +2640,11 @@ async def send_message(
             messages = economy_messages
         strict_local = resolved.strict_local
 
+    preflight_tool = _ncs_preflight_tool(
+        {skill.catalog_key for skill in workspace.applied_skills},
+        tools,
+    )
+
     if not has_headroom(user, model):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="insufficient_credits"
@@ -2942,6 +2949,7 @@ async def send_message(
                     if effective_web_search and any(t.name == "web_search" for t in tools)
                     else None
                 ),
+                preflight_tool=preflight_tool,
             )
         ),
         media_type="text/event-stream",
@@ -3110,6 +3118,17 @@ async def _store_notes(
         )
 
 
+def _ncs_preflight_tool(
+    skill_catalog_keys: set[str | None], tools: list[Tool]
+) -> str | None:
+    if "ncs-arithmetic" not in skill_catalog_keys:
+        return None
+    name = "check_ncs_answer"
+    if not any(tool.name == name and tool.source == "builtin" for tool in tools):
+        raise HTTPException(status_code=409, detail="ncs_verification_tool_unavailable")
+    return name
+
+
 async def _run_turn(
     *,
     user_id: str,
@@ -3139,6 +3158,7 @@ async def _run_turn(
     routing_audit_id: str | None = None,
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
+    preflight_tool: str | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -3215,6 +3235,7 @@ async def _run_turn(
                 disable_fallbacks=disable_fallbacks,
                 redact_logging=mask_at_rest,
                 force_tool=force_tool,
+                **({"preflight_tool": preflight_tool} if preflight_tool else {}),
             ),
             stopping,
         ):
