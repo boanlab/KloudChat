@@ -441,7 +441,14 @@ CREATE_ARTIFACT = Tool(
             "title": {"type": "string", "description": "문서 이름. 파일명처럼 짧게."},
             "content": {
                 "type": "string",
-                "description": "문서 전체 내용. 마크다운 코드펜스로 감싸지 마세요.",
+                "description": (
+                    "문서 전체 내용. 마크다운 코드펜스로 감싸지 마세요. "
+                    'kind=html일 때 미리보기는 sandbox="allow-scripts"입니다. '
+                    "form submit과 이를 통한 외부 요청은 차단되므로 "
+                    'type="button"과 click/input 이벤트로 계산·검증을 구현하세요. '
+                    "localStorage나 부모 창(parent) 접근에 의존하지 말고, "
+                    "내려받은 파일도 작동하도록 CSS/JS를 같은 문서에 담으세요."
+                ),
             },
             "language": {
                 "type": "string",
