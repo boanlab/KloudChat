@@ -1236,7 +1236,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 skill.required_tools = list(spec.get("required_tools", []))
             if upgraded:
                 if key == "ncs-reasoning":
-                    # Add a requirement, never grant a tool on the owning agent.
+                    # Sync untouched skills, never grant tools on their owning agents.
                     skill.required_tools = list(spec["required_tools"])
                     copies = await db.exec(select(Skill).where(Skill.origin_id == skill.id))
                     for copy in copies.all():
