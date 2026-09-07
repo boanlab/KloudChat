@@ -33,6 +33,7 @@ from app.services.tools.base import ToolResult
         ("auto", "React 19에서 forwardRef 없어졌어?", (True, "web_search")),
         ("auto", "Mamba 논문 arXiv 번호랑 저자 알려줘", (True, "web_search")),
         ("auto", "리스트 3개를 합치는 법", (True, None)),
+        ("auto", "일본 갈 때 비짓재팬 등록 아직 필요해?", (True, "web_search")),
         # on: forced every turn, weather still to the weather tool
         (True, "파이썬 리스트 컴프리헨션 설명해 줘", (True, "web_search")),
         (True, "서울 기온 몇 도야", (True, "weather")),

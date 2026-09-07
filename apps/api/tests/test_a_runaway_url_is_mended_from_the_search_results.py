@@ -157,3 +157,56 @@ def test_an_unknown_bare_url_is_dropped_whole() -> None:
 def test_a_run_outside_a_url_is_only_cut() -> None:
     kept, tail, outcome = agent._repair_runaway("아" + "a" * 40, "a" * 40, set())
     assert (kept, tail, outcome) == ("아", "", "cut")
+
+
+@pytest.mark.asyncio
+async def test_a_tool_call_whose_arguments_never_end_is_cut(monkeypatch) -> None:
+    """Repeating tool-call arguments are invisible to the text checks; the
+    stream is closed all the same and the turn ends with the loop note."""
+    fragment = json.dumps(
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "c0",
+                                "function": {
+                                    "name": "web_search",
+                                    "arguments": '{"query": "분당 서울대병원 버스 300번 300-1번 "',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    )
+    lines = ["data: " + fragment] * 400 + ["data: [DONE]"]
+    consumed: list[int] = []
+
+    class _Counting(_Response):
+        async def aiter_lines(self):
+            for i, line in enumerate(self._lines):
+                consumed.append(i)
+                yield line
+
+    async def client(*_args, **_kwargs):
+        c = _Client([lines])
+        c._scripted = [lines]
+
+        def stream(_m, _p, *, json):
+            return _Counting(c._scripted.pop(0))
+
+        c.stream = stream
+        return c
+
+    monkeypatch.setattr(agent, "_client", client)
+    events = [
+        e async for e in agent.run_turn("m", [{"role": "user", "content": "q"}], [_SEARCH], _ctx())
+    ]
+    text = _final_text(events)
+    assert "되풀이되어 여기서 멈췄습니다" in text
+    assert len(consumed) < 400
+    assert not [e for e in events if e["type"] == "step"]

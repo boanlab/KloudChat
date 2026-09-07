@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     tool_timeout_sec: float = 300.0
     # Model↔tool round trips per turn.
     max_tool_hops: int = 8
+    #: Seconds a streaming model call may go without a chunk before it is given up.
+    chat_stall_sec: int = 180
 
     # ── files ──────────────────────────────────────────────────────────
     file_storage_dir: str = "/srv/data/files"

@@ -366,7 +366,7 @@ _TIME_SENSITIVE = re.compile(
     r"시세|환율|주가|가격|얼마|출시|발표|일정|언제|몇\s*시|버전|업데이트|근황|현황|동향|"
     r"통계|순위|20[2-9]\d년|"
     # What changed in a named release, and bibliography — both go stale in memory.
-    r"바뀐|바뀌|달라진|새로\s*생긴|없어졌|사라졌|폐지|"
+    r"바뀐|바뀌|달라진|새로\s*생긴|없어졌|사라졌|폐지|아직|여전히|요즘도|"
     r"arxiv|doi\b|서지|저자|"
     # A product or standard with a version number: Python 3.14, React 19, GPT-5.
     r"\b[A-Za-z][A-Za-z+#.-]{1,20}[ -]?\d{1,3}(?:\.\d+)?\b|"

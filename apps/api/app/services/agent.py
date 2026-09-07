@@ -35,7 +35,11 @@ async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncC
             "Authorization": f"Bearer {api_key}",
             **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
         },
-        timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+        # `read` is the gap between chunks: a stream that stops sending is given up
+        # long before the whole-turn budget runs out.
+        timeout=httpx.Timeout(
+            settings.chat_timeout_sec, connect=10.0, read=settings.chat_stall_sec
+        ),
     )
 
 
@@ -177,6 +181,10 @@ async def _stream_once(
                         if run:
                             acc.runaway = run
                             break
+                    elif acc.calls and _arguments_runaway(acc.calls):
+                        # A tool call whose arguments never end: same treatment.
+                        acc.looped = True
+                        break
             finally:
                 await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
@@ -209,6 +217,23 @@ def _repeats(earlier: str, later: str) -> bool:
 
 #: Seconds to wait before retrying a 429, one per retry.
 _RETRY_AFTER = (5.0, 15.0)
+
+
+#: Tool-call arguments longer than this are a decoder that never closes the
+#: JSON; a document body handed to `create_artifact` stays well under it.
+_ARGS_LIMIT = 60_000
+
+
+def _arguments_runaway(calls: dict[int, dict[str, Any]]) -> bool:
+    """A streamed tool call whose arguments repeat, run on one character, or
+    outgrow any real payload — invisible to the text checks, so checked here."""
+    for call in calls.values():
+        arguments = call.get("arguments") or ""
+        if len(arguments) > _ARGS_LIMIT:
+            return True
+        if len(arguments) >= 640 and (_is_looping([arguments]) or _runaway([arguments])):
+            return True
+    return False
 
 
 def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:
