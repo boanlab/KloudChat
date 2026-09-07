@@ -57,7 +57,7 @@ The gateway derives these paths:
 <BACKEND_BASE_URL>/tools/exec       code execution
 <BACKEND_BASE_URL>/tools/research   deep research (MCP)
 <BACKEND_BASE_URL>/tools/stt        speech-to-text
-<BACKEND_BASE_URL>/tools/index      retrieval index for agent knowledge
+<BACKEND_BASE_URL>/tools/index      retrieval index for agent knowledge and chat uploads
 ```
 
 A feature with no address drops out of the tool list. It does not break

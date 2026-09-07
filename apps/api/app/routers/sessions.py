@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlmodel import col, delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -88,6 +88,7 @@ from app.services import (
     governance,
     grounding,
     imagegen,
+    index_client,
     lint,
     revise,
     richtext,
@@ -154,6 +155,42 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "create_chart",
     }
 )
+
+
+async def _knowledge_shelf(
+    db: AsyncSession, user: User, session: ChatSession, agent: WorkspaceAgent | None
+) -> tuple[list[tuple[str, str, str | None]], str]:
+    """Documents `search_knowledge` can look through this turn, and their index collection.
+
+    An agent's knowledge and the files uploaded into this conversation, whole text
+    because the tool runs inside the stream with no DB session. The collection is
+    the agent's when there is one — the tool searches one — else the conversation's.
+    """
+    rows = (
+        await db.exec(
+            select(StoredFile)
+            .where(
+                StoredFile.user_id == user.id,
+                or_(
+                    StoredFile.session_id == session.id,
+                    StoredFile.agent_id == (session.agent_id or ""),
+                ),
+            )
+            .order_by(col(StoredFile.created_at))
+        )
+    ).all()
+    shelf = [
+        (row.name, row.text, row.source_url)
+        for row in rows
+        if row.text
+        and (
+            (row.agent_id and row.agent_id == session.agent_id)
+            or (row.session_id == session.id and row.project_id is None and row.agent_id is None)
+        )
+    ]
+    if session.agent_id:
+        return shelf, (agent.index_key or "") if agent else ""
+    return shelf, session.index_key or ""
 
 
 def _strict_local_tools(tools: list[Tool]) -> list[Tool]:
@@ -940,6 +977,7 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
         _personal_context_step(workspace),
         _memory_context_step(workspace),
         _file_context_step("context-attachments", "첨부", workspace.attachments),
+        _file_context_step("context-earlier", "이전 첨부", workspace.carried),
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
     ]
     return [step for step in steps if step]
@@ -1281,6 +1319,8 @@ async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     # Job rows reference the session without cascade.
     await db.exec(delete(Job).where(Job.session_id == session.id))
     await _delete_artifacts_of(db, [session.id])
+    if session.index_key:
+        await index_client.forget_collection(collection=session.index_key)
     await db.delete(session)
     await db.commit()
 
@@ -1889,6 +1929,9 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
     artifacts_deleted = await _delete_artifacts_of(db, ids)
+    for row in rows:
+        if row.index_key:
+            await index_client.forget_collection(collection=row.index_key)
 
     await db.exec(delete(ChatSession).where(col(ChatSession.id).in_(ids)))
     await db.commit()
@@ -2290,25 +2333,8 @@ async def send_message(
     shelf_key = ""
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
-    if (
-        session.kind is SessionKind.chat
-        and requested_model.get("supportsTools")
-        and session.agent_id
-    ):
-        shelf_key = (agent_row.index_key or "") if agent_row else ""
-        # Whole shelf text: the tool runs inside the stream, with no DB session.
-        shelf = [
-            (row.name, row.text, row.source_url)
-            for row in (
-                await db.exec(
-                    select(StoredFile).where(
-                        StoredFile.agent_id == session.agent_id,
-                        StoredFile.user_id == user.id,
-                    )
-                )
-            ).all()
-            if row.text
-        ]
+    if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+        shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
 
     requested_is_strict = _strict_model(requested_model)
     strict_candidate_available = (
@@ -2378,6 +2404,7 @@ async def send_message(
             starting_template_id=payload.starting_template_id,
             # Empty focus takes the head of the file.
             focus=focus or (content if session.kind is not SessionKind.chat else ""),
+            question=content,
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}

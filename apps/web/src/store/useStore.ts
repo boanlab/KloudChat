@@ -2481,7 +2481,12 @@ function retold(step: Step): Partial<Step> {
     }
   }
   if (step.files) {
-    const subject = step.id === 'context-knowledge' ? tr('프로젝트 지식') : tr('첨부 파일')
+    const subject =
+      step.id === 'context-knowledge'
+        ? tr('프로젝트 지식')
+        : step.id === 'context-earlier'
+          ? tr('이전 턴 첨부')
+          : tr('첨부 파일')
     const short = step.files.filter((file) => file.state !== 'included')
     const cut = short.filter((file) => file.state === 'truncated').length
     const dropped = short.length - cut

@@ -89,6 +89,7 @@ const EN: Record<string, string> = {
   '이미 LiteLLM 으로 여러 제공자를 오가는 코드라면 이쪽이 자연스럽습니다.':
     'If your code already moves across providers with LiteLLM, this is the natural fit.',
   '바로 확인': 'Quick check',
+  '이전 턴 첨부': 'Earlier attachments',
   '키와 주소가 맞는지 코드를 쓰기 전에 한 줄로 확인합니다.': 'One line to confirm the key and address before writing code.',
   '임베딩도 같은 주소로 받습니다 — client.embeddings.create(model="local/bge-m3", input=[...]).':
     'Embeddings ride the same address — client.embeddings.create(model="local/bge-m3", input=[...]).',

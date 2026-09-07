@@ -86,6 +86,9 @@ class ChatSession(SQLModel, table=True):
     #: Rendering template id. Not a foreign key: the catalogue ships in the image,
     #: and an unknown id must degrade to "no template".
     render_template_id: str | None = Field(default=None)
+    #: Retrieval-index collection for files uploaded into this conversation, minted on
+    #: the first indexed upload. Unguessable on purpose: the session id is in URLs.
+    index_key: str | None = Field(default=None)
     #: A generation paused to ask something: its request, attachments, and the
     #: questions or outline it is waiting on. At most one per session.
     pending: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
