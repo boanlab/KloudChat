@@ -50,6 +50,9 @@ class _Accumulator:
         self.actual_model: str | None = None
         #: Stream cut off by `_is_looping`.
         self.looped = False
+        #: Stream cut off by `_runaway`: the run of one repeated character
+        #: that was already emitted and has to be taken back.
+        self.runaway: str | None = None
 
     def add_chunk(self, chunk: dict[str, Any]) -> str | None:
         """Returns newly emitted visible text, if any."""
@@ -170,6 +173,10 @@ async def _stream_once(
                             # The stream is closed here; `run_turn` adds a note.
                             acc.looped = True
                             break
+                        run = _runaway(acc.content)
+                        if run:
+                            acc.runaway = run
+                            break
             finally:
                 await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
@@ -210,6 +217,52 @@ def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool
     return len(needle) >= window // 2 and text.count(needle) >= times
 
 
+#: One letter or digit repeated this often in a row is a stuck decoder — a
+#: URL whose id trails off into 「000000…」 — never text a person meant.
+_RUN_LIMIT = 40
+_RUN_RE = re.compile(rf"([^\W_])\1{{{_RUN_LIMIT - 1},}}$")
+
+
+def _runaway(pieces: list[str]) -> str | None:
+    """The run of one repeated character the recent text ends in, once it is too long."""
+    match = _RUN_RE.search("".join(pieces[-200:]))
+    return match.group(0) if match else None
+
+
+def _repair_runaway(answer: str, run: str, seen_urls: set[str]) -> tuple[str, str, str]:
+    """Takes the `run` off the end of `answer`: returns the prefix to keep, the
+    text to add after it, and what happened — `completed` (the run broke a
+    URL exactly one tool result knows, which is finished, closing bracket
+    included), `dropped` (a URL nothing knows is removed whole, a link's text
+    kept) or `cut` (the run was not in a URL)."""
+    if not answer.endswith(run):
+        return answer, "", "cut"
+    answer = answer[: -len(run)]
+    match = re.search(r"https?://\S*$", answer)
+    if not match:
+        return answer, "", "cut"
+    prefix, char = match.group(0), run[0]
+    linked = answer[max(match.start() - 2, 0) : match.start()] == "]("
+    # Some of the repeated character may be the model's own: try the prefix
+    # as written, then with its trailing copies of that character trimmed.
+    cut = len(prefix)
+    while cut > 0:
+        head = prefix[:cut]
+        known = [u for u in seen_urls if u.startswith(head) and u != head]
+        if len(known) == 1:
+            tail = known[0][cut:] + (")" if linked else "")
+            return answer[: match.start() + cut], tail, "completed"
+        if known or prefix[cut - 1] != char:
+            break
+        cut -= 1
+    if linked:
+        # 「[제목](https://…」 → 「제목」
+        opened = answer.rfind("[", 0, match.start() - 2)
+        if opened >= 0:
+            return answer[:opened], answer[opened + 1 : match.start() - 2], "dropped"
+    return answer[: match.start()], "", "dropped"
+
+
 _URL = re.compile(r"https?://[^\s)\]>\"'」』,]+")
 
 
@@ -218,12 +271,119 @@ def _urls_in(text: str) -> list[str]:
     return [u.rstrip(".,;:") for u in _URL.findall(text or "")]
 
 
+#: A numbered entry in a tool result: 「[3] 제목」 with the URL on the next line.
+_NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
+
+
+def _number_sources(
+    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None
+) -> str:
+    """Renumbers the `[n]` entries of a tool result so the numbers run across
+    the whole turn, registering each URL in `sources`; a page fetched by URL
+    gets a number of its own at the top. The model cites these numbers."""
+    lines = content.split("\n")
+    for i, line in enumerate(lines[:-1]):
+        match = _NUMBERED.match(line)
+        if not match:
+            continue
+        url = lines[i + 1].strip().rstrip(".,;:")
+        if _URL.fullmatch(url):
+            lines[i] = f"[{_source_number(url, sources)}] {match.group(2)}"
+            if titles is not None:
+                titles.setdefault(url, match.group(2).strip())
+    content = "\n".join(lines)
+    if call["name"] == "fetch_url" and not content.startswith("오류:"):
+        try:
+            url = str(json.loads(call["arguments"] or "{}").get("url") or "").strip()
+        except (json.JSONDecodeError, AttributeError):
+            url = ""
+        if _URL.fullmatch(url):
+            content = f"[{_source_number(url, sources)}] {url}\n\n{content}"
+    return content
+
+
+def _source_number(url: str, sources: list[str]) -> int:
+    if url not in sources:
+        sources.append(url)
+    return sources.index(url) + 1
+
+
+def _cite_titles(answer: str, sources: list[str], titles: dict[str, str]) -> str:
+    """When the model cited nothing, a source whose title it copied — as a
+    heading, a bold line, a list item — gets its `[n]` after that title. A
+    code device for models that ignore the citation rule."""
+    if _CITATION.search(answer):
+        return answer
+    for n, url in enumerate(sources, 1):
+        title = re.split(r"\s+[-|·–—]\s+", titles.get(url, ""), maxsplit=1)[0].strip()
+        if len(title) < 10:
+            continue
+        loose = r"\s*".join(re.escape(ch) for ch in title if not ch.isspace())
+        match = re.search(loose, answer, re.IGNORECASE)
+        if not match:
+            continue
+        at = match.end()
+        if answer.startswith("**", at):
+            at += 2
+        answer = f"{answer[:at]} [{n}]{answer[at:]}"
+    return answer
+
+
+#: 「[1]」「[2, 5]」「[3-4]」 not already part of a markdown link.
+_CITATION = re.compile(r"(?<!\[)\[(\d{1,2}(?:\s*[,，\-–]\s*\d{1,2})*)\](?!\()")
+
+
+def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
+    """Turns the model's `[n]` citations into links to the numbered sources
+    (code blocks untouched); returns the answer and the numbers it cited."""
+    cited: list[int] = []
+
+    def numbers(spec: str) -> list[int]:
+        found: list[int] = []
+        for part in re.split(r"\s*[,，]\s*", spec):
+            if re.fullmatch(r"\d+\s*[\-–]\s*\d+", part):
+                lo, hi = (int(x) for x in re.split(r"\s*[\-–]\s*", part))
+                found.extend(range(lo, hi + 1) if lo <= hi <= lo + 9 else [])
+            else:
+                found.append(int(part))
+        return found
+
+    def link(match: re.Match[str]) -> str:
+        wanted = numbers(match.group(1))
+        if not wanted or any(not 1 <= n <= len(sources) for n in wanted):
+            return match.group(0)
+        for n in wanted:
+            if n not in cited:
+                cited.append(n)
+        return "".join(f"[[{n}]]({sources[n - 1]})" for n in wanted)
+
+    pieces = answer.split("```")
+    for i in range(0, len(pieces), 2):
+        pieces[i] = _CITATION.sub(link, pieces[i])
+    return "```".join(pieces), sorted(cited)
+
+
+#: A path that is a front page under another name.
+_INDEX_LEAVES = {
+    "index",
+    "index.html",
+    "index.htm",
+    "index.do",
+    "index.php",
+    "index.jsp",
+    "main.do",
+}
+
+
 def _looks_like_a_source(url: str) -> bool:
     """A URL with a path, as opposed to a home page."""
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    return bool(parsed.netloc) and parsed.path not in ("", "/")
+    if not parsed.netloc or parsed.path in ("", "/"):
+        return False
+    leaf = parsed.path.rstrip("/").rsplit("/", 1)[-1].lower()
+    return leaf not in _INDEX_LEAVES or bool(parsed.query)
 
 
 def _is_homepage(url: str) -> bool:
@@ -355,6 +515,9 @@ async def run_turn(
     closing = False
     #: Every URL a tool returned this turn.
     seen_urls: set[str] = set()
+    #: URLs the tools returned, in the order the model saw them numbered.
+    sources: list[str] = []
+    source_titles: dict[str, str] = {}
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
@@ -421,6 +584,31 @@ async def run_turn(
             )
             answer_text.append(note)
             yield {"type": "delta", "text": note}
+            break
+        if acc.runaway:
+            # One character repeating without end: take the run back, and
+            # when it ate a URL the tools saw, finish that URL properly.
+            before = "".join(answer_text)
+            kept, tail, outcome = _repair_runaway(before, acc.runaway, seen_urls)
+            yield {"type": "retract", "text": before[len(kept) :]}
+            if tail:
+                yield {"type": "delta", "text": tail}
+            note = {
+                "completed": (
+                    "\n\n_주소가 같은 글자를 되풀이해 여기서 멈추고, "
+                    "검색 결과에 있던 주소로 바로잡았습니다._"
+                ),
+                "dropped": (
+                    "\n\n_주소가 같은 글자를 되풀이해 여기서 멈췄고, 검색 결과에 없는 "
+                    "그 주소는 걷어 냈습니다._"
+                ),
+                "cut": (
+                    "\n\n_같은 글자가 되풀이되어 여기서 멈췄습니다. "
+                    "다시 시도하거나 다른 모델을 골라 보세요._"
+                ),
+            }[outcome]
+            yield {"type": "delta", "text": note}
+            answer_text[:] = [kept + tail + note]
             break
         if closing:
             break
@@ -552,6 +740,7 @@ async def run_turn(
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
             }
+            result.content = _number_sources(result.content, sources, call, source_titles)
             conversation.append(
                 {
                     "role": "tool",
@@ -590,6 +779,12 @@ async def run_turn(
     answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
     for paragraph in duplicate_paragraphs:
         yield {"type": "retract", "text": paragraph}
+    linked, cited = _link_citations(_cite_titles(answer, sources, source_titles), sources)
+    if linked != answer:
+        # The citations sit mid-text, so the answer is re-sent whole.
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": linked}
+        answer = linked
     answer_text[:] = [answer]
     if searches and empty_searches * 2 >= searches and answer.strip():
         note = (
@@ -602,11 +797,19 @@ async def run_turn(
         answer_text.append(note)
         yield {"type": "delta", "text": note}
     verified_in_answer = {u for u in _urls_in(answer) if u in seen_urls}
-    source_urls = sorted(
+    # The search hits themselves; URLs found inside page bodies (links, ads,
+    # language switches) only when the tools numbered nothing.
+    source_urls = [u for u in sources if _looks_like_a_source(u)] or sorted(
         (u for u in seen_urls if _looks_like_a_source(u)),
         key=_source_priority,
     )
-    if searches and source_urls and not verified_in_answer:
+    if cited:
+        appendix = "\n\n### 출처\n" + "\n".join(
+            f"- [{n}] [{_source_label(sources[n - 1])}]({sources[n - 1]})" for n in cited
+        )
+        answer_text.append(appendix)
+        yield {"type": "delta", "text": appendix}
+    elif searches and source_urls and not verified_in_answer:
         # Only URLs a tool returned are appended.
         appendix = "\n\n### 확인한 출처\n" + "\n".join(
             f"- [{_source_label(url)}]({url})" for url in source_urls[:5]

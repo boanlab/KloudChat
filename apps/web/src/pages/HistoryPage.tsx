@@ -112,7 +112,7 @@ export function HistoryPage() {
       </p>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 max-sm:basis-full">
           <Search size={14} className="absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
           <Input
             aria-label={t('대화 검색')}

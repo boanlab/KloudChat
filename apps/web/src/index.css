@@ -139,6 +139,14 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* On a phone the whole type scale steps up with the root: the desktop's compact
+   13px base reads as 17px, menus and captions with it, and running text as 20px. */
+@media (max-width: 40rem) {
+  html {
+    font-size: 131.25%;
+  }
+}
+
 html,
 body,
 #root {
