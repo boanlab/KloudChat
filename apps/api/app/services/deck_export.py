@@ -592,7 +592,8 @@ def _pptx_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min((60 if compact else 100) * _K, room - 10)
+        # Compact cards take what their two lines need and leave the foot of the slide clear.
+        height = min((42 if compact else 100) * _K, room - (24 if compact else 10))
         name_pt = 14.0 if compact else _u("cardName")
         text_pt = 12.0 if compact else _u("cardText")
         for index, (name, text) in enumerate(pairs):
@@ -1843,7 +1844,8 @@ def _pdf_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min((60 if compact else 100) * _K, room - 10)
+        # Compact cards take what their two lines need and leave the foot of the slide clear.
+        height = min((42 if compact else 100) * _K, room - (24 if compact else 10))
         card_top = top - 10
         name_size = S(14.0 if compact else _u("cardName"))
         text_size = S(12.0 if compact else _u("cardText"))

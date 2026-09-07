@@ -1147,7 +1147,7 @@ export function SlideView({
                   />
                 ) : null}
                 {figured && !figureAlone && slide.layout === 'cards' && pairs.length > 0 && (
-                  <div className="flex min-h-0 flex-1" style={{ gap: px(8) }}>
+                  <div className="flex min-h-0 shrink-0 overflow-hidden" style={{ gap: px(8), maxHeight: '40%' }}>
                     {pairs.map(([name, text], i) => (
                       <div
                         key={i}
@@ -1161,7 +1161,7 @@ export function SlideView({
                   </div>
                 )}
                 {figured && !figureAlone && slide.layout !== 'cards' && (
-                  <ul className="m-0 flex min-h-0 flex-1 list-none flex-col p-0" style={{ gap: px(2) }}>
+                  <ul className="m-0 flex min-h-0 shrink-0 list-none flex-col overflow-hidden p-0" style={{ gap: px(2), maxHeight: '40%' }}>
                     {(slide.bullets ?? []).map((line, i) => (
                       <li key={i} className="flex" style={{ gap: px(6), fontSize: pt(14), lineHeight: 1.45 }}>
                         <span style={{ color: accent }}>•</span>

@@ -314,7 +314,8 @@ export interface Frame {
 }
 export const FRAMES: Record<'slide' | 'page', Frame> = {
   // A band under the slide title, with the words beneath it.
-  slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 2.2 },
+  // Small drawings grow to fill the band: a four-node flow is read from the back of a room.
+  slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 3 },
   page: { width: 1400, minAspect: 4 / 3, maxAspect: 8, upscale: 1.6 },
 }
 
