@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.user import AuditEvent, User, UserRole, UserStatus
 from app.services import geoip
@@ -33,6 +33,15 @@ class LoginRequest(Wire):
     password: str = Field(max_length=200)
 
 
+def _model_picks(value: dict[str, str], keys: set[str]) -> dict[str, str]:
+    """`{surface: model id}` with only known surfaces; an empty id forgets the pick."""
+    unknown = set(value) - keys
+    if unknown:
+        raise ValueError(f"unknown surface: {', '.join(sorted(unknown))}")
+    picks = {k: str(v or "").strip()[:200] for k, v in value.items()}
+    return {k: v for k, v in picks.items() if v}
+
+
 class Preferences(Wire):
     """Settings-screen switches. Every field has a default for accounts with nothing stored."""
 
@@ -51,6 +60,21 @@ class Preferences(Wire):
     #: and how answers should be written. Free text.
     about_me: str = Field(default="", max_length=1500)
     response_style: str = Field(default="", max_length=1500)
+    #: The model picked on each surface, and per a/v mode. Kept with the account so
+    #: a second browser opens on the same one instead of the instance default. Ids
+    #: only: one no longer served falls back on screen, as a browser-kept pick does.
+    model_by_kind: dict[str, str] = Field(default_factory=dict)
+    av_model_by_mode: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("model_by_kind")
+    @classmethod
+    def _surfaces_only(cls, value: dict[str, str]) -> dict[str, str]:
+        return _model_picks(value, {"chat", "report", "slides", "image", "av"})
+
+    @field_validator("av_model_by_mode")
+    @classmethod
+    def _modes_only(cls, value: dict[str, str]) -> dict[str, str]:
+        return _model_picks(value, {"audio", "video"})
 
     @classmethod
     def of(cls, user: User) -> Preferences:
