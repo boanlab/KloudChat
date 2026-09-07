@@ -622,10 +622,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       html, body { margin: 0; padding: 0; background: white; }
       h1 { string-set: document-title content(text); }
       ${css}
-      /* The cover is one sheet exactly: padding, content and the margin below add up to the
-         page box (A4 less the margins). Pixels rather than the seed's \`--page-h\` maths, which
-         Paged.js resolves against the viewport. */
-      .cover { min-height: ${Math.round(pageBox * 0.68 - 90)}px !important; padding-top: ${Math.round(pageBox * 0.32)}px !important; padding-bottom: 35px !important; margin-bottom: 54px !important; box-sizing: content-box !important; break-after: page; }
+      /* The cover is one page box exactly (A4 less the margins), padding included, so the
+         first section starts on page two whether or not Paged.js honours the break. The
+         seed's print rule (232mm, title at 74mm) is what it would otherwise use. */
+      .cover { box-sizing: border-box !important; min-height: ${Math.round(pageBox)}px !important; max-height: ${Math.round(pageBox)}px !important; margin: 0 !important; overflow: hidden; break-after: page; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
