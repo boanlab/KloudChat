@@ -2801,24 +2801,39 @@ async def send_message(
 
     # See `revising` above.
     if revising and session.kind in (SessionKind.report, SessionKind.slides):
-        return StreamingResponse(
-            _survive_disconnect(
-                _revise_document(
-                    user_id=user.id,
-                    api_key=api_key,
-                    session_id=session.id,
-                    model=model,
-                    instruction=content,
-                    routing=document_routing,
-                )
-            ),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
+        revision, skeleton = await _revision_plan(
+            db, session, instruction=content, model=model, api_key=api_key
         )
+        if revision is not None and revision.restructures:
+            # The skeleton itself changes — more slides, a merged section, a new
+            # order. That is planned again from the current one, through the same
+            # outline-and-confirm pass a new document gets, rather than patched
+            # part by part. The judge's note states the target shape in absolute
+            # terms, so the planner reads 「9장」 where the person typed 「3장 더」.
+            content = grounding.merge_answers(
+                await _original_request(db, session) or content, {"_note": revision.note}
+            )
+            trusted_context = [*trusted_context, revise.outline_block(skeleton)]
+        else:
+            return StreamingResponse(
+                _survive_disconnect(
+                    _revise_document(
+                        user_id=user.id,
+                        api_key=api_key,
+                        session_id=session.id,
+                        model=model,
+                        instruction=content,
+                        routing=document_routing,
+                        plan=revision,
+                    )
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
 
     if session.kind is SessionKind.report:
         return StreamingResponse(
@@ -4555,6 +4570,56 @@ async def _run_deck(
     yield chat_service.sse({"type": "done"})
 
 
+def _skeleton(artifact: Artifact) -> list[str]:
+    """The document's part names in order: slide titles, or section headings."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.deck:
+        return [str(p.get("title") or "") for p in data.get("slides") or []]
+    return [str(p.get("heading") or "") for p in data.get("sections") or []]
+
+
+async def _revision_plan(
+    db: AsyncSession,
+    session: ChatSession,
+    *,
+    instruction: str,
+    model: dict,
+    api_key: str,
+) -> tuple[revise.Plan | None, list[str]]:
+    """Where an instruction under the document lands, and the document's skeleton.
+
+    `(None, [])` when there is no document to read it against; `_revise_document`
+    then reports that itself.
+    """
+    artifact = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
+    if artifact is None or not artifact.data:
+        return None, []
+    skeleton = _skeleton(artifact)
+    if not skeleton:
+        return None, []
+    plan = await revise.plan(
+        message=instruction,
+        title=artifact.title or "",
+        parts=skeleton,
+        model=model["id"],
+        api_key=api_key,
+    )
+    return plan, skeleton
+
+
+async def _original_request(db: AsyncSession, session: ChatSession) -> str:
+    """What the document was first asked for: the conversation's first user message."""
+    first = (
+        await db.exec(
+            select(Message)
+            .where(Message.session_id == session.id, Message.role == Role.user)
+            .order_by(col(Message.created_at))
+            .limit(1)
+        )
+    ).first()
+    return str(first.content or "").strip() if first else ""
+
+
 async def _revise_document(
     *,
     user_id: str,
@@ -4563,11 +4628,13 @@ async def _revise_document(
     model: dict,
     instruction: str,
     routing: dict[str, Any] | None = None,
+    plan: revise.Plan | None = None,
 ) -> AsyncIterator[str]:
     """Applies one instruction to the document on screen.
 
-    `services.revise` says which parts it lands on; those are rewritten with the
-    surface's own machinery. Failures are reported, never turned into a regeneration.
+    `services.revise` says which parts it lands on (`plan`, when the caller already
+    asked); those are rewritten with the surface's own machinery. Failures are
+    reported, never turned into a regeneration.
     """
     usage = {"inputTokens": 0, "outputTokens": 0}
     if routing:
@@ -4631,7 +4698,7 @@ async def _revise_document(
     yield chat_service.sse(
         {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
     )
-    plan = await revise.plan(
+    plan = plan or await revise.plan(
         message=instruction, title=title, parts=names, model=model["id"], api_key=api_key
     )
     usage["inputTokens"] += plan.usage["inputTokens"]
