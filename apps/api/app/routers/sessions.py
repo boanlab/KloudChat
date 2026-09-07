@@ -107,7 +107,13 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
-from app.services.context import build_messages, requests_web_search, with_pictures
+from app.services.context import (
+    build_messages,
+    search_plan,
+    search_query,
+    weather_location,
+    with_pictures,
+)
 from app.services.credits import charge_for_tokens, has_headroom, settle
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
@@ -2354,9 +2360,11 @@ async def send_message(
             )
         )
     )
-    # A sentence can request search as the toggle does; resolved before tools are built.
-    explicit_web_search = requests_web_search(content)
-    effective_web_search = payload.web_search or explicit_web_search
+    # What the toggle (on / off / auto) and the sentence mean for this turn: whether the
+    # web tools are offered, and the tool the first hop must call. Resolved before
+    # tools are built.
+    effective_web_search, forced_tool = search_plan(payload.web_search, content)
+    web_search_auto = payload.web_search == "auto" and forced_tool is None
     # An agent whose allowlist leaves web search out chose that on purpose. The toggle
     # is moot for it, and a 「웹 검색 없이 답합니다」 preamble on every answer would
     # only be noise about a tool the agent was never meant to have.
@@ -2582,6 +2590,7 @@ async def send_message(
         web_search=effective_web_search,
         # Whether a search tool survived, so the answer does not read as searched.
         web_search_available=any(t.name == "web_search" for t in tools),
+        web_search_auto=web_search_auto,
         extra=trusted_context,
         untrusted_context=untrusted_context,
     )
@@ -2591,7 +2600,7 @@ async def send_message(
     if auto_turn and not auto_preflight_findings:
         unsupported = bool(
             payload.attachments
-            or effective_web_search
+            or forced_tool
             or payload.activated_skill_ids
             or payload.starting_template_id
             or session.agent_id
@@ -2920,6 +2929,14 @@ async def send_message(
             },
         )
 
+    tool_names = {t.name for t in tools}
+    preset_call: tuple[str, dict[str, Any]] | None = None
+    if forced_tool == "web_search" and "web_search" in tool_names:
+        preset_call = ("web_search", {"query": search_query(content)})
+    elif forced_tool == "weather" and "weather" in tool_names:
+        place = weather_location(content)
+        if place:
+            preset_call = ("weather", {"location": place})
     return StreamingResponse(
         _survive_disconnect(
             _run_turn(
@@ -2959,10 +2976,13 @@ async def send_message(
                 protect_enrichment=policy.pii_masking or policy.external_data_guard,
                 privacy_audit_id=privacy_audit_id,
                 routing_audit_id=routing_audit_id,
-                # The toggle forces the first hop only.
+                # The toggle's search is the server's own first call (a named
+                # `tool_choice` is not reliably obeyed); a weather question whose
+                # place the words do not name is left to the model, forced.
+                preset_call=preset_call,
                 force_tool=(
-                    "web_search"
-                    if effective_web_search and any(t.name == "web_search" for t in tools)
+                    forced_tool
+                    if forced_tool and preset_call is None and forced_tool in tool_names
                     else None
                 ),
                 preflight_tool=preflight_tool,
@@ -3134,9 +3154,7 @@ async def _store_notes(
         )
 
 
-def _ncs_preflight_tool(
-    skill_catalog_keys: set[str | None], tools: list[Tool]
-) -> str | None:
+def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) -> str | None:
     if "ncs-arithmetic" not in skill_catalog_keys:
         return None
     name = "check_ncs_answer"
@@ -3175,6 +3193,8 @@ async def _run_turn(
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
     preflight_tool: str | None = None,
+    #: The server's own first call. See `agent.run_turn`.
+    preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -3252,6 +3272,7 @@ async def _run_turn(
                 redact_logging=mask_at_rest,
                 force_tool=force_tool,
                 **({"preflight_tool": preflight_tool} if preflight_tool else {}),
+                preset_call=preset_call,
             ),
             stopping,
         ):

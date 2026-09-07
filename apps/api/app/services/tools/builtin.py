@@ -256,6 +256,153 @@ FETCH_URL = Tool(
     title="문서 읽기",
 )
 
+#: Geocoding (OpenStreetMap Nominatim reads Korean place names; Open-Meteo's own
+#: geocoder does not) and the forecast itself. Both are keyless public services.
+_GEOCODE_URL = "https://nominatim.openstreetmap.org/search"
+_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+_WEATHER_AGENT = "KloudChat/1.0 (weather tool)"
+_WMO = {
+    0: "맑음",
+    1: "대체로 맑음",
+    2: "구름 조금",
+    3: "흐림",
+    45: "안개",
+    48: "안개",
+    51: "약한 이슬비",
+    53: "이슬비",
+    55: "강한 이슬비",
+    56: "어는 이슬비",
+    57: "어는 이슬비",
+    61: "약한 비",
+    63: "비",
+    65: "강한 비",
+    66: "어는 비",
+    67: "어는 비",
+    71: "약한 눈",
+    73: "눈",
+    75: "강한 눈",
+    77: "싸락눈",
+    80: "약한 소나기",
+    81: "소나기",
+    82: "강한 소나기",
+    85: "소낙눈",
+    86: "강한 소낙눈",
+    95: "뇌우",
+    96: "우박 동반 뇌우",
+    99: "강한 우박 동반 뇌우",
+}
+_DAY_NAMES = ("오늘", "내일", "모레", "글피")
+
+
+def _sky(code: Any) -> str:
+    try:
+        return _WMO.get(int(code), "확인 불가")
+    except (TypeError, ValueError):
+        return "확인 불가"
+
+
+def format_weather(place: str, data: dict[str, Any]) -> str:
+    """The forecast as the model reads it: a numbered source line, the current
+    conditions, then one line per day."""
+    current = data.get("current") or {}
+    daily = data.get("daily") or {}
+    lat, lon = data.get("latitude"), data.get("longitude")
+    lines = [
+        f"[1] Open-Meteo 날씨 예보 · {place}",
+        f"https://open-meteo.com/en/docs#latitude={lat}&longitude={lon}",
+        f"기준 시각: {current.get('time', '?')} ({data.get('timezone', '')})",
+        (
+            f"현재: {current.get('temperature_2m')}°C"
+            f"(체감 {current.get('apparent_temperature')}°C), {_sky(current.get('weather_code'))}, "
+            f"습도 {current.get('relative_humidity_2m')}%, "
+            f"바람 {current.get('wind_speed_10m')} km/h, "
+            f"강수 {current.get('precipitation')} mm"
+        ),
+    ]
+    for i, day in enumerate(daily.get("time") or []):
+        name = _DAY_NAMES[i] if i < len(_DAY_NAMES) else day
+
+        def at(key: str, i: int = i) -> Any:
+            values = daily.get(key) or []
+            return values[i] if i < len(values) else "?"
+
+        lines.append(
+            f"{name}({day}): {_sky(at('weather_code'))}, 최고 {at('temperature_2m_max')}°C / "
+            f"최저 {at('temperature_2m_min')}°C, 강수 확률 {at('precipitation_probability_max')}%"
+        )
+    return "\n".join(lines)
+
+
+async def weather(args: dict[str, Any]) -> ToolResult:
+    place = str(args.get("location") or "").strip()
+    if not place:
+        return ToolResult(content="오류: location 이 비었습니다.", failed=True)
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            geo = await client.get(
+                _GEOCODE_URL,
+                params={"q": place, "format": "jsonv2", "limit": 1, "accept-language": "ko"},
+                headers={"User-Agent": _WEATHER_AGENT},
+            )
+            geo.raise_for_status()
+            hits = geo.json()
+            if not hits:
+                return ToolResult(
+                    content=(
+                        f"오류: '{place}' 의 위치를 찾지 못했습니다. "
+                        "시·구 이름으로 다시 시도하세요."
+                    ),
+                    failed=True,
+                )
+            hit = hits[0]
+            forecast = await client.get(
+                _FORECAST_URL,
+                params={
+                    "latitude": float(hit["lat"]),
+                    "longitude": float(hit["lon"]),
+                    "current": (
+                        "temperature_2m,apparent_temperature,relative_humidity_2m,"
+                        "precipitation,weather_code,wind_speed_10m"
+                    ),
+                    "daily": (
+                        "weather_code,temperature_2m_max,temperature_2m_min,"
+                        "precipitation_probability_max"
+                    ),
+                    "timezone": "auto",
+                    "forecast_days": 4,
+                },
+            )
+            forecast.raise_for_status()
+            data = forecast.json()
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        return ToolResult(
+            content=f"오류: 날씨를 가져오지 못했습니다 ({exc.__class__.__name__}).", failed=True
+        )
+    name = str(hit.get("display_name") or place)
+    return ToolResult(content=format_weather(name, data), detail=name.split(",")[0].strip())
+
+
+WEATHER = Tool(
+    name="weather",
+    description=(
+        "특정 지역의 현재 날씨와 3일 예보를 가져옵니다. 날씨·기온·비나 눈 소식·우산 여부를 "
+        "물으면 web_search 대신 이 도구를 쓰세요."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "location": {
+                "type": "string",
+                "description": "지역 이름. 예: 분당, 성남시, 서울 강남구, Tokyo",
+            }
+        },
+        "required": ["location"],
+    },
+    run=weather,
+    label="날씨 확인 중",
+    title="날씨",
+)
+
 EXECUTE_CODE = Tool(
     name="execute_code",
     description=(
@@ -720,6 +867,9 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
         if web_search_enabled and backends.search:
             # Search without fetch yields snippets only.
             tools.insert(0, WEB_SEARCH)
+    if web_search_enabled:
+        # External like a fetch, so it follows the same toggle (and strict-local drops it).
+        tools.append(WEATHER)
     if backends.exec:
         tools.append(EXECUTE_CODE)
     tools.append(CREATE_ARTIFACT)

@@ -188,10 +188,24 @@ Artifacts outlive conversations: clearing history detaches them
 Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
 Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
-`fetch_url` (Crawl4AI), `execute_code` (sandboxed), `create_artifact`,
+`fetch_url` (Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo
+forecast, keyless), `execute_code` (sandboxed), `create_artifact`,
 `create_chart`, `share_note`, and `search_knowledge` over an agent's own
 documents and the files uploaded into the conversation (§8). Tools from
 installed MCP connectors are added to these.
+
+**The web-search toggle has three positions.** `context.search_plan` turns the
+toggle and the user's words into two facts: whether the web tools (`web_search`,
+`weather`) are offered this turn, and which tool the first hop must call. 「켬」
+offers them and forces a search every turn; 「끔」 offers nothing unless the
+words explicitly ask for research; 「자동」, the default, offers them and forces
+the first hop only when the words ask for research, for something that changes
+with time (news, prices, versions, schedules, a year), or for the weather —
+otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
+what to look up and what to answer outright. A strict-local route offers none of
+this, whatever the toggle says. Weather questions force the `weather` tool
+rather than a search, since a search engine returns encyclopaedia pages for
+「분당 날씨」.
 
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and

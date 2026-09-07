@@ -32,6 +32,9 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
  * no token and recovers via `auth.refresh()` — see `bootstrap()` in the store.
  */
 let accessToken: string | null = null
+/** The web-search toggle as sent: on, off, or left to the words. */
+export type WebSearchSetting = boolean | 'auto'
+
 export const setAccessToken = (t: string | null) => {
   accessToken = t
 }
@@ -1670,7 +1673,8 @@ export async function* streamSession(
     content: string
     /** File ids from `filesApi.upload` — the server reads their extracted text. */
     attachments?: string[]
-    webSearch?: boolean
+    /** `true` searches every turn, `false` never, `'auto'` when the words call for it. */
+    webSearch?: WebSearchSetting
     model?: string
     activatedSkillIds?: string[]
     /** A rendering template. Sticky on the session; `''` clears it. */

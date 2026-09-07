@@ -487,9 +487,16 @@ async def run_turn(
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
     #: A tool the first ordinary hop must call, after any successful preflight.
+    #: A named `tool_choice` is only a request — vLLM answers in prose about
+    #: half the time under a long system prompt — so a search the toggle
+    #: demands goes through `preset_call` instead.
     force_tool: str | None = None,
     #: Required, exclusive gate until it succeeds; all tool-hop prose stays private.
     preflight_tool: str | None = None,
+    #: `(tool name, arguments)` the server calls itself before the model is
+    #: asked anything; the model then starts with the result in hand. Not
+    #: used under a preflight gate, which must be the first call.
+    preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -565,21 +572,28 @@ async def run_turn(
             # Keep an explicit search toggle after, never ahead of, a successful gate.
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
-        async for kind, value in _stream_once(
-            model,
-            conversation,
-            hop_tools,
-            ctx.user_id,
-            ctx.api_key,
-            **stream_kwargs,
-        ):
-            if kind == "delta":
-                hop_text.append(value)
-                if not preflight_tool:
-                    answer_text.append(value)
-                    yield {"type": "delta", "text": value}
-            else:
-                acc = value
+        if preset_call and hop == 0 and not preflight_tool:
+            # The first hop is the server's own call: no model request, the
+            # loop below runs the tool and hands its result to the model.
+            name, arguments = preset_call
+            acc = _Accumulator()
+            acc.calls[0] = {"id": "preset_0", "name": name, "arguments": json.dumps(arguments)}
+        else:
+            async for kind, value in _stream_once(
+                model,
+                conversation,
+                hop_tools,
+                ctx.user_id,
+                ctx.api_key,
+                **stream_kwargs,
+            ):
+                if kind == "delta":
+                    hop_text.append(value)
+                    if not preflight_tool:
+                        answer_text.append(value)
+                        yield {"type": "delta", "text": value}
+                else:
+                    acc = value
         assert acc is not None
 
         usage["inputTokens"] += acc.usage["inputTokens"]
