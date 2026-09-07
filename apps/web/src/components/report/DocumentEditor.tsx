@@ -578,6 +578,20 @@ const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
 /** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
 
+/**
+ * The editor's continuous sheet laid out like the printed page: A4 wide with the page margins
+ * as padding, the cover at its print size, sections spaced as in print. Line breaks, type
+ * and the position of the body then match the page view; only the sheet being one long
+ * page differs. `.page.paginated` outranks the seed's own `.paginated` rules.
+ */
+function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
+  return `
+  .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
+  .page.paginated .cover { box-sizing: content-box; min-height: 232mm; padding: 74mm 0 0; margin: 0; }
+  .page.paginated section { margin: 0 0 12mm; }
+`
+}
+
 // Installed into the DocumentShell shadow root, where global CSS cannot reach.
 const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break { position: relative; display: block; height: 24px; margin: 14px 0; border-top: 1px dashed #9ca3af; cursor: pointer; }
@@ -1100,7 +1114,7 @@ export function DocumentEditor({
             }}
           >
           <div className="relative">
-            <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}`} className="report-page-shell">
+            <DocumentShell css={`${pageCss}\n${EDITOR_PAGE_BREAK_CSS}\n${sheetGeometryCss(pageSettings.margins)}`} className="report-page-shell">
               {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
               <div
                 ref={setPage}
