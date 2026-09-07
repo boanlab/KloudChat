@@ -8,8 +8,9 @@ const documents = {
   complete: `<!doctype html><html><head><title>Page</title></head><body>${BODY}</body></html>`,
   uppercase: `<!DOCTYPE html><HTML><HEAD><TITLE>Page</TITLE></HEAD><BODY>${BODY}</BODY></HTML>`,
   fragment: BODY,
-  existingBase: `<!doctype html><html><head><base href="https://example.invalid/"><title>Page</title></head><body>${BODY}</body></html>`,
-  explicitTarget: `<!doctype html><html><head><base href="https://example.invalid/" target="_blank"></head><body>${BODY.replace('href="#details"', 'href="#details" target="_self"')}</body></html>`,
+  targetOnly: `<!doctype html><html><head><base target="_blank"></head><body>${BODY.replace('href="#details"', 'href="#details" target="_self"')}</body></html>`,
+  selectorBased: `<!doctype html><html><body>${BODY.replace('href="#details"', `href="#details" onclick="document.querySelector(this.getAttribute('href')).dataset.clicked='yes'"`)}</body></html>`,
+  noFragments: BODY.replace('<a href="#details">Details</a>', '<!-- <a href="#details">Details</a> -->'),
   commentedBase: `<!-- <base href="https://example.invalid/"> --><html><head><!-- <base href="https://example.invalid/"> --></head><body>${BODY}</body></html>`,
 }
 
@@ -33,6 +34,8 @@ test('HTML preview preserves explicit base resources and target semantics', asyn
       await route.fulfill({ contentType: 'application/javascript', body: 'document.body.dataset.resourceLoaded = "yes"' })
     } else if (path === '/assets/pixel.png') {
       await route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==', 'base64') })
+    } else if (path === '/assets/') {
+      await route.fulfill({ contentType: 'text/html', body: '<h1>Explicit base destination</h1>' })
     } else {
       await route.abort()
     }
@@ -50,6 +53,7 @@ test('HTML preview preserves explicit base resources and target semantics', asyn
       await page.getByRole('button', { name: `${title} 열기`, exact: true }).click()
       const dialog = page.getByRole('dialog')
       const frame = dialog.frameLocator('iframe')
+      await expect(dialog.locator('iframe')).toHaveAttribute('srcdoc', content)
       await expect(frame.locator('body')).toHaveAttribute('data-resource-loaded', 'yes')
       await expect(frame.locator('#details')).toHaveCSS('color', 'rgb(11, 22, 33)')
       expect(await frame.locator('#asset').evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true)
@@ -57,13 +61,15 @@ test('HTML preview preserves explicit base resources and target semantics', asyn
       await expect(frame.locator('base')).toHaveAttribute('target', '_blank')
       expect(await frame.locator('#relative-link').evaluate((link: HTMLAnchorElement) => link.href)).toBe(`${origin}/assets/next.html`)
       await expect(frame.locator('#default-target')).not.toHaveAttribute('target')
-      await expect(frame.locator('#area')).toHaveAttribute('href', 'about:srcdoc#details')
+      await expect(frame.locator('#area')).toHaveAttribute('href', '#details')
+      // An explicitly supplied base keeps its original navigation contract.
+      await expect(frame.getByRole('link', { name: 'Details', exact: true })).toHaveAttribute('href', '#details')
       await frame.getByRole('link', { name: 'Details', exact: true }).click()
-      await expect(frame.locator('#details')).toBeInViewport()
-      expect(await frame.locator('html').evaluate(() => location.href)).toBe('about:srcdoc#details')
+      await expect(frame.getByRole('heading', { name: 'Explicit base destination' })).toBeVisible()
+      expect(await frame.locator('html').evaluate(() => location.href)).toBe(`${origin}/assets/#details`)
       await expect(dialog.locator('iframe')).toHaveAttribute('sandbox', 'allow-scripts')
     }
-    expect([...new Set(requested)].sort()).toEqual(['/assets/page.css', '/assets/page.js', '/assets/pixel.png'])
+    expect([...new Set(requested)].sort()).toEqual(['/assets/', '/assets/page.css', '/assets/page.js', '/assets/pixel.png'])
     const saved = await page.request.get(`/api/artifacts/${id}`, { headers })
     expect((await saved.json()).data.content).toBe(content)
   } finally {
@@ -73,7 +79,7 @@ test('HTML preview preserves explicit base resources and target semantics', asyn
 })
 
 for (const [name, content] of Object.entries(documents)) {
-  test(`HTML fragment links keep the preview document: ${name}`, async ({ page }) => {
+  test(`HTML preview preserves the document and fragment navigation: ${name}`, async ({ page }) => {
     await signIn(page)
     const login = await page.request.post('/api/auth/login', { data: E2E_ADMIN })
     expect(login.ok()).toBe(true)
@@ -102,11 +108,17 @@ for (const [name, content] of Object.entries(documents)) {
         const frame = dialog.frameLocator('iframe')
         await frame.locator('#count').click()
         await expect(frame.locator('#count')).toHaveText('1')
-        await frame.getByRole('link', { name: 'Details' }).click()
-        await expect(frame.getByRole('heading', { name: 'The same document' })).toBeInViewport()
-        // Fragment navigation must neither reload the app nor reset this document's state.
-        await expect(frame.locator('#count')).toHaveText('1')
-        expect(await frame.locator('html').evaluate(() => location.href)).toBe('about:srcdoc#details')
+        if (name === 'noFragments') {
+          await expect(iframe).toHaveAttribute('srcdoc', content)
+        } else {
+          await frame.getByRole('link', { name: 'Details' }).click()
+          await expect(frame.getByRole('heading', { name: 'The same document' })).toBeInViewport()
+          if (name === 'selectorBased') await expect(frame.locator('#details')).toHaveAttribute('data-clicked', 'yes')
+          await expect(frame.getByRole('link', { name: 'Details' })).toHaveAttribute('href', '#details')
+          // Fragment navigation must neither reload the app nor reset this document's state.
+          await expect(frame.locator('#count')).toHaveText('1')
+          expect(await frame.locator('html').evaluate(() => location.href)).toBe('about:srcdoc#details')
+        }
         await expect(page).toHaveURL(/\/artifacts$/)
 
         const downloaded = page.waitForEvent('download')

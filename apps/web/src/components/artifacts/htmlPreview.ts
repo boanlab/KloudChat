@@ -1,11 +1,14 @@
-/** Keep fragment links inside srcdoc without changing the document's resource base.
- *  Only the displayed copy changes; stored and downloaded HTML stays intact. */
+/** Keep implicit fragment links inside srcdoc instead of navigating to the app.
+ *  Explicit bases and stored/downloaded HTML retain their original semantics. */
 export function htmlPreviewDocument(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html')
-  document.querySelectorAll('a[href], area[href]').forEach((link) => {
-    const href = link.getAttribute('href')?.trim()
-    if (href?.startsWith('#')) link.setAttribute('href', `about:srcdoc${href}`)
-  })
+  if (document.querySelector('base[href]')) return html
+  const hasFragmentLink = [...document.querySelectorAll('a[href], area[href]')]
+    .some((link) => link.getAttribute('href')?.trim().startsWith('#'))
+  if (!hasFragmentLink) return html
+  const base = document.createElement('base')
+  base.href = 'about:srcdoc'
+  document.head.prepend(base)
   const doctype = document.doctype
     ? new XMLSerializer().serializeToString(document.doctype)
     : ''
