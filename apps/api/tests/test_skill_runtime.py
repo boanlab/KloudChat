@@ -398,24 +398,26 @@ async def test_the_catalog_adopts_rows_seeded_before_it_existed():
 
 
 @pytest.mark.asyncio
-async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays():
+@pytest.mark.parametrize("catalog_key", ["english-tutor", "opic-master"])
+async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(catalog_key):
     """An unedited copy follows catalogue rewording; an edited one is left alone."""
-    spec = next(row for row in starter._AGENTS if row["key"] == "english-tutor")
+    spec = next(row for row in starter._AGENTS if row["key"] == catalog_key)
     catalogue = Agent(
         id="agent-1",
         owner_id="admin-1",
         name=spec["name"],
-        slug="english-tutor",
+        slug=catalog_key,
         system_prompt="옛 프롬프트",
-        catalog_key="english-tutor",
+        catalog_key=catalog_key,
     )
     untouched = Agent(
-        id="copy-1", owner_id="user-1", name=spec["name"], slug="english-tutor",
+        id="copy-1", owner_id="user-1", name=spec["name"], slug=catalog_key,
         system_prompt="옛 프롬프트", origin_id="agent-1",
     )
     edited = Agent(
-        id="copy-2", owner_id="user-2", name=spec["name"], slug="english-tutor",
+        id="copy-2", owner_id="user-2", name=spec["name"], slug=catalog_key,
         system_prompt="내가 고친 프롬프트", origin_id="agent-1",
+        guide="내가 고친 안내", starters=["내가 고친 시작 문장"],
     )
     db = _SeedDb([], agents=[catalogue], copies=[untouched, edited])
     await starter.seed_catalog(db, "admin-1")
@@ -423,7 +425,13 @@ async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays()
     assert catalogue.system_prompt == spec["system_prompt"]
     assert untouched.system_prompt == spec["system_prompt"]
     assert untouched.guide == spec["guide"]
+    assert untouched.starters == spec["starters"]
     assert edited.system_prompt == "내가 고친 프롬프트"
+    assert edited.guide == "내가 고친 안내"
+    assert edited.starters == ["내가 고친 시작 문장"]
+
+    assert await starter.seed_catalog(db, "admin-1") == 0
+    assert len([row for row in db.agents if row.catalog_key == catalog_key]) == 1
 
 
 @pytest.mark.asyncio
