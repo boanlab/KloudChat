@@ -444,6 +444,14 @@ export const adminApi = {
   /** Sets the monthly allowance. Takes effect now and at every refill. */
   setCredits: (id: string, monthlyCredits: number) =>
     call<User>(`/admin/users/${id}/credits`, body({ monthlyCredits })),
+  /** Corrects a name or address; a field left out is left alone. */
+  updateUser: (id: string, patch: { name?: string; email?: string }) =>
+    call<User>(`/admin/users/${id}`, { ...body(patch), method: 'PATCH' }),
+  /** Sets a new password and signs the account out everywhere. */
+  resetPassword: (id: string, password: string) =>
+    call<User>(`/admin/users/${id}/password`, body({ password })),
+  /** The whole catalogue, for the restriction picker: not narrowed to the administrator's own list. */
+  catalogue: () => call<{ id: string; label: string; kinds: string[] }[]>('/admin/models'),
 }
 
 /* ── admin: usage & audit ──────────────────────────────────────────────

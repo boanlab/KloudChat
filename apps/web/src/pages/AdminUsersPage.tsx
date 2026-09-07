@@ -2,6 +2,7 @@ import {
   Check,
   SlidersHorizontal,
   KeyRound,
+  UserPen,
   Loader2,
   RefreshCw,
   Search,
@@ -17,6 +18,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Field,
   Input,
   Modal,
@@ -82,10 +84,24 @@ export function AdminUsersPage() {
     setUserModels,
     models,
     setUserCredits,
+    updateUser,
+    resetUserPassword,
   } = useStore()
   const [filter, setFilter] = useState<UserStatus | 'all'>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<User | null>(null)
+  // 정보 수정: name, address and a password reset, one dialog.
+  const [profile, setProfile] = useState<User | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const [draftEmail, setDraftEmail] = useState('')
+  const [draftPassword, setDraftPassword] = useState('')
+  const [profileNote, setProfileNote] = useState<string | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  // A key rotation revokes the old key at once, so it asks first and says what it did.
+  const [rotating, setRotating] = useState<User | null>(null)
+  const [rotated, setRotated] = useState<{ id: string; preview: string | null } | null>(null)
+  // The whole catalogue for the restriction picker; the store's list is the caller's own.
+  const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
@@ -98,6 +114,7 @@ export function AdminUsersPage() {
 
   useEffect(() => {
     void loadUsers()
+    adminApi.catalogue().then(setCatalogue).catch(() => setCatalogue(null))
     adminApi
       .settings()
       .then((s) => s.credits && setEconomics(s.credits))
@@ -248,6 +265,9 @@ export function AdminUsersPage() {
                           ) : (
                             <span className="text-warn">{t('전용 키 없음')}</span>
                           )}
+                          {rotated?.id === u.id && (
+                            <span className="text-success">{t('방금 재발급됨')}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -298,6 +318,23 @@ export function AdminUsersPage() {
                         </Button>
                       )}
                       <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('{name} 정보 수정').replace('{name}', u.name)}
+                        title={t('이름·이메일을 고치거나 비밀번호를 초기화합니다')}
+                        disabled={busy.includes(u.id)}
+                        onClick={() => {
+                          setProfile(u)
+                          setDraftName(u.name)
+                          setDraftEmail(u.email)
+                          setDraftPassword('')
+                          setProfileNote(null)
+                          setProfileError(null)
+                        }}
+                      >
+                        <UserPen size={14} />
+                      </Button>
+                      <Button
                         size="sm"
                         onClick={() => {
                           setEditing(u)
@@ -337,7 +374,7 @@ export function AdminUsersPage() {
                             : t('이 사용자의 전용 LiteLLM 키를 발급합니다')
                         }
                         disabled={busy.includes(u.id)}
-                        onClick={() => void run(u.id, () => rotateLitellmKey(u.id))}
+                        onClick={() => setRotating(u)}
                       >
                         <KeyRound size={14} />
                       </Button>
@@ -388,7 +425,7 @@ export function AdminUsersPage() {
       >
         {restricting && (
           <div className="flex flex-wrap gap-1.5">
-            {models.map((m) => {
+            {(catalogue ?? models).map((m) => {
               const on = restricting.allowedModels.includes(m.id)
               return (
                 <button
@@ -458,6 +495,117 @@ export function AdminUsersPage() {
           </span>
         </label>
       </Modal>
+
+      <Modal
+        open={!!profile}
+        onClose={() => setProfile(null)}
+        title={t('정보 수정')}
+        description={profile ? `${profile.email}` : undefined}
+        footer={<Button onClick={() => setProfile(null)}>{t('닫기')}</Button>}
+      >
+        {profile && (
+          <div className="space-y-4">
+            <Field label={t('이름')}>
+              <Input value={draftName} onChange={(e) => setDraftName(e.target.value)} aria-label={t('이름')} />
+            </Field>
+            <Field label={t('이메일')}>
+              <Input type="email" value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} aria-label={t('이메일')} />
+            </Field>
+            <div className="flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={busy.includes(profile.id) || (!draftName.trim() || draftName.trim() === profile.name) && draftEmail.trim().toLowerCase() === profile.email}
+                onClick={() => {
+                  const id = profile.id
+                  const patch: { name?: string; email?: string } = {}
+                  if (draftName.trim() && draftName.trim() !== profile.name) patch.name = draftName.trim()
+                  if (draftEmail.trim().toLowerCase() !== profile.email) patch.email = draftEmail.trim()
+                  setProfileError(null)
+                  void run(id, async () => {
+                    try {
+                      await updateUser(id, patch)
+                      setProfileNote(t('저장했습니다.'))
+                      setProfile((current) => current ? { ...current, ...patch } : current)
+                    } catch (err) {
+                      setProfileError(errorMessage(err, t('저장하지 못했습니다.')))
+                    }
+                  })
+                }}
+              >
+                {t('저장')}
+              </Button>
+            </div>
+            <div className="border-t border-line pt-4">
+              <Field label={t('비밀번호 초기화')} hint={t('새 비밀번호를 정해 본인에게 따로 전달하세요. 저장하면 이 계정의 모든 로그인이 풀립니다.')}>
+                <div className="flex gap-2">
+                  <Input
+                    value={draftPassword}
+                    onChange={(e) => setDraftPassword(e.target.value)}
+                    placeholder={t('8자 이상')}
+                    aria-label={t('새 비밀번호')}
+                    autoComplete="off"
+                    className="font-mono"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789'
+                      const bytes = crypto.getRandomValues(new Uint8Array(14))
+                      setDraftPassword(Array.from(bytes, (b) => alphabet[b % alphabet.length]).join(''))
+                    }}
+                  >
+                    {t('임의 생성')}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={busy.includes(profile.id) || draftPassword.length < 8}
+                    onClick={() => {
+                      const id = profile.id
+                      const password = draftPassword
+                      setProfileError(null)
+                      void run(id, async () => {
+                        try {
+                          await resetUserPassword(id, password)
+                          setProfileNote(t('비밀번호를 바꿨습니다. 이 계정의 기존 로그인은 모두 풀렸습니다.'))
+                        } catch (err) {
+                          setProfileError(errorMessage(err, t('비밀번호를 바꾸지 못했습니다.')))
+                        }
+                      })
+                    }}
+                  >
+                    {t('초기화')}
+                  </Button>
+                </div>
+              </Field>
+            </div>
+            {profileNote && <p className="text-base text-success">{profileNote}</p>}
+            {profileError && <p className="text-base text-danger">{profileError}</p>}
+          </div>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!rotating}
+        onClose={() => setRotating(null)}
+        onConfirm={() => {
+          const target = rotating
+          setRotating(null)
+          if (!target) return
+          void run(target.id, async () => {
+            await rotateLitellmKey(target.id)
+            const fresh = useStore.getState().users.find((x) => x.id === target.id)
+            setRotated({ id: target.id, preview: fresh?.litellmKeyPreview ?? null })
+          })
+        }}
+        title={rotating?.litellmKeyPreview ? t('LiteLLM 키를 재발급할까요?') : t('LiteLLM 키를 발급할까요?')}
+        description={
+          rotating?.litellmKeyPreview
+            ? t('기존 키는 즉시 폐기되어, 이 사용자가 밖에서 쓰던 API 키가 있다면 새로 발급받아야 합니다.')
+            : t('이 사용자의 호출이 전용 키로 기록됩니다.')
+        }
+      />
 
       <Modal
         open={!!editing}

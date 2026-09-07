@@ -706,6 +706,15 @@ aggregated at different moments, so adding them makes neither correct.
 sessions of that kind — hiding alone leaves the feature on for anyone who types
 the URL. Chat cannot be disabled.
 
+**Accounts** can be corrected from the users screen: name and address
+(`PATCH /admin/users/{id}`, an address in use is refused) and a password reset
+(`POST /admin/users/{id}/password`) that hashes the new password and deletes
+every refresh token the account holds, so a person who lost their password gets
+back in and any session that was still open is ended. Both are audited. The
+model-restriction picker reads `GET /admin/models`, the whole catalogue, rather
+than the administrator's own (possibly restricted) list. Reissuing a LiteLLM key
+asks first, since the old key is revoked at once.
+
 **Branding** logos are served without authentication, because the sign-in
 screen renders one before anybody is authenticated. The filename carries a
 content hash, so replacing the logo changes its URL. SVG is rejected: it can

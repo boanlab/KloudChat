@@ -14,6 +14,7 @@ from sqlmodel import col, delete, select
 
 from app.core.config import settings
 from app.core.deps import AdminUser, DbSession, client_ip
+from app.core.security import hash_password
 from app.models.chat import ChatSession, Message
 from app.models.user import (
     ApiKey,
@@ -44,10 +45,12 @@ from app.models.workspace import (
 from app.schemas.admin import (
     AllowedModelsRequest,
     ApproveRequest,
+    ResetPasswordRequest,
     SetCreditsRequest,
     SetRoleRequest,
     SmtpTestRequest,
     SystemSettingsIn,
+    UpdateUserRequest,
 )
 from app.schemas.auth import UserOut
 from app.services import files as file_service
@@ -439,6 +442,61 @@ async def set_role(
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: str, payload: UpdateUserRequest, request: Request, admin: AdminUser, db: DbSession
+):
+    """Corrects a name or address. An address already in use is refused."""
+    user = await _load(db, user_id)
+    changes: list[str] = []
+    if payload.name is not None and payload.name.strip() != user.name:
+        user.name = payload.name.strip()
+        changes.append("name")
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        if email != user.email:
+            taken = (await db.exec(select(User).where(User.email == email))).first()
+            if taken is not None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_taken")
+            user.email = email
+            changes.append("email")
+    if changes:
+        db.add(user)
+        _audit(db, request, admin, "user.update", user.email, ",".join(changes))
+        await db.commit()
+        await db.refresh(user)
+    return UserOut.of(user)
+
+
+@router.post("/users/{user_id}/password", response_model=UserOut)
+async def reset_password(
+    user_id: str, payload: ResetPasswordRequest, request: Request, admin: AdminUser, db: DbSession
+):
+    """Sets a new password and ends every sign-in the account holds.
+
+    The administrator hands the password over out of band; the person changes it
+    afterwards. Refresh tokens go so a leaked session does not outlive the reset.
+    """
+    user = await _load(db, user_id)
+    user.password_hash = hash_password(payload.password)
+    db.add(user)
+    await db.exec(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+    _audit(db, request, admin, "user.password_reset", user.email)
+    await db.commit()
+    await db.refresh(user)
+    return UserOut.of(user)
+
+
+@router.get("/models")
+async def catalogue(admin: AdminUser):
+    """The whole model catalogue, for restricting accounts: not narrowed to the caller."""
+    rows = (await model_service.list_models())["models"]
+    return [
+        {"id": m["id"], "label": m.get("label") or m["id"], "kinds": list(m.get("kinds") or [])}
+        for m in rows
+    ]
 
 
 @router.post("/users/{user_id}/litellm-key", response_model=UserOut)
