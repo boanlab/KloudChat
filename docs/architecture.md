@@ -207,6 +207,28 @@ this, whatever the toggle says. Weather questions force the `weather` tool
 rather than a search, since a search engine returns encyclopaedia pages for
 「분당 날씨」.
 
+**A search runs two lanes and reads dates.** `web_search` asks SearXNG's
+general lane and, when the query carries a time-sensitive word (a year, 최신,
+가격, a named release), the news lane too, with the news hits first; the
+general lane answers 「최신 모델」 with home pages and encyclopaedias. Front
+pages and a host's third hit are benched (used only to pad a thin list), and a
+hit's `publishedDate` reaches the model as 「게시일」 so the newest wins. A turn
+makes at most three searches and six page reads; past either cap the model is
+told to answer from what it has.
+
+**The web-search toggle has three positions.** `context.search_plan` turns the
+toggle and the user's words into two facts: whether the web tools (`web_search`,
+`weather`) are offered this turn, and which tool the first hop must call. 「켬」
+offers them and forces a search every turn; 「끔」 offers nothing unless the
+words explicitly ask for research; 「자동」, the default, offers them and forces
+the first hop only when the words ask for research, for something that changes
+with time (news, prices, versions, schedules, a year), or for the weather —
+otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
+what to look up and what to answer outright. A strict-local route offers none of
+this, whatever the toggle says. Weather questions force the `weather` tool
+rather than a search, since a search engine returns encyclopaedia pages for
+「분당 날씨」.
+
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and
 gives a fetched page a number of its own; the prompt asks the model to cite

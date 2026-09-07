@@ -68,25 +68,98 @@ def _off_topic(rows: list[dict[str, str]], query: str) -> bool:
     return len(terms) >= 2 and all(_overlap(row, terms) == 0 for row in rows)
 
 
-async def _searxng(base_url: str, query: str, count: int) -> list[dict[str, str]]:
+#: A path that is a front page under another name; such a hit answers nothing.
+_INDEX_LEAVES = {
+    "index",
+    "index.html",
+    "index.htm",
+    "index.do",
+    "index.asp",
+    "index.php",
+    "main.do",
+}
+#: Hits per host kept, so one blog's series does not fill the list.
+_PER_HOST = 2
+
+
+def _front_page(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.query:
+        return False
+    path = parsed.path.rstrip("/")
+    return not path or path.rsplit("/", 1)[-1].lower() in _INDEX_LEAVES
+
+
+def _host(url: str) -> str:
+    from urllib.parse import urlparse
+
+    return urlparse(url).netloc.lower().removeprefix("www.").removeprefix("m.")
+
+
+def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str, str]]:
+    """The best `count` of `rows` (given news-first for a fresh query): duplicates
+    and front pages out, at most `_PER_HOST` per host, then `_rank`."""
+    seen: set[str] = set()
+    per_host: dict[str, int] = {}
+    kept: list[dict[str, str]] = []
+    benched: list[dict[str, str]] = []
+    for row in rows:
+        url = row["url"].rstrip("/")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        host = _host(url)
+        if _front_page(url) or per_host.get(host, 0) >= _PER_HOST:
+            benched.append(row)
+            continue
+        per_host[host] = per_host.get(host, 0) + 1
+        kept.append(row)
+    # A thin list is padded with what was benched rather than left short.
+    kept.extend(benched[: max(0, count - len(kept))])
+    return _rank(kept, query)[:count]
+
+
+async def _searxng(
+    base_url: str, query: str, count: int, *, fresh: bool = False
+) -> list[dict[str, str]]:
+    """Search hits for `query`. A `fresh` query (news, prices, versions, a date)
+    also runs the news lane, whose hits come first: the general lane answers
+    「최신 모델」 with home pages and encyclopaedias."""
+    search_url = f"{base_url.rstrip('/')}/search"
+    base = {"q": query, "format": "json", "safesearch": 1, "language": "ko"}
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
-        response = await client.get(
-            f"{base_url.rstrip('/')}/search",
-            params={"q": query, "format": "json", "safesearch": 1, "language": "ko"},
-        )
-        response.raise_for_status()
-        data = response.json()
-    hits = []
-    # Over-fetch, then keep the best `count` after `_rank`.
-    for row in (data.get("results") or [])[: count * 3]:
-        hits.append(
-            {
-                "title": row.get("title") or "",
-                "url": row.get("url") or "",
-                "snippet": row.get("content") or "",
-            }
-        )
-    return _rank(hits, query)[:count]
+        lanes = [client.get(search_url, params=base)]
+        if fresh:
+            lanes.append(
+                client.get(search_url, params={**base, "categories": "news", "time_range": "month"})
+            )
+        responses = await asyncio.gather(*lanes, return_exceptions=True)
+    general = responses[0]
+    if isinstance(general, BaseException):
+        raise general
+    general.raise_for_status()
+    hits: list[dict[str, str]] = []
+
+    def collect(payload: dict[str, Any]) -> None:
+        # Over-fetch, then keep the best `count` after `_select`.
+        for row in (payload.get("results") or [])[: count * 3]:
+            hits.append(
+                {
+                    "title": row.get("title") or "",
+                    "url": row.get("url") or "",
+                    "snippet": row.get("content") or "",
+                    "published": str(row.get("publishedDate") or "")[:10],
+                }
+            )
+
+    if fresh and len(responses) > 1 and not isinstance(responses[1], BaseException):
+        news = responses[1]
+        if news.status_code < 400:
+            collect(news.json())
+    collect(general.json())
+    return _select(hits, query, count)
 
 
 async def _scrape(base_url: str, url: str) -> str:
@@ -128,8 +201,13 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
 
     backends = await settings_store.tools_config()
+    # Time-sensitive words get the news lane too; see `_searxng`.
+    from app.services.context import needs_web_search
+
     try:
-        hits = await _searxng(backends.search, query, settings.web_search_results)
+        hits = await _searxng(
+            backends.search, query, settings.web_search_results, fresh=needs_web_search(query)
+        )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
     if not hits:
@@ -154,7 +232,8 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
 
     lines = [f"'{query}' 검색 결과:\n"]
     for i, hit in enumerate(hits):
-        lines.append(f"[{i + 1}] {hit['title']}\n{hit['url']}\n{hit['snippet']}")
+        dated = f"게시일 {hit['published']} · " if hit.get("published") else ""
+        lines.append(f"[{i + 1}] {hit['title']}\n{hit['url']}\n{dated}{hit['snippet']}")
         body = bodies[i] if i < len(bodies) else ""
         if body:
             lines.append(f"본문 발췌:\n{_truncate(body, 4000)}")

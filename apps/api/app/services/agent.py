@@ -35,7 +35,11 @@ async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncC
             "Authorization": f"Bearer {api_key}",
             **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
         },
-        timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+        # `read` is the gap between chunks: a stream that stops sending is given up
+        # long before the whole-turn budget runs out.
+        timeout=httpx.Timeout(
+            settings.chat_timeout_sec, connect=10.0, read=settings.chat_stall_sec
+        ),
     )
 
 
@@ -177,6 +181,10 @@ async def _stream_once(
                         if run:
                             acc.runaway = run
                             break
+                    elif acc.calls and _arguments_runaway(acc.calls):
+                        # A tool call whose arguments never end: same treatment.
+                        acc.looped = True
+                        break
             finally:
                 await opened.__aexit__(None, None, None)
     except httpx.HTTPError as exc:
@@ -191,6 +199,9 @@ _NARRATION_CHARS = 400
 
 #: `web_search` calls per turn; other tools keep the normal hop budget.
 MAX_WEB_SEARCHES = 3
+#: `fetch_url` calls per turn: a model chasing a bus route through page after
+#: page ran twenty minutes before this cap.
+MAX_FETCHES = 6
 
 
 def _repeats(earlier: str, later: str) -> bool:
@@ -206,6 +217,23 @@ def _repeats(earlier: str, later: str) -> bool:
 
 #: Seconds to wait before retrying a 429, one per retry.
 _RETRY_AFTER = (5.0, 15.0)
+
+
+#: Tool-call arguments longer than this are a decoder that never closes the
+#: JSON; a document body handed to `create_artifact` stays well under it.
+_ARGS_LIMIT = 60_000
+
+
+def _arguments_runaway(calls: dict[int, dict[str, Any]]) -> bool:
+    """A streamed tool call whose arguments repeat, run on one character, or
+    outgrow any real payload — invisible to the text checks, so checked here."""
+    for call in calls.values():
+        arguments = call.get("arguments") or ""
+        if len(arguments) > _ARGS_LIMIT:
+            return True
+        if len(arguments) >= 640 and (_is_looping([arguments]) or _runaway([arguments])):
+            return True
+    return False
 
 
 def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:
@@ -538,6 +566,7 @@ async def run_turn(
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
+    fetches = 0
     #: Long text written in a hop that then called tools; retracted at the end
     #: if the final answer repeats it.
     held: list[str] = []
@@ -830,6 +859,8 @@ async def run_turn(
             if call["name"] == "web_search":
                 searches += 1
                 empty_searches += int(result.empty)
+            elif call["name"] == "fetch_url":
+                fetches += 1
             if terminal_text is None and result.final_text is not None:
                 terminal_text = result.final_text
 
@@ -838,12 +869,17 @@ async def run_turn(
             yield {"type": "delta", "text": terminal_text}
             break
 
-        if searches >= MAX_WEB_SEARCHES:
+        if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
                 {
                     "role": "user",
                     "content": (
-                        "웹 검색은 충분히 했습니다. 도구를 더 쓰지 말고 지금까지 "
+                        (
+                            "웹 검색은 충분히 했습니다. "
+                            if searches >= MAX_WEB_SEARCHES
+                            else "문서는 충분히 읽었습니다. "
+                        )
+                        + "도구를 더 쓰지 말고 지금까지 "
                         "확인한 자료로 답하세요. 확인하지 못한 항목은 그렇게 밝히고, "
                         "실제 검색 결과에 있던 URL만 출처로 쓰세요."
                     ),
