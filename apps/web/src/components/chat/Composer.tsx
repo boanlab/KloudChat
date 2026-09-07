@@ -1372,7 +1372,7 @@ export function Composer({
           }
           aria-label={t('프롬프트 입력')}
           data-composer=""
-          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none max-sm:text-[1.0625rem]"
+          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none max-sm:text-[0.95rem]"
         />
 
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">

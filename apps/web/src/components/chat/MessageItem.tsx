@@ -343,7 +343,7 @@ function MessageItemInner({
           {fileError && (
             <p className="text-right text-sm text-danger">{fileError}</p>
           )}
-          <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap max-sm:text-[1.0625rem] max-sm:leading-[1.75]">
+          <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap max-sm:text-[0.95rem] max-sm:leading-[1.75]">
             {message.content}
           </div>
           {/* A turn with no reply reports its failure under the question. */}

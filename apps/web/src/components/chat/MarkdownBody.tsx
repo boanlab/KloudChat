@@ -117,7 +117,7 @@ export function MarkdownBody({
   return (
     <div
       className={cn(
-        "text-md leading-[1.7] break-words max-sm:text-[1.0625rem] max-sm:leading-[1.75]",
+        "text-md leading-[1.7] break-words max-sm:text-[0.95rem] max-sm:leading-[1.75]",
         className,
       )}
     >

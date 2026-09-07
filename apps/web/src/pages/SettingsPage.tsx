@@ -45,7 +45,7 @@ export function SettingsPage() {
           }
         />
 
-        <div role="tablist" className="mb-5 flex gap-1 border-b border-line">
+        <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}
@@ -54,7 +54,7 @@ export function SettingsPage() {
               role="tab"
               className={({ isActive }) =>
                 cn(
-                  '-mb-px border-b-2 px-3 py-2 text-base font-medium transition-colors',
+                  '-mb-px shrink-0 border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors',
                   isActive
                     ? 'border-accent text-fg'
                     : 'border-transparent text-muted hover:text-fg',
