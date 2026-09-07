@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "test:config": "node --test tests/vite-config.test.mjs",
     "test:e2e": "playwright test",
     "test:personas": "playwright test e2e/personas.spec.ts --reporter=list",
     "test:auth": "playwright test e2e/auth.spec.ts --project=desktop --reporter=list",

@@ -37,6 +37,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test config paths
+        run: npm run test:config
+
       # `tsc -b && vite build`: the type check is part of the build.
       - name: Typecheck and build
         run: npm run build
