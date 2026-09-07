@@ -591,6 +591,8 @@ function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
   .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
   .page.paginated .cover { min-height: 232mm; padding: 74mm 0 0; margin: 0; }
   .page.paginated section { margin: 0 0 12mm; }
+  /* The editor keeps a paragraph inside every cell; the finished file has bare text there. */
+  .page.paginated td > p, .page.paginated th > p { margin: 0; }
 `
 }
 

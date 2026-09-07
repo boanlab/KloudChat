@@ -109,7 +109,9 @@ export function usePagination(
         before = moved
       }
       const after = before ? lines[indexOf(before) + 1] : undefined
-      let cut = before ? before.bottom + Math.max(2, ((after?.top ?? before.bottom + 4) - before.bottom) / 2) : target
+      // The next page begins at the top of its first line, as in the page view, which drops
+      // the gap (a section's margin, say) left at the foot of the page before it.
+      let cut = before ? (after ? after.top - 1 : before.bottom + 2) : target
       if (cut <= floor + 20) cut = target
       next.push(cut)
       target = cut + room
