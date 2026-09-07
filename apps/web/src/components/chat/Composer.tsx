@@ -602,7 +602,12 @@ export function Composer({
     webSearchMode: liveWebSearchMode.current,
   })
   // Per-turn state resets when the surface or session changes; the typed sentence stays.
+  const initializedScope = useRef<{ sessionId: string | null; kind: SessionKind } | null>(null)
   useEffect(() => {
+    // StrictMode replays setup; a consumed handoff must not become a reset.
+    const previous = initializedScope.current
+    if (previous?.sessionId === sessionId && previous.kind === kind) return
+    initializedScope.current = { sessionId, kind }
     if (sessionId && carriedComposer?.sessionId === sessionId) {
       // Only non-empty fields are put back: on a send the composer was cleared
       // before the session existed, and a refusal may already have restored
