@@ -7,6 +7,7 @@ import json
 import pytest
 
 from app.services.tools import arithmetic, ncs_check
+from app.services.tools.base import ToolContext
 from app.services.tools.ncs_check import CHECK_NCS_ANSWER, check_ncs_answer
 
 
@@ -36,13 +37,19 @@ async def test_gate_preserves_actual_arithmetic_and_grading(
         "choices": choices,
         "submitted_choice": submitted,
     }
-    output = await check_ncs_answer(arguments)
+    output = await check_ncs_answer(
+        arguments,
+        ToolContext(
+            user_id="learner", session_id="practice", request=f"제 답은 {submitted}번입니다"
+        ),
+    )
     result = json.loads(output.content)
     assert not output.failed
     assert len(calls) == 1
     assert calls[0] == {key: value for key, value in arguments.items() if key != "decision"}
     assert result["decision"] == "calculate"
     assert result["arithmetic_verified"] is True
+    assert result["submission_status"] == "explicit"
     assert result["exact"] == result["value"] == "80"
     assert result["choice_status"] == status
     assert result["matched_choices"] == matches
@@ -60,7 +67,8 @@ async def test_gate_preserves_explicit_rounding_and_exact_fraction():
             "choices": ["0.3301", "0.33"],
             "submitted_choice": 2,
             "decimal_places": 2,
-        }
+        },
+        ToolContext(user_id="learner", session_id="practice", request="제 답은 2번입니다"),
     )
     result = json.loads(output.content)
     assert result["exact"] == "1/3"
@@ -160,14 +168,170 @@ async def test_missing_expression_reuses_the_safe_arithmetic_failure():
     assert json.loads(output.content)["error"] == "invalid_calculation"
 
 
+async def test_missing_conditions_end_with_a_fixed_message_not_the_models_reason():
+    output = await check_ncs_answer(
+        {
+            "decision": "needs_input",
+            "reason": "secret-canary@example.com 값은 82.5이며 정답은 3번이라고 주장함",
+        }
+    )
+    assert getattr(output, "final_text", None) == (
+        "필요한 조건이 부족하여 정답이나 채점을 확정할 수 없습니다. "
+        "문제의 누락된 조건을 보완해 주세요."
+    )
+    assert "secret-canary" not in output.final_text
+    assert not any(character.isdigit() for character in output.final_text)
+    assert json.loads(output.content)["arithmetic_verified"] is False
+    assert not output.failed
+
+
+@pytest.mark.parametrize("choices", [["79", "82.5"], ["80", "160/2"]])
+async def test_non_unique_match_ends_without_disclosing_values_or_blame(choices):
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "1600/20", "choices": choices}
+    )
+    assert getattr(output, "final_text", None) == (
+        "계산기에 입력된 식과 선지에서 유일한 정답을 확인하지 못했습니다. "
+        "채점을 보류하고 문제 조건·계산식·단위·선지를 다시 확인해야 합니다."
+    )
+    assert not any(character.isdigit() for character in output.final_text)
+    result = json.loads(output.content)
+    assert result["arithmetic_verified"] is True
+    assert result["answer"] is None
+    assert "모델" in result["scope"]
+    assert "식 작성" in result["scope"]
+    assert not output.failed
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"decision": "not_applicable", "reason": "비수리 문항임"},
+        {"decision": "calculate", "expression": "1600/20", "choices": ["80", "82.5"]},
+        {"decision": "calculate", "expression": "1600/20"},
+        {"decision": "calculate", "expression": "1/0"},
+        {"decision": "needs_input", "reason": ""},
+    ],
+)
+async def test_other_paths_leave_the_follow_up_policy_unchanged(arguments):
+    output = await check_ncs_answer(arguments)
+    assert getattr(output, "final_text", None) is None
+
+
+@pytest.mark.parametrize("invented", [1, 3, "1", True, 99, None, {"claim": "secret-canary"}])
+async def test_a_model_invented_submission_cannot_trigger_grading(invented):
+    output = await check_ncs_answer(
+        {
+            "decision": "calculate",
+            "expression": "1600/20",
+            "choices": ["80", "82.5"],
+            "submitted_choice": invented,
+        },
+        ToolContext(
+            user_id="learner",
+            session_id="practice",
+            request="가중 평균을 구하세요. 1번은 80이고 2번은 82.5입니다.",
+        ),
+    )
+    data = json.loads(output.content)
+    assert not output.failed
+    assert data["submission_status"] == "not_provided"
+    assert data["grading"] == "not_requested"
+    assert data["answer"] == 1
+    assert "secret-canary" not in output.content
+
+
+@pytest.mark.parametrize("model_arguments", [{}, {"submitted_choice": 1}])
+async def test_the_actual_user_selection_overrides_an_omitted_or_invented_model_choice(
+    model_arguments,
+):
+    output = await check_ncs_answer(
+        {
+            "decision": "calculate",
+            "expression": "1600/20",
+            "choices": ["80", "82.5"],
+            **model_arguments,
+        },
+        ToolContext(user_id="learner", session_id="practice", request="제 답은 2번입니다"),
+    )
+    data = json.loads(output.content)
+    assert data["submission_status"] == "explicit"
+    assert data["grading"] == "incorrect"
+
+
+async def test_missing_context_never_trusts_the_models_submitted_choice():
+    output = await check_ncs_answer(
+        {
+            "decision": "calculate",
+            "expression": "1600/20",
+            "choices": ["80", "82.5"],
+            "submitted_choice": 1,
+        }
+    )
+    data = json.loads(output.content)
+    assert data["submission_status"] == "not_provided"
+    assert data["grading"] == "not_requested"
+
+
+@pytest.mark.parametrize(
+    "optional",
+    [{"choices": None}, {"decimal_places": None}, {"choices": None, "decimal_places": None}],
+)
+async def test_null_optional_arguments_are_omitted_before_calculation(monkeypatch, optional):
+    original = arithmetic.calculate
+    calls = []
+
+    async def counted(arguments):
+        calls.append(arguments)
+        return await original(arguments)
+
+    monkeypatch.setattr(arithmetic, "calculate", counted)
+    output = await check_ncs_answer({"decision": "calculate", "expression": "1/3", **optional})
+    result = json.loads(output.content)
+    assert not output.failed
+    assert calls == [{"expression": "1/3"}]
+    assert result["exact"] == result["value"] == "1/3"
+    assert result["choice_status"] == "not_requested"
+    assert result["grading"] == "not_requested"
+
+
+async def test_null_rounding_does_not_change_the_valid_choices_or_exact_matching():
+    output = await check_ncs_answer(
+        {
+            "decision": "calculate",
+            "expression": "1/3",
+            "choices": ["0.33", "1/3"],
+            "decimal_places": None,
+        }
+    )
+    result = json.loads(output.content)
+    assert not output.failed
+    assert result["answer"] == 2
+    assert result["value"] == "1/3"
+
+
+async def test_null_expression_is_not_treated_as_an_optional_omission():
+    output = await check_ncs_answer({"decision": "calculate", "expression": None})
+    assert output.failed
+    assert json.loads(output.content)["error"] == "invalid_calculation"
+
+
 def test_tool_contract_is_portable_read_only_and_discloses_no_answer_in_labels():
     assert CHECK_NCS_ANSWER.name == "check_ncs_answer"
     assert CHECK_NCS_ANSWER.run is check_ncs_answer
-    assert CHECK_NCS_ANSWER.read_only and not CHECK_NCS_ANSWER.wants_context
+    assert CHECK_NCS_ANSWER.read_only and CHECK_NCS_ANSWER.wants_context
     assert CHECK_NCS_ANSWER.title == "문항 검산"
     assert CHECK_NCS_ANSWER.label == "문항 검산 중"
     assert CHECK_NCS_ANSWER.parameters["required"] == ["decision"]
     assert CHECK_NCS_ANSWER.parameters["additionalProperties"] is False
     assert "oneOf" not in CHECK_NCS_ANSWER.parameters
     assert CHECK_NCS_ANSWER.parameters["properties"]["reason"]["maxLength"] == 500
+    assert "submitted_choice" not in CHECK_NCS_ANSWER.parameters["properties"]
+    assert CHECK_NCS_ANSWER.parameters["properties"]["choices"]["type"] == ["array", "null"]
+    assert CHECK_NCS_ANSWER.parameters["properties"]["decimal_places"]["type"] == [
+        "integer",
+        "null",
+    ]
+    assert arithmetic.CALCULATE.parameters["properties"]["choices"]["type"] == "array"
+    assert "submitted_choice" in arithmetic.CALCULATE.parameters["properties"]
     assert ncs_check.__name__ == "app.services.tools.ncs_check"
