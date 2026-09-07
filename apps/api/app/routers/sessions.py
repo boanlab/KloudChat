@@ -150,6 +150,7 @@ def _strict_model(model: dict) -> bool:
 _STRICT_LOCAL_TOOL_NAMES = frozenset(
     {
         # No network egress; a "builtin" source alone is not proof of that.
+        "calculate",
         "search_knowledge",
         "create_artifact",
         "create_chart",

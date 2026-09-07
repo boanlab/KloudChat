@@ -11,6 +11,7 @@ from app.services.tools import builtin
 from app.services.tools.base import Tool, ToolResult
 
 _BUILTINS = (
+    builtin.CALCULATE,
     builtin.WEB_SEARCH,
     builtin.FETCH_URL,
     builtin.EXECUTE_CODE,

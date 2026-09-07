@@ -76,14 +76,15 @@ async def test_ncs_catalogue_and_installation_are_idempotent(db):
     assert first.id == second.id
     installed = await db.get(Agent, first.id)
     copied_skill = await db.get(Skill, installed.skill_ids[0])
-    assert installed.tools == []
+    assert installed.tools == ["calculate"]
     assert installed.model == ""
     assert installed.kinds == ["chat"]
     assert installed.temperature == 0.3
     assert installed.visibility is Visibility.private
     assert copied_skill.owner_id == learner.id
     assert copied_skill.origin_id == original_skill.id
-    assert copied_skill.required_tools == []
+    assert copied_skill.required_tools == ["calculate"]
+    assert copied_skill.version == "1.1.0"
     assert copied_skill.kinds == ["chat"]
     assert (await ws.install_skill(original_skill.id, learner, db)).id == copied_skill.id
     agents = (await db.exec(select(Agent).where(Agent.catalog_key == "ncs-coach"))).all()
@@ -111,11 +112,13 @@ async def test_ncs_core_prompt_runs_without_activating_its_installed_skill(db):
     assert original.system_prompt in messages[0]["content"]
     assert context.applied_skills == ()
     assert not any(block.source.startswith("skill:") for block in context.blocks)
-    assert await workspace_context.agent_settings(db, learner, session) == (None, [], 0.3)
+    assert await workspace_context.agent_settings(db, learner, session) == (
+        None, ["calculate"], 0.3
+    )
 
     selected = installed.skill_ids[0]
     context = await workspace_context.assemble(
-        db, learner, session, activated_skill_ids=[selected], available_tool_names=set()
+        db, learner, session, activated_skill_ids=[selected], available_tool_names={"calculate"}
     )
     assert [skill.id for skill in context.applied_skills] == [selected]
     assert [skill.catalog_key for skill in context.applied_skills] == ["ncs-reasoning"]
@@ -164,6 +167,68 @@ async def test_ncs_catalogue_refresh_preserves_edited_learner_copies(db):
     assert (await db.get(Skill, original_skill_id)).body == "관리자가 수정한 검산 절차"
     learner = await db.get(User, learner_id)
     assert (await ws.install_agent(original_id, learner, db)).id == copy.id
+
+
+@pytest.mark.asyncio
+async def test_ncs_verification_skill_cannot_silently_run_without_calculator(db):
+    _, learner, original, _ = await _catalogue(db)
+    installed = await ws.install_agent(original.id, learner, db)
+    session = ChatSession(user_id=learner.id, agent_id=installed.id, kind=SessionKind.chat)
+    with pytest.raises(
+        workspace_context.WorkspaceContextError, match="skill_tools_unavailable:calculate"
+    ):
+        await workspace_context.assemble(
+            db, learner, session, activated_skill_ids=installed.skill_ids,
+            available_tool_names={"execute_code"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_ncs_refresh_never_widens_an_existing_tool_restriction(db):
+    admin, learner, original, _ = await _catalogue(db)
+    installed = await ws.install_agent(original.id, learner, db)
+    copy = await db.get(Agent, installed.id)
+    original.tools = []
+    original.system_prompt = "Earlier shipped prompt"
+    copy.tools = []
+    copy.system_prompt = original.system_prompt
+    db.add_all([original, copy])
+    await db.commit()
+    await starter.seed_catalog(db, admin.id)
+    await db.commit()
+    assert original.tools == copy.tools == []
+    assert "calculate" in original.system_prompt
+    assert copy.system_prompt == original.system_prompt
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("edited", [False, True])
+async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(db, edited):
+    admin, learner, original, skill = await _catalogue(db)
+    installed = await ws.install_agent(original.id, learner, db)
+    copy = await db.get(Skill, installed.skill_ids[0])
+    previous = starter._LEGACY_CATALOG_BODIES[("ncs-reasoning", "1.0.0")]
+    skill.body = previous
+    skill.version = "1.0.0"
+    skill.required_tools = []
+    copy.body = "내가 수정한 검산 절차" if edited else previous
+    copy.version = "1.0.0"
+    copy.required_tools = []
+    db.add_all([skill, copy])
+    await db.commit()
+    await starter.seed_catalog(db, admin.id)
+    await db.commit()
+    assert skill.version == "1.1.0"
+    assert skill.required_tools == ["calculate"]
+    if edited:
+        assert copy.body == "내가 수정한 검산 절차"
+        assert copy.version == "1.0.0"
+        assert copy.required_tools == []
+    else:
+        assert copy.body == skill.body
+        assert copy.version == "1.1.0"
+        assert copy.required_tools == ["calculate"]
+    assert await starter.seed_catalog(db, admin.id) == 0
 
 
 _QUESTIONS = json.loads((Path(__file__).parent / "fixtures/ncs_coach_questions.json").read_text())

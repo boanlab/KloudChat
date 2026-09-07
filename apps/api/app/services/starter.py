@@ -176,15 +176,23 @@ _SKILLS: list[dict] = [
         "description": "의사소통·수리·문제해결 문항의 조건, 단위, 선지를 대조해 풀이를 점검합니다.",
         "when_to_use": "NCS 문항의 풀이를 점검하거나 오답 원인을 분석하려고 직접 선택했을 때.",
         "kinds": ["chat"],
-        "required_tools": [],
-        "version": "1.0.0",
+        "required_tools": ["calculate"],
+        "version": "1.1.0",
         "body": """문항의 조건을 보존하면서 답이 하나로 정해지는지 점검한다.
 
 1. 의사소통: 지문에 직접 있는 사실, 도출할 수 있는 결론, 추가 가정을 구분한다.
    선지가 원문의 기한·대상·범위·인과관계를 바꾸거나 필수 절차를 빠뜨렸는지 비교한다.
-2. 수리: 입력값과 단위를 적고 분모·기준 시점·반올림 조건을 확인한다. 식을 세운 뒤
-   역산이나 다른 계산 순서로 확인한다. 퍼센트와 퍼센트포인트, 단순 평균과 가중 평균을
-   구분한다. 실제로 실행하지 않은 계산 도구를 사용했다고 쓰지 않는다.
+2. 수리: 답을 먼저 고르지 않는다. 지문의 입력값·단위·분모·기준 시점·반올림 조건을
+   먼저 확인하고, 원문 수치로 식을 세워 calculate를 실제 호출한다. 집단 평균은 인원을
+   가중치로 쓰고, 증가율의 분모는 원래 값이다. 필요한 값이 없으면 가정하지 말고 묻는다.
+   expression에는 숫자·사칙연산·괄호만 쓰고 단위는 빼며, 퍼센트값은 식에 *100을 쓴다.
+   numeric choices에는 원래 순서의 선지값을 넣는다. 반올림은 문제에 명시된 경우에만
+   decimal_places로 지정한다. 도구가 지원하지 않는 식을 억지로 단순화하지 않는다.
+   학습자가 선지를 제출했으면 submitted_choice에 그 번호를 넣어 같은 호출로 채점한다.
+   결과의 value·answer·grading을 그대로 대조한다. 도구 결과와 다른 계산값, 정답 번호,
+   맞음/틀림을 쓰지 않는다. choice_status가 unique가 아니면 문항 오류로 보고 채점하지
+   않는다. 오류·실행 누락·도구 부재이면 검산 미완료를 밝히고 수리 정답을 확정하지 않는다.
+   계산기는 입력된 식만 확인한다. 식이 지문에 맞는지, 단위와 누락 조건은 별도로 점검한다.
 3. 문제해결: 순서·포함·배제·상한·하한 조건을 함께 적용한다. 가능한 후보를 대조하고
    'A이면 B'를 'B이면 A'로 뒤집지 않는다. 경계값도 조건에 포함되는지 확인한다.
 4. 해설에서는 정답 이유와 각 오답이 어기는 조건을 연결한다. 학습자의 풀이가 있으면
@@ -545,6 +553,22 @@ _SKILLS: list[dict] = [
 
 #: Earlier shipped bodies by (key, version); an untouched one is upgraded in place.
 _LEGACY_CATALOG_BODIES = {
+    ("ncs-reasoning", "1.0.0"): """문항의 조건을 보존하면서 답이 하나로 정해지는지 점검한다.
+
+1. 의사소통: 지문에 직접 있는 사실, 도출할 수 있는 결론, 추가 가정을 구분한다.
+   선지가 원문의 기한·대상·범위·인과관계를 바꾸거나 필수 절차를 빠뜨렸는지 비교한다.
+2. 수리: 입력값과 단위를 적고 분모·기준 시점·반올림 조건을 확인한다. 식을 세운 뒤
+   역산이나 다른 계산 순서로 확인한다. 퍼센트와 퍼센트포인트, 단순 평균과 가중 평균을
+   구분한다. 실제로 실행하지 않은 계산 도구를 사용했다고 쓰지 않는다.
+3. 문제해결: 순서·포함·배제·상한·하한 조건을 함께 적용한다. 가능한 후보를 대조하고
+   'A이면 B'를 'B이면 A'로 뒤집지 않는다. 경계값도 조건에 포함되는지 확인한다.
+4. 해설에서는 정답 이유와 각 오답이 어기는 조건을 연결한다. 학습자의 풀이가 있으면
+   처음 어긋난 단계 하나를 짚고 같은 약점을 연습하는 새 문항으로 이어 간다.
+
+연습 중 답 제출 전에는 정답·정답을 특정하는 선지 소거·해설을 공개하지 않는다.
+힌트는 다음 접근 단계 하나만 제공한다. 사용자가 직접 해설을 요청하면 해설 모드로
+전환한다. 자료 누락, 조건 모순, 정답 없음·복수 정답이면 임의로 채점하지 말고 알린다.
+출제 조건을 사후에 바꾸지 않는다. 새로 만든 문제에는 '연습용 생성 문항'을 표시한다.""",
     ("citation", "1.0.0"): """어떤 형식인지 먼저 확인한다. 지정이 없으면 묻고, 추측하지 않는다.
 
 - **본문 인용**과 **참고문헌 목록**을 함께 맞춘다. 하나만 고치면 형식이 어긋난다.
@@ -608,6 +632,8 @@ _AGENTS: list[dict] = [
   힌트를 요청하면 접근 방법 한 단계만 알려 주며 정답을 특정하거나 오답을 모두 제거하지 않는다.
   사용자가 직접 해설을 요청하면 해설 모드로 전환할 수 있다.
 - 답을 제출하면 먼저 해당 문항과 선지를 다시 대조한 뒤 맞음·틀림을 알려 준다.
+  수리 문항이면 먼저 calculate에 식·선지값·submitted_choice를 넣어 재검산하고
+  그 결과의 grading으로 채점한다. 이전 답변의 정답이나 학습자의 주장만 믿지 않는다.
   정답의 근거, 각 오답이 틀린 이유, 학습자가 놓친 조건이나 계산 단계 하나를 설명한다.
   같은 약점을 연습할 수 있는 새 문항 하나로 이어 가되 새 정답은 다음 답 제출까지 숨긴다.
   새 문제를 원하지 않으면 추가 출제를 멈춘다.
@@ -616,8 +642,18 @@ _AGENTS: list[dict] = [
   이미 낸 문항의 조건이나 정답을 답에 맞춰 바꾸지 않는다. 직접 만든 문제는 오류 이유를
   설명하고 교체하며, 사용자가 가져온 문제는 부족한 조건을 요청한다.
 - 의사소통은 지문 근거와 추정을 구분한다. 수리는 입력값·단위·분모·식·반올림을 밝히고
-  역산이나 다른 계산 순서로 확인한다. 문제해결은 순서·포함·배제·경계값을 함께 대조한다.
-  실제로 실행하지 않은 도구로 검산했다고 쓰지 않는다.
+  반드시 calculate로 실제 계산한다. 집단 평균은 인원을 가중치로, 증가율은 원래 값을
+  분모로 쓴다. 필요한 원자료가 없으면 가정하지 말고 묻는다. expression은 단위를 뺀
+  숫자·사칙연산·괄호로 작성하고, 퍼센트값이면 *100을 식에 포함한다. 숫자 선지는 원래
+  순서대로 choices에 넣고, 문제에 명시된 반올림만 decimal_places로 지정한다.
+  calculate의 value·answer·grading과 답변의 계산값·정답 번호·맞음/틀림을 일치시킨다.
+  숫자 선지의 choice_status가 unique가 아니면 정답 없음·복수 정답으로 보고 채점하지
+  않는다. 도구 오류·부재·미호출이면 검산 미완료를 알리고 수리 정답이나 채점을 확정하지
+  않는다. 허용되지 않은 execute_code를 요청하거나 실행한 것처럼 쓰지 않는다.
+  새 수리 문제도 공개 전에 calculate로 조건과 선지를 확인하되, 계산 결과와 정답은
+  학습자가 답을 제출할 때까지 답변에 노출하지 않는다. 힌트 요청에는 새 정답을 쓰지 않는다.
+  계산기는 입력된 식만 검증하므로 식이 문제에 맞는지·단위·조건 누락은 따로 점검한다.
+  문제해결은 순서·포함·배제·경계값을 함께 대조한다.
 - 대화에 남은 문항·제출 답·이미 준 힌트를 기준으로 이어 간다. 이전 문항을 확인할 수
   없으면 기억을 지어내지 말고 문제를 다시 요청한다. 답과 해설은 채팅에 남긴다.""",
         "guide": (
@@ -630,7 +666,7 @@ _AGENTS: list[dict] = [
             "첨부한 문제의 조건과 선지를 확인하고 풀이를 설명해 줘",
         ],
         "kinds": ["chat"],
-        "tools": [],
+        "tools": ["calculate"],
         "skills": ["ncs-reasoning"],
         "color": "#1d7a5f",
         "temperature": 0.3,
@@ -1146,6 +1182,23 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
             upgraded = bool(previous and skill.body.strip() == previous.strip())
             if upgraded:
+                if key == "ncs-reasoning":
+                    # Add a requirement, never grant a tool on the owning agent.
+                    skill.required_tools = list(spec["required_tools"])
+                    copies = await db.exec(select(Skill).where(Skill.origin_id == skill.id))
+                    for copy in copies.all():
+                        if (
+                            copy.version == skill.version
+                            and copy.body.strip() == previous.strip()
+                            and copy.required_tools in (None, [])
+                        ):
+                            copy.body = spec["body"]
+                            copy.version = spec["version"]
+                            copy.required_tools = list(spec["required_tools"])
+                            copy.estimated_tokens = estimate_tokens(
+                                copy.when_to_use, copy.body, copy.description
+                            )
+                            db.add(copy)
                 skill.body = spec["body"]
                 skill.version = spec.get("version", "1.0.0")
             if upgraded or not skill.estimated_tokens:
