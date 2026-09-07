@@ -488,6 +488,8 @@ async def run_turn(
     temperature: float | None = None,
     #: A tool the first hop must call; later hops return to `tool_choice: auto`.
     force_tool: str | None = None,
+    #: Required, exclusive first call; all tool-hop prose stays private.
+    preflight_tool: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -495,9 +497,17 @@ async def run_turn(
     exactly one `usage`. `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
+    if preflight_tool and (
+        preflight_tool not in by_name
+        or (ctx.allowed and preflight_tool not in ctx.allowed)
+        or settings.max_tool_hops < 1
+    ):
+        raise ChatStreamError("preflight_tool_unavailable")
     conversation = list(messages)
     usage = {"inputTokens": 0, "outputTokens": 0}
     hop = 0
+    preflight_completed = False
+    post_preflight_force_sent = False
     redact_next_request = redact_logging
     reported_models: set[str] = set()
 
@@ -540,8 +550,19 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
-        if force_tool and hop == 0:
+        if (preflight_tool or force_tool) and hop == 0:
+            stream_kwargs["force_tool"] = preflight_tool or force_tool
+        elif (
+            preflight_tool
+            and preflight_completed
+            and force_tool
+            and force_tool != preflight_tool
+            and not post_preflight_force_sent
+            and not closing
+        ):
+            # Keep an explicit search toggle after, never ahead of, a successful gate.
             stream_kwargs["force_tool"] = force_tool
+            post_preflight_force_sent = True
         async for kind, value in _stream_once(
             model,
             conversation,
@@ -551,9 +572,10 @@ async def run_turn(
             **stream_kwargs,
         ):
             if kind == "delta":
-                answer_text.append(value)
                 hop_text.append(value)
-                yield {"type": "delta", "text": value}
+                if not preflight_tool:
+                    answer_text.append(value)
+                    yield {"type": "delta", "text": value}
             else:
                 acc = value
         assert acc is not None
@@ -568,7 +590,35 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
-        if acc.calls and not closing and "".join(hop_text).strip():
+        if preflight_tool:
+            # No other call may run beside the required gate. Waiting for the
+            # complete hop also keeps ignored tool_choice and runaway drafts private.
+            missed_preflight = hop == 0 and (
+                len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
+            )
+            if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
+                note = (
+                    "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
+                    "다시 시도해 주세요."
+                )
+                yield {
+                    "type": "step",
+                    "id": "preflight",
+                    "label": visible_label(by_name[preflight_tool], preflight_tool, done=True),
+                    "status": "error",
+                }
+                answer_text.append(note)
+                yield {"type": "delta", "text": note}
+                break
+            if acc.calls:
+                # A discarded calculation draft must not reinforce the next model hop.
+                acc.content.clear()
+            else:
+                answer_text.extend(hop_text)
+                for text in hop_text:
+                    yield {"type": "delta", "text": text}
+
+        if not preflight_tool and acc.calls and not closing and "".join(hop_text).strip():
             # Text spoken while calling tools: short is narration and goes now;
             # long may be the answer and is held until the end.
             spoken = "".join(hop_text)
@@ -680,6 +730,8 @@ async def run_turn(
         results = await asyncio.gather(*(execute(item) for item in planned))
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if preflight_tool and call["name"] == preflight_tool and not result.failed:
+                preflight_completed = True
             finding_counts: dict[tuple[str, str], int] = {}
 
             def collect(
