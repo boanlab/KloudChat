@@ -2615,6 +2615,12 @@ async def send_message(
             extra=trusted_context,
             untrusted_context=untrusted_context,
         )
+        # A quality upgrade keeps the full messages and tool definitions.
+        routing_context = (
+            {"messages": messages, "tools": tool_definitions}
+            if session.routing_mode == RoutingMode.auto_quality
+            else economy_messages
+        )
         routed_model, cost_routing = await _resolve_cost_routing(
             mode=session.routing_mode,
             db=db,
@@ -2627,7 +2633,7 @@ async def send_message(
             context_tokens=adaptive_routing.estimated_context_tokens(
                 [
                     json.dumps(
-                        economy_messages,
+                        routing_context,
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )
