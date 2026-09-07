@@ -103,7 +103,7 @@ function hash(text: string): number {
 }
 
 /** The SVG as a 2x PNG `data:` URI, or `null`. The exporters (python-docx, reportlab) place pixels, not SVG. */
-export async function rasterise(svg: string): Promise<string | null> {
+export async function rasterise(svg: string, scale = 2): Promise<string | null> {
   try {
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -114,7 +114,6 @@ export async function rasterise(svg: string): Promise<string | null> {
         element.onerror = reject
         element.src = url
       })
-      const scale = 2
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round((image.width || 800) * scale))
       canvas.height = Math.max(1, Math.round((image.height || 400) * scale))
@@ -291,6 +290,161 @@ export function paperTheme(node: HTMLElement) {
     },
     // Read by `paperStyles` below, not by mermaid.
     hot: accent,
+  }
+}
+
+/** The frames a document's own figures are drawn into: one shape per surface, so every
+ *  figure in a deck or a report has the same footprint and a readable minimum width. */
+export const FRAMES = {
+  slide: { aspect: 16 / 9, width: 1600 },
+  page: { aspect: 4 / 3, width: 1400 },
+} as const
+
+/** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
+const MAX_UPSCALE = 1.6
+
+/** Natural size of a drawn SVG, from its viewBox (mermaid always writes one). */
+export function measure(svg: string): { width: number; height: number } | null {
+  const tag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? ''
+  const box = /viewBox="[\d.-]+[ ,][\d.-]+[ ,]([\d.]+)[ ,]([\d.]+)"/.exec(tag)
+  if (box) return { width: Number(box[1]), height: Number(box[2]) }
+  const w = /\swidth="([\d.]+)(?:px)?"/.exec(tag)
+  const h = /\sheight="([\d.]+)(?:px)?"/.exec(tag)
+  return w && h ? { width: Number(w[1]), height: Number(h[1]) } : null
+}
+
+/** How far a picture's shape is from a frame's, as a symmetric factor (1 = same shape). */
+function misfit(size: { width: number; height: number }, aspect: number): number {
+  const ratio = size.width / Math.max(1, size.height) / aspect
+  return ratio >= 1 ? ratio : 1 / ratio
+}
+
+/** The source with its top-level direction turned (LR↔TB), or null when it has none to turn
+ *  or sets directions inside subgraphs (turning those would undo the writer's layout). */
+export function flipped(source: string): string | null {
+  if (/^\s*direction\s/m.test(source)) return null
+  const head = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TB|TD|BT)\b/m.exec(source)
+  if (!head) return null
+  const turned = head[2] === 'LR' || head[2] === 'RL' ? 'TB' : 'LR'
+  return source.replace(head[0], `${head[1]}${turned}`)
+}
+
+/**
+ * `draw`, keeping the shape close to `aspect`: a picture far wider or taller than the frame is
+ * drawn again with its direction turned, and the closer of the two is kept.
+ */
+export async function drawFitting(source: string, look: object, aspect: number): Promise<string | null> {
+  const first = await draw(source, look)
+  if (!first) return null
+  const size = measure(first)
+  if (!size || misfit(size, aspect) < 1.7) return first
+  const other = flipped(source)
+  if (!other) return first
+  const second = await draw(other, look)
+  const again = second ? measure(second) : null
+  return second && again && misfit(again, aspect) < misfit(size, aspect) ? second : first
+}
+
+/** Where a drawing of `size` sits inside a frame: centred, scaled to fit, upscaled at most `MAX_UPSCALE`. */
+function placement(size: { width: number; height: number }, aspect: number, width: number) {
+  const W = width
+  const H = Math.round(W / aspect)
+  const pad = Math.round(W * 0.03)
+  const scale = Math.min((W - 2 * pad) / size.width, (H - 2 * pad) / size.height, MAX_UPSCALE)
+  const dw = size.width * scale
+  const dh = size.height * scale
+  return { W, H, dw, dh, x: (W - dw) / 2, y: (H - dh) / 2 }
+}
+
+/**
+ * The picture inside a white frame of fixed shape and width, as one SVG string for the
+ * rasteriser. The drawing keeps its own root (mermaid's styles select by its id) and becomes a
+ * nested `<svg>` placed by `placement`.
+ */
+export function framed(svg: string, aspect: number, width: number): string {
+  const open = /<svg\b[^>]*>/.exec(svg)
+  const size = measure(svg)
+  if (!open || !size) return svg
+  const at = placement(size, aspect, width)
+  const attrs = open[0]
+    .slice(4, -1)
+    .replace(/\s(?:width|height|style|x|y)="[^"]*"/g, '')
+  const inner =
+    `<svg${attrs} x="${at.x.toFixed(1)}" y="${at.y.toFixed(1)}" width="${at.dw.toFixed(1)}" ` +
+    `height="${at.dh.toFixed(1)}" preserveAspectRatio="xMidYMid meet">` +
+    svg.slice(open.index + open[0].length)
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${at.W}" height="${at.H}" viewBox="0 0 ${at.W} ${at.H}">` +
+    `<rect width="${at.W}" height="${at.H}" fill="#ffffff"/>${inner}</svg>`
+  )
+}
+
+/** `framed`, on a drawn element: the frame is built with DOM calls and the drawing moves inside it. */
+export function frameElement(drawn: SVGSVGElement, aspect: number, width: number): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg'
+  const box = drawn.viewBox?.baseVal
+  const size = {
+    width: box?.width || Number(drawn.getAttribute('width')) || 800,
+    height: box?.height || Number(drawn.getAttribute('height')) || 400,
+  }
+  const at = placement(size, aspect, width)
+  const outer = document.createElementNS(NS, 'svg')
+  outer.setAttribute('viewBox', `0 0 ${at.W} ${at.H}`)
+  outer.setAttribute('width', String(at.W))
+  outer.setAttribute('height', String(at.H))
+  const ground = document.createElementNS(NS, 'rect')
+  ground.setAttribute('width', String(at.W))
+  ground.setAttribute('height', String(at.H))
+  ground.setAttribute('fill', '#ffffff')
+  outer.append(ground)
+  drawn.removeAttribute('style')
+  drawn.setAttribute('x', at.x.toFixed(1))
+  drawn.setAttribute('y', at.y.toFixed(1))
+  drawn.setAttribute('width', at.dw.toFixed(1))
+  drawn.setAttribute('height', at.dh.toFixed(1))
+  drawn.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  outer.append(drawn)
+  return outer
+}
+
+/**
+ * `drawInto`, keeping the shape close to `aspect` like `drawFitting`: both candidates are drawn
+ * off-screen and the closer one moves into `node`.
+ */
+export async function drawIntoFitting(
+  node: HTMLElement,
+  source: string,
+  look: object,
+  aspect: number,
+): Promise<SVGSVGElement | null> {
+  const scratch = document.createElement('div')
+  scratch.style.cssText = 'position:absolute;left:-99999px;top:0;width:1200px'
+  document.body.appendChild(scratch)
+  try {
+    const first = await drawInto(scratch, source, look)
+    if (!first) return null
+    const shape = (el: SVGSVGElement) => {
+      const b = el.viewBox?.baseVal
+      return { width: b?.width || 800, height: b?.height || 400 }
+    }
+    let chosen = first
+    const other = flipped(source)
+    if (misfit(shape(first), aspect) >= 1.7 && other) {
+      const second = document.createElement('div')
+      second.style.cssText = scratch.style.cssText
+      document.body.appendChild(second)
+      try {
+        const turned = await drawInto(second, other, look)
+        if (turned && misfit(shape(turned), aspect) < misfit(shape(first), aspect)) chosen = turned
+      } finally {
+        if (chosen !== first) first.remove()
+        second.remove()
+      }
+    }
+    node.replaceChildren(chosen)
+    return chosen
+  } finally {
+    scratch.remove()
   }
 }
 

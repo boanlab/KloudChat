@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { artifactsApi } from '@/lib/api'
-import { draw, rasterise, theme } from '@/lib/mermaid'
+import { FRAMES, drawIntoFitting, frameElement, rasterise, theme } from '@/lib/mermaid'
 import { useT } from '@/lib/useT'
 
 /**
@@ -38,15 +38,21 @@ export function Diagram({
 
     void (async () => {
       try {
-        const svg = await draw(source, theme(node))
-        if (!live || !node || !svg) {
+        const drawn = await drawIntoFitting(node, source, theme(node), FRAMES.page.aspect)
+        if (!live || !node || !drawn) {
           if (live) setFailed(true)
           return
         }
-        node.innerHTML = svg
-        fill(node)
+        // Every figure on a page has the same 4:3 footprint; the frame is shown and stored.
+        const frame = frameElement(drawn, FRAMES.page.aspect, FRAMES.page.width)
+        const picture = new XMLSerializer().serializeToString(frame)
+        frame.removeAttribute('width')
+        frame.removeAttribute('height')
+        frame.style.width = '100%'
+        frame.style.height = 'auto'
+        node.replaceChildren(frame)
         if (artifactId && sectionId && diagramKey) {
-          const png = await rasterise(svg)
+          const png = await rasterise(picture, 1)
           if (png && live) {
             await artifactsApi
               .storeDiagram(artifactId, sectionId, diagramKey, png)
@@ -79,21 +85,4 @@ export function Diagram({
     )
   }
   return <div ref={host} className="my-5 flex justify-center [&_svg]:h-auto [&_svg]:max-w-full" />
-}
-
-/** Max px height a figure may reach when widened; about a third of an A4 text block. */
-const MAX_GROWN_HEIGHT = 420
-
-/** Widens a narrow diagram to the column unless that would make it taller than MAX_GROWN_HEIGHT. */
-function fill(node: HTMLElement) {
-  const svg = node.querySelector('svg')
-  if (!svg) return
-  const box = svg.viewBox?.baseVal
-  const width = box?.width || svg.getBoundingClientRect().width
-  const height = box?.height || svg.getBoundingClientRect().height
-  const column = node.getBoundingClientRect().width
-  if (!width || !height || !column || column <= width) return
-  if ((column * height) / width > MAX_GROWN_HEIGHT) return
-  svg.style.maxWidth = 'none'
-  svg.style.width = '100%'
 }

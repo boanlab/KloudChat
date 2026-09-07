@@ -43,7 +43,7 @@ import {
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
-import { drawInto, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
+import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
@@ -1215,7 +1215,12 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
     if (!node || !source.trim()) return
     setFailed(false)
     void (async () => {
-      const drawn = await drawInto(node, source, slideTheme({ accent, ink: look.ink, muted: look.muted }))
+      const drawn = await drawIntoFitting(
+        node,
+        source,
+        slideTheme({ accent, ink: look.ink, muted: look.muted }),
+        FRAMES.slide.aspect,
+      )
       if (!live) return
       if (!drawn) {
         setFailed(true)
@@ -1225,17 +1230,17 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
       const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
       style.textContent = paperStyles(accent)
       drawn.prepend(style)
-      // The raster is drawn at mermaid's own size, so it is read before the box resizes it.
-      const styled = new XMLSerializer().serializeToString(drawn)
-      // Sized by the box, not by mermaid: the viewBox keeps the aspect.
-      drawn.removeAttribute('width')
-      drawn.removeAttribute('height')
-      drawn.setAttribute('preserveAspectRatio', 'xMidYMid meet')
-      drawn.style.width = '100%'
-      drawn.style.height = '100%'
-      drawn.style.maxWidth = 'none'
+      // Every figure in a deck has the same 16:9 footprint; the frame is what is shown and stored.
+      const frame = frameElement(drawn, FRAMES.slide.aspect, FRAMES.slide.width)
+      const styled = new XMLSerializer().serializeToString(frame)
+      frame.removeAttribute('width')
+      frame.removeAttribute('height')
+      frame.style.width = '100%'
+      frame.style.height = '100%'
+      frame.style.maxWidth = 'none'
+      node.replaceChildren(frame)
       if (artifactId && !stored) {
-        const png = await rasterise(styled)
+        const png = await rasterise(styled, 1)
         if (!png || !live) return
         try {
           await artifactsApi.storeSlideDiagram(artifactId, slideId, key, png)

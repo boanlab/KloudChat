@@ -37,7 +37,7 @@ import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
 import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
-import { draw, rasterise, theme } from '@/lib/mermaid'
+import { FRAMES, drawFitting, framed, rasterise, theme } from '@/lib/mermaid'
 import { parseCallout, parseCards } from '@/components/report/CardGrid'
 import { parse as parsePairs } from '@/components/report/StepList'
 import { SectionEditor } from '@/components/report/SectionEditor'
@@ -1394,10 +1394,11 @@ function useDiagramPictures(
       look.appendChild(easel)
       try {
         for (const { section, source, key } of missing) {
-          const svg = await draw(source, theme(easel))
+          const svg = await drawFitting(source, theme(easel), FRAMES.page.aspect)
           if (!live) return
           if (!svg) continue
-          const png = await rasterise(svg)
+          // The same 4:3 frame the page view shows, so the export matches the screen.
+          const png = await rasterise(framed(svg, FRAMES.page.aspect, FRAMES.page.width), 1)
           if (!live) return
           if (!png) continue
           found.set(source, png)

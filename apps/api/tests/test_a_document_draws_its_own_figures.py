@@ -148,7 +148,7 @@ def test_the_house_rules_know_comparison_and_slide_sizes():
     assert "compare" in diagram.FIGURES
     paper = diagram._messages("기존과 제안", "compare", "ko")[0]["content"]
     assert "비교도" in paper and "subgraph 둘" in paper and "direction TB" in paper
-    assert "6개를 넘으면 `flowchart TB`" in paper
+    assert "두세 줄로 접어라" in paper and "subgraph id 끼리" in paper
     assert "슬라이드용" not in paper
     slide = diagram._messages("기존과 제안", "compare", "ko", slide=True)[0]["content"]
     assert "슬라이드용" in slide and "7개 이하" in slide
