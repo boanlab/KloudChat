@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.db import SessionLocal
 from app.routers import (
     admin,
     auth,
@@ -25,7 +26,7 @@ from app.routers import (
     usage,
     workspace,
 )
-from app.services import bootstrap, litellm, storage
+from app.services import bootstrap, litellm, settings_store, storage
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("kchat")
@@ -40,6 +41,21 @@ async def lifespan(app: FastAPI):
         await bootstrap.seed_admin()
     except Exception as exc:  # noqa: BLE001 — a failed seed must not block startup
         log.warning("bootstrap admin not created: %s", exc)
+    if not settings_store.has_own_key():
+        log.warning(
+            "SECRET_KEY is unset — stored secrets are sealed with a key derived from "
+            "JWT_SECRET; set KCHAT_SECRET_KEY"
+        )
+    else:
+        try:
+            async with SessionLocal() as db:
+                moved = await settings_store.rotate_secrets(db)
+            if moved:
+                # The count stays out of the log: CodeQL reads any value out of
+                # `rotate_secrets` as secret material.
+                log.info("stored secrets re-sealed under SECRET_KEY")
+        except Exception as exc:  # noqa: BLE001 — old rows still open with the old key
+            log.warning("stored secrets were not re-sealed: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
     yield

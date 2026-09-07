@@ -81,10 +81,11 @@ async def effective_endpoint(connector: Any) -> str:
 
 
 async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
-    """Substitutes feature-address placeholders in a connector's environment."""
+    """A connector's environment opened (`settings_store.decrypt_env`) with feature-address
+    placeholders substituted."""
     out: dict[str, str] = {}
-    for key, value in (env or {}).items():
-        out[key] = await resolve_urls(str(value))
+    for key, value in settings_store.decrypt_env(env).items():
+        out[key] = await resolve_urls(value)
     return out
 
 

@@ -37,6 +37,7 @@ itself reads are in the second column.
 | `.env` | Container | Notes |
 | --- | --- | --- |
 | `KCHAT_JWT_SECRET` | `JWT_SECRET` | Access token signing key. Generate with `openssl rand -hex 32`. Compose refuses to start without it. Rotating it invalidates every issued access token — the intended response to a suspected compromise. |
+| `KCHAT_SECRET_KEY` | `SECRET_KEY` | Seals stored secrets: users' LiteLLM keys, issued API keys, connector credentials, secret system settings. Generate the same way. Empty falls back to a key derived from `JWT_SECRET` (logged as a warning at startup), so rotating the signing key would also make every stored secret unreadable. Once set, the API re-seals existing rows on its next start; rows sealed under the derived key still open until then. |
 
 ### Backend integration
 
@@ -220,8 +221,8 @@ never reach the database and read `내부망`.
 ## Runtime settings (Settings → System)
 
 Stored in `system_settings`, editable by administrators, applied without a
-restart. Secrets in this table are encrypted at rest with a key derived from
-`JWT_SECRET`.
+restart. Secrets in this table are encrypted at rest with `SECRET_KEY` (or,
+when that is unset, a key derived from `JWT_SECRET`).
 
 ### Integrations
 

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
 
     # ── auth ───────────────────────────────────────────────────────────
     jwt_secret: str = Field(default="change-me", min_length=8)
+    #: Seals secrets at rest (users' LiteLLM keys, issued API keys, connector credentials,
+    #: secret system settings). Empty: a key derived from `jwt_secret` is used, so rotating
+    #: the signing key would also make every stored secret unreadable. Set it.
+    secret_key: str = ""
     jwt_algorithm: str = "HS256"
     access_token_ttl_min: int = 15
     refresh_token_ttl_days: int = 30

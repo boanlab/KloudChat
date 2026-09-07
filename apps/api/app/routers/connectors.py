@@ -18,7 +18,7 @@ from app.schemas.workspace import (
     InstallRequest,
     ToolToggle,
 )
-from app.services import mcp
+from app.services import mcp, settings_store
 from app.services.tools import catalog
 from app.services.tools.catalog import CATALOG, catalog_entry
 
@@ -129,7 +129,7 @@ async def install(
         transport=Transport(entry["transport"]),
         endpoint=entry["endpoint"],
         # A supplied credential wins over a catalogue placeholder of the same name.
-        env={**(entry.get("env") or {}), **supplied},
+        env=settings_store.encrypt_env({**(entry.get("env") or {}), **supplied}),
         auth_type=entry.get("auth", "none"),
         kinds=entry.get("kinds", ["chat"]),
         official=True,
@@ -152,7 +152,7 @@ async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
         category=payload.category,
         transport=payload.transport,
         endpoint=payload.endpoint,
-        env=payload.env,
+        env=settings_store.encrypt_env(payload.env),
         auth_type=payload.auth,
         kinds=payload.kinds or ["chat"],
         official=False,
@@ -261,7 +261,7 @@ async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, d
     patch_fields = payload.model_dump(exclude_unset=True)
     # Merged, not replaced, so a one-field rotation keeps the catalogue defaults.
     if (env := patch_fields.pop("env", None)) is not None:
-        connector.env = {**(connector.env or {}), **env}
+        connector.env = {**(connector.env or {}), **settings_store.encrypt_env(env)}
     for field, value in patch_fields.items():
         setattr(connector, field, value)
     connector.updated_at = utcnow()
