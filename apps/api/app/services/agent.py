@@ -486,9 +486,9 @@ async def run_turn(
     redact_logging: bool = False,
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
-    #: A tool the first hop must call; later hops return to `tool_choice: auto`.
+    #: A tool the first ordinary hop must call, after any successful preflight.
     force_tool: str | None = None,
-    #: Required, exclusive first call; all tool-hop prose stays private.
+    #: Required, exclusive gate until it succeeds; all tool-hop prose stays private.
     preflight_tool: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
@@ -550,8 +550,10 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
-        if (preflight_tool or force_tool) and hop == 0:
-            stream_kwargs["force_tool"] = preflight_tool or force_tool
+        if preflight_tool and not preflight_completed and not closing:
+            stream_kwargs["force_tool"] = preflight_tool
+        elif force_tool and not preflight_tool and hop == 0:
+            stream_kwargs["force_tool"] = force_tool
         elif (
             preflight_tool
             and preflight_completed
@@ -593,7 +595,7 @@ async def run_turn(
         if preflight_tool:
             # No other call may run beside the required gate. Waiting for the
             # complete hop also keeps ignored tool_choice and runaway drafts private.
-            missed_preflight = hop == 0 and (
+            missed_preflight = not preflight_completed and (
                 len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
             )
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):

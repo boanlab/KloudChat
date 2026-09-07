@@ -249,12 +249,59 @@ async def test_requested_search_waits_for_a_successful_preflight_retry(monkeypat
     )
     assert [snapshot[2].get("force_tool") for snapshot in snapshots] == [
         PREFLIGHT,
-        None,
+        PREFLIGHT,
         "web_search",
         None,
     ]
     assert [name for name, _ in ran] == [PREFLIGHT, "web_search"]
     assert _text(events) == "최종 답변"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("calls", [[], [_call("write_canary")]])
+async def test_a_failed_gate_cannot_be_bypassed_by_an_answer_or_another_tool(monkeypatch, calls):
+    ran, snapshots = [], []
+    _stream(
+        monkeypatch,
+        [
+            {"calls": [_call()]},
+            {"text": ["UNVERIFIED_82.5"], "calls": calls},
+        ],
+        snapshots,
+    )
+    events = await _turn(
+        [_tool(PREFLIGHT, ran, failed=True), _tool("write_canary", ran)],
+        preflight_tool=PREFLIGHT,
+    )
+    assert [name for name, _ in ran] == [PREFLIGHT]
+    assert [snapshot[2].get("force_tool") for snapshot in snapshots] == [PREFLIGHT, PREFLIGHT]
+    assert _text(events) == REFUSAL
+    assert "UNVERIFIED" not in json.dumps(events)
+    assert [event["status"] for event in events if event["type"] == "step"] == [
+        "running",
+        "error",
+        "error",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_an_exhausted_failed_preflight_does_not_publish_the_closing_answer(monkeypatch):
+    ran, snapshots = [], []
+    _stream(
+        monkeypatch,
+        [
+            {"calls": [_call()]},
+            {"calls": [_call()]},
+            {"text": ["UNVERIFIED_82.5"]},
+        ],
+        snapshots,
+    )
+    monkeypatch.setattr(agent.settings, "max_tool_hops", 1)
+    events = await _turn([_tool(PREFLIGHT, ran, failed=True)], preflight_tool=PREFLIGHT)
+    assert len(ran) == 1
+    assert snapshots[-1][1] == []
+    assert "force_tool" not in snapshots[-1][2]
+    assert _text(events) == REFUSAL
 
 
 @pytest.mark.asyncio
