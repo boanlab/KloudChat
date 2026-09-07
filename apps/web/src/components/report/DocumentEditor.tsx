@@ -582,12 +582,14 @@ const PAGED_SCOPE = 'paged-report-preview'
  * The editor's continuous sheet laid out like the printed page: A4 wide with the page margins
  * as padding, the cover at its print size, sections spaced as in print. Line breaks, type
  * and the position of the body then match the page view; only the sheet being one long
- * page differs. `.page.paginated` outranks the seed's own `.paginated` rules.
+ * page differs. The seed's `body` typography is repeated on the sheet, since a shadow root
+ * has no body. `.page.paginated` outranks the seed's own `.paginated` rules.
  */
 function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
   return `
   .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
-  .page.paginated .cover { box-sizing: content-box; min-height: 232mm; padding: 74mm 0 0; margin: 0; }
+  .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
+  .page.paginated .cover { min-height: 232mm; padding: 74mm 0 0; margin: 0; }
   .page.paginated section { margin: 0 0 12mm; }
 `
 }
@@ -622,6 +624,11 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
     const sheet = URL.createObjectURL(new Blob([`
+      html, body { margin: 0; padding: 0; background: white; }
+      h1 { string-set: document-title content(text); }
+      ${css}
+      /* After the template's css: its own @page (20mm 18mm) would otherwise outrank these
+         margins, and the page settings would have no effect. */
       @page {
         size: A4;
         margin: ${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm;
@@ -630,9 +637,6 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
         @bottom-right { content: ${settings.pageNumbers === 'none' ? 'none' : settings.pageNumbers === 'page' ? 'counter(page)' : 'counter(page) " / " counter(pages)'}; color: #777; font-size: 8pt; }
       }
       @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
-      html, body { margin: 0; padding: 0; background: white; }
-      h1 { string-set: document-title content(text); }
-      ${css}
       /* The sheet's screen box (viewport-high, padded) must not reach Paged.js, or the cover
          inside it is pushed to page two and page one comes out blank. The cover keeps the
          seed's print size (232mm); what puts the first section on page two is a break
