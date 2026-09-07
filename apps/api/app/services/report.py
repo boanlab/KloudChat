@@ -1521,7 +1521,7 @@ async def rewrite_section(
         1200,
     )
     # The same normalisation `write` applies.
-    body = hangul.tidy_spacing(hangul.read_back(body)[0])
+    body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(body, heading))[0])
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
     return _without_borrowed_tables(body, target.get("content") or "", others, note), spent
