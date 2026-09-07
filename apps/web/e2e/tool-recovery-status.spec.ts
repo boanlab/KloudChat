@@ -21,7 +21,11 @@ function assistant(overrides: Row = {}): Row {
   }
 }
 
-async function mockChat(page: Page, messages: Row[]) {
+async function mockChat(
+  page: Page,
+  messages: Row[],
+  options: { streamResponses?: boolean; artifactReady?: Promise<void> } = {},
+) {
   const unexpected: string[] = []
   page.on('pageerror', (error) => unexpected.push(`pageerror: ${error.message}`))
   const row = {
@@ -40,7 +44,7 @@ async function mockChat(page: Page, messages: Row[]) {
         role: 'user', status: 'active', monthlyCredits: 1000, creditsUsed: 0,
         cycleResetsAt: null, avatarColor: '#64748b', litellmKeyPreview: null,
         litellmKeyIssuedAt: null, allowedModels: [], createdAt: now, lastActiveAt: now,
-        preferences: { streamResponses: true, autoMemory: false, showUsage: false },
+        preferences: { streamResponses: options.streamResponses ?? true, autoMemory: false, showUsage: false },
       },
     })
     if (path === '/auth/config') return json({
@@ -61,6 +65,14 @@ async function mockChat(page: Page, messages: Row[]) {
     }
     if (path === `/sessions/${sessionId}`) return json(row)
     if (path === `/sessions/${sessionId}/stop`) return json({ stopped: true })
+    if (path === '/artifacts/library-hours') {
+      await options.artifactReady
+      return json({
+        id: 'library-hours', kind: 'html', title: '도서관 운영 시간 안내', version: 1,
+        data: { content: '<p>평일 오전 9시부터 운영합니다.</p>', language: 'html' },
+        sessionId, projectId: null, createdAt: now, updatedAt: now,
+      })
+    }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     if ([
       '/tools', '/skills', '/projects', '/artifacts', '/memory', '/agents',
@@ -120,7 +132,7 @@ for (const failure of ['interrupted', 'stopped'] as const) {
 }
 
 /** Keep the SSE response open after a failed read and a running retry. */
-async function holdRetryStream(page: Page, end: 'success' | 'failure') {
+async function holdRetryStream(page: Page, end: 'success' | 'failure' | 'empty' | 'artifact') {
   await page.addInitScript(({ firstRead, retryRead, answer, end }) => {
     const originalFetch = window.fetch.bind(window)
     const control = window as typeof window & { finishReadRetry?: () => void }
@@ -136,11 +148,16 @@ async function holdRetryStream(page: Page, end: 'success' | 'failure') {
           emit({ ...retryRead, type: 'step', category: 'tool', status: 'running' })
           control.finishReadRetry = () => {
             emit({ ...retryRead, type: 'step', category: 'tool' })
-            if (end === 'success') {
-              emit({ type: 'delta', text: answer })
-              emit({ type: 'usage', inputTokens: 10, outputTokens: 10, credits: 0 })
-            } else {
+            if (end === 'failure') {
               emit({ type: 'error', message: '답변 전송이 중단되었습니다.' })
+            } else {
+              if (end === 'artifact') {
+                emit({ type: 'artifact', artifactId: 'library-hours', deliberate: false })
+              }
+              if (end === 'success') {
+                emit({ type: 'delta', text: answer })
+              }
+              emit({ type: 'usage', inputTokens: 10, outputTokens: 10, credits: 0 })
             }
             emit({ type: 'done' })
             controller.close()
@@ -181,3 +198,69 @@ for (const end of ['success', 'failure', 'stop'] as const) {
     expect(unexpected).toEqual([])
   })
 }
+
+for (const streamResponses of [true, false]) {
+  test(`답변이 비어 있는 정상 종료도 미응답으로 표시한다: streamResponses=${streamResponses}`, async ({ page }, testInfo) => {
+    await holdRetryStream(page, 'empty')
+    const unexpected = await mockChat(page, [], { streamResponses })
+    await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 확인해 줘.')
+    await page.getByLabel('프롬프트 입력').press('Enter')
+    await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+    await page.evaluate(() => {
+      const control = window as typeof window & { finishReadRetry?: () => void }
+      control.finishReadRetry!()
+    })
+    await expect(timeline(page)).toContainText('중단됨')
+    await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
+    await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeVisible()
+    if (streamResponses && process.env.TOOL_RECOVERY_SCREENSHOT_DIR) {
+      await page.screenshot({
+        path: `${process.env.TOOL_RECOVERY_SCREENSHOT_DIR}/empty-answer-${testInfo.project.name}.png`,
+        animations: 'disabled',
+      })
+    }
+    expect(unexpected).toEqual([])
+  })
+}
+
+test('텍스트 없이 산출물만 도착하면 본문을 불러오는 동안에도 정상 완료를 유지한다', async ({ page }) => {
+  await holdRetryStream(page, 'artifact')
+  let releaseArtifact!: () => void
+  const artifactReady = new Promise<void>((resolve) => { releaseArtifact = resolve })
+  const unexpected = await mockChat(page, [], { artifactReady })
+  await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 안내 파일로 만들어 줘.')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+  const artifactResponse = page.waitForResponse('**/api/artifacts/library-hours')
+  try {
+    await page.evaluate(() => {
+      const control = window as typeof window & { finishReadRetry?: () => void }
+      control.finishReadRetry!()
+    })
+    // The body request is held; the stream's artifact announcement is sufficient.
+    await expect(timeline(page)).toContainText('작업 완료')
+    await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
+  } finally {
+    releaseArtifact()
+  }
+  await artifactResponse
+  await expect(timeline(page)).toContainText('작업 완료')
+  await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})
+
+test('텍스트 일괄 표시 모드에서도 버퍼에 도착한 답변은 정상 완료로 표시한다', async ({ page }) => {
+  await holdRetryStream(page, 'success')
+  const unexpected = await mockChat(page, [], { streamResponses: false })
+  await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 확인해 줘.')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+  await page.evaluate(() => {
+    const control = window as typeof window & { finishReadRetry?: () => void }
+    control.finishReadRetry!()
+  })
+  await expect(timeline(page)).toContainText('작업 완료')
+  await expect(page.getByText(answer)).toBeVisible()
+  await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})
