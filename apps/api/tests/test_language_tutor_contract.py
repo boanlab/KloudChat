@@ -76,3 +76,44 @@ def test_opic_assembled_prompt_limits_assessment_to_available_evidence(learner_r
     assert "음성 자료가 없으면 발음, 억양, 말하기 속도나 유창성을 평가하지 않는다" in prompt
     assert "학습자가 말하지 않은 장소, 사람, 경험이나 세부 사실을 만들어 넣지 않는다" in prompt
     assert "이 답변은 IH 기준에서 세부가 부족하다" not in prompt
+
+
+def test_english_tutor_contract_applies_output_limits_beyond_questions_and_corrections():
+    prompt = _messages(
+        "english-tutor", "짧은 영어 인사 한 문장만 써 줘. 번역은 붙이지 마."
+    )[0]["content"]
+
+    assert "Respect explicit limits on content, length, and output language" in prompt
+    assert "even when the request itself is written in another language" in prompt
+    assert "For a greeting-only request, give the greeting and stop" in prompt
+    assert "Do not add a preface, translation, or explanation to a limited request" in prompt
+
+
+def test_english_tutor_contract_makes_grammar_explanations_requested_and_contextual():
+    prompt = _messages(
+        "english-tutor", "They was late yesterday. 문법을 고치고 바꾼 이유도 짧게 알려 줘."
+    )[0]["content"]
+
+    assert (
+        "Explain a correction only when the learner asks why or requests an explanation" in prompt
+    )
+    assert "Keep the reason specific to the sentence and its context" in prompt
+    assert "do not turn a context-dependent usage into a universal grammar rule" in prompt
+    assert "Distinguish a grammar error from an optional stylistic improvement" in prompt
+    assert "one line each on what changed and why (in Korean)" not in prompt
+
+
+def test_opic_limit_contract_does_not_turn_missing_evidence_into_a_failing_answer():
+    prompt = _messages(
+        "opic-master", "짧은 글만 보고 실제 말하기 성적을 알 수 있니? 판단 한계만 설명해 줘."
+    )[0]["content"]
+
+    assert "요청한 출력 언어와 길이를 지키고" in prompt
+    assert "판단 한계만 요청하면 제공된 정보에서 확인할 수 없는 점만 짧게 설명" in prompt
+    assert "시험 요구 조건을 충족하지 못한다는 평가로 바꾸지 않는다" in prompt
+    assert (
+        "공식 기준이나 최소 문장 수, 답변 길이는 제공된 자료나 도구 결과에 "
+        "근거가 있을 때만"
+    ) in prompt
+    assert "근거 없는 조건을 공식 시험 요건으로 만들지 않는다" in prompt
+    assert "일반적인 연습 조언과 공식 기준을 구분한다" in prompt
