@@ -46,9 +46,19 @@ export function usePagination(
       }
     }
     lines.sort((a, b) => a.top - b.top)
+    // A cover ends its page: the cut lands on its bottom edge even when its lower half is empty.
+    const forced = Array.from(root.querySelectorAll<HTMLElement>('.cover, [data-page-break="true"]'))
+      .map((el) => el.getBoundingClientRect().bottom - rootTop + (parseFloat(getComputedStyle(el).marginBottom) || 0))
+      .sort((a, b) => a - b)
     const next: number[] = []
     let target = room
     while (target < contentHeight) {
+      const wall = forced.find((edge) => edge > (next.at(-1) ?? 0) + 20 && edge <= target + 1)
+      if (wall !== undefined) {
+        next.push(wall)
+        target = wall + room
+        continue
+      }
       const before = lines.filter((line) => line.bottom <= target).at(-1)
       const after = lines.find((line) => line.top > (before?.bottom ?? target))
       let cut = before ? before.bottom + Math.max(2, ((after?.top ?? before.bottom + 4) - before.bottom) / 2) : target
