@@ -1,12 +1,11 @@
-/** A srcdoc document otherwise resolves #links against the embedding app's URL.
- *  Only the displayed copy gets this base; stored and downloaded HTML stays intact. */
+/** Keep fragment links inside srcdoc without changing the document's resource base.
+ *  Only the displayed copy changes; stored and downloaded HTML stays intact. */
 export function htmlPreviewDocument(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html')
-  // The preview owns its navigation base, including when generated HTML supplies one.
-  document.querySelectorAll('base').forEach((base) => base.remove())
-  const base = document.createElement('base')
-  base.href = 'about:srcdoc'
-  document.head.prepend(base)
+  document.querySelectorAll('a[href], area[href]').forEach((link) => {
+    const href = link.getAttribute('href')?.trim()
+    if (href?.startsWith('#')) link.setAttribute('href', `about:srcdoc${href}`)
+  })
   const doctype = document.doctype
     ? new XMLSerializer().serializeToString(document.doctype)
     : ''
