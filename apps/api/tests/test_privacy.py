@@ -1476,6 +1476,181 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "window_basis", "offset", "expected_decision"),
+    [
+        ("auto_quality", "economy", 0, "kept_quality"),
+        ("auto_quality", "messages", 0, "kept_quality"),
+        ("auto_quality", "complete", -1, "kept_quality"),
+        ("auto_quality", "complete", 0, "routed"),
+        ("auto_quality", "complete", 1_000, "routed"),
+        ("auto_quality", "unknown", 0, "routed"),
+        ("auto", "economy", 0, "routed"),
+        ("auto", "economy", -1, "kept_quality"),
+    ],
+    ids=[
+        "quality-economy-only-window",
+        "quality-messages-only-window",
+        "quality-one-short",
+        "quality-exact-fit",
+        "quality-larger-window",
+        "quality-unknown-window",
+        "economy-exact-fit",
+        "economy-one-short",
+    ],
+)
+async def test_auto_context_fit_uses_the_envelope_retained_by_the_lane(
+    monkeypatch, mode, window_basis, offset, expected_decision
+) -> None:
+    """The real handler selects from synthetic models; no provider or tool executes."""
+    import socket
+
+    import httpx
+
+    from app.services import context
+    from app.services.credits import has_headroom
+
+    def no_network(*_args, **_kwargs):
+        pytest.fail("unexpected network access in the Auto context regression")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(httpx, "AsyncClient", no_network)
+    monkeypatch.setattr(context, "_today", lambda: "Synthetic calendar context.")
+    question = "Explain a difficult abstraction in careful detail."
+
+    async def no_tool(_args):
+        pytest.fail("the context-fit fixture must not execute tools")
+
+    tool = Tool(
+        name="fixture_operation",
+        label="Fixture operation",
+        description="Synthetic tool schema. " * 50,
+        parameters={"type": "object", "properties": {}},
+        run=no_tool,
+    )
+    definitions = openai_snapshot([tool])
+    history = [{"role": "user", "content": question}]
+    economy_messages = context.build_messages(sessions_router.SessionKind.chat, history)
+    full_messages = context.build_messages(
+        sessions_router.SessionKind.chat, history, with_tools=True
+    )
+
+    def size(envelope):
+        return len(json.dumps(envelope, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+    sizes = {
+        "economy": size(economy_messages),
+        "messages": size(full_messages),
+        "complete": size({"messages": full_messages, "tools": definitions}),
+    }
+    assert sizes["economy"] < sizes["messages"] < sizes["complete"]
+    reserve = sessions_router.adaptive_routing._CONTEXT_RESERVE_TOKENS
+    window = 0 if window_basis == "unknown" else sizes[window_basis] + reserve + offset
+    baseline = {
+        **_external_model("fixture-baseline"),
+        "inputCreditCost": 10,
+        "creditCost": 20,
+        "contextWindow": 64_000,
+        "supportsTools": True,
+    }
+    candidate = {
+        **baseline,
+        "id": "fixture-candidate",
+        "inputCreditCost": 40 if mode == "auto_quality" else 1,
+        "creditCost": 80 if mode == "auto_quality" else 2,
+        "contextWindow": window,
+    }
+    classifier = {
+        **baseline,
+        "id": "fixture-classifier",
+        "dataBoundary": "self_hosted",
+        "strictLocal": True,
+        "privacyOnly": True,
+        "inputCreditCost": 0,
+        "creditCost": 0,
+    }
+    user = User(
+        email="fixture@example.test", password_hash="hash", name="Fixture", monthly_credits=1_000
+    )
+    session = ChatSession(user_id=user.id, model=baseline["id"], routing_mode=mode)
+    await _patch_guard_dependencies(
+        monkeypatch, session=session, models=[baseline, classifier, candidate], blocks=[]
+    )
+    classifier_calls = []
+    captured = {}
+
+    async def policy():
+        return Governance(
+            external_data_guard=True,
+            adaptive_routing_enabled=True,
+            adaptive_quality_enabled=True,
+            adaptive_classifier_model_id=classifier["id"],
+            adaptive_economy_model_ids=[candidate["id"]],
+            adaptive_quality_model_ids=[candidate["id"]],
+        )
+
+    async def tools(*_args, **_kwargs):
+        return [tool]
+
+    async def classify(**kwargs):
+        classifier_calls.append(json.loads(kwargs["context"]))
+        return sessions_router.adaptive_routing.Classification(
+            "high" if mode == "auto_quality" else "low", 0.99, "simple_transform", 2, 1
+        )
+
+    async def ensure_key(*_args, **_kwargs):
+        return "fixture-virtual-key"
+
+    async def credentials(*_args, **_kwargs):
+        return "http://unused.invalid", "fixture-virtual-key"
+
+    async def stream(**kwargs):
+        captured.update(kwargs)
+        yield sessions_router.chat_service.sse({"type": "done"})
+
+    class Db(_NoWriteDb):
+        def is_modified(self, _value):
+            return False
+
+    monkeypatch.setattr(sessions_router.governance, "current_for_egress", policy)
+    monkeypatch.setattr(sessions_router, "build_tools", tools)
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", classify)
+    monkeypatch.setattr(sessions_router.litellm_service, "user_key", lambda _user: "fixture-key")
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "has_headroom", has_headroom)
+    monkeypatch.setattr(sessions_router, "_run_turn", stream)
+    response = await sessions_router.send_message(
+        session.id, SendMessage(content=question), _request(), user, Db()
+    )
+    _ = [chunk async for chunk in response.body_iterator]
+
+    route = captured["routing"]["costRouting"]
+    assert route["mode"] == mode
+    assert route["decision"] == expected_decision
+    routed = expected_decision == "routed"
+    assert captured["model"]["id"] == (candidate if routed else baseline)["id"]
+    assert len(classifier_calls) == int(routed)
+    assert captured["disable_fallbacks"] is routed
+    if routed:
+        assert classifier_calls[0]["messages"] == full_messages
+        assert classifier_calls[0]["qualityModelTools"] == definitions
+    else:
+        assert route["reasonCode"] == (
+            "no_quality_model" if mode == "auto_quality" else "no_economy_model"
+        )
+    if routed and mode == "auto":
+        assert captured["messages"] == economy_messages
+        assert captured["tools"] == []
+        assert captured["tool_definitions"] == []
+    else:
+        assert captured["messages"] == full_messages
+        assert captured["tools"] == [tool]
+        assert captured["tool_definitions"] == definitions
+
+
+@pytest.mark.asyncio
 async def test_auto_requires_persisted_quality_model_instead_of_agent_fallback(
     monkeypatch,
 ) -> None:
