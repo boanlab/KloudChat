@@ -620,14 +620,13 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       h1 { string-set: document-title content(text); }
       ${css}
       /* The sheet's screen box (viewport-high, padded) must not reach Paged.js, or the cover
-         inside it is pushed to page two and page one comes out blank. The cover then fills
-         the page box to one pixel short — Paged.js's own page variables, so the number is
-         exactly its content height — and nothing of the first section fits under it, which
-         is what puts the section on page two: Paged.js does not honour the cover's
-         break-after, and a cover that leaves a sliver invites it to back the heading (and
-         the cover) onto the next page. Print keeps the seed's 232mm rule. */
+         inside it is pushed to page two and page one comes out blank. The cover keeps the
+         seed's print size (232mm); what puts the first section on page two is a break
+         *before* it — Paged.js honours break-before, as the manual page breaks below show,
+         but not the cover's break-after. */
       .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
-      .cover { box-sizing: border-box !important; min-height: calc(var(--pagedjs-pagebox-height, 297mm) - var(--pagedjs-margin-top, 20mm) - var(--pagedjs-margin-bottom, 20mm) - 1px) !important; margin: 0 !important; }
+      .cover { margin: 0 !important; }
+      .cover + * { break-before: page; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
