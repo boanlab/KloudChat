@@ -643,6 +643,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
          *before* it — Paged.js honours break-before, as the manual page breaks below show,
          but not the cover's break-after. */
       .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+      /* The seed repeats the document name on every printed sheet as a fixed element; Paged.js
+         pulls fixed elements into the flow of each page and the running header above already
+         carries the name, so the copy would only push the text down page by page. */
+      .doc-foot { display: none !important; }
       .cover { margin: 0 !important; }
       .cover + * { break-before: page; }
       section { break-inside: auto; }
