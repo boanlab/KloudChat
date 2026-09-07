@@ -316,8 +316,13 @@ export const FRAMES: Record<'slide' | 'page', Frame> = {
 /** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
 const MAX_UPSCALE = 1.6
 
-/** Beyond this misfit the drawing is tried the other way round. */
+/** A drawing this much taller than the frame allows is tried the other way round. Only tall
+ *  ones: a flat drawing is padded by the frame and stays legible, a tall one shrinks. */
 const TURN_AT = 1.5
+
+function tooTall(size: { width: number; height: number }, frame: Frame): boolean {
+  return size.width / Math.max(1, size.height) < frame.minAspect / TURN_AT
+}
 
 /** Natural size of a drawn SVG, from its viewBox (mermaid always writes one). */
 export function measure(svg: string): { width: number; height: number } | null {
@@ -348,14 +353,14 @@ export function flipped(source: string): string | null {
 }
 
 /**
- * `draw`, keeping the shape inside the frame's range: a picture far outside it is drawn again
- * with its direction turned, and the closer of the two is kept.
+ * `draw`, turning a drawing that is far too tall for its frame the other way round and keeping
+ * the closer of the two. A flat drawing is left alone: the frame pads it and it stays legible.
  */
 export async function drawFitting(source: string, look: object, frame: Frame): Promise<string | null> {
   const first = await draw(source, look)
   if (!first) return null
   const size = measure(first)
-  if (!size || misfit(size, frame) < TURN_AT) return first
+  if (!size || !tooTall(size, frame)) return first
   const other = flipped(source)
   if (!other) return first
   const second = await draw(other, look)
@@ -450,7 +455,7 @@ export async function drawIntoFitting(
     }
     let chosen = first
     const other = flipped(source)
-    if (misfit(shape(first), frame) >= TURN_AT && other) {
+    if (tooTall(shape(first), frame) && other) {
       const second = document.createElement('div')
       second.style.cssText = scratch.style.cssText
       document.body.appendChild(second)
