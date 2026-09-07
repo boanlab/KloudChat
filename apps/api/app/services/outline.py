@@ -6,6 +6,7 @@ layout and stay there; `flat_layouts` detects that.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Sequence
 from itertools import groupby
@@ -15,6 +16,49 @@ MAX_RUN = 3
 
 #: Distinct body layouts a plan should use, capped by how many exist.
 MIN_DISTINCT = 3
+
+_COUNT_WORDS = {
+    "한": 1,
+    "두": 2,
+    "세": 3,
+    "네": 4,
+    "다섯": 5,
+    "여섯": 6,
+    "일곱": 7,
+    "여덟": 8,
+    "아홉": 9,
+    "열": 10,
+    "열한": 11,
+    "열두": 12,
+}
+
+
+def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
+    """An explicit total, not a page reference, range or count of just the body."""
+    words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
+    unit = "|".join(re.escape(value) for value in units)
+    pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words}))\s*(?:개\s*)?(?:{unit})"
+    found: list[int] = []
+    for match in re.finditer(pattern, request):
+        prefix = request[: match.start()].rstrip()
+        suffix = request[match.end() :]
+        if re.search(r"[~–-]\s*$", prefix) or re.match(r"\s*(?:이상|이하|내외|정도|[~–-])", suffix):
+            continue
+        if re.search(r"(?:제|본문|본론|내용)\s*$", prefix):
+            continue
+        if re.match(r"[A-Za-z가-힣]", suffix) and not re.match(
+            r"(?:으로|로|짜리|만|을|를|은|는|에|이|가)", suffix
+        ):
+            continue
+        raw = match.group(1)
+        value = int(raw) if raw.isdigit() else _COUNT_WORDS[raw]
+        if not value:
+            continue
+        value = min(value, maximum)
+        if re.search(r"(?:총|전체|표지\s*포함)\s*$", prefix):
+            return value
+        found.append(value)
+    return found[0] if len(set(found)) == 1 else None
 
 
 def count(usage: dict[str, int], spent: dict[str, int], *, planned_apart: bool) -> None:

@@ -57,7 +57,7 @@ from app.services.context import build_document_messages
 
 log = logging.getLogger(__name__)
 
-#: Slide-count bounds for an explicit request.
+#: Default minimum; explicit short requests keep their count. All outlines share the ceiling.
 _MIN_SLIDES = 5
 _MAX_SLIDES = 50
 
@@ -847,12 +847,10 @@ def _read_back_values(value: Any) -> Any:
 
 
 def requested_slides(request: str) -> int | None:
-    """Slide count stated in the request, clamped to bounds. `None` if unstated."""
-    match = re.search(r"(\d{1,3})\s*(?:장|페이지|슬라이드|쪽)", request)
-    if not match:
-        return None
-    asked = int(match.group(1))
-    return max(_MIN_SLIDES, min(asked, _MAX_SLIDES)) if asked > 0 else None
+    """An explicit total may be shorter than the default five-slide outline."""
+    return plan_rules.requested_count(
+        request, ("슬라이드", "페이지", "장", "쪽"), maximum=_MAX_SLIDES
+    )
 
 
 def slides_for_minutes(request: str) -> int | None:
@@ -2023,8 +2021,8 @@ async def write(
                 accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
             else:
                 log.info("deck outline still flat, keeping the first")
-    # A talk with a stated length or count planned too short gets one retry, no shorter.
-    needed = wanted or slides_for_minutes(request)
+    # A stated duration is a minimum; an explicit count is checked exactly below.
+    needed = None if wanted else slides_for_minutes(request)
     if plan and needed and len(plan) < needed:
         log.info("deck outline short: %d of %d slides, asking once more", len(plan), needed)
         try:
@@ -2069,6 +2067,39 @@ async def write(
     # Whatever the model settled on: a long deck opens with an agenda, and three bullet
     # lists in a row become two and a shape.
     plan = vary_layouts(ensure_agenda(plan))
+    plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
+
+    # Check after structural changes: inserting an agenda must not enlarge an exact total.
+    if wanted and plan and len(plan) != wanted:
+        try:
+            retry_text, retry_spent = await ask(
+                f"\n\n앞선 구성은 {len(plan)}장이었다. 표지와 목차를 포함해 전체가 정확히 "
+                f"{wanted}장이어야 한다. 요청한 내용을 빠뜨리지 말고 그 수에 맞춰 다시 구성하라."
+            )
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.warning("deck outline size retry failed: %s", exc)
+        else:
+            plan_rules.count(usage, retry_spent, planned_apart=bool(outline_model))
+            retry_title, retry_subtitle, retry_plan = _parse_outline(retry_text)
+            retry_plan = _named_dividers(
+                _rationed_quotes(_grounded_layouts(retry_plan, request, document_context))
+            )
+            retry_plan = vary_layouts(ensure_agenda(retry_plan))
+            if len(retry_plan) == wanted:
+                title = retry_title or title
+                subtitle = retry_subtitle or subtitle
+                plan = retry_plan
+                accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+        if len(plan) != wanted:
+            yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
+            yield {
+                "type": "error",
+                "message": (
+                    f"요청한 {wanted}장에 맞는 구성을 만들지 못했습니다. 다시 시도해 주세요."
+                ),
+            }
+            yield {"type": "usage", **usage}
+            return
 
     if not plan:
         yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
@@ -2088,7 +2119,6 @@ async def write(
     }
     # The planning pass stops here; the caller stores the proposal and calls
     # back with it approved.
-    plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
     proposal: dict[str, Any] = {
         "title": title[:200],
         "subtitle": subtitle[:200],
