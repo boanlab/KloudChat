@@ -191,6 +191,9 @@ _NARRATION_CHARS = 400
 
 #: `web_search` calls per turn; other tools keep the normal hop budget.
 MAX_WEB_SEARCHES = 3
+#: `fetch_url` calls per turn: a model chasing a bus route through page after
+#: page ran twenty minutes before this cap.
+MAX_FETCHES = 6
 
 
 def _repeats(earlier: str, later: str) -> bool:
@@ -527,6 +530,7 @@ async def run_turn(
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
+    fetches = 0
     #: Long text written in a hop that then called tools; retracted at the end
     #: if the final answer repeats it.
     held: list[str] = []
@@ -766,13 +770,20 @@ async def run_turn(
             if call["name"] == "web_search":
                 searches += 1
                 empty_searches += int(result.empty)
+            elif call["name"] == "fetch_url":
+                fetches += 1
 
-        if searches >= MAX_WEB_SEARCHES:
+        if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
                 {
                     "role": "user",
                     "content": (
-                        "웹 검색은 충분히 했습니다. 도구를 더 쓰지 말고 지금까지 "
+                        (
+                            "웹 검색은 충분히 했습니다. "
+                            if searches >= MAX_WEB_SEARCHES
+                            else "문서는 충분히 읽었습니다. "
+                        )
+                        + "도구를 더 쓰지 말고 지금까지 "
                         "확인한 자료로 답하세요. 확인하지 못한 항목은 그렇게 밝히고, "
                         "실제 검색 결과에 있던 URL만 출처로 쓰세요."
                     ),

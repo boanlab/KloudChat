@@ -28,6 +28,11 @@ from app.services.tools.base import ToolResult
         ("auto", "이 주장을 검증해 줘", (True, "web_search")),
         ("auto", "분당 날씨 알려줘", (True, "weather")),
         ("auto", "내일 우산 챙겨야 해?", (True, "weather")),
+        # A named release, a bibliography, a change: stale in memory, so searched.
+        ("auto", "Python 3.14에서 바뀐 주요 기능이 뭐야?", (True, "web_search")),
+        ("auto", "React 19에서 forwardRef 없어졌어?", (True, "web_search")),
+        ("auto", "Mamba 논문 arXiv 번호랑 저자 알려줘", (True, "web_search")),
+        ("auto", "리스트 3개를 합치는 법", (True, None)),
         # on: forced every turn, weather still to the weather tool
         (True, "파이썬 리스트 컴프리헨션 설명해 줘", (True, "web_search")),
         (True, "서울 기온 몇 도야", (True, "weather")),
@@ -291,3 +296,80 @@ async def test_a_preset_call_runs_before_the_model_is_asked(monkeypatch) -> None
     steps = [e for e in events if e["type"] == "step"]
     assert steps[0]["label"] == "웹 검색 중" and steps[-1]["status"] == "done"
     assert "".join(e["text"] for e in events if e["type"] == "delta").startswith("답")
+
+
+@pytest.mark.asyncio
+async def test_page_reading_stops_after_the_cap(monkeypatch) -> None:
+    """A model that keeps reading pages is told to answer after `MAX_FETCHES`."""
+    from app.services import agent
+    from app.services.tools.base import Tool, ToolContext
+
+    seen: list[dict] = []
+    fetch_call = [
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c0",'
+        '"function":{"name":"fetch_url","arguments":"{\\"url\\":\\"https://x.test/p\\"}"}}]}}]}',
+        "data: [DONE]",
+    ]
+    script = [fetch_call] * 10 + [
+        ['data: {"choices":[{"delta":{"content":"답"}}]}', "data: [DONE]"]
+    ]
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, lines):
+            self._lines = lines
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return None
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return None
+
+        def stream(self, _m, _p, *, json):
+            seen.append(json)
+            return _Response(
+                script.pop(0)
+                if script
+                else ['data: {"choices":[{"delta":{"content":"답"}}]}', "data: [DONE]"]
+            )
+
+    async def client(*_a, **_k):
+        return _Client()
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def run(_args):
+        return ToolResult(content="페이지")
+
+    tool = Tool(
+        name="fetch_url",
+        description="d",
+        parameters={"type": "object"},
+        run=run,
+        label="문서 읽는 중",
+    )
+    _ = [
+        e
+        async for e in agent.run_turn(
+            "m",
+            [{"role": "user", "content": "버스 노선 알려줘"}],
+            [tool],
+            ToolContext(user_id="u", session_id="s", api_key="k"),
+        )
+    ]
+    # Six reads, then one tool-free closing request.
+    assert len(seen) == agent.MAX_FETCHES + 1
+    assert "tools" not in seen[-1]
+    assert "문서는 충분히 읽었습니다" in seen[-1]["messages"][-1]["content"]

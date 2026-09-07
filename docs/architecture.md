@@ -193,6 +193,15 @@ forecast, keyless), `execute_code` (sandboxed), `create_artifact`,
 `create_chart`, `share_note`, and `search_knowledge` over an agent's own
 documents (§8). Tools from installed MCP connectors are added to these.
 
+**A search runs two lanes and reads dates.** `web_search` asks SearXNG's
+general lane and, when the query carries a time-sensitive word (a year, 최신,
+가격, a named release), the news lane too, with the news hits first; the
+general lane answers 「최신 모델」 with home pages and encyclopaedias. Front
+pages and a host's third hit are benched (used only to pad a thin list), and a
+hit's `publishedDate` reaches the model as 「게시일」 so the newest wins. A turn
+makes at most three searches and six page reads; past either cap the model is
+told to answer from what it has.
+
 **The web-search toggle has three positions.** `context.search_plan` turns the
 toggle and the user's words into two facts: whether the web tools (`web_search`,
 `weather`) are offered this turn, and which tool the first hop must call. 「켬」
