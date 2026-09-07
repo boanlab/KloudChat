@@ -1175,12 +1175,16 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         if skill is not None:
             if not established:
                 skill.visibility = Visibility.org
-            # Only an untouched earlier shipped body is upgraded; an edited
-            # body keeps its text and version.
+            # Only an untouched earlier shipped body is upgraded. Preserve NCS
+            # skills whose tool requirements were edited too.
+            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
+            upgraded = bool(
+                previous
+                and skill.body.strip() == previous.strip()
+                and (key != "ncs-reasoning" or skill.required_tools in (None, []))
+            )
             if skill.required_tools is None:
                 skill.required_tools = list(spec.get("required_tools", []))
-            previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
-            upgraded = bool(previous and skill.body.strip() == previous.strip())
             if upgraded:
                 if key == "ncs-reasoning":
                     # Add a requirement, never grant a tool on the owning agent.

@@ -203,14 +203,17 @@ async def test_ncs_refresh_never_widens_an_existing_tool_restriction(db):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("edited", [False, True])
-async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(db, edited):
+@pytest.mark.parametrize("legacy_tools", [None, []])
+async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(
+    db, edited, legacy_tools
+):
     admin, learner, original, skill = await _catalogue(db)
     installed = await ws.install_agent(original.id, learner, db)
     copy = await db.get(Skill, installed.skill_ids[0])
     previous = starter._LEGACY_CATALOG_BODIES[("ncs-reasoning", "1.0.0")]
     skill.body = previous
     skill.version = "1.0.0"
-    skill.required_tools = []
+    skill.required_tools = legacy_tools
     copy.body = "내가 수정한 검산 절차" if edited else previous
     copy.version = "1.0.0"
     copy.required_tools = []
@@ -229,6 +232,42 @@ async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(db
         assert copy.version == "1.1.0"
         assert copy.required_tools == ["calculate"]
     assert await starter.seed_catalog(db, admin.id) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("edited", ["original", "copy"])
+async def test_ncs_skill_upgrade_preserves_edited_tool_requirements(db, edited):
+    admin, learner, original, skill = await _catalogue(db)
+    installed = await ws.install_agent(original.id, learner, db)
+    agent_copy = await db.get(Agent, installed.id)
+    copy = await db.get(Skill, installed.skill_ids[0])
+    previous = starter._LEGACY_CATALOG_BODIES[("ncs-reasoning", "1.0.0")]
+    for item in (skill, copy):
+        item.body = previous
+        item.version = "1.0.0"
+        item.required_tools = []
+    (skill if edited == "original" else copy).required_tools = ["execute_code"]
+    original.tools = agent_copy.tools = []
+    db.add_all([skill, copy, original, agent_copy])
+    await db.commit()
+
+    for _ in range(2):
+        assert await starter.seed_catalog(db, admin.id) == 0
+        await db.commit()
+        for item in (skill, copy, original, agent_copy):
+            await db.refresh(item)
+        if edited == "original":
+            assert skill.body == copy.body == previous
+            assert skill.version == copy.version == "1.0.0"
+            assert skill.required_tools == ["execute_code"]
+            assert copy.required_tools == []
+        else:
+            assert skill.version == "1.1.0"
+            assert skill.required_tools == ["calculate"]
+            assert copy.body == previous
+            assert copy.version == "1.0.0"
+            assert copy.required_tools == ["execute_code"]
+        assert original.tools == agent_copy.tools == []
 
 
 _QUESTIONS = json.loads((Path(__file__).parent / "fixtures/ncs_coach_questions.json").read_text())
