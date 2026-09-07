@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
+import sys
 
 import httpx
 import pytest
@@ -51,6 +53,34 @@ def test_explicit_slide_count_does_not_inherit_the_default_minimum(prompt, expec
 )
 def test_only_section_counts_set_a_report_outline_size(prompt, expected):
     assert report.requested_sections(prompt) == expected
+
+
+def test_count_scan_handles_long_spacing_and_many_candidates():
+    script = """
+from app.services.outline import requested_count
+padding = " \\t\\n\\u3000" * 50_000
+assert requested_count("4장," * 20_000, ("장",), maximum=30) == 4
+spaced = "표지" + padding + "포함" + padding + "4" + padding + "장"
+assert requested_count(spaced, ("장",), maximum=30) == 4
+assert requested_count("4장" + padding + "이상", ("장",), maximum=30) is None
+assert requested_count("4" + padding + "대", ("장",), maximum=30) is None
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("표지\t포함\n4\u3000장으로", 4),
+        ("본문\t2장,\n총\u30003장으로", 3),
+        ("3\t~\n5장 발표", None),
+        ("4장\u3000이상으로", None),
+        ("4장, 3장 중 선택", None),
+        ("4장, 3장 말고 표지\t포함\n5장으로", 5),
+    ],
+)
+def test_count_context_preserves_whitespace_and_conflicting_totals(prompt, expected):
+    assert deck.requested_slides(prompt) == expected
 
 
 def _outline(service, count, *, agenda=False):

@@ -35,19 +35,23 @@ _COUNT_WORDS = {
 
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """An explicit total, not a page reference, range or count of just the body."""
+    # Normalize once so spacing and each candidate's context have bounded work.
+    request = " ".join(request.split())
     words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
     unit = "|".join(re.escape(value) for value in units)
-    pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words}))\s*(?:개\s*)?(?:{unit})"
-    found: list[int] = []
+    pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words})) ?(?:개 ?)?(?:{unit})"
+    found: set[int] = set()
     for match in re.finditer(pattern, request):
-        prefix = request[: match.start()].rstrip()
-        suffix = request[match.end() :]
-        if re.search(r"[~–-]\s*$", prefix) or re.match(r"\s*(?:이상|이하|내외|정도|[~–-])", suffix):
+        prefix = request[max(0, match.start() - 8) : match.start()].rstrip()
+        suffix = request[match.end() : match.end() + 4]
+        if prefix.endswith(("~", "–", "-")) or suffix.lstrip().startswith(
+            ("이상", "이하", "내외", "정도", "~", "–", "-")
+        ):
             continue
-        if re.search(r"(?:제|본문|본론|내용)\s*$", prefix):
+        if prefix.endswith(("제", "본문", "본론", "내용")):
             continue
-        if re.match(r"[A-Za-z가-힣]", suffix) and not re.match(
-            r"(?:으로|로|짜리|만|을|를|은|는|에|이|가)", suffix
+        if re.match(r"[A-Za-z가-힣]", suffix) and not suffix.startswith(
+            ("으로", "로", "짜리", "만", "을", "를", "은", "는", "에", "이", "가")
         ):
             continue
         raw = match.group(1)
@@ -55,10 +59,10 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
         if not value:
             continue
         value = min(value, maximum)
-        if re.search(r"(?:총|전체|표지\s*포함)\s*$", prefix):
+        if prefix.endswith(("총", "전체", "표지 포함", "표지포함")):
             return value
-        found.append(value)
-    return found[0] if len(set(found)) == 1 else None
+        found.add(value)
+    return next(iter(found)) if len(found) == 1 else None
 
 
 def count(usage: dict[str, int], spent: dict[str, int], *, planned_apart: bool) -> None:
