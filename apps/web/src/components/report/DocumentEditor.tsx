@@ -1036,14 +1036,14 @@ export function DocumentEditor({
   )
   const tools = toolbarSlot
     ? createPortal(<div className="flex items-center">{bar}</div>, toolbarSlot)
-    : <div className="flex min-w-0 items-center border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
+    : <div className="flex min-w-0 items-center overflow-x-auto border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
 
   if (layoutMode === 'pages') {
     return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden">
       {tools}
       {findOpen && (
         <div role="search" aria-label={t('찾기 및 바꾸기')} className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-2">
