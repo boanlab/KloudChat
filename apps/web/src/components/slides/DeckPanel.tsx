@@ -525,8 +525,10 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
-  // A figure the deck drew for itself takes the whole body: half a slide is too small to read.
-  const figureAlone = Boolean(slide.diagram?.source) && !hasWords(slide)
+  // A figure the deck drew for itself is a band across the body; the words sit under it,
+  // set compact. Beside it they would narrow the figure until it cannot be read.
+  const figured = Boolean(slide.diagram?.source)
+  const figureAlone = figured && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
     const root = canvas.current
@@ -779,7 +781,7 @@ export function SlideView({
                 // Paired shapes cannot overflow (see `stack`), so they centre;
                 // bullets can, and a centred overflow clips at both ends.
                 PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
-                figureAlone && 'hidden',
+                figured && 'hidden',
               )}
               data-overflow-box
               style={{ order: slide.image?.position === 'left' ? 2 : 1 }}
@@ -1122,15 +1124,18 @@ export function SlideView({
             </div>
             {(slide.diagram?.source || slide.image?.src) && (
               <div
-                className={cn('flex min-h-0 shrink-0 flex-col justify-center overflow-hidden', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
+                className={cn('flex min-h-0 shrink-0 flex-col overflow-hidden', figured && !figureAlone ? 'justify-start' : 'justify-center', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
                 style={{
-                  width: pending || figureAlone ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'medium']),
+                  width: pending || figured ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'medium']),
                   order: (slide.image?.position ?? 'right') === 'left' ? 1 : 2,
+                  gap: px(6),
                 }}
                 {...selectable('image')}
               >
-                {slide.diagram?.source ? (
-                  <SlideFigure slide={slide} accent={accent} look={look} artifactId={artifactId} />
+                {figured ? (
+                  <div className="flex min-h-0 w-full shrink-0 justify-center" style={{ height: figureAlone ? '100%' : '56%' }}>
+                    <SlideFigure slide={slide} accent={accent} look={look} artifactId={artifactId} />
+                  </div>
                 ) : slide.image?.src ? (
                   <img
                     src={slide.image.src}
@@ -1141,7 +1146,34 @@ export function SlideView({
                     )}
                   />
                 ) : null}
-                {(slide.image?.caption || slide.diagram?.caption) && (
+                {figured && !figureAlone && slide.layout === 'cards' && pairs.length > 0 && (
+                  <div className="flex min-h-0 flex-1" style={{ gap: px(8) }}>
+                    {pairs.map(([name, text], i) => (
+                      <div
+                        key={i}
+                        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                        style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(5)} ${px(6)}` })}
+                      >
+                        <div style={{ fontSize: pt(14), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                        <div style={{ fontSize: pt(12), marginTop: px(3), lineHeight: 1.35 }}>{text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {figured && !figureAlone && slide.layout !== 'cards' && (
+                  <ul className="m-0 flex min-h-0 flex-1 list-none flex-col p-0" style={{ gap: px(2) }}>
+                    {(slide.bullets ?? []).map((line, i) => (
+                      <li key={i} className="flex" style={{ gap: px(6), fontSize: pt(14), lineHeight: 1.45 }}>
+                        <span style={{ color: accent }}>•</span>
+                        <span className="min-w-0">{line}</span>
+                      </li>
+                    ))}
+                    {!slide.bullets?.length && slide.body && (
+                      <li style={{ fontSize: pt(14), lineHeight: 1.45, color: look.muted }}>{slide.body}</li>
+                    )}
+                  </ul>
+                )}
+                {(figureAlone || !figured) && (slide.image?.caption || slide.diagram?.caption) && (
                   <p style={{ fontSize: pt(TYPE.caption), color: look.muted, marginTop: px(4) }}>
                     {slide.image?.caption || slide.diagram?.caption}
                   </p>

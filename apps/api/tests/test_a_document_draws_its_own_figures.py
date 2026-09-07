@@ -151,23 +151,46 @@ def test_the_house_rules_know_comparison_and_slide_sizes():
     assert "두세 줄로 접어라" in paper and "subgraph id 끼리" in paper
     assert "슬라이드용" not in paper
     slide = diagram._messages("기존과 제안", "compare", "ko", slide=True)[0]["content"]
-    assert "슬라이드용" in slide and "7개 이하" in slide
+    assert "슬라이드용" in slide and "한 줄로 그려라" in slide
 
 
-def test_a_figured_slide_keeps_its_words_as_notes_and_counts_as_written():
-    slide = {
-        "layout": "bands",
-        "bands": [["검색기", "질문과 가까운 조각을 찾는다"], ["계획기", "답의 뼈대를 세운다"]],
+def test_a_figured_slide_keeps_short_words_under_the_figure_and_spills_the_rest():
+    cards = {
+        "layout": "cards",
+        "cards": [
+            ["검색기", "질문과 가까운 문서 조각을 찾는다"],
+            [
+                "계획기",
+                "찾은 조각으로 답의 뼈대를 세운다 — 그리고 이 설명은 마흔네 자를 "
+                "넘기려고 길게 이어진다",
+            ],
+            ["조정기", "문장을 고른다"],
+            ["검토기", "근거 없는 문장을 되돌린다"],
+            ["출력", "최종 답"],
+        ],
         "notes": "발표자 메모",
         "diagram": {"source": "flowchart LR"},
     }
-    deck._words_into_notes(slide)
-    assert slide["layout"] == "bullets" and "bands" not in slide and "bullets" not in slide
-    assert (
-        slide["notes"]
-        == "발표자 메모\n검색기: 질문과 가까운 조각을 찾는다\n계획기: 답의 뼈대를 세운다"
-    )
-    assert deck.has_content(slide)
+    deck._words_under_figure(cards)
+    assert cards["layout"] == "cards" and len(cards["cards"]) == 4
+    assert cards["cards"][1][1].endswith("…") and len(cards["cards"][1][1]) <= 44
+    assert cards["notes"].startswith("발표자 메모\n계획기: ") and "출력: 최종 답" in cards["notes"]
+    assert deck.has_content(cards)
+
+    bands = {
+        "layout": "bands",
+        "bands": [
+            ["검색기", "찾는다"],
+            ["계획기", "세운다"],
+            ["조정기", "고른다"],
+            ["검토기", "되돌린다"],
+        ],
+        "diagram": {"source": "flowchart LR"},
+    }
+    deck._words_under_figure(bands)
+    assert bands["layout"] == "bullets" and "bands" not in bands
+    assert bands["bullets"] == ["검색기: 찾는다", "계획기: 세운다", "조정기: 고른다"]
+    assert bands["notes"] == "검토기: 되돌린다"
     assert not deck.has_content({"layout": "bullets"})
 
 
@@ -207,7 +230,11 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
                 "cards": [
                     ["검색기", "질문과 가까운 문서 조각을 찾는다"],
                     ["계획기", "찾은 조각으로 답의 뼈대를 세운다"],
-                    ["스타일 조정기", "독자에 맞춰 문장을 고른다"],
+                    [
+                        "스타일 조정기",
+                        "독자에 맞춰 문장을 고른다 — 어조와 길이와 용어를 독자층에 따라 "
+                        "다르게 정하고, 표와 그림의 설명도 함께 다듬는다",
+                    ],
                     ["검토기", "근거 없는 문장을 되돌린다"],
                     ["출력", "최종 답"],
                 ],
@@ -264,10 +291,12 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["diagram"]["source"].startswith("flowchart LR")
     assert final[1]["diagram"]["caption"] == "생성 흐름"
     assert final[1]["diagram"]["key"] == "abcdef0123456789"
-    # The cards slide gave its whole body to the figure; its words are the speaker notes.
-    assert final[1]["layout"] == "bullets" and "cards" not in final[1]
-    assert not final[1].get("bullets") and not final[1].get("body")
-    assert final[1]["notes"].startswith("검색기: ")
+    # The cards slide keeps short cards under the figure; a long one is clipped and its
+    # full text goes to the notes.
+    assert final[1]["layout"] == "cards" and 1 <= len(final[1]["cards"]) <= 4
+    assert final[1]["cards"][0][0] == "검색기"
+    assert final[1]["cards"][2][1].endswith("…")
+    assert final[1]["notes"].startswith("스타일 조정기: 독자에 맞춰")
     assert deck.has_content(final[1])
     # The picture slide was never offered to the planner and keeps its picture.
     assert final[2]["image"]["src"].startswith("data:image/png")

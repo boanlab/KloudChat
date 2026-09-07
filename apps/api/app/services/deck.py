@@ -1797,7 +1797,7 @@ async def _draw_figures(
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
         slide["diagram"] = made
-        _words_into_notes(slide)
+        _words_under_figure(slide)
         yield {
             "type": "step",
             "id": f"dia{row.index}",
@@ -2295,38 +2295,63 @@ def _drafted_text(data: dict | None) -> str:
     return "\n".join(parts)
 
 
-#: Words a figure moves into the speaker notes: this many lines, this long.
-_NOTE_LINES = 6
-_NOTE_CHARS = 80
+#: Height of the figure band above a figured slide's words, in slide units.
+_FIGURE_BAND = 70.0
+
+#: Words that stay under a figure: cards (this many, this long) or bullets (this many lines).
+_UNDER_CARDS = 4
+_CARD_CHARS = 44
+_UNDER_LINES = 3
+_LINE_CHARS = 60
 
 
-def _words_into_notes(slide: dict) -> None:
-    """Gives a figured slide its whole body: the words go to the speaker notes, as lines.
+def _clipped(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
-    Half a slide is too small for a labelled figure to stay legible, and the figure says
-    what the words said. The caption under the figure carries the one-line takeaway.
+
+def _words_under_figure(slide: dict) -> None:
+    """A figured slide keeps a few words under its figure and moves the rest to the notes.
+
+    Cards stay cards (four at most, short); every other shape becomes up to three bullets.
+    The figure takes the top of the body, the words the strip beneath, so nothing beside
+    the figure narrows it.
     """
     layout = str(slide.get("layout") or "")
-    lines: list[str] = []
-    for key in _PAIRED:
-        for pair in slide.pop(key, None) or []:
-            if not isinstance(pair, list) or not pair:
-                continue
+    spill: list[str] = []
+    if layout == "cards":
+        pairs = [p for p in (slide.get("cards") or []) if isinstance(p, list) and p]
+        kept: list[list[str]] = []
+        for pair in pairs:
             name = str(pair[0]).strip()
             text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
-            lines.append(f"{name}: {text}" if name and text else name or text)
-    lines.extend(str(b).strip() for b in (slide.pop("bullets", None) or []))
-    if body := str(slide.pop("body", "") or "").strip():
-        lines.append(body)
-    lines = [
-        line[: _NOTE_CHARS - 1].rstrip() + "…" if len(line) > _NOTE_CHARS else line
-        for line in lines
-        if line
-    ]
-    if layout in _PAIRED or layout == "two-column":
+            if len(kept) < _UNDER_CARDS:
+                kept.append([name, _clipped(text, _CARD_CHARS)])
+                if len(text) > _CARD_CHARS:
+                    spill.append(f"{name}: {text}")
+            else:
+                spill.append(f"{name}: {text}")
+        slide["cards"] = kept
+    else:
+        lines: list[str] = []
+        for key in _PAIRED:
+            for pair in slide.pop(key, None) or []:
+                if not isinstance(pair, list) or not pair:
+                    continue
+                name = str(pair[0]).strip()
+                text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
+                lines.append(f"{name}: {text}" if name and text else name or text)
+        lines.extend(str(b).strip() for b in (slide.get("bullets") or []) if str(b).strip())
+        if body := str(slide.get("body") or "").strip():
+            lines.append(body)
         slide["layout"] = "bullets"
-    notes = str(slide.get("notes") or "").strip()
-    slide["notes"] = "\n".join(filter(None, [notes, *lines[:_NOTE_LINES]]))[:800]
+        slide["bullets"] = [_clipped(line, _LINE_CHARS) for line in lines[:_UNDER_LINES]]
+        slide["body"] = ""
+        spill = [line for line in lines[:_UNDER_LINES] if len(line) > _LINE_CHARS] + lines[
+            _UNDER_LINES:
+        ]
+    if spill:
+        notes = str(slide.get("notes") or "").strip()
+        slide["notes"] = "\n".join(filter(None, [notes, *spill]))[:800]
 
 
 def _body_width(slide: dict) -> float:
@@ -2381,8 +2406,12 @@ def _need(slide: dict, scale: float) -> float:
     if slide.get("body") and not bullets:
         size = U("paragraph") * scale
         need += deck_type.lines(str(slide["body"]), size, width) * size * L["paragraph"] + 2
+    # A figure the deck drew for itself sits above the words as a band.
+    figured = bool(slide.get("diagram"))
+    if figured:
+        need += _FIGURE_BAND + 6
     for key, fixed in (
-        ("cards", 104.0),
+        ("cards", 36.0 if figured else 104.0),
         ("steps", 0.0),
         ("tiles", 0.0),
         ("bands", 0.0),

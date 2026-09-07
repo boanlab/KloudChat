@@ -111,6 +111,11 @@ def _u(name: str) -> float:
 _PICTURE_SPAN = 300.0
 
 
+def _has_words(data: dict) -> bool:
+    """Whether the slide says anything besides its title and picture."""
+    return any(data.get(key) for key in ("bullets", "body", "rows", "metrics", "chart", *_PAIRED))
+
+
 def _picture_span(data: dict) -> float:
     """Width of a picture sharing a slide with words, in export points."""
     return {"small": 230.0, "medium": _PICTURE_SPAN, "large": 390.0}.get(
@@ -476,8 +481,11 @@ def _pptx_pairs(
     room: float = _BODY_BOTTOM - _BODY_TOP,
     scale: float = 1.0,
     measure: str | None = None,
+    compact: bool = False,
 ) -> None:
     """Draws a paired layout: bands, tiles, steps, cards, or timeline.
+
+    `compact`: the strip under a figure band — cards at 14/12 pt in the room that is left.
 
     `scale` is the slide's text scale, for exact line spacing; `measure` the `.pdf` face
     that tells how many lines a card name takes.
@@ -584,7 +592,9 @@ def _pptx_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min(100 * _K, room - 10)
+        height = min((60 if compact else 100) * _K, room - 10)
+        name_pt = 14.0 if compact else _u("cardName")
+        text_pt = 12.0 if compact else _u("cardText")
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _box(
@@ -598,17 +608,15 @@ def _pptx_pairs(
                 line=hair,
             )
             _block(slide, left=item_left, top=top + 10, width=span, height=5, colour=accent)
-            name_lines = (
-                len(_wrap(name, measure, _u("cardName") * scale, span - 28)) if measure else 1
-            )
-            name_height = _u("cardName") * scale * 1.3 * max(1, name_lines) + 6
+            name_lines = len(_wrap(name, measure, name_pt * scale, span - 28)) if measure else 1
+            name_height = name_pt * scale * 1.3 * max(1, name_lines) + 6
             title = _textbox(
                 slide, left=item_left + 14, top=top + 26, width=span - 28, height=name_height
             )
-            title.paragraphs[0].line_spacing = Pt(_u("cardName") * scale * 1.3)
+            title.paragraphs[0].line_spacing = Pt(name_pt * scale * 1.3)
             run = title.paragraphs[0].add_run()
             run.text = name
-            paint(run, size=_u("cardName"), bold=True, colour=accent)
+            paint(run, size=name_pt, bold=True, colour=accent)
             body = _textbox(
                 slide,
                 left=item_left + 14,
@@ -616,12 +624,10 @@ def _pptx_pairs(
                 width=span - 28,
                 height=height - 40 - name_height,
             )
-            body.paragraphs[0].line_spacing = Pt(
-                _u("cardText") * scale * deck_type.LEADING["cardText"]
-            )
+            body.paragraphs[0].line_spacing = Pt(text_pt * scale * deck_type.LEADING["cardText"])
             run = body.paragraphs[0].add_run()
             run.text = text
-            paint(run, size=_u("cardText"))
+            paint(run, size=text_pt)
         return
 
     # timeline
@@ -1360,6 +1366,28 @@ def to_pptx(
             body_top = _BODY_TOP + title_line * (title_lines - 1)
             room = _BODY_BOTTOM - body_top
 
+            # A figure the deck drew for itself is a band above the words, full width;
+            # the words beneath are set compact. `picture` is spent here.
+            compact = False
+            if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
+                image_bytes, _caption = picture
+                text_width, text_left = _W - 144, 72.0
+                band_width, band_height = _fit(image_bytes, box=(text_width, room * 0.56))
+                try:
+                    slide.shapes.add_picture(
+                        io.BytesIO(image_bytes),
+                        Emu(int((text_left + (text_width - band_width) / 2) * _EMU_PER_PT)),
+                        Emu(int(body_top * _EMU_PER_PT)),
+                        Emu(int(band_width * _EMU_PER_PT)),
+                        Emu(int(band_height * _EMU_PER_PT)),
+                    )
+                except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                    log.warning("could not place a figure band into the deck: %s", exc)
+                body_top += band_height + 8
+                room -= band_height + 8
+                picture = None
+                compact = True
+
             if pairs:
                 _pptx_pairs(
                     slide,
@@ -1377,6 +1405,7 @@ def to_pptx(
                     room=room,
                     scale=typescale[0],
                     measure=measure,
+                    compact=compact,
                 )
             elif chart:
                 _pptx_chart(
@@ -1715,6 +1744,7 @@ def _pdf_pairs(
     bg=None,
     room: float | None = None,
     bold: str | None = None,
+    compact: bool = False,
 ) -> None:
     """The `.pdf` twin of `_pptx_pairs`: same geometry, explicit wrapping."""
     bold = bold or font
@@ -1813,10 +1843,10 @@ def _pdf_pairs(
     if layout == "cards":
         gap = 18.0
         span = (width - gap * (len(pairs) - 1)) / max(len(pairs), 1)
-        height = min(100 * _K, room - 10)
+        height = min((60 if compact else 100) * _K, room - 10)
         card_top = top - 10
-        name_size = S(_u("cardName"))
-        text_size = S(_u("cardText"))
+        name_size = S(14.0 if compact else _u("cardName"))
+        text_size = S(12.0 if compact else _u("cardText"))
         text_lead = text_size * deck_type.LEADING["cardText"]
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
@@ -2260,6 +2290,28 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             pdf.rect(text_left, _H - tab_top - 5, 62, 5, stroke=0, fill=1)
             body_top = _BODY_TOP + title_line * (len(title_lines) - 1)
             room = _BODY_BOTTOM - body_top
+
+            # The figure band, as in the pptx renderer.
+            compact = False
+            if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
+                image_bytes, _caption = picture
+                text_width, text_left = _W - 144, 72.0
+                band_width, band_height = _fit(image_bytes, box=(text_width, room * 0.56))
+                try:
+                    pdf.drawImage(
+                        ImageReader(io.BytesIO(image_bytes)),
+                        text_left + (text_width - band_width) / 2,
+                        _H - body_top - band_height,
+                        width=band_width,
+                        height=band_height,
+                        mask="auto",
+                    )
+                except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
+                    log.warning("could not place a figure band into the deck pdf: %s", exc)
+                body_top += band_height + 8
+                room -= band_height + 8
+                picture = None
+                compact = True
             y = _H - body_top
 
             if pairs:
@@ -2281,6 +2333,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     bg=ground,
                     room=room,
                     bold=bold,
+                    compact=compact,
                 )
             elif chart:
                 _pdf_chart(

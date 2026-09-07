@@ -203,12 +203,13 @@ export function theme(node: HTMLElement) {
       // Fitted to the text column.
       useMaxWidth: true,
       curve: 'linear' as const,
-      padding: 12,
-      // A subgraph's title sits above its box instead of on the border line.
-      subGraphTitleMargin: { top: 10, bottom: 6 },
-      // Tight ranks, wide siblings: pushes the graph outward rather than down the page.
-      rankSpacing: 30,
-      nodeSpacing: 45,
+      // Room between a label and its shape's edge, and between shapes.
+      padding: 18,
+      // A subgraph's title sits above its box, with room before the first shape.
+      subGraphTitleMargin: { top: 12, bottom: 14 },
+      // Room for a label on an edge, and between siblings.
+      rankSpacing: 56,
+      nodeSpacing: 50,
       // A ten-character Korean label stays on one line; a wrapped label makes the whole rank taller.
       wrappingWidth: 320,
     },
@@ -287,10 +288,10 @@ export function paperTheme(node: HTMLElement) {
       // and the rasteriser has no size to draw at.
       useMaxWidth: false,
       curve: 'basis' as const,
-      padding: 16,
-      rankSpacing: 44,
-      nodeSpacing: 40,
-      subGraphTitleMargin: { top: 10, bottom: 6 },
+      padding: 20,
+      rankSpacing: 56,
+      nodeSpacing: 48,
+      subGraphTitleMargin: { top: 12, bottom: 14 },
     },
     // Read by `paperStyles` below, not by mermaid.
     hot: accent,
@@ -307,14 +308,14 @@ export interface Frame {
   width: number
   minAspect: number
   maxAspect: number
+  /** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
+  upscale: number
 }
 export const FRAMES: Record<'slide' | 'page', Frame> = {
-  slide: { width: 1920, minAspect: 2.2, maxAspect: 2.8 },
-  page: { width: 1400, minAspect: 4 / 3, maxAspect: 16 / 9 },
+  // A band under the slide title, with the words beneath it.
+  slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 2.2 },
+  page: { width: 1400, minAspect: 4 / 3, maxAspect: 16 / 9, upscale: 1.6 },
 }
-
-/** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
-const MAX_UPSCALE = 1.6
 
 /** A drawing this much taller than the frame allows is tried the other way round. Only tall
  *  ones: a flat drawing is padded by the frame and stays legible, a tall one shrinks. */
@@ -369,11 +370,11 @@ export async function drawFitting(source: string, look: object, frame: Frame): P
 }
 
 /** Where a drawing of `size` sits inside its frame: full width when it can be, centred, scaled
- *  up at most `MAX_UPSCALE`; the frame's height follows the drawing within the aspect range. */
+ *  up at most `frame.upscale`; the frame's height follows the drawing within the aspect range. */
 function placement(size: { width: number; height: number }, frame: Frame) {
   const W = frame.width
   const pad = Math.round(W * 0.03)
-  let scale = Math.min((W - 2 * pad) / size.width, MAX_UPSCALE)
+  let scale = Math.min((W - 2 * pad) / size.width, frame.upscale)
   const H = Math.round(
     Math.min(Math.max(size.height * scale + 2 * pad, W / frame.maxAspect), W / frame.minAspect),
   )
@@ -505,10 +506,11 @@ export function slideTheme(colours: { accent: string; ink: string; muted: string
       useMaxWidth: false,
       htmlLabels: false,
       curve: 'basis' as const,
-      padding: 14,
-      rankSpacing: 40,
-      nodeSpacing: 34,
-      subGraphTitleMargin: { top: 12, bottom: 8 },
+      // Roomy: the band is wide and the words sit below, not beside.
+      padding: 26,
+      rankSpacing: 64,
+      nodeSpacing: 56,
+      subGraphTitleMargin: { top: 14, bottom: 18 },
     },
     hot: colours.accent,
   }
