@@ -115,7 +115,8 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
         <Composer key={active} sessionId={null} kind={active} autoFocus />
 
-        <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4">
+        {/* A phone keeps the greeting, the surface chips and the composer; the rest is desk work. */}
+        <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4 max-sm:hidden">
           <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
@@ -132,7 +133,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         </div>
 
         {usableAgents.length > 0 && (
-          <section className="mx-auto mb-8 w-full max-w-3xl px-4">
+          <section className="mx-auto mb-8 w-full max-w-3xl px-4 max-sm:hidden">
             <div className="mb-2 flex items-baseline justify-between">
               <h2 className="text-base font-semibold">{t('에이전트에게 맡기기')}</h2>
               <button
