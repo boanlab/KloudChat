@@ -1495,35 +1495,6 @@ async def _write_slides(
         log.warning("deck draft failed, writing slide by slide: %s", exc)
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
 
-    # Structure, flow, comparison and concept figures the deck draws for itself, beside
-    # the words. A slide with an approved picture keeps the picture.
-    planned, spent = await diagrams.plan(
-        parts=[
-            (str(slide["title"]), _drafted_text(drafted.get(i))) for i, slide in enumerate(slides)
-        ],
-        eligible=[
-            i
-            for i, slide in enumerate(slides)
-            if slide["layout"] in _DIAGRAM_LAYOUTS and i not in wanted_figures
-        ],
-        request=request,
-        model=model,
-        api_key=api_key,
-        complete=_complete,
-        slide=True,
-        wrap=lambda prompt: build_document_messages(
-            SessionKind.slides,
-            prompt,
-            request=request,
-            trusted_context=trusted_context,
-            untrusted_context=untrusted_context,
-            research_rule=research_rule,
-        ),
-    )
-    usage["inputTokens"] += spent["inputTokens"]
-    usage["outputTokens"] += spent["outputTokens"]
-    wanted_diagrams = {row.index: row for row in planned}
-
     for index, slide in enumerate(slides):
         # Position goes in `progress`, not in the label.
         label = str(slide["title"])
@@ -1724,46 +1695,6 @@ async def _write_slides(
                 slide["layout"] = "bullets"
             slide["body"] = UNWRITTEN
 
-        # After the words are settled: a paired layout that gets a figure becomes bullets
-        # beside it (`_words_beside_figure`), and an unwritten slide gets no figure.
-        if (
-            (wanted := wanted_diagrams.get(index)) is not None
-            and not slide.get("image")
-            and slide.get("body") != UNWRITTEN
-        ):
-            name = wanted.caption or diagrams.FIGURES[wanted.figure]
-            yield {
-                "type": "step",
-                "id": f"dia{index}",
-                "label": f"{name} 그리는 중",
-                "status": "running",
-                "progress": progress,
-            }
-            try:
-                made, spent = await diagrams.make(wanted, model=model, api_key=api_key, slide=True)
-            except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
-                log.warning("slide figure %r not drawn: %s", name, exc)
-                made = None
-            if made is None:
-                yield {
-                    "type": "step",
-                    "id": f"dia{index}",
-                    "label": name,
-                    "status": "error",
-                    "progress": progress,
-                }
-            else:
-                usage["inputTokens"] += spent["inputTokens"]
-                usage["outputTokens"] += spent["outputTokens"]
-                slide["diagram"] = made
-                _words_beside_figure(slide)
-                yield {
-                    "type": "step",
-                    "id": f"dia{index}",
-                    "label": name,
-                    "status": "done",
-                    "progress": progress,
-                }
         if notes:
             slide["notes"] = notes[:800]
 
@@ -1785,8 +1716,96 @@ async def _write_slides(
         }
         yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
+    # Structure, flow, comparison and concept figures the deck draws for itself, beside the
+    # words. Planned on the written slides, so the planner reads what is actually there; a
+    # slide with an approved picture keeps the picture, an unwritten one gets nothing.
+    async for event in _draw_figures(
+        slides,
+        request=request,
+        model=model,
+        api_key=api_key,
+        usage=usage,
+        wrap=lambda prompt: build_document_messages(
+            SessionKind.slides,
+            prompt,
+            request=request,
+            trusted_context=trusted_context,
+            untrusted_context=untrusted_context,
+            research_rule=research_rule,
+        ),
+    ):
+        yield event
+
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
+
+
+async def _draw_figures(
+    slides: list[dict[str, Any]],
+    *,
+    request: str,
+    model: str,
+    api_key: str,
+    usage: dict[str, int],
+    wrap: diagrams.Wrap,
+) -> AsyncIterator[dict[str, Any]]:
+    """Plans and draws the deck's own figures; each figured slide is announced again."""
+    eligible = [
+        i
+        for i, slide in enumerate(slides)
+        if slide["layout"] in _DIAGRAM_LAYOUTS
+        and not slide.get("image")
+        and slide.get("body") != UNWRITTEN
+    ]
+    planned, spent = await diagrams.plan(
+        parts=[(str(slide["title"]), _drafted_text(slide)) for slide in slides],
+        eligible=eligible,
+        request=request,
+        model=model,
+        api_key=api_key,
+        complete=_complete,
+        slide=True,
+        wrap=wrap,
+    )
+    usage["inputTokens"] += spent["inputTokens"]
+    usage["outputTokens"] += spent["outputTokens"]
+    if not planned:
+        log.info("deck figures: none planned for %d eligible slides", len(eligible))
+    for row in planned:
+        slide = slides[row.index]
+        name = row.caption or diagrams.FIGURES[row.figure]
+        progress = {"current": row.index + 1, "total": len(slides)}
+        yield {
+            "type": "step",
+            "id": f"dia{row.index}",
+            "label": f"{name} 그리는 중",
+            "status": "running",
+            "progress": progress,
+        }
+        try:
+            made, spent = await diagrams.make(row, model=model, api_key=api_key, slide=True)
+        except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
+            log.warning("slide figure %r not drawn: %s", name, exc)
+            yield {
+                "type": "step",
+                "id": f"dia{row.index}",
+                "label": name,
+                "status": "error",
+                "progress": progress,
+            }
+            continue
+        usage["inputTokens"] += spent["inputTokens"]
+        usage["outputTokens"] += spent["outputTokens"]
+        slide["diagram"] = made
+        _words_beside_figure(slide)
+        yield {
+            "type": "step",
+            "id": f"dia{row.index}",
+            "label": name,
+            "status": "done",
+            "progress": progress,
+        }
+        yield {"type": "slide", "slide": auto_fit(slide), "done": True}
 
 
 async def write(
