@@ -36,6 +36,10 @@ _PROMPT = """사용자가 이미 완성된 문서를 보면서 아래 문장을 
 - 어느 부분인지 말하지 않았어도 내용으로 짐작되면 그 부분을 골라라.
 - 문서 전체에 걸친 요청(예: "전체적으로 더 간결하게", "말투를 바꿔줘")이면
   scope 를 "whole" 로 하라.
+- **구성 자체를 바꾸는 요청**이면 scope 를 "outline" 로 하라. 부분의 수를 늘리거나
+  줄이기("20장으로", "3장 더", "절반으로"), 부분을 추가·삭제·병합하기, 순서 바꾸기가
+  여기 든다. 이때 note 에는 바뀐 뒤의 구성을 적어라 — 수는 지금 구성을 기준으로
+  계산한 최종 수로(지금 6장에 "3장 더" 는 "9장으로 늘린다").
 - **다른 주제의 새 문서**를 원하는 것이면 scope 를 "new" 로 하라. 지금 문서를
   고치는 것이 아니라 버리고 다시 쓰는 경우만 해당한다.
 - 애매하면 "whole" 이 아니라 가장 가까운 부분 하나를 고르는 쪽이 낫다. 문서
@@ -52,7 +56,9 @@ JSON 객체로만 답하라.
 class Plan:
     """Where an instruction lands, and what it asks for there."""
 
-    #: `parts` · `whole` · `new`. `new` means the caller should plan again.
+    #: `parts` · `whole` · `outline` · `new`. `outline` means the document's
+    #: skeleton changes and the caller should plan it again from the current one;
+    #: `new` means the caller should plan again from nothing.
     scope: str = "new"
     #: Indices into the document's parts, zero-based and already bounded.
     targets: list[int] = field(default_factory=list)
@@ -63,6 +69,10 @@ class Plan:
     @property
     def revises(self) -> bool:
         return self.scope in ("parts", "whole") and bool(self.targets)
+
+    @property
+    def restructures(self) -> bool:
+        return self.scope == "outline"
 
 
 def _parse(text: str, count: int, message: str) -> Plan:
@@ -79,6 +89,8 @@ def _parse(text: str, count: int, message: str) -> Plan:
     note = str(parsed.get("note") or "").strip()[:600] or message.strip()[:600]
     if scope == "whole":
         return Plan(scope="whole", targets=list(range(count)), note=note)
+    if scope == "outline":
+        return Plan(scope="outline", note=note)
     if scope != "parts":
         return Plan(note=note)
 
@@ -163,6 +175,17 @@ def obviously_new(message: str) -> bool:
     return bool(_START_OVER.search(message))
 
 
+def outline_block(parts: list[str]) -> str:
+    """The current skeleton, for the planner that draws the next one from it."""
+    listed = "\n".join(f"{i + 1}. {name}" for i, name in enumerate(parts))
+    return (
+        "# 지금 문서의 구성\n"
+        f"{listed}\n"
+        "이 구성을 출발점으로 요청대로 구성을 다시 짜라. 그대로 둘 부분은 같은 "
+        "제목으로 두고, 요청이 말하지 않은 부분을 빼거나 주제를 바꾸지 마라."
+    )
+
+
 def label(plan: Plan, parts: list[str]) -> str:
     """What the step on screen says this pass is doing."""
     if plan.scope == "whole":
@@ -171,4 +194,4 @@ def label(plan: Plan, parts: list[str]) -> str:
     return f"고치는 중: {named}"[:120]
 
 
-__all__ = ["MAX_TARGETS", "Plan", "label", "obviously_new", "plan"]
+__all__ = ["MAX_TARGETS", "Plan", "label", "obviously_new", "outline_block", "plan"]
