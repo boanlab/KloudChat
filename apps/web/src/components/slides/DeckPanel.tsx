@@ -70,6 +70,23 @@ export function hasContent(slide: Slide): boolean {
       slide.tiles?.length ||
       slide.timeline?.length ||
       slide.steps?.length ||
+      slide.cards?.length ||
+      slide.diagram?.source,
+  )
+}
+
+/** Whether a slide says anything besides its title and picture. */
+function hasWords(slide: Slide): boolean {
+  return Boolean(
+    slide.bullets?.length ||
+      slide.body?.trim() ||
+      slide.rows?.length ||
+      slide.metrics?.length ||
+      slide.chart ||
+      slide.bands?.length ||
+      slide.tiles?.length ||
+      slide.timeline?.length ||
+      slide.steps?.length ||
       slide.cards?.length,
   )
 }
@@ -508,6 +525,8 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
+  // A figure the deck drew for itself takes the whole body: half a slide is too small to read.
+  const figureAlone = Boolean(slide.diagram?.source) && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
     const root = canvas.current
@@ -760,6 +779,7 @@ export function SlideView({
                 // Paired shapes cannot overflow (see `stack`), so they centre;
                 // bullets can, and a centred overflow clips at both ends.
                 PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
+                figureAlone && 'hidden',
               )}
               data-overflow-box
               style={{ order: slide.image?.position === 'left' ? 2 : 1 }}
@@ -1104,8 +1124,7 @@ export function SlideView({
               <div
                 className={cn('flex min-h-0 shrink-0 flex-col justify-center overflow-hidden', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
                 style={{
-                  // A figure the deck drew for itself takes the large share until a person resizes it.
-                  width: pending ? '100%' : ({ small: '32%', medium: '42%', large: '54%' }[slide.image?.size ?? (slide.diagram ? 'large' : 'medium')]),
+                  width: pending || figureAlone ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'medium']),
                   order: (slide.image?.position ?? 'right') === 'left' ? 1 : 2,
                 }}
                 {...selectable('image')}
@@ -1219,7 +1238,7 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
         node,
         source,
         slideTheme({ accent, ink: look.ink, muted: look.muted }),
-        FRAMES.slide.aspect,
+        FRAMES.slide,
       )
       if (!live) return
       if (!drawn) {
@@ -1230,8 +1249,8 @@ function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent
       const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
       style.textContent = paperStyles(accent)
       drawn.prepend(style)
-      // Every figure in a deck has the same 16:9 footprint; the frame is what is shown and stored.
-      const frame = frameElement(drawn, FRAMES.slide.aspect, FRAMES.slide.width)
+      // Every figure in a deck has the body box's footprint; the frame is what is shown and stored.
+      const frame = frameElement(drawn, FRAMES.slide)
       const styled = new XMLSerializer().serializeToString(frame)
       frame.removeAttribute('width')
       frame.removeAttribute('height')

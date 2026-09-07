@@ -38,13 +38,13 @@ export function Diagram({
 
     void (async () => {
       try {
-        const drawn = await drawIntoFitting(node, source, theme(node), FRAMES.page.aspect)
+        const drawn = await drawIntoFitting(node, source, theme(node), FRAMES.page)
         if (!live || !node || !drawn) {
           if (live) setFailed(true)
           return
         }
-        // Every figure on a page has the same 4:3 footprint; the frame is shown and stored.
-        const frame = frameElement(drawn, FRAMES.page.aspect, FRAMES.page.width)
+        // Every figure on a page has the same width and a shape between 4:3 and 16:9.
+        const frame = frameElement(drawn, FRAMES.page)
         const picture = new XMLSerializer().serializeToString(frame)
         frame.removeAttribute('width')
         frame.removeAttribute('height')

@@ -146,7 +146,8 @@ export function theme(node: HTMLElement) {
   const accent = read('--accent', '#5b5bd6')
   const muted = read('--muted', '#666666')
   const paper = read('--paper', '#ffffff')
-  const face = read('--font-body', 'inherit')
+  // A stack, not `inherit`: an off-screen easel outside the document's styles would fall back to serif.
+  const face = read('--font-body', "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif")
 
   return {
     theme: 'base' as const,
@@ -203,6 +204,8 @@ export function theme(node: HTMLElement) {
       useMaxWidth: true,
       curve: 'linear' as const,
       padding: 12,
+      // A subgraph's title sits above its box instead of on the border line.
+      subGraphTitleMargin: { top: 10, bottom: 6 },
       // Tight ranks, wide siblings: pushes the graph outward rather than down the page.
       rankSpacing: 30,
       nodeSpacing: 45,
@@ -287,21 +290,34 @@ export function paperTheme(node: HTMLElement) {
       padding: 16,
       rankSpacing: 44,
       nodeSpacing: 40,
+      subGraphTitleMargin: { top: 10, bottom: 6 },
     },
     // Read by `paperStyles` below, not by mermaid.
     hot: accent,
   }
 }
 
-/** The frames a document's own figures are drawn into: one shape per surface, so every
- *  figure in a deck or a report has the same footprint and a readable minimum width. */
-export const FRAMES = {
-  slide: { aspect: 16 / 9, width: 1600 },
-  page: { aspect: 4 / 3, width: 1400 },
-} as const
+/**
+ * The frames a document's own figures are drawn into. Width is fixed (the minimum a figure
+ * gets), the shape may vary between `minAspect` and `maxAspect`: a flat drawing is padded up to
+ * the flattest shape, a tall one is scaled down to fit the tallest. A slide's frame is the body
+ * box under its title; a page's is between 4:3 and 16:9.
+ */
+export interface Frame {
+  width: number
+  minAspect: number
+  maxAspect: number
+}
+export const FRAMES: Record<'slide' | 'page', Frame> = {
+  slide: { width: 1920, minAspect: 2.2, maxAspect: 2.8 },
+  page: { width: 1400, minAspect: 4 / 3, maxAspect: 16 / 9 },
+}
 
 /** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
 const MAX_UPSCALE = 1.6
+
+/** Beyond this misfit the drawing is tried the other way round. */
+const TURN_AT = 1.5
 
 /** Natural size of a drawn SVG, from its viewBox (mermaid always writes one). */
 export function measure(svg: string): { width: number; height: number } | null {
@@ -313,10 +329,12 @@ export function measure(svg: string): { width: number; height: number } | null {
   return w && h ? { width: Number(w[1]), height: Number(h[1]) } : null
 }
 
-/** How far a picture's shape is from a frame's, as a symmetric factor (1 = same shape). */
-function misfit(size: { width: number; height: number }, aspect: number): number {
-  const ratio = size.width / Math.max(1, size.height) / aspect
-  return ratio >= 1 ? ratio : 1 / ratio
+/** How far a picture's shape is outside the frame's range, as a factor (1 = inside). */
+function misfit(size: { width: number; height: number }, frame: Frame): number {
+  const ratio = size.width / Math.max(1, size.height)
+  if (ratio > frame.maxAspect) return ratio / frame.maxAspect
+  if (ratio < frame.minAspect) return frame.minAspect / ratio
+  return 1
 }
 
 /** The source with its top-level direction turned (LR↔TB), or null when it has none to turn
@@ -330,42 +348,45 @@ export function flipped(source: string): string | null {
 }
 
 /**
- * `draw`, keeping the shape close to `aspect`: a picture far wider or taller than the frame is
- * drawn again with its direction turned, and the closer of the two is kept.
+ * `draw`, keeping the shape inside the frame's range: a picture far outside it is drawn again
+ * with its direction turned, and the closer of the two is kept.
  */
-export async function drawFitting(source: string, look: object, aspect: number): Promise<string | null> {
+export async function drawFitting(source: string, look: object, frame: Frame): Promise<string | null> {
   const first = await draw(source, look)
   if (!first) return null
   const size = measure(first)
-  if (!size || misfit(size, aspect) < 1.7) return first
+  if (!size || misfit(size, frame) < TURN_AT) return first
   const other = flipped(source)
   if (!other) return first
   const second = await draw(other, look)
   const again = second ? measure(second) : null
-  return second && again && misfit(again, aspect) < misfit(size, aspect) ? second : first
+  return second && again && misfit(again, frame) < misfit(size, frame) ? second : first
 }
 
-/** Where a drawing of `size` sits inside a frame: centred, scaled to fit, upscaled at most `MAX_UPSCALE`. */
-function placement(size: { width: number; height: number }, aspect: number, width: number) {
-  const W = width
-  const H = Math.round(W / aspect)
+/** Where a drawing of `size` sits inside its frame: full width when it can be, centred, scaled
+ *  up at most `MAX_UPSCALE`; the frame's height follows the drawing within the aspect range. */
+function placement(size: { width: number; height: number }, frame: Frame) {
+  const W = frame.width
   const pad = Math.round(W * 0.03)
-  const scale = Math.min((W - 2 * pad) / size.width, (H - 2 * pad) / size.height, MAX_UPSCALE)
+  let scale = Math.min((W - 2 * pad) / size.width, MAX_UPSCALE)
+  const H = Math.round(
+    Math.min(Math.max(size.height * scale + 2 * pad, W / frame.maxAspect), W / frame.minAspect),
+  )
+  scale = Math.min(scale, (H - 2 * pad) / size.height)
   const dw = size.width * scale
   const dh = size.height * scale
   return { W, H, dw, dh, x: (W - dw) / 2, y: (H - dh) / 2 }
 }
 
 /**
- * The picture inside a white frame of fixed shape and width, as one SVG string for the
- * rasteriser. The drawing keeps its own root (mermaid's styles select by its id) and becomes a
- * nested `<svg>` placed by `placement`.
+ * The picture inside a white frame, as one SVG string for the rasteriser. The drawing keeps its
+ * own root (mermaid's styles select by its id) and becomes a nested `<svg>` placed by `placement`.
  */
-export function framed(svg: string, aspect: number, width: number): string {
+export function framed(svg: string, frame: Frame): string {
   const open = /<svg\b[^>]*>/.exec(svg)
   const size = measure(svg)
   if (!open || !size) return svg
-  const at = placement(size, aspect, width)
+  const at = placement(size, frame)
   const attrs = open[0]
     .slice(4, -1)
     .replace(/\s(?:width|height|style|x|y)="[^"]*"/g, '')
@@ -380,14 +401,14 @@ export function framed(svg: string, aspect: number, width: number): string {
 }
 
 /** `framed`, on a drawn element: the frame is built with DOM calls and the drawing moves inside it. */
-export function frameElement(drawn: SVGSVGElement, aspect: number, width: number): SVGSVGElement {
+export function frameElement(drawn: SVGSVGElement, frame: Frame): SVGSVGElement {
   const NS = 'http://www.w3.org/2000/svg'
   const box = drawn.viewBox?.baseVal
   const size = {
     width: box?.width || Number(drawn.getAttribute('width')) || 800,
     height: box?.height || Number(drawn.getAttribute('height')) || 400,
   }
-  const at = placement(size, aspect, width)
+  const at = placement(size, frame)
   const outer = document.createElementNS(NS, 'svg')
   outer.setAttribute('viewBox', `0 0 ${at.W} ${at.H}`)
   outer.setAttribute('width', String(at.W))
@@ -408,14 +429,14 @@ export function frameElement(drawn: SVGSVGElement, aspect: number, width: number
 }
 
 /**
- * `drawInto`, keeping the shape close to `aspect` like `drawFitting`: both candidates are drawn
+ * `drawInto`, keeping the shape inside the frame's range like `drawFitting`: both candidates are drawn
  * off-screen and the closer one moves into `node`.
  */
 export async function drawIntoFitting(
   node: HTMLElement,
   source: string,
   look: object,
-  aspect: number,
+  frame: Frame,
 ): Promise<SVGSVGElement | null> {
   const scratch = document.createElement('div')
   scratch.style.cssText = 'position:absolute;left:-99999px;top:0;width:1200px'
@@ -429,13 +450,13 @@ export async function drawIntoFitting(
     }
     let chosen = first
     const other = flipped(source)
-    if (misfit(shape(first), aspect) >= 1.7 && other) {
+    if (misfit(shape(first), frame) >= TURN_AT && other) {
       const second = document.createElement('div')
       second.style.cssText = scratch.style.cssText
       document.body.appendChild(second)
       try {
         const turned = await drawInto(second, other, look)
-        if (turned && misfit(shape(turned), aspect) < misfit(shape(first), aspect)) chosen = turned
+        if (turned && misfit(shape(turned), frame) < misfit(shape(first), frame)) chosen = turned
       } finally {
         if (chosen !== first) first.remove()
         second.remove()
@@ -472,7 +493,7 @@ export function slideTheme(colours: { accent: string; ink: string; muted: string
       lineColor: '#5b6b82',
       textColor: colours.ink,
       edgeLabelBackground: '#ffffff',
-      fontSize: '22px',
+      fontSize: '26px',
     },
     flowchart: {
       // Drawn at its own size so the rasteriser has a size to draw at; the slide scales it.
@@ -482,6 +503,7 @@ export function slideTheme(colours: { accent: string; ink: string; muted: string
       padding: 14,
       rankSpacing: 40,
       nodeSpacing: 34,
+      subGraphTitleMargin: { top: 12, bottom: 8 },
     },
     hot: colours.accent,
   }

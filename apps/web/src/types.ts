@@ -530,7 +530,8 @@ export interface Slide {
     caption?: string
     fit?: 'contain' | 'cover'
     position?: 'left' | 'right'
-    size?: 'small' | 'medium' | 'large'
+    /** `full`: the picture alone under the title. */
+    size?: 'small' | 'medium' | 'large' | 'full'
     /** The browser's raster of `diagram`, stored for the exporters; a placed picture clears it. */
     diagram?: boolean
   }

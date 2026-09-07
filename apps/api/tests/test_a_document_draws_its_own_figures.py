@@ -154,15 +154,21 @@ def test_the_house_rules_know_comparison_and_slide_sizes():
     assert "슬라이드용" in slide and "7개 이하" in slide
 
 
-def test_a_slide_with_its_own_figure_narrows_its_words_like_a_large_picture():
-    plain = deck._body_width({"layout": "bullets"})
-    drawn = deck._body_width({"layout": "bullets", "diagram": {"source": "flowchart LR"}})
-    large = deck._body_width(
-        {"layout": "bullets", "image": {"src": "data:image/png;base64,AA", "size": "large"}}
+def test_a_figured_slide_keeps_its_words_as_notes_and_counts_as_written():
+    slide = {
+        "layout": "bands",
+        "bands": [["검색기", "질문과 가까운 조각을 찾는다"], ["계획기", "답의 뼈대를 세운다"]],
+        "notes": "발표자 메모",
+        "diagram": {"source": "flowchart LR"},
+    }
+    deck._words_into_notes(slide)
+    assert slide["layout"] == "bullets" and "bands" not in slide and "bullets" not in slide
+    assert (
+        slide["notes"]
+        == "발표자 메모\n검색기: 질문과 가까운 조각을 찾는다\n계획기: 답의 뼈대를 세운다"
     )
-    assert drawn == large < plain
-    # A title slide keeps its width whatever it carries.
-    assert deck._body_width({"layout": "title", "diagram": {"source": "x"}}) == plain
+    assert deck.has_content(slide)
+    assert not deck.has_content({"layout": "bullets"})
 
 
 @pytest.mark.asyncio
@@ -258,11 +264,11 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["diagram"]["source"].startswith("flowchart LR")
     assert final[1]["diagram"]["caption"] == "생성 흐름"
     assert final[1]["diagram"]["key"] == "abcdef0123456789"
-    # The cards slide gave its room to the figure: a few short lines beside it, no shape.
+    # The cards slide gave its whole body to the figure; its words are the speaker notes.
     assert final[1]["layout"] == "bullets" and "cards" not in final[1]
-    assert len(final[1]["bullets"]) == 4
-    assert final[1]["bullets"][0].startswith("검색기: ")
-    assert all(len(line) <= 48 for line in final[1]["bullets"])
+    assert not final[1].get("bullets") and not final[1].get("body")
+    assert final[1]["notes"].startswith("검색기: ")
+    assert deck.has_content(final[1])
     # The picture slide was never offered to the planner and keeps its picture.
     assert final[2]["image"]["src"].startswith("data:image/png")
     assert "diagram" not in final[2]
@@ -334,7 +340,7 @@ async def test_the_browser_s_raster_becomes_the_slide_picture_for_the_exporters(
         "caption": "생성 흐름",
         "fit": "contain",
         "position": "right",
-        "size": "large",
+        "size": "full",
         "diagram": True,
     }
     assert stored["diagram"]["source"] == _SOURCE

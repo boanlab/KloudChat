@@ -1797,7 +1797,7 @@ async def _draw_figures(
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
         slide["diagram"] = made
-        _words_beside_figure(slide)
+        _words_into_notes(slide)
         yield {
             "type": "step",
             "id": f"dia{row.index}",
@@ -2241,7 +2241,8 @@ async def rewrite_slide(
 
 #: Every field a slide's content can arrive in. A layout that stores content
 #: under its own name must be here; the paired ones come from `_PAIRED`.
-_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
+#: A figure the deck drew for itself is content too: a figured slide carries no other words.
+_CONTENT_FIELDS = ("bullets", "body", "rows", "metrics", "chart", "diagram", *_PAIRED)
 
 
 def has_content(slide: dict) -> bool:
@@ -2275,39 +2276,13 @@ _COMMON_FLOOR = _SCALES[1]
 _MONOTONE = "bullets"
 
 
-#: Layouts a drawn figure may share. Cards, bands and tiles are where the planner puts
-#: structures, so they are offered too; one that gets a figure is rewritten as short bullets
-#: beside it (`_words_beside_figure`). Steps and timelines already draw their flow.
+#: Layouts a drawn figure may replace. Cards, bands and tiles are where the planner puts
+#: structures, so they are offered too. Steps and timelines already draw their flow.
 _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
-
-#: Words a figure leaves beside itself: this many lines, this long.
-_BESIDE_LINES = 4
-_BESIDE_CHARS = 48
-
-
-def _words_beside_figure(slide: dict) -> None:
-    """Turns a paired slide into a few bullets so its figure has the room; bullets stay."""
-    layout = str(slide.get("layout") or "")
-    if layout not in _PAIRED:
-        return
-    pairs = slide.pop(layout, None) or []
-    lines: list[str] = []
-    for pair in pairs:
-        if not isinstance(pair, list) or not pair:
-            continue
-        name = str(pair[0]).strip()
-        text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
-        line = f"{name}: {text}" if name and text else name or text
-        if len(line) > _BESIDE_CHARS:
-            line = line[: _BESIDE_CHARS - 1].rstrip() + "…"
-        if line:
-            lines.append(line)
-    slide["layout"] = "bullets"
-    slide["bullets"] = lines[:_BESIDE_LINES]
 
 
 def _drafted_text(data: dict | None) -> str:
-    """The words a drafted slide holds, for the figure planner to read."""
+    """The words a slide holds, for the figure planner to read."""
     if not data:
         return ""
     parts: list[str] = [str(b) for b in (data.get("bullets") or []) if str(b).strip()]
@@ -2320,15 +2295,47 @@ def _drafted_text(data: dict | None) -> str:
     return "\n".join(parts)
 
 
+#: Words a figure moves into the speaker notes: this many lines, this long.
+_NOTE_LINES = 6
+_NOTE_CHARS = 80
+
+
+def _words_into_notes(slide: dict) -> None:
+    """Gives a figured slide its whole body: the words go to the speaker notes, as lines.
+
+    Half a slide is too small for a labelled figure to stay legible, and the figure says
+    what the words said. The caption under the figure carries the one-line takeaway.
+    """
+    layout = str(slide.get("layout") or "")
+    lines: list[str] = []
+    for key in _PAIRED:
+        for pair in slide.pop(key, None) or []:
+            if not isinstance(pair, list) or not pair:
+                continue
+            name = str(pair[0]).strip()
+            text = " ".join(str(cell).strip() for cell in pair[1:] if str(cell).strip())
+            lines.append(f"{name}: {text}" if name and text else name or text)
+    lines.extend(str(b).strip() for b in (slide.pop("bullets", None) or []))
+    if body := str(slide.pop("body", "") or "").strip():
+        lines.append(body)
+    lines = [
+        line[: _NOTE_CHARS - 1].rstrip() + "…" if len(line) > _NOTE_CHARS else line
+        for line in lines
+        if line
+    ]
+    if layout in _PAIRED or layout == "two-column":
+        slide["layout"] = "bullets"
+    notes = str(slide.get("notes") or "").strip()
+    slide["notes"] = "\n".join(filter(None, [notes, *lines[:_NOTE_LINES]]))[:800]
+
+
 def _body_width(slide: dict) -> float:
     """The text column's width in slide units, narrowed by a picture beside it."""
     width = float(deck_type.TITLE_WIDTH)
     image = slide.get("image") or {}
-    # A figure the deck drew for itself takes the picture's place until the browser
-    # stores its raster; the default is the large share.
-    if (image.get("src") or slide.get("diagram")) and slide.get("layout") != "title":
+    if image.get("src") and slide.get("layout") != "title":
         share = {"small": 0.32, "medium": 0.42, "large": 0.54}.get(
-            str(image.get("size") or ""), 0.54 if not image.get("src") else 0.42
+            str(image.get("size") or ""), 0.42
         )
         width = width * (1 - share) - 16
     return width

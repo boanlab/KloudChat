@@ -1063,7 +1063,7 @@ async def store_slide_diagram(
         "caption": str(current.get("caption") or diagram.get("caption") or ""),
         "fit": "contain",
         "position": str(current.get("position") or "right"),
-        "size": str(current.get("size") or "large"),
+        "size": str(current.get("size") or "full"),
         "diagram": True,
     }
     data["slides"] = slides
