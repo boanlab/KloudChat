@@ -1287,6 +1287,140 @@ async def test_auto_privacy_refusal_precedes_classifier_key_and_write(monkeypatc
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode",
+    [
+        sessions_router.RoutingMode.auto,
+        sessions_router.RoutingMode.auto_quality,
+        "auto",
+        "auto_quality",
+    ],
+    ids=["economy-enum", "quality-enum", "economy-stored", "quality-stored"],
+)
+async def test_privacy_bypass_keeps_auto_mode_in_messages_events_and_audit(
+    monkeypatch, mode
+) -> None:
+    """Synthetic answer/DB only; the real send and persistence paths keep the lane."""
+    import socket
+
+    import httpx
+
+    def no_network(*_args, **_kwargs):
+        pytest.fail("unexpected network access in the Auto metadata regression")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
+    monkeypatch.setattr(httpx, "AsyncClient", no_network)
+    user = User(
+        email="fixture@example.test",
+        password_hash="hash",
+        name="Fixture",
+        monthly_credits=1_000,
+        preferences={"privacyDefaultAction": "mask_external"},
+    )
+    model = {**_external_model("fixture-model"), "inputCreditCost": 1}
+    session = ChatSession(user_id=user.id, model=model["id"], routing_mode=mode)
+    await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
+    expected_mode = str(getattr(mode, "value", mode))
+    classifier_calls = 0
+    answer_calls = []
+
+    class Db(_NoWriteDb):
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def is_modified(self, _value):
+            return False
+
+        async def get(self, kind, key):
+            if kind is ChatSession and key == session.id:
+                return session
+            if kind is User and key == user.id:
+                return user
+            return next(
+                (row for row in self.added if isinstance(row, kind) and row.id == key), None
+            )
+
+    db = Db()
+
+    async def classify(**_kwargs):
+        nonlocal classifier_calls
+        classifier_calls += 1
+        pytest.fail("privacy findings must bypass the Auto classifier")
+
+    async def ensure_key(*_args, **_kwargs):
+        return "fixture-virtual-key"
+
+    async def credentials(*_args, **_kwargs):
+        return "http://unused.invalid", "fixture-virtual-key"
+
+    async def answer(model_id, messages, *_args, **_kwargs):
+        answer_calls.append((model_id, messages))
+        yield {"type": "model_route", "routedModel": model_id, "actualModel": model_id}
+        yield {"type": "delta", "text": "Synthetic fixture answer."}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+    async def enrichment_model(writer, **_kwargs):
+        return writer
+
+    async def title(*_args, **_kwargs):
+        return None, {"inputTokens": 0, "outputTokens": 0}
+
+    async def no_enrichment(**_kwargs):
+        return None
+
+    monkeypatch.setattr(sessions_router, "SessionLocal", lambda: db)
+    monkeypatch.setattr(sessions_router.adaptive_routing, "classify", classify)
+    monkeypatch.setattr(sessions_router.litellm_service, "ensure_key", ensure_key)
+    monkeypatch.setattr(sessions_router.litellm_service, "credentials_for", credentials)
+    monkeypatch.setattr(sessions_router, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions_router.agent_service, "run_turn", answer)
+    monkeypatch.setattr(sessions_router, "_enrichment_model", enrichment_model)
+    monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", no_enrichment)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", no_enrichment)
+
+    response = await sessions_router.send_message(
+        session.id,
+        SendMessage(content="Summarize the synthetic contact fixture@example.test only."),
+        _request(),
+        user,
+        db,
+    )
+    events = [json.loads(chunk.removeprefix("data: ")) async for chunk in response.body_iterator]
+    assert not any(event["type"] == "error" for event in events)
+    assert events[-1]["type"] == "done"
+    assert classifier_calls == 0
+    assert len(answer_calls) == 1
+    assert "fixture@example.test" not in json.dumps(answer_calls[0][1])
+
+    messages = [row for row in db.added if isinstance(row, sessions_router.Message)]
+    assert {row.role.value for row in messages} == {"user", "assistant"}
+    audits = [
+        row
+        for row in db.added
+        if isinstance(row, sessions_router.AuditEvent) and row.action == "routing.auto"
+    ]
+    assert audits
+    routes = [row.routing["costRouting"] for row in messages]
+    routes.extend(row.event_metadata for row in audits)
+    model_events = [event for event in events if event["type"] == "model_route"]
+    assert model_events
+    routes.extend(model_events)
+    privacy_events = [event for event in events if event["type"] == "privacy_route"]
+    assert privacy_events
+    assert all(event["action"] == "mask_external" for event in privacy_events)
+    routes.extend(event["costRouting"] for event in privacy_events)
+    assert all(route["mode"] == expected_mode for route in routes)
+    assert all(route["decision"] == "bypassed" for route in routes)
+    assert all(route["reasonCode"] == "privacy_detected" for route in routes)
+    assert all(route["selectedModel"] == model["id"] for route in routes)
+
+
+@pytest.mark.asyncio
 async def test_auto_no_candidate_skips_classifier_and_key(monkeypatch) -> None:
     user = User(email="person@example.test", password_hash="hash", name="Person")
     session = ChatSession(

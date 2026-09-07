@@ -157,6 +157,27 @@ const EN: Record<string, string> = {
   'Auto · 이번 요청은 기능 사용으로 품질 모델 유지':
     'Auto · Keeping the quality model because this request uses extra features',
   'Auto 절약': 'Auto saving',
+  'Auto · 품질 우선 · 상위 모델 선택': 'Auto quality · Selected a higher-tier model',
+  'Auto · 품질 우선 · 분류기를 사용할 수 없어 현재 모델 유지':
+    'Auto quality · Classifier unavailable, keeping the current model',
+  'Auto · 품질 우선 · 간단한 요청으로 현재 모델 유지':
+    'Auto quality · Simple request, keeping the current model',
+  'Auto · 품질 우선 · 사용할 상위 모델이 없어 현재 모델 유지':
+    'Auto quality · No eligible higher-tier model, keeping the current model',
+  'Auto · 품질 우선 · 긴 대화이므로 현재 모델 유지':
+    'Auto quality · Long conversation, keeping the current model',
+  'Auto · 품질 우선 · 개인정보 감지로 난이도 판정 생략':
+    'Auto quality · Classification skipped because personal data was detected',
+  'Auto · 품질 우선 · 기능 사용으로 현재 모델 유지':
+    'Auto quality · Extra features used, keeping the current model',
+  'Auto · 품질 우선 · 관리 정책이 꺼져 현재 모델 유지':
+    'Auto quality · Administrator policy is off, keeping the current model',
+  'Auto · 품질 우선 · 난이도 판정을 생략하고 현재 모델 유지':
+    'Auto quality · Classification skipped, keeping the current model',
+  'Auto · 품질 우선 · 확실하지 않아 현재 모델 유지':
+    'Auto quality · Uncertain classification, keeping the current model',
+  'Auto · 품질 우선 · 이번 요청은 기능 사용으로 현재 모델 유지':
+    'Auto quality · Keeping the current model because this request uses extra features',
   '예상 {n} 크레딧 절약': 'About {n} credits saved',
   'Auto · 분류기를 사용할 수 없어 품질 모델 유지':
     'Auto · Classifier unavailable, keeping the quality model',

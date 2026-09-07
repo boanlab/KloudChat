@@ -2479,6 +2479,7 @@ async def send_message(
         if auto_turn and auto_preflight_findings:
             # Privacy owns this turn; the classifier never sees the envelope.
             cost_routing = _cost_routing(
+                mode=str(getattr(session.routing_mode, "value", session.routing_mode)),
                 decision="bypassed",
                 reason_code="privacy_detected",
                 requested_model=requested_model,
