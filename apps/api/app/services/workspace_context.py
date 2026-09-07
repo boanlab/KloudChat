@@ -686,12 +686,16 @@ async def assemble(
     starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
     focus: str = "",
+    question: str = "",
     file_budget: int | None = None,
 ) -> WorkspaceContext:
     """Build one authorised context without auto-activating installed skills.
 
     `vision`: the answer of `reads_pictures` for this turn's model.
     `focus`: what to excerpt a long attachment around; empty takes the head.
+    `question`: what the person asked this turn. A file carried from an earlier turn
+    is excerpted around it when it no longer fits whole; this turn's own attachment
+    keeps `focus`, since 「요약해줘」 is not a thing to search a fresh file for.
     `file_budget`: characters of attached text to carry (`file_budget(model)`); the
     configured floor when not given.
     """
@@ -816,7 +820,7 @@ async def assemble(
                 earlier_block, carried = _knowledge_block(
                     earlier,
                     header="# 이 대화에서 앞서 첨부된 파일",
-                    focus=focus,
+                    focus=question or focus,
                     budget=remaining,
                 )
                 if earlier_block:

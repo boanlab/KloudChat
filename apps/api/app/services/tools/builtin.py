@@ -720,7 +720,8 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
 
 
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
-    """Search tool over the agent's preloaded documents (tools hold no DB session).
+    """Search tool over preloaded documents — an agent's knowledge, a conversation's
+    uploads — since tools hold no DB session.
 
     `collection`: vector index collection merged in when set.
     """
@@ -770,7 +771,7 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
     return Tool(
         name="search_knowledge",
         description=(
-            "이 에이전트에 첨부된 자료 안에서 검색합니다. 붙어 있는 자료: "
+            "이 대화나 에이전트에 첨부된 자료 안에서 검색합니다. 붙어 있는 자료: "
             f"{listed}{more}. "
             "위 목록은 각 자료의 목차일 뿐 내용이 아닙니다. 목차만 보고 "
             "'자료에 없다'고 판단하지 말고, 이 자료가 다룰 만한 주제이면 반드시 "

@@ -123,6 +123,22 @@ async def test_a_file_attached_earlier_in_the_conversation_is_still_read(monkeyp
     assert step["detail"] == "학칙.pdf"
 
 
+async def test_an_earlier_file_too_long_to_carry_whole_is_excerpted_around_the_question(
+    monkeypatch,
+):
+    """Once a carried file no longer fits, the part the question is about is what goes."""
+    monkeypatch.setattr(settings, "file_context_chars", 1_000)
+    earlier = _file("학칙.pdf", "가" * 3_000 + "제80조 휴학은 두 해까지 한다." + "나" * 3_000)
+    earlier.session_id = "session-1"
+    context = await assemble(
+        _Db(files=[earlier]), _user(), _session(), question="휴학 기간이 최대 몇 년이야?"
+    )
+
+    block = next(block.text for block in context.blocks if block.source == "attachment.earlier")
+    assert "제80조 휴학은 두 해까지 한다." in block
+    assert [(f.name, f.state) for f in context.carried] == [("학칙.pdf", "truncated")]
+
+
 async def test_an_earlier_file_the_budget_cannot_carry_is_still_listed_as_arrived(monkeypatch):
     """This turn's file spends the budget; the earlier one is named so it is not denied."""
     monkeypatch.setattr(settings, "file_context_chars", 10)

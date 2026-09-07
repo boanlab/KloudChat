@@ -25,6 +25,7 @@ _DDL = (
         routing_mode TEXT,
         artifact_id TEXT,
         render_template_id TEXT,
+        index_key TEXT,
         pending TEXT,
         pinned BOOLEAN DEFAULT 0,
         created_at DATETIME,

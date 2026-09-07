@@ -403,7 +403,23 @@ async def upload_file(
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    # A conversation upload joins the retrieval index like agent knowledge does, so
+    # `search_knowledge` can find it by meaning on later turns. Never blocks the upload.
+    if session_id and stored.text.strip():
+        session = await db.get(ChatSession, session_id)
+        if session is not None and session.user_id == user.id:
+            await _index_document(db, user.id, await _session_shelf_key(db, session), stored)
     return FileOut.of(stored)
+
+
+async def _session_shelf_key(db: DbSession, session: ChatSession) -> str:
+    """The conversation's index collection key, minted on first use."""
+    if not session.index_key:
+        session.index_key = index_client.new_collection_key()
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+    return session.index_key
 
 
 @router.post(
@@ -529,6 +545,10 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
 async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     file_service.delete_blob(stored.storage_key)
+    if stored.session_id and stored.indexed_at:
+        session = await db.get(ChatSession, stored.session_id)
+        if session is not None and session.index_key:
+            await index_client.forget_document(collection=session.index_key, doc_id=stored.id)
     await db.delete(stored)
     await db.commit()
 
@@ -2733,14 +2753,23 @@ async def add_agent_url(agent_id: str, payload: KnowledgeUrl, user: CurrentUser,
 
 
 async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
-    """Sends one shelved document to the retrieval index; stamps `indexed_at` on success.
+    """Indexes one agent document under the agent's collection."""
+    if not stored.text.strip() or not await index_client.available():
+        return False
+    return await _index_document(db, agent.owner_id, await _shelf_key(db, agent), stored)
+
+
+async def _index_document(
+    db: DbSession, owner_id: str, collection: str, stored: StoredFile
+) -> bool:
+    """Sends one document to the retrieval index; stamps `indexed_at` on success.
 
     Called after the row is committed; a failed embed leaves the row attached.
     """
     if not stored.text.strip() or not await index_client.available():
         return False
     ok = await index_client.put_document(
-        collection=await _shelf_key(db, agent),
+        collection=collection,
         doc_id=stored.id,
         name=stored.name,
         text=stored.text,
@@ -2753,7 +2782,7 @@ async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
         if index_client.last_chunks:
             record_units(
                 db,
-                await db.get(User, agent.owner_id),
+                await db.get(User, owner_id),
                 reason="index.embed",
                 model=index_client.EMBED_MODEL,
                 units=index_client.last_chunks,
