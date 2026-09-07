@@ -316,6 +316,167 @@ async def test_null_expression_is_not_treated_as_an_optional_omission():
     assert json.loads(output.content)["error"] == "invalid_calculation"
 
 
+@pytest.mark.parametrize(
+    "choices,expected",
+    [
+        (["80", "82.5"], ["80", "82.5"]),
+        ([80, 81, 83, 85], ["80", "81", "83", "85"]),
+        ([80, "82.5"], ["80", "82.5"]),
+        ("[80, 82.5]", ["80", "82.5"]),
+        ('["80", "82.5"]', ["80", "82.5"]),
+        ("[80.000, 82.500]", ["80.000", "82.500"]),
+    ],
+)
+async def test_choices_adapter_preserves_bounded_arrays_and_exact_json_literals(
+    monkeypatch, choices, expected
+):
+    original = arithmetic.calculate
+    calls = []
+
+    async def counted(arguments):
+        calls.append(arguments)
+        return await original(arguments)
+
+    monkeypatch.setattr(arithmetic, "calculate", counted)
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "1600/20", "choices": choices}
+    )
+    assert not output.failed
+    assert calls == [{"expression": "1600/20", "choices": expected}]
+    result = json.loads(output.content)
+    assert result["answer"] == 1
+    assert result["value"] == "80"
+
+
+async def test_encoded_decimal_choices_do_not_take_a_binary_float_round_trip():
+    literal = "0.12345678901234567890123456789"
+    output = await check_ncs_answer(
+        {
+            "decision": "calculate",
+            "expression": literal,
+            "choices": f"[{literal}, 0.12345678901234568]",
+        }
+    )
+    result = json.loads(output.content)
+    assert not output.failed
+    assert result["answer"] == 1
+    assert result["matched_choices"] == [1]
+    assert result["value"] == literal
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        [True, 80],
+        [False, "80"],
+        [80.0, "82.5"],
+        [float("nan"), "80"],
+        [float("inf"), "80"],
+        [["80"], "82.5"],
+        [{"value": "80"}, "82.5"],
+        [None, "80"],
+        ("80", "82.5"),
+        {"1": "80", "2": "82.5"},
+        [],
+        ["80"],
+        ["80"] * 11,
+        ["", "80"],
+        ["1" * 1025, "80"],
+        "80, 82.5",
+        "secret-canary",
+        "[80,82.5] secret-canary",
+        '{"1":80,"2":82.5}',
+        '"[80,82.5]"',
+        "[true,80]",
+        "[false,80]",
+        "[null,80]",
+        "[[80],82.5]",
+        "[NaN,80]",
+        "[Infinity,80]",
+        "[]",
+        "[80]",
+        "[" + ",".join(["80"] * 11) + "]",
+        '["' + "1" * 1025 + '", "80"]',
+        "[" * 3000 + "80" + "]" * 3000,
+    ],
+)
+async def test_invalid_choices_shape_is_actionable_and_never_runs_arithmetic(monkeypatch, choices):
+    async def forbidden(_arguments):
+        pytest.fail("an invalid choices format reached arithmetic")
+
+    monkeypatch.setattr(arithmetic, "calculate", forbidden)
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "80", "choices": choices}
+    )
+    result = json.loads(output.content)
+    assert output.failed
+    assert result["arithmetic_verified"] is False
+    assert result["error"] == "invalid_ncs_choices"
+    assert 'choices=["80","82.5"]' in result["message"]
+    assert "secret-canary" not in output.content
+
+
+@pytest.mark.parametrize(
+    "choices",
+    ["[" + " " * 10240 + "80,82.5]", json.dumps(["가" * 4000, "80"], ensure_ascii=False)],
+)
+async def test_encoded_choices_byte_budget_is_checked_before_json_parsing(monkeypatch, choices):
+    original = json.loads
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("oversized choices reached the JSON parser")
+
+    monkeypatch.setattr(ncs_check.json, "loads", forbidden)
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "80", "choices": choices}
+    )
+    assert output.failed
+    assert original(output.content)["error"] == "invalid_ncs_choices"
+
+
+async def test_an_encoded_array_at_the_byte_limit_is_still_accepted():
+    encoded = "[80,82.5]"
+    encoded += " " * (10240 - len(encoded))
+    assert len(encoded.encode("utf-8")) == 10240
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "80", "choices": encoded}
+    )
+    assert not output.failed
+    assert json.loads(output.content)["answer"] == 1
+
+
+async def test_a_huge_python_integer_is_rejected_before_string_conversion():
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "80", "choices": [10**5000, 80]}
+    )
+    assert output.failed
+    assert json.loads(output.content)["error"] == "invalid_ncs_choices"
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        ["__import__('secret-canary')", "80"],
+        '["__import__(\\"secret-canary\\")", "80"]',
+        ["1/0", "80"],
+        ["1+", "80"],
+        ["9" * 65, "80"],
+        [10**64, 80],
+        "[1e2,80]",
+        ["(" * 40 + "1" + ")" * 40, "80"],
+    ],
+)
+async def test_normalized_choices_still_obey_the_original_arithmetic_limits(choices):
+    output = await check_ncs_answer(
+        {"decision": "calculate", "expression": "80", "choices": choices}
+    )
+    assert output.failed
+    result = json.loads(output.content)
+    assert result["error"] == "invalid_calculation"
+    assert result["arithmetic_verified"] is False
+    assert "secret-canary" not in output.content
+
+
 def test_tool_contract_is_portable_read_only_and_discloses_no_answer_in_labels():
     assert CHECK_NCS_ANSWER.name == "check_ncs_answer"
     assert CHECK_NCS_ANSWER.run is check_ncs_answer
@@ -327,11 +488,8 @@ def test_tool_contract_is_portable_read_only_and_discloses_no_answer_in_labels()
     assert "oneOf" not in CHECK_NCS_ANSWER.parameters
     assert CHECK_NCS_ANSWER.parameters["properties"]["reason"]["maxLength"] == 500
     assert "submitted_choice" not in CHECK_NCS_ANSWER.parameters["properties"]
-    assert CHECK_NCS_ANSWER.parameters["properties"]["choices"]["type"] == ["array", "null"]
-    assert CHECK_NCS_ANSWER.parameters["properties"]["decimal_places"]["type"] == [
-        "integer",
-        "null",
-    ]
+    assert CHECK_NCS_ANSWER.parameters["properties"]["choices"]["type"] == "array"
+    assert CHECK_NCS_ANSWER.parameters["properties"]["decimal_places"]["type"] == "integer"
     assert arithmetic.CALCULATE.parameters["properties"]["choices"]["type"] == "array"
     assert "submitted_choice" in arithmetic.CALCULATE.parameters["properties"]
     assert ncs_check.__name__ == "app.services.tools.ncs_check"
