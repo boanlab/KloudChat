@@ -100,6 +100,10 @@ async def test_classifier_fallback_preserves_the_turn_and_model_identity(
     class ClassifierClient:
         def __init__(self, **kwargs):
             assert kwargs["base_url"] == "http://classifier.invalid"
+            assert kwargs["headers"] == {
+                "Authorization": "Bearer fixture-virtual-key",
+                "x-litellm-enable-message-redaction": "true",
+            }
             assert (
                 kwargs["timeout"].read
                 == adaptive_routing.settings.auto_routing_classifier_timeout_sec
@@ -219,6 +223,7 @@ async def test_classifier_fallback_preserves_the_turn_and_model_identity(
     assert session.routing_mode == mode
 
     messages = [row for row in db.added if isinstance(row, Message)]
+    assert len({row.id for row in messages}) == 2
     assert {row.role for row in messages} == {Role.user, Role.assistant}
     answer_row = next(row for row in messages if row.role == Role.assistant)
     assert answer_row.model == requested["id"]
