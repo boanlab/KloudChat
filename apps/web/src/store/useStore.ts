@@ -1,3 +1,4 @@
+import type { WebSearchSetting } from '@/lib/api'
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
 import {
@@ -201,7 +202,7 @@ async function waitForSessionPersistence(sessionId: string): Promise<void> {
 
 type SendOptions = {
   projectId?: string | null
-  webSearch?: boolean
+  webSearch?: WebSearchSetting
   /** Ids of already-uploaded files. */
   attachments?: string[]
   /** Their names, for the optimistic bubble. */
@@ -2808,7 +2809,7 @@ async function streamTurn(
   opts: {
     /** Turn-only model override. */
     model?: string
-    webSearch?: boolean
+    webSearch?: WebSearchSetting
     attachments?: string[]
     attachmentNames?: string[]
     activatedSkillIds?: string[]
@@ -3235,7 +3236,7 @@ async function streamReport(
   gate: {
     approve?: boolean
     answers?: Record<string, string>
-    webSearch?: boolean
+    webSearch?: WebSearchSetting
     includeFigures?: boolean
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */
@@ -3441,7 +3442,7 @@ async function streamDeck(
   gate: {
     approve?: boolean
     answers?: Record<string, string>
-    webSearch?: boolean
+    webSearch?: WebSearchSetting
     includeFigures?: boolean
     plan?: Record<string, unknown>
     /** Resent with the approval: the server assembles context fresh per request. */

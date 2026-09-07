@@ -487,7 +487,13 @@ async def run_turn(
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
     #: A tool the first hop must call; later hops return to `tool_choice: auto`.
+    #: A named `tool_choice` is only a request — vLLM answers in prose about
+    #: half the time under a long system prompt — so a search the toggle
+    #: demands goes through `preset_call` instead.
     force_tool: str | None = None,
+    #: `(tool name, arguments)` the server calls itself before the model is
+    #: asked anything; the model then starts with the result in hand.
+    preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -542,20 +548,27 @@ async def run_turn(
             stream_kwargs["temperature"] = temperature
         if force_tool and hop == 0:
             stream_kwargs["force_tool"] = force_tool
-        async for kind, value in _stream_once(
-            model,
-            conversation,
-            hop_tools,
-            ctx.user_id,
-            ctx.api_key,
-            **stream_kwargs,
-        ):
-            if kind == "delta":
-                answer_text.append(value)
-                hop_text.append(value)
-                yield {"type": "delta", "text": value}
-            else:
-                acc = value
+        if preset_call and hop == 0:
+            # The first hop is the server's own call: no model request, the
+            # loop below runs the tool and hands its result to the model.
+            name, arguments = preset_call
+            acc = _Accumulator()
+            acc.calls[0] = {"id": "preset_0", "name": name, "arguments": json.dumps(arguments)}
+        else:
+            async for kind, value in _stream_once(
+                model,
+                conversation,
+                hop_tools,
+                ctx.user_id,
+                ctx.api_key,
+                **stream_kwargs,
+            ):
+                if kind == "delta":
+                    answer_text.append(value)
+                    hop_text.append(value)
+                    yield {"type": "delta", "text": value}
+                else:
+                    acc = value
         assert acc is not None
 
         usage["inputTokens"] += acc.usage["inputTokens"]

@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { FileRow, PrivacyDecision } from '@/lib/api'
+import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
@@ -75,7 +75,7 @@ type PendingPrivacy = {
   attachments: FileRow[]
   activatedSkillIds: string[]
   startingTemplate: StartingPoint | null
-  webSearch: boolean
+  webSearch: WebSearchSetting
   restoreToken: number
 }
 
@@ -299,13 +299,16 @@ function AvOptions() {
 
 // Composer state carried across the remount that creating a session causes.
 // Read once by the new composer and cleared.
+/** The toggle's three positions; `auto` is sent as `'auto'`, the others as booleans. */
+type WebSearchMode = 'auto' | 'on' | 'off'
+
 let carriedComposer: {
   sessionId: string
   value: string
   attachments: FileRow[]
   startingTemplate: StartingPoint | null
   activatedSkillIds: string[]
-  webSearch: boolean
+  webSearchMode: WebSearchMode
 } | null = null
 
 // Unsent text keyed by session id, or `new:<kind>` on the home screen.
@@ -463,7 +466,7 @@ export function Composer({
     setPendingStartingTemplate(null)
     if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
     // A starting point turns on what it declares it needs; both stay switchable.
-    if (pendingStartingTemplate.needs?.includes('web')) setWebSearch(true)
+    if (pendingStartingTemplate.needs?.includes('web')) setWebSearchMode('on')
     const wanted = pendingStartingTemplate.skills ?? []
     if (wanted.length) {
       const ids = usableSkills
@@ -578,13 +581,17 @@ export function Composer({
       window.removeEventListener('keyup', up)
     }
   })
-  // On by default; `searchBlocked` still overrides per turn.
-  const [webSearch, setWebSearch] = useState(true)
+  // 「자동」 by default: the web tools are offered and the server searches when the words
+  // call for it; 「켬」 searches every turn, 「끔」 offers nothing. `searchBlocked` still
+  // overrides per turn.
+  const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>('auto')
+  const webSearch = webSearchMode !== 'off'
+  const webSearchModeLabel = { auto: t('자동'), on: t('켬'), off: t('끔') }[webSearchMode]
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
-  const liveWebSearch = useRef(webSearch)
-  liveWebSearch.current = webSearch
+  const liveWebSearchMode = useRef(webSearchMode)
+  liveWebSearchMode.current = webSearchMode
   // Built from live refs: `onSession` callbacks fire after the arming render.
   const heldComposer = (id: string) => ({
     sessionId: id,
@@ -592,7 +599,7 @@ export function Composer({
     attachments: liveAttachments.current,
     startingTemplate: liveStartingTemplate.current,
     activatedSkillIds: liveActivatedSkillIds.current,
-    webSearch: liveWebSearch.current,
+    webSearchMode: liveWebSearchMode.current,
   })
   // Per-turn state resets when the surface or session changes; the typed sentence stays.
   useEffect(() => {
@@ -618,7 +625,7 @@ export function Composer({
         liveActivatedSkillIds.current = held.activatedSkillIds
         setActivatedSkillIds(held.activatedSkillIds)
       }
-      if (held.webSearch) setWebSearch(true)
+      setWebSearchMode(held.webSearchMode)
       return
     }
     liveActivatedSkillIds.current = []
@@ -627,7 +634,7 @@ export function Composer({
     setStartingTemplate(null)
     liveAttachments.current = []
     setAttachments([])
-    setWebSearch(false)
+    setWebSearchMode('auto')
   }, [sessionId, kind])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
@@ -689,6 +696,12 @@ export function Composer({
   // the control follows the turn, not the stored preference.
   const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
   const effectiveWebSearch = webSearch && !searchBlocked
+  // What this turn sends: the mode, unless something blocks search altogether.
+  const sentWebSearch: WebSearchSetting = !effectiveWebSearch
+    ? false
+    : webSearchMode === 'auto'
+      ? 'auto'
+      : true
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -787,7 +800,7 @@ export function Composer({
     targetSessionId: string | null,
     text: string,
     files: FileRow[],
-    search: boolean,
+    search: WebSearchSetting,
     skillIds: string[],
     startedFrom: StartingPoint | null,
     action?: PrivacyAction,
@@ -993,7 +1006,7 @@ export function Composer({
     if (handoff) {
       void send(null, handoff, text, {
         projectId,
-        webSearch: effectiveWebSearch,
+        webSearch: sentWebSearch,
         attachments: attachmentIds,
         attachmentNames: attachmentLabels,
         onSession: (id) => {
@@ -1017,7 +1030,7 @@ export function Composer({
         sessionId ?? reusableSessionId,
         text,
         sentAttachments,
-        effectiveWebSearch,
+        sentWebSearch,
         sentSkillIds,
         sentStartingTemplate,
         undefined,
@@ -1033,7 +1046,7 @@ export function Composer({
     let landedSessionId = sessionId
     void send(sessionId, kind, text, {
       projectId,
-      webSearch: effectiveWebSearch,
+      webSearch: sentWebSearch,
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
@@ -1572,24 +1585,35 @@ export function Composer({
 
           {canWebSearch && (
             <button
-              onClick={() => setWebSearch((w) => !w)}
+              onClick={() =>
+                setWebSearchMode((m) => (m === 'auto' ? 'on' : m === 'on' ? 'off' : 'auto'))
+              }
               aria-pressed={effectiveWebSearch}
               disabled={searchBlocked}
               className={cn(
                 'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                effectiveWebSearch ? 'text-accent' : 'text-muted hover:text-fg',
+                !effectiveWebSearch
+                  ? 'text-faint hover:text-muted'
+                  : webSearchMode === 'on'
+                    ? 'text-accent'
+                    : 'text-muted hover:text-fg',
                 searchBlocked && 'opacity-55 hover:bg-transparent hover:text-muted',
               )}
-              aria-label={t('웹 검색')}
+              aria-label={`${t('웹 검색')}: ${webSearchModeLabel}`}
               title={
                 searchBlocked
                   ? compareMode && kind === 'chat'
                     ? t('모델 비교는 웹 검색 없이 실행합니다')
                     : t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')
-                  : t('웹에서 최신 자료를 찾아 근거로 씁니다')
+                  : webSearchMode === 'auto'
+                    ? t('웹 검색 자동: 최신 사실이나 날씨를 물으면 찾아봅니다. 누르면 매번 검색')
+                    : webSearchMode === 'on'
+                      ? t('웹 검색 켬: 매번 검색합니다. 누르면 끔')
+                      : t('웹 검색 끔: 찾아보지 않습니다. 누르면 자동')
               }
             >
               <Globe size={15} />
+              <span className="text-sm">{webSearchModeLabel}</span>
             </button>
           )}
 

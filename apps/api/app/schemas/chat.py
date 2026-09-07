@@ -338,7 +338,9 @@ class SendMessage(Wire):
     attachments: list[str] | None = None
     #: Model override for this turn only.
     model: str | None = None
-    web_search: bool = False
+    #: `True` searches every turn, `False` never (unless the words ask for research),
+    #: `"auto"` offers the tools and searches when the words call for it.
+    web_search: bool | Literal["auto"] = False
     #: Installed skills selected for this turn; installation alone injects nothing.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
     #: A 시작점: a built-in from `/prompt-templates` or a visible `templates` row.

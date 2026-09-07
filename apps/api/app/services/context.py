@@ -195,6 +195,21 @@ _WEB_SEARCH_NUDGE = (
     "빠진 것을 그럴듯하게 채우는 편보다 낫습니다."
 )
 
+# Search toggle on 「자동」: the tools are offered, the model decides. Forced first
+# hops (a research request, a fact that changes with time, weather) get the
+# fuller `_WEB_SEARCH_NUDGE` instead.
+_WEB_SEARCH_AUTO = (
+    "웹 검색과 날씨 도구를 쓸 수 있습니다. 필요할 때만 쓰세요.\n"
+    "- 검색으로 확인할 것: 시간이 지나면 달라지는 사실(뉴스·가격·일정·최신 버전·통계·"
+    "인물의 현재 직위), 확신이 없는 사실, 제품명·수치·날짜·서지. 날씨·기온·비 소식은 "
+    "web_search 가 아니라 weather 도구로 봅니다.\n"
+    "- 검색 없이 답할 것: 교과서에 있는 원리, 번역·요약·작문·코드, 사용자가 준 자료에 "
+    "대한 질문, 인사와 잡담.\n"
+    "- 검색했다면 결과 번호를 문장 끝에 [3]처럼 달고 URL 은 옮겨 적지 마세요. 검색 결과가 "
+    "기억과 다르면 검색 결과를 따르고, 확인하지 못한 항목은 확인하지 못했다고 밝히세요. "
+    "서지(arXiv 번호, DOI)는 검색 결과에서 그대로 옮긴 것만 씁니다."
+)
+
 # Search toggle on, but no search tool this turn (agent allowlist or strict-local).
 _WEB_SEARCH_BLOCKED = (
     "사용자가 웹 검색을 켰지만 이 요청에는 검색 도구가 없습니다. "
@@ -221,9 +236,11 @@ def system_prompt(
     with_tools: bool = False,
     web_search: bool = False,
     web_search_available: bool = True,
+    web_search_auto: bool = False,
     extra: list[str] | None = None,
 ) -> str:
-    """Assembles the system turn. `extra` is the caller-ordered workspace blocks."""
+    """Assembles the system turn. `extra` is the caller-ordered workspace blocks.
+    `web_search_auto`: the tools are offered without a forced first search."""
     parts = [
         _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
         _CORE_ACCURACY,
@@ -240,7 +257,10 @@ def system_prompt(
     if with_tools:
         parts.append(_TOOL_RULES)
     if web_search:
-        parts.append(_WEB_SEARCH_NUDGE if web_search_available else _WEB_SEARCH_BLOCKED)
+        if not web_search_available:
+            parts.append(_WEB_SEARCH_BLOCKED)
+        else:
+            parts.append(_WEB_SEARCH_AUTO if web_search_auto else _WEB_SEARCH_NUDGE)
     return "\n\n".join(parts)
 
 
@@ -251,6 +271,7 @@ def build_messages(
     with_tools: bool = False,
     web_search: bool = False,
     web_search_available: bool = True,
+    web_search_auto: bool = False,
     extra: list[str] | None = None,
     untrusted_context: list[str] | None = None,
 ) -> list[dict[str, str]]:
@@ -269,6 +290,7 @@ def build_messages(
         with_tools=with_tools,
         web_search=web_search,
         web_search_available=web_search_available,
+        web_search_auto=web_search_auto,
         extra=rules,
     )
     messages = [{"role": "system", "content": prompt}]
@@ -334,6 +356,94 @@ _EXPLICIT_WEB_REQUEST = re.compile(
 def requests_web_search(request: str) -> bool:
     """Whether the user's own words explicitly request external research."""
     return bool(_EXPLICIT_WEB_REQUEST.search(request or ""))
+
+
+#: Facts that change with time — the auto toggle searches these unasked.
+_TIME_SENSITIVE = re.compile(
+    r"뉴스|속보|최신|최근|현재|지금|오늘|어제|내일|모레|이번\s*[주달]|올해|작년|내년|요즘|"
+    r"시세|환율|주가|가격|얼마|출시|발표|일정|언제|몇\s*시|버전|업데이트|근황|현황|동향|"
+    r"통계|순위|20[2-9]\d년|"
+    r"\b(?:latest|current|today|tonight|tomorrow|now|news|price|release|version|update|"
+    r"schedule|recent)\b",
+    re.I,
+)
+_WEATHER_ASK = re.compile(
+    r"날씨|기온|강수|미세먼지|우산|비\s*(?:오|올|와)|눈\s*(?:오|올|와)|"
+    r"\b(?:weather|forecast|temperature|rain|umbrella)\b",
+    re.I,
+)
+
+
+def needs_web_search(request: str) -> bool:
+    """Whether the words ask about something that changes with time."""
+    return bool(_TIME_SENSITIVE.search(request or ""))
+
+
+def asks_weather(request: str) -> bool:
+    return bool(_WEATHER_ASK.search(request or ""))
+
+
+#: Request phrasing that adds nothing to a search query.
+_ASK_TAIL = re.compile(
+    r"(?:\s*(?:좀|제발|빨리|자세히|간단히|정확히))*\s*"
+    r"(?:[가-힣]+해\s*(?:줘|주세요|줄래|주실래요|봐|달라)|알려\s*(?:줘|주세요|줄래|주실래요|달라)|"
+    r"말해\s*(?:줘|주세요|줄래)|찾아\s*(?:줘|주세요|봐)|"
+    r"(?:^|\s)(?:뭐야|뭔지|뭐지|무엇인가요|무엇인지|누구야|누구인가요|어때|어떤가요|어떻게\s*돼|"
+    r"얼마야|얼마인가요|얼마나\s*(?:돼|해)|언제야|언제인가요|있어|있나요|있을까|할까|인가요|인지|"
+    r"이야|야|니|나요|까요|죠))"
+    r"\s*[?？!.。~]*\s*$"
+)
+#: A particle left dangling on a word of two syllables or more once the asking is gone.
+_DANGLING_PARTICLE = re.compile(r"(?<=[가-힣][가-힣])(?:이|가|은|는|을|를)$")
+_TIME_WORDS = re.compile(r"오늘|지금|현재|내일|모레|이번\s*주|주말|아침|점심|저녁|밤|오전|오후")
+_WEATHER_WORDS = re.compile(
+    r"날씨|기온|강수|미세먼지|우산|비\s*(?:오|올|와)\S*|눈\s*(?:오|올|와)\S*|"
+    r"\b(?:weather|forecast|temperature|rain|umbrella)\b",
+    re.I,
+)
+
+
+def search_query(request: str) -> str:
+    """The user's sentence as a search query: request phrasing trimmed, capped."""
+    text = re.sub(r"\s+", " ", (request or "").strip())
+    for _ in range(2):
+        text = _ASK_TAIL.sub("", text).strip()
+    text = _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,"))
+    return (text or (request or "").strip())[:120]
+
+
+def weather_location(request: str) -> str | None:
+    """The place a weather question names, or None when it names none."""
+    text = re.sub(r"\s+", " ", (request or "").strip())
+    head = _WEATHER_WORDS.split(text, maxsplit=1)[0]
+    head = _TIME_WORDS.sub(" ", head)
+    head = re.sub(r"[?？!.。,~]", " ", head)
+    words = [w for w in head.split() if re.fullmatch(r"[가-힣A-Za-z][가-힣A-Za-z\-]{0,20}", w)]
+    if not words:
+        return None
+    place = " ".join(words[-2:])
+    place = re.sub(r"(?:에서|의|은|는|이|가|에)$", "", place)
+    return place or None
+
+
+def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
+    """What the web-search toggle means for this turn: whether the web tools are
+    offered, and the tool the first hop must call (or none).
+
+    `toggle` is `True` (search every turn), `False` (no web tools unless the words
+    ask for research) or `"auto"` (tools offered; a search is forced only when the
+    words ask for research or for something that changes with time)."""
+    explicit = requests_web_search(request)
+    weather = asks_weather(request)
+    if toggle == "auto":
+        if weather:
+            return True, "weather"
+        return True, "web_search" if explicit or needs_web_search(request) else None
+    if toggle is True:
+        return True, "weather" if weather else "web_search"
+    if explicit:
+        return True, "web_search"
+    return False, None
 
 
 def language_rule(request: str) -> str:

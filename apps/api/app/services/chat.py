@@ -25,6 +25,7 @@ class ChatStreamError(RuntimeError):
 _STEP_LABELS: dict[str, str] = {
     "web_search": "웹 검색 중",
     "search": "웹 검색 중",
+    "weather": "날씨 확인 중",
     "fetch_url": "문서 읽는 중",
     "fetch": "문서 읽는 중",
     "execute_code": "코드 실행 중",
@@ -43,6 +44,7 @@ def step_label(tool_name: str) -> str:
 _STEP_TITLES: dict[str, str] = {
     "web_search": "웹 검색",
     "search": "웹 검색",
+    "weather": "날씨",
     "fetch_url": "문서 읽기",
     "fetch": "문서 읽기",
     "execute_code": "코드 실행",
