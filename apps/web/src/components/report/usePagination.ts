@@ -32,20 +32,50 @@ export function usePagination(
     const contentHeight = root.scrollHeight
     setHeight(contentHeight)
 
-    // Cuts fall between rendered lines, never through one; Range rects are the browser's own line layout.
+    // Cuts fall between rendered lines, never through one; Range rects are the browser's own
+    // line layout. Each line remembers its block, so the cut can follow the page view's rules:
+    // a paragraph keeps two lines on either side of a cut (orphans/widows), a figure, table or
+    // quote is never split, and a heading goes with what follows it.
     const rootTop = root.getBoundingClientRect().top
-    const lines: { top: number; bottom: number }[] = []
+    type Line = { top: number; bottom: number; block: Element | null; kind: 'text' | 'heading' | 'atomic' }
+    const BLOCKS = 'p, li, h1, h2, h3, h4, dt, dd, figure, table, blockquote, pre'
+    const kindOf = (block: Element | null): Line['kind'] => {
+      if (!block) return 'text'
+      if (/^H[1-4]$/.test(block.tagName)) return 'heading'
+      if (['FIGURE', 'TABLE', 'BLOCKQUOTE', 'PRE'].includes(block.tagName)) return 'atomic'
+      return 'text'
+    }
+    const lines: Line[] = []
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     while (walker.nextNode()) {
       const node = walker.currentNode
       if (!node.textContent?.trim()) continue
+      const block = node.parentElement?.closest(BLOCKS) ?? null
       const range = document.createRange()
       range.selectNodeContents(node)
       for (const rect of Array.from(range.getClientRects())) {
-        if (rect.height > 0) lines.push({ top: rect.top - rootTop, bottom: rect.bottom - rootTop })
+        if (rect.height <= 0) continue
+        const top = rect.top - rootTop
+        const bottom = rect.bottom - rootTop
+        // Several rects on one visual line (inline marks) are one line.
+        const same = lines.find((line) => line.block === block && Math.abs(line.top - top) < 2)
+        if (same) same.bottom = Math.max(same.bottom, bottom)
+        else lines.push({ top, bottom, block, kind: kindOf(block) })
       }
     }
+    // Pictures without text (a stored diagram) are lines too, and atomic ones.
+    for (const img of Array.from(root.querySelectorAll<HTMLElement>('img'))) {
+      const rect = img.getBoundingClientRect()
+      if (rect.height > 0) lines.push({ top: rect.top - rootTop, bottom: rect.bottom - rootTop, block: img.closest(BLOCKS) ?? img, kind: 'atomic' })
+    }
     lines.sort((a, b) => a.top - b.top)
+    const indexOf = (line: Line) => lines.indexOf(line)
+    const blockLines = (block: Element | null) => (block ? lines.filter((line) => line.block === block) : [])
+    /** The last line before `line`'s block: where a cut goes when the block must stay whole. */
+    const beforeBlock = (line: Line) => {
+      const first = blockLines(line.block)[0] ?? line
+      return lines[indexOf(first) - 1]
+    }
     // A cover ends its page: the cut lands on its bottom edge even when its lower half is empty.
     const forced = Array.from(root.querySelectorAll<HTMLElement>('.cover, [data-page-break="true"]'))
       .map((el) => el.getBoundingClientRect().bottom - rootTop + (parseFloat(getComputedStyle(el).marginBottom) || 0))
@@ -60,10 +90,27 @@ export function usePagination(
         target = wall + room
         continue
       }
-      const before = lines.filter((line) => line.bottom <= target).at(-1)
-      const after = lines.find((line) => line.top > (before?.bottom ?? target))
+      const floor = next.at(-1) ?? 0
+      let before = lines.filter((line) => line.bottom <= target && line.top >= floor).at(-1)
+      // Pull the cut up until it satisfies every rule; each step moves it earlier, so it ends.
+      for (let step = 0; before && step < 12; step += 1) {
+        const after = lines[indexOf(before) + 1]
+        if (!after || after.top < floor) break
+        let moved: Line | undefined = before
+        if (after.block && after.block === before.block) {
+          const group = blockLines(after.block)
+          const i = group.indexOf(after)
+          if (after.kind === 'atomic') moved = beforeBlock(after)
+          else if (i < 2) moved = beforeBlock(after)
+          else if (group.length - i < 2) moved = group[i - 2]
+        }
+        if (moved === before && before.kind === 'heading') moved = beforeBlock(before)
+        if (moved === before || !moved || moved.top < floor) break
+        before = moved
+      }
+      const after = before ? lines[indexOf(before) + 1] : undefined
       let cut = before ? before.bottom + Math.max(2, ((after?.top ?? before.bottom + 4) - before.bottom) / 2) : target
-      if (cut <= (next.at(-1) ?? 0) + 20) cut = target
+      if (cut <= floor + 20) cut = target
       next.push(cut)
       target = cut + room
     }
