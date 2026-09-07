@@ -383,16 +383,19 @@ def asks_weather(request: str) -> bool:
     return bool(_WEATHER_ASK.search(request or ""))
 
 
-#: Request phrasing that adds nothing to a search query.
-_ASK_TAIL = re.compile(
-    r"(?:\s*(?:좀|제발|빨리|자세히|간단히|정확히))*\s*"
-    r"(?:[가-힣]+해\s*(?:줘|주세요|줄래|주실래요|봐|달라)|알려\s*(?:줘|주세요|줄래|주실래요|달라)|"
-    r"말해\s*(?:줘|주세요|줄래)|찾아\s*(?:줘|주세요|봐)|"
-    r"(?:^|\s)(?:뭐야|뭔지|뭐지|무엇인가요|무엇인지|누구야|누구인가요|어때|어떤가요|어떻게\s*돼|"
-    r"얼마야|얼마인가요|얼마나\s*(?:돼|해)|언제야|언제인가요|있어|있나요|있을까|할까|인가요|인지|"
-    r"이야|야|니|나요|까요|죠))"
-    r"\s*[?？!.。~]*\s*$"
+#: Request phrasing that adds nothing to a search query. Each pattern is
+#: anchored at the end and uses no nested repetition (CodeQL's ReDoS check);
+#: `search_query` peels them off one layer at a time.
+_TAIL_VERB = re.compile(
+    r"(?:^|\s)(?:[가-힣]+해 ?(?:줘|주세요|줄래|주실래요|봐|달라)|"
+    r"알려 ?(?:줘|주세요|줄래|주실래요|달라)|말해 ?(?:줘|주세요|줄래)|찾아 ?(?:줘|주세요|봐))$"
 )
+_TAIL_WORD = re.compile(
+    r"(?:^|\s)(?:뭐야|뭔지|뭐지|무엇인가요|무엇인지|누구야|누구인가요|어때|어떤가요|어떻게 ?돼|"
+    r"얼마야|얼마인가요|얼마나 ?(?:돼|해)|언제야|언제인가요|있어|있나요|있을까|할까|인가요|인지|"
+    r"이야|야|니|나요|까요|죠)$"
+)
+_FILLER = re.compile(r"(?:^|\s)(?:좀|제발|빨리|자세히|간단히|정확히)$")
 #: A particle left dangling on a word of two syllables or more once the asking is gone.
 _DANGLING_PARTICLE = re.compile(r"(?<=[가-힣][가-힣])(?:이|가|은|는|을|를)$")
 _TIME_WORDS = re.compile(r"오늘|지금|현재|내일|모레|이번\s*주|주말|아침|점심|저녁|밤|오전|오후")
@@ -406,8 +409,12 @@ _WEATHER_WORDS = re.compile(
 def search_query(request: str) -> str:
     """The user's sentence as a search query: request phrasing trimmed, capped."""
     text = re.sub(r"\s+", " ", (request or "").strip())
-    for _ in range(2):
-        text = _ASK_TAIL.sub("", text).strip()
+    for _ in range(4):
+        text = text.rstrip(" ?？!.。~,")
+        peeled = _FILLER.sub("", _TAIL_WORD.sub("", _TAIL_VERB.sub("", text))).strip()
+        if peeled == text:
+            break
+        text = peeled
     text = _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,"))
     return (text or (request or "").strip())[:120]
 
