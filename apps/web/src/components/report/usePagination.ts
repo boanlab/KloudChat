@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from 'react'
 /** A4 at 96dpi. */
 export const A4_HEIGHT_PX = 1123
 export const A4_WIDTH_PX = 794
+/** CSS pixels per millimetre (96 dpi). */
+export const PX_PER_MM = 96 / 25.4
 
 /** Read-only page-break estimates for the continuous web preview. */
 export function usePagination(

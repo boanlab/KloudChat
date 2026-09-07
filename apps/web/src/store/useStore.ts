@@ -1726,13 +1726,13 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteSessions: async (payload) => {
     const { deleted } = await sessionsApi.deleteMany(payload)
-    // `all` is resolved server-side.
+    // `all` is resolved server-side. The artifacts those conversations made went with them.
     await get().loadSessions()
     set((s) => ({
       activeSessionId: null,
       jobs: payload.all ? [] : s.jobs,
     }))
-    if (payload.artifacts) await get().loadArtifacts()
+    await get().loadArtifacts()
     return deleted
   },
   deleteSession: async (id) => {
@@ -1745,6 +1745,8 @@ export const useStore = create<State>((set, get) => ({
         ...p,
         sessionIds: p.sessionIds.filter((x) => x !== id),
       })),
+      // What the conversation made goes with it.
+      artifacts: s.artifacts.filter((a) => a.sessionId !== id),
     }))
     await sessionsApi.remove(id).catch(() => get().loadSessions())
   },

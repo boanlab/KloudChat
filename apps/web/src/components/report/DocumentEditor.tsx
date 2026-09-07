@@ -30,6 +30,8 @@ import {
   Trash2,
   Underline,
   Undo2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -44,6 +46,7 @@ import { SectionEditor } from '@/components/report/SectionEditor'
 import {
   A4_HEIGHT_PX,
   A4_WIDTH_PX,
+  PX_PER_MM,
   usePagination,
 } from '@/components/report/usePagination'
 import {
@@ -591,6 +594,8 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
   const [pages, setPages] = useState(0)
   const [pageSize, setPageSize] = useState({ width: A4_WIDTH_PX, height: A4_HEIGHT_PX })
   const [pageScale, setPageScale] = useState(1)
+  // 'fit' follows the viewport width; a number is a zoom the reader chose.
+  const [zoom, setZoom] = useState<'fit' | number>('fit')
   const [failure, setFailure] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
 
@@ -614,6 +619,8 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
       @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
       html, body { margin: 0; padding: 0; background: white; }
       h1 { string-set: document-title content(text); }
+      /* The seeds size the cover from the sheet height; here that is A4 less the margins. */
+      :root { --page-h: ${Math.round(A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM)}px; }
       ${css}
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
@@ -666,6 +673,10 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     const node = viewport.current
     if (!node) return
     const fit = () => {
+      if (zoom !== 'fit') {
+        setPageScale(zoom)
+        return
+      }
       const gutter = node.clientWidth < 640 ? 16 : 48
       const room = Math.max(1, node.clientWidth - gutter)
       setPageScale(Math.min(1, room / pageSize.width))
@@ -674,11 +685,21 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     const observer = new ResizeObserver(fit)
     observer.observe(node)
     return () => observer.disconnect()
-  }, [pageSize.width])
+  }, [pageSize.width, zoom])
+
+  const step = (direction: 1 | -1) =>
+    setZoom(Math.min(2, Math.max(0.5, Math.round((pageScale + direction * 0.1) * 10) / 10)))
 
   return (
     <div ref={viewport} className="relative min-h-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
       <div className="sticky top-0 z-20 mb-3 flex flex-wrap justify-end gap-2">
+        {!busy && !failure && (
+          <div className="flex items-center gap-0.5 rounded-control border border-line bg-panel p-0.5 shadow-sm" role="group" aria-label={t('확대/축소')}>
+            <button type="button" aria-label={t('축소')} title={t('축소')} disabled={pageScale <= 0.5} onClick={() => step(-1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomOut size={15} /></button>
+            <button type="button" aria-label={t('폭에 맞춤')} title={t('폭에 맞춤')} onClick={() => setZoom((current) => (current === 'fit' ? 1 : 'fit'))} className={cn('h-8 min-w-14 rounded-control px-2 text-xs tabular-nums hover:bg-elevated', zoom === 'fit' ? 'text-muted' : 'text-fg')}>{Math.round(pageScale * 100)}%</button>
+            <button type="button" aria-label={t('확대')} title={t('확대')} disabled={pageScale >= 2} onClick={() => step(1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomIn size={15} /></button>
+          </div>
+        )}
         {settingsOpen && (
           <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

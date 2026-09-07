@@ -120,6 +120,8 @@
     min-height: calc(var(--page-h, 100vh) * 0.68 - 5.6rem);
     padding: calc(var(--page-h, 100vh) * 0.32) 0 2.2rem;
     margin: 0 0 3.4rem;
+    /* Paged.js does not read the print block below; the cover ends its page here too. */
+    break-after: page;
   }
   .cover h1 {
     margin: 0 0 0.9rem;

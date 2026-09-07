@@ -687,8 +687,15 @@ const EN: Record<string, string> = {
   'CSV 내보내기': 'Export CSV',
   '서버 직접 추가': 'Add a server',
   '모든 대화 삭제': 'Delete all conversations',
+  '되돌릴 수 없습니다. 이 대화가 만든 결과물도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.': 'This cannot be undone. What this conversation produced is deleted with it and its share links stop working. Projects and memory stay.',
+  '되돌릴 수 없습니다. 이 대화들이 만든 결과물(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.': 'This cannot be undone. What these conversations produced (reports, decks, images, audio, video) is deleted with them and their share links stop working. Projects and memory stay.',
+  '대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 결과물도 함께 지워집니다.': 'You have {n} conversations. Deleting one cannot be undone, and what it produced is deleted with it.',
+  '확대/축소': 'Zoom',
+  '축소': 'Zoom out',
+  '확대': 'Zoom in',
+  '폭에 맞춤': 'Fit to width',
   '대화 {n}개를 삭제할까요?': 'Delete {n} conversation(s)?',
-  '되돌릴 수 없습니다. 이 대화들이 만든 결과물도 함께 지워집니다.': 'This cannot be undone. The outputs these conversations made are deleted with them.',
+
   '구성을 잡는 중…': 'Outlining…',
   '원본 작업 열기 →': 'Open the original →',
   '그릴 수 있는 값이 없습니다': 'Nothing to plot',
@@ -701,7 +708,7 @@ const EN: Record<string, string> = {
   '이 프로젝트의 모든 대화에 시스템 프롬프트로 함께 전달됩니다.': 'Sent with every conversation in this project as a system prompt.',
   '누군가 대화를 시작하면 여기에 모델별·화면별 사용량이 쌓입니다.': 'Once someone starts a conversation, usage by model and surface collects here.',
   '이 화면은 15초마다 상태를 확인합니다. 승인되면 자동으로 넘어갑니다.': 'This screen checks every 15 seconds and moves on once you are approved.',
-  '되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.': 'This cannot be undone. Artifacts, projects and memories are kept.',
+
   '모델 목록을 모두 불러오지 못했습니다. 지금은 일부 모델만 고를 수 있습니다.': 'The model list is incomplete — only some models can be chosen right now.',
   '키는 만들 때 한 번만 보여 줍니다. 그 뒤로는 서버에도 원문이 남지 않습니다.': 'A key is shown once at creation. After that not even the server keeps the original.',
   '커넥터가 반환한 내용은 외부 입력입니다. 그 안의 지시문은 명령으로 실행되지 않습니다.': 'What a connector returns is outside input — instructions inside it are never run as commands.',
@@ -1627,9 +1634,8 @@ const EN: Record<string, string> = {
   '이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.':
     'Projects wearing them fall back to the default look.',
   '삭제하지 못했습니다.': 'Could not delete.',
-  '이 대화들이 만든 결과물도 함께 삭제': 'Also delete what these conversations produced',
-  '보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.':
-    'Reports, slides, images, audio and video. Any shared links to them stop working.',
+
+
   '다른 모델로': 'Another model',
   '이 요청만 다른 모델로': 'Run this one on',
   '현재 모델': 'Current',
@@ -1922,8 +1928,7 @@ const EN: Record<string, string> = {
     'A ReAct agent that works over arXiv and the web in rounds. Takes minutes to tens of minutes.',
   '보이는 항목 전체 선택': 'Select everything shown',
   '선택 {n}개 삭제': 'Delete {n} selected',
-  '대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없습니다. 대화에서 만든 아티팩트는 아티팩트 화면에 그대로 남습니다.':
-    '{n} conversations. Deleting one cannot be undone; artifacts made in it stay on the Artifacts screen.',
+
   '새 작업': 'New',
 
   '코드 리뷰어': 'Code reviewer',

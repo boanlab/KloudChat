@@ -173,7 +173,7 @@ export function KeyboardShortcuts() {
           if (location.pathname.startsWith('/s/')) navigate('/', { replace: true })
         }}
         title={t('{name} 삭제').replace('{name}', active?.title ?? t('이 대화'))}
-        description={t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화가 만든 결과물도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
       />
 
       {toast && (

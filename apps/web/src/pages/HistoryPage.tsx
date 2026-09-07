@@ -53,7 +53,6 @@ export function HistoryPage() {
   const [done, setDone] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Off by default: deleting conversations must not silently delete artifacts.
-  const [alsoArtifacts, setAlsoArtifacts] = useState(false)
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -75,7 +74,7 @@ export function HistoryPage() {
     setBusy(true)
     setError(null)
     try {
-      const count = await deleteSessions({ ids: [...picked], artifacts: alsoArtifacts })
+      const count = await deleteSessions({ ids: [...picked] })
       setPicked(new Set())
       setDone(count)
     } catch (err) {
@@ -89,7 +88,7 @@ export function HistoryPage() {
     setBusy(true)
     setError(null)
     try {
-      const count = await deleteSessions({ all: true, artifacts: alsoArtifacts })
+      const count = await deleteSessions({ all: true })
       setPicked(new Set())
       setConfirmAll(false)
       setDone(count)
@@ -106,7 +105,7 @@ export function HistoryPage() {
       <PageBody>
       <h1 className="text-2xl font-semibold tracking-tight">{t('대화 기록')}</h1>
       <p className="mt-1 text-base text-muted">
-        {t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없습니다. 대화에서 만든 아티팩트는 아티팩트 화면에 그대로 남습니다.').replace(
+        {t('대화 {n}개가 있습니다. 삭제한 대화는 되돌릴 수 없고, 그 대화에서 만든 결과물도 함께 지워집니다.').replace(
           '{n}',
           String(sessions.length),
         )}
@@ -217,11 +216,7 @@ export function HistoryPage() {
         onClose={() => setConfirmPicked(false)}
         onConfirm={() => void removePicked()}
         title={t('대화 {n}개를 삭제할까요?').replace('{n}', String(picked.size))}
-        description={
-          alsoArtifacts
-            ? t('되돌릴 수 없습니다. 이 대화들이 만든 결과물도 함께 지워집니다.')
-            : t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')
-        }
+        description={t('되돌릴 수 없습니다. 이 대화들이 만든 결과물(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
       />
 
       <Modal
@@ -233,23 +228,9 @@ export function HistoryPage() {
         <div className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
           <TriangleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
-            {t('되돌릴 수 없습니다. 아티팩트와 프로젝트, 메모리는 지워지지 않습니다.')}
+            {t('되돌릴 수 없습니다. 이 대화들이 만든 결과물(보고서·슬라이드·이미지·오디오·동영상)도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
           </span>
         </div>
-        <label className="mt-3 flex cursor-pointer items-start gap-2 text-base">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-[var(--color-danger)]"
-            checked={alsoArtifacts}
-            onChange={(e) => setAlsoArtifacts(e.target.checked)}
-          />
-          <span>
-            {t('이 대화들이 만든 결과물도 함께 삭제')}
-            <span className="block text-sm text-muted">
-              {t('보고서, 슬라이드, 이미지, 오디오·동영상. 공유 링크도 함께 끊깁니다.')}
-            </span>
-          </span>
-        </label>
         {error && <p className="mt-3 text-base text-danger">{error}</p>}
         <div className="mt-4 flex justify-end gap-2">
           <Button onClick={() => setConfirmAll(false)}>{t('취소')}</Button>
