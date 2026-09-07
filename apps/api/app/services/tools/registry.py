@@ -18,6 +18,7 @@ from app.services.tools import catalog
 from app.services.tools.base import Tool, ToolResult
 from app.services.tools.builtin import (
     CALCULATE,
+    CHECK_NCS_ANSWER,
     CREATE_ARTIFACT,
     CREATE_CHART,
     EXECUTE_CODE,
@@ -130,7 +131,7 @@ async def build_tools(
     if strict_local:
         # Only in-process built-ins; no connectors, no vector retrieval. `share_note`
         # is excluded because a note reaches later turns that may run on external models.
-        tools = [CALCULATE, CREATE_ARTIFACT, CREATE_CHART]
+        tools = [CALCULATE, CHECK_NCS_ANSWER, CREATE_ARTIFACT, CREATE_CHART]
         include_connectors = False
         knowledge_collection = ""
     else:
@@ -160,6 +161,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
         tool.name: (tool.title or tool.label or tool.name, tool.name in available)
         for tool in (
             CALCULATE,
+            CHECK_NCS_ANSWER,
             WEB_SEARCH,
             FETCH_URL,
             EXECUTE_CODE,

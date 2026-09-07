@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.services import index_client, knowledge, netguard, settings_store
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import Tool, ToolContext, ToolResult
+from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 log = logging.getLogger(__name__)
 
@@ -706,7 +707,7 @@ SHARE_NOTE = Tool(
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     """Local tools plus configured backends; web search needs the per-turn toggle too."""
     backends = await settings_store.tools_config()
-    tools: list[Tool] = [CALCULATE]
+    tools: list[Tool] = [CALCULATE, CHECK_NCS_ANSWER]
     if backends.fetch:
         tools.append(FETCH_URL)
         if web_search_enabled and backends.search:

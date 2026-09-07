@@ -2402,6 +2402,7 @@ async def test_strict_registry_does_not_resolve_remote_tools_or_backends(
 
     assert [tool.name for tool in tools] == [
         "calculate",
+        "check_ncs_answer",
         "create_artifact",
         "create_chart",
         "search_knowledge",

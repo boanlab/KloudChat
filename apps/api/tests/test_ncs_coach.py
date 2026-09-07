@@ -76,14 +76,14 @@ async def test_ncs_catalogue_and_installation_are_idempotent(db):
     assert first.id == second.id
     installed = await db.get(Agent, first.id)
     copied_skill = await db.get(Skill, installed.skill_ids[0])
-    assert installed.tools == ["calculate"]
+    assert installed.tools == ["check_ncs_answer"]
     assert installed.model == ""
     assert installed.kinds == ["chat"]
     assert installed.temperature == 0.3
     assert installed.visibility is Visibility.private
     assert copied_skill.owner_id == learner.id
     assert copied_skill.origin_id == original_skill.id
-    assert copied_skill.required_tools == ["calculate"]
+    assert copied_skill.required_tools == ["check_ncs_answer"]
     assert copied_skill.version == "1.1.0"
     assert copied_skill.kinds == ["chat"]
     assert (await ws.install_skill(original_skill.id, learner, db)).id == copied_skill.id
@@ -113,12 +113,18 @@ async def test_ncs_core_prompt_runs_without_activating_its_installed_skill(db):
     assert context.applied_skills == ()
     assert not any(block.source.startswith("skill:") for block in context.blocks)
     assert await workspace_context.agent_settings(db, learner, session) == (
-        None, ["calculate"], 0.3
+        None,
+        ["check_ncs_answer"],
+        0.3,
     )
 
     selected = installed.skill_ids[0]
     context = await workspace_context.assemble(
-        db, learner, session, activated_skill_ids=[selected], available_tool_names={"calculate"}
+        db,
+        learner,
+        session,
+        activated_skill_ids=[selected],
+        available_tool_names={"check_ncs_answer"},
     )
     assert [skill.id for skill in context.applied_skills] == [selected]
     assert [skill.catalog_key for skill in context.applied_skills] == ["ncs-reasoning"]
@@ -175,10 +181,13 @@ async def test_ncs_verification_skill_cannot_silently_run_without_calculator(db)
     installed = await ws.install_agent(original.id, learner, db)
     session = ChatSession(user_id=learner.id, agent_id=installed.id, kind=SessionKind.chat)
     with pytest.raises(
-        workspace_context.WorkspaceContextError, match="skill_tools_unavailable:calculate"
+        workspace_context.WorkspaceContextError, match="skill_tools_unavailable:check_ncs_answer"
     ):
         await workspace_context.assemble(
-            db, learner, session, activated_skill_ids=installed.skill_ids,
+            db,
+            learner,
+            session,
+            activated_skill_ids=installed.skill_ids,
             available_tool_names={"execute_code"},
         )
 
@@ -222,7 +231,7 @@ async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(
     await starter.seed_catalog(db, admin.id)
     await db.commit()
     assert skill.version == "1.1.0"
-    assert skill.required_tools == ["calculate"]
+    assert skill.required_tools == ["check_ncs_answer"]
     if edited:
         assert copy.body == "내가 수정한 검산 절차"
         assert copy.version == "1.0.0"
@@ -230,7 +239,7 @@ async def test_ncs_skill_upgrade_preserves_edits_and_updates_untouched_copies(
     else:
         assert copy.body == skill.body
         assert copy.version == "1.1.0"
-        assert copy.required_tools == ["calculate"]
+        assert copy.required_tools == ["check_ncs_answer"]
     assert await starter.seed_catalog(db, admin.id) == 0
 
 
@@ -263,7 +272,7 @@ async def test_ncs_skill_upgrade_preserves_edited_tool_requirements(db, edited):
             assert copy.required_tools == []
         else:
             assert skill.version == "1.1.0"
-            assert skill.required_tools == ["calculate"]
+            assert skill.required_tools == ["check_ncs_answer"]
             assert copy.body == previous
             assert copy.version == "1.0.0"
             assert copy.required_tools == ["execute_code"]
@@ -275,9 +284,7 @@ _QUESTIONS = json.loads((Path(__file__).parent / "fixtures/ncs_coach_questions.j
 
 def test_review_set_has_four_questions_per_area_and_one_identified_answer():
     assert len({row["case_id"] for row in _QUESTIONS}) == 12
-    assert Counter(row["area"] for row in _QUESTIONS) == {
-        "의사소통": 4, "수리": 4, "문제해결": 4
-    }
+    assert Counter(row["area"] for row in _QUESTIONS) == {"의사소통": 4, "수리": 4, "문제해결": 4}
     assert Counter(row["answer"] for row in _QUESTIONS) == {1: 3, 2: 3, 3: 3, 4: 3}
     for row in _QUESTIONS:
         assert len(set(row["choices"])) == 4
@@ -309,13 +316,15 @@ def test_review_set_ordering_questions_have_one_feasible_solution(case_id):
     row = next(row for row in _QUESTIONS if row["case_id"] == case_id)
     if case_id.endswith("01"):
         feasible = [
-            order for order in permutations("ABCD")
+            order
+            for order in permutations("ABCD")
             if order.index("D") < order.index("A") < order.index("B") < order.index("C")
         ]
         choices = [tuple(choice.split(" → ")) for choice in row["choices"]]
     else:
         feasible = [
-            order for order in permutations("ABC")
+            order
+            for order in permutations("ABC")
             if order[0] != "A" and order.index("C") == order.index("B") + 1
         ]
         choices = [tuple(choice.split(", ")) for choice in row["choices"]]
@@ -328,7 +337,8 @@ def test_review_set_vendor_constraints_include_the_boundary_values():
     row = next(row for row in _QUESTIONS if row["case_id"] == "ncs-problem-solving-04")
     candidates = [(95, 5, 99.5), (105, 3, 99.9), (100, 4, 99), (90, 3, 98.9)]
     feasible = [
-        index for index, (budget, days, reliability) in enumerate(candidates, start=1)
+        index
+        for index, (budget, days, reliability) in enumerate(candidates, start=1)
         if budget <= 100 and days <= 4 and reliability >= 99
     ]
     assert feasible == [row["answer"]]
