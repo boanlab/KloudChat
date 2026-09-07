@@ -46,7 +46,6 @@ import { SectionEditor } from '@/components/report/SectionEditor'
 import {
   A4_HEIGHT_PX,
   A4_WIDTH_PX,
-  PX_PER_MM,
   usePagination,
 } from '@/components/report/usePagination'
 import {
@@ -608,8 +607,6 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
     target.replaceChildren()
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
-    //: Height of the page box in CSS pixels: A4 less the top and bottom margins.
-    const pageBox = A4_HEIGHT_PX - (settings.margins.top + settings.margins.bottom) * PX_PER_MM
     const sheet = URL.createObjectURL(new Blob([`
       @page {
         size: A4;
