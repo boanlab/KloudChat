@@ -203,3 +203,42 @@ def test_the_prompt_asks_for_numbers_not_urls() -> None:
     prompt = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
     assert "URL 은 옮겨 적지" in prompt
     assert "번호를 보고 시스템이 주소를 붙입니다" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_copied_title_is_cited_when_the_model_cited_nothing(monkeypatch) -> None:
+    global _SEARCHES
+    _SEARCHES = iter(
+        [
+            "'검색' 검색 결과:\n\n[1] 하나증권, ‘하나증권V’ 출격…AI 브리핑 탑재 - 디지털타임스\n"
+            "https://www.dt.co.kr/a/1\n요약\n본문 발췌:\n다른 곳 https://ad.example.com/x\n\n"
+            "[2] 짧은제목\nhttps://www.dt.co.kr/a/2\n요약\n"
+        ]
+    )
+    answer = [
+        _content("1. **하나증권, ‘하나증권V’ 출격…AI 브리핑 탑재**\n   새 MTS를 냈다.\n"),
+        "data: [DONE]",
+    ]
+    _, events = await _collect(monkeypatch, [_calls("web_search", {"query": "검색"}), answer])
+    text = _final_text(events)
+    assert "탑재** [[1]](https://www.dt.co.kr/a/1)\n" in text
+    assert "### 출처\n- [1] [dt.co.kr · 1](https://www.dt.co.kr/a/1)" in text
+    assert "ad.example.com" not in text
+
+
+@pytest.mark.asyncio
+async def test_the_fallback_source_list_is_the_search_hits_not_page_links(monkeypatch) -> None:
+    global _SEARCHES
+    _SEARCHES = iter(
+        [
+            "'검색' 검색 결과:\n\n[1] 결과\nhttps://www.suwon.go.kr/index.do\n요약\n\n"
+            "[2] 기사 하나\nhttps://news.example.com/a/1\n요약\n본문 발췌:\n"
+            "https://ar.wikipedia.org/wiki/2027 https://ary.wikipedia.org/wiki/2027\n"
+        ]
+    )
+    answer = [_content("답입니다."), "data: [DONE]"]
+    _, events = await _collect(monkeypatch, [_calls("web_search", {"query": "검색"}), answer])
+    text = _final_text(events)
+    assert "### 확인한 출처\n- [news.example.com · 1](https://news.example.com/a/1)" in text
+    assert "wikipedia" not in text
+    assert "suwon" not in text

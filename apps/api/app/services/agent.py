@@ -275,7 +275,9 @@ def _urls_in(text: str) -> list[str]:
 _NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
 
 
-def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> str:
+def _number_sources(
+    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None
+) -> str:
     """Renumbers the `[n]` entries of a tool result so the numbers run across
     the whole turn, registering each URL in `sources`; a page fetched by URL
     gets a number of its own at the top. The model cites these numbers."""
@@ -287,6 +289,8 @@ def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> s
         url = lines[i + 1].strip().rstrip(".,;:")
         if _URL.fullmatch(url):
             lines[i] = f"[{_source_number(url, sources)}] {match.group(2)}"
+            if titles is not None:
+                titles.setdefault(url, match.group(2).strip())
     content = "\n".join(lines)
     if call["name"] == "fetch_url" and not content.startswith("오류:"):
         try:
@@ -302,6 +306,27 @@ def _source_number(url: str, sources: list[str]) -> int:
     if url not in sources:
         sources.append(url)
     return sources.index(url) + 1
+
+
+def _cite_titles(answer: str, sources: list[str], titles: dict[str, str]) -> str:
+    """When the model cited nothing, a source whose title it copied — as a
+    heading, a bold line, a list item — gets its `[n]` after that title. A
+    code device for models that ignore the citation rule."""
+    if _CITATION.search(answer):
+        return answer
+    for n, url in enumerate(sources, 1):
+        title = re.split(r"\s+[-|·–—]\s+", titles.get(url, ""), maxsplit=1)[0].strip()
+        if len(title) < 10:
+            continue
+        loose = r"\s*".join(re.escape(ch) for ch in title if not ch.isspace())
+        match = re.search(loose, answer, re.IGNORECASE)
+        if not match:
+            continue
+        at = match.end()
+        if answer.startswith("**", at):
+            at += 2
+        answer = f"{answer[:at]} [{n}]{answer[at:]}"
+    return answer
 
 
 #: 「[1]」「[2, 5]」「[3-4]」 not already part of a markdown link.
@@ -338,12 +363,27 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
     return "```".join(pieces), sorted(cited)
 
 
+#: A path that is a front page under another name.
+_INDEX_LEAVES = {
+    "index",
+    "index.html",
+    "index.htm",
+    "index.do",
+    "index.php",
+    "index.jsp",
+    "main.do",
+}
+
+
 def _looks_like_a_source(url: str) -> bool:
     """A URL with a path, as opposed to a home page."""
     from urllib.parse import urlparse
 
     parsed = urlparse(url)
-    return bool(parsed.netloc) and parsed.path not in ("", "/")
+    if not parsed.netloc or parsed.path in ("", "/"):
+        return False
+    leaf = parsed.path.rstrip("/").rsplit("/", 1)[-1].lower()
+    return leaf not in _INDEX_LEAVES or bool(parsed.query)
 
 
 def _is_homepage(url: str) -> bool:
@@ -477,6 +517,7 @@ async def run_turn(
     seen_urls: set[str] = set()
     #: URLs the tools returned, in the order the model saw them numbered.
     sources: list[str] = []
+    source_titles: dict[str, str] = {}
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
@@ -699,7 +740,7 @@ async def run_turn(
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
             }
-            result.content = _number_sources(result.content, sources, call)
+            result.content = _number_sources(result.content, sources, call, source_titles)
             conversation.append(
                 {
                     "role": "tool",
@@ -738,7 +779,7 @@ async def run_turn(
     answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
     for paragraph in duplicate_paragraphs:
         yield {"type": "retract", "text": paragraph}
-    linked, cited = _link_citations(answer, sources)
+    linked, cited = _link_citations(_cite_titles(answer, sources, source_titles), sources)
     if linked != answer:
         # The citations sit mid-text, so the answer is re-sent whole.
         yield {"type": "retract", "text": answer}
@@ -756,7 +797,9 @@ async def run_turn(
         answer_text.append(note)
         yield {"type": "delta", "text": note}
     verified_in_answer = {u for u in _urls_in(answer) if u in seen_urls}
-    source_urls = sorted(
+    # The search hits themselves; URLs found inside page bodies (links, ads,
+    # language switches) only when the tools numbered nothing.
+    source_urls = [u for u in sources if _looks_like_a_source(u)] or sorted(
         (u for u in seen_urls if _looks_like_a_source(u)),
         key=_source_priority,
     )
