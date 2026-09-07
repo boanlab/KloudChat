@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Mic,
+  MoreHorizontal,
   Paperclip,
   Plug,
   Loader2,
@@ -28,6 +29,7 @@ import { handoffSurface } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL } from '@/lib/privacy'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
@@ -398,6 +400,11 @@ export function Composer({
   const designTemplates = useStore((s) => s.designTemplates)
   const promptTemplates = useStore((s) => s.promptTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
+  // A phone shows attach, dictation and web search; the rest sits behind 「더보기」,
+  // and model comparison — answers side by side — is not offered at all.
+  const phone = useMediaQuery('(max-width: 40rem)')
+  const [moreOpen, setMoreOpen] = useState(false)
+  const folded = phone && !moreOpen
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   const composerRestore = useStore((s) => s.composerRestore)
@@ -1427,7 +1434,7 @@ export function Composer({
           )}
 
           {/* Only once the conversation has started; the empty screen offers the same button. */}
-          {hasTemplates && started && (
+          {hasTemplates && started && !folded && (
             <button
               onClick={() => setGalleryOpen(true)}
               className={cn(
@@ -1442,7 +1449,7 @@ export function Composer({
           )}
 
           {/* Media models are never handed a skill. */}
-          {!isMedia && usableSkills.length > 0 && (
+          {!isMedia && usableSkills.length > 0 && !folded && (
             <Dropdown
               className="min-w-64"
               trigger={() => (
@@ -1500,7 +1507,7 @@ export function Composer({
             </Dropdown>
           )}
 
-          {kind === 'chat' && (
+          {kind === 'chat' && !phone && (
             <Dropdown
               className="min-w-72"
               trigger={() => (
@@ -1586,8 +1593,26 @@ export function Composer({
             </button>
           )}
 
+          {phone &&
+            ((hasTemplates && started) ||
+              (!isMedia && usableSkills.length > 0) ||
+              usableConnectors.length > 0 ||
+              usableAgents.length > 0) && (
+              <button
+                onClick={() => setMoreOpen((o) => !o)}
+                aria-expanded={moreOpen}
+                className={cn(
+                  'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+                  moreOpen ? 'bg-elevated text-fg' : 'text-muted',
+                )}
+                aria-label={moreOpen ? t('도구 접기') : t('도구 더보기')}
+                title={t('시작점·스킬·커넥터·에이전트')}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+            )}
 
-          {usableConnectors.length > 0 && (
+          {usableConnectors.length > 0 && !folded && (
             <Dropdown
               className="min-w-72"
               trigger={() => (
@@ -1629,7 +1654,7 @@ export function Composer({
             </Dropdown>
           )}
 
-          {usableAgents.length > 0 && (
+          {usableAgents.length > 0 && !folded && (
             <Dropdown
               className="min-w-64"
               trigger={() => (
@@ -1737,7 +1762,8 @@ export function Composer({
           </button>
         </p>
       )}
-      <p className="mt-2 text-center text-xs text-faint">
+      {/* Keyboard hints mean nothing on a phone. */}
+      <p className="mt-2 text-center text-xs text-faint max-sm:hidden">
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'
