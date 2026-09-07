@@ -474,6 +474,7 @@ function MessageItemInner({
           <StepTimeline
             steps={message.steps}
             live={!!streaming}
+            failed={!!failed}
             startedAt={new Date(message.createdAt).getTime()}
           />
         )}

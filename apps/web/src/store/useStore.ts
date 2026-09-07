@@ -2902,6 +2902,7 @@ async function streamTurn(
 
   // Whether the turn ended with `usage`/`error`. See CUT_OFF.
   let settled = false
+  let artifactAnnounced = false
   let accepted = false
 
   try {
@@ -2985,6 +2986,7 @@ async function streamTurn(
           patch((m) => ({ ...m, steps: upsertStep(m.steps, appliedSkillsStep(event)) }))
           break
         case 'artifact':
+          artifactAnnounced = true
           // Fetch the full document (cards have empty bodies); open the panel only when the model set out to make it.
           void Promise.all([get().loadArtifacts(), get().refreshArtifact(event.artifactId)]).then(
             () => {
@@ -3068,6 +3070,10 @@ async function streamTurn(
   } finally {
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
     if (!settled) patch((m) => ({ ...m, error: CUT_OFF }))
+    else if (!artifactAnnounced) {
+      // Usage can settle an empty completion; the server marks its question unanswered.
+      patch((m) => !m.content && !m.error && !m.failure ? { ...m, failure: 'no_answer' } : m)
+    }
     endRun(set, sessionId)
     void get().loadSessions()
   }
