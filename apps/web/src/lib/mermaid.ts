@@ -300,9 +300,10 @@ export function paperTheme(node: HTMLElement) {
 
 /**
  * The frames a document's own figures are drawn into. Width is fixed (the minimum a figure
- * gets), the shape may vary between `minAspect` and `maxAspect`: a flat drawing is padded up to
- * the flattest shape, a tall one is scaled down to fit the tallest. A slide's frame is the body
- * box under its title; a page's is between 4:3 and 16:9.
+ * gets); the height follows the drawing between `minAspect` (the tallest a frame may be — a
+ * taller drawing is scaled down) and `maxAspect` (the flattest — set high, so a flat drawing
+ * gets a frame that hugs it instead of blank paper above and below). A slide's frame is the
+ * band under its title; a page's is at most 4:3.
  */
 export interface Frame {
   width: number
@@ -314,7 +315,7 @@ export interface Frame {
 export const FRAMES: Record<'slide' | 'page', Frame> = {
   // A band under the slide title, with the words beneath it.
   slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 2.2 },
-  page: { width: 1400, minAspect: 4 / 3, maxAspect: 16 / 9, upscale: 1.6 },
+  page: { width: 1400, minAspect: 4 / 3, maxAspect: 8, upscale: 1.6 },
 }
 
 /** A drawing this much taller than the frame allows is tried the other way round. Only tall
