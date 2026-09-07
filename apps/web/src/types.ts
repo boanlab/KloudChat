@@ -530,7 +530,20 @@ export interface Slide {
     caption?: string
     fit?: 'contain' | 'cover'
     position?: 'left' | 'right'
-    size?: 'small' | 'medium' | 'large'
+    /** `full`: the picture alone under the title. */
+    size?: 'small' | 'medium' | 'large' | 'full'
+    /** The browser's raster of `diagram`, stored for the exporters; a placed picture clears it. */
+    diagram?: boolean
+  }
+  /** A structure, flow, comparison or concept figure the deck drew for itself as mermaid.
+   *  The panel renders it live; its raster travels in `image` for the exporters. */
+  diagram?: {
+    figure: 'method' | 'flow' | 'compare' | 'concept'
+    description: string
+    source: string
+    caption: string
+    /** `report_export.diagram_key` of `source`; the raster is stored under it. */
+    key: string
   }
 }
 

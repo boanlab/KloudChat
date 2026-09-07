@@ -43,6 +43,7 @@ import {
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
 import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
+import { FRAMES, drawIntoFitting, frameElement, paperStyles, rasterise, slideTheme } from '@/lib/mermaid'
 import { cn } from '@/lib/utils'
 import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
@@ -59,6 +60,23 @@ import { copyText } from '@/lib/clipboard'
 /** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
 export function hasContent(slide: Slide): boolean {
   if (STRUCTURAL.includes(slide.layout)) return true
+  return Boolean(
+    slide.bullets?.length ||
+      slide.body?.trim() ||
+      slide.rows?.length ||
+      slide.metrics?.length ||
+      slide.chart ||
+      slide.bands?.length ||
+      slide.tiles?.length ||
+      slide.timeline?.length ||
+      slide.steps?.length ||
+      slide.cards?.length ||
+      slide.diagram?.source,
+  )
+}
+
+/** Whether a slide says anything besides its title and picture. */
+function hasWords(slide: Slide): boolean {
   return Boolean(
     slide.bullets?.length ||
       slide.body?.trim() ||
@@ -402,6 +420,7 @@ export function SlideView({
   selectedElement,
   onSelectElement,
   onOverflow,
+  artifactId,
 }: {
   slide: Slide
   scale?: number
@@ -419,6 +438,8 @@ export function SlideView({
   selectedElement?: SlideElement | null
   onSelectElement?: (element: SlideElement) => void
   onOverflow?: (overflowing: boolean) => void
+  /** Set on the editor's stage only: the browser stores its raster of a slide's own figure onto this deck. */
+  artifactId?: string
 }) {
   const t = useT()
   // The slide as typed; a ref so re-renders do not move the caret.
@@ -504,6 +525,10 @@ export function SlideView({
           ? 'cards'
           : 'content'
   const pending = !hasContent(slide)
+  // A figure the deck drew for itself is a band across the body; the words sit under it,
+  // set compact. Beside it they would narrow the figure until it cannot be read.
+  const figured = Boolean(slide.diagram?.source)
+  const figureAlone = figured && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
     const root = canvas.current
@@ -756,6 +781,7 @@ export function SlideView({
                 // Paired shapes cannot overflow (see `stack`), so they centre;
                 // bullets can, and a centred overflow clips at both ends.
                 PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
+                figured && 'hidden',
               )}
               data-overflow-box
               style={{ order: slide.image?.position === 'left' ? 2 : 1 }}
@@ -1096,23 +1122,60 @@ export function SlideView({
                 </p>
               )}
             </div>
-            {slide.image?.src && (
+            {(slide.diagram?.source || slide.image?.src) && (
               <div
-                className={cn('flex min-h-0 shrink-0 flex-col justify-center overflow-hidden', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
-                style={{ width: pending ? '100%' : ({ small: '32%', medium: '42%', large: '54%' }[slide.image.size ?? 'medium']), order: slide.image.position === 'left' ? 1 : 2 }}
+                className={cn('flex min-h-0 shrink-0 flex-col overflow-hidden', figured && !figureAlone ? 'justify-start' : 'justify-center', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
+                style={{
+                  width: pending || figured ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'medium']),
+                  order: (slide.image?.position ?? 'right') === 'left' ? 1 : 2,
+                  gap: px(6),
+                }}
                 {...selectable('image')}
               >
-                <img
-                  src={slide.image.src}
-                  alt={slide.image.caption || t('그림')}
-                  className={cn(
-                    'min-h-0 w-full',
-                    slide.image.fit === 'cover' ? 'flex-1 object-cover' : 'max-h-full object-contain',
-                  )}
-                />
-                {slide.image.caption && (
+                {figured ? (
+                  <div className="flex min-h-0 w-full shrink-0 justify-center" style={{ height: figureAlone ? '100%' : '56%' }}>
+                    <SlideFigure slide={slide} accent={accent} look={look} artifactId={artifactId} />
+                  </div>
+                ) : slide.image?.src ? (
+                  <img
+                    src={slide.image.src}
+                    alt={slide.image.caption || t('그림')}
+                    className={cn(
+                      'min-h-0 w-full',
+                      slide.image.fit === 'cover' ? 'flex-1 object-cover' : 'max-h-full object-contain',
+                    )}
+                  />
+                ) : null}
+                {figured && !figureAlone && slide.layout === 'cards' && pairs.length > 0 && (
+                  <div className="flex min-h-0 shrink-0 overflow-hidden" style={{ gap: px(8), maxHeight: '40%' }}>
+                    {pairs.map(([name, text], i) => (
+                      <div
+                        key={i}
+                        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                        style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(5)} ${px(6)}` })}
+                      >
+                        <div style={{ fontSize: pt(14), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
+                        <div style={{ fontSize: pt(12), marginTop: px(3), lineHeight: 1.35 }}>{text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {figured && !figureAlone && slide.layout !== 'cards' && (
+                  <ul className="m-0 flex min-h-0 shrink-0 list-none flex-col overflow-hidden p-0" style={{ gap: px(2), maxHeight: '40%' }}>
+                    {(slide.bullets ?? []).map((line, i) => (
+                      <li key={i} className="flex" style={{ gap: px(6), fontSize: pt(14), lineHeight: 1.45 }}>
+                        <span style={{ color: accent }}>•</span>
+                        <span className="min-w-0">{line}</span>
+                      </li>
+                    ))}
+                    {!slide.bullets?.length && slide.body && (
+                      <li style={{ fontSize: pt(14), lineHeight: 1.45, color: look.muted }}>{slide.body}</li>
+                    )}
+                  </ul>
+                )}
+                {(figureAlone || !figured) && (slide.image?.caption || slide.diagram?.caption) && (
                   <p style={{ fontSize: pt(TYPE.caption), color: look.muted, marginTop: px(4) }}>
-                    {slide.image.caption}
+                    {slide.image?.caption || slide.diagram?.caption}
                   </p>
                 )}
               </div>
@@ -1182,6 +1245,77 @@ export function SlideView({
   )
 }
 
+/**
+ * A figure the deck drew for itself, rendered live from its mermaid so it stays crisp at any
+ * scale. On the editor's stage (`artifactId` set) the raster is stored once for the exporters,
+ * which have no browser; a stored raster is not sent again.
+ */
+function SlideFigure({ slide, accent, look, artifactId }: { slide: Slide; accent: string; look: Look; artifactId?: string }) {
+  const t = useT()
+  const host = useRef<HTMLDivElement>(null)
+  const [failed, setFailed] = useState(false)
+  const refreshArtifact = useStore((s) => s.refreshArtifact)
+  const source = slide.diagram?.source ?? ''
+  const key = slide.diagram?.key ?? ''
+  const stored = Boolean(slide.image?.diagram && slide.image.src)
+  const slideId = slide.id
+
+  useEffect(() => {
+    let live = true
+    const node = host.current
+    if (!node || !source.trim()) return
+    setFailed(false)
+    void (async () => {
+      const drawn = await drawIntoFitting(
+        node,
+        source,
+        slideTheme({ accent, ink: look.ink, muted: look.muted }),
+        FRAMES.slide,
+      )
+      if (!live) return
+      if (!drawn) {
+        setFailed(true)
+        return
+      }
+      // Mermaid theme variables do not reach `:::hot`; the highlight is a stylesheet.
+      const style = document.createElementNS('http://www.w3.org/2000/svg', 'style')
+      style.textContent = paperStyles(accent)
+      drawn.prepend(style)
+      // Every figure in a deck has the body box's footprint; the frame is what is shown and stored.
+      const frame = frameElement(drawn, FRAMES.slide)
+      const styled = new XMLSerializer().serializeToString(frame)
+      frame.removeAttribute('width')
+      frame.removeAttribute('height')
+      frame.style.width = '100%'
+      frame.style.height = '100%'
+      frame.style.maxWidth = 'none'
+      node.replaceChildren(frame)
+      if (artifactId && !stored) {
+        const png = await rasterise(styled, 1)
+        if (!png || !live) return
+        try {
+          await artifactsApi.storeSlideDiagram(artifactId, slideId, key, png)
+          if (live) void refreshArtifact(artifactId)
+        } catch {
+          // A missing raster only costs the exporters this figure; the panel still shows it.
+        }
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [source, key, accent, look.ink, look.muted, artifactId, stored, slideId, refreshArtifact])
+
+  if (failed) {
+    return (
+      <p className="text-center" style={{ fontSize: '11px', color: look.muted }}>
+        {t('도식을 그리지 못했습니다.')}
+      </p>
+    )
+  }
+  return <div ref={host} className="min-h-0 w-full flex-1 [&_svg]:block" />
+}
+
 /** Inserts an image artifact into a slide; the server embeds it as a `data:` URI. */
 function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
   const t = useT()
@@ -1224,7 +1358,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
         }}
       >
         <ImagePlus size={13} />
-        {slide.image ? t('그림 바꾸기') : t('그림 넣기')}
+        {slide.diagram ? t('그림 모델로 바꾸기') : slide.image ? t('그림 바꾸기') : t('그림 넣기')}
       </Button>
 
       <Modal
@@ -1253,6 +1387,7 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
           about={slide.title || t('이 장')}
           title={deck.title}
           context={[
+            slide.diagram?.description,
             slide.body,
             ...(slide.bullets ?? []),
             ...(slide.rows ?? []).map((row) => row.join(' · ')),
@@ -1261,6 +1396,11 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
             .filter(Boolean)
             .join('\n')}
         />
+        {slide.diagram && (
+          <p className="mt-2 text-sm text-muted">
+            {t('이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.')}
+          </p>
+        )}
         {error && <p className="mt-2 text-base text-danger">{error}</p>}
       </Modal>
     </>
@@ -1865,7 +2005,7 @@ export function DeckPanel({
       if (event.key === 'Escape') setSelectedElement(null)
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedElement === 'image') {
         event.preventDefault()
-        setSlideDraft((current) => current ? ({ ...current, image: undefined }) : current)
+        setSlideDraft((current) => current ? ({ ...current, image: undefined, diagram: undefined }) : current)
         setSelectedElement(null)
       }
       if (selectedElement === 'image' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
@@ -2454,6 +2594,8 @@ export function DeckPanel({
       if (!src.startsWith('data:image/')) return
       setSlideDraft((current) => current ? ({
         ...current,
+        // A picture a person chose replaces the figure the deck drew for itself.
+        diagram: undefined,
         image: {
           src,
           caption: current.image?.caption ?? '',
@@ -2668,7 +2810,7 @@ export function DeckPanel({
                       </select>
                       <button type="button" aria-label={t('그림 왼쪽')} aria-pressed={(slideDraft.image.position ?? 'right') === 'left'} title={t('그림 왼쪽')} onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, position: 'left' } }) : current)} className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', slideDraft.image.position === 'left' && 'bg-accent/10 text-accent')}><PanelLeft size={15} /></button>
                       <button type="button" aria-label={t('그림 오른쪽')} aria-pressed={(slideDraft.image.position ?? 'right') === 'right'} title={t('그림 오른쪽')} onClick={() => setSlideDraft((current) => current?.image ? ({ ...current, image: { ...current.image, position: 'right' } }) : current)} className={cn('grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg', (slideDraft.image.position ?? 'right') === 'right' && 'bg-accent/10 text-accent')}><PanelRight size={15} /></button>
-                      <button type="button" aria-label={t('그림 제거')} title={t('그림 제거')} onClick={() => { setSlideDraft((current) => current ? ({ ...current, image: undefined }) : current); setSelectedElement(null) }} className="grid size-8 place-items-center rounded-control text-muted hover:bg-danger/10 hover:text-danger"><Trash2 size={15} /></button>
+                      <button type="button" aria-label={t('그림 제거')} title={t('그림 제거')} onClick={() => { setSlideDraft((current) => current ? ({ ...current, image: undefined, diagram: undefined }) : current); setSelectedElement(null) }} className="grid size-8 place-items-center rounded-control text-muted hover:bg-danger/10 hover:text-danger"><Trash2 size={15} /></button>
                     </>
                   )}
                   </div>
@@ -3094,6 +3236,7 @@ export function DeckPanel({
                     selectedElement={selectedElement}
                     onSelectElement={setSelectedElement}
                     onOverflow={setOverflowing}
+                    artifactId={deck.id}
                     onEdit={(next) => {
                       setSlideDraft(next)
                       setDraft(toLines(next))

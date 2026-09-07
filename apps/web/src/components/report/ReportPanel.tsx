@@ -836,6 +836,9 @@ export function ReportPanel({
 
   // `web` is prose in the app's typography; `page` is the document in its template at A4 width.
   const [view, setView] = useState<'web' | 'page'>(report.templateId ? 'page' : 'web')
+  // What the reader was looking at before the 「편집」 tab opened the page editor; leaving
+  // that tab puts it back, so 「홈」 is not left showing the editor.
+  const viewBeforeEdit = useRef<'web' | 'page'>('web')
   // The template decides the exported file's styles; stored on the document.
   const [templateId, setTemplateId] = useState(report.templateId || 'doc-report')
   const [templateSaving, setTemplateSaving] = useState(false)
@@ -1400,10 +1403,14 @@ export function ReportPanel({
             active={ribbon}
             // 「편집」 is a tab like the others: picking it opens the page editor.
             onChange={(tab) => {
-              if (tab === 'edit') {
+              if (tab === 'edit' && ribbon !== 'edit') {
+                viewBeforeEdit.current = view
                 setView('page')
                 setDocumentLayout('edit')
                 setPageSettingsOpen(false)
+              } else if (tab !== 'edit' && ribbon === 'edit') {
+                setDocumentLayout('pages')
+                setView(viewBeforeEdit.current)
               }
               setRibbon(tab)
             }}

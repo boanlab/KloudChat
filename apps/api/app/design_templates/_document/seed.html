@@ -114,7 +114,10 @@
   .cover {
     display: flex;
     flex-direction: column;
-    min-height: calc(var(--page-h, 100vh) - 3rem);
+    /* Padding, content and the margin below add up to exactly one sheet, so on the
+       editor's continuous page the second sheet starts with the first section rather
+       than with the tail of the cover. Print measures the cover in millimetres below. */
+    min-height: calc(var(--page-h, 100vh) * 0.68 - 5.6rem);
     padding: calc(var(--page-h, 100vh) * 0.32) 0 2.2rem;
     margin: 0 0 3.4rem;
   }

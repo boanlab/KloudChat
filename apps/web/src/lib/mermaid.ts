@@ -32,6 +32,37 @@ export async function draw(source: string, look: object): Promise<string | null>
   }
 }
 
+/**
+ * Draws the diagram into `node` and returns the SVG element, or `null` if mermaid would not
+ * draw it. Mermaid writes the element itself (`run`), so no string of markup passes through
+ * the caller; the caller styles and sizes the element with DOM calls.
+ */
+export async function drawInto(node: HTMLElement, source: string, look: object): Promise<SVGSVGElement | null> {
+  try {
+    const { default: mermaid } = await import('mermaid')
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      suppressErrorRendering: true,
+      ...look,
+    })
+    const easel = document.createElement('div')
+    easel.className = 'mermaid'
+    easel.textContent = plain(source)
+    node.replaceChildren(easel)
+    await mermaid.run({ nodes: [easel], suppressErrors: true })
+    const svg = easel.querySelector('svg')
+    if (!svg) {
+      node.replaceChildren()
+      return null
+    }
+    return svg
+  } catch {
+    node.replaceChildren()
+    return null
+  }
+}
+
 /** `draw`, but a parse failure comes back as mermaid's message so the writer can be asked for a repair. */
 export async function drawOrExplain(
   source: string,
@@ -72,7 +103,7 @@ function hash(text: string): number {
 }
 
 /** The SVG as a 2x PNG `data:` URI, or `null`. The exporters (python-docx, reportlab) place pixels, not SVG. */
-export async function rasterise(svg: string): Promise<string | null> {
+export async function rasterise(svg: string, scale = 2): Promise<string | null> {
   try {
     const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -83,7 +114,6 @@ export async function rasterise(svg: string): Promise<string | null> {
         element.onerror = reject
         element.src = url
       })
-      const scale = 2
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round((image.width || 800) * scale))
       canvas.height = Math.max(1, Math.round((image.height || 400) * scale))
@@ -116,7 +146,8 @@ export function theme(node: HTMLElement) {
   const accent = read('--accent', '#5b5bd6')
   const muted = read('--muted', '#666666')
   const paper = read('--paper', '#ffffff')
-  const face = read('--font-body', 'inherit')
+  // A stack, not `inherit`: an off-screen easel outside the document's styles would fall back to serif.
+  const face = read('--font-body', "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', Arial, sans-serif")
 
   return {
     theme: 'base' as const,
@@ -172,10 +203,13 @@ export function theme(node: HTMLElement) {
       // Fitted to the text column.
       useMaxWidth: true,
       curve: 'linear' as const,
-      padding: 12,
-      // Tight ranks, wide siblings: pushes the graph outward rather than down the page.
-      rankSpacing: 30,
-      nodeSpacing: 45,
+      // Room between a label and its shape's edge, and between shapes.
+      padding: 18,
+      // A subgraph's title sits above its box, with room before the first shape.
+      subGraphTitleMargin: { top: 12, bottom: 14 },
+      // Room for a label on an edge, and between siblings.
+      rankSpacing: 56,
+      nodeSpacing: 50,
       // A ten-character Korean label stays on one line; a wrapped label makes the whole rank taller.
       wrappingWidth: 320,
     },
@@ -254,12 +288,233 @@ export function paperTheme(node: HTMLElement) {
       // and the rasteriser has no size to draw at.
       useMaxWidth: false,
       curve: 'basis' as const,
-      padding: 16,
-      rankSpacing: 44,
-      nodeSpacing: 40,
+      padding: 20,
+      rankSpacing: 56,
+      nodeSpacing: 48,
+      subGraphTitleMargin: { top: 12, bottom: 14 },
     },
     // Read by `paperStyles` below, not by mermaid.
     hot: accent,
+  }
+}
+
+/**
+ * The frames a document's own figures are drawn into. Width is fixed (the minimum a figure
+ * gets); the height follows the drawing between `minAspect` (the tallest a frame may be — a
+ * taller drawing is scaled down) and `maxAspect` (the flattest — set high, so a flat drawing
+ * gets a frame that hugs it instead of blank paper above and below). A slide's frame is the
+ * band under its title; a page's is at most 4:3.
+ */
+export interface Frame {
+  width: number
+  minAspect: number
+  maxAspect: number
+  /** A drawing is not enlarged beyond this to fill its frame: a three-node figure stays a figure. */
+  upscale: number
+}
+export const FRAMES: Record<'slide' | 'page', Frame> = {
+  // A band under the slide title, with the words beneath it.
+  // Small drawings grow to fill the band: a four-node flow is read from the back of a room.
+  slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 3 },
+  page: { width: 1400, minAspect: 4 / 3, maxAspect: 8, upscale: 1.6 },
+}
+
+/** A drawing this much taller than the frame allows is tried the other way round. Only tall
+ *  ones: a flat drawing is padded by the frame and stays legible, a tall one shrinks. */
+const TURN_AT = 1.5
+
+function tooTall(size: { width: number; height: number }, frame: Frame): boolean {
+  return size.width / Math.max(1, size.height) < frame.minAspect / TURN_AT
+}
+
+/** Natural size of a drawn SVG, from its viewBox (mermaid always writes one). */
+export function measure(svg: string): { width: number; height: number } | null {
+  const tag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? ''
+  const box = /viewBox="[\d.-]+[ ,][\d.-]+[ ,]([\d.]+)[ ,]([\d.]+)"/.exec(tag)
+  if (box) return { width: Number(box[1]), height: Number(box[2]) }
+  const w = /\swidth="([\d.]+)(?:px)?"/.exec(tag)
+  const h = /\sheight="([\d.]+)(?:px)?"/.exec(tag)
+  return w && h ? { width: Number(w[1]), height: Number(h[1]) } : null
+}
+
+/** How far a picture's shape is outside the frame's range, as a factor (1 = inside). */
+function misfit(size: { width: number; height: number }, frame: Frame): number {
+  const ratio = size.width / Math.max(1, size.height)
+  if (ratio > frame.maxAspect) return ratio / frame.maxAspect
+  if (ratio < frame.minAspect) return frame.minAspect / ratio
+  return 1
+}
+
+/** The source with its top-level direction turned (LR↔TB), or null when it has none to turn
+ *  or sets directions inside subgraphs (turning those would undo the writer's layout). */
+export function flipped(source: string): string | null {
+  if (/^\s*direction\s/m.test(source)) return null
+  const head = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TB|TD|BT)\b/m.exec(source)
+  if (!head) return null
+  const turned = head[2] === 'LR' || head[2] === 'RL' ? 'TB' : 'LR'
+  return source.replace(head[0], `${head[1]}${turned}`)
+}
+
+/**
+ * `draw`, turning a drawing that is far too tall for its frame the other way round and keeping
+ * the closer of the two. A flat drawing is left alone: the frame pads it and it stays legible.
+ */
+export async function drawFitting(source: string, look: object, frame: Frame): Promise<string | null> {
+  const first = await draw(source, look)
+  if (!first) return null
+  const size = measure(first)
+  if (!size || !tooTall(size, frame)) return first
+  const other = flipped(source)
+  if (!other) return first
+  const second = await draw(other, look)
+  const again = second ? measure(second) : null
+  return second && again && misfit(again, frame) < misfit(size, frame) ? second : first
+}
+
+/** Where a drawing of `size` sits inside its frame: full width when it can be, centred, scaled
+ *  up at most `frame.upscale`; the frame's height follows the drawing within the aspect range. */
+function placement(size: { width: number; height: number }, frame: Frame) {
+  const W = frame.width
+  const pad = Math.round(W * 0.03)
+  let scale = Math.min((W - 2 * pad) / size.width, frame.upscale)
+  const H = Math.round(
+    Math.min(Math.max(size.height * scale + 2 * pad, W / frame.maxAspect), W / frame.minAspect),
+  )
+  scale = Math.min(scale, (H - 2 * pad) / size.height)
+  const dw = size.width * scale
+  const dh = size.height * scale
+  return { W, H, dw, dh, x: (W - dw) / 2, y: (H - dh) / 2 }
+}
+
+/**
+ * The picture inside a white frame, as one SVG string for the rasteriser. The drawing keeps its
+ * own root (mermaid's styles select by its id) and becomes a nested `<svg>` placed by `placement`.
+ */
+export function framed(svg: string, frame: Frame): string {
+  const open = /<svg\b[^>]*>/.exec(svg)
+  const size = measure(svg)
+  if (!open || !size) return svg
+  const at = placement(size, frame)
+  const attrs = open[0]
+    .slice(4, -1)
+    .replace(/\s(?:width|height|style|x|y)="[^"]*"/g, '')
+  const inner =
+    `<svg${attrs} x="${at.x.toFixed(1)}" y="${at.y.toFixed(1)}" width="${at.dw.toFixed(1)}" ` +
+    `height="${at.dh.toFixed(1)}" preserveAspectRatio="xMidYMid meet">` +
+    svg.slice(open.index + open[0].length)
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${at.W}" height="${at.H}" viewBox="0 0 ${at.W} ${at.H}">` +
+    `<rect width="${at.W}" height="${at.H}" fill="#ffffff"/>${inner}</svg>`
+  )
+}
+
+/** `framed`, on a drawn element: the frame is built with DOM calls and the drawing moves inside it. */
+export function frameElement(drawn: SVGSVGElement, frame: Frame): SVGSVGElement {
+  const NS = 'http://www.w3.org/2000/svg'
+  const box = drawn.viewBox?.baseVal
+  const size = {
+    width: box?.width || Number(drawn.getAttribute('width')) || 800,
+    height: box?.height || Number(drawn.getAttribute('height')) || 400,
+  }
+  const at = placement(size, frame)
+  const outer = document.createElementNS(NS, 'svg')
+  outer.setAttribute('viewBox', `0 0 ${at.W} ${at.H}`)
+  outer.setAttribute('width', String(at.W))
+  outer.setAttribute('height', String(at.H))
+  const ground = document.createElementNS(NS, 'rect')
+  ground.setAttribute('width', String(at.W))
+  ground.setAttribute('height', String(at.H))
+  ground.setAttribute('fill', '#ffffff')
+  outer.append(ground)
+  drawn.removeAttribute('style')
+  drawn.setAttribute('x', at.x.toFixed(1))
+  drawn.setAttribute('y', at.y.toFixed(1))
+  drawn.setAttribute('width', at.dw.toFixed(1))
+  drawn.setAttribute('height', at.dh.toFixed(1))
+  drawn.setAttribute('preserveAspectRatio', 'xMidYMid meet')
+  outer.append(drawn)
+  return outer
+}
+
+/**
+ * `drawInto`, keeping the shape inside the frame's range like `drawFitting`: both candidates are drawn
+ * off-screen and the closer one moves into `node`.
+ */
+export async function drawIntoFitting(
+  node: HTMLElement,
+  source: string,
+  look: object,
+  frame: Frame,
+): Promise<SVGSVGElement | null> {
+  const scratch = document.createElement('div')
+  scratch.style.cssText = 'position:absolute;left:-99999px;top:0;width:1200px'
+  document.body.appendChild(scratch)
+  try {
+    const first = await drawInto(scratch, source, look)
+    if (!first) return null
+    const shape = (el: SVGSVGElement) => {
+      const b = el.viewBox?.baseVal
+      return { width: b?.width || 800, height: b?.height || 400 }
+    }
+    let chosen = first
+    const other = flipped(source)
+    if (tooTall(shape(first), frame) && other) {
+      const second = document.createElement('div')
+      second.style.cssText = scratch.style.cssText
+      document.body.appendChild(second)
+      try {
+        const turned = await drawInto(second, other, look)
+        if (turned && misfit(shape(turned), frame) < misfit(shape(first), frame)) chosen = turned
+      } finally {
+        if (chosen !== first) first.remove()
+        second.remove()
+      }
+    }
+    node.replaceChildren(chosen)
+    return chosen
+  } finally {
+    scratch.remove()
+  }
+}
+
+/**
+ * The paper look with the deck's own colours, for a figure drawn beside a slide's words.
+ * Larger type than the page: the picture is scaled to a box a third of the slide wide.
+ */
+export function slideTheme(colours: { accent: string; ink: string; muted: string; font?: string }) {
+  return {
+    theme: 'base' as const,
+    // `<text>`, not `<foreignObject>`: foreign content taints the canvas `rasterise` draws to.
+    htmlLabels: false,
+    fontFamily: colours.font || "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
+    themeVariables: {
+      background: '#ffffff',
+      clusterBkg: '#eef4fb',
+      clusterBorder: '#b7c7de',
+      mainBkg: '#f7f9fc',
+      primaryColor: '#f7f9fc',
+      primaryBorderColor: '#7f96b8',
+      primaryTextColor: colours.ink,
+      nodeBorder: '#7f96b8',
+      secondaryColor: '#fff8ec',
+      tertiaryColor: '#eef7f2',
+      lineColor: '#5b6b82',
+      textColor: colours.ink,
+      edgeLabelBackground: '#ffffff',
+      fontSize: '26px',
+    },
+    flowchart: {
+      // Drawn at its own size so the rasteriser has a size to draw at; the slide scales it.
+      useMaxWidth: false,
+      htmlLabels: false,
+      curve: 'basis' as const,
+      // Roomy: the band is wide and the words sit below, not beside.
+      padding: 26,
+      rankSpacing: 64,
+      nodeSpacing: 56,
+      subGraphTitleMargin: { top: 14, bottom: 18 },
+    },
+    hot: colours.accent,
   }
 }
 

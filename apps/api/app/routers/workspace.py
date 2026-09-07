@@ -70,6 +70,7 @@ from app.schemas.workspace import (
     SectionRewrite,
     SkillIn,
     SkillOut,
+    SlideDiagramPicture,
     SlideFactCheck,
     SlideImage,
     SlideRewrite,
@@ -1002,6 +1003,8 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
         "src": pictures.encode(mime, blob),
         "caption": payload.caption.strip(),
     }
+    # A picture placed by hand replaces the figure the deck drew for itself.
+    target.pop("diagram", None)
 
     db.add(
         ArtifactVersion(
@@ -1015,6 +1018,56 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
     data["slides"] = slides
     artifact.data = data
     artifact.version += 1
+    artifact.updated_at = utcnow()
+    db.add(artifact)
+    await db.commit()
+    await db.refresh(artifact)
+    return ArtifactOut.of(artifact)
+
+
+@router.post("/artifacts/{artifact_id}/slides/diagram", response_model=ArtifactOut)
+async def store_slide_diagram(
+    artifact_id: str, payload: SlideDiagramPicture, user: CurrentUser, db: DbSession
+):
+    """Stores the browser's raster of a slide's own figure as the slide picture.
+
+    The exporters read `image.src`; the panel keeps drawing the mermaid live. No version
+    snapshot and no charge, like a report's diagram cache. A picture a person placed is
+    never overwritten.
+    """
+    artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is not ArtifactKind.deck:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
+    if not pictures.decode(payload.src):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_embedded")
+
+    data = dict(artifact.data or {})
+    slides = [dict(s) for s in (data.get("slides") or [])]
+    target = next((s for s in slides if s.get("id") == payload.slide_id), None)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
+    diagram = target.get("diagram") or {}
+    if not diagram.get("source"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no_diagram")
+    if payload.key != report_export.diagram_key(str(diagram["source"])):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="diagram_stale")
+
+    current = dict(target.get("image") or {})
+    if current.get("src") and not current.get("diagram"):
+        # A person put a picture here; the figure's raster does not replace it.
+        return ArtifactOut.of(artifact)
+    if current.get("src") == payload.src:
+        return ArtifactOut.of(artifact)
+    target["image"] = {
+        "src": payload.src,
+        "caption": str(current.get("caption") or diagram.get("caption") or ""),
+        "fit": "contain",
+        "position": str(current.get("position") or "right"),
+        "size": str(current.get("size") or "full"),
+        "diagram": True,
+    }
+    data["slides"] = slides
+    artifact.data = data
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
