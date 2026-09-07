@@ -628,7 +628,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
          page one and the first section starts on page two whether or not Paged.js honours
          the break. The seed's print rule (232mm, title at 74mm) is what it would otherwise use. */
       .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
-      .cover { box-sizing: border-box !important; min-height: ${Math.round(pageBox) - 40}px !important; margin: 0 !important; break-after: page; }
+      .cover { box-sizing: border-box !important; min-height: ${Math.round(pageBox) - 100}px !important; margin: 0 !important; break-after: page; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
