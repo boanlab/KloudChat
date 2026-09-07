@@ -940,6 +940,7 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
         _personal_context_step(workspace),
         _memory_context_step(workspace),
         _file_context_step("context-attachments", "첨부", workspace.attachments),
+        _file_context_step("context-earlier", "이전 첨부", workspace.carried),
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
     ]
     return [step for step in steps if step]

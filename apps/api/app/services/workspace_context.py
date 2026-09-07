@@ -122,6 +122,8 @@ class WorkspaceContext:
     #: Attachment and project-knowledge fates, in budget order.
     attachments: tuple[ContextFile, ...] = ()
     knowledge: tuple[ContextFile, ...] = ()
+    #: Files attached to earlier turns of this conversation, carried into this one.
+    carried: tuple[ContextFile, ...] = ()
     #: Pictures the model can see, in attachment order; empty when it cannot.
     pictures: tuple[TurnPicture, ...] = ()
 
@@ -589,9 +591,21 @@ def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None
     )
 
 
-def _file_report(attachments: tuple[ContextFile, ...], knowledge: tuple[ContextFile, ...]) -> str:
-    """Every file's fate, stated to the model as a trusted server fact (whole files included)."""
-    rows = [*attachments, *knowledge]
+def _file_report(
+    attachments: tuple[ContextFile, ...],
+    knowledge: tuple[ContextFile, ...],
+    carried: tuple[ContextFile, ...] = (),
+) -> str:
+    """Every file's fate, stated to the model as a trusted server fact (whole files included).
+
+    `carried` files were attached to earlier turns of the same conversation; they are
+    listed so the model never tells the user an upload it made earlier does not exist.
+    """
+    rows = [
+        *((file, False) for file in attachments),
+        *((file, True) for file in carried),
+        *((file, False) for file in knowledge),
+    ]
     if not rows:
         return ""
 
@@ -601,36 +615,64 @@ def _file_report(attachments: tuple[ContextFile, ...], knowledge: tuple[ContextF
         "이 목록만 근거로 답하라. 목록에 있는 파일은 모두 시스템에 도착했으므로 "
         "받지 못했다고 말해서는 안 된다.",
     ]
-    for file in rows:
+    for file, from_earlier in rows:
+        # An earlier turn's upload is named as such, so "the PDF I sent before" resolves.
+        name = f"{file.name} (앞선 턴에 첨부)" if from_earlier else file.name
         if file.state == "included":
-            lines.append(f"- {file.name} — 전체 {file.total_chars:,}자 전달됨")
+            lines.append(f"- {name} — 전체 {file.total_chars:,}자 전달됨")
         elif file.state == "truncated":
             lines.append(
-                f"- {file.name} — 전체 {file.total_chars:,}자 중 {file.kept_chars:,}자만 "
+                f"- {name} — 전체 {file.total_chars:,}자 중 {file.kept_chars:,}자만 "
                 "전달됨. 전달되지 않은 부분은 알 수 없으므로 그 내용을 지어내지 마라."
             )
         elif file.state == "picture":
             lines.append(
-                f"- {file.name} — 그림으로 전달됨. 보이는 것만 말하고 "
+                f"- {name} — 그림으로 전달됨. 보이는 것만 말하고 "
                 "보이지 않는 것을 지어내지 마라."
             )
         elif file.state == "picture_unseen":
             lines.append(
-                f"- {file.name} — 그림이며 파일은 온전하나, 지금 모델은 그림을 "
+                f"- {name} — 그림이며 파일은 온전하나, 지금 모델은 그림을 "
                 "보지 못한다. 내용을 지어내지 말고, 그림을 읽는 모델로 바꾸거나 "
                 "글자를 옮겨 달라고 안내하라."
             )
         elif file.state == "omitted":
             lines.append(
-                f"- {file.name} — 분량 때문에 이번 요청에는 내용이 전달되지 않음. "
+                f"- {name} — 분량 때문에 이번 요청에는 내용이 전달되지 않음. "
                 "내용이 필요하면 사용자에게 물어보라."
             )
         else:
             lines.append(
-                f"- {file.name} — 파일은 도착했으나 텍스트를 꺼내지 못함. "
+                f"- {name} — 파일은 도착했으나 텍스트를 꺼내지 못함. "
                 "스캔본이면 OCR 이 필요하다고 안내하라."
             )
     return "\n".join(lines)
+
+
+async def _earlier_attachments(
+    db: AsyncSession, user: User, session: ChatSession, *, exclude: set[str]
+) -> list[StoredFile]:
+    """Readable files attached to earlier turns of this conversation, newest first.
+
+    Only uploads made in this session count: project knowledge and agent shelves have
+    their own paths, and a file attached to this turn is handled as this turn's.
+    """
+    rows = (
+        await db.exec(
+            select(StoredFile)
+            .where(StoredFile.user_id == user.id, StoredFile.session_id == session.id)
+            .order_by(col(StoredFile.created_at).desc())
+        )
+    ).all()
+    return [
+        stored
+        for stored in rows
+        if stored.session_id == session.id
+        and stored.project_id is None
+        and stored.agent_id is None
+        and stored.id not in exclude
+        and stored.text
+    ]
 
 
 async def assemble(
@@ -708,7 +750,7 @@ async def assemble(
             )
         ).all()
         by_id = {row.id: row for row in rows}
-        if len(by_id) != len(set(attachment_ids)):
+        if any(file_id not in by_id for file_id in attachment_ids):
             raise WorkspaceContextError("attachment_not_found")
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
         looked_at: dict[str, TurnPicture] = {}
@@ -756,10 +798,42 @@ async def assemble(
             )
         if attached:
             blocks.append(ContextBlock("attachment", attached, False))
+
+    # A file uploaded earlier in this chat stays readable for the rest of it. This
+    # turn's own attachments are served first and whole where they fit; earlier ones
+    # take what is left of the same budget, excerpted around the new question, so a
+    # long document carried for many turns costs at most the budget, never more.
+    carried_files: tuple[ContextFile, ...] = ()
+    if session.kind is SessionKind.chat:
+        earlier = await _earlier_attachments(
+            db, user, session, exclude=set(attachment_ids or [])
+        )
+        if earlier:
+            remaining = (file_budget or settings.file_context_chars) - sum(
+                file.kept_chars for file in attached_files
+            )
+            if remaining > 0:
+                earlier_block, carried = _knowledge_block(
+                    earlier,
+                    header="# 이 대화에서 앞서 첨부된 파일",
+                    focus=focus,
+                    budget=remaining,
+                )
+                if earlier_block:
+                    blocks.append(ContextBlock("attachment.earlier", earlier_block, False))
+                carried_files = tuple(carried)
+            else:
+                # Nothing left this turn; the report below still says the files exist.
+                carried_files = tuple(
+                    ContextFile(
+                        stored.name, "omitted", 0, len(stored.text), stored.id, stored.source_url
+                    )
+                    for stored in earlier
+                )
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
     # Last trusted block, closest to the material it describes.
-    if report := _file_report(attached_files, knowledge_files):
+    if report := _file_report(attached_files, knowledge_files, carried_files):
         blocks.append(ContextBlock("files.report", report, True))
 
     applied = tuple(
@@ -784,6 +858,7 @@ async def assemble(
         total_memories=memory_total,
         attachments=attached_files,
         knowledge=tuple(knowledge_files),
+        carried=carried_files,
         pictures=turn_pictures,
     )
 

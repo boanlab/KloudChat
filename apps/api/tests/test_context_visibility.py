@@ -98,6 +98,57 @@ async def test_a_file_nothing_could_be_read_out_of_is_reported_where_it_was_atta
     assert step["detail"] == "보고서.pdf 읽지 못함"
 
 
+# ── earlier turns' attachments ─────────────────────────────────────────
+
+
+async def test_a_file_attached_earlier_in_the_conversation_is_still_read(monkeypatch):
+    """An upload from an earlier turn reaches later turns, after this turn's own files."""
+    monkeypatch.setattr(settings, "file_context_chars", 30)
+    earlier = _file("학칙.pdf", "가" * 20)
+    earlier.session_id = "session-1"
+    now = _file("메모.txt", "나" * 10)
+    context = await assemble(
+        _Db(files=[earlier, now]), _user(), _session(), attachment_ids=[now.id]
+    )
+
+    assert [(f.name, f.state) for f in context.attachments] == [("메모.txt", "included")]
+    assert [(f.name, f.state) for f in context.carried] == [("학칙.pdf", "included")]
+    sources = [block.source for block in context.blocks]
+    assert sources.index("attachment") < sources.index("attachment.earlier")
+    report = next(block.text for block in context.blocks if block.source == "files.report")
+    assert "학칙.pdf (앞선 턴에 첨부) — 전체 20자 전달됨" in report
+
+    step = _one(_context_steps(context), "context-earlier")
+    assert step["label"] == "이전 첨부 1개 반영"
+    assert step["detail"] == "학칙.pdf"
+
+
+async def test_an_earlier_file_the_budget_cannot_carry_is_still_listed_as_arrived(monkeypatch):
+    """This turn's file spends the budget; the earlier one is named so it is not denied."""
+    monkeypatch.setattr(settings, "file_context_chars", 10)
+    earlier = _file("학칙.pdf", "가" * 50)
+    earlier.session_id = "session-1"
+    now = _file("메모.txt", "나" * 10)
+    context = await assemble(
+        _Db(files=[earlier, now]), _user(), _session(), attachment_ids=[now.id]
+    )
+
+    assert [(f.name, f.state) for f in context.carried] == [("학칙.pdf", "omitted")]
+    assert "attachment.earlier" not in [block.source for block in context.blocks]
+    report = next(block.text for block in context.blocks if block.source == "files.report")
+    assert "학칙.pdf (앞선 턴에 첨부) — 분량 때문에" in report
+    assert _one(_context_steps(context), "context-earlier")["label"] == "이전 첨부 1개 중 1개 빠짐"
+
+
+async def test_another_conversations_upload_is_not_carried():
+    other = _file("학칙.pdf", "가" * 20)
+    other.session_id = "session-2"
+    context = await assemble(_Db(files=[other]), _user(), _session())
+
+    assert context.carried == ()
+    assert "attachment.earlier" not in [block.source for block in context.blocks]
+
+
 # ── project knowledge ──────────────────────────────────────────────────
 
 
