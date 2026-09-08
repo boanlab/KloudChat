@@ -322,7 +322,8 @@ export function AdminGovernancePage() {
           </Card>
         ) : (
           <Card className="overflow-hidden">
-            <table className="w-full text-base">
+            <div className="overflow-x-auto">
+              <table className="w-full text-base">
               <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
@@ -359,6 +360,7 @@ export function AdminGovernancePage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         )}
 
