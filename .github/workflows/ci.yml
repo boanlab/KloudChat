@@ -44,6 +44,12 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
+      - name: Install presentation test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Test slide presentation layout
+        run: npx playwright test --config playwright.presentation.config.ts --workers=1
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest
