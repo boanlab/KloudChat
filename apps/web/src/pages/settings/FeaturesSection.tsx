@@ -3,6 +3,7 @@ import { Button } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { adminApi, type SystemSettings } from '@/lib/api'
 import { useT } from '@/lib/useT'
+import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 
 /** Surfaces that can be switched off; chat cannot. */
@@ -21,6 +22,7 @@ export function FeaturesSection({
   onSaved: () => Promise<void>
 }) {
   const t = useT()
+  const refreshConfig = useStore((s) => s.refreshConfig)
   const [enabled, setEnabled] = useState<SessionKind[]>([])
   const [busy, setBusy] = useState(false)
 
@@ -46,6 +48,7 @@ export function FeaturesSection({
         enabledKinds: OPTIONAL.filter((k) => enabled.includes(k)).join(','),
       })
       await onSaved()
+      await refreshConfig()
     } finally {
       setBusy(false)
     }
