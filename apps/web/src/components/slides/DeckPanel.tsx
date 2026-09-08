@@ -1614,9 +1614,11 @@ export function PresentStage({
   return createPortal(
     <div ref={stageRef} role="dialog" aria-label={t('발표 모드')} className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2 text-white/70">
-        <Presentation size={14} />
-        <span className="text-base">{title}</span>
-        <span className="ml-auto text-base tabular-nums">
+        <Presentation size={14} className="shrink-0" />
+        {/* The title gives way first: on a phone at the larger type the controls after it
+            must stay on screen. */}
+        <span className="min-w-0 flex-1 truncate text-base">{title}</span>
+        <span className="shrink-0 text-base tabular-nums">
           {index + 1} / {count}
         </span>
         <button
@@ -1704,7 +1706,7 @@ export function PresentStage({
         >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-sm">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
+        <span className="text-sm phone:hidden">{t('← → 로 넘기고 Esc 로 끝냅니다')}</span>
         <button
           onClick={() => onIndex(Math.min(index + 1, count - 1))}
           disabled={index >= count - 1}
