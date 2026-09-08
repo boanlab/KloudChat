@@ -405,7 +405,7 @@ export function Composer({
   const [galleryOpen, setGalleryOpen] = useState(false)
   // A phone shows attach, dictation and web search; the rest sits behind 「더보기」,
   // and model comparison — answers side by side — is not offered at all.
-  const phone = useMediaQuery('(max-width: 40rem)')
+  const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
   const [moreOpen, setMoreOpen] = useState(false)
   const folded = phone && !moreOpen
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
@@ -1401,7 +1401,7 @@ export function Composer({
           }
           aria-label={t('프롬프트 입력')}
           data-composer=""
-          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none max-sm:text-[0.95rem]"
+          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:min-h-[3.25rem] phone:text-[1rem] phone:leading-[1.6]"
         />
 
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
@@ -1796,7 +1796,7 @@ export function Composer({
         </p>
       )}
       {/* Keyboard hints mean nothing on a phone. */}
-      <p className="mt-2 text-center text-xs text-faint max-sm:hidden">
+      <p className="mt-2 text-center text-xs text-faint phone:hidden">
         {busy && isMedia
             ? t('생성 중입니다 — 완료되면 위 카드가 결과로 바뀝니다')
             : kind === 'image'

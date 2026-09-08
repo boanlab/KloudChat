@@ -347,7 +347,7 @@ function MessageItemInner({
             )
           })}
           {fileError && <p className="text-right text-sm text-danger">{fileError}</p>}
-          <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap max-sm:text-[0.95rem] max-sm:leading-[1.75]">
+          <div className="rounded-panel rounded-br-md bg-elevated px-4 py-2.5 text-md leading-[1.7] whitespace-pre-wrap phone:text-[1rem] phone:leading-[1.7]">
             {message.content}
           </div>
           {/* A turn with no reply reports its failure under the question. */}
@@ -435,7 +435,7 @@ function MessageItemInner({
           <button
             onClick={() => setBadgesOpen((o) => !o)}
             aria-expanded={badgesOpen}
-            className="mb-2 text-sm text-muted hover:text-fg sm:hidden"
+            className="mb-2 hidden text-sm text-muted hover:text-fg phone:inline-block"
           >
             {badgesOpen
               ? t('처리 내역 접기')
@@ -443,7 +443,7 @@ function MessageItemInner({
           </button>
         )}
         {message.routing && showRouting && (
-          <div className={cn('mb-2 flex flex-wrap gap-1.5', !badgesOpen && 'max-sm:hidden')}>
+          <div className={cn('mb-2 flex flex-wrap gap-1.5', !badgesOpen && 'phone:hidden')}>
             {costRoute && costRouteDisplay && (
               <Badge
                 tone={costRoute.decision === 'routed' ? 'success' : 'warn'}
