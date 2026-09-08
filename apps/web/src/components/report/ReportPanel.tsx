@@ -69,14 +69,12 @@ const DOC_ACCENTS: [string, string][] = [
  * `RibbonGroup`'s `label` is an `aria-label` only — nothing a sighted person
  * reads. Fine for a group that is one self-explanatory button, but "매거진형"
  * next to "보고 문서" gives no hint that one is a look and the other an export
- * format; this puts the word back where the eye already is.
+ * format. Set inline, before the value, so it costs no extra row: a caption
+ * stacked above once made every other single-line ribbon group in the same
+ * row look shorter than its neighbours instead.
  */
 function RibbonCaption({ children }: { children: ReactNode }) {
-  return (
-    <span className="block px-0.5 pb-0.5 text-2xs font-semibold tracking-wide text-faint uppercase">
-      {children}
-    </span>
-  )
+  return <span className="font-semibold text-faint">{children}</span>
 }
 
 /** A thumbnail of a document look: the first page, title and two sections. */
@@ -1536,12 +1534,12 @@ export function ReportPanel({
             </RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('디자인')}><div className="flex flex-col items-start gap-0.5">
-            <RibbonCaption>{t('디자인')}</RibbonCaption>
+            <RibbonGroup label={t('디자인')}>
             <Dropdown
               trigger={() => (
                 <Button size="sm" disabled={templateSaving} aria-label={t('문서 디자인 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
                   <DocLookSwatch look={visualStyle} accent={documentAccent} />
+                  <RibbonCaption>{t('디자인')}</RibbonCaption>
                   {t(DOC_LOOKS.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
@@ -1559,15 +1557,15 @@ export function ReportPanel({
                   {t(label)}
                 </MenuItem>
               ))}
-            </Dropdown></div></RibbonGroup>
+            </Dropdown></RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('강조색')}><div className="flex flex-col items-start gap-0.5">
-            <RibbonCaption>{t('강조색')}</RibbonCaption>
+            <RibbonGroup label={t('강조색')}>
             <Dropdown
               trigger={() => (
                 <Button size="sm" disabled={templateSaving} aria-label={t('강조색 고르기')} title={t('제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색')}>
                   <span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: documentAccent }} />
+                  <RibbonCaption>{t('강조색')}</RibbonCaption>
                   {t(DOC_ACCENTS.find(([colour]) => colour.toLowerCase() === documentAccent.toLowerCase())?.[1] ?? '직접 고른 색')}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
@@ -1581,16 +1579,17 @@ export function ReportPanel({
                 <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
                 {t('직접 고르기')}
               </label>
-            </Dropdown></div></RibbonGroup>
+            </Dropdown></RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('양식')}><div className="flex flex-col items-start gap-0.5">
-            <RibbonCaption>{t('양식')}</RibbonCaption>
+            <RibbonGroup label={t('양식')}>
             <Dropdown
               trigger={() => (
                 <Button size="sm" variant="secondary" disabled={templateSaving} onClick={() => void afterSaving(() => {})}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
+                  <RibbonCaption>{t('양식')}</RibbonCaption>
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
+                  <ChevronDown size={13} className="text-muted" />
                 </Button>
               )}
             >
@@ -1604,7 +1603,7 @@ export function ReportPanel({
                   {row.name}
                 </MenuItem>
               ))}
-            </Dropdown></div></RibbonGroup>
+            </Dropdown></RibbonGroup>
           )}
           {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"
