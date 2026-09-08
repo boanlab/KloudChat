@@ -855,7 +855,11 @@ async def run_turn(
                     "content": result.content,
                 }
             )
-            seen_urls.update(_urls_in(result.content))
+            if not result.failed:
+                # A failed call's own content is an error message, not a source —
+                # httpx's default text for a bad status even links to MDN's docs
+                # on that status code, which is not something anyone searched for.
+                seen_urls.update(_urls_in(result.content))
             if call["name"] == "web_search":
                 searches += 1
                 empty_searches += int(result.empty)
