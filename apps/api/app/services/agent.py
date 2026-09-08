@@ -560,6 +560,10 @@ async def run_turn(
     closing = False
     #: Every URL a tool returned this turn.
     seen_urls: set[str] = set()
+    #: (tool name, raw arguments) already dispatched — a model that cannot
+    #: tell it already has the answer repeats the same call hop after hop
+    #: otherwise, burning a full round trip each time until the hop cap.
+    called: set[tuple[str, str]] = set()
     #: URLs the tools returned, in the order the model saw them numbered.
     sources: list[str] = []
     source_titles: dict[str, str] = {}
@@ -770,6 +774,15 @@ async def run_turn(
                 return ToolResult(
                     content=f"오류: {tool.name} 도구가 허용되지 않았습니다.", failed=True
                 )
+            key = (tool.name, call["arguments"])
+            if key in called:
+                return ToolResult(
+                    content=(
+                        "(같은 도구를 같은 조건으로 이미 호출했습니다. "
+                        "위에서 받은 결과로 답하세요.)"
+                    )
+                )
+            called.add(key)
             return await _run_tool(tool, call["arguments"], ctx)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
@@ -855,7 +868,11 @@ async def run_turn(
                     "content": result.content,
                 }
             )
-            seen_urls.update(_urls_in(result.content))
+            if not result.failed:
+                # A failed call's own content is an error message, not a source —
+                # httpx's default text for a bad status even links to MDN's docs
+                # on that status code, which is not something anyone searched for.
+                seen_urls.update(_urls_in(result.content))
             if call["name"] == "web_search":
                 searches += 1
                 empty_searches += int(result.empty)

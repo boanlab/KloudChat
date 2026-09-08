@@ -110,7 +110,7 @@ def _ctx() -> ToolContext:
     return ToolContext(user_id="user", session_id="session", api_key="key")
 
 
-async def _collect(monkeypatch, scripted: list[list[str]]):
+async def _collect(monkeypatch, scripted: list[list[str]], tools: list[Tool] = _TOOLS):
     seen: list[dict] = []
 
     async def client(*_args, **_kwargs):
@@ -118,7 +118,7 @@ async def _collect(monkeypatch, scripted: list[list[str]]):
 
     monkeypatch.setattr(agent, "_client", client)
     events = []
-    async for event in agent.run_turn("m", [{"role": "user", "content": "q"}], _TOOLS, _ctx()):
+    async for event in agent.run_turn("m", [{"role": "user", "content": "q"}], tools, _ctx()):
         events.append(event)
     return seen, events
 
@@ -242,3 +242,39 @@ async def test_the_fallback_source_list_is_the_search_hits_not_page_links(monkey
     assert "### 확인한 출처\n- [news.example.com · 1](https://news.example.com/a/1)" in text
     assert "wikipedia" not in text
     assert "suwon" not in text
+
+
+@pytest.mark.asyncio
+async def test_a_failed_searchs_own_error_text_is_never_a_source(monkeypatch) -> None:
+    """A search that fails outright leaves nothing to list — not even the URL its
+    own error message happens to mention (httpx's default text links to MDN's
+    docs on the status code, which nobody searched for)."""
+
+    async def run_failing_search(_args):
+        return ToolResult(
+            content=(
+                "오류: 검색에 실패했습니다 (Client error '404 Not Found' for url "
+                "'http://localhost:8100/tools/search/search?q=x'\n"
+                "For more information check: "
+                "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404)."
+            ),
+            failed=True,
+        )
+
+    tools = [
+        Tool(
+            name="web_search",
+            description="웹 검색",
+            parameters={"type": "object"},
+            run=run_failing_search,
+            label="웹 검색",
+        ),
+    ]
+    answer = [_content("검색 없이 답합니다."), "data: [DONE]"]
+    _, events = await _collect(
+        monkeypatch, [_calls("web_search", {"query": "검색"}), answer], tools
+    )
+    text = _final_text(events)
+    assert "### 확인한 출처" not in text
+    assert "localhost" not in text
+    assert "developer.mozilla.org" not in text

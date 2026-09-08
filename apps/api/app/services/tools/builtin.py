@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import date
 from html import unescape
 from typing import Any
 
@@ -370,7 +371,9 @@ _WMO = {
     96: "우박 동반 뇌우",
     99: "강한 우박 동반 뇌우",
 }
-_DAY_NAMES = ("오늘", "내일", "모레", "글피")
+#: Beyond these, a raw date reads better than reaching for 글피/그글피.
+_DAY_NAMES = ("오늘", "내일", "모레")
+_WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
 
 def _sky(code: Any) -> str:
@@ -378,6 +381,17 @@ def _sky(code: Any) -> str:
         return _WMO.get(int(code), "확인 불가")
     except (TypeError, ValueError):
         return "확인 불가"
+
+
+def _day_label(i: int, iso_date: str) -> str:
+    """`오늘(2026-09-11)` for the near days, `9월 15일(화)` past that."""
+    if i < len(_DAY_NAMES):
+        return f"{_DAY_NAMES[i]}({iso_date})"
+    try:
+        d = date.fromisoformat(iso_date)
+    except ValueError:
+        return iso_date
+    return f"{d.month}월 {d.day}일({_WEEKDAYS[d.weekday()]})"
 
 
 def format_weather(place: str, data: dict[str, Any]) -> str:
@@ -399,15 +413,15 @@ def format_weather(place: str, data: dict[str, Any]) -> str:
         ),
     ]
     for i, day in enumerate(daily.get("time") or []):
-        name = _DAY_NAMES[i] if i < len(_DAY_NAMES) else day
 
         def at(key: str, i: int = i) -> Any:
             values = daily.get(key) or []
             return values[i] if i < len(values) else "?"
 
         lines.append(
-            f"{name}({day}): {_sky(at('weather_code'))}, 최고 {at('temperature_2m_max')}°C / "
-            f"최저 {at('temperature_2m_min')}°C, 강수 확률 {at('precipitation_probability_max')}%"
+            f"{_day_label(i, day)}: {_sky(at('weather_code'))}, "
+            f"최고 {at('temperature_2m_max')}°C / 최저 {at('temperature_2m_min')}°C, "
+            f"강수 확률 {at('precipitation_probability_max')}%"
         )
     return "\n".join(lines)
 
@@ -420,7 +434,7 @@ async def weather(args: dict[str, Any]) -> ToolResult:
         async with httpx.AsyncClient(timeout=12) as client:
             geo = await client.get(
                 _GEOCODE_URL,
-                params={"q": place, "format": "jsonv2", "limit": 1, "accept-language": "ko"},
+                params={"q": place, "format": "jsonv2", "limit": 5, "accept-language": "ko"},
                 headers={"User-Agent": _WEATHER_AGENT},
             )
             geo.raise_for_status()
@@ -433,7 +447,12 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                     ),
                     failed=True,
                 )
-            hit = hits[0]
+            # Nominatim's own top hit is relevance-ranked, not importance-ranked:
+            # a minor stop or shop sharing the name can outrank the place itself
+            # (a "후쿠오카" search once returned a Toyama railway stop ahead of
+            # anything in Fukuoka). Importance among the top few candidates is
+            # the closer proxy for "the place a person means".
+            hit = max(hits, key=lambda h: float(h.get("importance") or 0))
             forecast = await client.get(
                 _FORECAST_URL,
                 params={
@@ -448,7 +467,10 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                         "precipitation_probability_max"
                     ),
                     "timezone": "auto",
-                    "forecast_days": 4,
+                    # Open-Meteo serves up to 16 without a key; 10 covers the
+                    # travel-planning window a "이번 주말" / "다음 주" question
+                    # asks about without reaching into the unreliable tail.
+                    "forecast_days": 10,
                 },
             )
             forecast.raise_for_status()
@@ -464,7 +486,7 @@ async def weather(args: dict[str, Any]) -> ToolResult:
 WEATHER = Tool(
     name="weather",
     description=(
-        "특정 지역의 현재 날씨와 3일 예보를 가져옵니다. 날씨·기온·비나 눈 소식·우산 여부를 "
+        "특정 지역의 현재 날씨와 최대 10일 예보를 가져옵니다. 날씨·기온·비나 눈 소식·우산 여부를 "
         "물으면 web_search 대신 이 도구를 쓰세요."
     ),
     parameters={

@@ -436,7 +436,10 @@ interface State {
   setPendingStartingTemplate: (template: StartingPoint | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
-  refreshBrand: () => Promise<void>
+  /** Re-reads `/auth/config` — brand, enabled surfaces and the rest of what
+   *  `bootstrap` seeded from it — so a change an admin just saved shows up
+   *  in this tab without a reload. */
+  refreshConfig: () => Promise<void>
   /** Chat is always among them. */
   enabledKinds: SessionKind[]
   avOptions: {
@@ -1878,11 +1881,16 @@ export const useStore = create<State>((set, get) => ({
   pendingStartingTemplate: null,
   setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
   brand: { name: 'KloudChat', logo: '' },
-  refreshBrand: async () => {
+  refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
-    if (!c?.brand) return
+    if (!c) return
     applyBrand(c.brand)
-    set({ brand: c.brand })
+    set({
+      brand: c.brand,
+      enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
+      idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
+      dictationEnabled: Boolean(c.dictationEnabled),
+    })
   },
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {

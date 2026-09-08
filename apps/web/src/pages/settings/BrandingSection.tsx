@@ -15,7 +15,7 @@ export function BrandingSection({
   onSaved: () => Promise<void>
 }) {
   const t = useT()
-  const refreshBrand = useStore((s) => s.refreshBrand)
+  const refreshConfig = useStore((s) => s.refreshConfig)
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [busy, setBusy] = useState(false)
@@ -37,7 +37,7 @@ export function BrandingSection({
     try {
       await fn()
       await onSaved()
-      await refreshBrand()
+      await refreshConfig()
     } catch (e) {
       setError(e instanceof Error ? e.message : t('실패했습니다.'))
     } finally {
