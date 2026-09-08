@@ -434,7 +434,7 @@ async def weather(args: dict[str, Any]) -> ToolResult:
         async with httpx.AsyncClient(timeout=12) as client:
             geo = await client.get(
                 _GEOCODE_URL,
-                params={"q": place, "format": "jsonv2", "limit": 1, "accept-language": "ko"},
+                params={"q": place, "format": "jsonv2", "limit": 5, "accept-language": "ko"},
                 headers={"User-Agent": _WEATHER_AGENT},
             )
             geo.raise_for_status()
@@ -447,7 +447,12 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                     ),
                     failed=True,
                 )
-            hit = hits[0]
+            # Nominatim's own top hit is relevance-ranked, not importance-ranked:
+            # a minor stop or shop sharing the name can outrank the place itself
+            # (a "후쿠오카" search once returned a Toyama railway stop ahead of
+            # anything in Fukuoka). Importance among the top few candidates is
+            # the closer proxy for "the place a person means".
+            hit = max(hits, key=lambda h: float(h.get("importance") or 0))
             forecast = await client.get(
                 _FORECAST_URL,
                 params={
