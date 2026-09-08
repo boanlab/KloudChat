@@ -120,10 +120,18 @@ export function AppShell() {
 }
 
 /** Standard scroll container for the non-chat management pages. */
-export function PageBody({ children }: { children: React.ReactNode }) {
+export function PageBody({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
+      <div className={cn('mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8', className)}>
+        {children}
+      </div>
     </div>
   )
 }

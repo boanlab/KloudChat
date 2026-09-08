@@ -29,6 +29,9 @@
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* A phone: a touch screen up to 1024px wide (foldables and landscape included), or any
+   viewport under 640px. Width alone missed wide phones. */
+@custom-variant phone (@media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem));
 
 /* Surfaces: --bg page, --panel card, --elevated raised/hovered card, --sidebar nav column.
    Text tokens must keep WCAG AA (4.5:1) against all four surfaces in both themes. */
@@ -139,11 +142,12 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* On a phone the whole type scale steps up with the root: the desktop's compact
-   13px base reads as 17px, menus and captions with it, and running text as 20px. */
-@media (max-width: 40rem) {
+/* On a phone the whole type scale steps up with the root, to what the ChatGPT and
+   Claude apps use: the desktop's compact 13px base reads as 18px, menus and
+   captions with it, and running text as 22px. */
+@media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem) {
   html {
-    font-size: 131.25%;
+    font-size: 137.5%;
   }
 }
 
