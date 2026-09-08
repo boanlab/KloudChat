@@ -1,4 +1,4 @@
-/** The title and section headings are editable in 문서 수정, proven by the round trip. */
+/** The title and section headings are editable in 페이지뷰, proven by the round trip. */
 import { expect, test } from '@playwright/test'
 import { artifactReady, signIn } from './helpers'
 
@@ -9,10 +9,9 @@ test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ pa
   await page.getByText('원본 작업 열기').first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await artifactReady(page, 30_000)
-  // 문서 수정 edits in place; 페이지뷰 is read-only.
-  const edit = page.getByRole('button', { name: '문서 수정' })
-  if (await edit.isVisible().catch(() => false)) await edit.click()
-  else await page.getByRole('button', { name: '내용 편집' }).click()
+  await page.getByRole('button', { name: '페이지뷰' }).click()
+  const edit = page.getByRole('button', { name: '편집' })
+  if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 
   const mark = `제목수정-${Date.now()}`

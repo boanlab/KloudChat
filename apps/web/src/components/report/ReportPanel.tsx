@@ -5,6 +5,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Globe2,
   ImagePlus,
   ListPlus,
   Link2,
@@ -24,7 +25,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { docVariables } from '@/components/report/docType'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import {
@@ -61,6 +62,22 @@ const DOC_ACCENTS: [string, string][] = [
   ['#1e3a8a', '남색'], ['#1f6feb', '파랑'], ['#0f766e', '청록'], ['#15803d', '초록'],
   ['#5b5bd6', '보라'], ['#a21caf', '자주'], ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹'],
 ]
+
+/**
+ * A ribbon group's own name, actually on screen.
+ *
+ * `RibbonGroup`'s `label` is an `aria-label` only — nothing a sighted person
+ * reads. Fine for a group that is one self-explanatory button, but "매거진형"
+ * next to "보고 문서" gives no hint that one is a look and the other an export
+ * format; this puts the word back where the eye already is.
+ */
+function RibbonCaption({ children }: { children: ReactNode }) {
+  return (
+    <span className="block px-0.5 pb-0.5 text-2xs font-semibold tracking-wide text-faint uppercase">
+      {children}
+    </span>
+  )
+}
 
 /** A thumbnail of a document look: the first page, title and two sections. */
 function DocLookSwatch({ look, accent, size = 1 }: { look: string; accent: string; size?: number }) {
@@ -1425,54 +1442,69 @@ export function ReportPanel({
             onFix={fixFinding}
             onFixAll={fixAllFindings}
           /></RibbonGroup>}
-          {ribbon === 'home' && view !== 'page' && !editing && (
-            <RibbonGroup label={t('편집')}>
-            <Button
-              size="sm"
-              onClick={() => {
-                setView('page')
-                setDocumentLayout('edit')
-                setPageSettingsOpen(false)
-              }}
-              disabled={writing}
-              title={t('굵게·표·그림을 그대로 보면서 고칩니다')}
-              aria-label={t('문서 수정')}
-            >
-              <Pencil size={13} />
-              {t('문서 수정')}
-            </Button>
-            </RibbonGroup>
-          )}
-          {ribbon === 'home' && <RibbonGroup label={t('보기')}><Button
+          {ribbon === 'home' && <RibbonGroup label={t('보기')}>
+          <Button
+            size="sm"
+            variant={view !== 'page' ? 'primary' : 'secondary'}
+            aria-label={t('웹뷰')}
+            title={t('편집하기 좋은 한 줄 문서로 봅니다')}
+            onClick={() => {
+              if (view === 'page') {
+                void afterSaving(() => {})
+                setView('web')
+                if (onModeChange) {
+                  setMode('narrow')
+                  onModeChange('narrow')
+                }
+              }
+            }}
+          >
+            <Globe2 size={13} />
+            {t('웹뷰')}
+          </Button>
+          <Button
             size="sm"
             variant={view === 'page' ? 'primary' : 'secondary'}
-            aria-label={view === 'page' ? t('웹뷰') : t('페이지뷰')}
-            title={view === 'page' ? t('편집하기 좋은 한 줄 문서로 봅니다') : t('서식이 적용된 A4 문서로 봅니다')}
+            aria-label={t('페이지뷰')}
+            title={t('서식이 적용된 A4 문서로 봅니다')}
             onClick={() => {
-              void afterSaving(() => {})
-              const next = view === 'page' ? 'web' : 'page'
-              setView(next)
-              if (onModeChange) {
-                // The page view asks for room; leaving it gives the room back.
-                const wanted: PanelMode =
-                  next === 'page' ? (mode === 'narrow' ? 'wide' : mode) : 'narrow'
-                setMode(wanted)
-                onModeChange(wanted)
+              if (view !== 'page') {
+                void afterSaving(() => {})
+                setView('page')
+                // The page view asks for room; web view gives it back.
+                if (onModeChange) {
+                  const wanted: PanelMode = mode === 'narrow' ? 'wide' : mode
+                  setMode(wanted)
+                  onModeChange(wanted)
+                }
               }
             }}
           >
             <FileType2 size={13} />
-            {view === 'page' ? t('웹뷰') : t('페이지뷰')}
+            {t('페이지뷰')}
           </Button>
-          {view === 'page' && <Button
-            size="sm"
-            variant={documentLayout === 'edit' ? 'primary' : 'secondary'}
-            aria-label={documentLayout === 'edit' ? t('실제 페이지') : t('내용 편집')}
-            onClick={() => setDocumentLayout((current) => current === 'edit' ? 'pages' : 'edit')}
-          >
-            <Pencil size={13} />
-            {documentLayout === 'edit' ? t('실제 페이지') : t('내용 편집')}
-          </Button>}
+          {view === 'page' && (
+            <>
+              <span className="mx-1 h-5 w-px shrink-0 bg-line" />
+              <Button
+                size="sm"
+                variant={documentLayout === 'edit' ? 'primary' : 'secondary'}
+                aria-label={t('편집')}
+                aria-pressed={documentLayout === 'edit'}
+                title={
+                  documentLayout === 'edit'
+                    ? t('보면서 바로 고칩니다')
+                    : t('내보냈을 때 나올 모양 그대로 봅니다')
+                }
+                onClick={() =>
+                  setDocumentLayout((current) => (current === 'edit' ? 'pages' : 'edit'))
+                }
+              >
+                <Pencil size={13} />
+                {t('편집')}
+              </Button>
+            </>
+          )}
           </RibbonGroup>}
           {ribbon === 'layout' && <RibbonGroup label={t('페이지')}><Button
             size="sm"
@@ -1504,7 +1536,9 @@ export function ReportPanel({
             </RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('디자인')}><Dropdown
+            <RibbonGroup label={t('디자인')}><div className="flex flex-col items-start gap-0.5">
+            <RibbonCaption>{t('디자인')}</RibbonCaption>
+            <Dropdown
               trigger={() => (
                 <Button size="sm" disabled={templateSaving} aria-label={t('문서 디자인 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
                   <DocLookSwatch look={visualStyle} accent={documentAccent} />
@@ -1525,10 +1559,12 @@ export function ReportPanel({
                   {t(label)}
                 </MenuItem>
               ))}
-            </Dropdown></RibbonGroup>
+            </Dropdown></div></RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('강조색')}><Dropdown
+            <RibbonGroup label={t('강조색')}><div className="flex flex-col items-start gap-0.5">
+            <RibbonCaption>{t('강조색')}</RibbonCaption>
+            <Dropdown
               trigger={() => (
                 <Button size="sm" disabled={templateSaving} aria-label={t('강조색 고르기')} title={t('제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색')}>
                   <span className="block size-3.5 rounded-full ring-1 ring-black/10" style={{ backgroundColor: documentAccent }} />
@@ -1545,10 +1581,12 @@ export function ReportPanel({
                 <input type="color" value={documentAccent} onChange={(event) => void chooseDocumentAccent(event.target.value)} className="size-4 cursor-pointer border-0 bg-transparent p-0" aria-label={t('직접 고르기')} />
                 {t('직접 고르기')}
               </label>
-            </Dropdown></RibbonGroup>
+            </Dropdown></div></RibbonGroup>
           )}
           {ribbon === 'home' && (
-            <RibbonGroup label={t('양식')}><Dropdown
+            <RibbonGroup label={t('양식')}><div className="flex flex-col items-start gap-0.5">
+            <RibbonCaption>{t('양식')}</RibbonCaption>
+            <Dropdown
               trigger={() => (
                 <Button size="sm" variant="secondary" disabled={templateSaving} onClick={() => void afterSaving(() => {})}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
@@ -1566,7 +1604,7 @@ export function ReportPanel({
                   {row.name}
                 </MenuItem>
               ))}
-            </Dropdown></RibbonGroup>
+            </Dropdown></div></RibbonGroup>
           )}
           {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"

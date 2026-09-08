@@ -98,11 +98,17 @@ test('페이지뷰 토글이 두 방향 모두 간다', async ({ page }) => {
   await openAndSeedReport(page, ['## 현황', '', '지금은 이렇다.'].join('\n'))
 
   await ribbon(page, '홈')
-  const toggle = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })
-  await toggle.click()
-  await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' })).toBeVisible()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
-  await expect(page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' })).toBeVisible()
+  const home = page.getByRole('toolbar', { name: '홈' })
+  const webView = home.getByRole('button', { name: '웹뷰' })
+  const pageView = home.getByRole('button', { name: '페이지뷰' })
+  // Both buttons name their own mode and are always present; the active one
+  // carries the highlight, so direction is read off that, not presence.
+  await pageView.click()
+  await expect(pageView).toHaveAttribute('data-variant', 'primary')
+  await expect(webView).toHaveAttribute('data-variant', 'secondary')
+  await webView.click()
+  await expect(webView).toHaveAttribute('data-variant', 'primary')
+  await expect(pageView).toHaveAttribute('data-variant', 'secondary')
 })
 
 test('좁은 패널에서 목차 서랍이 열리고 닫힌다', async ({ page }) => {
@@ -143,12 +149,15 @@ test('검사 결과가 열리고 내용을 보여준다', async ({ page }) => {
   })
 })
 
-test('문서 수정이 편집기를 연다', async ({ page }) => {
+test('페이지뷰의 편집 토글이 편집기를 연다', async ({ page }) => {
   test.skip(!(await open(page, 'report')), '보고서 아티팩트가 없습니다')
   await ribbon(page, '홈')
-  const edit = page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' })
-  test.skip((await edit.count()) === 0, '이 보고서는 아직 쓰는 중입니다')
-  await edit.first().click()
+  const home = page.getByRole('toolbar', { name: '홈' })
+  const pageView = home.getByRole('button', { name: '페이지뷰' })
+  test.skip((await pageView.count()) === 0, '이 보고서는 아직 쓰는 중입니다')
+  await pageView.click()
+  const edit = home.getByRole('button', { name: '편집' })
+  if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('textarea, .ProseMirror').first()).toBeVisible({ timeout: 15_000 })
 })
 

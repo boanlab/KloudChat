@@ -808,7 +808,7 @@ test.describe('보고서 패널', () => {
     expect(await page.evaluate(async () => (await document.fonts.load('13px Pretendard', '한글')).length > 0)).toBe(true)
     expect(await page.evaluate(async () => (await document.fonts.load('13px Nanum Myeongjo', '한글')).length > 0)).toBe(true)
     for (const tab of ['홈', '삽입', '레이아웃', '검토', '보기', '파일']) await expect(webMenu.getByRole('tab', { name: tab })).toBeVisible()
-    for (const name of ['문서 수정', '페이지뷰', '편집형', '보고서 색 고르기']) {
+    for (const name of ['웹뷰', '페이지뷰', '편집형', '보고서 색 고르기']) {
       const button = panel.getByRole('button', { name }).first()
       await expect(button).toBeVisible()
       const box = await button.boundingBox()
@@ -834,7 +834,7 @@ test.describe('보고서 패널', () => {
     expect(previewBox?.width).toBeLessThanOrEqual(304)
     expect(Number(await preview.getAttribute('data-page-scale'))).toBeLessThan(0.5)
 
-    await panel.getByRole('button', { name: '내용 편집' }).click()
+    await panel.getByRole('button', { name: '편집' }).click()
     const editPage = panel.getByLabel('보고서 편집 페이지')
     await expect(editPage).toBeVisible()
     // 8px dialog gutters; the document keeps the remaining width.
@@ -874,10 +874,12 @@ test.describe('보고서 패널', () => {
     expect((recolouredReport as { data: { design: { accent: string; visualStyle: string } } }).data.design).toMatchObject({ accent: '#0f766e', visualStyle: 'editorial' })
   })
 
-  test('문서 수정은 페이지 미리보기가 아니라 내용 편집기를 바로 연다', async ({ page }) => {
+  test('페이지뷰에서 편집을 켜면 내용 편집기가 바로 열린다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    const home = panel.getByRole('toolbar', { name: '홈' })
+    await home.getByRole('button', { name: '페이지뷰' }).click()
+    await home.getByRole('button', { name: '편집' }).click()
     await expect(panel.getByLabel('보고서 편집 페이지')).toBeVisible()
     await expect(panel.getByRole('button', { name: '페이지 설정' })).toHaveCount(0)
     await panel.getByRole('tab', { name: '레이아웃' }).click()
@@ -933,7 +935,7 @@ test.describe('보고서 패널', () => {
     await signIn(page)
     const panel = await openPreview(page, title)
     await expect(panel.getByLabel('즐겨찾기')).toHaveCount(0)
-    await expect(panel.getByRole('button', { name: '문서 수정' })).toHaveCount(1)
+    await expect(panel.getByRole('button', { name: '웹뷰' })).toHaveCount(1)
     await expect(panel.getByRole('button', { name: '페이지뷰' })).toHaveCount(1)
     await panel.getByRole('tab', { name: '검토' }).click()
     await expect(panel.getByRole('button', { name: /출처 2/ })).toHaveCount(1)
@@ -950,7 +952,8 @@ test.describe('보고서 패널', () => {
   test('보고서 변경도 닫기 전에 버릴지 확인한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
     const editor = panel.locator('.ProseMirror').first()
     await editor.click()
     await page.keyboard.type('미저장 ')
@@ -972,7 +975,8 @@ test.describe('보고서 패널', () => {
   test('페이지 편집 중 다른 저장이 들어오면 덮어쓰지 않고 로컬 편집을 남긴다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
     const editor = panel.locator('.ProseMirror').first()
     await editor.click()
     await page.keyboard.type('로컬 편집 ')
@@ -1055,7 +1059,8 @@ test.describe('보고서 패널', () => {
   test('Ctrl+S로 보고서 페이지 편집을 저장한다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
     const editor = panel.locator('.ProseMirror').first()
     await editor.click()
     await page.keyboard.press('End')
@@ -1079,7 +1084,8 @@ test.describe('보고서 패널', () => {
   test('웹뷰로 넘어가면 쓰던 것이 먼저 저장된다', async ({ page }) => {
     await signIn(page)
     const panel = await openPreview(page, title)
-    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '문서 수정' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '페이지뷰' }).click()
+    await panel.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
     const editor = panel.locator('.ProseMirror').first()
     await editor.click()
     await page.keyboard.press('End')

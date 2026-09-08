@@ -50,8 +50,9 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('3. 문단을 눌러 그 자리에서 고칠 수 있다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-    // 문서 수정 edits in place; 페이지뷰 is read-only.
-    await page.getByRole('button', { name: '문서 수정' }).click()
+    // 페이지뷰 + 편집 edits in place; 페이지뷰 alone is read-only.
+    await page.getByRole('button', { name: '페이지뷰' }).click()
+    await page.getByRole('button', { name: '편집' }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const paragraph = page.locator('.ProseMirror p').first()
@@ -65,7 +66,8 @@ test.describe('보고서를 처음부터 끝까지 쓴다', () => {
   test('4. 손으로 고친 것이 저장되고 다시 열어도 남는다', async ({ page }) => {
     await signIn(page)
     await openReport(page)
-    await page.getByRole('button', { name: '문서 수정' }).click()
+    await page.getByRole('button', { name: '페이지뷰' }).click()
+    await page.getByRole('button', { name: '편집' }).click()
     await expect(sheet(page)).toBeVisible({ timeout: 30_000 })
 
     const mark = `수기수정-${Date.now()}`

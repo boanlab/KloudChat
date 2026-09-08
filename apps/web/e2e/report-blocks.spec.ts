@@ -64,11 +64,11 @@ async function seed(page: Page) {
   seeded = await openAndSeedReport(page, BODY)
 }
 
-/** Enters the in-place editor: 문서 수정, or 내용 편집 when the document opened on its pages. */
+/** Enters the in-place editor via 페이지뷰 then the 편집 toggle. */
 async function enterEdit(page: Page) {
-  const edit = page.getByRole('button', { name: '문서 수정' })
-  if (await edit.isVisible().catch(() => false)) await edit.click()
-  else await page.getByRole('button', { name: '내용 편집' }).click()
+  await page.getByRole('button', { name: '페이지뷰' }).click()
+  const edit = page.getByRole('button', { name: '편집' })
+  if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 }
 
