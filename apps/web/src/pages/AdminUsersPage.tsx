@@ -235,7 +235,10 @@ export function AdminUsersPage() {
         </div>
 
         <Card className="overflow-hidden">
-          <table className="w-full text-base">
+          {/* The scroll box sits inside the card: the card keeps `overflow-hidden` for its
+              rounded corners, and a narrow screen scrolls the row to its last button. */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-base">
             <thead className="bg-elevated text-xs tracking-wide text-faint uppercase">
               <tr>
                 <th className="px-4 py-2.5 text-left font-semibold">{t('사용자')}</th>
@@ -426,6 +429,7 @@ export function AdminUsersPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </Card>
         <ShowMore hidden={hidden} onMore={more} />
       </PageBody>
