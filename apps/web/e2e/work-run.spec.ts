@@ -329,7 +329,7 @@ async function followUp(page: Page, scenario: WorkScenario): Promise<string> {
 
   // revise
   if (documentSurface) {
-    const edit = page.getByRole('button', { name: /장 편집|절 편집|내용 편집|문서 수정/ }).first()
+    const edit = page.getByRole('button', { name: /편집|페이지뷰/ }).first()
     if (!(await edit.isVisible().catch(() => false))) return '고칠 방법이 없습니다'
     await edit.click()
     await page.waitForTimeout(1_500)

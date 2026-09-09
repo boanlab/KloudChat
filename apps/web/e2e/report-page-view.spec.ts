@@ -16,11 +16,10 @@ async function openPageView(page: import('@playwright/test').Page) {
     .click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 30_000 })
 
-  // Pressed only when not already showing: a report with a `templateId` opens in the page view.
+  // Idempotent: a report with a `templateId` may already be showing the page view.
   await page.getByRole('tab', { name: '홈', exact: true }).click()
   const home = page.getByRole('toolbar', { name: '홈' })
-  const toPageView = home.getByRole('button', { name: '페이지뷰' })
-  if (await toPageView.isVisible().catch(() => false)) await toPageView.click()
+  await home.getByRole('button', { name: '페이지뷰' }).click()
   await expect(page.getByLabel('실제 페이지 미리보기')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('.pagedjs_page').first()).toBeVisible({ timeout: 30_000 })
 }
@@ -80,7 +79,7 @@ test('종이는 패널이 좁아도 A4 폭이다', async ({ page }) => {
 
 test('쪽 나눔을 흉내 내려고 문서를 건드리지 않는다', async ({ page }) => {
   await openPageView(page)
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '내용 편집' }).click()
+  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
   await expect(page.locator('.ProseMirror').first()).toBeVisible()
 
   // Nothing writes layout onto ProseMirror's own nodes.
