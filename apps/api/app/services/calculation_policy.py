@@ -16,7 +16,8 @@ _MAX_REQUEST_CHARS = 16_384
 _MAX_EXPRESSION_CHARS = 1_024
 _NUMBER = re.compile(r"(?<![\w.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)", re.ASCII)
 _FENCE = re.compile(r"```[\s\S]*?(?:```|\Z)")
-_QUOTE = re.compile(r""""[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’""")
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
+_QUOTE_ENDS = frozenset(_QUOTE_PAIRS.values())
 _CLAUSE = re.compile(
     r"\n|[;!?]+|\.(?!\d)|\b(?:then|also|and)\b|그리고|또한|그다음|(?<=[고며]),?\s+",
     re.IGNORECASE,
@@ -34,7 +35,7 @@ _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|genera
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
 _DECLINE = re.compile(
     r"(?:계산|검산)(?:을)?\s*하지\s*(?:마|말)|"
-    r"\b(?:do\s+not|don't|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
+    r"\b(?:do\s+not|don['’]t|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
     re.IGNORECASE,
 )
 _MISSING = re.compile(
@@ -107,6 +108,40 @@ _DIRECT_NO_FILE = re.compile(
     r"(?:files?|artifacts?|documents?)|no\s+(?:files?|artifacts?|documents?))",
     re.IGNORECASE,
 )
+
+
+def _mask_quoted_intent(text: str) -> str:
+    # Cache each opener's first closing quote in one reverse pass. Apostrophes
+    # inside English words are not delimiters; Korean suffixes can follow quotes.
+    ends: list[int | None] = [None] * len(text)
+    next_closing: dict[str, int] = {}
+    for index in range(len(text) - 1, -1, -1):
+        character = text[index]
+        if character == "\n":
+            next_closing.clear()
+            continue
+        before = text[index - 1] if index else ""
+        after = text[index + 1] if index + 1 < len(text) else ""
+        latin_before = before.isascii() and before.isalpha()
+        latin_after = after.isascii() and after.isalpha()
+        closing = _QUOTE_PAIRS.get(character)
+        if closing is not None and not (character == "'" and latin_before):
+            ends[index] = next_closing.get(closing)
+        if character in _QUOTE_ENDS and not (
+            character in {"'", "’"} and latin_before and latin_after
+        ):
+            next_closing[character] = index
+
+    intent = list(text)
+    index = 0
+    while index < len(text):
+        end = ends[index]
+        if end is None:
+            index += 1
+            continue
+        intent[index : end + 1] = " " * (end + 1 - index)
+        index = end + 1
+    return "".join(intent)
 
 
 def _has_numeric_arithmetic_action(text: str) -> bool:
@@ -255,7 +290,7 @@ def requires_calculation(request: str) -> bool:
         return True
 
     # Quotes can supply numbers, but their embedded commands cannot establish intent.
-    intent = _QUOTE.sub(lambda match: " " * len(match.group()), text)
+    intent = _mask_quoted_intent(text)
     clauses: list[tuple[str, str, str]] = []
     start = 0
     previous_delimiter = ""
