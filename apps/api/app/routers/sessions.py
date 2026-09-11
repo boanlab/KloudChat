@@ -2442,6 +2442,7 @@ async def send_message(
                 questions=questions,
             )
 
+    protected_values: frozenset[str] = frozenset()
     if session.kind is SessionKind.chat:
         privacy_sources = _privacy_sources(content, history, workspace.blocks)
         if requested_tools:
@@ -2492,6 +2493,13 @@ async def send_message(
         if requested_model.get("supportsTools") and model.get("supportsTools"):
             tools = strict_tools if strict_local else candidate_tools
         masker = governance.mask_legacy if policy.pii_masking else governance.mask
+        # What egress masking takes out of the user's own words and earlier turns;
+        # the answer at rest masks exactly these (and secrets), nothing public.
+        protected_values = frozenset(
+            value
+            for text in (content, *outbound_history)
+            for value in governance.protected_values(text, legacy=policy.pii_masking)
+        )
         if resolved.findings:
             # Findings are stored masked whatever the action.
             stored_content = masker(content)[0]
@@ -2971,6 +2979,7 @@ async def send_message(
                 disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
                 # Model output can introduce new findings, so it is masked at rest too.
                 mask_at_rest=policy.pii_masking or policy.external_data_guard,
+                protected_values=protected_values,
                 sanitize_tool_output=bool(
                     policy.pii_masking
                     or (
@@ -3202,6 +3211,9 @@ async def _run_turn(
     preflight_tool: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: Values masked out of the user's own words this turn; the answer at rest
+    #: masks these and secrets, and leaves public contact details readable.
+    protected_values: frozenset[str] = frozenset(),
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -3250,8 +3262,14 @@ async def _run_turn(
             for row in governance.findings(
                 {"tool_output": value},
                 legacy=legacy_masking,
+                scope="tool",
             )
         ]
+
+    def mask_tool_output(value: str) -> tuple[str, int]:
+        # A page from the public web: a switchboard or a press mailbox is the
+        # answer, not a leak. Only secrets come out.
+        return masker(value, scope="tool")
 
     if routing:
         # First event, so the model badge updates before any token.
@@ -3271,8 +3289,8 @@ async def _run_turn(
                 ctx,
                 tool_definitions=tool_definitions,
                 temperature=temperature,
-                sanitize_tool_output=(masker if sanitize_tool_output else None),
-                sanitize_step_detail=masker if protect_enrichment else None,
+                sanitize_tool_output=(mask_tool_output if sanitize_tool_output else None),
+                sanitize_step_detail=mask_tool_output if protect_enrichment else None,
                 classify_tool_output=classify_tool_output if protect_enrichment else None,
                 strict_local=strict_local,
                 disable_fallbacks=disable_fallbacks,
@@ -3373,11 +3391,20 @@ async def _run_turn(
             "outputTokens": file_service.estimate_tokens(content),
             "estimated": True,
         }
-    stored_content = masker(content)[0] if mask_at_rest or tool_output_findings else content
+    stored_content = (
+        masker(content, scope="answer", protected=set(protected_values))[0]
+        if mask_at_rest or tool_output_findings
+        else content
+    )
     protect_persistence = mask_at_rest or bool(tool_output_findings)
     # Tell the browser what was masked; it holds the streamed original.
     answer_findings = (
-        governance.findings({"assistant_output": content}, legacy=legacy_masking)
+        governance.findings(
+            {"assistant_output": content},
+            legacy=legacy_masking,
+            scope="answer",
+            protected=set(protected_values),
+        )
         if stored_content != content
         else []
     )
@@ -3390,8 +3417,14 @@ async def _run_turn(
             ],
         }
         yield chat_service.sse({"type": "privacy_route", **routing})
-    stored_steps = _mask_text_tree(steps, masker) if protect_persistence else steps
-    stored_actual_model = masker(actual_model)[0] if protect_persistence else actual_model
+
+    # Everything persisted from this turn is masked the way the answer is: the
+    # user's own details and secrets out, public contact details readable.
+    def at_rest(value: str) -> tuple[str, int]:
+        return masker(value, scope="answer", protected=set(protected_values))
+
+    stored_steps = _mask_text_tree(steps, at_rest) if protect_persistence else steps
+    stored_actual_model = at_rest(actual_model)[0] if protect_persistence else actual_model
     credits = (
         0 if not content else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
@@ -3405,7 +3438,7 @@ async def _run_turn(
             )
             cost_routing["estimatedCreditsSaved"] = max(0, quality_credits - credits)
         routing = {**(routing or {}), "costRouting": cost_routing}
-    stored_routing = _mask_text_tree(routing, masker) if protect_persistence else routing
+    stored_routing = _mask_text_tree(routing, at_rest) if protect_persistence else routing
 
     # Stored and announced before the title call and the message transaction
     # below, both of which are free of this turn's artifact — so the panel
@@ -3699,6 +3732,7 @@ async def compare_models(
 
     masker = governance.mask_legacy if policy.pii_masking else governance.mask
     stored_content = masker(content)[0] if resolved.findings else content
+    protected_values = frozenset(governance.protected_values(content, legacy=policy.pii_masking))
     if resolved.findings and attachment_meta:
         attachment_meta = [
             {
@@ -3787,6 +3821,7 @@ async def compare_models(
                 context_steps=_context_steps(workspace),
                 routing=resolved.routing,
                 mask_at_rest=policy.pii_masking or policy.external_data_guard,
+                protected_values=protected_values,
                 legacy_masking=policy.pii_masking,
                 privacy_audit_id=privacy_audit_id,
             ),

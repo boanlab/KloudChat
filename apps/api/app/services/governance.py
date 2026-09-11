@@ -132,7 +132,92 @@ _LABELS = {
     "api_key": "[API키]",
     "jwt": "[JWT]",
     "private_key": "[개인키]",
+    # Organisational, not personal: a switchboard, a role mailbox, a private-range
+    # address. Detected so the scopes below can leave them readable.
+    "landline": "[전화번호]",
+    "role_email": "[이메일]",
+    "private_ip": "[IP주소]",
 }
+
+#: Details that identify a person. Masked before leaving for an external model.
+PERSONAL = frozenset({"email", "phone", "government_id", "payment_card", "ip_address"})
+#: Details whose mere exposure is an incident, wherever they turn up.
+SECRETS = frozenset({"government_id", "payment_card", "api_key", "jwt", "private_key"})
+#: Details of an organisation or a network range; never masked.
+ORGANISATIONAL = frozenset({"landline", "role_email", "private_ip"})
+
+#: What each place in the pipeline masks. `egress`: the user's own words and
+#: files on their way to an external model. `tool`: pages fetched from the
+#: public web — a company's switchboard is the answer, not a leak. `answer`:
+#: the model's reply at rest, where only the user's own details and secrets
+#: are taken out (see `mask(protected=...)`).
+SCOPES: dict[str, frozenset[str]] = {
+    "egress": PERSONAL | SECRETS,
+    "tool": SECRETS,
+    "answer": SECRETS,
+}
+
+#: Service and toll-free numbers: 15xx/16xx/18xx-xxxx and 080.
+_KR_SERVICE = re.compile(r"(?<!\d)(?:1[568]\d{2}[- ]?\d{4}|080[- ]\d{3,4}[- ]\d{4})(?!\d)")
+#: A mailbox that belongs to a desk, not a person.
+_ROLE_MAILBOXES = frozenset(
+    {
+        "info",
+        "contact",
+        "press",
+        "pr",
+        "support",
+        "help",
+        "helpdesk",
+        "service",
+        "cs",
+        "customer",
+        "sales",
+        "biz",
+        "business",
+        "partner",
+        "partners",
+        "marketing",
+        "admin",
+        "administrator",
+        "webmaster",
+        "postmaster",
+        "hostmaster",
+        "master",
+        "office",
+        "hello",
+        "hr",
+        "recruit",
+        "recruiting",
+        "jobs",
+        "career",
+        "careers",
+        "noreply",
+        "no-reply",
+        "no_reply",
+        "donotreply",
+        "newsletter",
+        "news",
+        "minwon",
+        "team",
+        "staff",
+        "billing",
+        "account",
+        "accounts",
+        "security",
+        "abuse",
+        "legal",
+        "privacy",
+        "media",
+        "ir",
+        "inquiry",
+        "inquiries",
+        "enquiry",
+        "enquiries",
+    }
+)
+#: Well-known public resolvers that appear in every network how-to.
+_WELL_KNOWN_IPS = frozenset({"8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1", "9.9.9.9"})
 
 
 def _digits(value: str) -> str:
@@ -288,6 +373,25 @@ def _legacy_email_spans(text: str) -> Iterator[tuple[int, int]]:
         at = text.find("@", at + 1)
 
 
+def _is_role_mailbox(address: str) -> bool:
+    local = address.split("@", 1)[0].lower()
+    return local in _ROLE_MAILBOXES or local.startswith(("noreply", "no-reply", "info@"))
+
+
+def _is_non_personal_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Loopback, private, link-local, documentation and reserved ranges, and the
+    resolvers every how-to mentions: an address, not a person's location."""
+    return (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+        or str(address) in _WELL_KNOWN_IPS
+    )
+
+
 def _detections(text: str) -> list[_Detection]:
     candidates: list[_Detection] = []
 
@@ -295,11 +399,14 @@ def _detections(text: str) -> list[_Detection]:
         candidates.append(_Detection(category, _LABELS[category], match.start(), match.end()))
 
     for start, end in _email_spans(text):
-        candidates.append(_Detection("email", _LABELS["email"], start, end))
+        category = "role_email" if _is_role_mailbox(text[start:end]) else "email"
+        candidates.append(_Detection(category, _LABELS[category], start, end))
     for match in _KR_MOBILE.finditer(text):
         add("phone", match)
     for match in _KR_LANDLINE.finditer(text):
-        add("phone", match)
+        add("landline", match)
+    for match in _KR_SERVICE.finditer(text):
+        add("landline", match)
     for match in _NANP.finditer(text):
         add("phone", match)
     for match in _INTERNATIONAL_PHONE.finditer(text):
@@ -313,16 +420,16 @@ def _detections(text: str) -> list[_Detection]:
             add("payment_card", match)
     for match in _IPV4.finditer(text):
         try:
-            ipaddress.IPv4Address(match.group())
+            address = ipaddress.IPv4Address(match.group())
         except ipaddress.AddressValueError:
             continue
-        add("ip_address", match)
+        add("private_ip" if _is_non_personal_address(address) else "ip_address", match)
     for match in _IPV6.finditer(text):
         try:
-            ipaddress.IPv6Address(match.group())
+            address = ipaddress.IPv6Address(match.group())
         except ipaddress.AddressValueError:
             continue
-        add("ip_address", match)
+        add("private_ip" if _is_non_personal_address(address) else "ip_address", match)
     for category, pattern in _SECRETS:
         for match in pattern.finditer(text):
             add(category, match)
@@ -340,8 +447,8 @@ def _detections(text: str) -> list[_Detection]:
 
 
 async def current(force: bool = False) -> Governance:
-    """Cached policy snapshot for non-authorizing work; egress decisions use `current_for_egress`.
-    """
+    """Cached policy snapshot for non-authorizing work; egress decisions use
+    `current_for_egress`."""
     now = time.monotonic()
     if not force and _cache["value"] is not None and now - _cache["at"] < _TTL:
         return _cache["value"]
@@ -390,10 +497,34 @@ def invalidate() -> None:
     _cache.update(at=0.0, value=None)
 
 
-def mask(text: str) -> tuple[str, int]:
-    """`(masked text, hit count)`."""
-    hits = _detections(text)
+def _in_scope(
+    hits: list[_Detection], text: str, scope: str, protected: frozenset[str] | set[str]
+) -> list[_Detection]:
+    """The hits `scope` masks: its categories, plus any span whose value the user
+    had masked on the way out (`protected`), so it does not resurface at rest."""
+    wanted = SCOPES[scope]
+    return [
+        hit
+        for hit in hits
+        if hit.category in wanted or (protected and text[hit.start : hit.end] in protected)
+    ]
+
+
+def mask(text: str, *, scope: str = "egress", protected: set[str] | None = None) -> tuple[str, int]:
+    """`(masked text, hit count)` for `scope` — see `SCOPES`."""
+    hits = _in_scope(_detections(text), text, scope, protected or frozenset())
     return _render_masked(text, hits), len(hits)
+
+
+def protected_values(text: str, *, legacy: bool = False) -> set[str]:
+    """The raw spans `egress` masking takes out of `text` — carried to the
+    answer's at-rest masking so the user's own details never come back."""
+    detector = _legacy_detections if legacy else _detections
+    return {
+        text[hit.start : hit.end]
+        for hit in detector(text or "")
+        if hit.category in SCOPES["egress"]
+    }
 
 
 def _render_masked(text: str, hits: list[_Detection]) -> str:
@@ -430,20 +561,32 @@ def _legacy_detections(text: str) -> list[_Detection]:
     return accepted
 
 
-def mask_legacy(text: str) -> tuple[str, int]:
+def mask_legacy(
+    text: str, *, scope: str = "egress", protected: set[str] | None = None
+) -> tuple[str, int]:
     """Mask with the broader legacy patterns; used when `pii_masking` is on."""
-    hits = _legacy_detections(text)
+    hits = _in_scope(_legacy_detections(text), text, scope, protected or frozenset())
     return _render_masked(text, hits), len(hits)
 
 
-def findings(sources: dict[str, str | list[str]], *, legacy: bool = False) -> list[Finding]:
-    """Scans source-labelled text and aggregates without retaining values."""
+def findings(
+    sources: dict[str, str | list[str]],
+    *,
+    legacy: bool = False,
+    scope: str = "egress",
+    protected: set[str] | None = None,
+) -> list[Finding]:
+    """Scans source-labelled text and aggregates without retaining values.
+    Only what `scope` would mask counts, so a page that names a switchboard
+    is not a finding."""
     counts: dict[tuple[str, str], int] = {}
     for source, raw in sources.items():
         values = raw if isinstance(raw, list) else [raw]
         for value in values:
             detector = _legacy_detections if legacy else _detections
-            for hit in detector(value or ""):
+            for hit in _in_scope(
+                detector(value or ""), value or "", scope, protected or frozenset()
+            ):
                 key = (hit.category, source)
                 counts[key] = counts.get(key, 0) + 1
     return [

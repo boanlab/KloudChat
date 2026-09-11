@@ -891,6 +891,23 @@ artifact payloads and routing metadata) is deterministically masked even when
 the inbound envelope was clean. Title generation and automatic memory receive
 only the masked turn text.
 
+**Masking is scoped by where the text is going.** The detector tells a
+person's details (a mobile number, a personal mailbox, a routable address, an
+ID or card number) from an organisation's (a switchboard or 15xx service
+number, a role mailbox such as press@ or minwon@, a private-range, loopback or
+documentation address, a well-known resolver) and from secrets (API keys,
+tokens, private keys, and the ID and card numbers again). `governance.SCOPES`
+says what each place masks: `egress` — the user's own words and files on
+their way to an external model — takes out personal details and secrets;
+`tool` — pages fetched from the public web — takes out secrets only, because
+a company's contact number is the answer, not a leak; `answer` — the reply,
+steps and routing persisted at rest — takes out secrets plus exactly the
+values egress removed from the user's words this turn (`protected_values`),
+so nothing the user gave comes back from storage while a number the model
+found on the web stays readable. Organisation details are never masked and
+never count as findings, so a page that names a switchboard does not trigger
+the privacy dialog.
+
 The selectable guard covers chat and model comparison. Reports, slides, media
 generation and the `/llm` compatibility API always mask and present no
 decision flow.
