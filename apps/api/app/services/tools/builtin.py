@@ -72,7 +72,7 @@ def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
             fits = _overlap(row, lane_terms) * 2 >= len(lane_terms)
             # The kind's lane and a lane the person asked for (official) lead;
             # the English lane, a supplement, gets a single step.
-            boosted = head_start if row.get("lane") in ("kind", "official") else 1
+            boosted = head_start if row.get("lane") in ("kind", "official", "naver") else 1
         else:
             fits = boosted = False
         # A community thread answers, but a page that is not one ranks first;
@@ -340,6 +340,65 @@ def _english_query(query: str) -> str:
     return " ".join([*tokens, *extras[:2]])
 
 
+#: Naver 검색 API: the Korean web as Korean users see it — blogs, 지식iN, news
+#: — from the source rather than through another engine's index. Credentials
+#: come from the settings; without them the lane is simply not run.
+_NAVER_URL = "https://openapi.naver.com/v1/search/{kind}.json"
+
+
+def _naver_headers() -> dict[str, str]:
+    return {
+        "X-Naver-Client-Id": settings.naver_client_id,
+        "X-Naver-Client-Secret": settings.naver_client_secret,
+    }
+
+
+def _naver_requests(
+    query: str, *, fresh: bool, kind: str, hints: dict[str, Any]
+) -> list[tuple[str, dict[str, Any]]]:
+    """The Naver calls for this search: web documents for every Korean query,
+    news too when it is fresh. Nothing for an English-language or a papers
+    search, and nothing without credentials."""
+    if not (settings.naver_client_id and settings.naver_client_secret):
+        return []
+    if kind == "papers" or hints.get("language") == "en" or not re.search(r"[가-힣]", query):
+        return []
+    q = _core_query(query) if hints.get("official") else query
+    wanted = ["webkr"]
+    if fresh or kind == "news":
+        wanted.insert(0, "news")
+    return [
+        (
+            _NAVER_URL.format(kind=name),
+            {"query": q, "display": 10, "sort": "date" if name == "news" else "sim"},
+        )
+        for name in wanted
+    ]
+
+
+def _naver_rows(payload: dict[str, Any], url: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for item in payload.get("items") or []:
+        link = item.get("originallink") or item.get("link") or ""
+        published = ""
+        if item.get("pubDate"):
+            try:
+                from email.utils import parsedate_to_datetime
+
+                published = parsedate_to_datetime(item["pubDate"]).date().isoformat()
+            except (TypeError, ValueError):
+                published = ""
+        rows.append(
+            {
+                "title": unescape(re.sub(r"</?b>", "", item.get("title") or "")),
+                "url": link,
+                "snippet": unescape(re.sub(r"</?b>", "", item.get("description") or "")),
+                "published": published,
+            }
+        )
+    return rows
+
+
 #: A question about a paper, whatever the model called the search.
 _PAPER_CUES = re.compile(r"논문|arxiv|\bdoi\b|preprint|학술지|저널|\bpaper\b", re.I)
 
@@ -397,10 +456,15 @@ async def _searxng(
             lane_requests.append(("english", {**base, "q": english, "language": "en"}))
     if hints.get("official") and not site:
         lane_requests.append(("official", {**base, "q": f"{_core_query(query)} site:go.kr"}))
+    naver_requests = _naver_requests(query, fresh=fresh, kind=kind, hints=hints)
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
         responses = await asyncio.gather(
             client.get(search_url, params=base),
             *(client.get(search_url, params=params) for _, params in lane_requests),
+            *(
+                client.get(url, params=params, headers=_naver_headers())
+                for url, params in naver_requests
+            ),
             return_exceptions=True,
         )
     general = responses[0]
@@ -408,6 +472,8 @@ async def _searxng(
         raise general
     general.raise_for_status()
     hits: list[dict[str, str]] = []
+    naver_responses = responses[1 + len(lane_requests) :]
+    responses = responses[: 1 + len(lane_requests)]
 
     def collect(payload: dict[str, Any], *, lane: str = "", lane_query: str = "") -> None:
         # Over-fetch, then keep the best `count` after `_select`.
@@ -426,6 +492,10 @@ async def _searxng(
         if not isinstance(laned, BaseException) and laned.status_code < 400:
             collect(laned.json(), lane=tag, lane_query=str(params["q"]))
     collect(general.json())
+    for (url, params), answered in zip(naver_requests, naver_responses, strict=True):
+        if not isinstance(answered, BaseException) and answered.status_code < 400:
+            for row in _naver_rows(answered.json(), url)[: count * 2]:
+                hits.append({**row, "lane": "naver", "lane_query": str(params["query"])})
     terms = _terms(query)
     # A `site:` lane answers with whatever the domain has; a hit sharing no
     # word with the question is that, not an answer.

@@ -119,6 +119,10 @@ class Settings(BaseSettings):
     # Bootstrap values; the admin screen overrides. An empty address drops that
     # tool from the tool list.
     searxng_url: str = ""
+    #: Naver Open API (검색 API) credentials; empty leaves that lane out. The
+    #: free quota is 25,000 calls a day per application.
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
     #: Firecrawl-compatible shim in front of Crawl4AI.
     scraper_url: str = ""
     #: Replaced by the gateway's internal key when routed through it. Needed
