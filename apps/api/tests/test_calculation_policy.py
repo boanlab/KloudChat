@@ -1,0 +1,128 @@
+"""Request cues are a bounded gate policy, not a mathematical intent classifier."""
+
+import pytest
+
+from app.services.calculation_policy import requires_calculation
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "48/6",
+        "(17 + 23) * 6 / 4",
+        "-7 + 2.5",
+        "0.1 + 0.2 = ?",
+        "17 × 23은 얼마야?",
+        "What is 144 / 12?",
+        "Calculate (17 + 23) / 5.",
+        "12 + 3 = 20이 맞는지 검산해 줘.",
+        "13명 평균 62점, 7명 평균 94점이다. 전체 평균을 구해 줘.",
+        "A팀 9명의 평균은 66점이고 B팀 6명은 평균 81점이다. 가중평균은?",
+        "A team has 9 people averaging 66 and B has 6 averaging 81. Find the weighted mean.",
+        "매출이 84에서 105로 증가했다. 증가율을 계산해 줘.",
+        "120에서 90으로 줄었다. 감소율은 얼마야?",
+        "Revenue grew from 48 to 63. What is the percentage increase?",
+        "What is 15% of 240?",
+        "240의 15%는 얼마인가?",
+        "3900원짜리 7개의 총액을 알려 줘.",
+        "1200원과 3400원의 합계는?",
+        "Find the total of 14, 27, and 39.",
+        "How much is 19 times 17?",
+        "21에 7을 곱하면 얼마야?",
+        "35를 7로 나누면 얼마야?",
+        "2.5km를 m로 변환해 줘.",
+        "Convert 2500 m to km.",
+        "시속 72km를 m/s로 환산해 줘.",
+        "3시간을 분으로 환산해 줘.",
+        "0.125를 백분율로 변환해 줘.",
+        "12.5%를 소수로 바꿔 줘.",
+        '"12 + 3"을 계산해 줘.',
+        'Translate "hello" into Korean. Then calculate 19 * 17.',
+        "Translate this: Calculate 1 + 2. Then calculate 19 * 17.",
+        '"평균"을 영어로 번역하고, 12와 18의 평균도 계산해 줘.',
+        "계산기 UI를 만들어 줘. 그리고 12 + 3의 결과도 계산해 줘.",
+        "Write a Python function. Also calculate 12 + 3 separately.",
+        "12 + 3을 계산하고 그 결과를 영어로 번역해 줘.",
+        "코드라는 단어가 무슨 뜻인지 설명하고, 3개 1200원의 합계도 구해 줘.",
+        "5와 9를 더해 줘.",
+        "Subtract 12 from 35.",
+        "Multiply 6 by 17.",
+        "Divide 56 by 7.",
+        "１２ ＋ ３",
+        "12 ÷ 3",
+        "2.5㎞를 m로 환산해 줘.",
+        "표의 인원은 모릅니다. 그리고 17*23은 얼마야?",
+        "The table's population is missing. Also calculate 17 * 23.",
+        "이 문장을 설명해 줘. 17 * 23",
+    ],
+)
+def test_supplied_arithmetic_requests_require_a_calculation(question):
+    assert requires_calculation(question) is True
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "",
+        "   ",
+        "안녕하세요",
+        "현재 대한민국 대통령은 누구야?",
+        "2026-09-12",
+        "2026/09/12",
+        "2026-09",
+        "Python 3.11과 3.12의 차이를 알려 줘.",
+        "Tell me the differences between Python 3.11 and 3.12.",
+        "회의는 9월 12일 14시에 시작해. 기억해 줘.",
+        "NCS 의사소통 지문의 주제를 찾아 줘.",
+        "NCS 문제해결: A가 B보다 앞이고 C는 마지막이다. 가능한 순서는?",
+        "평균과 중앙값의 차이를 2줄로 설명해 줘.",
+        "가중평균의 원리를 설명해 줘.",
+        "평균 70점인 팀과 다른 팀의 전체 평균을 계산해 줘.",
+        "12명 평균 70점이고 다른 팀의 인원 정보는 없다. 전체 평균을 구해 줘.",
+        "12명 평균 70점이고 다른 팀의 인원 정보는 없다. 전체 평균은?",
+        "The mean is 70 for 12 people, but the other group's size is missing. "
+        "Calculate the overall mean.",
+        "첨부된 표의 합계를 구해 줘.",
+        "그럼 증가율은?",
+        "한 번 더 검산해 줘.",
+        'Translate "Calculate 12 + 3" into Korean.',
+        '다음 문장을 번역해 줘: "12 + 3을 계산해 주세요."',
+        "다음 문장을 번역해 줘:\nCalculate 12 + 3.",
+        "Translate this:\n12 + 3을 계산해 주세요.",
+        '"17 * 23 = 391"을 그대로 출력해 줘.',
+        "12+3을 영어 문장으로 번역해 줘.",
+        "Translate 12+3 into English.",
+        "가중평균 계산기를 HTML로 만들어 줘. 입력값은 12와 70이야.",
+        "Build a calculator UI that computes 12 + 3.",
+        "Write Python code to calculate the mean of 12 and 18.",
+        "12와 18의 평균을 계산하는 파이썬 함수를 작성해 줘.",
+        "function add(a, b) { return a + b; }",
+        "function calculate() { return 12 + 3; }",
+        "function add(a, b) { return 12 + 3; }",
+        "```python\nprint(12 + 3)\n```\n이 코드의 스타일을 설명해 줘.",
+        "```calculate 12 + 3```",
+        "표에 나온 12와 18의 서식을 바꿔 줘.",
+        "숫자 12와 18을 쉼표로 연결해 줘.",
+        "2**64",
+        "12//5",
+        "12%5",
+        "sum([12, 18])",
+        "x + y",
+        "2 +",
+        "Convert 100 USD to KRW.",
+        "100달러를 원화로 환산해 줘.",
+        "12 + 3을 계산하지 말고 그대로 설명해 줘.",
+        "Do not calculate 12 + 3.",
+        "가중평균 3문항과 증가율 2문항을 만들어 줘.",
+        "Create 3 average questions and 2 percentage questions.",
+        "12 + 3" * 4096,
+    ],
+)
+def test_unrelated_underspecified_or_unsupported_requests_do_not_force_calculation(question):
+    assert requires_calculation(question) is False
+
+
+@pytest.mark.parametrize("left,right", [(3, 7), (19, 41), (123, 987), (240, 15)])
+def test_the_policy_does_not_depend_on_a_known_question_answer(left, right):
+    assert requires_calculation(f"{left} * {right}")
+    assert requires_calculation(f"{left}에서 {right}로 바뀌었다. 변화율을 계산해 줘.")
