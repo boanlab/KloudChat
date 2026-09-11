@@ -206,3 +206,69 @@ async def test_approved_search_uses_already_masked_original_question(monkeypatch
     assert sensitive not in json.dumps(captured["messages"])
     assert [row["content"] for row in captured["messages"] if row["role"] == "user"][-1] == text
     assert len([row for row in db.added if isinstance(row, Message)]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("toggle", [False, "auto"])
+@pytest.mark.parametrize("repeated", [False, True])
+@pytest.mark.parametrize("original", [
+    "웹 검색하지 말고 현재 대한민국 대통령 알려줘",
+    "Do not search the web. Who is the current president of Korea?",
+])
+async def test_linked_question_search_optout_survives_implicit_nudge(
+    monkeypatch, toggle, repeated, original,
+):
+    def history_for(session):
+        return _pair(session, original) + (
+            _pair(session, "그럼 이름만 알려줘") if repeated else []
+        )
+
+    user, session, _ = await _setup(monkeypatch, history_for)
+    _forbid_side_effects(monkeypatch)
+    db = _NoWriteDb()
+    response = await sessions.send_message(
+        session.id, SendMessage(content="그럼 이름만 알려줘", web_search=toggle),
+        _request(), user, db,
+    )
+    events = await _events(response)
+    assert events[0]["answerOrigin"] == "server_policy"
+    assert events[0]["freshness"]["status"] == "unverified"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("toggle,text", [
+    (True, "그럼 이름만 알려줘"),
+    ("auto", "그럼 검색해서 이름만 알려줘"),
+    (False, "그럼 검색해서 이름만 알려줘"),
+])
+async def test_explicit_new_permission_can_replace_the_linked_optout(monkeypatch, toggle, text):
+    user, session, _ = await _setup(
+        monkeypatch, lambda current: _pair(current, "웹 검색하지 말고 " + QUESTION),
+    )
+    captured = {}
+
+    class Db(_NoWriteDb):
+        def is_modified(self, _row):
+            return False
+
+    async def run(**kwargs):
+        captured.update(kwargs)
+        yield sessions.chat_service.sse({"type": "done"})
+
+    async def key(*_args):
+        return None
+
+    async def credentials(*_args):
+        return "synthetic-origin", "synthetic-noncredential"
+
+    monkeypatch.setattr(sessions, "_run_turn", run)
+    monkeypatch.setattr(sessions, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions.litellm_service, "ensure_key", key)
+    monkeypatch.setattr(sessions.litellm_service, "credentials_for", credentials)
+    response = await sessions.send_message(
+        session.id, SendMessage(content=text, web_search=toggle), _request(), user, Db(),
+    )
+    await _events(response)
+    assert captured["freshness_request"] == text
+    assert captured["preset_call"][0] == "web_search"
+    assert "대한민국 대통령" in captured["preset_call"][1]["query"]

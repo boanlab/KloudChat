@@ -110,6 +110,8 @@ from app.services import page as page_service
 from app.services import report as report_service
 from app.services.context import (
     build_messages,
+    declines_web_search,
+    requests_web_search,
     search_hints,
     search_plan,
     search_query,
@@ -2478,6 +2480,14 @@ async def send_message(
         _freshness_followup_index(history, session.id, content)
         if session.kind is SessionKind.chat and not payload.attachments else None
     )
+    if (
+        fresh_followup_index is not None
+        and declines_web_search(history[fresh_followup_index].content)
+        and payload.web_search is not True
+        and not requests_web_search(content)
+    ):
+        # Auto is not renewed consent for the same explicitly offline question.
+        effective_web_search, forced_tool = False, None
     fresh_fact = freshness.fresh_fact_required(content) or fresh_followup_index is not None
     if fresh_fact and effective_web_search:
         # The request is for a current fact, not for the model to decide whether
