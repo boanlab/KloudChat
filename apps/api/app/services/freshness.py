@@ -1,0 +1,154 @@
+"""A narrow current-political-fact gate, independent of model or search settings.
+
+Detects direct officeholder questions and explicitly current political developments
+in Korean/English. This is not a general hallucination detector: other domains,
+implicit follow-ups, and every natural-language paraphrase are outside its contract.
+It neither checks sources nor treats a supplied document as verified current evidence.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+
+FRESHNESS_INSTRUCTION = (
+    "The system date does not prove that your knowledge is current. Never invent a training "
+    "cutoff. For current officeholders and political developments, distinguish verified "
+    "current evidence from memory, historical facts, fictional settings, and supplied text. "
+    "Without current evidence, state that you cannot verify the present fact; do not guess."
+)
+
+_LIVE = re.compile(
+    r"현재|지금|현직|요즘|오늘|최근|최신|이번|현\s*(?:대통령|총리|정부)|"
+    r"\b(?:current(?:ly)?|now|today|latest|recent|incumbent|present)\b",
+    re.I,
+)
+_OFFICE = re.compile(
+    r"대통령(?!제)|국무총리|총리|국회의장|(?:서울|부산|인천|대구|대전|광주|울산)\s*시장|"
+    r"\b(?:president|prime\s+minister|mayor|governor)\b",
+    re.I,
+)
+_IDENTITY = re.compile(r"누구|성명|이름|\b(?:who|name|identity)\b", re.I)
+_ASK = re.compile(
+    r"알려|말해|어때|어떤|어디|무슨|인가|입니까|이야|정리|설명|결과|"
+    r"\b(?:what|which|is|are|tell|describe|explain|summarize)\b",
+    re.I,
+)
+_POLITICS = re.compile(
+    r"정치\s*(?:상황|현황|동향|소식)|정국|여당|야당|정권|내각|탄핵|대선|총선|국회|"
+    r"선거\s*(?:결과|상황)|\b(?:political\s+(?:situation|developments|news)|"
+    r"ruling\s+party|opposition\s+party|presidential\s+election|election\s+results|"
+    r"parliament|cabinet|impeachment)\b",
+    re.I,
+)
+_HISTORICAL = re.compile(
+    r"당시|과거|전직|역대|초대|제\s*\d+\s*대|누구였|이었|였어|"
+    r"(?:1\d{3}|20\d{2})\s*년|\b(?:was|were|former|previous|historical|"
+    r"in\s+(?:the\s+year\s+)?(?:1\d{3}|20\d{2}))\b",
+    re.I,
+)
+_ROLE = re.compile(
+    r"권한|의무|역할|직무|제도|장단점|\b(?:powers|duties|role|responsibilities)\b",
+    re.I,
+)
+_ELIGIBILITY = re.compile(r"\bwho\s+can\s+(?:become|be)\s+(?:a\s+)?president\b", re.I)
+_FICTION = re.compile(
+    r"소설\s*속\s*(?:현직\s*)?(?:대통령|총리)|가상\s*(?:국가|나라|세계)|"
+    r"(?:대통령|총리)(?:은|는|이|가)?\s*가상\s*인물|허구의\s*(?:대통령|총리)|"
+    r"\b(?:fictional\s+(?:current\s+)?(?:country|president|leader)|in\s+my\s+novel)\b",
+    re.I,
+)
+_CREATIVE = re.compile(r"만들|설정|써|가정|\b(?:imagine|write|invent|fictional)\b", re.I)
+_REAL = re.compile(
+    r"실제로|실제\s*(?:현재|지금|대한민국|한국)|\b(?:actually|real[- ]world)\b", re.I
+)
+_QUOTED = re.compile(r"\"[^\"]*\"|'[^'\n]*'|“[^”]*”|‘[^’]*’|「[^」]*」", re.S)
+# Only a bounded quoted source is removed, never the rest of a mixed request.
+_TRANSFORM_BEFORE = re.compile(
+    r"(?:\btranslate|\bsummarize(?:\s+only)?(?:\s+this\s+supplied\s+text)?|"
+    r"다음\s*(?:문장|자료|글)(?:만|을|를)?\s*(?:번역|요약)해\s*줘)\s*:?\s*$",
+    re.I,
+)
+_TRANSFORM_AFTER = re.compile(
+    r"^\s*(?:(?:라는|이라는)\s*문장(?:의|을)|[을를])\s*"
+    r"(?:(?:한국어|영어|한글|영문)(?:로)?\s*)?(?:번역|요약|문법)",
+    re.I,
+)
+_CLAUSE = re.compile(
+    r"[.!?;\n]|\b(?:and|but|also)\b|그리고|하지만|그런데|(?:와|과)\s+|"
+    r"고\s+(?=현재|지금|실제|대한민국|한국)",
+    re.I,
+)
+_SUPPLIED_TEXT = re.compile(
+    r"^(?:다음\s*(?:자료|글|문장)만\s*요약해\s*줘|"
+    r"summarize\s+only\s+this\s+supplied\s+text)\s*:",
+    re.I,
+)
+_DATED_PRESENT = re.compile(r"((?:1\d{3}|20\d{2})\s*년)\s*현재")
+
+
+def _without_quoted_transform_sources(text: str) -> str:
+    parts: list[str] = []
+    start = 0
+    for match in _QUOTED.finditer(text):
+        before = text[max(0, match.start() - 160) : match.start()]
+        after = text[match.end() : match.end() + 160]
+        parts.append(text[start : match.start()])
+        transforming = _TRANSFORM_BEFORE.search(before) or _TRANSFORM_AFTER.search(after)
+        parts.append(" " if transforming else match.group())
+        start = match.end()
+    parts.append(text[start:])
+    return "".join(parts)
+
+
+def fresh_fact_required(request: str) -> bool:
+    """Whether this explicit political question needs current evidence before answering.
+
+    Call with the latest user's request, not the assembled system/history/reference
+    envelope. False means outside this bounded gate, never proven factually safe.
+    """
+    text = _without_quoted_transform_sources(unicodedata.normalize("NFC", request or ""))
+    for part in _CLAUSE.split(text):
+        clause = part.strip()
+        if not clause:
+            continue
+        if _SUPPLIED_TEXT.search(clause) or _ELIGIBILITY.search(clause):
+            continue
+        # "2020년 현재" asks about that dated snapshot, not the present day.
+        live = bool(_LIVE.search(_DATED_PRESENT.sub(r"\1", clause)))
+        if not live and _HISTORICAL.search(clause):
+            continue
+        office_match = _OFFICE.search(clause)
+        fiction = _FICTION.search(clause)
+        if (
+            fiction
+            and _CREATIVE.search(clause)
+            and not _REAL.search(clause)
+            and (office_match is None or fiction.start() <= office_match.start())
+        ):
+            continue
+        office = bool(office_match)
+        identity = bool(_IDENTITY.search(clause))
+        if office and identity:
+            return True
+        if office and live and not _ROLE.search(clause):
+            # A bare topic ("현재 대한민국 대통령") is also an identity request.
+            if _ASK.search(clause) or not re.search(r"[가-힣](?:다|요)$|\bis\s+.+", clause, re.I):
+                return True
+        if live and _POLITICS.search(clause):
+            return True
+    return False
+
+
+def abstention_response(request: str) -> str:
+    """An evidence limitation, not a claim that a search ran or the model is outdated."""
+    if re.search(r"[가-힣]", unicodedata.normalize("NFC", request or "")):
+        return (
+            "현재 정보를 확인할 수 없어 현직 인물이나 정치 상황을 단정할 수 없습니다. "
+            "최신 공식 자료를 제공하거나 검색을 허용한 환경에서 확인해 주세요."
+        )
+    return (
+        "I cannot verify the current officeholder or political situation, so I cannot state "
+        "it as a present fact. Provide a current official source or verify it in an "
+        "environment where search is allowed."
+    )
