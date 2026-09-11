@@ -74,6 +74,14 @@ The outdated baseline answers were checked on 2026-09-12 KST against the
 [prime minister's office dated release](https://www.opm.go.kr/opm/news/press-release.do?article.offset=0&articleLimit=10&articleNo=163478&mode=view).
 These references were used for evaluation only, not inserted into product prompts.
 
+An additional immutable `a7ccf962` run checked four turns in one real strict-local
+Qwen session. The initial no-search political question, a request for just the name,
+and a request to guess all retained the service-policy hold. A subsequent Python
+list question returned a normal answer. Only that control made a completion request;
+reported credits, search and artifacts stayed zero. Cleanup and original-state
+preservation passed. This is three retained abstentions and one topic-switch control,
+not three factual answers or proof of external-search reauthorization.
+
 ## Deterministic checks
 
 - API baseline `2518c2e`: 2,410 passed, 1 skipped. The later `f537972` baseline
@@ -87,6 +95,15 @@ These references were used for evaluation only, not inserted into product prompt
   toggle is desktop-only. Four existing routing browser cases also passed.
 - Web lint and build passed. Existing lint, generated `phone` CSS selector and
   large-chunk warnings are not attributed to this change.
+- Follow-up quote-parser hardening adds 35 cases: complete long inputs, all five
+  quote pairs, newline handling, negated transformations, mixed requests and search
+  refusal. The isolated long-input regression exceeded its 5-second limit before
+  the fix and passes afterward. Final offline API: 2,726 passed, 1 skipped. The
+  focused policy, follow-up, runtime and search suite has 342 passing cases.
+- A separate bounded differential check compared 12,380 quote-span inputs and
+  4,620 transformation contexts with the pre-fix parser, with no behavior change.
+  The parser does not truncate requests or lose their trailing instructions.
+  GitHub CodeQL is rerun independently; local tests alone do not establish its result.
 
 ![No model execution on mobile](screenshots/freshness-policy-mobile.png)
 
@@ -97,9 +114,9 @@ of a live provider response.
 
 ## Verification limits
 
-Live evidence belongs to its recorded immutable source SHA. Subsequent quoted-input,
-source-structure, follow-up and UI changes have separate deterministic regressions;
-they must not be represented as having run in that earlier live check.
+Live evidence belongs to its recorded immutable source SHA. The original four-request
+comparison and the later four-turn follow-up run are separate. The subsequent quote
+parser change has deterministic regressions, not a new provider execution.
 
 Other domains, arbitrary paraphrases, attachment-only questions, semantic source
 validation and all forms of hallucination remain outside this bounded policy.

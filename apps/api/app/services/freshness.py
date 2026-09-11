@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterator
 
 FRESHNESS_INSTRUCTION = (
     "The system date does not prove that your knowledge is current. Never invent a training "
@@ -62,14 +63,14 @@ _CREATIVE = re.compile(r"만들|설정|써|가정|\b(?:imagine|write|invent|fict
 _REAL = re.compile(
     r"실제로|실제\s*(?:현재|지금|대한민국|한국)|\b(?:actually|real[- ]world)\b", re.I
 )
-_QUOTED = re.compile(r"\"[^\"]*\"|'[^'\n]*'|“[^”]*”|‘[^’]*’|「[^」]*」", re.S)
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’", "「": "」"}
 # Only a bounded quoted source is removed, never the rest of a mixed request.
 _TRANSFORM_BEFORE = re.compile(
     r"(?:\btranslate(?:\s+(?:this|the\s+following)(?:\s+(?:sentence|text))?)?"
     r"(?:\s+(?:into|to)\s+[a-z-]{2,30})?|"
     r"\bsummarize(?:\s+only)?(?:\s+this\s+supplied\s+text)?|"
     r"다음\s*(?:문장|자료|글)(?:만|을|를)?\s*"
-    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)해\s*(?:줘|주세요))\s*:?\s*$",
+    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)해\s*(?:줘|주세요))$",
     re.I,
 )
 _TRANSFORM_AFTER = re.compile(
@@ -133,21 +134,52 @@ def is_same_fact_followup(request: str) -> bool:
     return bool(_SAME_FACT_FOLLOWUP.fullmatch(text.strip()))
 
 
+def _quoted_spans(text: str) -> Iterator[tuple[int, int]]:
+    """Match the first closing delimiter without rescanning unmatched suffixes."""
+    length = len(text)
+    next_closing: dict[str, int] = {}
+    next_newline = -1
+    index = 0
+    while index < length:
+        closing = _QUOTE_PAIRS.get(text[index])
+        if closing is None:
+            index += 1
+            continue
+        end = next_closing.get(closing, -1)
+        if end <= index:
+            found = text.find(closing, index + 1)
+            end = found if found >= 0 else length
+            next_closing[closing] = end
+        if text[index] == "'":
+            if next_newline <= index:
+                found = text.find("\n", index + 1)
+                next_newline = found if found >= 0 else length
+            if next_newline < end:
+                index += 1
+                continue
+        if end < length:
+            yield index, end + 1
+            index = end + 1
+        else:
+            index += 1
+
+
 def without_quoted_transform_sources(text: str) -> str:
     """Remove only quoted translation/summary inputs, not quoted user instructions."""
     parts: list[str] = []
     start = 0
-    for match in _QUOTED.finditer(text):
-        before = text[max(0, match.start() - 160) : match.start()]
-        after = text[match.end() : match.end() + 160]
-        parts.append(text[start : match.start()])
+    for quote_start, quote_end in _quoted_spans(text):
+        before = text[max(0, quote_start - 160) : quote_start]
+        before = before.rstrip().removesuffix(":").rstrip()
+        after = text[quote_end : quote_end + 160]
+        parts.append(text[start:quote_start])
         before_match = _TRANSFORM_BEFORE.search(before)
         after_match = _TRANSFORM_AFTER.search(after)
         transforming = (
             before_match and not _NEGATED_TRANSFORM_PREFIX.search(before[: before_match.start()])
         ) or (after_match and not _NEGATED_TRANSFORM_SUFFIX.search(after[after_match.end() :]))
-        parts.append(" " if transforming else match.group())
-        start = match.end()
+        parts.append(" " if transforming else text[quote_start:quote_end])
+        start = quote_end
     parts.append(text[start:])
     return "".join(parts)
 
