@@ -155,3 +155,63 @@ def test_a_thin_list_is_padded_with_benched_hits() -> None:
         "https://a.test/post",
         "https://a.test/",
     ]
+
+
+def test_hits_without_the_querys_proper_nouns_are_dropped() -> None:
+    """A FastAPI question once returned a Unity asset, a drama page and an
+    adult site: many shared common words, none of them the subject."""
+    rows = [
+        {
+            "title": "PostProcessing Controller | Unity",
+            "url": "https://assetstore.unity.com/x",
+            "snippet": "버전 릴리스 날짜",
+            "published": "",
+        },
+        {
+            "title": "신병4 다시보기",
+            "url": "https://tvwiki48.net/drama/4136",
+            "snippet": "최신 릴리스",
+            "published": "",
+        },
+        {
+            "title": "태그: 유디 야동",
+            "url": "https://ydparty06.tv/tag",
+            "snippet": "fastapi",
+            "published": "",
+        },
+        {
+            "title": "#버전 | TikTok",
+            "url": "https://www.tiktok.com/tag/x",
+            "snippet": "fastapi",
+            "published": "",
+        },
+        {
+            "title": "FastAPI 0.120 release notes",
+            "url": "https://fastapi.tiangolo.com/release-notes/",
+            "snippet": "",
+            "published": "",
+        },
+    ]
+    kept = builtin._select(rows, "FastAPI 최신 버전 번호랑 릴리스 날짜", 5)
+    assert [r["url"] for r in kept] == ["https://fastapi.tiangolo.com/release-notes/"]
+    # A version number is an anchor too.
+    assert builtin._anchors("Ubuntu 24.04 지원 종료일") == ["ubuntu", "24.04"]
+    # Korean-only queries have no anchors and keep the old behaviour.
+    assert builtin._anchors("2026년 최저임금 시급") == []
+
+
+@pytest.mark.asyncio
+async def test_a_paper_question_takes_the_science_lane(monkeypatch) -> None:
+    class _Backends:
+        search = "http://searx"
+        fetch = ""
+        exec = ""
+
+    async def tools_config():
+        return _Backends()
+
+    monkeypatch.setattr(builtin.settings_store, "tools_config", tools_config)
+    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
+    _Client.calls.clear()
+    await builtin.web_search({"query": "Attention Is All You Need 논문 arXiv 번호"})
+    assert [c.get("categories") for c in _Client.calls] == [None, "science"]

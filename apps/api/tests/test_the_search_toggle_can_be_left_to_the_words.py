@@ -21,7 +21,7 @@ from app.services.tools.base import ToolResult
     [
         # auto: offered, forced only by a cue
         ("auto", "파이썬 리스트 컴프리헨션 설명해 줘", (True, None)),
-        ("auto", "안녕, 오늘 기분이 어때?", (True, "web_search")),  # 「오늘」 is a cue
+        ("auto", "안녕, 오늘 기분이 어때?", (True, None)),  # 「오늘」, but small talk
         ("auto", "전이학습이 왜 되는지 알려줘", (True, None)),
         ("auto", "앤트로픽 최신 모델이 뭐야", (True, "web_search")),
         ("auto", "2026년 근로기준법 연차 규정", (True, "web_search")),
@@ -34,6 +34,12 @@ from app.services.tools.base import ToolResult
         ("auto", "Mamba 논문 arXiv 번호랑 저자 알려줘", (True, "web_search")),
         ("auto", "리스트 3개를 합치는 법", (True, None)),
         ("auto", "일본 갈 때 비짓재팬 등록 아직 필요해?", (True, "web_search")),
+        # Fees, deadlines, places and sign-ups change; small talk never searches.
+        ("auto", "인천공항 제2터미널 주차 요금 알려줘", (True, "web_search")),
+        ("auto", "2027학년도 수능 원서 접수 기간 알려줘", (True, "web_search")),
+        ("auto", "분당구 대형 폐기물 스티커 어디서 사?", (True, "web_search")),
+        ("auto", "오늘 기분이 별로야. 위로해줘", (True, None)),
+        ("auto", "오늘 뉴스 알려줘", (True, "web_search")),
         # on: forced every turn, weather still to the weather tool
         (True, "파이썬 리스트 컴프리헨션 설명해 줘", (True, "web_search")),
         (True, "서울 기온 몇 도야", (True, "weather")),
@@ -207,6 +213,11 @@ def test_the_payload_accepts_auto() -> None:
         ("2026년 근로기준법 연차 규정 좀 알려줘", "2026년 근로기준법 연차 규정"),
         ("이 주장을 검증해 줘", "이 주장"),
         ("latest anthropic model", "latest anthropic model"),
+        ("프리랜서 종합소득세 신고 기간이 언제까지야?", "프리랜서 종합소득세 신고 기간"),
+        ("요즘 배추 도매 가격 얼마 정도야?", "요즘 배추 도매 가격"),
+        ("국민취업지원제도 구직촉진수당 월 얼마야?", "국민취업지원제도 구직촉진수당"),
+        ("임대차 계약 갱신요구권 몇 번까지 쓸 수 있어?", "임대차 계약 갱신요구권 몇 번까지"),
+        ("2026년 부모급여 월 얼마 받아?", "2026년 부모급여"),
     ],
 )
 def test_the_query_is_the_sentence_without_the_asking(words, query) -> None:

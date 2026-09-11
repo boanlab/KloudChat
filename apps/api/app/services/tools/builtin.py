@@ -99,18 +99,61 @@ def _host(url: str) -> str:
     return urlparse(url).netloc.lower().removeprefix("www.").removeprefix("m.")
 
 
+#: Words that carry no subject on their own in a Latin-alphabet query.
+_LATIN_STOPWORDS = frozenset(
+    "the a an and or of to in on for with is are was be do does how what when where "
+    "which who why can i my me you your it its this that these those need needed current "
+    "latest new best top vs from by at as into about".split()
+)
+#: Pages that never answer a question: tag and discovery feeds, and adult sites,
+#: which a general engine returns for a query it did not understand.
+_UNWANTED_HOSTS = ("tiktok.com", "instagram.com", "pinterest.")
+_UNWANTED = re.compile(r"야동|섹스|성인\s*(?:사이트|영상)|19금|porn|xxx|hentai|에로|성인야", re.I)
+
+
+def _anchors(query: str) -> list[str]:
+    """The query's proper nouns as far as text can tell: Latin-alphabet words
+    (FastAPI, Ubuntu, NeurIPS) and tokens with digits (24.04, D-2, 3.14). A hit
+    carrying none of them is about something else, however many common words
+    it shares."""
+    anchors: list[str] = []
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9.+#_-]*|\d+(?:\.\d+)+|[A-Za-z]-\d+", query):
+        lowered = token.lower().strip(".-")
+        if len(lowered) >= 2 and lowered not in _LATIN_STOPWORDS:
+            anchors.append(lowered)
+    return anchors
+
+
+def _anchored(row: dict[str, str], anchors: list[str]) -> bool:
+    if not anchors:
+        return True
+    text = f"{row['title']} {row['snippet']} {row['url']}".lower()
+    return any(anchor in text for anchor in anchors)
+
+
+def _unwanted(row: dict[str, str]) -> bool:
+    host = _host(row["url"])
+    if any(host == h or host.endswith("." + h) or h in host for h in _UNWANTED_HOSTS):
+        return True
+    return bool(_UNWANTED.search(f"{row['title']} {row['url']}"))
+
+
 def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str, str]]:
-    """The best `count` of `rows` (given news-first for a fresh query): duplicates
-    and front pages out, at most `_PER_HOST` per host, then `_rank`."""
+    """The best `count` of `rows` (given news-first for a fresh query): duplicates,
+    feeds, adult pages and hits without the query's proper nouns out, front
+    pages benched, at most `_PER_HOST` per host, then `_rank`."""
     seen: set[str] = set()
     per_host: dict[str, int] = {}
     kept: list[dict[str, str]] = []
     benched: list[dict[str, str]] = []
+    anchors = _anchors(query)
     for row in rows:
         url = row["url"].rstrip("/")
         if not url or url in seen:
             continue
         seen.add(url)
+        if _unwanted(row) or not _anchored(row, anchors):
+            continue
         host = _host(url)
         if _front_page(url) or per_host.get(host, 0) >= _PER_HOST:
             benched.append(row)
@@ -121,6 +164,9 @@ def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str
     kept.extend(benched[: max(0, count - len(kept))])
     return _rank(kept, query)[:count]
 
+
+#: A question about a paper, whatever the model called the search.
+_PAPER_CUES = re.compile(r"논문|arxiv|\bdoi\b|preprint|학술지|저널|\bpaper\b", re.I)
 
 #: SearXNG parameters of each search kind's own lane; "web" has none.
 _LANES: dict[str, dict[str, str]] = {
@@ -211,6 +257,10 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     kind = str(args.get("kind") or "web")
     if kind not in ("web", *_LANES):
         kind = "web"
+    if kind == "web" and _PAPER_CUES.search(query):
+        # A paper question without the kind set: the science lane (arXiv,
+        # Semantic Scholar, Crossref) answers it; the general lane gives blogs.
+        kind = "papers"
 
     backends = await settings_store.tools_config()
     # Time-sensitive words get the news lane too; see `_searxng`.

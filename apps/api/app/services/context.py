@@ -367,7 +367,10 @@ _TIME_SENSITIVE = re.compile(
     r"시세|환율|주가|가격|얼마|출시|발표|일정|언제|몇\s*시|버전|업데이트|근황|현황|동향|"
     r"통계|순위|20[2-9]\d년|"
     # What changed in a named release, and bibliography — both go stale in memory.
-    r"바뀐|바뀌|달라진|새로\s*생긴|없어졌|사라졌|폐지|아직|여전히|요즘도|"
+    r"바뀐|바뀌|달라진|달라졌|새로\s*생긴|없어졌|사라졌|폐지|아직|여전히|요즘도|"
+    # Fees, deadlines, sign-ups, places: what an office or a shop decides this year.
+    r"요금|비용|수수료|과태료|접수|마감|신청|학년도|회차|어디서|어디에|며칠|몇\s*일|기간|"
+    r"지원금|지원\s*(?:제도|사업|받|있|되)|"
     r"arxiv|doi\b|서지|저자|"
     # A product or standard with a version number: Python 3.14, React 19, GPT-5.
     r"\b[A-Za-z][A-Za-z+#.-]{1,20}[ -]?\d{1,3}(?:\.\d+)?\b|"
@@ -399,10 +402,18 @@ _TAIL_VERB = re.compile(
     r"알려 ?(?:줘|주세요|줄래|주실래요|달라)|말해 ?(?:줘|주세요|줄래)|찾아 ?(?:줘|주세요|봐))$"
 )
 _TAIL_WORD = re.compile(
-    r"(?:^|\s)(?:뭐야|뭔지|뭐지|무엇인가요|무엇인지|누구야|누구인가요|어때|어떤가요|어떻게 ?돼|"
-    r"얼마야|얼마인가요|얼마나 ?(?:돼|해)|언제야|언제인가요|있어|있나요|있을까|할까|인가요|인지|"
+    r"(?:^|\s)(?:뭐야|뭔지|뭐지|무엇인가요|무엇인지|누구야|누구인가요|어때|어떤가요|"
+    r"어떻게 ?(?:돼|해)|얼마야|얼마인가요|얼마나 ?(?:돼|해)|얼마 ?정도야|정도야|언제야|언제인가요|"
+    r"언제까지야|"
+    r"언제까지인가요|있어|있나요|있을까|할까|인가요|인지|받아|받나요|되나요|돼요|해요|하나요|얼마|"
     r"이야|야|니|나요|까요|죠)$"
 )
+#: 「쓸 수 있어」「해야 해」: a verb phrase that only asks.
+_TAIL_PHRASE = re.compile(
+    r"(?:^|\s)[가-힣]+ ?(?:수 있(?:어|나요|을까)|해야 ?(?:해|돼|하나요|되나요))$"
+)
+#: A unit or counter left alone once the asking is gone: 「구직촉진수당 월」.
+_DANGLING_UNIT = re.compile(r"\s(?:월|년|일|주|개월|번|명|원)$")
 _FILLER = re.compile(r"(?:^|\s)(?:좀|제발|빨리|자세히|간단히|정확히)$")
 #: A particle left dangling on a word of two syllables or more once the asking is gone.
 _DANGLING_PARTICLE = re.compile(r"(?<=[가-힣][가-힣])(?:이|가|은|는|을|를)$")
@@ -419,11 +430,13 @@ def search_query(request: str) -> str:
     text = re.sub(r"\s+", " ", (request or "").strip())
     for _ in range(4):
         text = text.rstrip(" ?？!.。~,")
-        peeled = _FILLER.sub("", _TAIL_WORD.sub("", _TAIL_VERB.sub("", text))).strip()
+        peeled = _FILLER.sub(
+            "", _TAIL_WORD.sub("", _TAIL_PHRASE.sub("", _TAIL_VERB.sub("", text)))
+        ).strip()
         if peeled == text:
             break
         text = peeled
-    text = _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,"))
+    text = _DANGLING_UNIT.sub("", _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,")))
     return (text or (request or "").strip())[:120]
 
 
@@ -441,6 +454,20 @@ def weather_location(request: str) -> str | None:
     return place or None
 
 
+#: Talk, not a question: a feeling, a greeting, thanks. 「오늘」 in 「오늘 기분이
+#: 별로야」 is not a request for today's news.
+_SMALL_TALK = re.compile(
+    r"기분|우울|힘들|위로|외로|슬프|심심|사랑해|고마워|고맙|안녕|반가워|잘\s*자|피곤|"
+    r"수고|축하|미안|\b(?:thanks|thank you|hello|hi|lol|sad|tired|bored)\b",
+    re.I,
+)
+
+
+def is_small_talk(request: str) -> bool:
+    text = (request or "").strip()
+    return len(text) <= 40 and bool(_SMALL_TALK.search(text)) and not requests_web_search(text)
+
+
 def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
     """What the web-search toggle means for this turn: whether the web tools are
     offered, and the tool the first hop must call (or none).
@@ -453,6 +480,8 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
     if toggle == "auto":
         if weather:
             return True, "weather"
+        if is_small_talk(request):
+            return True, None
         return True, "web_search" if explicit or needs_web_search(request) else None
     if toggle is True:
         return True, "weather" if weather else "web_search"
