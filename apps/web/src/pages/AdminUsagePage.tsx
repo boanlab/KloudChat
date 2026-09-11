@@ -103,8 +103,8 @@ export function AdminUsagePage() {
   const exportCsv = () => {
     if (!usage) return
     const rows = [
-      [t('날짜'), t('크레딧'), t('요청')],
-      ...usage.daily.map((d) => [d.date, String(d.credits), String(d.requests)]),
+      [t('날짜'), t('크레딧'), t('요청'), t('웹 검색')],
+      ...usage.daily.map((d) => [d.date, String(d.credits), String(d.requests), String(d.searches)]),
       [],
       [t('모델'), t('크레딧'), t('요청'), t('사용자')],
       ...usage.byModel.map((m) => [m.model, String(m.credits), String(m.requests), String(m.users)]),
@@ -164,7 +164,7 @@ export function AdminUsagePage() {
           </Card>
         ) : (
           <>
-            <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mb-5 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
               <Stat label={t('사용 크레딧')} value={usage.totals.credits.toLocaleString()} />
               <Stat
                 label={t('배정 대비')}
@@ -177,6 +177,15 @@ export function AdminUsagePage() {
                 hint={t('활성 계정 배정 {n} cr').replace('{n}', usage.totals.allocatedCredits.toLocaleString())}
               />
               <Stat label={t('응답 수')} value={usage.totals.requests.toLocaleString()} />
+              <Stat
+                label={t('웹 검색')}
+                value={usage.totals.searches.toLocaleString()}
+                // Per answer, so a jump in searches is read against the traffic.
+                hint={t('응답 1건당 {n}회').replace(
+                  '{n}',
+                  (usage.totals.searches / Math.max(1, usage.totals.requests)).toFixed(1),
+                )}
+              />
               <Stat label={t('사용한 사람')} value={String(usage.totals.activeUsers)} />
             </div>
 
@@ -201,7 +210,7 @@ export function AdminUsagePage() {
                       <div
                         className="w-full rounded-t bg-accent"
                         style={{ height: d.value > 0 ? `${Math.max(3, (d.value / maxDaily) * 100)}%` : 0 }}
-                        title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr`}
+                        title={`${t('{n}건').replace('{n}', String(d.requests))} · ${d.credits.toLocaleString()} cr · ${t('웹 검색 {n}회').replace('{n}', String(d.searches))}`}
                       />
                     </div>
                     {/* Overflows rather than truncates: `MM-DD` is wider than a column. */}
@@ -324,6 +333,7 @@ export function AdminUsagePage() {
                       <th className="py-1 pr-3 text-right font-medium">{t('크레딧')}</th>
                       <th className="py-1 pr-3 text-right font-medium">{t('한도 대비')}</th>
                       <th className="py-1 pr-3 text-right font-medium">{t('요청')}</th>
+                      <th className="py-1 pr-3 text-right font-medium">{t('웹 검색')}</th>
                       <th className="py-1 pr-3 text-right font-medium">{t('저장 용량')}</th>
                       <th className="py-1 text-right font-medium">{t('파일')}</th>
                     </tr>
@@ -344,6 +354,7 @@ export function AdminUsagePage() {
                               : t('한도 없음')}
                           </td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">{u.requests.toLocaleString()}</td>
+                          <td className="py-1.5 pr-3 text-right tabular-nums">{u.searches.toLocaleString()}</td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">{disk ? bytes(disk.bytes) : '–'}</td>
                           <td className="py-1.5 text-right tabular-nums text-muted">{disk ? disk.files : '–'}</td>
                         </tr>
@@ -359,6 +370,7 @@ export function AdminUsagePage() {
                           </td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
                           <td className="py-1.5 pr-3 text-right text-xs text-faint">–</td>
+                          <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">0</td>
                           <td className="py-1.5 pr-3 text-right tabular-nums">{bytes(d.bytes)}</td>
                           <td className="py-1.5 text-right tabular-nums">{d.files}</td>

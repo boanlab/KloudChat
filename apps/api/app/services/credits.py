@@ -128,12 +128,16 @@ def settle(
     )
 
 
+#: Ledger reason of a web search: zero credits, `units` searches, no model.
+SEARCH_REASON = "search.web"
+
+
 def record_units(
     db: AsyncSession,
     user: User,
     *,
     reason: str,
-    model: str,
+    model: str | None,
     units: int,
     unit: str,
     session_id: str | None = None,
@@ -153,6 +157,28 @@ def record_units(
             units=units,
             unit=unit,
         )
+    )
+
+
+def record_searches(
+    db: AsyncSession,
+    user: User,
+    searches: int,
+    *,
+    session_id: str | None = None,
+    surface: str | None = None,
+) -> None:
+    """Web searches a turn ran, one ledger row per turn, so the usage screens can
+    show search volume against the engines' quotas. Free: no credits move. Caller commits."""
+    record_units(
+        db,
+        user,
+        reason=SEARCH_REASON,
+        model=None,
+        units=searches,
+        unit="searches",
+        session_id=session_id,
+        surface=surface,
     )
 
 

@@ -346,10 +346,10 @@ export interface MyUsage {
   days: number
   /** `otherCredits` is spend no single model can be named for — a comparison
    *  that ran several on one charge — not the part the breakdown forgot. */
-  totals: { credits: number; requests: number; otherCredits: number }
+  totals: { credits: number; requests: number; searches: number; otherCredits: number }
   /** This month's allowance and what is left of it. */
   cycle: { allowance: number; used: number; remaining: number }
-  daily: { date: string; credits: number; requests: number }[]
+  daily: { date: string; credits: number; requests: number; searches: number }[]
   byModel: { model: string; credits: number; requests: number; units?: number; unit?: string }[]
   bySurface: { kind: string; credits: number; requests: number }[]
   /** Spend through issued keys, aggregated by the proxy — shown beside the
@@ -481,11 +481,13 @@ export interface UsageReport {
   totals: {
     credits: number
     requests: number
+    /** Web searches the turns ran, against the search engines' quotas. */
+    searches: number
     activeUsers: number
     allocatedCredits: number
     otherCredits: number
   }
-  daily: { date: string; credits: number; requests: number }[]
+  daily: { date: string; credits: number; requests: number; searches: number }[]
   byModel: {
     model: string
     credits: number
@@ -505,6 +507,7 @@ export interface UsageReport {
     email: string
     credits: number
     requests: number
+    searches: number
     allowance: number
   }[]
 }

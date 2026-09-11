@@ -114,7 +114,7 @@ from app.services.context import (
     weather_location,
     with_pictures,
 )
-from app.services.credits import charge_for_tokens, has_headroom, settle
+from app.services.credits import charge_for_tokens, has_headroom, record_searches, settle
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
 from app.services.workspace_context import (
@@ -1020,6 +1020,13 @@ def _step_event(step: dict) -> dict:
     `type` becomes the event name; the display category rides as `category`.
     """
     return {**step, "type": "step", "category": step["type"]}
+
+
+def _searches_in(research_log: dict | None) -> int:
+    """Queries a document's research step sent to the search backend; 0 when none ran."""
+    if not research_log or not research_log.get("searched"):
+        return 0
+    return len(research_log.get("queries") or [])
 
 
 def _prelude_steps(skills_event: dict | None, context_steps: list[dict] | None) -> list[dict]:
@@ -3539,6 +3546,14 @@ async def _run_turn(
                         TurnFailure.stopped if failed == "stopped" else TurnFailure.no_answer
                     )
                     db.add(question)
+            # Searches ran whether or not an answer came back; the engines' quota did.
+            record_searches(
+                db,
+                user,
+                ctx.tool_calls.get("web_search", 0),
+                session_id=session_id,
+                surface=session.kind.value,
+            )
             # Notes are kept from an empty completion but not from a failed turn.
             if ctx.pending_notes and not failed:
                 await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
@@ -4436,6 +4451,13 @@ async def _run_page(
                     session_id=session_id,
                     model=model["id"],
                 )
+                record_searches(
+                    db,
+                    user,
+                    _searches_in(research_log),
+                    session_id=session_id,
+                    surface=session.kind.value,
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
@@ -4488,6 +4510,7 @@ async def _run_deck(
     questions: list[dict] | None = None
     usage = {"inputTokens": 0, "outputTokens": 0}
     doc_title = ""
+    research_log: dict[str, Any] | None = None
 
     if routing:
         # First, so the model badge updates.
@@ -4528,6 +4551,8 @@ async def _run_deck(
             if event["type"] == "deck":
                 slides = event["slides"]
                 continue
+            if event["type"] == "research":
+                research_log = dict(event.get("research") or {})
             if event["type"] == "title":
                 doc_title = str(event.get("title") or "").strip()
             if event["type"] == "usage":
@@ -4636,6 +4661,13 @@ async def _run_deck(
                     reason="deck.generate",
                     session_id=session_id,
                     model=model["id"],
+                )
+                record_searches(
+                    db,
+                    user,
+                    _searches_in(research_log),
+                    session_id=session_id,
+                    surface=session.kind.value,
                 )
             else:
                 # Nothing written: record the failure so a reload shows it.
@@ -5142,6 +5174,13 @@ async def _run_report(
                     reason="report.generate",
                     session_id=session_id,
                     model=model["id"],
+                )
+                record_searches(
+                    db,
+                    user,
+                    _searches_in(research_log),
+                    session_id=session_id,
+                    surface=session.kind.value,
                 )
             session.updated_at = utcnow()
             db.add(session)

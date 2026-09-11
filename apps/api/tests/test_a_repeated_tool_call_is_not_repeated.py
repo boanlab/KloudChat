@@ -146,3 +146,37 @@ async def test_different_arguments_both_run(monkeypatch) -> None:
         pass
 
     assert runs == ["서울", "부산"]
+
+
+@pytest.mark.asyncio
+async def test_only_calls_that_ran_are_counted_on_the_context(monkeypatch) -> None:
+    """The usage ledger reads `ctx.tool_calls`: a refused repeat is not a search."""
+
+    async def run_search(_args):
+        return ToolResult(content="결과", detail="q")
+
+    tools = [
+        Tool(
+            name="web_search",
+            description="검색",
+            parameters={"type": "object"},
+            run=run_search,
+            label="웹 검색",
+        )
+    ]
+    scripted = [
+        _calls("web_search", {"query": "a"}, "c0"),
+        _calls("web_search", {"query": "a"}, "c1"),
+        _calls("web_search", {"query": "b"}, "c2"),
+        [_content("답."), "data: [DONE]"],
+    ]
+
+    async def client(*_args, **_kwargs):
+        return _Client([], scripted)
+
+    monkeypatch.setattr(agent, "_client", client)
+    ctx = ToolContext(user_id="user", session_id="session", api_key="key")
+    async for _ in agent.run_turn("m", [{"role": "user", "content": "q"}], tools, ctx):
+        pass
+
+    assert ctx.tool_calls == {"web_search": 2}

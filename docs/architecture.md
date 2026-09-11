@@ -107,6 +107,11 @@ and private ranges read `내부망` rather than a guess.
 
 1 credit = $0.00001 (`credits_per_usd = 100_000`). **The ledger
 (`CreditLedger`) is the truth**; `messages.usage.credits` is for display.
+Free work that still has a quota goes on the same ledger at zero credits with
+a `units` figure: seconds transcribed, chunks embedded, and web searches
+(`search.web`, one row per turn with the number of queries the turn sent to
+SearXNG, counted from `ToolContext.tool_calls` in chat and from the research
+step on the document surfaces). The usage screens read searches from there.
 
 Each modality sells in a different unit, and the wrong unit makes a displayed
 price a fraction of the real one.

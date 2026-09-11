@@ -486,6 +486,8 @@ const EN: Record<string, string> = {
   '유형': 'Type',
   '음악': 'Music',
   '응답 수': 'Responses',
+  '응답 1건당 {n}회': '{n} per response',
+  '웹 검색 {n}회': '{n} web searches',
   '이름': 'Name',
   '이름 바꾸기': 'Rename',
   '이메일': 'Email',

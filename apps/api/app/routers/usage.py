@@ -38,6 +38,10 @@ MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.gener
 #: Free work measured in `units` (seconds, chunks); each row counts as one request.
 UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
 
+#: Web searches ride on the turn that ran them: `units` searches, no request of
+#: their own, no model, so they reach the totals and the days but not the bars.
+SEARCH_REASON = credits_service.SEARCH_REASON
+
 
 #: Cycle boundary is local midnight, not a UTC month boundary.
 _cycle_start = credits_service.cycle_start
@@ -51,12 +55,13 @@ def _since(days: int) -> datetime:
 
 def _every_day(since: datetime, days: int, rows) -> list[dict]:
     """One entry per day of the window, in order, zeros where nothing happened."""
-    by_date = {day.date().isoformat(): (int(c), int(n)) for day, c, n in rows}
+    by_date = {day.date().isoformat(): (int(c), int(n), int(s)) for day, c, n, s in rows}
     return [
         {
             "date": date,
-            "credits": by_date.get(date, (0, 0))[0],
-            "requests": by_date.get(date, (0, 0))[1],
+            "credits": by_date.get(date, (0, 0, 0))[0],
+            "requests": by_date.get(date, (0, 0, 0))[1],
+            "searches": by_date.get(date, (0, 0, 0))[2],
         }
         for date in ((since + timedelta(days=i)).date().isoformat() for i in range(days))
     ]
@@ -83,7 +88,7 @@ _SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.k
 
 def _events(since: datetime, user_id: str | None = None):
     """Union of assistant turns and ledger spend, both shaped as
-    (day, model, kind, user_id, credits, requests, units).
+    (day, model, kind, user_id, credits, requests, units, searches).
     """
     turns = (
         select(
@@ -98,6 +103,7 @@ def _events(since: datetime, user_id: str | None = None):
             literal(0).label("credits"),
             literal(1).label("requests"),
             literal(0).label("units"),
+            literal(0).label("searches"),
         )
         .select_from(Message)
         .join(ChatSession, col(Message.session_id) == col(ChatSession.id))
@@ -116,6 +122,13 @@ def _events(since: datetime, user_id: str | None = None):
                 "requests"
             ),
             func.coalesce(col(CreditLedger.units), 0).label("units"),
+            case(
+                (
+                    col(CreditLedger.reason) == SEARCH_REASON,
+                    func.coalesce(col(CreditLedger.units), 0),
+                ),
+                else_=0,
+            ).label("searches"),
         )
         .select_from(CreditLedger)
         # Outer join: some charges belong to no conversation.
@@ -154,13 +167,18 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
     units = func.coalesce(func.sum(events.c.units), 0)
+    searches = func.coalesce(func.sum(events.c.searches), 0)
     people = func.count(func.distinct(events.c.user_id))
 
-    spent, request_count, active_users = (await db.exec(select(credits, requests, people))).one()
+    spent, request_count, search_count, active_users = (
+        await db.exec(select(credits, requests, searches, people))
+    ).one()
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
+            select(events.c.day, credits, requests, searches)
+            .group_by(events.c.day)
+            .order_by(events.c.day)
         )
     ).all()
 
@@ -208,6 +226,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
                 User.monthly_credits,
                 credits.label("spent"),
                 requests.label("asked"),
+                searches.label("searched"),
             )
             .select_from(events)
             .join(User, events.c.user_id == col(User.id))
@@ -237,6 +256,7 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),
+            "searches": int(search_count),
             "activeUsers": int(active_users),
             "allocatedCredits": int(allocated),
             # Spend no single model can be named for.
@@ -263,9 +283,10 @@ async def usage(admin: AdminUser, db: DbSession, days: int = Query(7, ge=1, le=9
                 "email": email,
                 "credits": int(spent_u),
                 "requests": int(asked),
+                "searches": int(searched),
                 "allowance": int(allowance),
             }
-            for uid, name, email, allowance, spent_u, asked in top_users
+            for uid, name, email, allowance, spent_u, asked, searched in top_users
         ],
     }
 
@@ -381,12 +402,15 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
     credits = func.coalesce(func.sum(events.c.credits), 0)
     requests = func.coalesce(func.sum(events.c.requests), 0)
     units = func.coalesce(func.sum(events.c.units), 0)
+    searches = func.coalesce(func.sum(events.c.searches), 0)
 
-    spent, request_count = (await db.exec(select(credits, requests))).one()
+    spent, request_count, search_count = (await db.exec(select(credits, requests, searches))).one()
 
     daily = (
         await db.exec(
-            select(events.c.day, credits, requests).group_by(events.c.day).order_by(events.c.day)
+            select(events.c.day, credits, requests, searches)
+            .group_by(events.c.day)
+            .order_by(events.c.day)
         )
     ).all()
 
@@ -450,6 +474,7 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
         "totals": {
             "credits": int(spent),
             "requests": int(request_count),
+            "searches": int(search_count),
             # Spend no single model can be named for.
             "otherCredits": int(other_credits),
         },
