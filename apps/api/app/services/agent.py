@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.services import settings_store
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.freshness import abstention_response
-from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
+from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
 
@@ -811,7 +811,11 @@ async def run_turn(
             freshness_request
             and hop == 1
             and any(
-                result.failed or result.empty or not result.content.strip() for result in results
+                result.failed
+                or result.empty
+                or not isinstance(result.search_evidence, SearchEvidence)
+                or not result.search_evidence.source_urls
+                for result in results
             )
         ):
             for index, call, tool in planned:

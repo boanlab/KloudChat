@@ -13,7 +13,7 @@ from app.schemas.chat import CompareRequest, SendMessage
 from app.services import agent
 from app.services.context import search_plan
 from app.services.freshness import abstention_response
-from app.services.tools.base import Tool, ToolContext, ToolResult
+from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 
 QUESTION = "현재 대한민국 대통령은 누구야?"
 
@@ -175,6 +175,9 @@ async def test_freshness_lookup_precedes_model_and_failure_never_releases_stale_
             content="" if outcome == "blank" else "Synthetic current source: OFFICIAL_MARKER",
             failed=outcome == "failed",
             empty=outcome == "empty",
+            search_evidence=(
+                SearchEvidence(("https://example.test/source",)) if outcome == "success" else None
+            ),
         )
 
     async def completion(_model, messages, *_args, **_kwargs):
