@@ -44,11 +44,20 @@ _MISSING = re.compile(
     re.IGNORECASE,
 )
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
+_OPERAND = r"(?<![0-9A-Za-z_.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?![\d.])"
+_QUANTITY = rf"{_OPERAND}\s*(?:원|점|명|개)?"
 _ARITHMETIC_ACTION = re.compile(
-    r"더해|더하|빼\s*줘|빼면|곱하|곱해|곱하면|나누|나눠|"
-    r"\b(?:add|subtract|multiply|divide|times)\b",
+    rf"{_QUANTITY}\s*(?:와|과|에|에서|을|를)\s*{_QUANTITY}\s*(?:을|를|으로|로)?\s*"
+    r"(?:더해|더하|빼\s*줘|빼면|곱하|곱해|곱하면|나누|나눠)|"
+    rf"\badd\s+(?:the\s+numbers?\s+)?{_OPERAND}"
+    rf"(?:\s+(?:and|to|plus)\s+|\s*,\s*|\s+){_OPERAND}|"
+    rf"\bsubtract\s+{_OPERAND}\s+from\s+{_OPERAND}|"
+    rf"\b(?:multiply|divide)\s+{_OPERAND}\s+by\s+{_OPERAND}|"
+    rf"{_OPERAND}\s+times\s+{_OPERAND}",
     re.IGNORECASE,
 )
+_EDITING_PREFIX = re.compile(r"(?:문단|예시|항목|제목|섹션|그룹|문서)\s*$")
+_EDITING_SUFFIX = re.compile(r"^\s*(?:examples?|sections?|paragraphs?|items?|groups?)\b", re.I)
 _TARGET = re.compile(
     r"가중\s*평균|평균|증가율|감소율|증감률|변화율|백분율|퍼센트|%|합계|총액|총합|"
     r"\b(?:mean|average|total|sum|percentage|percent|increase|decrease|growth)\b",
@@ -72,6 +81,16 @@ _EXPRESSION_PREFIX = re.compile(r"^(?:what\s+is|calculate|compute|evaluate)\s+",
 _EXPRESSION_SUFFIX = re.compile(
     r"(?:[은는]?\s*얼마(?:야|인가|인가요)?|[을를]?\s*(?:계산|검산)해\s*줘)?[?.=\s]*$"
 )
+
+
+def _has_numeric_arithmetic_action(text: str) -> bool:
+    # "Add section 2" and "문단 2와 3을 더해" edit objects, not their numeric labels.
+    text = " ".join(text.split())
+    return any(
+        not _EDITING_PREFIX.search(text[max(0, match.start() - 40) : match.start()])
+        and not _EDITING_SUFFIX.search(text[match.end() : match.end() + 40])
+        for match in _ARITHMETIC_ACTION.finditer(text)
+    )
 
 
 def _standalone_expression(request: str) -> bool:
@@ -164,10 +183,13 @@ def requires_calculation(request: str) -> bool:
     number_count = len(_NUMBER.findall(data))
     if number_count < 1:
         return False
+    # Eligible clauses preserve commands but omit quoted instructions. Splitting
+    # "and" between operands leaves whitespace, accepted by the addition grammar.
+    arithmetic_action = _has_numeric_arithmetic_action(" ".join(words for _, words in eligible))
     for raw, words in eligible:
         if number_count >= 2 and (
             _CALCULATE.search(words)
-            or _ARITHMETIC_ACTION.search(words)
+            or arithmetic_action
             or (_TARGET.search(words) and _ASK.search(words + ("?" if "?" in text else "")))
         ):
             return True
