@@ -13,6 +13,7 @@ import type {
   PendingQuestion,
   PrivacyAction,
   PrivacyRouting,
+  FreshnessAbstention,
   CostRouting,
   DesignTokens,
   Session,
@@ -763,7 +764,7 @@ export interface MessageRow {
     | null
   usage: Message['usage'] | null
   model: string | null
-  routing: PrivacyRouting | null
+  routing: Message['routing'] | null
   /** The 시작점 this turn began from, with its title as it read then; the template may since be deleted. */
   startedFrom: { templateId: string; title: string } | null
   /** What the reader thought of this answer. Null until somebody says. */
@@ -1653,6 +1654,7 @@ export type StreamEvent =
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
   | ({ type: 'model_route' } & CostRouting)
+  | ({ type: 'freshness_abstention' } & FreshnessAbstention)
   /** Model comparison: one column's text, then that column's final bill. */
   | { type: 'variant'; model: string; text: string; actualModel?: string }
   | { type: 'variant_retract'; model: string; text: string }
