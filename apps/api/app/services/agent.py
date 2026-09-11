@@ -565,6 +565,7 @@ async def run_turn(
     usage = {"inputTokens": 0, "outputTokens": 0}
     hop = 0
     preflight_completed = False
+    preflight_repaired = False
     post_preflight_force_sent = False
     preset_calls = []
     if preset_call and (not preflight_tool or calculation_required):
@@ -690,6 +691,23 @@ async def run_turn(
             missed_preflight = (
                 not preflight_completed and not running_preset and not valid_gate_calls
             )
+            if (
+                missed_preflight and calculation_required and not preflight_repaired
+                and not acc.calls and not acc.looped and not acc.runaway and not closing
+            ):
+                # Some providers ignore named tool_choice. Retry once with only
+                # a protocol reminder, never the unverified numeric draft.
+                preflight_repaired = True
+                conversation.append({
+                    "role": "user",
+                    "content": (
+                        f"아직 {preflight_tool} 도구 호출을 받지 못했습니다. "
+                        "정답을 문장이나 JSON 본문으로 쓰지 말고, 제공된 함수 스키마에 맞춰 "
+                        f"{preflight_tool} 도구 호출만 반환하세요. "
+                        "원래 질문의 값과 단위를 보존하여 검산할 식을 전달하세요."
+                    ),
+                })
+                continue
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
                 note = (
                     "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
