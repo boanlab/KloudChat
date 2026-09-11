@@ -369,7 +369,7 @@ _TIME_SENSITIVE = re.compile(
     # What changed in a named release, and bibliography — both go stale in memory.
     r"바뀐|바뀌|달라진|달라졌|새로\s*생긴|없어졌|사라졌|폐지|아직|여전히|요즘도|"
     # Fees, deadlines, sign-ups, places: what an office or a shop decides this year.
-    r"요금|비용|수수료|과태료|접수|마감|신청|학년도|회차|어디서|어디에|며칠|몇\s*일|기간|"
+    r"요금|비용|수수료|과태료|접수|마감|신청|학년도|회차|어디서|어디에|며칠|몇\s*[일번회]|횟수|기간|"
     r"지원금|지원\s*(?:제도|사업|받|있|되)|"
     r"arxiv|doi\b|서지|저자|"
     # A product or standard with a version number: Python 3.14, React 19, GPT-5.

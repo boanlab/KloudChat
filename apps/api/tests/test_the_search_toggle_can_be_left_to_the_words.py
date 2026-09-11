@@ -40,6 +40,8 @@ from app.services.tools.base import ToolResult
         ("auto", "분당구 대형 폐기물 스티커 어디서 사?", (True, "web_search")),
         ("auto", "오늘 기분이 별로야. 위로해줘", (True, None)),
         ("auto", "오늘 뉴스 알려줘", (True, "web_search")),
+        # A count set by law — how many renewals — is looked up, not recalled.
+        ("auto", "임대차 계약 갱신요구권 몇 번까지 쓸 수 있어?", (True, "web_search")),
         # on: forced every turn, weather still to the weather tool
         (True, "파이썬 리스트 컴프리헨션 설명해 줘", (True, "web_search")),
         (True, "서울 기온 몇 도야", (True, "weather")),
