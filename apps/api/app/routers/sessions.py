@@ -82,6 +82,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
+    calculation_policy,
     chart_code,
     design_templates,
     figures,
@@ -2604,6 +2605,15 @@ async def send_message(
     )
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
+    calculation_required = (
+        session.kind is SessionKind.chat and calculation_policy.requires_calculation(content)
+    )
+    preflight_tool = _ncs_preflight_tool(
+        {skill.catalog_key for skill in workspace.applied_skills}, tools,
+    )
+    if calculation_required:
+        preflight_tool = preflight_tool or _calculation_preflight_tool(tools)
+        trusted_context = [*trusted_context, _CALCULATION_INSTRUCTION]
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -2665,7 +2675,11 @@ async def send_message(
                     )
                 ]
             ),
-            unsupported_reason="unsupported_turn" if unsupported else None,
+            unsupported_reason=(
+                "calculation_required"
+                if calculation_required and session.routing_mode != RoutingMode.auto_quality
+                else "unsupported_turn" if unsupported else None
+            ),
         )
         resolved.models = [routed_model]
         resolved.routing = _apply_effective_model(resolved.routing, routed_model)
@@ -2681,11 +2695,6 @@ async def send_message(
             tool_definitions = []
             messages = economy_messages
         strict_local = resolved.strict_local
-
-    preflight_tool = _ncs_preflight_tool(
-        {skill.catalog_key for skill in workspace.applied_skills},
-        tools,
-    )
 
     if not has_headroom(user, model):
         raise HTTPException(
@@ -3019,6 +3028,7 @@ async def send_message(
                     else None
                 ),
                 preflight_tool=preflight_tool,
+                calculation_required=calculation_required,
             )
         ),
         media_type="text/event-stream",
@@ -3196,6 +3206,23 @@ def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) 
     return name
 
 
+_CALCULATION_INSTRUCTION = (
+    "이 요청은 수치 계산이 필요합니다. 답변 전에 지정된 계산 도구를 호출하세요. "
+    "문제에 주어진 값·분모·가중치·단위를 보존하여 식을 작성하고, 없는 조건을 만들지 마세요. "
+    "check_ncs_answer를 사용할 때 계산할 조건이 갖춰졌으면 decision=calculate를 사용하세요. "
+    "계산 결과를 설명할 때 도구의 값·선지·채점과 대조하고, 검산하지 않은 다른 수치를 "
+    "해설에 보태지 마세요. 도구는 입력한 식의 산술만 검증하며 문제 해석까지 보증하지 않습니다."
+)
+
+
+def _calculation_preflight_tool(tools: list[Tool]) -> str:
+    available = {tool.name for tool in tools if tool.source == "builtin" and tool.read_only}
+    for name in ("calculate", "check_ncs_answer"):
+        if name in available:
+            return name
+    raise HTTPException(status_code=409, detail="calculation_tool_unavailable")
+
+
 async def _run_turn(
     *,
     user_id: str,
@@ -3226,6 +3253,7 @@ async def _run_turn(
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
     preflight_tool: str | None = None,
+    calculation_required: bool = False,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
@@ -3314,6 +3342,7 @@ async def _run_turn(
                 redact_logging=mask_at_rest,
                 force_tool=force_tool,
                 **({"preflight_tool": preflight_tool} if preflight_tool else {}),
+                **({"calculation_required": True} if calculation_required else {}),
                 preset_call=preset_call,
             ),
             stopping,

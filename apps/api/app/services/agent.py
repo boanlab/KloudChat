@@ -521,9 +521,11 @@ async def run_turn(
     force_tool: str | None = None,
     #: Required, exclusive gate until it succeeds; all tool-hop prose stays private.
     preflight_tool: str | None = None,
+    #: A non-arithmetic NCS decision must not unlock a required numeric answer.
+    calculation_required: bool = False,
     #: `(tool name, arguments)` the server calls itself before the model is
-    #: asked anything; the model then starts with the result in hand. Not
-    #: used under a preflight gate, which must be the first call.
+    #: asked anything; the model then starts with the result in hand. A required
+    #: calculation may need this trusted read first. Other gates remain first.
     preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
@@ -532,6 +534,17 @@ async def run_turn(
     exactly one `usage`. `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
+    if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
+        raise ChatStreamError("preflight_tool_unavailable")
+    if calculation_required and preset_call:
+        prerequisite = by_name.get(preset_call[0])
+        if (
+            prerequisite is None
+            or prerequisite.name not in {"web_search", "weather"}
+            or prerequisite.source != "builtin"
+            or not prerequisite.read_only
+        ):
+            raise ChatStreamError("preflight_tool_unavailable")
     if preflight_tool and (
         preflight_tool not in by_name
         or (ctx.allowed and preflight_tool not in ctx.allowed)
@@ -583,6 +596,15 @@ async def run_turn(
         }
         hop_tools = [] if closing else tools
         hop_definitions = [] if closing else tool_definitions
+        if preflight_tool and not preflight_completed and not closing:
+            # An exclusive gate should not ask a small model to choose among
+            # unrelated schemas. Keep the caller's snapshots untouched.
+            hop_tools = [by_name[preflight_tool]]
+            if hop_definitions is not None:
+                hop_definitions = [
+                    definition for definition in hop_definitions
+                    if definition.get("function", {}).get("name") == preflight_tool
+                ]
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
         # Without `tool_definitions`, `_stream_once` converts `tools` itself.
@@ -605,12 +627,17 @@ async def run_turn(
             # Keep an explicit search toggle after, never ahead of, a successful gate.
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
-        if preset_call and hop == 0 and not preflight_tool:
+        running_preset = bool(
+            preset_call and hop == 0 and (not preflight_tool or calculation_required)
+        )
+        if running_preset:
             # The first hop is the server's own call: no model request, the
             # loop below runs the tool and hands its result to the model.
             name, arguments = preset_call
             acc = _Accumulator()
             acc.calls[0] = {"id": "preset_0", "name": name, "arguments": json.dumps(arguments)}
+            if name == force_tool:
+                post_preflight_force_sent = True
         else:
             async for kind, value in _stream_once(
                 model,
@@ -642,7 +669,7 @@ async def run_turn(
         if preflight_tool:
             # No other call may run beside the required gate. Waiting for the
             # complete hop also keeps ignored tool_choice and runaway drafts private.
-            missed_preflight = not preflight_completed and (
+            missed_preflight = not preflight_completed and not running_preset and (
                 len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
             )
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
@@ -790,6 +817,30 @@ async def run_turn(
         terminal_text: str | None = None
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if running_preset and calculation_required and (result.failed or result.empty):
+                result.final_text = (
+                    "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
+                    "확인할 수 있는 수치와 조건을 제공해 주세요."
+                )
+            if (
+                calculation_required and not preflight_completed
+                and call["name"] == preflight_tool and not result.failed
+            ):
+                try:
+                    evidence = json.loads(result.content)
+                except (ValueError, TypeError):
+                    evidence = None
+                verified = isinstance(evidence, dict) and "exact" in evidence
+                if call["name"] == "check_ncs_answer":
+                    verified = verified and evidence.get("arithmetic_verified") is True
+                if not verified:
+                    result.failed = True
+                    result.detail = "수치 검산 미완료"
+                    result.final_text = (
+                        result.final_text
+                        or "수치 검산을 완료하지 못해 답을 확정할 수 없습니다. "
+                        "계산에 필요한 조건과 단위를 확인해 주세요."
+                    )
             if preflight_tool and call["name"] == preflight_tool and not result.failed:
                 preflight_completed = True
             finding_counts: dict[tuple[str, str], int] = {}
