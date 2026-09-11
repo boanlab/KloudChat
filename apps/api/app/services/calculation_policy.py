@@ -163,6 +163,14 @@ def direct_calculation_expression(request: str) -> str | None:
     """
     if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
         return None
+    # NFKC can turn powers or indices into adjacent digits (2² -> 22).
+    # Leave these notations to the model; only positional digits are copied.
+    if any(
+        unicodedata.category(character) == "No"
+        or unicodedata.decomposition(character).startswith(("<super>", "<sub>"))
+        for character in request
+    ):
+        return None
     text = unicodedata.normalize("NFKC", request).strip()
     text = text.replace("×", "*").replace("÷", "/").replace("−", "-")
     text = _EXPRESSION_PREFIX.sub("", text, count=1)
