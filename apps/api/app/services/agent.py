@@ -20,6 +20,7 @@ import httpx
 from app.core.config import settings
 from app.services import settings_store
 from app.services.chat import ChatStreamError, step_label, step_title
+from app.services.tools import arithmetic
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -895,6 +896,22 @@ async def run_turn(
         arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
+            if (
+                running_preset and calculation_expression is not None
+                and call["name"] == "calculate" and tool is not None
+                and tool.source == "builtin" and tool.read_only and tool.run is arithmetic.calculate
+                and result.failed
+            ):
+                # Only a copied user literal, evaluated by our in-process calculator,
+                # can establish this fact. Never echo arguments or tool error prose.
+                try:
+                    error = json.loads(result.content)
+                except (ValueError, TypeError):
+                    error = None
+                if isinstance(error, dict) and error.get("reason") == "division_by_zero":
+                    result.final_text = (
+                        "0으로 나누는 계산은 정의되지 않으므로 값을 구할 수 없습니다."
+                    )
             if (
                 running_preset and calculation_required and calculation_expression is None
                 and call["name"] != preflight_tool and (result.failed or result.empty)
