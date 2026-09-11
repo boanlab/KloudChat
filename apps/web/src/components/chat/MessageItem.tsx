@@ -97,6 +97,9 @@ function costRouteDecisionLabel(
     return t('Auto · 분류기를 사용할 수 없어 품질 모델 유지')
   }
   if (route.decision === 'bypassed') {
+    if (route.reasonCode === 'calculation_required') {
+      return t('Auto · 계산 도구 사용을 위해 품질 모델 유지')
+    }
     if (route.reasonCode === 'privacy_detected') {
       return t('Auto · 개인정보 감지로 난이도 판정 생략')
     }

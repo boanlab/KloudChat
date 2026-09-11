@@ -183,6 +183,8 @@ const EN: Record<string, string> = {
     'Auto · Classifier unavailable, keeping the quality model',
   'Auto · 개인정보 감지로 난이도 판정 생략':
     'Auto classification skipped because personal data was detected',
+  'Auto · 계산 도구 사용을 위해 품질 모델 유지':
+    'Auto · Keeping the quality model for calculation tools',
   'Auto · 기능 사용으로 품질 모델 유지':
     'Auto · Extra features used, keeping the quality model',
   'Auto · 관리 정책이 꺼져 품질 모델 유지':
