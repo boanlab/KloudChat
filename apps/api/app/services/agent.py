@@ -19,6 +19,7 @@ import httpx
 from app.core.config import settings
 from app.services import settings_store
 from app.services.chat import ChatStreamError, step_label, step_title
+from app.services.freshness import abstention_response
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
@@ -525,13 +526,32 @@ async def run_turn(
     #: asked anything; the model then starts with the result in hand. Not
     #: used under a preflight gate, which must be the first call.
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: Bounded current-political-fact request: the trusted first lookup must
+    #: succeed before any model call. Retrieval presence is not fact validation.
+    freshness_request: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
-    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`, and
+    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`,
+    optional `freshness_abstention` (a server response with no executed model), and
     exactly one `usage`. `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
+    if freshness_request and (
+        strict_local
+        or preflight_tool
+        or not preset_call
+        or preset_call[0] != "web_search"
+        or "web_search" not in by_name
+        or by_name["web_search"].source != "builtin"
+        or not by_name["web_search"].read_only
+        or (ctx.allowed and "web_search" not in ctx.allowed)
+        or settings.max_tool_hops < 1
+    ):
+        yield {"type": "freshness_abstention", "reason": "verification_unavailable"}
+        yield {"type": "delta", "text": abstention_response(freshness_request)}
+        yield {"type": "usage", "inputTokens": 0, "outputTokens": 0}
+        return
     if preflight_tool and (
         preflight_tool not in by_name
         or (ctx.allowed and preflight_tool not in ctx.allowed)
@@ -787,6 +807,25 @@ async def run_turn(
             return await _run_tool(tool, call["arguments"], ctx)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
+        if (
+            freshness_request
+            and hop == 1
+            and any(
+                result.failed or result.empty or not result.content.strip() for result in results
+            )
+        ):
+            for index, call, tool in planned:
+                yield {
+                    "type": "step",
+                    "id": f"h{hop}_{index}",
+                    "label": visible_label(tool, call["name"], done=True),
+                    "status": "error",
+                    "detail": "Current information could not be verified.",
+                }
+            yield {"type": "freshness_abstention", "reason": "lookup_failed_or_empty"}
+            yield {"type": "delta", "text": abstention_response(freshness_request)}
+            yield {"type": "usage", "inputTokens": 0, "outputTokens": 0}
+            return
         terminal_text: str | None = None
 
         for (index, call, tool), result in zip(planned, results, strict=True):
