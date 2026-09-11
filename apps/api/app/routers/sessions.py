@@ -109,6 +109,7 @@ from app.services import page as page_service
 from app.services import report as report_service
 from app.services.context import (
     build_messages,
+    search_hints,
     search_plan,
     search_query,
     weather_location,
@@ -2956,7 +2957,7 @@ async def send_message(
     tool_names = {t.name for t in tools}
     preset_call: tuple[str, dict[str, Any]] | None = None
     if forced_tool == "web_search" and "web_search" in tool_names:
-        preset_call = ("web_search", {"query": search_query(content)})
+        preset_call = ("web_search", {"query": search_query(content), **search_hints(content)})
     elif forced_tool == "weather" and "weather" in tool_names:
         place = weather_location(content)
         if place:
