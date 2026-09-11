@@ -226,14 +226,16 @@ def test_a_fitting_lane_hit_outranks_a_wordier_blog_but_a_stray_one_sinks() -> N
         "url": "https://arxiv.org/abs/1706.03762",
         "snippet": "arxiv",
         "published": "",
-        "lane": "1",
+        "lane": "kind",
+        "lane_query": "Attention Is All You Need",
     }
     stray = {
         "title": "Superconductivity as a consequence of ordering",
         "url": "https://arxiv.org/abs/1005.0280",
         "snippet": "attention",
         "published": "",
-        "lane": "1",
+        "lane": "kind",
+        "lane_query": "Attention Is All You Need",
     }
     ranked = builtin._rank([blog, stray, paper], query)
     # The paper fits over half the question: head start, and it leads.
@@ -260,3 +262,117 @@ async def test_a_paper_question_takes_the_science_lane(monkeypatch) -> None:
     # The science lane is asked in English for the title alone.
     assert _Client.calls[1]["q"] == "Attention Is All You Need"
     assert _Client.calls[1]["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_a_latin_named_subject_gets_an_english_lane(monkeypatch) -> None:
+    """「Ubuntu 24.04 지원 종료일」: the official page is English and a Korean
+    locale hides it, so the Latin-alphabet words are searched in English too."""
+    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
+    _Client.calls.clear()
+    await builtin._searxng("http://searx", "Ubuntu 24.04 지원 종료일", 5)
+    assert [(c["q"], c["language"]) for c in _Client.calls] == [
+        ("Ubuntu 24.04 지원 종료일", "ko-KR"),
+        ("Ubuntu 24.04 end of life", "en"),
+    ]
+    assert builtin._english_query("2026년 NeurIPS 논문 제출 마감일") == "2026 NeurIPS deadline"
+    assert builtin._english_query("FastAPI 최신 버전 번호랑 릴리스 날짜") == (
+        "FastAPI latest version release"
+    )
+    # Nothing Latin, or a bare number: no English lane.
+    assert builtin._english_query("2026년 최저임금") == "2026년 최저임금"
+    assert builtin._places("이번 주말 분당 근처 행사나 축제") == ["분당"]
+    assert builtin._places("성남시 분당구 정자동 소아과") == ["성남", "분당", "정자"]
+    seoul = {
+        "title": "이번 주말엔 불꽃축제, 차 없는 잠수교",
+        "url": "https://n.test/1",
+        "snippet": "서울",
+        "published": "",
+    }
+    assert not builtin._anchored(seoul, builtin._anchors("분당 축제"), builtin._places("분당 축제"))
+    _Client.calls.clear()
+    # A Korean-only subject runs the general lane alone.
+    await builtin._searxng("http://searx", "2026년 최저임금 시급", 5)
+    assert len(_Client.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_hints_shape_the_search(monkeypatch) -> None:
+    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
+    _Client.calls.clear()
+    await builtin._searxng(
+        "http://searx",
+        "국가장학금 2차 신청 기간",
+        5,
+        hints={"site": "kosaf.go.kr", "time_range": "month", "language": "en"},
+    )
+    assert _Client.calls[0]["q"] == "국가장학금 2차 신청 기간 site:kosaf.go.kr"
+    assert _Client.calls[0]["time_range"] == "month" and _Client.calls[0]["language"] == "en"
+    _Client.calls.clear()
+    await builtin._searxng(
+        "http://searx", "2026년 청년도약계좌 가입 조건", 5, hints={"official": True}
+    )
+    # The official lane drops the year: the notice carries it in its body, not its title.
+    assert [c["q"] for c in _Client.calls] == [
+        "2026년 청년도약계좌 가입 조건",
+        "청년도약계좌 가입 조건 site:go.kr",
+    ]
+    assert all(c["safesearch"] == 2 for c in _Client.calls)
+
+
+def test_foreign_boards_and_feeds_are_dropped() -> None:
+    """TikTok, Blind, HiNative, Reddit: not where a Korean user looks."""
+    rows = [
+        {
+            "title": "오늘 기분이 꾸리한게",
+            "url": "https://www.teamblind.com/kr/post/x",
+            "snippet": "",
+            "published": "",
+        },
+        {
+            "title": "how do you answer 오늘 기분이 어때?",
+            "url": "https://hinative.com/questions/1",
+            "snippet": "",
+            "published": "",
+        },
+        {
+            "title": "#기분 | TikTok",
+            "url": "https://www.tiktok.com/tag/x",
+            "snippet": "",
+            "published": "",
+        },
+        {
+            "title": "r/korea",
+            "url": "https://www.reddit.com/r/korea/",
+            "snippet": "",
+            "published": "",
+        },
+        {
+            "title": "기분 전환 방법 10가지",
+            "url": "https://health.example.kr/mood",
+            "snippet": "",
+            "published": "",
+        },
+    ]
+    assert [r["url"] for r in builtin._select(rows, "기분 전환 방법", 5)] == [
+        "https://health.example.kr/mood"
+    ]
+
+
+def test_a_community_thread_ranks_below_a_page_with_the_same_words() -> None:
+    query = "예금 금리 높은 은행"
+    board = {
+        "title": "예금 금리 높은 은행 어디?",
+        "url": "https://www.a-ha.io/questions/1",
+        "snippet": "",
+        "published": "",
+    }
+    page = {
+        "title": "예금 금리 높은 은행 비교",
+        "url": "https://finance.example.com/rates",
+        "snippet": "",
+        "published": "",
+    }
+    assert [r["url"] for r in builtin._rank([board, page], query)][
+        0
+    ] == "https://finance.example.com/rates"

@@ -45,8 +45,8 @@ def _terms(query: str) -> list[str]:
 def _covers(text: str, term: str) -> bool:
     if term in text:
         return True
-    # Drop a trailing Korean particle (청소년의 → 청소년) before giving up.
-    return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도" and term[:-1] in text
+    # Drop a trailing Korean particle (청소년의 → 청소년) or counter (2026년 → 2026).
+    return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도년월일" and term[:-1] in text
 
 
 def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
@@ -56,17 +56,37 @@ def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
     a blog that repeats the whole question outranks the paper itself otherwise,
     while a lane hit about something else still sinks."""
     terms = _terms(query)
-    if len(terms) < 2:
-        return rows
+    names, _ = _anchors(query)
     head_start = len(terms) // 2 + 1
 
     def score(row: dict[str, str]) -> int:
         overlap = _overlap(row, terms)
-        # Only a lane hit that already fits half the question gets the head
-        # start; the science lane also returns papers that merely share a word.
-        boosted = row.get("lane") and overlap * 2 >= len(terms)
-        return overlap + (head_start if boosted else 0)
+        # A lane hit is judged against the words its lane was asked with (the
+        # English lane saw 「Ubuntu 24.04」, not the Korean sentence), and gets
+        # the head start only when it fits half of them; the science lane also
+        # returns papers that merely share a word. The English lane, being a
+        # supplement, gets a single step.
+        lane_query = row.get("lane_query")
+        if lane_query:
+            lane_terms = _terms(lane_query) or terms
+            fits = _overlap(row, lane_terms) * 2 >= len(lane_terms)
+            # The kind's lane and a lane the person asked for (official) lead;
+            # the English lane, a supplement, gets a single step.
+            boosted = head_start if row.get("lane") in ("kind", "official") else 1
+        else:
+            fits = boosted = False
+        # A community thread answers, but a page that is not one ranks first;
+        # the subject's own site ranks ahead of everything.
+        community = any(_host(row["url"]).endswith(h) for h in _COMMUNITY_HOSTS)
+        return (
+            overlap
+            + (boosted if fits else 0)
+            + (2 if _own_site(row, names) else 0)
+            - (1 if community else 0)
+        )
 
+    if len(terms) < 2 and not names:
+        return rows
     return sorted(rows, key=score, reverse=True)
 
 
@@ -111,16 +131,67 @@ def _host(url: str) -> str:
     return urlparse(url).netloc.lower().removeprefix("www.").removeprefix("m.")
 
 
+#: Korean boards and Q&A sites: kept, ranked a step below everything else.
+_COMMUNITY_HOSTS = (
+    "instiz.net",
+    "dcinside.com",
+    "fmkorea.com",
+    "ppomppu.co.kr",
+    "clien.net",
+    "kin.naver.com",
+    "a-ha.io",
+    "cafe.daum.net",
+    "cafe.naver.com",
+)
+
 #: Words that carry no subject on their own in a Latin-alphabet query.
 _LATIN_STOPWORDS = frozenset(
     "the a an and or of to in on for with is are was be do does how what when where "
     "which who why can i my me you your it its this that these those need needed current "
     "latest new best top vs from by at as into about".split()
 )
-#: Pages that never answer a question: tag and discovery feeds, and adult sites,
-#: which a general engine returns for a query it did not understand.
-_UNWANTED_HOSTS = ("tiktok.com", "instagram.com", "pinterest.")
+#: Pages that never answer a Korean user's question: social feeds and foreign
+#: Q&A boards (TikTok, Blind, HiNative, Reddit, Quora) that a general engine
+#: returns for a query it did not understand, and adult sites.
+_UNWANTED_HOSTS = (
+    "tiktok.com",
+    "instagram.com",
+    "pinterest.",
+    "facebook.com",
+    "x.com",
+    "twitter.com",
+    "threads.net",
+    "teamblind.com",
+    "hinative.com",
+    "reddit.com",
+    "quora.com",
+)
 _UNWANTED = re.compile(r"야동|섹스|성인\s*(?:사이트|영상)|19금|porn|xxx|hentai|에로|성인야", re.I)
+
+
+#: Korean places that carry no 시·구·동 suffix in everyday speech.
+_KR_TOWNS = frozenset(
+    "분당 판교 강남 홍대 잠실 일산 광교 동탄 송도 해운대 서면 명동 이태원 여의도 마곡 상암 위례 "
+    "목동 노원 수지 죽전 정자 서현 야탑 미금 평촌 산본 부평 성남 용인 수원 화성 오산 평택 천안 "
+    "세종 대전 대구 부산 광주 울산 인천 서울 제주 강릉 속초 춘천 원주 청주 전주 여수 순천 포항 "
+    "경주 창원 김해 진주 목포 군산 안산 시흥 김포 파주 남양주 구리 하남 고양 의정부 광명 안양 "
+    "군포 의왕 과천 양주 포천 동두천 이천 여주 안성 양평 가평 연천".split()
+)
+_KR_PLACE = re.compile(r"[가-힣]{1,4}(?:특별시|광역시|시|구|군|읍|면|동|리)(?=\s|$)")
+
+
+def _places(query: str) -> list[str]:
+    """Korean place names in the query — 분당, 성남시, 정자동 — as their stem
+    (성남시 → 성남). A hit about somewhere else is not an answer."""
+    found: list[str] = []
+    for token in re.findall(r"[가-힣]+", query):
+        if token in _KR_TOWNS:
+            found.append(token)
+        elif _KR_PLACE.fullmatch(token) and len(token) >= 3:
+            stem = re.sub(r"(?:특별시|광역시|시|구|군|읍|면|동|리)$", "", token)
+            if len(stem) >= 2:
+                found.append(stem)
+    return found
 
 
 def _anchors(query: str) -> tuple[list[str], list[str]]:
@@ -128,7 +199,8 @@ def _anchors(query: str) -> tuple[list[str], list[str]]:
     Latin-alphabet words of four letters or more (FastAPI, Ubuntu, NeurIPS —
     three-letter ones like LTS or CVE are too common to anchor on) and tokens
     with digits (24.04, D-2, 3.14). A hit must carry one of the names and every
-    version: a page about Ubuntu that never says 24.04 is not about 24.04."""
+    version: a page about Ubuntu that never says 24.04 is not about 24.04.
+    Korean places (`_places`) are checked beside these, each mandatory."""
     names: list[str] = []
     versions: list[str] = []
     for token in re.findall(r"[A-Za-z][A-Za-z0-9.+#_-]*|\d+(?:\.\d+)+|[A-Za-z]-\d+", query):
@@ -155,12 +227,23 @@ def _foreign_script(title: str) -> bool:
     return bool(letters) and sum(1 for ch in letters if _OTHER_SCRIPTS.match(ch)) * 3 > len(letters)
 
 
-def _anchored(row: dict[str, str], anchors: tuple[list[str], list[str]]) -> bool:
+def _anchored(
+    row: dict[str, str], anchors: tuple[list[str], list[str]], places: list[str] = ()
+) -> bool:
     names, versions = anchors
     text = f"{row['title']} {row['snippet']} {row['url']}".lower()
     if names and not any(name in text for name in names):
         return False
-    return all(version in text for version in versions)
+    if not all(version in text for version in versions):
+        return False
+    return all(place in text for place in places)
+
+
+def _own_site(row: dict[str, str], names: list[str]) -> bool:
+    """The subject's own domain — nodejs.org for Node.js, ubuntu.com for Ubuntu,
+    neurips.cc for NeurIPS: the page a question about it should start from."""
+    host = _host(row["url"]).replace("-", "")
+    return any(re.sub(r"[^a-z0-9]", "", name) in host for name in names if len(name) >= 4)
 
 
 def _unwanted(row: dict[str, str]) -> bool:
@@ -179,12 +262,13 @@ def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str
     kept: list[dict[str, str]] = []
     benched: list[dict[str, str]] = []
     anchors = _anchors(query)
+    places = _places(query)
     for row in rows:
         url = row["url"].rstrip("/")
         if not url or url in seen:
             continue
         seen.add(url)
-        if _unwanted(row) or not _anchored(row, anchors):
+        if _unwanted(row) or not _anchored(row, anchors, places):
             continue
         host = _host(url)
         if _front_page(url) or per_host.get(host, 0) >= _PER_HOST:
@@ -208,6 +292,54 @@ def _latin_only(query: str) -> str:
     return " ".join(tokens) if len(tokens) >= 2 else query
 
 
+#: Korean intent words an English-language page would state in English. Only
+#: these travel into the English lane; the subject's name is already Latin.
+_INTENT_EN = [
+    # Specific intents first: only the first two travel, and 「날짜」 is in
+    # almost every question.
+    (re.compile(r"지원\s*종료|서비스\s*종료|종료일|EOL", re.I), "end of life"),
+    (re.compile(r"마감일|마감|제출\s*기한"), "deadline"),
+    (re.compile(r"최신\s*버전|최신\s*판"), "latest version"),
+    (re.compile(r"릴리스|출시"), "release"),
+    (re.compile(r"가격|요금|비용"), "price"),
+    (re.compile(r"취약점|보안\s*권고"), "vulnerability"),
+    (re.compile(r"오류|에러"), "error"),
+    (re.compile(r"설치"), "install"),
+    (re.compile(r"사양|스펙"), "specs"),
+    (re.compile(r"비교|차이"), "vs"),
+    (re.compile(r"공식"), "official"),
+    (re.compile(r"등록|신청"), "registration"),
+    (re.compile(r"비자|비자\s*면제"), "visa"),
+    (re.compile(r"지원\s*정책|정책"), "support policy"),
+    (re.compile(r"일정|날짜"), "dates"),
+]
+
+#: Time words that narrow a `site:go.kr` search to nothing: the notice says
+#: 「2026년」 in its body, not its title.
+_TIME_NOISE = re.compile(r"\b20\d\d년?\b|올해|작년|내년|최근|지금|현재|오늘|요즘")
+
+
+def _core_query(query: str) -> str:
+    return re.sub(r"\s+", " ", _TIME_NOISE.sub(" ", query)).strip() or query
+
+
+def _english_query(query: str) -> str:
+    """The query for the English lane: its Latin-alphabet tokens plus the
+    English word for what it asks (「Ubuntu 24.04 지원 종료일」 → 「Ubuntu 24.04
+    end of life」), or the whole query when nothing is Latin."""
+    tokens = [
+        t
+        for t in re.findall(r"[A-Za-z][A-Za-z0-9.+#_'-]*|\d[\d.]*", query)
+        if t.lower() not in ("arxiv", "doi", "paper", "preprint")
+    ]
+    if not tokens or all(t[0].isdigit() for t in tokens):
+        return query
+    extras = [word for pattern, word in _INTENT_EN if pattern.search(query)]
+    if len(tokens) < 2 and not extras:
+        return query
+    return " ".join([*tokens, *extras[:2]])
+
+
 #: A question about a paper, whatever the model called the search.
 _PAPER_CUES = re.compile(r"논문|arxiv|\bdoi\b|preprint|학술지|저널|\bpaper\b", re.I)
 
@@ -219,34 +351,65 @@ _LANES: dict[str, dict[str, str]] = {
 }
 
 
+#: Search hints the caller may pass — parsed from the user's own words by
+#: `context.search_hints`, or set by the model on the tool call.
+_TIME_RANGES = ("day", "week", "month", "year")
+_LANGUAGES = {"ko": "ko-KR", "ko-KR": "ko-KR", "en": "en"}
+
+
 async def _searxng(
-    base_url: str, query: str, count: int, *, fresh: bool = False, kind: str = "web"
+    base_url: str,
+    query: str,
+    count: int,
+    *,
+    fresh: bool = False,
+    kind: str = "web",
+    hints: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Search hits for `query`. A `kind` other than "web" (or a `fresh` query:
-    news, prices, versions, a date) also runs that kind's lane, whose hits come
-    first: the general lane answers 「최신 모델」 with home pages and
-    encyclopaedias, and carries no papers or code at all."""
+    """Search hits for `query`. Beside the general lane run, as they apply:
+    the kind's own lane (news for a fresh query, science for papers, IT for
+    code); an English lane when the subject has a Latin-alphabet name (Ubuntu
+    24.04, NeurIPS 2026 — the official page is English and a Korean locale
+    hides it); a `site:go.kr` lane for `official`; and `site`, `time_range`
+    and `language` hints on every lane. Lane hits that fit the question come
+    first."""
+    hints = hints or {}
     search_url = f"{base_url.rstrip('/')}/search"
-    base = {"q": query, "format": "json", "safesearch": 1, "language": "ko-KR"}
+    site = str(hints.get("site") or "").strip().lstrip("site:")
+    q = f"{query} site:{site}" if site else query
+    base: dict[str, Any] = {"q": q, "format": "json", "safesearch": 2, "language": "ko-KR"}
+    if hints.get("language") in _LANGUAGES:
+        base["language"] = _LANGUAGES[str(hints["language"])]
+    if hints.get("time_range") in _TIME_RANGES:
+        base["time_range"] = hints["time_range"]
+    lane_requests: list[tuple[str, dict[str, Any]]] = []
     lane = _LANES.get("news" if fresh and kind == "web" else kind)
+    if lane:
+        lane_params = {**base, **lane}
+        if kind == "papers":
+            # Titles are English; a Korean locale drags in unrelated Korean journals.
+            lane_params.update(q=_latin_only(query), language="en")
+        lane_requests.append(("kind", lane_params))
+    if kind == "web" and base["language"] != "en" and not site:
+        names, _ = _anchors(query)
+        english = _english_query(query)
+        if names and english != query:
+            lane_requests.append(("english", {**base, "q": english, "language": "en"}))
+    if hints.get("official") and not site:
+        lane_requests.append(("official", {**base, "q": f"{_core_query(query)} site:go.kr"}))
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
-        lanes = [client.get(search_url, params=base)]
-        if lane:
-            # The science engines index English titles: a paper asked about in
-            # Korean is found by its Latin-alphabet words alone.
-            lane_params = {**base, **lane}
-            if kind == "papers":
-                # Titles are English; a Korean locale drags in unrelated Korean journals.
-                lane_params.update(q=_latin_only(query), language="en")
-            lanes.append(client.get(search_url, params=lane_params))
-        responses = await asyncio.gather(*lanes, return_exceptions=True)
+        responses = await asyncio.gather(
+            client.get(search_url, params=base),
+            *(client.get(search_url, params=params) for _, params in lane_requests),
+            return_exceptions=True,
+        )
     general = responses[0]
     if isinstance(general, BaseException):
         raise general
     general.raise_for_status()
     hits: list[dict[str, str]] = []
 
-    def collect(payload: dict[str, Any], *, lane: bool = False) -> None:
+    def collect(payload: dict[str, Any], *, lane: str = "", lane_query: str = "") -> None:
         # Over-fetch, then keep the best `count` after `_select`.
         for row in (payload.get("results") or [])[: count * 3]:
             hits.append(
@@ -255,15 +418,18 @@ async def _searxng(
                     "url": row.get("url") or "",
                     "snippet": row.get("content") or "",
                     "published": str(row.get("publishedDate") or "")[:10],
-                    **({"lane": "1"} if lane else {}),
+                    **({"lane": lane, "lane_query": lane_query} if lane else {}),
                 }
             )
 
-    if len(responses) > 1 and not isinstance(responses[1], BaseException):
-        laned = responses[1]
-        if laned.status_code < 400:
-            collect(laned.json(), lane=True)
+    for (tag, params), laned in zip(lane_requests, responses[1:], strict=True):
+        if not isinstance(laned, BaseException) and laned.status_code < 400:
+            collect(laned.json(), lane=tag, lane_query=str(params["q"]))
     collect(general.json())
+    terms = _terms(query)
+    # A `site:` lane answers with whatever the domain has; a hit sharing no
+    # word with the question is that, not an answer.
+    hits = [h for h in hits if h.get("lane") != "official" or _overlap(h, terms) > 0]
     return _select(hits, query, count)
 
 
@@ -316,6 +482,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     # Time-sensitive words get the news lane too; see `_searxng`.
     from app.services.context import needs_web_search
 
+    hints = {k: args.get(k) for k in ("site", "time_range", "language", "official") if args.get(k)}
     try:
         hits = await _searxng(
             backends.search,
@@ -323,6 +490,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             settings.web_search_results,
             fresh=needs_web_search(query),
             kind=kind,
+            hints=hints,
         )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
@@ -421,7 +589,8 @@ WEB_SEARCH = Tool(
         "웹을 검색하고 상위 결과의 본문을 읽어 옵니다. 최신 정보, 뉴스, 통계, "
         "모델이 모르는 사실을 확인할 때 사용하세요. 논문·학술 자료는 kind=papers, "
         "코드·라이브러리·오류 메시지는 kind=code, 시사·사건은 kind=news 로 검색하면 "
-        "그 분야 엔진이 함께 답합니다."
+        "그 분야 엔진이 함께 답합니다. 공식 출처가 필요하면 site 나 official 을, "
+        "최근 것만 필요하면 time_range 를, 해외 자료는 language=en 을 주세요."
     ),
     parameters={
         "type": "object",
@@ -437,6 +606,24 @@ WEB_SEARCH = Tool(
                     "검색 종류. web: 일반(기본). news: 뉴스·시사. papers: 논문·학술 "
                     "(Google Scholar, OpenAlex, arXiv 등). code: 개발 (GitHub, Stack Overflow 등)."
                 ),
+            },
+            "site": {
+                "type": "string",
+                "description": "이 도메인 안에서만 찾습니다. 예: neurips.cc, kosaf.go.kr",
+            },
+            "official": {
+                "type": "boolean",
+                "description": "정부·공공기관(go.kr) 자료를 함께 찾습니다. 제도·신청·기한 질문에.",
+            },
+            "time_range": {
+                "type": "string",
+                "enum": ["day", "week", "month", "year"],
+                "description": "이 기간 안의 자료만. 최신 소식은 week, 올해 제도는 year.",
+            },
+            "language": {
+                "type": "string",
+                "enum": ["ko", "en"],
+                "description": "결과 언어. 해외 제품·논문·표준은 en.",
             },
         },
         "required": ["query"],

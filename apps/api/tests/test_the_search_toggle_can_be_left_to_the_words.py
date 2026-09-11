@@ -387,3 +387,30 @@ async def test_page_reading_stops_after_the_cap(monkeypatch) -> None:
     assert len(seen) == agent.MAX_FETCHES + 1
     assert "tools" not in seen[-1]
     assert "문서는 충분히 읽었습니다" in seen[-1]["messages"][-1]["content"]
+
+
+@pytest.mark.parametrize(
+    ("words", "hints", "query"),
+    [
+        (
+            "2026년 NeurIPS 마감일 공식 사이트 기준으로 알려줘",
+            {"official": True},
+            "2026년 NeurIPS 마감일",
+        ),
+        (
+            "삼성전자 관련 이번 주 뉴스로 정리해줘",
+            {"time_range": "week", "kind": "news"},
+            "삼성전자 관련 이번 주 뉴스로",
+        ),
+        ("Ubuntu 24.04 EOL 영어 자료로 찾아줘", {"language": "en"}, "Ubuntu 24.04 EOL"),
+        (
+            "국가장학금 2차 신청 기간 site:kosaf.go.kr",
+            {"site": "kosaf.go.kr"},
+            "국가장학금 2차 신청 기간",
+        ),
+        ("오늘 휘발유 평균 가격 얼마야?", {}, "오늘 휘발유 평균 가격"),
+    ],
+)
+def test_hints_in_the_question_are_read_and_left_out_of_the_query(words, hints, query) -> None:
+    assert context.search_hints(words) == hints
+    assert context.search_query(words) == query

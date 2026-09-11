@@ -427,7 +427,7 @@ _WEATHER_WORDS = re.compile(
 
 def search_query(request: str) -> str:
     """The user's sentence as a search query: request phrasing trimmed, capped."""
-    text = re.sub(r"\s+", " ", (request or "").strip())
+    text = re.sub(r"\s+", " ", _HINT_PHRASES.sub(" ", request or "").strip())
     for _ in range(4):
         text = text.rstrip(" ?？!.。~,")
         peeled = _FILLER.sub(
@@ -466,6 +466,62 @@ _SMALL_TALK = re.compile(
 def is_small_talk(request: str) -> bool:
     text = (request or "").strip()
     return len(text) <= 40 and bool(_SMALL_TALK.search(text)) and not requests_web_search(text)
+
+
+#: Hints a person writes into the question itself: where to look, how far
+#: back, in what language. Honoured on the server's own first search.
+_HINT_SITE = re.compile(r"\bsite:([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
+_HINT_OFFICIAL = re.compile(
+    r"공식\s*(?:사이트|홈페이지|자료|발표|문서|출처|기준)|정부\s*(?:자료|발표|사이트)|"
+    r"기관\s*(?:자료|홈페이지)|공공기관|\bofficial\b",
+    re.I,
+)
+_HINT_RANGE = [
+    (
+        re.compile(r"오늘\s*(?:자|의)?\s*(?:뉴스|기사|소식)|지난\s*24시간|하루\s*(?:사이|동안|치)"),
+        "day",
+    ),
+    (
+        re.compile(r"이번\s*주|최근\s*(?:1|일|한)\s*주|일주일\s*(?:사이|동안|치|내)|지난\s*주"),
+        "week",
+    ),
+    (
+        re.compile(r"이번\s*달|최근\s*(?:1|한)\s*달|한\s*달\s*(?:사이|동안|치|내)|지난\s*달"),
+        "month",
+    ),
+    (re.compile(r"올해|최근\s*(?:1|일|한)\s*년|1년\s*(?:사이|동안|치|내)"), "year"),
+]
+_HINT_ENGLISH = re.compile(
+    r"영어\s*(?:자료|문서|로|기사)|영문\s*(?:자료|문서)|해외\s*(?:자료|문서|기사)|in english", re.I
+)
+_HINT_NEWS = re.compile(r"뉴스\s*(?:로|에서|기사|위주로)|기사\s*(?:로|에서|위주로)")
+#: The hint phrases, so `search_query` can leave them out of the query itself.
+_HINT_PHRASES = re.compile(
+    r"\bsite:[A-Za-z0-9.-]+|(?:공식|정부|기관)\s*(?:사이트|홈페이지|자료|발표|문서|출처)\s*"
+    r"(?:기준으로|기준|에서|으로|로|만)?|공공기관\s*(?:자료)?\s*(?:기준으로|에서|로)?|"
+    r"(?:영어|영문|해외)\s*(?:자료|문서|기사)\s*(?:로|에서|위주로)?|"
+    r"(?:뉴스|기사)\s*(?:위주로|로만)",
+    re.I,
+)
+
+
+def search_hints(request: str) -> dict[str, object]:
+    """What the user's own words say about where and how to search."""
+    text = request or ""
+    hints: dict[str, object] = {}
+    if match := _HINT_SITE.search(text):
+        hints["site"] = match.group(1).lower()
+    elif _HINT_OFFICIAL.search(text):
+        hints["official"] = True
+    for pattern, span in _HINT_RANGE:
+        if pattern.search(text):
+            hints["time_range"] = span
+            break
+    if _HINT_ENGLISH.search(text):
+        hints["language"] = "en"
+    if _HINT_NEWS.search(text):
+        hints["kind"] = "news"
+    return hints
 
 
 def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
