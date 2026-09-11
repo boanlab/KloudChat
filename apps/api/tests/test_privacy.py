@@ -56,7 +56,7 @@ def test_detector_masks_only_valid_high_precision_values() -> None:
     rrn = _rrn()
     text = (
         f"mail person@example.com, phone +14155552671, local 010-1234-5678, "
-        f"rrn {rrn}, card 4111 1111 1111 1111, ip 192.168.10.12, "
+        f"rrn {rrn}, card 4111 1111 1111 1111, ip 121.134.5.6, "
         "key sk-abcdefghijklmnopqrstuvwxyz123456"
     )
 
@@ -76,13 +76,72 @@ def test_detector_masks_only_valid_high_precision_values() -> None:
 
 
 def test_detector_accepts_valid_ipv6_and_rejects_malformed_ipv6() -> None:
-    text = "remote 2001:db8:85a3::8a2e:370:7334, malformed 2001:db8:::1"
+    text = "remote 2606:4700:4700::1111, malformed 2001:db8:::1"
 
     masked, count = governance.mask(text)
 
     assert count == 1
-    assert "2001:db8:85a3::8a2e:370:7334" not in masked
+    assert "2606:4700:4700::1111" not in masked
     assert "2001:db8:::1" in masked
+
+
+def test_addresses_of_an_organisation_stay_readable() -> None:
+    """A switchboard, a service number, a role mailbox, a private-range or
+    documentation address: details of an organisation or a network, not of a
+    person. They are detected, but no scope masks them."""
+    text = (
+        "대표번호 02-2255-0114, 고객센터 1588-3366, 수신자부담 080-123-4567, "
+        "문의 press@samsung.com, 민원 minwon@korea.kr, 서버 192.168.10.12, "
+        "루프백 127.0.0.1, DNS 8.8.8.8, 문서용 2001:db8::1"
+    )
+    for scope in ("egress", "tool", "answer"):
+        assert governance.mask(text, scope=scope) == (text, 0)
+    assert governance.findings({"current_input": text}) == []
+
+
+def test_a_page_from_the_web_keeps_its_contact_details() -> None:
+    """The `tool` scope masks secrets only: a person's mobile number or mailbox
+    on a public page is the answer the user asked for."""
+    text = (
+        "홍길동 교수 010-1234-5678 hong@univ.ac.kr, 카드 4111 1111 1111 1111, "
+        "키 sk-abcdefghijklmnopqrstuvwxyz123456"
+    )
+    masked, count = governance.mask(text, scope="tool")
+    assert count == 2
+    assert "010-1234-5678" in masked and "hong@univ.ac.kr" in masked
+    assert "[카드번호]" in masked and "[API키]" in masked
+    assert [f.category for f in governance.findings({"tool_output": text}, scope="tool")] == [
+        "api_key",
+        "payment_card",
+    ]
+
+
+def test_a_protected_number_is_caught_however_the_model_writes_it() -> None:
+    """The user's number comes back re-spaced, a mailbox re-cased: still theirs."""
+    protected = governance.protected_values("연락처 010-1234-5678, Me@Gmail.com")
+    answer = "전화 01012345678 또는 010 1234 5678, 메일 me@gmail.com, 다른 사람 010-9999-0000"
+    masked, count = governance.mask(answer, scope="answer", protected=protected)
+    assert masked == "전화 [전화번호] 또는 [전화번호], 메일 [이메일], 다른 사람 010-9999-0000"
+    assert count == 3
+
+
+def test_a_role_mailbox_stays_readable_under_the_legacy_rules_too() -> None:
+    text = "문의 press@samsung.com, 담당 hong@samsung.com"
+    masked, count = governance.mask_legacy(text)
+    assert masked == "문의 press@samsung.com, 담당 [이메일]"
+    assert count == 1
+
+
+def test_the_answer_at_rest_masks_the_users_own_details_only() -> None:
+    """What egress took out of the user's words is carried as `protected` and
+    taken out of the answer too; a number the model found on the web stays."""
+    asked = "내 번호는 010-1234-5678 이고 메일은 me@gmail.com 이야"
+    protected = governance.protected_values(asked)
+    assert protected == {"010-1234-5678", "me@gmail.com"}
+    answer = "담당자 010-9876-5432 와 본인 010-1234-5678, 대표 02-2255-0114, me@gmail.com"
+    masked, count = governance.mask(answer, scope="answer", protected=protected)
+    assert masked == "담당자 010-9876-5432 와 본인 [전화번호], 대표 02-2255-0114, [이메일]"
+    assert count == 2
 
 
 def test_legacy_mask_preserves_the_preexisting_broad_rules() -> None:
@@ -178,8 +237,6 @@ def test_detector_masks_finding_heavy_input_with_one_pass_render() -> None:
 @pytest.mark.parametrize(
     "value",
     [
-        "02-1234-5678",
-        "(031) 234-5678",
         "(415) 555-2671",
         "+1 (415) 555-2671",
         "+44 20 7183 8750",
@@ -188,6 +245,12 @@ def test_detector_masks_finding_heavy_input_with_one_pass_render() -> None:
 )
 def test_detector_covers_regional_and_separated_phone_formats(value: str) -> None:
     assert governance.mask(value) == ("[전화번호]", 1)
+
+
+@pytest.mark.parametrize("value", ["02-1234-5678", "(031) 234-5678", "1588-3366"])
+def test_a_korean_landline_is_an_organisation_s_number(value: str) -> None:
+    # Detected as `landline`, which no scope masks.
+    assert governance.mask(value) == (value, 0)
 
 
 def test_rrn_requires_a_real_calendar_date() -> None:
@@ -1560,9 +1623,7 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
 
     async def classify(**kwargs):
         classifier_envelope.update(json.loads(kwargs["context"]))
-        return sessions_router.adaptive_routing.Classification(
-            "low", 0.99, "simple_factual", 30, 4
-        )
+        return sessions_router.adaptive_routing.Classification("low", 0.99, "simple_factual", 30, 4)
 
     captured: dict = {}
 
@@ -2682,9 +2743,7 @@ async def test_strict_route_revalidates_selected_skill_after_tools_are_removed(
             db,
         )
 
-    assert getattr(caught.value, "detail", None) == (
-        "skill_tools_unavailable:execute_code"
-    )
+    assert getattr(caught.value, "detail", None) == ("skill_tools_unavailable:execute_code")
     assert validation == [{"execute_code"}, {"create_artifact"}]
     assert db.added == []
     assert db.commits == 0
@@ -3175,6 +3234,9 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
         content="safe assistant reply",
         requested_artifacts=ctx.pending_artifacts,
         protect_privacy=True,
+        # The mailbox is the user's own, carried from egress; that is what deep
+        # masking at rest is for. A mailbox the model made up would stay.
+        protected_values=frozenset({sensitive}),
     )
 
     artifacts = [row for row in added if isinstance(row, Artifact)]
@@ -3352,10 +3414,10 @@ async def test_guard_masks_clean_turn_assistant_steps_and_routing_at_rest(
         },
         ensure_ascii=False,
     )
-    assert raw_email not in persisted
+    # A mailbox the model wrote is not the user's: it stays readable at rest,
+    # like a contact address found on the web. The credential does not.
+    assert raw_email in persisted
     assert raw_key not in persisted
-    assert raw_actual not in persisted
-    assert "[이메일]" in persisted
     assert "[API키]" in persisted
     assert run_kwargs["redact_logging"] is True
 
@@ -3434,6 +3496,8 @@ async def test_guard_says_on_the_wire_what_it_took_out_of_the_answer(
             is_first_turn=False,
             routing=routing,
             mask_at_rest=True,
+            # The router carries what egress took out of the user's words.
+            protected_values=frozenset({raw_email}),
         )
     ]
 
@@ -3632,6 +3696,11 @@ async def test_comparison_masks_variants_and_persists_provider_actual_model(
                 },
                 routing=routing,
                 mask_at_rest=True,
+                # Carried from egress as the user's own; the answer scope masks
+                # these wherever they resurface — variants, steps, model ids.
+                protected_values=frozenset(
+                    {"person@example.com", "model-owner@example.com", "owner@example.com"}
+                ),
             )
         ]
     )

@@ -122,20 +122,28 @@ def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str
     return _rank(kept, query)[:count]
 
 
+#: SearXNG parameters of each search kind's own lane; "web" has none.
+_LANES: dict[str, dict[str, str]] = {
+    "news": {"categories": "news", "time_range": "month"},
+    "papers": {"categories": "science"},
+    "code": {"categories": "it"},
+}
+
+
 async def _searxng(
-    base_url: str, query: str, count: int, *, fresh: bool = False
+    base_url: str, query: str, count: int, *, fresh: bool = False, kind: str = "web"
 ) -> list[dict[str, str]]:
-    """Search hits for `query`. A `fresh` query (news, prices, versions, a date)
-    also runs the news lane, whose hits come first: the general lane answers
-    「최신 모델」 with home pages and encyclopaedias."""
+    """Search hits for `query`. A `kind` other than "web" (or a `fresh` query:
+    news, prices, versions, a date) also runs that kind's lane, whose hits come
+    first: the general lane answers 「최신 모델」 with home pages and
+    encyclopaedias, and carries no papers or code at all."""
     search_url = f"{base_url.rstrip('/')}/search"
-    base = {"q": query, "format": "json", "safesearch": 1, "language": "ko"}
+    base = {"q": query, "format": "json", "safesearch": 1, "language": "ko-KR"}
+    lane = _LANES.get("news" if fresh and kind == "web" else kind)
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
         lanes = [client.get(search_url, params=base)]
-        if fresh:
-            lanes.append(
-                client.get(search_url, params={**base, "categories": "news", "time_range": "month"})
-            )
+        if lane:
+            lanes.append(client.get(search_url, params={**base, **lane}))
         responses = await asyncio.gather(*lanes, return_exceptions=True)
     general = responses[0]
     if isinstance(general, BaseException):
@@ -155,10 +163,10 @@ async def _searxng(
                 }
             )
 
-    if fresh and len(responses) > 1 and not isinstance(responses[1], BaseException):
-        news = responses[1]
-        if news.status_code < 400:
-            collect(news.json())
+    if len(responses) > 1 and not isinstance(responses[1], BaseException):
+        laned = responses[1]
+        if laned.status_code < 400:
+            collect(laned.json())
     collect(general.json())
     return _select(hits, query, count)
 
@@ -200,6 +208,9 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
+    kind = str(args.get("kind") or "web")
+    if kind not in ("web", *_LANES):
+        kind = "web"
 
     backends = await settings_store.tools_config()
     # Time-sensitive words get the news lane too; see `_searxng`.
@@ -207,7 +218,11 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
 
     try:
         hits = await _searxng(
-            backends.search, query, settings.web_search_results, fresh=needs_web_search(query)
+            backends.search,
+            query,
+            settings.web_search_results,
+            fresh=needs_web_search(query),
+            kind=kind,
         )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
@@ -304,7 +319,9 @@ WEB_SEARCH = Tool(
     name="web_search",
     description=(
         "웹을 검색하고 상위 결과의 본문을 읽어 옵니다. 최신 정보, 뉴스, 통계, "
-        "모델이 모르는 사실을 확인할 때 사용하세요."
+        "모델이 모르는 사실을 확인할 때 사용하세요. 논문·학술 자료는 kind=papers, "
+        "코드·라이브러리·오류 메시지는 kind=code, 시사·사건은 kind=news 로 검색하면 "
+        "그 분야 엔진이 함께 답합니다."
     ),
     parameters={
         "type": "object",
@@ -312,7 +329,15 @@ WEB_SEARCH = Tool(
             "query": {
                 "type": "string",
                 "description": "검색어. 자연어 질문보다 핵심 키워드가 낫습니다.",
-            }
+            },
+            "kind": {
+                "type": "string",
+                "enum": ["web", "news", "papers", "code"],
+                "description": (
+                    "검색 종류. web: 일반(기본). news: 뉴스·시사. papers: 논문·학술 "
+                    "(Google Scholar, OpenAlex, arXiv 등). code: 개발 (GitHub, Stack Overflow 등)."
+                ),
+            },
         },
         "required": ["query"],
     },
