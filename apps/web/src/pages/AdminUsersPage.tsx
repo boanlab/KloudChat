@@ -46,9 +46,9 @@ const statusLabel: Record<UserStatus, string> = {
 
 /** Preset allowances; 1 credit = $0.00001. */
 const PLANS = [
-  { label: '기본', credits: 1_000_000 },
-  { label: '연구', credits: 5_000_000 },
-  { label: '대규모', credits: 10_000_000 },
+  { label: '기본', credits: 500_000 },
+  { label: '연구', credits: 2_000_000 },
+  { label: '대규모', credits: 5_000_000 },
 ]
 
 function CreditBar({ user }: { user: User }) {
