@@ -105,7 +105,7 @@ async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
     monkeypatch.setattr(sessions, "_run_turn", stream)
 
     request = SendMessage(
-        content=(
+        content=("NCS 수리 문제: " if tool is CHECK_NCS_ANSWER else "") + (
             "17 * 23은 얼마야? 계산식과 답만 짧게 써줘. 파일은 만들지 마."
             if literal else "A팀 7명의 평균 68점, B팀 3명의 평균 92점이면 전체 평균은?"
         ),

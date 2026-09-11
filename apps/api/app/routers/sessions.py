@@ -2446,6 +2446,11 @@ async def send_message(
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
 
+    # Resolve selected context before narrowing either route's outbound schema snapshot.
+    candidate_tools = _plain_chat_tools(candidate_tools, session, workspace, content, history)
+    strict_tools = _plain_chat_tools(strict_tools, session, workspace, content, history)
+    requested_tools = strict_tools if requested_is_strict else candidate_tools
+
     # Attachment shortfalls are known server-side, so ask before spending a planning call.
     if _plans_first(session) and not pending.get("answers"):
         short = grounding.file_shortfalls(workspace.attachments)
@@ -2614,6 +2619,8 @@ async def send_message(
     if calculation_required:
         preflight_tool = preflight_tool or _calculation_preflight_tool(tools)
         trusted_context = [*trusted_context, _CALCULATION_INSTRUCTION]
+        if preflight_tool == "check_ncs_answer":
+            trusted_context.append(_NCS_CALCULATION_INSTRUCTION)
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -3201,6 +3208,45 @@ async def _store_notes(
         )
 
 
+_NCS_TOOL_CONTEXT = re.compile(
+    r"(?<![a-z0-9_])ncs(?![a-z0-9_])|check_ncs_answer|선지|채점|객관식|퀴즈|"
+    r"\b(?:multiple[- ]choice|quiz|grading)\b|\bgrade\s+(?:my|this|the|these|answer)\b",
+    re.I,
+)
+
+
+def _plain_chat_tools(
+    tools: list[Tool],
+    session: ChatSession,
+    workspace: WorkspaceContext,
+    content: str,
+    history: list[Message],
+) -> list[Tool]:
+    """Keep domain protocols out of uncustomized chat; never expand existing permissions."""
+    if (
+        session.kind is not SessionKind.chat
+        or session.agent_id
+        or session.project_id
+        or workspace.applied_skills
+        or workspace.started_from
+        or workspace.attachments
+        or workspace.carried
+        or workspace.knowledge
+        or any(block.trusted and block.text.strip() for block in workspace.blocks)
+        or _NCS_TOOL_CONTEXT.search(content)
+        or any(
+            message.attachments or _NCS_TOOL_CONTEXT.search(message.content)
+            for message in history
+            if message.role is Role.user
+        )
+    ):
+        return tools
+    return [
+        tool for tool in tools
+        if tool.name != "check_ncs_answer" or tool.source != "builtin"
+    ]
+
+
 def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) -> str | None:
     if "ncs-arithmetic" not in skill_catalog_keys:
         return None
@@ -3213,9 +3259,11 @@ def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) 
 _CALCULATION_INSTRUCTION = (
     "이 요청은 수치 계산이 필요합니다. 답변 전에 지정된 계산 도구를 호출하세요. "
     "문제에 주어진 값·분모·가중치·단위를 보존하여 식을 작성하고, 없는 조건을 만들지 마세요. "
-    "check_ncs_answer를 사용할 때 계산할 조건이 갖춰졌으면 decision=calculate를 사용하세요. "
     "계산 결과를 설명할 때 도구의 값·선지·채점과 대조하고, 검산하지 않은 다른 수치를 "
     "해설에 보태지 마세요. 도구는 입력한 식의 산술만 검증하며 문제 해석까지 보증하지 않습니다."
+)
+_NCS_CALCULATION_INSTRUCTION = (
+    "check_ncs_answer를 사용할 때 계산할 조건이 갖춰졌으면 decision=calculate를 사용하세요."
 )
 
 
