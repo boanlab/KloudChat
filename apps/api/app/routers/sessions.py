@@ -3740,7 +3740,17 @@ async def _run_turn(
             if routing_audit_id:
                 routing_audit = await db.get(AuditEvent, routing_audit_id)
                 if routing_audit is not None:
-                    routing_audit.event_metadata = dict(cost_routing or {})
+                    audit_metadata = dict(cost_routing or {})
+                    if server_abstention:
+                        # Keep the selection decision without claiming that its model ran.
+                        audit_metadata = {
+                            **(routing_audit.event_metadata or {}),
+                            **(stored_routing or {}),
+                            "executedModel": None,
+                        }
+                        if protect_persistence:
+                            audit_metadata = _mask_text_tree(audit_metadata, at_rest)
+                    routing_audit.event_metadata = audit_metadata
                     db.add(routing_audit)
             session.updated_at = utcnow()
             if new_artifact:

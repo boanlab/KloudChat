@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
 
 from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
-from app.models.user import User
+from app.models.user import AuditEvent, User
 from app.routers import sessions
 from app.schemas.chat import CompareRequest, SendMessage
 from app.services import agent
@@ -222,11 +222,26 @@ async def test_freshness_lookup_precedes_model_and_failure_never_releases_stale_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["failed", "empty"])
+@pytest.mark.parametrize("mode", [RoutingMode.auto, RoutingMode.auto_quality])
 async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_credit(
-    monkeypatch, outcome
+    monkeypatch, outcome, mode
 ):
     user = User(id="synthetic-user", email="synthetic@example.test", password_hash="hash")
     session = ChatSession(id="synthetic-session", user_id=user.id)
+    cost_route = {
+        "mode": mode.value,
+        "decision": "bypass",
+        "reasonCode": "unsupported_turn",
+        "routedModel": "synthetic/qwen",
+        "executedModel": "synthetic/qwen",
+    }
+    routing_audit = AuditEvent(
+        id="synthetic-audit",
+        actor_id=user.id,
+        action="routing.auto",
+        target=session.id,
+        event_metadata=dict(cost_route),
+    )
     added = []
 
     class Db:
@@ -237,6 +252,8 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
             return None
 
         async def get(self, model, key):
+            if model is AuditEvent and key == routing_audit.id:
+                return routing_audit
             return session if model is ChatSession else user if model is User else None
 
         def add(self, row):
@@ -284,8 +301,9 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
             freshness_request=QUESTION,
             routing={
                 "actualModel": "synthetic/qwen",
-                "costRouting": {"executedModel": "synthetic/qwen"},
+                "costRouting": cost_route,
             },
+            routing_audit_id=routing_audit.id,
             preset_call=("web_search", {"query": QUESTION}),
         )
     ]
@@ -295,6 +313,11 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
     assert answer.content == abstention_response(QUESTION)
     assert answer.artifact_ids is None and answer.failure is None
     assert not any('"executedModel"' in chunk for chunk in chunks)
+    assert routing_audit.event_metadata == {
+        **cost_route,
+        "executedModel": None,
+        **sessions._freshness_routing("lookup_failed_or_empty"),
+    }
 
 
 @pytest.mark.asyncio
