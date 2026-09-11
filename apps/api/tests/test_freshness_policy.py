@@ -56,6 +56,23 @@ from app.services.freshness import FRESHNESS_INSTRUCTION, abstention_response, f
         "다음 자료만 요약해줘: 현재 정국은 복잡하다. 현재 대한민국 대통령은 누구야?",
         "현재 대한민국 대통령이 누구인지 소설 속 인물 설정의 참고로 알려줘",
         "소설 속 인물을 설정하기 위해 현재 대한민국 대통령이 누구인지 알려줘",
+        "검색하지 말고 대한민국 대통령이 누군지만 알려줘.",
+        "대한민국 대통령이 누군가요?",
+        "대한민국 대통령은 누가 맡고 있어?",
+        "다음 자료만 요약해줘:\n현재 정국은 복잡하다.\n그리고 현재 대통령은 누구야?",
+        "Summarize only this supplied text:\nThe current president is Example Person. "
+        "Also, who is the current president of South Korea?",
+        "검색하지 말고 다음 자료만 요약해줘:\n현재 정국은 복잡하다. 그리고 현재 대통령은 누구야?",
+        "현재 대통령이 누구인지 말하지 말고 지금 국무총리가 누군지 알려줘.",
+        "Do not tell me who the current president is; who is the current prime minister?",
+        "Do not translate 'Who is the current president of South Korea?'; answer the question.",
+        "'현재 대한민국 대통령은 누구야?'를 번역하지 말고 질문에 답해줘.",
+        "다음 문장을 영어로 번역해 줘: '현재 대한민국 대통령은 누구야?' "
+        "그리고 실제 현재 대통령도 알려줘.",
+        "현재 대통령 이름만 알려줘, 역할은 설명하지 마.",
+        "현재 대통령이 누구인지 알려주되 근거 없는 내용은 말하지 마.",
+        "현재 대한민국 대통령이 누구인지 알려주고 다음 자료만 요약해줘: 정국은 복잡하다.",
+        "현재 대통령이 누구인지 말하지 말고 국무총리가 누군지 알려줘.",
     ],
 )
 def test_live_political_questions_require_current_evidence(prompt):
@@ -104,6 +121,16 @@ def test_live_political_questions_require_current_evidence(prompt):
         "대통령이라는 단어의 뜻을 설명해줘",
         "최신 파이썬 버전은 뭐야?",
         "오늘 환율은 얼마야?",
+        "다음 문장을 영어로 번역해 줘: '현재 대한민국 대통령은 누구야?'",
+        "Translate this sentence into Korean: 'Who is the current president of South Korea?'",
+        "검색하지 말고 다음 문장을 영어로 번역해 줘: '현재 대한민국 대통령은 누구야?'",
+        "현재 대통령이 누구인지 말하지 말고, 대통령의 역할만 설명해 줘.",
+        "Do not tell me who the current president is; explain the role of a president.",
+        "현재가 아니라 1980년 대한민국 대통령이 누구였는지 알려줘.",
+        "다음 자료만 요약해줘:\n현재 정국은 복잡하다. 여야가 협상을 진행했다.",
+        "Summarize only this supplied text:\nThe current president is Example Person. "
+        "The parliament met.",
+        "검색하지 말고 다음 자료만 요약해줘:\n현재 정국은 복잡하다. 여야가 협상을 진행했다.",
     ],
 )
 def test_history_nonfactual_tasks_and_other_domains_are_out_of_scope(prompt):

@@ -28,7 +28,7 @@ _OFFICE = re.compile(
     r"\b(?:president|prime\s+minister|mayor|governor)\b",
     re.I,
 )
-_IDENTITY = re.compile(r"누구|성명|이름|\b(?:who|name|identity)\b", re.I)
+_IDENTITY = re.compile(r"누구|누군지|누군가요|누가|성명|이름|\b(?:who|name|identity)\b", re.I)
 _ASK = re.compile(
     r"알려|말해|어때|어떤|어디|무슨|인가|입니까|이야|정리|설명|결과|"
     r"\b(?:what|which|is|are|tell|describe|explain|summarize)\b",
@@ -65,8 +65,11 @@ _REAL = re.compile(
 _QUOTED = re.compile(r"\"[^\"]*\"|'[^'\n]*'|“[^”]*”|‘[^’]*’|「[^」]*」", re.S)
 # Only a bounded quoted source is removed, never the rest of a mixed request.
 _TRANSFORM_BEFORE = re.compile(
-    r"(?:\btranslate|\bsummarize(?:\s+only)?(?:\s+this\s+supplied\s+text)?|"
-    r"다음\s*(?:문장|자료|글)(?:만|을|를)?\s*(?:번역|요약)해\s*줘)\s*:?\s*$",
+    r"(?:\btranslate(?:\s+(?:this|the\s+following)(?:\s+(?:sentence|text))?)?"
+    r"(?:\s+(?:into|to)\s+[a-z-]{2,30})?|"
+    r"\bsummarize(?:\s+only)?(?:\s+this\s+supplied\s+text)?|"
+    r"다음\s*(?:문장|자료|글)(?:만|을|를)?\s*"
+    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)해\s*(?:줘|주세요))\s*:?\s*$",
     re.I,
 )
 _TRANSFORM_AFTER = re.compile(
@@ -76,15 +79,29 @@ _TRANSFORM_AFTER = re.compile(
 )
 _CLAUSE = re.compile(
     r"[.!?;\n]|\b(?:and|but|also)\b|그리고|하지만|그런데|(?:와|과)\s+|"
-    r"고\s+(?=현재|지금|실제|대한민국|한국)",
+    r"고\s+(?=현재|지금|실제|대한민국|한국|국무총리|대통령|총리)",
     re.I,
 )
 _SUPPLIED_TEXT = re.compile(
-    r"^(?:다음\s*(?:자료|글|문장)만\s*요약해\s*줘|"
+    r"(?:다음\s*(?:자료|글|문장)만\s*요약해\s*줘|"
     r"summarize\s+only\s+this\s+supplied\s+text)\s*:",
     re.I,
 )
 _DATED_PRESENT = re.compile(r"((?:1\d{3}|20\d{2})\s*년)\s*현재")
+_NEGATED_PRESENT = re.compile(r"(?:현재|지금|현직)(?:가|이)?\s*아니라")
+_DECLINED_FACT = re.compile(
+    r"(?:말|답|설명)하지\s*(?:마|말)|알려\s*주지\s*(?:마|말)|"
+    r"^\s*(?:please\s+)?(?:do\s+not|don't|never)\s+(?:tell|name|identify|answer|say)\b",
+    re.I,
+)
+_AFFIRMATIVE_REQUEST = re.compile(r"알려|말해|답해")
+_NEGATED_TRANSFORM_PREFIX = re.compile(r"\b(?:do\s+not|don't|never)\s*$", re.I)
+_NEGATED_TRANSFORM_SUFFIX = re.compile(r"^\s*하지\s*(?:마|말)")
+_DIRECT_REQUEST = re.compile(
+    r"알려|말해|설명해|정리해|누구|누군지|누군가요|누가|어때|어떤|어디|무슨|인가|입니까|"
+    r"\b(?:who|what|which|tell|describe|explain)\b|^(?:is|are)\b",
+    re.I,
+)
 
 
 def _without_quoted_transform_sources(text: str) -> str:
@@ -94,7 +111,11 @@ def _without_quoted_transform_sources(text: str) -> str:
         before = text[max(0, match.start() - 160) : match.start()]
         after = text[match.end() : match.end() + 160]
         parts.append(text[start : match.start()])
-        transforming = _TRANSFORM_BEFORE.search(before) or _TRANSFORM_AFTER.search(after)
+        before_match = _TRANSFORM_BEFORE.search(before)
+        after_match = _TRANSFORM_AFTER.search(after)
+        transforming = (
+            before_match and not _NEGATED_TRANSFORM_PREFIX.search(before[: before_match.start()])
+        ) or (after_match and not _NEGATED_TRANSFORM_SUFFIX.search(after[after_match.end() :]))
         parts.append(" " if transforming else match.group())
         start = match.end()
     parts.append(text[start:])
@@ -108,14 +129,32 @@ def fresh_fact_required(request: str) -> bool:
     envelope. False means outside this bounded gate, never proven factually safe.
     """
     text = _without_quoted_transform_sources(unicodedata.normalize("NFC", request or ""))
+    supplied_text = False
     for part in _CLAUSE.split(text):
         clause = part.strip()
         if not clause:
             continue
-        if _SUPPLIED_TEXT.search(clause) or _ELIGIBILITY.search(clause):
+        supplied_header = _SUPPLIED_TEXT.search(clause)
+        if supplied_header:
+            # A leading search opt-out is not source text; keep any actual request
+            # before the header, but do not reinterpret its inline source as a question.
+            supplied_text = True
+            clause = clause[: supplied_header.start()].strip()
+            if not clause:
+                continue
+        elif supplied_text:
+            # A later direct question is a new task, not a blanket summary exemption.
+            if not _DIRECT_REQUEST.search(clause):
+                continue
+            supplied_text = False
+        # "Tell me the name, do not explain the role" still asks for the present fact.
+        declined = _DECLINED_FACT.search(clause)
+        if _ELIGIBILITY.search(clause) or (
+            declined and not _AFFIRMATIVE_REQUEST.search(clause[: declined.start()])
+        ):
             continue
         # "2020년 현재" asks about that dated snapshot, not the present day.
-        live = bool(_LIVE.search(_DATED_PRESENT.sub(r"\1", clause)))
+        live = bool(_LIVE.search(_NEGATED_PRESENT.sub("", _DATED_PRESENT.sub(r"\1", clause))))
         if not live and _HISTORICAL.search(clause):
             continue
         office_match = _OFFICE.search(clause)
