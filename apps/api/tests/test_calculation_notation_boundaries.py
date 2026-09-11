@@ -69,3 +69,5 @@ async def test_send_message_does_not_preselect_a_reinterpreted_superscript_expre
     assert captured["calculation_required"] is True
     assert captured["preflight_tool"] == "calculate"
     assert captured["tools"] == [CALCULATE]
+    assert captured["model"]["id"] == model["id"]
+    assert captured["messages"][-1] == {"role": "user", "content": "2² + 3²은 얼마야?"}

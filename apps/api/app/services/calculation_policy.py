@@ -34,7 +34,7 @@ _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|genera
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
 _DECLINE = re.compile(
     r"(?:계산|검산)(?:을)?\s*하지\s*(?:마|말)|"
-    r"\b(?:do\s+not|don't|never)\s+(?:calculate|compute|evaluate)\b",
+    r"\b(?:do\s+not|don't|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
     re.IGNORECASE,
 )
 _MISSING = re.compile(
