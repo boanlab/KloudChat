@@ -523,6 +523,8 @@ async def run_turn(
     preflight_tool: str | None = None,
     #: A non-arithmetic NCS decision must not unlock a required numeric answer.
     calculation_required: bool = False,
+    #: A complete literal expression validated from the user's request, not inferred.
+    calculation_expression: str | None = None,
     #: `(tool name, arguments)` the server calls itself before the model is
     #: asked anything; the model then starts with the result in hand. A required
     #: calculation may need this trusted read first. Other gates remain first.
@@ -535,6 +537,14 @@ async def run_turn(
     """
     by_name = {t.name: t for t in tools}
     if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
+        raise ChatStreamError("preflight_tool_unavailable")
+    if calculation_expression is not None and (
+        not calculation_required
+        or preflight_tool != "calculate"
+        or "calculate" not in by_name
+        or by_name["calculate"].source != "builtin"
+        or not by_name["calculate"].read_only
+    ):
         raise ChatStreamError("preflight_tool_unavailable")
     if calculation_required and preset_call:
         prerequisite = by_name.get(preset_call[0])
@@ -556,6 +566,11 @@ async def run_turn(
     hop = 0
     preflight_completed = False
     post_preflight_force_sent = False
+    preset_calls = []
+    if preset_call and (not preflight_tool or calculation_required):
+        preset_calls.append(preset_call)
+    if calculation_expression is not None:
+        preset_calls.append(("calculate", {"expression": calculation_expression}))
     redact_next_request = redact_logging
     reported_models: set[str] = set()
 
@@ -627,15 +642,12 @@ async def run_turn(
             # Keep an explicit search toggle after, never ahead of, a successful gate.
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
-        running_preset = bool(
-            preset_call and hop == 0 and (not preflight_tool or calculation_required)
-        )
+        running_preset = hop < len(preset_calls) and not closing
         if running_preset:
-            # The first hop is the server's own call: no model request, the
-            # loop below runs the tool and hands its result to the model.
-            name, arguments = preset_call
+            # Trusted lookup and literal arithmetic need no model argument guess.
+            name, arguments = preset_calls[hop]
             acc = _Accumulator()
-            acc.calls[0] = {"id": "preset_0", "name": name, "arguments": json.dumps(arguments)}
+            acc.calls[0] = {"id": f"preset_{hop}", "name": name, "arguments": json.dumps(arguments)}
             if name == force_tool:
                 post_preflight_force_sent = True
         else:
@@ -669,8 +681,14 @@ async def run_turn(
         if preflight_tool:
             # No other call may run beside the required gate. Waiting for the
             # complete hop also keeps ignored tool_choice and runaway drafts private.
-            missed_preflight = not preflight_completed and not running_preset and (
-                len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
+            gate_calls = list(acc.calls.values())
+            valid_gate_calls = bool(gate_calls) and all(
+                call["name"] == preflight_tool for call in gate_calls
+            )
+            if not (calculation_required and preflight_tool == "calculate"):
+                valid_gate_calls = valid_gate_calls and len(gate_calls) == 1
+            missed_preflight = (
+                not preflight_completed and not running_preset and not valid_gate_calls
             )
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
                 note = (
@@ -815,15 +833,20 @@ async def run_turn(
 
         results = await asyncio.gather(*(execute(item) for item in planned))
         terminal_text: str | None = None
+        verifying_arithmetic = calculation_required and not preflight_completed
+        arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
-            if running_preset and calculation_required and (result.failed or result.empty):
+            if (
+                running_preset and calculation_required and calculation_expression is None
+                and call["name"] != preflight_tool and (result.failed or result.empty)
+            ):
                 result.final_text = (
                     "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
                     "확인할 수 있는 수치와 조건을 제공해 주세요."
                 )
             if (
-                calculation_required and not preflight_completed
+                verifying_arithmetic
                 and call["name"] == preflight_tool and not result.failed
             ):
                 try:
@@ -841,7 +864,9 @@ async def run_turn(
                         or "수치 검산을 완료하지 못해 답을 확정할 수 없습니다. "
                         "계산에 필요한 조건과 단위를 확인해 주세요."
                     )
-            if preflight_tool and call["name"] == preflight_tool and not result.failed:
+            if verifying_arithmetic and call["name"] == preflight_tool:
+                arithmetic_results.append(not result.failed)
+            elif preflight_tool and call["name"] == preflight_tool and not result.failed:
                 preflight_completed = True
             finding_counts: dict[tuple[str, str], int] = {}
 
@@ -933,6 +958,8 @@ async def run_turn(
             if terminal_text is None and result.final_text is not None:
                 terminal_text = result.final_text
 
+        if arithmetic_results:
+            preflight_completed = all(arithmetic_results)
         if terminal_text is not None:
             answer_text.append(terminal_text)
             yield {"type": "delta", "text": terminal_text}

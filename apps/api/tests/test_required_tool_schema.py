@@ -219,3 +219,77 @@ async def test_repeated_successful_calculation_does_not_revoke_completed_verific
     assert "".join(event["text"] for event in events if event["type"] == "delta") == "391"
     assert not any(event.get("status") == "error" for event in events)
     assert "이미 호출했습니다" in seen[-1][-1]["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("second_expression", ["17*23", "1/0"])
+async def test_independent_calculations_in_one_hop_all_require_success(
+    monkeypatch, second_expression
+):
+    seen = []
+
+    async def stream(_model, messages, *_args, **_kwargs):
+        seen.append(deepcopy(messages))
+        acc = agent._Accumulator()
+        if len(seen) == 1:
+            for index, expression in enumerate(["12+3", second_expression]):
+                acc.calls[index] = {
+                    "id": str(index), "name": "calculate",
+                    "arguments": '{"expression":"' + expression + '"}',
+                }
+        else:
+            acc.content.append("15, 391")
+            yield "delta", "15, 391"
+        yield "done", acc
+
+    monkeypatch.setattr(agent, "_stream_once", stream)
+    events = [event async for event in agent.run_turn(
+        "synthetic/model", [], [CALCULATE], ToolContext(user_id="qa", session_id="qa"),
+        preflight_tool="calculate", calculation_required=True,
+    )]
+    text = "".join(event["text"] for event in events if event["type"] == "delta")
+    steps = [event for event in events if event["type"] == "step"]
+    assert sum(event["status"] == "running" for event in steps) == 2
+    if second_expression == "17*23":
+        assert text == "15, 391"
+        assert sum(event["status"] == "done" for event in steps) == 2
+    else:
+        assert "확정할 수 없습니다" in text
+        assert "15, 391" not in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source_state", [None, "ok", "failed", "empty"])
+async def test_literal_calculation_runs_without_model_argument_selection(monkeypatch, source_state):
+    order = []
+
+    async def lookup(_arguments):
+        order.append("search")
+        return ToolResult(content="No arithmetic inputs are needed from this source.",
+                          failed=source_state == "failed", empty=source_state == "empty")
+
+    search = Tool(name="web_search", description="synthetic lookup", parameters={"type": "object"},
+                  run=lookup, label="search")
+
+    async def stream(_model, messages, *_args, **_kwargs):
+        order.append("model")
+        assert order.count("model") == 1
+        assert any(row.get("name") == "calculate" and '"391"' in row["content"] for row in messages)
+        acc = agent._Accumulator()
+        acc.content.append("17 * 23 = 391")
+        yield "delta", "17 * 23 = 391"
+        yield "done", acc
+
+    monkeypatch.setattr(agent, "_stream_once", stream)
+    monkeypatch.setattr(agent.settings, "max_tool_hops", 2)
+    context = ToolContext(user_id="qa", session_id="qa")
+    events = [event async for event in agent.run_turn(
+        "synthetic/model", [], [search, CALCULATE], context,
+        preflight_tool="calculate", calculation_required=True,
+        calculation_expression="17 * 23",
+        preset_call=("web_search", {"query": "17 * 23"}) if source_state else None,
+    )]
+    assert order == (["search", "model"] if source_state else ["model"])
+    assert context.tool_calls["calculate"] == 1
+    text = "".join(event["text"] for event in events if event["type"] == "delta")
+    assert text.startswith("17 * 23 = 391")
