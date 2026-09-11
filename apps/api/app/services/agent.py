@@ -783,6 +783,7 @@ async def run_turn(
                     )
                 )
             called.add(key)
+            ctx.tool_calls[tool.name] = ctx.tool_calls.get(tool.name, 0) + 1
             return await _run_tool(tool, call["arguments"], ctx)
 
         results = await asyncio.gather(*(execute(item) for item in planned))

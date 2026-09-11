@@ -321,7 +321,7 @@ async def test_a_free_month_still_says_what_ran(db) -> None:
 
     report = await usage_router.my_usage(user, db, days=30)
 
-    assert report["totals"] == {"credits": 0, "requests": 3, "otherCredits": 0}
+    assert report["totals"] == {"credits": 0, "requests": 3, "searches": 0, "otherCredits": 0}
     assert report["byModel"] == [
         {"model": "local/gemma-4-26b-a4b", "credits": 0, "requests": 3, "units": 0, "unit": ""}
     ]
@@ -496,3 +496,42 @@ async def test_a_caller_that_knows_better_still_wins(db) -> None:
     await db.commit()
     row = (await db.exec(sa.select(CreditLedger))).one()[0]
     assert row.surface == "slides"
+
+
+async def test_searches_are_counted_but_are_not_requests(db) -> None:
+    """A turn's web searches reach the totals and the day, add no request or
+    credit, and name no model."""
+    from app.services.credits import record_searches
+
+    user = await _account(db)
+    chat = await _session_row(db, user, kind="chat", model="local/qwen")
+
+    await _turn(db, chat, model="local/qwen", when=_at(1))
+    record_searches(db, user, 3, session_id=chat, surface="chat")
+    await db.commit()
+    row = (await db.exec(sa.text("SELECT created_at FROM credit_ledger"))).one()
+    await db.exec(sa.text("UPDATE credit_ledger SET created_at = :t").bindparams(t=_at(1)))
+    await db.commit()
+    assert row is not None
+
+    mine = await usage_router.my_usage(user, db, days=30)
+    assert mine["totals"]["searches"] == 3
+    assert mine["totals"]["requests"] == 1
+    assert mine["totals"]["credits"] == 0
+    assert [d["searches"] for d in mine["daily"] if d["searches"]] == [3]
+    assert [row["model"] for row in mine["byModel"]] == ["local/qwen"]
+
+    admin = await usage_router.usage(user, db, days=30)
+    assert admin["totals"]["searches"] == 3
+    assert admin["totals"]["requests"] == 1
+    assert [u["searches"] for u in admin["topUsers"]] == [3]
+
+
+async def test_a_turn_without_a_search_writes_no_row(db) -> None:
+    from app.services.credits import record_searches
+
+    user = await _account(db)
+    record_searches(db, user, 0, session_id=None, surface="chat")
+    await db.commit()
+    rows = (await db.exec(sa.text("SELECT count(*) FROM credit_ledger"))).one()
+    assert rows[0] == 0

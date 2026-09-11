@@ -64,6 +64,9 @@ class ToolContext:
     pending_artifacts: list[dict] = field(default_factory=list)
     #: Shared notes to store after the turn finishes.
     pending_notes: list[dict] = field(default_factory=list)
+    #: Calls that actually ran this turn, by tool name. `web_search` reaches
+    #: the usage ledger as searches; a repeated call the loop refused is not here.
+    tool_calls: dict[str, int] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:

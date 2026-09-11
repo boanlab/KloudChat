@@ -1870,6 +1870,11 @@ async def write(
         }
         if findings.sources:
             yield {"type": "sources", "sources": findings.sources}
+        # What the search backend was asked; the router counts it as usage.
+        yield {
+            "type": "research",
+            "research": {"searched": findings.searched, "queries": findings.queries},
+        }
     # Search off needs no rule; unavailable and empty are told apart.
     research_rule = ""
     if web_search and not findings.searched:
