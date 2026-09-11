@@ -21,6 +21,8 @@ Base: `f53797251940ff6ddbc0d0eff657a1779664aa51`.
   printed `0` findings and returned `[]`. The new rejection assertion failed.
 - After: 15 Chromium regressions passed against a freshly built production preview
   at `127.0.0.1:5193` (one worker, synthetic API responses only).
+- The isolated regression configuration also runs in the existing web CI job;
+  no real seeded administrator or database is required for that CI step.
 - Negative cases: HTTP 401, pending account, non-admin, malformed auth response,
   lost refresh session, redirect, wrong screen, ignored navigation tab, ignored
   button tab, and unopened account menu.
