@@ -90,6 +90,12 @@ class _Response:
         return self._payload
 
 
+def _is_naver(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    return urlparse(url).netloc == "openapi.naver.com"
+
+
 class _Client:
     calls: list[dict] = []
 
@@ -104,7 +110,7 @@ class _Client:
 
     async def get(self, url: str, *, params: dict, headers: dict | None = None):
         _Client.calls.append({**params, "_url": url, **({"_headers": headers} if headers else {})})
-        if "openapi.naver.com" in url:
+        if _is_naver(url):
             return _Response(_NAVER_NEWS if "/news" in url else _NAVER_WEB)
         return _Response(_NEWS if params.get("categories") == "news" else _GENERAL)
 
@@ -409,7 +415,7 @@ async def test_naver_answers_a_korean_search_when_credentials_are_set(monkeypatc
     monkeypatch.setattr(builtin.settings, "naver_client_secret", "secret")
     _Client.calls.clear()
     hits = await builtin._searxng("http://searx", "2026년 국가장학금 2차 신청 기간", 5, fresh=True)
-    naver_calls = [c for c in _Client.calls if "openapi.naver.com" in c["_url"]]
+    naver_calls = [c for c in _Client.calls if _is_naver(c["_url"])]
     # News first for a fresh question, then web documents, with the credentials.
     assert [c["_url"].rsplit("/", 1)[-1] for c in naver_calls] == ["news.json", "webkr.json"]
     assert naver_calls[0]["_headers"]["X-Naver-Client-Id"] == "id"
@@ -432,9 +438,9 @@ async def test_no_naver_call_without_credentials_or_for_english(monkeypatch) -> 
     monkeypatch.setattr(builtin.settings, "naver_client_id", "")
     _Client.calls.clear()
     await builtin._searxng("http://searx", "2026년 국가장학금 2차 신청 기간", 5, fresh=True)
-    assert not [c for c in _Client.calls if "openapi.naver.com" in c["_url"]]
+    assert not [c for c in _Client.calls if _is_naver(c["_url"])]
     monkeypatch.setattr(builtin.settings, "naver_client_id", "id")
     monkeypatch.setattr(builtin.settings, "naver_client_secret", "secret")
     _Client.calls.clear()
     await builtin._searxng("http://searx", "Python 3.14 what's new", 5)
-    assert not [c for c in _Client.calls if "openapi.naver.com" in c["_url"]]
+    assert not [c for c in _Client.calls if _is_naver(c["_url"])]
