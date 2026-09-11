@@ -90,6 +90,7 @@ _DIRECT_CORE_SUFFIX = re.compile(
 _DIRECT_FORMAT = re.compile(
     r"(?:(?:(?:계산식|식)(?:과|와)\s*(?:답|결과)만|(?:답|정답|결과)만)"
     r"\s*(?:짧게|간단히|간결하게)?\s*(?:(?:써|알려|보여|답해)\s*(?:주세요|줘))?|"
+    r"(?:짧게|간단히|간결하게)\s*(?:답해|설명해|알려|써)\s*(?:주세요|줘)|"
     r"(?:just|only)\s+(?:the\s+)?(?:answer|result|expression\s+and\s+(?:the\s+)?answer)|"
     r"(?:answer|respond)\s+(?:briefly|concisely|only))",
     re.IGNORECASE,

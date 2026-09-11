@@ -169,6 +169,10 @@ def test_direct_expression_handles_the_live_ignored_tool_choice_request():
         ("12 + 3을 계산해 주세요. 파일은 만들지 마세요.", "12 + 3"),
         ("17 * 23은 얼마야?\n계산식과 답만 짧게 써줘.\n파일은 만들지 마.", "17 * 23"),
         ("Compute 19 * 17. Just the answer. Do not create files.", "19 * 17"),
+        ("12 / 0은 얼마야? 짧게 답해줘. 파일은 만들지 마.", "12 / 0"),
+        ("12 / (3 - 3)은 얼마야? 간단히 답해 주세요.", "12 / (3 - 3)"),
+        ("7 * 11. 간결하게 알려줘.", "7 * 11"),
+        ("7 * 11. 짧게 설명해 주세요.", "7 * 11"),
     ],
 )
 def test_direct_expression_preserves_only_the_supplied_numeric_expression(question, expression):
@@ -234,6 +238,10 @@ def test_direct_expression_preserves_only_the_supplied_numeric_expression(questi
         "What is 15% of 240?",
         "17*23. 소수점 2자리로 반올림해 줘.",
         "17*23. 답만 알려줘. 계산식과 답만 써줘.",
+        "17*23. 짧게 답해줘. 계산하지 마.",
+        "17*23. 간단히 답해줘. 다음 주가도 알려줘.",
+        "17*23. 짧게 답해줘. 답만 알려줘.",
+        "17*23. 간단히 답해줘 그리고 12/0도 계산해줘.",
         "17*23. 파일은 만들지 마. 파일은 생성하지 마.",
         "17*23..",
         "(" * 33 + "17*23" + ")" * 33,
