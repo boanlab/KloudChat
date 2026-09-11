@@ -9,7 +9,13 @@ const answer = '합성 UI 확인용 답변입니다.'
 
 async function mockChat(page: Page) {
   const unexpected: string[] = []
+  const allowedOrigin = new URL(String(test.info().project.use.baseURL)).origin
   page.on('pageerror', (error) => unexpected.push(`pageerror: ${error.message}`))
+  await page.route('**/*', (route) => {
+    if (new URL(route.request().url()).origin === allowedOrigin) return route.continue()
+    unexpected.push('Unexpected external request')
+    return route.abort('blockedbyclient')
+  })
   const row = {
     id: sessionId, title: '모바일 처리 내역', kind: 'chat', model: 'fixture/model',
     routingMode: 'manual', projectId: null, agentId: null, artifactId: null, pinned: false,
