@@ -47,15 +47,20 @@ _MISSING = re.compile(
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
 _OPERAND = r"(?<![0-9A-Za-z_.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?![\d.])"
 _QUANTITY = rf"{_OPERAND}\s*(?:원|점|명|개)?"
+_ARITHMETIC_VERB = r"(?:더해|더하|빼\s*줘|빼면|곱하|곱해|곱하면|나누|나눠)"
 _ARITHMETIC_ACTION = re.compile(
     rf"{_QUANTITY}\s*(?:와|과|에|에서|을|를)\s*{_QUANTITY}\s*(?:을|를|으로|로)?\s*"
-    r"(?:더해|더하|빼\s*줘|빼면|곱하|곱해|곱하면|나누|나눠)|"
+    rf"{_ARITHMETIC_VERB}|"
     rf"\badd\s+(?:the\s+numbers?\s+)?{_OPERAND}"
     rf"(?:\s+(?:and|to|plus)\s+|\s*,\s*|\s+){_OPERAND}|"
     rf"\bsubtract\s+{_OPERAND}\s+from\s+{_OPERAND}|"
     rf"\b(?:multiply|divide)\s+{_OPERAND}\s+by\s+{_OPERAND}|"
     rf"{_OPERAND}\s+times\s+{_OPERAND}",
     re.IGNORECASE,
+)
+_NEGATED_ARITHMETIC = re.compile(r"^\s*(?:주)?지(?:는|도)?\s*(?:마|말|않)")
+_REPLACEMENT_ARITHMETIC = re.compile(
+    rf"^\s*(?:주)?지(?:는|도)?\s*(?:말고|않고)\s*(?:대신\s*)?{_ARITHMETIC_VERB}"
 )
 _EDITING_PREFIX = re.compile(r"(?:문단|예시|항목|제목|섹션|그룹|문서)\s*$")
 _EDITING_SUFFIX = re.compile(r"^\s*(?:examples?|sections?|paragraphs?|items?|groups?)\b", re.I)
@@ -107,11 +112,20 @@ _DIRECT_NO_FILE = re.compile(
 def _has_numeric_arithmetic_action(text: str) -> bool:
     # "Add section 2" and "문단 2와 3을 더해" edit objects, not their numeric labels.
     text = " ".join(text.split())
-    return any(
-        not _EDITING_PREFIX.search(text[max(0, match.start() - 40) : match.start()])
-        and not _EDITING_SUFFIX.search(text[match.end() : match.end() + 40])
-        for match in _ARITHMETIC_ACTION.finditer(text)
-    )
+    for match in _ARITHMETIC_ACTION.finditer(text):
+        tail = text[match.end():]
+        if (
+            _EDITING_PREFIX.search(text[max(0, match.start() - 40):match.start()])
+            or _EDITING_SUFFIX.search(tail[:40])
+        ):
+            continue
+        if _NEGATED_ARITHMETIC.match(tail):
+            # The same operands may still have an explicit replacement operation.
+            replacement = _REPLACEMENT_ARITHMETIC.match(tail)
+            if replacement is None or _NEGATED_ARITHMETIC.match(tail[replacement.end():]):
+                continue
+        return True
+    return False
 
 
 def _standalone_expression(request: str) -> bool:
