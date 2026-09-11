@@ -50,6 +50,9 @@ jobs:
       - name: Test slide presentation layout
         run: npx playwright test --config playwright.presentation.config.ts --workers=1
 
+      - name: Test calculation routing feedback
+        run: npx playwright test --config playwright.calculation.config.ts --workers=1
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest
