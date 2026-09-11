@@ -415,13 +415,15 @@ async def test_naver_answers_a_korean_search_when_credentials_are_set(monkeypatc
     assert naver_calls[0]["_headers"]["X-Naver-Client-Id"] == "id"
     assert naver_calls[0]["sort"] == "date" and naver_calls[1]["sort"] == "sim"
     urls = [h["url"] for h in hits]
-    # Naver's hits lead, tags stripped, the article's original address kept, dated.
-    assert urls[:2] == [
+    # Naver's hits lead (order among them by fit), tags stripped, the article's
+    # original address kept, dated.
+    assert set(urls[:2]) == {
         "https://www.yna.co.kr/view/AKR20260911000100530",
         "https://www.kosaf.go.kr/ko/notice/1",
-    ]
-    assert hits[0]["title"] == '"등록금 덜 내려면" 국가장학금 2차 신청하세요'
-    assert hits[0]["published"] == "2026-09-11"
+    }
+    news = next(h for h in hits if "yna.co.kr" in h["url"])
+    assert news["title"] == '"등록금 덜 내려면" 국가장학금 2차 신청하세요'
+    assert news["published"] == "2026-09-11"
 
 
 @pytest.mark.asyncio
