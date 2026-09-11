@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "관리자"
     # Granted at approval unless the admin sets another number.
-    default_monthly_credits: int = 1_000_000
+    default_monthly_credits: int = 500_000
     # Provider USD → credits (100_000 → 1 credit = $0.00001). Used only by
     # `services/models.py`; fine-grained so cheap models do not round onto one floor.
     credits_per_usd: int = 100_000
