@@ -887,9 +887,9 @@ remote connectors and filtering them afterwards. Tool output on an external
 turn is inspected before every follow-up completion and masked before it enters
 that prompt. While either guard or legacy masking is active, every persisted
 model-generated textual field (answer, comparison variants, timeline details,
-artifact payloads and routing metadata) is deterministically masked even when
-the inbound envelope was clean. Title generation and automatic memory receive
-only the masked turn text.
+artifact payloads and routing metadata) is deterministically masked with the
+`answer` scope described next, even when the inbound envelope was clean. Title
+generation and automatic memory receive only the masked turn text.
 
 **Masking is scoped by where the text is going.** The detector tells a
 person's details (a mobile number, a personal mailbox, a routable address, an

@@ -116,6 +116,22 @@ def test_a_page_from_the_web_keeps_its_contact_details() -> None:
     ]
 
 
+def test_a_protected_number_is_caught_however_the_model_writes_it() -> None:
+    """The user's number comes back re-spaced, a mailbox re-cased: still theirs."""
+    protected = governance.protected_values("연락처 010-1234-5678, Me@Gmail.com")
+    answer = "전화 01012345678 또는 010 1234 5678, 메일 me@gmail.com, 다른 사람 010-9999-0000"
+    masked, count = governance.mask(answer, scope="answer", protected=protected)
+    assert masked == "전화 [전화번호] 또는 [전화번호], 메일 [이메일], 다른 사람 010-9999-0000"
+    assert count == 3
+
+
+def test_a_role_mailbox_stays_readable_under_the_legacy_rules_too() -> None:
+    text = "문의 press@samsung.com, 담당 hong@samsung.com"
+    masked, count = governance.mask_legacy(text)
+    assert masked == "문의 press@samsung.com, 담당 [이메일]"
+    assert count == 1
+
+
 def test_the_answer_at_rest_masks_the_users_own_details_only() -> None:
     """What egress took out of the user's words is carried as `protected` and
     taken out of the answer too; a number the model found on the web stays."""
@@ -3218,6 +3234,9 @@ async def test_protected_strict_create_artifact_is_deep_masked_without_mutation(
         content="safe assistant reply",
         requested_artifacts=ctx.pending_artifacts,
         protect_privacy=True,
+        # The mailbox is the user's own, carried from egress; that is what deep
+        # masking at rest is for. A mailbox the model made up would stay.
+        protected_values=frozenset({sensitive}),
     )
 
     artifacts = [row for row in added if isinstance(row, Artifact)]
@@ -3677,6 +3696,11 @@ async def test_comparison_masks_variants_and_persists_provider_actual_model(
                 },
                 routing=routing,
                 mask_at_rest=True,
+                # Carried from egress as the user's own; the answer scope masks
+                # these wherever they resurface — variants, steps, model ids.
+                protected_values=frozenset(
+                    {"person@example.com", "model-owner@example.com", "owner@example.com"}
+                ),
             )
         ]
     )

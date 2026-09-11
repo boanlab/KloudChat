@@ -107,6 +107,16 @@ async def test_a_fresh_query_runs_both_lanes_news_first(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_a_papers_search_runs_the_science_lane_first(monkeypatch) -> None:
+    _Client.calls = []
+    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
+    hits = await builtin._searxng("http://searx", "교육과정 재구성 교사 인식", 5, kind="papers")
+    assert [c.get("categories") for c in _Client.calls] == [None, "science"]
+    assert "time_range" not in _Client.calls[1]
+    assert hits
+
+
 async def test_a_timeless_query_runs_the_general_lane_only(monkeypatch) -> None:
     monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
     _Client.calls.clear()

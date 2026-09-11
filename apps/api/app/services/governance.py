@@ -497,17 +497,41 @@ def invalidate() -> None:
     _cache.update(at=0.0, value=None)
 
 
+#: Categories compared by their digits alone, so 010-1234-5678 written back as
+#: 01012345678 or 010 1234 5678 is still the same number.
+_NUMERIC = frozenset({"phone", "landline", "payment_card", "government_id"})
+
+
+def _normalised(category: str, value: str) -> str:
+    if category in _NUMERIC:
+        return _digits(value)
+    return value.strip().lower()
+
+
 def _in_scope(
     hits: list[_Detection], text: str, scope: str, protected: frozenset[str] | set[str]
 ) -> list[_Detection]:
     """The hits `scope` masks: its categories, plus any span whose value the user
-    had masked on the way out (`protected`), so it does not resurface at rest."""
+    had masked on the way out (`protected`), so it does not resurface at rest —
+    however the model re-spaced or re-cased it."""
     wanted = SCOPES[scope]
+    if not protected:
+        return [hit for hit in hits if hit.category in wanted]
+    guarded = {_normalised(category, value) for category, value in _split_protected(protected)}
     return [
         hit
         for hit in hits
-        if hit.category in wanted or (protected and text[hit.start : hit.end] in protected)
+        if hit.category in wanted or _normalised(hit.category, text[hit.start : hit.end]) in guarded
     ]
+
+
+def _split_protected(protected: frozenset[str] | set[str]) -> list[tuple[str, str]]:
+    """`protected` holds raw spans; re-detect each to learn how to normalise it."""
+    pairs: list[tuple[str, str]] = []
+    for value in protected:
+        hits = _detections(value)
+        pairs.append((hits[0].category if hits else "", value))
+    return pairs
 
 
 def mask(text: str, *, scope: str = "egress", protected: set[str] | None = None) -> tuple[str, int]:
@@ -550,7 +574,8 @@ def _legacy_detections(text: str) -> list[_Detection]:
             item = _Detection(category, _LABELS[category], match.start(), match.end())
             candidates.append(item)
     for start, end in _legacy_email_spans(text):
-        candidates.append(_Detection("email", _LABELS["email"], start, end))
+        category = "role_email" if _is_role_mailbox(text[start:end]) else "email"
+        candidates.append(_Detection(category, _LABELS[category], start, end))
     accepted: list[_Detection] = []
     covered_until = -1
     for item in sorted(candidates, key=lambda d: (d.start, -(d.end - d.start), d.category)):

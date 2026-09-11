@@ -774,6 +774,18 @@ def _decision_audit_metadata(response: JSONResponse, session_id: str) -> dict[st
     }
 
 
+def _protected_values(
+    sources: dict[str, str | list[str]], *, legacy: bool = False
+) -> frozenset[str]:
+    """The raw values egress masking takes out of the user's side of the envelope."""
+    return frozenset(
+        value
+        for raw in sources.values()
+        for text in (raw if isinstance(raw, list) else [raw])
+        for value in governance.protected_values(text or "", legacy=legacy)
+    )
+
+
 def _mask_list(values: list[str], *, legacy: bool = False) -> list[str]:
     masker = governance.mask_legacy if legacy else governance.mask
     return [masker(value)[0] for value in values]
@@ -2493,13 +2505,10 @@ async def send_message(
         if requested_model.get("supportsTools") and model.get("supportsTools"):
             tools = strict_tools if strict_local else candidate_tools
         masker = governance.mask_legacy if policy.pii_masking else governance.mask
-        # What egress masking takes out of the user's own words and earlier turns;
-        # the answer at rest masks exactly these (and secrets), nothing public.
-        protected_values = frozenset(
-            value
-            for text in (content, *outbound_history)
-            for value in governance.protected_values(text, legacy=policy.pii_masking)
-        )
+        # What egress masking takes out of the user's side of the envelope — the
+        # words, earlier turns, attachments, instructions; the answer at rest masks
+        # exactly these (and secrets), nothing public.
+        protected_values = _protected_values(privacy_sources, legacy=policy.pii_masking)
         if resolved.findings:
             # Findings are stored masked whatever the action.
             stored_content = masker(content)[0]
@@ -3453,6 +3462,7 @@ async def _run_turn(
             requested_artifacts=ctx.pending_artifacts,
             protect_privacy=protect_enrichment,
             legacy_masking=legacy_masking,
+            protected_values=protected_values,
         )
         if new_artifact:
             yield chat_service.sse(
@@ -3610,6 +3620,7 @@ async def _run_turn(
             redact_logging=mask_at_rest or bool(tool_output_findings),
             legacy_masking=legacy_masking,
             message_id=answer_id,
+            protected_values=protected_values,
         )
 
     if memory_step:
@@ -3732,7 +3743,9 @@ async def compare_models(
 
     masker = governance.mask_legacy if policy.pii_masking else governance.mask
     stored_content = masker(content)[0] if resolved.findings else content
-    protected_values = frozenset(governance.protected_values(content, legacy=policy.pii_masking))
+    protected_values = _protected_values(
+        _privacy_sources(content, history, workspace.blocks), legacy=policy.pii_masking
+    )
     if resolved.findings and attachment_meta:
         attachment_meta = [
             {
@@ -3847,6 +3860,7 @@ async def _run_comparison(
     routing: dict,
     mask_at_rest: bool = False,
     legacy_masking: bool = False,
+    protected_values: frozenset[str] = frozenset(),
     privacy_audit_id: str | None = None,
 ) -> AsyncIterator[str]:
     """Fans out, merges the streams, then settles every column in one transaction.
@@ -3941,6 +3955,10 @@ async def _run_comparison(
         await task
 
     masker = governance.mask_legacy if legacy_masking else governance.mask
+
+    def at_rest(value: str) -> tuple[str, int]:
+        return masker(value, scope="answer", protected=set(protected_values))
+
     variants = [
         {
             "model": r["model"],
@@ -3955,9 +3973,9 @@ async def _run_comparison(
         for r in results.values()
     ]
     if mask_at_rest:
-        variants = _mask_text_tree(variants, masker)
+        variants = _mask_text_tree(variants, at_rest)
     stored_routing = (
-        _mask_text_tree(routing_holder["value"], masker)
+        _mask_text_tree(routing_holder["value"], at_rest)
         if mask_at_rest
         else routing_holder["value"]
     )
@@ -3969,7 +3987,7 @@ async def _run_comparison(
         variant["chosen"] = variant is chosen
     stored_prelude = _prelude_steps(skills_event, context_steps)
     if stored_prelude and mask_at_rest:
-        stored_prelude = _mask_text_tree(stored_prelude, masker)
+        stored_prelude = _mask_text_tree(stored_prelude, at_rest)
 
     answer = Message(
         session_id=session_id,
@@ -4036,6 +4054,7 @@ async def _store_artifacts(
     requested_artifacts: list[dict] | None = None,
     protect_privacy: bool = False,
     legacy_masking: bool = False,
+    protected_values: frozenset[str] = frozenset(),
 ) -> str | None:
     """Artifacts derived from a finished turn; never raises.
 
@@ -4045,9 +4064,13 @@ async def _store_artifacts(
     both in one pass, so the panel only caught up well after the closing
     text was already sitting on screen looking done.
     """
-    privacy_masker = (
-        (governance.mask_legacy if legacy_masking else governance.mask) if protect_privacy else None
-    )
+    masker = governance.mask_legacy if legacy_masking else governance.mask
+
+    def at_rest(value: str) -> tuple[str, int]:
+        # Like the answer: the user's own details and secrets out, public details in.
+        return masker(value, scope="answer", protected=set(protected_values))
+
+    privacy_masker = at_rest if protect_privacy else None
     artifact_id: str | None = None
     async with SessionLocal() as db:
         try:
@@ -4091,6 +4114,7 @@ async def _enrich_memory(
     redact_logging: bool = False,
     legacy_masking: bool = False,
     message_id: str | None = None,
+    protected_values: frozenset[str] = frozenset(),
 ) -> dict | None:
     """Facts auto-memory pulls from a finished turn; never raises.
 
@@ -4105,11 +4129,12 @@ async def _enrich_memory(
         user = await db.get(User, user_id)
         if user is None:
             return None
-        privacy_masker = (
-            (governance.mask_legacy if legacy_masking else governance.mask)
-            if protect_privacy
-            else None
-        )
+        masker = governance.mask_legacy if legacy_masking else governance.mask
+
+        def at_rest(value: str) -> tuple[str, int]:
+            return masker(value, scope="answer", protected=set(protected_values))
+
+        privacy_masker = at_rest if protect_privacy else None
         try:
             enrichment = await _enrichment_model(
                 model, strict_local=strict_local, disable_fallbacks=disable_fallbacks

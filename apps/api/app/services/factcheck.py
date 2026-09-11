@@ -123,7 +123,7 @@ async def _search(query: str) -> list[dict[str, str]]:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             response = await client.get(
                 f"{backends.search.rstrip('/')}/search",
-                params={"q": query, "format": "json", "language": "ko"},
+                params={"q": query, "format": "json", "language": "ko-KR"},
             )
             response.raise_for_status()
             results = (response.json() or {}).get("results") or []
