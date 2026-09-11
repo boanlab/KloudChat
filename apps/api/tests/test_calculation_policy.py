@@ -1,7 +1,7 @@
 """Request cues are a bounded gate policy, not a mathematical intent classifier."""
 
 import pytest
-
+from app.services import calculation_policy
 from app.services.calculation_policy import requires_calculation
 
 
@@ -142,3 +142,105 @@ def test_unrelated_underspecified_or_unsupported_requests_do_not_force_calculati
 def test_the_policy_does_not_depend_on_a_known_question_answer(left, right):
     assert requires_calculation(f"{left} * {right}")
     assert requires_calculation(f"{left}에서 {right}로 바뀌었다. 변화율을 계산해 줘.")
+
+
+def test_direct_expression_handles_the_live_ignored_tool_choice_request():
+    request = "17 * 23은 얼마야? 계산식과 답만 짧게 써줘. 파일은 만들지 마."
+    assert calculation_policy.direct_calculation_expression(request) == "17 * 23"
+
+
+@pytest.mark.parametrize(
+    "question,expression",
+    [
+        ("48/6", "48/6"),
+        ("(17 + 23) * 6 / 4", "(17 + 23) * 6 / 4"),
+        ("-7 + 2.5", "-7 + 2.5"),
+        ("(+7 - -2) / .5", "(+7 - -2) / .5"),
+        ("0.1 + 0.2", "0.1 + 0.2"),
+        ("17 × 23은 얼마야?", "17 * 23"),
+        ("12 ÷ 3", "12 / 3"),
+        ("−7 + 2", "-7 + 2"),
+        ("１２ ＋ ３", "12 + 3"),
+        ("What is 144 / 12?", "144 / 12"),
+        ("Calculate (17 + 23) / 5.", "(17 + 23) / 5"),
+        ("Evaluate (1.25 + 2.75) * 4. Answer briefly. No files.", "(1.25 + 2.75) * 4"),
+        ("12 + 3을 계산해 줘. 답만 알려줘.", "12 + 3"),
+        ("12 + 3을 계산해 주세요. 파일은 만들지 마세요.", "12 + 3"),
+        ("17 * 23은 얼마야?\n계산식과 답만 짧게 써줘.\n파일은 만들지 마.", "17 * 23"),
+        ("Compute 19 * 17. Just the answer. Do not create files.", "19 * 17"),
+    ],
+)
+def test_direct_expression_preserves_only_the_supplied_numeric_expression(question, expression):
+    assert calculation_policy.direct_calculation_expression(question) == expression
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        None,
+        17,
+        "",
+        "17",
+        "(17)",
+        "2026-09-12",
+        "2026/09/12",
+        "2026-9",
+        "(2026 - 9 - 12)",
+        "Calculate 2026-9-12.",
+        "Python 3.11과 3.12의 차이를 알려 줘.",
+        "v3.11.2",
+        "3.11.2",
+        '"17 * 23"을 계산해 줘.',
+        'Translate "Calculate 17 * 23" into Korean.',
+        "Translate this:\n17 * 23",
+        "17*23을 영어로 번역해 줘.",
+        "17*23은 얼마야? 그 결과를 영어 문장으로 번역해 줘.",
+        "```python\n17*23\n```",
+        "`17*23`",
+        "Calculate `17 * 23`.",
+        "17*23을 계산하는 함수를 작성해 줘.",
+        "Write a calculator for 17 * 23.",
+        "x = 17 * 23",
+        "17 * 23 = 391",
+        "17 * 23 = ?",
+        "17 * 23의 답은 391이다. 계산해 줘.",
+        "12 + 3 = 20이 맞는지 검산해 줘.",
+        "x + y",
+        "17 * quantity",
+        "sum([17, 23])",
+        "2**64",
+        "12//5",
+        "12%5",
+        "1e3 + 2",
+        "1_000 + 2",
+        "2 +",
+        "* 17",
+        "17 23",
+        "17 * 23; 12 + 5",
+        "17 * 23\n12 + 5",
+        "17 * 23, 12 + 5",
+        "17 * 23 and 12 + 5",
+        "17 * 23은 얼마야? 그리고 12 + 5도 계산해 줘.",
+        "17*23은 얼마야? 최신 주가도 알려 줘.",
+        "표의 값이 누락됐어. 17 * 23",
+        "계산하지 마. 17 * 23",
+        "17 * 23을 계산하지 마.",
+        "17 * 23은 얼마야? 계산하지 마.",
+        "Do not calculate 17 * 23.",
+        "17*23. Never calculate.",
+        "13명 평균 62점, 7명 평균 94점이다. 전체 평균을 구해 줘.",
+        "NCS 문제에서 17명이 23개씩 샀다. 합계를 구해 줘.",
+        "What is 15% of 240?",
+        "17*23. 소수점 2자리로 반올림해 줘.",
+        "17*23. 답만 알려줘. 계산식과 답만 써줘.",
+        "17*23. 파일은 만들지 마. 파일은 생성하지 마.",
+        "17*23..",
+        "(" * 33 + "17*23" + ")" * 33,
+        "+" * 33 + "17*23",
+        "9" * 65 + " + 1",
+        " + ".join(["1"] * 50),
+        "17 * 23" * 4096,
+    ],
+)
+def test_direct_expression_abstains_from_ambiguous_or_nonliteral_requests(question):
+    assert calculation_policy.direct_calculation_expression(question) is None

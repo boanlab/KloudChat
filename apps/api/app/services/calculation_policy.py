@@ -1,8 +1,9 @@
 """Conservative request-only cues for a required arithmetic tool call.
 
 This is not a semantic classifier: attachments, anaphoric follow-ups, spelled-out
-numbers and requests over the bound remain outside this policy. It neither builds
-an equation nor grants a tool permission; the model must still supply valid inputs.
+numbers and requests over the bound remain outside this policy. The direct
+extractor copies only an explicit expression; it never builds a word-problem
+equation, evaluates arithmetic, or grants a tool permission.
 """
 
 from __future__ import annotations
@@ -81,6 +82,25 @@ _EXPRESSION_PREFIX = re.compile(r"^(?:what\s+is|calculate|compute|evaluate)\s+",
 _EXPRESSION_SUFFIX = re.compile(
     r"(?:[은는]?\s*얼마(?:야|인가|인가요)?|[을를]?\s*(?:계산|검산)해\s*줘)?[?.=\s]*$"
 )
+_DIRECT_LITERAL = re.compile(r"[0-9.()+\-*/ \t]+")
+_DIRECT_CORE_SUFFIX = re.compile(
+    r"(?:[은는]?\s*얼마(?:야|인가|인가요)?|"
+    r"[을를]?\s*(?:계산|검산)해\s*(?:주세요|줘))?"
+)
+_DIRECT_FORMAT = re.compile(
+    r"(?:(?:(?:계산식|식)(?:과|와)\s*(?:답|결과)만|(?:답|정답|결과)만)"
+    r"\s*(?:짧게|간단히|간결하게)?\s*(?:(?:써|알려|보여|답해)\s*(?:주세요|줘))?|"
+    r"(?:just|only)\s+(?:the\s+)?(?:answer|result|expression\s+and\s+(?:the\s+)?answer)|"
+    r"(?:answer|respond)\s+(?:briefly|concisely|only))",
+    re.IGNORECASE,
+)
+_DIRECT_NO_FILE = re.compile(
+    r"(?:(?:파일|아티팩트|문서)(?:은|는|을|를)?\s*(?:만들지|생성하지)\s*"
+    r"(?:마세요|마|말아\s*(?:주세요|줘))|"
+    r"(?:do\s+not|don't|never)\s+(?:create|make|generate)\s+(?:any\s+)?"
+    r"(?:files?|artifacts?|documents?)|no\s+(?:files?|artifacts?|documents?))",
+    re.IGNORECASE,
+)
 
 
 def _has_numeric_arithmetic_action(text: str) -> bool:
@@ -130,6 +150,71 @@ def _standalone_expression(request: str) -> bool:
             for node in nodes
         )
     )
+
+
+def direct_calculation_expression(request: str) -> str | None:
+    """Copy one unambiguous user expression for an already-authorized calculator.
+
+    The whole request must match: a literal expression, an optional question,
+    and at most one answer-format and one no-file suffix. Unknown wording returns
+    None so normal model-directed tool handling remains responsible. In particular,
+    equations with a supplied result and word problems are never rewritten here.
+    """
+    if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
+        return None
+    text = unicodedata.normalize("NFKC", request).strip()
+    text = text.replace("×", "*").replace("÷", "/").replace("−", "-")
+    text = _EXPRESSION_PREFIX.sub("", text, count=1)
+    literal = _DIRECT_LITERAL.match(text)
+    if literal is None:
+        return None
+    expression = literal.group().strip()
+    if ".." in expression:
+        return None
+    # A sentence's final period is not part of the copied numeric expression.
+    expression = expression.removesuffix(".").rstrip()
+    if _DATE.fullmatch(re.sub(r"\s", "", expression).strip("()")):
+        return None
+    if not _standalone_expression(expression):
+        return None
+    remainder = text[literal.end():]
+    suffix = _DIRECT_CORE_SUFFIX.match(remainder)
+    remainder = remainder[suffix.end():] if suffix else remainder
+    clauses = [clause.strip() for clause in re.split(r"[.!?;\n]+", remainder) if clause.strip()]
+    if len(clauses) > 2:
+        return None
+    seen: set[str] = set()
+    for clause in clauses:
+        category = (
+            "format" if _DIRECT_FORMAT.fullmatch(clause)
+            else "no_file" if _DIRECT_NO_FILE.fullmatch(clause)
+            else None
+        )
+        if category is None or category in seen:
+            return None
+        seen.add(category)
+
+    # Match the calculator's literal/depth bounds without computing a result.
+    nesting = 0
+    for character in expression:
+        if character == "(":
+            nesting += 1
+            if nesting > 32:
+                return None
+        elif character == ")":
+            nesting -= 1
+    tree = ast.parse(expression, mode="eval")
+    stack = [(tree.body, 0)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > 32:
+            return None
+        if isinstance(node, ast.Constant):
+            segment = ast.get_source_segment(expression, node) or ""
+            if sum(character.isdigit() for character in segment) > 64:
+                return None
+        stack.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+    return expression
 
 
 def requires_calculation(request: str) -> bool:
