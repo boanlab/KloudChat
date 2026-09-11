@@ -153,7 +153,6 @@ Four of them compose already passes through from `.env`: `ENV` as
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
 | `TITLE_MODEL` | `local/qwen3.6-35b` | Names conversations and extracts memories. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | empty | Naver 검색 API credentials (developers.naver.com → 애플리케이션 등록 → 검색 API). With both set, every Korean-language search also asks Naver's web-document index, and a fresh one its news index; Naver's hits lead the list. Empty leaves the lane out. The free quota is 25,000 calls a day per application; a search uses one or two. In compose these are `KCHAT_NAVER_CLIENT_ID` / `KCHAT_NAVER_CLIENT_SECRET` in `.env`. |
 | `STT_OR_MODEL` | `mistralai/voxtral-small-24b-2507` | Fallback transcription model for hosts that cannot run Whisper. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |

@@ -55,28 +55,6 @@ _NEWS = {
 }
 
 
-_NAVER_WEB = {
-    "items": [
-        {
-            "title": "<b>국가장학금</b> 2차 신청 안내",
-            "link": "https://www.kosaf.go.kr/ko/notice/1",
-            "description": "2026년 2학기 <b>국가장학금</b> 2차 신청 기간은 9월 15일부터",
-        }
-    ]
-}
-_NAVER_NEWS = {
-    "items": [
-        {
-            "title": "&quot;등록금 덜 내려면&quot; <b>국가장학금</b> 2차 신청하세요",
-            "originallink": "https://www.yna.co.kr/view/AKR20260911000100530",
-            "link": "https://n.news.naver.com/mnews/article/001/0001",
-            "description": "한국장학재단은 11일",
-            "pubDate": "Thu, 11 Sep 2026 09:00:00 +0900",
-        }
-    ]
-}
-
-
 class _Response:
     status_code = 200
 
@@ -88,12 +66,6 @@ class _Response:
 
     def json(self):
         return self._payload
-
-
-def _is_naver(url: str) -> bool:
-    from urllib.parse import urlparse
-
-    return urlparse(url).netloc == "openapi.naver.com"
 
 
 class _Client:
@@ -108,10 +80,8 @@ class _Client:
     async def __aexit__(self, *_a):
         return None
 
-    async def get(self, url: str, *, params: dict, headers: dict | None = None):
-        _Client.calls.append({**params, "_url": url, **({"_headers": headers} if headers else {})})
-        if _is_naver(url):
-            return _Response(_NAVER_NEWS if "/news" in url else _NAVER_WEB)
+    async def get(self, _url: str, *, params: dict):
+        _Client.calls.append(params)
         return _Response(_NEWS if params.get("categories") == "news" else _GENERAL)
 
 
@@ -406,41 +376,3 @@ def test_a_community_thread_ranks_below_a_page_with_the_same_words() -> None:
     assert [r["url"] for r in builtin._rank([board, page], query)][
         0
     ] == "https://finance.example.com/rates"
-
-
-@pytest.mark.asyncio
-async def test_naver_answers_a_korean_search_when_credentials_are_set(monkeypatch) -> None:
-    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
-    monkeypatch.setattr(builtin.settings, "naver_client_id", "id")
-    monkeypatch.setattr(builtin.settings, "naver_client_secret", "secret")
-    _Client.calls.clear()
-    hits = await builtin._searxng("http://searx", "2026년 국가장학금 2차 신청 기간", 5, fresh=True)
-    naver_calls = [c for c in _Client.calls if _is_naver(c["_url"])]
-    # News first for a fresh question, then web documents, with the credentials.
-    assert [c["_url"].rsplit("/", 1)[-1] for c in naver_calls] == ["news.json", "webkr.json"]
-    assert naver_calls[0]["_headers"]["X-Naver-Client-Id"] == "id"
-    assert naver_calls[0]["sort"] == "date" and naver_calls[1]["sort"] == "sim"
-    urls = [h["url"] for h in hits]
-    # Naver's hits lead (order among them by fit), tags stripped, the article's
-    # original address kept, dated.
-    assert set(urls[:2]) == {
-        "https://www.yna.co.kr/view/AKR20260911000100530",
-        "https://www.kosaf.go.kr/ko/notice/1",
-    }
-    news = next(h for h in hits if "yna.co.kr" in h["url"])
-    assert news["title"] == '"등록금 덜 내려면" 국가장학금 2차 신청하세요'
-    assert news["published"] == "2026-09-11"
-
-
-@pytest.mark.asyncio
-async def test_no_naver_call_without_credentials_or_for_english(monkeypatch) -> None:
-    monkeypatch.setattr(builtin.httpx, "AsyncClient", _Client)
-    monkeypatch.setattr(builtin.settings, "naver_client_id", "")
-    _Client.calls.clear()
-    await builtin._searxng("http://searx", "2026년 국가장학금 2차 신청 기간", 5, fresh=True)
-    assert not [c for c in _Client.calls if _is_naver(c["_url"])]
-    monkeypatch.setattr(builtin.settings, "naver_client_id", "id")
-    monkeypatch.setattr(builtin.settings, "naver_client_secret", "secret")
-    _Client.calls.clear()
-    await builtin._searxng("http://searx", "Python 3.14 what's new", 5)
-    assert not [c for c in _Client.calls if _is_naver(c["_url"])]
