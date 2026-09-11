@@ -2194,6 +2194,30 @@ def _freshness_routing(reason: str) -> dict[str, Any]:
     }
 
 
+def _freshness_followup_index(history: list[Message], session_id: str, content: str) -> int | None:
+    """Bind a narrow nudge to contiguous, trusted policy-held turns in this session."""
+    if not freshness.is_same_fact_followup(content):
+        return None
+    for index in range(len(history) - 2, -1, -2):
+        question, answer = history[index : index + 2]
+        routing = answer.routing or {}
+        verification = routing.get("freshness") or {}
+        if (
+            question.session_id != session_id or answer.session_id != session_id
+            or question.role is not Role.user or answer.role is not Role.assistant
+            or answer.model is not None
+            or routing.get("answerOrigin") != "server_policy"
+            or routing.get("actualModel") is not None
+            or verification.get("status") != "unverified"
+        ):
+            return None
+        if freshness.fresh_fact_required(question.content):
+            return index
+        if not freshness.is_same_fact_followup(question.content):
+            return None
+    return None
+
+
 async def _freshness_refusal(
     db: AsyncSession,
     session: ChatSession,
@@ -2450,7 +2474,11 @@ async def send_message(
     # web tools are offered, and the tool the first hop must call. Resolved before
     # tools are built.
     effective_web_search, forced_tool = search_plan(payload.web_search, content)
-    fresh_fact = freshness.fresh_fact_required(content)
+    fresh_followup_index = (
+        _freshness_followup_index(history, session.id, content)
+        if session.kind is SessionKind.chat and not payload.attachments else None
+    )
+    fresh_fact = freshness.fresh_fact_required(content) or fresh_followup_index is not None
     if fresh_fact and effective_web_search:
         # The request is for a current fact, not for the model to decide whether
         # verification is necessary. Availability is checked again after privacy.
@@ -3061,7 +3089,15 @@ async def send_message(
     tool_names = {t.name for t in tools}
     preset_call: tuple[str, dict[str, Any]] | None = None
     if forced_tool == "web_search" and "web_search" in tool_names:
-        preset_call = ("web_search", {"query": search_query(content), **search_hints(content)})
+        # Reuse only the history already processed by this turn's privacy decision.
+        # Never persist or append the earlier raw question as new prompt content.
+        lookup_content = (
+            outbound_history[fresh_followup_index]
+            if fresh_followup_index is not None else content
+        )
+        preset_call = (
+            "web_search", {"query": search_query(lookup_content), **search_hints(lookup_content)},
+        )
     elif forced_tool == "weather" and "weather" in tool_names:
         place = weather_location(content)
         if place:

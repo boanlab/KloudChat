@@ -2,7 +2,7 @@
 
 Detects direct officeholder questions and explicitly current political developments
 in Korean/English. This is not a general hallucination detector: other domains,
-implicit follow-ups, and every natural-language paraphrase are outside its contract.
+general implicit follow-ups, and every natural-language paraphrase are outside its contract.
 It neither checks sources nor treats a supplied document as verified current evidence.
 """
 
@@ -106,6 +106,31 @@ _DIRECT_REQUEST = re.compile(
     r"\b(?:who|what|which|tell|describe|explain)\b|^(?:is|are)\b",
     re.I,
 )
+_SAME_FACT_FOLLOWUP = re.compile(
+    r"(?:(?:그럼|그러면|그래도|그냥)\s*)?"
+    r"(?:(?:확실하지\s*않아도|불확실해도)\s*[,，]?\s*)?"
+    r"(?:검색해서\s*)?"
+    r"(?:(?:(?:이름|성명|답|정답)(?:만|을)?|누군지(?:만)?)\s*)?"
+    r"(?:알려\s*(?:줘|주세요)|말해\s*(?:줘|주세요)|답해\s*(?:줘|주세요)|"
+    r"추측해\s*(?:봐|줘|주세요)|검색해\s*(?:줘|주세요))|"
+    r"(?:(?:then|just|please|still)\s+)?"
+    r"(?:even\s+if\s+(?:you\s+are\s+)?(?:unsure|uncertain)\s*,?\s*)?"
+    r"(?:tell\s+me\s+(?:just\s+)?the\s+(?:name|answer)|"
+    r"(?:answer|guess)(?:\s+anyway)?|search\s+for\s+(?:it|that))",
+    re.I,
+)
+
+
+def is_same_fact_followup(request: str) -> bool:
+    """Recognize only a short, whole-message nudge with no new named subject.
+
+    This alone is never a freshness decision. The caller must also require an
+    immediately preceding stored server-policy hold and its guarded user turn.
+    """
+    if not isinstance(request, str) or len(request) > 256:
+        return False
+    text = unicodedata.normalize("NFC", request).strip().rstrip(".!?。？！")
+    return bool(_SAME_FACT_FOLLOWUP.fullmatch(text.strip()))
 
 
 def without_quoted_transform_sources(text: str) -> str:
