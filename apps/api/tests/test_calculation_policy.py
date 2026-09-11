@@ -1,6 +1,7 @@
 """Request cues are a bounded gate policy, not a mathematical intent classifier."""
 
 import pytest
+
 from app.services import calculation_policy
 from app.services.calculation_policy import requires_calculation
 
