@@ -18,10 +18,12 @@ from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", [RoutingMode.manual, RoutingMode.auto, RoutingMode.auto_quality])
 @pytest.mark.parametrize("tool", [CALCULATE, CHECK_NCS_ANSWER, None])
+@pytest.mark.parametrize("literal", [False, True])
 async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
     monkeypatch,
     mode,
     tool,
+    literal,
 ):
     user = User(email="calculation@example.test", password_hash="hash", name="Learner")
     model = {
@@ -103,7 +105,11 @@ async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
     monkeypatch.setattr(sessions, "_run_turn", stream)
 
     request = SendMessage(
-        content="A팀 7명의 평균 68점, B팀 3명의 평균 92점이면 전체 평균은?", web_search=False
+        content=(
+            "17 * 23은 얼마야? 계산식과 답만 짧게 써줘. 파일은 만들지 마."
+            if literal else "A팀 7명의 평균 68점, B팀 3명의 평균 92점이면 전체 평균은?"
+        ),
+        web_search=False,
     )
     if tool is None:
         with pytest.raises(HTTPException) as caught:
@@ -122,6 +128,9 @@ async def test_calculation_requirement_precedes_tool_free_routing_and_key_issue(
     assert [row["function"]["name"] for row in captured["tool_definitions"]] == [tool.name]
     assert "계산" in captured["messages"][0]["content"]
     assert captured["calculation_required"] is True
+    assert captured["calculation_expression"] == (
+        "17 * 23" if literal and tool is CALCULATE else None
+    )
     if mode == RoutingMode.auto:
         route = captured["routing"]["costRouting"]
         assert route["decision"] == "bypassed"

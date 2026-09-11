@@ -3029,6 +3029,10 @@ async def send_message(
                 ),
                 preflight_tool=preflight_tool,
                 calculation_required=calculation_required,
+                calculation_expression=(
+                    calculation_policy.direct_calculation_expression(content)
+                    if calculation_required and preflight_tool == "calculate" else None
+                ),
             )
         ),
         media_type="text/event-stream",
@@ -3254,6 +3258,7 @@ async def _run_turn(
     force_tool: str | None = None,
     preflight_tool: str | None = None,
     calculation_required: bool = False,
+    calculation_expression: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
@@ -3343,6 +3348,10 @@ async def _run_turn(
                 force_tool=force_tool,
                 **({"preflight_tool": preflight_tool} if preflight_tool else {}),
                 **({"calculation_required": True} if calculation_required else {}),
+                **(
+                    {"calculation_expression": calculation_expression}
+                    if calculation_expression is not None else {}
+                ),
                 preset_call=preset_call,
             ),
             stopping,
