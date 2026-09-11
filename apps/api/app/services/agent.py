@@ -13,7 +13,7 @@ import logging
 import re
 from collections.abc import AsyncIterator, Callable
 from copy import deepcopy
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 import httpx
 
@@ -24,6 +24,46 @@ from app.services.tools import arithmetic
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
+
+
+class ToolResultAnswerEvent(TypedDict):
+    type: Literal["tool_result_answer"]
+    answerOrigin: Literal["tool_result"]
+    toolName: Literal["calculate"]
+    reasonCode: Literal["division_by_zero"]
+    actualModel: None
+
+
+TOOL_RESULT_ANSWER_EVENT: ToolResultAnswerEvent = {
+    "type": "tool_result_answer",
+    "answerOrigin": "tool_result",
+    "toolName": "calculate",
+    "reasonCode": "division_by_zero",
+    "actualModel": None,
+}
+
+
+def _literal_zero_division_answer(
+    tool: Tool | None,
+    result: ToolResult,
+    *,
+    literal_preset: bool,
+    model_attempted: bool,
+) -> ToolResultAnswerEvent | None:
+    # Missing usage/model metadata does not prove that no provider was called.
+    if (
+        model_attempted or not literal_preset or tool is None
+        or tool.name != "calculate" or tool.source != "builtin"
+        or not tool.read_only or tool.run is not arithmetic.calculate or not result.failed
+    ):
+        return None
+    try:
+        error = json.loads(result.content)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(error, dict) and error.get("reason") == "division_by_zero":
+        return dict(TOOL_RESULT_ANSWER_EVENT)
+    return None
 
 
 async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncClient:
@@ -534,8 +574,9 @@ async def run_turn(
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
-    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`, and
-    exactly one `usage`. `done` belongs to the caller, after credits settle.
+    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`,
+    optional `tool_result_answer` (no answer-model call), and exactly one `usage`.
+    `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
     if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
@@ -576,6 +617,7 @@ async def run_turn(
         preset_calls.append(("calculate", {"expression": calculation_expression}))
     redact_next_request = redact_logging
     reported_models: set[str] = set()
+    model_attempted = False
 
     def visible_label(tool: Tool | None, name: str, *, done: bool = False) -> str:
         # Progress form while running (웹 검색 중), noun when done (웹 검색).
@@ -657,6 +699,7 @@ async def run_turn(
             if name == force_tool:
                 post_preflight_force_sent = True
         else:
+            model_attempted = True
             async for kind, value in _stream_once(
                 model,
                 conversation,
@@ -892,26 +935,22 @@ async def run_turn(
 
         results = await asyncio.gather(*(execute(item) for item in planned))
         terminal_text: str | None = None
+        terminal_origin: ToolResultAnswerEvent | None = None
         verifying_arithmetic = calculation_required and not preflight_completed
         arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
-            if (
-                running_preset and calculation_expression is not None
-                and call["name"] == "calculate" and tool is not None
-                and tool.source == "builtin" and tool.read_only and tool.run is arithmetic.calculate
-                and result.failed
-            ):
+            result_origin = _literal_zero_division_answer(
+                tool, result,
+                literal_preset=running_preset and calculation_expression is not None,
+                model_attempted=model_attempted,
+            )
+            if result_origin is not None:
                 # Only a copied user literal, evaluated by our in-process calculator,
                 # can establish this fact. Never echo arguments or tool error prose.
-                try:
-                    error = json.loads(result.content)
-                except (ValueError, TypeError):
-                    error = None
-                if isinstance(error, dict) and error.get("reason") == "division_by_zero":
-                    result.final_text = (
-                        "0으로 나누는 계산은 정의되지 않으므로 값을 구할 수 없습니다."
-                    )
+                result.final_text = (
+                    "0으로 나누는 계산은 정의되지 않으므로 값을 구할 수 없습니다."
+                )
             if (
                 running_preset and calculation_required and calculation_expression is None
                 and call["name"] != preflight_tool and (result.failed or result.empty)
@@ -1032,11 +1071,14 @@ async def run_turn(
                 fetches += 1
             if terminal_text is None and result.final_text is not None:
                 terminal_text = result.final_text
+                terminal_origin = result_origin
 
         if arithmetic_results:
             preflight_completed = all(arithmetic_results)
         if terminal_text is not None:
             answer_text.append(terminal_text)
+            if terminal_origin is not None:
+                yield terminal_origin
             yield {"type": "delta", "text": terminal_text}
             break
 

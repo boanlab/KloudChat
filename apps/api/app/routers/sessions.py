@@ -3278,6 +3278,7 @@ async def _run_turn(
     tool_output_masked = 0
     tool_output_findings: dict[tuple[str, str], int] = {}
     actual_model = model["id"]
+    tool_result_answer = False
 
     # Set by the stop button, not by a closed socket.
     stopping = asyncio.Event()
@@ -3356,6 +3357,14 @@ async def _run_turn(
             ),
             stopping,
         ):
+            if event == agent_service.TOOL_RESULT_ANSWER_EVENT:
+                tool_result_answer = True
+                actual_model = None
+                cost_routing = None
+                routing = {**(routing or {}), **{k: v for k, v in event.items() if k != "type"}}
+                routing.pop("costRouting", None)
+                yield chat_service.sse(event)
+                continue
             if event["type"] == "delta":
                 text_parts.append(event["text"])
             elif event["type"] == "retract":
@@ -3436,8 +3445,10 @@ async def _run_turn(
         failed = "internal_error"
         yield chat_service.sse(_error_event("요청 처리 중 오류가 발생했습니다.", exc))
 
+    # This is answer-generation scope; earlier classifier/search work keeps its audit.
+    skip_completion_work = tool_result_answer
     content = "".join(text_parts)
-    if failed == "stopped" and not any(usage.values()):
+    if failed == "stopped" and not any(usage.values()) and not skip_completion_work:
         # A stopped stream never reaches the usage chunk; estimate, marked as one.
         usage = {
             "inputTokens": file_service.estimate_tokens(
@@ -3479,9 +3490,12 @@ async def _run_turn(
         return masker(value, scope="answer", protected=set(protected_values))
 
     stored_steps = _mask_text_tree(steps, at_rest) if protect_persistence else steps
-    stored_actual_model = at_rest(actual_model)[0] if protect_persistence else actual_model
+    stored_actual_model = (
+        at_rest(actual_model)[0] if protect_persistence and actual_model else actual_model
+    )
     credits = (
-        0 if not content else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        0 if not content or skip_completion_work
+        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
     if cost_routing:
         cost_routing = {**cost_routing, "executedModel": actual_model}
@@ -3499,7 +3513,7 @@ async def _run_turn(
     # below, both of which are free of this turn's artifact — so the panel
     # catches up close to when the closing text does, not well after it.
     new_artifact: str | None = None
-    if stored_content and not failed:
+    if stored_content and not failed and not skip_completion_work:
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
@@ -3523,7 +3537,7 @@ async def _run_turn(
     title: str | None = None
     title_credits = 0
     title_model: str | None = None
-    if is_first_turn and stored_content and not failed:
+    if is_first_turn and stored_content and not failed and not skip_completion_work:
         enrichment = await _enrichment_model(
             model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
         )
@@ -3568,14 +3582,15 @@ async def _run_turn(
                 )
                 db.add(answer)
                 answer_id = answer.id
-                settle(
-                    db,
-                    user,
-                    credits,
-                    reason="chat.completion",
-                    session_id=session_id,
-                    model=stored_actual_model,
-                )
+                if not skip_completion_work:
+                    settle(
+                        db,
+                        user,
+                        credits,
+                        reason="chat.completion",
+                        session_id=session_id,
+                        model=stored_actual_model,
+                    )
             else:
                 # No answer: the question row carries the outcome and the retry.
                 question = await db.get(Message, user_message_id) if user_message_id else None
@@ -3594,19 +3609,20 @@ async def _run_turn(
                 surface=session.kind.value,
             )
             # Notes are kept from an empty completion but not from a failed turn.
-            if ctx.pending_notes and not failed:
+            if ctx.pending_notes and not failed and not skip_completion_work:
                 await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
             if title:
                 session.title = title
             # Own ledger line: a different model may have run it.
-            settle(
-                db,
-                user,
-                title_credits,
-                reason="chat.title",
-                session_id=session_id,
-                model=title_model,
-            )
+            if not skip_completion_work:
+                settle(
+                    db,
+                    user,
+                    title_credits,
+                    reason="chat.title",
+                    session_id=session_id,
+                    model=title_model,
+                )
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -3618,7 +3634,17 @@ async def _run_turn(
             if routing_audit_id:
                 routing_audit = await db.get(AuditEvent, routing_audit_id)
                 if routing_audit is not None:
-                    routing_audit.event_metadata = dict(cost_routing or {})
+                    audit_metadata = dict(cost_routing or {})
+                    if skip_completion_work:
+                        # Keep the selection decision without claiming that its model ran.
+                        audit_metadata = {
+                            **(routing_audit.event_metadata or {}),
+                            **(stored_routing or {}),
+                            "executedModel": None,
+                        }
+                        if protect_persistence:
+                            audit_metadata = _mask_text_tree(audit_metadata, at_rest)
+                    routing_audit.event_metadata = audit_metadata
                     db.add(routing_audit)
             session.updated_at = utcnow()
             if new_artifact:
@@ -3659,7 +3685,7 @@ async def _run_turn(
     # already stored and announced above; this is only the auto-memory pass,
     # which needs `answer_id` and is unrelated to what the panel shows.
     memory_step: dict | None = None
-    if stored_content and not failed:
+    if stored_content and not failed and not skip_completion_work:
         memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,
