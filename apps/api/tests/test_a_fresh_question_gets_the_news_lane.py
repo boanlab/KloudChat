@@ -194,10 +194,52 @@ def test_hits_without_the_querys_proper_nouns_are_dropped() -> None:
     ]
     kept = builtin._select(rows, "FastAPI 최신 버전 번호랑 릴리스 날짜", 5)
     assert [r["url"] for r in kept] == ["https://fastapi.tiangolo.com/release-notes/"]
-    # A version number is an anchor too.
-    assert builtin._anchors("Ubuntu 24.04 지원 종료일") == ["ubuntu", "24.04"]
+    # A version number must appear; three-letter words like LTS do not anchor.
+    assert builtin._anchors("Ubuntu 24.04 지원 종료일") == (["ubuntu"], ["24.04"])
+    assert builtin._anchors("Node.js 22 LTS 지원 종료일") == (["node.js"], ["22"])
+    assert builtin._latin_only("Attention Is All You Need 논문 저자랑 arXiv 번호") == (
+        "Attention Is All You Need"
+    )
+    assert builtin._foreign_script("Переключение языка ввода в Ubuntu 24.04")
+    assert not builtin._foreign_script("Ubuntu 24.04.5 (Noble Numbat)")
+    plesk = {
+        "title": "Plesk on Ubuntu",
+        "url": "https://x/plesk",
+        "snippet": "ubuntu 22.04",
+        "published": "",
+    }
+    assert not builtin._anchored(plesk, builtin._anchors("Ubuntu 24.04 지원 종료일"))
     # Korean-only queries have no anchors and keep the old behaviour.
-    assert builtin._anchors("2026년 최저임금 시급") == []
+    assert builtin._anchors("2026년 최저임금 시급") == ([], [])
+
+
+def test_a_fitting_lane_hit_outranks_a_wordier_blog_but_a_stray_one_sinks() -> None:
+    query = "Attention Is All You Need 논문 저자 arXiv 번호"
+    blog = {
+        "title": "Attention Is All You Need 논문 저자 arXiv 번호 정리",
+        "url": "https://b.test/p",
+        "snippet": "",
+        "published": "",
+    }
+    paper = {
+        "title": "Attention Is All You Need",
+        "url": "https://arxiv.org/abs/1706.03762",
+        "snippet": "arxiv",
+        "published": "",
+        "lane": "1",
+    }
+    stray = {
+        "title": "Superconductivity as a consequence of ordering",
+        "url": "https://arxiv.org/abs/1005.0280",
+        "snippet": "attention",
+        "published": "",
+        "lane": "1",
+    }
+    ranked = builtin._rank([blog, stray, paper], query)
+    # The paper fits over half the question: head start, and it leads.
+    assert ranked[0]["url"] == "https://arxiv.org/abs/1706.03762"
+    # One shared word earns no head start: the stray paper sinks below the blog.
+    assert ranked[-1]["url"] == "https://arxiv.org/abs/1005.0280"
 
 
 @pytest.mark.asyncio
@@ -215,3 +257,6 @@ async def test_a_paper_question_takes_the_science_lane(monkeypatch) -> None:
     _Client.calls.clear()
     await builtin.web_search({"query": "Attention Is All You Need 논문 arXiv 번호"})
     assert [c.get("categories") for c in _Client.calls] == [None, "science"]
+    # The science lane is asked in English for the title alone.
+    assert _Client.calls[1]["q"] == "Attention Is All You Need"
+    assert _Client.calls[1]["language"] == "en"

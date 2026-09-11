@@ -50,12 +50,24 @@ def _covers(text: str, term: str) -> bool:
 
 
 def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
-    """Results carrying more query words first; engine order kept among equals."""
+    """Results carrying more query words first; engine order kept among equals.
+    A hit from the query's own lane (a paper from the science engines, an
+    article from the news engines) gets a head start of half the query's words:
+    a blog that repeats the whole question outranks the paper itself otherwise,
+    while a lane hit about something else still sinks."""
     terms = _terms(query)
     if len(terms) < 2:
         return rows
+    head_start = len(terms) // 2 + 1
 
-    return sorted(rows, key=lambda row: _overlap(row, terms), reverse=True)
+    def score(row: dict[str, str]) -> int:
+        overlap = _overlap(row, terms)
+        # Only a lane hit that already fits half the question gets the head
+        # start; the science lane also returns papers that merely share a word.
+        boosted = row.get("lane") and overlap * 2 >= len(terms)
+        return overlap + (head_start if boosted else 0)
+
+    return sorted(rows, key=score, reverse=True)
 
 
 def _overlap(row: dict[str, str], terms: list[str]) -> int:
@@ -111,31 +123,51 @@ _UNWANTED_HOSTS = ("tiktok.com", "instagram.com", "pinterest.")
 _UNWANTED = re.compile(r"야동|섹스|성인\s*(?:사이트|영상)|19금|porn|xxx|hentai|에로|성인야", re.I)
 
 
-def _anchors(query: str) -> list[str]:
-    """The query's proper nouns as far as text can tell: Latin-alphabet words
-    (FastAPI, Ubuntu, NeurIPS) and tokens with digits (24.04, D-2, 3.14). A hit
-    carrying none of them is about something else, however many common words
-    it shares."""
-    anchors: list[str] = []
+def _anchors(query: str) -> tuple[list[str], list[str]]:
+    """The query's proper nouns as far as text can tell, as `(names, versions)`:
+    Latin-alphabet words of four letters or more (FastAPI, Ubuntu, NeurIPS —
+    three-letter ones like LTS or CVE are too common to anchor on) and tokens
+    with digits (24.04, D-2, 3.14). A hit must carry one of the names and every
+    version: a page about Ubuntu that never says 24.04 is not about 24.04."""
+    names: list[str] = []
+    versions: list[str] = []
     for token in re.findall(r"[A-Za-z][A-Za-z0-9.+#_-]*|\d+(?:\.\d+)+|[A-Za-z]-\d+", query):
         lowered = token.lower().strip(".-")
-        if len(lowered) >= 2 and lowered not in _LATIN_STOPWORDS:
-            anchors.append(lowered)
-    return anchors
+        if lowered in _LATIN_STOPWORDS:
+            continue
+        if any(ch.isdigit() for ch in lowered):
+            versions.append(lowered)
+        elif len(lowered) >= 4:
+            names.append(lowered)
+    # A bare major version after a name: Node.js 22, React 19, PostgreSQL 17.
+    for match in re.finditer(r"[A-Za-z][A-Za-z.+#_-]*\s+(\d{1,3})(?![\d.])", query):
+        versions.append(match.group(1))
+    return names, versions
 
 
-def _anchored(row: dict[str, str], anchors: list[str]) -> bool:
-    if not anchors:
-        return True
+#: A title mostly in another script (Cyrillic, Thai, Arabic, Hebrew) answers a
+#: Korean or English question only by accident.
+_OTHER_SCRIPTS = re.compile(r"[\u0400-\u04FF\u0E00-\u0E7F\u0600-\u06FF\u0590-\u05FF]")
+
+
+def _foreign_script(title: str) -> bool:
+    letters = [ch for ch in title if ch.isalpha()]
+    return bool(letters) and sum(1 for ch in letters if _OTHER_SCRIPTS.match(ch)) * 3 > len(letters)
+
+
+def _anchored(row: dict[str, str], anchors: tuple[list[str], list[str]]) -> bool:
+    names, versions = anchors
     text = f"{row['title']} {row['snippet']} {row['url']}".lower()
-    return any(anchor in text for anchor in anchors)
+    if names and not any(name in text for name in names):
+        return False
+    return all(version in text for version in versions)
 
 
 def _unwanted(row: dict[str, str]) -> bool:
     host = _host(row["url"])
     if any(host == h or host.endswith("." + h) or h in host for h in _UNWANTED_HOSTS):
         return True
-    return bool(_UNWANTED.search(f"{row['title']} {row['url']}"))
+    return bool(_UNWANTED.search(f"{row['title']} {row['url']}")) or _foreign_script(row["title"])
 
 
 def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str, str]]:
@@ -165,6 +197,17 @@ def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str
     return _rank(kept, query)[:count]
 
 
+def _latin_only(query: str) -> str:
+    """The query's Latin-alphabet and numeric tokens, or the whole query when
+    there are fewer than two of them."""
+    tokens = [
+        t
+        for t in re.findall(r"[A-Za-z][A-Za-z0-9.+#_'-]*|\d[\d.]*", query)
+        if t.lower() not in ("arxiv", "doi", "paper", "preprint")
+    ]
+    return " ".join(tokens) if len(tokens) >= 2 else query
+
+
 #: A question about a paper, whatever the model called the search.
 _PAPER_CUES = re.compile(r"논문|arxiv|\bdoi\b|preprint|학술지|저널|\bpaper\b", re.I)
 
@@ -189,7 +232,13 @@ async def _searxng(
     async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
         lanes = [client.get(search_url, params=base)]
         if lane:
-            lanes.append(client.get(search_url, params={**base, **lane}))
+            # The science engines index English titles: a paper asked about in
+            # Korean is found by its Latin-alphabet words alone.
+            lane_params = {**base, **lane}
+            if kind == "papers":
+                # Titles are English; a Korean locale drags in unrelated Korean journals.
+                lane_params.update(q=_latin_only(query), language="en")
+            lanes.append(client.get(search_url, params=lane_params))
         responses = await asyncio.gather(*lanes, return_exceptions=True)
     general = responses[0]
     if isinstance(general, BaseException):
@@ -197,7 +246,7 @@ async def _searxng(
     general.raise_for_status()
     hits: list[dict[str, str]] = []
 
-    def collect(payload: dict[str, Any]) -> None:
+    def collect(payload: dict[str, Any], *, lane: bool = False) -> None:
         # Over-fetch, then keep the best `count` after `_select`.
         for row in (payload.get("results") or [])[: count * 3]:
             hits.append(
@@ -206,13 +255,14 @@ async def _searxng(
                     "url": row.get("url") or "",
                     "snippet": row.get("content") or "",
                     "published": str(row.get("publishedDate") or "")[:10],
+                    **({"lane": "1"} if lane else {}),
                 }
             )
 
     if len(responses) > 1 and not isinstance(responses[1], BaseException):
         laned = responses[1]
         if laned.status_code < 400:
-            collect(laned.json())
+            collect(laned.json(), lane=True)
     collect(general.json())
     return _select(hits, query, count)
 
