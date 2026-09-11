@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from collections.abc import AsyncIterator, Callable
+from copy import deepcopy
 from typing import Any
 
 import httpx
@@ -593,6 +594,9 @@ async def run_turn(
     #: tell it already has the answer repeats the same call hop after hop
     #: otherwise, burning a full round trip each time until the hop cap.
     called: set[tuple[str, str]] = set()
+    # Only the pending arithmetic gate can reuse evidence. Futures coalesce
+    # concurrent duplicates; stored results are detached before output masking.
+    arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
     #: URLs the tools returned, in the order the model saw them numbered.
     sources: list[str] = []
     source_titles: dict[str, str] = {}
@@ -829,7 +833,11 @@ async def run_turn(
                 "status": "running",
             }
 
-        async def execute(item: tuple[int, dict[str, Any], Tool | None]) -> ToolResult:
+        async def execute(
+            item: tuple[int, dict[str, Any], Tool | None],
+            *,
+            arithmetic_gate_pending: bool = calculation_required and not preflight_completed,
+        ) -> ToolResult:
             _, call, tool = item
             if tool is None:
                 return ToolResult(content=f"오류: 알 수 없는 도구 {call['name']}", failed=True)
@@ -838,7 +846,19 @@ async def run_turn(
                     content=f"오류: {tool.name} 도구가 허용되지 않았습니다.", failed=True
                 )
             key = (tool.name, call["arguments"])
+            reuse_arithmetic = bool(
+                arithmetic_gate_pending
+                and tool.name == preflight_tool
+                and tool.name in {"calculate", "check_ncs_answer"}
+                and tool.source == "builtin"
+                and tool.read_only
+            )
             if key in called:
+                pending = arithmetic_evidence.get(key) if reuse_arithmetic else None
+                if pending is not None:
+                    saved = await asyncio.shield(pending)
+                    if saved is not None:
+                        return deepcopy(saved)
                 return ToolResult(
                     content=(
                         "(같은 도구를 같은 조건으로 이미 호출했습니다. "
@@ -846,8 +866,28 @@ async def run_turn(
                     )
                 )
             called.add(key)
+            pending = None
+            if reuse_arithmetic:
+                pending = asyncio.get_running_loop().create_future()
+                arithmetic_evidence[key] = pending
             ctx.tool_calls[tool.name] = ctx.tool_calls.get(tool.name, 0) + 1
-            return await _run_tool(tool, call["arguments"], ctx)
+            try:
+                result = await _run_tool(tool, call["arguments"], ctx)
+                if pending is not None and not result.failed and not result.empty:
+                    try:
+                        evidence = json.loads(result.content)
+                    except (ValueError, TypeError):
+                        evidence = None
+                    verified = isinstance(evidence, dict) and "exact" in evidence
+                    if tool.name == "check_ncs_answer":
+                        verified = verified and evidence.get("arithmetic_verified") is True
+                    if verified:
+                        pending.set_result(deepcopy(result))
+                return result
+            finally:
+                if pending is not None and not pending.done():
+                    # Failure or cancellation must not strand a duplicate waiter.
+                    pending.set_result(None)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
         terminal_text: str | None = None
