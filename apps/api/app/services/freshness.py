@@ -94,7 +94,11 @@ _DECLINED_FACT = re.compile(
     r"^\s*(?:please\s+)?(?:do\s+not|don't|never)\s+(?:tell|name|identify|answer|say)\b",
     re.I,
 )
-_AFFIRMATIVE_REQUEST = re.compile(r"알려|말해|답해")
+_AFFIRMATIVE_REQUEST = re.compile(r"알려|말해|답해|누구(?:야|인가|입니까)")
+_DECLINED_TOPIC = re.compile(
+    r"(?:질문|설명|이야기|얘기|논의)(?:은|는|을|를)?\s*"
+    r"(?:그만(?:하|두)고|하지\s*말고)"
+)
 _NEGATED_TRANSFORM_PREFIX = re.compile(r"\b(?:do\s+not|don't|never)\s*$", re.I)
 _NEGATED_TRANSFORM_SUFFIX = re.compile(r"^\s*하지\s*(?:마|말)")
 _DIRECT_REQUEST = re.compile(
@@ -104,7 +108,8 @@ _DIRECT_REQUEST = re.compile(
 )
 
 
-def _without_quoted_transform_sources(text: str) -> str:
+def without_quoted_transform_sources(text: str) -> str:
+    """Remove only quoted translation/summary inputs, not quoted user instructions."""
     parts: list[str] = []
     start = 0
     for match in _QUOTED.finditer(text):
@@ -128,12 +133,19 @@ def fresh_fact_required(request: str) -> bool:
     Call with the latest user's request, not the assembled system/history/reference
     envelope. False means outside this bounded gate, never proven factually safe.
     """
-    text = _without_quoted_transform_sources(unicodedata.normalize("NFC", request or ""))
+    text = without_quoted_transform_sources(unicodedata.normalize("NFC", request or ""))
     supplied_text = False
     for part in _CLAUSE.split(text):
         clause = part.strip()
         if not clause:
             continue
+        switched = _DECLINED_TOPIC.search(clause)
+        if switched and not _AFFIRMATIVE_REQUEST.search(clause[: switched.start()]):
+            # The discarded topic is not the new request. Keep the suffix so a
+            # switch from president to current prime minister is still guarded.
+            clause = clause[switched.end() :].strip()
+            if not clause:
+                continue
         supplied_header = _SUPPLIED_TEXT.search(clause)
         if supplied_header:
             # A leading search opt-out is not source text; keep any actual request

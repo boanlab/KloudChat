@@ -73,6 +73,11 @@ from app.services.freshness import FRESHNESS_INSTRUCTION, abstention_response, f
         "현재 대통령이 누구인지 알려주되 근거 없는 내용은 말하지 마.",
         "현재 대한민국 대통령이 누구인지 알려주고 다음 자료만 요약해줘: 정국은 복잡하다.",
         "현재 대통령이 누구인지 말하지 말고 국무총리가 누군지 알려줘.",
+        "정치 이야기는 그만하고 현재 대한민국 대통령은 누구야?",
+        "현재 대통령에 대한 설명은 그만하고 현재 총리는 누구야?",
+        "현재 대통령 이름을 알려줘. 정치 이야기는 그만하고 파이썬 리스트도 설명해줘.",
+        "현재 대통령 이름을 알려줘, 정치 이야기는 그만하고 파이썬 리스트도 설명해줘.",
+        "현재 대통령은 누구야, 설명은 그만하고 파이썬 리스트도 설명해줘.",
     ],
 )
 def test_live_political_questions_require_current_evidence(prompt):
@@ -131,6 +136,10 @@ def test_live_political_questions_require_current_evidence(prompt):
         "Summarize only this supplied text:\nThe current president is Example Person. "
         "The parliament met.",
         "검색하지 말고 다음 자료만 요약해줘:\n현재 정국은 복잡하다. 여야가 협상을 진행했다.",
+        "현재 대한민국 대통령에 대한 질문은 그만하고 파이썬 리스트를 설명해줘",
+        "현재 대한민국 대통령 이야기는 하지 말고 삼각형 넓이를 계산해줘",
+        "요즘 정치 상황에 대한 논의는 그만두고 파이썬 리스트를 설명해줘",
+        "현재 대통령에 대한 설명은 그만하고 1990년 당시 대통령을 알려줘",
     ],
 )
 def test_history_nonfactual_tasks_and_other_domains_are_out_of_scope(prompt):

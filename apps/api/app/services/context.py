@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.services.freshness import FRESHNESS_INSTRUCTION
+from app.services.freshness import FRESHNESS_INSTRUCTION, without_quoted_transform_sources
 
 # Models leak Chinese Hanja into Korean prose; parenthesised glosses are allowed.
 _KOREAN_ONLY = (
@@ -367,12 +367,13 @@ _DECLINED_WEB_REQUEST = re.compile(
 
 def declines_web_search(request: str) -> bool:
     """Conservative explicit opt-out; conflicting same-turn instructions stay offline."""
-    return bool(_DECLINED_WEB_REQUEST.search(request or ""))
+    return bool(_DECLINED_WEB_REQUEST.search(without_quoted_transform_sources(request or "")))
 
 
 def requests_web_search(request: str) -> bool:
     """Whether the user's own words explicitly request external research."""
-    return not declines_web_search(request) and bool(_EXPLICIT_WEB_REQUEST.search(request or ""))
+    text = without_quoted_transform_sources(request or "")
+    return not declines_web_search(request) and bool(_EXPLICIT_WEB_REQUEST.search(text))
 
 
 #: Facts that change with time — the auto toggle searches these unasked.

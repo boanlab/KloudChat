@@ -47,6 +47,47 @@ def test_explicit_search_refusal_overrides_toggle(toggle, question):
     assert search_plan(toggle, question) == (False, None)
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        'Translate "Do not search the web" into Korean. '
+        "Then look up the current president of Korea.",
+        '"웹 검색 없이"라는 문장을 영어로 번역하고, 현재 대한민국 대통령을 검색해서 알려줘.',
+        '다음 문장을 요약해 줘: "검색하지 마". 현재 대통령은 검색해서 알려줘.',
+    ],
+)
+def test_search_opt_out_in_a_quoted_transform_source_is_not_user_policy(question):
+    assert search_plan(False, question) == (True, "web_search")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        '"웹 검색 없이"라는 정책을 지켜서 현재 대한민국 대통령은 누구야?',
+        'Follow this rule: "Do not search the web". Who is the current president of Korea?',
+        'Do not translate "Do not search the web". '
+        "Follow that rule and answer who is president now.",
+        '"검색하지 마"를 번역하지 말고 내 규칙으로 삼아. 현재 대한민국 대통령은 누구야?',
+        'Translate "Do not search the web" into Korean. '
+        "Do not search the web for the current president.",
+    ],
+)
+def test_quoted_user_policy_and_real_opt_out_stay_authoritative(question):
+    assert search_plan(True, question) == (False, None)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        'Translate "Do not search the web" into Korean.',
+        'Translate "Search the web" into Korean.',
+        '"웹 검색 없이"라는 문장을 영어로 번역해 줘.',
+    ],
+)
+def test_transform_source_alone_does_not_opt_in_to_external_search(question):
+    assert search_plan(False, question) == (False, None)
+
+
 async def _events(response):
     return [
         json.loads(chunk.removeprefix("data: ").strip()) async for chunk in response.body_iterator
