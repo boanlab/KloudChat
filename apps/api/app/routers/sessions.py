@@ -3485,11 +3485,12 @@ async def _run_turn(
 
     content = "".join(text_parts)
     if content.strip() and not failed and not server_abstention:
-        caveat = freshness.accuracy_caveat(ctx.request, model, actual_model)
-        if not content.rstrip().endswith(caveat):
-            suffix = "\n\n" + caveat
-            content += suffix
-            yield chat_service.sse({"type": "delta", "text": suffix})
+        normalized = freshness.normalize_answer_notice(content, ctx.request, model, actual_model)
+        if normalized != content:
+            # The client retracts the first match, so replace the complete answer.
+            yield chat_service.sse({"type": "retract", "text": content})
+            content = normalized
+            yield chat_service.sse({"type": "delta", "text": content})
         routing = {
             **(routing or {}),
             "accuracy": freshness.accuracy_metadata(model, actual_model),
@@ -4054,13 +4055,15 @@ async def _run_comparison(
                     (str(m.get("content") or "") for m in reversed(messages)
                      if m.get("role") == "user"), "",
                 )
-                caveat = freshness.accuracy_caveat(
-                    request_text, model, slot["actualModel"] or model["id"],
+                normalized = freshness.normalize_answer_notice(
+                    slot["content"], request_text, model, slot["actualModel"] or model["id"],
                 )
-                if not slot["content"].rstrip().endswith(caveat):
-                    suffix = "\n\n" + caveat
-                    slot["content"] += suffix
-                    await queue.put({"type": "variant", "model": model["id"], "text": suffix})
+                if normalized != slot["content"]:
+                    await queue.put({
+                        "type": "variant_retract", "model": model["id"], "text": slot["content"],
+                    })
+                    slot["content"] = normalized
+                    await queue.put({"type": "variant", "model": model["id"], "text": normalized})
             usage = slot["usage"] or {"inputTokens": 0, "outputTokens": 0}
             credits = (
                 0
@@ -4578,10 +4581,7 @@ async def _run_page(
                     Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=(
-                            f"{template.name}으로 {len(written)}개 부분을 작성했습니다.\n\n"
-                            + freshness.accuracy_caveat(request, model, None)
-                        ),
+                        content=f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
@@ -4594,9 +4594,6 @@ async def _run_page(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-        yield chat_service.sse({
-            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
-        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})
 
@@ -4780,10 +4777,7 @@ async def _run_deck(
                     Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=(
-                            f"{len(written)}장짜리 슬라이드를 만들었습니다.\n\n"
-                            + freshness.accuracy_caveat(request, model, None)
-                        ),
+                        content=f"{len(written)}장짜리 슬라이드를 만들었습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
@@ -4824,9 +4818,6 @@ async def _run_deck(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-        yield chat_service.sse({
-            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
-        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})
 
@@ -5299,10 +5290,7 @@ async def _run_report(
                     Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=(
-                            f"{len(written)}개 섹션으로 보고서를 작성했습니다.\n\n"
-                            + freshness.accuracy_caveat(request, model, None)
-                        ),
+                        content=f"{len(written)}개 섹션으로 보고서를 작성했습니다.",
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
@@ -5330,8 +5318,5 @@ async def _run_report(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-        yield chat_service.sse({
-            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
-        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})

@@ -1,4 +1,4 @@
-"""Model-backed answers keep their body, accounting and final accuracy notice."""
+"""Only model-declared uncertainty notices are normalized, never invented."""
 
 from __future__ import annotations
 
@@ -24,6 +24,38 @@ QUESTIONS = [
     "Explain the history of printing.",
 ]
 BODY = "확인할 수 있는 배경을 설명하고, 알 수 없는 세부 사항은 구분합니다."
+PLAIN_ANSWERS = [
+    ("1+1은?", "1+1은 2입니다."),
+    ("0+0은?", "0+0은 0입니다."),
+    ("한국어로 인사해줘", "안녕하세요! 오늘 어떤 도움이 필요하신가요?"),
+    ("Say hello in English.", "Hello!"),
+    ("물 분자의 화학식은?", "물 분자의 화학식은 H2O입니다."),
+    ("Translate 안녕하세요 into English.", "Hello."),
+    ("이 문장을 그대로 출력해: 확실하지 않다", "확실하지 않다"),
+    ("가격은 100원이라고 제공했어. 제공된 가격만 알려줘.", "제공된 가격은 100원입니다."),
+    (
+        "현재 상태는 정상이라고 제공했어. 그 상태만 알려줘.",
+        "제공된 자료에서 현재 상태는 정상입니다.",
+    ),
+    ("내일 서울 날씨는 어때?", "예보 자료를 확인하지 못해 내일 강수 여부는 확실하지 않습니다."),
+    (
+        "가상 국가에 대한 이야기를 써줘.",
+        "가상의 나라에는 별빛으로 시간을 재는 도서관이 있었습니다.",
+    ),
+    ("Explain how gravity works.", "Gravity is the attraction between masses."),
+]
+
+
+def _visible_text(events, *, model=None):
+    content = ""
+    for event in events:
+        if model is not None and event.get("model") != model:
+            continue
+        if event["type"] == ("variant" if model else "delta"):
+            content += event["text"]
+        elif event["type"] == ("variant_retract" if model else "retract"):
+            content = content.replace(event["text"], "", 1)
+    return content
 
 
 def _persistence(monkeypatch):
@@ -119,7 +151,7 @@ async def _turn(monkeypatch, *, request, model, events, routing=None):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("question", QUESTIONS)
 @pytest.mark.parametrize("cutoff", [None, "2024-06"])
-async def test_every_domain_keeps_model_body_and_appends_identical_stored_streamed_notice(
+async def test_no_domain_or_missing_cutoff_causes_an_automatic_generic_footer(
     monkeypatch, question, cutoff,
 ):
     model = {**_external_model("synthetic/qwen"), "knowledgeCutoff": cutoff}
@@ -133,13 +165,12 @@ async def test_every_domain_keeps_model_body_and_appends_identical_stored_stream
         ],
     )
     answer = next(row for row in rows if isinstance(row, Message) and row.role == Role.assistant)
-    caveat = freshness.accuracy_caveat(question, model, model["id"])
-    streamed = "".join(event["text"] for event in events if event["type"] == "delta")
-    assert streamed == answer.content == BODY + "\n\n" + caveat
-    assert streamed.count(caveat) == 1
+    streamed = _visible_text(events)
+    assert streamed == answer.content == BODY
+    assert "학습 기준" not in streamed
     assert answer.model == model["id"] and answer.failure is None
     assert answer.routing["accuracy"] == {
-        "policy": "grounded-best-effort-v1",
+        "policy": freshness.ACCURACY_POLICY,
         "knowledgeCutoff": cutoff,
         "cutoffSource": "model_catalogue" if cutoff else "unknown",
     }
@@ -148,6 +179,26 @@ async def test_every_domain_keeps_model_body_and_appends_identical_stored_stream
     assert artifacts == [answer.content]
     assert any(record["reason"] == "chat.completion" for record in settled)
     assert not any(event["type"] == "freshness_abstention" for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("question", "body"), PLAIN_ANSWERS)
+async def test_straightforward_and_claim_specific_answers_stay_unchanged(
+    monkeypatch, question, body,
+):
+    model = {**_external_model("synthetic/qwen"), "knowledgeCutoff": None}
+    events, rows, settled, artifacts, _ = await _turn(
+        monkeypatch, request=question, model=model,
+        events=[
+            {"type": "delta", "text": body},
+            {"type": "usage", "inputTokens": 5, "outputTokens": 8},
+        ],
+    )
+    answer = next(row for row in rows if isinstance(row, Message) and row.role == Role.assistant)
+    assert _visible_text(events) == answer.content == body
+    assert answer.usage["inputTokens"] == 5 and answer.usage["outputTokens"] == 8
+    assert artifacts == [body]
+    assert any(record["reason"] == "chat.completion" for record in settled)
 
 
 @pytest.mark.asyncio
@@ -169,7 +220,10 @@ async def test_auto_actual_model_identity_controls_cutoff_without_overwriting_ro
         monkeypatch, request=QUESTIONS[0], model=model, routing=route,
         events=[
             {"type": "model_route", "routedModel": model["id"], "actualModel": actual},
-            {"type": "delta", "text": BODY},
+            {
+                "type": "delta",
+                "text": BODY + "\n\n" + freshness.accuracy_caveat(QUESTIONS[0], model, model["id"]),
+            },
             {"type": "usage", "inputTokens": 5, "outputTokens": 8},
         ],
     )
@@ -182,7 +236,9 @@ async def test_auto_actual_model_identity_controls_cutoff_without_overwriting_ro
         "2024-06" if actual == model["id"] else None
     )
     assert answer.content.endswith(freshness.accuracy_caveat(QUESTIONS[0], model, actual))
-    assert "".join(event["text"] for event in events if event["type"] == "delta") == answer.content
+    assert _visible_text(events) == answer.content
+    if actual != model["id"]:
+        assert "2024년 6월" not in answer.content
 
 
 @pytest.mark.asyncio
@@ -229,13 +285,40 @@ async def test_an_exact_model_emitted_notice_is_not_appended_twice(monkeypatch):
     )
     answer = next(row for row in rows if isinstance(row, Message))
     assert answer.content == content
-    assert "".join(event["text"] for event in events if event["type"] == "delta") == content
+    assert _visible_text(events) == content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cutoff", [None, "2024-06"])
+@pytest.mark.parametrize("split", [False, True])
+async def test_near_duplicate_model_notices_collapse_to_one_in_stream_and_storage(
+    monkeypatch, cutoff, split,
+):
+    model = {**_external_model("synthetic/qwen"), "knowledgeCutoff": cutoff}
+    caveat = freshness.accuracy_caveat(QUESTIONS[0], model, model["id"])
+    near_caveat = caveat.removeprefix("다만 ")
+    content = BODY + "\n\n" + near_caveat + "\n" + caveat
+    pieces = [content[:len(content) // 2], content[len(content) // 2:]] if split else [content]
+    events, rows, _, artifacts, _ = await _turn(
+        monkeypatch, request=QUESTIONS[0], model=model,
+        events=[
+            *[{"type": "delta", "text": piece} for piece in pieces],
+            {"type": "usage", "inputTokens": 5, "outputTokens": 8},
+        ],
+    )
+    answer = next(row for row in rows if isinstance(row, Message) and row.role == Role.assistant)
+    expected = BODY + "\n\n" + caveat
+    assert _visible_text(events) == answer.content == expected
+    assert answer.content.count("학습 기준") == 1
+    assert artifacts == [expected]
+    assert answer.usage["outputTokens"] == 8
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("has_notice", [False, True])
 async def test_comparison_columns_use_their_own_metadata_and_keep_envelopes_independent(
-    monkeypatch, fallback,
+    monkeypatch, fallback, has_notice,
 ):
     user, session, _, rows, _, _ = _persistence(monkeypatch)
     models = [
@@ -250,7 +333,11 @@ async def test_comparison_columns_use_their_own_metadata_and_keep_envelopes_inde
         captured[model_id] = deepcopy(messages)
         actual = "synthetic/fallback" if fallback and model_id == "synthetic/one" else model_id
         yield {"type": "model_route", "routedModel": model_id, "actualModel": actual}
-        yield {"type": "delta", "text": BODY}
+        content = BODY
+        if has_notice and model_id == "synthetic/one":
+            notice = freshness.accuracy_caveat(QUESTIONS[0], models[0], model_id)
+            content += "\n\n" + notice.removeprefix("다만 ") + "\n" + notice
+        yield {"type": "delta", "text": content}
         yield {"type": "usage", "inputTokens": 5, "outputTokens": 8}
 
     monkeypatch.setattr(sessions.chat_service, "stream_completion", complete)
@@ -271,11 +358,9 @@ async def test_comparison_columns_use_their_own_metadata_and_keep_envelopes_inde
         variant = next(item for item in answer.variants if item["model"] == model["id"])
         actual = "synthetic/fallback" if fallback and model is models[0] else model["id"]
         caveat = freshness.accuracy_caveat(QUESTIONS[0], model, actual)
-        streamed = "".join(
-            event["text"] for event in events
-            if event["type"] == "variant" and event["model"] == model["id"]
-        )
+        streamed = _visible_text(events, model=model["id"])
+        expected = BODY + ("\n\n" + caveat if has_notice and model is models[0] else "")
         assert variant["actualModel"] == actual
-        assert streamed == variant["content"] == BODY + "\n\n" + caveat
+        assert streamed == variant["content"] == expected
         assert variant["usage"] == {"inputTokens": 5, "outputTokens": 8}
     assert answer.content == answer.variants[0]["content"]

@@ -11,11 +11,15 @@ const koKnown = '다만 이 모델의 학습 기준은 2025년 1월로 제공되
 const enUnknown = "However, this answer may be inaccurate; this model's training cutoff could not be verified, so current facts need independent verification."
 const enKnown = "However, the model catalogue lists this model's training cutoff as 2025-01, so later changes may be missing and this answer may be inaccurate; current facts need independent verification."
 const domains = [
-  { name: 'politics', prompt: '웹 검색 없이 현재 대한민국 대통령이 누구인지 답해줘.', answer: '합성 검증 자료의 현직 인물은 Fixture Person으로 표시됩니다.', lang: 'ko' },
-  { name: 'science', prompt: '과학에서 관측과 가설은 어떤 관계야?', answer: '가설은 관측으로 검토할 설명이며, 새로운 관측에 따라 수정될 수 있습니다.', lang: 'ko' },
-  { name: 'software', prompt: '소프트웨어 버전 호환성을 확인하는 방법은?', answer: '사용 중인 버전과 의존성의 지원 범위를 확인하고 해당 조합을 테스트합니다.', lang: 'ko' },
-  { name: 'finance', prompt: '일반적으로 예산과 실제 지출을 어떻게 비교해?', answer: '같은 기간과 항목으로 예산과 실제 지출을 나란히 정리해 차이를 비교합니다.', lang: 'ko' },
-  { name: 'english', prompt: 'Explain the difference between a model and an observation.', answer: 'A model represents an explanation, while an observation records what was measured.', lang: 'en' },
+  { name: 'arithmetic-add', prompt: '1+1은?', answer: '1+1은 2입니다.', lang: 'ko', uncertain: false },
+  { name: 'arithmetic-zero', prompt: '0+0은?', answer: '0+0은 0입니다.', lang: 'ko', uncertain: false },
+  { name: 'greeting', prompt: '한국어로 인사해줘', answer: '안녕하세요! 오늘 어떤 도움이 필요하신가요?', lang: 'ko', uncertain: false },
+  { name: 'science', prompt: '과학에서 관측과 가설은 어떤 관계야?', answer: '가설은 관측으로 검토할 설명이며, 새로운 관측에 따라 수정될 수 있습니다.', lang: 'ko', uncertain: false },
+  { name: 'software', prompt: '소프트웨어 버전 호환성을 확인하는 방법은?', answer: '사용 중인 버전과 의존성의 지원 범위를 확인하고 해당 조합을 테스트합니다.', lang: 'ko', uncertain: false },
+  { name: 'budget', prompt: '일반적으로 예산과 실제 지출을 어떻게 비교해?', answer: '같은 기간과 항목으로 예산과 실제 지출을 나란히 정리해 차이를 비교합니다.', lang: 'ko', uncertain: false },
+  { name: 'english', prompt: 'Explain the difference between a model and an observation.', answer: 'A model represents an explanation, while an observation records what was measured.', lang: 'en', uncertain: false },
+  { name: 'current-facts', prompt: '웹 검색 없이 현재 최신 Python 버전의 새 기능을 설명해줘.', answer: 'Python은 범용 프로그래밍 언어이며, 새 버전의 변경 사항은 공식 릴리스 문서에서 확인할 수 있습니다. 현재 최신 버전 번호와 새 기능 목록은 여기서 확인하지 못했습니다.', lang: 'ko', uncertain: true },
+  { name: 'current-facts-english', prompt: 'Without web search, explain the features of the latest Python release.', answer: 'Python is a general-purpose programming language. Release notes document version-specific changes, but I have not verified the current latest version or its features here.', lang: 'en', uncertain: true },
 ] as const
 type Domain = typeof domains[number]
 type Cutoff = 'known' | 'unknown' | 'fallback'
@@ -24,20 +28,21 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
   await page.addInitScript((language) => localStorage.setItem('kchat-lang', language), domain.lang)
   const origin = new URL(String(info.project.use.baseURL)).origin
   const actual = cutoff === 'fallback' ? fallback : selected
-  const label = actual === fallback ? 'Fallback fixture' : 'Qwen fixture'
+  const label = actual === fallback ? 'Synthetic fallback' : 'Synthetic model'
   const known = cutoff === 'known'
   const footer = domain.lang === 'ko' ? (known ? koKnown : koUnknown) : (known ? enKnown : enUnknown)
+  const content = domain.uncertain ? `${domain.answer}\n\n${footer}` : domain.answer
   const routing = { requestedModels: [selected], routedModels: [selected], effectiveModels: [selected],
     actualModels: [actual], actualModel: actual, action: 'none', dataBoundary: 'self_hosted',
     accuracy: { policy: 'grounded-best-effort-v1', knowledgeCutoff: known ? '2025-01' : null,
       cutoffSource: known ? 'model_catalogue' : 'unknown' } }
   const complete = [
     { id: 'fixture-question', role: 'user', content: domain.prompt, createdAt: at },
-    { id: 'fixture-answer', role: 'assistant', content: `${domain.answer}\n\n${footer}`,
+    { id: 'fixture-answer', role: 'assistant', content,
       model: actual, routing, usage: { inputTokens: 12, outputTokens: 34, credits: 5 },
       failure: null, attachments: [], createdAt: at },
   ]
-  const row = { id, title: 'Grounded answer fixture', kind: 'chat', model: selected, routingMode: 'manual',
+  const row = { id, title: '조건부 단서 UI 검증 (합성 응답)', kind: 'chat', model: selected, routingMode: 'manual',
     projectId: null, agentId: null, artifactId: null, pinned: false,
     messages: saved ? complete : [], messageCount: saved ? 2 : 0, createdAt: at, updatedAt: at }
   const requests: { path: string; status: number; body: Record<string, unknown> }[] = []
@@ -60,8 +65,8 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
     if (path === '/auth/config') return json({ brand: { name: 'KloudChat', logo: '' }, enabledKinds: ['chat'],
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false })
     if (path === '/models') return json({ models: [selected, fallback].map((modelId) => ({
-      id: modelId, name: modelId, label: modelId === fallback ? 'Fallback fixture' : 'Qwen fixture',
-      vendor: 'Fixture', provider: 'fixture', kinds: ['chat'], modality: 'chat', strictLocal: true,
+      id: modelId, name: modelId, label: modelId === fallback ? 'Synthetic fallback' : 'Synthetic model',
+      vendor: 'Mock', provider: 'fixture', kinds: ['chat'], modality: 'chat', strictLocal: true,
       dataBoundary: 'self_hosted', privacyOnly: false, supportsTools: true, contextWindow: 64000,
       creditCost: 5, inputCreditCost: 1,
       knowledgeCutoff: modelId === fallback ? '2024-10' : cutoff === 'unknown' ? null : '2025-01',
@@ -76,7 +81,7 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
       return route.fulfill({ contentType: 'text/event-stream', body: [
         { type: 'privacy_route', ...routing },
         { type: 'delta', text: domain.answer },
-        { type: 'delta', text: `\n\n${footer}` },
+        ...(domain.uncertain ? [{ type: 'delta', text: `\n\n${footer}` }] : []),
         { type: 'usage', inputTokens: 12, outputTokens: 34, credits: 5 },
         { type: 'done', messageId: 'fixture-answer' },
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
@@ -89,16 +94,23 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
   })
-  return { row, requests, unexpected, footer, label }
+  return { row, requests, unexpected, footer, label, content }
 }
 
 async function checkAnswer(page: Page, domain: Domain, state: Awaited<ReturnType<typeof fixture>>) {
   await expect(page.getByText(domain.answer, { exact: true })).toBeVisible()
-  const footer = page.getByText(state.footer, { exact: true })
-  await expect(footer).toBeVisible()
-  await expect(footer).toHaveCount(1)
-  await footer.scrollIntoViewIfNeeded()
-  await expect(footer).toBeInViewport()
+  if (domain.uncertain) {
+    const footer = page.getByText(state.footer, { exact: true })
+    await expect(footer).toBeVisible()
+    await expect(footer).toHaveCount(1)
+    await footer.scrollIntoViewIfNeeded()
+    await expect(footer).toBeInViewport()
+  } else {
+    for (const footer of [koUnknown, koKnown, enUnknown, enKnown]) {
+      await expect(page.getByText(footer, { exact: true })).toHaveCount(0)
+    }
+    await expect(page.getByText(/부정확할 수|학습 기준|training cutoff|answer may be inaccurate/)).toHaveCount(0)
+  }
   await expect(page.getByText(new RegExp(`${state.label} · 12 in · 34 out · 5`))).toBeVisible()
   await expect(page.getByText(/서비스 정책 안내|Service policy notice|모델 실행 없음|No model execution/)).toHaveCount(0)
   await expect(page.getByText(/답변을 보류합니다|freshness_verification_unavailable/)).toHaveCount(0)
@@ -110,7 +122,7 @@ for (const viewport of [
 ]) {
   for (const cutoff of ['known', 'unknown', 'fallback'] as const) {
     for (const domain of domains) {
-      test(`${viewport.name} ${domain.name} ${cutoff}: 답변 후 주의문과 모델 출처를 유지한다`, async ({ page }, info) => {
+      test(`${viewport.name} ${domain.name} ${cutoff}: ${domain.uncertain ? '불확실한 답변에 단서 한 번' : '확실한 답변에 단서 없음'}을 유지한다`, async ({ page }, info) => {
         await page.setViewportSize(viewport)
         const state = await fixture(page, info, domain, cutoff)
         await page.goto(`/s/${id}`)
@@ -120,20 +132,23 @@ for (const viewport of [
         await checkAnswer(page, domain, state)
         expect(state.requests).toEqual([{ path: `/sessions/${id}/messages`, status: 200,
           body: expect.objectContaining({ content: domain.prompt }) }])
-        expect(state.row.messages[1].content).toBe(`${domain.answer}\n\n${state.footer}`)
+        expect(state.row.messages[1].content).toBe(state.content)
         await page.reload()
         await checkAnswer(page, domain, state)
         if (cutoff !== 'known') await expect(page.getByText(koKnown, { exact: true })).toHaveCount(0)
         expect(state.unexpected).toEqual([])
-        if (process.env.GROUNDED_SCREENSHOT_DIR && domain.name === 'politics') {
+        if (process.env.GROUNDED_SCREENSHOT_DIR && (
+          domain.name === 'current-facts'
+          || (cutoff === 'unknown' && ['arithmetic-add', 'greeting'].includes(domain.name))
+        )) {
           await page.evaluate(() => document.fonts.ready)
-          await page.screenshot({ path: `${process.env.GROUNDED_SCREENSHOT_DIR}/grounded-${cutoff}-${viewport.name}.png`, animations: 'disabled' })
+          await page.screenshot({ path: `${process.env.GROUNDED_SCREENSHOT_DIR}/conditional-${domain.name}-${cutoff}-${viewport.name}.png`, animations: 'disabled' })
         }
       })
     }
-    test(`${viewport.name} saved ${cutoff}: 기존 일반 답변의 주의문을 다시 생성하지 않는다`, async ({ page }, info) => {
+    test(`${viewport.name} saved ${cutoff}: 기존 불확실한 답변의 주의문을 다시 생성하지 않는다`, async ({ page }, info) => {
       await page.setViewportSize(viewport)
-      const domain = domains[0]
+      const domain = domains[7]
       const state = await fixture(page, info, domain, cutoff, true)
       await page.goto(`/s/${id}`)
       await checkAnswer(page, domain, state)

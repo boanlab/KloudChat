@@ -12,7 +12,7 @@ from app.models.governance import Governance
 from app.models.user import AuditEvent, User
 from app.routers import sessions as sessions_router
 from app.schemas.chat import SendMessage
-from app.services import adaptive_routing, freshness
+from app.services import adaptive_routing
 from app.services.tools.base import Tool, openai_snapshot
 
 
@@ -227,10 +227,7 @@ async def test_classifier_fallback_preserves_the_turn_and_model_identity(
     assert {row.role for row in messages} == {Role.user, Role.assistant}
     answer_row = next(row for row in messages if row.role == Role.assistant)
     assert answer_row.model == requested["id"]
-    assert answer_row.content == (
-        "Synthetic fallback answer.\n\n"
-        + freshness.accuracy_caveat("Write the word fixture.", requested, requested["id"])
-    )
+    assert answer_row.content == "Synthetic fallback answer."
     assert answer_row.failure is None
     audits = [
         row for row in db.added if isinstance(row, AuditEvent) and row.action == "routing.auto"

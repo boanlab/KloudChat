@@ -9,6 +9,7 @@ from app.services.freshness import (
     accuracy_caveat,
     accuracy_metadata,
     answer_instruction,
+    normalize_answer_notice,
     with_answer_policy,
 )
 
@@ -19,7 +20,7 @@ from app.services.freshness import (
     "Translate hello into Korean", "What is the population of Atlantis?",
 ])
 @pytest.mark.parametrize("cutoff", [None, "2025-01"])
-def test_caveat_is_present_for_every_subject(question, cutoff):
+def test_notice_formatter_is_subject_independent_when_explicitly_requested(question, cutoff):
     model = {"id": "synthetic/model", "knowledgeCutoff": cutoff}
     text = accuracy_caveat(question, model, model["id"])
     assert text
@@ -73,11 +74,63 @@ def test_policy_is_system_instruction_without_a_system_envelope():
     assert "Never invent" in result[0]["content"]
 
 
-def test_structured_writers_keep_schema_and_request_a_prose_notice():
+def test_structured_writers_keep_schema_and_only_qualify_uncertain_claims():
     policy = answer_instruction({"id": "model"}, structured=True)
     assert "Never append prose outside JSON" in policy
     assert "speaker notes" in policy
     assert "no verified training cutoff" in policy
+    assert "only when" in policy
+
+
+def test_policy_does_not_demand_a_blanket_disclaimer():
+    policy = answer_instruction({"id": "model"})
+    assert "Do not add a generic disclaimer" in policy
+    assert "greetings" in policy and "arithmetic" in policy
+    assert "unknown training cutoff alone" in policy
+    assert "server adds the final" not in policy
+
+
+@pytest.mark.parametrize("answer", [
+    "1+1은 2입니다.", "0+0은 0입니다.", "안녕하세요!", "Hello!",
+    "주어진 자료만으로는 정확한 수치를 확인할 수 없습니다.",
+    "There are conflicting sources, so the exact count remains uncertain.",
+])
+def test_finalization_does_not_invent_a_notice(answer):
+    assert normalize_answer_notice(answer, "질문", {"id": "model"}, "model") == answer
+
+
+def test_duplicate_notice_and_optional_daman_are_normalized_once():
+    notice = accuracy_caveat("질문", {"id": "model"}, "model")
+    body = "현재 배포 버전은 확인하지 못했습니다."
+    generated = body + "\n" + notice.removeprefix("다만 ") + "\n\n" + notice
+    assert normalize_answer_notice(generated, "질문", {"id": "model"}, "model") == (
+        body + "\n\n" + notice
+    )
+
+
+def test_history_notices_are_not_repeated_or_removed_from_user_tools_and_quotes():
+    notice = accuracy_caveat("질문", {"id": "model"}, "model")
+    original = [
+        {"role": "assistant", "content": "1+1은 2입니다.\n\n" + notice},
+        {"role": "assistant", "content": "> " + notice},
+        {"role": "assistant", "content": "```text\n" + notice + "\n```"},
+        {"role": "tool", "content": notice},
+        {"role": "user", "content": "이 문장을 번역해줘:\n" + notice},
+    ]
+    before = deepcopy(original)
+    result = with_answer_policy(original, {"id": "model"})
+    assert original == before
+    assert result[1]["content"] == "1+1은 2입니다."
+    assert result[2:] == original[1:]
+
+
+def test_fallback_normalizes_only_generated_training_notice():
+    model = {"id": "selected", "knowledgeCutoff": "2025-01"}
+    notice = accuracy_caveat("질문", model, "selected")
+    body = "2025년 1월에 공개된 자료는 있지만 현재 값은 확인하지 못했습니다."
+    result = normalize_answer_notice(body + "\n\n" + notice, "질문", model, "fallback")
+    assert result.startswith(body)
+    assert result.endswith(accuracy_caveat("질문", model, "fallback"))
 
 
 @pytest.mark.parametrize("question,korean", [

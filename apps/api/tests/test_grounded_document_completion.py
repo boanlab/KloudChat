@@ -1,4 +1,4 @@
-"""Document completion notices do not alter artifact JSON or claim observed weights.
+"""Successful document action acknowledgements need no model-accuracy disclaimer.
 
 Writers and persistence are synthetic; these are route-contract tests, not an
 assertion that a live model followed the document-body grounding instruction.
@@ -14,7 +14,7 @@ import pytest
 from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import User
 from app.routers import sessions
-from app.services import design_templates, freshness
+from app.services import design_templates
 
 MODEL = {
     "id": "synthetic/document-model",
@@ -128,35 +128,33 @@ async def _run(monkeypatch, surface, *, outcome="complete", question="근거에 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("surface", SURFACES)
 @pytest.mark.parametrize(
-    ("question", "notice_prefix"),
+    "question",
     [
-        ("근거에 따라 문서를 작성해줘", "다만"),
-        ("Write a source-based document.", "However"),
-        ('Translate "안녕하세요" into English and create a document.', "However"),
+        "근거에 따라 문서를 작성해줘",
+        "Write a source-based document.",
+        'Translate "안녕하세요" into English and create a document.',
     ],
 )
-async def test_completed_document_stream_and_stored_message_end_in_accuracy_notice(
-    monkeypatch, surface, question, notice_prefix
+async def test_completed_document_action_acknowledgement_has_no_accuracy_notice(
+    monkeypatch, surface, question
 ):
     store, events = await _run(monkeypatch, surface, question=question)
-    notice = freshness.accuracy_caveat(question, MODEL, None)
-    assert notice.startswith(notice_prefix)
-    assert "2024" not in notice  # Document writers do not attest an executed model identity.
     deltas = [event["text"] for event in events if event["type"] == "delta"]
-    assert deltas == ["\n\n" + notice]
-    assert [event["type"] for event in events][-4:] == ["artifact", "delta", "usage", "done"]
+    assert deltas == []
+    assert [event["type"] for event in events][-3:] == ["artifact", "usage", "done"]
     completions = [
         row for row in store.rows if isinstance(row, Message) and row.role is Role.assistant
     ]
     assert len(completions) == 1
-    assert completions[0].content.endswith(notice)
-    assert completions[0].content.count(notice) == 1
+    assert completions[0].content.strip()
+    assert "학습 기준" not in completions[0].content
+    assert "training cutoff" not in completions[0].content
     assert completions[0].model == MODEL["id"]
     assert completions[0].usage == {"inputTokens": 2, "outputTokens": 3, "credits": 0}
     assert len(store.artifacts) == store.commits == 1
 
     artifact = store.artifacts[0]["data"]
-    assert notice not in json.dumps(artifact, ensure_ascii=False)
+    assert "학습 기준" not in json.dumps(artifact, ensure_ascii=False)
     if surface == "report":
         assert artifact["sources"] == SOURCES
         assert artifact["sections"] == [{**SECTIONS[0], "level": 1, "status": "done"}]
@@ -180,10 +178,12 @@ async def test_uncompleted_document_does_not_emit_or_persist_a_success_notice(
     monkeypatch, surface, outcome
 ):
     store, events = await _run(monkeypatch, surface, outcome=outcome)
-    notice = freshness.accuracy_caveat("근거에 따라 문서를 작성해줘", MODEL, None)
     assert store.artifacts == []
     assert not any(event["type"] in ("artifact", "delta") for event in events)
-    assert all(not isinstance(row, Message) or notice not in row.content for row in store.rows)
+    assert all(
+        not isinstance(row, Message) or (not row.content and row.failure is not None)
+        for row in store.rows
+    )
     assert len(store.plans) == int(outcome in ("proposal", "needs"))
     assert store.settlements == []
     assert events[-1]["type"] == "done"

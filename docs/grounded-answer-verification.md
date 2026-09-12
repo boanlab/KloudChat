@@ -20,12 +20,32 @@ tool allowlists, NCS preflight and execution limits remain authoritative.
 Unusable search results pass through normal privacy processing before the model
 continues with a trusted uncertainty instruction. No extra retry loop is added.
 
-## Deterministic notice
+## Conditional uncertainty
 
-The server appends one last sentence after a nonempty completed chat answer and
-after each completed comparison column. The same suffix is stored and streamed;
-it does not manufacture extra model tokens or change the selected model's usage.
+The later user feedback on 2026-09-12 supersedes the blanket notice policy in
+`31b68a5`. The server no longer appends a warning to every successful response.
+Greetings, straightforward arithmetic, translations and established explanations
+should be direct. An unknown training cutoff alone is not evidence of uncertainty.
+
+The model is instructed to identify only materially unresolved claims and explain
+why: missing evidence, conflicting sources, estimates or possibly changed facts.
+A training-cutoff notice is requested only for material freshness uncertainty,
+not for every missing input or estimate. No question-keyword confidence classifier,
+additional judge call or verification retry is introduced. The model's judgment
+can still be wrong; this is not a calibrated factual-confidence detector.
+
+The server only normalizes an already-generated, recognized trailing notice:
+duplicates (including the Korean variant without the initial `다만`) become one
+notice with the actual model's catalogue metadata. Full-answer retract/delta
+events keep the stream and stored content aligned without removing an earlier
+quoted occurrence. Plain answers and claim-specific uncertainty are unchanged.
+Usage remains the provider-reported usage; normalization invents no model tokens.
 Empty, failed or stopped chat turns do not become artificial notice-only answers.
+
+Recognized old boilerplate is removed from assistant-history copies sent to the
+model, reducing repetitive imitation. Stored history, user/tool text and quoted
+or fenced examples are not rewritten. Policy metadata remains compatible with
+earlier no-search follow-up consent handling.
 
 For a catalogue-declared `2025-01`, the Korean example is:
 
@@ -59,10 +79,10 @@ The `routing.accuracy` object records the policy version, effective cutoff and
 ## Document surfaces
 
 Report, slide and page requests no longer get a freshness-specific 409. Their
-writer instructions ask for supported prose and an in-schema uncertainty note;
-prose is never appended outside structured JSON. A completed artifact also gets
-a deterministic caveat in the completion message and stream, including after
-reload. Without a complete executed-writer trace its date remains unknown.
+writer instructions ask for supported prose and a claim-specific uncertainty note
+only when needed. Prose is never appended outside structured JSON. Successful
+artifact creation acknowledgements no longer get a training-cutoff warning.
+Without a complete executed-writer trace its date remains unknown.
 
 The artifact's sections, slides, HTML and source arrays are not rewritten by
 the deterministic notice code. A caveat inside an exported document is therefore
@@ -72,28 +92,26 @@ accounting asymmetry is unchanged and is not a billing fix in this PR.
 
 ## Verification
 
-Source: PR #184 revision based on parent `3bc31f7` and upstream/main `f537972`.
-The original checkout and user runtime/database were not changed.
+Source: conditional revision of PR #184, parent `31b68a5`, upstream/main `f537972`.
+Earlier full-suite and live-model figures describe earlier revisions, not this one.
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Full offline API | 3,047 passed, 1 skipped, 11 existing warnings | Actual application code with synthetic dependencies |
+| Full offline API | 3,075 passed, 1 skipped, 11 existing warnings | Actual application code with synthetic dependencies; 82 blocked socket attempts, zero real HTTP requests |
 | New cutoff metadata tests | 43 passed; all 43 failed before implementation | Validation, duplicate aliases and no inferred dates |
 | New agent policy tests | 34 passed; staged regressions reproduced before fixes | Search continuation, permissions, source claims and masking |
-| Pure accuracy notice tests | 38 passed | Every domain, unknown/fallback dates, language and envelope isolation |
-| Chat/comparison runtime tests | 28 passed | Stream/persistence agreement, Auto identity, errors and usage |
-| Document completion tests | 32 passed; old runners failed 12 of 32 | Four surfaces, unchanged artifacts and completion persistence |
-| Development Playwright | 40 passed, 0 skipped | New answer cases plus legacy saved-message rendering |
-| Production Playwright | Same 40 passed, 0 skipped | Built React UI, controlled API/SSE fixtures |
+| Pure accuracy notice tests | 48 passed | Conditional instructions, exact normalization, dates, history and language |
+| Chat/comparison + document runtime tests | 78 passed; before this fix 50 failed and 28 passed | No blanket footer, duplicate normalization, stream/store, fallback, errors and usage |
+| Production Playwright | 64 passed, 0 skipped/flaky/unexpected | Built React UI, controlled API/SSE fixtures |
 | API Ruff, Web build/Oxlint, diff checks | Passed | Existing phone CSS and large-chunk build warnings retained |
 
-The 40 browser cases consist of 30 streamed-and-reloaded answers across five
-domains, three cutoff states and two viewports; six initially saved normal
-answers; and four legacy saved policy responses. The repeated dev/production
-runs are not 80 unique cases. Six actual Chromium screenshots use synthetic
-answers and dates. No model completion or credential retrieval was performed
-for this revision. The offline full suite denied 82 socket attempts and made
-zero real HTTP requests; browser application APIs were fixture-controlled.
+The 64 browser cases consist of 54 streamed-and-reloaded answers across nine
+domains, three cutoff states and two viewports; six initially saved uncertain
+answers; and four legacy saved policy responses. Ten `conditional-*` screenshots
+show synthetic arithmetic/greetings without notices and uncertain answers with
+one notice; both model label and conversation title identify synthetic data.
+These mocks validate rendering, not actual Qwen uncertainty judgment. No model
+completion is required by these code/browser regression tests.
 
 ## Limits and merge guidance
 
@@ -105,6 +123,7 @@ historical and cannot be reused as evidence for this new behavior.
 
 PR #183 is still separate. When resolving shared session/agent code, preserve
 its required calculation gate, read prerequisites and tool-origin answers.
-Only model-generated answers should receive a model-training notice. Do not
+Only model-generated answers with material freshness uncertainty should receive
+a model-training notice; tool results and completion receipts should not. Do not
 restore the removed freshness hard abort from the old combined QA reference;
 rerun cross-policy tests against the actual merged main.
