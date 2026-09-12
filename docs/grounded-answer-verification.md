@@ -182,6 +182,41 @@ HTTP 400 responses before the Qwen-compatible initial-system merge was fixed.
 Catalogue app credit rates were zero. Provider billing and physical model locality
 were not independently audited; the catalogue labels this alias `hybrid`.
 
+### Actual browser and database
+
+API source `8f7879a` was built into an independent runtime on loopback port 5186,
+reusing the unchanged production web image from `e45f87d`. The existing runtime
+on 5185 remained running. Its three conversations and 28 messages were copied
+at one point in time, not synchronized afterward. Clone-only login tickets and
+unreadable encrypted app-key references were cleared; original data and keys
+were not changed or revoked. The same local QA account remains usable.
+
+Three requests were submitted through the actual Chrome UI in the copied
+conversation containing the user's old false answers, using the real API,
+PostgreSQL and Qwen rather than mocked SSE:
+
+| Request | New answer and observed tools |
+| --- | --- |
+| Current Korean president, search OFF | Current state unverified; no tool step |
+| Same question, search ON | Lee Jae-myung; one web search, five results and one fetched body; no invented source appendix |
+| `1+1`, search OFF | `1+1은 2입니다.`; no caveat or tool step |
+
+Reloaded UI and independently read stored messages agreed. All three persisted
+`model`/`actualModel` values were `local/qwen3.6-35b`, failures were null, and
+reported usage totalled 20,824 input and 79 output tokens with app credits zero.
+This is two direct answers and one explicit current-unverified answer, not three
+verified factual answers. The search answer omitted inline citation numbers.
+The initial database observer started after the first OFF answer, so the
+unchanged source's inherited message IDs identify the six new messages rather
+than a falsely claimed pre-request clone snapshot. Source counts and original
+message-content digests remained unchanged; the clone had 34 messages afterward.
+No browser console errors were observed. Existing saved false answers were not
+silently rewritten; the new policy applies to new requests.
+
+Actual screenshots: [search OFF](screenshots/grounded-current-off-live.png),
+[search ON](screenshots/grounded-current-on-live.png), and
+[reloaded search/calculation](screenshots/grounded-current-reloaded-live.png).
+
 ## Limits and merge guidance
 
 This is hallucination mitigation and transparent uncertainty, not a universal
