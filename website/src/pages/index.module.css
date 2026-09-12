@@ -146,24 +146,6 @@
   transform: translateY(1px);
 }
 
-.heroShotFrame {
-  position: relative;
-  border-radius: 14px;
-  border: 1px solid var(--ifm-color-emphasis-300);
-  overflow: hidden;
-  background: var(--ifm-background-surface-color);
-  box-shadow: 0 24px 60px -28px color-mix(in srgb, var(--ifm-color-primary) 42%, transparent);
-}
-
-/* The whole console, inside the frame. Cropping it looked like a broken image once the hero grew
-   wide, and the point of the shot is that the product is one finished screen. */
-.heroShot {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 2880 / 1800;
-}
-
 /* ── Quickstart ───────────────────────────────────────────────────────────────────────────── */
 
 .quickstart {

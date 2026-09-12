@@ -11,9 +11,6 @@
   "home.adminGuide": {
     "message": "Administrator guide"
   },
-  "home.hero.shotAlt": {
-    "message": "A report written from the conversation, open in the right-hand panel: chat on the left, editable sections on the right."
-  },
   "home.formats.title": {
     "message": "What goes in, what comes out"
   },
@@ -448,5 +445,35 @@
   "theme.tags.tagsPageTitle": {
     "message": "Tags",
     "description": "The title of the tag list page"
+  },
+  "home.deck.files.alt": {
+    "message": "A conversation that looks things up in an attached document. Below the answer are the file and the processing steps."
+  },
+  "home.deck.report.alt": {
+    "message": "A conversation that produces a report: chat on the left, the section-by-section report panel on the right."
+  },
+  "home.deck.slides.alt": {
+    "message": "A conversation that produces a slide deck: chat on the left, the slide panel with its list of slides on the right."
+  },
+  "home.deck.prev": {
+    "message": "Previous screen"
+  },
+  "home.deck.next": {
+    "message": "Next screen"
+  },
+  "home.deck.role": {
+    "message": "screen gallery"
+  },
+  "home.deck.label": {
+    "message": "KloudChat in use"
+  },
+  "home.deck.goTo": {
+    "message": "Go to screen {n}"
+  },
+  "home.deck.search.alt": {
+    "message": "A conversation with web search on. The answer carries footnote markers and the sources it checked."
+  },
+  "home.deck.plain.alt": {
+    "message": "A conversation with nothing attached. Above the answer, the processing steps show what it drew on."
   }
 }

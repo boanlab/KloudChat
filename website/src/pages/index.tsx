@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import useBaseUrl from '@docusaurus/useBaseUrl';
 import Layout from '@theme/Layout';
 import Heading from '@theme/Heading';
 import Translate, { translate } from '@docusaurus/Translate';
 import { ArrowRight, BookOpen, ChatCircleText, FileText, ShieldCheck } from '@phosphor-icons/react';
 
+import HeroDeck from '@site/src/components/HeroDeck';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Reveal from '@site/src/components/Reveal';
 import styles from './index.module.css';
@@ -22,7 +22,6 @@ import styles from './index.module.css';
  */
 
 function Hero() {
-  const shot = useBaseUrl('/img/guide/report.png');
   return (
     <header className={styles.hero}>
       <div className={styles.heroGlow} aria-hidden="true" />
@@ -48,20 +47,8 @@ function Hero() {
           </div>
         </div>
 
-        <div className={styles.heroShotFrame}>
-          <img
-            className={styles.heroShot}
-            src={shot}
-            width={2880}
-            height={1800}
-            loading="eager"
-            alt={translate({
-              id: 'home.hero.shotAlt',
-              message:
-                '대화에서 만든 보고서가 오른쪽 패널에 열린 화면. 왼쪽은 대화, 오른쪽은 절 단위로 편집할 수 있는 본문이다.',
-            })}
-          />
-        </div>
+        <HeroDeck />
+
       </div>
     </header>
   );
