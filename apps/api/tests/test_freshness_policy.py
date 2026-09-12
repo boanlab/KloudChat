@@ -168,6 +168,6 @@ def test_short_english_question_gets_english_abstention():
 
 
 def test_date_instruction_never_invents_a_training_cutoff():
-    assert "does not prove" in FRESHNESS_INSTRUCTION
+    assert "system date is not evidence" in FRESHNESS_INSTRUCTION
     assert "training cutoff" in FRESHNESS_INSTRUCTION
     assert not any(str(year) in FRESHNESS_INSTRUCTION for year in range(2020, 2040))

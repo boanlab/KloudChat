@@ -1,5 +1,15 @@
 # Current-fact verification boundary
 
+## Superseded on 2026-09-12
+
+The user replaced the political-only automatic abstention policy with all-domain
+grounded best-effort answers and a final knowledge-limit notice. The current
+contract and new verification are in [grounded-answer-verification.md](grounded-answer-verification.md).
+Everything below is historical evidence for the earlier policy, including its
+real-model trials. It is not evidence of the revised policy's factual accuracy.
+The earlier combined QA reference `9c073be` also predates this revision and must
+not be presented as verification of the new PR #184.
+
 ## Purpose and scope
 
 Issue #181 addresses stale political facts being asserted as current, including

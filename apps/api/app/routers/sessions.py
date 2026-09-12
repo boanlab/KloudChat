@@ -2197,84 +2197,33 @@ def _freshness_routing(reason: str) -> dict[str, Any]:
 
 
 def _freshness_followup_index(history: list[Message], session_id: str, content: str) -> int | None:
-    """Bind a narrow nudge to contiguous, trusted policy-held turns in this session."""
+    """Retain search consent for a short same-topic nudge, including legacy holds."""
     if not freshness.is_same_fact_followup(content):
         return None
     for index in range(len(history) - 2, -1, -2):
         question, answer = history[index : index + 2]
         routing = answer.routing or {}
         verification = routing.get("freshness") or {}
+        grounded = (routing.get("accuracy") or {}).get("policy") == freshness.ACCURACY_POLICY
+        legacy_hold = (
+            answer.model is None
+            and routing.get("answerOrigin") == "server_policy"
+            and routing.get("actualModel") is None
+            and verification.get("status") == "unverified"
+        )
         if (
             question.session_id != session_id or answer.session_id != session_id
             or question.role is not Role.user or answer.role is not Role.assistant
-            or answer.model is not None
-            or routing.get("answerOrigin") != "server_policy"
-            or routing.get("actualModel") is not None
-            or verification.get("status") != "unverified"
+            or not (grounded or legacy_hold)
         ):
             return None
-        if freshness.fresh_fact_required(question.content):
+        if not freshness.is_same_fact_followup(question.content) and (
+            grounded or freshness.fresh_fact_required(question.content)
+        ):
             return index
         if not freshness.is_same_fact_followup(question.content):
             return None
     return None
-
-
-async def _freshness_refusal(
-    db: AsyncSession,
-    session: ChatSession,
-    *,
-    content: str,
-    stored_content: str,
-    attachment_rows: list[StoredFile],
-    attachment_meta: list[dict] | None,
-    retry_of: Message | None,
-    superseded: list[Message],
-    started_from: dict | None,
-) -> StreamingResponse:
-    """A durable server answer: no key provisioning, model, enrichment or ledger call."""
-    routing = _freshness_routing("verification_unavailable")
-    for stored in attachment_rows:
-        stored.session_id = session.id
-        db.add(stored)
-    if retry_of is not None:
-        for row in superseded:
-            await db.delete(row)
-        question = retry_of
-        question.failure = None
-        question.routing = routing
-    else:
-        question = Message(
-            session_id=session.id,
-            role=Role.user,
-            content=stored_content,
-            attachments=attachment_meta,
-            routing=routing,
-            started_from=started_from,
-        )
-    answer = Message(
-        session_id=session.id,
-        role=Role.assistant,
-        content=freshness.abstention_response(content),
-        model=None,
-        routing=routing,
-        usage={"inputTokens": 0, "outputTokens": 0, "credits": 0},
-    )
-    db.add(question)
-    db.add(answer)
-    session.updated_at = utcnow()
-    if not session.title:
-        session.title = chat_service.provisional_title(stored_content)
-    db.add(session)
-    await db.commit()
-
-    async def events() -> AsyncIterator[str]:
-        yield chat_service.sse({"type": "freshness_abstention", **routing})
-        yield chat_service.sse({"type": "delta", "text": answer.content})
-        yield chat_service.sse({"type": "usage", **answer.usage})
-        yield chat_service.sse({"type": "done", "messageId": answer.id})
-
-    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 def _plans_first(session: ChatSession) -> bool:
@@ -2713,32 +2662,14 @@ async def send_message(
     )
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
-    if fresh_fact and session.kind != SessionKind.chat:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": "freshness_verification_unavailable",
-                "message": freshness.abstention_response(content),
-            },
-        )
-    if fresh_fact and (
-        strict_local
-        or not effective_web_search
-        or not any(t.name == "web_search" and t.source == "builtin" and t.read_only for t in tools)
-        or "ncs-arithmetic" in {skill.catalog_key for skill in workspace.applied_skills}
-        or settings.max_tool_hops < 1
-    ):
-        return await _freshness_refusal(
-            db,
-            session,
-            content=content,
-            stored_content=stored_content,
-            attachment_rows=rows,
-            attachment_meta=attachment_meta,
-            retry_of=retry_of,
-            superseded=superseded,
-            started_from=workspace.started_from,
-        )
+    # Missing verification changes the answer's qualification, not its availability.
+    # Privacy decisions, missing attachments and required tool gates remain independent.
+    if session.kind is not SessionKind.chat:
+        # Document planners/writers do not expose a complete actual-model trace.
+        trusted_context = [
+            *trusted_context,
+            freshness.answer_instruction({**model, "knowledgeCutoff": None}, structured=True),
+        ]
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -3434,10 +3365,10 @@ async def _run_turn(
         # answer, not a leak. Only secrets come out.
         return masker(value, scope="tool")
 
-    if routing and not freshness_request:
+    if routing:
         # First event, so the model badge updates before any token.
         yield chat_service.sse({"type": "privacy_route", **routing})
-    if cost_routing and not freshness_request:
+    if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
     if skills_event:
         yield chat_service.sse(skills_event)
@@ -3447,7 +3378,7 @@ async def _run_turn(
         async for event in _until_stopped(
             agent_service.run_turn(
                 model["id"],
-                messages,
+                freshness.with_answer_policy(messages, model),
                 tools,
                 ctx,
                 tool_definitions=tool_definitions,
@@ -3553,6 +3484,17 @@ async def _run_turn(
         yield chat_service.sse(_error_event("요청 처리 중 오류가 발생했습니다.", exc))
 
     content = "".join(text_parts)
+    if content.strip() and not failed and not server_abstention:
+        caveat = freshness.accuracy_caveat(ctx.request, model, actual_model)
+        if not content.rstrip().endswith(caveat):
+            suffix = "\n\n" + caveat
+            content += suffix
+            yield chat_service.sse({"type": "delta", "text": suffix})
+        routing = {
+            **(routing or {}),
+            "accuracy": freshness.accuracy_metadata(model, actual_model),
+        }
+        yield chat_service.sse({"type": "privacy_route", **routing})
     if failed == "stopped" and not any(usage.values()):
         # A stopped stream never reaches the usage chunk; estimate, marked as one.
         usage = {
@@ -3923,20 +3865,7 @@ async def compare_models(
         return resolved
     chosen = resolved.models
 
-    # Comparison has no retrieval tools. Do not fan an unverified current fact
-    # out to several models and mistake agreement for evidence.
-    if freshness.fresh_fact_required(content) or (
-        not payload.attachments
-        and _freshness_followup_index(history, session.id, content) is not None
-    ):
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": "freshness_verification_unavailable",
-                "message": freshness.abstention_response(content),
-            },
-        )
-
+    # Comparison remains tool-free; agreement is not evidence of factual accuracy.
     # Headroom checked only after a possible collapse to strict-local.
     if not has_headroom(user, max(chosen, key=lambda m: m["creditCost"])):
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="no_credits")
@@ -4090,7 +4019,7 @@ async def _run_comparison(
         try:
             async for event in chat_service.stream_completion(
                 model["id"],
-                messages,
+                freshness.with_answer_policy(messages, model),
                 user_id,
                 api_key,
                 strict_local=_strict_model(model),
@@ -4120,6 +4049,18 @@ async def _run_comparison(
             log.warning("comparison column failed (%s): %s", model["id"], exc)
             slot["error"] = "모델 응답을 받지 못했습니다."
         finally:
+            if slot["content"].strip() and not slot["error"]:
+                request_text = next(
+                    (str(m.get("content") or "") for m in reversed(messages)
+                     if m.get("role") == "user"), "",
+                )
+                caveat = freshness.accuracy_caveat(
+                    request_text, model, slot["actualModel"] or model["id"],
+                )
+                if not slot["content"].rstrip().endswith(caveat):
+                    suffix = "\n\n" + caveat
+                    slot["content"] += suffix
+                    await queue.put({"type": "variant", "model": model["id"], "text": suffix})
             usage = slot["usage"] or {"inputTokens": 0, "outputTokens": 0}
             credits = (
                 0
@@ -4617,17 +4558,6 @@ async def _run_page(
                 # The proposal has become the document.
                 session.pending = None
 
-                db.add(
-                    Message(
-                        session_id=session_id,
-                        role=Role.assistant,
-                        content=f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
-                        usage={**usage, "credits": credits},
-                        model=model["id"],
-                        steps=_prelude_steps(skills_event, context_steps) or None,
-                        routing=routing,
-                    )
-                )
                 settle(
                     db,
                     user,
@@ -4643,12 +4573,30 @@ async def _run_page(
                     session_id=session_id,
                     surface=session.kind.value,
                 )
+            if artifact_id:
+                db.add(
+                    Message(
+                        session_id=session_id,
+                        role=Role.assistant,
+                        content=(
+                            f"{template.name}으로 {len(written)}개 부분을 작성했습니다.\n\n"
+                            + freshness.accuracy_caveat(request, model, None)
+                        ),
+                        usage={**usage, "credits": credits},
+                        model=model["id"],
+                        steps=_prelude_steps(skills_event, context_steps) or None,
+                        routing=routing,
+                    )
+                )
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+        yield chat_service.sse({
+            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
+        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})
 
@@ -4832,7 +4780,10 @@ async def _run_deck(
                     Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=f"{len(written)}장짜리 슬라이드를 만들었습니다.",
+                        content=(
+                            f"{len(written)}장짜리 슬라이드를 만들었습니다.\n\n"
+                            + freshness.accuracy_caveat(request, model, None)
+                        ),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
@@ -4873,6 +4824,9 @@ async def _run_deck(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+        yield chat_service.sse({
+            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
+        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})
 
@@ -5345,7 +5299,10 @@ async def _run_report(
                     Message(
                         session_id=session_id,
                         role=Role.assistant,
-                        content=f"{len(written)}개 섹션으로 보고서를 작성했습니다.",
+                        content=(
+                            f"{len(written)}개 섹션으로 보고서를 작성했습니다.\n\n"
+                            + freshness.accuracy_caveat(request, model, None)
+                        ),
                         usage={**usage, "credits": credits},
                         model=model["id"],
                         steps=_prelude_steps(skills_event, context_steps) or None,
@@ -5373,5 +5330,8 @@ async def _run_report(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+        yield chat_service.sse({
+            "type": "delta", "text": "\n\n" + freshness.accuracy_caveat(request, model, None),
+        })
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})

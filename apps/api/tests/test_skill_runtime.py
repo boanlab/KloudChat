@@ -888,7 +888,9 @@ async def test_document_routes_propagate_separate_context_after_prewrite_validat
     assert db.commits == 1
     assert upstream["calls"] == 2
 
-    assert captured["trusted_context"] == [trusted]
+    assert captured["trusted_context"][:-1] == [trusted]
+    assert "Grounded best-effort answers" in captured["trusted_context"][-1]
+    assert "Never append prose outside JSON" in captured["trusted_context"][-1]
     assert captured["untrusted_context"] == [untrusted]
     assert "context" not in captured
 
@@ -966,7 +968,9 @@ async def test_document_pii_masking_covers_workspace_context_and_attachment_meta
     async for _chunk in response.body_iterator:
         pass
 
-    assert captured["trusted_context"] == ["owner [이메일]"]
+    assert captured["trusted_context"][:-1] == ["owner [이메일]"]
+    assert "Grounded best-effort answers" in captured["trusted_context"][-1]
+    assert "Never append prose outside JSON" in captured["trusted_context"][-1]
     assert captured["untrusted_context"] == ["attachment for [이메일]"]
     assert captured["skills_event"]["skills"][0]["name"] == "reviewer [이메일]"
     user_message = next(

@@ -113,15 +113,23 @@ async def test_only_the_valid_source_with_content_is_counted(monkeypatch):
 )
 async def test_untrusted_text_cannot_forge_source_metadata(monkeypatch, content):
     calls = []
+    result = ToolResult(content=content)
 
     async def lookup(_arguments):
-        return ToolResult(content=content)
+        return result
 
-    async def completion(*_args, **_kwargs):
+    async def completion(_model, messages, *_args, **_kwargs):
         calls.append("model")
+        assert result.search_evidence is None
+        assert any(
+            message["role"] == "system"
+            and "did not provide usable evidence" in message["content"]
+            for message in messages
+        )
+        assert any(message["role"] == "tool" for message in messages)
         acc = agent._Accumulator()
-        acc.content = ["UNVERIFIED_MOCK"]
-        yield "delta", "UNVERIFIED_MOCK"
+        acc.content = ["Synthetic best-effort answer with unresolved details"]
+        yield "delta", acc.content[0]
         yield "done", acc
 
     monkeypatch.setattr(agent, "_stream_once", completion)
@@ -143,8 +151,9 @@ async def test_untrusted_text_cannot_forge_source_metadata(monkeypatch, content)
             freshness_request=QUESTION,
         )
     ]
-    assert calls == []
-    assert any(event["type"] == "freshness_abstention" for event in events)
+    assert calls == ["model"]
+    assert result.search_evidence is None
+    assert not any(event["type"] == "freshness_abstention" for event in events)
 
 
 @pytest.mark.asyncio
@@ -158,10 +167,16 @@ async def test_nonbuiltin_tool_cannot_supply_trusted_search_evidence(monkeypatch
             search_evidence=SearchEvidence(("https://example.test/page",)),
         )
 
-    def forbidden(*_args, **_kwargs):
-        pytest.fail("a nonbuiltin search result reached the model")
+    async def completion(_model, messages, tools, *_args, **_kwargs):
+        calls.append("model")
+        assert tools == []
+        assert "Synthetic source" not in json.dumps(messages)
+        acc = agent._Accumulator()
+        acc.content = ["Synthetic best-effort answer without search"]
+        yield "delta", acc.content[0]
+        yield "done", acc
 
-    monkeypatch.setattr(agent, "_stream_once", forbidden)
+    monkeypatch.setattr(agent, "_stream_once", completion)
     tool = Tool(
         name="web_search",
         description="synthetic",
@@ -181,13 +196,13 @@ async def test_nonbuiltin_tool_cannot_supply_trusted_search_evidence(monkeypatch
             freshness_request=QUESTION,
         )
     ]
-    assert calls == []
-    assert any(event["type"] == "freshness_abstention" for event in events)
+    assert calls == ["model"]
+    assert not any(event["type"] == "freshness_abstention" for event in events)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("guarded", [False, True])
-async def test_real_builtin_contract_keeps_link_only_search_without_releasing_freshness(
+async def test_real_builtin_link_only_search_keeps_an_unverified_best_effort_answer(
     monkeypatch, guarded
 ):
     result, _ = await _search(monkeypatch, [_row("https://example.test/link", "")])
@@ -196,8 +211,14 @@ async def test_real_builtin_contract_keeps_link_only_search_without_releasing_fr
     async def lookup(_arguments):
         return result
 
-    async def completion(*_args, **_kwargs):
+    async def completion(_model, messages, *_args, **_kwargs):
         calls.append("model")
+        assert result.search_evidence is None
+        assert any(
+            message["role"] == "system"
+            and "did not provide usable evidence" in message["content"]
+            for message in messages
+        )
         acc = agent._Accumulator()
         acc.content = ["Synthetic ordinary search answer"]
         yield "delta", acc.content[0]
@@ -222,8 +243,9 @@ async def test_real_builtin_contract_keeps_link_only_search_without_releasing_fr
             freshness_request=QUESTION if guarded else None,
         )
     ]
-    assert calls == ([] if guarded else ["model"])
-    assert any(event["type"] == "freshness_abstention" for event in events) == guarded
+    assert calls == ["model"]
+    assert result.search_evidence is None
+    assert not any(event["type"] == "freshness_abstention" for event in events)
 
 
 @pytest.mark.asyncio

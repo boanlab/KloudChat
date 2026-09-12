@@ -1,9 +1,9 @@
-"""Only trusted, immediately preceding policy holds carry an elliptical follow-up."""
+"""Stored answer policies carry search consent without suppressing a follow-up."""
 
 import json
 
 import pytest
-from test_freshness_runtime import _events, _forbid_side_effects
+from test_freshness_runtime import _capture_normal_route, _events, _RouteDb
 from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
 
 from app.models.chat import ChatSession, Message, Role
@@ -63,6 +63,8 @@ async def _setup(monkeypatch, history_factory):
         return history
 
     async def tools(*_args, **_kwargs):
+        if not _kwargs.get("web_search"):
+            return []
         async def unused(_arguments):
             pytest.fail("the mocked route must not execute a tool")
 
@@ -77,22 +79,24 @@ async def _setup(monkeypatch, history_factory):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("text", FOLLOWUPS[:6])
 @pytest.mark.parametrize("repeated", [False, True])
-async def test_reprompt_after_policy_hold_stays_zero_model(monkeypatch, text, repeated):
+async def test_reprompt_after_legacy_hold_now_reaches_best_effort_model(
+    monkeypatch, text, repeated,
+):
     def history_for(session):
         return _pair(session) + (_pair(session, "그럼 이름만 알려줘") if repeated else [])
 
     user, session, history = await _setup(monkeypatch, history_for)
-    _forbid_side_effects(monkeypatch)
-    db = _NoWriteDb()
+    captured = _capture_normal_route(monkeypatch)
+    db = _RouteDb()
     response = await sessions.send_message(
         session.id, SendMessage(content=text, web_search=False), _request(), user, db,
     )
     events = await _events(response)
-    assert events[0]["answerOrigin"] == "server_policy"
-    assert events[0]["freshness"]["status"] == "unverified"
-    assert not any(row.get("type") == "model_route" for row in events)
+    assert not any(row.get("type") == "freshness_abstention" for row in events)
+    assert captured["model"]["id"] == "synthetic/qwen"
+    assert captured["tools"] == [] and captured["preset_call"] is None
     new_messages = [row for row in db.added if isinstance(row, Message)]
-    assert len(new_messages) == 2
+    assert len(new_messages) == 1
     assert new_messages[0].content == text
     assert QUESTION not in json.dumps([row.routing for row in new_messages])
     assert all(row not in history for row in new_messages)
@@ -146,7 +150,8 @@ async def test_only_immediate_owned_server_policy_pairs_are_authoritative(monkey
             return []
         return history
 
-    user, session, _ = await _setup(monkeypatch, history_for)
+    user, session, history = await _setup(monkeypatch, history_for)
+    assert sessions._freshness_followup_index(history, session.id, "그럼 이름만 알려줘") is None
 
     class NormalRoute(Exception):
         pass
@@ -224,15 +229,44 @@ async def test_linked_question_search_optout_survives_implicit_nudge(
         )
 
     user, session, _ = await _setup(monkeypatch, history_for)
-    _forbid_side_effects(monkeypatch)
-    db = _NoWriteDb()
+    captured = _capture_normal_route(monkeypatch)
+    db = _RouteDb()
     response = await sessions.send_message(
         session.id, SendMessage(content="그럼 이름만 알려줘", web_search=toggle),
         _request(), user, db,
     )
     events = await _events(response)
-    assert events[0]["answerOrigin"] == "server_policy"
-    assert events[0]["freshness"]["status"] == "unverified"
+    assert captured["model"]["id"] == "synthetic/qwen"
+    assert captured["tools"] == [] and captured["preset_call"] is None
+    assert not any(event["type"] == "freshness_abstention" for event in events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("toggle", [False, "auto"])
+@pytest.mark.parametrize("original", [
+    "웹 검색 없이 오늘 날씨를 알려줘", "웹 검색하지 말고 현재 대통령을 알려줘",
+    "Do not search the web. What is the latest Python version?",
+])
+async def test_grounded_answer_followup_preserves_original_search_optout(
+    monkeypatch, toggle, original,
+):
+    def history_for(session):
+        history = _pair(session, original)
+        history[-1].model = "synthetic/qwen"
+        history[-1].routing = {
+            "accuracy": {"policy": "grounded-best-effort-v1", "knowledgeCutoff": None},
+        }
+        return history
+
+    user, session, history = await _setup(monkeypatch, history_for)
+    assert sessions._freshness_followup_index(history, session.id, "그럼 이름만 알려줘") == 0
+    captured = _capture_normal_route(monkeypatch)
+    response = await sessions.send_message(
+        session.id, SendMessage(content="그럼 이름만 알려줘", web_search=toggle),
+        _request(), user, _RouteDb(),
+    )
+    await _events(response)
+    assert captured["tools"] == [] and captured["preset_call"] is None
 
 
 @pytest.mark.asyncio

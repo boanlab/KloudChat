@@ -1,10 +1,10 @@
-"""Tool-free comparison retains only trusted, same-session current-fact holds."""
+"""Tool-free comparison can answer after either legacy holds or a topic switch."""
 
 import json
 from copy import deepcopy
 
 import pytest
-from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 from test_freshness_followup import QUESTION, _pair
 from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
 
@@ -37,7 +37,7 @@ from app.schemas.chat import CompareRequest
     ("그럼 이름만 알려줘", False, "unrelated_question"),
     ("그럼 이름만 알려줘", False, "empty"),
 ])
-async def test_comparison_retains_same_fact_hold_without_blocking_new_task(
+async def test_comparison_retains_context_without_blocking_any_supported_question(
     monkeypatch, question, held, state,
 ):
     user = User(email="review@example.test", password_hash="synthetic")
@@ -110,21 +110,12 @@ async def test_comparison_retains_same_fact_hold_without_blocking_new_task(
         ),
         _request(), user, db,
     )
-    if not isinstance(response, JSONResponse):
-        _ = [part async for part in response.body_iterator]
-    if held:
-        assert response.status_code == 409, {
-            "comparison_started": bool(captured), "key_provisioning_attempted": bool(keys),
-            "db_commits": db.commits,
-            "guarded_original_question_in_model_context": QUESTION in json.dumps(
-                captured.get("messages", []), ensure_ascii=False,
-            ),
-        }
-        assert db.added == [] and db.commits == 0 and keys == [] and captured == {}
-        assert credit_checks == []
-        assert json.loads(response.body)["detail"] == "freshness_verification_unavailable"
-    else:
-        assert response.status_code == 200 and captured
-        assert [model["id"] for model in captured["models"]] == [model["id"] for model in models]
+    assert isinstance(response, StreamingResponse)
+    _ = [part async for part in response.body_iterator]
+    assert response.status_code == 200 and captured and keys and credit_checks
+    assert [model["id"] for model in captured["models"]] == [model["id"] for model in models]
+    assert captured.get("tools", []) == []
+    if held and state != "attachment":
+        assert QUESTION in json.dumps(captured["messages"], ensure_ascii=False)
     assert models == original_models
     assert session.model == models[0]["id"]

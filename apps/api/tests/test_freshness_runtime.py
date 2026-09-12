@@ -1,36 +1,20 @@
-"""Bounded current-political-fact abstention, not a factual-correctness benchmark."""
+"""Best-effort answers preserve search permissions, not a correctness benchmark."""
 
 import json
 
 import pytest
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
 
-from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
+from app.models.chat import ChatSession, Message, RoutingMode, SessionKind
 from app.models.user import AuditEvent, User
 from app.routers import sessions
 from app.schemas.chat import CompareRequest, SendMessage
 from app.services import agent
 from app.services.context import search_plan
-from app.services.freshness import abstention_response
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 
 QUESTION = "현재 대한민국 대통령은 누구야?"
-
-
-def _forbid_side_effects(monkeypatch):
-    def forbidden(*_args, **_kwargs):
-        pytest.fail("a freshness refusal reached model/key/enrichment/credit work")
-
-    for target, names in [
-        (sessions.litellm_service, ["ensure_key", "credentials_for"]),
-        (sessions.adaptive_routing, ["classify"]),
-        (sessions.chat_service, ["generate_title", "stream_completion"]),
-        (sessions, ["_store_artifacts", "_enrich_memory", "settle", "has_headroom"]),
-        (agent, ["_stream_once"]),
-    ]:
-        for name in names:
-            monkeypatch.setattr(target, name, forbidden)
 
 
 @pytest.mark.parametrize("toggle", [False, "auto", True])
@@ -94,11 +78,41 @@ async def _events(response):
     ]
 
 
+def _capture_normal_route(monkeypatch):
+    captured = {}
+
+    async def run(**kwargs):
+        captured.update(kwargs)
+        yield sessions.chat_service.sse({"type": "done"})
+
+    async def key(*_args):
+        return None
+
+    async def credentials(*_args):
+        return "synthetic-origin", "synthetic-noncredential"
+
+    monkeypatch.setattr(sessions, "_run_turn", run)
+    monkeypatch.setattr(sessions, "_run_comparison", run)
+    monkeypatch.setattr(sessions, "has_headroom", lambda *_args: True)
+    monkeypatch.setattr(sessions.litellm_service, "ensure_key", key)
+    monkeypatch.setattr(sessions.litellm_service, "credentials_for", credentials)
+    return captured
+
+
+class _RouteDb(_NoWriteDb):
+    def is_modified(self, _row):
+        return False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", list(RoutingMode))
 @pytest.mark.parametrize("unavailable", ["off", "strict", "no_tools", "allowlist"])
-async def test_unavailable_verification_is_a_zero_model_persisted_answer(
-    monkeypatch, mode, unavailable
+@pytest.mark.parametrize("question", [
+    QUESTION, "오늘 서울 날씨는 어때?", "React의 최신 버전은 무엇이야?",
+    "이 물리 현상의 원리를 설명해줘", "1990년 대한민국의 대통령은 누구였어?",
+])
+async def test_unavailable_verification_keeps_best_effort_route_and_permissions(
+    monkeypatch, mode, unavailable, question
 ):
     user = User(email="synthetic@example.test", password_hash="hash", name="Synthetic")
     model = {**_external_model("synthetic/qwen"), "supportsTools": unavailable != "no_tools"}
@@ -106,7 +120,7 @@ async def test_unavailable_verification_is_a_zero_model_persisted_answer(
         model.update(strictLocal=True, dataBoundary="self_hosted", creditCost=0)
     session = ChatSession(user_id=user.id, model=model["id"], routing_mode=mode)
     await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
-    _forbid_side_effects(monkeypatch)
+    captured = _capture_normal_route(monkeypatch)
 
     async def no_tools(*_args, **_kwargs):
         return []
@@ -118,37 +132,34 @@ async def test_unavailable_verification_is_a_zero_model_persisted_answer(
             return None, ["calculate"], None
 
         monkeypatch.setattr(sessions, "agent_settings", restricted)
-    db = _NoWriteDb()
+    db = _RouteDb()
     response = await sessions.send_message(
         session.id,
-        SendMessage(content=QUESTION, web_search=unavailable != "off"),
+        SendMessage(content=question, web_search=unavailable != "off"),
         _request(),
         user,
         db,
     )
     assert isinstance(response, StreamingResponse)
     events = await _events(response)
-    assert "".join(e["text"] for e in events if e["type"] == "delta") == abstention_response(
-        QUESTION
-    )
-    answers = [row for row in db.added if isinstance(row, Message) and row.role == Role.assistant]
-    assert len(answers) == 1
-    assert answers[0].model is None
-    assert answers[0].usage == {"inputTokens": 0, "outputTokens": 0, "credits": 0}
-    assert answers[0].routing["answerOrigin"] == "server_policy"
-    assert events[0] == {"type": "freshness_abstention", **answers[0].routing}
-    assert not answers[0].artifact_ids
-    assert db.commits == 1
+    assert captured["model"]["id"] == model["id"]
+    assert captured["tools"] == []
+    assert captured["preset_call"] is None
+    assert captured["force_tool"] is None
+    assert not any(event["type"] == "freshness_abstention" for event in events)
+    assert [row.content for row in db.added if isinstance(row, Message)] == [question]
+    if unavailable == "strict":
+        assert captured["model"]["strictLocal"] is True
 
 
 @pytest.mark.asyncio
-async def test_comparison_refuses_current_facts_before_writes_or_model_calls(monkeypatch):
+async def test_comparison_reaches_its_models_for_current_facts(monkeypatch):
     user = User(email="synthetic@example.test", password_hash="hash", name="Synthetic")
     session = ChatSession(user_id=user.id)
     models = [_external_model("synthetic/one"), _external_model("synthetic/two")]
     await _patch_guard_dependencies(monkeypatch, session=session, models=models, blocks=[])
-    _forbid_side_effects(monkeypatch)
-    db = _NoWriteDb()
+    captured = _capture_normal_route(monkeypatch)
+    db = _RouteDb()
     response = await sessions.compare_models(
         session.id,
         CompareRequest(content=QUESTION, models=[m["id"] for m in models]),
@@ -156,15 +167,15 @@ async def test_comparison_refuses_current_facts_before_writes_or_model_calls(mon
         user,
         db,
     )
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 409
-    assert json.loads(response.body)["detail"] == "freshness_verification_unavailable"
-    assert db.added == [] and db.commits == 0
+    assert isinstance(response, StreamingResponse)
+    await _events(response)
+    assert [model["id"] for model in captured["models"]] == [model["id"] for model in models]
+    assert [row.content for row in db.added if isinstance(row, Message)] == [QUESTION]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["failed", "empty", "blank", "success"])
-async def test_freshness_lookup_precedes_model_and_failure_never_releases_stale_answer(
+async def test_optional_lookup_precedes_model_but_failure_does_not_suppress_answer(
     monkeypatch, outcome
 ):
     calls = []
@@ -182,7 +193,8 @@ async def test_freshness_lookup_precedes_model_and_failure_never_releases_stale_
 
     async def completion(_model, messages, *_args, **_kwargs):
         calls.append("model")
-        assert "OFFICIAL_MARKER" in json.dumps(messages)
+        if outcome == "success":
+            assert "OFFICIAL_MARKER" in json.dumps(messages)
         acc = agent._Accumulator()
         acc.content = ["GROUNDED_MOCK_RESPONSE"]
         acc.usage = {"inputTokens": 1, "outputTokens": 1}
@@ -210,20 +222,22 @@ async def test_freshness_lookup_precedes_model_and_failure_never_releases_stale_
         )
     ]
     text = "".join(e["text"] for e in events if e["type"] == "delta")
-    if outcome == "success":
-        assert calls == ["search", "model"]
-        assert text == "GROUNDED_MOCK_RESPONSE"
-    else:
-        assert calls == ["search"]
-        assert text == abstention_response(QUESTION)
-        assert next(e for e in events if e["type"] == "usage")["outputTokens"] == 0
-        assert any(e["type"] == "freshness_abstention" for e in events)
+    assert calls == ["search", "model"]
+    assert text.startswith("GROUNDED_MOCK_RESPONSE")
+    if outcome == "empty":
+        assert text == (
+            "GROUNDED_MOCK_RESPONSE\n\n"
+            "_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
+            "서지·수치·최신 사항은 확인이 필요합니다._"
+        )
+    assert next(e for e in events if e["type"] == "usage")["outputTokens"] == 1
+    assert not any(e["type"] == "freshness_abstention" for e in events)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["failed", "empty"])
 @pytest.mark.parametrize("mode", [RoutingMode.auto, RoutingMode.auto_quality])
-async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_credit(
+async def test_failed_lookup_stores_model_answer_usage_and_preserves_auto_audit(
     monkeypatch, outcome, mode
 ):
     user = User(id="synthetic-user", email="synthetic@example.test", password_hash="hash")
@@ -262,8 +276,18 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
         async def commit(self):
             pass
 
-    def forbidden(*_args, **_kwargs):
-        pytest.fail("an unverified answer reached a model, enrichment or credit operation")
+    calls = []
+
+    async def completion(_model, _messages, *_args, **_kwargs):
+        calls.append("model")
+        acc = agent._Accumulator()
+        acc.content = ["모델이 아는 범위의 설명입니다."]
+        acc.usage = {"inputTokens": 4, "outputTokens": 6}
+        yield "delta", acc.content[0]
+        yield "done", acc
+
+    async def unused_enrichment(*_args, **_kwargs):
+        return None
 
     async def lookup(_arguments):
         return ToolResult(
@@ -273,10 +297,10 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
         )
 
     monkeypatch.setattr(sessions, "SessionLocal", Db)
-    monkeypatch.setattr(agent, "_stream_once", forbidden)
-    for name in ["_store_artifacts", "_enrich_memory", "_enrichment_model", "settle"]:
-        monkeypatch.setattr(sessions, name, forbidden)
-    monkeypatch.setattr(sessions.chat_service, "generate_title", forbidden)
+    monkeypatch.setattr(agent, "_stream_once", completion)
+    for name in ["_store_artifacts", "_enrich_memory"]:
+        monkeypatch.setattr(sessions, name, unused_enrichment)
+    monkeypatch.setattr(sessions, "settle", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(sessions, "record_searches", lambda *_args, **_kwargs: None)
     tool = Tool(
         name="web_search",
@@ -291,13 +315,13 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
         async for chunk in sessions._run_turn(
             user_id=user.id,
             api_key="synthetic-noncredential",
-            auto_memory=True,
+            auto_memory=False,
             session_id=session.id,
             model=_external_model("synthetic/qwen"),
             messages=[{"role": "user", "content": QUESTION}],
             tools=[tool],
             first_user_message=QUESTION,
-            is_first_turn=True,
+            is_first_turn=False,
             freshness_request=QUESTION,
             routing={
                 "actualModel": "synthetic/qwen",
@@ -308,36 +332,40 @@ async def test_failed_lookup_stores_server_origin_without_any_enrichment_or_cred
         )
     ]
     answer = next(row for row in added if isinstance(row, Message))
-    assert answer.model is None and answer.routing["actualModel"] is None
-    assert answer.usage == {"inputTokens": 0, "outputTokens": 0, "credits": 0}
-    assert answer.content == abstention_response(QUESTION)
+    assert calls == ["model"]
+    assert answer.model == "synthetic/qwen"
+    assert answer.usage["inputTokens"] == 4 and answer.usage["outputTokens"] == 6
+    assert answer.content.startswith("모델이 아는 범위의 설명입니다.")
+    assert answer.routing["accuracy"]["policy"] == "grounded-best-effort-v1"
     assert answer.artifact_ids is None and answer.failure is None
-    assert not any('"executedModel"' in chunk for chunk in chunks)
-    assert routing_audit.event_metadata == {
-        **cost_route,
-        "executedModel": None,
-        **sessions._freshness_routing("lookup_failed_or_empty"),
-    }
+    assert any('"executedModel"' in chunk for chunk in chunks)
+    assert routing_audit.event_metadata["executedModel"] == "synthetic/qwen"
+    assert routing_audit.event_metadata["mode"] == mode.value
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind", [SessionKind.report, SessionKind.slides])
-async def test_document_routes_require_verification_before_planning(monkeypatch, kind):
+async def test_document_routes_reach_normal_planning_without_a_freshness_block(monkeypatch, kind):
     user = User(email="synthetic@example.test", password_hash="hash")
     session = ChatSession(user_id=user.id, kind=kind)
     model = {**_external_model("synthetic/model"), "kinds": [kind.value]}
     await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
-    _forbid_side_effects(monkeypatch)
+    class PlanningRoute(Exception):
+        pass
+
+    def reached(*_args, **_kwargs):
+        raise PlanningRoute
+
+    monkeypatch.setattr(sessions, "has_headroom", reached)
     db = _NoWriteDb()
-    response = await sessions.send_message(
-        session.id,
-        SendMessage(content=QUESTION),
-        _request(),
-        user,
-        db,
-    )
-    assert response.status_code == 409
-    assert json.loads(response.body)["detail"] == "freshness_verification_unavailable"
+    with pytest.raises(PlanningRoute):
+        await sessions.send_message(
+            session.id,
+            SendMessage(content=QUESTION),
+            _request(),
+            user,
+            db,
+        )
     assert db.added == [] and db.commits == 0
 
 

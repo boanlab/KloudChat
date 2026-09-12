@@ -1,14 +1,13 @@
 """A year-qualified present is historical only after that year has ended."""
 
-import json
 from datetime import UTC, date, datetime
 
 import pytest
 from fastapi.responses import StreamingResponse
-from test_freshness_runtime import _events, _forbid_side_effects
-from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
+from test_freshness_runtime import _capture_normal_route, _events, _RouteDb
+from test_privacy import _external_model, _patch_guard_dependencies, _request
 
-from app.models.chat import ChatSession, Message, Role, RoutingMode
+from app.models.chat import ChatSession, Message, RoutingMode
 from app.models.user import User
 from app.routers import sessions
 from app.schemas.chat import SendMessage
@@ -57,18 +56,18 @@ def test_dated_snapshot_does_not_hide_another_present_request(prompt):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", list(RoutingMode))
-async def test_current_year_request_holds_before_key_model_or_accounting(monkeypatch, mode):
+async def test_current_year_request_gets_a_best_effort_model_answer(monkeypatch, mode):
     user = User(email="synthetic@example.test", password_hash="hash", name="Synthetic")
     model = {**_external_model("synthetic/qwen"), "supportsTools": True}
     session = ChatSession(user_id=user.id, model=model["id"], routing_mode=mode)
     await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
-    _forbid_side_effects(monkeypatch)
+    captured = _capture_normal_route(monkeypatch)
 
     async def no_tools(*_args, **_kwargs):
         return []
 
     monkeypatch.setattr(sessions, "build_tools", no_tools)
-    db = _NoWriteDb()
+    db = _RouteDb()
     year = datetime.now(UTC).year
     response = await sessions.send_message(
         session.id,
@@ -77,10 +76,7 @@ async def test_current_year_request_holds_before_key_model_or_accounting(monkeyp
     )
     assert isinstance(response, StreamingResponse)
     events = await _events(response)
-    assert events[0]["type"] == "freshness_abstention"
-    answers = [row for row in db.added if isinstance(row, Message) and row.role == Role.assistant]
-    assert len(answers) == 1
-    assert answers[0].model is None
-    assert answers[0].routing["answerOrigin"] == "server_policy"
-    assert answers[0].usage == {"inputTokens": 0, "outputTokens": 0, "credits": 0}
-    assert "synthetic/qwen" not in json.dumps(events)
+    assert captured["model"]["id"] == model["id"]
+    assert captured["tools"] == [] and captured["preset_call"] is None
+    assert not any(event["type"] == "freshness_abstention" for event in events)
+    assert len([row for row in db.added if isinstance(row, Message)]) == 1

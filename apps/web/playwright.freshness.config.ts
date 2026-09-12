@@ -3,7 +3,7 @@ import base from './playwright.config'
 
 export default defineConfig({
   ...base,
-  testMatch: 'freshness-abstention.spec.ts',
+  testMatch: ['freshness-abstention.spec.ts', 'grounded-answer.spec.ts'],
   reporter: process.env.CI ? 'github' : 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5199' },
   webServer: {
