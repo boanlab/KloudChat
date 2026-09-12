@@ -82,6 +82,7 @@ from app.services import (
     adaptive_routing,
     artifact_extract,
     audiogen,
+    calculation_policy,
     chart_code,
     design_templates,
     figures,
@@ -2445,6 +2446,11 @@ async def send_message(
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
 
+    # Resolve selected context before narrowing either route's outbound schema snapshot.
+    candidate_tools = _plain_chat_tools(candidate_tools, session, workspace, content, history)
+    strict_tools = _plain_chat_tools(strict_tools, session, workspace, content, history)
+    requested_tools = strict_tools if requested_is_strict else candidate_tools
+
     # Attachment shortfalls are known server-side, so ask before spending a planning call.
     if _plans_first(session) and not pending.get("answers"):
         short = grounding.file_shortfalls(workspace.attachments)
@@ -2604,6 +2610,23 @@ async def send_message(
     )
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
+    calculation_required = (
+        session.kind is SessionKind.chat and (
+            calculation_policy.requires_calculation(content)
+            or (
+                not payload.attachments
+                and _calculation_followup_required(history, outbound_history, session.id, content)
+            )
+        )
+    )
+    preflight_tool = _ncs_preflight_tool(
+        {skill.catalog_key for skill in workspace.applied_skills}, tools,
+    )
+    if calculation_required:
+        preflight_tool = preflight_tool or _calculation_preflight_tool(tools)
+        trusted_context = [*trusted_context, _CALCULATION_INSTRUCTION]
+        if preflight_tool == "check_ncs_answer":
+            trusted_context.append(_NCS_CALCULATION_INSTRUCTION)
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -2665,7 +2688,11 @@ async def send_message(
                     )
                 ]
             ),
-            unsupported_reason="unsupported_turn" if unsupported else None,
+            unsupported_reason=(
+                "calculation_required"
+                if calculation_required and session.routing_mode != RoutingMode.auto_quality
+                else "unsupported_turn" if unsupported else None
+            ),
         )
         resolved.models = [routed_model]
         resolved.routing = _apply_effective_model(resolved.routing, routed_model)
@@ -2681,11 +2708,6 @@ async def send_message(
             tool_definitions = []
             messages = economy_messages
         strict_local = resolved.strict_local
-
-    preflight_tool = _ncs_preflight_tool(
-        {skill.catalog_key for skill in workspace.applied_skills},
-        tools,
-    )
 
     if not has_headroom(user, model):
         raise HTTPException(
@@ -3019,6 +3041,11 @@ async def send_message(
                     else None
                 ),
                 preflight_tool=preflight_tool,
+                calculation_required=calculation_required,
+                calculation_expression=(
+                    calculation_policy.direct_calculation_expression(content)
+                    if calculation_required and preflight_tool == "calculate" else None
+                ),
             )
         ),
         media_type="text/event-stream",
@@ -3187,6 +3214,45 @@ async def _store_notes(
         )
 
 
+_NCS_TOOL_CONTEXT = re.compile(
+    r"(?<![a-z0-9_])ncs(?![a-z0-9_])|check_ncs_answer|선지|채점|객관식|퀴즈|"
+    r"\b(?:multiple[- ]choice|quiz|grading)\b|\bgrade\s+(?:my|this|the|these|answer)\b",
+    re.I,
+)
+
+
+def _plain_chat_tools(
+    tools: list[Tool],
+    session: ChatSession,
+    workspace: WorkspaceContext,
+    content: str,
+    history: list[Message],
+) -> list[Tool]:
+    """Keep domain protocols out of uncustomized chat; never expand existing permissions."""
+    if (
+        session.kind is not SessionKind.chat
+        or session.agent_id
+        or session.project_id
+        or workspace.applied_skills
+        or workspace.started_from
+        or workspace.attachments
+        or workspace.carried
+        or workspace.knowledge
+        or any(block.trusted and block.text.strip() for block in workspace.blocks)
+        or _NCS_TOOL_CONTEXT.search(content)
+        or any(
+            message.attachments or _NCS_TOOL_CONTEXT.search(message.content)
+            for message in history
+            if message.role is Role.user
+        )
+    ):
+        return tools
+    return [
+        tool for tool in tools
+        if tool.name != "check_ncs_answer" or tool.source != "builtin"
+    ]
+
+
 def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) -> str | None:
     if "ncs-arithmetic" not in skill_catalog_keys:
         return None
@@ -3194,6 +3260,56 @@ def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) 
     if not any(tool.name == name and tool.source == "builtin" for tool in tools):
         raise HTTPException(status_code=409, detail="ncs_verification_tool_unavailable")
     return name
+
+
+_CALCULATION_INSTRUCTION = (
+    "이 요청은 수치 계산이 필요합니다. 답변 전에 지정된 계산 도구를 호출하세요. "
+    "문제에 주어진 값·분모·가중치·단위를 보존하여 식을 작성하고, 없는 조건을 만들지 마세요. "
+    "계산 결과를 설명할 때 도구의 값·선지·채점과 대조하고, 검산하지 않은 다른 수치를 "
+    "해설에 보태지 마세요. 도구는 입력한 식의 산술만 검증하며 문제 해석까지 보증하지 않습니다."
+)
+_NCS_CALCULATION_INSTRUCTION = (
+    "check_ncs_answer를 사용할 때 계산할 조건이 갖춰졌으면 decision=calculate를 사용하세요."
+)
+
+
+def _calculation_followup_required(
+    history: list[Message], outbound_bodies: list[str], session_id: str, content: str,
+) -> bool:
+    """Bind up to eight completed arithmetic pairs without certifying the answer."""
+    if (
+        not calculation_policy.is_calculation_followup(content)
+        or len(history) != len(outbound_bodies)
+    ):
+        return False
+    for index in range(len(history) - 2, max(-1, len(history) - 18), -2):
+        question, answer = history[index:index + 2]
+        if (
+            question.session_id != session_id or answer.session_id != session_id
+            or question.role is not Role.user or answer.role is not Role.assistant
+            or not answer.model
+            or (answer.routing or {}).get("answerOrigin") not in {None, "model"}
+            or any(
+                row.attachments or row.variants or row.artifact_ids or row.failure
+                for row in (question, answer)
+            )
+            or not calculation_policy.is_plain_numeric_answer(outbound_bodies[index + 1])
+        ):
+            return False
+        # Only the privacy-processed bodies establish a seed or a continuation.
+        if calculation_policy.requires_calculation(outbound_bodies[index]):
+            return True
+        if not calculation_policy.is_calculation_followup(outbound_bodies[index]):
+            return False
+    return False
+
+
+def _calculation_preflight_tool(tools: list[Tool]) -> str:
+    available = {tool.name for tool in tools if tool.source == "builtin" and tool.read_only}
+    for name in ("calculate", "check_ncs_answer"):
+        if name in available:
+            return name
+    raise HTTPException(status_code=409, detail="calculation_tool_unavailable")
 
 
 async def _run_turn(
@@ -3226,6 +3342,8 @@ async def _run_turn(
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
     preflight_tool: str | None = None,
+    calculation_required: bool = False,
+    calculation_expression: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
@@ -3245,6 +3363,7 @@ async def _run_turn(
     tool_output_masked = 0
     tool_output_findings: dict[tuple[str, str], int] = {}
     actual_model = model["id"]
+    tool_result_answer = False
 
     # Set by the stop button, not by a closed socket.
     stopping = asyncio.Event()
@@ -3314,10 +3433,23 @@ async def _run_turn(
                 redact_logging=mask_at_rest,
                 force_tool=force_tool,
                 **({"preflight_tool": preflight_tool} if preflight_tool else {}),
+                **({"calculation_required": True} if calculation_required else {}),
+                **(
+                    {"calculation_expression": calculation_expression}
+                    if calculation_expression is not None else {}
+                ),
                 preset_call=preset_call,
             ),
             stopping,
         ):
+            if event == agent_service.TOOL_RESULT_ANSWER_EVENT:
+                tool_result_answer = True
+                actual_model = None
+                cost_routing = None
+                routing = {**(routing or {}), **{k: v for k, v in event.items() if k != "type"}}
+                routing.pop("costRouting", None)
+                yield chat_service.sse(event)
+                continue
             if event["type"] == "delta":
                 text_parts.append(event["text"])
             elif event["type"] == "retract":
@@ -3398,8 +3530,10 @@ async def _run_turn(
         failed = "internal_error"
         yield chat_service.sse(_error_event("요청 처리 중 오류가 발생했습니다.", exc))
 
+    # This is answer-generation scope; earlier classifier/search work keeps its audit.
+    skip_completion_work = tool_result_answer
     content = "".join(text_parts)
-    if failed == "stopped" and not any(usage.values()):
+    if failed == "stopped" and not any(usage.values()) and not skip_completion_work:
         # A stopped stream never reaches the usage chunk; estimate, marked as one.
         usage = {
             "inputTokens": file_service.estimate_tokens(
@@ -3441,9 +3575,12 @@ async def _run_turn(
         return masker(value, scope="answer", protected=set(protected_values))
 
     stored_steps = _mask_text_tree(steps, at_rest) if protect_persistence else steps
-    stored_actual_model = at_rest(actual_model)[0] if protect_persistence else actual_model
+    stored_actual_model = (
+        at_rest(actual_model)[0] if protect_persistence and actual_model else actual_model
+    )
     credits = (
-        0 if not content else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
+        0 if not content or skip_completion_work
+        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
     if cost_routing:
         cost_routing = {**cost_routing, "executedModel": actual_model}
@@ -3461,7 +3598,7 @@ async def _run_turn(
     # below, both of which are free of this turn's artifact — so the panel
     # catches up close to when the closing text does, not well after it.
     new_artifact: str | None = None
-    if stored_content and not failed:
+    if stored_content and not failed and not skip_completion_work:
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
@@ -3485,7 +3622,7 @@ async def _run_turn(
     title: str | None = None
     title_credits = 0
     title_model: str | None = None
-    if is_first_turn and stored_content and not failed:
+    if is_first_turn and stored_content and not failed and not skip_completion_work:
         enrichment = await _enrichment_model(
             model, strict_local=strict_local, disable_fallbacks=disable_fallbacks
         )
@@ -3530,14 +3667,15 @@ async def _run_turn(
                 )
                 db.add(answer)
                 answer_id = answer.id
-                settle(
-                    db,
-                    user,
-                    credits,
-                    reason="chat.completion",
-                    session_id=session_id,
-                    model=stored_actual_model,
-                )
+                if not skip_completion_work:
+                    settle(
+                        db,
+                        user,
+                        credits,
+                        reason="chat.completion",
+                        session_id=session_id,
+                        model=stored_actual_model,
+                    )
             else:
                 # No answer: the question row carries the outcome and the retry.
                 question = await db.get(Message, user_message_id) if user_message_id else None
@@ -3556,19 +3694,20 @@ async def _run_turn(
                 surface=session.kind.value,
             )
             # Notes are kept from an empty completion but not from a failed turn.
-            if ctx.pending_notes and not failed:
+            if ctx.pending_notes and not failed and not skip_completion_work:
                 await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
             if title:
                 session.title = title
             # Own ledger line: a different model may have run it.
-            settle(
-                db,
-                user,
-                title_credits,
-                reason="chat.title",
-                session_id=session_id,
-                model=title_model,
-            )
+            if not skip_completion_work:
+                settle(
+                    db,
+                    user,
+                    title_credits,
+                    reason="chat.title",
+                    session_id=session_id,
+                    model=title_model,
+                )
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -3580,7 +3719,17 @@ async def _run_turn(
             if routing_audit_id:
                 routing_audit = await db.get(AuditEvent, routing_audit_id)
                 if routing_audit is not None:
-                    routing_audit.event_metadata = dict(cost_routing or {})
+                    audit_metadata = dict(cost_routing or {})
+                    if skip_completion_work:
+                        # Keep the selection decision without claiming that its model ran.
+                        audit_metadata = {
+                            **(routing_audit.event_metadata or {}),
+                            **(stored_routing or {}),
+                            "executedModel": None,
+                        }
+                        if protect_persistence:
+                            audit_metadata = _mask_text_tree(audit_metadata, at_rest)
+                    routing_audit.event_metadata = audit_metadata
                     db.add(routing_audit)
             session.updated_at = utcnow()
             if new_artifact:
@@ -3621,7 +3770,7 @@ async def _run_turn(
     # already stored and announced above; this is only the auto-memory pass,
     # which needs `answer_id` and is unrelated to what the panel shows.
     memory_step: dict | None = None
-    if stored_content and not failed:
+    if stored_content and not failed and not skip_completion_work:
         memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,

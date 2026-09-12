@@ -12,16 +12,58 @@ import json
 import logging
 import re
 from collections.abc import AsyncIterator, Callable
-from typing import Any
+from copy import deepcopy
+from typing import Any, Literal, TypedDict
 
 import httpx
 
 from app.core.config import settings
 from app.services import settings_store
 from app.services.chat import ChatStreamError, step_label, step_title
+from app.services.tools import arithmetic
 from app.services.tools.base import Tool, ToolContext, ToolResult, to_openai
 
 log = logging.getLogger(__name__)
+
+
+class ToolResultAnswerEvent(TypedDict):
+    type: Literal["tool_result_answer"]
+    answerOrigin: Literal["tool_result"]
+    toolName: Literal["calculate"]
+    reasonCode: Literal["division_by_zero"]
+    actualModel: None
+
+
+TOOL_RESULT_ANSWER_EVENT: ToolResultAnswerEvent = {
+    "type": "tool_result_answer",
+    "answerOrigin": "tool_result",
+    "toolName": "calculate",
+    "reasonCode": "division_by_zero",
+    "actualModel": None,
+}
+
+
+def _literal_zero_division_answer(
+    tool: Tool | None,
+    result: ToolResult,
+    *,
+    literal_preset: bool,
+    model_attempted: bool,
+) -> ToolResultAnswerEvent | None:
+    # Missing usage/model metadata does not prove that no provider was called.
+    if (
+        model_attempted or not literal_preset or tool is None
+        or tool.name != "calculate" or tool.source != "builtin"
+        or not tool.read_only or tool.run is not arithmetic.calculate or not result.failed
+    ):
+        return None
+    try:
+        error = json.loads(result.content)
+    except (ValueError, TypeError):
+        return None
+    if isinstance(error, dict) and error.get("reason") == "division_by_zero":
+        return dict(TOOL_RESULT_ANSWER_EVENT)
+    return None
 
 
 async def _client(api_key: str, *, redact_logging: bool = False) -> httpx.AsyncClient:
@@ -519,19 +561,43 @@ async def run_turn(
     #: half the time under a long system prompt — so a search the toggle
     #: demands goes through `preset_call` instead.
     force_tool: str | None = None,
-    #: Required, exclusive gate until it succeeds; all tool-hop prose stays private.
+    #: Required gate; only eligible arithmetic reads may precede it. Hop prose stays private.
     preflight_tool: str | None = None,
+    #: A non-arithmetic NCS decision must not unlock a required numeric answer.
+    calculation_required: bool = False,
+    #: A complete literal expression validated from the user's request, not inferred.
+    calculation_expression: str | None = None,
     #: `(tool name, arguments)` the server calls itself before the model is
-    #: asked anything; the model then starts with the result in hand. Not
-    #: used under a preflight gate, which must be the first call.
+    #: asked anything; the model then starts with the result in hand. A required
+    #: calculation may need this trusted read first. Other gates remain first.
     preset_call: tuple[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
-    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`, and
-    exactly one `usage`. `done` belongs to the caller, after credits settle.
+    Emits `step`, `delta`, `retract`, `model_route`, `privacy_route`,
+    optional `tool_result_answer` (no answer-model call), and exactly one `usage`.
+    `done` belongs to the caller, after credits settle.
     """
     by_name = {t.name: t for t in tools}
+    if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
+        raise ChatStreamError("preflight_tool_unavailable")
+    if calculation_expression is not None and (
+        not calculation_required
+        or preflight_tool != "calculate"
+        or "calculate" not in by_name
+        or by_name["calculate"].source != "builtin"
+        or not by_name["calculate"].read_only
+    ):
+        raise ChatStreamError("preflight_tool_unavailable")
+    if calculation_required and preset_call:
+        prerequisite = by_name.get(preset_call[0])
+        if (
+            prerequisite is None
+            or prerequisite.name not in {"web_search", "weather"}
+            or prerequisite.source != "builtin"
+            or not prerequisite.read_only
+        ):
+            raise ChatStreamError("preflight_tool_unavailable")
     if preflight_tool and (
         preflight_tool not in by_name
         or (ctx.allowed and preflight_tool not in ctx.allowed)
@@ -542,9 +608,33 @@ async def run_turn(
     usage = {"inputTokens": 0, "outputTokens": 0}
     hop = 0
     preflight_completed = False
+    preflight_repaired = False
+    calculation_started = False
+    read_prerequisites: set[str] = set()
+    if (
+        calculation_required and preflight_tool == "calculate"
+        and calculation_expression is None and preset_call is None
+    ):
+        # Reuse the caller's configured read contract, never infer effects from a name.
+        # The existing metadata is not a proof of a connector's actual behavior.
+        read_prerequisites = {
+            tool.name for tool in tools
+            if tool.read_only is True
+            and tool.name not in {
+                "calculate", "check_ncs_answer", "execute_code",
+                "create_artifact", "create_chart", "share_note",
+            }
+            and (not ctx.allowed or tool.name in ctx.allowed)
+        }
     post_preflight_force_sent = False
+    preset_calls = []
+    if preset_call and (not preflight_tool or calculation_required):
+        preset_calls.append(preset_call)
+    if calculation_expression is not None:
+        preset_calls.append(("calculate", {"expression": calculation_expression}))
     redact_next_request = redact_logging
     reported_models: set[str] = set()
+    model_attempted = False
 
     def visible_label(tool: Tool | None, name: str, *, done: bool = False) -> str:
         # Progress form while running (웹 검색 중), noun when done (웹 검색).
@@ -564,6 +654,9 @@ async def run_turn(
     #: tell it already has the answer repeats the same call hop after hop
     #: otherwise, burning a full round trip each time until the hop cap.
     called: set[tuple[str, str]] = set()
+    # Only the pending arithmetic gate can reuse evidence. Futures coalesce
+    # concurrent duplicates; stored results are detached before output masking.
+    arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
     #: URLs the tools returned, in the order the model saw them numbered.
     sources: list[str] = []
     source_titles: dict[str, str] = {}
@@ -583,6 +676,17 @@ async def run_turn(
         }
         hop_tools = [] if closing else tools
         hop_definitions = [] if closing else tool_definitions
+        pending_reads = read_prerequisites if not calculation_started else set()
+        if preflight_tool and not preflight_completed and not closing:
+            # Reads may supply missing operands; neither a read nor its prose
+            # satisfies verification. Other tools remain unavailable until it succeeds.
+            gate_names = {preflight_tool, *pending_reads}
+            hop_tools = [tool for tool in tools if tool.name in gate_names]
+            if hop_definitions is not None:
+                hop_definitions = [
+                    definition for definition in hop_definitions
+                    if definition.get("function", {}).get("name") in gate_names
+                ]
         if disable_fallbacks:
             stream_kwargs["disable_fallbacks"] = True
         # Without `tool_definitions`, `_stream_once` converts `tools` itself.
@@ -590,7 +694,7 @@ async def run_turn(
             stream_kwargs["tool_definitions"] = hop_definitions
         if temperature is not None:
             stream_kwargs["temperature"] = temperature
-        if preflight_tool and not preflight_completed and not closing:
+        if preflight_tool and not preflight_completed and not closing and not pending_reads:
             stream_kwargs["force_tool"] = preflight_tool
         elif force_tool and not preflight_tool and hop == 0:
             stream_kwargs["force_tool"] = force_tool
@@ -605,13 +709,16 @@ async def run_turn(
             # Keep an explicit search toggle after, never ahead of, a successful gate.
             stream_kwargs["force_tool"] = force_tool
             post_preflight_force_sent = True
-        if preset_call and hop == 0 and not preflight_tool:
-            # The first hop is the server's own call: no model request, the
-            # loop below runs the tool and hands its result to the model.
-            name, arguments = preset_call
+        running_preset = hop < len(preset_calls) and not closing
+        if running_preset:
+            # Trusted lookup and literal arithmetic need no model argument guess.
+            name, arguments = preset_calls[hop]
             acc = _Accumulator()
-            acc.calls[0] = {"id": "preset_0", "name": name, "arguments": json.dumps(arguments)}
+            acc.calls[0] = {"id": f"preset_{hop}", "name": name, "arguments": json.dumps(arguments)}
+            if name == force_tool:
+                post_preflight_force_sent = True
         else:
+            model_attempted = True
             async for kind, value in _stream_once(
                 model,
                 conversation,
@@ -639,17 +746,59 @@ async def run_turn(
                 "actualModel": acc.actual_model,
             }
 
+        prerequisite_batch = False
         if preflight_tool:
-            # No other call may run beside the required gate. Waiting for the
-            # complete hop also keeps ignored tool_choice and runaway drafts private.
-            missed_preflight = not preflight_completed and (
-                len(acc.calls) != 1 or next(iter(acc.calls.values()))["name"] != preflight_tool
+            # Operands cannot come from an unread result in the same parallel batch.
+            # Complete-hop validation also keeps drafts and disallowed calls private.
+            gate_calls = list(acc.calls.values())
+            valid_gate_calls = bool(gate_calls) and all(
+                call["name"] == preflight_tool for call in gate_calls
             )
+            if not (calculation_required and preflight_tool == "calculate"):
+                valid_gate_calls = valid_gate_calls and len(gate_calls) == 1
+            if not preflight_completed and valid_gate_calls:
+                calculation_started = True
+            prerequisite_batch = bool(
+                not preflight_completed and not closing and gate_calls
+                and all(call["name"] in pending_reads for call in gate_calls)
+            )
+            valid_gate_calls = valid_gate_calls or prerequisite_batch
+            missed_preflight = (
+                not preflight_completed and not running_preset and not valid_gate_calls
+            )
+            if (
+                missed_preflight and calculation_required and not preflight_repaired
+                and not acc.calls and not acc.looped and not acc.runaway and not closing
+            ):
+                # Some providers ignore named tool_choice. Retry once with only
+                # a protocol reminder, never the unverified numeric draft.
+                preflight_repaired = True
+                conversation.append({
+                    "role": "user",
+                    "content": (
+                        "아직 검산을 완료하지 못했습니다. 필요한 값이 자료에 있으면 "
+                        "허용된 읽기 도구를 먼저 호출하고, 그 결과를 받은 다음 calculate로 "
+                        "계산하세요. 읽기와 계산을 동시에 호출하거나 없는 값을 만들지 마세요. "
+                        "검산 전 정답을 문장으로 반환하지 마세요."
+                        if pending_reads else
+                        f"아직 {preflight_tool} 도구 호출을 받지 못했습니다. "
+                        "정답을 문장이나 JSON 본문으로 쓰지 말고, 제공된 함수 스키마에 맞춰 "
+                        f"{preflight_tool} 도구 호출만 반환하세요. "
+                        "원래 질문의 값과 단위를 보존하여 검산할 식을 전달하세요."
+                    ),
+                })
+                continue
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
-                note = (
-                    "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
-                    "다시 시도해 주세요."
-                )
+                if calculation_required and preflight_tool == "calculate":
+                    note = (
+                        "계산기의 검산을 완료하지 못해 수치 답변을 확정할 수 없습니다. "
+                        "필요한 값과 계산 조건을 확인해 주세요."
+                    )
+                else:
+                    note = (
+                        "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
+                        "다시 시도해 주세요."
+                    )
                 yield {
                     "type": "step",
                     "id": "preflight",
@@ -766,7 +915,11 @@ async def run_turn(
                 "status": "running",
             }
 
-        async def execute(item: tuple[int, dict[str, Any], Tool | None]) -> ToolResult:
+        async def execute(
+            item: tuple[int, dict[str, Any], Tool | None],
+            *,
+            arithmetic_gate_pending: bool = calculation_required and not preflight_completed,
+        ) -> ToolResult:
             _, call, tool = item
             if tool is None:
                 return ToolResult(content=f"오류: 알 수 없는 도구 {call['name']}", failed=True)
@@ -775,7 +928,19 @@ async def run_turn(
                     content=f"오류: {tool.name} 도구가 허용되지 않았습니다.", failed=True
                 )
             key = (tool.name, call["arguments"])
+            reuse_arithmetic = bool(
+                arithmetic_gate_pending
+                and tool.name == preflight_tool
+                and tool.name in {"calculate", "check_ncs_answer"}
+                and tool.source == "builtin"
+                and tool.read_only
+            )
             if key in called:
+                pending = arithmetic_evidence.get(key) if reuse_arithmetic else None
+                if pending is not None:
+                    saved = await asyncio.shield(pending)
+                    if saved is not None:
+                        return deepcopy(saved)
                 return ToolResult(
                     content=(
                         "(같은 도구를 같은 조건으로 이미 호출했습니다. "
@@ -783,14 +948,87 @@ async def run_turn(
                     )
                 )
             called.add(key)
+            pending = None
+            if reuse_arithmetic:
+                pending = asyncio.get_running_loop().create_future()
+                arithmetic_evidence[key] = pending
             ctx.tool_calls[tool.name] = ctx.tool_calls.get(tool.name, 0) + 1
-            return await _run_tool(tool, call["arguments"], ctx)
+            try:
+                result = await _run_tool(tool, call["arguments"], ctx)
+                if pending is not None and not result.failed and not result.empty:
+                    try:
+                        evidence = json.loads(result.content)
+                    except (ValueError, TypeError):
+                        evidence = None
+                    verified = isinstance(evidence, dict) and "exact" in evidence
+                    if tool.name == "check_ncs_answer":
+                        verified = verified and evidence.get("arithmetic_verified") is True
+                    if verified:
+                        pending.set_result(deepcopy(result))
+                return result
+            finally:
+                if pending is not None and not pending.done():
+                    # Failure or cancellation must not strand a duplicate waiter.
+                    pending.set_result(None)
 
         results = await asyncio.gather(*(execute(item) for item in planned))
         terminal_text: str | None = None
+        terminal_origin: ToolResultAnswerEvent | None = None
+        verifying_arithmetic = calculation_required and not preflight_completed
+        arithmetic_results: list[bool] = []
 
         for (index, call, tool), result in zip(planned, results, strict=True):
-            if preflight_tool and call["name"] == preflight_tool and not result.failed:
+            if prerequisite_batch:
+                if result.failed or result.empty or not result.content.strip():
+                    result.failed = True
+                    result.final_text = (
+                        "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
+                        "확인할 수 있는 수치와 조건을 제공해 주세요."
+                    )
+                else:
+                    # A read can supply operands, but cannot terminate a numeric answer.
+                    result.final_text = None
+            result_origin = _literal_zero_division_answer(
+                tool, result,
+                literal_preset=running_preset and calculation_expression is not None,
+                model_attempted=model_attempted,
+            )
+            if result_origin is not None:
+                # Only a copied user literal, evaluated by our in-process calculator,
+                # can establish this fact. Never echo arguments or tool error prose.
+                result.final_text = (
+                    "0으로 나누는 계산은 정의되지 않으므로 값을 구할 수 없습니다."
+                )
+            if (
+                running_preset and calculation_required and calculation_expression is None
+                and call["name"] != preflight_tool and (result.failed or result.empty)
+            ):
+                result.final_text = (
+                    "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
+                    "확인할 수 있는 수치와 조건을 제공해 주세요."
+                )
+            if (
+                verifying_arithmetic
+                and call["name"] == preflight_tool and not result.failed
+            ):
+                try:
+                    evidence = json.loads(result.content)
+                except (ValueError, TypeError):
+                    evidence = None
+                verified = isinstance(evidence, dict) and "exact" in evidence
+                if call["name"] == "check_ncs_answer":
+                    verified = verified and evidence.get("arithmetic_verified") is True
+                if not verified:
+                    result.failed = True
+                    result.detail = "수치 검산 미완료"
+                    result.final_text = (
+                        result.final_text
+                        or "수치 검산을 완료하지 못해 답을 확정할 수 없습니다. "
+                        "계산에 필요한 조건과 단위를 확인해 주세요."
+                    )
+            if verifying_arithmetic and call["name"] == preflight_tool:
+                arithmetic_results.append(not result.failed)
+            elif preflight_tool and call["name"] == preflight_tool and not result.failed:
                 preflight_completed = True
             finding_counts: dict[tuple[str, str], int] = {}
 
@@ -881,9 +1119,14 @@ async def run_turn(
                 fetches += 1
             if terminal_text is None and result.final_text is not None:
                 terminal_text = result.final_text
+                terminal_origin = result_origin
 
+        if arithmetic_results:
+            preflight_completed = all(arithmetic_results)
         if terminal_text is not None:
             answer_text.append(terminal_text)
+            if terminal_origin is not None:
+                yield terminal_origin
             yield {"type": "delta", "text": terminal_text}
             break
 

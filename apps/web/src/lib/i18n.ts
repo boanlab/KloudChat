@@ -183,6 +183,8 @@ const EN: Record<string, string> = {
     'Auto · Classifier unavailable, keeping the quality model',
   'Auto · 개인정보 감지로 난이도 판정 생략':
     'Auto classification skipped because personal data was detected',
+  'Auto · 계산 도구 사용을 위해 품질 모델 유지':
+    'Auto · Keeping the quality model for calculation tools',
   'Auto · 기능 사용으로 품질 모델 유지':
     'Auto · Extra features used, keeping the quality model',
   'Auto · 관리 정책이 꺼져 품질 모델 유지':
@@ -204,6 +206,11 @@ const EN: Record<string, string> = {
   '요청 모델': 'Requested model',
   '선택 모델': 'Selected model',
   '실행 모델': 'Executed model',
+  '계산 도구 결과 · 0으로 나눌 수 없음': 'Calculator result · Cannot divide by zero',
+  '답변 모델 생성 없음': 'No answer-model generation',
+  '답변 {n} 크레딧': 'Answer: {n} credits',
+  '계산기가 직접 반환한 오류입니다. 답변 생성 비용만 0이며, 앞선 Auto 분류나 검색의 실행 여부와 비용은 별도입니다.':
+    'This error came directly from the calculator. Only answer generation costs zero; earlier Auto classification or search activity and costs are separate.',
   '{name} 우선순위 올리기': 'Move {name} up',
   '{name} 우선순위 내리기': 'Move {name} down',
 
