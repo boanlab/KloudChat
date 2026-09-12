@@ -259,6 +259,16 @@ def _as_grid(rows: richtext.Grid | list[list[str]]) -> richtext.Grid:
     )
 
 
+def _export_grid(rows: richtext.Grid | list[list[str]]) -> richtext.Grid:
+    """Keep structural grid rows; only unstructured rows may lose empty lines."""
+    grid = _as_grid(rows)
+    if not any(cell.text.strip() for row in grid.rows for cell in row):
+        return richtext.Grid()
+    if isinstance(rows, richtext.Grid):
+        return grid
+    return richtext.Grid(rows=[row for row in grid.rows if any(c.text.strip() for c in row)])
+
+
 def _matched(
     written: list[list[str]], grids: list[richtext.Grid], used: set[int]
 ) -> richtext.Grid | None:
@@ -293,6 +303,9 @@ def _markdown_to_lines(
     #: Numbering per list depth; deeper levels are cleared when a level closes.
     counts: dict[int, int] = {}
     rows: list[list[str]] = []
+    table_source: list[str] = []
+    plain_source: list[str] = []
+    last_row_offset = 0
     #: Grids for this section's tables, spent as they are matched.
     spare = list(grids or [])
     used: set[int] = set()
@@ -302,15 +315,32 @@ def _markdown_to_lines(
     fence: list[str] | None = None
     fence_lang = ""
 
-    def close_table() -> None:
-        nonlocal rows, ruled
+    def flush_plain() -> None:
+        if plain_source:
+            # An unmatched run keeps the original Markdown rule-row semantics.
+            # No grids are passed, so this fallback cannot recurse again.
+            out.extend(_markdown_to_lines("\n".join(plain_source)))
+            plain_source.clear()
+
+    def close_table(*, final: bool = True) -> None:
+        nonlocal rows, ruled, table_source
         ruled = False
         if rows:
             width = max(len(row) for row in rows)
             padded = [row + [""] * (width - len(row)) for row in rows]
             found = _matched(padded, spare, used)
-            out.append(("table", found or _as_grid(padded), "", 0))
-            rows = []
+            if found is not None:
+                flush_plain()
+                out.append(("table", found, "", 0))
+            elif spare:
+                plain_source.extend(table_source)
+            else:
+                plain = [row for row in padded if any(cell.strip() for cell in row)]
+                out.append(("table", _as_grid(plain), "", 0))
+        rows = []
+        table_source = []
+        if final:
+            flush_plain()
 
     for raw in (text or "").splitlines():
         line = raw.rstrip()
@@ -362,18 +392,26 @@ def _markdown_to_lines(
             if not rows:
                 close_table()
             continue
-        if _RULE.match(line) and rows:
+        if _RULE.match(line) and rows and (not spare or "-" in line):
+            # HTML grids use empty GFM rows for covered cells, not separator rules.
             # A second rule row starts a new table whose head is the row just read.
             if ruled:
                 head = rows.pop()
-                close_table()
+                head_source = table_source[last_row_offset:]
+                table_source = table_source[:last_row_offset]
+                close_table(final=False)
                 rows.append(head)
+                table_source.extend(head_source)
+                last_row_offset = 0
+            table_source.append(line)
             ruled = True
             continue
         if _ROW.match(line):
             number = 0
             counts.clear()
             rows.append(_cells(line))
+            last_row_offset = len(table_source)
+            table_source.append(line)
             continue
         close_table()
         if picture := _IMAGE.match(line):
@@ -730,9 +768,7 @@ def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "
     from docx.oxml.ns import qn
     from docx.shared import Pt
 
-    grid = richtext.Grid(
-        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
-    )
+    grid = _export_grid(rows)
     if not grid.rows:
         return
     width = grid.width
@@ -1571,9 +1607,7 @@ def _pdf_table(rows: richtext.Grid | list[list[str]], styles: dict, accent) -> T
     Cells are `Paragraph`s so long text wraps; merges are `SPAN` commands over
     the covered rectangle.
     """
-    grid = richtext.Grid(
-        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
-    )
+    grid = _export_grid(rows)
     if not grid.rows:
         return None
     width = grid.width
@@ -2424,9 +2458,7 @@ def _hwpx_table(
     (centred), or one per column. Cells covered by a merge are omitted, as OWPML
     expects. Raises on anything it cannot render so the caller falls back to lines.
     """
-    grid = richtext.Grid(
-        rows=[row for row in _as_grid(rows).rows if any(c.text.strip() for c in row)]
-    )
+    grid = _export_grid(rows)
     if not grid.rows:
         raise ValueError("빈 표")
     kept = grid.flat()
