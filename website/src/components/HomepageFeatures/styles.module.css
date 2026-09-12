@@ -1,0 +1,108 @@
+/**
+ * The feature grid: four tiles in a 12-column bed, alternating 7/5 and 5/7 so the row break falls
+ * in a different place each time. The two wide tiles carry a screenshot that runs to the tile's
+ * bottom edge; the two narrow ones lead with an icon. Same tokens, radius and motion curve as the
+ * rest of the page.
+ */
+
+.features {
+  padding: 4.5rem 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.cell {
+  min-width: 0;
+}
+.cellWide {
+  grid-column: span 7;
+}
+.cellNarrow {
+  grid-column: span 5;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1.6rem 1.6rem 0;
+  border-radius: 14px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-surface-color);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.tile:hover {
+  border-color: color-mix(in srgb, var(--ifm-color-primary) 45%, var(--ifm-color-emphasis-300));
+}
+
+/* A tile with no screenshot stretches to its neighbour's height, so the space below the text
+   would read as a hole. A wash of the page accent makes it a surface instead. */
+.cellNarrow .tile {
+  padding-bottom: 1.6rem;
+  background:
+    radial-gradient(
+      82% 68% at 12% 0%,
+      color-mix(in srgb, var(--ifm-color-primary) 11%, transparent),
+      transparent 72%
+    ),
+    var(--ifm-background-surface-color);
+}
+
+.tileIcon {
+  display: inline-flex;
+  margin-bottom: 0.85rem;
+  color: var(--ifm-color-primary);
+}
+
+.tileTitle {
+  word-break: keep-all;
+  margin: 0 0 0.5rem;
+  font-size: 1.18rem;
+  letter-spacing: -0.012em;
+}
+
+.tileDesc {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  margin: 0;
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: var(--ifm-color-content-secondary);
+}
+
+/* The screenshot sits on the tile floor, cropped at the top of the card image so the tile shows a
+   working surface rather than a shrunken full page. */
+.tileShotFrame {
+  margin: 1.4rem -1.6rem 0;
+  border-top: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-color);
+  overflow: hidden;
+  max-height: 15rem;
+}
+
+.tileShot {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2880 / 1800;
+  object-fit: cover;
+  object-position: top left;
+}
+
+@media (max-width: 996px) {
+  .features {
+    padding: 3rem 0;
+  }
+  .cellWide,
+  .cellNarrow {
+    grid-column: span 12;
+  }
+  .tileShotFrame {
+    max-height: 13rem;
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "title": {
+    "message": "KloudChat",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "KloudChat",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.사용자 가이드": {
+    "message": "User guide",
+    "description": "Navbar item with label 사용자 가이드"
+  },
+  "item.label.관리자 가이드": {
+    "message": "Administrator guide",
+    "description": "Navbar item with label 관리자 가이드"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}

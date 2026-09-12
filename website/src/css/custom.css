@@ -1,0 +1,89 @@
+/**
+ * The product's own palette, so the guide and KloudChat read as one thing. Light primary is the
+ * app's accent blue; dark mode uses its brighter blue on the same surfaces the app draws on,
+ * rather than Docusaurus's default green on grey.
+ */
+
+:root {
+  --ifm-color-primary: #2a54e4;
+  --ifm-color-primary-dark: #1c3fc4;
+  --ifm-color-primary-darker: #1a3ab4;
+  --ifm-color-primary-darkest: #152f94;
+  --ifm-color-primary-light: #4268e8;
+  --ifm-color-primary-lighter: #5375ea;
+  --ifm-color-primary-lightest: #7b95ef;
+
+  --ifm-background-color: #ffffff;
+  --ifm-background-surface-color: #fafbfd;
+  --ifm-color-emphasis-200: #ebeff8;
+  --ifm-color-emphasis-300: #d9dfec;
+  --ifm-font-color-base: #161a24;
+  --ifm-color-content-secondary: #5d6780;
+
+  --ifm-code-font-size: 92%;
+  --ifm-font-family-base: 'IBM Plex Sans KR', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-heading-font-weight: 600;
+  --ifm-navbar-shadow: 0 1px 0 var(--ifm-color-emphasis-300);
+  --docusaurus-highlighted-code-line-bg: rgba(42, 84, 228, 0.08);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #7e9cff;
+  --ifm-color-primary-dark: #5c81ff;
+  --ifm-color-primary-darker: #4b74ff;
+  --ifm-color-primary-darkest: #1a4dff;
+  --ifm-color-primary-light: #a0b7ff;
+  --ifm-color-primary-lighter: #b1c4ff;
+  --ifm-color-primary-lightest: #d4deff;
+
+  --ifm-background-color: #171b23;
+  --ifm-background-surface-color: #1e222c;
+  --ifm-color-emphasis-200: #282d39;
+  --ifm-color-emphasis-300: #30363f;
+  --ifm-font-color-base: #d6dbe6;
+  --ifm-color-content-secondary: #9099ad;
+  --ifm-navbar-shadow: 0 1px 0 #30363f;
+  --docusaurus-highlighted-code-line-bg: rgba(126, 156, 255, 0.12);
+}
+
+/* The landing hero is a CSS module (src/pages/index.module.css) built on the tokens above, so it
+   follows the site theme instead of forcing a dark band into a light page. Infima's own
+   .hero--primary is left alone for any page that still wants it. */
+
+/* Sidebar: quieter category rows, a clear active mark. */
+.menu__link {
+  font-size: 0.92rem;
+}
+.menu__link--active:not(.menu__link--sublist) {
+  background: var(--ifm-color-emphasis-200);
+  font-weight: 600;
+}
+.menu__list-item-collapsible .menu__link {
+  font-weight: 600;
+}
+
+/* Tables, code blocks and screenshots on the app's surface tone. */
+table thead tr {
+  background: var(--ifm-background-surface-color);
+}
+.markdown table {
+  display: table;
+  width: 100%;
+}
+.theme-code-block {
+  box-shadow: none;
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+.markdown img {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 8px;
+}
+
+/* The footer sits on the app's surface instead of Docusaurus's slate, so the page is one ground
+   from top to bottom. */
+.footer--dark {
+  --ifm-footer-background-color: #171b23;
+  border-top: 1px solid #30363f;
+}

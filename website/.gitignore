@@ -1,0 +1,10 @@
+# Docusaurus
+/.docusaurus
+/build
+
+# 의존성
+/node_modules
+
+# 기타
+.DS_Store
+*.log
