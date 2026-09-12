@@ -74,6 +74,10 @@ TODAY = date(2026, 9, 12)
     "가격은 100원이라고 제공했어. 제공된 가격만 알려주고 실제 현재 환율도 알려줘",
     "날씨 인사말 써줘. 그리고 내일 실제 서울 날씨도 알려줘",
     "현재 날씨 인사 문구를 작성해줘. 그리고 현재 환율을 알려줘",
+    "첨부한 가격표와 현재 실제 가격을 비교해줘",
+    "첨부한 가격표를 요약해줘. 그리고 현재 실제 가격을 알려줘",
+    "첨부한 시간표를 정리해주고 현재 실제 운행 일정도 알려줘",
+    "첨부한 가격표를 현재 실제 가격과 비교해서 요약해줘",
 ])
 def test_mutable_fact_requires_current_evidence_across_domains(question):
     assert current_fact_required(question, as_of=TODAY)
@@ -116,6 +120,10 @@ def test_mutable_fact_requires_current_evidence_across_domains(question):
     "날씨 인사말 써줘",
     "현재 날씨 인사 문구를 작성해줘",
     "Write a weather greeting",
+    "첨부한 가격표를 요약해줘",
+    "첨부한 시간표 정리해줘",
+    "업로드한 가격표에서 금액을 추출해줘",
+    "첨부된 현재 가격표를 영어로 번역해줘",
 ])
 def test_stable_or_nonfactual_requests_do_not_get_a_freshness_gate(question):
     assert not current_fact_required(question, as_of=TODAY)

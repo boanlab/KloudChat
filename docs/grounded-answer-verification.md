@@ -154,7 +154,7 @@ failed with search OFF, so such a result is not counted as resolved by adding a 
 
 ### Real Qwen recheck
 
-The final source revision passed the full offline API suite: **3,306 passed,
+The final source revision passed the full offline API suite: **3,314 passed,
 1 skipped, 11 existing warnings**. The offline guard blocked 82 socket attempts
 and recorded zero real HTTP requests. API Ruff and `git diff --check` passed.
 These regressions test the boundary, stream/store consistency and existing

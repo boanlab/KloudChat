@@ -563,6 +563,11 @@ _FACT_SUPPLIED_ONLY = re.compile(
     r"(?:현재\s+)?(?:가격|상태|값|수치|정보|내용|자료)만(?:\s+그대로)?"
     r"(?:\s*(?:알려|말해|적어|출력해|반환해)(?:줘|주세요|라)?)?$",
 )
+_FACT_ATTACHED_SOURCE = re.compile(r"^(?:첨부(?:한|된)|업로드한|올린|붙인|보낸)\s*")
+_FACT_ATTACHED_TRANSFORM = re.compile(
+    r"(?:요약|정리|번역|추출)(?:해(?:줘|주세요|주)?|하(?:라|세요))$",
+)
+_FACT_VERIFICATION_REQUEST = re.compile(r"확인|검증|검색|조회|비교|찾아")
 
 
 def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
@@ -591,6 +596,12 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
             continue
         if _FACT_SUPPLIED_ONLY.fullmatch(clause) and (
             supplied_fact or not clause.startswith("그 ")
+        ):
+            continue
+        if (
+            _FACT_ATTACHED_SOURCE.search(clause)
+            and _FACT_ATTACHED_TRANSFORM.search(clause)
+            and not _FACT_VERIFICATION_REQUEST.search(clause)
         ):
             continue
         switched = _DECLINED_TOPIC.search(clause)
