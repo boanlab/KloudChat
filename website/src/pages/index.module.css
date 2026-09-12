@@ -1,0 +1,347 @@
+/**
+ * Landing page. Everything here is built on the Infima tokens already defined in custom.css, so
+ * the page follows the site theme instead of carrying its own palette. One accent (the console's
+ * teal), one radius scale (14px surfaces, 8px controls), one motion curve.
+ */
+
+.revealItem {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.revealItem[data-revealed='true'] {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .revealItem {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────────────────────────── */
+/* Asymmetric split: the copy holds the left, the console holds the right and runs past the
+   container edge, so the screenshot reads as a live surface rather than a framed picture. */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 4.5rem 0 4rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-color);
+}
+
+/* One soft wash of the accent behind the screenshot. No second hue anywhere on the page. */
+.heroGlow {
+  position: absolute;
+  inset: -30% -20% auto 30%;
+  height: 120%;
+  pointer-events: none;
+  background: radial-gradient(
+    58% 52% at 60% 38%,
+    color-mix(in srgb, var(--ifm-color-primary) 13%, transparent),
+    transparent 70%
+  );
+}
+
+/* Wider than Infima's default container: the console shot needs the room, and the copy column is
+   capped separately so the headline never stretches into an unreadable line. */
+.heroInner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 14fr);
+  gap: clamp(2rem, 4vw, 4rem);
+  align-items: center;
+  max-width: 1560px;
+}
+
+.heroCopy {
+  max-width: 34rem;
+}
+
+.heroTitle {
+  margin: 0 0 1rem;
+  font-size: clamp(2.1rem, 4.4vw, 3.1rem);
+  line-height: 1.2;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+  /* Korean breaks at word boundaries, not between syllables of one word. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.heroSub {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  margin: 0 0 1.85rem;
+  max-width: 34rem;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--ifm-color-content-secondary);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.ctaPrimary,
+.ctaGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.72rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.98rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+/* White on the deep teal in light mode, near-black on the bright teal in dark: both stay well
+   past AA on their own fill. */
+.ctaPrimary {
+  background: var(--ifm-color-primary);
+  color: #fff;
+  border: 1px solid var(--ifm-color-primary);
+}
+:global([data-theme='dark']) .ctaPrimary {
+  color: #171b23;
+}
+.ctaPrimary:hover {
+  background: var(--ifm-color-primary-dark);
+  border-color: var(--ifm-color-primary-dark);
+  color: #fff;
+  text-decoration: none;
+}
+:global([data-theme='dark']) .ctaPrimary:hover {
+  color: #171b23;
+}
+.ctaPrimary:active {
+  transform: translateY(1px);
+}
+
+.ctaGhost {
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+.ctaGhost:hover {
+  background: var(--ifm-background-surface-color);
+  border-color: var(--ifm-color-emphasis-300);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+}
+.ctaGhost:active {
+  transform: translateY(1px);
+}
+
+/* ── Quickstart ───────────────────────────────────────────────────────────────────────────── */
+
+.quickstart {
+  padding: 4.5rem 0;
+  background: var(--ifm-background-surface-color);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+}
+
+.quickstartInner {
+  max-width: 58rem;
+}
+
+.sectionTitle {
+  word-break: keep-all;
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.5rem, 2.6vw, 1.95rem);
+  letter-spacing: -0.018em;
+}
+
+.sectionLede {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  margin: 0 0 1.6rem;
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--ifm-color-content-secondary);
+}
+
+/* Two plain lists side by side: what goes in, what comes out. A table would draw more lines than
+   the content needs, and these are four rows and two rows. */
+.formats {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 1.4rem 2.6rem;
+  padding: 1.5rem 1.6rem;
+  border-radius: 14px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-color);
+}
+
+.formatCol {
+  min-width: 0;
+}
+
+.formatHead {
+  margin: 0 0 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary);
+}
+
+.formatList {
+  margin: 0;
+}
+
+.formatList dt {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.formatList dd {
+  word-break: keep-all;
+  margin: 0.1rem 0 0.8rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--ifm-color-content-secondary);
+}
+
+.formatList dd:last-child {
+  margin-bottom: 0;
+}
+
+.commandNote {
+  word-break: keep-all;
+  margin: 1rem 0 0;
+  font-size: 0.88rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+/* ── Documentation map ────────────────────────────────────────────────────────────────────── */
+/* Four routes into the docs. Rows, not tiles: the feature grid above already owns that shape. */
+
+.docMap {
+  padding: 3.5rem 0 4.5rem;
+}
+
+.docList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.docItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 1rem 1rem 1.05rem;
+  border-radius: 14px;
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  transition:
+    background-color 0.18s ease,
+    transform 0.18s ease;
+}
+.docItem:hover {
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+}
+.docItem:hover .docArrow {
+  opacity: 1;
+  transform: translateX(2px);
+}
+.docItem:active {
+  transform: translateY(1px);
+}
+
+.docIcon {
+  display: inline-flex;
+  flex: none;
+  margin-top: 0.1rem;
+  color: var(--ifm-color-primary);
+}
+
+.docText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.docTitle {
+  font-weight: 600;
+  font-size: 0.98rem;
+}
+
+.docDesc {
+  word-break: keep-all;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ifm-color-content-secondary);
+}
+
+.docArrow {
+  flex: none;
+  margin: 0.25rem 0 0 auto;
+  color: var(--ifm-color-primary);
+  opacity: 0;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 996px) {
+  .hero {
+    padding: 3rem 0 2.5rem;
+  }
+  .heroInner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.25rem;
+  }
+  .heroCopy {
+    max-width: none;
+  }
+  .heroGlow {
+    inset: -20% -30% auto -10%;
+  }
+  .docList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .formats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quickstart {
+    padding: 3rem 0;
+  }
+  .docMap {
+    padding: 2.5rem 0 3.5rem;
+  }
+  .docList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ctaPrimary,
+  .ctaGhost {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

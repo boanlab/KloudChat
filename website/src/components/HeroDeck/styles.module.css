@@ -1,0 +1,160 @@
+/**
+ * 화면 모음. 한 장이 가운데 서고 앞뒤 장이 양옆에 걸쳐 보인다.
+ *
+ * 각 장은 무대 위에 겹쳐 두고 가운데에서 좌우로 밀어 배치한다. flex 로 늘어놓고 통째로
+ * 움직이는 방법은 % 단위가 track 너비를 기준으로 잡혀 셈이 꼬이므로 쓰지 않았다.
+ *
+ * 셈은 이렇다. 무대 너비를 W 라 하면 한 장은 0.74W 이고, 옆 장은 자기 너비의 56% 만큼
+ * 밀리므로 중심이 0.5W + 0.414W 에 온다. 가운데 장의 오른쪽 끝이 0.87W 이므로 옆 장은
+ * 0.14W 정도만 보인다. 무대 높이는 한 장의 높이에 맞춘다. 2880 / 1800 = 1.6 이므로
+ * 0.74W / 1.6 = 0.4625W, 즉 무대 비율은 1 대 0.4625 다.
+ */
+
+.deck {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.stage {
+  position: relative;
+  aspect-ratio: 1 / 0.4625;
+  border-radius: 4px;
+  outline-offset: 6px;
+  /* 옆 장은 무대 밖으로 흘러 나가야 "더 있다"는 표시가 된다. 가로만 자르고 세로는 열어
+     두어야 가운데 장의 그림자가 살아 있다. clip 과 visible 조합은 이 목적으로 허용된다. */
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.slide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 74%;
+  margin: 0;
+  border-radius: 14px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-surface-color);
+  overflow: hidden;
+  transform: translate(-50%, -50%) translateX(calc(var(--off) * 56%)) scale(0.9);
+  transform-origin: center;
+  transition:
+    transform 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.42s ease;
+}
+
+.slide[data-state='active'] {
+  z-index: 3;
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  box-shadow: 0 24px 60px -28px color-mix(in srgb, var(--ifm-color-primary) 42%, transparent);
+}
+
+.slide[data-state='near'] {
+  z-index: 2;
+  opacity: 0.5;
+}
+
+/* 옆옆 장은 그리지 않는다. 겹쳐 둔 채 투명하게만 두면 가운데 장의 그림자가 탁해진다. */
+.slide[data-state='far'] {
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 2880 / 1800;
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  box-shadow: 0 6px 18px -10px rgba(0, 0, 0, 0.45);
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.arrow:hover {
+  background: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
+  color: #fff;
+}
+
+.arrow:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.arrowPrev {
+  left: 0;
+}
+
+.arrowNext {
+  right: 0;
+}
+
+.dots {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.dot {
+  width: 1.6rem;
+  height: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ifm-color-emphasis-300);
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.dot[data-on='true'] {
+  background: var(--ifm-color-primary);
+}
+
+.dot:hover {
+  background: color-mix(in srgb, var(--ifm-color-primary) 60%, var(--ifm-color-emphasis-300));
+}
+
+@media (max-width: 996px) {
+  .slide {
+    width: 84%;
+  }
+  .stage {
+    aspect-ratio: 1 / 0.525;
+  }
+  .arrow {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide {
+    transition: none;
+  }
+  .arrow,
+  .dot {
+    transition: none;
+  }
+}
