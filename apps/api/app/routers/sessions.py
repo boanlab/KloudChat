@@ -83,6 +83,7 @@ from app.services import (
     artifact_extract,
     audiogen,
     chart_code,
+    current_evidence,
     design_templates,
     figures,
     freshness,
@@ -2437,8 +2438,11 @@ async def send_message(
     ):
         # Auto is not renewed consent for the same explicitly offline question.
         effective_web_search, forced_tool = False, None
-    fresh_fact = freshness.fresh_fact_required(content) or fresh_followup_index is not None
-    if fresh_fact and effective_web_search:
+    fresh_fact = freshness.current_fact_required(content) or (
+        fresh_followup_index is not None
+        and freshness.current_fact_required(history[fresh_followup_index].content)
+    )
+    if fresh_fact and effective_web_search and forced_tool != "weather":
         # The request is for a current fact, not for the model to decide whether
         # verification is necessary. Availability is checked again after privacy.
         forced_tool = "web_search"
@@ -3037,7 +3041,10 @@ async def send_message(
             if fresh_followup_index is not None else content
         )
         preset_call = (
-            "web_search", {"query": search_query(lookup_content), **search_hints(lookup_content)},
+            "web_search", {
+                "query": search_query(lookup_content, prefer_primary=fresh_fact),
+                **search_hints(lookup_content),
+            },
         )
     elif forced_tool == "weather" and "weather" in tool_names:
         place = weather_location(content)
@@ -3378,7 +3385,9 @@ async def _run_turn(
         async for event in _until_stopped(
             agent_service.run_turn(
                 model["id"],
-                freshness.with_answer_policy(messages, model),
+                freshness.with_answer_policy(
+                    messages, model, current_fact=bool(freshness_request),
+                ),
                 tools,
                 ctx,
                 tool_definitions=tool_definitions,
@@ -3952,6 +3961,11 @@ async def compare_models(
         untrusted_context=untrusted_context,
     )
 
+    previous_fact = _freshness_followup_index(history, session.id, content)
+    comparison_current_fact = freshness.current_fact_required(content) or (
+        previous_fact is not None
+        and freshness.current_fact_required(history[previous_fact].content)
+    )
     return StreamingResponse(
         _heartbeat(
             _run_comparison(
@@ -3960,6 +3974,7 @@ async def compare_models(
                 session_id=session.id,
                 models=chosen,
                 messages=messages,
+                current_fact_request=content if comparison_current_fact else None,
                 skills_event=workspace.skills_event(),
                 context_steps=_context_steps(workspace),
                 routing=resolved.routing,
@@ -3985,6 +4000,7 @@ async def _run_comparison(
     session_id: str,
     models: list[dict],
     messages: list[dict],
+    current_fact_request: str | None = None,
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
     routing: dict,
@@ -4018,9 +4034,16 @@ async def _run_comparison(
     async def run(model: dict) -> None:
         slot = results[model["id"]]
         try:
+            envelope = freshness.with_answer_policy(
+                messages, model, current_fact=True if current_fact_request else None,
+            )
+            if current_fact_request:
+                envelope[0]["content"] += (
+                    "\n\n" + current_evidence.instruction(current_fact_request)
+                )
             async for event in chat_service.stream_completion(
                 model["id"],
-                freshness.with_answer_policy(messages, model),
+                envelope,
                 user_id,
                 api_key,
                 strict_local=_strict_model(model),
@@ -4028,14 +4051,16 @@ async def _run_comparison(
             ):
                 if event["type"] == "delta":
                     slot["content"] += event["text"]
-                    await queue.put(
-                        {"type": "variant", "model": model["id"], "text": event["text"]}
-                    )
+                    if not current_fact_request:
+                        await queue.put(
+                            {"type": "variant", "model": model["id"], "text": event["text"]}
+                        )
                 elif event["type"] == "retract":
                     slot["content"] = slot["content"].replace(event["text"], "", 1)
-                    await queue.put(
-                        {"type": "variant_retract", "model": model["id"], "text": event["text"]}
-                    )
+                    if not current_fact_request:
+                        await queue.put(
+                            {"type": "variant_retract", "model": model["id"], "text": event["text"]}
+                        )
                 elif event["type"] == "usage":
                     slot["usage"] = {k: v for k, v in event.items() if k != "type"}
                 elif event["type"] == "model_route":
@@ -4050,6 +4075,15 @@ async def _run_comparison(
             log.warning("comparison column failed (%s): %s", model["id"], exc)
             slot["error"] = "모델 응답을 받지 못했습니다."
         finally:
+            if current_fact_request:
+                slot["content"] = (
+                    "" if slot["error"]
+                    else current_evidence.render(slot["content"], current_fact_request)
+                )
+                if slot["content"]:
+                    await queue.put({
+                        "type": "variant", "model": model["id"], "text": slot["content"],
+                    })
             if slot["content"].strip() and not slot["error"]:
                 request_text = next(
                     (str(m.get("content") or "") for m in reversed(messages)

@@ -27,12 +27,13 @@ The later user feedback on 2026-09-12 supersedes the blanket notice policy in
 Greetings, straightforward arithmetic, translations and established explanations
 should be direct. An unknown training cutoff alone is not evidence of uncertainty.
 
-The model is instructed to identify only materially unresolved claims and explain
+The initial conditional revision instructed the model to identify unresolved claims and explain
 why: missing evidence, conflicting sources, estimates or possibly changed facts.
 A training-cutoff notice is requested only for material freshness uncertainty,
-not for every missing input or estimate. No question-keyword confidence classifier,
-additional judge call or verification retry is introduced. The model's judgment
-can still be wrong; this is not a calibrated factual-confidence detector.
+not for every missing input or estimate. Real Qwen testing then demonstrated that
+this instruction alone still produced confidently wrong present facts. The current
+revision adds the narrowly scoped current-evidence boundary below. It does not
+add a confidence score, judge model or automatic verification retry.
 
 The server only normalizes an already-generated, recognized trailing notice:
 duplicates (including the Korean variant without the initial `다만`) become one
@@ -92,8 +93,10 @@ accounting asymmetry is unchanged and is not a billing fix in this PR.
 
 ## Verification
 
-Source: conditional revision of PR #184, parent `31b68a5`, upstream/main `f537972`.
-Earlier full-suite and live-model figures describe earlier revisions, not this one.
+The table below records the earlier conditional revision `e45f87d`, parent
+`31b68a5`, upstream/main `f537972`. These figures are historical, not proof that
+actual Qwen followed the policy. The subsequent user experiment and live baseline
+reproduced the wrong answer even though these mocks passed.
 
 | Check | Result | Scope |
 | --- | --- | --- |
@@ -113,6 +116,72 @@ one notice; both model label and conversation title identify synthetic data.
 These mocks validate rendering, not actual Qwen uncertainty judgment. No model
 completion is required by these code/browser regression tests.
 
+## Current evidence boundary
+
+- Select materially time-sensitive requests across officeholders, prices, rates,
+  versions, schedules and other mutable facts. A lexical request boundary is not
+  a confidence estimator or a truth classifier. Stable arithmetic, greetings,
+  definitions, historical questions and quoted transformations remain ordinary turns.
+- Preserve authoritative request context through short follow-ups and multimodal
+  envelopes. On current-fact rechecks, omit old assistant current-fact prose from
+  the model-input copy only. Stored conversations and user requests are unchanged.
+- When search is permitted, prefer primary-source wording in the query using its
+  own language, without assuming the answer or an authority domain. This is a
+  retrieval hint, not proof of relevance, authority or freshness. Weather retains
+  its dedicated tool. Search OFF and strict-local remain binding.
+- Discard pre-tool current-fact drafts from both the visible stream and subsequent
+  model input. Successful searches also receive explicit grounding instructions.
+  All system instructions stay in the first message for local template compatibility.
+- Do not manufacture a citation from a copied title or append uncited search URLs
+  under a verified-source heading. Explicit source numbers remain clickable, but
+  link membership alone is never recorded as semantic verification.
+- Until a permitted read returns material, constrain current-fact answers to a
+  short labelled past fact and a server-written current-unverified status. Parse
+  only the bounded dated past field, never the model's current-value field or
+  other prose. Disallow current/future dates, present-tense claims and links in
+  that field. Copying the format instructions does not erase an otherwise valid
+  past field. The retained field is explicitly remembered, unverified information.
+- Successful, sanitized read-only MCP results may provide material too; failed,
+  empty, write/unknown tools, code execution and calculator term arithmetic do
+  not lift this boundary. NCS preflight remains separate. Comparison columns,
+  which have no retrieval tools, use the same display boundary for current facts.
+
+The user-reported failure was reproduced with the real catalogue-selected Qwen:
+the returned search hits were largely about other historical figures, aircraft
+and broad political commentary, not direct evidence for the present officeholder.
+The old assistant answer then anchored the next answer. Prompt-only fixes still
+failed with search OFF, so such a result is not counted as resolved by adding a caveat.
+
+### Real Qwen recheck
+
+The final source revision passed the full offline API suite: **3,306 passed,
+1 skipped, 11 existing warnings**. The offline guard blocked 82 socket attempts
+and recorded zero real HTTP requests. API Ruff and `git diff --check` passed.
+These regressions test the boundary, stream/store consistency and existing
+behavior, not model factual accuracy.
+
+The final bounded service run used the live catalogue's `local/qwen3.6-35b`,
+`disable_fallbacks=true`, real builtin web search, product query construction,
+and raw-model versus emitted-delta capture. It made eight model requests with
+10,607 input and 281 output tokens. There were no title, memory, judge or media
+calls and no product database writes in this service harness.
+
+| Case | Observed result |
+| --- | --- |
+| Present officeholder, search ON, previously wrong history | Correct current answer supported by retrieved text; no fabricated source appendix; model still omitted inline source numbers |
+| Same question, search OFF, fresh and previously wrong history | Dated past appointment/election information retained, present state explicitly unverified; no current-value guess emitted |
+| Latest software version and current company CEO, search OFF | Present state explicitly unverified; unsupported or present-tense draft not emitted |
+| `1+1`, `0+0`, Korean greeting | All three normal answers, no added caveat |
+
+This is **one current answer, four current-unverified answers (two with retained
+past background), and three ordinary answers**, not eight factual answers proved
+correct. All four unverified-current cases emitted no raw current-value guess,
+including transient deltas. Earlier iterations failed and are not hidden: prompt
+changes alone still guessed, and an added noninitial system message produced two
+HTTP 400 responses before the Qwen-compatible initial-system merge was fixed.
+Catalogue app credit rates were zero. Provider billing and physical model locality
+were not independently audited; the catalogue labels this alias `hybrid`.
+
 ## Limits and merge guidance
 
 This is hallucination mitigation and transparent uncertainty, not a universal
@@ -120,6 +189,14 @@ truth detector. A disclaimer cannot make an unsupported answer correct. No
 real-Qwen hallucination reduction percentage, provider-locality proof or general
 factual-correctness result is claimed. Earlier political-abstention trials are
 historical and cannot be reused as evidence for this new behavior.
+
+The lexical selector does not cover every paraphrase. Retrieved material can be
+irrelevant, outdated or wrong, and a model may fail to cite it despite instructions.
+The short dated-memory field is not semantic verification; it may still contain
+an incorrect historical fact. An unsupported mixed request such as a definition
+plus a current value can be over-constrained and lose the general explanation.
+The boundary deliberately does not label these limitations as a solved universal
+hallucination or calibrated confidence problem.
 
 PR #183 is still separate. When resolving shared session/agent code, preserve
 its required calculation gate, read prerequisites and tool-origin answers.

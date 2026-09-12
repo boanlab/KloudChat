@@ -444,7 +444,7 @@ _WEATHER_WORDS = re.compile(
 )
 
 
-def search_query(request: str) -> str:
+def search_query(request: str, *, prefer_primary: bool = False) -> str:
     """The user's sentence as a search query: request phrasing trimmed, capped."""
     text = re.sub(r"\s+", " ", _HINT_PHRASES.sub(" ", request or "").strip())
     for _ in range(4):
@@ -456,7 +456,14 @@ def search_query(request: str) -> str:
             break
         text = peeled
     text = _DANGLING_UNIT.sub("", _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,")))
-    return (text or (request or "").strip())[:120]
+    query = (text or (request or "").strip())[:120]
+    if prefer_primary and not _HINT_SITE.search(request or "") and not _HINT_OFFICIAL.search(query):
+        # Improve retrieval without assuming a country, authority domain or answer.
+        # Mixing an English cue into a Korean query can select the wrong search lane.
+        hint = "공식" if _HANGUL.search(request or "") else "official"
+        if hint not in query:
+            query = query[:120 - len(hint) - 1].rstrip() + " " + hint
+    return query
 
 
 def weather_location(request: str) -> str | None:

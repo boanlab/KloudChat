@@ -145,7 +145,7 @@ async def test_a_link_no_tool_returned_is_named_as_unverified(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -> None:
+async def test_uncited_search_links_are_not_presented_as_verified_sources(monkeypatch) -> None:
     """검색한 답에는 모델이 잊어도 실제 도구 URL이 남는다."""
     seen: list[dict] = []
 
@@ -198,10 +198,9 @@ async def test_search_sources_are_kept_when_the_model_omits_links(monkeypatch) -
         )
     ]
     text = "".join(e["text"] for e in events if e["type"] == "delta")
-    assert "### 확인한 출처" in text
-    assert "example.go.kr · 2026" in text
-    assert "https://example.go.kr/policy/2026" in text
-    assert "https://journal.example.org/article/42" in text
+    assert "### 확인한 출처" not in text
+    assert "https://example.go.kr/policy/2026" not in text
+    assert "https://journal.example.org/article/42" not in text
 
 
 @pytest.mark.asyncio

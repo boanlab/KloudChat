@@ -206,7 +206,7 @@ def test_the_prompt_asks_for_numbers_not_urls() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_copied_title_is_cited_when_the_model_cited_nothing(monkeypatch) -> None:
+async def test_a_copied_title_does_not_invent_a_citation(monkeypatch) -> None:
     global _SEARCHES
     _SEARCHES = iter(
         [
@@ -221,13 +221,14 @@ async def test_a_copied_title_is_cited_when_the_model_cited_nothing(monkeypatch)
     ]
     _, events = await _collect(monkeypatch, [_calls("web_search", {"query": "검색"}), answer])
     text = _final_text(events)
-    assert "탑재** [[1]](https://www.dt.co.kr/a/1)\n" in text
-    assert "### 출처\n- [1] [dt.co.kr · 1](https://www.dt.co.kr/a/1)" in text
+    assert "탑재**\n" in text
+    assert "[[1]]" not in text
+    assert "### 출처" not in text
     assert "ad.example.com" not in text
 
 
 @pytest.mark.asyncio
-async def test_the_fallback_source_list_is_the_search_hits_not_page_links(monkeypatch) -> None:
+async def test_uncited_hits_and_page_links_are_not_automatically_endorsed(monkeypatch) -> None:
     global _SEARCHES
     _SEARCHES = iter(
         [
@@ -239,7 +240,8 @@ async def test_the_fallback_source_list_is_the_search_hits_not_page_links(monkey
     answer = [_content("답입니다."), "data: [DONE]"]
     _, events = await _collect(monkeypatch, [_calls("web_search", {"query": "검색"}), answer])
     text = _final_text(events)
-    assert "### 확인한 출처\n- [news.example.com · 1](https://news.example.com/a/1)" in text
+    assert "### 확인한 출처" not in text
+    assert "news.example.com" not in text
     assert "wikipedia" not in text
     assert "suwon" not in text
 

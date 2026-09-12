@@ -174,13 +174,54 @@ def answer_instruction(model: dict[str, Any], *, structured: bool = False) -> st
     return FRESHNESS_INSTRUCTION + "\n" + source + "\n" + ending
 
 
-def with_answer_policy(messages: list[dict], model: dict[str, Any]) -> list[dict]:
+CURRENT_FACT_INSTRUCTION = (
+    "This turn asks for a fact whose present state can change. Before answering, "
+    "check whether evidence supplied or retrieved IN THIS TURN actually establishes "
+    "that present state. Earlier assistant answers are not evidence.\n"
+    "- With relevant evidence: give the directly supported answer briefly, cite the "
+    "supporting passage and its date, and prefer a relevant primary source over "
+    "old memory. Do not add remembered dates, names or statistics the evidence does "
+    "not support. A link or matching topic alone does not verify the answer.\n"
+    "- Without relevant evidence: explicitly say the current value is unverified. "
+    "Still give useful established background or a clearly dated last-known fact "
+    "when you know it. Do NOT rephrase a last-known fact as 'currently', 'today' "
+    "or 'as of' the system date. Do not guess a current officeholder, price, version "
+    "or schedule. In particular, a past appointment plus a normal term length "
+    "does not establish continued service.\n"
+    "- Keep this answer concise. Search OFF and strict-local remain binding. "
+    "A disclaimer at the end cannot make an unsupported current claim acceptable."
+)
+
+
+def with_answer_policy(
+    messages: list[dict], model: dict[str, Any], *, current_fact: bool | None = None,
+) -> list[dict]:
     """Copy the envelope; never mutate another comparison column's instructions."""
     policy = answer_instruction(model)
     result = [dict(message) for message in messages]
+    latest = next((message.get("content") for message in reversed(result)
+                   if message.get("role") == "user"), "")
+    current_turn = (
+        current_fact if current_fact is not None
+        else isinstance(latest, str) and current_fact_required(latest)
+    )
+    previous_current_question = False
     for message in result:
+        if message.get("role") == "user":
+            content = message.get("content")
+            previous_current_question = isinstance(content, str) and (
+                current_fact_required(content)
+                or previous_current_question and is_same_fact_followup(content)
+            )
         if message.get("role") == "assistant" and isinstance(message.get("content"), str):
             message["content"] = _without_trailing_notices(message["content"])[0]
+            if current_turn and previous_current_question and not message.get("tool_calls"):
+                # Remove only old current-fact prose from this wire envelope;
+                # the stored conversation, user requests and tool results stay intact.
+                message["content"] = (
+                    "[Earlier assistant current-fact answer omitted: it is not "
+                    "independent evidence for the present state.]"
+                )
     if result and result[0].get("role") == "system":
         existing = str(result[0].get("content") or "")
         if FRESHNESS_INSTRUCTION in existing:
@@ -188,6 +229,8 @@ def with_answer_policy(messages: list[dict], model: dict[str, Any]) -> list[dict
         result[0]["content"] = existing + "\n\n" + policy
     else:
         result.insert(0, {"role": "system", "content": policy})
+    if current_turn:
+        result[0]["content"] += "\n\n" + CURRENT_FACT_INSTRUCTION
     return result
 
 _LIVE = re.compile(
@@ -444,3 +487,154 @@ def abstention_response(request: str) -> str:
         "it as a present fact. Provide a current official source or verify it in an "
         "environment where search is allowed."
     )
+
+
+# A freshness boundary is narrower than a general search hint: "now" alone
+# must not turn arithmetic, small talk or a text transformation into a live fact.
+_MUTABLE_ROLE = re.compile(
+    r"대표(?:이사)?|회장|총장|장관|감독|선수단|재임|재직|"
+    r"\b(?:CEO|chairperson|chairman|chancellor|minister|coach|officeholder|leader)"
+    r"(?=$|[^A-Za-z0-9_])",
+    re.I,
+)
+_MUTABLE_VALUE = re.compile(
+    r"가격|시세|환율|주가|주식\s*시장|금리|기준금리|물가|요금|수수료|"
+    r"날씨|기온|강수|미세먼지|예보|"
+    r"버전|릴리스|출시|업데이트|지원\s*종료|단종|"
+    r"일정|시간표|영업\s*시간|운영\s*시간|마감|접수|신청\s*기간|"
+    r"순위|순위표|득점|경기\s*결과|우승(?:팀|자)?|대회\s*결과|선거\s*결과|"
+    r"확진자|환자\s*수|인구|실업률|취업률|통계|"
+    r"입국\s*(?:규정|조건|요건)|비자\s*(?:규정|요건)|"
+    r"\b(?:price|exchange\s+rate|stock\s+price|interest\s+rate|inflation|fee|"
+    r"weather|forecast|temperature|version|release|update|schedule|timetable|deadline|"
+    r"opening\s+hours|ranking|standings|score|winner|population|unemployment|"
+    r"entry\s+requirements|visa\s+requirements)s?\b",
+    re.I,
+)
+_MUTABLE_STATUS = re.compile(
+    r"현황|상태|소식|뉴스|동향|정책|법령|법률|규정|제도|사양|실적|매출|"
+    r"\b(?:status|news|policy|law|regulation|specifications|revenue|earnings)\b",
+    re.I,
+)
+_CURRENT_TIME = re.compile(
+    r"올해|이번\s*[주달]|내일|모레|내년|예정|최신판|시행\s*중|"
+    r"\b(?:tomorrow|upcoming|this\s+(?:week|month|year)|next\s+year)\b",
+    re.I,
+)
+_FACT_DEFINITION = re.compile(
+    r"(?:의\s*)?(?:정의|개념|원리|계산법|계산\s*방법|뜻)(?:은|는|이|을|를|이란|\s|[?？]|$)|"
+    r"(?:가격|환율|금리|주가|물가|날씨|인구|통계|버전)(?:이란|란)|"
+    r"\b(?:definition|meaning|principle|concept|formula)\b|"
+    r"\b(?:what\s+is\s+(?:a|an)\s+|how\s+(?:do|does)\b.*\bwork\b)",
+    re.I,
+)
+_FACT_CREATIVE = re.compile(
+    r"소설|동화|가상|허구|인사말|인사\s*문구|시를|시\s*(?:써|작성|지어)|"
+    r"\b(?:fictional|fiction|poem|story|novel|greeting|salutation)\b",
+    re.I,
+)
+_FACT_CREATE_VERB = re.compile(
+    r"만들|설정|써|작성|지어|가정|\b(?:write|invent|imagine|compose)\b", re.I,
+)
+_FACT_TRANSFORM_ONLY = re.compile(
+    r"^\s*(?:(?:다음\s*)?(?:문장|자료|글|텍스트)(?:만|을|를)?\s*"
+    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)|"
+    r"(?:please\s+)?(?:translate|summarize)(?:\s|:))",
+    re.I,
+)
+_FACT_YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})(?:\s*년|\b)")
+_FACT_VALUE_ASK = re.compile(
+    r"얼마|몇|언제|어디|알려|말해|확인|검색|찾아|조회|비교|뭐|무엇|어때|인가|입니까|"
+    r"\b(?:what|which|when|where|how\s+much|tell|find|check|compare|show|lookup)\b",
+    re.I,
+)
+_FACT_CLAUSE = re.compile(
+    r"[.!?;\n]|\b(?:and|but|also)\b|그리고|하지만|그런데|"
+    # Coordinate requests separately, but do not split the noun "결과".
+    r"(?<!결)(?:와|과)\s+|(?:알려|말해|설명해)(?:주)?고\s+|"
+    r"고\s+(?=현재|지금|실제|최신|오늘|이번|요즘|최근)",
+    re.I,
+)
+_FACT_SUPPLIED_STATEMENT = re.compile(
+    r"(?:이)?라고\s*(?:제공|전달)했(?:어|다|습니다)$",
+)
+_FACT_SUPPLIED_ONLY = re.compile(
+    r"^(?:(?:제공된|주어진|제공한|전달한|제시된|내가\s*준)\s+|그\s+)"
+    r"(?:현재\s+)?(?:가격|상태|값|수치|정보|내용|자료)만(?:\s+그대로)?"
+    r"(?:\s*(?:알려|말해|적어|출력해|반환해)(?:줘|주세요|라)?)?$",
+)
+
+
+def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
+    """Select mutable present facts, not model confidence or answer truth.
+
+    Inspect only the latest user request. This conservative lexical boundary is
+    intentionally not a classifier for every possible factual uncertainty.
+    """
+    if not isinstance(request, str):
+        return False
+    reference_year = (as_of or datetime.now(UTC).date()).year
+    text = without_quoted_transform_sources(unicodedata.normalize("NFC", request))
+    # Remove a discarded topic before clause splitting can split its final "고".
+    for switched in reversed(list(_DECLINED_TOPIC.finditer(text))):
+        start = max(text.rfind(mark, 0, switched.start()) for mark in ".!?;\n") + 1
+        if not _AFFIRMATIVE_REQUEST.search(text[start:switched.start()]):
+            text = text[:start] + " " * (switched.end() - start) + text[switched.end():]
+    supplied_text = False
+    supplied_fact = False
+    for part in _FACT_CLAUSE.split(text):
+        clause = part.strip()
+        if not clause:
+            continue
+        if _FACT_SUPPLIED_STATEMENT.search(clause):
+            supplied_fact = True
+            continue
+        if _FACT_SUPPLIED_ONLY.fullmatch(clause) and (
+            supplied_fact or not clause.startswith("그 ")
+        ):
+            continue
+        switched = _DECLINED_TOPIC.search(clause)
+        if switched and not _AFFIRMATIVE_REQUEST.search(clause[:switched.start()]):
+            clause = clause[switched.end():].strip()
+        supplied_header = _SUPPLIED_TEXT.search(clause)
+        if supplied_header:
+            supplied_text = True
+            clause = clause[:supplied_header.start()].strip()
+        elif supplied_text:
+            if not _DIRECT_REQUEST.search(clause):
+                continue
+            supplied_text = False
+        if not clause or _FACT_TRANSFORM_ONLY.search(clause):
+            continue
+        if (
+            _FACT_CREATIVE.search(clause)
+            and _FACT_CREATE_VERB.search(clause)
+            and not _REAL.search(clause)
+        ):
+            continue
+        declined = _DECLINED_FACT.search(clause)
+        if declined and not _AFFIRMATIVE_REQUEST.search(clause[:declined.start()]):
+            continue
+        if _FACT_DEFINITION.search(clause) or _ROLE.search(clause):
+            continue
+        dated = _DATED_PRESENT.sub(
+            lambda match: match[1] if int(match[2]) < reference_year else match[0], clause,
+        )
+        live = bool(_LIVE.search(_NEGATED_PRESENT.sub("", dated)) or _CURRENT_TIME.search(dated))
+        years = [int(match[1]) for match in _FACT_YEAR.finditer(dated)]
+        # Completed snapshots remain historical even when phrased "as of 2020".
+        if not live and (years and max(years) < reference_year or _HISTORICAL.search(clause)):
+            if not years or max(years) < reference_year:
+                continue
+        live |= bool(years and max(years) >= reference_year)
+        if fresh_fact_required(clause, as_of=as_of):
+            return True
+        if _MUTABLE_ROLE.search(clause) and (live or _IDENTITY.search(clause)):
+            return True
+        if _MUTABLE_VALUE.search(clause) and (
+            live or _FACT_VALUE_ASK.search(clause) or len(clause.split()) <= 4
+        ):
+            return True
+        if live and _MUTABLE_STATUS.search(clause):
+            return True
+    return False

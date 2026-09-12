@@ -1,4 +1,4 @@
-"""Best-effort answers preserve search permissions, not a correctness benchmark."""
+"""Current-state display limits preserve permissions and usage, not certify answer truth."""
 
 import json
 
@@ -15,6 +15,13 @@ from app.services.context import search_plan
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 
 QUESTION = "현재 대한민국 대통령은 누구야?"
+_PAST_OUTPUT = (
+    "- 과거 사실: 2022년에 기존 담당자가 취임했다.\n- 현재 상태: UNSUPPORTED_CURRENT_CLAIM"
+)
+_PAST_RENDERED = (
+    "- 학습지식의 과거 정보(미검증): 2022년에 기존 담당자가 취임했다.\n"
+    "- 현재 상태: 현재 상태는 이번 요청에서 확인하지 못했습니다."
+)
 
 
 @pytest.mark.parametrize("toggle", [False, "auto", True])
@@ -107,10 +114,16 @@ class _RouteDb(_NoWriteDb):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", list(RoutingMode))
 @pytest.mark.parametrize("unavailable", ["off", "strict", "no_tools", "allowlist"])
-@pytest.mark.parametrize("question", [
-    QUESTION, "오늘 서울 날씨는 어때?", "React의 최신 버전은 무엇이야?",
-    "이 물리 현상의 원리를 설명해줘", "1990년 대한민국의 대통령은 누구였어?",
-])
+@pytest.mark.parametrize(
+    "question",
+    [
+        QUESTION,
+        "오늘 서울 날씨는 어때?",
+        "React의 최신 버전은 무엇이야?",
+        "이 물리 현상의 원리를 설명해줘",
+        "1990년 대한민국의 대통령은 누구였어?",
+    ],
+)
 async def test_unavailable_verification_keeps_best_effort_route_and_permissions(
     monkeypatch, mode, unavailable, question
 ):
@@ -175,7 +188,7 @@ async def test_comparison_reaches_its_models_for_current_facts(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["failed", "empty", "blank", "success"])
-async def test_optional_lookup_precedes_model_but_failure_does_not_suppress_answer(
+async def test_optional_lookup_precedes_model_and_failed_lookup_keeps_only_dated_past(
     monkeypatch, outcome
 ):
     calls = []
@@ -196,9 +209,9 @@ async def test_optional_lookup_precedes_model_but_failure_does_not_suppress_answ
         if outcome == "success":
             assert "OFFICIAL_MARKER" in json.dumps(messages)
         acc = agent._Accumulator()
-        acc.content = ["GROUNDED_MOCK_RESPONSE"]
+        acc.content = ["GROUNDED_MOCK_RESPONSE" if outcome == "success" else _PAST_OUTPUT]
         acc.usage = {"inputTokens": 1, "outputTokens": 1}
-        yield "delta", "GROUNDED_MOCK_RESPONSE"
+        yield "delta", acc.content[0]
         yield "done", acc
 
     monkeypatch.setattr(agent, "_stream_once", completion)
@@ -223,13 +236,8 @@ async def test_optional_lookup_precedes_model_but_failure_does_not_suppress_answ
     ]
     text = "".join(e["text"] for e in events if e["type"] == "delta")
     assert calls == ["search", "model"]
-    assert text.startswith("GROUNDED_MOCK_RESPONSE")
-    if outcome == "empty":
-        assert text == (
-            "GROUNDED_MOCK_RESPONSE\n\n"
-            "_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
-            "서지·수치·최신 사항은 확인이 필요합니다._"
-        )
+    assert text == ("GROUNDED_MOCK_RESPONSE" if outcome == "success" else _PAST_RENDERED)
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
     assert next(e for e in events if e["type"] == "usage")["outputTokens"] == 1
     assert not any(e["type"] == "freshness_abstention" for e in events)
 
@@ -237,7 +245,7 @@ async def test_optional_lookup_precedes_model_but_failure_does_not_suppress_answ
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["failed", "empty"])
 @pytest.mark.parametrize("mode", [RoutingMode.auto, RoutingMode.auto_quality])
-async def test_failed_lookup_stores_model_answer_usage_and_preserves_auto_audit(
+async def test_failed_lookup_stores_only_bounded_past_usage_and_preserves_auto_audit(
     monkeypatch, outcome, mode
 ):
     user = User(id="synthetic-user", email="synthetic@example.test", password_hash="hash")
@@ -281,7 +289,7 @@ async def test_failed_lookup_stores_model_answer_usage_and_preserves_auto_audit(
     async def completion(_model, _messages, *_args, **_kwargs):
         calls.append("model")
         acc = agent._Accumulator()
-        acc.content = ["모델이 아는 범위의 설명입니다."]
+        acc.content = [_PAST_OUTPUT]
         acc.usage = {"inputTokens": 4, "outputTokens": 6}
         yield "delta", acc.content[0]
         yield "done", acc
@@ -335,7 +343,8 @@ async def test_failed_lookup_stores_model_answer_usage_and_preserves_auto_audit(
     assert calls == ["model"]
     assert answer.model == "synthetic/qwen"
     assert answer.usage["inputTokens"] == 4 and answer.usage["outputTokens"] == 6
-    assert answer.content.startswith("모델이 아는 범위의 설명입니다.")
+    assert answer.content == _PAST_RENDERED
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in "".join(chunks)
     assert answer.routing["accuracy"]["policy"] == "grounded-best-effort-v1"
     assert answer.artifact_ids is None and answer.failure is None
     assert any('"executedModel"' in chunk for chunk in chunks)
@@ -350,6 +359,7 @@ async def test_document_routes_reach_normal_planning_without_a_freshness_block(m
     session = ChatSession(user_id=user.id, kind=kind)
     model = {**_external_model("synthetic/model"), "kinds": [kind.value]}
     await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
+
     class PlanningRoute(Exception):
         pass
 

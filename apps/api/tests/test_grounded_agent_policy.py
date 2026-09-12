@@ -1,4 +1,4 @@
-"""Best-effort factual answers retain tool, privacy, and preflight boundaries."""
+"""Current-state output limits retain useful past facts and all tool/privacy boundaries."""
 
 from __future__ import annotations
 
@@ -8,9 +8,18 @@ import json
 import pytest
 
 from app.models.chat import SessionKind
-from app.services import agent, context
+from app.services import agent, context, freshness
 from app.services.freshness import FRESHNESS_INSTRUCTION
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
+
+_PAST_OUTPUT = (
+    "- Past fact: A prior record was published in 2022.\n"
+    "- Current status: UNSUPPORTED_CURRENT_CLAIM"
+)
+_PAST_RENDERED = (
+    "- Remembered past information (not verified): A prior record was published in 2022.\n"
+    "- Current status: The current state was not verified in this request."
+)
 
 
 def _stream(monkeypatch, steps, snapshots):
@@ -67,15 +76,19 @@ async def test_unavailable_search_still_invokes_model_without_search_or_fallback
     monkeypatch, strict_local, question
 ):
     snapshots = []
-    _stream(monkeypatch, [{"text": "KNOWN_FACTS_WITH_LIMITS"}], snapshots)
-    events = await _turn(freshness_request=question, strict_local=strict_local)
+    current = freshness.current_fact_required(question)
+    _stream(
+        monkeypatch, [{"text": _PAST_OUTPUT if current else "KNOWN_FACTS_WITH_LIMITS"}], snapshots
+    )
+    events = await _turn(freshness_request=question if current else None, strict_local=strict_local)
     assert len(snapshots) == 1
     assert snapshots[0][1] == []
     assert snapshots[0][2]["strict_local"] is strict_local
     assert "force_tool" not in snapshots[0][2]
     assert [event for event in events if event["type"] == "delta"] == [
-        {"type": "delta", "text": "KNOWN_FACTS_WITH_LIMITS"}
+        {"type": "delta", "text": _PAST_RENDERED if current else "KNOWN_FACTS_WITH_LIMITS"}
     ]
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
     assert not any(event["type"] == "freshness_abstention" for event in events)
     assert events[-1] == {"type": "usage", "inputTokens": 3, "outputTokens": 5}
 
@@ -86,7 +99,11 @@ async def test_lookup_failure_continues_once_with_honest_context_and_masked_resu
     monkeypatch, outcome
 ):
     ran, snapshots = [], []
-    _stream(monkeypatch, [{"text": "BEST_EFFORT_FACTS"}], snapshots)
+    _stream(
+        monkeypatch,
+        [{"text": "BEST_EFFORT_FACTS" if outcome == "success" else _PAST_OUTPUT}],
+        snapshots,
+    )
     result = ToolResult(
         content="  " if outcome == "blank" else "SYNTHETIC_SECRET source excerpt",
         failed=outcome == "failed",
@@ -113,7 +130,9 @@ async def test_lookup_failure_continues_once_with_honest_context_and_masked_resu
     assert any("did not provide usable evidence" in note for note in notes) is (
         outcome != "success"
     )
-    assert "BEST_EFFORT_FACTS" in "".join(e["text"] for e in events if e["type"] == "delta")
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert text == ("BEST_EFFORT_FACTS" if outcome == "success" else _PAST_RENDERED)
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
     assert not any(e["type"] == "freshness_abstention" for e in events)
     assert events[-1] == {"type": "usage", "inputTokens": 3, "outputTokens": 5}
     if outcome != "blank":
@@ -152,7 +171,7 @@ async def test_unusable_search_cannot_finish_turn_with_its_own_terminal_text(mon
 )
 async def test_search_preset_never_expands_permission_or_stops_the_answer(monkeypatch, restriction):
     ran, snapshots = [], []
-    _stream(monkeypatch, [{"text": "KNOWN_FACTS_WITHOUT_SEARCH"}], snapshots)
+    _stream(monkeypatch, [{"text": _PAST_OUTPUT}], snapshots)
     search = _tool(
         "web_search",
         ran,
@@ -179,7 +198,8 @@ async def test_search_preset_never_expands_permission_or_stops_the_answer(monkey
     assert snapshots[0][1] == []
     assert snapshots[0][2]["tool_definitions"] == []
     assert "force_tool" not in snapshots[0][2]
-    assert any(e.get("text") == "KNOWN_FACTS_WITHOUT_SEARCH" for e in events)
+    assert any(e.get("text") == _PAST_RENDERED for e in events)
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
 
 
 @pytest.mark.asyncio
@@ -247,7 +267,7 @@ async def test_factual_answer_never_grants_disallowed_write(monkeypatch):
         monkeypatch,
         [
             {"calls": [{"id": "write", "name": "write_canary", "arguments": "{}"}]},
-            {"text": "KNOWN_FACTS_ONLY"},
+            {"text": _PAST_OUTPUT},
         ],
         snapshots,
     )
@@ -258,7 +278,8 @@ async def test_factual_answer_never_grants_disallowed_write(monkeypatch):
     )
     assert ran == [] and len(snapshots) == 2
     assert any(e.get("status") == "error" for e in events)
-    assert any(e.get("text") == "KNOWN_FACTS_ONLY" for e in events)
+    assert any(e.get("text") == _PAST_RENDERED for e in events)
+    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
 
 
 @pytest.mark.parametrize("kind", list(SessionKind))
