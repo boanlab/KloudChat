@@ -249,17 +249,17 @@ function MessageItemInner({
     }
   }
   const model = models.find((m) => m.id === message.model)
+  const freshness = message.routing && 'freshness' in message.routing ? message.routing : null
+  const routing = message.routing && 'action' in message.routing ? message.routing : null
   const actualModelChanged = Boolean(
-    message.routing?.actualModel &&
-      message.routing.actualModel !== message.routing.requestedModels[0],
+    routing?.actualModel && routing.actualModel !== routing.requestedModels[0],
   )
   const showRouting = Boolean(
-    message.routing &&
-      (message.routing.action !== 'none' || actualModelChanged || message.routing.costRouting),
+    routing && (routing.action !== 'none' || actualModelChanged || routing.costRouting),
   )
   const messageBoundary =
     model?.dataBoundary ??
-    (message.routing?.dataBoundary !== 'mixed' ? message.routing?.dataBoundary : undefined)
+    (routing?.dataBoundary !== 'mixed' ? routing?.dataBoundary : undefined)
 
   const copyButton = (label: string) => (
     <Button
@@ -283,7 +283,7 @@ function MessageItemInner({
     const startedFrom = message.startedFrom
     // The stored copy is masked whenever there is a finding; the bubble holds
     // the typed original until the session is reopened.
-    const redacted = (message.routing?.findingCounts ?? []).filter(
+    const redacted = (routing?.findingCounts ?? []).filter(
       (finding) => finding.source === 'current_input',
     )
     return (
@@ -401,7 +401,7 @@ function MessageItemInner({
     )
   }
 
-  const costRoute = message.routing?.costRouting
+  const costRoute = routing?.costRouting
   const costRouteDisplay = costRoute ? costRoutePresentation(costRoute, models, t) : null
   const linked = (message.artifactIds ?? [])
     .map((id) => artifacts.find((a) => a.id === id))
@@ -412,16 +412,16 @@ function MessageItemInner({
   const failed = turnFailureNotice(message, madeHere, t)
   const stopped = !message.error && message.failure === 'stopped'
   // How many routing badges the row holds; a phone shows the count until tapped.
-  const routingBadges = message.routing
+  const routingBadges = routing
     ? [
         costRoute && costRouteDisplay,
-        message.routing.action !== 'none' &&
-          message.routing.initialAction === 'send_raw_external' &&
-          message.routing.action !== 'send_raw_external',
-        message.routing.action !== 'none',
+        routing.action !== 'none' &&
+          routing.initialAction === 'send_raw_external' &&
+          routing.action !== 'send_raw_external',
+        routing.action !== 'none',
         messageBoundary,
-        message.routing.toolOutputMasked,
-        actualModelChanged && !message.routing.costRouting && message.routing.actualModel,
+        routing.toolOutputMasked,
+        actualModelChanged && !routing.costRouting && routing.actualModel,
       ].filter(Boolean).length
     : 0
 
@@ -431,7 +431,20 @@ function MessageItemInner({
         <Sparkles size={14} />
       </div>
       <div className="min-w-0 flex-1">
-        {message.routing && showRouting && routingBadges > 0 && (
+        {freshness && (
+          <Badge
+            tone="warn"
+            className="mb-2 max-w-full whitespace-normal! [overflow-wrap:anywhere]"
+            title={
+              freshness.freshness.reason === 'lookup_failed_or_empty'
+                ? t('검색이 실패했거나 확인 가능한 결과가 없어 서비스 정책으로 답변을 보류했습니다.')
+                : t('검증 수단을 사용할 수 없어 서비스 정책으로 답변을 보류했습니다.')
+            }
+          >
+            {t('서비스 정책 안내 · 최신 정보 검증 불가 · 모델 실행 없음')}
+          </Badge>
+        )}
+        {routing && showRouting && routingBadges > 0 && (
           <button
             onClick={() => setBadgesOpen((o) => !o)}
             aria-expanded={badgesOpen}
@@ -442,7 +455,7 @@ function MessageItemInner({
               : t('처리 내역 {n}건').replace('{n}', String(routingBadges))}
           </button>
         )}
-        {message.routing && showRouting && (
+        {routing && showRouting && (
           <div className={cn('mb-2 flex flex-wrap gap-1.5', !badgesOpen && 'phone:hidden')}>
             {costRoute && costRouteDisplay && (
               <Badge
@@ -453,19 +466,19 @@ function MessageItemInner({
                 {costRouteDisplay.label}
               </Badge>
             )}
-            {message.routing.action !== 'none' &&
-              message.routing.initialAction === 'send_raw_external' &&
-              message.routing.action !== 'send_raw_external' && (
+            {routing.action !== 'none' &&
+              routing.initialAction === 'send_raw_external' &&
+              routing.action !== 'send_raw_external' && (
                 <Badge tone="warn">{t('확인 후 요청 원문은 외부 전송')}</Badge>
               )}
-            {message.routing.action !== 'none' && (
+            {routing.action !== 'none' && (
               <Badge
-                tone={message.routing.action === 'send_raw_external' ? 'warn' : 'success'}
+                tone={routing.action === 'send_raw_external' ? 'warn' : 'success'}
               >
-                {message.routing.action === 'route_strict_local' ||
-                message.routing.action === 'strict_local'
+                {routing.action === 'route_strict_local' ||
+                routing.action === 'strict_local'
                   ? t('strict-local로 보호됨')
-                  : message.routing.action === 'mask_external'
+                  : routing.action === 'mask_external'
                     ? t('개인정보를 가려 전송함')
                     : t('확인 후 외부 원문 전송')}
               </Badge>
@@ -481,19 +494,19 @@ function MessageItemInner({
                       : t('경계 미확인')}
               </Badge>
             )}
-            {message.routing.toolOutputMasked ? (
+            {routing.toolOutputMasked ? (
               <Badge tone="warn">
                 {t('도구 결과 {n}건 추가 마스킹').replace(
                   '{n}',
-                  message.routing.toolOutputMasked.toLocaleString(),
+                  routing.toolOutputMasked.toLocaleString(),
                 )}
               </Badge>
             ) : null}
             {actualModelChanged &&
-              !message.routing.costRouting &&
-              message.routing.actualModel && (
-              <Badge title={message.routing.actualModel}>
-                {t('실제 실행 모델')}: {message.routing.actualModel}
+              !routing.costRouting &&
+              routing.actualModel && (
+              <Badge title={routing.actualModel}>
+                {t('실제 실행 모델')}: {routing.actualModel}
               </Badge>
               )}
           </div>
@@ -518,6 +531,7 @@ function MessageItemInner({
         ) : (
           // Only while the turn is running and nothing is there to read yet.
           !failed &&
+          !freshness &&
           streaming &&
           shown.length === 0 &&
           named.length === 0 && (
@@ -525,7 +539,7 @@ function MessageItemInner({
               sessionId={sessionId}
               startedAt={new Date(message.createdAt).getTime()}
               label={madeHere ? t('만드는 중…') : t('생각하는 중…')}
-              model={message.model}
+              model={message.model ?? undefined}
             />
           )
         )}
@@ -626,11 +640,11 @@ function MessageItemInner({
             </span>
             {message.usage && user?.preferences.showUsage !== false && (
               <span className="ml-1 text-xs">
-                {model?.label ?? message.model} ·{' '}
+                {freshness ? t('모델 실행 없음') : model?.label ?? message.model} ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
                 {formatTokens(message.usage.inputTokens)} in ·{' '}
                 {formatTokens(message.usage.outputTokens)} out ·{' '}
-                {message.usage.credits > 0 ? (
+                {freshness || message.usage.credits > 0 ? (
                   t('{n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())
                 ) : (
                   <span

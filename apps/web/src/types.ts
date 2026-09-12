@@ -68,6 +68,8 @@ export interface ModelInfo {
   /** Credits per 1k input tokens; 0 for non-conversational or self-hosted models. */
   inputCreditCost: number
   contextWindow?: number
+  /** Trusted catalogue metadata only; absent means the training cutoff is unknown. */
+  knowledgeCutoff?: string | null
   supportsVision?: boolean
   supportsTools?: boolean
   /** Set when the model is not reachable through LiteLLM and uses an adapter. */
@@ -207,7 +209,24 @@ export interface PrivacyRouting {
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
   costRouting?: CostRouting
+  accuracy?: {
+    policy: 'grounded-best-effort-v1'
+    knowledgeCutoff: string | null
+    cutoffSource: 'model_catalogue' | 'unknown'
+  }
 }
+
+/** Legacy stored policy reply; new factual questions use model answers with caveats. */
+export interface FreshnessAbstention {
+  answerOrigin: 'server_policy'
+  actualModel: null
+  freshness: {
+    status: 'unverified'
+    reason: 'verification_unavailable' | 'lookup_failed_or_empty'
+  }
+}
+
+export type MessageRouting = PrivacyRouting | FreshnessAbstention
 
 export type Role = 'user' | 'assistant' | 'system'
 
@@ -280,8 +299,8 @@ export interface Message {
   /** Present instead of `content` when the turn was run as a model comparison. */
   variants?: Variant[]
   createdAt: string
-  model?: string
-  routing?: PrivacyRouting
+  model?: string | null
+  routing?: MessageRouting
   steps?: Step[]
   artifactIds?: string[]
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
