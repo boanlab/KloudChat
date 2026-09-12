@@ -47,6 +47,9 @@ jobs:
       - name: Install presentation test browser
         run: npx playwright install --with-deps chromium
 
+      - name: Test Auto routing badge geometry
+        run: npx playwright test --config playwright.auto-badge.config.ts --workers=1
+
       - name: Test slide presentation layout
         run: npx playwright test --config playwright.presentation.config.ts --workers=1
 
