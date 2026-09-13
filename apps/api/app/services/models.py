@@ -10,7 +10,9 @@ Fail closed on price: a remote model priced at zero is hidden and recorded in
 from __future__ import annotations
 
 import logging
+import re
 import time
+from datetime import UTC, date, datetime
 from typing import Any
 
 from app.core.config import settings
@@ -112,6 +114,27 @@ _CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 _CACHE_TTL_SEC = 30.0
 
 _DATA_BOUNDARIES = {"self_hosted", "hybrid", "external"}
+_CUTOFF_FORMAT = re.compile(r"[0-9]{4}-[0-9]{2}(?:-[0-9]{2})?")
+
+
+def _knowledge_cutoff(info: dict[str, Any]) -> str | None:
+    """Validated proxy-declared cutoff month, not an attestation of model weights."""
+    declared = [info[key] for key in ("knowledge_cutoff", "training_cutoff") if key in info]
+    if not declared:
+        return None
+    cutoffs: set[str] = set()
+    today = datetime.now(UTC).date()
+    for raw in declared:
+        if not isinstance(raw, str) or _CUTOFF_FORMAT.fullmatch(raw) is None:
+            return None
+        try:
+            cutoff = date.fromisoformat(raw if len(raw) == 10 else f"{raw}-01")
+        except ValueError:
+            return None
+        if cutoff > today:
+            return None
+        cutoffs.add(raw[:7])
+    return next(iter(cutoffs)) if len(cutoffs) == 1 else None
 
 
 def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
@@ -254,6 +277,7 @@ def _shape(entry: dict[str, Any]) -> dict[str, Any] | None:
         "dataBoundary": data_boundary,
         "strictLocal": strict_local,
         "privacyOnly": privacy_only,
+        "knowledgeCutoff": _knowledge_cutoff(info),
         "modality": modality,
         "kinds": kinds,
         # Per-call and per-image prices for models that emit almost no output tokens.
@@ -297,6 +321,7 @@ def _adapter_entries() -> list[dict[str, Any]]:
             "dataBoundary": "external",
             "strictLocal": False,
             "privacyOnly": False,
+            "knowledgeCutoff": None,
             "modality": m["modality"],
             "kinds": m["kinds"],
             "creditCost": m["credit_cost"],
@@ -360,13 +385,23 @@ async def list_models(force: bool = False) -> dict[str, Any]:
     available = True
     _unpriced.clear()
     try:
-        # One row per deployment; first row per `model_name` wins.
+        # First row wins except cutoff: every deployment, including hidden
+        # routing twins, must agree before an alias can declare one month.
         proxied_ids: set[str] = set()
+        declared_cutoffs: dict[str, set[str | None]] = {}
         for entry in await litellm.model_info():
+            model_id = entry.get("model_name")
+            if isinstance(model_id, str):
+                declared_cutoffs.setdefault(model_id, set()).add(
+                    _knowledge_cutoff(entry.get("model_info") or {})
+                )
             shaped = _shape(entry)
             if shaped and shaped["id"] not in proxied_ids:
                 proxied_ids.add(shaped["id"])
                 proxied.append(shaped)
+        for model in proxied:
+            cutoffs = declared_cutoffs.get(model["id"], set())
+            model["knowledgeCutoff"] = next(iter(cutoffs)) if len(cutoffs) == 1 else None
     except litellm.LiteLLMError as exc:
         log.warning("model catalogue falling back to adapters only: %s", exc)
         available = False

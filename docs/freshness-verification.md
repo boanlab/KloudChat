@@ -1,0 +1,212 @@
+# Current-fact verification boundary
+
+## Superseded on 2026-09-12
+
+The user replaced the political-only automatic abstention policy with all-domain
+grounded best-effort answers and a final knowledge-limit notice. The current
+contract and new verification are in [grounded-answer-verification.md](grounded-answer-verification.md).
+Everything below is historical evidence for the earlier policy, including its
+real-model trials. It is not evidence of the revised policy's factual accuracy.
+The earlier combined QA reference `9c073be` also predates this revision and must
+not be presented as verification of the new PR #184.
+
+## Purpose and scope
+
+Issue #181 addresses stale political facts being asserted as current, including
+local Qwen with search disabled. It does not replace the model or hardcode a current
+president, prime minister, date-specific answer, or list of correct answers.
+
+The bounded Korean/English policy recognizes direct officeholder questions and
+explicitly current political developments. Stable explanations, historical dates,
+quoted translations, supplied-text summaries and clear topic switches have negative
+regressions. False means outside this policy, not proven free of hallucination.
+
+## Behavior
+
+- When current-fact verification is unavailable, ordinary chat stores a service
+  policy response before key provisioning, Auto classification or generation.
+  Search OFF, explicit search refusal, strict-local and Agent tool permissions stay
+  authoritative. No external fallback is introduced.
+- A stored or streamed policy response has `answerOrigin: server_policy`,
+  `model: null` / `actualModel: null`, zero token usage and zero credits. The UI names
+  the service policy and no model execution, rather than attributing it to Qwen.
+- A short same-question nudge is bound only to contiguous stored service-policy
+  holds and their user question in the same session. A model's policy-like prose
+  cannot establish this state. New topics and attachment-bearing follow-ups are
+  not inferred to be the same question. Repeated nudges retain the original explicit
+  search refusal until the current request explicitly asks for research or selects
+  search `true`; the current request's own refusal still takes priority.
+- A permitted lookup for that nudge reuses the already privacy-processed history
+  entry, without copying its raw content into a new prompt or stored metadata.
+- When a permitted built-in search is available, the trusted first lookup precedes
+  model generation. Failed, empty or structurally unusable results lead to a policy
+  response, with no title, memory, artifact or completion settlement.
+- `SearchEvidence` is in-process metadata, not parsed from remote result text. A
+  usable row needs an absolute HTTP(S) URL and a nonempty snippet or fetched body.
+  Invalid URLs are excluded; ordinary search may still return valid link-only rows,
+  but those rows cannot release this current-fact gate. Network access remains
+  subject to the existing network guard.
+- Tool-free comparison and document/slides surfaces refuse recognized current-fact
+  requests with HTTP 409 before model generation. Direct and chat-to-document UI
+  paths retain the user's draft and show how to recover without enabling search.
+
+Auto audit records retain the original selection reason and explicitly record the
+server-policy outcome with no executed model. The UI does not show a selected model
+as if it generated an answer when the lookup failed before generation.
+
+Structured source presence does **not** establish that a source is true, recent,
+official, relevant or sufficient. Search-enabled factual quality remains a separate
+evaluation; an available search tool alone is not evidence of a verified answer.
+
+## Live check
+
+Four frozen synthetic requests used the real API and configured
+`strict-local/qwen3.6-35b` route with search OFF. A temporary database contained no
+real user messages or connectors. Title generation was explicitly stubbed and
+automatic memory disabled. An application transport allowlist restricted the
+gateway; this was not an OS firewall or physical-locality attestation.
+
+| Case | Main `2518c2e` | Candidate `9571c86` |
+| --- | --- | --- |
+| Current Korean president, Korean | Asserted an outdated officeholder | Service abstention, no model call |
+| Current Korean prime minister, Korean, no search | Asserted an outdated officeholder | Service abstention, no model call |
+| Current Korean president, English, no search | Asserted an outdated officeholder | Service abstention, no model call |
+| Translate a quoted current-president question | Correct translation | Correct translation, normal model call |
+
+Baseline used 4 completion requests; candidate used 1 for the translation control.
+Both reported zero credit change, zero search calls and zero artifacts. Temporary
+database, network, credentials and files were removed, test ports closed, and the
+original database contents and stopped state preserved. The three abstentions are
+**not three correct factual answers** and do not measure general model accuracy.
+
+The outdated baseline answers were checked on 2026-09-12 KST against the
+[presidential office](https://www.president.go.kr/speeches) and the
+[prime minister's office dated release](https://www.opm.go.kr/opm/news/press-release.do?article.offset=0&articleLimit=10&articleNo=163478&mode=view).
+These references were used for evaluation only, not inserted into product prompts.
+
+An additional immutable `a7ccf962` run checked four turns in one real strict-local
+Qwen session. The initial no-search political question, a request for just the name,
+and a request to guess all retained the service-policy hold. A subsequent Python
+list question returned a normal answer. Only that control made a completion request;
+reported credits, search and artifacts stayed zero. Cleanup and original-state
+preservation passed. This is three retained abstentions and one topic-switch control,
+not three factual answers or proof of external-search reauthorization.
+
+## Deterministic checks
+
+- API baseline `2518c2e`: 2,410 passed, 1 skipped. The later `f537972` baseline
+  changes the monthly-credit default, not this routing behavior.
+- Candidate including follow-up and audit preservation: 2,691 passed, 1 skipped,
+  including 281 new API regression cases. Actual socket connections and HTTPX
+  network transports were denied in the offline suite; this is not an OS firewall.
+- Mock-browser checks: 17 passed, 1 skipped; saved/streamed Korean/English responses,
+  both hold reasons, mobile/desktop layouts, direct document/slides/comparison refusal
+  and chat-to-document draft restoration. Mobile comparison is skipped because its
+  toggle is desktop-only. Four existing routing browser cases also passed.
+- Web lint and build passed. Existing lint, generated `phone` CSS selector and
+  large-chunk warnings are not attributed to this change.
+- Follow-up quote-parser hardening adds 35 cases: complete long inputs, all five
+  quote pairs, newline handling, negated transformations, mixed requests and search
+  refusal. The isolated long-input regression exceeded its 5-second limit before
+  the fix and passes afterward. Final offline API: 2,726 passed, 1 skipped. The
+  focused policy, follow-up, runtime and search suite has 342 passing cases.
+- A separate bounded differential check compared 12,380 quote-span inputs and
+  4,620 transformation contexts with the pre-fix parser, with no behavior change.
+  The parser does not truncate requests or lose their trailing instructions.
+  GitHub CodeQL is rerun independently; local tests alone do not establish its result.
+- The calendar-boundary follow-up only treats a year-qualified "present" as a
+  historical snapshot after that year has ended (UTC). An explicit current-year
+  question no longer loses its freshness requirement. `as_of` is an internal test
+  clock, not an API parameter or a claim about the model's training date.
+  Three actual request-path regressions failed before the fix in manual, economy
+  and quality modes; all now hold before key/model/accounting work. Added 36 cases
+  cover changing years, mixed questions, numeric boundaries and existing task
+  exceptions. Offline API: 2,762 passed, 1 skipped; independent freshness suite:
+  325 passed. This follow-up has deterministic proof, not a new standalone live
+  provider result.
+
+![No model execution on mobile](screenshots/freshness-policy-mobile.png)
+
+![Document refusal preserves the draft](screenshots/freshness-refusal-desktop.png)
+
+Screenshots are real Chromium pages with synthetic API/SSE fixtures, not screenshots
+of a live provider response.
+
+## Verification limits
+
+### Comparison follow-ups
+
+The tool-free comparison surface now reuses the same stored, session-bound
+follow-up check as ordinary chat. Previously a short name/guess request after a
+server-held political question could start comparisons with that question still
+in context. Seven of twenty new request-path cases failed before the fix. All
+twenty now pass, including new topics, untrusted origin text, other-session rows,
+attachments, repeated holds and current search wording. Since comparison has no
+retrieval tools, asking it to search still returns the existing 409 contract.
+
+The standalone follow-up source `ba8e6737343461d2cf1732c1e1b23b026c1a9c74`
+passes 2,782 offline API tests with one existing skip (82 denied sockets, no
+HTTP transport calls). The independent integrated-source suite has 3,245 passes
+and one skip; these are different source trees, not additive counts.
+
+An actual isolated API replay on that standalone SHA first stored a no-search
+policy hold and then sent three comparison follow-ups (name only, guess anyway,
+and search for the name). All three returned 409 before model execution and
+left the transcript unchanged. Gateway completion attempts and app credit delta
+were both zero; the QA transport completion cap was zero. No answer-generation
+or factual-accuracy claim follows from these policy checks. The temporary DB,
+network, files and ports were cleaned and the original data and stopped DB state
+were preserved. Existing comparison UI error handling is unchanged.
+
+### Contraction quote openers
+
+The source `12fccd0400ded2abfdd2092be2067da01ce4fcb0` fixes an incorrect hold
+for `Don't search. Translate 'Who is the current president of Korea?' into Korean.`
+The apostrophe in the preceding contraction was mistaken for a quote opener.
+Only ASCII apostrophes between ASCII letters are excluded as opening delimiters;
+closing-quote behavior, all five delimiter pairs, full-input scanning and search
+refusal remain unchanged. Later real questions and negated translations stay guarded.
+
+Replaying the immutable `5b57b3d` quote function in the new 14-case suite reproduces
+three failures. The candidate passes all 14 cases, including the mocked public
+request path, preserved model and user text, mixed requests and a long-input control.
+Its standalone offline API suite passes 2,796 tests with one existing skip; Ruff
+also passes. These counts are not added to earlier or integration suites.
+
+This follow-up makes no new provider or translation-quality claim. The actual
+comparison-policy replay above remains evidence for `ba8e673`, not for this parser
+change. Contractions inside an already-open single-quoted source retain the prior
+conservative closing ambiguity and are not claimed to be solved by this patch.
+
+Live evidence belongs to its recorded immutable source SHA. The original four-request
+comparison and the later four-turn follow-up run are separate. The subsequent quote
+parser change has deterministic regressions, not a new provider execution.
+
+Other domains, arbitrary paraphrases, attachment-only questions, semantic source
+validation and all forms of hallucination remain outside this bounded policy.
+Providing a document does not automatically certify its current factual accuracy.
+
+### Comma-separated declined topics
+
+An independent fixed set of 24 natural prompts found one in-scope omission:
+`대통령 이름은 말하지 말고, 현재 국무총리가 누구인지 알려줘.` The
+declined first fact hid the affirmative current question in the same clause.
+Twenty-three inputs were in scope; the other input was an unsupported implicit
+follow-up. The pure function and mocked request path both failed for the same
+input, not two distinct defects.
+
+Source `619c0e26df94e7919e0c03ed7c9467c6d352d17a` recognizes ASCII/fullwidth
+commas after the Korean connective only before the existing explicit topic
+prefixes. The new branch preserves that connective so the existing declined-topic
+rules can still recognize a switch to an unrelated task. An initial candidate
+that consumed it incorrectly held a Python topic switch and was rejected.
+Existing whitespace splitting and negation rules are unchanged.
+
+The 22 added regressions reproduce 12 failures and 10 passes before the fix,
+then all pass. They cover spacing/comma variants, current questions, roles,
+historical questions, translations, topic switches and four mocked API paths
+that hold before quota, key or model work. The full freshness suite has 381
+passes; the original 24-input audit now matches its declared expectations in
+31 test executions. Offline API: 2,818 passed, one existing skip; Ruff passes.
+No actual model or database was used for this follow-up. These results neither
+measure general hallucination rates nor certify arbitrary natural paraphrases.

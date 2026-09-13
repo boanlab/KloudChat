@@ -68,6 +68,8 @@ export interface ModelInfo {
   /** Credits per 1k input tokens; 0 for non-conversational or self-hosted models. */
   inputCreditCost: number
   contextWindow?: number
+  /** Trusted catalogue metadata only; absent means the training cutoff is unknown. */
+  knowledgeCutoff?: string | null
   supportsVision?: boolean
   supportsTools?: boolean
   /** Set when the model is not reachable through LiteLLM and uses an adapter. */
@@ -207,6 +209,21 @@ export interface PrivacyRouting {
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
   costRouting?: CostRouting
+  accuracy?: {
+    policy: 'grounded-best-effort-v1'
+    knowledgeCutoff: string | null
+    cutoffSource: 'model_catalogue' | 'unknown'
+  }
+}
+
+/** Legacy stored policy reply; new factual questions use model answers with caveats. */
+export interface FreshnessAbstention {
+  answerOrigin: 'server_policy'
+  actualModel: null
+  freshness: {
+    status: 'unverified'
+    reason: 'verification_unavailable' | 'lookup_failed_or_empty'
+  }
 }
 
 /** A tool-authored answer; earlier routing/classification work is not ruled out. */
@@ -217,7 +234,7 @@ export interface ToolResultAnswer {
   actualModel: null
 }
 
-export type MessageRouting = PrivacyRouting | ToolResultAnswer
+export type MessageRouting = PrivacyRouting | FreshnessAbstention | ToolResultAnswer
 
 export type Role = 'user' | 'assistant' | 'system'
 

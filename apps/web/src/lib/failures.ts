@@ -27,6 +27,8 @@ const REFUSALS: Record<string, string> = {
   model_unavailable: '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.',
   model_not_allowed: '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.',
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
+  freshness_verification_unavailable:
+    '최신 정보를 검증할 수 없어 요청을 진행하지 않았습니다. 검증 가능한 자료를 제공하거나 검색이 허용된 환경에서 다시 시도하세요.',
   calculation_tool_unavailable:
     '현재 모델이나 에이전트에서 허용된 계산 도구를 사용할 수 없습니다. 도구를 지원하는 모델로 바꾸거나 계산기를 허용한 에이전트로 다시 시도하세요.',
   insufficient_credits: '이번 달 크레딧이 부족합니다.',

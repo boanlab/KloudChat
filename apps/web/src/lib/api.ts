@@ -13,6 +13,7 @@ import type {
   PendingQuestion,
   PrivacyAction,
   PrivacyRouting,
+  FreshnessAbstention,
   MessageRouting,
   ToolResultAnswer,
   CostRouting,
@@ -1655,6 +1656,7 @@ export type StreamEvent =
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
   | ({ type: 'model_route' } & CostRouting)
+  | ({ type: 'freshness_abstention' } & FreshnessAbstention)
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
   /** Model comparison: one column's text, then that column's final bill. */
   | { type: 'variant'; model: string; text: string; actualModel?: string }

@@ -2937,6 +2937,11 @@ async function streamTurn(
         opts.onAccepted?.()
       }
       switch (event.type) {
+        case 'freshness_abstention': {
+          const { type: _type, ...routing } = event
+          patch((m) => ({ ...m, model: null, routing }))
+          break
+        }
         case 'tool_result_answer': {
           const { type: _type, ...origin } = event
           patch((m) => {
@@ -2964,9 +2969,10 @@ async function streamTurn(
               'effectiveModels' in event
                 ? {
                     ...event,
-                    costRouting: m.routing && 'action' in m.routing
-                      ? m.routing.costRouting ?? event.costRouting
-                      : event.costRouting,
+                    costRouting:
+                      m.routing && 'action' in m.routing
+                        ? m.routing.costRouting ?? event.costRouting
+                        : event.costRouting,
                   }
                 : m.routing && 'action' in m.routing
                   ? {

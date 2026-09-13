@@ -3603,7 +3603,13 @@ async def test_clean_answer_under_the_guard_announces_no_answer_findings(
         for row in added
         if isinstance(row, sessions_router.Message) and row.role == sessions_router.Role.assistant
     )
-    assert message.routing is None
+    assert message.routing == {
+        "accuracy": {
+            "policy": "grounded-best-effort-v1",
+            "knowledgeCutoff": None,
+            "cutoffSource": "unknown",
+        }
+    }
 
 
 @pytest.mark.asyncio
