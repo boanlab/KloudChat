@@ -283,14 +283,18 @@ _TRANSFORM_BEFORE = re.compile(
     r"(?:\btranslate(?:\s+(?:this|the\s+following)(?:\s+(?:sentence|text))?)?"
     r"(?:\s+(?:into|to)\s+[a-z-]{2,30})?|"
     r"\bsummarize(?:\s+only)?(?:\s+this\s+supplied\s+text)?|"
-    r"다음\s*(?:문장|자료|글)(?:만|을|를)?\s*"
-    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)해\s*(?:줘|주세요))$",
+    r"(?:다음\s*(?:문장|자료|글)(?:만|을|를)?\s*)?"
+    r"(?:(?:한국어|영어|한글|영문)로\s*)?(?:번역|요약)(?:만\s*)?해\s*(?:줘|주세요))$",
     re.I,
 )
 _TRANSFORM_AFTER = re.compile(
     r"^\s*(?:(?:라는|이라는)\s*문장(?:의|을)|[을를])\s*"
     r"(?:(?:한국어|영어|한글|영문)(?:로)?\s*)?(?:번역|요약|문법)",
     re.I,
+)
+_QUOTED_LOOKUP_AFTER = re.compile(
+    r"^\s*[은는이가을를]?\s*(?:누구|누군|얼마|몇|언제|어디|뭔|무엇|"
+    r"맞는지|현재인지|최신인지|찾아|조회|확인|검색|알려|말해)",
 )
 _CLAUSE = re.compile(
     r"[.!?;\n]|\b(?:and|but|also)\b|그리고|하지만|그런데|(?:와|과)\s+|"
@@ -392,7 +396,9 @@ def without_quoted_transform_sources(text: str) -> str:
     start = 0
     for quote_start, quote_end in _quoted_spans(text):
         before = text[max(0, quote_start - 160) : quote_start]
-        before = before.rstrip().removesuffix(":").rstrip()
+        before = before.rstrip()
+        if before.endswith((":", ".", "。", "!", "?", "？")):
+            before = before[:-1].rstrip()
         after = text[quote_end : quote_end + 160]
         parts.append(text[start:quote_start])
         before_match = _TRANSFORM_BEFORE.search(before)
@@ -400,6 +406,7 @@ def without_quoted_transform_sources(text: str) -> str:
         transforming = (
             before_match and not _NEGATED_TRANSFORM_PREFIX.search(before[: before_match.start()])
         ) or (after_match and not _NEGATED_TRANSFORM_SUFFIX.search(after[after_match.end() :]))
+        transforming = transforming and not _QUOTED_LOOKUP_AFTER.search(after)
         parts.append(" " if transforming else text[quote_start:quote_end])
         start = quote_end
     parts.append(text[start:])
@@ -501,7 +508,7 @@ _MUTABLE_VALUE = re.compile(
     r"가격|시세|환율|주가|주식\s*시장|금리|기준금리|물가|요금|수수료|"
     r"날씨|기온|강수|미세먼지|예보|"
     r"버전|릴리스|출시|업데이트|지원\s*종료|단종|"
-    r"일정|시간표|영업\s*시간|운영\s*시간|마감|접수|신청\s*기간|"
+    r"일정(?![하한히])|시간표|영업\s*시간|운영\s*시간|마감|접수|신청\s*기간|"
     r"순위|순위표|득점|경기\s*결과|우승(?:팀|자)?|대회\s*결과|선거\s*결과|"
     r"확진자|환자\s*수|인구|실업률|취업률|통계|"
     r"입국\s*(?:규정|조건|요건)|비자\s*(?:규정|요건)|"
@@ -568,6 +575,36 @@ _FACT_ATTACHED_TRANSFORM = re.compile(
     r"(?:요약|정리|번역|추출)(?:해(?:줘|주세요|주)?|하(?:라|세요))$",
 )
 _FACT_VERIFICATION_REQUEST = re.compile(r"확인|검증|검색|조회|비교|찾아")
+_FACT_DRAFT_REQUEST = re.compile(
+    r"(?:메시지|메일|문자|공지|초안|안내문|회신)[^.!?\n]{0,40}(?:써|작성|다듬)|"
+    r"\b(?:write|draft|compose)\b[^.!?\n]{0,40}\b(?:email|message|notice)\b", re.I,
+)
+_FACT_SUPPLIED_ASSERTION = re.compile(r"(?:이야|예요|이에요|입니다|이다|이고|임|야)$")
+_FACT_LEARNING_LABELS = re.compile(
+    r"(?:회귀\s*[/·]\s*분류|분류\s*[/·]\s*회귀)(?:로|으로)\s*(?:표시|구분|분류)|"
+    r"\bclassify\b[^.!?\n]{0,160}\b(?:regression\s+or\s+classification|"
+    r"classification\s+or\s+regression)\b", re.I,
+)
+_FACT_PREDICTION_REQUEST = re.compile(
+    r"(?:예측|추정|추산)(?:해|하|값)|\b(?:predict|estimate|forecast)\b", re.I,
+)
+_FACT_DOCUMENT_SOURCE = re.compile(
+    r"^(?:첨부(?:한|된)|업로드한|붙인)\s*|"
+    r"(?:자료|문서|본문|표)(?:에\s*있으면|\s*(?:근거|기준))",
+)
+_FACT_OUTSIDE_SOURCE = re.compile(
+    r"검색|검증|실시간|실제|"
+    r"(?:현재|지금|최신|오늘|내일|모레|올해|내년|이번|최근|요즘)"
+    r"[^.!?\n]{0,60}(?:확인|조회|찾아|알려|얼마|누구|몇)",
+)
+_FACT_SIMULATED_INPUT = re.compile(r"^(?:가상|가정한|예시)\s*[^.!?\n]*\d")
+_FACT_TASK_PRIORITY = re.compile(
+    r"(?:할\s*일|과제|작업)[^.!?\n]{0,20}우선순위[^.!?\n]{0,20}(?:정하|정해|계획|제안)",
+)
+_FACT_NO_LIVE_CLAIM = re.compile(
+    r"[,\s]*(?:지금|현재|실시간)[^.!?\n]{0,50}(?:확인|조회|검색)한\s*것은?\s*"
+    r"아니라는\s*점을?[^.!?\n]*(?:밝혀|명시해|설명해|적어)(?:줘|주세요|라)?$",
+)
 
 
 def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
@@ -580,6 +617,7 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
         return False
     reference_year = (as_of or datetime.now(UTC).date()).year
     text = without_quoted_transform_sources(unicodedata.normalize("NFC", request))
+    drafting = bool(_FACT_DRAFT_REQUEST.search(text))
     # Remove a discarded topic before clause splitting can split its final "고".
     for switched in reversed(list(_DECLINED_TOPIC.finditer(text))):
         start = max(text.rfind(mark, 0, switched.start()) for mark in ".!?;\n") + 1
@@ -616,6 +654,42 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
                 continue
             supplied_text = False
         if not clause or _FACT_TRANSFORM_ONLY.search(clause):
+            continue
+        clause = _FACT_NO_LIVE_CLAIM.sub(
+            lambda match: match[0] if (
+                _AFFIRMATIVE_REQUEST.search(match[0]) or _IDENTITY.search(match[0])
+                or re.search(r"얼마|몇|말하", match[0])
+            ) else "", clause,
+        ).strip()
+        if not clause:
+            continue
+        if (
+            _FACT_DOCUMENT_SOURCE.search(clause)
+            and not _FACT_OUTSIDE_SOURCE.search(clause)
+        ):
+            # Reading a supplied source does not assert that it is still current.
+            continue
+        if _FACT_TASK_PRIORITY.search(clause) and not _FACT_VALUE_ASK.search(clause):
+            continue
+        if (
+            _FACT_SIMULATED_INPUT.search(clause)
+            and _FACT_SUPPLIED_ASSERTION.search(clause)
+            and not _FACT_VALUE_ASK.search(clause)
+        ):
+            continue
+        if (
+            _FACT_LEARNING_LABELS.search(clause)
+            and not _FACT_VALUE_ASK.search(clause)
+            and not _FACT_PREDICTION_REQUEST.search(clause)
+        ):
+            # Naming a learning task's output type does not request its predicted value.
+            continue
+        if (
+            drafting and _FACT_SUPPLIED_ASSERTION.search(clause)
+            and re.search(r"\d", clause) and not re.search(r"[?？]", text)
+            and not _FACT_VALUE_ASK.search(clause) and not _IDENTITY.search(clause)
+        ):
+            # A supplied deadline is a drafting input; separate lookup clauses remain guarded.
             continue
         if (
             _FACT_CREATIVE.search(clause)
