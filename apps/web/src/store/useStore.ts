@@ -1372,14 +1372,17 @@ export const useStore = create<State>((set, get) => ({
     const beforeArtifactIds = new Set(get().artifacts.map((artifact) => artifact.id))
     const beforeOpenArtifactId = get().openArtifactId
     const now = new Date().toISOString()
+    // An unresolved Agent default is not a request to override it with the surface default.
+    const agentModelPending = before?.agentId && !before.model &&
+      !get().agents.some((agent) => agent.id === before.agentId)
     const model =
       opts.model ??
-      effectiveModelId(
-        get().sessions.find((c) => c.id === id),
+      (agentModelPending ? '' : effectiveModelId(
+        before,
         kind,
         get().agents,
         get().modelByKind,
-      )
+      ))
     const userMsg: Message = {
       id: uid('m'),
       role: 'user',
@@ -2937,6 +2940,16 @@ async function streamTurn(
         case 'freshness_abstention': {
           const { type: _type, ...routing } = event
           patch((m) => ({ ...m, model: null, routing }))
+          break
+        }
+        case 'tool_result_answer': {
+          const { type: _type, ...origin } = event
+          patch((m) => {
+            // Keep privacy decisions, but a previously selected model did not author this answer.
+            const previous = m.routing && 'action' in m.routing ? m.routing : undefined
+            const { costRouting: _costRouting, ...privacy } = previous ?? {}
+            return { ...m, model: null, routing: { ...privacy, ...origin } }
+          })
           break
         }
         case 'privacy_route':

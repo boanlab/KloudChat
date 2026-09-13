@@ -226,7 +226,15 @@ export interface FreshnessAbstention {
   }
 }
 
-export type MessageRouting = PrivacyRouting | FreshnessAbstention
+/** A tool-authored answer; earlier routing/classification work is not ruled out. */
+export interface ToolResultAnswer {
+  answerOrigin: 'tool_result'
+  toolName: 'calculate'
+  reasonCode: 'division_by_zero'
+  actualModel: null
+}
+
+export type MessageRouting = PrivacyRouting | FreshnessAbstention | ToolResultAnswer
 
 export type Role = 'user' | 'assistant' | 'system'
 

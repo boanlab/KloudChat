@@ -1,5 +1,35 @@
 # Grounded best-effort answers
 
+## Main integration on 2026-09-13
+
+The conflict resolution combines PR head `8304a43` with upstream/main
+`6aad9e97c9348d8edb392518a38e6706b11848e6`. It preserves the upstream
+calculation prerequisites, bounded arithmetic repair, calculator-authored answer
+metadata, Auto routing reasons and session hydration, together with this PR's
+freshness policy. Both browser regression groups remain in CI.
+
+The new integration tests first reproduced two failures: with search OFF or
+strict-local, a model could guess an exchange rate, successfully calculate with
+that rate, and release an unsupported present-value answer. Arithmetic completion
+now does not unlock the current-evidence display boundary. The two conditions
+remain independent: retrieved material alone also cannot unlock an unverified
+calculation. Failed lookup prerequisites stop without another model call, and
+unverified draft deltas stay private. Supplied operands and ordinary arithmetic
+retain their normal answering path.
+
+The integrated source passed all **3,973 offline API tests**, with one existing
+skip and 11 warnings; the guard blocked 82 socket attempts and zero real HTTP
+requests occurred. The nine new integration cases are included in that total,
+not added to it. API Ruff, Web lint, TypeScript and Vite build also passed.
+
+This is a merge-integration change, not a live exchange-rate retrieval feature.
+A usable read still proves only that material was returned, not its relevance,
+timestamp or factual accuracy. These tests use synthetic model responses and the
+real local arithmetic implementation. No live model completion, deployment or
+change to the existing local conversations is part of this integration check.
+The live-Qwen results and screenshots below remain evidence for their explicitly
+listed earlier revisions, not a fresh live-model check of the merge.
+
 ## Policy change
 
 On 2026-09-12 the user requested that PR #184 cover any subject, not just

@@ -1,0 +1,54 @@
+{
+  "link.title.사용자 가이드": {
+    "message": "User guide",
+    "description": "The title of the footer links column with title=사용자 가이드 in the footer"
+  },
+  "link.title.도움이 필요할 때": {
+    "message": "When you get stuck",
+    "description": "The title of the footer links column with title=도움이 필요할 때 in the footer"
+  },
+  "link.title.관리자": {
+    "message": "Administrator",
+    "description": "The title of the footer links column with title=관리자 in the footer"
+  },
+  "link.item.label.가입과 로그인": {
+    "message": "Signing up and signing in",
+    "description": "The label of footer link with label=가입과 로그인 linking to /docs/start/signup"
+  },
+  "link.item.label.대화 기본": {
+    "message": "Chat basics",
+    "description": "The label of footer link with label=대화 기본 linking to /docs/chat/basics"
+  },
+  "link.item.label.보고서 작성": {
+    "message": "Writing a report",
+    "description": "The label of footer link with label=보고서 작성 linking to /docs/write/report"
+  },
+  "link.item.label.개인정보 보호": {
+    "message": "Personal data",
+    "description": "The label of footer link with label=개인정보 보호 linking to /docs/privacy"
+  },
+  "link.item.label.제한 사항과 문제 해결": {
+    "message": "Limits and troubleshooting",
+    "description": "The label of footer link with label=제한 사항과 문제 해결 linking to /docs/limits"
+  },
+  "link.item.label.자주 묻는 질문": {
+    "message": "Frequently asked questions",
+    "description": "The label of footer link with label=자주 묻는 질문 linking to /docs/faq"
+  },
+  "link.item.label.용어": {
+    "message": "Glossary",
+    "description": "The label of footer link with label=용어 linking to /docs/glossary"
+  },
+  "link.item.label.관리자 가이드": {
+    "message": "Administrator guide",
+    "description": "The label of footer link with label=관리자 가이드 linking to /docs/admin/"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/boanlab/KloudChat"
+  },
+  "copyright": {
+    "message": "Copyright © 2026 KloudChat authors.",
+    "description": "The footer copyright"
+  }
+}

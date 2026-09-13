@@ -1,6 +1,7 @@
 import {
   AudioLines,
   BarChart3,
+  Calculator,
   Check,
   CircleStop,
   Copy,
@@ -97,6 +98,9 @@ function costRouteDecisionLabel(
     return t('Auto · 분류기를 사용할 수 없어 품질 모델 유지')
   }
   if (route.decision === 'bypassed') {
+    if (route.reasonCode === 'calculation_required') {
+      return t('Auto · 계산 도구 사용을 위해 품질 모델 유지')
+    }
     if (route.reasonCode === 'privacy_detected') {
       return t('Auto · 개인정보 감지로 난이도 판정 생략')
     }
@@ -250,6 +254,8 @@ function MessageItemInner({
   }
   const model = models.find((m) => m.id === message.model)
   const freshness = message.routing && 'freshness' in message.routing ? message.routing : null
+  const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
+    message.routing.answerOrigin === 'tool_result' ? message.routing : null
   const routing = message.routing && 'action' in message.routing ? message.routing : null
   const actualModelChanged = Boolean(
     routing?.actualModel && routing.actualModel !== routing.requestedModels[0],
@@ -428,7 +434,7 @@ function MessageItemInner({
   return (
     <div className="animate-fade-up group flex gap-3">
       <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-accent text-accent-fg">
-        <Sparkles size={14} />
+        {toolAnswer ? <Calculator size={14} /> : <Sparkles size={14} />}
       </div>
       <div className="min-w-0 flex-1">
         {freshness && (
@@ -442,6 +448,15 @@ function MessageItemInner({
             }
           >
             {t('서비스 정책 안내 · 최신 정보 검증 불가 · 모델 실행 없음')}
+          </Badge>
+        )}
+        {toolAnswer && (
+          <Badge
+            tone="warn"
+            className="mb-2 max-w-full whitespace-normal! [overflow-wrap:anywhere]"
+            title={t('계산기가 직접 반환한 오류입니다. 답변 생성 비용만 0이며, 앞선 Auto 분류나 검색의 실행 여부와 비용은 별도입니다.')}
+          >
+            {t('계산 도구 결과 · 0으로 나눌 수 없음')}
           </Badge>
         )}
         {routing && showRouting && routingBadges > 0 && (
@@ -532,6 +547,7 @@ function MessageItemInner({
           // Only while the turn is running and nothing is there to read yet.
           !failed &&
           !freshness &&
+          !toolAnswer &&
           streaming &&
           shown.length === 0 &&
           named.length === 0 && (
@@ -612,7 +628,7 @@ function MessageItemInner({
         )}
 
         {!streaming && message.content && !message.variants && (
-          <div className="mt-2 flex items-center gap-1 text-faint">
+          <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
@@ -639,12 +655,20 @@ function MessageItemInner({
             </Button>
             </span>
             {message.usage && user?.preferences.showUsage !== false && (
-              <span className="ml-1 text-xs">
-                {freshness ? t('모델 실행 없음') : model?.label ?? message.model} ·{' '}
+              <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')}>
+                {freshness
+                  ? t('모델 실행 없음')
+                  : toolAnswer
+                    ? t('답변 모델 생성 없음')
+                    : model?.label ?? message.model} ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
                 {formatTokens(message.usage.inputTokens)} in ·{' '}
                 {formatTokens(message.usage.outputTokens)} out ·{' '}
-                {freshness || message.usage.credits > 0 ? (
+                {toolAnswer ? (
+                  <span className="whitespace-nowrap">
+                    {t('답변 {n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())}
+                  </span>
+                ) : freshness || message.usage.credits > 0 ? (
                   t('{n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())
                 ) : (
                   <span

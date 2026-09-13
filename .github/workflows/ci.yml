@@ -50,8 +50,26 @@ jobs:
       - name: Test freshness policy feedback
         run: npx playwright test --config playwright.freshness.config.ts --workers=1
 
+      - name: Test Auto routing badge geometry
+        run: npx playwright test --config playwright.auto-badge.config.ts --workers=1
+
       - name: Test slide presentation layout
         run: npx playwright test --config playwright.presentation.config.ts --workers=1
+
+      - name: Test calculation routing feedback
+        run: npx playwright test --config playwright.calculation.config.ts --workers=1
+
+      - name: Test phone media-query boundaries
+        run: npx playwright test --config playwright.phone.config.ts --workers=1
+
+      - name: Test English audit authentication gates
+        run: npx playwright test --config playwright.i18n-gates.config.ts --workers=1
+
+      - name: Test report edit restoration
+        run: npx playwright test --config playwright.report-table.config.ts --workers=1
+
+      - name: Test session metadata hydration
+        run: npx playwright test --config playwright.session-hydration.config.ts --workers=1
 
   api:
     name: API · lint, tests
