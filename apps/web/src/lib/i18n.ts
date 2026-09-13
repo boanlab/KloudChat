@@ -1663,6 +1663,9 @@ const EN: Record<string, string> = {
   '개인정보가 감지된 요청': 'A request with personal data in it',
   '개인정보가 포함된 요청입니다': 'This request contains personal data',
   '개인정보를 가려 전송함': 'Sent with personal data masked',
+  '사용자 입력을 가려 전송함': 'Sent with user input masked',
+  '참고자료를 가려 전송함': 'Sent with reference context masked',
+  '요청·참고자료를 가려 전송함': 'Sent with request and reference context masked',
   '개인정보를 가린 뒤 기존 모델 사용': 'Mask the personal data, then use the chosen model',
   '경계 미확인': 'Boundary unconfirmed',
   '고칠 대목': 'Worth fixing',
@@ -1670,6 +1673,11 @@ const EN: Record<string, string> = {
     'No administrator has configured a strict-local model, so this has to be masked or edited.',
   '기본 처리 방법': 'What to do by default',
   '도구 결과 {n}건 추가 마스킹': '{n} more masked in tool results',
+  '도구 결과 {n}건 마스킹': '{n} masked in tool results',
+  '민감정보 후보로 탐지된 부분을 도구 결과에서 가렸습니다.':
+    'Potentially sensitive parts were masked in tool results.',
+  '{category} {n}건': '{category}: {n}',
+  '기타 민감정보': 'Other sensitive data',
   '만드는 중…': 'Making it…',
   '만들지 못했습니다.': 'Could not make it.',
   '매번 확인': 'Ask every time',
@@ -1691,6 +1699,8 @@ const EN: Record<string, string> = {
   '외부 모델로 전송하기 전에 서버가 전체 대화 맥락을 검사하고 이 동작을 적용합니다.':
     'The server inspects the whole outbound context and applies this before anything reaches an external model.',
   '외부 전환 가능': 'May switch to external',
+  '모델 설정상의 데이터 처리 경계입니다. 이번 요청에서 외부 모델이 실행됐다는 뜻은 아닙니다.':
+    'This is the model configuration\'s data boundary, not proof that an external model ran for this request.',
   '외부 제공': 'External provider',
   '자체 · 폴백 외부': 'Self-hosted · external fallback',
   '외부 제공자가 무료로 제공하는 모델입니다': 'An external provider offers this model free of charge',
