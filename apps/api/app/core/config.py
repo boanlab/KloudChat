@@ -41,6 +41,13 @@ class Settings(BaseSettings):
 
     # ── database ───────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://kchat:kchat@localhost:5432/kchat"
+    #: Per-process pool. The single uvicorn process this image runs holds at
+    #: most `db_pool_size + db_max_overflow` connections; Postgres's own
+    #: `max_connections` (100 by default) is the ceiling across every process
+    #: sharing the database, so raise both together if this ever runs as more
+    #: than one process.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
 
     # ── auth ───────────────────────────────────────────────────────────
     jwt_secret: str = Field(default="change-me", min_length=8)
