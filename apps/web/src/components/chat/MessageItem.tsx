@@ -26,7 +26,7 @@ import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
-import { FINDING_LABEL } from '@/lib/privacy'
+import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
@@ -257,6 +257,23 @@ function MessageItemInner({
   const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
     message.routing.answerOrigin === 'tool_result' ? message.routing : null
   const routing = message.routing && 'action' in message.routing ? message.routing : null
+  const requestAction = routing?.initialAction ?? routing?.action
+  const requestProtection = requestAction && requestAction !== 'none'
+    ? requestAction === 'route_strict_local' || requestAction === 'strict_local'
+      ? 'strict-local로 보호됨'
+      : requestAction === 'mask_external'
+        ? requestMaskingLabel(routing?.findingCounts)
+        : routing?.action !== 'send_raw_external'
+          ? '확인 후 요청 원문은 외부 전송'
+          : '확인 후 외부 원문 전송'
+    : null
+  const toolMaskingDetails = maskingCategories(routing?.toolOutputFindings)
+    .map(({ label, count }) => t('{category} {n}건')
+      .replace('{category}', t(label)).replace('{n}', count.toLocaleString()))
+    .join(' · ')
+  const toolMaskingTitle = [
+    t('민감정보 후보로 탐지된 부분을 도구 결과에서 가렸습니다.'), toolMaskingDetails,
+  ].filter(Boolean).join(' ')
   const actualModelChanged = Boolean(
     routing?.actualModel && routing.actualModel !== routing.requestedModels[0],
   )
@@ -421,10 +438,7 @@ function MessageItemInner({
   const routingBadges = routing
     ? [
         costRoute && costRouteDisplay,
-        routing.action !== 'none' &&
-          routing.initialAction === 'send_raw_external' &&
-          routing.action !== 'send_raw_external',
-        routing.action !== 'none',
+        requestProtection,
         messageBoundary,
         routing.toolOutputMasked,
         actualModelChanged && !routing.costRouting && routing.actualModel,
@@ -481,25 +495,20 @@ function MessageItemInner({
                 {costRouteDisplay.label}
               </Badge>
             )}
-            {routing.action !== 'none' &&
-              routing.initialAction === 'send_raw_external' &&
-              routing.action !== 'send_raw_external' && (
-                <Badge tone="warn">{t('확인 후 요청 원문은 외부 전송')}</Badge>
-              )}
-            {routing.action !== 'none' && (
+            {requestProtection && (
               <Badge
-                tone={routing.action === 'send_raw_external' ? 'warn' : 'success'}
+                tone={requestAction === 'send_raw_external' ? 'warn' : 'success'}
               >
-                {routing.action === 'route_strict_local' ||
-                routing.action === 'strict_local'
-                  ? t('strict-local로 보호됨')
-                  : routing.action === 'mask_external'
-                    ? t('개인정보를 가려 전송함')
-                    : t('확인 후 외부 원문 전송')}
+                {t(requestProtection)}
               </Badge>
             )}
             {messageBoundary && (
-              <Badge tone={messageBoundary === 'self_hosted' ? 'success' : 'warn'}>
+              <Badge
+                tone={messageBoundary === 'self_hosted' ? 'success' : 'warn'}
+                title={messageBoundary === 'hybrid'
+                  ? t('모델 설정상의 데이터 처리 경계입니다. 이번 요청에서 외부 모델이 실행됐다는 뜻은 아닙니다.')
+                  : undefined}
+              >
                 {messageBoundary === 'self_hosted'
                   ? 'self-hosted'
                   : messageBoundary === 'hybrid'
@@ -510,8 +519,8 @@ function MessageItemInner({
               </Badge>
             )}
             {routing.toolOutputMasked ? (
-              <Badge tone="warn">
-                {t('도구 결과 {n}건 추가 마스킹').replace(
+              <Badge tone="warn" title={toolMaskingTitle}>
+                {t('도구 결과 {n}건 마스킹').replace(
                   '{n}',
                   routing.toolOutputMasked.toLocaleString(),
                 )}

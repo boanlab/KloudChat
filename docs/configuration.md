@@ -119,10 +119,20 @@ an error is shown instead of silently retrying the premium model.
 | --- | --- | --- |
 | `KCHAT_DB_USER` | part of `DATABASE_URL` | `kchat` |
 | `KCHAT_DB_PASSWORD` | part of `DATABASE_URL` | `kchat` |
+| `KCHAT_DB_POOL_SIZE` | `DB_POOL_SIZE` | `10` |
+| `KCHAT_DB_MAX_OVERFLOW` | `DB_MAX_OVERFLOW` | `20` |
 
 Postgres is published on host port **5433** because 5432 is commonly already
 taken by a vector database on the same host. Change both credentials before
 exposing the port beyond the compose network.
+
+The `api` container runs one uvicorn process, so `DB_POOL_SIZE +
+DB_MAX_OVERFLOW` is its entire database budget. Postgres's own
+`max_connections` (100 by default) is the ceiling across every process
+sharing the database — raise it before raising the pool past what a single
+process needs. Scaling `api` to more than one process would also need a
+shared cancellation signal for the stop button (see `_STOPPING` in
+`app/routers/sessions.py`) before `--workers` or multiple replicas are safe.
 
 ### Advanced
 

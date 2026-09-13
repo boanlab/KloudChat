@@ -14,8 +14,9 @@ import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import jwt
 from sqlmodel import col, select
@@ -500,6 +501,21 @@ def invalidate() -> None:
 #: Categories compared by their digits alone, so 010-1234-5678 written back as
 #: 01012345678 or 010 1234 5678 is still the same number.
 _NUMERIC = frozenset({"phone", "landline", "payment_card", "government_id"})
+_NUMBER_URL = re.compile(r"https?://[^\s<>\[\]()\"']+", re.I)
+_PATH_TIMESTAMP = re.compile(r"(?<=/)(?:19|20)[0-9]{12}(?=/|$)")
+# Separate whitespace repeats with a required delimiter to avoid quadratic backtracking.
+_YEAR_SEQUENCE = re.compile(
+    r"(?:\byears?\b|연도|년도)[ \t]*(?:[:：|][ \t]*)?"
+    r"(?P<years>(?:19|20)[0-9]{2}(?:[ -](?:19|20)[0-9]{2}){3})"
+    r"(?=$|[\s,;:|.)\]])",
+    re.I,
+)
+_NUMBER_SECRET_CONTEXT = re.compile(
+    r"카드|신용|직불|결제|주민|비밀번호|비밀|토큰|인증|API\s*키|"
+    r"\b(?:card(?:s|[_ -]?(?:number|no))?|credit|debit|payment|pan|cvv|cvc|"
+    r"secrets?|tokens?|credentials?|password|authorization|api[_ -]?key)\b",
+    re.I,
+)
 
 
 def _normalised(category: str, value: str) -> str:
@@ -508,21 +524,75 @@ def _normalised(category: str, value: str) -> str:
     return value.strip().lower()
 
 
+def _public_number_spans(text: str) -> set[tuple[int, int]]:
+    """Recognize narrow public-number syntax, never exempt a whole URL or tool."""
+    spans: set[tuple[int, int]] = set()
+    for match in _NUMBER_URL.finditer(text):
+        raw_url = match.group()
+        if _NUMBER_SECRET_CONTEXT.search(unquote(raw_url)):
+            continue
+        try:
+            parsed = urlsplit(raw_url)
+        except ValueError:
+            continue
+        if not parsed.netloc:
+            continue
+        path_start = match.start() + len(parsed.scheme) + 3 + len(parsed.netloc)
+        for stamp in _PATH_TIMESTAMP.finditer(parsed.path):
+            value = stamp.group()
+            try:
+                datetime(
+                    int(value[:4]), int(value[4:6]), int(value[6:8]),
+                    int(value[8:10]), int(value[10:12]), int(value[12:14]),
+                )
+            except ValueError:
+                continue
+            spans.add((path_start + stamp.start(), path_start + stamp.end()))
+    for match in _YEAR_SEQUENCE.finditer(text):
+        years = [int(value) for value in re.split(r"[ -]", match["years"])]
+        if years == list(range(years[0], years[0] + 4)):
+            spans.add(match.span("years"))
+    return spans
+
+
+def _number_secret_context(text: str, hit: _Detection) -> bool:
+    # A separate preceding row must not taint all following public references.
+    start = max(text.rfind("\n", 0, hit.start) + 1, hit.start - 120)
+    line_end = text.find("\n", hit.end)
+    end = min(len(text) if line_end < 0 else line_end, hit.end + 80)
+    return bool(_NUMBER_SECRET_CONTEXT.search(text[start:end]))
+
+
 def _in_scope(
-    hits: list[_Detection], text: str, scope: str, protected: frozenset[str] | set[str]
+    hits: list[_Detection], text: str, scope: str, protected: frozenset[str] | set[str],
+    *, preserve_public_numbers: bool = False,
 ) -> list[_Detection]:
     """The hits `scope` masks: its categories, plus any span whose value the user
     had masked on the way out (`protected`), so it does not resurface at rest —
     however the model re-spaced or re-cased it."""
     wanted = SCOPES[scope]
-    if not protected:
-        return [hit for hit in hits if hit.category in wanted]
     guarded = {_normalised(category, value) for category, value in _split_protected(protected)}
-    return [
-        hit
-        for hit in hits
-        if hit.category in wanted or _normalised(hit.category, text[hit.start : hit.end]) in guarded
-    ]
+    public_spans = (
+        _public_number_spans(text)
+        if preserve_public_numbers and scope in {"tool", "answer"}
+        and any(hit.category == "payment_card" for hit in hits)
+        else set()
+    )
+    accepted: list[_Detection] = []
+    for hit in hits:
+        raw = text[hit.start : hit.end]
+        user_value = _normalised(hit.category, raw) in guarded
+        if hit.category not in wanted and not user_value:
+            continue
+        # A candidate may include its trailing space; it is not part of the value.
+        span = (hit.start, hit.start + len(raw.rstrip(" ")))
+        if (
+            hit.category == "payment_card" and not user_value and span in public_spans
+            and not _number_secret_context(text, hit)
+        ):
+            continue
+        accepted.append(hit)
+    return accepted
 
 
 def _split_protected(protected: frozenset[str] | set[str]) -> list[tuple[str, str]]:
@@ -536,7 +606,9 @@ def _split_protected(protected: frozenset[str] | set[str]) -> list[tuple[str, st
 
 def mask(text: str, *, scope: str = "egress", protected: set[str] | None = None) -> tuple[str, int]:
     """`(masked text, hit count)` for `scope` — see `SCOPES`."""
-    hits = _in_scope(_detections(text), text, scope, protected or frozenset())
+    hits = _in_scope(
+        _detections(text), text, scope, protected or frozenset(), preserve_public_numbers=True,
+    )
     return _render_masked(text, hits), len(hits)
 
 
@@ -610,7 +682,8 @@ def findings(
         for value in values:
             detector = _legacy_detections if legacy else _detections
             for hit in _in_scope(
-                detector(value or ""), value or "", scope, protected or frozenset()
+                detector(value or ""), value or "", scope, protected or frozenset(),
+                preserve_public_numbers=not legacy,
             ):
                 key = (hit.category, source)
                 counts[key] = counts.get(key, 0) + 1

@@ -17,17 +17,17 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 | Tab | Function |
 |---|---|
 | Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |
-| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows the token count and the context share of each file, and supports checking the recognised content, downloading the original, and deleting it. |
+| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows how many tokens each file uses and how much of the context it takes up. You can check the recognized content, download the original, and delete it. |
 | Skills | Designated recommended skills are shown first in the input box of this project. |
 | Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
 
 ## How knowledge is delivered
 
-Project knowledge is delivered automatically to every conversation in the project. If the volume fits within the processing range, all of it is delivered. If it exceeds the range, only the parts related to the question are selected and delivered. If even the selected volume exceeds the range, only the file list is delivered. You can check how far it was used in the processing steps of the answer. In reports it is cited with source numbers.
+Project knowledge is delivered automatically to every conversation in the project. If the volume fits within the processing range, all of it is delivered. If it exceeds the range, only the parts related to the question are selected and delivered. If even the selected volume exceeds the range, only the file list is delivered. The processing steps of the answer show how much of it was used. In reports it is cited with source numbers.
 
 ## Instructions
 
-Describe rules that apply to every conversation, such as "answer in polite language" or "give English terms alongside". They take precedence over personalisation settings.
+Describe rules that apply to every conversation, such as "answer in polite language" or "give English terms alongside". They take precedence over personalization settings.
 
 ## Deleting a project
 
@@ -39,4 +39,4 @@ Deleting a project deletes its instructions and knowledge files. Conversations a
 |---|---|---|
 | Scope | That conversation | Every conversation in the project |
 | Retention | Until the conversation is deleted | Until the file is deleted |
-| Share link | Exposed as far as it is cited in the answer | Not exposed |
+| Share link | Exposed only to the extent that the answer quotes it | Not exposed |

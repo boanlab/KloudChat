@@ -14,7 +14,7 @@ A connector is an external tool (an MCP server) that the model can call. Install
 |---|---|
 | Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |
 | YouTube transcript | Fetches the subtitles of a video. If there are no subtitles, it transcribes the audio. |
-| Deep research | Investigates by repeating searches and page reads. It takes several minutes to tens of minutes, and it is available only when the administrator has connected a deep research server. |
+| Deep research | Investigates by repeating searches and page reads. It takes from a few minutes to a few tens of minutes, and it is available only when the administrator has connected a deep research server. |
 
 ## Adding a server directly
 

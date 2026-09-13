@@ -8,7 +8,7 @@ The **System** screen in the Manage menu is made up of seven tabs.
 
 ## Proxy
 
-The model gateway (LiteLLM) address and master key (stored encrypted, never shown again), **Connection test** (confirms n models), **Refresh model list**, and revert to the environment variable values. If you see a list of models hidden for having no price information, enter the model prices in the gateway settings.
+The model gateway (LiteLLM) address and master key (stored encrypted, never shown again), **Connection test** (confirms n models), **Refresh model list**, and revert to the environment variable values. If models are listed as hidden for lack of price information, enter the model prices in the gateway settings.
 
 ## Routing
 
@@ -17,7 +17,7 @@ The routing settings are described in [Policy and routing](policy#auto-routing).
 ## Features
 
 - **Features to use**: Turn reports, slide decks, images, and audio/video on and off. Chat is always on. Disabling one removes it from the menu, and the server refuses new conversations for it as well. Images and video work in practice only if the gateway has those models. If you enable them without a model, the user screen shows a notice that generation is not possible.
-- **Feature integration**: One feature server address, or an address per feature (web search · document import · code execution · deep research · speech transcription · material search). **Connection test** individually and for all of them. Setting a speech transcription address enables dictation and reading audio and video files. With a material search (indexing) address, agent material and conversation attachments are searched as vectors (word search only without it).
+- **Feature integration**: One feature server address, or an address per feature (web search · document import · code execution · deep research · speech transcription · material search). **Connection test** individually and for all of them. Setting a speech transcription address enables dictation and reading audio and video files. With a material search (indexing) address, agent material and conversation attachments are searched by vector (word search only without it).
 
 The safe search level and blocked domains for web search are set on the search server. For details, see the backend (KloudChat-LLM) documentation. By default, safe search is off.
 
@@ -27,7 +27,7 @@ Register, edit, and delete the **starting points** shown in the **Start working*
 
 ## Branding
 
-The service name, the contact address (the mail link on the waiting screen. The first administrator if left empty), and the logo (PNG, JPG, WebP, up to 2MB, no SVG, with revert to default). Changing the service name also changes the browser tab icon to the matching initials.
+The service name, the contact address (used by the mail link on the waiting screen; the first administrator's address if left empty), and the logo (PNG, JPG, WebP, up to 2MB, no SVG, with revert to default). Changing the service name also changes the browser tab icon to the matching initials.
 
 ## Mail
 

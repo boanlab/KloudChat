@@ -134,7 +134,7 @@ async function assertToolAnswer(page: Page) {
   await expect(page.getByText(/서비스 정책 안내|최신 정보 검증 불가|모델 실행 없음|확인 중…/)).toHaveCount(0)
   const details = page.getByRole('button', { name: /처리 내역 \d+건/ })
   if (await details.isVisible()) await details.click()
-  await expect(page.getByText('개인정보를 가려 전송함', { exact: true })).toBeVisible()
+  await expect(page.getByText('참고자료를 가려 전송함', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
   const fitsParent = await badge.evaluate((node) => {
     const box = node.getBoundingClientRect()
