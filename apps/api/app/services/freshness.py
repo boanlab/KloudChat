@@ -593,9 +593,9 @@ _FACT_DOCUMENT_SOURCE = re.compile(
     r"(?:자료|문서|본문|표)(?:에\s*있으면|\s*(?:근거|기준))",
 )
 _FACT_OUTSIDE_SOURCE = re.compile(
-    r"검색|검증|실시간|실제|"
+    r"검색|검증|실시간|실제|무시|참고하지|"
     r"(?:현재|지금|최신|오늘|내일|모레|올해|내년|이번|최근|요즘)"
-    r"[^.!?\n]{0,60}(?:확인|조회|찾아|알려|얼마|누구|몇)",
+    r"[^.!?\n]{0,60}(?:확인|조회|찾아|알려|얼마|누구|몇|정리|설명|예측|말해)",
 )
 _FACT_SIMULATED_INPUT = re.compile(r"^(?:가상|가정한|예시)\s*[^.!?\n]*\d")
 _FACT_TASK_PRIORITY = re.compile(
@@ -640,6 +640,7 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
             _FACT_ATTACHED_SOURCE.search(clause)
             and _FACT_ATTACHED_TRANSFORM.search(clause)
             and not _FACT_VERIFICATION_REQUEST.search(clause)
+            and not _FACT_OUTSIDE_SOURCE.search(clause)
         ):
             continue
         switched = _DECLINED_TOPIC.search(clause)

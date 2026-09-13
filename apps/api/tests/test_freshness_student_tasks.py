@@ -52,6 +52,8 @@ def test_classification_translation_drafting_and_constant_rates_are_not_current_
     "지금 대통령이 누구인지 말하고 확인한 것은 아니라는 점을 밝혀줘.",
     "현재 국가장학금 지원 우선순위를 알려줘.",
     "현재 대학 기숙사 배정 우선순위를 알려줘.",
+    "첨부한 작년 출시표를 무시하고 올해 출시 일정을 정리해줘.",
+    "첨부한 지난해 날씨표를 참고해서 내일 서울 기온을 예측해줘.",
 ])
 def test_student_context_does_not_exempt_a_separate_current_fact_request(question):
     assert current_fact_required(question)
