@@ -209,8 +209,14 @@ function DocMap() {
 
 export default function Home(): ReactNode {
   const { siteConfig } = useDocusaurusContext();
+  // 설명 메타 태그. siteConfig.tagline 은 Docusaurus 가 번역 대상으로 뽑지 않아서, 그대로
+  // 쓰면 영어 페이지에도 한국어 문장이 실린다. 여기서 따로 번역한다.
+  const description = translate({
+    id: 'home.tagline',
+    message: '업무에 쓰는 AI를 조직이 직접 운영합니다',
+  });
   return (
-    <Layout title={siteConfig.title} description={siteConfig.tagline}>
+    <Layout title={siteConfig.title} description={description}>
       <Hero />
       <main>
         <HomepageFeatures />

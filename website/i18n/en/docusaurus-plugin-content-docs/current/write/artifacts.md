@@ -4,16 +4,16 @@ title: Artifacts
 
 # Artifacts
 
-Outputs generated in a conversation, such as reports, slides, charts, code, web pages, and images, are called artifacts, and they are collected on the **Artifacts** screen in the sidebar.
+Outputs generated in a conversation, such as reports, slides, charts, code, web pages, and images, are called artifacts. They are collected on the **Artifacts** screen in the sidebar.
 
 ![Artifact gallery](/img/guide/artifacts.png)
 
 ## Output panel
 
 - The panel opens automatically when an output is generated. If you closed it, reopen it with a button such as **Open the report** or **Open the deck** at the top right of the conversation screen.
-- The common features are the version and edit time display, copy, download, width adjustment (double-click to reset), narrow, wide, and document-only views, and close. If the screen is narrow, the panel is shown over the conversation.
+- Every panel shows the version and the edit time, and lets you copy, download, adjust the width (double-click to reset), switch between narrow, wide, and document-only views, and close the panel. If the screen is narrow, the panel is shown over the conversation.
 - Code and web pages support the **Preview** and **Source** tabs and zooming in and out. A web page runs in an isolated frame, so features that save values do not work.
-- In Chat too, a request such as "organise this into a table and turn it into a document" or "draw a chart from this data" generates an output in the panel.
+- In Chat too, a request such as "organize this into a table and turn it into a document" or "draw a chart from this data" generates an output in the panel.
 
 ## Export formats
 
@@ -27,4 +27,4 @@ PDF reproduces the design as it is, and DOCX and PPTX put an editable structure 
 
 ## Gallery
 
-See the full list under **Artifacts** in the sidebar. It provides tabs by type (all, code, HTML, report, slides, chart, image, audio, video) and a title search. Selecting a card opens it as a panel inside the gallery, and to go to the conversation that generated it, use **Open the original conversation** on the card. Deleting from the gallery deletes the version history as well, but the conversation is kept.
+See the full list under **Artifacts** in the sidebar. It provides tabs by type (all, code, HTML, report, slides, chart, image, audio, video) and a title search. Selecting a card opens it as a panel inside the gallery. To go to the conversation that generated it, use **Open the original conversation** on the card. Deleting from the gallery deletes the version history as well, but the conversation is kept.

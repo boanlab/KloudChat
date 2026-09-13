@@ -4,7 +4,7 @@ title: API and coding tool integration
 
 # API and coding tool integration
 
-You can call the models your organisation runs from your own code or from a coding tool. The account menu has two screens, **API integration** and **AI agent integration**.
+You can call the models your organization runs from your own code or from a coding tool. The account menu has two screens, **API integration** and **AI agent integration**.
 
 ## API integration
 
@@ -32,7 +32,7 @@ Usage is added to your account limit and is counted separately under **By API ke
 
 ![AI agent integration](/img/guide/agent-setup.png)
 
-This screen explains how to connect coding agents such as Claude Code and Codex to organisation models. Issue a key, choose a model, then copy the commands from the tab for your operating system (Linux · macOS · Windows).
+This screen explains how to connect coding agents such as Claude Code and Codex to organization models. Issue a key, choose a model, then copy the commands from the tab for your operating system (Linux · macOS · Windows).
 
 | Tool | Environment variables |
 |---|---|

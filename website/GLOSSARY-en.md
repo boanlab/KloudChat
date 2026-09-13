@@ -4,7 +4,7 @@
 
 | 한국어 | English | 비고 |
 |---|---|---|
-| 기관 | organisation | 영국식 철자로 통일 |
+| 기관 | organization | 철자는 미국식으로 통일 |
 | 관리자 | administrator | admin 축약 금지 |
 | 대화 | conversation | 화면 이름으로 쓰일 때만 Chat |
 | 챗 | Chat | 화면 이름 |
@@ -53,6 +53,7 @@
 
 ## 문장 규칙
 
+- 철자는 미국식이다. organization, color, recognize, summarize, analyze, judgment.
 - 평서문 현재형. "~합니다"는 "does", "~하십시오"는 명령형("Open the ...").
 - 화면에 보이는 문자열은 **볼드**로 감싼 원문 형태를 유지하되 영어 UI 문구로 옮긴다.
 - 한 문장 20단어 안팎. 세미콜론으로 절을 잇지 않는다.

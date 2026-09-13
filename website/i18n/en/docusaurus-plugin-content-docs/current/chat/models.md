@@ -4,7 +4,7 @@ title: Choosing a model
 
 # Choosing a model
 
-Select the model name at the right of the composer to open the list. When eight or more models are registered, a **Find a model** search box appears with it.
+Select the model name to the right of the composer to open the list. When eight or more models are registered, a **Find a model** search box appears with it.
 
 ![The model picker list](/img/guide/model-picker.png)
 
@@ -12,10 +12,10 @@ Select the model name at the right of the composer to open the list. When eight 
 
 | Label | Meaning |
 |---|---|
-| **strict-local** | The model is confirmed to run only on organisation servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |
-| **self-hosted · strict unverified** | The model runs on organisation servers, but it is not confirmed that there is no external fallback path. |
-| **May switch to an external provider** | The model normally runs on organisation servers, but it may switch to an external service during an outage. |
-| **External provider** | The model is supplied by an external service, so requests are sent outside the organisation. |
+| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |
+| **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |
+| **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |
+| **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |
 | **Boundary unverified** | No information about the processing location is provided for this model. |
 | Price | Input and output credits per 1,000 tokens, or **Free** |
 | Context | How much can be processed at once |
@@ -29,7 +29,7 @@ When the administrator enables it on the Chat screen, two modes appear at the to
 
 | Mode | What it does |
 |---|---|
-| Auto · Quality first | Switches only the requests judged complex to the higher model set by the administrator. Everything else uses the model you selected. |
+| Auto · Quality first | Only the requests judged complex switch to the higher model the administrator set. Everything else uses the model you selected. |
 | Auto · Cost saving | Switches simple requests to a cheaper model. Everything else uses the model you selected. |
 
 Auto does not apply to requests that use files, projects, agents, skills, web search set to On, or model comparison. Those requests use the model you selected. A badge above the composer then shows that Auto was not applied. Each answer also shows the reason for the decision and an estimate of the credits saved.

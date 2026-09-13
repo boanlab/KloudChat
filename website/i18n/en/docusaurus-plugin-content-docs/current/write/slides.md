@@ -21,7 +21,7 @@ After writing, you can choose the slide design again in the panel from editorial
 | Example input | What it does |
 |---|---|
 | "6 slides", "a 20-slide deck" | Writes the number of slides you set. The maximum is 50. |
-| "a 20-minute presentation" | Works out the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. |
+| "a 20-minute presentation" | Calculates the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. |
 | Not specified | Writes 5 to 12 slides to suit the topic. |
 
 If the deck runs to more than 6 slides, a table of contents is inserted as the second slide.
@@ -32,7 +32,7 @@ The model chooses the type that suits the content. It uses cover, table of conte
 
 ## Changing the design
 
-In the **Home** tab of the panel you can change the impression and the accent colour, and run **Rebuild this slide**. If a design system is linked to the project, the deck follows its colours and typefaces.
+In the **Home** tab of the panel you can change the impression and the accent color, and run **Rebuild this slide**. If a design system is linked to the project, the deck follows its colors and typefaces.
 
 ## Presentation mode
 
