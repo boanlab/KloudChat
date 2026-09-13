@@ -4,7 +4,7 @@ title: Attaching files
 
 # Attaching files
 
-Attach files with 📎 in the composer, and the model answers from their content. You can attach several files at once, and drag and drop and paste are supported. The Images and Audio/Video screens do not offer attachments.
+Attach files with 📎 in the composer, and the model answers from their content. You can attach several files at once, and you can drag and drop them or paste them in. The Images and Audio/Video screens do not offer attachments.
 
 ![A conversation answered from an attached document](/img/guide/chat-with-file.png)
 
@@ -23,16 +23,16 @@ The maximum size for a single file is 200MB. Older Office formats (.doc, .ppt, .
 
 An attached file stays available to later requests in the same conversation. It appears in the processing steps as **Attachment from an earlier turn**.
 
-- When a file is larger than can be processed at once, only the **parts relevant to your question** are selected and sent. Ask something such as "Tell me what Article 7 says" and the text around that article is sent.
+- When a file is too large to process at once, only the **parts relevant to your question** are selected and sent. Ask something such as "Tell me what Article 7 says" and the text around that article is sent.
 - If the answer is not in the part that was sent, the model searches inside the file with the **Find in files** tool.
-- The attachment entry in the processing steps shows how far the file was used, as used, truncated, or omitted.
+- The processing steps mark each attachment as used, truncated, or omitted.
 
 The Reports and Slides screens do not carry over attachments from earlier requests, so attach the material for the document to that request directly. Files attached in another conversation are not referenced either. To use the same material in several conversations, register it in a [project](../personal/projects).
 
 ## Improving recognition accuracy
 
 - State exactly what you are looking for. "Summarize this file" is less accurate than "List only the remote work application steps from this file".
-- Material with many tables is recognized more accurately as Excel or CSV than as PDF.
+- Attach table-heavy material as Excel or CSV rather than PDF. It is read far more accurately that way.
 - For an attached Hangul file (.hwpx), select **Open as document** on the file chip to convert it straight into an editable report. The conversion calls no model, so it uses no credits.
 
 ## Attaching images

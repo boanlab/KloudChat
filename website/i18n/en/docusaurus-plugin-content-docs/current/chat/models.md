@@ -4,7 +4,7 @@ title: Choosing a model
 
 # Choosing a model
 
-Select the model name at the right of the composer to open the list. When eight or more models are registered, a **Find a model** search box appears with it.
+Select the model name to the right of the composer to open the list. When eight or more models are registered, a **Find a model** search box appears with it.
 
 ![The model picker list](/img/guide/model-picker.png)
 
@@ -29,7 +29,7 @@ When the administrator enables it on the Chat screen, two modes appear at the to
 
 | Mode | What it does |
 |---|---|
-| Auto · Quality first | Switches only the requests judged complex to the higher model set by the administrator. Everything else uses the model you selected. |
+| Auto · Quality first | Only the requests judged complex switch to the higher model the administrator set. Everything else uses the model you selected. |
 | Auto · Cost saving | Switches simple requests to a cheaper model. Everything else uses the model you selected. |
 
 Auto does not apply to requests that use files, projects, agents, skills, web search set to On, or model comparison. Those requests use the model you selected. A badge above the composer then shows that Auto was not applied. Each answer also shows the reason for the decision and an estimate of the credits saved.

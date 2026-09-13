@@ -44,7 +44,7 @@ Choose the slide design from editorial, minimal, poster, split, dark, steel, war
 ### Edit
 
 - Click text on a slide to edit it directly. You can set bold, italic, size, and color.
-- In bulk text box editing, the first line becomes the title and each line becomes an item, and `|` separates the rows of a table.
+- In bulk text box editing, the first line becomes the title and each line becomes an item. A `|` separates the rows of a table.
 - It provides speaker notes, table data editing (add, move, and delete rows and columns), and chart editing (bar and line, units, series).
 - In the picture tool, upload an image (PNG, JPG, GIF, WebP, 5MB or less) and set the display mode, the size, and the left or right placement.
 - When the content overflows, it supports auto fit, splitting the slide, changing the layout, adjusting the font size, and undo. Save with `Ctrl+S`.
@@ -66,9 +66,9 @@ Exports to PowerPoint (PPTX), PDF, and text (with notes), and supports copying t
 
 | Feature | Description |
 |---|---|
-| Automatic checks | Detects **Must fix** (empty content, blocks that were not written, placeholders, figures with no evidence, arithmetic errors) and **Worth a look** (padding expressions, sentences that start with an emoji, repeated lines, lines longer than two rows), and corrects them with **Fix** or **Fix all**. For slides it reports **n slides at overflow risk** separately. |
+| Automatic checks | Detects **Must fix** (empty content, blocks that were not written, placeholders, figures with no evidence, arithmetic errors) and **Worth a look** (filler phrases, sentences that start with an emoji, repeated lines, lines that run past two rows), and corrects them with **Fix** or **Fix all**. For slides it reports **n slides at overflow risk** separately. |
 | Get a review | The model reads the document once and gives a score out of 10 with up to six points to address. The score is for reference and does not restrict export. |
-| Fact check | Compares the claims in a section or a slide against the evidence. A verdict with no source address is lowered to **Needs checking**. Opinions and definitions are excluded from judgement. |
+| Fact check | Compares the claims in a section or a slide against the evidence. A verdict with no source URL is lowered to **Needs checking**. Opinions and definitions are excluded from judgment. |
 | Evidence panel (report) | Provides the source list, citation checks, citation styles (APA, MLA, Chicago, IEEE), adding material directly, deleting unused material, and the research log (search terms, accepted, excluded). |
 | Review notes (slides) | Add notes per slide and mark them resolved or reopened. Unresolved notes are shown with a badge. |
 | Version history | See below. |

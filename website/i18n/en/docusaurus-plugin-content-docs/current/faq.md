@@ -30,11 +30,11 @@ Some starting points, such as experiment records and weekly reports, leave a fig
 ### I asked for more slides but nothing changed
 If you ask "Please make it 20 slides", the product proposes the structure again and writes it after you approve. If that does not take effect, ask again from scratch, such as "Create it again with 20 slides".
 
-### The model shows differently when I sign in from another device
+### A different model appears when I sign in from another device
 The model you choose on the home page is saved to your account and applies the same way on every device. A model you choose during a conversation applies only to that conversation. Check the default model per screen under Settings → Preferences.
 
 ### I turned web search off but it comes back in a new conversation
-The search mode applies per request, so it resets to **Auto** in a new conversation. Only the enabled state of a connector is kept across the whole account.
+The search mode applies per request, so it resets to **Auto** in a new conversation. Only whether a connector is turned on is kept for the whole account.
 
 ### The person I sent a share link to cannot open it
 A link created for **People with an account** can only be opened after signing in. To send it to an external user, create it again as **Anyone with the link**. A link you have revoked, or one whose conversation you deleted, does not open.

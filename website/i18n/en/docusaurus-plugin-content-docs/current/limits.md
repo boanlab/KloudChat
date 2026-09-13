@@ -13,7 +13,7 @@ This page describes the limits the service allows and what to do for each error 
 | A single file | 200MB |
 | Images | PNG, JPG, GIF, WebP, up to 4MB, on a model that supports image recognition |
 | Audio and video files | 25MB, when speech transcription is connected |
-| Number of slides | Up to 50 slides (5 to 12 if you do not say) |
+| Number of slides | Up to 50 slides (5 to 12 if you do not specify a number) |
 | Number of report sections | 3 to 12 sections |
 | Skills | 3 per request |
 | Model comparison | 2 to 3 |
@@ -21,12 +21,12 @@ This page describes the limits the service allows and what to do for each error 
 | Opening sentences (agent) | 6 |
 | API keys | 10 per account |
 | Slide image upload | 5MB |
-| Volume of files in one conversation | About 35% of the model window (up to about 150,000 characters). Beyond that, only the relevant parts |
+| Amount of file content in one conversation | About 35% of the model window (up to about 150,000 characters). Beyond that, only the relevant parts |
 | Answer length | No upper limit. Stops automatically when the text starts repeating |
 
 ## Processing time limits
 
-- A single request runs for up to 15 minutes, and it ends with an error beyond that.
+- A single request runs for up to 15 minutes. Past that it ends with an error.
 - If the model sends nothing for 3 minutes, the request ends with an error. In that case use **Try another model**.
 - Reports and slide decks are written in order, section by section or slide by slide. A 20-slide deck takes several minutes, and video generation takes longer and shows progress.
 

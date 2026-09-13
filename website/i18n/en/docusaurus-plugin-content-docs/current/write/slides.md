@@ -21,7 +21,7 @@ After writing, you can choose the slide design again in the panel from editorial
 | Example input | What it does |
 |---|---|
 | "6 slides", "a 20-slide deck" | Writes the number of slides you set. The maximum is 50. |
-| "a 20-minute presentation" | Works out the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. |
+| "a 20-minute presentation" | Calculates the minimum number of slides at one slide per two minutes. 20 minutes gives at least 10 slides. |
 | Not specified | Writes 5 to 12 slides to suit the topic. |
 
 If the deck runs to more than 6 slides, a table of contents is inserted as the second slide.

@@ -11,7 +11,7 @@ This page explains how to request an account and sign in, and how to manage your
 ## Requesting an account
 
 1. On the sign-in screen, select the **Sign up** tab.
-2. Enter your name, email and password, then press **Request sign-up**. The password must be at least 10 characters long and contain a number and a symbol. If the screen lists the addresses that may sign up, only email at those domains can apply.
+2. Enter your name, email and password, then press **Request sign-up**. The password must be at least 10 characters long and contain a number and a symbol. If the screen lists the addresses that may sign up, only addresses at those domains may apply.
 3. What happens next depends on the sign-up method the administrator has set.
 
 | Sign-up method | Right after you apply |
@@ -25,7 +25,7 @@ If pressing **Request sign-up** shows the notice "Sign-ups are not being accepte
 
 Sign in with your email and password. **If you enter the wrong password five times in a row, sign-in is blocked for 15 minutes.** While it is blocked, even the correct password will not sign you in, so try again after 15 minutes.
 
-A suspended account sees an information screen instead of signing in. In that case, contact your administrator.
+If your account is suspended, an information screen appears instead of the home screen. In that case, contact your administrator.
 
 ## Resetting your password
 
@@ -38,8 +38,8 @@ If the sign-in screen has a **Forgot your password?** link, you can receive a re
 
 ## Automatic sign-out
 
-Where the administrator has set an idle time, you are signed out automatically after that time without any activity. When you connect again, the sign-in screen shows a notice that you were signed out automatically.
+Where the administrator has set an idle time, you are signed out automatically after that much time with no activity. When you connect again, the sign-in screen shows a notice that you were signed out automatically.
 
 ## Interface language
 
-Use the **EN** button at the top right to switch the interface language. The language of an answer follows **the language you asked in**, whatever the interface language is.
+Use the **EN** button at the top right to switch the interface language. The language of an answer follows **the language you asked in**, regardless of the interface language.

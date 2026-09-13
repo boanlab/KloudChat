@@ -6,7 +6,7 @@ slug: /
 
 # KloudChat User Guide
 
-KloudChat is an AI assistant that your organization runs itself. It answers questions, reads the documents you attach, and writes reports and slide decks. To see where the model that generates an answer runs, check the **data boundary** label in the model list.
+KloudChat is an AI assistant your organization runs on its own servers. It answers questions, reads the documents you attach, and writes reports and slide decks. To see where the model that generates an answer runs, check the **data boundary** label in the model list.
 
 ![Home screen](/img/guide/home.png)
 
