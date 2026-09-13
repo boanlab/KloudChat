@@ -81,8 +81,8 @@ dropped and why.
 
 **Credit conversion.** `credits_per_usd` (default 100,000, so 1 credit =
 $0.00001) is the single exchange rate. When provider prices move, adjust this
-rather than re-cutting everyone's allowance. The default grant of 1,000,000
-credits is about $10/month.
+rather than re-cutting everyone's allowance. The default grant of 500,000
+credits is about $5/month.
 
 Resolution matters more than magnitude: provider prices span four orders of
 magnitude, and a coarse unit rounds the cheapest models up onto the same floor
@@ -136,19 +136,24 @@ app/
     ├── adapters.py         Model facts LiteLLM does not know (adapters and overrides)
     ├── chat.py             chat/completions stream → SSE events, title generation
     ├── agent.py            Tool-calling loop (model ↔ tool round trips)
+    ├── calculation_policy.py · ncs_submission.py   Required-arithmetic detection and answer syntax
     ├── context.py          System prompt assembly — surface defaults and tool rules
+    ├── freshness.py · current_evidence.py   Grounded-answer guidance and the no-evidence display contract
     ├── workspace_context.py  Projects, skills, memories and design → system prompt blocks
     ├── governance.py       Prohibited categories, PII masking, privacy guard, retention
+    ├── netguard.py         Where a fetch on someone's behalf may go — the public internet, nothing behind it
+    ├── ratelimit.py        Backoff from a model gateway's 429
     ├── adaptive_routing.py Auto cost routing for sessions that opted in
     ├── outline.py          Plan rules shared by the report, deck and HTML tracks
     ├── report.py · deck.py · page.py   Report, deck and HTML-template producers
     ├── research.py         Web research before a document is written
     ├── grounding.py · revise.py · lint.py · critique.py   Request check, targeted rewrite, linter, review
     ├── design.py · design_templates.py · design_extract.py   Design systems, the catalogue, extraction
+    ├── doc_type.py · deck_type.py   Type scale shared by every renderer of a report or a deck
     ├── prompt_templates.py Prompt starters
     ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
     ├── printing.py         PDF via the print service; None when it is absent
-    ├── pictures.py · figures.py · diagram.py · charts.py · chart_code.py   Pictures and charts in documents
+    ├── pictures.py · figures.py · diagram.py · diagrams.py · charts.py · chart_code.py   Pictures, standalone and document-planned figures, charts
     ├── richtext.py · hwpx_import.py · hangul.py · arithmetic.py   Editing and text fixes
     ├── imagegen.py · audiogen.py   Synchronous media producers
     ├── videogen.py         Video: submit, poll, fetch — the one job kind
