@@ -116,6 +116,7 @@ from app.services.context import (
     declines_web_search,
     requests_web_search,
     search_hints,
+    search_needs_planning,
     search_plan,
     search_query,
     weather_location,
@@ -3063,12 +3064,13 @@ async def send_message(
             outbound_history[fresh_followup_index]
             if fresh_followup_index is not None else content
         )
-        preset_call = (
-            "web_search", {
-                "query": search_query(lookup_content, prefer_primary=fresh_fact),
-                **search_hints(lookup_content),
-            },
-        )
+        if not search_needs_planning(lookup_content):
+            preset_call = (
+                "web_search", {
+                    "query": search_query(lookup_content, prefer_primary=fresh_fact),
+                    **search_hints(lookup_content),
+                },
+            )
     elif forced_tool == "weather" and "weather" in tool_names:
         place = weather_location(content)
         if place:
@@ -3113,9 +3115,8 @@ async def send_message(
                 protect_enrichment=policy.pii_masking or policy.external_data_guard,
                 privacy_audit_id=privacy_audit_id,
                 routing_audit_id=routing_audit_id,
-                # The toggle's search is the server's own first call (a named
-                # `tool_choice` is not reliably obeyed); a weather question whose
-                # place the words do not name is left to the model, forced.
+                # Short lookups are server presets. Long requests and weather
+                # without a named place use the allowed tool's forced planning hop.
                 preset_call=preset_call,
                 freshness_request=content if fresh_fact else None,
                 force_tool=(
