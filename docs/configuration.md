@@ -110,7 +110,8 @@ an error is shown instead of silently retrying the premium model.
 | `KCHAT_COOKIE_SECURE` | `COOKIE_SECURE` | `false` | **Set to `true` behind TLS.** The refresh cookie is httpOnly; over plain HTTP it is readable on the wire. Also switches `SameSite` from `Lax` to `None`. |
 | `KCHAT_CORS_ORIGINS` | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON array of exact origins. Credentialed requests make a wildcard impossible. |
 | `KCHAT_WEB_PORT` | — | `5173` | Host port for the web container. |
-| `KCHAT_API_URL` | `KCHAT_API_URL` | `http://kloudchat-api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. |
+| `KCHAT_API_URL` | `KCHAT_API_URL` | `http://api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. `api` is the compose service name, not a fixed container: nginx re-resolves it on every request (`resolver 127.0.0.11`), so it reaches every `api` replica. |
+| `KCHAT_API_REPLICAS` | — | `1` | `api` instances. Migrations run once in a separate `migrate` job first, so replicas booting together never race `alembic upgrade head`. There is no fixed host port past one replica — reach a specific instance with `docker compose exec api sh`, not `curl localhost:8100`. The stop button's cancellation signal is per-process (`_STOPPING` in `app/routers/sessions.py`): with more than one replica, a stop request that lands on a different instance than the one streaming does nothing. |
 
 ### Database
 

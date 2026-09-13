@@ -251,7 +251,7 @@ container exists to fix exactly this — Docker creates bind-mount directories a
 root and the API runs as uid 1000. Check that it completed:
 `docker compose ps -a | grep init`.
 
-**Every `/api/` call 502s after recreating `kloudchat-api`.** The web container's
+**Every `/api/` call 502s after recreating `api`.** The web container's
 nginx resolves the upstream through a variable specifically to avoid this, so
 if it happens, check that `KCHAT_API_URL` is set on `kloudchat-web`.
 

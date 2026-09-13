@@ -24,7 +24,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Upstream resolved at run time, so the API can move hosts without a rebuild.
-ENV KCHAT_API_URL=http://kloudchat-api:8100
+ENV KCHAT_API_URL=http://api:8100
 
 # Hops allowed to name the client in `X-Forwarded-For`: private ranges plus
 # loopback. Narrow to the edge proxy's address wherever this port is reachable
