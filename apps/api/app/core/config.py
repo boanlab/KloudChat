@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     #: Service name in the UI. Overridden by the admin screen.
     brand_name: str = "KloudChat"
+    #: This process's own count, matching `KCHAT_API_REPLICAS` in docker-compose.yml.
+    #: At 1 (the default), the chat stop button never leaves the process — no
+    #: Postgres round trip to broadcast it, no background listener held open.
+    #: See `services/stop_signal.py`.
+    api_replicas: int = 1
 
     # ── mail ───────────────────────────────────────────────────────────
     # Seed values; the admin screen persists to `system_settings` and wins.
