@@ -26,7 +26,7 @@ from app.routers import (
     usage,
     workspace,
 )
-from app.services import bootstrap, litellm, settings_store, storage
+from app.services import bootstrap, litellm, settings_store, stop_signal, storage
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("kchat")
@@ -58,8 +58,17 @@ async def lifespan(app: FastAPI):
             log.warning("stored secrets were not re-sealed: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
+    # Cross-process stop-button delivery: only with more than one API replica,
+    # so the single-instance default holds no extra Postgres connection open.
+    stop_listener = (
+        asyncio.create_task(stop_signal.listen(sessions.fire_stop_locally))
+        if stop_signal.needed()
+        else None
+    )
     yield
     sweeper.cancel()
+    if stop_listener is not None:
+        stop_listener.cancel()
 
 
 app = FastAPI(

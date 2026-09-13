@@ -40,25 +40,49 @@ services:
     volumes:
       - ./data:/d
 
+  # One-shot: applies migrations before any `api` replica starts, so N
+  # replicas booting together never race the same `alembic upgrade head`.
+  migrate:
+    container_name: kloudchat-migrate
+    image: boanlab/kloudchat-api:latest
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
+    command: ["alembic", "upgrade", "head"]
+
   api:
-    container_name: kloudchat-api
     image: boanlab/kloudchat-api:latest
     restart: unless-stopped
+    # More than one replica needs `docker compose exec`/`logs api` (service
+    # name), not a fixed container name — Compose refuses a shared name across
+    # replicas, and `kloudchat-api` as a single instance's name would round-robin
+    # nothing anyway.
+    deploy:
+      replicas: ${KCHAT_API_REPLICAS:-1}
     depends_on:
       db:
         condition: service_healthy
       init:
         condition: service_completed_successfully
-    ports:
-      - "8100:8100"
+      migrate:
+        condition: service_completed_successfully
+    # No fixed host port: N replicas can't share one, and nginx in `web`
+    # reaches every replica by the service name `api`, not this port. For
+    # direct/debug access to one instance: `docker compose exec api sh`, or
+    # temporarily scale to 1 and add `ports: ["8100:8100"]` back locally.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       ENV: ${KCHAT_ENV:-dev}
       DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
-      # This container is one uvicorn process, so these two are its whole DB
-      # budget. Postgres's own max_connections (100 by default) is the ceiling
-      # across every process sharing the database.
+      # Same count as `deploy.replicas`, above — this is how each process
+      # knows whether the stop button needs cross-process delivery.
+      API_REPLICAS: ${KCHAT_API_REPLICAS:-1}
+      # Each replica's own pool. Postgres's own max_connections (100 by
+      # default) is the ceiling across every replica sharing the database.
       DB_POOL_SIZE: ${KCHAT_DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${KCHAT_DB_MAX_OVERFLOW:-20}
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
@@ -114,11 +138,8 @@ services:
       - ./mcp:/srv/mcp:ro
       # uv's cache for PEP 723 script dependencies.
       - ./data/uv-cache:/srv/data/uv-cache
-    # Migrations on boot assume a single instance; with replicas, run
-    # `alembic upgrade head` as its own job.
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8100"
+    # Migrations run in `migrate`, above, once for every replica.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
 
   # Headless Chromium: finished HTML in, PDF out. It opens model-authored
   # markup, so it gets no published port, no database, no secrets, and a
@@ -140,7 +161,7 @@ services:
     depends_on:
       - api
     environment:
-      KCHAT_API_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
+      KCHAT_API_URL: ${KCHAT_API_URL:-http://api:8100}
       # Hops allowed to name the client in X-Forwarded-For. Narrow to the edge
       # proxy's address wherever the web port is reachable by anyone else.
       KCHAT_TRUSTED_PROXIES: ${KCHAT_TRUSTED_PROXIES:-set_real_ip_from 10.0.0.0/8; set_real_ip_from 172.16.0.0/12; set_real_ip_from 192.168.0.0/16; set_real_ip_from 127.0.0.0/8; set_real_ip_from ::1/128; set_real_ip_from fc00::/7;}

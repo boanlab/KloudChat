@@ -14,7 +14,7 @@ services:
     command: [node, node_modules/vite/bin/vite.js, --host, 0.0.0.0, --port, '5173']
     environment:
       # Vite's dev proxy forwards /api in place of nginx.
-      API_BASE_URL: ${KCHAT_API_URL:-http://kloudchat-api:8100}
+      API_BASE_URL: ${KCHAT_API_URL:-http://api:8100}
       # Comma-separated Host headers Vite will answer to; needed behind a
       # reverse proxy. `KCHAT_WEB_HOST=kchat.example.org make dev`.
       WEB_ALLOWED_HOSTS: ${KCHAT_WEB_HOST:-}

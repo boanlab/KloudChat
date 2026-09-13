@@ -21,9 +21,13 @@ data directories:
 | Container | Port | Holds |
 | --- | --- | --- |
 | `kloudchat-web` | 5173 → 80 | Static bundle, nginx proxying `/api` and `/llm` |
-| `kloudchat-api` | 8100 | All application logic; **the only process with the LiteLLM master key** |
+| `api` (`KCHAT_API_REPLICAS`, default 1) | internal only | All application logic; **the only process with the LiteLLM master key** |
 | `kloudchat-db` | 5433 → 5432 | Postgres 16 |
 | `kloudchat-print` | internal | Headless Chromium, HTML to PDF; reachable from the API only |
+
+`api` has no fixed container name or published port past one replica — `web`'s
+nginx reaches every instance by the compose service name. Reach one directly
+with `docker compose exec api sh`, not a container name or `localhost:8100`.
 
 ```
 ./data/postgres     database files

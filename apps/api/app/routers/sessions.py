@@ -96,6 +96,7 @@ from app.services import (
     revise,
     richtext,
     settings_store,
+    stop_signal,
 )
 from app.services import agent as agent_service
 from app.services import auto_memory as auto_memory_service
@@ -3140,13 +3141,18 @@ async def send_message(
     )
 
 
-#: Active cancellation signals grouped by session. In-process only: the stop
-#: button's request and the streaming request must land on the same worker.
-#: This is fine behind one uvicorn process; running more than one (`--workers`,
-#: or several container replicas without session-sticky routing) needs a
-#: shared signal (e.g. Postgres LISTEN/NOTIFY or a broadcast channel) instead,
-#: or the stop button silently does nothing on a mismatched worker.
+#: Active cancellation signals grouped by session, local to this process.
+#: `stop_turn` also broadcasts over Postgres (`services.stop_signal`) so a
+#: request landing on a different replica still reaches whichever process is
+#: actually streaming the turn.
 _STOPPING: dict[str, set[asyncio.Event]] = {}
+
+
+def fire_stop_locally(session_id: str) -> None:
+    """Sets every stop signal this process holds for `session_id` — called
+    directly by `stop_turn` and by the cross-process broadcast listener."""
+    for signal in _STOPPING.get(session_id, set()):
+        signal.set()
 
 #: A key echoed in an upstream error body; the reason is shown on screen.
 _SECRET_IN_REASON = re.compile(r"sk-[A-Za-z0-9_\-]+")
@@ -3456,9 +3462,9 @@ async def _run_turn(
 
     # Set by the stop button, not by a closed socket.
     stopping = asyncio.Event()
-    # An earlier turn on this session is superseded.
-    for earlier in _STOPPING.get(session_id, set()):
-        earlier.set()
+    # An earlier turn on this session is superseded, wherever it is running.
+    fire_stop_locally(session_id)
+    await stop_signal.broadcast(session_id)
     _STOPPING.setdefault(session_id, set()).add(stopping)
 
     ctx = ToolContext(
@@ -3924,9 +3930,10 @@ async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
     Idempotent. Closing the socket means the opposite: the answer is still wanted.
     """
     await _owned(db, user, session_id)
-    # Every turn on the session; a superseded one may still be running.
-    for signal in _STOPPING.get(session_id, set()):
-        signal.set()
+    # This process first — no round trip needed when it holds the turn itself —
+    # then every other replica, in case a superseded turn is running on one of them.
+    fire_stop_locally(session_id)
+    await stop_signal.broadcast(session_id)
 
 
 @router.post("/{session_id}/compare")
