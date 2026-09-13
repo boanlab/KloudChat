@@ -293,7 +293,7 @@ _TRANSFORM_AFTER = re.compile(
     re.I,
 )
 _QUOTED_LOOKUP_AFTER = re.compile(
-    r"^\s*[은는이가을를]?\s*(?:누구|누군|얼마|몇|언제|어디|뭔|무엇|"
+    r"^(?:[은는이가을를]\s*)?(?:누구|누군|얼마|몇|언제|어디|뭔|무엇|"
     r"맞는지|현재인지|최신인지|찾아|조회|확인|검색|알려|말해)",
 )
 _CLAUSE = re.compile(
@@ -406,7 +406,7 @@ def without_quoted_transform_sources(text: str) -> str:
         transforming = (
             before_match and not _NEGATED_TRANSFORM_PREFIX.search(before[: before_match.start()])
         ) or (after_match and not _NEGATED_TRANSFORM_SUFFIX.search(after[after_match.end() :]))
-        transforming = transforming and not _QUOTED_LOOKUP_AFTER.search(after)
+        transforming = transforming and not _QUOTED_LOOKUP_AFTER.search(after.lstrip())
         parts.append(" " if transforming else text[quote_start:quote_end])
         start = quote_end
     parts.append(text[start:])

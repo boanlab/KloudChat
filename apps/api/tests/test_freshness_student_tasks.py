@@ -1,5 +1,8 @@
 """Student task instructions are not requests to retrieve changing facts."""
 
+import subprocess
+import sys
+
 import pytest
 
 from app.services.freshness import current_fact_required
@@ -78,3 +81,15 @@ async def test_student_task_router_does_not_attach_a_current_fact_hold(monkeypat
 
     captured = await _routed_turn(monkeypatch, strict=False, question=question)
     assert captured["freshness_request"] is None
+
+
+def test_many_quoted_transformations_and_spaced_lookup_suffix_finish_promptly():
+    script = '''
+from app.services.freshness import without_quoted_transform_sources
+text = ('Translate "source"' + ' ' * 160 + 'x. ') * 1000
+result = without_quoted_transform_sources(text)
+assert '"source"' not in result
+request = '영어로 번역해줘. "현재 환율"' + ' ' * 40 + '을' + ' ' * 40 + '알려줘.'
+assert '"현재 환율"' in without_quoted_transform_sources(request)
+'''
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, timeout=5)
