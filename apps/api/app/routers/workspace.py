@@ -2086,6 +2086,35 @@ def _attachment(body: bytes, media: str, stem: str, suffix: str) -> Response:
     )
 
 
+_SOURCE_EXTENSIONS = {
+    "csv": "csv", "tsv": "tsv", "json": "json", "yaml": "yaml", "yml": "yml",
+    "python": "py", "py": "py", "javascript": "js", "js": "js", "jsx": "jsx",
+    "typescript": "ts", "ts": "ts", "tsx": "tsx", "bash": "sh", "shell": "sh",
+    "sh": "sh", "zsh": "zsh", "sql": "sql", "css": "css", "xml": "xml",
+    "markdown": "md", "md": "md", "text": "txt", "txt": "txt", "plain": "txt",
+}
+_SOURCE_MEDIA = {
+    "csv": "text/csv", "tsv": "text/tab-separated-values", "json": "application/json",
+}
+
+
+def _export_code_source(artifact: Artifact) -> Response:
+    """Download stored source, with no execution, conversion or language inference."""
+    data = artifact.data or {}
+    content = data.get("content")
+    if not isinstance(content, str):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="missing_source")
+    language = str(data.get("language") or "").strip().lower()
+    suffix = _SOURCE_EXTENSIONS.get(language, "txt")
+    media = _SOURCE_MEDIA.get(suffix, "text/plain")
+    stem = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]+', "_", artifact.title or "").strip(" .")
+    if stem.lower().endswith("." + suffix):
+        stem = stem[: -len(suffix) - 1].rstrip(" .")
+    response = _attachment(content.encode("utf-8"), media, stem[:60] or "code", suffix)
+    response.headers["Access-Control-Expose-Headers"] = "Content-Disposition"
+    return response
+
+
 def _export_deck(artifact: Artifact, format: str) -> Response:
     """A deck as `.pptx`, `.pdf` or Markdown."""
     slides = list((artifact.data or {}).get("slides") or [])
@@ -2216,12 +2245,14 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
 
 @router.get("/artifacts/{artifact_id}/export")
 async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"):
-    """A report, deck, or HTML artifact as a file.
+    """An owned artifact as a file.
 
     Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`;
-    HTML artifacts take `html` plus the set matching their template.
+    HTML artifacts take `html` plus the set matching their template; code takes `source`.
     """
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
+    if artifact.kind is ArtifactKind.code and format == "source":
+        return _export_code_source(artifact)
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
 

@@ -482,9 +482,41 @@ export function CodePanel({
   const [tab, setTab] = useState<'preview' | 'source'>(
     artifact.kind === 'html' ? 'preview' : 'source',
   )
+  const [downloading, setDownloading] = useState(false)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
   const isDeck = useIsDeck(artifact)
+  const downloadSource = async () => {
+    setDownloading(true)
+    setDownloadError(null)
+    try {
+      await downloadArtifact(artifact.id, 'source', artifact.title || 'document')
+    } catch (err) {
+      setDownloadError(errorMessage(err, t('원본을 다운로드하지 못했습니다.')))
+    } finally {
+      setDownloading(false)
+    }
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {artifact.kind === 'code' && (
+        <>
+          <header className="flex items-center gap-1 border-b border-line px-3 py-1.5">
+            <span className="flex-1" />
+            {headerControls}
+            <Button
+              variant="secondary"
+              size="icon"
+              title={t('원본 다운로드')}
+              aria-label={t('원본 다운로드')}
+              disabled={downloading}
+              onClick={() => void downloadSource()}
+            >
+              <Download size={15} />
+            </Button>
+          </header>
+          {downloadError && <p role="alert" className="px-3 py-2 text-sm text-danger">{downloadError}</p>}
+        </>
+      )}
       {artifact.kind === 'html' && (
         <header className="flex items-center gap-1 border-b border-line px-3 py-1.5">
           {(
