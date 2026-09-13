@@ -87,3 +87,16 @@ table thead tr {
   --ifm-footer-background-color: #171b23;
   border-top: 1px solid #30363f;
 }
+
+/* 세로로 긴 화면 캡처. 본문 폭에 맞춰 늘리면 폰 한 대가 화면을 통째로 넘겨 버리므로, 실제
+   기기만 한 크기로 묶는다. 폰 두 장은 한 문단에 들어 있어 나란히 선다. */
+.markdown img[src*="/mobile-"],
+.markdown img[src*="/at-menu"] {
+  max-width: min(260px, 100%);
+  vertical-align: top;
+}
+.markdown p:has(img[src*="/mobile-"]) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}

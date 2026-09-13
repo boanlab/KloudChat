@@ -61,5 +61,4 @@ There are **Share** (on the conversation screen), **Install app** (installs a sh
 The composer shows only attach, dictate and web search. The remaining features sit under **More tools**. Model comparison is not available, and the processing details of an answer are collapsed as "n processing details".
 
 ![Mobile home screen](/img/guide/mobile-home.png)
-
 ![Mobile conversation screen](/img/guide/mobile-chat.png)
