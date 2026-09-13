@@ -34,7 +34,7 @@ _PROGRAM = re.compile(
 _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|generate|implement)\b", re.I)
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
 _DECLINE = re.compile(
-    r"(?:계산|검산)(?:을)?\s*하지\s*(?:마|말)|"
+    r"(?:계산|검산)(?:을|은|는|도)?\s*하지(?:는|도)?\s*(?:마|말)|"
     r"\b(?:do\s+not|don['’]t|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
     re.IGNORECASE,
 )
@@ -76,6 +76,11 @@ _ASK = re.compile(
     re.IGNORECASE,
 )
 _CONVERT = re.compile(r"환산|변환|바꿔|\bconvert\b", re.IGNORECASE)
+_REPRESENTATION_CONVERSION = re.compile(
+    r"(?<![\w])(?:JSON|CSV|YAML|Markdown|마크다운|문자열|텍스트|배열|표)"
+    r"(?:\s*(?:문자열|배열|형식))*\s*(?:으로|로)\s*(?:변환|바꿔)",
+    re.IGNORECASE,
+)
 _UNIT = re.compile(
     r"킬로미터|센티미터|밀리미터|미터|킬로그램|밀리그램|그램|밀리리터|리터|"
     r"시간|분|초|(?<![a-z])(?:km/h|m/s|mm|cm|km|mg|kg|ml|ms|min|kb|mb|gb|m|g|l|s|h)(?![a-z])",
@@ -372,6 +377,9 @@ def requires_calculation(request: str) -> bool:
             continue
         if _PROGRAM.search(words) and _BUILD.search(words):
             continue
+        # A format conversion is not unit arithmetic. Keep the rest of the
+        # clause so "calculate ... then convert to JSON" still requires a tool.
+        words = _REPRESENTATION_CONVERSION.sub(" ", words)
         eligible.append((data, words))
     # A self-contained expression does not need a missing operand from another task.
     if any(_standalone_expression(raw) for raw, _ in eligible):
