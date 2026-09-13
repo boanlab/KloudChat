@@ -34,9 +34,16 @@ _ERROR = json.dumps(
     },
     ensure_ascii=False,
 )
+_ZERO_DIVISION_ERROR = json.dumps(
+    {**json.loads(_ERROR), "reason": "division_by_zero"}, ensure_ascii=False,
+)
 
 
 class _InvalidCalculation(ValueError):
+    pass
+
+
+class _DivisionByZero(_InvalidCalculation):
     pass
 
 
@@ -69,8 +76,24 @@ def _expression(raw: object) -> tuple[str, Fraction]:
     if depth:
         raise _InvalidCalculation
     tree = ast.parse(source, mode="eval")
-    if sum(1 for _ in ast.walk(tree)) > _MAX_AST_NODES:
+    nodes = list(ast.walk(tree))
+    if len(nodes) > _MAX_AST_NODES:
         raise _InvalidCalculation
+    # Validate all syntax before evaluating an earlier division-by-zero branch.
+    for node in nodes:
+        if not isinstance(node, (
+            ast.Expression, ast.Constant, ast.UnaryOp, ast.BinOp,
+            ast.UAdd, ast.USub, ast.Add, ast.Sub, ast.Mult, ast.Div,
+        )):
+            raise _InvalidCalculation
+        if isinstance(node, ast.Constant):
+            literal = ast.get_source_segment(source, node) or ""
+            if (
+                type(node.value) not in (int, float)
+                or not _NUMBER.fullmatch(literal)
+                or sum(character.isdigit() for character in literal) > _MAX_NUMBER_DIGITS
+            ):
+                raise _InvalidCalculation
 
     def evaluate(node: ast.AST, level: int = 0) -> Fraction:
         if level > _MAX_DEPTH:
@@ -78,11 +101,6 @@ def _expression(raw: object) -> tuple[str, Fraction]:
         if isinstance(node, ast.Constant) and type(node.value) in (int, float):
             # AST floats have already rounded: recover the original decimal spelling.
             literal = ast.get_source_segment(source, node) or ""
-            if (
-                not _NUMBER.fullmatch(literal)
-                or sum(character.isdigit() for character in literal) > _MAX_NUMBER_DIGITS
-            ):
-                raise _InvalidCalculation
             return _bounded(Fraction(literal))
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = evaluate(node.operand, level + 1)
@@ -99,6 +117,8 @@ def _expression(raw: object) -> tuple[str, Fraction]:
             elif isinstance(node.op, ast.Mult):
                 value = left * right
             else:
+                if not right:
+                    raise _DivisionByZero
                 value = left / right
             return _bounded(value)
         raise _InvalidCalculation
@@ -142,25 +162,27 @@ def _rounded(value: Fraction, places: int) -> str:
 def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(arguments, dict) or len(arguments) > len(_FIELDS) or set(arguments) - _FIELDS:
         raise _InvalidCalculation
-    expression, exact = _expression(arguments.get("expression"))
     places = arguments.get("decimal_places")
     if "decimal_places" in arguments and (type(places) is not int or not 0 <= places <= 10):
         raise _InvalidCalculation
-    value = _exact_decimal(exact) if places is None else _rounded(exact, places)
-    target = exact if places is None else Fraction(value)
-
     choices = arguments.get("choices")
     if "choices" in arguments:
         if not isinstance(choices, list) or not 2 <= len(choices) <= _MAX_CHOICES:
             raise _InvalidCalculation
-        evaluated = [_expression(choice)[1] for choice in choices]
-    else:
-        evaluated = []
     submitted = arguments.get("submitted_choice")
     if "submitted_choice" in arguments and (
         type(submitted) is not int or not choices or not 1 <= submitted <= len(choices)
     ):
         raise _InvalidCalculation
+
+    try:
+        evaluated = [_expression(choice)[1] for choice in choices] if choices else []
+    except _DivisionByZero:
+        # A malformed option is not evidence that the main expression divides by zero.
+        raise _InvalidCalculation from None
+    expression, exact = _expression(arguments.get("expression"))
+    value = _exact_decimal(exact) if places is None else _rounded(exact, places)
+    target = exact if places is None else Fraction(value)
 
     matches = [index + 1 for index, choice in enumerate(evaluated) if choice == target]
     if choices is None:
@@ -192,6 +214,8 @@ def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
 async def calculate(arguments: dict[str, Any]) -> ToolResult:
     try:
         data = _calculate(arguments)
+    except _DivisionByZero:
+        return ToolResult(content=_ZERO_DIVISION_ERROR, detail="수치 검산 실패", failed=True)
     except (ValueError, TypeError, SyntaxError, ZeroDivisionError, OverflowError, RecursionError):
         return ToolResult(content=_ERROR, detail="수치 검산 실패", failed=True)
     # A practice question may be checked before its learner answers. Keep the

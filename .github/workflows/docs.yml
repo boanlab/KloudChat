@@ -1,0 +1,79 @@
+# 사용자 가이드를 GitHub Pages로 게시한다.
+#
+# 빌드 결과는 저장소에 커밋하지 않는다. website/ 를 빌드해서 Pages에 바로 넘기므로 맞춰 둘
+# gh-pages 브랜치가 없다.
+#
+# 첫 실행 전에 관리자가 Settings → Pages → Source 를 "GitHub Actions" 로 바꿔야 한다. 그러면
+# https://boanlab.github.io/KloudChat/ 에 프로젝트 사이트로 뜬다. 프로젝트 사이트는 저장소마다
+# 따로 생기므로 조직에 하나뿐인 boanlab.github.io 를 차지하지 않는다.
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/docs.yml'
+  # 코드 변경 없이 다시 게시하거나, 포크에서 미리 보고 싶을 때 쓴다.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 한 번에 하나만 배포한다. 나중에 들어온 푸시는 앞의 것이 끝날 때까지 기다린다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  SITE_URL: https://boanlab.github.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # 포크는 소유자와 저장소 이름이 다르므로 자기 Pages 주소로 빌드한다. 포크를 미리 보려고
+      # 이 파일을 고칠 일은 없다.
+      - name: Resolve the site address
+        run: |
+          if [ "$GITHUB_REPOSITORY" != "boanlab/KloudChat" ]; then
+            owner="${GITHUB_REPOSITORY%%/*}"
+            name="${GITHUB_REPOSITORY##*/}"
+            echo "SITE_URL=https://${owner}.github.io" >> "$GITHUB_ENV"
+            echo "SITE_BASE_URL=/${name}/" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
