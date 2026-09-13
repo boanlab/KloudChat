@@ -34,9 +34,9 @@ below are synthetic reproductions, not the original value from that conversation
 
 ## Regression evidence
 
-Final offline API suite: **4,034 passed, 1 skipped, 11 warnings**. The network
+Final offline API suite: **4,035 passed, 1 skipped, 11 warnings**. The network
 guard blocked 82 socket attempts and allowed no real HTTP transport. The new
-57 pure cases and 4 integration/boundary cases are included in that total, not
+58 pure cases and 4 integration/boundary cases are included in that total, not
 additional to it. Ruff also passed.
 
 The new pure regression suite initially had 14 failures and 43 passing controls.
@@ -44,6 +44,13 @@ The three initial integration cases also failed before the production change.
 Their final fixtures use separate source and secret lines, as the search tool
 does, and an additional test preserves conservative masking of inline secret
 fields adjoining a URL.
+
+CodeQL identified overlapping whitespace repetitions in the initial year-header
+expression. A public `mask()` regression with 100,000 tabs and a checksum-matching
+source path exceeded a five-second subprocess limit before the fix. Requiring a
+delimiter between the whitespace repetitions removed the overlapping matches.
+The final bounded regression checks both `mask()` and `findings()`; no CodeQL
+suppression or rule exclusion was added.
 
 | Synthetic input or path | Expected behavior |
 | --- | --- |
@@ -63,8 +70,10 @@ metadata. They are not real model, authentication or PostgreSQL end-to-end tests
 The isolated browser configuration mocks API responses and checks saved,
 streamed and reloaded messages, disabled streaming, request/tool origins,
 strict-local, legacy data, unknown categories and Korean/English labels.
-All 13 new browser cases passed. Web lint, TypeScript/build, and the 4 config-path
-tests passed; the production web image also built successfully with Node 22.
+All 13 new browser cases and 209 existing isolated browser cases passed. Web lint,
+TypeScript/build, and the 4 config-path tests passed; the production web image
+also built successfully with Node 22. The backend-only performance correction
+does not change the web code or screenshots.
 
 ## Browser evidence
 

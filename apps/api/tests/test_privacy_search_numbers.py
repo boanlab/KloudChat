@@ -1,5 +1,9 @@
 """Narrow public-number exceptions never relax outbound or legacy PII masking."""
 
+import os
+import subprocess
+import sys
+
 import pytest
 
 from app.services import governance
@@ -9,6 +13,19 @@ ARTICLE = f"https://example.test/article/{STAMP}"
 YEARS = "2023 2024 2025 2026"
 PAN = "4111111111111111"
 KEY = "sk-syntheticabcdefghijklmnopqrstuvwxyz"
+
+
+def test_year_header_with_many_tabs_has_bounded_masking_time():
+    script = (
+        "from app.services import governance\n"
+        "text = '연도' + '\\t' * 100_000 + 'not-a-year\\n' + " + repr(ARTICLE) + "\n"
+        "assert governance.mask(text, scope='tool') == (text, 0)\n"
+        "assert governance.findings({'tool_output': text}, scope='tool') == []\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script], check=True, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}, timeout=5,
+    )
 
 
 def _assert_consistent(text, *, scope, expected, count, protected=None, legacy=False):

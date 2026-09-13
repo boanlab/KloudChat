@@ -503,8 +503,9 @@ def invalidate() -> None:
 _NUMERIC = frozenset({"phone", "landline", "payment_card", "government_id"})
 _NUMBER_URL = re.compile(r"https?://[^\s<>\[\]()\"']+", re.I)
 _PATH_TIMESTAMP = re.compile(r"(?<=/)(?:19|20)[0-9]{12}(?=/|$)")
+# Separate whitespace repeats with a required delimiter to avoid quadratic backtracking.
 _YEAR_SEQUENCE = re.compile(
-    r"(?:\byears?\b|연도|년도)[ \t]*[:：|]?[ \t]*"
+    r"(?:\byears?\b|연도|년도)[ \t]*(?:[:：|][ \t]*)?"
     r"(?P<years>(?:19|20)[0-9]{2}(?:[ -](?:19|20)[0-9]{2}){3})"
     r"(?=$|[\s,;:|.)\]])",
     re.I,
