@@ -209,6 +209,16 @@ export interface PrivacyRouting {
   costRouting?: CostRouting
 }
 
+/** A tool-authored answer; earlier routing/classification work is not ruled out. */
+export interface ToolResultAnswer {
+  answerOrigin: 'tool_result'
+  toolName: 'calculate'
+  reasonCode: 'division_by_zero'
+  actualModel: null
+}
+
+export type MessageRouting = PrivacyRouting | ToolResultAnswer
+
 export type Role = 'user' | 'assistant' | 'system'
 
 /** A unit of visible work inside an assistant turn. */
@@ -280,8 +290,8 @@ export interface Message {
   /** Present instead of `content` when the turn was run as a model comparison. */
   variants?: Variant[]
   createdAt: string
-  model?: string
-  routing?: PrivacyRouting
+  model?: string | null
+  routing?: MessageRouting
   steps?: Step[]
   artifactIds?: string[]
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */

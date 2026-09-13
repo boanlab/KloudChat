@@ -1,0 +1,22 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.user.category.시작하기": {
+    "message": "Getting started",
+    "description": "The label for category '시작하기' in sidebar 'user'"
+  },
+  "sidebar.user.category.대화": {
+    "message": "Chat",
+    "description": "The label for category '대화' in sidebar 'user'"
+  },
+  "sidebar.user.category.문서 작성": {
+    "message": "Writing documents",
+    "description": "The label for category '문서 작성' in sidebar 'user'"
+  },
+  "sidebar.user.category.개인 설정": {
+    "message": "Personal settings",
+    "description": "The label for category '개인 설정' in sidebar 'user'"
+  }
+}

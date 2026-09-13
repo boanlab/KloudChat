@@ -2603,7 +2603,7 @@ function toMessage(raw: MessageRow): Message {
     role: raw.role,
     content: raw.content,
     createdAt: raw.createdAt,
-    model: raw.model ?? undefined,
+    model: raw.model,
     routing: raw.routing ?? undefined,
     steps: raw.steps?.map((s) => toStep(s as Record<string, unknown>)),
     attachments: raw.attachments?.map((a) =>
@@ -2934,6 +2934,16 @@ async function streamTurn(
         opts.onAccepted?.()
       }
       switch (event.type) {
+        case 'tool_result_answer': {
+          const { type: _type, ...origin } = event
+          patch((m) => {
+            // Keep privacy decisions, but a previously selected model did not author this answer.
+            const previous = m.routing && 'action' in m.routing ? m.routing : undefined
+            const { costRouting: _costRouting, ...privacy } = previous ?? {}
+            return { ...m, model: null, routing: { ...privacy, ...origin } }
+          })
+          break
+        }
         case 'privacy_route':
           if ('findingCounts' in event && event.findingCounts?.length) {
             const { type: _type, ...routing } = event
@@ -2949,8 +2959,13 @@ async function streamTurn(
                   : m.model,
             routing:
               'effectiveModels' in event
-                ? { ...event, costRouting: m.routing?.costRouting ?? event.costRouting }
-                : m.routing
+                ? {
+                    ...event,
+                    costRouting: m.routing && 'action' in m.routing
+                      ? m.routing.costRouting ?? event.costRouting
+                      : event.costRouting,
+                  }
+                : m.routing && 'action' in m.routing
                   ? {
                       ...m.routing,
                       initialAction: m.routing.initialAction ?? m.routing.action,
@@ -2967,7 +2982,7 @@ async function streamTurn(
           patch((m) => ({
             ...m,
             model: event.executedModel ?? event.selectedModel,
-            routing: m.routing
+            routing: m.routing && 'action' in m.routing
               ? { ...m.routing, costRouting }
               : {
                   requestedModels: [event.requestedModel],
