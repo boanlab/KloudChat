@@ -62,11 +62,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # 첫 실행은 Settings에서 아직 켜지지 않은 Pages를 이 액션이 대신 켠다
-      # (workflow의 pages: write 권한으로 충분하다). 이미 켜져 있으면 그대로 통과한다.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
