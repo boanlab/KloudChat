@@ -3140,7 +3140,12 @@ async def send_message(
     )
 
 
-#: Active cancellation signals grouped by session
+#: Active cancellation signals grouped by session. In-process only: the stop
+#: button's request and the streaming request must land on the same worker.
+#: This is fine behind one uvicorn process; running more than one (`--workers`,
+#: or several container replicas without session-sticky routing) needs a
+#: shared signal (e.g. Postgres LISTEN/NOTIFY or a broadcast channel) instead,
+#: or the stop button silently does nothing on a mismatched worker.
 _STOPPING: dict[str, set[asyncio.Event]] = {}
 
 #: A key echoed in an upstream error body; the reason is shown on screen.

@@ -56,6 +56,11 @@ services:
     environment:
       ENV: ${KCHAT_ENV:-dev}
       DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
+      # This container is one uvicorn process, so these two are its whole DB
+      # budget. Postgres's own max_connections (100 by default) is the ceiling
+      # across every process sharing the database.
+      DB_POOL_SIZE: ${KCHAT_DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${KCHAT_DB_MAX_OVERFLOW:-20}
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
       SECRET_KEY: ${KCHAT_SECRET_KEY:-}
       SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
