@@ -4,7 +4,7 @@ title: Revising by request
 
 # Revising by request
 
-Type what you want changed into the input box at the bottom of a finished report or slide deck. It analyses the request and works out on its own which part to change and how. For sentence-level edits or reordering slides, the [Output editor](editor) is faster.
+Type what you want changed into the input box at the bottom of a finished report or slide deck. It analyzes the request and works out on its own which part to change and how. For sentence-level edits or reordering slides, the [Output editor](editor) is faster.
 
 | Example request | How it is handled |
 |---|---|

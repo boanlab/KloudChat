@@ -1,9 +1,9 @@
 {
   "home.hero.title": {
-    "message": "The AI your team works with, run by your own organisation"
+    "message": "The AI your team works with, run by your own organization"
   },
   "home.hero.sub": {
-    "message": "Attach the documents you already have and answers are grounded in them. Write reports and slide decks in the same conversation, and see what was referenced and how far the data travelled."
+    "message": "Attach the documents you already have and answers are grounded in them. Write reports and slide decks in the same conversation, and see what was referenced and how far the data traveled."
   },
   "home.userGuide": {
     "message": "User guide"
@@ -108,7 +108,7 @@
     "message": "You can see how far your data goes"
   },
   "home.f3.desc": {
-    "message": "Every model carries a data boundary badge. When personal data is detected you can mask it, or switch to a model that runs entirely inside your organisation."
+    "message": "Every model carries a data boundary badge. When personal data is detected you can mask it, or switch to a model that runs entirely inside your organization."
   },
   "home.f4.title": {
     "message": "Finish in a report or a deck"

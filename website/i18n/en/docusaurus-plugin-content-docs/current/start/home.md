@@ -24,7 +24,7 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 Choose the screen you want from **Chat · Report · Slides** and type your request. If the administrator has enabled them, you can also choose **Image** and **Audio/Video**. Chat is question and answer. Report and Slides confirm the structure first and then write the document.
 
 :::tip When you ask for a document in Chat
-If you ask for a document in Chat, for example "Write a report" or "Make a slide deck", **the request moves automatically to a new conversation for that task.** Agent conversations, requests that use a starting point, and requests about existing content such as "Summarise this" or "Review this" stay in Chat.
+If you ask for a document in Chat, for example "Write a report" or "Make a slide deck", **the request moves automatically to a new conversation for that task.** Agent conversations, requests that use a starting point, and requests about existing content such as "Summarize this" or "Review this" stay in Chat.
 :::
 
 ### Composer features and where they apply
@@ -48,7 +48,7 @@ The items currently in effect appear as chips above the composer, covering the p
 
 ## Starting points and agents
 
-- **Start with something you do often**: Choose a routine task such as explaining a concept, reviewing material or analysing a cause. The screen asks only for the details it needs and builds the request for you. [Starting points, formats and designs](../chat/starters)
+- **Start with something you do often**: Choose a routine task such as explaining a concept, reviewing material or analyzing a cause. The screen asks only for the details it needs and builds the request for you. [Starting points, formats and designs](../chat/starters)
 - **Hand off to an agent**: An assistant that comes with instructions, tools and files. Selecting a card starts a conversation with that agent. [Agents and skills](../chat/agents)
 - **In progress**: Shown while a long task such as video generation is running.
 

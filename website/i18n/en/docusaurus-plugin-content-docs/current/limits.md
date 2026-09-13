@@ -68,4 +68,4 @@ Search for the message exactly as it appears on the screen.
 
 ## Model limitations
 
-A model can present things it does not know as if they were fact. For information that changes or cannot be memorised, such as organisation details, dates, and figures, turn on web search or attach source material. An answer that shows no sources is an answer that did not go through search. You can check a report against its sources with **Fact check**, and verify calculations with **Code execution**.
+A model can present things it does not know as if they were fact. For information that changes or cannot be memorized, such as organization details, dates, and figures, turn on web search or attach source material. An answer that shows no sources is an answer that did not go through search. You can check a report against its sources with **Fact check**, and verify calculations with **Code execution**.

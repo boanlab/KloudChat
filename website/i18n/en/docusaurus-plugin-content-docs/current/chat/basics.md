@@ -14,7 +14,7 @@ On the home screen select **Chat**, enter a request, and press `Enter`. The answ
 
 | Element | Details |
 |---|---|
-| Processing complete · N steps | The items referenced while the answer was generated. Expand it to see steps such as attachment use, attachments from earlier turns, personalisation settings applied, memory referenced, web search, document reading, code execution, and file search. Files that were truncated or could not be read also appear here. |
+| Processing complete · N steps | The items referenced while the answer was generated. Expand it to see steps such as attachment use, attachments from earlier turns, personalization settings applied, memory referenced, web search, document reading, code execution, and file search. Files that were truncated or could not be read also appear here. |
 | Processing detail badge | Shows whether Auto switched the model, whether personal data was masked, and which model actually answered. On mobile it collapses to "n processing details". |
 | Usage line | Shows the model name, input and output tokens, and credits. Free models are marked **Free**. You can hide this line in Settings → Preferences. |
 | Sources | When a web search runs, numbers in the form `[1]` appear in the text and a source list appears below it. |
@@ -53,4 +53,4 @@ Recordings are not stored. If there is no microphone or no permission, the messa
 
 ## Adjusting answer length
 
-KloudChat answers are designed to lead with the conclusion and to skip introductions, repeated explanation, and closing summaries. If you need a more detailed answer, add conditions such as "in detail" or "include examples" to your request. You can also describe the length you want under **Answer style** in [Personalisation](../personal/settings#personalisation).
+KloudChat answers are designed to lead with the conclusion and to skip introductions, repeated explanation, and closing summaries. If you need a more detailed answer, add conditions such as "in detail" or "include examples" to your request. You can also describe the length you want under **Answer style** in [Personalization](../personal/settings#personalization).

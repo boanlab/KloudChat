@@ -12,7 +12,7 @@ Attach files with 📎 in the composer, and the model answers from their content
 
 | Category | Formats | Conditions |
 |---|---|---|
-| Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | The file must contain text. Scanned images are not recognised. |
+| Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | The file must contain text. Scanned images are not recognized. |
 | Text and code | .txt, .md, .csv, .tsv, .json, and most code files | Read as text. |
 | Images | PNG, JPG, GIF, WebP | **4MB or smaller**. Sent only to models that support image recognition, marked 👁 in the list. |
 | Audio and video | mp3, wav, mp4, and similar | **25MB or smaller**. Converted to text and read when the administrator has connected speech transcription. |
@@ -31,8 +31,8 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 
 ## Improving recognition accuracy
 
-- State exactly what you are looking for. "Summarise this file" is less accurate than "List only the remote work application steps from this file".
-- Material with many tables is recognised more accurately as Excel or CSV than as PDF.
+- State exactly what you are looking for. "Summarize this file" is less accurate than "List only the remote work application steps from this file".
+- Material with many tables is recognized more accurately as Excel or CSV than as PDF.
 - For an attached Hangul file (.hwpx), select **Open as document** on the file chip to convert it straight into an editable report. The conversion calls no model, so it uses no credits.
 
 ## Attaching images

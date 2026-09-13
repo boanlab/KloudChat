@@ -18,7 +18,7 @@ Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` 
 | Collapse or expand the sidebar | `Ctrl+Shift+S` |
 | Copy the last answer | `Ctrl+Shift+C` |
 | Copy the last code block | `Ctrl+Shift+;` |
-| Open personalisation settings | `Ctrl+Shift+I` |
+| Open personalization settings | `Ctrl+Shift+I` |
 | Start or stop dictation | `Ctrl+Shift+M` |
 | Delete the conversation | `Ctrl+Shift+⌫` |
 | Show the shortcut list | `Ctrl+/` |

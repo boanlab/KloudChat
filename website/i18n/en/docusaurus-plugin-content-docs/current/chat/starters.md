@@ -10,7 +10,7 @@ These three features have similar names, but each has a different role and scope
 |---|---|---|---|
 | **Starting point** | A card that asks for the items a repeated task needs. It builds the request from what you enter. | ▦ Start a task, and "Start from something you do often" on the home screen | That request |
 | **Format** | The form of the output. The product includes 11 report formats, 7 slide formats, and 14 image formats. | ▦ Start a task → Output format, and the account menu → Design → Formats tab | That conversation. Clear it with × on the chip |
-| **Design system** | A setting that bundles colours, typefaces, and writing style. You link it to a project. | The account menu → Design | Every output in that project |
+| **Design system** | A setting that bundles colors, typefaces, and writing style. You link it to a project. | The account menu → Design | Every output in that project |
 
 ## Starting points
 
@@ -31,8 +31,8 @@ Manage them in the account menu → **Design**.
 
 ![The design system screen](/img/guide/designs.png)
 
-- Set the name, the accent, body, and secondary colours, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
+- Set the name, the accent, body, and secondary colors, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
 - **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.
-- The writing style applies to conversations, reports, and slides. Colours and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
+- The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
 - Design settings are copied into an output when it is generated. Changing the design later does not change outputs that already exist.
 - An administrator can distribute a read-only shared design with **Provide to all users**.

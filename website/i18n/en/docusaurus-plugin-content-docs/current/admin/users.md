@@ -4,7 +4,7 @@ title: Users and credits
 
 # Users and credits
 
-This is the **Users · Credits** screen in the Manage menu. The top summarises the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. The bottom offers tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email.
+This is the **Users · Credits** screen in the Manage menu. The top summarizes the total number of users, the number waiting for approval, this month's usage and allocation, and the next refill date. The bottom offers tabs by status (All, Waiting for approval, Active, Suspended) and a search by name and email.
 
 ## Approving sign-ups
 

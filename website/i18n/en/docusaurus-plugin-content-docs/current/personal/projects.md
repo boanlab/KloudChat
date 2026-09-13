@@ -17,7 +17,7 @@ Go to the sidebar → **Projects** → New project, then enter a name, a descrip
 | Tab | Function |
 |---|---|
 | Conversations | Start a new conversation in this project, and add existing conversations to the project or remove them from it. |
-| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows the token count and the context share of each file, and supports checking the recognised content, downloading the original, and deleting it. |
+| Knowledge | Add files and register addresses as **web material**. Web material stores the content as it was at registration time. It shows the token count and the context share of each file, and supports checking the recognized content, downloading the original, and deleting it. |
 | Skills | Designated recommended skills are shown first in the input box of this project. |
 | Memory | Memory shared at the project level. Conclusions that an agent leaves through **Share note** also accumulate here. |
 
@@ -27,7 +27,7 @@ Project knowledge is delivered automatically to every conversation in the projec
 
 ## Instructions
 
-Describe rules that apply to every conversation, such as "answer in polite language" or "give English terms alongside". They take precedence over personalisation settings.
+Describe rules that apply to every conversation, such as "answer in polite language" or "give English terms alongside". They take precedence over personalization settings.
 
 ## Deleting a project
 

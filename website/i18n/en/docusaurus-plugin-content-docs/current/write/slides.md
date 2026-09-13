@@ -32,7 +32,7 @@ The model chooses the type that suits the content. It uses cover, table of conte
 
 ## Changing the design
 
-In the **Home** tab of the panel you can change the impression and the accent colour, and run **Rebuild this slide**. If a design system is linked to the project, the deck follows its colours and typefaces.
+In the **Home** tab of the panel you can change the impression and the accent color, and run **Rebuild this slide**. If a design system is linked to the project, the deck follows its colors and typefaces.
 
 ## Presentation mode
 

@@ -13,7 +13,7 @@ Outputs generated in a conversation, such as reports, slides, charts, code, web 
 - The panel opens automatically when an output is generated. If you closed it, reopen it with a button such as **Open the report** or **Open the deck** at the top right of the conversation screen.
 - The common features are the version and edit time display, copy, download, width adjustment (double-click to reset), narrow, wide, and document-only views, and close. If the screen is narrow, the panel is shown over the conversation.
 - Code and web pages support the **Preview** and **Source** tabs and zooming in and out. A web page runs in an isolated frame, so features that save values do not work.
-- In Chat too, a request such as "organise this into a table and turn it into a document" or "draw a chart from this data" generates an output in the panel.
+- In Chat too, a request such as "organize this into a table and turn it into a document" or "draw a chart from this data" generates an output in the panel.
 
 ## Export formats
 

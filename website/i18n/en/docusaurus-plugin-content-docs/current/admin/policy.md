@@ -20,7 +20,7 @@ This screen sets the level of personal data protection, the audit record, and au
 
 If the server cannot read the policy, it blocks sending in Chat, model comparison, reports, and slide decks for safety (503).
 
-In an environment where every model runs on organisation servers, **Personal data protection for external models** has little effect. An organisation model that is not declared strict-local is treated as a model that may switch to an external provider, so a warning appears. Declare strict-local on the gateway and designate a safe model, or disable the protection feature.
+In an environment where every model runs on organization servers, **Personal data protection for external models** has little effect. An organization model that is not declared strict-local is treated as a model that may switch to an external provider, so a warning appears. Declare strict-local on the gateway and designate a safe model, or disable the protection feature.
 
 ## Audit log
 

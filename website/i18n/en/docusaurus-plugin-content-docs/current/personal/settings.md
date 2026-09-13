@@ -26,14 +26,14 @@ You can change your name and your password. To change the password, enter the cu
 
 The theme and the language are switched with the buttons at the top right of the screen, not in this tab.
 
-## Personalisation
+## Personalization
 
-![Personalisation tab](/img/guide/settings-personalization.png)
+![Personalization tab](/img/guide/settings-personalization.png)
 
 - **Things worth knowing about me**: Describe your affiliation, your area of work, your level of understanding, and similar details. It applies **to conversations only** and is not delivered to reports or slide decks.
 - **Answer style**: Describe the length, the tone, and the format. It applies to both conversations and documents. Write entries such as "no introduction", "always include an example", or "give English terms alongside".
 
-The settings apply from the next conversation onwards. If an agent or a project has instructions, those take precedence. You can open the tab directly with `Ctrl+Shift+I`, and when it is applied the processing steps of the answer show **Personalisation applied**.
+The settings apply from the next conversation onwards. If an agent or a project has instructions, those take precedence. You can open the tab directly with `Ctrl+Shift+I`, and when it is applied the processing steps of the answer show **Personalization applied**.
 
 ## API keys
 
@@ -47,4 +47,4 @@ Issue keys for use in external tools or scripts. You can issue up to 10 keys per
 
 - **Signed-in devices**: Shows the browser, the IP, and the last use time. The current device is marked, and individual sign-out and **Sign out all other devices** are provided. Calls made through an API key are not shown in this list.
 - **Sign-in history**: Shows the last 100 sign-ins, failed sign-ins, password changes, and key issues, together with the IP, the region, and the browser. Region information is shown only when the administrator has configured location data, and private networks are marked as "internal network".
-- Two-factor authentication is not provided. Use a sufficiently long password and sign out the devices you do not recognise.
+- Two-factor authentication is not provided. Use a sufficiently long password and sign out the devices you do not recognize.

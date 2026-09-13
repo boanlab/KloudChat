@@ -27,7 +27,7 @@ A credit is the unit that expresses model usage, and the basis differs by type.
 | Audio | Per call |
 | Video | Per second × the combination of resolution and sound. Charged only when the generation completes. |
 
-Models marked **Free** do not consume credits. Most of them are models the organisation runs itself, but models that an external service offers free of charge are marked the same way, and in that case the request is transmitted outside the organisation. Check the data boundary label in the model list as well.
+Models marked **Free** do not consume credits. Most of them are models the organization runs itself, but models that an external service offers free of charge are marked the same way, and in that case the request is transmitted outside the organization. Check the data boundary label in the model list as well.
 
 Credits are reset to the allowance on the first day of each month and do not carry over. When they are used up, you cannot send new requests until the next refill, but outputs already created are kept. A request whose generation was stopped is recorded as an estimate.
 

@@ -12,10 +12,10 @@ Select the model name at the right of the composer to open the list. When eight 
 
 | Label | Meaning |
 |---|---|
-| **strict-local** | The model is confirmed to run only on organisation servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |
-| **self-hosted · strict unverified** | The model runs on organisation servers, but it is not confirmed that there is no external fallback path. |
-| **May switch to an external provider** | The model normally runs on organisation servers, but it may switch to an external service during an outage. |
-| **External provider** | The model is supplied by an external service, so requests are sent outside the organisation. |
+| **strict-local** | The model is confirmed to run only on organization servers and to send nothing outside. Selecting it disables web search, page reading, and connectors. |
+| **self-hosted · strict unverified** | The model runs on organization servers, but it is not confirmed that there is no external fallback path. |
+| **May switch to an external provider** | The model normally runs on organization servers, but it may switch to an external service during an outage. |
+| **External provider** | The model is supplied by an external service, so requests are sent outside the organization. |
 | **Boundary unverified** | No information about the processing location is provided for this model. |
 | Price | Input and output credits per 1,000 tokens, or **Free** |
 | Context | How much can be processed at once |

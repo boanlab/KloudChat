@@ -16,7 +16,7 @@ Use the 🌐 button in the composer to switch the web search mode. Each press cy
 
 When a search runs, the answer shows numbers in the form `[n]` and a source list. One request performs at most three searches and reads at most six pages. Weather uses a dedicated tool instead of search. If you select a strict-local model or run a model comparison, the button is disabled and shows **No web search**.
 
-Requests about current information need search. "Exchange rate trends this quarter" and "Changes in Python 3.14" are examples. Calculation, translation, summarising an attached text, and fixing code do not need search. Setting the mode to **Off** for those makes the answer faster and avoids unnecessary sources.
+Requests about current information need search. "Exchange rate trends this quarter" and "Changes in Python 3.14" are examples. Calculation, translation, summarizing an attached text, and fixing code do not need search. Setting the mode to **Off** for those makes the answer faster and avoids unnecessary sources.
 
 ## Tools the model uses
 
