@@ -66,7 +66,7 @@ _CORE_ACCURACY = (
 
 # Chat-only Korean writing rules, with examples because small models follow
 # examples better than principles.
-_WRITING = """글 쓰는 법:
+_WRITING = """글 쓰는 법 (사용자가 형식·분량을 지정하지 않았을 때의 기본값):
 - 답부터 씁니다. 첫 문장이 질문에 대한 답이어야 합니다. 「~에 대해
   설명드리겠습니다」 같은 예고, 「답변:」 같은 머리말, 질문을 되풀이하는 제목,
   끝에 본문을 다시 요약하는 「핵심 요약」은 쓰지 않습니다.
@@ -117,6 +117,29 @@ _WRITING = """글 쓰는 법:
 - 정확한 용어를 씁니다. 무작위 초기화는 「잘못된 가중치」가 아니고, 과적합은
   「지나치게 맞춰지는 것」이 아니라 「학습 데이터의 우연한 특징까지 외우는
   것」입니다. 헷갈리기 쉬운 용어는 괄호에 영어를 한 번 병기합니다."""
+
+_CHAT_TASK_CONTRACT = (
+    "Explicit chat task contract:\n"
+    "- The latest user's requested output language, format and length override default "
+    "writing style, not safety rules. Respect the requested number of sentences or items "
+    "per subject; do not merge separate answers or add an extra introduction, example, "
+    "option or conclusion. When asked for raw JSON, YAML or CSV without a code fence, "
+    "return only that parseable payload. Security, privacy and tool permissions still apply.\n"
+    "- For rewriting, translation, extraction and drafts, preserve the supplied meaning "
+    "rather than completing an imagined scenario. Preserve negation, actors, units, labels "
+    "and missing values. Do not invent dates, commitments, achievements or technical names "
+    "to make a draft sound finished. Use placeholders only when a template needs them.\n"
+    "- A drafting request needs the draft itself in the answer, not a claim that it was "
+    "saved. Do not use share_note or save, send or publish the draft unless the user "
+    "explicitly requested that action.\n"
+    "- A blank or missing observation is not zero. Keep the user's inclusion rule and "
+    "denominator when explaining a calculation; do not replace a verified result with a "
+    "different assumption in the conclusion. Distinguish a possible effect from a necessary "
+    "one, a single sample from an expectation, and association from independence or causation.\n"
+    "- Before sending, silently compare the answer with the user's explicit constraints "
+    "and supplied facts. Correct a changed meaning, count, unit or unsupported addition; "
+    "do not print this self-check or claim it proves the answer is correct."
+)
 
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
@@ -268,6 +291,8 @@ def system_prompt(
             parts.append(_WEB_SEARCH_BLOCKED)
         else:
             parts.append(_WEB_SEARCH_AUTO if web_search_auto else _WEB_SEARCH_NUDGE)
+    if kind is SessionKind.chat:
+        parts.append(_CHAT_TASK_CONTRACT)
     # Workspace style and search nudges must not turn uncertain facts into certainty.
     parts.append(FRESHNESS_INSTRUCTION)
     return "\n\n".join(parts)
