@@ -18,6 +18,7 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -67,6 +68,7 @@ from app.schemas.chat import (
     FigureSuggestion,
     FigureSuggestRequest,
     ImageRequest,
+    MessageForkOut,
     MessageOut,
     SendMessage,
     SessionBulkDelete,
@@ -77,7 +79,7 @@ from app.schemas.chat import (
     made_from_artifacts,
     snippet,
 )
-from app.schemas.workspace import ArtifactOut
+from app.schemas.workspace import ArtifactOut, FileOut
 from app.services import (
     adaptive_routing,
     artifact_extract,
@@ -1216,6 +1218,169 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
     await db.commit()
     await db.refresh(session)
     return SessionOut.of(session, [])
+
+
+def _fork_attachment_ids(messages: list[Message]) -> list[str]:
+    ids = []
+    seen = set()
+    for message in messages:
+        for metadata in message.attachments or []:
+            file_id = metadata.get("id") if isinstance(metadata, dict) else None
+            if not isinstance(file_id, str) or not file_id:
+                raise HTTPException(status_code=404, detail="attachment_not_found")
+            if file_id not in seen:
+                ids.append(file_id)
+                seen.add(file_id)
+    return ids
+
+
+@router.post(
+    "/{session_id}/messages/{message_id}/fork",
+    response_model=MessageForkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def fork_message(session_id: str, message_id: str, user: CurrentUser, db: DbSession):
+    """Copy only the prefix before a user message, without generation or prior consent."""
+    source = (
+        await db.exec(
+            select(ChatSession)
+            .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
+            .with_for_update()
+        )
+    ).first()
+    if source is None:
+        raise HTTPException(status_code=404, detail="session_not_found")
+    if source.kind is not SessionKind.chat:
+        raise HTTPException(status_code=422, detail="fork_chat_only")
+    history = await _history(db, source.id)
+    at = next((i for i, row in enumerate(history) if row.id == message_id), None)
+    if at is None:
+        raise HTTPException(status_code=404, detail="fork_target_not_found")
+    target = history[at]
+    if target.role is not Role.user:
+        raise HTTPException(status_code=422, detail="fork_user_message_required")
+    jobs = (
+        await db.exec(
+            select(Job).where(
+                Job.session_id == source.id, col(Job.status).in_(["queued", "running"])
+            )
+        )
+    ).all()
+    # The trailing unanswered question also catches a stream on another replica.
+    unanswered = history[-1].role is Role.user and history[-1].failure is None
+    if source.pending or _STOPPING.get(source.id) or jobs or unanswered:
+        raise HTTPException(status_code=409, detail="session_busy")
+    if "chat" not in await settings_store.enabled_kinds():
+        raise HTTPException(status_code=403, detail="이 기능은 사용할 수 없습니다.")
+    await _validate_session_links(
+        db, user, source.kind, project_id=source.project_id, agent_id=source.agent_id
+    )
+
+    prefix = history[:at]
+    prefix_files = _fork_attachment_ids(prefix)
+    prefix_file_ids = set(prefix_files)
+    target_file_ids = _fork_attachment_ids([target])
+    file_ids = list(dict.fromkeys([*prefix_files, *target_file_ids]))
+    uploads, _metadata = await _owned_attachments(db, user, file_ids)
+    artifact_ids = list(dict.fromkeys(
+        artifact_id for message in prefix for artifact_id in (message.artifact_ids or [])
+    ))
+    artifacts = (
+        (
+            await db.exec(
+                select(Artifact).where(
+                    col(Artifact.id).in_(artifact_ids), Artifact.user_id == user.id
+                )
+            )
+        ).all()
+        if artifact_ids else []
+    )
+    if len(artifacts) != len(artifact_ids):
+        raise HTTPException(status_code=404, detail="artifact_not_found")
+
+    # Bound the whole fork, not each file, before creating any row or blob.
+    copied_bytes = 0
+    for item in [*uploads, *artifacts]:
+        if not item.storage_key:
+            continue
+        try:
+            copied_bytes += file_service.blob_size(item.storage_key)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="attachment_not_found") from None
+        if copied_bytes > settings.max_upload_mb * 1024 * 1024:
+            raise HTTPException(
+                status_code=413, detail=f"fork_files_too_large_{settings.max_upload_mb}mb"
+            )
+
+    branch = ChatSession(
+        user_id=user.id, kind=SessionKind.chat,
+        title=f"{source.title[:190]} (편집)" if source.title else "",
+        project_id=source.project_id, agent_id=source.agent_id, model=source.model,
+        routing_mode=source.routing_mode, render_template_id=source.render_template_id,
+    )
+    copied_files: dict[str, StoredFile] = {}
+    copied_artifacts: dict[str, Artifact] = {}
+    copied_messages: list[Message] = []
+    new_keys: list[str] = []
+    try:
+        for stored in uploads:
+            copied = StoredFile(
+                user_id=user.id, session_id=branch.id if stored.id in prefix_file_ids else None,
+                name=stored.name, size=stored.size, mime=stored.mime, text=stored.text,
+                tokens=stored.tokens, error=stored.error, source_url=stored.source_url,
+            )
+            if stored.storage_key:
+                copied.storage_key = file_service.copy_blob(
+                    user.id, copied.id, copied.name, stored.storage_key
+                )
+                new_keys.append(copied.storage_key)
+            copied_files[stored.id] = copied
+        for artifact in artifacts:
+            copied = Artifact(
+                user_id=user.id, session_id=branch.id, project_id=branch.project_id,
+                kind=artifact.kind, title=artifact.title, data=deepcopy(artifact.data),
+            )
+            if artifact.storage_key:
+                copied.storage_key = file_service.copy_blob(
+                    user.id, copied.id, copied.title or "artifact", artifact.storage_key
+                )
+                new_keys.append(copied.storage_key)
+            copied_artifacts[artifact.id] = copied
+        prior_time = None
+        for message in prefix:
+            created = message.created_at
+            if prior_time is not None and created <= prior_time:
+                created = prior_time + timedelta(microseconds=1)
+            prior_time = created
+            attachments = [
+                {**deepcopy(item), "id": copied_files[item["id"]].id}
+                for item in message.attachments or []
+            ] or None
+            copied_messages.append(Message(
+                session_id=branch.id, role=message.role, content=message.content,
+                attachments=attachments, model=message.model, failure=message.failure,
+                started_from=deepcopy(message.started_from), created_at=created,
+                artifact_ids=[copied_artifacts[key].id for key in message.artifact_ids or []]
+                or None,
+            ))
+        output = MessageForkOut(
+            session=SessionOut.of(branch, copied_messages),
+            attachments=[FileOut.of(copied_files[key]) for key in target_file_ids],
+            attachment_id_map={key: copied_files[key].id for key in target_file_ids},
+        )
+        for row in [branch, *copied_files.values(), *copied_artifacts.values(), *copied_messages]:
+            db.add(row)
+        await db.commit()
+    except BaseException as exc:
+        try:
+            await db.rollback()
+        finally:
+            for key in new_keys:
+                file_service.delete_blob(key)
+        if isinstance(exc, FileNotFoundError):
+            raise HTTPException(status_code=404, detail="attachment_not_found") from None
+        raise
+    return output
 
 
 async def _template_skills(

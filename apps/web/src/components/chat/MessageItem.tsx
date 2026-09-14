@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Loader2,
   Paperclip,
+  Pencil,
   Presentation,
   RotateCcw,
   ShieldAlert,
@@ -211,6 +212,8 @@ function MessageItemInner({
   const user = useStore((s) => s.user)
   const designTemplates = useStore((s) => s.designTemplates)
   const sessionKind = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.kind)
+  const editMessage = useStore((s) => s.editMessage)
+  const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
   const renderTemplateId = useStore(
     (s) => s.sessions.find((c) => c.id === sessionId)?.renderTemplateId,
   )
@@ -311,7 +314,13 @@ function MessageItemInner({
     )
     return (
       <div className="group animate-fade-up flex items-start justify-end gap-1">
-        <span className="mt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <span className="mt-1 flex flex-col opacity-100 transition-opacity sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+          {sessionKind === 'chat' && (
+            <Button size="icon" variant="ghost" title={t('메시지 수정')} aria-label={t('메시지 수정')}
+              disabled={editBlocked || !message.persisted} onClick={() => editMessage(sessionId, message.id)}>
+              <Pencil size={14} />
+            </Button>
+          )}
           {copyButton('프롬프트 복사')}
         </span>
         <div className="max-w-[80%] space-y-2">

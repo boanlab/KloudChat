@@ -302,6 +302,8 @@ export interface StartingPoint {
 
 export interface Message {
   id: string
+  /** The id came from a stored transcript, not a local optimistic turn. */
+  persisted?: boolean
   role: Role
   content: string
   /** Present instead of `content` when the turn was run as a model comparison. */

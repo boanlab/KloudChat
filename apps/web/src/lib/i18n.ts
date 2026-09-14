@@ -342,6 +342,12 @@ const EN: Record<string, string> = {
   '다시 쓰기': 'Rewrite',
   '다시 연결': 'Reconnect',
   '다운로드': 'Download',
+  '메시지 수정': 'Edit message',
+  '메시지 수정 · 새 대화': 'Edit message · New conversation',
+  '수정 취소': 'Cancel edit',
+  '수정 후 다시 보내기': 'Save and resend',
+  '수정한 메시지를 전송하지 못했습니다. 다시 시도하세요.': 'Could not send the edited message. Please try again.',
+  '첨부 파일을 복제하지 못했습니다. 다시 시도하세요.': 'Could not copy the attachment. Please try again.',
   '다음 리필': 'Next refill',
   '답변': 'Answer',
   '대규모': 'Large',
@@ -2491,6 +2497,8 @@ const EN: Record<string, string> = {
   '보관 기간(일)': 'Retention (days)',
   '이 기억을 엽니다': 'Open this memory',
   '설정을 불러오거나 저장하는 중입니다': 'Loading or saving settings',
+  '새 대화에 전송 기록이 있습니다. 저장된 답변을 확인한 뒤 다시 시도하세요.': 'The new conversation contains a sent message. Check the saved reply before retrying.',
+  '전송 상태를 확인하지 못했습니다. 새 대화를 새로고침해 확인한 뒤 다시 시도하세요.': 'The send status could not be confirmed. Reload the new conversation and check it before retrying.',
 
 }
 
