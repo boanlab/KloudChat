@@ -1068,7 +1068,11 @@ CREATE_ARTIFACT = Tool(
             },
             "language": {
                 "type": "string",
-                "description": "kind 가 code 일 때의 언어 (python, bash, yaml 등).",
+                "description": (
+                    "kind 가 code 일 때 원본 다운로드의 확장자를 결정하는 언어. "
+                    "CSV는 csv, JSON은 json, YAML은 yaml, Python은 python으로 지정하세요. "
+                    "생략하거나 지원하지 않는 언어면 text로 취급해 .txt로 다운로드합니다."
+                ),
             },
             "userRequested": {
                 "type": "boolean",

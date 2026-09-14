@@ -342,6 +342,8 @@ const EN: Record<string, string> = {
   '다시 쓰기': 'Rewrite',
   '다시 연결': 'Reconnect',
   '다운로드': 'Download',
+  '원본 다운로드': 'Download source',
+  '원본을 다운로드하지 못했습니다.': 'Could not download the source file.',
   '다음 리필': 'Next refill',
   '답변': 'Answer',
   '대규모': 'Large',
