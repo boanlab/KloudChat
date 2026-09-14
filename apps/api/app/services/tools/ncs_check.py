@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from typing import Any
 
+from app.services.calculation_policy import _mask_quoted_intent
 from app.services.ncs_submission import submitted_choice_from_request
 from app.services.tools import arithmetic
 from app.services.tools.base import Tool, ToolContext, ToolResult
@@ -29,6 +31,22 @@ _NON_UNIQUE = (
     "계산기에 입력된 식과 선지에서 유일한 정답을 확인하지 못했습니다. "
     "채점을 보류하고 문제 조건·계산식·단위·선지를 다시 확인해야 합니다."
 )
+_REVIEW_REQUEST = re.compile(
+    r"(?:문항|문제|선지|선택지)[^.!?\n]{0,24}(?:검토|검증|점검)|"
+    r"정답[^.!?\n]{0,24}(?:하나|유일|복수)|(?:중복|동치)[^.!?\n]{0,12}(?:선지|선택지)"
+)
+_CREATE_QUESTION = re.compile(
+    r"출제해|출제하|(?:문항|문제|퀴즈)(?:을|를)?\s*"
+    r"(?:(?:새로|다시|하나|한\s*개)\s*)?(?:만들|생성|작성)"
+)
+_WITHHOLD_ANSWER = re.compile(
+    r"(?:정답|답|해설)[^.!?\n]{0,20}(?:"
+    r"(?:알려(?:주)?|말하|공개하|보여주|제시하|표시하|쓰)지(?:는|도)?\s*(?:마|말)|"
+    r"나중|숨겨|없이)"
+)
+_CHOICE_MARKER = re.compile(r"선택지|선지")
+_CHOICE_LABEL = re.compile(r"(?<!\d)(10|[1-9])\s*번")
+_CHOICE_NUMBER = re.compile(r"(?<![\d.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)")
 _ERROR = json.dumps(
     {
         "error": "invalid_ncs_check",
@@ -57,6 +75,53 @@ _CHOICES_ERROR = json.dumps(
 
 def _invalid() -> ToolResult:
     return ToolResult(content=_ERROR, detail="문항 검산 미완료", failed=True)
+
+
+def _reviews_supplied_choices(ctx: ToolContext | None) -> bool:
+    """Enable details only for a bounded, explicit review of supplied numeric options."""
+    request = ctx.request if ctx is not None else None
+    if not isinstance(request, str) or len(request) > 8192:
+        return False
+    intent = _mask_quoted_intent(request)
+    if (
+        not _REVIEW_REQUEST.search(intent)
+        or _CREATE_QUESTION.search(intent) or _WITHHOLD_ANSWER.search(intent)
+    ):
+        return False
+    marker = _CHOICE_MARKER.search(request)
+    if marker is None:
+        return False
+    choices = request[marker.end():]
+    labels = list(_CHOICE_LABEL.finditer(choices))
+    supplied = set()
+    for index, label in enumerate(labels):
+        end = labels[index + 1].start() if index + 1 < len(labels) else len(choices)
+        # Labels alone can be a request to generate options, not supplied numeric data.
+        if _CHOICE_NUMBER.search(choices[label.end():min(end, label.end() + 80)]):
+            supplied.add(label.group(1))
+    return len(supplied) >= 2
+
+
+def _non_unique_text(data: dict[str, Any], ctx: ToolContext | None) -> str:
+    if not _reviews_supplied_choices(ctx):
+        return _NON_UNIQUE
+    if data["decimal_places"] is None:
+        value = f"계산기에 입력된 식의 값은 {data['value']}입니다. "
+    else:
+        value = (
+            f"계산기에 입력된 식의 정확한 값은 {data['exact']}이며, "
+            f"소수점 {data['decimal_places']}자리 반올림값은 {data['value']}입니다. "
+        )
+    if data["choice_status"] == "ambiguous":
+        indices = ", ".join(f"{index}번" for index in data["matched_choices"])
+        mismatch = f"입력된 선지 {indices}이 이 값과 일치해 "
+    else:
+        mismatch = "입력된 선지 중 이 값과 일치하는 것이 없어 "
+    return (
+        value + mismatch + "유일한 정답을 고를 수 없습니다. 채점은 보류합니다. "
+        "이는 입력된 식의 산술 결과이며, 식·단위·선지가 실제 문항을 정확히 반영했는지는 "
+        "별도로 확인해야 합니다."
+    )
 
 
 def _normalize_choices(raw: object) -> list[str] | None:
@@ -127,7 +192,8 @@ async def check_ncs_answer(arguments: dict[str, Any], ctx: ToolContext | None = 
             detail="문항 검산 미완료" if result.failed else "문항 검산 완료",
             failed=result.failed,
             final_text=(
-                _NON_UNIQUE if data.get("choice_status") in {"no_match", "ambiguous"} else None
+                _non_unique_text(data, ctx)
+                if data.get("choice_status") in {"no_match", "ambiguous"} else None
             ),
         )
 
