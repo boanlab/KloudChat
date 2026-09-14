@@ -17,7 +17,11 @@ from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.services.freshness import FRESHNESS_INSTRUCTION, without_quoted_transform_sources
+from app.services.freshness import (
+    FRESHNESS_INSTRUCTION,
+    _quoted_spans,
+    without_quoted_transform_sources,
+)
 
 # Models leak Chinese Hanja into Korean prose; parenthesised glosses are allowed.
 _KOREAN_ONLY = (
@@ -66,7 +70,7 @@ _CORE_ACCURACY = (
 
 # Chat-only Korean writing rules, with examples because small models follow
 # examples better than principles.
-_WRITING = """글 쓰는 법:
+_WRITING = """글 쓰는 법 (사용자가 형식·분량을 지정하지 않았을 때의 기본값):
 - 답부터 씁니다. 첫 문장이 질문에 대한 답이어야 합니다. 「~에 대해
   설명드리겠습니다」 같은 예고, 「답변:」 같은 머리말, 질문을 되풀이하는 제목,
   끝에 본문을 다시 요약하는 「핵심 요약」은 쓰지 않습니다.
@@ -117,6 +121,29 @@ _WRITING = """글 쓰는 법:
 - 정확한 용어를 씁니다. 무작위 초기화는 「잘못된 가중치」가 아니고, 과적합은
   「지나치게 맞춰지는 것」이 아니라 「학습 데이터의 우연한 특징까지 외우는
   것」입니다. 헷갈리기 쉬운 용어는 괄호에 영어를 한 번 병기합니다."""
+
+_CHAT_TASK_CONTRACT = (
+    "Explicit chat task contract:\n"
+    "- The latest user's requested output language, format and length override default "
+    "writing style, not safety rules. Respect the requested number of sentences or items "
+    "per subject; do not merge separate answers or add an extra introduction, example, "
+    "option or conclusion. When asked for raw JSON, YAML or CSV without a code fence, "
+    "return only that parseable payload. Security, privacy and tool permissions still apply.\n"
+    "- For rewriting, translation, extraction and drafts, preserve the supplied meaning "
+    "rather than completing an imagined scenario. Preserve negation, actors, units, labels "
+    "and missing values. Do not invent dates, commitments, achievements or technical names "
+    "to make a draft sound finished. Use placeholders only when a template needs them.\n"
+    "- A drafting request needs the draft itself in the answer, not a claim that it was "
+    "saved. Do not use share_note or save, send or publish the draft unless the user "
+    "explicitly requested that action.\n"
+    "- A blank or missing observation is not zero. Keep the user's inclusion rule and "
+    "denominator when explaining a calculation; do not replace a verified result with a "
+    "different assumption in the conclusion. Distinguish a possible effect from a necessary "
+    "one, a single sample from an expectation, and association from independence or causation.\n"
+    "- Before sending, silently compare the answer with the user's explicit constraints "
+    "and supplied facts. Correct a changed meaning, count, unit or unsupported addition; "
+    "do not print this self-check or claim it proves the answer is correct."
+)
 
 _SURFACE_DEFAULTS: dict[SessionKind, str] = {
     SessionKind.chat: (
@@ -268,6 +295,8 @@ def system_prompt(
             parts.append(_WEB_SEARCH_BLOCKED)
         else:
             parts.append(_WEB_SEARCH_AUTO if web_search_auto else _WEB_SEARCH_NUDGE)
+    if kind is SessionKind.chat:
+        parts.append(_CHAT_TASK_CONTRACT)
     # Workspace style and search nudges must not turn uncertain facts into certainty.
     parts.append(FRESHNESS_INSTRUCTION)
     return "\n\n".join(parts)
@@ -444,9 +473,22 @@ _WEATHER_WORDS = re.compile(
 )
 
 
+SEARCH_QUERY_LIMIT = 120
+
+
+def search_needs_planning(request: str) -> bool:
+    """Do not cut a long request's subject, period or constraints into a preset."""
+    return len(re.sub(r"\s+", " ", (request or "").strip())) > SEARCH_QUERY_LIMIT
+
+
 def search_query(request: str, *, prefer_primary: bool = False) -> str:
     """The user's sentence as a search query: request phrasing trimmed, capped."""
-    text = re.sub(r"\s+", " ", _HINT_PHRASES.sub(" ", request or "").strip())
+    try:
+        text, _site = search_site_scope(request or "")
+    except ValueError:
+        # Leave conflicting operators for the search tool to reject before lookup.
+        text = request or ""
+    text = re.sub(r"\s+", " ", _HINT_PHRASES.sub(" ", text).strip())
     for _ in range(4):
         text = text.rstrip(" ?？!.。~,")
         peeled = _FILLER.sub(
@@ -456,13 +498,17 @@ def search_query(request: str, *, prefer_primary: bool = False) -> str:
             break
         text = peeled
     text = _DANGLING_UNIT.sub("", _DANGLING_PARTICLE.sub("", text.strip(" ?？!.。~,")))
-    query = (text or (request or "").strip())[:120]
-    if prefer_primary and not _HINT_SITE.search(request or "") and not _HINT_OFFICIAL.search(query):
+    query = (text or (request or "").strip())[:SEARCH_QUERY_LIMIT]
+    if (
+        prefer_primary
+        and not _search_site_operators(request or "")
+        and not _HINT_OFFICIAL.search(query)
+    ):
         # Improve retrieval without assuming a country, authority domain or answer.
         # Mixing an English cue into a Korean query can select the wrong search lane.
         hint = "공식" if _HANGUL.search(request or "") else "official"
         if hint not in query:
-            query = query[:120 - len(hint) - 1].rstrip() + " " + hint
+            query = query[:SEARCH_QUERY_LIMIT - len(hint) - 1].rstrip() + " " + hint
     return query
 
 
@@ -498,7 +544,7 @@ def is_small_talk(request: str) -> bool:
 #: back, in what language. Honoured on the server's own first search.
 _HINT_SITE = re.compile(r"\bsite:([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _HINT_OFFICIAL = re.compile(
-    r"공식\s*(?:사이트|홈페이지|자료|발표|문서|출처|기준)|정부\s*(?:자료|발표|사이트)|"
+    r"공식\s*(?:사이트|홈페이지|자료|발표|문서|출처|기준|공지|공고)|정부\s*(?:자료|발표|사이트)|"
     r"기관\s*(?:자료|홈페이지)|공공기관|\bofficial\b",
     re.I,
 )
@@ -523,7 +569,7 @@ _HINT_ENGLISH = re.compile(
 _HINT_NEWS = re.compile(r"뉴스\s*(?:로|에서|기사|위주로)|기사\s*(?:로|에서|위주로)")
 #: The hint phrases, so `search_query` can leave them out of the query itself.
 _HINT_PHRASES = re.compile(
-    r"\bsite:[A-Za-z0-9.-]+|(?:공식|정부|기관)\s*(?:사이트|홈페이지|자료|발표|문서|출처)\s*"
+    r"(?:공식|정부|기관)\s*(?:사이트|홈페이지|자료|발표|문서|출처|공지|공고)\s*"
     r"(?:기준으로|기준|에서|으로|로|만)?|공공기관\s*(?:자료)?\s*(?:기준으로|에서|로)?|"
     r"(?:영어|영문|해외)\s*(?:자료|문서|기사)\s*(?:로|에서|위주로)?|"
     r"(?:뉴스|기사)\s*(?:위주로|로만)",
@@ -531,13 +577,56 @@ _HINT_PHRASES = re.compile(
 )
 
 
+def _search_site_operators(query: str) -> list[re.Match[str]]:
+    """Only standalone positive operators, not quoted text or excluded sites."""
+    quoted = iter(_quoted_spans(query))
+    span = next(quoted, None)
+    operators = []
+    for match in _HINT_SITE.finditer(query):
+        while span and span[1] <= match.start():
+            span = next(quoted, None)
+        if span and span[0] <= match.start() < span[1]:
+            continue
+        if match.start() and not query[match.start() - 1].isspace():
+            continue
+        operators.append(match)
+    return operators
+
+
+def search_site_scope(query: str, site: object = None) -> tuple[str, str]:
+    """Use the existing single-domain hint grammar for model-written operators too."""
+    operators = _search_site_operators(query)
+    if any(query[match.end() : match.end() + 1] in {"/", ":"} for match in operators):
+        raise ValueError("search site must be a domain, not a path or port")
+    inline = {match[1].lower() for match in operators}
+    explicit = str(site or "").strip().lower().removeprefix("site:")
+    if explicit and not _HINT_SITE.fullmatch("site:" + explicit):
+        raise ValueError("invalid search site")
+    sites = inline | ({explicit} if explicit else set())
+    if len(sites) > 1:
+        raise ValueError("multiple search sites require separate queries")
+    scoped = next(iter(sites), "")
+    if inline:
+        parts = []
+        start = 0
+        for match in operators:
+            parts.append(query[start : match.start()])
+            start = match.end()
+        parts.append(query[start:])
+        query = re.sub(r"\s+", " ", " ".join(parts)).strip()
+    if not query:
+        raise ValueError("search query needs a subject beside site")
+    return query, scoped
+
+
 def search_hints(request: str) -> dict[str, object]:
     """What the user's own words say about where and how to search."""
     text = request or ""
     hints: dict[str, object] = {}
-    if match := _HINT_SITE.search(text):
-        hints["site"] = match.group(1).lower()
-    elif _HINT_OFFICIAL.search(text):
+    sites = {match[1].lower() for match in _search_site_operators(text)}
+    if len(sites) == 1:
+        hints["site"] = next(iter(sites))
+    elif not sites and _HINT_OFFICIAL.search(text):
         hints["official"] = True
     for pattern, span in _HINT_RANGE:
         if pattern.search(text):

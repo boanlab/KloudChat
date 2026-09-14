@@ -606,12 +606,12 @@ export const keysApi = {
 }
 
 /**
- * Downloads a report export. A plain link cannot carry the access token, so
+ * Downloads an artifact export. A plain link cannot carry the access token, so
  * the file is fetched and handed to the browser as a blob.
  */
 export async function downloadArtifact(
   id: string,
-  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html',
+  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
   title: string,
 ) {
   const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
@@ -620,10 +620,23 @@ export async function downloadArtifact(
   })
   if (!res.ok) throw new ApiError(res.status, await readDetail(res))
 
+  let filename = `${title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'report'}.${format === 'source' ? 'txt' : format}`
+  if (format === 'source') {
+    // The owner-scoped endpoint chooses the extension from stored language,
+    // never from content sniffing in the browser.
+    const encoded = res.headers.get('Content-Disposition')?.match(/(?:^|;)\s*filename\*=UTF-8''([^;]+)/i)?.[1]
+    if (encoded) {
+      try {
+        filename = decodeURIComponent(encoded).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 180) || filename
+      } catch {
+        // An invalid or absent filename keeps the conservative text fallback.
+      }
+    }
+  }
   const url = URL.createObjectURL(await res.blob())
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'report'}.${format}`
+  anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
 }

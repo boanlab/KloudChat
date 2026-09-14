@@ -113,11 +113,13 @@ from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
+from app.services.chat_format import normalize_raw_payload
 from app.services.context import (
     build_messages,
     declines_web_search,
     requests_web_search,
     search_hints,
+    search_needs_planning,
     search_plan,
     search_query,
     weather_location,
@@ -3228,12 +3230,13 @@ async def send_message(
             outbound_history[fresh_followup_index]
             if fresh_followup_index is not None else content
         )
-        preset_call = (
-            "web_search", {
-                "query": search_query(lookup_content, prefer_primary=fresh_fact),
-                **search_hints(lookup_content),
-            },
-        )
+        if not search_needs_planning(lookup_content):
+            preset_call = (
+                "web_search", {
+                    "query": search_query(lookup_content, prefer_primary=fresh_fact),
+                    **search_hints(lookup_content),
+                },
+            )
     elif forced_tool == "weather" and "weather" in tool_names:
         place = weather_location(content)
         if place:
@@ -3278,9 +3281,8 @@ async def send_message(
                 protect_enrichment=policy.pii_masking or policy.external_data_guard,
                 privacy_audit_id=privacy_audit_id,
                 routing_audit_id=routing_audit_id,
-                # The toggle's search is the server's own first call (a named
-                # `tool_choice` is not reliably obeyed); a weather question whose
-                # place the words do not name is left to the model, forced.
+                # Short lookups are server presets. Long requests and weather
+                # without a named place use the allowed tool's forced planning hop.
                 preset_call=preset_call,
                 freshness_request=content if fresh_fact else None,
                 force_tool=(
@@ -3805,6 +3807,8 @@ async def _run_turn(
     content = "".join(text_parts)
     if content.strip() and not failed and not skip_completion_work:
         normalized = freshness.normalize_answer_notice(content, ctx.request, model, actual_model)
+        # This is the current stored user text, not the merged reference envelope.
+        normalized = normalize_raw_payload(normalized, first_user_message)
         if normalized != content:
             # The client retracts the first match, so replace the complete answer.
             yield chat_service.sse({"type": "retract", "text": content})
@@ -4285,6 +4289,7 @@ async def compare_models(
                 models=chosen,
                 messages=messages,
                 current_fact_request=content if comparison_current_fact else None,
+                format_request=stored_content,
                 skills_event=workspace.skills_event(),
                 context_steps=_context_steps(workspace),
                 routing=resolved.routing,
@@ -4311,6 +4316,7 @@ async def _run_comparison(
     models: list[dict],
     messages: list[dict],
     current_fact_request: str | None = None,
+    format_request: str = "",
     skills_event: dict | None = None,
     context_steps: list[dict] | None = None,
     routing: dict,
@@ -4402,6 +4408,7 @@ async def _run_comparison(
                 normalized = freshness.normalize_answer_notice(
                     slot["content"], request_text, model, slot["actualModel"] or model["id"],
                 )
+                normalized = normalize_raw_payload(normalized, format_request)
                 if normalized != slot["content"]:
                     await queue.put({
                         "type": "variant_retract", "model": model["id"], "text": slot["content"],

@@ -374,9 +374,11 @@ async def _searxng(
     hides it); a `site:go.kr` lane for `official`; and `site`, `time_range`
     and `language` hints on every lane. Lane hits that fit the question come
     first."""
+    from app.services.context import search_site_scope
+
     hints = hints or {}
     search_url = f"{base_url.rstrip('/')}/search"
-    site = str(hints.get("site") or "").strip().lstrip("site:")
+    query, site = search_site_scope(query, hints.get("site"))
     q = f"{query} site:{site}" if site else query
     base: dict[str, Any] = {"q": q, "format": "json", "safesearch": 2, "language": "ko-KR"}
     if hints.get("language") in _LANGUAGES:
@@ -387,9 +389,14 @@ async def _searxng(
     lane = _LANES.get("news" if fresh and kind == "web" else kind)
     if lane:
         lane_params = {**base, **lane}
+        if hints.get("time_range") in _TIME_RANGES:
+            lane_params["time_range"] = hints["time_range"]
         if kind == "papers":
             # Titles are English; a Korean locale drags in unrelated Korean journals.
-            lane_params.update(q=_latin_only(query), language="en")
+            paper_query = _latin_only(query)
+            lane_params.update(
+                q=f"{paper_query} site:{site}" if site else paper_query, language="en"
+            )
         lane_requests.append(("kind", lane_params))
     if kind == "web" and base["language"] != "en" and not site:
         names, _ = _anchors(query)
@@ -427,6 +434,16 @@ async def _searxng(
         if not isinstance(laned, BaseException) and laned.status_code < 400:
             collect(laned.json(), lane=tag, lane_query=str(params["q"]))
     collect(general.json())
+    if site:
+        scoped_hits = []
+        for hit in hits:
+            try:
+                host = urlsplit(hit["url"]).hostname or ""
+            except ValueError:
+                continue
+            if host == site or host.endswith("." + site):
+                scoped_hits.append(hit)
+        hits = scoped_hits
     terms = _terms(query)
     # A `site:` lane answers with whatever the domain has; a hit sharing no
     # word with the question is that, not an answer.
@@ -1051,7 +1068,11 @@ CREATE_ARTIFACT = Tool(
             },
             "language": {
                 "type": "string",
-                "description": "kind 가 code 일 때의 언어 (python, bash, yaml 등).",
+                "description": (
+                    "kind 가 code 일 때 원본 다운로드의 확장자를 결정하는 언어. "
+                    "CSV는 csv, JSON은 json, YAML은 yaml, Python은 python으로 지정하세요. "
+                    "생략하거나 지원하지 않는 언어면 text로 취급해 .txt로 다운로드합니다."
+                ),
             },
             "userRequested": {
                 "type": "boolean",

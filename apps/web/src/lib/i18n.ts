@@ -348,6 +348,8 @@ const EN: Record<string, string> = {
   '수정 후 다시 보내기': 'Save and resend',
   '수정한 메시지를 전송하지 못했습니다. 다시 시도하세요.': 'Could not send the edited message. Please try again.',
   '첨부 파일을 복제하지 못했습니다. 다시 시도하세요.': 'Could not copy the attachment. Please try again.',
+  '원본 다운로드': 'Download source',
+  '원본을 다운로드하지 못했습니다.': 'Could not download the source file.',
   '다음 리필': 'Next refill',
   '답변': 'Answer',
   '대규모': 'Large',
