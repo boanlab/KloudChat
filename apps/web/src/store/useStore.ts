@@ -101,6 +101,17 @@ type SidebarMode = 'full' | 'rail' | 'hidden'
 const isClientRefusal = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.status >= 400 && error.status < 500
 
+/** A failed HTTP response is not proof that the server stored nothing. */
+export class ChatSendRecoveryError extends Error {
+  readonly recovery: 'stored' | 'unknown'
+
+  constructor(recovery: 'stored' | 'unknown') {
+    super(`chat_send_${recovery}`)
+    this.name = 'ChatSendRecoveryError'
+    this.recovery = recovery
+  }
+}
+
 /** Per-session PATCH queue for model/routing changes; a send waits for the latest one. */
 const sessionPersistence = new Map<string, Promise<void>>()
 
@@ -229,11 +240,15 @@ type SendOptions = {
   model?: string
   /** Called as soon as a session id exists, before the stream finishes. */
   onSession?: (id: string) => void
+  /** Edited forks must reconcile an unaccepted request before allowing a retry. */
+  reconcileBeforeRetry?: boolean
 }
 
 interface State {
   // ── auth ──────────────────────────────────────────────────────────────
   user: User | null
+  /** Invalidates asynchronous work and in-memory drafts across account changes. */
+  accountEpoch: number
   authenticated: boolean
   /** True until the boot-time session check finishes. */
   authLoading: boolean
@@ -320,6 +335,14 @@ interface State {
   /** Titles only; transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
   openSession: (id: string) => Promise<void>
+  forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
+    sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
+  }>
+  messageEdit: { sessionId: string; messageId: string } | null
+  messageEditBusy: boolean
+  setMessageEditBusy: (busy: boolean) => void
+  editMessage: (sessionId: string, messageId: string) => void
+  clearMessageEdit: () => void
   newSession: (
     kind: SessionKind,
     opts?: {
@@ -806,6 +829,7 @@ function reconcileCompareModels(current: string[], available: ModelInfo[]): stri
 
 export const useStore = create<State>((set, get) => ({
   user: null,
+  accountEpoch: 0,
   pendingDelete: null,
   mediaError: null,
   authenticated: false,
@@ -852,7 +876,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   login: async (email, password) => {
-    set({ authError: null })
+    set((state) => ({ authError: null, accountEpoch: state.accountEpoch + 1,
+      messageEdit: null, messageEditBusy: false }))
     try {
       const session = await auth.login(email, password)
       setAccessToken(session.accessToken)
@@ -874,7 +899,8 @@ export const useStore = create<State>((set, get) => ({
   /** Session handed over by a mailed signup-verification link. */
   adoptSession: (session) => {
     setAccessToken(session.accessToken)
-    set({ authenticated: true, user: session.user, authLoading: false, authError: null })
+    set((state) => ({ authenticated: true, user: session.user, authLoading: false, authError: null,
+      accountEpoch: state.accountEpoch + 1, messageEdit: null, messageEditBusy: false }))
     scheduleRefresh(session.expiresIn, () => void get().bootstrap())
     void get().loadModels()
   },
@@ -901,6 +927,9 @@ export const useStore = create<State>((set, get) => ({
   },
 
   logout: async (reason) => {
+    set((state) => ({ accountEpoch: state.accountEpoch + 1,
+      messageEdit: null, messageEditBusy: false, composerRestore: null,
+      pendingAttachment: null, draft: '' }))
     try {
       await auth.logout()
     } catch {
@@ -1273,8 +1302,12 @@ export const useStore = create<State>((set, get) => ({
   },
 
   loadSessions: async () => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     try {
       const rows = await sessionsApi.list()
+      if (!ownsAccount()) return
       set((s) => ({
         sessionsLoading: false,
         sessionsFailed: false,
@@ -1284,13 +1317,19 @@ export const useStore = create<State>((set, get) => ({
         ),
       }))
     } catch {
+      if (!ownsAccount()) return
       set({ sessionsLoading: false, sessionsFailed: true })
     }
   },
 
   openSession: async (id) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
+    const accountSet: Set = (patch) => { if (ownsAccount()) set(patch) }
     try {
       const row = await sessionsApi.get(id)
+      if (!ownsAccount()) return
       const session = toSession(row)
       set((s) => ({
         sessions: s.sessions.some((c) => c.id === id)
@@ -1299,10 +1338,11 @@ export const useStore = create<State>((set, get) => ({
       }))
 
       // A turn still running server-side is polled until its answer lands.
-      void watchForTheAnswer(set, get, id)
+      void watchForTheAnswer(accountSet, get, id)
 
       // Job cards are server rows, so a reload has to fetch them.
       const jobRows = await jobsApi.list(id).catch(() => null)
+      if (!ownsAccount()) return
       if (jobRows) {
         set((s) => ({
           jobs: [
@@ -1322,6 +1362,7 @@ export const useStore = create<State>((set, get) => ({
       const missing = [...wanted].filter((a) => !get().artifacts.some((x) => x.id === a))
       if (missing.length === 0) return
       const rows = await Promise.all(missing.map((a) => artifactsApi.get(a).catch(() => null)))
+      if (!ownsAccount()) return
       const found = rows.filter((r) => r !== null).map(toArtifact)
       if (found.length) set((s) => ({ artifacts: [...found, ...s.artifacts] }))
     } catch {
@@ -1356,15 +1397,46 @@ export const useStore = create<State>((set, get) => ({
     return session.id
   },
 
+  messageEdit: null,
+  messageEditBusy: false,
+  setMessageEditBusy: (messageEditBusy) => set({ messageEditBusy }),
+  clearMessageEdit: () => set({ messageEdit: null }),
+  editMessage: (sessionId, messageId) => {
+    const state = get()
+    const session = state.sessions.find((row) => row.id === sessionId)
+    if (session?.kind !== 'chat' || state.running[sessionId] || state.messageEditBusy) return
+    if (!session.messages.some((message) => message.id === messageId && message.role === 'user' && message.persisted)) return
+    set({ messageEdit: { sessionId, messageId } })
+  },
+  forkBeforeMessage: async (sessionId, messageId) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const result = await sessionsApi.forkBeforeMessage(sessionId, messageId)
+    if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
+      throw new Error('account_changed')
+    }
+    const fork = toSession(result.session)
+    set((state) => ({ sessions: [fork, ...state.sessions.filter((row) => row.id !== fork.id)] }))
+    return { sessionId: fork.id, attachments: result.attachments, attachmentIdMap: result.attachmentIdMap }
+  },
+
   /** Entry point for all five surfaces; image and av hand off to their job/media paths. */
   send: async (sessionId, kind, text, opts = {}) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     // A retry resends the original turn's options, not just its sentence.
     const again = opts.retryOf ? sentWith.get(opts.retryOf) : undefined
     if (again) opts = { ...again, ...opts }
     const id = sessionId ?? (await get().newSession(kind, { projectId: opts.projectId ?? null }))
     await waitForSessionPersistence(id)
+    if (!ownsAccount()) throw new Error('account_changed')
     // Chat keeps the originating composer until the first SSE event; other surfaces navigate at once.
-    const acceptSession = () => opts.onSession?.(id)
+    let accepted = false
+    const acceptSession = () => {
+      accepted = true
+      if (ownsAccount()) opts.onSession?.(id)
+    }
     if (kind !== 'chat') acceptSession()
 
     // Snapshot before the optimistic turn: a 4xx means nothing was stored, so it is rolled back.
@@ -1439,6 +1511,9 @@ export const useStore = create<State>((set, get) => ({
       ),
     }))
 
+    const turnSet: Set = opts.reconcileBeforeRetry
+      ? (patch) => { if (ownsAccount()) set(patch) }
+      : set
     const perform = async () => {
       if (kind === 'report') {
         await streamReport(
@@ -1499,7 +1574,7 @@ export const useStore = create<State>((set, get) => ({
       if (get().running[id]) return id
 
       if (get().compareMode && get().compareModels.length >= 2) {
-        await runComparison(set, get, id, text, {
+        await runComparison(turnSet, get, id, text, {
           activatedSkillIds: opts.activatedSkillIds,
           startingTemplateId: opts.startingTemplate?.id,
           attachments: opts.attachments,
@@ -1511,7 +1586,7 @@ export const useStore = create<State>((set, get) => ({
         return id
       }
 
-      await streamTurn(set, get, id, text, model, {
+      await streamTurn(turnSet, get, id, text, model, {
         model: opts.model,
         retryOf,
         webSearch: opts.webSearch,
@@ -1529,6 +1604,7 @@ export const useStore = create<State>((set, get) => ({
     try {
       return await perform()
     } catch (err) {
+      if (!ownsAccount()) throw err
       if (err instanceof PrivacyDecisionError) err.sessionId = id
       if (isClientRefusal(err) && before) {
         set((state) => ({
@@ -1543,6 +1619,19 @@ export const useStore = create<State>((set, get) => ({
           ),
           openArtifactId: beforeOpenArtifactId,
         }))
+      } else if (kind === 'chat' && opts.reconcileBeforeRetry && !accepted && before) {
+        const stored = await sessionsApi.get(id).catch(() => null)
+        if (!ownsAccount()) throw err
+        const fresh = stored ? toSession(stored) : null
+        // Only an exact stored prefix proves that this failed request added no turn.
+        const unchanged = fresh && !fresh.pending &&
+          fresh.messages.length === before.messages.length &&
+          fresh.messages.every((message, index) => message.id === before.messages[index].id &&
+            message.role === before.messages[index].role && message.content === before.messages[index].content)
+        if (fresh) set((state) => ({ sessions: state.sessions.map((row) => row.id === id ? fresh : row) }))
+        if (unchanged) throw err
+        acceptSession()
+        throw new ChatSendRecoveryError(fresh ? 'stored' : 'unknown')
       } else if (kind === 'chat') {
         // Other failures may already have server-side output; keep the session reachable.
         acceptSession()
@@ -2603,6 +2692,7 @@ function upsertStep(steps: Step[] | undefined, step: Step): Step[] {
 function toMessage(raw: MessageRow): Message {
   return {
     id: raw.id,
+    persisted: true,
     role: raw.role,
     content: raw.content,
     createdAt: raw.createdAt,

@@ -65,6 +65,25 @@ def read_blob(key: str) -> bytes:
     return (storage_root() / key).read_bytes()
 
 
+def blob_size(key: str) -> int:
+    """Size on disk, independent of the upload's recorded metadata."""
+    return (storage_root() / key).stat().st_size
+
+
+def copy_blob(user_id: str, file_id: str, name: str, source_key: str) -> str:
+    """Copy a stored blob to an independent key without re-reading it into memory."""
+    root = storage_root()
+    key = f"{user_id}/{file_id}_{safe_name(name)}"
+    destination = root / key
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.copyfile(root / source_key, destination)
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+    return key
+
+
 def delete_blob(key: str) -> None:
     try:
         (storage_root() / key).unlink(missing_ok=True)

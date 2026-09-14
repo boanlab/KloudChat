@@ -9,6 +9,7 @@ import {
   Mic,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   Plug,
   Loader2,
   Plus,
@@ -33,7 +34,7 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { effectiveModelId, useStore } from '@/store/useStore'
+import { ChatSendRecoveryError, effectiveModelId, useStore } from '@/store/useStore'
 import type { ModelInfo, PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
 import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
@@ -302,19 +303,31 @@ function AvOptions() {
 /** The toggle's three positions; `auto` is sent as `'auto'`, the others as booleans. */
 type WebSearchMode = 'auto' | 'on' | 'off'
 
-let carriedComposer: {
+type ComposerSnapshot = {
   sessionId: string
   value: string
   attachments: FileRow[]
   startingTemplate: StartingPoint | null
   activatedSkillIds: string[]
   webSearchMode: WebSearchMode
-} | null = null
+  startingValues?: Record<number, string>
+}
+let carriedComposer: ComposerSnapshot | null = null
+// Editing a past question must not replace the ordinary draft of its conversation.
+const editBackups = new Map<string, ComposerSnapshot>()
 
 // Unsent text keyed by session id, or `new:<kind>` on the home screen.
 // Survives remounts, not reloads.
 const drafts = new Map<string, string>()
 const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
+
+// These module caches survive remounts, but must never survive an account change.
+useStore.subscribe((state, previous) => {
+  if (state.accountEpoch === previous.accountEpoch && state.user?.id === previous.user?.id) return
+  carriedComposer = null
+  editBackups.clear()
+  drafts.clear()
+})
 
 /** Whether a session has unsent text. */
 export function hasUnsentDraft(sessionId: string) {
@@ -335,6 +348,19 @@ export function Composer({
   const t = useT()
   const isMedia = kind === 'image' || kind === 'av'
   const canWebSearch = kind === 'chat' || kind === 'report' || kind === 'slides'
+  const messageEdit = useStore((s) => s.messageEdit)
+  const accountEpoch = useStore((s) => s.accountEpoch)
+  const clearMessageEdit = useStore((s) => s.clearMessageEdit)
+  const setMessageEditBusy = useStore((s) => s.setMessageEditBusy)
+  const forkBeforeMessage = useStore((s) => s.forkBeforeMessage)
+  const editing = kind === 'chat' && messageEdit?.sessionId === sessionId ? messageEdit : null
+  const editContext = useRef<{
+    sessionId: string; messageId: string; sourceAttachmentIds: string[]
+    forkId?: string; files?: FileRow[]; attachmentIdMap?: Record<string, string>
+  } | null>(null)
+  const editSending = useRef(false)
+  const composing = useRef(false)
+  const [editPending, setEditPending] = useState(false)
   const draftKey = draftKeyFor(sessionId, kind)
   const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
   const liveValue = useRef(value)
@@ -349,8 +375,8 @@ export function Composer({
       setValue(own)
       return
     }
-    drafts.set(draftKey, value)
-  }, [draftKey, value])
+    if (!editing && editContext.current?.sessionId !== draftKey) drafts.set(draftKey, value)
+  }, [draftKey, value, editing])
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
 
@@ -600,14 +626,47 @@ export function Composer({
     startingTemplate: liveStartingTemplate.current,
     activatedSkillIds: liveActivatedSkillIds.current,
     webSearchMode: liveWebSearchMode.current,
+    startingValues,
   })
+  const restoreComposer = (held: ComposerSnapshot) => {
+    liveValue.current = held.value
+    liveAttachments.current = held.attachments
+    liveActivatedSkillIds.current = held.activatedSkillIds
+    liveStartingTemplate.current = held.startingTemplate
+    setValue(held.value)
+    setAttachments(held.attachments)
+    setActivatedSkillIds(held.activatedSkillIds)
+    setStartingTemplate(held.startingTemplate)
+    setStartingValues(held.startingValues ?? {})
+    setWebSearchMode(held.webSearchMode)
+    drafts.set(held.sessionId, held.value)
+  }
   // Per-turn state resets when the surface or session changes; the typed sentence stays.
   const initializedScope = useRef<{ sessionId: string | null; kind: SessionKind } | null>(null)
+  const initializedAccount = useRef(accountEpoch)
   useEffect(() => {
+    if (initializedAccount.current !== accountEpoch) {
+      initializedAccount.current = accountEpoch
+      editContext.current = null
+      editSending.current = false
+      setEditPending(false)
+      setPendingPrivacy(null)
+      setReusableSessionId(null)
+      activeRestoreToken.current = null
+      liveValue.current = ''
+      setValue('')
+      initializedScope.current = null
+    }
     // StrictMode replays setup; a consumed handoff must not become a reset.
     const previous = initializedScope.current
     if (previous?.sessionId === sessionId && previous.kind === kind) return
     initializedScope.current = { sessionId, kind }
+    const backup = sessionId ? editBackups.get(sessionId) : undefined
+    if (backup && messageEdit?.sessionId !== sessionId) {
+      editBackups.delete(sessionId!)
+      restoreComposer(backup)
+      return
+    }
     if (sessionId && carriedComposer?.sessionId === sessionId) {
       // Only non-empty fields are put back: on a send the composer was cleared
       // before the session existed, and a refusal may already have restored
@@ -640,7 +699,7 @@ export function Composer({
     liveAttachments.current = []
     setAttachments([])
     setWebSearchMode('auto')
-  }, [sessionId, kind])
+  }, [sessionId, kind, messageEdit?.sessionId, accountEpoch])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   const {
@@ -803,6 +862,59 @@ export function Composer({
   const streaming = !!sessionId && !!running[sessionId]
   const busy = isMedia ? jobRunning : streaming
 
+  useEffect(() => {
+    if (!editing) {
+      if (messageEdit && messageEdit.sessionId !== sessionId) clearMessageEdit()
+      if (editContext.current?.sessionId !== sessionId) editContext.current = null
+      return
+    }
+    if (editContext.current?.sessionId === sessionId && editContext.current.messageId === editing.messageId) return
+    if (busy || uploading || pendingPrivacy || privacyRetrying || recording || transcribing || modelSelectionPending || editSending.current) {
+      clearMessageEdit()
+      return
+    }
+    const target = session?.messages.find((message) => message.id === editing.messageId && message.role === 'user')
+    if (!target || !sessionId) {
+      clearMessageEdit()
+      return
+    }
+    if (!editBackups.has(sessionId)) editBackups.set(sessionId, heldComposer(sessionId))
+    editContext.current = { sessionId, messageId: target.id,
+      sourceAttachmentIds: (target.attachments ?? []).flatMap((file) => file.id ? [file.id] : []) }
+    activeRestoreToken.current = null
+    setReusableSessionId(null)
+    setChatError(null)
+    liveValue.current = target.content
+    setValue(target.content)
+    const files: FileRow[] = (target.attachments ?? []).filter((file) => !!file.id).map((file) => ({
+      id: file.id!, name: file.name, size: typeof file.size === 'number' ? file.size : 0,
+      mime: file.type || 'application/octet-stream', tokens: 0, projectId: projectId ?? null,
+      sessionId, preview: '', error: null, createdAt: target.createdAt,
+    }))
+    liveAttachments.current = files
+    setAttachments(files)
+    liveStartingTemplate.current = null
+    setStartingTemplate(null)
+    setStartingValues({})
+    requestAnimationFrame(() => { ref.current?.focus(); ref.current?.scrollIntoView({ block: 'nearest' }) })
+    // A message edit is an explicit one-time injection, not an ordinary draft update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageEdit, sessionId])
+
+  const cancelEditing = () => {
+    if (editSending.current || !editContext.current) return
+    const original = editBackups.get(editContext.current.sessionId)
+    editBackups.delete(editContext.current.sessionId)
+    editContext.current = null
+    clearMessageEdit()
+    setPendingPrivacy(null)
+    setReusableSessionId(null)
+    setChatError(null)
+    activeRestoreToken.current = null
+    if (original) restoreComposer(original)
+    ref.current?.focus()
+  }
+
   const deliverChat = async (
     targetSessionId: string | null,
     text: string,
@@ -816,6 +928,23 @@ export function Composer({
   ) => {
     setChatError(null)
     const resolvedSessionId = targetSessionId ?? reusableSessionId
+    const editScope = editContext.current?.forkId === resolvedSessionId ? editContext.current : null
+    const origin = useStore.getState().activeSessionId
+    const originPath = window.location.pathname
+    const owner = useStore.getState().user?.id
+    const epoch = useStore.getState().accountEpoch
+    let acceptedHere = false
+    const ownsView = () => {
+      const state = useStore.getState()
+      if (state.user?.id !== owner || state.accountEpoch !== epoch) return false
+      if (!editScope) return true
+      // Router effects may lag behind an already committed browser navigation.
+      if (window.location.pathname !== originPath &&
+        !(acceptedHere && window.location.pathname === `/s/${resolvedSessionId}`)) return false
+      return (state.activeSessionId === origin && editContext.current === editScope) ||
+        (acceptedHere && !editContext.current &&
+          (state.activeSessionId === resolvedSessionId || state.activeSessionId === origin))
+    }
     let attemptedSessionId = resolvedSessionId
     try {
       const acceptedSessionId = await send(resolvedSessionId, 'chat', text, {
@@ -827,17 +956,32 @@ export function Composer({
         startingTemplate: startedFrom ?? undefined,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
+        reconcileBeforeRetry: Boolean(editScope),
         onSession: (id) => {
+          if (!ownsView()) return
+          acceptedHere = true
           attemptedSessionId = id
           carriedComposer = heldComposer(id)
+          if (editContext.current?.forkId === id) {
+            editContext.current = null
+            clearMessageEdit()
+          }
           navigate(`/s/${id}`, { replace: true })
         },
       })
+      if (!ownsView()) return
       if (!sessionId) navigate(`/s/${acceptedSessionId}`, { replace: true })
       activeRestoreToken.current = null
       setReusableSessionId(null)
       setPendingPrivacy(null)
     } catch (error) {
+      if (!ownsView()) return
+      if (error instanceof ChatSendRecoveryError) {
+        setNotice(error.recovery === 'stored'
+          ? t('새 대화에 전송 기록이 있습니다. 저장된 답변을 확인한 뒤 다시 시도하세요.')
+          : t('전송 상태를 확인하지 못했습니다. 새 대화를 새로고침해 확인한 뒤 다시 시도하세요.'))
+        return
+      }
       if (error instanceof PrivacyDecisionError) {
         const decisionSessionId = error.sessionId ?? resolvedSessionId
         setReusableSessionId(decisionSessionId)
@@ -854,6 +998,7 @@ export function Composer({
         return
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
+      if (editScope) throw error
       // Branch on the code: `errorMessage` swallows machine strings.
       const notice =
         errorCode(error) === 'auto_quality_model_required'
@@ -902,15 +1047,17 @@ export function Composer({
 
   /** Shared picker, drop, and paste upload path. */
   const addFiles = async (picked: File[]) => {
-    if (!picked.length || isMedia) return
+    if (!picked.length || isMedia || editPending) return
+    const editScope = editContext.current
+    const uploadSession = sessionId
     setUploading(true)
     try {
       for (const file of picked) {
         const row = await uploadFile(file, {
-          projectId: projectId ?? undefined,
-          sessionId: sessionId ?? undefined,
+          projectId: editing ? undefined : projectId ?? undefined,
+          sessionId: editing ? undefined : sessionId ?? undefined,
         }).catch(() => null)
-        if (row) {
+        if (row && editContext.current === editScope && (!editScope || useStore.getState().activeSessionId === uploadSession)) {
           setAttachments((current) => {
             activeRestoreToken.current = null
             const next = [...current, row]
@@ -927,7 +1074,7 @@ export function Composer({
   // Media surfaces take no attachments.
   const { over: dragging, handlers: dropHandlers } = useFileDrop(
     (files) => void addFiles(files),
-    !isMedia,
+    !isMedia && !editPending,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
 
@@ -961,7 +1108,73 @@ export function Composer({
 
   const submit = (spoken?: string) => {
     const text = withStartingValues((spoken ?? value).trim())
-    if (!text || busy || modelSelectionPending || unsupportedVideo) return
+    if (!text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
+    if (editing && editContext.current) {
+      if (sessionId && useStore.getState().running[sessionId]) return
+      const context = editContext.current
+      const origin = sessionId
+      const originPath = window.location.pathname
+      const owner = useStore.getState().user?.id
+      const epoch = useStore.getState().accountEpoch
+      const ownsAccount = () => useStore.getState().user?.id === owner && useStore.getState().accountEpoch === epoch
+      const ownsEdit = () => ownsAccount() && editContext.current === context &&
+        useStore.getState().activeSessionId === origin && window.location.pathname === originPath
+      const search = sentWebSearch
+      const skillIds = activeSkills.map((skill) => skill.id)
+      const selectedFiles = attachments
+      editSending.current = true
+      setEditPending(true)
+      setMessageEditBusy(true)
+      setChatError(null)
+      void (async () => {
+        try {
+          if (!context.forkId) {
+            const fork = await forkBeforeMessage(context.sessionId, context.messageId)
+            context.forkId = fork.sessionId
+            context.files = fork.attachments
+            context.attachmentIdMap = fork.attachmentIdMap
+          }
+          // Navigating away while the fork request was pending must not send from another view.
+          if (!ownsEdit()) return
+          const files = selectedFiles.map((file) => {
+            if (!context.sourceAttachmentIds.includes(file.id)) return file
+            const clonedId = context.attachmentIdMap?.[file.id]
+            const cloned = context.files?.find((candidate) => candidate.id === clonedId)
+            if (!cloned) throw new Error(t('첨부 파일을 복제하지 못했습니다. 다시 시도하세요.'))
+            return cloned
+          })
+          context.files = [...(context.files ?? []), ...files.filter((file) => !context.files?.some((existing) => existing.id === file.id))]
+          const restoreToken = ++restoreSequence.current
+          activeRestoreToken.current = restoreToken
+          liveValue.current = ''
+          liveAttachments.current = []
+          liveActivatedSkillIds.current = []
+          setValue('')
+          setAttachments([])
+          setActivatedSkillIds([])
+          await deliverChat(context.forkId, text, files, search, skillIds, null, undefined, undefined, restoreToken)
+        } catch (error) {
+          if (!ownsEdit()) return
+          liveValue.current = text
+          liveAttachments.current = selectedFiles.map((file) => {
+            const clonedId = context.attachmentIdMap?.[file.id]
+            return context.files?.find((candidate) => candidate.id === clonedId) ?? file
+          })
+          liveActivatedSkillIds.current = skillIds
+          setValue(text)
+          setAttachments(liveAttachments.current)
+          setActivatedSkillIds(skillIds)
+          setChatError(errorMessage(error, t('수정한 메시지를 전송하지 못했습니다. 다시 시도하세요.')))
+        } finally {
+          if (ownsAccount()) {
+            editSending.current = false
+            setEditPending(false)
+            setMessageEditBusy(false)
+          }
+        }
+      })()
+      return
+    }
     clearMediaError()
     const attachmentIds = attachments.map((f) => f.id)
     const attachmentLabels = attachments.map((f) => f.name)
@@ -1102,6 +1315,16 @@ export function Composer({
         </div>
       )}
       <div className="rounded-panel border border-line bg-panel shadow-raised transition-colors focus-within:border-line-strong">
+        {editing && (
+          <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
+            <Pencil size={14} className="shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">{t('메시지 수정 · 새 대화')}</span>
+            <Button size="icon" variant="ghost" title={t('수정 취소')} aria-label={t('수정 취소')}
+              disabled={editPending || privacyRetrying} onClick={cancelEditing}>
+              <X size={14} />
+            </Button>
+          </div>
+        )}
         {(project ||
           attachments.length > 0 ||
           webSearch ||
@@ -1183,6 +1406,7 @@ export function Composer({
                       void setSessionTemplate(session.id, null)
                     }
                   }}
+                  disabled={!!editing}
                   aria-label={t('{name} 서식 해제').replace(
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
@@ -1375,14 +1599,22 @@ export function Composer({
           autoFocus={autoFocus}
           rows={1}
           value={value}
+          readOnly={editPending}
+          onCompositionStart={() => { composing.current = true }}
+          onCompositionEnd={() => { composing.current = false }}
           onChange={(e) => {
             activeRestoreToken.current = null
             liveValue.current = e.target.value
             // Written synchronously: picking a starting point navigates before an effect would run.
-            drafts.set(draftKey, e.target.value)
+            if (!editing) drafts.set(draftKey, e.target.value)
             setValue(e.target.value)
           }}
           onKeyDown={(e) => {
+            if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              cancelEditing()
+              return
+            }
             if (holdToTalk(e)) return
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
@@ -1462,7 +1694,7 @@ export function Composer({
           )}
 
           {/* Only once the conversation has started; the empty screen offers the same button. */}
-          {hasTemplates && started && !folded && (
+          {hasTemplates && started && !folded && !editing && (
             <button
               onClick={() => setGalleryOpen(true)}
               className={cn(
@@ -1725,7 +1957,9 @@ export function Composer({
 
           <div className="ml-auto flex min-w-0 items-center gap-1">
             {!(compareMode && kind === 'chat') && (
+              <fieldset disabled={!!editing} className="contents">
               <ModelPicker
+                key={editing ? 'editing' : 'normal'}
                 kind={kind}
                 sessionId={sessionId ?? reusableSessionId}
                 modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
@@ -1749,17 +1983,18 @@ export function Composer({
                 }}
                 onBusyChange={setModelSelectionPending}
               />
+              </fieldset>
             )}
             <button
               onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-              disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending}
+              disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
                   ? 'bg-elevated text-fg'
                   : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
               )}
-              aria-label={streaming ? t('중지') : t('전송')}
+              aria-label={streaming ? t('중지') : editing ? t('수정 후 다시 보내기') : t('전송')}
               title={
                 streaming
                   ? t('생성을 멈춥니다')

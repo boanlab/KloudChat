@@ -817,6 +817,10 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
+  forkBeforeMessage: (sessionId: string, messageId: string) =>
+    call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
+      `/sessions/${sessionId}/messages/${messageId}/fork`, { method: 'POST' },
+    ),
   /** Asks the running turn to stop. Sent before the fetch is aborted: a closed socket alone looks like a changed tab. */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
   /** Which of a comparison's answers the conversation continues from. */

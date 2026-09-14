@@ -17,6 +17,7 @@ from app.models.chat import (
     TurnFailure,
 )
 from app.schemas.auth import Wire
+from app.schemas.workspace import FileOut
 
 
 class MessageOut(Wire):
@@ -297,6 +298,12 @@ class SessionCreate(Wire):
     agent_id: str | None = None
     model: str | None = None
     routing_mode: RoutingMode = RoutingMode.manual
+
+
+class MessageForkOut(Wire):
+    session: SessionOut
+    attachments: list[FileOut]
+    attachment_id_map: dict[str, str]
 
 
 class CompareRequest(Wire):
