@@ -84,7 +84,7 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     # unlisted model is treated as text-only. Only contained models are listed:
     # the privacy guard reads text and cannot inspect an image. See
     # `workspace_context.reads_pictures`.
-    "strict-local/qwen3.6-35b": {"supports_vision": True},
+    "strict-local/qwen3.8-27b": {"supports_vision": True},
 }
 
 # Providers whose zero price is real (own hardware); a remote zero means unknown.

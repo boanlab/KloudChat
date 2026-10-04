@@ -11,21 +11,21 @@ def _model(model_id: str, *, cost: float = 0.0, strict: bool = False) -> dict:
 
 def test_the_plain_model_wins_a_tie_with_the_restricted_one() -> None:
     catalogue = [
-        _model("strict-local/qwen3.6-35b", strict=True),
-        _model("local/qwen3.6-35b"),
+        _model("strict-local/qwen3.8-27b", strict=True),
+        _model("local/qwen3.8-27b"),
     ]
 
-    assert sorted(catalogue, key=model_service.fallback_order)[0]["id"] == "local/qwen3.6-35b"
+    assert sorted(catalogue, key=model_service.fallback_order)[0]["id"] == "local/qwen3.8-27b"
 
 
 def test_catalogue_order_no_longer_decides_it() -> None:
     """The choice is independent of catalogue order."""
     catalogue = [
-        _model("local/qwen3.6-35b"),
-        _model("strict-local/qwen3.6-35b", strict=True),
+        _model("local/qwen3.8-27b"),
+        _model("strict-local/qwen3.8-27b", strict=True),
     ]
 
-    assert sorted(catalogue, key=model_service.fallback_order)[0]["id"] == "local/qwen3.6-35b"
+    assert sorted(catalogue, key=model_service.fallback_order)[0]["id"] == "local/qwen3.8-27b"
 
 
 def test_price_still_decides_between_two_ordinary_models() -> None:

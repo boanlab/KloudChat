@@ -26,7 +26,7 @@ def _seed(catalogue_ids: list[str]) -> dict:
 
 @pytest.mark.asyncio
 async def test_a_served_model_is_used_as_configured(monkeypatch):
-    previous = _seed(["local/glm-4.7-flash", "local/qwen3.6-35b"])
+    previous = _seed(["local/glm-4.7-flash", "local/qwen3.8-27b"])
     monkeypatch.setattr(model_service.settings, "title_model", "local/glm-4.7-flash")
     try:
         assert await model_service.resolve_enrichment_model() == "local/glm-4.7-flash"

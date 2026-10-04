@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
+# Flows under test use fake catalogues without strict-local twins; the rule that keeps
+# internal material strict-local is exercised by its own tests with the switch set.
+os.environ.setdefault("INTERNAL_DATA_STRICT_LOCAL_DEFAULT", "false")
+
 from typing import Any
 
 import pytest

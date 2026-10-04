@@ -1,4 +1,5 @@
-"""Every writer call sends `reasoning: {"enabled": false}`; chat does not."""
+"""Every writer call asks for no thinking (`thinking.switch`, which is `reasoning:
+{"enabled": false}` unless the provider refused it); chat does not."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from app.services import deck, page, report
 )
 def test_the_writers_ask_for_no_thinking(writer) -> None:
     source = inspect.getsource(writer)
-    assert "thinking.NO_REASONING" in source
+    assert "thinking.switch(model)" in source
 
 
 def test_the_re_ask_asks_for_no_thinking_either() -> None:
@@ -27,7 +28,7 @@ def test_the_re_ask_asks_for_no_thinking_either() -> None:
     for writer in (deck._complete, report._complete, page._complete):
         source = inspect.getsource(writer)
         # Once for the first call and once for the re-ask.
-        assert source.count("thinking.NO_REASONING") >= 2, writer.__module__
+        assert source.count("thinking.switch(model)") >= 2, writer.__module__
         assert "REASONING_CAP" not in source, writer.__module__
 
 

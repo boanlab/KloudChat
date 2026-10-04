@@ -1125,7 +1125,9 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
 
     assert responses == []
     assert any(event["type"] == "deck" for event in events)
-    assert len(posts) == 3
+    # Outline, draft and figures; a notes re-ask for a slide whose notes only read the
+    # screen may add one more. Every post keeps the same boundaries.
+    assert len(posts) >= 3
     _assert_document_payload_boundaries(posts, trusted, untrusted)
 
 

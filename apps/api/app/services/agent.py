@@ -18,7 +18,7 @@ from typing import Any, Literal, TypedDict
 import httpx
 
 from app.core.config import settings
-from app.services import current_evidence, settings_store
+from app.services import current_evidence, settings_store, thinking
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.tools import arithmetic
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
@@ -148,6 +148,14 @@ class _Accumulator:
         return message
 
 
+class _Refusal:
+    """A read response, in the shape `thinking.refused` inspects."""
+
+    def __init__(self, status_code: int, text: str) -> None:
+        self.status_code = status_code
+        self.text = text
+
+
 async def _stream_once(
     model: str,
     messages: list[dict[str, Any]],
@@ -173,6 +181,13 @@ async def _stream_once(
     # Omitted, not defaulted: the model's own sampling applies.
     if temperature is not None:
         payload["temperature"] = temperature
+    self_hosted = model.startswith(("local/", "strict-local/"))
+    if self_hosted and not settings.self_hosted_chat_thinking:
+        # See `config.self_hosted_chat_thinking` and `thinking.template_switch`.
+        payload.update(thinking.template_switch(model))
+    if not self_hosted and not settings.external_chat_thinking:
+        # See `config.external_chat_thinking`; `thinking.switch` skips a provider that refused.
+        payload.update(thinking.switch(model))
     if tools:
         payload["tools"] = tool_definitions if tool_definitions is not None else to_openai(tools)
         payload["tool_choice"] = (
@@ -195,6 +210,14 @@ async def _stream_once(
                     await opened.__aexit__(None, None, None)
                     await asyncio.sleep(_RETRY_AFTER[attempt])
                     continue
+                if response.status_code == 400 and "reasoning" in payload:
+                    body = (await response.aread()).decode(errors="replace")
+                    if thinking.refused(model, _Refusal(400, body)):
+                        # The provider will not turn thinking off: once more without asking.
+                        await opened.__aexit__(None, None, None)
+                        payload.pop("reasoning", None)
+                        opened = client.stream("POST", "/v1/chat/completions", json=payload)
+                        response = await opened.__aenter__()
                 break
             try:
                 if response.status_code >= 400:
@@ -305,24 +328,101 @@ def _arguments_runaway(calls: dict[int, dict[str, Any]]) -> bool:
     return False
 
 
+def _tail(pieces: list[str], chars: int) -> str:
+    """The last `chars` characters of the stream, however the chunks were cut.
+
+    A decoder stuck on one token streams one character at a time; counting
+    chunks would then look at a few hundred characters and miss the loop.
+    """
+    kept: list[str] = []
+    total = 0
+    for piece in reversed(pieces):
+        kept.append(piece)
+        total += len(piece)
+        if total >= chars:
+            break
+    return "".join(reversed(kept))[-chars:]
+
+
+_HANGUL_CHARS = re.compile(r"[가-힣]")
+_LATIN_CHARS = re.compile(r"[A-Za-z]")
+_OTHER_LANGUAGE_ASK = re.compile(r"영어|english|영문|번역|translate|in english", re.I)
+
+
+def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
+    """`(kind, nudge)` when `text` is not an answer to the last question: the previous
+    answer repeated word for word, or a Latin-script answer to a Korean question that
+    asked for no other language. `None` for an ordinary answer.
+
+    Both came out of a busy local model: a turn that echoed the answer before it, and a
+    turn answered in English about something nobody had asked. Neither is worth
+    showing; one more call without tools usually is."""
+    squeeze = lambda t: " ".join(str(t or "").split())  # noqa: E731
+    def last(role: str) -> dict[str, Any] | None:
+        return next(
+            (
+                m for m in reversed(messages)
+                if m.get("role") == role and isinstance(m.get("content"), str)
+            ),
+            None,
+        )
+
+    previous = last("assistant")
+    if previous is not None:
+        before, now = squeeze(previous["content"]), squeeze(text)
+        if len(now) >= 40 and (now == before or (len(now) >= 80 and before.startswith(now))):
+            return "echo", (
+                "방금 쓴 답은 앞 답을 그대로 반복한 것입니다. 이번 질문에 맞게 새로 답하세요."
+            )
+    asked = last("user")
+    if asked is not None and not _OTHER_LANGUAGE_ASK.search(asked["content"]):
+        hangul_asked = len(_HANGUL_CHARS.findall(asked["content"]))
+        if hangul_asked >= 10 and hangul_asked >= len(_LATIN_CHARS.findall(asked["content"])):
+            latin = len(_LATIN_CHARS.findall(text))
+            hangul = len(_HANGUL_CHARS.findall(text))
+            if latin >= 200 and hangul * 50 < latin:
+                return "language", (
+                    "답이 사용자의 언어로 쓰이지 않았습니다. 한국어로 이번 질문에 답하세요."
+                )
+    return None
+
+
+def _repeated_tail(text: str) -> str:
+    """The redundant second copy when `text` is one block written twice in a row
+    (`A\\n\\n\\nA`), else ''. A small model sometimes restates its whole answer after
+    a silent self-check; a person never wants the same paragraph twice. Whitespace is
+    ignored in the comparison; the string returned is the exact trailing text to take back.
+    """
+    body = text.rstrip()
+    if len(body.strip()) < 40:
+        return ""
+    for gap in re.finditer(r"\n[ \t]*\n\s*", body):
+        head, tail = body[: gap.start()], body[gap.end() :]
+        if head.strip() and " ".join(head.split()) == " ".join(tail.split()):
+            return text[gap.start() :]
+    return ""
+
+
 def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool:
     """True when the last `window` characters already appear `times` times in the recent text."""
-    text = "".join(pieces[-400:])
+    text = _tail(pieces, window * times * 4)
     if len(text) < window * times:
         return False
     needle = text[-window:].strip()
     return len(needle) >= window // 2 and text.count(needle) >= times
 
 
-#: One letter or digit repeated this often in a row is a stuck decoder — a
-#: URL whose id trails off into 「000000…」 — never text a person meant.
+#: One character repeated this often in a row is a stuck decoder — a URL whose
+#: id trails off into 「000000…」, an answer that is only 「!!!!!!」 — never text a
+#: person meant. Banner characters are left alone: a comment block of 60 「*」
+#: or a rule of 「=」 is ordinary code output.
 _RUN_LIMIT = 40
-_RUN_RE = re.compile(rf"([^\W_])\1{{{_RUN_LIMIT - 1},}}$")
+_RUN_RE = re.compile(rf"([^\s*=\-#/_~.+|])\1{{{_RUN_LIMIT - 1},}}$")
 
 
 def _runaway(pieces: list[str]) -> str | None:
     """The run of one repeated character the recent text ends in, once it is too long."""
-    match = _RUN_RE.search("".join(pieces[-200:]))
+    match = _RUN_RE.search(_tail(pieces, 2_000))
     return match.group(0) if match else None
 
 
@@ -567,6 +667,9 @@ async def run_turn(
     preflight_tool: str | None = None,
     #: A non-arithmetic NCS decision must not unlock a required numeric answer.
     calculation_required: bool = False,
+    #: A ballpark question about a changing value: answered from knowledge, streamed
+    #: live, and closed with the caveat — no hold, no forced lookup.
+    caveat_request: str | None = None,
     #: A complete literal expression validated from the user's request, not inferred.
     calculation_expression: str | None = None,
     #: `(tool name, arguments)` the server calls itself before the model is
@@ -633,12 +736,16 @@ async def run_turn(
     ):
         raise ChatStreamError("preflight_tool_unavailable")
     conversation = list(messages)
-    # Exact arithmetic cannot verify a guessed current operand.
-    fixed_answer_required = bool(freshness_request) and (
-        not preflight_tool or calculation_required
-    )
+    # A present-state question with no retrieved evidence yet: the answer is given
+    # from knowledge, dated and marked unverified (cleared once a read tool returns
+    # material). Exact arithmetic cannot verify a guessed current operand.
+    unverified_current = (
+        bool(freshness_request) and (not preflight_tool or calculation_required)
+    ) or bool(caveat_request)
     evidence_instruction = (
-        current_evidence.instruction(freshness_request) if fixed_answer_required else ""
+        current_evidence.instruction(freshness_request or caveat_request or "")
+        if unverified_current
+        else ""
     )
     if evidence_instruction:
         _add_system_instruction(conversation, evidence_instruction)
@@ -703,6 +810,7 @@ async def run_turn(
     #: Long text written in a hop that then called tools; retracted at the end
     #: if the final answer repeats it.
     held: list[str] = []
+    anomaly_retried = False
     while True:
         acc: _Accumulator | None = None
         hop_text: list[str] = []
@@ -771,6 +879,20 @@ async def run_turn(
                 else:
                     acc = value
         assert acc is not None
+
+        if not running_preset and not acc.calls and hop_text:
+            # The same answer written twice in a row is one answer.
+            spoken = "".join(hop_text)
+            redundant = _repeated_tail(spoken)
+            if redundant:
+                kept = spoken[: len(spoken) - len(redundant)]
+                pieces = len(hop_text)
+                hop_text[:] = [kept]
+                acc.content[:] = [kept]
+                if not preflight_tool and not freshness_request:
+                    del answer_text[len(answer_text) - pieces :]
+                    answer_text.append(kept)
+                    yield {"type": "retract", "text": redundant}
 
         usage["inputTokens"] += acc.usage["inputTokens"]
         usage["outputTokens"] += acc.usage["outputTokens"]
@@ -842,17 +964,15 @@ async def run_turn(
                     "status": "error",
                 }
                 answer_text.append(note)
-                if not fixed_answer_required:
-                    yield {"type": "delta", "text": note}
+                yield {"type": "delta", "text": note}
                 break
             if acc.calls:
                 # A discarded calculation draft must not reinforce the next model hop.
                 acc.content.clear()
             else:
                 answer_text.extend(hop_text)
-                if not fixed_answer_required:
-                    for text in hop_text:
-                        yield {"type": "delta", "text": text}
+                for text in hop_text:
+                    yield {"type": "delta", "text": text}
 
         if not preflight_tool and freshness_request:
             if acc.calls:
@@ -861,9 +981,8 @@ async def run_turn(
                 acc.content.clear()
             elif not acc.looped and not acc.runaway:
                 answer_text.extend(hop_text)
-                if not fixed_answer_required:
-                    for text in hop_text:
-                        yield {"type": "delta", "text": text}
+                for text in hop_text:
+                    yield {"type": "delta", "text": text}
 
         if (
             not preflight_tool
@@ -886,8 +1005,7 @@ async def run_turn(
                 "다시 시도하거나 다른 모델을 골라 보세요._"
             )
             answer_text.append(note)
-            if not fixed_answer_required:
-                yield {"type": "delta", "text": note}
+            yield {"type": "delta", "text": note}
             break
         if acc.runaway:
             # One character repeating without end: take the run back, and
@@ -912,14 +1030,28 @@ async def run_turn(
                     "다시 시도하거나 다른 모델을 골라 보세요._"
                 ),
             }[outcome]
-            if not fixed_answer_required:
-                yield {"type": "delta", "text": note}
+            yield {"type": "delta", "text": note}
             answer_text[:] = [kept + tail + note]
             break
         if closing:
             break
         if not acc.calls:
-            if hop and not "".join(acc.content).strip():
+            spoken_now = "".join(acc.content).strip()
+            if spoken_now and not anomaly_retried and not preflight_tool and not freshness_request:
+                anomaly = _answer_anomaly(spoken_now, messages)
+                if anomaly:
+                    # An answer that is the previous answer again, or in a language the
+                    # person did not use, is taken back and asked for once more.
+                    anomaly_retried = True
+                    log.info("answer anomaly (%s), asking once more without tools", anomaly[0])
+                    streamed = "".join(hop_text)
+                    del answer_text[len(answer_text) - len(hop_text) :]
+                    yield {"type": "retract", "text": streamed}
+                    conversation.append(acc.assistant_message())
+                    conversation.append({"role": "user", "content": anomaly[1]})
+                    closing = True
+                    continue
+            if hop and not spoken_now:
                 # Tools ran but the answer is empty: ask once more without tools.
                 conversation.append(acc.assistant_message())
                 conversation.append(
@@ -1151,8 +1283,8 @@ async def run_turn(
                         for (category, source), count in sorted(finding_counts.items())
                     ],
                 }
-            if fixed_answer_required and current_evidence.usable_read_result(tool, result):
-                fixed_answer_required = False
+            if unverified_current and current_evidence.usable_read_result(tool, result):
+                unverified_current = False
                 conversation[0] = {
                     **conversation[0],
                     "content": str(conversation[0].get("content") or "")
@@ -1229,8 +1361,7 @@ async def run_turn(
             answer_text.append(terminal_text)
             if terminal_origin is not None:
                 yield terminal_origin
-            if not fixed_answer_required:
-                yield {"type": "delta", "text": terminal_text}
+            yield {"type": "delta", "text": terminal_text}
             break
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
@@ -1251,10 +1382,13 @@ async def run_turn(
             )
             closing = True
 
-    if fixed_answer_required:
-        rendered = current_evidence.render("".join(answer_text), freshness_request)
-        answer_text[:] = [rendered]
-        yield {"type": "delta", "text": rendered}
+    if unverified_current and "".join(answer_text).strip():
+        # The model answered from knowledge: it stays, with the caveat when it lacks one.
+        spoken = "".join(answer_text)
+        if not current_evidence.has_caveat(spoken):
+            note = current_evidence.caveat(freshness_request or caveat_request or "")
+            answer_text.append(note)
+            yield {"type": "delta", "text": note}
 
     if freshness_request and not "".join(answer_text).strip():
         # A closing hop may ignore tools=[] or return no prose. Its buffered
@@ -1288,7 +1422,7 @@ async def run_turn(
         yield {"type": "delta", "text": linked}
         answer = linked
     answer_text[:] = [answer]
-    if not fixed_answer_required and searches and empty_searches * 2 >= searches and answer.strip():
+    if not unverified_current and searches and empty_searches * 2 >= searches and answer.strip():
         note = (
             "\n\n_웹 검색이 쓸 만한 결과를 주지 않아 이 답은 검색으로 확인하지 못했습니다. "
             "서지·수치·최신 사항은 확인이 필요합니다._"
