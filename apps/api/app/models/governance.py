@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, Column, DateTime, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
+from app.core.config import settings
 from app.models.user import utcnow
 
 
@@ -57,6 +58,13 @@ class Governance(SQLModel, table=True):
     adaptive_quality_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
+    )
+    #: A turn that carries the organisation's own material — an attachment, a project's
+    #: files or instructions, a memory — runs on a strict-local model whatever was chosen:
+    #: the `strict-local/` twin of a `local/` model, else the first privacy-safe model.
+    internal_data_strict_local: bool = Field(
+        default_factory=lambda: settings.internal_data_strict_local_default,
+        sa_column=Column(Boolean, nullable=False, server_default=text("true")),
     )
     #: Model for a document's outline call only; the blocks use the surface's
     #: own model. Empty keeps the surface's model for the outline too.

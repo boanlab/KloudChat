@@ -561,6 +561,7 @@ async def get_governance(admin: AdminUser, db: DbSession):
         "adaptiveClassifierModelId": policy.adaptive_classifier_model_id,
         "adaptiveEconomyModelIds": list(policy.adaptive_economy_model_ids or []),
         "adaptiveQualityEnabled": policy.adaptive_quality_enabled,
+        "internalDataStrictLocal": policy.internal_data_strict_local,
         "adaptiveQualityModelIds": list(policy.adaptive_quality_model_ids or []),
         "outlineModelId": policy.outline_model_id,
         "intentFilter": policy.intent_filter,

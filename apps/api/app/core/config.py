@@ -155,11 +155,26 @@ class Settings(BaseSettings):
     web_search_scrape: int = 3
     # Names conversations and extracts memories; a small model is intended.
     # Empty falls back to the session's own model.
-    title_model: str = "local/qwen3.6-35b"
+    title_model: str = "local/qwen3.8-27b"
     #: Conversation model when the user has not chosen one; absent from the
     #: catalogue, the surface falls back to its cheapest. `local/`, not
     #: `strict-local/`: the strict alias is handed no network tool.
-    default_chat_model: str = "local/qwen3.6-35b"
+    default_chat_model: str = "local/qwen3.8-27b"
+    #: Whether self-hosted chat models may think before answering. Off: a Qwen3-family
+    #: template is told `enable_thinking: false`, so a thinking variant answers at once
+    #: instead of spending its budget (and half a minute) on reasoning nobody sees.
+    self_hosted_chat_thinking: bool = False
+    #: Self-hosted models that think unless told not to (name fragments, comma-separated).
+    #: Only these get vLLM's `enable_thinking: false`; a model that never thinks is left
+    #: alone, since the extra template variable is a risk for no gain there.
+    self_hosted_thinking_models: str = "flash-next"
+    #: Default of the governance switch that keeps turns carrying internal material on
+    #: strict-local models. On in production and on a fresh install; the test
+    #: environment turns it off so flows with fake catalogues can be exercised.
+    internal_data_strict_local_default: bool = True
+    #: The same for external chat models: off sends OpenRouter's `reasoning` switch; a
+    #: provider that refuses it (GLM flash) is remembered and thinks anyway.
+    external_chat_thinking: bool = False
 
     #: Per-surface overrides. Empty falls back to `default_chat_model`.
     default_report_model: str = ""

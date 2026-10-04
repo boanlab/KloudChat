@@ -3827,3 +3827,79 @@ async def test_the_index_refuses_a_collection_name_that_is_not_one(monkeypatch):
     monkeypatch.setattr(index_client.httpx, "AsyncClient", lambda **_: _Ok())
     assert await index_client.forget_collection(collection=real) is True
     assert called == [f"http://index.internal/collections/{real}"]
+
+
+
+@pytest.mark.asyncio
+async def test_internal_material_moves_a_turn_to_the_strict_local_twin():
+    from app.routers import sessions
+    from app.services.workspace_context import ContextBlock
+
+    user = User(id="u-internal", email="person@example.test", password_hash="hash", name="Person")
+    session = ChatSession(
+        id="s1", user_id=user.id, kind=sessions.SessionKind.chat, model="local/qwen"
+    )
+    hybrid = {**_external_model("local/qwen"), "dataBoundary": "hybrid"}
+    strict = {**_external_model("strict-local/qwen"), "dataBoundary": "self_hosted",
+              "strictLocal": True}
+    policy = Governance(external_data_guard=False, internal_data_strict_local=True)
+    blocks = [ContextBlock(source="attachment", text="사내 매출표", trusted=False)]
+    resolved = await sessions._resolve_privacy(
+        user=user, session=session, policy=policy, catalogue=[hybrid, strict],
+        requested=[hybrid], sources={"current_input": "요약해 줘"}, explicit_action=None,
+        decision_token=None,
+        internal_data=sessions._internal_data_present(session, blocks),
+    )
+    assert [m["id"] for m in resolved.models] == ["strict-local/qwen"]
+    assert resolved.action == "internal_strict_local" and resolved.strict_local
+    assert resolved.routing["routedModels"] == ["strict-local/qwen"]
+    # Nothing internal in the turn: the chosen model stands.
+    plain = await sessions._resolve_privacy(
+        user=user, session=session, policy=policy, catalogue=[hybrid, strict],
+        requested=[hybrid], sources={"current_input": "안녕"}, explicit_action=None,
+        decision_token=None, internal_data=sessions._internal_data_present(session, []),
+    )
+    assert [m["id"] for m in plain.models] == ["local/qwen"] and plain.action == "none"
+    # An external model with no twin and no privacy-safe model: refused outright.
+    external = _external_model("vendor/model")
+    refused = await sessions._resolve_privacy(
+        user=user, session=session, policy=policy, catalogue=[external, strict],
+        requested=[external], sources={"current_input": "요약"}, explicit_action=None,
+        decision_token=None, internal_data=True,
+    )
+    assert refused.status_code == 409
+    # With a privacy-safe model configured, that model takes the turn instead.
+    safe_policy = Governance(
+        external_data_guard=False, internal_data_strict_local=True,
+        privacy_safe_model_ids=["strict-local/qwen"],
+    )
+    routed = await sessions._resolve_privacy(
+        user=user, session=session, policy=safe_policy, catalogue=[external, strict],
+        requested=[external], sources={"current_input": "요약"}, explicit_action=None,
+        decision_token=None, internal_data=True,
+    )
+    assert [m["id"] for m in routed.models] == ["strict-local/qwen"]
+    # The switch off: the rule does nothing.
+    off = Governance(external_data_guard=False, internal_data_strict_local=False)
+    kept = await sessions._resolve_privacy(
+        user=user, session=session, policy=off, catalogue=[hybrid, strict],
+        requested=[hybrid], sources={"current_input": "요약"}, explicit_action=None,
+        decision_token=None, internal_data=True,
+    )
+    assert [m["id"] for m in kept.models] == ["local/qwen"]
+
+
+def test_a_session_that_handled_internal_material_stays_strict_local():
+    from app.models.chat import Message
+    from app.routers import sessions
+
+    session = ChatSession(id="s2", user_id="u", kind=sessions.SessionKind.chat, model="local/qwen")
+    earlier = Message(id="m1", session_id="s2", role="user", content="요약해 줘")
+    earlier.attachments = [{"id": "f1"}]
+    assert sessions._internal_data_present(session, [], None, [earlier])
+    moved = Message(id="m2", session_id="s2", role="assistant", content="…")
+    moved.routing = {"action": "internal_strict_local"}
+    assert sessions._internal_data_present(session, [], None, [moved])
+    plain = Message(id="m3", session_id="s2", role="assistant", content="…")
+    plain.routing = {"action": "none"}
+    assert not sessions._internal_data_present(session, [], None, [plain])

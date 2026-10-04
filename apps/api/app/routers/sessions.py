@@ -20,14 +20,14 @@ import uuid
 from collections.abc import AsyncIterator
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, timedelta
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import func, or_
-from sqlmodel import col, delete, select
+from sqlmodel import col, delete, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
@@ -57,6 +57,7 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.models.workspace import Visibility as SkillVisibility
+from app.routers.workspace import forget_session_files, reindex_session_files
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
@@ -86,6 +87,7 @@ from app.services import (
     audiogen,
     calculation_policy,
     chart_code,
+    conversation_summary,
     current_evidence,
     design_templates,
     figures,
@@ -117,11 +119,15 @@ from app.services.chat_format import normalize_raw_payload
 from app.services.context import (
     build_messages,
     declines_web_search,
+    envelope_tokens,
+    fit_history,
+    history_budget,
     requests_web_search,
     search_hints,
     search_needs_planning,
     search_plan,
     search_query,
+    summary_block,
     weather_location,
     with_pictures,
 )
@@ -172,6 +178,8 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
         "search_knowledge",
         "create_artifact",
         "create_chart",
+        # In-process: hands back the text of a skill the person installed.
+        "use_skill",
     }
 )
 
@@ -193,6 +201,7 @@ async def _knowledge_shelf(
                 or_(
                     StoredFile.session_id == session.id,
                     StoredFile.agent_id == (session.agent_id or ""),
+                    StoredFile.project_id == (session.project_id or ""),
                 ),
             )
             .order_by(col(StoredFile.created_at))
@@ -205,11 +214,158 @@ async def _knowledge_shelf(
         and (
             (row.agent_id and row.agent_id == session.agent_id)
             or (row.session_id == session.id and row.project_id is None and row.agent_id is None)
+            # Project knowledge too: what the budget could not carry whole, the
+            # model can still look up by passage.
+            or (row.project_id and row.project_id == session.project_id and row.agent_id is None)
         )
     ]
     if session.agent_id:
-        return shelf, (agent.index_key or "") if agent else ""
+        # The vector collection is the owner's; someone running a shared agent
+        # searches the lexical shelf of their own uploads only.
+        owned = agent is not None and agent.owner_id == user.id
+        return shelf, (agent.index_key or "") if owned else ""
+    if session.project_id:
+        # Project knowledge and the project's conversations' uploads share one
+        # collection; uploads indexed before the project had one live under the
+        # conversation's own key, so both are searched.
+        project = await db.get(Project, session.project_id)
+        if project is not None and project.index_key:
+            keys = [project.index_key] + ([session.index_key] if session.index_key else [])
+            return shelf, ",".join(keys)
     return shelf, session.index_key or ""
+
+
+#: Skills offered to the model per turn; the description must stay a paragraph, not a catalogue.
+_SKILL_SHELF_LIMIT = 12
+
+
+def _agent_allows_skill(agent: WorkspaceAgent | None, skill: Skill) -> bool:
+    """The agent's skill allowlist, read the way `_resolve_skills` reads it."""
+    if agent is None or agent.skill_ids is None:
+        return True
+    allowed = set(agent.skill_ids)
+    # A store install is a copy; an allowlist naming the shared origin covers it.
+    return skill.id in allowed or bool(skill.origin_id and skill.origin_id in allowed)
+
+
+async def _standing_skill_ids(
+    db: AsyncSession, user: User, session: ChatSession, agent: WorkspaceAgent | None
+) -> list[str]:
+    """The conversation's standing skills that still apply.
+
+    A skill switched on last week may have been deleted, disabled or barred by the
+    agent since; a standing set is a convenience, so such a skill drops out quietly
+    (and the stored set is pruned) instead of failing every later turn with no chip
+    left on screen to take it off. A skill picked for this turn is still checked
+    strictly by `_resolve_skills`.
+    """
+    ids = [str(x) for x in (session.skill_ids or [])]
+    if not ids:
+        return []
+    rows = (
+        await db.exec(
+            select(Skill).where(Skill.owner_id == user.id, col(Skill.id).in_(ids))
+        )
+    ).all()
+    by_id = {skill.id: skill for skill in rows}
+    kept = [
+        skill_id
+        for skill_id in ids
+        if (skill := by_id.get(skill_id)) is not None
+        and skill.enabled
+        and (not skill.kinds or session.kind.value in skill.kinds)
+        and _agent_allows_skill(agent, skill)
+    ]
+    if kept != ids:
+        session.skill_ids = kept
+        db.add(session)
+    return kept
+
+
+async def _skill_shelf(
+    db: AsyncSession, user: User, *, agent: WorkspaceAgent | None = None, exclude: set[str]
+) -> list[tuple[str, str, str]]:
+    """Installed, enabled chat skills the person did not switch on this turn, for `use_skill`.
+
+    Skills switched on are already in the prompt; the rest are offered by their
+    `when_to_use` so the model can reach for one when the request matches, the way a
+    skill is meant to be found rather than picked from a menu every time. An agent's
+    allowlist bounds the shelf as it bounds a hand pick.
+    """
+    rows = (
+        await db.exec(
+            select(Skill)
+            .where(Skill.owner_id == user.id, Skill.enabled == True)  # noqa: E712
+            .order_by(col(Skill.created_at).desc())
+        )
+    ).all()
+    shelf: list[tuple[str, str, str]] = []
+    for skill in rows:
+        if skill.id in exclude or not (skill.body.strip() or skill.when_to_use.strip()):
+            continue
+        if skill.kinds and "chat" not in skill.kinds:
+            continue
+        if not _agent_allows_skill(agent, skill):
+            continue
+        shelf.append((skill.name, skill.when_to_use, skill.body))
+        if len(shelf) >= _SKILL_SHELF_LIMIT:
+            break
+    return shelf
+
+
+#: A claim older than this is a crash's leftover, not a running turn.
+_CLAIM_TTL_SEC = 600
+#: Claim tokens by session, handed from the request to the turn that releases them.
+_CLAIMS: dict[str, str] = {}
+
+
+async def _claim_turn(db: AsyncSession, session: ChatSession) -> bool:
+    """Takes this session's turn across replicas with one conditional update: free, or
+    held by a claim older than `_CLAIM_TTL_SEC`, is ours; otherwise someone is writing.
+    Not committed here: the caller's commit lands it with the question row."""
+    token = uuid.uuid4().hex
+    stale = utcnow() - timedelta(seconds=_CLAIM_TTL_SEC)
+    try:
+        result = await db.exec(
+            update(ChatSession)
+            .where(
+                ChatSession.id == session.id,
+                or_(
+                    col(ChatSession.running_turn).is_(None),
+                    col(ChatSession.running_since).is_(None),
+                    col(ChatSession.running_since) < stale,
+                ),
+            )
+            .values(running_turn=token, running_since=utcnow())
+        )
+    except Exception as exc:  # noqa: BLE001 — the in-process guard still stands
+        log.warning("turn claim for %s skipped: %s", session.id, exc)
+        return True
+    rowcount = getattr(result, "rowcount", None)
+    if isinstance(rowcount, int) and rowcount >= 0 and rowcount != 1:
+        return False
+    _CLAIMS[session.id] = token
+    return True
+
+
+async def _release_turn(session_id: str, token: str | None = None) -> None:
+    """Lets the session's turn go — only ours, unless `token` is None (stop pressed)."""
+    if token is None:
+        token = _CLAIMS.pop(session_id, None)
+        if token is None:
+            # This turn never claimed (a retry harness, a non-chat surface): nothing to free.
+            return
+    else:
+        _CLAIMS.pop(session_id, None)
+    try:
+        async with SessionLocal() as db:
+            query = update(ChatSession).where(ChatSession.id == session_id)
+            if token:
+                query = query.where(ChatSession.running_turn == token)
+            await db.exec(query.values(running_turn=None, running_since=None))
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001 — a stuck claim expires; the answer must not fail
+        log.warning("turn claim for %s not released: %s", session_id, exc)
 
 
 def _strict_local_tools(tools: list[Tool]) -> list[Tool]:
@@ -327,6 +483,19 @@ def _planner_model(
         log.info("outline model %s unusable here", wanted)
         return None
     return planner
+
+
+def _local_planner(
+    *, user: User, catalogue: list[dict], kind: str, writer: dict, strict_local: bool
+) -> dict | None:
+    """The default local model as the judge for an external writer's instructions, or
+    `None` when the writer is already self-hosted (or the default is not allowed here)."""
+    if strict_local or writer.get("dataBoundary") in ("self_hosted", "hybrid"):
+        return None
+    return _planner_model(
+        settings.default_chat_model, user=user, catalogue=catalogue, kind=kind,
+        writer=writer, strict_local=strict_local,
+    )
 
 
 async def _enrichment_model(writer: dict, *, strict_local: bool, disable_fallbacks: bool) -> dict:
@@ -595,6 +764,46 @@ def _substitution_routing(requested: dict, effective: dict) -> dict[str, Any]:
     }
 
 
+#: Context sources that are the organisation's own material.
+_INTERNAL_SOURCES = (
+    "attachment", "project.knowledge", "project.instructions", "project.design", "memory"
+)
+
+
+def _internal_data_present(
+    session: ChatSession,
+    blocks: tuple[ContextBlock, ...] | list[ContextBlock] | None,
+    attachment_ids: list[str] | None = None,
+    history: list[Message] | None = None,
+) -> bool:
+    """Whether this turn handles internal material: a file attached now or in any earlier
+    turn (the history carries what was said about it), a project (whose files the tools
+    may search), a stored memory in the context, or a turn already moved strict-local —
+    once a session has handled internal material it stays strict-local."""
+    if attachment_ids or getattr(session, "project_id", None):
+        return True
+    for message in history or []:
+        if getattr(message, "attachments", None):
+            return True
+        routing = getattr(message, "routing", None)
+        if isinstance(routing, dict) and routing.get("action") == "internal_strict_local":
+            return True
+    return any(block.source in _INTERNAL_SOURCES for block in blocks or [])
+
+
+def _strict_twin(model: dict, catalogue: list[dict], allowed: set[str]) -> dict | None:
+    """The `strict-local/` build of a `local/` model — the same weights behind a route with
+    no external fallback — when the catalogue lists it and the person may use it."""
+    model_id = str(model.get("id") or "")
+    if not model_id.startswith("local/"):
+        return None
+    twin_id = "strict-local/" + model_id.split("/", 1)[1]
+    twin = next((m for m in catalogue if m.get("id") == twin_id), None)
+    if twin is None or not _strict_model(twin) or "chat" not in twin.get("kinds", []):
+        return None
+    return twin if not allowed or twin_id in allowed else None
+
+
 def _privacy_sources(
     content: str,
     history: list[Message],
@@ -667,10 +876,12 @@ async def _resolve_privacy(
     sources: dict[str, str | list[str]],
     explicit_action: str | None,
     decision_token: str | None,
+    internal_data: bool = False,
 ) -> _PrivacyResolution | JSONResponse:
     """Makes one egress decision before persistence, billing or upstream.
 
     Only explicit proxy metadata makes a safe candidate; unknown boundaries count as external.
+    A turn with internal material goes strict-local before any finding is weighed.
     """
     rows = (
         governance.findings(sources, legacy=policy.pii_masking)
@@ -700,12 +911,41 @@ async def _resolve_privacy(
     all_strict = all(_strict_model(model) for model in requested)
     allow_raw = policy.allow_user_raw_external and not policy.pii_masking
 
-    if rows and policy.pii_masking:
+    if internal_data and policy.internal_data_strict_local and not all_strict:
+        # Internal material never leaves: each chosen model becomes its strict-local
+        # twin, or the first privacy-safe model; with neither, the turn is refused.
+        moved: list[dict] = []
+        for model in requested:
+            if _strict_model(model):
+                moved.append(model)
+                continue
+            twin = _strict_twin(model, catalogue, allowed_models) or (safe[0] if safe else None)
+            if twin is None:
+                return JSONResponse(
+                    status_code=status.HTTP_409_CONFLICT,
+                    content={
+                        "detail": "internal_data_requires_strict_local",
+                        "action": "internal_data_requires_strict_local",
+                        "requestedModels": requested_ids,
+                        "safeModels": [],
+                        "findings": [],
+                        "policyVersion": governance.POLICY_VERSION,
+                        "detectorVersion": governance.DETECTOR_VERSION,
+                    },
+                )
+            if all(m.get("id") != twin.get("id") for m in moved):
+                moved.append(twin)
+        effective = moved
+        all_strict = True
+        action = "internal_strict_local"
+    elif rows and policy.pii_masking:
         # The legacy organisation-wide setting is always the strongest rule.
         action = "mask_external"
         mask_outbound = True
     elif rows and all_strict:
         action = "strict_local"
+    elif rows and action == "internal_strict_local":
+        pass
     elif rows and policy.external_data_guard:
         preference = Preferences.of(user).privacy_default_action
         chosen = explicit_action or preference
@@ -1012,6 +1252,120 @@ def _context_steps(workspace: WorkspaceContext) -> list[dict]:
         _file_context_step("context-knowledge", "프로젝트 지식", workspace.knowledge),
     ]
     return [step for step in steps if step]
+
+
+def _answer_in_flight(last: Message) -> bool:
+    """Whether another replica is most likely still writing this session's answer.
+
+    `_STOPPING` is one process's own; the transcript is every replica's. A question
+    with no reply and no failure mark, asked within the stall window, is being
+    answered somewhere — or was orphaned by a crash, which the window bounds.
+    """
+    if last.role is not Role.user or last.failure is not None or last.created_at is None:
+        return False
+    asked = last.created_at
+    if asked.tzinfo is None:
+        asked = asked.replace(tzinfo=UTC)
+    return (utcnow() - asked).total_seconds() < settings.chat_stall_sec
+
+
+def _grounded_in_files(workspace: WorkspaceContext) -> bool:
+    """Whether this turn carries readable file text: an attachment, an earlier upload or
+    project knowledge that reached the model at least in part."""
+    return any(
+        file.state in ("included", "truncated")
+        for file in (*workspace.attachments, *workspace.carried, *workspace.knowledge)
+    )
+
+
+def _asked_about(content: str, history: list[Message]) -> str:
+    """What to read a carried file around: this question, then the one before it.
+
+    「그 표의 두 번째 행은?」 names nothing a file contains; the previous question
+    usually does. The excerpt scorer reads the first few words, so this question
+    still comes first and the earlier one only fills in when it is short.
+    """
+    previous = next((m.content for m in reversed(history) if m.role is Role.user), "")
+    return f"{content} {previous}".strip() if previous else content
+
+
+def _summary_context_step(dropped: int, *, summarised: bool) -> dict:
+    """Timeline line for earlier turns the window could not hold."""
+    return {
+        "id": "context-summary",
+        "type": "thinking",
+        "label": (
+            f"앞선 대화 {dropped}개 메시지를 요약해 전달"
+            if summarised
+            else f"앞선 대화 {dropped}개 메시지는 길이 때문에 생략"
+        ),
+        "status": "done",
+        "detail": (
+            "모델의 문맥 길이를 넘어 오래된 턴은 요약으로 대신했습니다"
+            if summarised
+            else "요약을 만들지 못해 오래된 턴은 보내지 않았습니다"
+        ),
+        "summarisedTurns": dropped,
+        "summarised": summarised,
+    }
+
+
+async def _conversation_summary(
+    db: AsyncSession,
+    session: ChatSession,
+    *,
+    rows: list[Message],
+    turns: list[dict],
+    writer: dict,
+    api_key: str,
+    strict_local: bool,
+    disable_fallbacks: bool,
+    masker,
+    mask_at_rest: bool,
+    redact_logging: bool,
+) -> tuple[str | None, int]:
+    """`(summary, credits)` standing in for `rows`, the earliest messages of the
+    conversation that no longer fit the window.
+
+    Cached on the session by the id of the last message it covers. A later turn
+    that drops more only summarises the turns since; the whole transcript is
+    never re-read. `None` when the summariser failed, with nothing cached.
+    """
+    if not rows or len(rows) != len(turns):
+        return None, 0
+    cached = dict(session.summary or {})
+    through = str(cached.get("through") or "")
+    previous = str(cached.get("text") or "") or None
+    if previous and through == rows[-1].id:
+        # The cache was written under an earlier policy; today's masking applies to it.
+        return (masker(previous)[0] if masker else previous), 0
+    covered = next((i for i, row in enumerate(rows) if row.id == through), None)
+    if previous is None or covered is None:
+        # No usable earlier summary: everything dropped is summarised afresh.
+        previous, fresh = None, turns
+    else:
+        fresh = turns[covered + 1 :]
+    enrichment = await _enrichment_model(
+        writer, strict_local=strict_local, disable_fallbacks=disable_fallbacks
+    )
+    text, usage = await conversation_summary.summarize(
+        enrichment["id"],
+        previous,
+        fresh,
+        api_key,
+        masker=masker,
+        strict_local=strict_local,
+        disable_fallbacks=disable_fallbacks,
+        redact_logging=redact_logging,
+    )
+    credits = charge_for_tokens(enrichment, usage["inputTokens"], usage["outputTokens"])
+    if text is None:
+        return None, credits
+    stored = masker(text)[0] if mask_at_rest and masker is not None else text
+    session.summary = {"through": rows[-1].id, "text": stored, "turns": len(rows)}
+    db.add(session)
+    await db.commit()
+    return text, credits
 
 
 def _memory_saved_step(written: int) -> dict:
@@ -1504,12 +1858,16 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             project_id=changes["project_id"],
             agent_id=session.agent_id,
         )
+    moved_project = "project_id" in changes and changes["project_id"] != session.project_id
     for field, value in changes.items():
         setattr(session, field, value)
     session.updated_at = utcnow()
     db.add(session)
     await db.commit()
     await db.refresh(session)
+    if moved_project:
+        # Its uploads follow it: out of the old project's collection, into the new home's.
+        await reindex_session_files(db, user.id, session)
     return SessionOut.of(session)
 
 
@@ -1520,6 +1878,7 @@ async def delete_session(session_id: str, user: CurrentUser, db: DbSession):
     # Job rows reference the session without cascade.
     await db.exec(delete(Job).where(Job.session_id == session.id))
     await _delete_artifacts_of(db, [session.id])
+    await forget_session_files(db, [session.id])
     if session.index_key:
         await index_client.forget_collection(collection=session.index_key)
     await db.delete(session)
@@ -2130,6 +2489,7 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
     await db.exec(delete(Job).where(col(Job.session_id).in_(ids)))
 
     artifacts_deleted = await _delete_artifacts_of(db, ids)
+    await forget_session_files(db, ids)
     for row in rows:
         if row.index_key:
             await index_client.forget_collection(collection=row.index_key)
@@ -2143,6 +2503,21 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
 async def list_messages(session_id: str, user: CurrentUser, db: DbSession):
     await _owned(db, user, session_id)
     return [MessageOut.of(m) for m in await _history(db, session_id)]
+
+
+def _earlier_answer(row: Message) -> dict[str, Any]:
+    """An answer as the row that replaces it carries it: words, steps, artifacts, route."""
+    return {
+        "id": row.id,
+        "content": row.content,
+        "model": row.model,
+        "usage": row.usage,
+        "steps": row.steps,
+        "artifactIds": row.artifact_ids,
+        "routing": row.routing,
+        "rating": row.rating.value if row.rating else None,
+        "createdAt": row.created_at.isoformat() if row.created_at else None,
+    }
 
 
 def _regeneration_summary(request: str) -> str:
@@ -2214,6 +2589,11 @@ async def _settle_plan_turn(
     questions: list[dict] | None,
     #: The figure question, asked only after the outline is approved.
     figures: dict | None = None,
+    #: A restructure of an existing document: the artifact whose untouched parts the
+    #: approved rewrite carries over (`revise.carry_parts`).
+    carry_from: str | None = None,
+    #: The restructure instruction itself; parts it names are written fresh.
+    carry_note: str = "",
 ) -> None:
     """Stores a turn that planned or asked, and charges for the planning call.
 
@@ -2240,6 +2620,7 @@ async def _settle_plan_turn(
             **({"plan": proposal} if proposal else {}),
             # The approved outline is carried through the figure question.
             **(figures or {}),
+            **({"carryFrom": carry_from, "carryNote": carry_note} if carry_from else {}),
         }
         db.add(
             Message(
@@ -2415,12 +2796,23 @@ async def send_message(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="retry_target_not_found"
             )
+        # Retry is a replay of the stored turn, not merely of its sentence.
+        # These options used to live only in the originating browser, so a
+        # reload silently changed search/skill/template behaviour.
+        turn_options = (retry_of.routing or {}).get("turnOptions") or {}
         payload = payload.model_copy(
             update={
                 "content": retry_of.content,
                 "attachments": payload.attachments
                 or [a["id"] for a in (retry_of.attachments or []) if a.get("id")]
                 or None,
+                "web_search": turn_options.get("webSearch", payload.web_search),
+                "activated_skill_ids": turn_options.get(
+                    "activatedSkillIds", payload.activated_skill_ids
+                ),
+                "starting_template_id": turn_options.get(
+                    "startingTemplateId", payload.starting_template_id
+                ),
             }
         )
 
@@ -2444,6 +2836,9 @@ async def send_message(
     focus = ""
     #: What the person typed, as opposed to the merged request the model gets.
     typed_content = payload.content
+    #: A restructure of the document on screen: its untouched parts are carried over.
+    carry_from: str | None = (str(pending.get("carryFrom") or "") or None) if pending else None
+    carry_note: str = str(pending.get("carryNote") or "") if pending else ""
     #: "있는 자료로 진행" sends an empty answers object; it tells the next pass not to ask again.
     proceed_as_is = bool(
         pending and not payload.approve and payload.answers is not None and not payload.answers
@@ -2484,6 +2879,15 @@ async def send_message(
     # Refused before any write, never silently dropped.
     if payload.render_template_id is not None:
         session.render_template_id = _resolved_template_id(payload.render_template_id, session.kind)
+
+    # One answer at a time: a second message while this process is still
+    # writing one (and nobody pressed stop) would be stored before the first
+    # reply and leave the transcript as question, question, answer, answer.
+    # A stopped turn is already on its way out, so a message after 중단 goes through.
+    if session.kind is SessionKind.chat and any(
+        not signal.is_set() for signal in _STOPPING.get(session.id, set())
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
 
     # Policy before any write, billing entry, virtual-key issue or model call.
     policy = await _require_egress_policy()
@@ -2539,6 +2943,17 @@ async def send_message(
     requested_model = model
 
     history = await _history(db, session_id)
+    # With several replicas the in-process signals above see only this one's turns;
+    # the transcript every replica shares says whether a fresh question is still
+    # being answered elsewhere. One replica needs no such guess.
+    if (
+        session.kind is SessionKind.chat
+        and retry_of is None
+        and stop_signal.needed()
+        and history
+        and _answer_in_flight(history[-1])
+    ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     #: What a retry replaces: the failed reply, if any. Neither it nor the
     #: question stays in the model's history.
     superseded: list[Message] = []
@@ -2557,6 +2972,10 @@ async def send_message(
     # Ownership resolved before privacy assembly.
     rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
 
+    #: Skills this turn runs with: the ones picked for it, else the conversation's
+    #: standing set. A pick replaces the standing set from here on.
+    active_skill_ids = list(payload.activated_skill_ids)
+
     stored_content = content
     outbound_history = [message.content for message in history]
     privacy_resolution: _PrivacyResolution | None = None
@@ -2572,6 +2991,9 @@ async def send_message(
     shelf_key = ""
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
+    if not active_skill_ids and session.kind is SessionKind.chat:
+        # The standing set, pruned of skills removed or barred since they were switched on.
+        active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
 
@@ -2611,9 +3033,12 @@ async def send_message(
         fresh_followup_index is not None
         and freshness.current_fact_required(history[fresh_followup_index].content)
     )
+    #: Whether the first search below was forced by the current-fact rule alone.
+    forced_by_freshness = False
     if fresh_fact and effective_web_search and forced_tool != "weather":
         # The request is for a current fact, not for the model to decide whether
         # verification is necessary. Availability is checked again after privacy.
+        forced_by_freshness = forced_tool is None
         forced_tool = "web_search"
     web_search_auto = payload.web_search == "auto" and forced_tool is None
     # An agent whose allowlist leaves web search out chose that on purpose. The toggle
@@ -2622,6 +3047,9 @@ async def send_message(
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
         effective_web_search = False
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
+        skill_shelf = await _skill_shelf(
+            db, user, agent=agent_row, exclude=set(active_skill_ids)
+        )
         if not requested_is_strict:
             candidate_tools = sorted(
                 await build_tools(
@@ -2631,6 +3059,7 @@ async def send_message(
                     allowed=agent_tools,
                     knowledge=shelf,
                     knowledge_collection=shelf_key,
+                    skills=skill_shelf,
                 ),
                 key=lambda tool: (tool.name, tool.source),
             )
@@ -2646,6 +3075,7 @@ async def send_message(
                         knowledge_collection="",
                         include_connectors=False,
                         strict_local=True,
+                        skills=skill_shelf,
                     )
                 ),
                 key=lambda tool: (tool.name, tool.source),
@@ -2661,11 +3091,11 @@ async def send_message(
             # Chat re-assembles below against the model privacy settles on.
             vision=reads_pictures(requested_model),
             file_budget=file_budget(requested_model),
-            activated_skill_ids=payload.activated_skill_ids,
+            activated_skill_ids=active_skill_ids,
             starting_template_id=payload.starting_template_id,
             # Empty focus takes the head of the file.
             focus=focus or (content if session.kind is not SessionKind.chat else ""),
-            question=content,
+            question=_asked_about(content, history),
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -2675,6 +3105,20 @@ async def send_message(
         )
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
+
+    if (
+        fresh_fact
+        and session.kind is SessionKind.chat
+        and _grounded_in_files(workspace)
+        and not freshness.names_the_present(content)
+    ):
+        # 「Pro 요금제는 얼마야?」 with the price list attached asks what the person's
+        # own document says, not what holds today: read it, do not look it up or
+        # withhold it. 「지금 얼마야?」 keeps the current-fact rule.
+        fresh_fact = False
+        if forced_by_freshness and forced_tool == "web_search":
+            forced_tool = None
+            web_search_auto = payload.web_search == "auto"
 
     # Resolve selected context before narrowing either route's outbound schema snapshot.
     candidate_tools = _plain_chat_tools(candidate_tools, session, workspace, content, history)
@@ -2716,6 +3160,9 @@ async def send_message(
             sources=privacy_sources,
             explicit_action=payload.privacy_action,
             decision_token=payload.privacy_decision_token,
+            internal_data=_internal_data_present(
+                session, workspace.blocks, payload.attachments, history
+            ),
         )
         if isinstance(resolved, JSONResponse):
             await _audit_policy(
@@ -2800,9 +3247,9 @@ async def send_message(
                 attachment_ids=payload.attachments,
                 vision=reads_pictures(model),
                 file_budget=file_budget(model),
-                activated_skill_ids=payload.activated_skill_ids,
+                activated_skill_ids=active_skill_ids,
                 starting_template_id=payload.starting_template_id,
-                question=content,
+                question=_asked_about(content, history),
                 available_tool_names={tool.name for tool in tools},
             )
         except WorkspaceContextError as exc:
@@ -2810,13 +3257,23 @@ async def send_message(
 
     trusted_context = workspace.trusted
     untrusted_context = workspace.untrusted
+    #: This request's own attachments. In chat they sit beside the question
+    #: (`context.build_messages`); the document writers keep them with the rest.
+    turn_context: list[str] = []
+    if session.kind is SessionKind.chat:
+        turn_context = [b.text for b in workspace.blocks if b.source == "attachment"]
+        untrusted_context = [
+            b.text for b in workspace.blocks if not b.trusted and b.source != "attachment"
+        ]
     if privacy_resolution and privacy_resolution.mask_outbound:
         trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
         untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
+        turn_context = _mask_list(turn_context, legacy=policy.pii_masking)
     elif policy.pii_masking:
         # Always-mask covers the context blocks too.
         trusted_context = _mask_text_tree(trusted_context, governance.mask_legacy)
         untrusted_context = _mask_text_tree(untrusted_context, governance.mask_legacy)
+        turn_context = _mask_text_tree(turn_context, governance.mask_legacy)
     skills_event = workspace.skills_event()
     # Template skills join the same event as hand-activated ones.
     template_blocks, skills_event = await _template_skills(
@@ -2838,6 +3295,18 @@ async def send_message(
         if privacy_resolution is None and revoked_model is not None
         else None
     )
+    turn_options = {
+        "webSearch": payload.web_search,
+        "activatedSkillIds": active_skill_ids,
+        "startingTemplateId": payload.starting_template_id,
+    }
+    if privacy_resolution is not None:
+        privacy_resolution.routing = {
+            **privacy_resolution.routing,
+            "turnOptions": turn_options,
+        }
+    else:
+        document_routing = {**(document_routing or {}), "turnOptions": turn_options}
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
     # Missing verification changes the answer's qualification, not its availability.
@@ -2870,38 +3339,45 @@ async def send_message(
         for message, body in zip(history, outbound_history, strict=True)
     ]
     wire_history.append({"role": "user", "content": content})
-    messages = build_messages(
-        session.kind,
-        wire_history,
-        with_tools=bool(tools),
-        web_search=effective_web_search,
-        # Whether a search tool survived, so the answer does not read as searched.
-        web_search_available=any(t.name == "web_search" for t in tools),
-        web_search_auto=web_search_auto,
-        extra=trusted_context,
-        untrusted_context=untrusted_context,
-    )
-    # After `build_messages`, never inside it — see `context.with_pictures`.
-    messages = with_pictures(messages, [picture.uri for picture in workspace.pictures])
+
+    def envelope(wire: list[dict], *, economy: bool = False) -> list[dict]:
+        """The request for `wire`: system turn, reference data, attachments, pictures.
+
+        Reads `trusted_context` when called, so a block appended later (the
+        conversation summary) is in the envelope built after it. `economy`: the
+        tool-free shape a downward auto route is classified on and sent.
+        """
+        built = build_messages(
+            session.kind,
+            wire,
+            with_tools=False if economy else bool(tools),
+            web_search=False if economy else effective_web_search,
+            # Whether a search tool survived, so the answer does not read as searched.
+            web_search_available=any(t.name == "web_search" for t in tools),
+            web_search_auto=web_search_auto,
+            extra=trusted_context,
+            untrusted_context=untrusted_context,
+            turn_context=turn_context,
+            remind_standing=session.kind is SessionKind.chat,
+        )
+        # After `build_messages`, never inside it — see `context.with_pictures`.
+        return with_pictures(built, [picture.uri for picture in workspace.pictures])
+
+    messages = envelope(wire_history)
+    #: Whether auto routing swapped in the tool-free envelope.
+    routed_down = False
 
     if auto_turn and not auto_preflight_findings:
         unsupported = bool(
             payload.attachments
             or forced_tool
-            or payload.activated_skill_ids
+            or active_skill_ids
             or payload.starting_template_id
             or session.agent_id
             or session.project_id
         )
         # Economy turns are tool-free; the context fit is checked on that envelope.
-        economy_messages = build_messages(
-            session.kind,
-            wire_history,
-            with_tools=False,
-            web_search=False,
-            extra=trusted_context,
-            untrusted_context=untrusted_context,
-        )
+        economy_messages = envelope(wire_history, economy=True)
         # A quality upgrade keeps the full messages and tool definitions.
         routing_context = (
             {"messages": messages, "tools": tool_definitions}
@@ -2914,7 +3390,10 @@ async def send_message(
             user=user,
             policy=policy,
             catalogue=catalogue_models,
-            quality_model=requested_model,
+            # The model privacy settled on, not the one asked for: a turn moved to a
+            # strict-local twin for its internal material stays there, and no upgrade
+            # can widen that boundary.
+            quality_model=model,
             classifier_messages=messages,
             classifier_tool_definitions=tool_definitions,
             context_tokens=adaptive_routing.estimated_context_tokens(
@@ -2945,6 +3424,7 @@ async def send_message(
             tools = []
             tool_definitions = []
             messages = economy_messages
+            routed_down = True
         strict_local = resolved.strict_local
 
     if not has_headroom(user, model):
@@ -2956,10 +3436,20 @@ async def send_message(
         stored.session_id = session.id
         db.add(stored)
 
+    #: Answers the rerun replaces, carried on the new answer so nothing is lost.
+    earlier_answers: list[dict[str, Any]] = []
+    #: Their rows, deleted only in the transaction that stores the new answer: a
+    #: rerun that dies on the way leaves the answer it was going to replace.
+    superseded_ids: list[str] = []
     if retry_of is not None:
-        # Reuse the question row; drop the failed reply and clear its failure mark.
+        # Reuse the question row. A failed reply goes now; a good one stays until
+        # the new answer is written, then travels on it as an earlier answer.
         for row in superseded:
-            await db.delete(row)
+            if row.role is Role.assistant and row.content and row.failure is None:
+                earlier_answers = [*(row.superseded or []), _earlier_answer(row)]
+                superseded_ids.append(row.id)
+            else:
+                await db.delete(row)
         user_message = retry_of
         user_message.failure = None
         user_message.routing = (
@@ -2975,6 +3465,10 @@ async def send_message(
             routing=privacy_resolution.routing if privacy_resolution else document_routing,
             started_from=workspace.started_from,
         )
+    if session.kind is SessionKind.chat and not await _claim_turn(db, session):
+        # Another replica holds this session's turn. Claimed in the same transaction as
+        # the question below, so two replicas serialize on the row and the second sees it.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     db.add(user_message)
     # Request models are turn-only; lasting choices use the session settings API.
     if payload.model is None:
@@ -2982,6 +3476,9 @@ async def send_message(
         if revoked_model is None:
             session.model = requested_model["id"]
     session.updated_at = utcnow()
+    if session.kind is SessionKind.chat and payload.activated_skill_ids:
+        # Picked for this turn, kept for the next ones.
+        session.skill_ids = list(payload.activated_skill_ids)
     if not session.title:
         # Provisional title, replaced once the first turn completes.
         session.title = chat_service.provisional_title(stored_content)
@@ -3034,14 +3531,18 @@ async def send_message(
     is_first_turn = len(history) == 0
 
     # The planner is bound by the same allowlist, surface and boundary as the writer.
+    # Unset, it is the default local model: an outline, a proposal and a revision plan
+    # are judgements, and the model that writes the prose need not be the one making them.
     outline_model = _planner_model(
-        policy.outline_model_id,
+        policy.outline_model_id or settings.default_chat_model,
         user=user,
         catalogue=catalogue_models,
         kind=session.kind.value,
         writer=model,
         strict_local=strict_local,
     )
+    if outline_model is not None and outline_model["id"] == model["id"]:
+        outline_model = None  # the writer plans for itself; nothing to account for apart
 
     #: The image default draws a document's figures; none means no figure card.
     image_model = next(
@@ -3103,8 +3604,14 @@ async def send_message(
 
     # See `revising` above.
     if revising and session.kind in (SessionKind.report, SessionKind.slides):
+        # Reading the instruction is a judge's job: the local planner does it, so an
+        # external writer's reasoning budget or output habits never decide the route.
+        planner = outline_model or _local_planner(
+            user=user, catalogue=catalogue_models, kind=session.kind.value, writer=model,
+            strict_local=strict_local,
+        )
         revision, skeleton = await _revision_plan(
-            db, session, instruction=content, model=model, api_key=api_key
+            db, session, instruction=content, model=planner or model, api_key=api_key
         )
         if revision is not None and revision.restructures:
             # The skeleton itself changes — more slides, a merged section, a new
@@ -3113,9 +3620,18 @@ async def send_message(
             # part by part. The judge's note states the target shape in absolute
             # terms, so the planner reads 「9장」 where the person typed 「3장 더」.
             content = grounding.merge_answers(
-                await _original_request(db, session) or content, {"_note": revision.note}
+                revise.without_counts(await _original_request(db, session) or content),
+                {"_note": revision.note},
             )
+            # The planner reads the skeleton; the writer reads the parts' own words as
+            # material, where a merged part's table and a renamed part's dates count
+            # as facts of this document rather than numbers the request never gave.
+            current = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
             trusted_context = [*trusted_context, revise.outline_block(skeleton)]
+            if current is not None and any(texts := _part_texts(current)):
+                untrusted_context = [*untrusted_context, revise.document_block(skeleton, texts)]
+            carry_from = session.artifact_id
+            carry_note = f"{typed_content} {revision.note}"
         else:
             return StreamingResponse(
                 _survive_disconnect(
@@ -3127,6 +3643,7 @@ async def send_message(
                         instruction=content,
                         routing=document_routing,
                         plan=revision,
+                        planner=planner,
                     )
                 ),
                 media_type="text/event-stream",
@@ -3157,6 +3674,8 @@ async def send_message(
                     project_id=session.project_id,
                     routing=document_routing,
                     trusted_context=trusted_context,
+                    carry_from=carry_from,
+                    carry_note=carry_note,
                     untrusted_context=untrusted_context,
                     design_tokens=workspace.design_tokens,
                     skills_event=skills_event,
@@ -3204,6 +3723,8 @@ async def send_message(
                     project_id=session.project_id,
                     routing=document_routing,
                     trusted_context=trusted_context,
+                    carry_from=carry_from,
+                    carry_note=carry_note,
                     untrusted_context=untrusted_context,
                     design_tokens=workspace.design_tokens,
                     skills_event=skills_event,
@@ -3220,6 +3741,46 @@ async def send_message(
                 "X-Accel-Buffering": "no",
             },
         )
+
+    # The conversation is fitted to the model's window here, once the model is
+    # final: earlier turns that no longer fit are replaced by a running summary
+    # (`services.conversation_summary`) rather than sent whole and refused.
+    summary_credits = 0
+    window = int(model.get("contextWindow") or 0)
+    if window > 0 and len(wire_history) > 1:
+        question = wire_history[-1]
+        fixed = envelope_tokens(
+            envelope([question], economy=routed_down),
+            None if routed_down else tool_definitions,
+        )
+        kept, dropped = fit_history(wire_history[:-1], history_budget(window, fixed))
+        if dropped:
+            routed = bool(cost_route and cost_route.get("decision") == "routed")
+            summary_text, summary_credits = await _conversation_summary(
+                db,
+                session,
+                rows=history[: len(dropped)],
+                turns=dropped,
+                writer=model,
+                api_key=api_key,
+                strict_local=strict_local,
+                disable_fallbacks=routed,
+                masker=(
+                    (governance.mask_legacy if policy.pii_masking else governance.mask)
+                    if policy.pii_masking or policy.external_data_guard
+                    else None
+                ),
+                mask_at_rest=bool(
+                    policy.pii_masking or (privacy_resolution and privacy_resolution.findings)
+                ),
+                redact_logging=policy.pii_masking or policy.external_data_guard,
+            )
+            trusted_context = [*trusted_context, summary_block(summary_text, len(dropped))]
+            messages = envelope([*kept, question], economy=routed_down)
+            context_steps = [
+                *context_steps,
+                _summary_context_step(len(dropped), summarised=summary_text is not None),
+            ]
 
     tool_names = {t.name for t in tools}
     preset_call: tuple[str, dict[str, Any]] | None = None
@@ -3285,6 +3846,13 @@ async def send_message(
                 # without a named place use the allowed tool's forced planning hop.
                 preset_call=preset_call,
                 freshness_request=content if fresh_fact else None,
+                caveat_request=(
+                    content
+                    if not fresh_fact
+                    and freshness.ballpark_current_value(content)
+                    and not _grounded_in_files(workspace)
+                    else None
+                ),
                 force_tool=(
                     forced_tool
                     if forced_tool and preset_call is None and forced_tool in tool_names
@@ -3296,6 +3864,9 @@ async def send_message(
                     calculation_policy.direct_calculation_expression(content)
                     if calculation_required and preflight_tool == "calculate" else None
                 ),
+                side_credits=summary_credits,
+                earlier_answers=earlier_answers or None,
+                superseded_ids=superseded_ids or None,
             )
         ),
         media_type="text/event-stream",
@@ -3325,13 +3896,36 @@ def fire_stop_locally(session_id: str) -> None:
 _SECRET_IN_REASON = re.compile(r"sk-[A-Za-z0-9_\-]+")
 
 
-def _error_event(message: str, exc: BaseException | None = None) -> dict[str, Any]:
-    """SSE error with a machine code and bounded, redacted upstream reason."""
-    code, reason = "internal_error", ""
+#: How providers word a prompt that does not fit: vLLM, OpenAI, Anthropic, LiteLLM.
+_CONTEXT_OVERFLOW = re.compile(
+    r"context[ _]length|maximum context|max(?:imum)? (?:input|prompt)? ?tokens?|"
+    r"too many tokens|prompt is too long|input is too long|exceeds? the (?:model|context)|"
+    r"token limit|context window|input length|ContextWindowExceeded",
+    re.I,
+)
+
+
+def _context_overflow(failure: str) -> bool:
+    """Whether an upstream 4xx is the prompt not fitting the model's window."""
+    head, _, tail = failure.partition(": ")
+    return head.strip() in ("upstream_400", "upstream_413", "upstream_422") and bool(
+        _CONTEXT_OVERFLOW.search(tail)
+    )
+
+
+def _error_event(
+    message: str, exc: BaseException | None = None, *, code: str | None = None
+) -> dict[str, Any]:
+    """SSE error with a machine code and bounded, redacted upstream reason.
+
+    `code` names the failure more precisely than the upstream status when known.
+    """
+    reason = ""
     if isinstance(exc, chat_service.ChatStreamError):
         head, _, tail = str(exc).partition(": ")
-        code = head.strip() or "upstream_failed"
+        code = code or head.strip() or "upstream_failed"
         reason = _SECRET_IN_REASON.sub("sk-…", tail.strip())[:200]
+    code = code or "internal_error"
     event: dict[str, Any] = {"type": "error", "code": code, "message": message}
     if reason:
         event["reason"] = reason
@@ -3607,9 +4201,18 @@ async def _run_turn(
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
     freshness_request: str | None = None,
+    caveat_request: str | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
     #: masks these and secrets, and leaves public contact details readable.
     protected_values: frozenset[str] = frozenset(),
+    #: Credits spent before the turn on its behalf (the conversation summary),
+    #: settled with the answer so one row carries the turn's whole cost.
+    side_credits: int = 0,
+    #: Answers this rerun replaces, oldest first, kept on the new answer.
+    earlier_answers: list[dict[str, Any]] | None = None,
+    #: Rows of the answers being replaced; deleted with the new answer's insert,
+    #: and left alone when the rerun produced nothing.
+    superseded_ids: list[str] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -3629,6 +4232,26 @@ async def _run_turn(
 
     # Set by the stop button, not by a closed socket.
     stopping = asyncio.Event()
+    # The pre-flight 409 and this registration are far apart; two sends that both passed
+    # the check meet here. A fresh send never supersedes a live turn — only a regenerate
+    # (`superseded_ids`, `earlier_answers`) or a turn after 중단 may. The late one bows out
+    # and takes its own question row with it, so the transcript stays question, answer.
+    live = any(not event.is_set() for event in _STOPPING.get(session_id, set()))
+    if live and not superseded_ids and not earlier_answers:
+        async with SessionLocal() as db:
+            if user_message_id and (row := await db.get(Message, user_message_id)):
+                await db.delete(row)
+                await db.commit()
+        yield chat_service.sse(
+            {
+                "type": "error",
+                "code": "session_busy",
+                "message": "앞선 답변이 아직 쓰이고 있습니다.",
+            }
+        )
+        yield chat_service.sse({"type": "done"})
+        await _release_turn(session_id)
+        return
     # An earlier turn on this session is superseded, wherever it is running.
     fire_stop_locally(session_id)
     await stop_signal.broadcast(session_id)
@@ -3704,6 +4327,7 @@ async def _run_turn(
                 ),
                 preset_call=preset_call,
                 **({"freshness_request": freshness_request} if freshness_request else {}),
+                **({"caveat_request": caveat_request} if caveat_request else {}),
             ),
             stopping,
         ):
@@ -3789,14 +4413,21 @@ async def _run_turn(
     except chat_service.ChatStreamError as exc:
         log.warning("chat stream failed for session %s: %s", session_id, exc)
         failed = str(exc)
-        yield chat_service.sse(
-            _error_event(
-                "모델 사용량 한도에 닿았습니다. 잠시 후 다시 시도해 주세요."
-                if failed.startswith("upstream_429")
-                else "모델 응답을 받지 못했습니다.",
-                exc,
+        if failed.startswith("upstream_429"):
+            yield chat_service.sse(
+                _error_event("모델 사용량 한도에 닿았습니다. 잠시 후 다시 시도해 주세요.", exc)
             )
-        )
+        elif _context_overflow(failed):
+            yield chat_service.sse(
+                _error_event(
+                    "대화가 모델의 문맥 길이를 넘었습니다. 첨부를 줄이거나 문맥이 더 큰 "
+                    "모델을 고르거나 새 대화에서 이어 가세요.",
+                    exc,
+                    code="context_length_exceeded",
+                )
+            )
+        else:
+            yield chat_service.sse(_error_event("모델 응답을 받지 못했습니다.", exc))
     except Exception as exc:  # noqa: BLE001 — turn still has to settle and close
         log.exception("chat stream crashed for session %s", session_id)
         failed = "internal_error"
@@ -3942,6 +4573,7 @@ async def _run_turn(
                     model=stored_actual_model,
                     routing=stored_routing,
                     artifact_ids=[new_artifact] if new_artifact else None,
+                    superseded=earlier_answers or None,
                     # A partial answer is kept and labelled by who ended it.
                     failure=(
                         TurnFailure.stopped
@@ -3953,6 +4585,11 @@ async def _run_turn(
                 )
                 db.add(answer)
                 answer_id = answer.id
+                # The replaced answers leave in the same transaction that writes their successor.
+                for old_id in superseded_ids or []:
+                    old_row = await db.get(Message, old_id)
+                    if old_row is not None:
+                        await db.delete(old_row)
                 if not skip_completion_work:
                     settle(
                         db,
@@ -3962,6 +4599,10 @@ async def _run_turn(
                         session_id=session_id,
                         model=stored_actual_model,
                     )
+            elif superseded_ids:
+                # A rerun that produced nothing: the answer it was to replace is still
+                # there, untouched, and the question is not marked unanswered.
+                answer_id = superseded_ids[-1]
             else:
                 # No answer: the question row carries the outcome and the retry.
                 question = await db.get(Message, user_message_id) if user_message_id else None
@@ -3994,6 +4635,9 @@ async def _run_turn(
                     session_id=session_id,
                     model=title_model,
                 )
+            if side_credits:
+                # Spent before the model call, whatever became of the turn.
+                settle(db, user, side_credits, reason="chat.summary", session_id=session_id)
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -4090,6 +4734,7 @@ async def _run_turn(
         live.discard(stopping)
         if not live:
             del _STOPPING[session_id]
+    await _release_turn(session_id)
 
 
 @router.post("/{session_id}/stop", status_code=status.HTTP_204_NO_CONTENT)
@@ -4103,6 +4748,8 @@ async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
     # then every other replica, in case a superseded turn is running on one of them.
     fire_stop_locally(session_id)
     await stop_signal.broadcast(session_id)
+    # The stopped turn's claim goes with it, so the next message is not refused.
+    await _release_turn(session_id, token="")
 
 
 @router.post("/{session_id}/compare")
@@ -4157,7 +4804,8 @@ async def compare_models(
             attachment_ids=payload.attachments,
             # The smallest window among the compared models decides how much file goes in.
             file_budget=min(file_budget(m) for m in chosen),
-            activated_skill_ids=payload.activated_skill_ids,
+            # The conversation's standing skills apply to a comparison too.
+            activated_skill_ids=list(payload.activated_skill_ids) or list(session.skill_ids or []),
             starting_template_id=payload.starting_template_id,
             question=content,
             # Comparison exposes no tools.
@@ -4174,6 +4822,9 @@ async def compare_models(
         sources=_privacy_sources(content, history, workspace.blocks),
         explicit_action=payload.privacy_action,
         decision_token=payload.privacy_decision_token,
+        internal_data=_internal_data_present(
+            session, workspace.blocks, payload.attachments, history
+        ),
     )
     if isinstance(resolved, JSONResponse):
         await _audit_policy(
@@ -4273,6 +4924,7 @@ async def compare_models(
         web_search=False,
         extra=trusted_context,
         untrusted_context=untrusted_context,
+        remind_standing=session.kind is SessionKind.chat,
     )
 
     previous_fact = _freshness_followup_index(history, session.id, content)
@@ -4981,6 +5633,9 @@ async def _run_deck(
     figures_plan: list[dict] | None = None,
     #: Draws the figures; the image default, not the writer.
     image_model: dict | None = None,
+    #: A restructure: the artifact whose untouched parts are carried over after writing.
+    carry_from: str | None = None,
+    carry_note: str = "",
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
@@ -5059,12 +5714,42 @@ async def _run_deck(
             proposal=proposal,
             questions=questions,
             figures={"plan": proposal, **drawn} if drawn and proposal else None,
+            carry_from=carry_from,
+            carry_note=carry_note,
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
         return
 
     written = deck_service.filled(slides)
+    if carry_from and written:
+        async with SessionLocal() as db:
+            previous = await db.get(Artifact, carry_from)
+        if previous is not None and previous.data:
+            old_slides = list(previous.data.get("slides") or [])
+            slides, carried = revise.carry_parts(
+                slides, old_slides, is_deck=True, mentioned=carry_note
+            )
+            # The slides a merge absorbed lend their rows; a carried agenda lists the
+            # deck as it now is.
+            slides = revise.absorb_rows(slides, old_slides, mentioned=carry_note)
+            slides = revise.unmix_rows(slides, old_slides, mentioned=carry_note)
+            slides = revise.carry_by_content(slides, old_slides, mentioned=carry_note)
+            slides = revise.keep_timeline_layout(
+                slides, old_slides, mentioned=carry_note, request=request
+            )
+            slides = revise.refresh_agenda(slides)
+            # Carrying old slides back can drop a number the draft had restated; the
+            # person's figures are checked once more against the deck as it now stands.
+            deck_service.restate_missing_facts(slides, request)
+            if carried:
+                yield chat_service.sse(
+                    {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
+                     "status": "done"}
+                )
+                for slide in slides:
+                    yield chat_service.sse({"type": "slide", "slide": slide, "done": True})
+            written = deck_service.filled(slides)
     credits = (
         0
         if not written
@@ -5083,6 +5768,11 @@ async def _run_deck(
         user = await db.get(User, user_id)
         if session is not None and user is not None:
             title = (doc_title or session.title or request.strip()[:60] or "슬라이드")[:200]
+            if carry_from and not revise.requested_title(carry_note):
+                # A restructure keeps the deck's name; only an asked-for rename changes it.
+                kept = await db.get(Artifact, carry_from)
+                if kept is not None and kept.title:
+                    title = kept.title
             if written:
                 artifact_design = design_tokens
                 if template is not None and template.look:
@@ -5095,10 +5785,20 @@ async def _run_deck(
                         (approved_plan or {}).get("visualStyle")
                         or design_service.visual_style_for(request)
                     )
-                    if requested_style != "editorial":
-                        artifact_design = design_service.normalise_tokens(
-                            {"visualStyle": requested_style}
-                        )
+                    # The deck's own colour travels with it, so the design panel and the
+                    # bulk accent control start from what the slides wear, not the
+                    # product's purple.
+                    deck_accent = str(
+                        next((sl.get("accent") for sl in slides if sl.get("accent")), "")
+                        or deck_service.topic_accent(request)
+                    )
+                    artifact_design = design_service.normalise_tokens(
+                        {
+                            "visualStyle": requested_style,
+                            "accent": deck_accent,
+                            "font": design_service.font_for(request, requested_style),
+                        }
+                    )
                 artifact_id = await _store_document(
                     db,
                     session,
@@ -5181,6 +5881,26 @@ def _skeleton(artifact: Artifact) -> list[str]:
     return [str(p.get("heading") or "") for p in data.get("sections") or []]
 
 
+def _part_texts(artifact: Artifact) -> list[str]:
+    """Each part's own words, in order — what a restructure must not lose."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.deck:
+        out = []
+        for slide in data.get("slides") or []:
+            pieces = [deck_service._drafted_text(slide)]
+            for row in slide.get("rows") or []:
+                if isinstance(row, list):
+                    pieces.append(" | ".join(str(c) for c in row))
+            for metric in slide.get("metrics") or []:
+                if isinstance(metric, dict):
+                    pieces.append(" ".join(str(v) for v in metric.values()))
+            out.append("\n".join(piece for piece in pieces if piece))
+        return out
+    return [
+        re.sub(r"<[^>]+>", " ", str(p.get("content") or "")) for p in data.get("sections") or []
+    ]
+
+
 async def _revision_plan(
     db: AsyncSession,
     session: ChatSession,
@@ -5200,6 +5920,17 @@ async def _revision_plan(
     skeleton = _skeleton(artifact)
     if not skeleton:
         return None, []
+    if (swap := revise.order_swap(instruction, skeleton)) is not None:
+        # Two named parts trading places is done in place by `_revise_document`; the
+        # planner would read 「순서」 as a restructure and redraw the whole deck.
+        first, second = swap
+        return revise.Plan(
+            scope="parts", targets=[], note=f"{skeleton[first]} ↔ {skeleton[second]}"
+        ), skeleton
+    if (added := revise.explicit_insert(instruction, skeleton)) is not None:
+        # 「위험 장을 하나 추가해 줘」 is an insert in so many words; a planner that reads it
+        # as a new document would refuse a plain edit.
+        return added, skeleton
     plan = await revise.plan(
         message=instruction,
         title=artifact.title or "",
@@ -5232,6 +5963,7 @@ async def _revise_document(
     instruction: str,
     routing: dict[str, Any] | None = None,
     plan: revise.Plan | None = None,
+    planner: dict | None = None,
 ) -> AsyncIterator[str]:
     """Applies one instruction to the document on screen.
 
@@ -5298,15 +6030,101 @@ async def _revise_document(
         yield chat_service.sse({"type": "done"})
         return
 
-    yield chat_service.sse(
-        {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
-    )
+    swap = revise.term_swap(instruction)
+    reorder = revise.order_swap(instruction, names) if swap is None else None
+    if reorder is not None:
+        # Two parts trading places is a rearrangement done by hand: the model would
+        # redraw the deck (and add a 목차) to move two slides.
+        first, second = reorder
+        parts[first], parts[second] = parts[second], parts[first]
+        if not is_deck:
+            # A conclusion now at the front does not re-list what follows it.
+            parts = report_service.trim_leading_conclusion(parts)
+        yield chat_service.sse(
+            {"type": "step", "id": "route", "status": "done",
+             "label": f"순서 바꾸는 중: {names[first]} ↔ {names[second]}"}
+        )
+        for part in parts:
+            yield chat_service.sse(
+                {"type": "slide", "slide": part, "done": True}
+                if is_deck
+                else {
+                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
+                    "content": part.get("content"), "done": True,
+                }
+            )
+        plan = revise.Plan(scope="parts", targets=[], note=f"{names[first]} ↔ {names[second]}")
+        changed = 2
+    elif swap is not None:
+        # A term replacement across the document is done by hand: exact, instant, and
+        # nothing else moves. The model is not asked to retype six sections for it.
+        old_term, new_term = swap
+        parts, hits = revise.replace_term(parts, old_term, new_term)
+        title, title_hits = revise.replace_term(title, old_term, new_term)
+        hits += title_hits
+        yield chat_service.sse(
+            {"type": "step", "id": "route", "label": f"용어 바꾸는 중: {old_term} → {new_term}",
+             "status": "done" if hits else "error"}
+        )
+        if not hits:
+            yield chat_service.sse(
+                {"type": "delta", "text": f"문서에서 「{old_term}」을 찾지 못했습니다."}
+            )
+            yield chat_service.sse({"type": "usage", **usage, "credits": 0})
+            yield chat_service.sse({"type": "done"})
+            return
+        for part in parts:
+            yield chat_service.sse(
+                {"type": "slide", "slide": part, "done": True}
+                if is_deck
+                else {
+                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
+                    "content": part.get("content"), "done": True,
+                }
+            )
+        plan = revise.Plan(scope="parts", targets=[], note=f"{old_term} → {new_term}")
+        changed = hits
+    else:
+        yield chat_service.sse(
+            {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
+        )
     plan = plan or await revise.plan(
-        message=instruction, title=title, parts=names, model=model["id"], api_key=api_key
+        message=instruction, title=title, parts=names, model=(planner or model)["id"],
+        api_key=api_key,
     )
     usage["inputTokens"] += plan.usage["inputTokens"]
     usage["outputTokens"] += plan.usage["outputTokens"]
-    if not plan.revises:
+    if plan.inserts:
+        # New parts are written one by one and slotted in; the rest is untouched.
+        position = plan.after + 1
+        for offset, name in enumerate(plan.names):
+            if is_deck:
+                neighbour = parts[min(max(position - 1, 0), len(parts) - 1)]
+                parts.insert(position + offset, {
+                    "id": f"sl{position + offset}_{uuid.uuid4().hex[:6]}",
+                    "title": name,
+                    "layout": deck_service.requested_layout(instruction)
+                    or deck_service.requested_layout(plan.note)
+                    or "bullets",
+                    "accent": neighbour.get("accent"),
+                })
+            else:
+                parts.insert(position + offset, {
+                    "id": uuid.uuid4().hex,
+                    "heading": name,
+                    "content": "",
+                    "format": "markdown",
+                    "status": "done",
+                })
+        names = [str(p.get("title" if is_deck else "heading") or "") for p in parts]
+        plan = revise.Plan(
+            scope="parts",
+            targets=list(range(position, position + len(plan.names))),
+            note=plan.note,
+            usage=plan.usage,
+        )
+    by_hand = swap is not None or reorder is not None
+    if not by_hand and not plan.revises:
         # A new-document request is said, not acted on.
         yield chat_service.sse(
             {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
@@ -5322,16 +6140,17 @@ async def _revise_document(
         yield chat_service.sse({"type": "done"})
         return
 
-    yield chat_service.sse(
-        {
-            "type": "step",
-            "id": "route",
-            "label": revise.label(plan, names),
-            "status": "done",
-        }
-    )
+    if not by_hand:
+        yield chat_service.sse(
+            {
+                "type": "step",
+                "id": "route",
+                "label": revise.label(plan, names),
+                "status": "done",
+            }
+        )
 
-    changed = 0
+    changed = changed if by_hand else 0
     for index in plan.targets:
         part = parts[index]
         label = names[index] or f"{index + 1}"
@@ -5349,6 +6168,7 @@ async def _revise_document(
                     note=plan.note,
                     material=material,
                     typed=instruction,
+                    notes_only=revise.notes_only(instruction),
                 )
                 parts[index] = written
                 yield chat_service.sse({"type": "slide", "slide": written, "done": True})
@@ -5360,20 +6180,57 @@ async def _revise_document(
                     target_id=str(part.get("id") or ""),
                     model=model["id"],
                     api_key=api_key,
-                    note=plan.note,
+                    # The planner's paraphrase first, then the words as typed: a detail the
+                    # paraphrase dropped (「담당은 플랫폼팀 또는 정보보호팀 중에서」) still lands.
+                    note=(
+                        f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
+                        f"{instruction.strip()[:400]}"
+                    ),
                     sources=list(data.get("sources") or []),
                     material=material,
                 )
                 if not body.strip():
                     raise ValueError("빈 결과")
+                # A figure the section had stays unless the rewrite drew a new one or the
+                # person asked for it to go.
+                body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
+                # 「470만 원 × 36개월 = …」 is checked by arithmetic, not trusted.
+                body = report_service.trim_table_echo(
+                    report_service.drop_redundant_kpi(
+                        report_service.fix_point_units(
+                            report_service.undouble_words(
+                                report_service.fix_percent_formulas(
+                                    report_service.fix_ledger_magnitudes(
+                                        report_service.fix_products(body), request
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+                # The rewritten section, like a first draft, does not repeat what the
+                # sections before it (or its own earlier sentences) already said.
+                # A sentence the person asked to add (「비교하는 문장을 하나 추가해 줘」) is
+                # theirs even when its numbers appear earlier: an add is not trimmed.
+                if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
+                    earlier = [
+                        re.sub(r"<[^>]+>", " ", str(p.get("content") or ""))
+                        for p in parts[:index]
+                        if not is_deck
+                    ]
+                    body = report_service.trim_restatements(body, earlier)[0]
                 # The rewrite is Markdown; an old `html` flag would show literal asterisks.
+                renamed = revise.requested_title(instruction) if len(plan.targets) == 1 else None
                 parts[index] = {
                     **part,
+                    **({"heading": renamed} if renamed else {}),
                     "content": richtext.tidy_tables(body),
                     "format": "markdown",
                     "status": "done",
                 }
                 parts[index].pop("factCheck", None)
+                if renamed:
+                    label = renamed
                 yield chat_service.sse(
                     {
                         "type": "section",
@@ -5485,6 +6342,9 @@ async def _run_report(
     #: Draws the figures; the image default, not the writer.
     image_model: dict | None = None,
     project_sources: list[dict[str, Any]] | None = None,
+    #: A restructure: the artifact whose untouched parts are carried over after writing.
+    carry_from: str | None = None,
+    carry_note: str = "",
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it. The document is an artifact with versions."""
     sections: list[dict] = []
@@ -5561,11 +6421,32 @@ async def _run_report(
             proposal=proposal,
             questions=questions,
             figures={"plan": proposal, **drawn} if drawn and proposal else None,
+            carry_from=carry_from,
+            carry_note=carry_note,
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
         return
 
+    if carry_from and sections:
+        async with SessionLocal() as db:
+            previous = await db.get(Artifact, carry_from)
+        if previous is not None and previous.data:
+            sections, carried = revise.carry_parts(
+                sections, list(previous.data.get("sections") or []), is_deck=False,
+                mentioned=carry_note,
+            )
+            if carried:
+                yield chat_service.sse(
+                    {"type": "step", "id": "carry", "label": f"그대로 둔 절 {carried}개",
+                     "status": "done"}
+                )
+                for section in sections:
+                    yield chat_service.sse(
+                        {"type": "section", "sectionId": section.get("id"),
+                         "heading": section.get("heading"), "content": section.get("content"),
+                         "done": True}
+                    )
     written = [s for s in sections if (s.get("content") or "").strip()]
     credits = (
         0
@@ -5586,6 +6467,10 @@ async def _run_report(
         if session is not None and user is not None:
             # Generated title first; the session title reads as the raw prompt.
             title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
+            if carry_from and not revise.requested_title(carry_note):
+                kept = await db.get(Artifact, carry_from)
+                if kept is not None and kept.title:
+                    title = kept.title
             if written:
                 artifact_design = design_tokens
                 if template is not None and template.look:
@@ -5594,14 +6479,23 @@ async def _run_report(
                         {**(design_tokens or {}), "visualStyle": template.look}
                     )
                 elif not artifact_design:
-                    requested_style = str(
-                        (approved_plan or {}).get("visualStyle")
-                        or design_service.visual_style_for(request)
+                    # Nothing dressed this report: the words or the room pick its look,
+                    # the subject its colour — not the same default thirty times over.
+                    requested_style = str((approved_plan or {}).get("visualStyle") or "")
+                    accent = str(
+                        (approved_plan or {}).get("accent") or deck_service.topic_accent(request)
                     )
-                    if requested_style != "editorial":
-                        artifact_design = design_service.normalise_tokens(
-                            {"visualStyle": requested_style}
+                    artifact_design = (
+                        design_service.normalise_tokens(
+                            {
+                                "visualStyle": requested_style,
+                                "accent": accent,
+                                "font": design_service.font_for(request, requested_style),
+                            }
                         )
+                        if requested_style and requested_style != "editorial"
+                        else design_service.report_look_for(request, accent)
+                    )
                 artifact_id = await _store_document(
                     db,
                     session,

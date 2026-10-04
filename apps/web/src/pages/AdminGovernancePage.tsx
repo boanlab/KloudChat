@@ -122,6 +122,22 @@ export function AdminGovernancePage() {
                     />
                   </div>
 
+                  <div className="flex items-start gap-3 border-t border-line pt-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-base font-medium">{t('내부 자료는 strict-local로만')}</p>
+                      <p className="text-base text-muted">
+                        {t(
+                          '첨부 파일·프로젝트 파일·메모리가 들어간 턴은 선택한 모델 대신 같은 모델의 strict-local 판으로 답하고, 그 세션은 이후에도 외부 모델로 승격되지 않습니다. 쌍이 없으면 strict-local 안전 모델이 맡고, 그것도 없으면 전송을 거절합니다.',
+                        )}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={governance.internalDataStrictLocal}
+                      onChange={(value) => void apply({ internalDataStrictLocal: value })}
+                      label={t('내부 자료는 strict-local로만')}
+                    />
+                  </div>
+
                   <div className="border-t border-line pt-3">
                     <p className="text-base font-medium">{t('strict-local 안전 모델')}</p>
                     <p className="text-sm text-muted">

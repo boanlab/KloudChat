@@ -7,7 +7,7 @@ from app.services.models import _label, _vendor
 
 def test_a_route_prefix_groups_under_the_real_vendor() -> None:
     assert _vendor("local/gemma-4-26b-a4b-it", "hosted_vllm") == "Google"
-    assert _vendor("strict-local/qwen3.6-35b", "hosted_vllm") == "Qwen"
+    assert _vendor("strict-local/qwen3.8-27b", "hosted_vllm") == "Qwen"
     assert _vendor("qwen/qwen3.6-35b", "openrouter") == "Qwen"
 
 

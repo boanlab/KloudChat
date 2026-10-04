@@ -112,6 +112,8 @@ def _vendor(model_id: str, provider: str) -> str:
 
 _CACHE: dict[str, Any] = {"at": 0.0, "value": None}
 _CACHE_TTL_SEC = 30.0
+#: How soon a failed refresh is tried again while the last catalogue is served.
+_RETRY_AFTER_FAILURE_SEC = 5.0
 
 _DATA_BOUNDARIES = {"self_hosted", "hybrid", "external"}
 _CUTOFF_FORMAT = re.compile(r"[0-9]{4}-[0-9]{2}(?:-[0-9]{2})?")
@@ -403,6 +405,15 @@ async def list_models(force: bool = False) -> dict[str, Any]:
             cutoffs = declared_cutoffs.get(model["id"], set())
             model["knowledgeCutoff"] = next(iter(cutoffs)) if len(cutoffs) == 1 else None
     except litellm.LiteLLMError as exc:
+        cached = _CACHE["value"]
+        if not force and cached is not None and cached.get("litellmAvailable"):
+            # (A forced read is an egress decision and fails closed instead.)
+            # The gateway is restarting or briefly overloaded. The catalogue it gave a
+            # moment ago is still the truth about what this install serves; dropping
+            # every proxied model would turn a hiccup into 503s for every open chat.
+            log.warning("model catalogue refresh failed, keeping the last one: %s", exc)
+            _CACHE["at"] = now - _CACHE_TTL_SEC + _RETRY_AFTER_FAILURE_SEC
+            return cached
         log.warning("model catalogue falling back to adapters only: %s", exc)
         available = False
 

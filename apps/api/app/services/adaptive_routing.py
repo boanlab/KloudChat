@@ -22,7 +22,11 @@ log = logging.getLogger(__name__)
 CLASSIFIER_VERSION = "auto-cost-2026-09-03.v2"
 # Must hold an ordinary chat envelope including `context._WRITING` and tool
 # definitions; above it Auto refuses to route.
-MAX_CLASSIFIER_CHARS = 12_000
+#: The classifier reads the whole envelope the answer model gets — system prompt, tool
+#: definitions and history — so the cap is the classifier's, not a chat turn's: a 27B
+#: strict-local classifier reads 80k characters (~20k tokens) in well under a second of
+#: prefill. At 12k the chat system prompt and tools alone put every turn over the cap.
+MAX_CLASSIFIER_CHARS = 80_000
 MIN_LOW_CONFIDENCE = 0.9
 MIN_HIGH_CONFIDENCE = 0.9
 # Room for the system wrapper and an answer in the candidate's context window.
@@ -81,7 +85,10 @@ def classifier_context(
     if tool_definitions:
         payload["qualityModelTools"] = tool_definitions
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    return encoded if len(encoded) <= MAX_CLASSIFIER_CHARS else None
+    if len(encoded) > MAX_CLASSIFIER_CHARS:
+        log.info("adaptive classifier skipped: envelope %d chars", len(encoded))
+        return None
+    return encoded
 
 
 def estimated_context_tokens(parts: list[str]) -> int:
