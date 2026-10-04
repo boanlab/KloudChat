@@ -205,7 +205,7 @@ export function answerText(page: Page, text: string | RegExp) {
 /** Picks a conversation model outside the Strict Local group (strict-local turns get no
  *  web search, code execution or connectors). Matched by name: picker rows print names, not ids.
  *  The default prefers 3.5/3.6 because 35b sometimes answers without calling tools. */
-export async function pickToolModel(page: Page, name = /qwen3\.5|qwen3\.6/i) {
+export async function pickToolModel(page: Page, name = /qwen3\.8/i) {
   await page
     .getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i })
     .first()

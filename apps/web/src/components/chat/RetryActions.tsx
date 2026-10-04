@@ -10,12 +10,15 @@ export function RetryActions({
   messageId,
   prompt,
   kind,
+  label,
 }: {
   sessionId: string
-  /** The failed question's row; the retry replaces it in place. */
+  /** The question's row; the rerun replaces its answer in place. */
   messageId: string
   prompt: string
   kind: SessionKind
+  /** Button text; 「다시 시도」 under a failure, 「다시 생성」 under an answer. */
+  label?: string
 }) {
   const t = useT()
   const send = useStore((s) => s.send)
@@ -34,7 +37,7 @@ export function RetryActions({
         onClick={() => void send(sessionId, kind, prompt, { retryOf: messageId })}
       >
         <RotateCcw size={13} />
-        {t('다시 시도')}
+        {t(label ?? '다시 시도')}
       </Button>
       {usable.length > 1 && (
         <Dropdown

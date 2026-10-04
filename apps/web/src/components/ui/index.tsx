@@ -298,7 +298,9 @@ export function Modal({
   return (
     /* `my-auto` on the panel, not `items-center`: a centred flex item taller
        than the scroll container gets its top clipped. */
-    <div className="fixed inset-0 z-50 flex justify-center overflow-y-auto p-4 max-sm:p-2">
+    // Above every popover (dropdown menus are z-[100]): a menu left open under a
+    // dialog must not take the dialog's clicks.
+    <div className="fixed inset-0 z-[150] flex justify-center overflow-y-auto p-4 max-sm:p-2">
       <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         ref={panelRef}
@@ -429,6 +431,41 @@ export function Dropdown({
   useLayoutEffect(() => {
     if (open) measure()
   }, [open, measure])
+
+  // Choosing an item unmounts the menu; unless the item moved focus somewhere of
+  // its own (a dialog, a pane), focus comes back to the trigger as Escape does.
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    const was = wasOpen.current
+    wasOpen.current = open
+    if (!was || open) return
+    let observer: MutationObserver | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const frame = requestAnimationFrame(() => {
+      const active = document.activeElement
+      if (active && active !== document.body) return
+      const trigger = ref.current?.querySelector<HTMLButtonElement>('button')
+      if (!trigger) return
+      if (!trigger.disabled) {
+        trigger.focus()
+        return
+      }
+      // The choice is being saved and the trigger is disabled meanwhile: focus it
+      // as soon as it is enabled again, within a bounded wait.
+      observer = new MutationObserver(() => {
+        if (trigger.disabled) return
+        observer?.disconnect()
+        if (!document.activeElement || document.activeElement === document.body) trigger.focus()
+      })
+      observer.observe(trigger, { attributes: true, attributeFilter: ['disabled'] })
+      timer = setTimeout(() => observer?.disconnect(), 4000)
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      if (timer) clearTimeout(timer)
+    }
+  }, [open])
 
   useLayoutEffect(() => {
     const button = ref.current?.querySelector<HTMLButtonElement>('button')

@@ -25,7 +25,7 @@ export function AgentSetupPage() {
   const chat = models.filter((m) => m.kinds.includes('chat'))
   const [picked, setPicked] = useState<string | null>(null)
   const model = chat.find((m) => m.id === picked) ?? chat[0]
-  const modelId = model?.id ?? 'local/qwen3.6-35b'
+  const modelId = model?.id ?? 'local/qwen3.8-27b'
   const key = `<${t('발급받은 키')}>`
   const shellNote = {
     linux: t('이 터미널 창에서만 유효합니다. 영구 적용은 ~/.bashrc 나 ~/.zshrc 에 넣으세요.'),

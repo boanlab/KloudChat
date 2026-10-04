@@ -29,6 +29,7 @@ import { refusalSentence, startFailure } from '@/lib/failures'
 import { handoffSurface } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
+import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
@@ -316,22 +317,41 @@ let carriedComposer: ComposerSnapshot | null = null
 // Editing a past question must not replace the ordinary draft of its conversation.
 const editBackups = new Map<string, ComposerSnapshot>()
 
-// Unsent text keyed by session id, or `new:<kind>` on the home screen.
-// Survives remounts, not reloads.
+// Unsent text keyed by session id, or `new:<kind>` on the home screen. Held in
+// memory and mirrored to this browser's storage under the account, so a reload
+// (or a crash) does not lose a half-typed question; storage may be unavailable
+// (private window, blocked site data), and then memory alone serves.
 const drafts = new Map<string, string>()
 const draftKeyFor = (sessionId: string | null, kind: SessionKind) => sessionId ?? `new:${kind}`
+const draftStore = {
+  /** Memory first; one storage read per key, misses cached as '' so list renders stay cheap. */
+  get(key: string): string | undefined {
+    if (drafts.has(key)) return drafts.get(key) || undefined
+    const saved = readStoredDraft(useStore.getState().user?.id, key) ?? ''
+    drafts.set(key, saved)
+    return saved || undefined
+  },
+  set(key: string, value: string) {
+    drafts.set(key, value)
+    writeStoredDraft(useStore.getState().user?.id, key, value)
+  },
+  /** Drops the memory copy; storage is keyed by account, so another account never sees it. */
+  clear() {
+    drafts.clear()
+  },
+}
 
 // These module caches survive remounts, but must never survive an account change.
 useStore.subscribe((state, previous) => {
   if (state.accountEpoch === previous.accountEpoch && state.user?.id === previous.user?.id) return
   carriedComposer = null
   editBackups.clear()
-  drafts.clear()
+  draftStore.clear()
 })
 
 /** Whether a session has unsent text. */
 export function hasUnsentDraft(sessionId: string) {
-  return !!drafts.get(sessionId)?.trim()
+  return !!draftStore.get(sessionId)?.trim()
 }
 
 export function Composer({
@@ -362,7 +382,7 @@ export function Composer({
   const composing = useRef(false)
   const [editPending, setEditPending] = useState(false)
   const draftKey = draftKeyFor(sessionId, kind)
-  const [value, setValue] = useState(() => drafts.get(draftKey) ?? '')
+  const [value, setValue] = useState(() => draftStore.get(draftKey) ?? '')
   const liveValue = useRef(value)
   liveValue.current = value
   const draftKeyRef = useRef(draftKey)
@@ -370,12 +390,12 @@ export function Composer({
     if (draftKeyRef.current !== draftKey) {
       // The session changed under a mounted composer; load its own draft.
       draftKeyRef.current = draftKey
-      const own = drafts.get(draftKey) ?? ''
+      const own = draftStore.get(draftKey) ?? ''
       liveValue.current = own
       setValue(own)
       return
     }
-    if (!editing && editContext.current?.sessionId !== draftKey) drafts.set(draftKey, value)
+    if (!editing && editContext.current?.sessionId !== draftKey) draftStore.set(draftKey, value)
   }, [draftKey, value, editing])
   const restoreSequence = useRef(0)
   const activeRestoreToken = useRef<number | null>(null)
@@ -460,22 +480,24 @@ export function Composer({
     if (!composerRestore || composerRestore.sessionId !== sessionId) return
     setComposerRestore(null)
     if (composerRestore.error) setChatError(composerRestore.error)
-    if (
-      liveValue.current ||
-      liveAttachments.current.length > 0 ||
-      liveActivatedSkillIds.current.length > 0 ||
-      liveStartingTemplate.current
-    ) {
+    // Skills are not "newer input": they stay on after a send, so their presence
+    // says nothing about whether the person has started typing something else.
+    if (liveValue.current || liveAttachments.current.length > 0 || liveStartingTemplate.current) {
       return
     }
     activeRestoreToken.current = null
+    // Skills picked while the request was out are kept alongside the restored ones.
+    const skills = [
+      ...liveActivatedSkillIds.current,
+      ...composerRestore.activatedSkillIds.filter((id) => !liveActivatedSkillIds.current.includes(id)),
+    ]
     liveValue.current = composerRestore.value
     liveAttachments.current = composerRestore.attachments
-    liveActivatedSkillIds.current = composerRestore.activatedSkillIds
+    liveActivatedSkillIds.current = skills
     liveStartingTemplate.current = composerRestore.startingTemplate
     setValue(composerRestore.value)
     setAttachments(composerRestore.attachments)
-    setActivatedSkillIds(composerRestore.activatedSkillIds)
+    setActivatedSkillIds(skills)
     setStartingTemplate(composerRestore.startingTemplate)
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
@@ -506,6 +528,8 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingStartingTemplate, setPendingStartingTemplate])
   const [uploading, setUploading] = useState(false)
+  /** Names of files whose upload failed, shown until the next upload attempt. */
+  const [uploadFailed, setUploadFailed] = useState<string[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
   // Dictation goes to the deployment's own Whisper, never to the browser
   // vendor's recognizer; the recording is not kept.
@@ -639,7 +663,7 @@ export function Composer({
     setStartingTemplate(held.startingTemplate)
     setStartingValues(held.startingValues ?? {})
     setWebSearchMode(held.webSearchMode)
-    drafts.set(held.sessionId, held.value)
+    draftStore.set(held.sessionId, held.value)
   }
   // Per-turn state resets when the surface or session changes; the typed sentence stays.
   const initializedScope = useRef<{ sessionId: string | null; kind: SessionKind } | null>(null)
@@ -692,14 +716,29 @@ export function Composer({
       setWebSearchMode(held.webSearchMode)
       return
     }
-    liveActivatedSkillIds.current = []
-    setActivatedSkillIds([])
+    // The conversation's standing skills come back with it; a new one starts clean.
+    // Read once here, not subscribed: a later change to them is hydrated below.
+    const standing = sessionId
+      ? useStore.getState().sessions.find((c) => c.id === sessionId)?.skillIds ?? []
+      : []
+    liveActivatedSkillIds.current = standing
+    setActivatedSkillIds(standing)
     liveStartingTemplate.current = null
     setStartingTemplate(null)
     liveAttachments.current = []
     setAttachments([])
     setWebSearchMode('auto')
   }, [sessionId, kind, messageEdit?.sessionId, accountEpoch])
+  // The session row may arrive after the composer mounted (a fresh load of /s/:id):
+  // its standing skills fill an empty picker once, never overriding a live choice.
+  const standingSkillIds = useStore((s) =>
+    sessionId ? s.sessions.find((c) => c.id === sessionId)?.skillIds : undefined,
+  )
+  useEffect(() => {
+    if (!standingSkillIds?.length || liveActivatedSkillIds.current.length || editing) return
+    liveActivatedSkillIds.current = standingSkillIds
+    setActivatedSkillIds(standingSkillIds)
+  }, [standingSkillIds, editing])
   const ref = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   const {
@@ -725,6 +764,7 @@ export function Composer({
     jobs,
     uploadFile,
     newSession,
+    setSessionSkills,
     setSessionRoutingMode,
     generateImages,
     generateAudio,
@@ -962,11 +1002,14 @@ export function Composer({
           acceptedHere = true
           attemptedSessionId = id
           carriedComposer = heldComposer(id)
-          if (editContext.current?.forkId === id) {
+          const branched = editContext.current?.forkId === id
+          if (branched) {
             editContext.current = null
             clearMessageEdit()
           }
-          navigate(`/s/${id}`, { replace: true })
+          // A branch from an edit is pushed, so Back returns to the conversation it
+          // came from; a brand-new conversation replaces its /new/:kind address.
+          navigate(`/s/${id}`, branched ? undefined : { replace: true })
         },
       })
       if (!ownsView()) return
@@ -1051,12 +1094,17 @@ export function Composer({
     const editScope = editContext.current
     const uploadSession = sessionId
     setUploading(true)
+    setUploadFailed([])
     try {
       for (const file of picked) {
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : sessionId ?? undefined,
-        }).catch(() => null)
+        }).catch(() => {
+          // Said where the chips are: a file that never arrived must not look attached.
+          setUploadFailed((current) => [...current, file.name])
+          return null
+        })
         if (row && editContext.current === editScope && (!editScope || useStore.getState().activeSessionId === uploadSession)) {
           setAttachments((current) => {
             activeRestoreToken.current = null
@@ -1188,12 +1236,11 @@ export function Composer({
     // the round trip would leave the sent text sitting in the box.
     liveValue.current = ''
     liveAttachments.current = []
-    liveActivatedSkillIds.current = []
+    // Skills stay on: picked once, they apply to the conversation's later turns too.
     // A starting point is spent on one turn, unlike the template chip.
     liveStartingTemplate.current = null
     setValue('')
     setAttachments([])
-    setActivatedSkillIds([])
     setStartingTemplate(null)
     setStartingValues({})
     if (kind === 'av' && avOptions.mode === 'video') {
@@ -1327,6 +1374,7 @@ export function Composer({
         )}
         {(project ||
           attachments.length > 0 ||
+          uploadFailed.length > 0 ||
           webSearch ||
           activeSkills.length > 0 ||
           autoBypassPreview ||
@@ -1511,6 +1559,11 @@ export function Composer({
                   .join(' · ')}
               </p>
             )}
+            {uploadFailed.length > 0 && (
+              <p role="alert" className="w-full text-xs text-danger">
+                {t('첨부하지 못했습니다: {names}').replace('{names}', uploadFailed.join(' · '))}
+              </p>
+            )}
           </div>
         )}
 
@@ -1606,7 +1659,7 @@ export function Composer({
             activeRestoreToken.current = null
             liveValue.current = e.target.value
             // Written synchronously: picking a starting point navigates before an effect would run.
-            if (!editing) drafts.set(draftKey, e.target.value)
+            if (!editing) draftStore.set(draftKey, e.target.value)
             setValue(e.target.value)
           }}
           onKeyDown={(e) => {
@@ -1754,6 +1807,8 @@ export function Composer({
                         : [...activeSkills.map((skill) => skill.id), s.id]
                       liveActivatedSkillIds.current = next
                       setActivatedSkillIds(next)
+                      // In a conversation the change is the conversation's, kept on the server.
+                      if (sessionId && kind === 'chat') void setSessionSkills(sessionId, next)
                     }}
                   >
                     {s.name}

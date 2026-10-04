@@ -43,3 +43,14 @@ export function docVariables(): Record<string, string> {
   for (const [name, ratio] of Object.entries(LEADING)) out[`--doc-leading-${name}`] = `${ratio}`
   return out
 }
+
+/** Typeface stacks for the stored `font` token; the exporters pick matching faces. */
+export const FAMILIES = {
+  gothic: "'Pretendard', 'Pretendard Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+  serif: "'Nanum Myeongjo', 'Noto Serif KR', 'Batang', 'Apple Myungjo', Georgia, serif",
+} as const
+
+/** The stack for a design's font, or `undefined` to inherit when nothing was chosen. */
+export function fontFamilyFor(font?: string | null): string | undefined {
+  return font === 'serif' ? FAMILIES.serif : font === 'gothic' ? FAMILIES.gothic : undefined
+}

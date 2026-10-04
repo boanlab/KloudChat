@@ -24,7 +24,7 @@ import {
   X,
   ChevronDown,
 } from 'lucide-react'
-import { docVariables } from '@/components/report/docType'
+import { docVariables, fontFamilyFor } from '@/components/report/docType'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -1423,6 +1423,11 @@ export function ReportPanel({
                 setView('page')
                 setDocumentLayout('edit')
                 setPageSettingsOpen(false)
+                // An A4 sheet needs room; a narrow panel widens for the editor.
+                if (mode === 'narrow') {
+                  setMode('wide')
+                  onModeChange?.('wide')
+                }
               } else if (tab !== 'edit' && ribbon === 'edit') {
                 setDocumentLayout('pages')
                 setView(viewBeforeEdit.current)
@@ -1430,7 +1435,7 @@ export function ReportPanel({
               setRibbon(tab)
             }}
           >
-          {ribbon === 'view' && <RibbonGroup label={t('탐색')}><Button size="sm" onClick={() => setTocOpen((o) => !o)}>
+          {ribbon === 'view' && <RibbonGroup label={t('탐색')}><Button size="sm" aria-pressed={tocOpen} onClick={() => setTocOpen((o) => !o)}>
             <ListTree size={13} />
             {t('목차')} {done}/{report.sections.length}
           </Button></RibbonGroup>}
@@ -1585,7 +1590,7 @@ export function ReportPanel({
             <RibbonGroup label={t('양식')}>
             <Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving} onClick={() => void afterSaving(() => {})}>
+                <Button size="sm" variant="secondary" disabled={templateSaving}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
                   <RibbonCaption>{t('양식')}</RibbonCaption>
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
@@ -1598,7 +1603,8 @@ export function ReportPanel({
                 <MenuItem
                   key={row.id}
                   checked={row.id === templateId}
-                  onClick={() => void chooseTemplate(row.id)}
+                  // Pending edits are saved when a form is chosen, not when the menu opens.
+                  onClick={() => void afterSaving(() => chooseTemplate(row.id))}
                 >
                   {row.name}
                 </MenuItem>
@@ -1607,6 +1613,7 @@ export function ReportPanel({
           )}
           {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"
+            aria-pressed={pane === 'sources'}
             variant={pane === 'sources' ? 'primary' : 'secondary'}
             aria-label={
               evidenceWarningCount > 0
@@ -1627,7 +1634,7 @@ export function ReportPanel({
           </Button></RibbonGroup>}
           {/* Formatting bar slot; last in the tab because it is the widest group. */}
           {ribbon === 'home' && view === 'page' && documentLayout === 'edit' && (
-            <RibbonGroup label={t('서식')}>
+            <RibbonGroup wide label={t('서식')}>
               <div ref={setToolbarSlot} className="flex items-center" />
             </RibbonGroup>
           )}
@@ -1649,7 +1656,7 @@ export function ReportPanel({
           {ribbon === 'file' && <RibbonGroup label={t('내보내기')}><Dropdown
             align="right"
             trigger={() => (
-              <Button size="sm" onClick={() => void afterSaving(() => {})}>
+              <Button size="sm">
                 <Download size={14} />
                 {t('내보내기')}
               </Button>
@@ -1669,19 +1676,19 @@ export function ReportPanel({
               </>
             )}
             <MenuLabel>{t('형식 선택')}</MenuLabel>
-            <MenuItem hint="PDF" onClick={() => void download(report.id, 'pdf', report.title)}>
+            <MenuItem hint="PDF" onClick={() => void afterSaving(() => download(report.id, 'pdf', report.title))}>
               PDF
             </MenuItem>
-            <MenuItem hint="DOCX" onClick={() => void download(report.id, 'docx', report.title)}>
+            <MenuItem hint="DOCX" onClick={() => void afterSaving(() => download(report.id, 'docx', report.title))}>
               {t('Word 문서')}
             </MenuItem>
-            <MenuItem hint="HWPX" onClick={() => void download(report.id, 'hwpx', report.title)}>
+            <MenuItem hint="HWPX" onClick={() => void afterSaving(() => download(report.id, 'hwpx', report.title))}>
               {t('한글 문서')}
             </MenuItem>
-            <MenuItem hint="MD" onClick={() => void download(report.id, 'md', report.title)}>
+            <MenuItem hint="MD" onClick={() => void afterSaving(() => download(report.id, 'md', report.title))}>
               {t('마크다운 원문')}
             </MenuItem>
-            <MenuItem icon={<Printer size={14} />} onClick={() => window.print()}>
+            <MenuItem icon={<Printer size={14} />} onClick={() => void afterSaving(() => window.print())}>
               {t('인쇄')}
             </MenuItem>
           </Dropdown></RibbonGroup>}
@@ -1857,7 +1864,7 @@ export function ReportPanel({
               )}
             </div>
           ) : (
-          <article className="doc-web mx-auto max-w-2xl px-6 py-6" style={docVariables() as React.CSSProperties}>
+          <article className="doc-web mx-auto max-w-2xl px-6 py-6" style={{ ...docVariables(), fontFamily: fontFamilyFor(report.design?.font) } as React.CSSProperties}>
             <h1 className="mb-6 font-semibold tracking-tight">{report.title}</h1>
             {report.sections.map((s, sectionIndex) => (
               <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4">

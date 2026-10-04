@@ -2,6 +2,7 @@ import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, P
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { recencyBucket } from '@/lib/days'
 import { kindMeta } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -9,6 +10,18 @@ import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
+
+/** `visible` split into consecutive recency buckets, in the order the rows already have. */
+function groupByRecency(rows: Session[], t: (s: string) => string): [string, Session[]][] {
+  const groups: [string, Session[]][] = []
+  for (const row of rows) {
+    const bucket = recencyBucket(row.updatedAt, t)
+    const last = groups[groups.length - 1]
+    if (last && last[0] === bucket) last[1].push(row)
+    else groups.push([bucket, [row]])
+  }
+  return groups
+}
 
 const rowBase =
   'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
@@ -323,14 +336,16 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {visible.length > 0 && (
-            <section className="mb-3">
-              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                {t('작업 목록')}
-              </p>
-              <div className="space-y-0.5">{visible.map(renderRow)}</div>
-            </section>
-          )}
+          {visible.length > 0 &&
+            // Newest first, under 오늘 · 어제 · 지난 7일 · 지난 30일 · 이전 headings.
+            groupByRecency(visible, t).map(([bucket, rows]) => (
+              <section key={bucket} className="mb-3">
+                <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                  {bucket}
+                </p>
+                <div className="space-y-0.5">{rows.map(renderRow)}</div>
+              </section>
+            ))}
           {hidden > 0 && (
             <button
               ref={moreRef}

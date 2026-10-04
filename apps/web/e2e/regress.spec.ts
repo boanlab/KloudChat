@@ -62,7 +62,7 @@ test('대화 안에서 모델을 바꾸면 그 대화에 반영된다', async ({
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 180_000 })
 
   // pickLocal may land on 3.5 or 3.6.
-  const picker = page.getByRole('button', { name: /qwen3\.[56]/i }).first()
+  const picker = page.getByRole('button', { name: /qwen3\.8/i }).first()
   await expect(picker).toBeVisible({ timeout: 60_000 })
 
   // Any other catalogue model, not one named here.

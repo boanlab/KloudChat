@@ -406,7 +406,7 @@ test('개인정보 결정 재시도가 선택 스킬을 보존하고 두 SSE를 
   })
 })
 
-test('늦은 409는 새 초안에서 고른 스킬을 덮어쓰지 않는다', async ({ page }) => {
+test('늦은 409는 새 초안에서 고른 스킬을 덮어쓰지 않고, 먼저 고른 스킬도 남긴다', async ({ page }) => {
   await mockSkillWorkspace(page)
   await page.unroute(sessionsCollection)
   const fakeId = 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd'
@@ -469,8 +469,10 @@ test('늦은 409는 새 초안에서 고른 스킬을 덮어쓰지 않는다', a
   await expect(modal).toBeVisible()
   await modal.getByRole('button', { name: '편집으로 돌아가기' }).click()
 
+  // Skills stay on for the conversation: the one picked before the send and the one
+  // picked while the request was out are both there after 편집으로 돌아가기.
   await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '초안 구조화 제거' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '초안 구조화 제거' })).toBeVisible()
 })
 
 test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 번만 남는다', async ({ page }) => {

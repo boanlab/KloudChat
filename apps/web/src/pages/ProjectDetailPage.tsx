@@ -614,6 +614,11 @@ export function ProjectDetailPage() {
                       <span className="block text-xs text-faint">
                         {f.sourceUrl ? t('웹페이지 스냅샷') : f.size} · {t('{n} 토큰').replace('{n}', formatTokens(f.tokens))} · {relativeTime(f.addedAt)}
                       </span>
+                      {f.error && (
+                        <span className="block text-xs text-warn">
+                          {t('내용을 읽지 못함: {error}').replace('{error}', f.error)}
+                        </span>
+                      )}
                     </span>
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>

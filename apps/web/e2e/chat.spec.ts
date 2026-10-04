@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 /** Picks the local model. */
 async function useLocalModel(page: import('@playwright/test').Page) {
   await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
+  await page.getByRole('button', { name: /qwen3\.8/i }).first().click()
 }
 
 test('메시지를 보내면 토큰이 스트리밍되고 답이 남는다', async ({ page }) => {

@@ -10,6 +10,7 @@ type T = (text: string) => string
 const SKILLS = '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.'
 
 const REFUSALS: Record<string, string> = {
+  session_busy: '이 대화는 아직 답을 쓰고 있습니다. 답이 끝나거나 중지한 뒤 보내 주세요.',
   agent_disabled:
     '이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다. 에이전트 화면에서 다시 켜거나 다른 대화를 시작하세요.',
   agent_not_found: '이 대화의 에이전트를 더는 찾을 수 없습니다. 새 대화를 시작하세요.',
@@ -24,6 +25,7 @@ const REFUSALS: Record<string, string> = {
   skill_kind_mismatch: SKILLS,
   too_many_skills: SKILLS,
   duplicate_skill_ids: SKILLS,
+  skill_not_allowed_by_agent: '이 에이전트는 그 스킬을 허용하지 않습니다. 스킬을 빼고 보내거나 다른 에이전트를 쓰세요.',
   model_unavailable: '이 모델은 지금 이 화면에서 쓸 수 없습니다. 모델을 바꿔 다시 시도하세요.',
   model_not_allowed: '이 계정에 허용되지 않은 모델입니다. 모델을 바꿔 다시 시도하세요.',
   no_models_available: '지금 사용할 수 있는 모델이 없습니다. 관리자에게 문의하세요.',
@@ -43,6 +45,12 @@ export function refusalSentence(code: string, t: T): string | undefined {
   if (!code) return undefined
   const known = REFUSALS[code]
   if (known) return t(known)
+  if (code.startsWith('skill_tools_unavailable:')) {
+    return t('고른 스킬에 필요한 도구({tool})를 이 모델이나 경로에서 쓸 수 없습니다. 스킬을 빼거나 모델을 바꿔 다시 보내세요.').replace(
+      '{tool}',
+      code.slice('skill_tools_unavailable:'.length),
+    )
+  }
   if (code.startsWith('blocked_category:')) {
     return t('관리자 정책이 이 요청을 막았습니다 ({code}).').replace(
       '{code}',
@@ -63,6 +71,10 @@ export function streamFailureSentence(
   if (code === 'upstream_unreachable') {
     sentence = t(
       '모델 서버에 연결할 수 없습니다. 관리자가 설정 → 시스템 → 연동의 게이트웨이 주소와 상태를 확인해야 합니다.',
+    )
+  } else if (code === 'context_length_exceeded') {
+    sentence = t(
+      '대화가 모델의 문맥 길이를 넘었습니다. 첨부를 줄이거나 문맥이 더 큰 모델을 고르거나 새 대화에서 이어 가세요.',
     )
   } else if (status === '401' || status === '403') {
     sentence = t('모델 서버가 인증을 거부했습니다. 관리자가 LiteLLM 키를 확인해야 합니다.')
