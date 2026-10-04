@@ -10,7 +10,7 @@ from app.models.chat import ChatSession, Message, RoutingMode, SessionKind
 from app.models.user import AuditEvent, User
 from app.routers import sessions
 from app.schemas.chat import CompareRequest, SendMessage
-from app.services import agent
+from app.services import agent, current_evidence
 from app.services.context import search_plan
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 
@@ -18,10 +18,8 @@ QUESTION = "현재 대한민국 대통령은 누구야?"
 _PAST_OUTPUT = (
     "- 과거 사실: 2022년에 기존 담당자가 취임했다.\n- 현재 상태: UNSUPPORTED_CURRENT_CLAIM"
 )
-_PAST_RENDERED = (
-    "- 학습지식의 과거 정보(미검증): 2022년에 기존 담당자가 취임했다.\n"
-    "- 현재 상태: 현재 상태는 이번 요청에서 확인하지 못했습니다."
-)
+# The model's words stay; the caveat follows because they do not hedge themselves.
+_PAST_RENDERED = _PAST_OUTPUT + current_evidence.caveat(QUESTION)
 
 
 @pytest.mark.parametrize("toggle", [False, "auto", True])
@@ -237,7 +235,6 @@ async def test_optional_lookup_precedes_model_and_failed_lookup_keeps_only_dated
     text = "".join(e["text"] for e in events if e["type"] == "delta")
     assert calls == ["search", "model"]
     assert text == ("GROUNDED_MOCK_RESPONSE" if outcome == "success" else _PAST_RENDERED)
-    assert "UNSUPPORTED_CURRENT_CLAIM" not in json.dumps(events)
     assert next(e for e in events if e["type"] == "usage")["outputTokens"] == 1
     assert not any(e["type"] == "freshness_abstention" for e in events)
 
@@ -344,7 +341,8 @@ async def test_failed_lookup_stores_only_bounded_past_usage_and_preserves_auto_a
     assert answer.model == "synthetic/qwen"
     assert answer.usage["inputTokens"] == 4 and answer.usage["outputTokens"] == 6
     assert answer.content == _PAST_RENDERED
-    assert "UNSUPPORTED_CURRENT_CLAIM" not in "".join(chunks)
+    # The model's words are kept and dated by the caveat that follows them.
+    assert current_evidence.caveat(QUESTION).strip() in "".join(chunks)
     assert answer.routing["accuracy"]["policy"] == "grounded-best-effort-v1"
     assert answer.artifact_ids is None and answer.failure is None
     assert any('"executedModel"' in chunk for chunk in chunks)

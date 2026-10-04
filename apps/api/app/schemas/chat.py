@@ -28,6 +28,8 @@ class MessageOut(Wire):
     attachments: list | None = None
     usage: dict | None = None
     variants: list | None = None
+    #: Earlier answers to the same question, oldest first; see `Message.superseded`.
+    superseded: list | None = None
     model: str | None = None
     routing: dict | None = None
     #: Artifacts this turn produced, rendered in place of the answer.
@@ -251,6 +253,8 @@ class SessionOut(Wire):
     render_template_id: str | None = None
     #: A generation awaiting an answer or approval, or null.
     pending: dict | None = None
+    #: Skills that stay on for this conversation; see `ChatSession.skill_ids`.
+    skill_ids: list | None = None
     pinned: bool
     created_at: datetime
     updated_at: datetime
@@ -330,6 +334,8 @@ class SessionPatch(Wire):
     routing_mode: RoutingMode | None = None
     project_id: str | None = None
     render_template_id: str | None = Field(default=None, max_length=60)
+    #: The conversation's standing skills; `[]` switches them all off.
+    skill_ids: list[str] | None = Field(default=None, max_length=3)
 
     @field_validator("routing_mode", mode="before")
     @classmethod

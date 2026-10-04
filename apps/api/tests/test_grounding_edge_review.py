@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services import agent, freshness
+from app.services import agent, current_evidence, freshness
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
 
@@ -141,7 +141,9 @@ async def test_current_fact_terminal_result_is_nonempty_and_masked_without_a_mod
     assert text.strip()
     assert "SYNTHETIC_PRIVATE_VALUE" not in text
     if terminal:
-        # A terminal result from an unapproved reader cannot become current evidence.
-        assert text == "The current state was not verified in this request."
+        # A terminal result from an unapproved reader cannot become current evidence:
+        # the answer is given, masked, and ends with the unverified caveat.
+        assert text.startswith("[MASKED]")
+        assert text.endswith(current_evidence.caveat("Current exercise"))
         assert any(event["type"] == "privacy_route" for event in events)
     assert events[-1] == {"type": "usage", "inputTokens": 0, "outputTokens": 0}

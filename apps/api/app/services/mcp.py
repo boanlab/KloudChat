@@ -57,13 +57,18 @@ def substitute(env: dict[str, str] | None, *, user_id: str, user_email: str) -> 
 # ── stdio ──────────────────────────────────────────────────────────────
 
 
+#: Environment keys a stdio server inherits; everything else (DB URL, master key, …) stays.
+_INHERITED_ENV = frozenset({"PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "PYTHONIOENCODING"})
+
+
 class _StdioSession:
     """One server process for the life of a `with` block."""
 
     def __init__(self, command: str, env: dict[str, str]):
         self.command = command
-        # Inherit PATH etc.; the server's own vars win.
-        self.env = {**os.environ, **env}
+        # Only what a child needs to run — never the API's own secrets. The server's
+        # own vars win over these.
+        self.env = {**{k: v for k, v in os.environ.items() if k in _INHERITED_ENV}, **env}
         self.proc: asyncio.subprocess.Process | None = None
         self._id = 0
 

@@ -640,8 +640,9 @@ async def execute_code(args: dict[str, Any]) -> ToolResult:
 WEB_SEARCH = Tool(
     name="web_search",
     description=(
-        "웹을 검색하고 상위 결과의 본문을 읽어 옵니다. 최신 정보, 뉴스, 통계, "
-        "모델이 모르는 사실을 확인할 때 사용하세요. 논문·학술 자료는 kind=papers, "
+        "웹을 검색하고 상위 결과의 본문을 읽어 옵니다. 최신 정보, 뉴스, 통계처럼 "
+        "바깥세상의 사실을 확인할 때 사용하세요. 이 대화 안의 내용이나 사용자가 준 "
+        "자료를 찾는 데는 쓰지 않습니다. 논문·학술 자료는 kind=papers, "
         "코드·라이브러리·오류 메시지는 kind=code, 시사·사건은 kind=news 로 검색하면 "
         "그 분야 엔진이 함께 답합니다. 공식 출처가 필요하면 site 나 official 을, "
         "최근 것만 필요하면 time_range 를, 해외 자료는 language=en 을 주세요."
@@ -1193,9 +1194,9 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
 CREATE_CHART = Tool(
     name="create_chart",
     description=(
-        "수치를 막대/선 그래프로 그려 사용자 화면 옆에 띄웁니다. 비교·추이·분포처럼 "
-        "값이 여러 개인 결과를 보여 줄 때 쓰세요. 표로 충분한 두세 개 값이나, "
-        "근거 없이 지어낸 수치에는 쓰지 마세요."
+        "수치를 막대/선 그래프로 그려 사용자 화면 옆에 띄웁니다. 사용자가 그래프·차트·"
+        "시각화를 요청했거나 분명히 기대할 때만 쓰세요. 경향을 묻는 질문에는 말로 답하고 "
+        "그리지 않습니다. 표로 충분한 두세 개 값이나, 근거 없이 지어낸 수치에는 쓰지 마세요."
     ),
     parameters={
         "type": "object",
@@ -1297,6 +1298,8 @@ SHARE_NOTE = Tool(
         "조사 결과, 확정된 사실, 정해진 방침, 다음 사람이 지켜야 할 제약처럼 "
         "이 요청이 끝난 뒤에도 유효한 것만 남기세요. "
         "이번 답변으로 끝나는 설명이나 사용자에게 할 말은 남기지 마세요. "
+        "사용자가 이 대화에서 정한 답의 형식·길이·언어·말투 규칙도 남기지 마세요 — "
+        "대화 자체가 기억하므로, 그냥 그 규칙대로 답하면 됩니다. "
         "같은 key 로 다시 부르면 이전 내용을 덮어씁니다."
     ),
     parameters={
@@ -1349,12 +1352,74 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     return tools
 
 
+def skill_tool(skills: list[tuple[str, str, str]]) -> Tool:
+    """`use_skill`: the installed skills the person did not switch on, offered by their
+    `when_to_use` so the model can reach for one itself — the way a skill is meant
+    to be found — and read its instructions for the rest of the turn.
+
+    `skills`: `(name, when_to_use, body)` for each candidate.
+    """
+    by_name = {name: (when, body) for name, when, body in skills}
+    listed = "; ".join(
+        f"「{name}」 — {' '.join((when or '').split())[:120] or '설명 없음'}"
+        for name, when, _ in skills
+    )
+
+    async def run(args: dict[str, Any]) -> ToolResult:
+        name = str(args.get("name") or "").strip().strip("「」\"'")
+        if name not in by_name:
+            return ToolResult(
+                content=(
+                    f"'{name}' 이라는 스킬은 없습니다. 쓸 수 있는 스킬: "
+                    + ", ".join(by_name) + "."
+                ),
+                failed=True,
+            )
+        when, body = by_name[name]
+        text = body.strip() or when.strip()
+        return ToolResult(
+            content=(
+                f"# 스킬 「{name}」의 지침\n"
+                "사용자가 설치해 둔 스킬입니다. 이 턴의 답은 아래 지침을 따라 쓰되, 사용자가 "
+                "이 대화에서 정한 길이·형식·언어 규칙이 있으면 그 규칙이 우선합니다. "
+                "지침이 이번 요청에 맞지 않으면 그냥 무시하고 평소대로 답합니다. 스킬을 "
+                "썼다, 안 맞았다, 다른 형식으로 하겠다 같은 말은 답에 쓰지 않습니다 — "
+                "사용자는 결과만 봅니다.\n\n"
+                + text
+            ),
+            detail=f"「{name}」 적용",
+        )
+
+    return Tool(
+        name="use_skill",
+        description=(
+            "사용자가 설치해 둔 스킬 중 이번 요청에 맞는 것을 골라 그 지침을 받아 옵니다. "
+            "요청이 아래 어느 스킬의 쓸 때에 분명히 해당하면 답을 쓰기 전에 한 번 호출하세요; "
+            "해당하는 것이 없거나 요청이 아직 모호하면 호출하지 마세요. 스킬 이름을 답에서 "
+            "언급하거나 권하지 않습니다 — 조용히 쓰거나 쓰지 않을 뿐입니다. 스킬: " + listed
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "스킬 이름(목록의 「」 안 그대로)"}
+            },
+            "required": ["name"],
+        },
+        run=run,
+        label="스킬 적용 중",
+        title="스킬 적용",
+        read_only=True,
+    )
+
+
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
     """Search tool over preloaded documents — an agent's knowledge, a conversation's
     uploads — since tools hold no DB session.
 
-    `collection`: vector index collection merged in when set.
+    `collection`: vector index collection(s) merged in when set; several are
+    comma-separated (a project's and, for uploads indexed before it, the chat's own).
     """
+    collections = [key for key in (collection or "").split(",") if key.strip()]
 
     # The description lists each document's headings so the model knows what the shelf covers.
     def _outline(text: str, limit: int = 12) -> str:
@@ -1382,8 +1447,19 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
             return ToolResult(content="검색어가 비어 있습니다.", failed=True)
         passages, ranked = knowledge.gather(documents, query)
         # Vector hits are merged with, not preferred over, the lexical scorer's.
-        if collection and ranked:
-            hits = await index_client.search(collection=collection, query=query)
+        if collections and ranked:
+            hits = []
+            for key in collections:
+                hits.extend(await index_client.search(collection=key, query=query) or [])
+            # A vector hit for a document no longer on the shelf (deleted, moved, or
+            # an entry the index failed to drop) is not evidence.
+            living = {name for name, _, _ in documents} | {
+                str(doc_id) for _, _, doc_id in documents if doc_id
+            }
+            hits = [
+                h for h in hits
+                if str(h.get("document") or "") in living or str(h.get("doc_id") or "") in living
+            ]
             if hits:
                 passages = knowledge.merge(hits, passages)
         if not passages:

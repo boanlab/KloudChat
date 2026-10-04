@@ -27,6 +27,7 @@ from app.services.tools.builtin import (
     WEB_SEARCH,
     available_builtins,
     knowledge_tool,
+    skill_tool,
 )
 
 log = logging.getLogger(__name__)
@@ -122,11 +123,13 @@ async def build_tools(
     knowledge_collection: str = "",
     include_connectors: bool = True,
     strict_local: bool = False,
+    skills: list[tuple[str, str, str]] | None = None,
 ) -> list[Tool]:
     """The turn's tool list.
 
     `allowed`: None inherits everything the user has, [] denies all, a list is a hard filter.
     `knowledge`: the agent's documents, offered as `search_knowledge` under the same allowlist.
+    `skills`: installed skills not switched on, offered as `use_skill` for the model to pick.
     """
     if strict_local:
         # Only in-process built-ins; no connectors, no vector retrieval. `share_note`
@@ -151,6 +154,8 @@ async def build_tools(
         tools = [t for t in tools if t.name in keep]
     if knowledge and (allowed is None or "search_knowledge" in allowed):
         tools.append(knowledge_tool(knowledge, knowledge_collection))
+    if skills and (allowed is None or "use_skill" in allowed):
+        tools.append(skill_tool(skills))
     return tools
 
 

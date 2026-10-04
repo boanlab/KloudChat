@@ -8,7 +8,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, status
-from sqlmodel import col, select
+from sqlmodel import col, select, update
 
 from app.core.config import settings
 from app.core.db import SessionLocal
@@ -19,9 +19,9 @@ from app.models.workspace import Artifact, ArtifactKind, Job, JobStatus, StoredF
 from app.schemas.chat import JobOut, VideoJobRequest
 from app.services import chat as chat_service
 from app.services import files as file_service
+from app.services import governance, settings_store, videogen
 from app.services import litellm as litellm_service
 from app.services import models as model_service
-from app.services import settings_store, videogen
 from app.services.credits import settle
 
 log = logging.getLogger(__name__)
@@ -101,6 +101,19 @@ async def _poll_until_done(job_id: str) -> None:
             return
 
         if progress.status in ("completed", "succeeded", "success") and progress.url:
+            # One finisher per clip, across replicas: the first to flip the stage owns the
+            # download, the artifact and the charge; a cancel that landed first wins.
+            async with SessionLocal() as db:
+                claimed = await db.exec(
+                    update(Job)
+                    .where(
+                        Job.id == job_id, Job.status == JobStatus.running, Job.stage != "저장 중"
+                    )
+                    .values(stage="저장 중")
+                )
+                await db.commit()
+            if getattr(claimed, "rowcount", 0) != 1:
+                return
             try:
                 data = await videogen.fetch(
                     base_url=base_url, master_key=master_key, provider_job_id=provider_id
@@ -114,7 +127,8 @@ async def _poll_until_done(job_id: str) -> None:
             async with SessionLocal() as db:
                 user = await db.get(User, user_id)
                 job = await db.get(Job, job_id)
-                if user is None or job is None:
+                if user is None or job is None or job.status != JobStatus.running:
+                    # Cancelled while downloading: nothing is stored or charged.
                     return
                 db.add(
                     StoredFile(
@@ -213,9 +227,24 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
     if session is None or session.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
+    # The same gate every external call passes: policy first, then the filter, then
+    # this account's model allowlist.
+    policy = await settings_store.egress_policy()
+    hit = (
+        governance.blocked_by(payload.prompt, policy.blocked_categories)
+        if policy.intent_filter
+        else None
+    )
+    if hit:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"blocked_category:{hit}"
+        )
     catalogue = await model_service.list_models()
     model = model_service.find(catalogue["models"], payload.model or "")
     model_id = (model or {}).get("id") or payload.model or ""
+    allowed = set(user.allowed_models or [])
+    if allowed and model_id not in allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="model_not_allowed")
     cost = videogen.price_usd(
         model_id,
         resolution=payload.resolution,

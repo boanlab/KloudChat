@@ -384,9 +384,10 @@ class StoreSkillOut(SkillOut):
 
 class SkillIn(Wire):
     name: str = Field(min_length=1, max_length=120)
-    description: str = ""
-    when_to_use: str = ""
-    body: str = ""
+    description: str = Field(default="", max_length=2_000)
+    when_to_use: str = Field(default="", max_length=2_000)
+    #: A skill is a page or two of instructions; past this it crowds the conversation out.
+    body: str = Field(default="", max_length=24_000)
     kinds: list[str] | None = None
     required_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
@@ -492,7 +493,9 @@ class AgentIn(Wire):
     slug: str | None = Field(default=None, max_length=60)
     description: str = ""
     model: str = ""
-    system_prompt: str = ""
+    #: Project-instruction sized: long enough for a full persona, bounded so it cannot
+    #: eat the window.
+    system_prompt: str = Field(default="", max_length=24_000)
     #: Null (or omitted) inherits every tool/skill; `[]` denies all.
     tools: list[str] | None = None
     skill_ids: list[str] | None = None

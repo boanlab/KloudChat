@@ -235,6 +235,21 @@ def _agent_block(agent: Agent | None) -> str:
     return f"# 역할\n{agent.system_prompt.strip()}"
 
 
+#: Share of the file budget project knowledge keeps even when attachments took the rest.
+_KNOWLEDGE_FLOOR = 0.25
+
+
+def knowledge_budget_after(file_budget: int, spent_on_files: int) -> int:
+    """Characters project knowledge may take once this turn's and earlier files took theirs."""
+    return max(file_budget - spent_on_files, int(file_budget * _KNOWLEDGE_FLOOR))
+
+
+def _project_instructions(project: Project | None) -> str:
+    if project is None or not project.instructions.strip():
+        return ""
+    return f"# 프로젝트 지침 — {project.name}\n{project.instructions.strip()}"
+
+
 async def _project_blocks(
     db: AsyncSession,
     user: User,
@@ -243,12 +258,20 @@ async def _project_blocks(
     budget: int | None = None,
 ) -> tuple[str, str, list[ContextFile]]:
     """Returns trusted instructions, untrusted project knowledge, and its cost."""
-    if project is None:
-        return "", "", []
+    knowledge, used = await _project_knowledge(db, user, project, focus, budget)
+    return _project_instructions(project), knowledge, used
 
-    instructions = ""
-    if project.instructions.strip():
-        instructions = f"# 프로젝트 지침 — {project.name}\n{project.instructions.strip()}"
+
+async def _project_knowledge(
+    db: AsyncSession,
+    user: User,
+    project: Project | None,
+    focus: str = "",
+    budget: int | None = None,
+) -> tuple[str, list[ContextFile]]:
+    """Untrusted project knowledge within `budget`, and each file's fate."""
+    if project is None:
+        return "", []
 
     files = (
         await db.exec(
@@ -263,14 +286,20 @@ async def _project_blocks(
     readable = [f for f in files if f.text]
     # Shelves within budget are sent whole; larger ones are searched by passage.
     total = sum(len(f.text) for f in readable)
-    if total <= (budget or settings.file_context_chars) or not focus.strip():
+    passages = (
+        knowledge_service.search(
+            [(f.name, f.text, f.source_url) for f in readable], focus, limit=8
+        )
+        if total > (budget or settings.file_context_chars) and focus.strip()
+        else []
+    )
+    if not passages:
+        # Fits whole, no question to search by, or nothing matched: the files
+        # themselves, excerpted around the focus where one is too long.
         knowledge, used = _knowledge_block(
             readable, header="# 프로젝트 지식", focus=focus, budget=budget
         )
     else:
-        passages = knowledge_service.search(
-            [(f.name, f.text, f.source_url) for f in readable], focus, limit=8
-        )
         by_name: dict[str, list] = {}
         for passage in passages:
             by_name.setdefault(passage.document, []).append(passage)
@@ -310,8 +339,8 @@ async def _project_blocks(
                     locations,
                 )
             )
-        knowledge = "\n\n".join(parts) if passages else ""
-    return instructions, knowledge, used
+        knowledge = "\n\n".join(parts)
+    return knowledge, used
 
 
 def _focus_terms(focus: str, text: str) -> list[str]:
@@ -340,15 +369,17 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
     # each word weighs by its rarity and its length: 「제290조」 once outweighs
     # 「조항」 everywhere.
     window = 1_000
-    windows = [w.lower() for w in (text[i : i + window] for i in range(0, len(text), window))]
+    windows = [text[i : i + window] for i in range(0, len(text), window)]
+    # Matching is case-insensitive; the text handed on keeps its own case.
+    lowered = [w.lower() for w in windows]
     span = max(1, budget // window)
     if len(windows) <= span:
         return text[:budget]
     weights = {
-        term: len(term) * math.log((len(windows) + 1) / (1 + sum(term in w for w in windows)))
+        term: len(term) * math.log((len(windows) + 1) / (1 + sum(term in w for w in lowered)))
         for term in terms
     }
-    scores = [sum(weights[term] * w.count(term) for term in terms) for w in windows]
+    scores = [sum(weights[term] * w.count(term) for term in terms) for w in lowered]
 
     best_at, best = 0, -1
     for start in range(0, len(windows) - span + 1):
@@ -569,9 +600,18 @@ async def _resolve_starting_template(
 
 
 async def _starting_skill_blocks(
-    db: AsyncSession, starting_template_id: str | None, kind: SessionKind, already: set[str]
+    db: AsyncSession,
+    starting_template_id: str | None,
+    kind: SessionKind,
+    already: set[str],
+    available_tool_names: set[str] | None = None,
 ) -> list[ContextBlock]:
-    """The catalogue skills a built-in starting point carries, as blocks."""
+    """The catalogue skills a built-in starting point carries, as blocks.
+
+    A skill whose required tool this turn does not have is left out, as a
+    hand-picked one would be refused: a 「execute_code로 검산하라」 instruction on
+    a model with no tools only produces a claim of having done so.
+    """
     builtin = prompt_templates.get(starting_template_id)
     if builtin is None or not builtin.skills:
         return []
@@ -591,6 +631,10 @@ async def _starting_skill_blocks(
         if skill is None or skill.name in already:
             continue
         if skill.kinds and kind.value not in skill.kinds:
+            continue
+        if available_tool_names is not None and any(
+            tool not in available_tool_names for tool in (skill.required_tools or [])
+        ):
             continue
         head = f"# 시작점 스킬 — {skill.name}"
         body = skill.body.strip() or skill.description.strip()
@@ -731,9 +775,7 @@ async def assemble(
     agent = await _load_agent(db, user, session)
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project)
-    instructions, knowledge, knowledge_files = await _project_blocks(
-        db, user, project, focus, file_budget
-    )
+    instructions = _project_instructions(project)
     # Memories are chat-only; not loaded elsewhere so the context step reports none.
     if session.kind is SessionKind.chat:
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
@@ -765,7 +807,11 @@ async def assemble(
         # Catalogue skills the starting point carries; ones already activated by name are skipped.
         blocks.extend(
             await _starting_skill_blocks(
-                db, starting_template_id, session.kind, {skill.name for skill, _ in resolved}
+                db,
+                starting_template_id,
+                session.kind,
+                {skill.name for skill, _ in resolved},
+                available_tool_names,
             )
         )
     if memories:
@@ -861,6 +907,20 @@ async def assemble(
                     )
                     for stored in earlier
                 )
+    # Project knowledge shares the one file budget with this turn's attachments and
+    # the carried ones, as in a project whose files and uploads fill one context:
+    # it takes what they left, never less than a quarter of the budget, so a big
+    # upload narrows the knowledge to the relevant passages instead of doubling
+    # the fixed cost and pushing the conversation itself out of the window.
+    # Knowledge is read around what was asked: the explicit focus (a document
+    # surface's answers) when there is one, else the question itself.
+    whole_budget = file_budget or settings.file_context_chars
+    knowledge_budget = knowledge_budget_after(
+        whole_budget, sum(f.kept_chars for f in (*attached_files, *carried_files))
+    )
+    knowledge, knowledge_files = await _project_knowledge(
+        db, user, project, focus or question, knowledge_budget
+    )
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
     # Last trusted block, closest to the material it describes.

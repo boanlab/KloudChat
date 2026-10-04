@@ -101,6 +101,30 @@ async def test_a_retry_uses_the_stored_words_not_the_echo(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_retry_after_reload_restores_the_turn_options(monkeypatch):
+    """Search and starting-point choices survive the browser that sent them."""
+    failed_q = _question("q1", "저장된 질문", failure=TurnFailure.no_answer)
+    failed_q.routing = {
+        "turnOptions": {
+            "webSearch": "auto",
+            "activatedSkillIds": [],
+            "startingTemplateId": "t_debug",
+        }
+    }
+    db = _Transcript(_chat(), [failed_q])
+    _capture_chat_turn(monkeypatch)
+
+    # These are the defaults a freshly loaded Retry button sends.
+    await _send(db, SendMessage(content="저장된 질문", retry_of="q1"))
+
+    assert failed_q.routing["turnOptions"] == {
+        "webSearch": "auto",
+        "activatedSkillIds": [],
+        "startingTemplateId": "t_debug",
+    }
+
+
+@pytest.mark.asyncio
 async def test_only_the_latest_question_can_be_rerun(monkeypatch):
     """A retry of anything but the latest question is refused with 409."""
     db = _Transcript(

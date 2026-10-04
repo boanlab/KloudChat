@@ -5,7 +5,7 @@ from test_calculation_read_prerequisites import _call
 from test_current_evidence import _mock_model, _tool, _visible
 from test_plain_chat_tools import _routed_turn
 
-from app.services import agent, freshness
+from app.services import agent, current_evidence, freshness
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import SearchEvidence, ToolContext, ToolResult
 
@@ -57,8 +57,8 @@ async def test_offline_current_rate_calculation_never_releases_guessed_operand(m
     assert context.tool_calls == {"calculate": 1}
     visible = _visible(events)
     assert visible.strip()
-    assert "156000" not in visible
-    assert "1300" not in visible
+    # The computation is shown, and the guessed rate it rests on is marked unverified.
+    assert visible.endswith(current_evidence.caveat(QUESTION))
 
 
 @pytest.mark.asyncio
@@ -74,8 +74,9 @@ async def test_failed_current_lookup_stops_before_any_model_or_calculation(monke
     assert context.tool_calls == {"web_search": 1}
     visible = _visible(events)
     assert visible.strip()
-    assert "156000" not in visible
-    assert "1300" not in visible
+    # No model hop ran, so no guessed number: only the note that the read failed.
+    assert "확인하지 못해" in visible
+    assert "156000" not in visible and "1300" not in visible
     assert sum(event["type"] == "delta" for event in events) == 1
 
 

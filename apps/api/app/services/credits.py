@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from math import ceil
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -114,8 +115,12 @@ def settle(
     if credits <= 0:
         return
     surface = surface or surface_for(reason)
-    user.credits_used += credits
+    # An atomic SQL increment, not read-add-write: two turns of one account settling
+    # at once must both land. The loaded object carries the new value for this request.
+    before = int(user.credits_used or 0)
+    user.credits_used = User.credits_used + credits  # type: ignore[assignment]
     db.add(user)
+    set_committed_value(user, "credits_used", before + credits)
     db.add(
         CreditLedger(
             user_id=user.id,

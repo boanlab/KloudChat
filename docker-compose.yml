@@ -88,7 +88,7 @@ services:
       JWT_SECRET: ${KCHAT_JWT_SECRET:?set KCHAT_JWT_SECRET — openssl rand -hex 32}
       SECRET_KEY: ${KCHAT_SECRET_KEY:-}
       SIGNUP_MODE: ${KCHAT_SIGNUP_MODE:-approval}
-      DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.6-35b}
+      DEFAULT_CHAT_MODEL: ${KCHAT_DEFAULT_CHAT_MODEL:-local/qwen3.8-27b}
       # Per-surface defaults. Empty falls back to DEFAULT_CHAT_MODEL.
       DEFAULT_REPORT_MODEL: ${KCHAT_DEFAULT_REPORT_MODEL:-}
       DEFAULT_SLIDES_MODEL: ${KCHAT_DEFAULT_SLIDES_MODEL:-}
@@ -97,7 +97,7 @@ services:
       DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
       # Conversation titles and memory extraction. A name the gateway does not
       # serve falls back to the session's own model.
-      TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.6-35b}
+      TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.8-27b}
       # Applied only when the database holds no accounts. Blank: the first
       # signup becomes the administrator.
       BOOTSTRAP_ADMIN_EMAIL: ${KCHAT_ADMIN_EMAIL:-}

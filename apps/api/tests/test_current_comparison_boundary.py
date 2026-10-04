@@ -1,4 +1,4 @@
-"""Unretrieved current claims never stream or persist through comparison columns."""
+"""Unretrieved current claims stream through comparison columns with their caveat."""
 
 import json
 from copy import deepcopy
@@ -19,7 +19,7 @@ from app.services import current_evidence
     "- 현재 상태: UNSUPPORTED_NAME입니다.",
     "",
 ])
-async def test_current_comparison_displays_only_constrained_background(monkeypatch, raw):
+async def test_current_comparison_streams_the_answer_with_its_caveat(monkeypatch, raw):
     user, session, _, rows, _, _ = _persistence(monkeypatch)
     model = _external_model("synthetic/local")
     request = "현재 Acme의 CEO는 누구야?"
@@ -42,7 +42,8 @@ async def test_current_comparison_displays_only_constrained_background(monkeypat
     ]
     expected = current_evidence.render(raw, request)
     assert _visible_text(events, model=model["id"]) == expected
-    assert "UNSUPPORTED_NAME" not in json.dumps(events)
+    # The words stay (they are dated by the caveat), and the caveat is there.
+    assert raw.strip() == "" or expected.endswith(current_evidence.caveat(request))
     stored = next(row for row in rows if isinstance(row, Message))
     assert stored.content == expected
     assert stored.variants[0]["usage"] == {"inputTokens": 10, "outputTokens": 20}
