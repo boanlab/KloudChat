@@ -332,7 +332,10 @@ async def test_explicit_total_preserves_retold_slots_through_writing_and_export(
         expected_titles.pop(1)
     assert [slide["title"] for slide in slides] == expected_titles
     assert len(slides) == expected_count
-    assert len(calls) == 1
+    # One draft writes the deck; the only further calls ask for notes a body slide lacks,
+    # and none of them touches the slide count.
+    assert len(calls) >= 1
+    assert all("노트" in str(call) for call in calls[1:])
     assert len([e for e in events if e["type"] == "slide" and e.get("done")]) == expected_count
     assert all(e["progress"]["total"] == expected_count for e in events if "progress" in e)
     assert all(deck.has_content(slide) or slide["layout"] in deck._STRUCTURAL for slide in slides)

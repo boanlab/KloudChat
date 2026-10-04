@@ -6,6 +6,7 @@ needing OCR are reported as unreadable.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -258,11 +259,37 @@ def _from_pdf(data: bytes) -> str:
     return text
 
 
+#: An Office or HWPX archive may unpack to this much, over this many entries; more
+#: is a zip bomb, not a document.
+_MAX_UNPACKED = 64 * 1024 * 1024
+_MAX_ENTRIES = 4_000
+_MAX_MEMBER = 32 * 1024 * 1024
+
+
+def _open_zip(data: bytes) -> zipfile.ZipFile:
+    """The archive, after its declared sizes were checked against the limits above."""
+    archive = zipfile.ZipFile(io.BytesIO(data))
+    infos = archive.infolist()
+    if len(infos) > _MAX_ENTRIES or sum(info.file_size for info in infos) > _MAX_UNPACKED:
+        archive.close()
+        raise RuntimeError("압축 문서가 너무 큽니다.")
+    return archive
+
+
+def _member(archive: zipfile.ZipFile, name: str) -> str:
+    """One member's text, read no further than `_MAX_MEMBER` whatever its header says."""
+    with archive.open(name) as handle:
+        raw = handle.read(_MAX_MEMBER + 1)
+    if len(raw) > _MAX_MEMBER:
+        raise RuntimeError("압축 문서의 항목이 너무 큽니다.")
+    return raw.decode("utf-8", errors="replace")
+
+
 def _from_docx(data: bytes) -> str:
     """Paragraph text from word/document.xml."""
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+    with _open_zip(data) as archive:
         try:
-            xml = archive.read("word/document.xml").decode("utf-8", errors="replace")
+            xml = _member(archive, "word/document.xml")
         except KeyError:
             raise RuntimeError("docx 구조를 읽지 못했습니다.") from None
     # Paragraph boundaries first, then drop every remaining tag.
@@ -273,13 +300,13 @@ def _from_docx(data: bytes) -> str:
 
 
 def _from_pptx(data: bytes) -> str:
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+    with _open_zip(data) as archive:
         slides = sorted(
             n for n in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)
         )
         out = []
         for i, name in enumerate(slides, 1):
-            xml = archive.read(name).decode("utf-8", errors="replace")
+            xml = _member(archive, name)
             xml = re.sub(r"</a:p>", "\n", xml)
             body = re.sub(r"<[^>]+>", "", xml).strip()
             if body:
@@ -289,10 +316,10 @@ def _from_pptx(data: bytes) -> str:
 
 def _from_xlsx(data: bytes) -> str:
     """Sheet values via the shared-strings table. Formulas are not evaluated."""
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+    with _open_zip(data) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
-            raw = archive.read("xl/sharedStrings.xml").decode("utf-8", errors="replace")
+            raw = _member(archive, "xl/sharedStrings.xml")
             shared = [re.sub(r"<[^>]+>", "", m) for m in re.findall(r"<si>(.*?)</si>", raw, re.S)]
 
         sheets = sorted(
@@ -308,7 +335,9 @@ def _from_xlsx(data: bytes) -> str:
                     attrs, body = cell
                     value = re.search(r"<v>(.*?)</v>", body, re.S)
                     if not value:
-                        cells.append("")
+                        # An inline string has no <v>; its text sits in <is><t>.
+                        inline = re.findall(r"<t[^>]*>(.*?)</t>", body, re.S)
+                        cells.append("".join(inline) if 't="inlineStr"' in attrs else "")
                         continue
                     raw = value.group(1)
                     if 't="s"' in attrs:  # index into the shared-strings table
@@ -330,7 +359,7 @@ def _from_hwpx(data: bytes) -> str:
     import xml.etree.ElementTree as ET
 
     try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
+        archive = _open_zip(data)
     except zipfile.BadZipFile as exc:
         raise RuntimeError(
             "한글 문서(.hwpx)를 열지 못했습니다. 파일이 손상되었을 수 있습니다."
@@ -348,15 +377,29 @@ def _from_hwpx(data: bytes) -> str:
             root = ET.fromstring(archive.read(name))
         except ET.ParseError:
             continue
-        # Namespaces vary by producer version, so match on the local name.
+        # Namespaces vary by producer version, so match on the local name. A
+        # table cell holds its own paragraphs, so each run is read once — from
+        # its nearest paragraph, not again from every paragraph above it.
+        def local(tag: str) -> str:
+            return tag.rsplit("}", 1)[-1]
+
+        def runs_of(para) -> list[str]:
+            found: list[str] = []
+            stack = list(para)
+            while stack:
+                node = stack.pop(0)
+                name = local(node.tag)
+                if name == "p":
+                    continue
+                if name == "t" and node.text:
+                    found.append(node.text)
+                stack[:0] = list(node)
+            return found
+
         for para in root.iter():
-            if not para.tag.endswith("}p") and para.tag != "p":
+            if local(para.tag) != "p":
                 continue
-            runs = [
-                node.text
-                for node in para.iter()
-                if (node.tag.endswith("}t") or node.tag == "t") and node.text
-            ]
+            runs = runs_of(para)
             if runs:
                 paragraphs.append("".join(runs))
     return "\n".join(paragraphs)
@@ -523,9 +566,11 @@ def is_speech(mime: str) -> bool:
 async def text_of(name: str, mime: str, data: bytes) -> str:
     """The file as text, transcribing audio/video when a backend is configured. Routes call this."""
     if not is_speech(mime):
-        return extract_text(name, mime, data)
+        # CPU-bound parsing in a worker thread: one big upload must not stall the loop.
+        return await asyncio.to_thread(extract_text, name, mime, data)
     if not await transcribe.available():
-        return extract_text(name, mime, data)
+        # CPU-bound parsing in a worker thread: one big upload must not stall the loop.
+        return await asyncio.to_thread(extract_text, name, mime, data)
     if len(data) > transcribe.MAX_BYTES:
         limit = transcribe.MAX_BYTES // (1024 * 1024)
         raise RuntimeError(f"녹음이 너무 깁니다. {limit}MB 이하로 나눠 올려 주세요.")

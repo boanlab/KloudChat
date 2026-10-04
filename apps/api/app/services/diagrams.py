@@ -124,12 +124,45 @@ async def plan(
         ),
     )
     messages = wrap(prompt) if wrap else [{"role": "user", "content": prompt}]
+    usage = {"inputTokens": 0, "outputTokens": 0}
     try:
         text, usage = await complete(model, messages, api_key, 900)
     except Exception as exc:  # noqa: BLE001 — a document without figures is still a document
         log.info("figure planning failed: %s", exc)
-        return [], {"inputTokens": 0, "outputTokens": 0}
-    return parse(text, count=len(parts), limit=limit, eligible=allowed), usage
+        text = "[]"
+    planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
+    if not planned and asks_for_diagrams(request):
+        # The person asked for a 구조도 or 흐름도 in so many words; an empty plan is a miss,
+        # not a judgement. One more look, told what was asked.
+        asked = "·".join(dict.fromkeys(_ASKS_DIAGRAM.findall(request or ""))) or "도식"
+        nudged = prompt + (
+            f"\n\n원래 요청이 {asked}를 명시적으로 요구한다. 요구한 종류마다 그것이 적힌 "
+            "부분을 찾아 하나씩 제안하라(구조가 적힌 부분엔 method, 단계·순서가 적힌 부분엔 "
+            "flow, 두 안의 대비가 적힌 부분엔 compare). 정말 없을 때만 [] 로 답하라."
+        )
+        try:
+            text, more = await complete(
+                model, wrap(nudged) if wrap else [{"role": "user", "content": nudged}], api_key, 900
+            )
+            usage = {k: usage.get(k, 0) + more.get(k, 0) for k in ("inputTokens", "outputTokens")}
+            planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
+        except Exception as exc:  # noqa: BLE001
+            log.info("figure planning retry failed: %s", exc)
+    return planned, usage
+
+
+_ASKS_DIAGRAM = re.compile(
+    r"구조도|흐름도|비교도|개념도|다이어그램|도식|도해|아키텍처\s*(?:그림|도)|"
+    # 「구조와 흐름은 그림으로」: a structure or flow asked for as a picture is a diagram.
+    r"(?:구조|흐름|관계|과정|절차|단계)[^\n.]{0,12}?그림으로|그림으로\s*(?:그려|보여|표현|나타)|시각화|도식화|"
+    r"\b(?:diagram|flowchart|architecture\s+figure)\b",
+    re.I,
+)
+
+
+def asks_for_diagrams(request: str) -> bool:
+    """Whether the request itself names a diagram it wants."""
+    return bool(_ASKS_DIAGRAM.search(request or ""))
 
 
 def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list[Planned]:

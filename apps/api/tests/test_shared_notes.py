@@ -53,7 +53,8 @@ _DDL = (
         design_system_id TEXT,
         render_templates TEXT,
         created_at DATETIME,
-        updated_at DATETIME
+        updated_at DATETIME,
+        index_key TEXT
     )
     """,
     """
@@ -70,6 +71,10 @@ _DDL = (
         render_template_id TEXT,
         index_key TEXT,
         pending TEXT,
+        summary TEXT,
+        skill_ids TEXT,
+        running_turn TEXT,
+        running_since DATETIME,
         pinned BOOLEAN DEFAULT 0,
         created_at DATETIME,
         updated_at DATETIME

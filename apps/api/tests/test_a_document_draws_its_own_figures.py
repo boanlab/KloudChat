@@ -189,8 +189,11 @@ def test_a_figured_slide_keeps_short_words_under_the_figure_and_spills_the_rest(
     }
     deck._words_under_figure(bands)
     assert bands["layout"] == "bullets" and "bands" not in bands
-    assert bands["bullets"] == ["검색기: 찾는다", "계획기: 세운다", "조정기: 고른다"]
-    assert bands["notes"] == "검토기: 되돌린다"
+    # Four short lines are a list the person wrote; they stay whole under the figure.
+    assert bands["bullets"] == [
+        "검색기: 찾는다", "계획기: 세운다", "조정기: 고른다", "검토기: 되돌린다",
+    ]
+    assert not bands.get("notes")
     assert not deck.has_content({"layout": "bullets"})
 
 

@@ -19,10 +19,13 @@ def test_a_style_word_outranks_the_room() -> None:
 
 
 def test_the_subject_decides_the_colour() -> None:
+    """A subject picks from its own few colours, so the same subject's decks differ
+    while none of them wears a colour foreign to it."""
     theme, _ = suggest_look("사내 보안 정책 발표")
-    assert theme == "남색"
-    theme, _ = suggest_look("환경 동아리 교육 자료")
-    assert theme == "초록"
+    assert theme in ("남색", "먹", "청록")
+    theme, _ = suggest_look("환경 동아리 자료")
+    assert theme in ("초록", "청록")
+    assert suggest_look("사내 보안 정책 발표") == suggest_look("사내 보안 정책 발표")
 
 
 def test_two_unnamed_subjects_do_not_share_a_colour_by_default() -> None:
