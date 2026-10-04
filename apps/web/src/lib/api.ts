@@ -6,25 +6,26 @@
  */
 
 import type {
-  Preferences,
+  CostRouting,
+  DesignTokens,
+  EarlierAnswer,
+  FreshnessAbstention,
   Message,
+  MessageRouting,
   ModelInfo,
   PendingPlan,
   PendingQuestion,
+  Preferences,
   PrivacyAction,
   PrivacyRouting,
-  FreshnessAbstention,
-  MessageRouting,
-  ToolResultAnswer,
-  CostRouting,
-  DesignTokens,
+  ReportArtifact,
   Session,
   SessionKind,
   SessionMade,
   Slide,
   Source,
-  ReportArtifact,
   Step,
+  ToolResultAnswer,
   User,
 } from '@/types'
 
@@ -571,6 +572,8 @@ export interface AuditRow {
 export interface GovernancePolicy {
   piiMasking: boolean
   externalDataGuard: boolean
+  /** A turn carrying internal material (attachments, project files, memories) runs strict-local. */
+  internalDataStrictLocal: boolean
   allowUserRawExternal: boolean
   privacySafeModelIds: string[]
   intentFilter: boolean
@@ -777,6 +780,8 @@ export interface MessageRow {
         chosen?: boolean
       }[]
     | null
+  /** Answers a rerun replaced, oldest first. */
+  superseded?: EarlierAnswer[] | null
   usage: Message['usage'] | null
   model: string | null
   routing: MessageRouting | null
@@ -802,6 +807,7 @@ export interface SessionRow {
   artifactId: string | null
   /** A generation waiting to be answered or approved, or null. */
   pending: PendingPlan | null
+  skillIds?: string[] | null
   /** The rendering template this session writes into, if one was picked. */
   renderTemplateId: string | null
   pinned: boolean
@@ -932,6 +938,8 @@ export const sessionsApi = {
       renderTemplateId?: string
       /** Which project it belongs to. `null` takes it out of every project. */
       projectId?: string | null
+      /** The conversation's standing skills; `[]` switches them all off. */
+      skillIds?: string[]
     },
   ) =>
     call<SessionRow>(`/sessions/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

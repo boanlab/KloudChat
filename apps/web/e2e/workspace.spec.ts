@@ -129,7 +129,7 @@ test('커넥터를 설치하면 MCP 서버가 실제로 도구를 보고한다',
 test('첨부한 파일의 내용을 모델이 읽는다', async ({ page }) => {
   await page.goto('/new/chat')
   await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
+  await page.getByRole('button', { name: /qwen3\.8/i }).first().click()
 
   const token = `SENTINEL-${stamp().toUpperCase()}`
   await page.getByLabel('파일 선택').setInputFiles({

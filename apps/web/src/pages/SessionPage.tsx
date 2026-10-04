@@ -1,5 +1,5 @@
-import { Bot, Boxes, Info, Palette, PanelRight, RotateCw } from 'lucide-react'
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ArrowDown, Bot, Boxes, Info, Palette, PanelRight, RotateCw } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
@@ -15,6 +15,11 @@ import { kindMeta } from '@/lib/kinds'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+
+/** Within this many pixels of the bottom the transcript still follows new text. */
+const FOLLOW_GAP_PX = 120
+/** Further than this from the bottom, the 「맨 아래로」 button shows. */
+const AWAY_GAP_PX = 320
 
 /** What a design system changes on each surface; audio and video are unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
@@ -313,11 +318,60 @@ export function SessionPage() {
   const runningProgress = jobs.find(
     (j) => j.sessionId === session?.id && j.status === 'running',
   )?.progress
-  useLayoutEffect(() => {
+  // The transcript follows new text only while the reader is at (or near) the
+  // bottom. Scrolling up to re-read an earlier answer stops the following; a
+  // button offers the way back, and a newly sent question re-engages it.
+  const following = useRef(true)
+  // Set while the component's own smooth scroll is in flight: those scroll events
+  // are not the reader leaving the bottom.
+  const settling = useRef(false)
+  const [awayFromBottom, setAwayFromBottom] = useState(false)
+  const measureFollowing = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: streaming ? 'auto' : 'smooth' })
-  }, [timeline.length, lastLength, runningProgress, streaming])
+    const gap = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (settling.current) {
+      if (gap < FOLLOW_GAP_PX) settling.current = false
+      return
+    }
+    following.current = gap < FOLLOW_GAP_PX
+    setAwayFromBottom(gap > AWAY_GAP_PX)
+  }, [])
+  const scrollToBottom = useCallback((behavior: ScrollBehavior) => {
+    const el = scrollRef.current
+    if (!el) return
+    following.current = true
+    setAwayFromBottom(false)
+    settling.current = behavior === 'smooth'
+    el.scrollTo({ top: el.scrollHeight, behavior })
+    // A smooth scroll that never reaches the bottom (content kept growing) must not pin this.
+    if (settling.current) window.setTimeout(() => { settling.current = false }, 800)
+  }, [])
+  const lastMessageId = session?.messages.at(-1)?.id
+  const lastRole = session?.messages.at(-1)?.role
+  useLayoutEffect(() => {
+    // A question the reader just sent always brings the bottom into view.
+    if (lastRole === 'user') following.current = true
+  }, [lastMessageId, lastRole])
+  useLayoutEffect(() => {
+    if (!following.current) return
+    scrollToBottom(streaming ? 'auto' : 'smooth')
+  }, [timeline.length, lastLength, runningProgress, streaming, scrollToBottom])
+  // A new conversation opens at the bottom.
+  useEffect(() => {
+    following.current = true
+    setAwayFromBottom(false)
+  }, [session?.id])
+  // Screen readers hear when an answer has landed; the text itself is read on demand.
+  const wasStreaming = useRef(false)
+  const [announcement, setAnnouncement] = useState('')
+  const lastError = session?.messages.at(-1)?.error
+  useEffect(() => {
+    if (wasStreaming.current && !streaming) {
+      setAnnouncement(lastError ? t('답변이 실패했습니다') : t('답변이 도착했습니다'))
+    }
+    wasStreaming.current = !!streaming
+  }, [streaming, lastError, t])
 
   // Applied once the session is loaded, then cleared so a closed panel stays closed.
   useEffect(() => {
@@ -399,10 +453,18 @@ export function SessionPage() {
       />
 
       <div className="relative flex min-h-0 flex-1">
+        <div className="sr-only" aria-live="polite" role="status">
+          {announcement}
+        </div>
         <div className="flex min-w-0 flex-1 flex-col">
           {session && timeline.length > 0 ? (
             <>
-              <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+              <div
+                ref={scrollRef}
+                onScroll={measureFollowing}
+                className="relative min-h-0 flex-1 overflow-y-auto"
+                data-testid="transcript"
+              >
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
                   {/* Per-message boundary: one malformed turn loses only its own bubble. */}
                   {timeline.map((item, i) =>
@@ -414,6 +476,7 @@ export function SessionPage() {
                             message={item.m}
                             sessionId={session.id}
                             streaming={streaming && i === timeline.length - 1}
+                            last={i === timeline.length - 1}
                           />
                         </ErrorBoundary>
                       </Fragment>
@@ -424,6 +487,20 @@ export function SessionPage() {
                   {proposalAt === timeline.length && proposal}
                 </div>
               </div>
+              {awayFromBottom && (
+                <div className="pointer-events-none relative">
+                  <button
+                    type="button"
+                    onClick={() => scrollToBottom('smooth')}
+                    aria-label={t('맨 아래로')}
+                    title={t('맨 아래로')}
+                    data-testid="scroll-to-bottom"
+                    className="pointer-events-auto absolute bottom-3 left-1/2 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-line bg-elevated text-muted shadow-md transition-colors hover:text-fg"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
+                </div>
+              )}
               <Composer
                 sessionId={session.id}
                 kind={kind}

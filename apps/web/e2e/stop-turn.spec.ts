@@ -9,7 +9,7 @@ test('중단은 그 자리에서 보이고, 다시 열어도 같은 말을 한�
 
   await page.goto('/new/chat')
   await page.getByRole('button', { name: /qwen|glm|claude|gpt|gemini|grok|deepseek|kimi|hy3|mimo/i }).first().click()
-  await page.getByRole('button', { name: /qwen3\.6/i }).first().click()
+  await page.getByRole('button', { name: /qwen3\.8/i }).first().click()
   await page.getByLabel('프롬프트 입력').fill('우주 탐사의 역사를 연도별로 2,000자 이상 아주 자세히 써줘.')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })

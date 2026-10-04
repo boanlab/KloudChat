@@ -6,11 +6,13 @@ type RibbonTab<T extends string = string> = {
   label: string
 }
 
-/** A labelled command group inside a ribbon tab, like Office's Clipboard or Font group. */
-export function RibbonGroup({ label, children }: { label: string; children: ReactNode }) {
+/** A labelled command group inside a ribbon tab, like Office's Clipboard or Font group.
+ *  A `wide` group (a whole formatting toolbar) takes a row of its own and wraps inside it;
+ *  the others keep their width and move to the next row whole. */
+export function RibbonGroup({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
-    <section aria-label={label} className="flex min-w-max items-center px-1.5 first:pl-0 last:pr-0">
-      <div className="flex items-center gap-px [&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:not([data-variant=primary]):hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10">
+    <section aria-label={label} data-wide={wide ? '' : undefined} className={cn('flex items-center px-1.5 first:pl-0 last:pr-0', wide ? 'min-w-0 max-w-full' : 'min-w-max')}>
+      <div className={cn('flex items-center gap-px', wide && 'flex-wrap gap-y-1', '[&_button]:h-8 [&_button]:min-w-8 [&_button]:flex-row [&_button]:gap-1.5 [&_button]:rounded-sm [&_button]:border-0 [&_button:not([data-variant=primary])]:bg-transparent [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_button]:font-medium [&_button]:leading-none [&_button]:shadow-none [&_button:not([data-variant=primary]):hover]:bg-elevated [&_button[aria-pressed=true]]:bg-accent/10 [&_button[aria-pressed=true]]:text-accent [&_button:not([data-variant=primary]):disabled]:bg-transparent [&_svg]:shrink-0 max-sm:[&_button]:h-10 max-sm:[&_button]:min-w-10')}>
         {children}
       </div>
     </section>
@@ -92,7 +94,9 @@ export function ArtifactRibbon<T extends string>({
         <div
           role="toolbar"
           aria-label={tabs.find((tab) => tab.id === active)?.label}
-          className="flex w-max min-w-full items-center overflow-visible bg-transparent divide-x divide-line/80 [&>div]:flex [&>div]:shrink-0"
+          // Groups wrap onto a second row when the panel is narrow: a command past the
+          // edge, 저장 above all, is a command the person never finds.
+          className="flex min-w-full flex-wrap items-center gap-y-1 overflow-visible bg-transparent divide-x divide-line/80 [&>div]:flex [&>div]:shrink-0 [&>div:has([data-wide])]:min-w-0 [&>div:has([data-wide])]:basis-full [&>div:has([data-wide])]:border-l-0"
         >
           {commands.map((child, index) => (
             <div key={index}>{child}</div>

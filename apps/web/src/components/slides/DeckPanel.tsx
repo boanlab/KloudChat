@@ -56,6 +56,7 @@ import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { copyText } from '@/lib/clipboard'
+import { fontFamilyFor } from '@/components/report/docType'
 
 /** Whether a slide has content in any field; mirrors `deck.has_content` on the server. */
 export function hasContent(slide: Slide): boolean {
@@ -431,7 +432,7 @@ export function SlideView({
   index?: number
   total?: number
   /** Deck-level design: accent, footer line, logo, visual style. */
-  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: VisualStyle }
+  brand?: { accent?: string; footer?: string; logo?: string; visualStyle?: VisualStyle; font?: 'gothic' | 'serif' | string }
   /** Makes the text `contentEditable`; edits come back through `onEdit` as a whole slide. */
   editable?: boolean
   onEdit?: (next: Slide) => void
@@ -529,6 +530,9 @@ export function SlideView({
   // set compact. Beside it they would narrow the figure until it cannot be read.
   const figured = Boolean(slide.diagram?.source)
   const figureAlone = figured && !hasWords(slide)
+  // A picture with no words beside it is the slide: it takes the whole content area,
+  // as the exporters already give it.
+  const imageAlone = Boolean(slide.image?.src) && !figured && !hasWords(slide)
   useLayoutEffect(() => {
     if (!onOverflow || !canvas.current) return
     const root = canvas.current
@@ -602,6 +606,7 @@ export function SlideView({
           background,
           padding: px(34),
           paddingLeft: inSplit ? px(34 + 160 + 20) : px(34),
+          fontFamily: fontFamilyFor(brand?.font),
           ...KOREAN_WRAP,
         }}
       >
@@ -1126,7 +1131,7 @@ export function SlideView({
               <div
                 className={cn('flex min-h-0 shrink-0 flex-col overflow-hidden', figured && !figureAlone ? 'justify-start' : 'justify-center', selectedElement === 'image' && 'ring-2 ring-accent ring-offset-2')}
                 style={{
-                  width: pending || figured ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'medium']),
+                  width: pending || figured || imageAlone ? '100%' : ({ small: '32%', medium: '42%', large: '54%', full: '100%' }[slide.image?.size ?? 'large']),
                   order: (slide.image?.position ?? 'right') === 'left' ? 1 : 2,
                   gap: px(6),
                 }}
@@ -2643,9 +2648,10 @@ export function DeckPanel({
   const editBar = !slide ? null : (
             <div
               aria-label={t('슬라이드 편집 도구')}
+              // Tools wrap onto a second row rather than hide past the panel's edge.
               className={editToolbarSlot
-                ? 'flex items-center gap-1'
-                : 'sticky top-0 z-10 flex min-h-12 items-center gap-1 overflow-x-auto border-b border-line bg-panel/95 px-3 py-1.5 shadow-sm backdrop-blur'}
+                ? 'flex flex-wrap items-center gap-1'
+                : 'sticky top-0 z-10 flex min-h-12 flex-wrap items-center gap-1 border-b border-line bg-panel/95 px-3 py-1.5 shadow-sm backdrop-blur'}
             >
               <span className="mr-2 shrink-0 text-xs font-medium text-muted">
                 {t('{n}번 장').replace('{n}', String(index + 1))}
@@ -2733,6 +2739,7 @@ export function DeckPanel({
                       <button
                         key={command}
                         type="button"
+                        disabled={selectedElement === 'image'}
                         aria-label={label}
                         title={label}
                         aria-pressed={selectionFormat[state]}
@@ -2743,14 +2750,14 @@ export function DeckPanel({
                         {icon}
                       </button>
                     ))}
-                    <select aria-label={t('선택한 글자 크기')} value={Math.min(200, Math.max(80, selectionFormat.size))} onMouseDown={rememberFormattingRange} onChange={(event) => sizeSelection(Number(event.target.value))} className="h-8 rounded-control border-0 bg-transparent px-1 text-xs text-fg outline-none hover:bg-elevated">
+                    <select aria-label={t('선택한 글자 크기')} disabled={selectedElement === 'image'} value={Math.min(200, Math.max(80, selectionFormat.size))} onMouseDown={rememberFormattingRange} onChange={(event) => sizeSelection(Number(event.target.value))} className="h-8 rounded-control border-0 bg-transparent px-1 text-xs text-fg outline-none hover:bg-elevated">
                       {[80, 100, 120, 140, 160, 200].map((value) => <option key={value} value={value}>{value}%</option>)}
                     </select>
                     <label className="relative grid size-8 cursor-pointer place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" title={t('선택한 글자 색')} onMouseDown={rememberFormattingRange}>
                       <Palette size={15} />
-                      <input type="color" aria-label={t('선택한 글자 색')} defaultValue="#1a1a1a" onChange={(event) => formatSelection('foreColor', event.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+                      <input type="color" aria-label={t('선택한 글자 색')} disabled={selectedElement === 'image'} defaultValue="#1a1a1a" onChange={(event) => formatSelection('foreColor', event.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
                     </label>
-                    <button type="button" aria-label={t('선택한 글자 서식 지우기')} title={t('선택한 글자 서식 지우기')} onMouseDown={(event) => { event.preventDefault(); rememberFormattingRange() }} onClick={() => formatSelection('removeFormat')} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg"><Eraser size={15} /></button>
+                    <button type="button" aria-label={t('선택한 글자 서식 지우기')} disabled={selectedElement === 'image'} title={t('선택한 글자 서식 지우기')} onMouseDown={(event) => { event.preventDefault(); rememberFormattingRange() }} onClick={() => formatSelection('removeFormat')} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg"><Eraser size={15} /></button>
                   </div>
                   <div className="mx-1 h-6 w-px shrink-0 bg-line" aria-hidden="true" />
                   <div className="flex shrink-0 items-center gap-0.5 rounded-control border border-line bg-panel p-0.5" role="group" aria-label={t('레이아웃')}>
@@ -2821,8 +2828,8 @@ export function DeckPanel({
                   )}
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-1">
-                    <Button size="sm" disabled={editHistory.length < 2} onClick={undoEdit} aria-label={t('슬라이드 편집 실행 취소')}><Undo2 size={14} /></Button>
-                    <Button size="sm" disabled={!editFuture.length} onClick={redoEdit} aria-label={t('슬라이드 편집 다시 실행')}><Redo2 size={14} /></Button>
+                    <Button size="sm" disabled={editHistory.length < 2} onClick={undoEdit} aria-label={t('슬라이드 편집 실행 취소')} title={editHistory.length < 2 ? t('되돌릴 편집이 아직 없습니다') : t('실행 취소')}><Undo2 size={14} /></Button>
+                    <Button size="sm" disabled={!editFuture.length} onClick={redoEdit} aria-label={t('슬라이드 편집 다시 실행')} title={editFuture.length ? t('다시 실행') : t('다시 실행할 편집이 없습니다')}><Redo2 size={14} /></Button>
                   </div>
                 </>
               ) : null}
@@ -2866,6 +2873,13 @@ export function DeckPanel({
               void startEditing()
               return
             }
+            // Leaving 「편집」 with nothing changed ends the edit, so the next tab shows
+            // its own commands; unsaved changes keep the editor (and 저장·취소) around.
+            if (tab !== 'edit' && editing && !bulkMode && !hasUnsavedEdit) {
+              setEditing(false)
+              setSlideDraft(null)
+              setSelectedElement(null)
+            }
             setRibbon(tab)
           }}
         >
@@ -2893,7 +2907,7 @@ export function DeckPanel({
         )}
         </RibbonGroup>}
         {ribbon === 'edit' && (editing || bulkMode) && (
-          <RibbonGroup label={t('슬라이드 편집')}>
+          <RibbonGroup wide label={t('슬라이드 편집')}>
             <div ref={setEditToolbarSlot} className="flex items-center" />
           </RibbonGroup>
         )}
@@ -3043,7 +3057,7 @@ export function DeckPanel({
             setError(null)
           }}
         /></RibbonGroup>}
-        {ribbon === 'edit' && editing && <RibbonGroup label={t('저장')}>
+        {editing && <RibbonGroup label={t('저장')}>
           <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
             <X size={14} />{t('취소')}
           </Button>

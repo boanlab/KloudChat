@@ -150,6 +150,8 @@ export interface Session {
   artifactId: string | null
   /** A generation stopped and waiting on the person; while set, typing answers it rather than starting a new turn. */
   pending: PendingPlan | null
+  /** Skills switched on for the whole conversation; picked once, kept for later turns. */
+  skillIds: string[]
   /** Sticky rendering template; null is the surface's built-in track. */
   renderTemplateId: string | null
 }
@@ -266,6 +268,10 @@ export interface Step {
   /** Which halves of 개인 맞춤 설정 shaped the turn. */
   personal?: string[]
   estimatedTokens?: number
+  /** Earlier messages the model's window could not hold, replaced by a summary. */
+  summarisedTurns?: number
+  /** Whether a summary was actually written for them. */
+  summarised?: boolean
 }
 
 /** One model's answer inside a comparison turn. */
@@ -300,6 +306,15 @@ export interface StartingPoint {
   examplePrompt?: string
 }
 
+/** An answer a rerun replaced; kept so the reader can page back to it. */
+export interface EarlierAnswer {
+  id: string
+  content: string
+  model?: string | null
+  usage?: Message['usage'] | null
+  createdAt?: string | null
+}
+
 export interface Message {
   id: string
   /** The id came from a stored transcript, not a local optimistic turn. */
@@ -308,6 +323,8 @@ export interface Message {
   content: string
   /** Present instead of `content` when the turn was run as a model comparison. */
   variants?: Variant[]
+  /** Earlier answers to the same question, oldest first; the conversation continues from this one. */
+  superseded?: EarlierAnswer[]
   createdAt: string
   model?: string | null
   routing?: MessageRouting

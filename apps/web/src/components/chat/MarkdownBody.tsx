@@ -1,5 +1,5 @@
-import { Check, Copy } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Check, Copy, X } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkCjkFriendly from 'remark-cjk-friendly'
@@ -20,11 +20,149 @@ import { useT } from '@/lib/useT'
 const EMBEDDED_PICTURE =
   /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i
 
+/** An inline picture that opens full-size on click; Escape or a click outside closes it. */
+function ZoomableImage({ src, alt }: { src: string | undefined; alt: string }) {
+  const t = useT()
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+  return (
+    <span className="my-3 block">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={t('그림 크게 보기')}
+        className="block max-w-full cursor-zoom-in rounded-card border border-line"
+      >
+        <img src={src} alt={alt} className="block h-auto max-w-full rounded-card" />
+      </button>
+      {alt ? <span className="mt-1.5 block text-base text-muted">{alt}</span> : null}
+      {open && (
+        <span
+          role="dialog"
+          aria-modal="true"
+          aria-label={alt || t('그림')}
+          onClick={() => setOpen(false)}
+          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-4"
+        >
+          <img src={src} alt={alt} className="max-h-full max-w-full rounded-card object-contain" />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label={t('닫기')}
+            className="absolute top-3 right-3 grid size-9 place-items-center rounded-full bg-black/60 text-white hover:bg-black/80"
+          >
+            <X size={18} />
+          </button>
+        </span>
+      )}
+    </span>
+  )
+}
+
+type Highlighter = typeof import('highlight.js/lib/core').default
+let highlighterPromise: Promise<Highlighter> | null = null
+
+/** highlight.js core plus the languages a chat answer is likely to carry, loaded on first use. */
+function loadHighlighter(): Promise<Highlighter> {
+  highlighterPromise ??= Promise.all([
+    import('highlight.js/lib/core'),
+    import('highlight.js/lib/languages/python'),
+    import('highlight.js/lib/languages/javascript'),
+    import('highlight.js/lib/languages/typescript'),
+    import('highlight.js/lib/languages/bash'),
+    import('highlight.js/lib/languages/json'),
+    import('highlight.js/lib/languages/yaml'),
+    import('highlight.js/lib/languages/sql'),
+    import('highlight.js/lib/languages/xml'),
+    import('highlight.js/lib/languages/css'),
+    import('highlight.js/lib/languages/java'),
+    import('highlight.js/lib/languages/c'),
+    import('highlight.js/lib/languages/cpp'),
+    import('highlight.js/lib/languages/csharp'),
+    import('highlight.js/lib/languages/go'),
+    import('highlight.js/lib/languages/rust'),
+    import('highlight.js/lib/languages/kotlin'),
+    import('highlight.js/lib/languages/swift'),
+    import('highlight.js/lib/languages/php'),
+    import('highlight.js/lib/languages/ruby'),
+    import('highlight.js/lib/languages/r'),
+    import('highlight.js/lib/languages/diff'),
+    import('highlight.js/lib/languages/dockerfile'),
+    import('highlight.js/lib/languages/markdown'),
+  ])
+    .then(([core, ...languages]) => {
+    const hljs = core.default
+    const names = [
+      'python', 'javascript', 'typescript', 'bash', 'json', 'yaml', 'sql', 'xml', 'css',
+      'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'kotlin', 'swift', 'php', 'ruby', 'r',
+      'diff', 'dockerfile', 'markdown',
+    ]
+    names.forEach((name, i) => hljs.registerLanguage(name, languages[i].default))
+    hljs.registerAliases(['js', 'jsx', 'mjs'], { languageName: 'javascript' })
+    hljs.registerAliases(['ts', 'tsx'], { languageName: 'typescript' })
+    hljs.registerAliases(['sh', 'shell', 'zsh', 'console'], { languageName: 'bash' })
+    hljs.registerAliases(['html', 'svg'], { languageName: 'xml' })
+    hljs.registerAliases(['yml'], { languageName: 'yaml' })
+    hljs.registerAliases(['py'], { languageName: 'python' })
+    hljs.registerAliases(['rs'], { languageName: 'rust' })
+    hljs.registerAliases(['cs'], { languageName: 'csharp' })
+    hljs.registerAliases(['md'], { languageName: 'markdown' })
+    hljs.registerAliases(['docker'], { languageName: 'dockerfile' })
+    return hljs
+    })
+    .catch((error: unknown) => {
+      // A chunk that failed to load (a deploy mid-session) is tried again next time.
+      highlighterPromise = null
+      throw error
+    })
+  return highlighterPromise
+}
+
+//: Highlighting waits for the text to stop changing: while an answer streams, the
+//: block grows every frame and re-tokenising it each time is wasted work.
+const SETTLE_MS = 300
+
+//: Above this, highlighting is skipped: a pasted log is not worth the parse.
+const HIGHLIGHT_LIMIT = 20_000
+
+/** Highlighted HTML for `text`, or null until the highlighter is in and the language known. */
+function useHighlighted(text: string, lang: string | undefined): string | null {
+  // Keyed by the source, so a block whose text changed shows plain text until its
+  // own highlight arrives rather than the previous block's colours.
+  const key = `${lang ?? ''}\u0000${text}`
+  const [done, setDone] = useState<{ key: string; html: string } | null>(null)
+  useEffect(() => {
+    let current = true
+    if (!lang || lang === 'text' || lang === 'plaintext' || text.length > HIGHLIGHT_LIMIT) return
+    const timer = window.setTimeout(() => {
+      void loadHighlighter()
+        .then((hljs) => {
+          if (!current || !hljs.getLanguage(lang)) return
+          setDone({ key, html: hljs.highlight(text, { language: lang, ignoreIllegals: true }).value })
+        })
+        .catch(() => {})
+    }, SETTLE_MS)
+    return () => {
+      current = false
+      window.clearTimeout(timer)
+    }
+  }, [key, text, lang])
+  return done?.key === key ? done.html : null
+}
+
 function CodeBlock({ children, className }: { children: ReactNode; className?: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
   const lang = /language-(\w+)/.exec(className ?? '')?.[1]
   const text = String(children).replace(/\n$/, '')
+  const highlighted = useHighlighted(text, lang)
 
   return (
     <div className="group relative my-3 overflow-hidden rounded-card border border-line bg-elevated">
@@ -43,7 +181,12 @@ function CodeBlock({ children, className }: { children: ReactNode; className?: s
         </button>
       </div>
       <pre className="overflow-x-auto px-3 py-2.5 text-base leading-relaxed">
-        <code className="font-mono">{text}</code>
+        {highlighted ? (
+          // highlight.js escapes the source; only its own span markup is added.
+          <code className="hljs font-mono" dangerouslySetInnerHTML={{ __html: highlighted }} />
+        ) : (
+          <code className="font-mono">{text}</code>
+        )}
       </pre>
     </div>
   )
@@ -226,14 +369,7 @@ export function MarkdownBody({
           },
           // Alt text doubles as the caption. Spans, not <figure>: a <figure> inside a <p> is closed early.
           img: ({ src, alt }) => (
-            <span className="my-3 block">
-              <img
-                src={typeof src === 'string' ? src : undefined}
-                alt={alt ?? ''}
-                className="block h-auto max-w-full rounded-card border border-line"
-              />
-              {alt ? <span className="mt-1.5 block text-base text-muted">{alt}</span> : null}
-            </span>
+            <ZoomableImage src={typeof src === 'string' ? src : undefined} alt={alt ?? ''} />
           ),
           pre: ({ children }) => <>{children}</>,
         }}

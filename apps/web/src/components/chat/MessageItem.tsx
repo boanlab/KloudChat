@@ -3,6 +3,8 @@ import {
   BarChart3,
   Calculator,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleStop,
   Copy,
   Download,
@@ -198,10 +200,13 @@ function MessageItemInner({
   message,
   sessionId,
   streaming,
+  last,
 }: {
   message: Message
   sessionId: string
   streaming?: boolean
+  /** The newest row of the transcript: the only answer that can be regenerated. */
+  last?: boolean
 }) {
   const t = useT()
   const artifacts = useStore((s) => s.artifacts)
@@ -229,6 +234,15 @@ function MessageItemInner({
   const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
+  // Earlier answers to the same question (‹ k/n ›); `null` shows the current one.
+  // The choice is keyed to the row and its draft count, so a new answer shows itself.
+  const drafts = message.superseded ?? []
+  const draftsKey = `${message.id}:${drafts.length}`
+  const [view, setView] = useState<{ key: string; index: number | null }>({ key: draftsKey, index: null })
+  const viewing = view.key === draftsKey ? view.index : null
+  const setViewing = (index: number | null) => setView({ key: draftsKey, index })
+  const shownContent =
+    viewing !== null && drafts[viewing] ? drafts[viewing].content : message.content
   const [fileError, setFileError] = useState<string | null>(null)
   const [opening, setOpening] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -321,7 +335,7 @@ function MessageItemInner({
               <Pencil size={14} />
             </Button>
           )}
-          {copyButton('프롬프트 복사')}
+          {copyButton(t('프롬프트 복사'))}
         </span>
         <div className="max-w-[80%] space-y-2">
           {startedFrom && (
@@ -560,7 +574,14 @@ function MessageItemInner({
             messageId={message.id}
           />
         ) : message.content ? (
-          <Markdown>{message.content}</Markdown>
+          <>
+            {viewing !== null && (
+              <Badge className="mb-2">
+                {t('이전 답변')} · {(drafts[viewing]?.model && models.find((m) => m.id === drafts[viewing]?.model)?.label) || drafts[viewing]?.model || ''}
+              </Badge>
+            )}
+            <Markdown>{shownContent}</Markdown>
+          </>
         ) : (
           // Only while the turn is running and nothing is there to read yet.
           !failed &&
@@ -636,7 +657,7 @@ function MessageItemInner({
                   <span>
                     <span className="block text-base font-medium">{a.title}</span>
                     <span className="block text-xs text-faint">
-                      {artifactLabel[a.kind]} · v{a.version}
+                      {t(artifactLabel[a.kind])} · v{a.version}
                     </span>
                   </span>
                 </button>
@@ -672,6 +693,50 @@ function MessageItemInner({
               <ThumbsDown size={14} />
             </Button>
             </span>
+            {drafts.length > 0 && (
+              <span
+                className="ml-1 flex items-center gap-0.5 text-xs"
+                aria-label={t('이 질문의 답변 {k}/{n}')
+                  .replace('{k}', String((viewing ?? drafts.length) + 1))
+                  .replace('{n}', String(drafts.length + 1))}
+              >
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('이전 답변 보기')}
+                  disabled={(viewing ?? drafts.length) === 0}
+                  onClick={() => setViewing(Math.max(0, (viewing ?? drafts.length) - 1))}
+                >
+                  <ChevronLeft size={14} />
+                </Button>
+                <span className="tabular-nums">
+                  {(viewing ?? drafts.length) + 1}/{drafts.length + 1}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('다음 답변 보기')}
+                  disabled={viewing === null}
+                  onClick={() => {
+                    const next = (viewing ?? drafts.length) + 1
+                    setViewing(next >= drafts.length ? null : next)
+                  }}
+                >
+                  <ChevronRight size={14} />
+                </Button>
+              </span>
+            )}
+            {last && !failed && !madeHere && !streaming && sessionKind === 'chat' && askedAbove?.persisted && (
+              <span className="ml-1">
+                <RetryActions
+                  sessionId={sessionId}
+                  messageId={askedAbove.id}
+                  prompt={askedAbove.content}
+                  kind="chat"
+                  label="다시 생성"
+                />
+              </span>
+            )}
             {message.usage && user?.preferences.showUsage !== false && (
               <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')}>
                 {freshness

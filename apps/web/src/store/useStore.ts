@@ -1,4 +1,5 @@
 import type { WebSearchSetting } from '@/lib/api'
+import { forgetStoredDraft, purgeStoredDrafts } from '@/lib/drafts'
 import { create } from 'zustand'
 import { applyBrand } from '@/lib/brand'
 import {
@@ -91,8 +92,13 @@ import { currentLang, translate, type Lang } from '@/lib/i18n'
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
 
-/** Send options per user-message id, so 다시 시도 resends the same turn. Not persisted. */
+/**
+ * Send options per user-message id for an immediate retry. The server also
+ * persists the durable subset so retry keeps its behaviour after a reload.
+ */
 const sentWith = new Map<string, SendOptions>()
+/** Answers a rerun is replacing, by question id, until the new answer row takes them. */
+const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
 
 type Theme = 'light' | 'dark' | 'system'
 type SidebarMode = 'full' | 'rail' | 'hidden'
@@ -359,6 +365,8 @@ interface State {
   ) => Promise<string>
   stopStreaming: (sessionId: string) => void
   renameSession: (id: string, title: string) => Promise<void>
+  /** Sets the skills that stay on for a conversation; `[]` switches them all off. */
+  setSessionSkills: (id: string, skillIds: string[]) => Promise<void>
   setSessionTemplate: (id: string, templateId: string | null) => Promise<void>
   moveSessionToProject: (id: string, projectId: string | null) => Promise<void>
   deleteSession: (id: string) => Promise<void>
@@ -827,6 +835,24 @@ function reconcileCompareModels(current: string[], available: ModelInfo[]): stri
   return valid.slice(0, 3)
 }
 
+const SIGNED_OUT_KEY = 'kchat-signed-out'
+/** Whether this browser last left the app signed out; storage may be unavailable. */
+function knownSignedOut(): boolean {
+  try {
+    return localStorage.getItem(SIGNED_OUT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function rememberSignedOut(out: boolean) {
+  try {
+    if (out) localStorage.setItem(SIGNED_OUT_KEY, '1')
+    else localStorage.removeItem(SIGNED_OUT_KEY)
+  } catch {
+    // No storage: the next load simply asks the server.
+  }
+}
+
 export const useStore = create<State>((set, get) => ({
   user: null,
   accountEpoch: 0,
@@ -842,8 +868,16 @@ export const useStore = create<State>((set, get) => ({
   bootstrap: async () => {
     if (inFlight) return inFlight
     inFlight = (async () => {
+      // A browser that signed out (or whose refresh already failed) has no cookie
+      // to present; asking anyway only logs a 401 on every load.
+      if (knownSignedOut()) {
+        set({ authenticated: false, user: null, authLoading: false })
+        inFlight = null
+        return
+      }
       try {
         const session = await auth.refresh()
+        rememberSignedOut(false)
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })
         void authConfig
@@ -867,6 +901,7 @@ export const useStore = create<State>((set, get) => ({
         cancelRefresh()
         disarmIdleWatch()
         setAccessToken(null)
+        rememberSignedOut(true)
         set({ authenticated: false, user: null, authLoading: false })
       } finally {
         inFlight = null
@@ -880,6 +915,7 @@ export const useStore = create<State>((set, get) => ({
       messageEdit: null, messageEditBusy: false }))
     try {
       const session = await auth.login(email, password)
+      rememberSignedOut(false)
       setAccessToken(session.accessToken)
       set({ authenticated: true, user: session.user, authLoading: false, signedOutReason: null })
       scheduleRefresh(session.expiresIn, () => void get().bootstrap())
@@ -927,6 +963,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   logout: async (reason) => {
+    // Half-typed questions must not outlive the account on a shared machine.
+    purgeStoredDrafts(get().user?.id)
     set((state) => ({ accountEpoch: state.accountEpoch + 1,
       messageEdit: null, messageEditBusy: false, composerRestore: null,
       pendingAttachment: null, draft: '' }))
@@ -938,6 +976,7 @@ export const useStore = create<State>((set, get) => ({
     cancelRefresh()
     disarmIdleWatch()
     setAccessToken(null)
+    rememberSignedOut(true)
     // Invalidates any workspace load still in flight for the previous account.
     touchWorkspace()
     set({
@@ -1490,6 +1529,15 @@ export const useStore = create<State>((set, get) => ({
     })
     const rerun = (messages: Message[]): Message[] => {
       const at = messages.findIndex((m) => m.id === retryOf)
+      // The answer being rerun stays reachable behind the new one (‹ k/n ›).
+      const kept = messages
+        .slice(at + 1)
+        .filter((m) => m.role === 'assistant' && m.content && !m.failure && !m.error)
+        .flatMap((m) => [
+          ...(m.superseded ?? []),
+          { id: m.id, content: m.content, model: m.model, usage: m.usage, createdAt: m.createdAt },
+        ])
+      if (retryOf && kept.length) earlierAnswers.set(retryOf, kept)
       return [
         ...messages.slice(0, at),
         { ...messages[at], failure: undefined, error: undefined },
@@ -1641,11 +1689,16 @@ export const useStore = create<State>((set, get) => ({
   },
 
   stopStreaming: (sessionId) => {
-    // Told to the server first: it cannot otherwise tell 중단 from a closed tab.
+    // A closed response is deliberately *not* a stop on the server. Wait for
+    // the explicit stop request to be acknowledged before closing it; the
+    // timeout keeps a broken control request from trapping the UI forever.
     const abort = get().running[sessionId]
     if (!abort) return
-    void sessionsApi.stop(sessionId).catch(() => undefined)
-    abort()
+    const fallback = window.setTimeout(abort, 2_000)
+    void sessionsApi.stop(sessionId).catch(() => undefined).finally(() => {
+      window.clearTimeout(fallback)
+      abort()
+    })
   },
 
   setSessionTemplate: async (id, templateId) => {
@@ -1670,6 +1723,10 @@ export const useStore = create<State>((set, get) => ({
   renameSession: async (id, title) => {
     set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, title } : c)) }))
     await sessionsApi.update(id, { title }).catch(() => get().loadSessions())
+  },
+  setSessionSkills: async (id, skillIds) => {
+    set((s) => ({ sessions: s.sessions.map((c) => (c.id === id ? { ...c, skillIds } : c)) }))
+    await sessionsApi.update(id, { skillIds }).catch(() => get().loadSessions())
   },
   retryJob: async (job) => {
     // Jobs are video only; the failed card is dropped rather than duplicated.
@@ -1873,6 +1930,11 @@ export const useStore = create<State>((set, get) => ({
   },
   deleteSession: async (id) => {
     touchWorkspace()
+    const before = get()
+    const row = before.sessions.find((c) => c.id === id)
+    const jobs = before.jobs.filter((j) => j.sessionId === id)
+    const artifacts = before.artifacts.filter((a) => a.sessionId === id)
+    const projectIds = before.projects.filter((p) => p.sessionIds.includes(id)).map((p) => p.id)
     set((s) => ({
       sessions: s.sessions.filter((c) => c.id !== id),
       jobs: s.jobs.filter((j) => j.sessionId !== id),
@@ -1884,7 +1946,28 @@ export const useStore = create<State>((set, get) => ({
       // What the conversation made goes with it.
       artifacts: s.artifacts.filter((a) => a.sessionId !== id),
     }))
-    await sessionsApi.remove(id).catch(() => get().loadSessions())
+    // Gone from the screen now; the request follows after the undo window.
+    await holdDelete(set, get, {
+      label: row?.title || tr('대화'),
+      restore: () =>
+        set((s) => ({
+          sessions: row && !s.sessions.some((c) => c.id === id) ? [row, ...s.sessions] : s.sessions,
+          jobs: [...s.jobs, ...jobs.filter((j) => !s.jobs.some((x) => x.id === j.id))],
+          artifacts: [
+            ...artifacts.filter((a) => !s.artifacts.some((x) => x.id === a.id)),
+            ...s.artifacts,
+          ],
+          projects: s.projects.map((p) =>
+            projectIds.includes(p.id) && !p.sessionIds.includes(id)
+              ? { ...p, sessionIds: [id, ...p.sessionIds] }
+              : p,
+          ),
+        })),
+      commit: () => {
+        forgetStoredDraft(get().user?.id, id)
+        return sessionsApi.remove(id).catch(() => get().loadSessions())
+      },
+    })
   },
   togglePinSession: async (id) => {
     const pinned = !get().sessions.find((c) => c.id === id)?.pinned
@@ -2578,6 +2661,8 @@ function toStep(raw: Record<string, unknown>): Step {
     totalMemories: raw.totalMemories as number | undefined,
     personal: raw.personal as string[] | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
+    summarisedTurns: raw.summarisedTurns as number | undefined,
+    summarised: raw.summarised as boolean | undefined,
   }
   // Stored labels are Korean; rebuilt here in the current language from the structured fields.
   return { ...step, ...retold(step) }
@@ -2594,6 +2679,20 @@ function named(names: string[], more: '외 {n}건' | '외 {n}개'): string {
 }
 
 function retold(step: Step): Partial<Step> {
+  if (step.summarisedTurns !== undefined) {
+    // Older rows carry only the label; the flag is authoritative when present.
+    const summarised = step.summarised ?? !step.label.includes('생략')
+    return {
+      label: tr(
+        summarised ? '앞선 대화 {n}개 메시지를 요약해 전달' : '앞선 대화 {n}개 메시지는 길이 때문에 생략',
+      ).replace('{n}', String(step.summarisedTurns)),
+      detail: tr(
+        summarised
+          ? '모델의 문맥 길이를 넘어 오래된 턴은 요약으로 대신했습니다'
+          : '요약을 만들지 못해 오래된 턴은 보내지 않았습니다',
+      ),
+    }
+  }
   if (step.personal) {
     return {
       label: tr('개인 맞춤 설정 적용'),
@@ -2709,6 +2808,7 @@ function toMessage(raw: MessageRow): Message {
     artifactIds: raw.artifactIds ?? undefined,
     failure: raw.failure ?? undefined,
     liked: raw.rating ?? null,
+    superseded: raw.superseded ?? undefined,
     variants: raw.variants?.map((v) => ({
       model: v.model,
       routedModel: v.routedModel,
@@ -2736,6 +2836,7 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
     artifactId: raw.artifactId,
     pending: raw.pending ?? null,
     renderTemplateId: raw.renderTemplateId ?? null,
+    skillIds: raw.skillIds ?? [],
     pinned: raw.pinned,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
@@ -2965,6 +3066,8 @@ async function streamTurn(
 ) {
   let assistantId = uid('m')
   const controller = new AbortController()
+  const superseded = opts.retryOf ? earlierAnswers.get(opts.retryOf) : undefined
+  if (opts.retryOf) earlierAnswers.delete(opts.retryOf)
 
   set((s) => ({
     running: { ...s.running, [sessionId]: () => controller.abort() },
@@ -2981,6 +3084,7 @@ async function streamTurn(
                 model,
                 createdAt: new Date().toISOString(),
                 steps: [],
+                superseded,
               } as Message,
             ],
           }
@@ -3000,11 +3104,36 @@ async function streamTurn(
   // With streaming off, text is buffered and shown in one piece; steps stay live.
   const live = get().user?.preferences.streamResponses !== false
   let buffered = ''
+  // Tokens arrive faster than the screen needs them: live deltas are joined and
+  // painted once per frame, so a long answer is not re-parsed per token.
+  let pendingDelta = ''
+  let flushHandle: ReturnType<typeof setTimeout> | number | null = null
+  const paintSoon = (fn: () => void) =>
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame(fn) : setTimeout(fn, 16)
+  const flushDeltas = () => {
+    if (flushHandle !== null) {
+      if (typeof cancelAnimationFrame === 'function' && typeof flushHandle === 'number') {
+        cancelAnimationFrame(flushHandle)
+      } else {
+        clearTimeout(flushHandle)
+      }
+      flushHandle = null
+    }
+    if (!pendingDelta) return
+    const chunk = pendingDelta
+    pendingDelta = ''
+    patch((m) => ({ ...m, content: m.content + chunk }))
+  }
+  const queueDelta = (text: string) => {
+    pendingDelta += text
+    if (flushHandle === null) flushHandle = paintSoon(flushDeltas)
+  }
 
   // Whether the turn ended with `usage`/`error`. See CUT_OFF.
   let settled = false
   let artifactAnnounced = false
   let accepted = false
+  let followDetachedTurn = false
 
   try {
     for await (const event of streamSession(
@@ -3026,6 +3155,8 @@ async function streamTurn(
         accepted = true
         opts.onAccepted?.()
       }
+      // Anything that is not more text lands after the text already received.
+      if (event.type !== 'delta') flushDeltas()
       switch (event.type) {
         case 'freshness_abstention': {
           const { type: _type, ...routing } = event
@@ -3097,7 +3228,7 @@ async function streamTurn(
           break
         }
         case 'delta':
-          if (live) patch((m) => ({ ...m, content: m.content + event.text }))
+          if (live) queueDelta(event.text)
           else buffered += event.text
           break
         case 'retract':
@@ -3174,29 +3305,42 @@ async function streamTurn(
       patch((m) => ({ ...m, failure: 'stopped' }))
     } else if (isClientRefusal(err)) {
       settled = true
-      patch((m) => ({
-        ...m,
-        error:
-          refusalSentence(errorCode(err), tr) ??
-          errorMessage(err, tr('요청을 처리하지 못했습니다.')),
-      }))
+      let sentence =
+        refusalSentence(errorCode(err), tr) ??
+        errorMessage(err, tr('요청을 처리하지 못했습니다.'))
+      if (err instanceof UnauthorizedError) {
+        // The access token lapsed under the send; the refresh cookie usually renews it.
+        await get().bootstrap()
+        sentence = get().authenticated
+          ? tr('로그인이 갱신되었습니다. 다시 보내 주세요.')
+          : tr('로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.')
+      }
+      patch((m) => ({ ...m, error: sentence }))
       // Rethrown so the composer restores its draft.
       throw err
     } else {
       settled = true
       patch((m) => ({ ...m, error: tr(turnFailure(err)) }))
+      // The server deliberately survives a dropped response. Its durable
+      // answer may still land after this tab has lost the stream.
+      followDetachedTurn = accepted
       // A stall is swallowed: the failed turn carries its own retry.
       if (err instanceof StreamStalledError) return
       throw err
     }
   } finally {
+    flushDeltas()
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
-    if (!settled) patch((m) => ({ ...m, error: CUT_OFF }))
+    if (!settled) {
+      patch((m) => ({ ...m, error: tr(CUT_OFF) }))
+      followDetachedTurn = accepted
+    }
     else if (!artifactAnnounced) {
       // Usage can settle an empty completion; the server marks its question unanswered.
       patch((m) => !m.content && !m.error && !m.failure ? { ...m, failure: 'no_answer' } : m)
     }
     endRun(set, sessionId)
+    if (followDetachedTurn) void watchForDetachedAnswer(set, get, sessionId)
     void get().loadSessions()
   }
 }
@@ -3593,7 +3737,7 @@ async function streamReport(
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
+    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
     endRun(set, sessionId)
     void get().loadSessions()
   }
@@ -3780,7 +3924,7 @@ async function streamDeck(
     }
     if (isClientRefusal(err)) throw err
   } finally {
-    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: CUT_OFF }))
+    if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
     endRun(set, sessionId)
     void get().loadSessions()
   }
@@ -3887,7 +4031,7 @@ function dropMediaTurn(set: Set, sessionId: string, ...ids: string[]) {
 
 /**
  * Polls a transcript that ends on a user message until the server-side turn
- * answers it, the person leaves the session, or two minutes pass.
+ * answers it, the person leaves the session, or ten minutes pass.
  */
 async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   const answered = () => {
@@ -3897,15 +4041,50 @@ async function watchForTheAnswer(set: Set, get: Get, sessionId: string) {
   }
   if (answered() || get().running[sessionId]) return
 
-  for (let waited = 0; waited < 120_000; waited += 3_000) {
-    await new Promise((done) => setTimeout(done, 3_000))
-    if (get().activeSessionId !== sessionId) return
-    if (get().running[sessionId]) return
+  let cancelled = false
+  beginRun(set, sessionId, () => { cancelled = true })
 
-    await reconcileSession(set, sessionId)
-    const messages = get().sessions.find((c) => c.id === sessionId)?.messages ?? []
-    const last = messages[messages.length - 1]
-    if (!last || last.role !== 'user') return
+  try {
+    for (let waited = 0; waited < 600_000; waited += 3_000) {
+      await new Promise((done) => setTimeout(done, 3_000))
+      if (cancelled || get().activeSessionId !== sessionId) return
+
+      const row = await sessionsApi.get(sessionId).catch(() => null)
+      if (!row) continue
+      const fresh = toSession(row)
+      const last = fresh.messages[fresh.messages.length - 1]
+      if (!fresh.pending && last?.role === 'user' && !last.failure) continue
+      set((state) => ({
+        sessions: state.sessions.map((session) => session.id === sessionId ? fresh : session),
+      }))
+      return
+    }
+  } finally {
+    endRun(set, sessionId)
+  }
+}
+
+/**
+ * A response connection may disappear while the detached server turn keeps
+ * working. Poll the authoritative transcript and replace the provisional
+ * error bubble as soon as that turn is durable.
+ */
+async function watchForDetachedAnswer(set: Set, get: Get, sessionId: string) {
+  for (let waited = 0; waited < 600_000; waited += 3_000) {
+    await new Promise((done) => setTimeout(done, 3_000))
+    if (get().activeSessionId !== sessionId || get().running[sessionId]) return
+    const row = await sessionsApi.get(sessionId).catch(() => null)
+    if (!row) continue
+    const fresh = toSession(row)
+    const last = fresh.messages[fresh.messages.length - 1]
+    const settled = Boolean(
+      fresh.pending || !last || last.role === 'assistant' || last.failure,
+    )
+    if (!settled) continue
+    set((state) => ({
+      sessions: state.sessions.map((session) => session.id === sessionId ? fresh : session),
+    }))
+    return
   }
 }
 

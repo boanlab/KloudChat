@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react'
+import { fontFamilyFor } from '@/components/report/docType'
 import {
   AlignCenter,
   AlignJustify,
@@ -103,10 +104,14 @@ function Tool({
   return (
     <button
       type="button"
-      // `onMouseDown` with preventDefault keeps the caret in the document.
+      // `onMouseDown` with preventDefault keeps the caret in the document; a
+      // keyboard press arrives only as a click with `detail` 0, so it runs there.
       onMouseDown={(e) => {
         e.preventDefault()
         if (!disabled) onClick()
+      }}
+      onClick={(e) => {
+        if (e.detail === 0 && !disabled) onClick()
       }}
       disabled={disabled}
       aria-pressed={on}
@@ -171,7 +176,7 @@ function Toolbar({ editor, sources, onFind, onComment, bare }: { editor: Editor 
 
   return (
     <div className={cn(
-      'flex flex-nowrap items-center gap-0.5 overflow-x-auto',
+      'flex flex-wrap items-center gap-0.5 gap-y-1',
       // Inside the ribbon the ribbon draws the chrome.
       bare ? 'px-0 py-0' : 'border-b border-line bg-panel px-3 py-1.5 max-sm:px-1.5',
     )}>
@@ -841,10 +846,17 @@ export function DocumentEditor({
     `${style?.css.length ?? 0}:${Object.keys(edits).length}`,
   )
   const viewport = useRef<HTMLDivElement>(null)
+  // The viewport mounts after the loading returns below, so the observer is armed
+  // from a callback ref rather than once on first render.
+  const [viewportNode, setViewportNode] = useState<HTMLDivElement | null>(null)
+  const attachViewport = useCallback((node: HTMLDivElement | null) => {
+    viewport.current = node
+    setViewportNode(node)
+  }, [])
   // Zoom to fit the A4 page across the panel, capped at 1.
   const [scale, setScale] = useState(1)
   useEffect(() => {
-    const node = viewport.current
+    const node = viewportNode
     if (!node) return
     const fit = () => {
       const room = node.clientWidth - (node.clientWidth < 640 ? 16 : 48)
@@ -854,7 +866,7 @@ export function DocumentEditor({
     const observer = new ResizeObserver(fit)
     observer.observe(node)
     return () => observer.disconnect()
-  }, [])
+  }, [viewportNode])
 
   useEffect(() => {
     let live = true
@@ -1036,7 +1048,9 @@ export function DocumentEditor({
     : visualStyle === 'minimal'
       ? `.page .cover{min-height:92mm;padding-top:30mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
       : ''
-  const pageCss = `${style?.css ?? ''}\n${visualCss}`
+  // The design's typeface, unless a template stylesheet has its own say.
+  const fontCss = !style?.css && fontFamilyFor(tokens?.font) ? `.page{font-family:${fontFamilyFor(tokens?.font)}}` : ''
+  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}`
 
   if (error) return <p className="p-4 text-sm text-danger">{t(error)}</p>
   if (templateId && !style) {
@@ -1107,7 +1121,7 @@ export function DocumentEditor({
             </ol>
           </nav>
         )}
-        <div ref={viewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
+        <div ref={attachViewport} aria-label={t('보고서 편집 페이지')} className="min-h-0 min-w-0 flex-1 overflow-auto bg-elevated p-6 max-sm:p-2">
         {/* The A4 sheet is scaled, never narrowed. The outer box carries the
             scaled size so the scrollbar matches. */}
         <div

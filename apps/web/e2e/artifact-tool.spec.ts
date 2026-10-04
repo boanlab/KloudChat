@@ -11,7 +11,7 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
     .first()
     .click()
   // A model that calls tools reliably.
-  await page.getByRole('button', { name: /qwen3\.5|qwen3\.6/i }).first().click()
+  await page.getByRole('button', { name: /qwen3\.8/i }).first().click()
 
   await page.getByLabel('프롬프트 입력').fill(
     'AI 보안 소개 페이지를 만들어줘. 제목, 소개, 주요 위협 3가지로 구성된 한 페이지 HTML 로.',

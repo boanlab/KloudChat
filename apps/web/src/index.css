@@ -409,6 +409,8 @@ body {
     font-size: 0.85em;
   }
   .doc-html img {
+    /* A picture in a document fills its column, the way a word processor places one. */
+    width: 100%;
     max-width: 100%;
     height: auto;
   }
@@ -423,3 +425,34 @@ body {
 .doc-web section p, .doc-web section li, .doc-web section .text-md { font-size: var(--doc-body); line-height: var(--doc-leading-body); }
 .doc-web section table { font-size: var(--doc-table); line-height: var(--doc-leading-table); }
 .doc-web section figcaption, .doc-web section small { font-size: var(--doc-small); }
+/* An inserted picture fills the column in the web view too; the zoom button wraps it. */
+.doc-web section img { width: 100%; height: auto; }
+.doc-web section button > img { width: 100%; }
+.doc-web section button:has(> img) { width: 100%; }
+
+/* Code highlighting (highlight.js classes). Plain token colours on the panel
+   surfaces; the dark set is re-tuned, not inverted, for contrast. */
+.hljs { color: var(--fg); }
+.hljs-comment, .hljs-quote { color: var(--faint); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-built_in,
+.hljs-meta .hljs-keyword { color: #8a2be2; }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attr, .hljs-template-tag { color: #0a7048; }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable, .hljs-template-variable { color: #b4322a; }
+.hljs-title, .hljs-title.function_, .hljs-title.class_, .hljs-section, .hljs-name,
+.hljs-selector-id, .hljs-selector-class { color: #2a54e4; }
+.hljs-attribute, .hljs-meta, .hljs-doctag, .hljs-tag { color: #8a5300; }
+.hljs-deletion { color: #b4322a; background: rgb(180 50 42 / 0.08); }
+.hljs-addition { background: rgb(10 112 72 / 0.08); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+.dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-literal, .dark .hljs-type,
+.dark .hljs-built_in, .dark .hljs-meta .hljs-keyword { color: #c792ea; }
+.dark .hljs-string, .dark .hljs-regexp, .dark .hljs-addition, .dark .hljs-attr,
+.dark .hljs-template-tag { color: #7fd1a7; }
+.dark .hljs-number, .dark .hljs-symbol, .dark .hljs-bullet, .dark .hljs-variable,
+.dark .hljs-template-variable { color: #f78c6c; }
+.dark .hljs-title, .dark .hljs-title.function_, .dark .hljs-title.class_, .dark .hljs-section,
+.dark .hljs-name, .dark .hljs-selector-id, .dark .hljs-selector-class { color: #82aaff; }
+.dark .hljs-attribute, .dark .hljs-meta, .dark .hljs-doctag, .dark .hljs-tag { color: #ffcb6b; }
+.dark .hljs-deletion { color: #f0736a; background: rgb(240 115 106 / 0.12); }
+.dark .hljs-addition { background: rgb(79 191 140 / 0.12); }
