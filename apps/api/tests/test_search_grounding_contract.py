@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from app.services import agent
+from app.services import agent, current_evidence
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 
 _URL = "https://example.test/release"
@@ -215,5 +215,5 @@ async def test_only_current_fact_drafts_wait_for_hop_completion(monkeypatch, cur
     ):
         events.append(event)
     assert _answer(events) == (
-        "The current state was not verified in this request." if current_fact else "FINAL_ANSWER"
+        "FINAL_ANSWER" + current_evidence.caveat("Current fact") if current_fact else "FINAL_ANSWER"
     )

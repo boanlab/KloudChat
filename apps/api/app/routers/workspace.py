@@ -324,6 +324,9 @@ async def _remove_project(db: DbSession, project: Project) -> None:
     ).all():
         file_service.delete_blob(stored.storage_key)
         await db.delete(stored)
+    if project.index_key:
+        # Its documents and its conversations' uploads were indexed together.
+        await index_client.forget_collection(collection=project.index_key)
     for session in (
         await db.exec(select(ChatSession).where(ChatSession.project_id == project.id))
     ).all():
@@ -403,17 +406,92 @@ async def upload_file(
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
-    # A conversation upload joins the retrieval index like agent knowledge does, so
+    # An upload joins the retrieval index like agent knowledge does, so
     # `search_knowledge` can find it by meaning on later turns. Never blocks the upload.
-    if session_id and stored.text.strip():
-        session = await db.get(ChatSession, session_id)
-        if session is not None and session.user_id == user.id:
-            await _index_document(db, user.id, await _session_shelf_key(db, session), stored)
+    if stored.text.strip():
+        if project_id:
+            project = await db.get(Project, project_id)
+            if project is not None:
+                await _index_document(db, user.id, await _project_shelf_key(db, project), stored)
+        elif session_id:
+            session = await db.get(ChatSession, session_id)
+            if session is not None and session.user_id == user.id:
+                await _index_document(db, user.id, await _session_shelf_key(db, session), stored)
     return FileOut.of(stored)
 
 
+async def reindex_session_files(db: DbSession, user_id: str, session: ChatSession) -> int:
+    """After a conversation moved projects: its uploads leave the collection they were
+    in and join the one its new home searches. Returns how many were moved."""
+    rows = (
+        await db.exec(
+            select(StoredFile).where(
+                StoredFile.session_id == session.id, StoredFile.user_id == user_id
+            )
+        )
+    ).all()
+    moved = 0
+    for stored in rows:
+        if not stored.indexed_at or not stored.text.strip():
+            continue
+        if stored.index_collection and not await index_client.forget_document(
+            collection=stored.index_collection, doc_id=stored.id
+        ):
+            # The old entry could not be removed: leave the record pointing at it, so a
+            # later delete still knows where it is, and do not add a second copy.
+            log.warning(
+                "file %s stays in %s: index delete failed", stored.id, stored.index_collection
+            )
+            continue
+        if await _index_document(db, user_id, await _session_shelf_key(db, session), stored):
+            moved += 1
+    return moved
+
+
+async def forget_session_files(db: DbSession, session_ids: list[str]) -> int:
+    """Before conversations are deleted: their uploads' vectors leave whatever collection
+    holds them (a project's outlives the conversation). The rows stay in the file box."""
+    if not session_ids:
+        return 0
+    rows = (
+        await db.exec(select(StoredFile).where(col(StoredFile.session_id).in_(session_ids)))
+    ).all()
+    gone = 0
+    for stored in rows:
+        if stored.indexed_at and stored.index_collection:
+            if not await index_client.forget_document(
+                collection=stored.index_collection, doc_id=stored.id
+            ):
+                # Still in the index: the record keeps saying so, for the next attempt.
+                log.warning(
+                    "file %s stays in %s: index delete failed", stored.id, stored.index_collection
+                )
+                continue
+            gone += 1
+        stored.indexed_at = None
+        stored.index_collection = None
+        db.add(stored)
+    return gone
+
+
+async def _project_shelf_key(db: DbSession, project: Project) -> str:
+    """The project's index collection key, minted on first use."""
+    if not project.index_key:
+        project.index_key = index_client.new_collection_key()
+        db.add(project)
+        await db.commit()
+        await db.refresh(project)
+    return project.index_key
+
+
 async def _session_shelf_key(db: DbSession, session: ChatSession) -> str:
-    """The conversation's index collection key, minted on first use."""
+    """The collection a conversation's uploads are indexed in: its project's when it
+    has one (one search covers the project's knowledge and the chat's uploads), else
+    its own, minted on first use."""
+    if session.project_id:
+        project = await db.get(Project, session.project_id)
+        if project is not None:
+            return await _project_shelf_key(db, project)
     if not session.index_key:
         session.index_key = index_client.new_collection_key()
         db.add(session)
@@ -456,6 +534,9 @@ async def add_project_url(project_id: str, payload: KnowledgeUrl, user: CurrentU
     db.add(stored)
     await db.commit()
     await db.refresh(stored)
+    project = await db.get(Project, project_id)
+    if project is not None:
+        await _index_document(db, user.id, await _project_shelf_key(db, project), stored)
     return FileOut.of(stored)
 
 
@@ -545,10 +626,27 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
 async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
     stored = await _own(db, StoredFile, "user_id", user, file_id)
     file_service.delete_blob(stored.storage_key)
-    if stored.session_id and stored.indexed_at:
-        session = await db.get(ChatSession, stored.session_id)
-        if session is not None and session.index_key:
-            await index_client.forget_document(collection=session.index_key, doc_id=stored.id)
+    if stored.indexed_at:
+        # The collection the write went to, when recorded; otherwise every collection the
+        # document may sit in (a project conversation's upload: the project's, or, if
+        # indexed before the project had one, the conversation's).
+        collections: list[str] = [stored.index_collection] if stored.index_collection else []
+        if stored.project_id and not collections:
+            project = await db.get(Project, stored.project_id)
+            if project is not None and project.index_key:
+                collections.append(project.index_key)
+        elif stored.session_id and not collections:
+            session = await db.get(ChatSession, stored.session_id)
+            if session is not None:
+                if session.project_id:
+                    project = await db.get(Project, session.project_id)
+                    if project is not None and project.index_key:
+                        collections.append(project.index_key)
+                if session.index_key:
+                    collections.append(session.index_key)
+        for collection in collections:
+            if not await index_client.forget_document(collection=collection, doc_id=stored.id):
+                log.warning("file %s: index delete from %s failed", stored.id, collection)
     await db.delete(stored)
     await db.commit()
 
@@ -614,7 +712,10 @@ async def artifact_counts(user: CurrentUser, db: DbSession, q: str | None = None
 
 @router.post("/artifacts", response_model=ArtifactOut, status_code=status.HTTP_201_CREATED)
 async def create_artifact(payload: ArtifactIn, user: CurrentUser, db: DbSession):
-    artifact = Artifact(user_id=user.id, **payload.model_dump())
+    fields = payload.model_dump()
+    # Same boundary as the update path: no HTML reaches storage unsanitised.
+    fields["data"] = _clean_report_data(fields.get("data"))
+    artifact = Artifact(user_id=user.id, **fields)
     db.add(artifact)
     await db.commit()
     await db.refresh(artifact)
@@ -1555,7 +1656,7 @@ async def restore_artifact(
         )
     )
     artifact.version += 1
-    artifact.data = target.data
+    artifact.data = _clean_report_data(target.data)
     artifact.storage_key = target.storage_key
     # Reports carry their title inside `data`.
     if isinstance(target.data, dict) and str(target.data.get("title") or "").strip():
@@ -2808,6 +2909,7 @@ async def _index_document(
     )
     if ok:
         stored.indexed_at = utcnow()
+        stored.index_collection = collection
         db.add(stored)
         # Embedded chunk count goes to the usage ledger at zero credits.
         if index_client.last_chunks:
@@ -2830,6 +2932,31 @@ def _page_name(url: str) -> str:
     host, _, path = stripped.partition("/")
     tail = path.rsplit("/", 1)[-1] if path else ""
     return file_service.safe_name(f"{host}{f'-{tail}' if tail else ''}"[:120] or "page")
+
+
+@router.post("/projects/{project_id}/knowledge/reindex")
+async def reindex_project_knowledge(
+    project_id: str, user: CurrentUser, db: DbSession, force: bool = False
+) -> dict[str, Any]:
+    """Indexes this project's unindexed documents; `force=true` re-sends all. Returns counts."""
+    project = await _own(db, Project, "user_id", user, project_id)
+    if not await index_client.available():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="index_unavailable"
+        )
+    rows = (
+        await db.exec(
+            select(StoredFile).where(
+                StoredFile.project_id == project_id, StoredFile.user_id == user.id
+            )
+        )
+    ).all()
+    todo = [r for r in rows if r.text.strip() and (force or r.indexed_at is None)]
+    done = 0
+    for stored in todo:
+        if await _index_document(db, user.id, await _project_shelf_key(db, project), stored):
+            done += 1
+    return {"total": len(rows), "attempted": len(todo), "indexed": done}
 
 
 @router.post("/agents/{agent_id}/knowledge/reindex")

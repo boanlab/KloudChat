@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlmodel import col, delete, select
 
 from app.core.deps import CurrentUser, DbSession
-from app.models.user import User, utcnow
+from app.models.user import User, UserRole, utcnow
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool, Transport
 from app.schemas.workspace import (
     BulkDelete,
@@ -144,6 +144,10 @@ async def install(
 
 @router.post("", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
 async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
+    if payload.transport is Transport.stdio and user.role is not UserRole.admin:
+        # A stdio connector is a command the API server runs. Only an administrator
+        # may put one there; everyone else connects over HTTP or SSE.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="stdio_requires_admin")
     connector = Connector(
         owner_id=user.id,
         name=payload.name,

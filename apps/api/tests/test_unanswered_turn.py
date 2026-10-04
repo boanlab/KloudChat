@@ -70,6 +70,10 @@ class _Turn:
     async def commit(self):
         self.commits += 1
 
+    async def delete(self, row):
+        self.deleted = getattr(self, "deleted", [])
+        self.deleted.append(row)
+
     @property
     def answer(self) -> Message | None:
         return next(
@@ -369,3 +373,62 @@ def test_the_mark_travels_with_the_transcript() -> None:
     assert MessageOut.of(question).model_dump(by_alias=True)["failure"] == "no_answer"
     # Rows without an outcome, and every ordinary turn.
     assert MessageOut.of(Message(session_id="s", role=Role.user, content="질문")).failure is None
+
+
+@pytest.mark.asyncio
+async def test_a_second_send_that_slips_past_the_check_bows_out_at_registration(monkeypatch):
+    """Two sends passed the pre-flight 409 together. The one that reaches registration
+    while the other's turn is live must not supersede it: it says busy, takes its own
+    question row with it, and leaves the live turn's signal alone."""
+    turn = _Turn()
+    live = asyncio.Event()
+    sessions_router._STOPPING[turn.session.id] = {live}
+    try:
+        async def run_turn(*_args, **_kwargs):
+            yield {"type": "delta", "text": "이 글은 나오면 안 됩니다"}
+
+        chunks = await asyncio.wait_for(_drain_with(turn, monkeypatch, run_turn), timeout=2)
+        joined = "".join(chunks)
+        assert "session_busy" in joined and "이 글은 나오면" not in joined
+        assert turn.question in getattr(turn, "deleted", [])
+        assert not live.is_set()  # the live turn was not stopped by the late one
+        assert turn.answer is None
+    finally:
+        sessions_router._STOPPING.pop(turn.session.id, None)
+
+
+@pytest.mark.asyncio
+async def test_a_regenerate_may_still_supersede_the_live_turn(monkeypatch):
+    turn = _Turn()
+    live = asyncio.Event()
+    sessions_router._STOPPING[turn.session.id] = {live}
+    try:
+        async def run_turn(*_args, **_kwargs):
+            yield {"type": "delta", "text": "다시 쓴 답"}
+            yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
+
+        async def title(*_args, **_kwargs):
+            return "제목", {"inputTokens": 0, "outputTokens": 0}
+
+        async def nothing(**_kwargs):
+            return None
+
+        monkeypatch.setattr(sessions_router, "SessionLocal", lambda: turn)
+        monkeypatch.setattr(sessions_router.agent_service, "run_turn", run_turn)
+        monkeypatch.setattr(sessions_router.chat_service, "generate_title", title)
+        monkeypatch.setattr(sessions_router, "_store_artifacts", nothing)
+        monkeypatch.setattr(sessions_router, "_enrich_memory", nothing)
+        chunks = [
+            chunk
+            async for chunk in sessions_router._run_turn(
+                user_id=turn.user.id, api_key="virtual-key", auto_memory=False,
+                session_id=turn.session.id, model=_model(),
+                messages=[{"role": "user", "content": turn.question.content}], tools=[],
+                first_user_message=turn.question.content, user_message_id=turn.question.id,
+                is_first_turn=False, superseded_ids=["old-answer"],
+            )
+        ]
+        assert "다시 쓴 답" in "".join(chunks) and "session_busy" not in "".join(chunks)
+        assert live.is_set()  # a regenerate supersedes the earlier turn, by design
+    finally:
+        sessions_router._STOPPING.pop(turn.session.id, None)

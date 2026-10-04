@@ -1,4 +1,4 @@
-"""Old assistant confidence is not evidence for a fresh current-fact request."""
+"""Earlier answers stay in the conversation; the current-fact rule says they are not evidence."""
 
 from copy import deepcopy
 
@@ -10,7 +10,7 @@ from app.services.freshness import CURRENT_FACT_INSTRUCTION, with_answer_policy
 @pytest.mark.parametrize("question", [
     "현재 대한민국 대통령", "현재 Acme의 CEO는 누구야?", "최신 Python 버전은?",
 ])
-def test_current_fact_rechecks_do_not_reinforce_old_assistant_claims(question):
+def test_current_fact_rechecks_keep_the_earlier_answer_and_add_the_rule(question):
     messages = [
         {"role": "system", "content": "Workspace rules"},
         {"role": "user", "content": "1+1은?"},
@@ -24,8 +24,11 @@ def test_current_fact_rechecks_do_not_reinforce_old_assistant_claims(question):
     assert messages == before
     assert wire[2]["content"] == "1+1은 2입니다."
     assert wire[3] == messages[3] and wire[5] == messages[5]
-    assert "CONFIDENT_UNVERIFIED_OLD_ANSWER" not in wire[4]["content"]
+    # The earlier answer is part of the conversation and stays; the instruction
+    # appended to the system turn is what tells the model it is not evidence.
+    assert wire[4]["content"] == "CONFIDENT_UNVERIFIED_OLD_ANSWER"
     assert wire[0]["content"].endswith(CURRENT_FACT_INSTRUCTION)
+    assert "Earlier assistant answers are not evidence" in wire[0]["content"]
     assert wire[-1] == messages[-1]
     assert all(message["role"] != "system" for message in wire[1:])
 
@@ -56,19 +59,19 @@ def test_tool_call_envelopes_and_evidence_remain_intact():
     "그래도 알려줘",
     [{"type": "text", "text": "현재 대한민국 대통령"}],
 ])
-def test_authoritative_current_fact_context_survives_followup_and_multimodal_input(latest):
+def test_followups_and_multimodal_input_keep_the_thread_and_the_rule(latest):
     messages = [
         {"role": "user", "content": "현재 대한민국 대통령"},
         {"role": "assistant", "content": "UNVERIFIED_OLD_NAME"},
         {"role": "user", "content": latest},
     ]
     wire = with_answer_policy(messages, {"id": "model"}, current_fact=True)
-    assert "UNVERIFIED_OLD_NAME" not in wire[2]["content"]
+    assert wire[2]["content"] == "UNVERIFIED_OLD_NAME"
     assert wire[-1] == messages[-1]
     assert CURRENT_FACT_INSTRUCTION in wire[0]["content"]
 
 
-def test_repeated_bare_followups_do_not_reintroduce_previous_claims():
+def test_repeated_bare_followups_keep_every_earlier_answer():
     messages = [
         {"role": "user", "content": "현재 대한민국 대통령"},
         {"role": "assistant", "content": "UNVERIFIED_OLD_NAME"},
@@ -77,4 +80,5 @@ def test_repeated_bare_followups_do_not_reintroduce_previous_claims():
         {"role": "user", "content": "알려줘"},
     ]
     wire = with_answer_policy(messages, {"id": "model"}, current_fact=True)
-    assert "UNVERIFIED" not in str(wire)
+    assert [m["content"] for m in wire[1:]] == [m["content"] for m in messages]
+    assert CURRENT_FACT_INSTRUCTION in wire[0]["content"]

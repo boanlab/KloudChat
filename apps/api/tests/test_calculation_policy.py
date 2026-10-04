@@ -253,3 +253,21 @@ def test_direct_expression_preserves_only_the_supplied_numeric_expression(questi
 )
 def test_direct_expression_abstains_from_ambiguous_or_nonliteral_requests(question):
     assert calculation_policy.direct_calculation_expression(question) is None
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "아, 발표는 10분이 아니라 20분이야. 다시 계산해 줘.",
+        "예산은 300이 아닌 450으로 다시 계산해 줘.",
+        "Sorry, not 10 minutes but 20. Recalculate please.",
+        "회의는 30분 → 45분으로 바뀌었어. 다시 계산해 줘.",
+    ],
+)
+def test_a_corrected_value_is_one_operand_so_a_recount_request_is_not_arithmetic(request_text):
+    """A corrected figure plus "recalculate" is a re-estimate, not supplied-number arithmetic."""
+    assert not requires_calculation(request_text)
+
+
+def test_a_correction_with_a_second_operand_still_requires_the_calculator():
+    assert requires_calculation("단가는 300이 아니라 450이야. 12개 값 다시 계산해 줘.")

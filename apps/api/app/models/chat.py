@@ -92,6 +92,20 @@ class ChatSession(SQLModel, table=True):
     #: A generation paused to ask something: its request, attachments, and the
     #: questions or outline it is waiting on. At most one per session.
     pending: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: What stands in for the turns too old to send: `{"through": <message id>,
+    #: "text": ..., "turns": n}`. Rebuilt from itself plus the turns dropped since,
+    #: never from the whole transcript again. Null until the conversation outgrows
+    #: the model's window.
+    summary: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: Skills switched on for this conversation. A skill picked for one turn stays on
+    #: for the turns after it, the way a skill a person reaches for keeps applying,
+    #: until the person takes it off (session PATCH) or picks a different set.
+    skill_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: The chat turn running on this session, across replicas: a token claimed with a
+    #: conditional update before the question is stored, released when the answer is
+    #: settled or stop is pressed, and ignored once stale.
+    running_turn: str | None = Field(default=None)
+    running_since: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     pinned: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
@@ -112,6 +126,10 @@ class Message(SQLModel, table=True):
     usage: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     #: Model comparison: one entry per model that answered. Null outside /compare.
     variants: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: Answers this one replaced when the question was run again, oldest first:
+    #: `{"id", "content", "model", "usage", "createdAt"}`. The transcript lets the
+    #: reader page back through them; the conversation continues from this row.
+    superseded: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     #: Requested/effective model and privacy action. Contains no prompt text or
     #: detected value, and is safe to return with the transcript.

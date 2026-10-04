@@ -165,6 +165,12 @@ Migrations live under `alembic/versions/`. The principal tables:
   prompt as a user message and an assistant message with an empty body and
   these ids; the transcript renders the picture or the player where the answer
   goes. A chat turn that writes a file records it here too
+- `messages.superseded` — answers a rerun of the same question replaced, oldest
+  first (`{id, content, model, usage, steps, artifactIds, routing, rating,
+  createdAt}`); the conversation continues from the row that carries them.
+- `sessions.summary` — `{through, text, turns}`: the summary standing in for the
+  turns too old to send once a conversation outgrows the model's window (§7).
+- `sessions.skill_ids` — the skills switched on for the conversation (§6 Chat).
 - `messages.failure` — how a turn ended when it did not end in an answer.
   `no_answer` sits on the question, `interrupted` on a partial reply, and
   `stopped` on either when 중단 was pressed — same shape, the reader's choice
@@ -188,7 +194,44 @@ Artifacts outlive conversations: clearing history detaches them
 ### Chat
 
 `POST /sessions/{id}/messages` → SSE, emitting `delta`, `step`, `artifact`,
-`usage`, `title` and `done`.
+`usage`, `title` and `done`. One answer at a time: a second message while this
+process is still writing one (and nobody pressed 중단) is refused with 409
+`session_busy`; with several replicas the shared transcript stands in for the
+other processes' signals (a fresh question with no reply and no failure mark).
+`retry_of` on the latest question reruns it; when that question already had an
+answer the old answer is kept on the new row as `messages.superseded` (the
+screen pages ‹ k/n › through them) and its row is deleted only in the
+transaction that stores the new answer, so a rerun that dies leaves the answer
+it was going to replace.
+
+**A present-state question with no retrieved evidence is answered, not
+withheld.** When the words ask for something that changes with time (an
+officeholder, a price, a version) and no read tool returned material this turn,
+the model answers from what it knows under `current_evidence.instruction` —
+dated, never phrased as what holds today — and the answer ends with a caveat
+(`current_evidence.caveat`) unless it already hedges itself. Earlier answers in
+the conversation stay in the envelope; the instruction says they are not
+evidence. A question the person's own files answer (a price in an attached
+list) is read from the file and is not treated as a current-fact lookup unless
+the words themselves name the present (「지금」「현재」「올해」).
+
+**Skills stay on for the conversation.** The skills picked for a turn are
+remembered on `sessions.skill_ids` and applied to every later turn until the
+person changes the set (the picker, or `PATCH /sessions/{id}` with `skillIds`);
+`[]` switches them off. A pick for one turn therefore shapes the whole
+conversation, as a skill one reaches for should. A standing skill that has since
+been deleted, disabled or barred by the agent drops out quietly and the stored
+set is pruned (`_standing_skill_ids`); only a skill picked for this turn is
+checked strictly.
+
+**The model can reach for a skill itself.** The installed, enabled chat skills
+that are not switched on are offered as one tool, `use_skill`, whose description
+lists each by its `when_to_use`. When a request matches one, the model calls the
+tool once and receives the skill's instructions as the tool result — the one
+tool result the rules say to follow, since the person installed it — and
+answers under them. The step shows as 「스킬 적용」. Up to twelve skills are
+offered per turn so the description stays a paragraph, and an agent's skill
+allowlist bounds the shelf as it bounds a hand pick.
 
 Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
@@ -322,6 +365,115 @@ planner at all — that route exists so the text does not leave — and a planne
 may never be less contained than the writer, or a field on the admin screen
 would quietly widen the egress of every document. Anything that fails falls
 back to the writing model rather than failing the turn.
+
+**Revising one slide the way the person said.** A slide rewrite reads the
+layout the words ask for — 「연표로」, 「단계로」, 「차트로」, 「큰 숫자로」, 「표로」
+(`deck.requested_layout`; 「연표」 is not a 「표」) — and writes with that layout's
+prompt; a chart or metrics answer replaces the slide's chart or metrics, not
+just its notes, and a title the person asked to change (「제목을 …로 바꿔 줘」) is
+taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 is an `insert`: the
+revision planner names the new part and its place, the router slots a blank
+part in and rewrites only it, so the other slides stay byte for byte, where the
+earlier route re-planned and rewrote the whole deck and lost the table the
+person asked for. A restructure (「6장으로 줄여」) is told to hit the count
+exactly, merge only what was named, and keep every other part's title and
+content.
+
+**A restructure keeps what it did not change.** When the skeleton is re-planned
+(「6장으로 줄여」), the source artifact's id rides in the pending proposal
+(`carryFrom`) and, after the approved rewrite, every new part whose name
+survived and which the instruction never named gets its words back from the
+old part (`revise.carry_parts`): same position, new id and accent, old content.
+A part the instruction names — 「지표와 진척은 한 장으로」 — is written fresh;
+"named" is judged against the restructure instruction (`carryNote`), never
+against the merged request, which names every part of the original. A quoted
+rename (「위험 절 제목을 「위험과 대응」으로」) sets the section's heading as well as
+its words (`revise.requested_title`). An insert aimed *into* an existing part
+(「비용 절에 표를 넣어 줘」) is that part's edit (`into_existing_part`), and one
+that names its neighbour (「요청 사항 장 앞에」) lands exactly there
+(`place_insert`). The deck writer is told that every figure the person wrote
+must appear once, after a status deck twice dropped 「파일럿 4개 부서 742명」.
+
+**A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 is a string
+replacement across every text field (`revise.term_swap`, `replace_term`): exact,
+instant, and nothing else moves — where asking the model to retype six sections
+took two minutes and risked rewording them.
+
+**Where figures come from, measured.** With the figure card accepted, an
+architecture report got its three diagrams in the right sections (구조도 in
+전체 구조, 흐름도 in 요청 처리 흐름, 비교도 in the comparison), a revision added
+a node to the flow diagram and its sentence to the prose, and turning the
+comparison into a table dropped the 비교도 as the rule says. Pictures from the
+image model are proposed only for illustration or real objects, never for
+structure or numbers, so a technical report gets none — by design. Decks draw
+no pictures on their own. A deck's structure slide must sit on a layout the
+figure planner may draw on: planned as `steps` it became numbered boxes, planned
+as `chart` a bar chart of made-up component counts (`structure_as_drawable`
+moves such a slide to `bullets`). Mermaid is rasterised by the browser when the
+document is opened, so an export made before anyone opened the document carries
+no figures; after one view the docx carried two images and the pdf four.
+
+**The words name the part.** When a revision instruction names exactly one
+existing part (「다음 단계 장을 연표로」), that part is the target whatever the
+planner guessed — another part, or a restructure of the whole deck, which the
+planner once answered with a nine-slide re-plan (`revise.named_target`); a
+shorter name inside a longer part's name counts as the longer part's mention,
+and an instruction that asks for a structural change (add, remove, merge,
+reorder, a new count) is left to the planner. When the request itself asked for a
+구조도 or 흐름도 and the figure planner proposed nothing, it is asked once more
+with that fact in front of it (`diagrams.asks_for_diagrams`); an empty plan on
+a request that never mentioned diagrams stands as the planner's judgement.
+
+**An outline has to be a deck.** A salvaged outline can be the planner's notes
+to itself — 「Slides: 5 to 12. (6 is fine)」, repeated section names, an English
+plan for a Korean request; one such plan was written out as thirty-nine slides
+over seven minutes. `deck.sane_outline` refuses it so the outline is asked for
+once more. A restructure strips the original request's part counts
+(`revise.without_counts`) so the note's count is the only one the planner
+reads: two counts in one text cancel to none, and with none to hit nothing
+stopped the thirty-nine. A section rewrite that drops the section's mermaid
+figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
+unless the person asked for it to go.
+
+**A stated count is a restructure.** 「전체를 6장으로 줄여 줘」 against a nine-slide
+deck is re-planned whatever the revision planner read it as — a partial edit, or
+a request for a new document, which it once answered with 「새 문서 요청」 and did
+nothing (`revise.count_change`). A count equal to the current one, or no count,
+leaves the planner's reading alone.
+
+**One or two over the count.** Asked twice for exactly N slides and still over,
+the plan loses what carries no argument before the turn fails: section dividers
+first, then the agenda — a six-slide deck needs no table of contents
+(`deck.fit_count`). Content slides are never dropped there; a plan still over,
+or under, goes to the honest error.
+
+**A send never supersedes a live turn.** The pre-flight 409 and the turn's
+registration are far apart; two sends that both passed the check meet at the
+registration, where a fresh send (not a regenerate, not a message after 중단)
+finding a live turn bows out with `session_busy` and removes its own question
+row, so the transcript stays question, answer.
+
+**A written product is checked.** A rewrite that says 「470만 원 × 36개월 =
+169,200만 원」 has written its own proof of error; `report.fix_products`
+recomputes every 「A × B = C」 and replaces a wrong C, with its scale and unit,
+wherever the section repeats it — the sentence and the table cell alike. Only
+plain products with the same scale on both sides are touched.
+
+**The part the words mean.** 「오버헤드 결과 장을」 for a slide called 「오버헤드
+측정 결과」 is that slide: every word of the phrase sits in the one name. A part
+the deck truly lacks (no name shares a word) is made, before the closing slide,
+rather than guessed from another slide (`revise.named_target`).
+
+**A section is prose, with the data in it.** A drafted section that came back as
+a one-key JSON object (`{"결과의 섹션 본문": "…"}`) is unwrapped to its text
+(`report.unwrap_json_prose`). One whose table is a frame of 「(미정)」 cells while
+the attached material carries numbers is asked for once more with the data in
+front of it (`placeholder_heavy`, `_FILL_PROMPT`); a cell the data cannot fill
+is 「—」, never an invented value.
+
+**Notes are notes.** 「모든 장에 발표자 노트를 두 문장씩 넣어 줘」 is a whole-deck
+pass whatever the planner picked (`revise.notes_everywhere`), and a notes-only
+rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 
 ### Design templates
 
@@ -841,8 +993,31 @@ A file uploaded into a chat stays readable for the rest of that chat. This
 turn's own attachments take the file budget first and go whole where they fit;
 earlier ones take what is left, excerpted around the question once they no
 longer fit, and are always named in the file report so the model does not deny
-having received them. Reports and decks author one document and do not carry
-earlier uploads.
+having received them. Project knowledge shares that same budget: it takes what
+the attachments left, never less than a quarter of it, read around the question
+(`knowledge_budget_after`), so a project's files and a conversation's uploads
+fill one context rather than two. Reports and decks author one document and do
+not carry earlier uploads. In chat, this turn's attachment is placed as its own exchange
+right before the question (`context.build_messages(turn_context=…)`), not in
+the reference block that opens the transcript, so the model reads the file next
+to the sentence about it; earlier files, knowledge and memories stay in that
+opening block, which is a stable prefix across turns.
+
+**The conversation is fitted to the model's window** (`context.fit_history`),
+once the model is final. The fixed parts of the request — system turn, reference
+block, this turn's attachment and question, tool schemas — are counted with a
+deliberately high token estimate (`context.estimate_tokens`, about 1.2× the
+gateway's count on Qwen), an answer reserve is held back, and the earlier turns
+that do not fit the rest are dropped oldest first, at a question boundary, to
+80 % of the budget so the next few turns fit without another cut. The dropped
+turns go in as a trusted 「이전 대화 요약」 block written by the enrichment model
+(`services/conversation_summary`, in batches of about 14k characters when a lot
+is dropped at once) and cached on `sessions.summary` by the id of the last
+message it covers, so a later cut summarises only the turns since. A summary
+that could not be written is said so, never invented; the turn's timeline shows
+how many messages were summarised; the cost settles as `chat.summary`. A
+prompt the provider still refuses for length is reported as
+`context_length_exceeded` with a sentence that says what to do.
 
 The design block sits after the project's own instructions and before the
 skills: the look is a property of the project, and a skill switched on for this
@@ -946,7 +1121,106 @@ prompts and free-form model reasoning are never persisted.
 
 ---
 
+**Standing rules are repeated next to the question.** An earlier user message
+that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on
+answer in English") is replayed verbatim as a short exchange right before the
+latest question (`standing_directives`, chat only, the three most recent, a
+withdrawal such as 「원래대로」 clears them). The rule still sits in the
+transcript; the replay is where a small model attends. A skill fetched through
+`use_skill` is told that such rules take precedence over its own instructions.
+
+**The auto toggle's forced search asks about the world.** `needs_web_search`
+used to fire on any time word — 「오늘 하루」, 「내일 발표」, 「서버 비용」, 「마감」 —
+so a pasted schedule or the person's own budget forced a web search before the
+model saw the message; in a 42-turn auto-mode run all fifteen searches were
+forced this way and none chosen by the model. It now stands down when the person
+is telling rather than asking (their team, memo, rule, code), when the question
+is about the conversation (「아까」, 「그 규칙」, 「지금 코드」), when it is arithmetic
+on supplied numbers or a rule of thumb (「몇 장이 적당해?」, 「보통 얼마」), and when a
+sentence has a time word but no world cue (news, price, version, law, office).
+The search tool stays offered; only the forced first hop is withheld.
+
+**Auto search is for the world, not the conversation.** With the search toggle
+on auto the model chooses when to search; it was searching on a pasted schedule,
+on "what rule did I set at the start today" and on "what does this code do when
+all values are blank". The auto instruction now names what never needs a search
+(the conversation itself, the user's own figures and the arithmetic on them,
+code behaviour, textbook principles, rules of thumb) and ties searching to
+answers that depend on events after training or today's values; `create_chart`
+is for charts the user asked for, not for trend questions.
+
+**A rough figure still says where to check.** A question about the usual level
+of a changing value (「왕복 요금은 보통 얼마나 해?」) forces no search, but the
+figure comes from training data, so the turn runs with `caveat_request`
+(`freshness.ballpark_current_value`): the answer streams live and closes with
+the same light caveat an unverified current-fact answer gets, unless the
+conversation's files ground it.
+
+**Length follows the question.** The chat contract asks for two to four
+sentences of prose on a casual question or quick fact, with structure only when
+the user asks for detail or the material has parallel parts; the internal model
+otherwise answers a stew-cooking question with headed bullet sections.
+
+**One answer, once.** A small model sometimes restates its whole answer after
+the prompt's silent self-check. When a tool-less hop ends with one block written
+twice in a row, the agent keeps the first copy and takes the second back with a
+`retract` event (`_repeated_tail`), so neither the stream nor the stored message
+shows the paragraph twice. The style guide's worked example is marked as showing
+form only and uses a neutral domain, after a transfer-learning example came back
+as fact in an answer about transfer learning.
+
+### Boundaries tightened by the whole-codebase review
+
+- A `stdio` connector is a command the API server runs: only an administrator
+  may register one, and the child inherits a minimal environment (`PATH`,
+  `HOME`, locale, `TZ`), never the API's own secrets (`mcp._INHERITED_ENV`).
+- A cached conversation summary is masked under the policy in force when it is
+  reused, not only the one in force when it was written.
+- Report sections reach storage sanitised on every path — create, update and
+  restore alike (`_clean_report_data`).
+- A video job passes the same gate as a chat turn: egress policy, the intent
+  filter, and this account's model allowlist, before the prompt leaves.
+- An index delete that fails leaves the file's record saying where its vectors
+  are, for the next attempt; a vector hit for a document no longer on the shelf
+  is dropped before it can become evidence.
+- Credit settlement is an atomic SQL increment; two turns of one account
+  settling at once both land.
+- A finished video is claimed once across replicas by flipping its stage with
+  a conditional update; a cancel that landed first wins, and nothing is stored
+  or charged after it.
+- A chat turn is claimed on the session row (`running_turn`, `running_since`,
+  migration 0050) in the same transaction as its question, released when the
+  answer settles or stop is pressed, and ignored once older than ten minutes.
+  Two replicas serialize on the row; the second sees the claim and answers 409.
+- The first signup is decided under a transaction-scoped advisory lock, so two
+  simultaneous first signups cannot both become the administrator.
+- Office and HWPX archives are opened only after their declared sizes pass a
+  limit (64 MB unpacked, 4,000 entries, 32 MB a member), and parsing runs in a
+  worker thread so one upload cannot stall the event loop.
+- The shared view renders a section through the same component as the owner's
+  view, so an edited HTML body shows there too.
+- The release workflow publishes an image only after the CI workflow passed on
+  the same commit (`verify` calls `ci.yml`).
+- Sidebar day buckets compare local calendar dates, not elapsed milliseconds.
+
 ## 8. Agent knowledge and retrieval
+
+Project knowledge is indexed as well: a project has its own collection
+(`projects.index_key`, minted on the first indexed document) that holds its
+files, its URL snapshots and the uploads made in its conversations, so one
+`search_knowledge` call covers all of them. A conversation inside a project
+searches the project's collection and, for uploads indexed before the project
+had one, its own (comma-separated collections); one outside it searches its
+own. Each file records the collection its write went to
+(`files.index_collection`): deleting the file forgets that one; moving the
+conversation to another project forgets the old entry and indexes the file
+into the new home's collection (`reindex_session_files`); deleting the
+conversation, singly or in bulk, forgets its uploads' entries while the rows
+stay in the file box (`forget_session_files`). Deleting
+the project drops the collection; `POST /projects/{id}/knowledge/reindex`
+backfills files uploaded before the index existed. The lexical shelf the tool
+also reads includes the project's files, so a passage the budget could not
+carry whole is still reachable by lookup.
 
 An agent can carry documents of its own: files uploaded to it, and pages read
 once from a URL and stored as text. They are `files` rows with `agent_id` set,

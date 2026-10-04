@@ -99,9 +99,19 @@ jobs:
             { echo "matrix={\"include\":[$entries]}"; echo 'any=true'; } >> "$GITHUB_OUTPUT"
           fi
 
+  # The same lint, typecheck, tests and builds CI runs — on this commit, before any
+  # image moves `:latest`. A failing check leaves the registry as it was.
+  verify:
+    name: Verify · CI on this commit
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
     name: Image · publish ${{ matrix.name }}
-    needs: changes
+    needs: [changes, verify]
     if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     strategy:

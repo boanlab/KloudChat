@@ -27,6 +27,10 @@ _DDL = (
         render_template_id TEXT,
         index_key TEXT,
         pending TEXT,
+        summary TEXT,
+        skill_ids TEXT,
+        running_turn TEXT,
+        running_since DATETIME,
         pinned BOOLEAN DEFAULT 0,
         created_at DATETIME,
         updated_at DATETIME

@@ -1,4 +1,4 @@
-"""Present-state claims without read evidence never bypass the display contract."""
+"""Present-state answers without read evidence are given, dated and marked unverified."""
 
 from __future__ import annotations
 
@@ -13,65 +13,35 @@ from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResul
 
 _AS_OF = date(2026, 9, 12)
 _KR = "현재 대한민국 대통령"
-_UNKNOWN = "현재 상태는 이번 요청에서 확인하지 못했습니다."
+_CAVEAT = current_evidence.caveat(_KR)
+
+
+def test_an_offline_answer_keeps_its_words_and_gains_a_caveat():
+    raw = "2022년 5월에 취임한 사람은 윤석열입니다."
+    assert current_evidence.render(raw, _KR, as_of=_AS_OF) == raw + _CAVEAT
 
 
 @pytest.mark.parametrize(
     "raw",
     [
-        "현재 대한민국의 대통령은 윤석열입니다. 다만 이 답변은 부정확할 수 있습니다.",
-        "- 과거 사실: 윤석열이 대통령입니다.\n- 현재 상태: 윤석열이 재임 중입니다.",
-        "- 과거 사실: 2022년부터 윤석열은 대통령입니다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2022년에 취임했으며 현재 대통령입니다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2026년에 취임했다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2027년에 취임했다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2022년에 취임했고 오늘도 재임 중이다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2022년에 취임했다. 현재도 재임했다.\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2022년에 취임했다. https://example.test\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: [2022년에 취임했다.](https://example.test)\n- 현재 상태: 윤석열입니다.",
-        "- 과거 사실: 2022년에 현\u200b재 취임했다.\n- 현재 상태: 윤석열입니다.",
-        "- Past fact: He was elected in 2022.\n- Current status: He is the president.",
-        "",
+        "2022년 기준으로는 A였지만 현재 상태는 이번 요청에서 확인하지 못했습니다.",
+        "제가 아는 마지막 값은 4.2이며, 이는 학습 시점 기준이라 바뀔 수 있습니다.",
+        "The last version I know of is 4, as of 2024; this was not verified in this request.",
     ],
 )
-def test_invalid_or_present_claims_never_pass_through_the_offline_renderer(raw):
-    assert current_evidence.render(raw, _KR, as_of=_AS_OF) == _UNKNOWN
+def test_an_answer_that_already_hedges_is_left_alone(raw):
+    assert current_evidence.render(raw, _KR, as_of=_AS_OF) == raw
 
 
-@pytest.mark.parametrize("question", [_KR, "현재 회사 대표이사", "최신 제품 버전"])
-def test_short_dated_past_fact_is_kept_but_model_current_status_is_ignored(question):
-    raw = "- 과거 사실: 2022년에 기존 담당자가 취임했다.\n- 현재 상태: UNSUPPORTED_CURRENT_CLAIM"
-    answer = current_evidence.render(raw, question, as_of=_AS_OF)
-    assert answer == (
-        f"- 학습지식의 과거 정보(미검증): 2022년에 기존 담당자가 취임했다.\n- 현재 상태: {_UNKNOWN}"
-    )
-    assert "UNSUPPORTED_CURRENT_CLAIM" not in answer
+def test_an_empty_answer_states_that_nothing_was_verified():
+    assert "확인하지 않았습니다" in current_evidence.render("", _KR)
+    assert "not verified" in current_evidence.render("", "Latest version?")
 
 
-@pytest.mark.parametrize(
-    "past",
-    [
-        "The product was launched in 2022 and is the current release.",
-        "The product was launched in 2022 and is version 4.",
-        "The product was launched in 2022 and remains version 4.",
-        "The product was launched in 2027.",
-        "The product was launched in 2022. " + "Long background " * 30,
-    ],
-)
-def test_english_current_or_oversized_background_is_rejected(past):
-    raw = f"- Past fact: {past}\n- Current status: CURRENT_GUESS"
-    assert current_evidence.render(raw, "Latest product version", as_of=_AS_OF) == (
-        "The current state was not verified in this request."
-    )
-
-
-def test_english_past_fact_uses_english_status_and_not_the_generated_current_field():
-    raw = "- Past fact: Version 3 was released in 2022.\n- Current status: CURRENT_GUESS"
-    answer = current_evidence.render(raw, "Latest product version", as_of=_AS_OF)
-    assert answer == (
-        "- Remembered past information (not verified): Version 3 was released in 2022.\n"
-        "- Current status: The current state was not verified in this request."
-    )
+def test_the_english_caveat_follows_an_english_request():
+    out = current_evidence.render("Version 4 came out in 2022.", "Latest product version")
+    assert out.startswith("Version 4 came out in 2022.")
+    assert "training-time knowledge" in out
 
 
 def _tool(name, result, *, source="builtin", read_only=True):
@@ -123,47 +93,6 @@ def test_only_structurally_usable_read_results_release_the_guard(name, result, u
     empty = copy.copy(result)
     empty.empty = True
     assert current_evidence.usable_read_result(_tool(name, empty), empty) is False
-
-
-@pytest.mark.parametrize(
-    "past",
-    [
-        "2022년 3월 선거에서 당선되어 2022년 5월 10일 기존 담당자가 취임함.",
-        "2014년 2월부터 2025년까지 기존 담당자가 CEO를 맡아 왔습니다.",
-        "2022년에 기존 담당자가 취임했다.",
-    ],
-)
-def test_one_valid_past_field_survives_extra_prose_but_the_extra_claim_never_renders(past):
-    raw = (
-        "Copied format instructions, not answer content\n"
-        "- 과거 사실: <과거 사실을 적으세요>\n"
-        f"- 과거 사실: {past}\n"
-        "An extra model paragraph\n"
-        "- 현재 상태: UNSUPPORTED_CURRENT_CLAIM\n"
-        "현재는 UNSUPPORTED_CURRENT_CLAIM입니다."
-    )
-    answer = current_evidence.render(raw, _KR, as_of=_AS_OF)
-    assert answer == f"- 학습지식의 과거 정보(미검증): {past}\n- 현재 상태: {_UNKNOWN}"
-    assert "UNSUPPORTED_CURRENT_CLAIM" not in answer
-    assert "Copied format" not in answer
-
-
-def test_distinct_valid_past_fields_are_ambiguous_and_not_arbitrarily_selected():
-    raw = "- 과거 사실: 2022년에 취임했다.\n- 과거 사실: 2023년에 취임했다."
-    assert current_evidence.render(raw, _KR, as_of=_AS_OF) == _UNKNOWN
-
-
-@pytest.mark.parametrize(
-    "past",
-    [
-        "2014년부터 기존 담당자가 CEO를 맡아 왔습니다.",
-        "2022년부터 기존 담당자가 대통령으로 재임 중임.",
-        "2022년에 취임했고 기존 담당자가 직책을 맡고 있음.",
-    ],
-)
-def test_open_ended_or_ongoing_service_cannot_be_smuggled_into_a_past_field(past):
-    raw = f"- 과거 사실: {past}\n- 현재 상태: UNVERIFIED"
-    assert current_evidence.render(raw, _KR, as_of=_AS_OF) == _UNKNOWN
 
 
 @pytest.mark.parametrize("read_only", [False, None, True])
@@ -219,16 +148,17 @@ def _visible(events):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strict", [False, True])
-async def test_offline_current_claim_and_its_cutoff_disclaimer_never_stream(monkeypatch, strict):
+async def test_an_offline_current_answer_streams_live_and_ends_with_a_caveat(monkeypatch, strict):
     snapshots = []
     _mock_model(
         monkeypatch,
-        [{"text": "현재 대한민국의 대통령은 윤석열입니다. 다만 학습 기준을 확인할 수 없습니다."}],
+        [{"text": "2022년 5월에 취임한 대통령은 윤석열입니다."}],
         snapshots,
     )
     events = await _turn(strict_local=strict)
-    assert _visible(events) == _UNKNOWN
-    assert "윤석열" not in json.dumps(events, ensure_ascii=False)
+    # The words stream as written, and the caveat follows them.
+    assert _visible(events) == "2022년 5월에 취임한 대통령은 윤석열입니다." + _CAVEAT
+    assert [e["text"] for e in events if e["type"] == "delta"][0].startswith("2022년")
     assert current_evidence.instruction(_KR) in snapshots[0][0]["content"]
     assert [message["role"] for message in snapshots[0]] == ["system", "user"]
     assert len(snapshots) == 1
@@ -237,7 +167,7 @@ async def test_offline_current_claim_and_its_cutoff_disclaimer_never_stream(monk
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("name", ["web_search", "fetch_url", "weather", "search_knowledge"])
-async def test_actual_read_material_removes_fixed_format_without_an_extra_model_call(
+async def test_actual_read_material_removes_the_caveat_without_an_extra_model_call(
     monkeypatch, name
 ):
     results = {
@@ -266,7 +196,8 @@ async def test_calculation_or_write_is_not_current_state_evidence(monkeypatch, n
         [_tool(name, ToolResult(content="2022 + 5 = 2027"))],
         preset_call=(name, {"expression": "2022+5"}),
     )
-    assert _visible(events) == _UNKNOWN
+    # A calculation or a write is not evidence for the present: the caveat stays.
+    assert _visible(events) == "UNSUPPORTED_CURRENT_CLAIM" + _CAVEAT
     assert current_evidence.instruction(_KR) in snapshots[0][0]["content"]
     assert len(snapshots) == 1
 
@@ -283,14 +214,14 @@ async def test_failed_search_is_still_masked_before_the_next_model_hop(monkeypat
             text.count("SYNTHETIC_PRIVATE_VALUE"),
         ),
     )
-    assert _visible(events) == _UNKNOWN
+    assert _visible(events) == "UNSUPPORTED_CURRENT_CLAIM" + _CAVEAT
     assert "SYNTHETIC_PRIVATE_VALUE" not in json.dumps(snapshots)
     assert any(event["type"] == "privacy_route" for event in events)
     assert current_evidence.instruction(_KR) in snapshots[0][0]["content"]
 
 
 @pytest.mark.asyncio
-async def test_stable_task_does_not_receive_fixed_format_or_output_filter(monkeypatch):
+async def test_stable_task_does_not_receive_the_instruction_or_a_caveat(monkeypatch):
     snapshots = []
     _mock_model(monkeypatch, [{"text": "1+1=2"}], snapshots)
     events = await _turn(freshness_request=None)

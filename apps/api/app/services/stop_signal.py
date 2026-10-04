@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Callable
 
 import asyncpg
@@ -25,9 +26,30 @@ log = logging.getLogger("kchat")
 
 CHANNEL = "kchat_stop"
 
-#: Called with a session id whenever any process (including this one)
-#: broadcasts a stop for it.
+#: This process, named in every broadcast it sends. Postgres delivers a NOTIFY
+#: to every listener, the sender included; a broadcast that comes back to its
+#: own process is ignored, because that process already fired its own signals
+#: before sending — and a turn that starts right after the broadcast would
+#: otherwise be stopped by the echo of the stop meant for its predecessor.
+_ORIGIN = uuid.uuid4().hex
+
+#: Called with a session id whenever another process broadcasts a stop for it.
 Listener = Callable[[str], None]
+
+
+def payload_for(session_id: str) -> str:
+    return f"{_ORIGIN}:{session_id}"
+
+
+def session_from(payload: str) -> str | None:
+    """The session a broadcast names, or None when this process sent it."""
+    origin, sep, session_id = payload.partition(":")
+    if not sep:
+        # A payload from a build that sent the bare session id.
+        return origin or None
+    if origin == _ORIGIN:
+        return None
+    return session_id or None
 
 
 def needed() -> bool:
@@ -46,9 +68,9 @@ async def broadcast(session_id: str) -> None:
         return
     try:
         async with SessionLocal() as db:
-            await db.execute(text("SELECT pg_notify(:channel, :session_id)"), {
+            await db.execute(text("SELECT pg_notify(:channel, :payload)"), {
                 "channel": CHANNEL,
-                "session_id": session_id,
+                "payload": payload_for(session_id),
             })
             await db.commit()
     except Exception as exc:  # noqa: BLE001 — this process's own signal still fired
@@ -64,7 +86,9 @@ async def listen(on_stop: Listener) -> None:
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
     def _callback(_connection: object, _pid: int, _channel: str, payload: str) -> None:
-        on_stop(payload)
+        session_id = session_from(payload)
+        if session_id is not None:
+            on_stop(session_id)
 
     while True:
         conn: asyncpg.Connection | None = None

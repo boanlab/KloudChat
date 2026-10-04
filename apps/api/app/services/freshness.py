@@ -205,23 +205,11 @@ def with_answer_policy(
         current_fact if current_fact is not None
         else isinstance(latest, str) and current_fact_required(latest)
     )
-    previous_current_question = False
     for message in result:
-        if message.get("role") == "user":
-            content = message.get("content")
-            previous_current_question = isinstance(content, str) and (
-                current_fact_required(content)
-                or previous_current_question and is_same_fact_followup(content)
-            )
         if message.get("role") == "assistant" and isinstance(message.get("content"), str):
+            # Earlier answers stay: they are the conversation. The current-fact
+            # instruction already says they are not evidence for the present state.
             message["content"] = _without_trailing_notices(message["content"])[0]
-            if current_turn and previous_current_question and not message.get("tool_calls"):
-                # Remove only old current-fact prose from this wire envelope;
-                # the stored conversation, user requests and tool results stay intact.
-                message["content"] = (
-                    "[Earlier assistant current-fact answer omitted: it is not "
-                    "independent evidence for the present state.]"
-                )
     if result and result[0].get("role") == "system":
         existing = str(result[0].get("content") or "")
         if FRESHNESS_INSTRUCTION in existing:
@@ -482,6 +470,16 @@ def fresh_fact_required(request: str, *, as_of: date | None = None) -> bool:
     return False
 
 
+def names_the_present(request: str) -> bool:
+    """Whether the request's own words ask about now (「현재」「지금」「최신」「올해」…).
+
+    A price or a rule asked about plainly can be read off the person's own documents;
+    the same question with 「지금」 in it asks what holds today.
+    """
+    text = unicodedata.normalize("NFC", request or "")
+    return bool(_LIVE.search(text) or _CURRENT_TIME.search(text))
+
+
 def abstention_response(request: str) -> str:
     """An evidence limitation, not a claim that a search ran or the model is outdated."""
     if re.search(r"[가-힣]", unicodedata.normalize("NFC", request or "")):
@@ -550,6 +548,32 @@ _FACT_TRANSFORM_ONLY = re.compile(
     re.I,
 )
 _FACT_YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})(?:\s*년|\b)")
+#: A ballpark ask (「보통 얼마나 해?」) wants the usual order of magnitude, which the
+#: model may give with its ordinary caveats; only a live marker makes it a current fact.
+_FACT_BALLPARK = re.compile(
+    r"보통|대략|어림|평균적으로|일반적으로|대충|통상|"
+    r"\b(?:typically|usually|roughly|approximately|on\s+average|ballpark|in\s+general)\b",
+    re.I,
+)
+
+
+def ballpark_current_value(request: str) -> bool:
+    """A question about the *usual* level of a changing value (「왕복 요금은 보통 얼마나
+    해?」, "what does a ticket typically cost?").
+
+    Not a current-fact request — `current_fact_required` skips these so no search is
+    forced — but the figure the model gives is still from its training data, so the
+    answer carries the light caveat a careful assistant adds: a rough figure, and where
+    to check today's.
+    """
+    if not isinstance(request, str) or len(request) > 4_000:
+        return False
+    text = " ".join(request.split())
+    if not text or _HISTORICAL.search(text):
+        return False
+    return bool(_FACT_BALLPARK.search(text) and _MUTABLE_VALUE.search(text))
+
+
 _FACT_VALUE_ASK = re.compile(
     r"얼마|몇|언제|어디|알려|말해|확인|검색|찾아|조회|비교|뭐|무엇|어때|인가|입니까|"
     r"\b(?:what|which|when|where|how\s+much|tell|find|check|compare|show|lookup)\b",
@@ -715,6 +739,9 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
         live |= bool(years and max(years) >= reference_year)
         if fresh_fact_required(clause, as_of=as_of):
             return True
+        if _FACT_BALLPARK.search(clause) and not live:
+            # 「왕복 요금은 보통 얼마나 해?」: the usual figure, not today's.
+            continue
         if _MUTABLE_ROLE.search(clause) and (live or _IDENTITY.search(clause)):
             return True
         if _MUTABLE_VALUE.search(clause) and (

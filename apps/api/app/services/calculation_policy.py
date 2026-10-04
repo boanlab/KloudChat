@@ -46,6 +46,14 @@ _MISSING = re.compile(
     re.IGNORECASE,
 )
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
+#: "10분이 아니라 20분" / "not 10 but 20" / "10 → 20": a corrected value is one
+#: operand, not two.
+_CORRECTION = re.compile(
+    r"[+-]?\d+(?:\.\d+)?\s*[^\s\d,.;:]{0,6}\s*"
+    r"(?:(?:이|가)?\s*아니라|아닌|→|->|⇒|대신에?|instead of)\s*"
+    r"|\bnot\s+[+-]?\d+(?:\.\d+)?\s*[^\s\d,.;:]{0,6}\s*(?:but|,)\s*",
+    re.IGNORECASE,
+)
 _OPERAND = r"(?<![0-9A-Za-z_.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?![\d.])"
 _QUANTITY = rf"{_OPERAND}\s*(?:원|점|명|개)?"
 _ARITHMETIC_VERB = r"(?:더해|더하|빼\s*줘|빼면|곱하|곱해|곱하면|나누|나눠)"
@@ -387,7 +395,8 @@ def requires_calculation(request: str) -> bool:
     data = " ".join(raw for raw, _ in eligible)
     if _MISSING.search(data):
         return False
-    number_count = len(_NUMBER.findall(data))
+    # "10분이 아니라 20분이야, 다시 계산해 줘" corrects one value; only the new one is supplied.
+    number_count = len(_NUMBER.findall(_CORRECTION.sub(" ", data)))
     if number_count < 1:
         return False
     # Eligible clauses preserve commands but omit quoted instructions. Splitting

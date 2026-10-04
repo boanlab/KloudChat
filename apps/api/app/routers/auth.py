@@ -14,6 +14,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -155,6 +156,10 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_unavailable")
 
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        # Two first signups at once must not both become the administrator: the
+        # count below is read under a transaction-scoped advisory lock.
+        await db.exec(text("SELECT pg_advisory_xact_lock(7331)"))
     is_first = await user_count(db) == 0
     policy = await settings_store.signup_policy()
     if policy.mode == "closed" and not is_first:

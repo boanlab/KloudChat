@@ -32,6 +32,7 @@ _STEP_LABELS: dict[str, str] = {
     "deep_research": "심층 조사 중",
     "get_current_time": "현재 시각 확인 중",
     "my_usage": "사용량 조회 중",
+    "use_skill": "스킬 적용 중",
 }
 
 
@@ -51,6 +52,7 @@ _STEP_TITLES: dict[str, str] = {
     "deep_research": "심층 조사",
     "get_current_time": "현재 시각",
     "my_usage": "사용량 조회",
+    "use_skill": "스킬 적용",
 }
 
 

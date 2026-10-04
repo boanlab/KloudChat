@@ -1,14 +1,14 @@
-"""A bounded display contract for present-state answers without retrieved evidence.
+"""Present-state answers without retrieved evidence: best effort, dated, marked unverified.
 
-This is not a truth classifier. It prevents an unsupported current value from
-being displayed as an answer while preserving a short, explicitly dated memory.
+Not a truth classifier. The model answers from what it knows, and the answer
+carries a caveat that says so — like a careful assistant does offline — instead
+of a refusal that would drop the conversation's thread.
 """
 
 from __future__ import annotations
 
 import re
-import unicodedata
-from datetime import UTC, date, datetime
+from datetime import date
 
 from app.services.tools.base import SearchEvidence, Tool, ToolResult
 
@@ -40,79 +40,77 @@ def _korean(request: str) -> bool:
 
 
 def instruction(request: str) -> str:
+    """How to answer a present-state question with no retrieved evidence this turn.
+
+    The answer is still given — from what the model knows — but dated and marked
+    as unverified, and never phrased as what holds today. This is how a careful
+    assistant answers offline; a bare refusal would throw the conversation away.
+    """
     if _korean(request):
         return (
-            "현재 상태를 뒷받침할 읽기 도구의 결과를 아직 받지 못했습니다. 허용된 도구를 "
-            "호출할 수는 있지만 검색 권한을 확대하지 마세요. 도구 근거 없이 답할 때는 "
-            "일반 답변 대신 아래 두 항목만 정확히 출력하세요.\n"
-            "- 과거 사실: <명시적인 과거 연도가 있는 짧은 과거 사실 한 문장, 없으면 비움>\n"
-            "- 현재 상태: 현재 상태는 이번 요청에서 확인하지 못했음.\n"
-            "과거 사실에는 올해나 미래 연도, 현재·현직·오늘·재임 중 같은 표현, 현재 값의 "
-            "추측, 링크, 추가 항목을 넣지 마세요. 과거 임기에서 현재 재임을 추론하지 마세요. "
-            "이 형식은 근거 없는 현재 값을 차단하기 위한 것으로, 과거 사실을 검증했다는 "
-            "의미는 아닙니다."
+            "이 질문은 시간이 지나면 달라지는 현재 상태를 묻는데, 이번 요청에는 그것을 확인할 "
+            "검색·열람 결과가 없습니다. 그래도 아는 범위에서 유용하게 답하세요: 마지막으로 알고 "
+            "있는 값이나 사실을 연도·시점과 함께 적고, 「현재」「지금」「오늘」처럼 지금 그렇다고 "
+            "단정하는 표현은 쓰지 마세요. 답 끝에 그 값이 학습 시점의 지식이며 이번 요청에서 "
+            "확인하지 않았다는 점을 한 문장으로 밝히고, 확인할 방법(공식 사이트, 검색 켜기)을 "
+            "짧게 안내하세요. 모르는 세부는 모른다고 쓰고 지어내지 마세요."
         )
     return (
-        "A permitted read tool has not yet supplied evidence for the current state. You may "
-        "call permitted tools, but must not expand search permissions. If answering without "
-        "retrieved evidence, output exactly these two items instead of an ordinary answer:\n"
-        "- Past fact: <one short past fact with an explicit past year, or leave empty>\n"
-        "- Current status: Not verified in this request.\n"
-        "The past fact must not contain this year or a future year, present-state language "
-        "such as current/incumbent/today/still, a guessed current value, links or additional "
-        "items. Do not infer continued service from an old term. This format does not "
-        "certify the remembered past fact as verified."
+        "This question asks about a present state that changes over time, and this turn "
+        "has no retrieved evidence for it. Still answer usefully from what you know: give "
+        "the last value or fact you know with its year or date, and do not phrase it as "
+        "what holds now or today. End with one sentence saying the answer is based on "
+        "training-time knowledge and was not verified in this request, and how to verify "
+        "it (an official site, enabling search). Say what you do not know rather than guess."
     )
 
 
-def _valid_past(past: str, *, as_of: date) -> bool:
-    if any(unicodedata.category(char) in {"Cf", "Cc"} for char in past):
-        return False
-    if not past or len(past) > _MAX_PAST_CHARACTERS:
-        return False
-    # A date is necessary, not sufficient, evidence that this is a past claim.
-    years = [int(value) for value in _PAST_YEAR.findall(past)]
-    if (
-        not years
-        or any(year >= as_of.year for year in years)
-        or _PRESENT_MARKER.search(past)
-        or _PRESENT_TENSE.search(past)
-        or not _PAST_TENSE.search(past)
-    ):
-        return False
-    if "부터" in past and "까지" not in past or re.search(r"\bsince\b", past, re.I):
-        return False
-    if re.search(
-        r"https?://|www\.|[<>\[\]`]|(?:과거 사실|현재 상태|Past fact|Current status):", past
-    ):
-        return False
-    return True
+#: Words that already mark an answer as dated or unverified.
+_HEDGED = re.compile(
+    r"확인(?:하지|되지|되지\s*않|할\s*수\s*없|이\s*필요)|미검증|검증되지|검증이\s*필요|"
+    r"(?:학습|지식|훈련|데이터)\s*(?:시점|기준)|\d{4}\s*년[^.\n]{0,8}기준|(?:시점|기준)\s*(?:기준|시점)|"
+    r"(?:이후|그\s*뒤|지금은|현재는|실제로는)[^.\n]{0,12}(?:바뀔|달라질|변경될|다를)\s*수|최신\s*정보는|"
+    r"확정(?:할\s*수\s*없|하지\s*못)|완료하지\s*못|"
+    r"\b(?:unverified|not\s+verified|as\s+of|may\s+have\s+changed|could\s+not\s+verify|"
+    r"based\s+on\s+(?:my\s+)?training|knowledge\s+cutoff|check\s+the\s+official)\b",
+    re.I,
+)
 
 
-def _past_fact(content: str, request: str, *, as_of: date) -> str | None:
-    label = "과거 사실" if _korean(request) else "Past fact"
-    candidates: set[str] = set()
-    for line in unicodedata.normalize("NFKC", content).splitlines():
-        match = re.fullmatch(rf"- {label}:\s*(.*)", line.strip())
-        if match and _valid_past(past := match[1].strip(), as_of=as_of):
-            candidates.add(past)
-    # Extra prose and status fields never render. Distinct valid past fields
-    # have no deterministic winner, so do not silently choose between them.
-    return next(iter(candidates)) if len(candidates) == 1 else None
+def caveat(request: str) -> str:
+    """The sentence appended when the model did not mark its answer as unverified."""
+    if _korean(request):
+        return (
+            "\n\n_위 내용은 학습 시점의 지식이며, 현재 상태는 이번 요청에서 확인하지 않았습니다. "
+            "최신 값은 공식 자료나 웹 검색을 켜서 확인하세요._"
+        )
+    return (
+        "\n\n_This reflects training-time knowledge; the current state was not verified in "
+        "this request. Check an official source or enable web search for the latest value._"
+    )
+
+
+def has_caveat(content: str) -> bool:
+    return bool(_HEDGED.search(content))
 
 
 def render(content: str, request: str, *, as_of: date | None = None) -> str:
-    """Extract one bounded past field; never pass through other model prose."""
-    past = _past_fact(content, request, as_of=as_of or datetime.now(UTC).date())
-    if _korean(request):
-        status = "현재 상태는 이번 요청에서 확인하지 못했습니다."
-        if past:
-            return f"- 학습지식의 과거 정보(미검증): {past}\n- 현재 상태: {status}"
+    """The answer as shown: the model's words, plus the caveat when they lack one.
+
+    `as_of` is accepted for callers that pass it; the caveat does not depend on it.
+    """
+    del as_of
+    body = (content or "").strip()
+    if not body:
+        status = (
+            "현재 상태는 이번 요청에서 확인하지 않았습니다."
+            if _korean(request)
+            else "The current state was not verified in this request."
+        )
         return status
-    status = "The current state was not verified in this request."
-    if past:
-        return f"- Remembered past information (not verified): {past}\n- Current status: {status}"
-    return status
+    if has_caveat(body):
+        return body
+    return body + caveat(request)
 
 
 def usable_read_result(tool: Tool | None, result: ToolResult) -> bool:

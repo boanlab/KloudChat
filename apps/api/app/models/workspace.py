@@ -51,6 +51,9 @@ class Project(SQLModel, table=True):
     #: the image, and an unknown id degrades to the built-in track. Null and
     #: `{}` are equivalent.
     render_templates: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Retrieval-index collection for the project's knowledge and the uploads made in
+    #: its conversations, minted on the first indexed document. Unguessable on purpose.
+    index_key: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -112,6 +115,8 @@ class StoredFile(SQLModel, table=True):
     error: str | None = Field(default=None)
     #: Last successful write to the retrieval index; null means lexical search only.
     indexed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: The collection that write went to, so a move or a delete forgets the right one.
+    index_collection: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
