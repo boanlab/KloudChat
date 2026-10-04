@@ -49,6 +49,7 @@ from app.services import (
     pictures,
     ratelimit,
     research,
+    revise,
     settings_store,
     thinking,
 )
@@ -133,10 +134,13 @@ _STYLE_LABELS = {
 #: Topic words → accent name. Checked in order; the first topic named wins. A deck
 #: about nothing on this list takes a colour keyed off its request, so two decks on
 #: different subjects do not come out the same colour.
-_TOPIC_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("남색", ("보안", "금융", "법", "정책", "경영진", "이사회", "투자", "은행")),
+#: Topic words → the colours that suit the subject. Several per topic, so forty decks
+#: about systems do not all wear the same blue: one is picked by a digest of the request,
+#: the same request always getting the same one.
+_TOPIC_THEMES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("남색", "먹", "청록"), ("보안", "금융", "법", "정책", "경영진", "이사회", "투자", "은행")),
     (
-        "파랑",
+        ("파랑", "청록", "남색", "자주"),
         (
             "기술",
             "시스템",
@@ -149,11 +153,14 @@ _TOPIC_THEMES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "네트워크",
         ),
     ),
-    ("초록", ("환경", "에너지", "농업", "생태", "탄소", "지속가능", "친환경")),
-    ("청록", ("의료", "건강", "병원", "바이오", "제약", "간호")),
-    ("주황", ("교육", "수업", "강의", "학생", "청소년", "학습")),
-    ("자주", ("문화", "예술", "디자인", "패션", "공연", "미디어")),
-    ("빨강", ("홍보", "행사", "축제", "캠페인", "모집", "마케팅")),
+    (("초록", "청록"), ("환경", "에너지", "농업", "생태", "탄소", "지속가능", "친환경")),
+    (("청록", "초록", "파랑"), ("의료", "건강", "병원", "바이오", "제약", "간호")),
+    (
+        ("주황", "초록", "자주"),
+        ("교육", "수업", "강의", "학생", "청소년", "학습", "온보딩", "입사"),
+    ),
+    (("자주", "빨강", "주황"), ("문화", "예술", "디자인", "패션", "공연", "미디어")),
+    (("빨강", "주황", "자주"), ("홍보", "행사", "축제", "캠페인", "모집", "마케팅", "소개")),
 )
 #: What a request naming no topic draws from; the product's own purple stays out so a
 #: deck does not look like the app's chrome.
@@ -167,15 +174,27 @@ def suggest_look(request: str) -> tuple[str, str]:
     colour; a request naming neither gets a colour keyed off its own words, never the
     same one every time. The outline may still override both when the request says so.
     """
-    text = (request or "").lower()
     style = design.visual_style_for(request)
     if style == "editorial":
         style = design.venue_style_for(request) or "editorial"
-    theme = next((name for name, words in _TOPIC_THEMES if any(w in text for w in words)), "")
-    if not theme:
-        digest = sum(ord(ch) for ch in re.sub(r"\s+", "", text)[:200])
-        theme = _ROTATION[digest % len(_ROTATION)]
-    return theme, _STYLE_LABELS[style]
+    return topic_theme(request), _STYLE_LABELS[style]
+
+
+def topic_theme(request: str) -> str:
+    """The colour name for this request: one of its subject's colours, picked by a digest
+    of the words so the same request keeps its colour and the next one may differ; a
+    request naming no subject draws from the rotation."""
+    text = (request or "").lower()
+    digest = sum(ord(ch) for ch in re.sub(r"\s+", "", text)[:200])
+    for names, words in _TOPIC_THEMES:
+        if any(w in text for w in words):
+            return names[digest % len(names)]
+    return _ROTATION[digest % len(_ROTATION)]
+
+
+def topic_accent(request: str) -> str:
+    """The hex accent for `topic_theme`."""
+    return _THEMES.get(topic_theme(request), _THEMES["파랑"])
 
 
 #: Prompt label → stored `visualStyle` value.
@@ -336,6 +355,9 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
 
 규칙:
 - 장마다 그 장에서만 하는 말. 앞 장을 다른 낱말로 되풀이하지 마라.
+- **자료의 이름은 원문 그대로.** 첨부 데이터의 항목 이름·열 머리글·식별자(nginx, redis 같은
+  워크로드명, 제품명, 코드명)는 번역하거나 다른 말로 바꿔 부르지 않는다. 「웹 서버」가
+  아니라 「nginx」다.
 - **수치는 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만.** 없는 수치(비용,
   퍼센트, 초, 명)를 만들지 마라. 겁을 주거나 재촉하는 장을 만들지 마라.
 - 영어 낱말을 한국어 문장에 섞지 말고, 중국어 한자를 쓰지 마라.
@@ -396,7 +418,20 @@ def _facts_line(request: str) -> str:
         return (
             "쓸 수 있는 수치: (요청에 수치가 없다 — metrics·chart 를 쓰지 말고 숫자를 만들지 마라)"
         )
-    return "쓸 수 있는 수치(요청에 있는 것 전부): " + ", ".join(found[:30])
+    line = (
+        "쓸 수 있는 수치(요청에 있는 것 전부): "
+        + ", ".join(found[:30])
+        + " — 사용자가 적어 준 사실이므로 각각 어느 장에든 한 번은 나와야 한다. 빠뜨리지 마라."
+    )
+    # Arithmetic the request implies, done once here (see `report.derived_values`).
+    from app.services.report import derived_values
+
+    if derived := derived_values(request):
+        line += (
+            "\n계산된 값(식 그대로 옮겨 적고 다시 셈하지 마라; 그 값이 필요한 한 장에서만 쓴다): "
+            + "; ".join(derived)
+        )
+    return line
 
 
 _CLAIM = re.compile(
@@ -485,9 +520,433 @@ def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) ->
     return dropped
 
 
+_KOREAN_AMOUNT = re.compile(
+    r"(\d[\d,]*(?:\.\d+)?)\s*(억|만|천)(?:\s*(\d[\d,]*(?:\.\d+)?)\s*(만|천))?"
+)
+_UNIT_VALUE = {"억": 100_000_000, "만": 10_000, "천": 1_000}
+
+
+def _expanded_amounts(request: str) -> set[str]:
+    """「6.1만」→ 61000, 「4만 2천」→ 42000, 「1200만」→ 12000000: the plain digits a chart
+    or metric writes for an amount the request spelled with Korean units."""
+    out: set[str] = set()
+    for match in _KOREAN_AMOUNT.finditer(request):
+        try:
+            total = float(match.group(1).replace(",", "")) * _UNIT_VALUE[match.group(2)]
+            if match.group(3) and match.group(4):
+                total += float(match.group(3).replace(",", "")) * _UNIT_VALUE[match.group(4)]
+        except (TypeError, ValueError):
+            continue
+        text = f"{total:.2f}".rstrip("0").rstrip(".")
+        out.add(text)
+        if "." not in text:
+            out.add(text + ".0")
+    return out
+
+
 def _facts_set(request: str) -> set[str]:
     """Every digit run in the request, so a number on a slide can be checked."""
-    return {re.sub(r"[^\d.]", "", m) for m in re.findall(r"\d[\d,]*(?:\.\d+)?", request)}
+    digits = {re.sub(r"[^\d.]", "", m) for m in re.findall(r"\d[\d,]*(?:\.\d+)?", request)}
+    return digits | _expanded_amounts(request)
+
+
+#: Words that make a clause an instruction rather than a fact to keep.
+_ASK_WORDS = re.compile(
+    r"(?:줘|주세요|해라|하라|만들|써\s|쓰고|바꿔|줄여|줄이|늘려|넣어|빼|합쳐|합치|병합|나눠|맞춰|맞춘)"
+)
+#: A count that is about the document's shape (「6장」, 「세 절」) or a point in time, not
+#: a fact of the subject.
+_WHEN_UNIT = re.compile(
+    r"(?:분|초|시간|개월|주|일|년|월|회|장|절|슬라이드|페이지|쪽|문장|개의?\s*장)\s*$"
+)
+_CLAUSE_BREAK = re.compile(r"[,，、.。!?;:()（）\[\]「」·]|\s(?:그리고|또한|및)\s")
+
+
+def _slide_words(slide: dict) -> str:
+    """Every word a slide shows or says, for checking what the deck already carries."""
+    parts: list[str] = [str(slide.get("title") or ""), str(slide.get("subtitle") or "")]
+    parts.append(_drafted_text(slide))
+    for row in slide.get("rows") or []:
+        if isinstance(row, list):
+            parts.append(" ".join(str(cell) for cell in row))
+    for metric in slide.get("metrics") or []:
+        if isinstance(metric, list):
+            parts.append(" ".join(str(cell) for cell in metric))
+    chart = slide.get("chart")
+    if isinstance(chart, dict):
+        for series in chart.get("series") or []:
+            if isinstance(series, dict):
+                parts.append(" ".join(str(v) for v in series.get("values") or []))
+    notes = slide.get("notes")
+    parts.append(" ".join(str(n) for n in notes) if isinstance(notes, list) else str(notes or ""))
+    return "\n".join(parts)
+
+
+def _clause_around(text: str, start: int, end: int) -> str:
+    """The comma-to-comma clause holding `text[start:end]`, trimmed to a bullet's length."""
+    left = max((m.end() for m in _CLAUSE_BREAK.finditer(text, 0, start)), default=0)
+    right_match = _CLAUSE_BREAK.search(text, end)
+    right = right_match.start() if right_match else len(text)
+    clause = text[left:right].strip(" -–—:")
+    if len(clause) > 48:
+        clause = text[start:right].strip(" -–—:")
+    return clause.strip()
+
+
+def required_totals(request: str) -> list[tuple[str, str]]:
+    """`(line, result digits)` for each finished sum the request explicitly asked for — a
+    36-month TCO, a yearly total against a yearly budget — so a deck that forgot the
+    table it was asked for still carries the figure."""
+    from app.services.report import derived_values
+
+    asked_months = {int(m) for m in re.findall(r"(\d{1,3})\s*개월", request)}
+    years = re.findall(r"(\d)\s*년\s*(?:TCO|총|치|간|동안|기준)", request)
+    asked_months |= {int(m) * 12 for m in years}
+    if re.search(r"연\s*(?:간\s*)?예산", request):
+        asked_months.add(12)
+    out: list[tuple[str, str]] = []
+    for line in derived_values(request):
+        match = re.search(r"× (\d+)개월 = (.+)$", line)
+        if match and int(match.group(1)) in asked_months:
+            digits = re.sub(r"[^\d]", "", match.group(2))
+            out.append((line, digits))
+    return out
+
+
+def listed_items(request: str) -> list[tuple[str, list[str]]]:
+    """`(part name, its listed sub-items)` for each enumerated part whose description is a
+    comma-separated list of short items (「(2) 필수 계정 — 메일, 메신저, 위키, 문서검색」);
+    `[]` when the request lists parts no such way."""
+    if not enumerated_items(request):
+        return []
+    # Compiled here: `_ENUM_MARK` is defined further down the module.
+    detail = re.compile(
+        _ENUM_MARK + r"\s*(?P<name>[^—:\-–()\n]{2,30}?)\s*[—:\-–]\s*(?P<detail>[^()\n]+?)\s*(?="
+        + _ENUM_MARK + r"|[.。]\s|$)"
+    )
+    out: list[tuple[str, list[str]]] = []
+    for match in detail.finditer(request):
+        pieces = [p.strip(" .") for p in re.split(r"[,，、]", match.group("detail"))]
+        pieces = [p for p in pieces if p]
+        if len(pieces) >= 2 and all(len(p) <= 14 for p in pieces):
+            out.append((" ".join(match.group("name").split()), pieces))
+    return out
+
+
+def keep_listed_items(slides: list[dict], request: str) -> list[int]:
+    """Every sub-item the request spelled out for a part appears, in the user's words, on
+    the slide that covers that part; a missing one is added. Returns the slides changed.
+
+    「메일, 메신저, 위키, 문서검색」 asked for and 「사내 메신저와 협업 도구」 written is
+    a paraphrase the person did not ask for; the list is theirs."""
+    changed: list[int] = []
+    squeeze = lambda t: re.sub(r"\s+", "", t).lower()  # noqa: E731
+    for name, pieces in listed_items(request):
+        index = next(
+            (i for i, s in enumerate(slides) if _covers(str(s.get("title") or ""), name)), None
+        )
+        if index is None:
+            continue
+        slide = slides[index]
+        # What the slide shows, not what the notes say: an item spilled into the notes is
+        # an item the audience does not see.
+        shown = squeeze(_slide_words({**slide, "notes": ""}))
+        # Missing only when none of the item's words appear: the device catches an item
+        # that vanished (「목 장비 설정」 with neither word on the slide), not one the
+        # writer phrased its own way (「USB: 개인 USB 꽂지 않기」 for 「USB 금지」).
+        def present(piece: str, shown: str = shown) -> bool:
+            tokens = [w for w in piece.split() if len(w) >= 2 or not re.search(r"[가-힣]", w)]
+            return any(squeeze(w) in shown for w in tokens) if tokens else True
+
+        missing = [p for p in pieces if not present(p)]
+        if not missing:
+            continue
+        for key in ("steps", "cards", "bands", "tiles", "timeline"):
+            rows = slide.get(key)
+            if isinstance(rows, list) and rows and all(isinstance(r, list) for r in rows):
+                width = len(rows[0])
+                for p in missing:
+                    rows.append([p] + [""] * (width - 1))
+                break
+        else:
+            bullets = slide.get("bullets") if isinstance(slide.get("bullets"), list) else []
+            slide["bullets"] = bullets + missing
+            if slide.get("layout") in _STRUCTURAL:
+                slide["layout"] = "bullets"
+        changed.append(index)
+    return changed
+
+
+#: A farewell where a closing slide's title belongs (「안녕히 가십시오」, 「수고하셨습니다」):
+#: the slide's heading names what it is, the farewell goes in its one-line body.
+_FAREWELL_TITLE = re.compile(
+    r"^\s*(안녕히\s*(?:가십시오|가세요|계세요|계십시오)|수고\s*하셨습니다|수고\s*많으셨습니다|"
+    r"끝(?:입니다)?|이상입니다|the\s+end|good\s*bye)\s*[.!]*\s*$",
+    re.I,
+)
+
+
+def closing_title(title: str) -> str:
+    """A closing slide's title, with a bare farewell replaced by 「마무리」."""
+    return "마무리" if _FAREWELL_TITLE.match(title or "") or not title.strip() else title
+
+
+#: Where a restructure's request ends and the planner's own conditions begin.
+_ADDED_CONDITIONS = "\n\n덧붙인 조건:\n"
+
+
+#: 「비어 있는 값은 「측정 안 함」으로」 — what the person wants in a cell the data left empty.
+_EMPTY_CELL_WORD = re.compile(
+    r"(?:비어\s*있는|빈|없는|누락된?|결측)\s*(?:값|칸|셀|항목|데이터)?[은는이가]?\s*"
+    r"[「\"\u201c']?([^」\"\u201d'\n]{1,12}?)[」\"\u201d']?\s*(?:으로|로)"
+)
+
+
+def _csv_tables(material: list[str]) -> list[list[list[str]]]:
+    """Tab- or comma-separated tables in the material (an attached CSV arrives as tab-joined
+    rows): header first, three rows or more, one width."""
+    out = []
+    for block in material:
+        rows: list[list[str]] = []
+        for line in str(block or "").splitlines():
+            cells = [c.strip() for c in (line.split("\t") if "\t" in line else line.split(","))]
+            if len(cells) >= 2 and (not rows or len(cells) == len(rows[0])):
+                rows.append(cells)
+            elif len(rows) >= 3:
+                out.append(rows)
+                rows = []
+            else:
+                rows = []
+        if len(rows) >= 3:
+            out.append(rows)
+    return out
+
+
+def fill_csv_categories(slides: list[dict], material: list[str], request: str) -> list[int]:
+    """A table built from an attached CSV shows every category the CSV has.
+
+    The writer, told 「CSV에 없는 값은 만들지 말고 비어 있는 값은 「측정 안 함」으로」, tends
+    to drop the row whose cells are empty instead. When a table's first column names two or
+    more categories of a CSV, the categories it skipped come back as rows: a cell takes the
+    CSV's value where the table's column was learned from the rows already there, and the
+    person's word for an empty value otherwise. Returns the indices of slides changed."""
+    tables = _csv_tables(material)
+    if not tables:
+        return []
+    placeholder_match = _EMPTY_CELL_WORD.search(request or "")
+    placeholder = placeholder_match.group(1).strip() if placeholder_match else "—"
+    changed: list[int] = []
+    for index, slide in enumerate(slides):
+        rows = slide.get("rows")
+        if slide.get("layout") != "table" or not isinstance(rows, list) or len(rows) < 2:
+            continue
+        shown = {str(r[0]).strip().lower(): r for r in rows[1:] if r}
+        for csv_rows in tables:
+            header, body = csv_rows[0], csv_rows[1:]
+            categories = {r[0].strip().lower(): r for r in body if r and r[0].strip()}
+            matched = [c for c in shown if c in categories]
+            if len(matched) < 2 or len(matched) < len(shown):
+                continue
+            # Which CSV column each table column shows, learned from the matched rows.
+            width = len(rows[0])
+            mapping: dict[int, int] = {}
+            for col in range(1, width):
+                for csv_col in range(1, len(header)):
+                    if all(
+                        str(shown[c][col]).strip().replace(",", "")
+                        == categories[c][csv_col].strip().replace(",", "")
+                        for c in matched
+                        if col < len(shown[c]) and csv_col < len(categories[c])
+                    ):
+                        mapping[col] = csv_col
+                        break
+            missing = [c for c in categories if c not in shown]
+            if not missing or len(rows) - 1 + len(missing) > _MAX_ROWS:
+                continue
+            for key in missing:
+                source = categories[key]
+                row = [source[0].strip()]
+                for col in range(1, width):
+                    known = col in mapping and mapping[col] < len(source)
+                    value = source[mapping[col]].strip() if known else ""
+                    row.append(value or placeholder)
+                rows.append(row)
+            # In the CSV's order.
+            order = {k: i for i, k in enumerate(categories)}
+            rows[1:] = sorted(
+                rows[1:], key=lambda r: order.get(str(r[0]).strip().lower(), len(order))
+            )
+            changed.append(index)
+            break
+    return changed
+
+
+def restate_missing_facts(slides: list[dict], request: str) -> list[int]:
+    """Puts back, as a line on the most related slide, each quantity the request states
+    that no slide carries; returns the indices of the slides changed.
+
+    「파일럿 742명」 in the brief and nowhere in six slides is the kind of omission a
+    reader notices first. The clause around the number is the line; it goes to the body
+    slide sharing the most words with it, and the deck's own numbers are never touched.
+    Instructions (「6장으로 줄여 줘」) are not facts and are left out."""
+    # The planner's appended conditions (「장수는 6장으로 맞춘다」) are about the deck,
+    # not facts of the subject: nothing in them is restated.
+    text = " ".join((request or "").split(_ADDED_CONDITIONS)[0].split())
+    # Dates and durations describe the occasion (「2026년 … 3분 발표」), not the subject.
+    quantities = [m for m in _QUANTITY.finditer(text) if not _WHEN_UNIT.search(m.group(0))]
+    if len(quantities) < 2:
+        return []
+    carried = _facts_set("\n".join(_slide_words(s) for s in slides))
+    bodies = [
+        i for i, s in enumerate(slides)
+        if s.get("layout") not in (*_STRUCTURAL, "closing", "statement", "quote")
+        and s.get("body") != UNWRITTEN
+    ]
+    if not bodies:
+        return []
+    changed: list[int] = []
+    # Totals the request asked for outright (a 36-month TCO) go onto the cost slide when
+    # the deck left them out, as the finished line of arithmetic.
+    deck_text = "\n".join(_slide_words(s) for s in slides)
+    deck_digits = {re.sub(r"[^\d]", "", w) for w in re.findall(r"\d[\d,]*", deck_text)}
+    for line, digits in required_totals(request):
+        result = line.split(" = ")[-1].strip()
+        if result in deck_text or digits in deck_digits:
+            continue
+        cost_words = {"비용", "TCO", "지출", "예산", "원", "총액"}
+        scored = sorted(
+            bodies,
+            key=lambda i: (
+                -len(cost_words & set(re.findall(r"[가-힣A-Za-z]+", _slide_words(slides[i])))),
+                0 if isinstance(slides[i].get("bullets"), list) else 1,
+                i,
+            ),
+        )
+        slide = slides[scored[0]]
+        if isinstance(slide.get("bullets"), list):
+            slide["bullets"].append(line)
+        elif isinstance(slide.get("rows"), list) and slide["rows"]:
+            width = max(0, len(slide["rows"][0]) - 2)
+            slide["rows"].append([line.split(" = ")[0], result, *([""] * width)])
+        else:
+            slide["bullets"] = [line]
+        deck_text += "\n" + result
+        if scored[0] not in changed:
+            changed.append(scored[0])
+    for match in quantities:
+        quantity = match.group(0)
+        digits = re.sub(r"[^\d.]", "", quantity)
+        if not digits or digits in carried or _expanded_amounts(quantity) & carried:
+            continue
+        clause = _clause_around(text, match.start(), match.end())
+        if not clause or _ASK_WORDS.search(clause) or len(clause) < len(quantity) + 2:
+            continue
+        words = {w for w in re.findall(r"[가-힣A-Za-z]{2,}", clause)}
+        scored = sorted(
+            bodies,
+            key=lambda i: (
+                -len(words & set(re.findall(r"[가-힣A-Za-z]{2,}", _slide_words(slides[i])))),
+                0 if isinstance(slides[i].get("bullets"), list) else 1,
+                i,
+            ),
+        )
+        target = scored[0]
+        slide = slides[target]
+        # One clause carries every number in it (「파일럿 4개 부서 742명」 answers both
+        # 4 and 742), so the same line never lands twice.
+        carried |= {digits} | _expanded_amounts(quantity) | _facts_set(clause)
+        if clause in _slide_words(slide):
+            continue
+        if isinstance(slide.get("bullets"), list):
+            slide["bullets"].append(clause)
+        elif slide.get("body"):
+            slide["body"] = f"{str(slide['body']).rstrip()} {clause}."
+        else:
+            slide["bullets"] = [clause]
+        if target not in changed:
+            changed.append(target)
+    return changed
+
+
+def _bullets_from_notes(notes: object, limit: int = 4) -> list[str]:
+    """The speaker notes as bullets, for a slide whose chart or metrics the number guard
+    took away: the notes carry the same content in sentences, and a slide with words
+    beats 「이 장을 쓰지 못했습니다」."""
+    text = " ".join(str(n) for n in notes) if isinstance(notes, list) else str(notes or "")
+    parts = [p.strip() for p in re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s*", text) if p.strip()]
+    return [p.rstrip(".。")[:60] for p in parts[:limit] if len(p) >= 4]
+
+
+#: A counted amount (「95건」, 「11명」, 「45만 원」) the request never gave: not a figure a
+#: writer may derive, unlike a share (「40%」) or a time.
+#: Not a date's day (「9/11」), not the 「개」 of 「개선」: the unit ends the word.
+_COUNTED = re.compile(
+    r"(?<![\d./])\d[\d,]*(?:\.\d+)?\s*(?:만|억|천)?\s*(?:건|명|원|대|회|개|곳|석)(?![가-힣A-Za-z])"
+)
+
+
+def dedupe_rows(rows: list[list[str]]) -> list[list[str]]:
+    """A table that says one thing twice in two rows (「인덱스 노드 | 1대 증설, 월 45만 원」 and
+    「인프라 증설 | 인덱스 노드 1대(월 45만 원)」) keeps the first: a later row goes when every
+    number in it is in one earlier row and the two share two words. Rows without numbers
+    are compared by words alone (all of the later row's words in the earlier one)."""
+    if len(rows) < 3:
+        return rows
+
+    def words(row: list[str]) -> set[str]:
+        return {w for w in re.findall(r"[가-힣A-Za-z]{2,}", " ".join(map(str, row)))}
+
+    def numbers(row: list[str]) -> set[str]:
+        found = re.findall(r"\d[\d,]*(?:\.\d+)?", " ".join(map(str, row)))
+        return {n.replace(",", "") for n in found}
+
+    kept = [rows[0]]
+    for row in rows[1:]:
+        mine_n, mine_w = numbers(row), words(row)
+        same = any(
+            (mine_n and mine_n <= numbers(prev) and len(mine_w & words(prev)) >= 2)
+            or (not mine_n and mine_w and mine_w <= words(prev))
+            for prev in kept[1:]
+        )
+        if not same:
+            kept.append(row)
+    return kept if len(kept) >= 2 else rows
+
+
+def ground_cells(
+    rows: list[list[str]], facts: set[str], given: str = ""
+) -> list[list[str]]:
+    """Table rows with counted amounts the request never gave taken out of their cells
+    (「크롤러에서 95건 오류 발생」 → 「크롤러에서 오류 발생」); the header row is kept whole.
+    With `given`, the amount must appear there with its unit: the 95 of 「p95」 does not
+    vouch for 「95건」."""
+    if not facts:
+        return rows
+    squeezed = re.sub(r"\s+", "", given or "")
+    out = [list(rows[0])] if rows else []
+    for row in rows[1:]:
+        cells = []
+        for cell in row:
+            text = str(cell)
+
+            def keep(m: re.Match) -> str:
+                digits = re.sub(r"[^\d.]", "", re.match(r"[\d,.]+", m.group(0)).group(0))
+                amounts = _expanded_amounts(m.group(0))
+                if squeezed:
+                    unit = re.sub(r"[\d,.\s]", "", m.group(0))
+                    number = re.match(r"[\d,.]+", m.group(0)).group(0)
+                    shown = number.replace(",", "") + unit
+                    return (
+                        m.group(0)
+                        if shown in squeezed.replace(",", "") or amounts & facts
+                        else ""
+                    )
+                return m.group(0) if digits in facts or amounts & facts else ""
+
+            cleaned = " ".join(_COUNTED.sub(keep, text).split()).strip(" ,·")
+            cells.append(cleaned or ("—" if text.strip() else text))
+        out.append(cells)
+    return out
 
 
 def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
@@ -607,9 +1066,13 @@ def _split_deck_draft(
         ):
             slide["layout"] = wanted
         if slide["layout"] not in _STRUCTURAL and not any(row.get(k) for k in _DRAFT_CONTENT):
-            # Emptied by validation: written again per slide, as bullets.
-            if slide["layout"] in ("chart", "metrics"):
+            # Emptied by validation: the notes still say it, so the slide says it as bullets
+            # rather than being left to a second pass that may also come back empty.
+            if slide["layout"] in ("chart", "metrics", "big-number"):
                 slide["layout"] = "bullets"
+            if bullets := _bullets_from_notes(row.get("notes")):
+                row = {**row, "layout": "bullets", "bullets": bullets}
+                out[index] = row
             continue
         if slide["layout"] in _STRUCTURAL or any(row.get(k) for k in _DRAFT_CONTENT):
             out[index] = row
@@ -633,6 +1096,7 @@ _BULLETS_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만
 - notes 는 이 장을 말로 설명할 때 할 이야기. 2~3문장.
 - 앞 장에서 한 말을 되풀이하지 마라.
 - 지어낸 수치를 쓰지 마라. 근거가 없으면 숫자 없이 써라.
+- 자료의 항목 이름·식별자(워크로드명·제품명·열 머리글)는 원문 그대로 쓴다. 번역·의역하지 않는다.
 
 JSON 객체로만 답하라.
 예: {{"bullets": ["학습 데이터 확보 비용", "라벨링 품질 편차"], "notes": "여기서는 ..."}}
@@ -656,6 +1120,7 @@ _TABLE_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 �
   자리다. 설명이 필요하면 notes 에 적어라.
 - 첫 열은 견주는 **기준**이고, 나머지 열이 그 기준에 대한 값이다.
 - 지어낸 수치를 쓰지 마라. 근거가 없으면 숫자 없이 써라.
+- 자료의 항목 이름·식별자(워크로드명·제품명·열 머리글)는 원문 그대로 쓴다. 번역·의역하지 않는다.
 - notes 는 이 표를 말로 설명할 때 할 이야기. 2~3문장.
 
 JSON 객체로만 답하라.
@@ -762,10 +1227,15 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # The proxy runs `drop_params`, so unsupported providers ignore this.
-                    "reasoning": thinking.NO_REASONING,
+                    # Off where the provider allows; `thinking.switch` learns where not.
+                    **thinking.switch(model),
                 },
             )
+            if thinking.refused(model, response):
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": max_tokens},
+                )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
             # A token-per-minute 429 names when its window resets; wait for that.
@@ -789,7 +1259,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.NO_REASONING,
+                    **thinking.switch(model),
                 },
             )
             if again.status_code >= 400:
@@ -826,13 +1296,73 @@ def _json_object(text: str) -> dict[str, Any]:
     ideographs inside brackets and would be protected as a gloss.
     """
     match = re.search(r"\{.*\}", text, re.S)
-    if not match:
+    block = match.group(0) if match else text[text.find("{") :] if "{" in text else ""
+    if not block:
         return {}
     try:
-        data = json.loads(match.group(0))
+        data = json.loads(block)
     except json.JSONDecodeError:
-        return {}
+        data = _repair_json(block)
     return _read_back_values(data) if isinstance(data, dict) else {}
+
+
+def _repair_json(block: str) -> Any:
+    """A reply cut off mid-object (the token budget ran out inside the last row): cut
+    back to the last complete value and close what is still open. `None` when hopeless."""
+    for end in range(len(block), 0, -1):
+        head = block[:end].rstrip().rstrip(",")
+        if not head.endswith(("]", "}", '"')) and not re.search(r"\d$", head):
+            continue
+        depth: list[str] = []
+        quoted = False
+        escaped = False
+        for ch in head:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                quoted = not quoted
+            elif not quoted and ch in "[{":
+                depth.append("]" if ch == "[" else "}")
+            elif not quoted and ch in "]}":
+                if depth:
+                    depth.pop()
+        if quoted:
+            continue
+        try:
+            return json.loads(head + "".join(reversed(depth)))
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _rows_from_text(text: str) -> list[list[str]]:
+    """A Markdown pipe table in a reply that did not use `rows`."""
+    rows = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("|") and line.endswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+                continue
+            rows.append(cells)
+    return rows
+
+
+def _rows_any(parsed: dict[str, Any], text: str) -> list[list[str]]:
+    """Table rows however the writer gave them: `rows`, `table`, rows as objects, or a
+    pipe table in the text."""
+    for key in ("rows", "table", "cells"):
+        value = parsed.get(key)
+        if isinstance(value, dict):
+            value = value.get("rows") or value.get("cells")
+        if isinstance(value, list) and value and all(isinstance(r, dict) for r in value):
+            keys = list(value[0].keys())
+            value = [keys, *[[str(r.get(k, "")) for k in keys] for r in value]]
+        if rows := _clean_rows(value):
+            return rows
+    return _clean_rows(_rows_from_text(text))
 
 
 def _read_back_values(value: Any) -> Any:
@@ -879,6 +1409,37 @@ def _theme_accent(text: str, default: str = _ACCENT) -> str:
     """Accent named by the outline, or `default`. Regex, so a salvaged outline keeps it."""
     match = re.search(r'"theme"\s*:\s*"([^"]+)"', text)
     return _THEMES.get((match.group(1).strip() if match else ""), default)
+
+
+_LEAKED_PLANNING = re.compile(
+    r"^(?:slides?|first slide|layout|note|rule)s?\s*[:(]|\(integrating\b|\bis fine\)|"
+    r"^\"?(?:chart|metrics|bullets|table)\"?\s+(?:and|only|if)\b|\d+\s*to\s*\d+\.|"
+    r"^(?:slide|장|부분)\s*\d+\s*[:.]",
+    re.I,
+)
+
+
+def sane_outline(plan: list[dict], request: str) -> bool:
+    """Whether a parsed outline is a deck and not the planner's notes to itself.
+
+    A salvaged list can be the model's reasoning — 「Slides: 5 to 12. (6 is fine)」,
+    「First slide: layout "title"」 — repeated section names, or an English plan for a
+    Korean request. Writing such a plan costs minutes and produces forty slides of
+    nothing; it is refused here so the outline is asked for once more.
+    """
+    titles = [" ".join(str(item.get("title") or "").split()) for item in plan]
+    if not titles:
+        return False
+    if any(_LEAKED_PLANNING.search(t) for t in titles):
+        return False
+    lowered = [t.lower() for t in titles if t]
+    if len(lowered) - len(set(lowered)) >= 2:
+        return False
+    if re.search(r"[가-힣]", request or ""):
+        korean = sum(1 for t in titles if re.search(r"[가-힣]", t))
+        if len(titles) >= 3 and korean * 2 < len(titles):
+            return False
+    return True
 
 
 def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
@@ -1140,6 +1701,9 @@ _DRAFT_CONTENT = (
 )
 
 
+_SENTENCE_OR_DROPPED_STOP = re.compile(r"(?<=[.!?。])\s+|\n+|(?<=습니다|입니다|합니다|됩니다)\s+")
+
+
 def _salvaged_bullets(data: dict) -> list[str]:
     """Bullets from any non-metadata string or list-of-strings field, whatever it was named."""
     found: list[str] = []
@@ -1147,8 +1711,13 @@ def _salvaged_bullets(data: dict) -> list[str]:
         if key.lower() in _NOT_CONTENT:
             continue
         if isinstance(value, str):
-            # A paragraph is split on sentence ends.
-            found.extend(part for part in re.split(r"(?<=[.!?。])\s+|\n+", value) if part.strip())
+            # A paragraph is split on sentence ends — also on a Korean sentence ending
+            # whose full stop the writer dropped (「정리했습니다 검색 API는」).
+            found.extend(
+                part
+                for part in re.split(_SENTENCE_OR_DROPPED_STOP, value)
+                if part.strip()
+            )
         elif isinstance(value, list):
             found.extend(item for item in value if isinstance(item, str))
     return _clean_bullets(found)
@@ -1495,6 +2064,7 @@ async def _write_slides(
         log.warning("deck draft failed, writing slide by slide: %s", exc)
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "error"}
 
+    echo_reasks = 0
     for index, slide in enumerate(slides):
         # Position goes in `progress`, not in the label.
         label = str(slide["title"])
@@ -1539,15 +2109,14 @@ async def _write_slides(
             "짧은 문구와 넓은 여백을 우선하며 자세한 설명은 notes에 둬라."
         )
         try:
+            slide_messages: list[dict] | None = None
             if index in drafted:
                 body, spent = (
                     json.dumps(drafted[index], ensure_ascii=False),
                     {"inputTokens": 0, "outputTokens": 0},
                 )
             else:
-                body, spent = await _complete(
-                    model,
-                    build_document_messages(
+                slide_messages = build_document_messages(
                         SessionKind.slides,
                         template.format(
                             heading=slide["title"],
@@ -1566,10 +2135,8 @@ async def _write_slides(
                         trusted_context=trusted_context,
                         untrusted_context=untrusted_context,
                         research_rule=research_rule,
-                    ),
-                    api_key,
-                    600,
                 )
+                body, spent = await _complete(model, slide_messages, api_key, 600)
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck slide %r failed: %s", slide["title"], exc)
             yield {
@@ -1641,7 +2208,12 @@ async def _write_slides(
         raw_notes = data.get("notes")
         if isinstance(raw_notes, list):
             raw_notes = " ".join(str(n).strip() for n in raw_notes if str(n).strip())
+        elif isinstance(raw_notes, dict):
+            # Notes written as an object (`{"title": …, "content": "…"}`) are their text.
+            raw_notes = _notes_in_json(json.dumps(raw_notes, ensure_ascii=False)) or ""
         notes = str(raw_notes or "").strip()
+        if notes.startswith("{") and (inner := _notes_in_json(notes)):
+            notes = inner
 
         if slide["layout"] in ("quote", "statement"):
             line = str(data.get("body") or "").strip().strip('"“”')
@@ -1657,7 +2229,9 @@ async def _write_slides(
                 slide["chart"] = chart
             else:
                 slide["layout"] = "bullets"
-                slide["bullets"] = _clean_bullets(data.get("bullets"))
+                slide["bullets"] = _clean_bullets(data.get("bullets")) or _bullets_from_notes(
+                    data.get("notes")
+                )
         elif slide["layout"] in ("metrics", "big-number"):
             if metrics := _clean_metrics(data.get("metrics")):
                 slide["metrics"] = metrics[:1] if slide["layout"] == "big-number" else metrics
@@ -1671,6 +2245,7 @@ async def _write_slides(
             slide["body"] = " ".join(str(data.get("body") or "").split())[:60]
             if not slide["bullets"] and not slide["body"]:
                 slide["body"] = "감사합니다"
+            slide["title"] = closing_title(str(slide.get("title") or ""))
         elif slide["layout"] in _PAIRED:
             if pairs := _clean_pairs(data.get(slide["layout"]), slide["layout"]):
                 slide[slide["layout"]] = pairs
@@ -1678,8 +2253,10 @@ async def _write_slides(
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
         elif slide["layout"] == "table":
-            if rows := _clean_rows(data.get("rows")):
-                slide["rows"] = rows
+            # Rows however the writer shaped them: `rows`, `table`, objects, a pipe table.
+            if rows := _rows_any(data, str(data.get("body") or "")):
+                given = "\n".join([request, *(untrusted_context or [])])
+                slide["rows"] = dedupe_rows(ground_cells(rows, _facts_set(given), given))
             else:
                 slide["layout"] = "bullets"
                 slide["bullets"] = _clean_bullets(data.get("bullets"))
@@ -1688,6 +2265,36 @@ async def _write_slides(
 
         if not has_content(slide):
             slide["bullets"] = _salvaged_bullets(data)
+        if not has_content(slide) and slide_messages is not None:
+            # One more ask before the slide is given up: the first answer had no content
+            # the layout could use (an empty object, a lone title).
+            try:
+                again, more = await _complete(
+                    model,
+                    [
+                        *slide_messages,
+                        {"role": "assistant", "content": body[:400]},
+                        {
+                            "role": "user",
+                            "content": "앞 답에는 쓸 내용이 없었다. 이 장의 bullets 3~4개와 "
+                            "notes를 채운 JSON 객체 하나만 다시 써라.",
+                        },
+                    ],
+                    api_key,
+                    600,
+                )
+                usage["inputTokens"] += more["inputTokens"]
+                usage["outputTokens"] += more["outputTokens"]
+                parsed_again = _json_object(again)
+                bullets = _clean_bullets(parsed_again.get("bullets")) or _salvaged_bullets(
+                    parsed_again
+                )
+                if bullets:
+                    slide["layout"] = "bullets"
+                    slide["bullets"] = bullets
+                    notes = notes or str(parsed_again.get("notes") or "").strip()
+            except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                log.warning("deck slide %r second ask failed: %s", slide["title"], exc)
         if not has_content(slide):
             # Marked as unwritten (shown on screen, left out of exports) and
             # reset to bullets so renderers do not draw an empty layout.
@@ -1696,6 +2303,49 @@ async def _write_slides(
             slide["body"] = UNWRITTEN
 
         if notes:
+            notes = notes_only_given(notes_without_echo(notes, slide), slide, request)
+        if slide.get("layout") not in _STRUCTURAL:
+            # A body slide speaks in at least two sentences. Notes that only read the slide
+            # aloud, that the filters emptied, or that the draft never wrote are asked for
+            # once more — what to say beyond what is shown — within a budget per deck.
+            if _sentence_count(notes) < 2 and echo_reasks < 4:
+                echo_reasks += 1
+                try:
+                    said, more = await _complete(
+                        model,
+                        build_document_messages(
+                            SessionKind.slides,
+                            _NOTES_PROMPT.format(
+                                heading=slide["title"], shown=_slide_lines_text(slide),
+                                request=request[:1200],
+                            )
+                            + (
+                                "\n\n요청이 「적어 준 것만」을 조건으로 했다. 화면과 요청에 있는 "
+                                "말로만 풀어 말하고, 새 사실·조언·제재 같은 내용을 더하지 마라."
+                                if _ONLY_GIVEN.search(request or "")
+                                else ""
+                            ),
+                            request=request,
+                            trusted_context=trusted_context,
+                            untrusted_context=untrusted_context,
+                            research_rule=research_rule,
+                        ),
+                        api_key,
+                        400,
+                    )
+                except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                    log.info("notes re-ask for %r failed: %s", slide["title"], exc)
+                else:
+                    usage["inputTokens"] += more["inputTokens"]
+                    usage["outputTokens"] += more["outputTokens"]
+                    plain = _plain_notes(said)
+                    added = notes_only_given(notes_without_echo(plain, slide), slide, request)
+                    if not added and not notes and _ONLY_GIVEN.search(request or ""):
+                        added = notes_only_given(plain, slide, request)
+                    notes = _join_notes(notes, added)
+        if notes:
+            given_facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
+            notes = notes_grounded(notes, given_facts)
             slide["notes"] = notes[:800]
 
         summary = (
@@ -1736,6 +2386,20 @@ async def _write_slides(
     ):
         yield event
 
+    if (wanted := requested_slides(request)) and len(slides) != wanted:
+        log.warning(
+            "deck written with %d slides against a requested %d: %s",
+            len(slides), wanted, " · ".join(str(s.get("title") or "") for s in slides),
+        )
+    # A number the person wrote down belongs somewhere in the deck; one the draft dropped
+    # comes back as a line on the slide that talks about the same thing.
+    touched = (
+        set(restate_missing_facts(slides, request))
+        | set(keep_listed_items(slides, request))
+        | set(fill_csv_categories(slides, list(untrusted_context or []), request))
+    )
+    for index in sorted(touched):
+        yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
 
@@ -1750,10 +2414,14 @@ async def _draw_figures(
     wrap: diagrams.Wrap,
 ) -> AsyncIterator[dict[str, Any]]:
     """Plans and draws the deck's own figures; each figured slide is announced again."""
+    # A request that asks for its flows as pictures (「구조와 흐름은 그림으로」) opens the
+    # step slides to the planner too; otherwise a steps layout is its own drawing.
+    asked = diagrams.asks_for_diagrams(request)
+    layouts = (*_DIAGRAM_LAYOUTS, "steps") if asked else _DIAGRAM_LAYOUTS
     eligible = [
         i
         for i, slide in enumerate(slides)
-        if slide["layout"] in _DIAGRAM_LAYOUTS
+        if slide["layout"] in layouts
         and not slide.get("image")
         and slide.get("body") != UNWRITTEN
     ]
@@ -1900,6 +2568,11 @@ async def write(
             return
         # Re-checked: an approved plan may have been edited.
         plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
+        if (wanted := requested_slides(request)) and len(plan) != wanted:
+            log.warning(
+                "approved deck plan has %d slides against a requested %d: %s",
+                len(plan), wanted, " · ".join(item["title"] for item in plan),
+            )
         async for event in _write_slides(
             plan=plan,
             title=title,
@@ -1999,10 +2672,14 @@ async def write(
         yield {"type": "usage", **usage}
         return
     title, subtitle, plan = _parse_outline(text)
+    if plan and not sane_outline(plan, request):
+        log.info("deck outline rejected as unsound (%d items), asking once more", len(plan))
+        plan = []
     accent = fixed_accent or _theme_accent(text, suggested_accent)
     # Grounded before the variety check, so it does not ask for layouts that
     # would then be stripped.
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
+    plan = keep_enumerated(plan, request, requested_slides(request))
     offered = _offered_layouts(request, document_context)
 
     # A flat outline gets one retry naming the layouts it skipped.
@@ -2055,7 +2732,9 @@ async def write(
                 log.info("deck outline still short, keeping the first")
     # An unreadable outline gets one retry.
     if not plan:
-        log.info("deck outline unreadable, asking once more")
+        # What came back, so an unreadable outline can be read afterwards.
+        head = " ".join((text or "").split())[:240]
+        log.info("deck outline unreadable, asking once more; reply began: %r", head)
         try:
             retry_text, retry_spent = await ask(
                 "\n\n앞선 답을 읽을 수 없었다. 설명도 머리말도 코드펜스도 없이 "
@@ -2075,6 +2754,9 @@ async def write(
     # lists in a row become two and a shape.
     plan = vary_layouts(ensure_agenda(plan))
     plan = _named_dividers(_rationed_quotes(_grounded_layouts(plan, request, document_context)))
+    # After every retry has had its say: the parts the request listed stay separate.
+    plan = keep_enumerated(plan, request, wanted)
+    plan = structure_as_drawable(plan)
 
     # Check after structural changes: inserting an agenda must not enlarge an exact total.
     if wanted and plan and len(plan) != wanted:
@@ -2097,6 +2779,9 @@ async def write(
                 subtitle = retry_subtitle or subtitle
                 plan = retry_plan
                 accent = fixed_accent or _theme_accent(retry_text, suggested_accent) or accent
+        plan = keep_enumerated(plan, request, wanted)
+        if len(plan) != wanted:
+            plan = fit_count(plan, wanted)
         if len(plan) != wanted:
             yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
             yield {
@@ -2179,6 +2864,45 @@ async def write(
     yield {"type": "usage", **usage}
 
 
+#: Layout words a person uses when asking for a slide 「…로」: the layout they mean.
+_LAYOUT_WORDS: tuple[tuple[str, str], ...] = (
+    (r"연표|타임\s*라인|\btimeline\b", "timeline"),
+    (r"단계(?:별)?|스텝|\bsteps?\b", "steps"),
+    (r"차트|그래프|막대|\bchart\b|\bgraph\b", "chart"),
+    (r"큰\s*숫자|\bbig\s*number\b", "big-number"),
+    (r"지표|\bmetrics?\b|\bkpi\b", "metrics"),
+    (r"두\s*단|2\s*단|\btwo[- ]column\b", "two-column"),
+    (r"카드|\bcards?\b", "cards"),
+    (r"띠|\bbands?\b", "bands"),
+    (r"타일|\btiles?\b", "tiles"),
+    (r"인용|\bquote\b", "quote"),
+    (r"한\s*문장|핵심\s*메시지|\bstatement\b", "statement"),
+    (r"(?<![연도])표|\btable\b", "table"),
+)
+_LAYOUT_ASK = re.compile(
+    r"(?:로|으로)\s*(?:바꿔|바꾸|만들|보여|해\s*줘|해줘|정리|세워|고쳐|써|다시|하나)|"
+    r"\b(?:as|into|to)\s+an?\b",
+    re.I,
+)
+
+
+def requested_layout(text: str) -> str | None:
+    """The layout the words ask the slide to become (「연표로 바꿔 줘」), or None.
+
+    A layout word alone is not a request — a slide about 「단계별 계획」 is not asked to be
+    `steps` — so the word must be followed by 「…로 바꿔/만들/보여」 or stand as 「…로」.
+    """
+    text = text or ""
+    for pattern, layout in _LAYOUT_WORDS:
+        for match in re.finditer(pattern, text, re.I):
+            tail = text[match.end() : match.end() + 12]
+            asked = re.match(r"\s*(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
+            if asked:
+                return layout
+    return None
+
+
+
 async def rewrite_slide(
     *,
     request: str,
@@ -2189,6 +2913,7 @@ async def rewrite_slide(
     note: str = "",
     material: list[str] | None = None,
     typed: str = "",
+    notes_only: bool = False,
 ) -> tuple[dict, dict]:
     """Rewrites one slide with the rest of the deck as context. Returns `(slide, usage)`; same shape
     as the report's. `material` is the request's own data, carried again so the numbers come
@@ -2206,9 +2931,9 @@ async def rewrite_slide(
         if s.get("id") != target_id
     )
     layout = str(target.get("layout") or "bullets")
-    # 「표로 바꿔 줘」 changes the layout, not just the words: write it with the table prompt.
-    if re.search(r"표(로|를|가| 하나)|\btable\b", f"{note} {typed}", re.I):
-        layout = "table"
+    # 「연표로 바꿔 줘」「차트로」 changes the layout, not just the words: write it with
+    # that layout's prompt. The person's own words first, the planner's paraphrase second.
+    layout = requested_layout(typed) or requested_layout(note) or layout
     template = _PROMPTS.get(layout) or (_TABLE_PROMPT if layout == "table" else _BULLETS_PROMPT)
     prompt = template.format(
         heading=target.get("title") or "",
@@ -2227,21 +2952,70 @@ async def rewrite_slide(
             SessionKind.slides, prompt, request=request, untrusted_context=material
         ),
         api_key,
-        600,
+        900 if layout in ("table", "chart", "timeline", "two-column") else 600,
     )
     parsed = _json_object(text)
-    rows = _clean_rows(parsed.get("rows"))
+    rows = _rows_any(parsed, text)
     pairs = _clean_pairs(parsed.get(layout), layout) if layout in _PAIRED else []
     bullets = _clean_bullets(parsed.get("bullets"))
     body = str(parsed.get("body") or "").strip()
     notes = str(parsed.get("notes") or "").strip()
+    chart = parsed.get("chart") if layout == "chart" else None
+    if not (isinstance(chart, dict) and chart.get("categories") and chart.get("series")):
+        chart = None
+    metrics = _clean_metrics(parsed.get("metrics")) if layout in ("metrics", "big-number") else []
     # Whatever the layout's prompt asked for counts as content; a notes-only answer to a
-    # notes-only instruction keeps the slide and changes the notes.
-    if not (rows or pairs or bullets or body or notes):
+    # notes-only instruction keeps the slide and changes the notes, and a rename answered
+    # with the title alone keeps the slide and changes the title.
+    asked_title = revise.requested_title(typed)
+    if not (rows or pairs or bullets or body or notes or chart or metrics):
+        if asked_title:
+            return {**target, "title": asked_title}, usage
+        log.warning("slide rewrite empty for %r: %r", target.get("title"), text[:240])
         raise ValueError("빈 슬라이드")
 
     # Merged, so the slide's id, accent and picture survive.
     result = {**target}
+    if notes_only:
+        # The ask was for the notes: the slide's words stay exactly as they were. The
+        # notes get the same reading as a first draft's: nothing the screen already says,
+        # nothing the request never gave a number for.
+        plain = _plain_notes(notes)
+        strict = notes_only_given(notes_without_echo(plain, result), result, request)
+        if not strict and _ONLY_GIVEN.search(request or ""):
+            # Under 「적어 준 것만」 a slide may have nothing to add but its own words:
+            # reading them out beats leaving the slide without notes.
+            strict = notes_only_given(plain, result, request)
+        notes = notes_grounded(strict, _facts_set("\n".join([request, *(material or [])])))
+        if not notes:
+            raise ValueError("노트 없음")
+        result["notes"] = notes
+        return result, usage
+    # A title the person asked to change (「제목을 …로 바꿔 줘」) is taken from the answer;
+    # otherwise the slide keeps its name, whatever the model restated.
+    new_title = str(parsed.get("title") or "").strip()
+    if re.search(r"제목|타이틀|\btitle\b|헤드라인", f"{typed} {note}", re.I):
+        # The person's quoted title wins outright; the model's own only when it gave one.
+        # The parser tells the new name from the old when both are quoted.
+        asked = revise.requested_title(typed)
+        if asked:
+            result["title"] = asked
+        elif new_title:
+            result["title"] = new_title
+    if chart:
+        result["chart"] = chart
+        result["layout"] = "chart"
+        for field in ("bullets", "rows", "metrics", *_PAIRED):
+            result.pop(field, None)
+        rows, pairs, bullets = [], [], []
+    elif metrics:
+        result["metrics"] = metrics
+        result["layout"] = layout
+        for field in ("bullets", "rows", "chart", *_PAIRED):
+            result.pop(field, None)
+        rows, pairs, bullets = [], [], []
+        if layout == "metrics":
+            body = ""
     if rows:
         result["rows"] = rows
         result["layout"] = "table"
@@ -2250,8 +3024,10 @@ async def rewrite_slide(
         bullets, body = [], ""
     elif pairs:
         result[layout] = pairs
-        result.pop("bullets", None)
-        result.pop("body", None)
+        result["layout"] = layout
+        others = (f for f in _PAIRED if f != layout)
+        for field in ("bullets", "body", "rows", "chart", "metrics", *others):
+            result.pop(field, None)
         bullets, body = [], ""
     if bullets:
         result["bullets"] = bullets
@@ -2273,6 +3049,7 @@ async def rewrite_slide(
         fitted.pop("textScale", None)
     else:
         fitted["textScale"] = scale
+    fitted = keep_listed_dates(fitted, typed)
     return fitted, usage
 
 
@@ -2318,6 +3095,248 @@ _MONOTONE = "bullets"
 _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 
 
+_NOTES_PROMPT = """발표 "{heading}" 장의 화면에는 이미 이렇게 적혀 있다:
+{shown}
+
+발표자가 이 장에서 청중에게 실제로 입으로 말할 문장을 두 문장으로 써라. 화면의 문장을
+되풀이하지 말고, 왜 중요한지·청중이 기억할 한 가지·다음 장으로 넘어가는 말 가운데 골라라.
+「~을 강조합니다」「~을 설명합니다」처럼 무엇을 말할지 적는 지시문이 아니라, 그 말 자체를 써라.
+(예: 「이 숫자가 중요한 이유는 …입니다.」) 요청에 없는 수치나 사실은 지어내지 마라. 문장만 출력하라.
+
+원래 요청: {request}"""
+
+
+def _slide_lines_text(slide: dict) -> str:
+    return "\n".join(_slide_lines(slide))
+
+
+def _slide_lines(slide: dict) -> list[str]:
+    """Every line the slide shows, for checking what the notes merely read aloud."""
+    lines: list[str] = [str(slide.get("title") or "")]
+    lines += [str(b) for b in slide.get("bullets") or []]
+    if slide.get("body"):
+        lines.append(str(slide["body"]))
+    for key in ("cards", "steps", "bands", "tiles", "timeline", "rows", "metrics"):
+        for row in slide.get(key) or []:
+            if isinstance(row, list):
+                lines.append(" ".join(str(c) for c in row))
+    return [line for line in lines if line.strip()]
+
+
+def _bigrams(text: str) -> set[str]:
+    plain = re.sub(r"[^가-힣A-Za-z0-9%]", "", text)
+    return {plain[i : i + 2] for i in range(len(plain) - 1)}
+
+
+_DATED_ITEM = re.compile(
+    r"(?<![\d/])(\d{1,2}/\d{1,2}|\d{1,2}월\s*\d{1,2}일)\s*([^,，.。;\n]{2,40}?)(?=\s*(?:[,，.。;\n]|$))"
+)
+
+
+def keep_listed_dates(slide: dict, instruction: str) -> dict:
+    """A timeline rewritten from an instruction that lists dated items (「9/8 배포, 9/11
+    회신, 9/15 재색인, 9/22 오픈」) shows every one of them, in the order given."""
+    if slide.get("layout") != "timeline" or not isinstance(slide.get("timeline"), list):
+        return slide
+    listed = [(d.strip(), what.strip()) for d, what in _DATED_ITEM.findall(instruction or "")]
+    if len(listed) < 2:
+        return slide
+
+    def key(date: str) -> str:
+        digits = re.findall(r"\d+", date)
+        return "/".join(str(int(x)) for x in digits[:2])
+
+    present = {key(str(pair[0])) for pair in slide["timeline"] if pair}
+    missing = [(d, what) for d, what in listed if key(d) not in present]
+    if not missing:
+        return slide
+    order = {key(d): i for i, (d, _) in enumerate(listed)}
+    merged = [list(pair) for pair in slide["timeline"] if pair] + [[d, w] for d, w in missing]
+    merged.sort(key=lambda pair: order.get(key(str(pair[0])), len(order)))
+    count = _PAIRED["timeline"][0]
+    return {**slide, "timeline": merged[:count]}
+
+
+def _notes_in_json(text: str) -> str | None:
+    """The notes string inside a JSON reply (`notes`, `speaker_notes`, `note`, at any
+    depth), or `None` when the text is not a JSON object with one."""
+    if "{" not in text or "}" not in text:
+        return None
+    block = text[text.find("{") : text.rfind("}") + 1]
+    try:
+        data = json.loads(block)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+    def walk(node: object) -> str | None:
+        if isinstance(node, dict):
+            for key in ("notes", "speaker_notes", "note", "content", "text", "body", "script"):
+                value = node.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+                if isinstance(value, list) and all(isinstance(v, str) for v in value):
+                    return " ".join(v.strip() for v in value if v.strip())
+            for value in node.values():
+                if (found := walk(value)) is not None:
+                    return found
+        elif isinstance(node, list):
+            for item in node:
+                if (found := walk(item)) is not None:
+                    return found
+        return None
+
+    return walk(data)
+
+
+def _plain_notes(text: str) -> str:
+    # A reply that is a JSON object is read for its notes, never shown as braces.
+    if (inner := _notes_in_json(text)) is not None:
+        text = inner
+    text = re.sub(r"```.*?```", " ", text, flags=re.S)
+    text = re.sub(r"^\s*[-*•]\s*", "", text, flags=re.M)
+    text = " ".join(text.replace("\\n", " ").split())
+    # A reply wrapped in quotation marks is the sentence, not a quotation.
+    return text.strip().strip('"“”\'')
+
+
+def notes_grounded(notes: str, facts: set[str]) -> str:
+    """The notes minus any sentence whose numbers are not the request's: 「개발자 10명
+    기준 하루 1시간 20분」 is an effect the presenter never measured."""
+    kept = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", (notes or "").strip()):
+        if not sentence.strip():
+            continue
+        if _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts):
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+#: A note that describes what to say instead of saying it: stage directions, not speech.
+_META_NOTE = re.compile(
+    r"(강조합니다|강조한다|설명합니다|설명한다|언급합니다|소개합니다|안내합니다|짚어\s*줍니다|"
+    r"넘어갑니다|전달합니다|이야기합니다|말씀드립니다|보여\s*줍니다|상기시킵니다)\s*[.。]?$"
+)
+
+
+_KO_ENDING = re.compile(
+    r"(에는|으로|에서|입니다|합니다|습니다|했습니다|됩니다|있어요|해요|이에요|예요|은|는|이|가|을|를|의|에|로|도|과|와)$"
+)
+
+
+def _stems_ko(sentence: str) -> set[str]:
+    """Content words of a sentence with their particles and endings cut, lowercased."""
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z0-9]{1,}", sentence):
+        stem = _KO_ENDING.sub("", word) or word
+        if len(stem) >= 2 or stem.isascii():
+            out.add(stem.lower())
+    return out
+
+
+#: 「적어 준 것만」: the person wants nothing on the slides or in the notes they did not
+#: write. In that mode a note sentence must be made of the slide's and the request's words.
+_ONLY_GIVEN = re.compile(
+    r"적어\s*준\s*것만|적은\s*것만|준\s*것만|없는\s*내용|지어내지|추가하지\s*마"
+)
+#: Words of speaking, not of claiming: a note may use them without adding anything.
+_SPOKEN_WORDS = frozenset({
+    "가지", "지켜", "주세요", "주시", "드립니다", "드리", "하세요", "보세요", "보시", "확인",
+    "기억", "부탁", "먼저", "오늘", "이제", "다음", "함께", "같이", "설명", "말씀", "정리",
+    "핵심", "바로", "꼭", "이렇게", "여기", "이번", "장에서", "장은", "살펴", "넘어", "마지막",
+    "중요", "기본", "모두", "전부", "각각", "매일", "순서", "진행", "정해져", "있습니다",
+})
+
+
+def _claim_words(sentence: str, allowed: set[str]) -> set[str]:
+    return {
+        w for w in _stems_ko(sentence) - allowed
+        if len(w) >= 2 and not w.isdigit() and w not in _SPOKEN_WORDS
+    }
+
+
+def notes_only_given(notes: str, slide: dict, request: str) -> str:
+    """Notes under a 「적어 준 것만」 request: sentences whose content words all come from
+    the slide or the request stay; a sentence that adds a claim (「위반 시 계정 정지 등
+    제재가 따릅니다」) goes. Other requests are untouched."""
+    if not notes or not _ONLY_GIVEN.search(request or ""):
+        return notes
+    allowed = _stems_ko(" ".join([request, *_slide_lines(slide), str(slide.get("title") or "")]))
+    kept = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", notes.strip()):
+        if not sentence.strip():
+            continue
+        if len(_claim_words(sentence, allowed)) <= 2:
+            kept.append(sentence.strip())
+    return " ".join(kept)
+
+
+def _sentence_count(text: str) -> int:
+    return len([x for x in re.split(r"(?<=[.!?。])\s+", (text or "").strip()) if x.strip()])
+
+
+def _join_notes(existing: str, added: str) -> str:
+    """Existing notes followed by the added sentences they do not already say."""
+    have = [x.strip() for x in re.split(r"(?<=[.!?。])\s+", existing or "") if x.strip()]
+    for sentence in re.split(r"(?<=[.!?。])\s+", added or ""):
+        sentence = sentence.strip()
+        said = any(sentence == h or (len(sentence) > 12 and sentence in h) for h in have)
+        if sentence and not said:
+            have.append(sentence)
+    return " ".join(have)
+
+
+def notes_without_echo(notes: str, slide: dict) -> str:
+    """The speaker notes minus every sentence that only reads a line of the slide aloud.
+
+    A note that repeats the bullets is the one thing a presenter never needs; what the
+    slide does not say is what the notes are for. Sentences are compared by character
+    bigrams so particles and spacing do not hide a repeat."""
+    if not notes.strip():
+        return ""
+    lines = _slide_lines(slide)
+    shown = [_bigrams(line) for line in lines]
+    shown_all = set().union(*shown) if shown else set()
+    short_lines = [
+        [t for t in re.split(r"[\s|:·,]+", line) if t and len(t) <= 12]
+        for line in lines
+        if len(_bigrams(line)) < 8 and line != str(slide.get("title") or "")
+    ]
+    kept: list[str] = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", notes.strip()):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        grams = _bigrams(sentence)
+        if len(grams) < 6:
+            kept.append(sentence)
+            continue
+        # The same line said again (Dice), a terse bullet spelled out in a sentence
+        # (containment of the bullet in the sentence), or a sentence stitched from
+        # several lines (coverage): all three only read the slide aloud.
+        echo = any(
+            2 * len(grams & g) / (len(grams) + len(g)) >= 0.6
+            or (len(g) >= 5 and len(grams & g) / len(g) >= 0.5)
+            for g in shown
+            if g
+        )
+        covered = len(grams & shown_all) / len(grams)
+        # A terse line (「월 | OT」) read out as a sentence (「월요일에는 OT로 시작합니다」):
+        # every token of the line is in the sentence and the sentence adds little else.
+        spoken = any(
+            tokens
+            and all(t.lower() in sentence.lower() for t in tokens)
+            and len(_stems_ko(sentence) - {t.lower() for t in tokens}) <= 3
+            for tokens in short_lines
+        )
+        if echo or covered >= 0.85 or spoken:
+            continue
+        if _META_NOTE.search(sentence) and not re.search(r"\d", sentence):
+            # 「…을 강조합니다」 says nothing a presenter can read out.
+            continue
+        kept.append(sentence)
+    return " ".join(kept)
+
+
 def _drafted_text(data: dict | None) -> str:
     """The words a slide holds, for the figure planner to read."""
     if not data:
@@ -2340,6 +3359,9 @@ _UNDER_CARDS = 4
 _CARD_CHARS = 44
 _UNDER_LINES = 3
 _LINE_CHARS = 60
+#: A list of this many short lines (each this long at most) is kept whole under a figure.
+_UNDER_LINES_SHORT = 6
+_SHORT_LINE_CHARS = 24
 
 
 def _clipped(text: str, limit: int) -> str:
@@ -2381,11 +3403,14 @@ def _words_under_figure(slide: dict) -> None:
         if body := str(slide.get("body") or "").strip():
             lines.append(body)
         slide["layout"] = "bullets"
-        slide["bullets"] = [_clipped(line, _LINE_CHARS) for line in lines[:_UNDER_LINES]]
+        # A short list the person wrote out (five weekdays, four accounts) stays whole
+        # under the figure; the text shrinks instead of two items vanishing into notes.
+        keep = _UNDER_LINES_SHORT if len(lines) <= _UNDER_LINES_SHORT and all(
+            len(line) <= _SHORT_LINE_CHARS for line in lines
+        ) else _UNDER_LINES
+        slide["bullets"] = [_clipped(line, _LINE_CHARS) for line in lines[:keep]]
         slide["body"] = ""
-        spill = [line for line in lines[:_UNDER_LINES] if len(line) > _LINE_CHARS] + lines[
-            _UNDER_LINES:
-        ]
+        spill = [line for line in lines[:keep] if len(line) > _LINE_CHARS] + lines[keep:]
     if spill:
         notes = str(slide.get("notes") or "").strip()
         slide["notes"] = "\n".join(filter(None, [notes, *spill]))[:800]
@@ -2554,6 +3579,194 @@ def deck_scale(slides: list[dict]) -> float:
 _AGENDA_TITLE = re.compile(r"목차|발표\s*순서|차례|순서|agenda|contents|overview", re.I)
 
 
+#: 「(1) 첫 주 일정 — …  (2) 필수 계정 — …」: the items a request enumerates.
+_ENUM_MARK = r"(?:\(\d{1,2}\)|[①-⑳]|(?<!\d)\d{1,2}\)|(?<![\d.])\d{1,2}\.\s)"
+_ENUM_ITEM = re.compile(
+    _ENUM_MARK + r"\s*([^—:\-–()\n]{2,30}?)\s*(?=[—:\-–]|" + _ENUM_MARK + r"|[.。]|$)"
+)
+_FILLER_LAYOUTS = {"statement", "quote", "big-number", "section", "agenda"}
+#: An instruction to merge or shorten parts — not a part's own words (「결과 병합」).
+_MERGE_ASK = re.compile(
+    r"한\s*장(?:으로|에)\s*(?:합|묶|넣|정리)|합쳐\s*(?:줘|서|라|주)|합치고|묶어\s*(?:줘|서|라)|"
+    r"줄여\s*(?:줘|서|라|주)|줄이고|\d+\s*장으로\s*줄"
+)
+
+
+#: The label before a list that makes its items parts of the deck (「내용: (1) …」), not
+#: the issues or steps of one part (「이슈: (1) p95 미달 (2) …」).
+_PART_LIST_LABEL = re.compile(
+    r"(?:내용|구성|목차|순서|차례|장\s*구성|슬라이드|섹션|절|파트|chapters?|sections?|slides?)"
+    r"\s*(?:은|는|이|가)?\s*[:：]\s*$"
+)
+
+
+#: 「한 줄 요약 → 진척(표) → 지표 → … 순서」: parts named in a row with arrows. A flow that
+#: belongs to one part (「웹 → API → 결과 병합」 after 「검색 요청 흐름 —」) is not one.
+_ARROW_CHAIN = re.compile(r"(?:[^→\n:：]{1,24}\s*→\s*){2,}[^→\n.。]{1,24}")
+_ARROW_PARTS_TAIL = re.compile(r"^\s*(?:순서|순으로|차례|구성|흐름으로)")
+_ARROW_PARTS_LEAD = re.compile(
+    r"(?:장|발표|슬라이드|덱|deck|자료)[^\n]{0,20}(?:만들|구성|순서|짜)[^\n→]{0,12}[:：]\s*$"
+)
+_COUNT_TAIL = re.compile(r"\s*(?:셋|둘|넷|다섯|여섯|\d+\s*(?:건|개|가지))$")
+
+
+def arrow_parts(request: str) -> list[str]:
+    """Part names listed with arrows and marked as the deck's order, hints in
+    parentheses dropped; `[]` when no such chain is the deck's."""
+    text = " ".join((request or "").split())
+    for match in _ARROW_CHAIN.finditer(text):
+        chain = match.group(0)
+        # The order word may sit inside the last item (「… → 다음 단계 순서」) or after it.
+        inside = re.search(r"\s*(?:순서|순으로|차례|구성|흐름으로)\s*[.。]?$", chain)
+        if inside:
+            chain = chain[: inside.start()]
+        tail = text[match.end() : match.end() + 8]
+        lead = text[max(0, match.start() - 60) : match.start()]
+        if not (inside or _ARROW_PARTS_TAIL.match(tail) or _ARROW_PARTS_LEAD.search(lead)):
+            continue
+        items = []
+        for raw in chain.split("→"):
+            # The chain starts mid-sentence (「장수 8장. 한 줄 요약 → …」): the first item is
+            # what follows the last full stop.
+            raw = re.split(r"[.。:：;]", raw)[-1]
+            item = re.sub(r"[(（][^()（）]*[)）]", "", raw).strip(" ,.。:")
+            item = _COUNT_TAIL.sub("", item).strip()
+            if 2 <= len(item) <= 14 and not re.fullmatch(r"[\d\s,.]+", item):
+                items.append(item)
+        if len(items) >= 3:
+            return items
+    return []
+
+
+def enumerated_items(request: str) -> list[str]:
+    """The names of the parts a request lists one by one under a parts label, in
+    order; `[]` under two or when the list belongs to one part."""
+    text = request or ""
+    matches = list(_ENUM_ITEM.finditer(text))
+    if len(matches) < 2:
+        return arrow_parts(text)
+    lead = text[max(0, matches[0].start() - 24):matches[0].start()]
+    if not _PART_LIST_LABEL.search(lead):
+        return arrow_parts(text)
+    items = [" ".join(m.group(1).split()) for m in matches]
+    items = [i for i in items if i and not re.fullmatch(r"[\d\s,.]+", i)]
+    return items if len(items) >= 2 else arrow_parts(text)
+
+
+def _covers(title: str, item: str) -> bool:
+    squeeze = lambda t: re.sub(r"\s+", "", t).lower()  # noqa: E731
+    if squeeze(item) and squeeze(item) in squeeze(title):
+        return True
+    words = set(item.split())
+    return bool(words) and words <= set(title.split())
+
+
+def keep_enumerated(plan: list[dict], request: str, wanted: int | None) -> list[dict]:
+    """An outline keeps every part the request listed, one slide each.
+
+    A planner given 「(1) 첫 주 일정 (2) 필수 계정 (3) 보안 규칙 (4) 도움 받는 곳, 6장」
+    sometimes merges two items into one slide and spends the spare slot on a slogan.
+    A merged slide is split back into the items it covers; an item no slide covers
+    gets one before the closing; and when the deck is then over the asked count, the
+    slides that cover no item and carry no argument (a statement, a quote, an agenda)
+    make room. Content slides the planner added on its own are kept when there is room.
+    """
+    items = enumerated_items(request)
+    if not plan or not items:
+        return plan
+    # A request that asks for parts to be merged, or a count too small for one slide
+    # per item beside a cover and a closing, is the planner's to resolve.
+    if _MERGE_ASK.search(request) or (wanted and len(items) + 2 > wanted):
+        return plan
+    # 「한 줄 요약」 asks for a one-line slide: the planner's statement is that part,
+    # under its own line; it is neither split nor renamed.
+    one_liners = {i for i in items if re.search(r"한\s*줄|요약|메시지|핵심\s*문장", i)}
+    if one_liners and any(s.get("layout") in ("statement", "quote") for s in plan):
+        items = [i for i in items if i not in one_liners]
+    out: list[dict] = []
+    for slide in plan:
+        title = str(slide.get("title") or "")
+        covered = [item for item in items if _covers(title, item)]
+        first_seen = (
+            any(_covers(str(o.get("title") or ""), covered[0]) for o in out) if covered else True
+        )
+        if len(covered) >= 2 and not first_seen:
+            out.append({**slide, "title": covered[0]})
+            for item in covered[1:]:
+                out.append({"title": item, "layout": "bullets"})
+        else:
+            out.append(slide)
+    # An agenda the person asked for (「표지·목차 포함」) is not filler to be dropped.
+    asked_agenda = bool(re.search(r"목차|차례|agenda", request, re.I))
+    fillers = _FILLER_LAYOUTS - ({"agenda"} if asked_agenda else set())
+    # A closing the person did not ask for gives way to a part they listed (「표지·목차
+    # 포함 9장」 with seven parts leaves no slot for 「마무리」).
+    if not re.search(r"마무리|맺음|끝인사|클로징|closing|감사\s*인사", request, re.I):
+        fillers = fillers | {"closing"}
+    for item in items:
+        if any(_covers(str(o.get("title") or ""), item) for o in out):
+            continue
+        # A planner that renamed the part (「보안 규칙」 → 「외부 유출 금지」) left a body
+        # slide covering no item: that slide is the part, under the name the person used.
+        orphan = next(
+            (
+                o for o in out
+                if o.get("layout") not in (*_STRUCTURAL, "closing", "statement", "quote")
+                and not any(_covers(str(o.get("title") or ""), i) for i in items)
+            ),
+            None,
+        )
+        if orphan is not None:
+            orphan["title"] = item
+            continue
+        droppable = sum(
+            1 for o in out
+            if o.get("layout") in fillers
+            and not any(_covers(str(o.get("title") or ""), i) for i in items)
+        )
+        if wanted and len(out) + 1 > wanted and not droppable:
+            # No room and nothing to make room with: the part stays merged where the
+            # planner put it rather than the deck failing its count.
+            log.info("deck outline: no room for listed part %r", item)
+            continue
+        at = len(out) - 1 if out and out[-1].get("layout") == "closing" else len(out)
+        out.insert(at, {"title": item, "layout": "bullets"})
+    if wanted and len(out) > wanted:
+        for index in range(len(out) - 1, -1, -1):
+            if len(out) <= wanted:
+                break
+            slide = out[index]
+            title = str(slide.get("title") or "")
+            if slide.get("layout") in fillers and not any(_covers(title, i) for i in items):
+                del out[index]
+    if [o.get("title") for o in out] != [o.get("title") for o in plan]:
+        log.info(
+            "deck outline realigned to the listed parts: %s",
+            " · ".join(str(o.get("title") or "") for o in out),
+        )
+    return out
+
+
+def fit_count(plan: list[dict], wanted: int) -> list[dict]:
+    """A plan one or two over the asked count, trimmed of what carries no argument.
+
+    The planner was asked twice for exactly `wanted` and came back over. Before the
+    turn fails, the slides that say nothing on their own go: section dividers first,
+    then the agenda — a six-slide deck needs no table of contents. Content slides are
+    never dropped here; a plan still over, or under, is left for the error path.
+    """
+    if len(plan) <= wanted:
+        return plan
+    out = list(plan)
+    for layout in ("section", "agenda"):
+        while len(out) > wanted:
+            idx = next((i for i, item in enumerate(out) if item.get("layout") == layout), None)
+            if idx is None:
+                break
+            del out[idx]
+    return out if len(out) == wanted else plan
+
+
 def ensure_agenda(plan: list[dict]) -> list[dict]:
     """A deck of more than six slides opens with an `agenda` slide, in place.
 
@@ -2570,6 +3783,35 @@ def ensure_agenda(plan: list[dict]) -> list[dict]:
             return plan
     plan.insert(1, {"title": "발표 순서", "layout": "agenda"})
     return plan
+
+
+#: A slide about how something is built: components and their relations, not a sequence.
+_STRUCTURE_TITLE = re.compile(
+    r"구조|아키텍처|구성\s*(?:요소|도)|시스템\s*구성|전체\s*구성|컴포넌트|모듈\s*구성|"
+    r"\b(?:architecture|structure|components?|topology)\b",
+    re.I,
+)
+
+
+def structure_as_drawable(plan: list[dict]) -> list[dict]:
+    """A structure slide the outline put on `steps` goes to `bullets`.
+
+    `steps` is a sequence and `chart` wants a number series; an architecture is parts and
+    their relations, which the deck draws as a 구조도 — but only on a layout the figure
+    planner may draw on (`bullets`, `cards`, `bands`, …). Left on `steps`, 「전체 구조」 came
+    out as four numbered boxes; on `chart`, as a bar chart of made-up values.
+    """
+    out = []
+    for slide in plan:
+        structural = _STRUCTURE_TITLE.search(str(slide.get("title") or ""))
+        if structural and slide.get("layout") in _NOT_FOR_STRUCTURE:
+            slide = {**slide, "layout": "bullets"}
+        out.append(slide)
+    return out
+
+
+#: Layouts an architecture slide cannot be: a sequence, or a shape that wants numbers.
+_NOT_FOR_STRUCTURE = ("steps", "chart", "table", "metrics", "big-number", "timeline")
 
 
 def vary_layouts(plan: list[dict]) -> list[dict]:

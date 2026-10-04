@@ -110,11 +110,15 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # See `thinking.NO_REASONING`; dropped by the proxy for
-                    # providers that do not know it.
-                    "reasoning": thinking.NO_REASONING,
+                    # See `thinking.switch`: off where the provider allows it.
+                    **thinking.switch(model),
                 },
             )
+            if thinking.refused(model, response):
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": max_tokens},
+                )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
             # A token-per-minute 429 names when its window resets; wait for that.
@@ -139,19 +143,14 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.NO_REASONING,
+                    **thinking.switch(model),
                 },
             )
             if again.status_code >= 400:
-                # One retry of the re-ask.
+                # One retry of the re-ask, without the switch.
                 again = await client.post(
                     "/v1/chat/completions",
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "max_tokens": bigger,
-                        "reasoning": thinking.NO_REASONING,
-                    },
+                    json={"model": model, "messages": messages, "max_tokens": bigger},
                 )
         if again.status_code == 200:
             retried = again.json()

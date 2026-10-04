@@ -308,13 +308,15 @@ def test_a_portrait_picture_does_not_take_a_whole_page():
 
 
 def test_two_pictures_of_different_sizes_stay_different_sizes():
-    """A picture keeps its native size and is shrunk only when it overflows the column."""
+    """A small picture is grown to the readable floor, a big one shrunk to the column, and
+    two pictures of different sizes still come out different."""
     small = report_export._picture_size(base64.b64decode(png(width=360, height=240)))
     large = report_export._picture_size(base64.b64decode(png(width=1024, height=683)))
     assert small[0] < large[0]
-    # 360 px at 96 DPI is 270 pt.
-    assert small[0] == pytest.approx(270, rel=0.001)
-    assert large[0] == pytest.approx(150 * 72 / 25.4, rel=0.01)
+    # 360 px at 96 DPI is 270 pt — below the floor, so it is grown to the floor.
+    column = 150 * 72 / 25.4
+    assert small[0] == pytest.approx(column * report_export._PICTURE_FLOOR, rel=0.001)
+    assert large[0] == pytest.approx(column, rel=0.01)
 
 
 def test_every_format_sizes_a_picture_the_same_way():

@@ -1978,6 +1978,10 @@ def to_pdf(
 
 #: The text column width, and the most height one figure may take, in mm.
 _PICTURE_MM = 150.0
+#: A picture at least this fraction of the column wide is a picture, not an icon …
+_PICTURE_GROW_FROM = 0.2
+#: … and is grown to at least this fraction of the column when it came in smaller.
+_PICTURE_FLOOR = 0.75
 _PICTURE_MAX_MM = 170.0
 
 #: Pixels are read at 96 DPI, the rate Hancom uses.
@@ -1993,7 +1997,16 @@ def _picture_size(data: bytes) -> tuple[float, float]:
         pixels_wide, pixels_high = 480, 320
     width = max(1, pixels_wide) * _POINTS_PER_PIXEL
     height = max(1, pixels_high) * _POINTS_PER_PIXEL
-    scale = min(1.0, _PICTURE_MM * mm / width, _PICTURE_MAX_MM * mm / height)
+    column = _PICTURE_MM * mm
+    # Shrunk when it overflows the column; grown to a readable floor (three quarters of
+    # the column) when a real picture came in small, so two pictures of different sizes
+    # still differ. Anything narrower than a fifth of the column (an icon, a mark) keeps
+    # its size.
+    if width < column * _PICTURE_GROW_FROM:
+        target = width
+    else:
+        target = min(column, max(width, column * _PICTURE_FLOOR))
+    scale = min(target / width, _PICTURE_MAX_MM * mm / height)
     return width * scale, height * scale
 
 

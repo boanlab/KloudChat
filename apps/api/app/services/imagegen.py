@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import binascii
 import io
+import json
 import logging
 import re
 import uuid
@@ -307,9 +308,14 @@ async def plan(
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 700,
                     "temperature": 0.4,
-                    "reasoning": thinking.NO_REASONING,
+                    **thinking.switch(model),
                 },
             )
+            if thinking.refused(model, response):
+                # The same request without the switch the provider refused.
+                body = json.loads(response.request.content or b"{}")
+                body.pop("reasoning", None)
+                response = await client.post("/v1/chat/completions", json=body)
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError, KeyError) as exc:

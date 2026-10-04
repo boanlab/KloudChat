@@ -203,6 +203,44 @@ _VENUES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
+#: Report looks the page view and the exporters render; a venue style outside this set
+#: falls to the nearest one.
+_REPORT_LOOKS = {"editorial": "editorial", "poster": "poster", "minimal": "minimal",
+                 "paper": "minimal", "mono": "minimal", "slate": "editorial", "dark": "poster",
+                 "split": "editorial", "warm": "poster", "pastel": "poster", "forest": "editorial"}
+
+
+#: Subjects and looks that read better in a serif: the humanities, the academy, the law,
+#: and the quiet looks. Everything else keeps the gothic.
+_SERIF_WORDS = (
+    "논문", "학술", "학회", "세미나", "연구", "인문", "역사", "문학", "철학", "법", "판례",
+    "에세이", "수필", "칼럼", "백서", "연차 보고", "annual report", "회고", "기념",
+)
+_SERIF_LOOKS = {"minimal", "paper", "warm"}
+
+
+def font_for(request: str, style: str = "") -> str:
+    """`"serif"` for a subject or look that reads better in one, else `"gothic"`."""
+    text = (request or "").lower()
+    if style in _SERIF_LOOKS or any(word in text for word in _SERIF_WORDS):
+        return "serif"
+    return "gothic"
+
+
+def report_look_for(request: str, accent: str) -> dict[str, str]:
+    """Design tokens for a report nothing else dressed: the look the words or the room
+    ask for, in a report-renderable style, and the subject's colour.
+
+    Thirty reports in a row came out in the default look with the product's own purple;
+    a word processor's user would have picked a template and a colour for the genre."""
+    style = visual_style_for(request)
+    if style == "editorial":
+        style = venue_style_for(request) or "editorial"
+    look = _REPORT_LOOKS.get(style, "editorial")
+    font = font_for(request, look)
+    return normalise_tokens({"visualStyle": look, "accent": accent, "font": font})
+
+
 def venue_style_for(request: str) -> str:
     """The look the room calls for, read off the request; `""` when no room is named.
 

@@ -4,6 +4,7 @@ runs it, the PNG is kept with the code.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -122,9 +123,14 @@ async def _write(prompt: str, model: str, api_key: str, tokens: dict[str, int]) 
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 2000,
                     "temperature": 0.2,
-                    "reasoning": thinking.NO_REASONING,
+                    **thinking.switch(model),
                 },
             )
+            if thinking.refused(model, response):
+                # The same request without the switch the provider refused.
+                body = json.loads(response.request.content or b"{}")
+                body.pop("reasoning", None)
+                response = await client.post("/v1/chat/completions", json=body)
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError, KeyError) as exc:

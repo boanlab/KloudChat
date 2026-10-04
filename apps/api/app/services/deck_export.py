@@ -117,9 +117,10 @@ def _has_words(data: dict) -> bool:
 
 
 def _picture_span(data: dict) -> float:
-    """Width of a picture sharing a slide with words, in export points."""
+    """Width of a picture sharing a slide with words, in export points. Unsized pictures
+    take the large column: a photo beside three bullets is the slide's point, not an icon."""
     return {"small": 230.0, "medium": _PICTURE_SPAN, "large": 390.0}.get(
-        str((data.get("image") or {}).get("size") or "medium"), _PICTURE_SPAN
+        str((data.get("image") or {}).get("size") or "large"), 390.0
     )
 
 

@@ -33,6 +33,10 @@ _COUNT_WORDS = {
 }
 
 
+#: A count that follows one of these counts figures, not the document (「표 한 장」).
+_FIGURE_WORDS = (["표"], ["그림"], ["도표"], ["차트"], ["사진"], ["도식"], ["그래프"])
+
+
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """An explicit total, not a page reference, range or count of just the body."""
     # Normalize once so spacing and each candidate's context have bounded work.
@@ -41,6 +45,8 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
     unit = "|".join(re.escape(value) for value in units)
     pattern = rf"(?<![\d.+~제-])(\d{{1,3}}|(?<![가-힣])(?:{words})) ?(?:개 ?)?(?:{unit})"
     found: set[int] = set()
+    authoritative: list[int] = []
+    one_into = False
     for match in re.finditer(pattern, request):
         prefix = request[max(0, match.start() - 8) : match.start()].rstrip()
         suffix = request[match.end() : match.end() + 4]
@@ -49,6 +55,13 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
         ):
             continue
         if prefix.endswith(("제", "본문", "본론", "내용")):
+            continue
+        if prefix.split()[-1:] in _FIGURE_WORDS:
+            # 「3년 TCO 표 한 장 포함」 counts a table, not the deck (「발표 5장」 is the deck).
+            continue
+        after = request[match.end() : match.end() + 8]
+        if re.match(r"\s*(?:으로|에)\s*(?:합|묶|병합|넣|정리|모아|담)", after):
+            # 「지표와 진척은 한 장으로 합치고」 merges parts; it is not the deck's total.
             continue
         if re.match(r"[A-Za-z가-힣]", suffix) and not suffix.startswith(
             ("으로", "로", "짜리", "만", "을", "를", "은", "는", "에", "이", "가")
@@ -59,9 +72,19 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
         if not value:
             continue
         value = min(value, maximum)
-        if prefix.endswith(("총", "전체", "표지 포함", "표지포함")):
-            return value
+        if prefix.endswith(("총", "전체", "표지 포함", "표지포함", "장수는", "장수")):
+            # 「총 N장」 「장수는 N장으로 맞춘다」 state the total outright; the last such
+            # statement wins, since a revision's note comes after the original 「장수 8장」.
+            authoritative.append(value)
+            continue
+        if value == 1 and suffix.startswith("으로"):
+            one_into = True
         found.add(value)
+    if authoritative:
+        return authoritative[-1]
+    if len(found) > 1 and 1 in found and one_into:
+        # 「이슈·위험도 한 장으로.」 beside 「6장으로 줄여」: the one merges, it is no total.
+        found.discard(1)
     return next(iter(found)) if len(found) == 1 else None
 
 

@@ -488,7 +488,102 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
                 "비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
             )
         return line
-    return "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
+    line = "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
+    if derived := derived_values(request):
+        # Arithmetic the request implies is done here, once, so the writer copies a
+        # finished figure instead of multiplying in prose (and getting it wrong).
+        line += (
+            "\n계산된 값(다시 셈하지 마라; 비용·비교처럼 그 값이 필요한 절에서 한 번만 쓰고 다른"
+            " 절에서 되풀이하지 마라; 표 셀에는 값만 적고 식은 머리글이나 문장에 한 번만): "
+            + "; ".join(derived)
+        )
+    return line
+
+
+#: 「월 470만 원」 「월 약 690만 원」 — a monthly amount in 만 원.
+_MONTHLY_WON = re.compile(r"월\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*만\s*원")
+_HORIZON_MONTHS = re.compile(r"(\d{1,3})\s*개월")
+_HORIZON_YEARS = re.compile(r"(\d)\s*년\s*(?:TCO|총|치|간|동안|기준)")
+_ANNUAL_BUDGET = re.compile(r"연\s*(?:간\s*)?예산\s*([\d,]+(?:\.\d+)?)\s*만\s*원")
+_ADDED_MONTHLY = re.compile(r"추가\s*\(?\s*월\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*만\s*원")
+
+
+def _won(value: float) -> str:
+    """A 만 원 figure the way a Korean reader writes it: 「5,640만 원」, 「1억 6,920만 원」."""
+    whole = round(value)
+    if abs(value - whole) > 1e-6:
+        return f"{value:,.1f}만 원"
+    if whole >= 10000:
+        eok, man = divmod(whole, 10000)
+        return f"{eok}억 {man:,}만 원" if man else f"{eok}억 원"
+    return f"{whole:,}만 원"
+
+
+def _label_before(text: str, end: int) -> str:
+    """The words naming the amount: the clause in front of it, up to a delimiter."""
+    head = text[max(0, end - 40):end]
+    head = re.split(r"[,:;\n•·()]|\s(?:와|과|및)\s", head)[-1]
+    return re.sub(r"\s*(?:은|는|이|가|의)?\s*월\s*(?:약\s*)?$", "", head).strip(" -–—")[:24]
+
+
+def derived_values(text: str) -> list[str]:
+    """Finished arithmetic the request calls for, as 「식 = 값」 lines; `[]` when none.
+
+    Monthly amounts are carried to the horizons the text names (a year when a yearly
+    budget or 「연」 appears, 「36개월」, 「3년 TCO」), an added monthly cost is folded into
+    the current one, and yearly totals are set against the yearly budget. Nothing here
+    goes beyond what the words ask for: a model asked for a three-year table was
+    writing 「470 × 36 = 16,200」 and 「1,692,0600,000」."""
+    monthly: list[tuple[str, float]] = []
+    for match in _MONTHLY_WON.finditer(text):
+        try:
+            value = float(match.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        label = _label_before(text, match.start())
+        if all(abs(value - v) > 1e-9 or label != lab for lab, v in monthly):
+            monthly.append((label, value))
+    if not monthly:
+        return []
+    horizons: list[int] = []
+    budget = None
+    if m := _ANNUAL_BUDGET.search(text):
+        budget = float(m.group(1).replace(",", ""))
+    if budget is not None or re.search(r"연\s*(?:간|비용|예산)|1년|연간", text):
+        horizons.append(12)
+    for m in _HORIZON_MONTHS.finditer(text):
+        n = int(m.group(1))
+        if 2 <= n <= 120 and n not in horizons:
+            horizons.append(n)
+    for m in _HORIZON_YEARS.finditer(text):
+        n = int(m.group(1)) * 12
+        if n not in horizons:
+            horizons.append(n)
+    added = [float(m.group(1).replace(",", "")) for m in _ADDED_MONTHLY.finditer(text)]
+    lines: list[str] = []
+    for label, value in monthly[:6]:
+        if any(abs(value - a) < 1e-9 for a in added):
+            continue  # the added cost is shown folded into the base below
+        name = f"{label} " if label else ""
+        for h in horizons:
+            lines.append(f"{name}{_won(value)} × {h}개월 = {_won(value * h)}")
+    if added and monthly:
+        base_label, base = monthly[0]
+        for a in added:
+            for h in horizons:
+                lines.append(
+                    f"({_won(base).replace(' 원', '')} + {_won(a).replace(' 원', '')}) × {h}개월"
+                    f" = {_won((base + a) * h)}"
+                )
+    if budget is not None:
+        for label, value in monthly[:6]:
+            if any(abs(value - a) < 1e-9 for a in added):
+                continue
+            annual = value * 12
+            gap = annual - budget
+            verdict = f"예산보다 {_won(abs(gap))} {'초과' if gap > 0 else '여유'}" if gap else "예산과 같음"
+            lines.append(f"{label + ' ' if label else ''}연 {_won(annual)} vs 연 예산 {_won(budget)}: {verdict}")
+    return lines[:14]
 
 
 def _others_line(headings: list[str], index: int) -> str:
@@ -579,10 +674,15 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # The proxy runs `drop_params`, so unknown providers never see this.
-                    "reasoning": thinking.NO_REASONING,
+                    # Off where the provider allows; `thinking.switch` learns where not.
+                    **thinking.switch(model),
                 },
             )
+            if thinking.refused(model, response):
+                response = await client.post(
+                    "/v1/chat/completions",
+                    json={"model": model, "messages": messages, "max_tokens": max_tokens},
+                )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
             # A token-per-minute 429 names when its window resets; wait for that.
@@ -606,7 +706,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": bigger,
-                    "reasoning": thinking.NO_REASONING,
+                    **thinking.switch(model),
                 },
             )
             if again.status_code >= 400:
@@ -683,6 +783,14 @@ def _without_own_heading(body: str, heading: str) -> str:
     """The section's text minus a repeat of its own heading on the first line."""
     lines = body.lstrip().split("\n", 1)
     first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
+    # A lone bold line at the top with no sentence in it is a heading whatever it says
+    # (「**위험과 대응**」 over a section called 「위험」); the body starts below it.
+    if (
+        re.fullmatch(r"\*\*[^*\n]{1,40}\*\*\s*", lines[0])
+        and not re.search(r"[.!?。]", lines[0])
+        and len(lines) > 1
+    ):
+        return lines[1].lstrip()
     if first != heading.strip() and (
         re.match(r"^#{1,6}\s+", lines[0]) or re.fullmatch(r"\*\*.+\*\*\s*", lines[0])
     ):
@@ -690,7 +798,24 @@ def _without_own_heading(body: str, heading: str) -> str:
         first = re.sub(r"^\d+[.)]\s+", "", first)
     if first and first == heading.strip():
         return lines[1].lstrip() if len(lines) > 1 else ""
+    # A plain title-like first line (short, no sentence mark, a blank line after it) that
+    # contains the heading, or is contained in it, is the heading under a new name — the
+    # revision wrote 「위험과 대응」 over a section still called 「위험」.
+    if (
+        len(lines) > 1
+        and len(first) <= 40
+        and not re.search(r"[.!?。:|]", first)
+        and lines[1].startswith("\n")
+    ):
+        a, b = _heading_grams(first), _heading_grams(heading)
+        if a and b and (len(a & b) / len(b) >= 0.8 or len(a & b) / len(a) >= 0.8):
+            return lines[1].lstrip()
     return body
+
+
+def _heading_grams(text: str) -> set[str]:
+    plain = re.sub(r"[^가-힣A-Za-z0-9]", "", text)
+    return {plain[i : i + 2] for i in range(len(plain) - 1)} if len(plain) > 1 else {plain}
 
 
 def _carries_material(request: str) -> bool:
@@ -1324,8 +1449,42 @@ async def write(
         usage["outputTokens"] += spent["outputTokens"]
         # Stray ideographs are read back into Hangul and table gaps closed once,
         # before storing, so every reader sees the same text.
+        body = unwrap_json_prose(body)
+        if placeholder_heavy(body) and any(re.search(r"\d", m or "") for m in document_context):
+            # 「(미정)」 cells under an attached table of numbers: the model wrote the frame
+            # and left the data out. Asked once more, with the data in front of it.
+            try:
+                refilled, more = await _complete(
+                    model,
+                    build_document_messages(
+                        SessionKind.report,
+                        _FILL_PROMPT.format(heading=section["heading"], body=body[:6000]),
+                        request=request,
+                        trusted_context=trusted_context,
+                        untrusted_context=document_context,
+                        research_rule=research_rule,
+                    ),
+                    api_key,
+                    1600,
+                )
+            except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                log.info("placeholder refill of %r failed: %s", section["heading"], exc)
+            else:
+                usage["inputTokens"] += more["inputTokens"]
+                usage["outputTokens"] += more["outputTokens"]
+                refilled = unwrap_json_prose(refilled)
+                if refilled.strip() and not placeholder_heavy(refilled):
+                    body = refilled
+        # An editor's trim, by hand: a sentence that only restates numbers already given
+        # in an earlier section, or a filler sentence, is cut. No model rewrites here — a
+        # model asked to 「say it differently」 fills the gap with things nobody said.
+        earlier = [str(s.get("content") or "") for s in sections[:index]]
+        body, trimmed = trim_restatements(body, earlier)
+        if trimmed:
+            log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"], trimmed[0][:80])
         clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
         clean = hangul.tidy_spacing(clean)
+        clean = drop_redundant_kpi(drop_repeated_figures(clean))
         if not grounded:
             clean = _without_invented_money(clean)
         # Owners and dates come from the request, the material or a source — never the pen.
@@ -1338,7 +1497,23 @@ async def write(
         if unverified and index == 0:
             # 첫 절 머리에 밝힌다.
             clean = _UNVERIFIED_NOTE + "\n\n" + clean
-        section["content"] = richtext.tidy_tables(_grounded_figures(clean, grounded))
+        # 「A × B = C」 in the draft is checked by arithmetic before it is kept.
+        section["content"] = richtext.tidy_tables(
+            _grounded_figures(
+                trim_table_echo(
+                    fix_point_units(
+                        undouble_words(
+                            fix_percent_formulas(
+                                fix_ledger_magnitudes(
+                                    fix_value_then_product(fix_products(clean)), request
+                                )
+                            )
+                        )
+                    )
+                ),
+                grounded,
+            )
+        )
 
         # Drawn after the prose so a failed drawing leaves no dangling reference.
         if (drawing := wanted_figures.get(index)) is not None:
@@ -1462,6 +1637,7 @@ async def write(
             "done": True,
         }
 
+    sections = enforce_sentence_counts(trim_leading_conclusion(sections), request)
     yield {"type": "report", "sections": sections}
     yield {"type": "usage", **usage}
 
@@ -1551,6 +1727,651 @@ def _table_key(table: str) -> str:
     """A table's header row, spacing and alignment marks removed."""
     head = table.strip().split("\n", 1)[0]
     return re.sub(r"[\s:|-]+", "", head)
+
+
+_PRODUCT = re.compile(
+    r"(?P<a>\d[\d,]*(?:\.\d+)?)\s*(?P<ua>만|억|천)?\s*(?P<unit>원|명|건|개|대|시간|분)?\s*"
+    r"[×x\*]\s*(?P<b>\d[\d,]*(?:\.\d+)?)\s*(?P<ub>개월|년|개|명|대|회|일|주|배|시간)?\s*=\s*"
+    r"(?P<c>\d[\d,]*(?:\.\d+)?)\s*(?P<uc>만|억|천)?\s*(?P<unitc>원|명|건|개|대|시간|분)?"
+)
+
+
+def _as_number(text: str) -> float:
+    return float(text.replace(",", ""))
+
+
+#: 「16억 9,200만 원 (470만 원 × 36개월)」 — a total written first, its formula after it.
+_VALUE_THEN_PRODUCT = re.compile(
+    r"(?P<c>\d[\d,]*(?:\.\d+)?\s*억(?:\s*\d[\d,]*\s*만)?|\d[\d,]*(?:\.\d+)?\s*만)\s*원?\s*"
+    r"\(\s*(?P<a>\d[\d,]*(?:\.\d+)?)\s*만\s*원?\s*[×x\*]\s*(?P<b>\d[\d,]*)\s*(?:개월|년|개|명|대|회)\s*\)"
+)
+
+
+_AMOUNT_WON = re.compile(
+    r"(?<![\d,.])((?:\d[\d,]*(?:\.\d+)?\s*억\s*)?(?:\d[\d,]*(?:\.\d+)?\s*만)|\d[\d,]*(?:\.\d+)?\s*억)\s*원"
+)
+
+
+def fix_ledger_magnitudes(text: str, request: str) -> str:
+    """An amount that is a ledger result off by a power of ten (「169,200만 원」 for the
+    「1억 6,920만 원」 the request's arithmetic gives) is that result: the writer slipped a
+    digit, it did not compute a new figure."""
+    results: list[float] = []
+    for line in derived_values(request or ""):
+        if " = " not in line:
+            continue
+        right = line.rsplit(" = ", 1)[1]
+        match = _AMOUNT_WON.search(right)
+        value = _to_man(match.group(1)) if match else None
+        if value:
+            results.append(value)
+    if not results:
+        return text
+
+    def fix(m: re.Match) -> str:
+        value = _to_man(m.group(1))
+        if value is None or any(abs(value - r) < 0.5 for r in results):
+            return m.group(0)
+        for r in results:
+            for factor in (10, 100, 0.1, 0.01):
+                if abs(value - r * factor) < 0.5:
+                    return _won(r)
+        return m.group(0)
+
+    return _AMOUNT_WON.sub(fix, text)
+
+
+def _to_man(text: str) -> float | None:
+    """「16억 9,200만」 → 169200, 「1억」 → 10000, 「5,640만」 → 5640; `None` when unreadable."""
+    plain = text.replace(",", "").replace(" ", "")
+    match = re.fullmatch(r"(?:(\d+(?:\.\d+)?)억)?(?:(\d+(?:\.\d+)?)만)?", plain)
+    if not match or not (match.group(1) or match.group(2)):
+        return None
+    return float(match.group(1) or 0) * 10000 + float(match.group(2) or 0)
+
+
+#: The same noun twice in a row under different particles — 「방향으로 방향을 잡는다」 —
+#: a writer that restarted its phrase mid-sentence. Code and URLs are left alone.
+#: The first half must be an adverbial (「방향으로」, 「서울에서」); a subject followed by
+#: the same noun as object (「비용이 비용을 낳는다」) is a sentence, not a restart.
+_DOUBLED = re.compile(
+    r"(?<![가-힣])([가-힣]{2,6})(으로|로|에서|에게|에|의|와|과|도)\s+"
+    r"\1(으로|로|에서|에게|에|을|를|이|가|은|는|의|와|과|도)(?![가-힣])"
+)
+
+
+def undouble_words(text: str) -> str:
+    """「방향으로 방향을」 → 「방향을」: the restarted phrase keeps its second, finished half.
+    Table rows and fenced code are left as written."""
+    out = []
+    fenced = False
+    for line in text.split("\n"):
+        if line.strip().startswith("```"):
+            fenced = not fenced
+        if fenced or line.lstrip().startswith("|"):
+            out.append(line)
+            continue
+        out.append(_DOUBLED.sub(lambda m: f"{m.group(1)}{m.group(3)}", line))
+    return "\n".join(out)
+
+
+#: A difference worked out in prose (「0.521 - 0.345 = 0.176」) is scratch work; a cost
+#: working (「470만 원 × 36개월 = …」) is asked for by the prompt and stays.
+_SHOWN_ARITHMETIC = re.compile(
+    r"(?<![\d.])\d[\d,]*(?:\.\d+)?\s*[-−–]\s*\d[\d,]*(?:\.\d+)?\s*=\s*(\d[\d,]*(?:\.\d+)?)"
+)
+_NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|(?<=다\.)\s*(?=[가-힣A-Za-z(「\d])")
+
+
+def _number_keys(text: str) -> set[str]:
+    return {m.group(0).replace(",", "") for m in _NUMBER_TOKEN.finditer(text)}
+
+
+def _collapse_arithmetic(body: str) -> str:
+    """「0.521 - 0.345 = 0.176으로 측정되어」 → 「0.176으로 측정되어」 outside tables and code:
+    a report states a result; the working belongs in a table note, if anywhere."""
+    out = []
+    fenced = False
+    for line in body.split("\n"):
+        if line.strip().startswith("```"):
+            fenced = not fenced
+        if fenced or line.lstrip().startswith("|"):
+            out.append(line)
+        else:
+            out.append(_SHOWN_ARITHMETIC.sub(r"\1", line))
+    return "\n".join(out)
+
+
+def trim_table_echo(body: str) -> str:
+    """A section that puts its numbers in a table does not also read them out.
+
+    「8에서 16으로 갈 때 0.176 올랐고, 128에서 256은 0.018…」 above or below a table with
+    those very cells is the table twice. A sentence whose numbers (two or more) are all
+    cells of a table in the same section goes; a sentence with a judgement and at most one
+    table number stays. Shown arithmetic (「0.521 - 0.345 = 0.176」) becomes its result. A
+    section never loses its last prose sentence.
+    """
+    lines = body.split("\n")
+    table_cells: set[str] = set()
+    for line in lines:
+        if line.lstrip().startswith("|"):
+            for cell in line.strip().strip("|").split("|"):
+                table_cells |= _number_keys(cell)
+    if len(table_cells) < 2:
+        # No table to echo; shown arithmetic in prose still becomes its result.
+        return _collapse_arithmetic(body)
+    out: list[str] = []
+    fenced = False
+    prose_kept = 0
+    for line in lines:
+        if line.strip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            continue
+        if fenced or line.lstrip().startswith(("|", "#", "-", "*", ">")) or not line.strip():
+            out.append(line)
+            continue
+        line = _SHOWN_ARITHMETIC.sub(r"\1", line)
+        kept = []
+        for sentence in _SENTENCE_END.split(line):
+            if not sentence.strip():
+                continue
+            numbers = _number_keys(sentence)
+            if len(numbers) >= 2 and numbers <= table_cells:
+                continue
+            kept.append(sentence.strip())
+        prose_kept += len(kept)
+        if kept:
+            out.append(" ".join(kept))
+    if prose_kept == 0:
+        return _SHOWN_ARITHMETIC.sub(r"\1", body)
+    return "\n".join(out)
+
+
+_POINT_UNIT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(?:%p|퍼센트\s*포인트|포인트)(?![\w가-힣])")
+_BARE_RATIO = re.compile(r"(?<![\d.%])0\.\d+(?![\d.%])")
+
+
+def fix_point_units(text: str) -> str:
+    """「0.853에서 0.912로 0.059%p 증가」: a difference of two ratios is a ratio, not
+    percentage points. The unit goes when the sentence's other numbers are bare ratios
+    (0.xxx with no %) and nothing in it is a percentage; a sentence about percentages
+    (「48%에서 52%로 4%p」) keeps its points."""
+    out = []
+    for sentence in re.split(r"(?<=[.!?。])\s+", text):
+        if _POINT_UNIT.search(sentence) and len(_BARE_RATIO.findall(sentence)) >= 2 and "%" not in (
+            _POINT_UNIT.sub(r"\1", sentence)
+        ):
+            sentence = _POINT_UNIT.sub(r"\1", sentence)
+        out.append(sentence)
+    return " ".join(out)
+
+
+_PERCENT_FORMULA = re.compile(
+    r"\(?\s*(\d[\d,]*(?:\.\d+)?)\s*(?:-|−|–)\s*(\d[\d,]*(?:\.\d+)?)\s*\)?\s*(?:÷|/)\s*"
+    r"(\d[\d,]*(?:\.\d+)?)\s*(?:×|x|\*)\s*100\s*=\s*(\d[\d,]*(?:\.\d+)?)\s*%"
+)
+_RATIO_FORMULA = re.compile(
+    r"(?<![\d.)])(\d[\d,]*(?:\.\d+)?)\s*(?:÷|/)\s*(\d[\d,]*(?:\.\d+)?)\s*(?:×|x|\*)\s*100"
+    r"\s*=\s*(\d[\d,]*(?:\.\d+)?)\s*%"
+)
+
+
+def _num(text: str) -> float:
+    return float(text.replace(",", ""))
+
+
+def _pct(value: float) -> str:
+    rounded = round(value, 1)
+    return f"{rounded:.1f}".rstrip("0").rstrip(".") + "%"
+
+
+def fix_percent_formulas(text: str) -> str:
+    """「(14-3) ÷ 14 × 100 = 1,400%」 is checked, not trusted: the result becomes 78.6%, and
+    the wrong figure is corrected wherever else the section repeats it."""
+    wrong: dict[str, str] = {}
+
+    def diff(m: re.Match) -> str:
+        a, b, c, shown = _num(m.group(1)), _num(m.group(2)), _num(m.group(3)), m.group(4)
+        if c == 0:
+            return m.group(0)
+        right = _pct((a - b) / c * 100)
+        if right != _pct(_num(shown)):
+            wrong[shown + "%"] = right
+            return m.group(0)[: m.start(4) - m.start()] + right
+        return m.group(0)
+
+    def ratio(m: re.Match) -> str:
+        a, b, shown = _num(m.group(1)), _num(m.group(2)), m.group(3)
+        if b == 0:
+            return m.group(0)
+        right = _pct(a / b * 100)
+        if right != _pct(_num(shown)):
+            wrong[shown + "%"] = right
+            return m.group(0)[: m.start(3) - m.start()] + right
+        return m.group(0)
+
+    out = _PERCENT_FORMULA.sub(diff, text)
+    out = _RATIO_FORMULA.sub(ratio, out)
+    for bad, good in wrong.items():
+        out = out.replace(bad, good)
+    return out
+
+
+_LEADING_CONCLUSION = re.compile(r"결론|요약|제언|권고|핵심\s*요약|executive|summary", re.I)
+
+
+def _section_text(section: dict) -> str:
+    return re.sub(r"<[^>]+>", " ", str(section.get("content") or ""))
+
+
+def trim_leading_conclusion(sections: list[dict]) -> list[dict]:
+    """A conclusion moved to the front (「결론을 맨 앞으로」) does not re-list the numbers
+    the sections after it give: its sentences that only restate those numbers go, as a
+    later section's would against the ones before it. Never emptied."""
+    if len(sections) < 2 or not _LEADING_CONCLUSION.search(str(sections[0].get("heading") or "")):
+        return sections
+    body = str(sections[0].get("content") or "")
+    if str(sections[0].get("format") or "markdown") != "markdown":
+        return sections
+    trimmed, cut = trim_restatements(body, [_section_text(s) for s in sections[1:]])
+    if cut and trimmed.strip():
+        sections[0] = {**sections[0], "content": trimmed}
+    return sections
+
+
+_KO_COUNT = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6}
+_SENTENCE_ASK = re.compile(
+    r"(요약|결론|서론|개요|배경|제언|권고|도입)[은는이가도]?\s*(?:절|부분|문단)?[은는이가도]?\s*"
+    r"(한|두|세|네|다섯|여섯|\d+)\s*문장(?:\s*(?:으로|이내|이하|안에|까지|만))?"
+)
+
+
+def requested_sentence_counts(request: str) -> dict[str, int]:
+    """「요약은 세 문장」 「결론 두 문장으로」 → {"요약": 3, "결론": 2}."""
+    out: dict[str, int] = {}
+    for m in _SENTENCE_ASK.finditer(request or ""):
+        count = _KO_COUNT.get(m.group(2)) or int(m.group(2)) if m.group(2) else None
+        if count:
+            out[m.group(1)] = count
+    return out
+
+
+def enforce_sentence_counts(sections: list[dict], request: str) -> list[dict]:
+    """A section the request sized in sentences keeps that many: the first N prose
+    sentences stay, later ones go; tables, lists and fenced blocks are not sentences and
+    stay where they are."""
+    wanted = requested_sentence_counts(request)
+    if not wanted:
+        return sections
+    for index, section in enumerate(sections):
+        heading = str(section.get("heading") or "")
+        count = next((n for word, n in wanted.items() if word in heading), None)
+        if not count or str(section.get("format") or "markdown") != "markdown":
+            continue
+        body = str(section.get("content") or "")
+        out, seen, fenced = [], 0, False
+        for line in body.split("\n"):
+            if line.strip().startswith("```"):
+                fenced = not fenced
+            if fenced or not line.strip() or line.lstrip().startswith(("|", "#", "-", "*", ">", "!")):
+                out.append(line)
+                continue
+            kept = []
+            for sentence in _SENTENCE_END.split(line):
+                if not sentence.strip():
+                    continue
+                if seen < count:
+                    kept.append(sentence.strip())
+                    seen += 1
+            if kept:
+                out.append(" ".join(kept))
+        if seen > count or out != body.split("\n"):
+            sections[index] = {**section, "content": "\n".join(out).strip() + "\n"}
+    return sections
+
+
+def fix_value_then_product(text: str) -> str:
+    """A total written before its own formula is recomputed from the formula; a wrong total
+    is replaced where it stands and wherever the section repeats it. The ledger gives
+    「1억 6,920만 원」; a model reading it as 「16억 9,200만 원」 is caught here."""
+    out = text or ""
+    corrections: list[tuple[str, str]] = []
+    for match in reversed(list(_VALUE_THEN_PRODUCT.finditer(out))):
+        written = _to_man(match.group("c"))
+        try:
+            product = _as_number(match.group("a")) * _as_number(match.group("b"))
+        except ValueError:
+            continue
+        if written is None or product <= 0 or abs(product - written) <= max(0.5, product * 0.005):
+            continue
+        right = _won(product).replace(" 원", "")
+        out = out[: match.start("c")] + right + out[match.end("c") :]
+        corrections.append((match.group("c").strip(), right))
+    for wrong, right in corrections:
+        out = re.sub(rf"(?<![\d,.]){re.escape(wrong)}(?![\d,.])", right, out)
+    return out
+
+
+def _format_like(value: float, sample: str) -> str:
+    """`value` written the way `sample` was: thousands separators if it had them, no
+    needless decimals."""
+    rounded = round(value, 2)
+    if abs(rounded - round(rounded)) < 1e-9:
+        rounded = int(round(rounded))
+    text = f"{rounded:,}" if "," in sample or (isinstance(rounded, int) and rounded >= 1000) else f"{rounded}"
+    return text
+
+
+def fix_products(text: str) -> str:
+    """Every 「A × B = C」 in `text` recomputed: a wrong C is replaced, everywhere in the
+    text, by the right one.
+
+    A model asked for a 36-month total writes 「470만 원 × 36개월 = 169,200만 원」, ten
+    times the truth, and repeats the wrong figure in the table below. The sentence is
+    the proof of its own error; the product is checked and the figure corrected where
+    it stands and wherever else the section repeats it. Only plain products with the
+    same scale on both sides are touched."""
+    out = text or ""
+    corrections: list[tuple[str, str, str, str]] = []
+    # The equations first, each result replaced in its own span (right to left so
+    # earlier offsets stay valid).
+    for match in reversed(list(_PRODUCT.finditer(out))):
+        if (match.group("ua") or "") != (match.group("uc") or ""):
+            continue
+        try:
+            a = _as_number(match.group("a"))
+            b = _as_number(match.group("b"))
+            c = _as_number(match.group("c"))
+        except ValueError:
+            continue
+        product = a * b
+        if product <= 0 or abs(product - c) <= max(0.5, abs(product) * 0.005):
+            continue
+        right = _format_like(product, match.group("c"))
+        out = out[: match.start("c")] + right + out[match.end("c") :]
+        corrections.append(
+            (match.group("c"), right, match.group("uc") or "", match.group("unitc") or "")
+        )
+    # Then the same wrong figure wherever the text repeats it — a table cell below the
+    # sentence — matched as a whole number with its scale and unit, never inside another
+    # number: 「169,200만 원」 goes, 「2,169,200」 and 「169,2001」 stay.
+    for wrong, right, scale, unit in corrections:
+        tail = (rf"\s*{re.escape(scale)}" if scale else "") + (rf"\s*{re.escape(unit)}" if unit else "")
+        pattern = re.compile(rf"(?<![\d,.]){re.escape(wrong)}(?![\d,.]){tail}" if (scale or unit)
+                             else rf"(?<![\d,.]){re.escape(wrong)}(?![\d,.])")
+        def _swap(m: re.Match[str], wrong: str = wrong, right: str = right) -> str:
+            return m.group(0).replace(wrong, right, 1)
+
+        out = pattern.sub(_swap, out)
+    return out
+
+
+_PLACEHOLDER = re.compile(r"\((?:미정|측정값|값|TBD|TODO|n/a|추후\s*기입|확인\s*필요)\)", re.I)
+_FILL_PROMPT = """아래는 보고서의 "{heading}" 절 초안이다. 표와 문장에 (미정)·(측정값) 같은 빈자리가 남아
+있다. 첨부 자료(참고 데이터)에 그 값들이 들어 있다. 빈자리를 자료의 실제 값으로 채워 절을
+다시 써라. 자료에 없는 값은 만들지 말고 그 칸은 「—」로 둔다. 절 제목 없이 본문만, 마크다운으로
+답하라. JSON 으로 싸지 마라.
+
+{body}"""
+
+
+#: Sentences that carry no fact: the model's way of saying it has nothing to add.
+_FILLER = re.compile(
+    r"(명시되어 있지 않습니다|확인되지 않았습니다|자료에 (?:다른|별도의) [^.]*없습니다|"
+    r"고려할 필요가 있습니다|중요한 역할을 합니다|할 수 있을 것으로 보입니다|"
+    r"필요할 것으로 판단됩니다|주목할 만합니다|의미가 있다고 할 수 있습니다)"
+)
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+")
+#: A number with the unit glued to it (「742명」 「6.1만 건」 「14분」 「4.1점」 「7%」).
+_NUMBER_FACT = re.compile(r"(?<![A-Za-z\d])\d[\d,.]*(?:\s*(?:만|억|천))?[가-힣%]?")
+
+
+def _sentences(text: str) -> list[str]:
+    plain = re.sub(r"```.*?```", " ", text, flags=re.S)
+    plain = re.sub(r"^\|.*$", " ", plain, flags=re.M)
+    return [s.strip() for s in _SENTENCE_END.split(plain) if len(s.strip()) >= 12]
+
+
+def _grams(sentence: str) -> set[str]:
+    """Character bigrams without spaces or punctuation: particles and spacing differ
+    between two tellings of the same fact, the letters mostly do not."""
+    plain = re.sub(r"[^가-힣A-Za-z0-9%]", "", sentence)
+    return {plain[i : i + 2] for i in range(len(plain) - 1)}
+
+
+def editing_issues(body: str, earlier: list[str]) -> list[str]:
+    """What an editor would flag in `body` against the sections before it; `[]` when
+    nothing. Each item names the sentence, so the rewrite can be asked for precisely."""
+    issues: list[str] = []
+    own = _sentences(body)
+    if not own:
+        return issues
+    seen = [_grams(s) for text in earlier for s in _sentences(text)]
+    repeated = 0
+    for sentence in own:
+        grams = _grams(sentence)
+        if len(grams) >= 12 and any(
+            2 * len(grams & g) / (len(grams) + len(g)) >= 0.6 for g in seen if g
+        ):
+            repeated += 1
+            if repeated <= 2:
+                issues.append(f"앞 절과 같은 말: 「{sentence[:60]}」")
+    # The same facts told again in new words: a sentence whose every number (with its
+    # unit) already appeared in an earlier section is a restatement, however phrased.
+    earlier_numbers = set(_NUMBER_FACT.findall(" ".join(earlier)))
+    if earlier_numbers:
+        restated = 0
+        for sentence in own:
+            numbers = set(_NUMBER_FACT.findall(sentence))
+            if len(numbers) >= 2 and numbers <= earlier_numbers:
+                restated += 1
+                if restated <= 2 and not any(sentence[:60] in i for i in issues):
+                    issues.append(f"앞 절에 이미 있는 사실을 다시 말함: 「{sentence[:60]}」")
+    for sentence in own:
+        if _FILLER.search(sentence):
+            issues.append(f"빈말: 「{sentence[:60]}」")
+            break
+    endings = [s[-4:] for s in own if s.endswith(".")]
+    if len(endings) >= 5 and len(set(endings)) == 1:
+        issues.append("모든 문장이 같은 말로 끝남")
+    return issues
+
+
+_PARTICLE = re.compile(
+    r"(되었습니다|였습니다|이었습니다|했습니다|합니다|됩니다|입니다|습니다|되었고|이었고|였고|"
+    r"되었|되어|하였|하여|했다|한다|하는|하고|하며|이며|으며|에서는|에서|으로|은|는|이|가|을|를|"
+    r"의|에|로|와|과|도|된|한|며)$"
+)
+#: Words that carry no fact of their own; a restatement dressed in them is still one.
+_CONNECTIVES = frozenset(
+    "이번 총 동안 기간 대상 기준 통해 위해 경우 또한 그리고 이후 당시 전체 각각 모두 해당 "
+    "진행 운영 실시 수행 소속 포함 전제 결과 과정 중 및 등".split()
+)
+
+
+def _stems(text: str) -> set[str]:
+    """Content words with the particle or ending cut off, so 「대상은」 and 「대상」 agree;
+    one-letter stems and connective words are not counted as content."""
+    out = set()
+    for word in re.findall(r"[가-힣A-Za-z]{2,}", text):
+        stem = _PARTICLE.sub("", word) or word
+        if len(stem) >= 2 and stem not in _CONNECTIVES:
+            out.add(stem)
+    return out
+
+
+def trim_restatements(body: str, earlier: list[str]) -> tuple[str, list[str]]:
+    """`(body without pure restatements and filler, the sentences cut)`.
+
+    A sentence is cut only when it is safe to lose: every number in it (with its unit)
+    already appears in an earlier section and it carries no word the earlier sections
+    lack, or it is a filler sentence. Tables and blocks are never touched, and a section
+    is never emptied."""
+    if not body.strip():
+        return body, []
+    # With no earlier sections the pool starts empty and grows sentence by sentence, so
+    # a section that says 「64에서 128로 갈 때 0.853에서 0.912로」 twice says it once.
+    earlier_text = " ".join(earlier)
+    earlier_numbers = set(_NUMBER_FACT.findall(earlier_text))
+    earlier_words = _stems(earlier_text)
+    has_table = any(line.strip().startswith("|") for line in body.split("\n"))
+    cut: list[str] = []
+    out_lines: list[str] = []
+    in_block = False
+    for line in body.split("\n"):
+        if line.strip().startswith("```"):
+            in_block = not in_block
+        if line.strip().startswith("|"):
+            # Prose after a table that only reads the table back is a restatement too.
+            cells = " ".join(
+                c for c in line.split("|") if c.strip() and not set(c.strip()) <= set("-: ")
+            )
+            earlier_numbers |= set(_NUMBER_FACT.findall(cells))
+            earlier_words |= _stems(cells)
+        if in_block or line.strip().startswith("|") or line.strip().startswith("#") or not line.strip():
+            out_lines.append(line)
+            continue
+        sentences = [x for x in _SENTENCE_END.split(line) if x.strip()]
+        kept: list[str] = []
+        for sentence in sentences:
+            text = sentence.strip()
+            numbers = set(_NUMBER_FACT.findall(text))
+            words = _stems(text)
+            # A ratio drawn from the numbers already given (「64에서 128로 2배가 될 때」) is
+            # not a new fact.
+            given = {n for n in numbers if n in earlier_numbers or re.fullmatch(r"\d+배", n)}
+            # Two numbers already given, or one number with nothing else new to say.
+            restated = (
+                bool(numbers)
+                and numbers <= given
+                and (
+                    len(numbers) >= 2
+                    and len(words - earlier_words) <= max(1, len(words) // 5)
+                    # Three numbers already given together is the same statement, even
+                    # when a few generic words (「데이터에서 확인되는」) changed.
+                    or len(numbers) >= 3
+                    and len(words - earlier_words) <= len(words) // 2
+                    or len(numbers) == 1
+                    and len(text) >= 8
+                    and not (words - earlier_words)
+                )
+            )
+            dangling = (
+                not has_table
+                and re.search(r"(?:위|아래|다음|이)\s*표(?:는|에서|를|가|의)", text)
+                and re.search(r"(?:보여|나타내|정리|제시|요약)", text)
+            )
+            if restated or dangling or _FILLER.search(text):
+                cut.append(text)
+                continue
+            kept.append(sentence)
+            # What this sentence said is now said: a later sentence repeating it goes.
+            earlier_numbers |= numbers
+            earlier_words |= words
+        if sentences and not kept and not any(x.strip() for x in out_lines):
+            # A section is never emptied: its first paragraph keeps its first sentence.
+            kept = [sentences[0]]
+            cut.remove(sentences[0].strip())
+        if kept or not sentences:
+            out_lines.append(" ".join(k.strip() for k in kept) if kept else line)
+    if not cut:
+        return body, []
+    return "\n".join(out_lines).strip() + "\n", cut
+
+
+def edit_keeps_facts(before: str, after: str) -> bool:
+    """An edit is kept only when every number of the draft survives, nothing new was
+    numbered, and the text did not shrink by more than half."""
+    after = after.strip()
+    # Cutting a repeated and a filler sentence from a short section can take a third
+    # of it away; losing more than that means the editor rewrote, not trimmed.
+    if not after or len(after) < len(before.strip()) * 0.4:
+        return False
+    numbers_before = set(re.findall(r"\d[\d,.]*", before))
+    numbers_after = set(re.findall(r"\d[\d,.]*", after))
+    return numbers_after <= numbers_before and not placeholder_heavy(after)
+
+
+_FIGURE_BLOCK = re.compile(r"```(?:mermaid|chart)\b.*?```\n?(?:\*[^\n]*\*\n?)?", re.S)
+_FIGURE_KEYWORDS = {"graph", "flowchart", "LR", "TD", "TB", "RL", "style", "fill", "classDef",
+                    "class", "subgraph", "end", "direction", "br", "hot", "mermaid", "chart"}
+
+
+def _figure_words(block: str) -> set[str]:
+    """The words a diagram shows, without its syntax: node labels, whatever the shape."""
+    body = re.sub(r"^```\w*|```$", "", block.strip(), flags=re.M)
+    body = re.sub(r"\*[^\n]*\*\s*$", "", body)
+    return {w for w in re.findall(r"[가-힣A-Za-z][가-힣A-Za-z0-9]{1,}", body) if w not in _FIGURE_KEYWORDS}
+
+
+def drop_repeated_figures(text: str) -> str:
+    """A section that draws the same thing twice — the writer's own diagram and then the
+    planned figure of the same nodes — keeps one: the captioned one if there is one,
+    else the first. Two blocks are the same drawing when four fifths of the words of the
+    smaller appear in the larger."""
+    blocks = list(_FIGURE_BLOCK.finditer(text))
+    if len(blocks) < 2:
+        return text
+    words = [_figure_words(m.group(0)) for m in blocks]
+    captioned = [bool(re.search(r"\*[^\n]*\*\s*$", m.group(0).strip())) for m in blocks]
+    drop: set[int] = set()
+    for i in range(len(blocks)):
+        for j in range(i + 1, len(blocks)):
+            a, b = words[i], words[j]
+            if not a or not b:
+                continue
+            small, large = (a, b) if len(a) <= len(b) else (b, a)
+            if len(small & large) / len(small) < 0.8:
+                continue
+            # Same drawing: keep the captioned one, else the first.
+            loser = i if (captioned[j] and not captioned[i]) else j
+            drop.add(loser)
+    if not drop:
+        return text
+    out = text
+    for index in sorted(drop, reverse=True):
+        m = blocks[index]
+        out = out[: m.start()] + out[m.end():]
+    return re.sub(r"\n{3,}", "\n\n", out).strip() + ("\n" if text.endswith("\n") else "")
+
+
+def drop_redundant_kpi(text: str) -> str:
+    """A ```kpi block whose every value already sits in a table of the same section says
+    the numbers twice; the table stays."""
+    match = re.search(r"```kpi\n(.*?)```\n?", text, flags=re.S)
+    if not match:
+        return text
+    values = [line.split("|")[0].strip() for line in match.group(1).splitlines() if "|" in line]
+    table_cells = " ".join(line for line in text.splitlines() if line.strip().startswith("|"))
+    if values and all(v and v in table_cells for v in values):
+        return (text[: match.start()] + text[match.end():]).strip() + "\n"
+    return text
+
+
+def placeholder_heavy(text: str) -> bool:
+    """Three or more 「(미정)」-style holes: a frame the data never reached."""
+    return len(_PLACEHOLDER.findall(text or "")) >= 3
+
+
+def unwrap_json_prose(text: str) -> str:
+    """A section body the model wrapped as a one-key JSON object (`{"결과의 섹션 본문":
+    "..."}`) is that string; anything else comes back as it was."""
+    stripped = (text or "").strip()
+    if not (stripped.startswith("{") and stripped.endswith("}")):
+        return text
+    try:
+        data = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return text
+    if isinstance(data, dict):
+        values = [v for v in data.values() if isinstance(v, str) and v.strip()]
+        if len(values) == 1 and len(data) <= 2:
+            return values[0]
+        if values and all(isinstance(v, str) for v in data.values()):
+            return "\n\n".join(values)
+    return text
 
 
 def word_count(sections: list[dict]) -> int:

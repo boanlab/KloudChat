@@ -63,9 +63,14 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
                 "max_tokens": 700,
                 # A reasoning model may spend the whole budget thinking and
                 # return empty content.
-                "reasoning": thinking.NO_REASONING,
+                **thinking.switch(model),
             },
         )
+        if thinking.refused(model, response):
+            # The same request without the switch the provider refused.
+            body = json.loads(response.request.content or b"{}")
+            body.pop("reasoning", None)
+            response = await client.post("/v1/chat/completions", json=body)
         response.raise_for_status()
         payload = response.json()
 
