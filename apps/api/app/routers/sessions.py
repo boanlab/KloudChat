@@ -30,6 +30,7 @@ from sqlalchemy import func, or_
 from sqlmodel import col, delete, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core import logs
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.deps import CurrentUser, DbSession, client_ip
@@ -365,7 +366,7 @@ async def _release_turn(session_id: str, token: str | None = None) -> None:
             await db.exec(query.values(running_turn=None, running_since=None))
             await db.commit()
     except Exception as exc:  # noqa: BLE001 — a stuck claim expires; the answer must not fail
-        log.warning("turn claim for %s not released: %s", session_id, exc)
+        log.warning("turn claim for %s not released: %s", logs.safe(session_id), logs.safe(exc))
 
 
 def _strict_local_tools(tools: list[Tool]) -> list[Tool]:
@@ -3300,13 +3301,16 @@ async def send_message(
         "activatedSkillIds": active_skill_ids,
         "startingTemplateId": payload.starting_template_id,
     }
-    if privacy_resolution is not None:
-        privacy_resolution.routing = {
-            **privacy_resolution.routing,
-            "turnOptions": turn_options,
-        }
-    else:
-        document_routing = {**(document_routing or {}), "turnOptions": turn_options}
+    # Stored for a retry to replay; a turn on the defaults stores nothing, so a document
+    # turn on the model it asked for still carries no route note.
+    if any(turn_options.values()):
+        if privacy_resolution is not None:
+            privacy_resolution.routing = {
+                **privacy_resolution.routing,
+                "turnOptions": turn_options,
+            }
+        else:
+            document_routing = {**(document_routing or {}), "turnOptions": turn_options}
 
     strict_local = bool(privacy_resolution and privacy_resolution.strict_local)
     # Missing verification changes the answer's qualification, not its availability.
@@ -6214,7 +6218,7 @@ async def _revise_document(
                 # theirs even when its numbers appear earlier: an add is not trimmed.
                 if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
                     earlier = [
-                        re.sub(r"<[^>]+>", " ", str(p.get("content") or ""))
+                        re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
                         for p in parts[:index]
                         if not is_deck
                     ]

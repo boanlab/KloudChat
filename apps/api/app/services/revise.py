@@ -212,19 +212,19 @@ def obviously_new(message: str) -> bool:
 
 #: 「관리형 OpenSearch Service」를 「AWS OpenSearch Service」로 통일해 줘 — a term swap.
 _TERM_SWAP = re.compile(
-    r"[「\"“']([^」\"”']{1,80})[」\"”']\s*(?:를|을|은|는)?\s*(?:전부|모두|다)?\s*"
-    r"[「\"“']([^」\"”']{1,80})[」\"”']\s*(?:로|으로)\s*"
-    r"(?:전부|모두|다|문서\s*전체에서)?\s*(?:통일|바꿔|바꾸|변경|고쳐|교체|치환)"
+    r"[「\"“']([^」\"”']{1,80})[」\"”']\s{0,8}(?:를|을|은|는)?\s{0,8}(?:전부|모두|다)?\s{0,8}"
+    r"[「\"“']([^」\"”']{1,80})[」\"”']\s{0,8}(?:로|으로)\s{0,8}"
+    r"(?:전부|모두|다|문서\s{0,8}전체에서)?\s{0,8}(?:통일|바꿔|바꾸|변경|고쳐|교체|치환)"
 )
 _SWAP_SCOPE = re.compile(r"전체|전부|모두|다\s|통일|모든")
 
 
 #: 「보안 규칙 장과 필수 계정 장의 순서를 바꿔 줘」 — two parts trade places.
 _ORDER_SWAP = re.compile(
-    r"(?P<a>[가-힣A-Za-z0-9·/&()]+(?:\s+[가-힣A-Za-z0-9·/&()]+){0,3}?)\s*(?:장|절|부분|슬라이드|섹션)?"
-    r"(?:이랑|하고|과|와|랑)\s+"
-    r"(?P<b>[가-힣A-Za-z0-9·/&()]+(?:\s+[가-힣A-Za-z0-9·/&()]+){0,3}?)\s*(?:장|절|부분|슬라이드|섹션)?"
-    r"(?:의|은|는)?\s*(?:순서|자리|위치)\s*(?:를|을)?\s*(?:서로\s*)?(?:바꿔|바꾸|맞바꿔|교체|뒤집)"
+    r"(?P<a>[가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}(?:장|절|부분|슬라이드|섹션)?"
+    r"(?:이랑|하고|과|와|랑)\s{1,8}"
+    r"(?P<b>[가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}(?:장|절|부분|슬라이드|섹션)?"
+    r"(?:의|은|는)?\s{0,8}(?:순서|자리|위치)\s{0,8}(?:를|을)?\s{0,8}(?:서로\s{0,8})?(?:바꿔|바꾸|맞바꿔|교체|뒤집)"
 )
 
 
@@ -390,21 +390,21 @@ def requested_title(instruction: str) -> str | None:
     # 「위험」 절 제목을 「위험과 대응」으로: the new name is the one 「…으로/로/라고」 follows.
     for match in quoted:
         tail = text[match.end() : match.end() + 6]
-        if re.match(r"\s*(?:으로|로|라고)", tail):
+        if re.match(r"\s{0,8}(?:으로|로|라고)", tail):
             return match.group(1).strip()
     return quoted[-1].group(1).strip()
 
 
-_BEFORE = re.compile(r"\s*(?:절|장|부분)?\s*(?:바로\s*)?(?:앞에|앞으로|전에)")
-_AFTER = re.compile(r"\s*(?:절|장|부분)?\s*(?:바로\s*)?(?:뒤에|뒤로|다음에|아래에)")
+_BEFORE = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:앞에|앞으로|전에)")
+_AFTER = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:뒤에|뒤로|다음에|아래에)")
 
 
 #: 「위험 장을 하나 추가해 줘」 「한계 절을 넣어 줘」 「FAQ 슬라이드 추가」: a new part named
 #: outright. The name is what precedes 장/절/슬라이드; a part that already exists is a
 #: revision of it, not an insert.
 _ADD_PART = re.compile(
-    r"([가-힣A-Za-z0-9·\s]{1,16}?)\s*(?:장|절|슬라이드|섹션|페이지)(?:을|를)?\s*"
-    r"(?:(한|하나|두|둘|\d)\s*(?:개|장)?\s*)?(?:더\s*)?(?:추가|넣어|넣고|만들어\s*넣)"
+    r"([가-힣A-Za-z0-9·\s]{1,16}?)\s{0,8}(?:장|절|슬라이드|섹션|페이지)(?:을|를)?\s{0,8}"
+    r"(?:(한|하나|두|둘|\d)\s{0,8}(?:개|장)?\s{0,8})?(?:더\s{0,8})?(?:추가|넣어|넣고|만들어\s{0,8}넣)"
 )
 
 
@@ -413,7 +413,7 @@ def explicit_insert(message: str, parts: list[str]) -> Plan | None:
     words (「요청 사항 장 앞에」), without asking the planner; `None` otherwise — several
     parts, a part that already exists, or a count change are the planner's to read."""
     text = " ".join((message or "").split())
-    if re.search(r"\d+\s*장으로|줄여|늘려|합쳐|합치|삭제|빼", text):
+    if re.search(r"\d{1,3}\s{0,8}장으로|줄여|늘려|합쳐|합치|삭제|빼", text):
         return None
     match = _ADD_PART.search(text)
     if not match or (match.group(2) or "한") not in ("한", "하나", "1"):
@@ -458,14 +458,14 @@ _PART_WORD = r"\s*(?:장|절|부분|슬라이드|섹션)?\s*(?:을|를|은|는|�
 _CLOSING_NAME = re.compile(r"마무리|결론|감사|요약\s*및\s*결정|closing|thank", re.I)
 #: 「<이름> 장을」: the words a person uses to point at a part by its name.
 _NAMED_PHRASE = re.compile(
-    r"([가-힣A-Za-z0-9·/&()]+(?:\s+[가-힣A-Za-z0-9·/&()]+){0,3})\s+(?:장|절|부분|슬라이드|섹션)"
-    r"\s*(?:을|를|은|는|의|에서|만)"
+    r"([가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3})\s{1,8}(?:장|절|부분|슬라이드|섹션)"
+    r"\s{0,8}(?:을|를|은|는|의|에서|만)"
 )
 
 
 _STRUCTURAL_ASK = re.compile(
-    r"추가|삭제|빼\s*줘|빼고|없애|합쳐|합치|병합|나눠|분리|순서|앞으로\s*옮|뒤로\s*옮|옮겨|"
-    r"\d+\s*(?:장|절|쪽|페이지|슬라이드)\s*(?:으로|로)"
+    r"추가|삭제|빼\s{0,8}줘|빼고|없애|합쳐|합치|병합|나눠|분리|순서|앞으로\s{0,8}옮|뒤로\s{0,8}옮|옮겨|"
+    r"\d{1,15}\s{0,8}(?:장|절|쪽|페이지|슬라이드)\s{0,8}(?:으로|로)"
 )
 
 
@@ -546,7 +546,7 @@ def into_existing_part(plan: Plan, parts: list[str], message: str) -> Plan:
 
 _FENCE = re.compile(r"```mermaid\n.*?```(?:\n+\*그림[^*\n]*\*)?", re.S)
 _REMOVE_FIGURE = re.compile(
-    r"(?:그림|도식|도해|다이어그램|흐름도|구조도|비교도|개념도)\s*(?:은|을|는|를)?\s*"
+    r"(?:그림|도식|도해|다이어그램|흐름도|구조도|비교도|개념도)\s{0,8}(?:은|을|는|를)?\s{0,8}"
     r"(?:빼|지워|삭제|없이|제거)"
 )
 _ANY_FENCE = re.compile(r"```[a-zA-Z]*\n(.*?)```", re.S)
@@ -583,7 +583,7 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
 
 
 _COUNT_MENTION = re.compile(
-    r"(?:장수|분량|길이)?\s*[:：]?\s*(?:총|전체)?\s*\d{1,3}\s*(?:장|쪽|페이지|슬라이드|절)\s*"
+    r"(?:장수|분량|길이)?\s{0,8}[:：]?\s{0,8}(?:총|전체)?\s{0,8}\d{1,3}\s{0,8}(?:장|쪽|페이지|슬라이드|절)\s{0,8}"
     r"(?:안팎|내외|정도|으로|로|을|를|이|가|은|는)?"
 )
 
@@ -596,7 +596,7 @@ def without_counts(request: str) -> str:
 
 
 _TARGET_COUNT = re.compile(
-    r"(?:총|전체(?:를)?|모두)?\s*(\d{1,3})\s*(?:장|절|쪽|페이지|슬라이드)\s*(?:으로|로)\s*"
+    r"(?:총|전체(?:를)?|모두)?\s{0,8}(\d{1,3})\s{0,8}(?:장|절|쪽|페이지|슬라이드)\s{0,8}(?:으로|로)\s{0,8}"
     r"(?:줄여|늘려|맞춰|만들|다시|재구성|정리|압축|요약)"
 )
 
@@ -790,7 +790,7 @@ def _merge_phrases(said: str) -> list[set[str]]:
     comma- or sentence-separated segment, particles stripped."""
     out: list[set[str]] = []
     for segment in re.split(r"[.。,，\n;]", said or ""):
-        m = re.search(r"^(.*?)\s*(?:한\s*장|하나)\s*(?:으로|에)", segment)
+        m = re.search(r"^(.{0,60}?)\s{0,8}(?:한\s{0,8}장|하나)\s{0,8}(?:으로|에)", segment)
         if m:
             words = {
                 re.sub(r"(?:은|는|이|가|와|과|도|을|를)$", "", t) for t in _title_tokens(m.group(1))

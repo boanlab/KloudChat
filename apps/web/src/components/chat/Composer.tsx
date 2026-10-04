@@ -1807,8 +1807,9 @@ export function Composer({
                         : [...activeSkills.map((skill) => skill.id), s.id]
                       liveActivatedSkillIds.current = next
                       setActivatedSkillIds(next)
-                      // In a conversation the change is the conversation's, kept on the server.
-                      if (sessionId && kind === 'chat') void setSessionSkills(sessionId, next)
+                      // In a conversation the change is the conversation's, kept on the server —
+                      // except while a message is being edited, where cancel must undo it.
+                      if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
                     }}
                   >
                     {s.name}
