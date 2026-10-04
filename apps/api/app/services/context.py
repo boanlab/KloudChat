@@ -423,8 +423,8 @@ _STANDING_RE = re.compile(
 )
 #: A later message that withdraws the standing rules.
 _WITHDRAW_RE = re.compile(
-    r"규칙\s*(?:은|을)?\s*(?:취소|해제|그만|없던|풀)|원래대로|그만\s*해|평소처럼|"
-    r"never\s*mind|forget\s+(?:the|that)\s+rule",
+    r"규칙\s{0,8}(?:은|을)?\s{0,8}(?:취소|해제|그만|없던|풀)|원래대로|그만\s{0,8}해|평소처럼|"
+    r"never\s{0,8}mind|forget\s{1,8}(?:the|that)\s{1,8}rule",
     re.I,
 )
 #: Most recent standing directives replayed; each clipped to this many characters.

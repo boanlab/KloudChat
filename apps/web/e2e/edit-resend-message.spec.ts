@@ -65,6 +65,7 @@ async function fixture(page: Page, info: TestInfo, options: {
   const original = JSON.stringify(source)
   const writes: Write[] = []
   const unexpected: string[] = []
+  const skillPatches: { sessionId: string; skillIds: string[] }[] = []
   const pageErrors: string[] = []
   let forksFailed = 0
   let sendsFailed = 0
@@ -148,6 +149,17 @@ async function fixture(page: Page, info: TestInfo, options: {
       const row = principal === 'b' && sessionMatch[1] !== otherId ? undefined : rows.get(sessionMatch[1])
       return route.fulfill(row ? { json: row } : { status: 404, json: { detail: 'not_found' } })
     }
+    if (method === 'PATCH' && sessionMatch) {
+      // A skill picked in the composer becomes the conversation's standing skill.
+      const body = request.postDataJSON() as { skillIds?: string[] }
+      const row = rows.get(sessionMatch[1])
+      if (!row || !body || Object.keys(body).some((key) => key !== 'skillIds')) {
+        unexpected.push(`PATCH ${path}`)
+        return route.fulfill({ status: 400, json: { detail: 'unexpected' } })
+      }
+      skillPatches.push({ sessionId: sessionMatch[1], skillIds: body.skillIds ?? [] })
+      return route.fulfill({ json: { ...row, skillIds: body.skillIds ?? [] } })
+    }
     const forkMatch = path.match(/^\/sessions\/([^/]+)\/messages\/([^/]+)\/fork$/)
     if (method === 'POST' && forkMatch) {
       writes.push({ method, path, data: request.postData() ? request.postDataJSON() : {} })
@@ -214,6 +226,7 @@ async function fixture(page: Page, info: TestInfo, options: {
     heldLists: () => heldLists,
     assertPreserved: () => expect(JSON.stringify(source)).toBe(original),
     assertClean: () => { expect(unexpected).toEqual([]); expect(pageErrors).toEqual([]) },
+    skillPatches: () => skillPatches,
     release: () => { forkGate.release(); sendGate.release(); listGate.release() } }
 }
 
@@ -326,6 +339,9 @@ test('cancel restores draft files and selected skills changed during editing', a
   await expect(input).toHaveValue('파일과 스킬이 있는 기존 초안')
   await expect(page.getByRole('button', { name: 'additional.txt 제거', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '초안 검토 제거', exact: true })).toBeVisible()
+  // The skill picked before editing is the conversation's; the change during the
+  // cancelled edit is not saved.
+  expect(state.skillPatches()).toEqual([{ sessionId: expect.any(String), skillIds: [expect.any(String)] }])
   expect(state.forkCalls()).toHaveLength(0)
   expect(state.sendCalls()).toHaveLength(0)
   state.assertPreserved()

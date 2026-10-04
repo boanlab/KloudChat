@@ -36,6 +36,7 @@ from typing import Any
 
 import httpx
 
+from app.core import logs
 from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
@@ -521,7 +522,7 @@ def _retold(slides: list[dict[str, Any]], drafted: dict[int, dict[str, Any]]) ->
 
 
 _KOREAN_AMOUNT = re.compile(
-    r"(\d[\d,]*(?:\.\d+)?)\s*(억|만|천)(?:\s*(\d[\d,]*(?:\.\d+)?)\s*(만|천))?"
+    r"(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(억|만|천)(?:\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(만|천))?"
 )
 _UNIT_VALUE = {"억": 100_000_000, "만": 10_000, "천": 1_000}
 
@@ -606,7 +607,7 @@ def required_totals(request: str) -> list[tuple[str, str]]:
         asked_months.add(12)
     out: list[tuple[str, str]] = []
     for line in derived_values(request):
-        match = re.search(r"× (\d+)개월 = (.+)$", line)
+        match = re.search(r"× (\d{1,4})개월 = (.{1,200})$", line)
         if match and int(match.group(1)) in asked_months:
             digits = re.sub(r"[^\d]", "", match.group(2))
             out.append((line, digits))
@@ -697,8 +698,8 @@ _ADDED_CONDITIONS = "\n\n덧붙인 조건:\n"
 
 #: 「비어 있는 값은 「측정 안 함」으로」 — what the person wants in a cell the data left empty.
 _EMPTY_CELL_WORD = re.compile(
-    r"(?:비어\s*있는|빈|없는|누락된?|결측)\s*(?:값|칸|셀|항목|데이터)?[은는이가]?\s*"
-    r"[「\"\u201c']?([^」\"\u201d'\n]{1,12}?)[」\"\u201d']?\s*(?:으로|로)"
+    r"(?:비어\s{0,8}있는|빈|없는|누락된?|결측)\s{0,8}(?:값|칸|셀|항목|데이터)?[은는이가]?\s{0,8}"
+    r"[「\"\u201c']?([^」\"\u201d'\n]{1,12}?)[」\"\u201d']?\s{0,8}(?:으로|로)"
 )
 
 
@@ -959,7 +960,7 @@ def _numbers_come_from(values: list[str], facts: set[str]) -> bool:
 
 
 _QUANTITY = re.compile(
-    r"\d[\d,.]*\s*(?:만|억|천)?\s*(?:개소|개월|시간|퍼센트|명|분|초|일|주|년|월|회|건|대|개|석|층|원|%|"
+    r"\d[\d,.]{0,15}\s{0,8}(?:만|억|천)?\s{0,8}(?:개소|개월|시간|퍼센트|명|분|초|일|주|년|월|회|건|대|개|석|층|원|%|"
     r"km|kg|m|cm|mm|㎡|Hz|kHz|V|A|W)"
 )
 
@@ -2880,8 +2881,8 @@ _LAYOUT_WORDS: tuple[tuple[str, str], ...] = (
     (r"(?<![연도])표|\btable\b", "table"),
 )
 _LAYOUT_ASK = re.compile(
-    r"(?:로|으로)\s*(?:바꿔|바꾸|만들|보여|해\s*줘|해줘|정리|세워|고쳐|써|다시|하나)|"
-    r"\b(?:as|into|to)\s+an?\b",
+    r"(?:로|으로)\s{0,8}(?:바꿔|바꾸|만들|보여|해\s{0,8}줘|해줘|정리|세워|고쳐|써|다시|하나)|"
+    r"\b(?:as|into|to)\s{1,8}an?\b",
     re.I,
 )
 
@@ -2896,7 +2897,7 @@ def requested_layout(text: str) -> str | None:
     for pattern, layout in _LAYOUT_WORDS:
         for match in re.finditer(pattern, text, re.I):
             tail = text[match.end() : match.end() + 12]
-            asked = re.match(r"\s*(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
+            asked = re.match(r"\s{0,8}(?:로|으로)(?:\b|[\s,.]|$)", tail) or _LAYOUT_ASK.match(tail)
             if asked:
                 return layout
     return None
@@ -2971,7 +2972,9 @@ async def rewrite_slide(
     if not (rows or pairs or bullets or body or notes or chart or metrics):
         if asked_title:
             return {**target, "title": asked_title}, usage
-        log.warning("slide rewrite empty for %r: %r", target.get("title"), text[:240])
+        log.warning(
+            "slide rewrite empty for %s: %s", logs.safe(target.get("title")), logs.safe(text[:240])
+        )
         raise ValueError("빈 슬라이드")
 
     # Merged, so the slide's id, accent and picture survive.
@@ -3587,16 +3590,16 @@ _ENUM_ITEM = re.compile(
 _FILLER_LAYOUTS = {"statement", "quote", "big-number", "section", "agenda"}
 #: An instruction to merge or shorten parts — not a part's own words (「결과 병합」).
 _MERGE_ASK = re.compile(
-    r"한\s*장(?:으로|에)\s*(?:합|묶|넣|정리)|합쳐\s*(?:줘|서|라|주)|합치고|묶어\s*(?:줘|서|라)|"
-    r"줄여\s*(?:줘|서|라|주)|줄이고|\d+\s*장으로\s*줄"
+    r"한\s{0,8}장(?:으로|에)\s{0,8}(?:합|묶|넣|정리)|합쳐\s{0,8}(?:줘|서|라|주)|합치고|묶어\s{0,8}(?:줘|서|라)|"
+    r"줄여\s{0,8}(?:줘|서|라|주)|줄이고|\d{1,15}\s{0,8}장으로\s{0,8}줄"
 )
 
 
 #: The label before a list that makes its items parts of the deck (「내용: (1) …」), not
 #: the issues or steps of one part (「이슈: (1) p95 미달 (2) …」).
 _PART_LIST_LABEL = re.compile(
-    r"(?:내용|구성|목차|순서|차례|장\s*구성|슬라이드|섹션|절|파트|chapters?|sections?|slides?)"
-    r"\s*(?:은|는|이|가)?\s*[:：]\s*$"
+    r"(?:내용|구성|목차|순서|차례|장\s{0,8}구성|슬라이드|섹션|절|파트|chapters?|sections?|slides?)"
+    r"\s{0,8}(?:은|는|이|가)?\s{0,8}[:：]\s{0,8}$"
 )
 
 

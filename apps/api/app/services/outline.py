@@ -60,7 +60,7 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
             # 「3년 TCO 표 한 장 포함」 counts a table, not the deck (「발표 5장」 is the deck).
             continue
         after = request[match.end() : match.end() + 8]
-        if re.match(r"\s*(?:으로|에)\s*(?:합|묶|병합|넣|정리|모아|담)", after):
+        if re.match(r"\s{0,8}(?:으로|에)\s{0,8}(?:합|묶|병합|넣|정리|모아|담)", after):
             # 「지표와 진척은 한 장으로 합치고」 merges parts; it is not the deck's total.
             continue
         if re.match(r"[A-Za-z가-힣]", suffix) and not suffix.startswith(

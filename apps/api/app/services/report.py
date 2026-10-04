@@ -505,7 +505,7 @@ _MONTHLY_WON = re.compile(r"월\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*만\s*원")
 _HORIZON_MONTHS = re.compile(r"(\d{1,3})\s*개월")
 _HORIZON_YEARS = re.compile(r"(\d)\s*년\s*(?:TCO|총|치|간|동안|기준)")
 _ANNUAL_BUDGET = re.compile(r"연\s*(?:간\s*)?예산\s*([\d,]+(?:\.\d+)?)\s*만\s*원")
-_ADDED_MONTHLY = re.compile(r"추가\s*\(?\s*월\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*만\s*원")
+_ADDED_MONTHLY = re.compile(r"추가\s{0,8}\(?\s{0,8}월\s{0,8}(?:약\s{0,8})?([\d,]{1,15}(?:\.\d{1,15})?)\s{0,8}만\s{0,8}원")
 
 
 def _won(value: float) -> str:
@@ -523,7 +523,7 @@ def _label_before(text: str, end: int) -> str:
     """The words naming the amount: the clause in front of it, up to a delimiter."""
     head = text[max(0, end - 40):end]
     head = re.split(r"[,:;\n•·()]|\s(?:와|과|및)\s", head)[-1]
-    return re.sub(r"\s*(?:은|는|이|가|의)?\s*월\s*(?:약\s*)?$", "", head).strip(" -–—")[:24]
+    return re.sub(r"\s{0,8}(?:은|는|이|가|의)?\s{0,8}월\s{0,8}(?:약\s{0,8})?$", "", head).strip(" -–—")[:24]
 
 
 def derived_values(text: str) -> list[str]:
@@ -1730,9 +1730,9 @@ def _table_key(table: str) -> str:
 
 
 _PRODUCT = re.compile(
-    r"(?P<a>\d[\d,]*(?:\.\d+)?)\s*(?P<ua>만|억|천)?\s*(?P<unit>원|명|건|개|대|시간|분)?\s*"
-    r"[×x\*]\s*(?P<b>\d[\d,]*(?:\.\d+)?)\s*(?P<ub>개월|년|개|명|대|회|일|주|배|시간)?\s*=\s*"
-    r"(?P<c>\d[\d,]*(?:\.\d+)?)\s*(?P<uc>만|억|천)?\s*(?P<unitc>원|명|건|개|대|시간|분)?"
+    r"(?P<a>\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?P<ua>만|억|천)?\s{0,8}(?P<unit>원|명|건|개|대|시간|분)?\s{0,8}"
+    r"[×x\*]\s{0,8}(?P<b>\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?P<ub>개월|년|개|명|대|회|일|주|배|시간)?\s{0,8}=\s{0,8}"
+    r"(?P<c>\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?P<uc>만|억|천)?\s{0,8}(?P<unitc>원|명|건|개|대|시간|분)?"
 )
 
 
@@ -1748,7 +1748,7 @@ _VALUE_THEN_PRODUCT = re.compile(
 
 
 _AMOUNT_WON = re.compile(
-    r"(?<![\d,.])((?:\d[\d,]*(?:\.\d+)?\s*억\s*)?(?:\d[\d,]*(?:\.\d+)?\s*만)|\d[\d,]*(?:\.\d+)?\s*억)\s*원"
+    r"(?<![\d,.])((?:\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}억\s{0,8})?(?:\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}만)|\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}억)\s{0,8}원"
 )
 
 
@@ -1784,7 +1784,7 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
 def _to_man(text: str) -> float | None:
     """「16억 9,200만」 → 169200, 「1억」 → 10000, 「5,640만」 → 5640; `None` when unreadable."""
     plain = text.replace(",", "").replace(" ", "")
-    match = re.fullmatch(r"(?:(\d+(?:\.\d+)?)억)?(?:(\d+(?:\.\d+)?)만)?", plain)
+    match = re.fullmatch(r"(?:(\d{1,15}(?:\.\d{1,15})?)억)?(?:(\d{1,15}(?:\.\d{1,15})?)만)?", plain)
     if not match or not (match.group(1) or match.group(2)):
         return None
     return float(match.group(1) or 0) * 10000 + float(match.group(2) or 0)
@@ -1818,10 +1818,10 @@ def undouble_words(text: str) -> str:
 #: A difference worked out in prose (「0.521 - 0.345 = 0.176」) is scratch work; a cost
 #: working (「470만 원 × 36개월 = …」) is asked for by the prompt and stays.
 _SHOWN_ARITHMETIC = re.compile(
-    r"(?<![\d.])\d[\d,]*(?:\.\d+)?\s*[-−–]\s*\d[\d,]*(?:\.\d+)?\s*=\s*(\d[\d,]*(?:\.\d+)?)"
+    r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}[-−–]\s{0,8}\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}=\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)"
 )
 _NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
-_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+|(?<=다\.)\s*(?=[가-힣A-Za-z(「\d])")
+_SENTENCE_END = re.compile(r"(?<=[.!?。])\s{1,8}|(?<=다\.)\s{0,8}(?=[가-힣A-Za-z(「\d])")
 
 
 def _number_keys(text: str) -> set[str]:
@@ -1889,8 +1889,8 @@ def trim_table_echo(body: str) -> str:
     return "\n".join(out)
 
 
-_POINT_UNIT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(?:%p|퍼센트\s*포인트|포인트)(?![\w가-힣])")
-_BARE_RATIO = re.compile(r"(?<![\d.%])0\.\d+(?![\d.%])")
+_POINT_UNIT = re.compile(r"(?<![\d.])(\d{1,15}(?:\.\d{1,15})?)\s{0,8}(?:%p|퍼센트\s{0,8}포인트|포인트)(?![\w가-힣])")
+_BARE_RATIO = re.compile(r"(?<![\d.%])0\.\d{1,15}(?![\d.%])")
 
 
 def fix_point_units(text: str) -> str:
@@ -1899,7 +1899,7 @@ def fix_point_units(text: str) -> str:
     (0.xxx with no %) and nothing in it is a percentage; a sentence about percentages
     (「48%에서 52%로 4%p」) keeps its points."""
     out = []
-    for sentence in re.split(r"(?<=[.!?。])\s+", text):
+    for sentence in re.split(r"(?<=[.!?。])\s{1,8}", text):
         if _POINT_UNIT.search(sentence) and len(_BARE_RATIO.findall(sentence)) >= 2 and "%" not in (
             _POINT_UNIT.sub(r"\1", sentence)
         ):
@@ -1909,12 +1909,12 @@ def fix_point_units(text: str) -> str:
 
 
 _PERCENT_FORMULA = re.compile(
-    r"\(?\s*(\d[\d,]*(?:\.\d+)?)\s*(?:-|−|–)\s*(\d[\d,]*(?:\.\d+)?)\s*\)?\s*(?:÷|/)\s*"
-    r"(\d[\d,]*(?:\.\d+)?)\s*(?:×|x|\*)\s*100\s*=\s*(\d[\d,]*(?:\.\d+)?)\s*%"
+    r"\(?\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?:-|−|–)\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}\)?\s{0,8}(?:÷|/)\s{0,8}"
+    r"(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?:×|x|\*)\s{0,8}100\s{0,8}=\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}%"
 )
 _RATIO_FORMULA = re.compile(
-    r"(?<![\d.)])(\d[\d,]*(?:\.\d+)?)\s*(?:÷|/)\s*(\d[\d,]*(?:\.\d+)?)\s*(?:×|x|\*)\s*100"
-    r"\s*=\s*(\d[\d,]*(?:\.\d+)?)\s*%"
+    r"(?<![\d.)])(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?:÷|/)\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}(?:×|x|\*)\s{0,8}100"
+    r"\s{0,8}=\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)\s{0,8}%"
 )
 
 
@@ -1983,8 +1983,8 @@ def trim_leading_conclusion(sections: list[dict]) -> list[dict]:
 
 _KO_COUNT = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5, "여섯": 6}
 _SENTENCE_ASK = re.compile(
-    r"(요약|결론|서론|개요|배경|제언|권고|도입)[은는이가도]?\s*(?:절|부분|문단)?[은는이가도]?\s*"
-    r"(한|두|세|네|다섯|여섯|\d+)\s*문장(?:\s*(?:으로|이내|이하|안에|까지|만))?"
+    r"(요약|결론|서론|개요|배경|제언|권고|도입)[은는이가도]?\s{0,8}(?:절|부분|문단)?[은는이가도]?\s{0,8}"
+    r"(한|두|세|네|다섯|여섯|\d{1,15})\s{0,8}문장(?:\s{0,8}(?:으로|이내|이하|안에|까지|만))?"
 )
 
 
@@ -2241,7 +2241,7 @@ def trim_restatements(body: str, earlier: list[str]) -> tuple[str, list[str]]:
             words = _stems(text)
             # A ratio drawn from the numbers already given (「64에서 128로 2배가 될 때」) is
             # not a new fact.
-            given = {n for n in numbers if n in earlier_numbers or re.fullmatch(r"\d+배", n)}
+            given = {n for n in numbers if n in earlier_numbers or re.fullmatch(r"\d{1,15}배", n)}
             # Two numbers already given, or one number with nothing else new to say.
             restated = (
                 bool(numbers)
