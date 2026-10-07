@@ -1,11 +1,9 @@
 """A running summary of the turns a long conversation can no longer send.
 
 `context.fit_history` decides which earlier turns no longer fit the model's
-window; this writes the paragraph that stands in for them, the way ChatGPT and
-Claude carry a long chat past the window instead of failing on it. The summary
-is incremental: the previous summary plus only the newly dropped turns go to the
-model, so the cost of a long conversation stays flat and the earliest facts are
-not re-read every time.
+window; this writes the paragraph that stands in for them. The summary is
+incremental: the previous summary plus only the newly dropped turns go to the
+model, so the cost of a long conversation stays flat.
 
 One short non-streaming call on the enrichment model, like the title. Failure
 returns `None`: the caller then sends a stand-in note, never a made-up summary.

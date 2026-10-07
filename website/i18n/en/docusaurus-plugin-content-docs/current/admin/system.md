@@ -35,7 +35,7 @@ The SMTP host, port, security, account, and sender address, the service address 
 
 ## Sign-up
 
-- **Sign-up method**: Use after approval / Use immediately / Not accepted. If the `SIGNUP_MODE` environment variable is set, it takes priority.
+- **Sign-up method**: Use after approval / Use immediately / Not accepted. The value chosen on this screen overrides the `SIGNUP_MODE` environment variable.
 - **Email domains allowed to sign up**: Several, separated by commas. Subdomains have to be listed separately.
 - **Email verification**: Not effective without a mail server.
 

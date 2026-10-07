@@ -1,10 +1,6 @@
 """Stored secrets are sealed with `SECRET_KEY`, not a key derived from the token signing
-secret, and connector credentials are sealed like every other secret.
-
-Before: one `JWT_SECRET` signed access tokens and, through a digest, encrypted every stored
-secret, so rotating the signing key destroyed the master key and every user's model key.
-Connector environments — the tokens an administrator enters to install an MCP server —
-were written to the row in the clear.
+secret, and connector credentials (the tokens an administrator enters to install an MCP
+server) are sealed like every other secret.
 """
 
 from __future__ import annotations

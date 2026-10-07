@@ -1,8 +1,4 @@
-"""프로젝트 지식도 검색 색인에 들어간다.
-
-에이전트 자료와 대화 업로드만 색인되고 프로젝트 파일은 어휘 검색뿐이었다. 프로젝트도
-자기 색인 묶음 키를 갖는다 — 처음 색인되는 문서에서 만들어지고, 프로젝트 안 대화의
-업로드도 같은 묶음에 들어가 한 번의 검색으로 함께 찾히며, 프로젝트를 지울 때 묶음째 지운다.
+"""Retrieval-index collection for a project's knowledge and its conversations' uploads.
 
 Revision ID: 0048
 Revises: 0047

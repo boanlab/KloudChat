@@ -1,20 +1,6 @@
-"""Somewhere to see, and end, the sessions an account has open.
+"""Refresh-token family details for the active-session list, and an idle timeout policy.
 
-A refresh-token family already *was* a session — one browser on one machine,
-rotating a cookie every quarter hour — but nothing on the row said which
-machine, and no route listed the families or ended one. So an account signed in
-on a lab PC could be signed out only from that PC, by somebody who was already
-sitting at it. On a shared campus install that is the wrong way round: the
-person who needs to end that session is the one who has walked away from it.
-
-Three columns make a family describable — the address and browser it started
-from, and when it was last seen — and the policy row gets an idle timeout, in
-minutes, which the browser enforces by ending the session rather than renewing
-it. 0 keeps the previous behaviour: a session lasts until its refresh cookie
-expires.
-
-Nothing is backfilled. Families that predate this list with no browser and no
-address rather than a guessed one, and they still revoke.
+The idle timeout is in minutes; 0 disables it.
 
 Revision ID: 0033
 Revises: 0032
@@ -42,8 +28,7 @@ def upgrade() -> None:
         "refresh_tokens",
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
     )
-    # The session list is "this user's live families, newest first", and the
-    # revoke is "this family". Both walk the same two columns.
+    # The session list and the family revoke both read these two columns.
     op.create_index("ix_refresh_tokens_user_created", "refresh_tokens", ["user_id", "created_at"])
 
     op.add_column(

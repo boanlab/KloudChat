@@ -1,12 +1,9 @@
 """Cross-process delivery for the chat stop button.
 
-`sessions._STOPPING` is one process's own `asyncio.Event`s, so the stop button
-only reaches a turn streaming on the same process that holds it. With a single
-API process that is the whole story; with more than one (`KCHAT_API_REPLICAS`
-> 1), the request to stop can land on a different process than the one
-running the turn. This broadcasts a Postgres `NOTIFY` so every process gets
-the chance to set its own copy of the signal — Postgres is already a required
-dependency, so this adds no new service.
+`sessions._STOPPING` holds one process's own `asyncio.Event`s. With more than one
+API process (`KCHAT_API_REPLICAS` > 1) the stop request can land on a different
+process than the one running the turn, so it is broadcast as a Postgres `NOTIFY`
+and every process sets its own copy of the signal.
 """
 
 from __future__ import annotations
@@ -26,11 +23,9 @@ log = logging.getLogger("kchat")
 
 CHANNEL = "kchat_stop"
 
-#: This process, named in every broadcast it sends. Postgres delivers a NOTIFY
-#: to every listener, the sender included; a broadcast that comes back to its
-#: own process is ignored, because that process already fired its own signals
-#: before sending — and a turn that starts right after the broadcast would
-#: otherwise be stopped by the echo of the stop meant for its predecessor.
+#: This process, named in every broadcast it sends. NOTIFY reaches the sender too;
+#: its own echo is ignored because it already fired its signals before sending, and
+#: the echo would otherwise stop a turn that started right after.
 _ORIGIN = uuid.uuid4().hex
 
 #: Called with a session id whenever another process broadcasts a stop for it.
@@ -45,7 +40,7 @@ def session_from(payload: str) -> str | None:
     """The session a broadcast names, or None when this process sent it."""
     origin, sep, session_id = payload.partition(":")
     if not sep:
-        # A payload from a build that sent the bare session id.
+        # A bare session id payload, without a sender.
         return origin or None
     if origin == _ORIGIN:
         return None

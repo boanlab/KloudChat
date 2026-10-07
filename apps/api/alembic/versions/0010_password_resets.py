@@ -1,15 +1,6 @@
 """Password reset tickets.
 
-The sign-in page carried a "비밀번호를 잊으셨나요?" ("forgot your password?")
-link with no handler behind it, because there was no way to reset one: the API
-could change a password given the current one, and nothing else. This is the
-table that makes the link real.
-
-Only the hash of each token is stored. A table of live reset tokens is a table of
-working passwords, and the realistic exposure for those is a database dump.
-
-Rows survive their use. `used_at` is what separates a second click on the same
-link from a link that never existed, and the two deserve different answers.
+Only the token hash is stored; rows survive use so `used_at` tells a second click from a bad link.
 
 Revision ID: 0010
 Revises: 0009
@@ -37,8 +28,7 @@ def upgrade() -> None:
         sa.Column("token_hash", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
-        # Kept for the audit trail: a burst of requests for one account from one
-        # address is the shape of someone probing it.
+        # Kept for the audit trail: bursts from one address suggest probing.
         sa.Column("requested_ip", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"]),

@@ -228,11 +228,7 @@ def font_for(request: str, style: str = "") -> str:
 
 
 def report_look_for(request: str, accent: str) -> dict[str, str]:
-    """Design tokens for a report nothing else dressed: the look the words or the room
-    ask for, in a report-renderable style, and the subject's colour.
-
-    Thirty reports in a row came out in the default look with the product's own purple;
-    a word processor's user would have picked a template and a colour for the genre."""
+    """Tokens for a report with no design: the look its request or venue asks for, and `accent`."""
     style = visual_style_for(request)
     if style == "editorial":
         style = venue_style_for(request) or "editorial"
@@ -242,11 +238,11 @@ def report_look_for(request: str, accent: str) -> dict[str, str]:
 
 
 def venue_style_for(request: str) -> str:
-    """The look the room calls for, read off the request; `""` when no room is named.
+    """The look the venue calls for, read off the request; `""` when no venue is named.
 
-    A style word in the request (`visual_style_for`) outranks this: the person said
-    how it should look. This only answers where it will be shown.
+    A style word in the request (`visual_style_for`) outranks this.
     """
+
     text = (request or "").lower()
     for style, words in _VENUES:
         if any(word in text for word in words):

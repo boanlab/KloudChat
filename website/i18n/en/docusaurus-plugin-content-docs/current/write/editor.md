@@ -10,12 +10,16 @@ You can edit reports and slides directly in the right-hand panel. The features a
 
 The ribbon consists of **Home · Edit · Insert · Layout · Review · View · File**.
 
+### Home
+
+Switch between **Web view** and **Page view** (actual A4 pages), and change the document design (editorial, magazine, minimal), the accent color, and the **Template** (format). In web view, **Source** lets you edit the whole Markdown.
+
 ### Edit
 
 - **Edit document**: edit directly on the page. It supports bold, italic, underline, strikethrough, text color, highlighter, line spacing, lists and indentation, quotations, table insertion with row and column operations and merging, page breaks, source citation insertion, find and replace, and undo.
 - **Source**: edit the whole Markdown. Save with `Ctrl+Enter`.
 - The menu beside a section title adds a section before or after, duplicates, moves up or down, deletes, runs **Rewrite this section only**, and runs a review. The last remaining section cannot be deleted. If you type an instruction into **Rewrite this section only**, only that section is written again.
-- Selecting a sentence in the body shows **Fix this part**. It quotes the selected sentence and asks for a revision.
+- Selecting a sentence in the body shows **Fix this passage**. It quotes the selected sentence and asks for a revision.
 
 ### Insert
 
@@ -23,11 +27,11 @@ In **Add a picture**, set the section to insert into, how the picture is produce
 
 ### Layout
 
-It provides page setup (header, footer, page numbers), document design (editorial, magazine, minimal), accent color, and format changes.
+It provides **Page setup** (header, footer, page numbers).
 
 ### View
 
-Switch between **Web view** and **Page view** (actual A4 pages), and check progress and the word count in the contents pane. Wide view, document only, and close panel are chosen from the buttons at the top right of the panel, not from the ribbon.
+Open and close the **Contents** pane, where you can check progress and the word count. Wide view, document only, and close panel are chosen from the buttons at the top right of the panel, not from the ribbon.
 
 ### File
 
@@ -35,11 +39,11 @@ Exports to PDF, Word (DOCX), Hangul (HWPX), the Markdown source, and print.
 
 ## Slides panel
 
-The ribbon consists of **Home · Edit · Insert · Review · View · Slide Show · File**.
+The ribbon consists of **Home · Edit · Insert · Review · View · Slide show · File**.
 
 ### Home
 
-Choose the slide design from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Rebuild this slide**.
+Choose the slide design from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Redo this slide**.
 
 ### Edit
 
@@ -54,7 +58,7 @@ Choose the slide design from editorial, minimal, poster, split, dark, steel, war
 
 It provides adding and replacing pictures, and replacing an automatically generated diagram with a picture drawn by an image model.
 
-### View and Slide Show
+### View and Slide show
 
 It provides the slide list pane and slide navigation. For presentation mode, see [Writing slides](slides#presentation-mode).
 
@@ -66,8 +70,8 @@ Exports to PowerPoint (PPTX), PDF, and text (with notes), and supports copying t
 
 | Feature | Description |
 |---|---|
-| Automatic checks | Detects **Must fix** (empty content, blocks that were not written, placeholders, figures with no evidence, arithmetic errors) and **Worth a look** (filler phrases, sentences that start with an emoji, repeated lines, lines that run past two rows), and corrects them with **Fix** or **Fix all**. For slides it reports **n slides at overflow risk** separately. |
-| Get a review | The model reads the document once and gives a score out of 10 with up to six points to address. The score is for reference and does not restrict export. |
+| Automatic checks | Checks the document without calling a model. Items that must be fixed (P0: empty content, blocks that were not written, placeholders, unrendered Markdown, Chinese characters mixed into Korean sentences, figures with no evidence, arithmetic errors) show as **{n} to fix**. Together with items worth a look (P1: filler phrases, sentences that start with an emoji, repeated lines, too many lines on one slide, lines that run past two rows) they show as **{n} to look at**. Correct them with **Fix it** or **Fix all**. For slides it reports **n slides at overflow risk** separately. |
+| Ask for a review | The model reads the document once and gives a score out of 10 with up to six points to address. The score is for reference and does not restrict export. |
 | Fact check | Compares the claims in a section or a slide against the evidence. A verdict with no source URL is lowered to **Needs checking**. Opinions and definitions are excluded from judgment. |
 | Evidence panel (report) | Provides the source list, citation checks, citation styles (APA, MLA, Chicago, IEEE), adding material directly, deleting unused material, and the research log (search terms, accepted, excluded). |
 | Review notes (slides) | Add notes per slide and mark them resolved or reopened. Unresolved notes are shown with a badge. |

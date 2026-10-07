@@ -11,7 +11,7 @@ def test_an_unknown_window_keeps_the_floor() -> None:
 
 
 def test_a_wide_window_carries_a_sixteen_page_paper() -> None:
-    # Qwen3.5-122B reports 126,976 tokens; the Spectre paper is about 72,000 characters.
+    # A 126,976-token window; a sixteen-page paper is about 72,000 characters.
     assert file_budget({"contextWindow": 126_976}) > 72_000
 
 

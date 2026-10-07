@@ -322,13 +322,11 @@ async def resend_verification(user: CurrentIdentity, request: Request, db: DbSes
 
 
 async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
-    """When a run of failed sign-ins on `email` stops refusing logins, or None if not locked.
+    """When the lockout on `email` ends, or None if not locked.
 
-    The last `login_max_failures` sign-in events for the address are read from the audit
-    log; when every one of them failed and the newest is inside the lockout window, the
-    address is locked until that window ends. A success anywhere in the run ends it.
-    Attempts made while locked are recorded as `locked`, not `failed`, so hammering a
-    locked address cannot keep it locked forever.
+    Locked when the last `login_max_failures` sign-ins all failed and the newest is inside
+    the lockout window. Attempts while locked are recorded as `locked`, not `failed`, so
+    they do not extend the lock.
     """
     limit = max(1, settings.login_max_failures)
     rows = (
@@ -356,7 +354,7 @@ async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
 async def login(payload: LoginRequest, request: Request, response: Response, db: DbSession):
     email = payload.email.lower().strip()
 
-    # Five failures in a row lock the address for a while, before any password work.
+    # Lockout is checked before any password work.
     if (until := await _locked_until(db, email)) is not None:
         await _audit(db, request, "login", None, target=email, detail="locked", severity="warn")
         await db.commit()

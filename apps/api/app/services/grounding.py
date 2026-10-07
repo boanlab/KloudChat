@@ -1,9 +1,7 @@
 """Questions to ask before writing a document whose material is short.
 
-Two checks: here, from what happened to each attachment (unreadable,
-truncated, omitted, or named but absent); and in the outline call via
-`ASK_RULE`, for a subject the material does not cover. A turn that asks
-writes nothing.
+Attachment problems are checked here; a missing subject via `ASK_RULE` in the outline call.
+A turn that asks writes nothing.
 """
 
 from __future__ import annotations
@@ -21,9 +19,7 @@ _TRIVIAL_SHORTFALL = 2_000
 
 @dataclass(frozen=True, slots=True)
 class Question:
-    """One thing to ask before writing. `options` are suggestions; prose answers are always
-    accepted.
-    """
+    """One thing to ask before writing; `options` are suggestions, free answers are accepted."""
 
     id: str
     question: str
@@ -53,9 +49,7 @@ def file_shortfalls(files: tuple[ContextFile, ...]) -> list[ContextFile]:
 
 
 def questions_for(files: list[ContextFile]) -> list[Question]:
-    """At most one question for unreadable files and one for partial ones. Options are only what the
-    caller can honour.
-    """
+    """At most one question for unreadable files and one for partial ones."""
     if not files:
         return []
 
@@ -96,8 +90,8 @@ def questions_for(files: list[ContextFile]) -> list[Question]:
     return out
 
 
-#: A request naming an attachment as its source. Matches the act (첨부한, 올린
-#: 파일), never the bare noun: "첨부 파일 관리 정책 보고서" is a subject.
+#: A request naming an attachment as its source: the act (첨부한, 올린 파일), not
+#: the bare noun, which may be a subject.
 _NAMES_AN_ATTACHMENT = re.compile(
     r"첨부(?:한|된|해\s?준|해\s?드린|해\s?놓은)"
     r"|(?:올린|올려\s?준|업로드한|보낸)\s*(?:파일|자료|문서|문건)"
@@ -187,9 +181,7 @@ def merge_answers(request: str, answers: dict[str, str]) -> str:
 
 
 def focus_terms(answers: dict[str, str]) -> str:
-    """The `focus` answer, for excerpting a long file; empty when the user chose the part already
-    read.
-    """
+    """The `focus` answer for excerpting a long file; empty if the read part was chosen."""
     text = (answers.get("focus") or "").strip()
     if not text or text.startswith("읽은 앞부분"):
         return ""
@@ -197,9 +189,7 @@ def focus_terms(answers: dict[str, str]) -> str:
 
 
 def subject_missing(text: str, request: str, material: str = "") -> bool:
-    """Whether the planner's stated `subject` uses words found in neither the request nor the
-    material.
-    """
+    """Whether the planner's `subject` uses no word found in the request or material."""
     obj = re.search(r"\{.*\}", text, re.S)
     if not obj:
         return False

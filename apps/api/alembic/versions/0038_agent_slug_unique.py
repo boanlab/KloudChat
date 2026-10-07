@@ -1,14 +1,6 @@
-"""One @handle per owner.
+"""Unique @handle per owner.
 
-`agents.slug` had no constraint, the create and update routes never looked at
-what was already there, and the form's typed value was not even sent — so an
-account could hold @회의록-정리 four times, and did. The routes now refuse a
-duplicate before the write; this puts the same rule on the table.
-
-Existing duplicates are kept, not deleted: the oldest row keeps its handle and
-each later one gets `-2`, `-3`, … appended. Rows with an empty slug — possible
-from paths that never set one — are given one from their name first, the same
-way the route derives it.
+Existing duplicates get `-2`, `-3`, … appended; empty slugs are derived from the name first.
 
 Revision ID: 0038
 Revises: 0037
@@ -76,6 +68,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # The suffixes stay: they are valid handles and removing them would
-    # recreate the collisions this revision exists to end.
+    # The suffixes stay: removing them would recreate the collisions.
     op.drop_constraint("ux_agents_owner_slug", "agents", type_="unique")

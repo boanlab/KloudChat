@@ -1192,7 +1192,7 @@ def estimate_tokens(when_to_use: str, body: str, description: str = "") -> int:
     return _estimated_tokens({"when_to_use": when_to_use, "body": body or description})
 
 
-#: Slug → key, to adopt rows seeded before `catalog_key` existed.
+#: Slug → key, to adopt rows seeded without a `catalog_key`.
 _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
 _LEGACY_AGENT_KEYS = {_slug(spec["name"]): spec["key"] for spec in _AGENTS}
 

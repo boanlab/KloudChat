@@ -1,4 +1,4 @@
-"""문서가 적은 식은 검산되고, 검토자는 산수를 판단하지 않는다."""
+"""Formulas a document writes are recomputed; the reviewer does not judge arithmetic."""
 
 import pytest
 

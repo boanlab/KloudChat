@@ -75,10 +75,14 @@ def test_variety_is_judged_against_what_the_request_can_reach() -> None:
         "steps",
         "cards",
     ]
-    assert deck._offered_layouts("작년 32% 줄었다", []) == list(deck._BODY_LAYOUTS)
+    assert deck._offered_layouts("작년 32% 줄었다", []) == [
+        layout for layout in deck._BODY_LAYOUTS if layout not in deck.slide_patterns.BY_NAME
+    ]
     # Material must contain figures, not merely exist.
     assert deck._offered_layouts("숫자 없는 주제", ["붙인 자료"]) != list(deck._BODY_LAYOUTS)
-    assert deck._offered_layouts("숫자 없는 주제", ["수료생 1500명"]) == list(deck._BODY_LAYOUTS)
+    assert deck._offered_layouts("숫자 없는 주제", ["수료생 1500명"]) == [
+        layout for layout in deck._BODY_LAYOUTS if layout not in deck.slide_patterns.BY_NAME
+    ]
 
 
 def test_a_report_refuses_the_same_figures_a_deck_does() -> None:

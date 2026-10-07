@@ -9,7 +9,6 @@
 
 .page { line-height: 1.85; }
 
-.cover { padding-top: 30vh; }
 .cover h1 { font-weight: 600; }
 .cover::after { height: 1px; background: var(--border); }
 
@@ -22,14 +21,14 @@ h2::before {
 }
 h3 { font-weight: 650; font-style: italic; }
 
-/* 이어지는 산문. 첫 문단은 들여쓰지 않는다 — 들여쓰기는 앞 문단이 있다는
+/* 이어지는 산문. 첫 문단(제목 바로 아래)은 들여쓰지 않는다 — 들여쓰기는 앞 문단이 있다는
    표시이므로, 절의 첫 줄에서는 의미가 없다.
    양쪽 정렬은 쓰지 않는다. 이 조판은 `word-break: keep-all` 로 한글을 띄어쓰기
    에서만 끊는데, 한글 한 줄에는 띄어쓰기가 몇 개 없다. 그 몇 개를 늘려 양쪽을
    맞추면 문단 아래로 흰 강이 흐른다 — 영문에서는 단정해 보이는 정렬이 여기서는
    지저분해지는 이유이고, `test_no_seed_justifies_korean` 이 지키는 규칙이다. */
 p { margin: 0; text-indent: 1.4em; }
-p:first-of-type, h2 + p, h3 + p, blockquote + p { text-indent: 0; }
+h2 + p, h3 + p, blockquote + p { text-indent: 0; }
 ul, ol, table, blockquote, figure { margin-top: 1rem; margin-bottom: 1rem; }
 
 /* 긴 인용은 들여쓴 덩어리로 세운다. 따옴표도 세로선도 쓰지 않는다. */
@@ -51,3 +50,8 @@ section > small {
 section > small::before { color: var(--muted); }
 section > small:first-of-type { margin-top: 1.6rem; border-top: 1px solid var(--border); }
 sup { color: var(--ink); font-weight: 600; }
+
+/* 한눈에: 본문 전체가 명조, 로마 숫자 절, 문단 들여쓰기 — 논문처럼 읽힌다. */
+.page { font-family: 'Nanum Myeongjo', 'Batang', serif; }
+h1, h2, h3 { font-family: 'Nanum Myeongjo', 'Batang', serif; }
+h2 { text-align: center; }

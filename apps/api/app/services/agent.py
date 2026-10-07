@@ -20,6 +20,7 @@ import httpx
 from app.core.config import settings
 from app.services import current_evidence, settings_store, thinking
 from app.services.chat import ChatStreamError, step_label, step_title
+from app.services.context import literature_request
 from app.services.tools import arithmetic
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult, to_openai
 
@@ -216,6 +217,7 @@ async def _stream_once(
                         # The provider will not turn thinking off: once more without asking.
                         await opened.__aexit__(None, None, None)
                         payload.pop("reasoning", None)
+                        payload.update(thinking.switch(model))
                         opened = client.stream("POST", "/v1/chat/completions", json=payload)
                         response = await opened.__aenter__()
                 break
@@ -264,8 +266,7 @@ _NARRATION_CHARS = 400
 
 #: `web_search` calls per turn; other tools keep the normal hop budget.
 MAX_WEB_SEARCHES = 3
-#: `fetch_url` calls per turn: a model chasing a bus route through page after
-#: page ran twenty minutes before this cap.
+#: `fetch_url` calls per turn; each page is a slow round trip.
 MAX_FETCHES = 6
 
 _SEARCH_GROUNDING_INSTRUCTION = (
@@ -352,11 +353,7 @@ _OTHER_LANGUAGE_ASK = re.compile(r"영어|english|영문|번역|translate|in eng
 def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str] | None:
     """`(kind, nudge)` when `text` is not an answer to the last question: the previous
     answer repeated word for word, or a Latin-script answer to a Korean question that
-    asked for no other language. `None` for an ordinary answer.
-
-    Both came out of a busy local model: a turn that echoed the answer before it, and a
-    turn answered in English about something nobody had asked. Neither is worth
-    showing; one more call without tools usually is."""
+    asked for no other language. `None` for an ordinary answer."""
     squeeze = lambda t: " ".join(str(t or "").split())  # noqa: E731
     def last(role: str) -> dict[str, Any] | None:
         return next(
@@ -389,9 +386,10 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
 
 def _repeated_tail(text: str) -> str:
     """The redundant second copy when `text` is one block written twice in a row
-    (`A\\n\\n\\nA`), else ''. A small model sometimes restates its whole answer after
-    a silent self-check; a person never wants the same paragraph twice. Whitespace is
-    ignored in the comparison; the string returned is the exact trailing text to take back.
+    (`A\\n\\n\\nA`), else ''.
+
+    Whitespace is ignored in the comparison; the string returned is the exact trailing
+    text to take back.
     """
     body = text.rstrip()
     if len(body.strip()) < 40:
@@ -412,12 +410,11 @@ def _is_looping(pieces: list[str], *, window: int = 160, times: int = 4) -> bool
     return len(needle) >= window // 2 and text.count(needle) >= times
 
 
-#: One character repeated this often in a row is a stuck decoder — a URL whose
-#: id trails off into 「000000…」, an answer that is only 「!!!!!!」 — never text a
-#: person meant. Banner characters are left alone: a comment block of 60 「*」
-#: or a rule of 「=」 is ordinary code output.
+#: One character repeated this often in a row is a stuck decoder. Banner and
+#: box-drawing characters (「*」 「=」 「─」, U+2500–U+259F) are excluded: code
+#: output and diagrams repeat them by design.
 _RUN_LIMIT = 40
-_RUN_RE = re.compile(rf"([^\s*=\-#/_~.+|])\1{{{_RUN_LIMIT - 1},}}$")
+_RUN_RE = re.compile(rf"([^\s*=\-#/_~.+|\u2500-\u259f])\1{{{_RUN_LIMIT - 1},}}$")
 
 
 def _runaway(pieces: list[str]) -> str | None:
@@ -576,22 +573,6 @@ def _source_label(url: str) -> str:
     return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
 
 
-def _source_priority(url: str) -> tuple[int, str]:
-    """Sort key: government, then academic, then other, then wire services."""
-    from urllib.parse import urlparse
-
-    host = urlparse(url).netloc.lower().split(":", 1)[0].removeprefix("www.")
-    if host.endswith((".go.kr", ".gov", ".gov.uk", ".gc.ca", ".europa.eu")):
-        rank = 0
-    elif host.endswith((".ac.kr", ".edu", ".edu.au")):
-        rank = 1
-    elif any(part in host for part in ("reuters.", "apnews.", "yna.co.kr")):
-        rank = 3
-    else:
-        rank = 2
-    return rank, url
-
-
 def _without_duplicate_paragraphs(text: str, *, minimum: int = 80) -> tuple[str, list[str]]:
     """`(text, removed)`: exact repeats of paragraphs at least `minimum` characters long are
     dropped.
@@ -622,6 +603,12 @@ async def _run_tool(tool: Tool, arguments: str, ctx: ToolContext) -> ToolResult:
         )
     if not isinstance(parsed, dict):
         return ToolResult(content="오류: 인자는 객체여야 합니다.", failed=True)
+    if tool.name == "web_search" and literature_request(ctx.request):
+        # A literature question: the model's plain web search also reads the science
+        # lane (arXiv, OpenAlex, Semantic Scholar) and brings back more hits.
+        if str(parsed.get("kind") or "web") == "web":
+            parsed["kind"] = "papers"
+        parsed["scholarly"] = True
 
     try:
         async with asyncio.timeout(settings.tool_timeout_sec):
@@ -659,9 +646,8 @@ async def run_turn(
     tool_definitions: list[dict[str, Any]] | None = None,
     temperature: float | None = None,
     #: A tool the first ordinary hop must call, after any successful preflight.
-    #: A named `tool_choice` is only a request — vLLM answers in prose about
-    #: half the time under a long system prompt — so a search the toggle
-    #: demands goes through `preset_call` instead.
+    #: A named `tool_choice` is only a request some providers ignore, so a search
+    #: the toggle demands goes through `preset_call` instead.
     force_tool: str | None = None,
     #: Required gate; only eligible arithmetic reads may precede it. Hop prose stays private.
     preflight_tool: str | None = None,
@@ -676,8 +662,8 @@ async def run_turn(
     #: asked anything; the model then starts with the result in hand. A required
     #: calculation may need this trusted read first. Other gates remain first.
     preset_call: tuple[str, dict[str, Any]] | None = None,
-    #: Compatibility hint from older callers; factual questions no longer abort
-    #: a turn solely because current retrieval is unavailable.
+    #: The request when the question asks for a current fact; the answer is then
+    #: dated and marked unverified until a read tool returns material.
     freshness_request: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
@@ -794,9 +780,8 @@ async def run_turn(
     closing = False
     #: Every URL a tool returned this turn.
     seen_urls: set[str] = set()
-    #: (tool name, raw arguments) already dispatched — a model that cannot
-    #: tell it already has the answer repeats the same call hop after hop
-    #: otherwise, burning a full round trip each time until the hop cap.
+    #: (tool name, raw arguments) already dispatched, so a repeated call is refused
+    #: instead of burning a round trip each hop.
     called: set[tuple[str, str]] = set()
     # Only the pending arithmetic gate can reuse evidence. Futures coalesce
     # concurrent duplicates; stored results are detached before output masking.
@@ -1308,9 +1293,7 @@ async def run_turn(
                 }
             )
             if not result.failed:
-                # A failed call's own content is an error message, not a source —
-                # httpx's default text for a bad status even links to MDN's docs
-                # on that status code, which is not something anyone searched for.
+                # A failed call's own content is an error message, not a source.
                 seen_urls.update(_urls_in(result.content))
             if call["name"] == "web_search":
                 searches += 1

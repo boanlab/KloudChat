@@ -27,7 +27,11 @@ While an answer is being generated, the send button changes to ■ **Stop**. If 
 
 ## When generation fails
 
-The answer area shows **Try again** and **Use another model** buttons. **Use another model** applies a different model to that request only. You cannot edit and resend a message you already sent, so use **Copy prompt** to copy the text and send it again.
+The answer area shows **Retry** and **Another model** buttons. **Another model** applies a different model to that request only.
+
+## Editing a sent message
+
+In Chat, select **Edit message** (the pencil icon) next to a message you sent. The composer shows **Edit message · New conversation** and fills in the original text and attachments. When you send the edited text, the answer is generated in a **new conversation** that copies everything before that message. The original conversation stays as it was. Use **Cancel edit** or `Esc` to stop editing. You cannot edit while an answer is being generated.
 
 ## Keeping conversation context
 

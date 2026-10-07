@@ -4,7 +4,7 @@ const sessionId = 'legacy-freshness-fixture'
 const now = '2026-09-12T00:00:00.000Z'
 const answer = '최신 정보를 확인할 수 없어 답변을 보류합니다. 확인 가능한 자료를 제공해 주세요.'
 
-/** Historical transcript compatibility, not the policy for new requests. */
+/** A transcript already stored under an earlier policy; checks compatibility, not the policy for new requests. */
 async function savedLegacyAnswer(page: Page, reason: string) {
   const unexpected: string[] = []
   const routing = { answerOrigin: 'server_policy', actualModel: null,

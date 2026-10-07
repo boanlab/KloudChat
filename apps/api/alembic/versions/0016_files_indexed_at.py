@@ -1,11 +1,4 @@
-"""When a document last reached the retrieval index.
-
-`NULL` means the vector index does not cover it: attached before the index
-existed, or indexed and failed. Lexical search covers it either way, so the
-distinction is invisible without this column.
-
-A timestamp rather than a boolean, so a document re-indexed after an
-embedding-model change can be told from one indexed under the old model.
+"""When a document last reached the retrieval index; `NULL` means lexical search only.
 
 Revision ID: 0016
 Revises: 0015

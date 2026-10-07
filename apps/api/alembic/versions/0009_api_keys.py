@@ -1,12 +1,4 @@
-"""User-issued API keys, and per-account model access.
-
-Two things that both live on the proxy and both had to wait for per-user virtual
-keys to exist:
-
-* An **API key** a person can take away and use from a script. It is a second
-  LiteLLM key of their own, so its spend lands on them like everything else.
-* An **allowed model list** on the account, pushed to every key they hold. Until
-  now everyone could reach every model the proxy served.
+"""User-issued API keys, and per-account model access pushed to every key.
 
 Revision ID: 0009
 Revises: 0008
@@ -37,8 +29,7 @@ def upgrade() -> None:
         sa.Column("id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("user_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        # Fernet ciphertext of the proxy key. Shown once at creation; after that
-        # only the preview leaves the server.
+        # Fernet ciphertext of the proxy key; only the preview leaves the server after creation.
         sa.Column("secret", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("preview", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

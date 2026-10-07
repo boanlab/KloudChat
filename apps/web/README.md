@@ -10,8 +10,9 @@ lucide-react · react-markdown.
 
 ```bash
 npm ci
-npm run dev        # http://localhost:5173, proxying /api to :8100
+npm run dev        # Vite on :5173, proxying /api to API_BASE_URL
 npm run lint       # oxlint
+npm run test:config  # node --test for the Vite config
 npm run build      # tsc -b && vite build
 ```
 
@@ -19,19 +20,22 @@ npm run build      # tsc -b && vite build
 clean can still fail here.
 
 The dev server proxies `/api` to `API_BASE_URL` (default
-`http://localhost:8100`), so a containerised API works unchanged. From the
-repository root, `make dev` does the same thing inside Docker.
+`http://localhost:8100`). The compose stack publishes no API port, so against a
+running stack point it at the web container instead and take another port:
+`API_BASE_URL=http://localhost:5173 npm run dev -- --port 5174`. From the
+repository root, `make dev` runs Vite inside Docker in place of the web
+container, with the proxy already pointed at the `api` service.
 
 ## Layout
 
 ```
 src/
 ├── components/
-│   ├── artifacts/ArtifactPanel.tsx   Right-hand panel, branching by artifact kind
+│   ├── artifacts/                    ArtifactPanel (branching by kind), ribbon, lint and fact-check results, version history
 │   ├── chat/                         Composer, MessageItem, StepTimeline, Markdown
 │   ├── media/JobCard.tsx             Asynchronous generation card (progress → result)
-│   ├── report/ReportPanel.tsx        TOC, section streaming, sources, export
-│   ├── slides/DeckPanel.tsx          Slide renderer, thumbnail grid, per-slide editing
+│   ├── report/                       ReportPanel (TOC, section streaming, sources, export), DocumentEditor, block renderers
+│   ├── slides/                       DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
 │   ├── chart/ChartPanel.tsx          Chart, underlying-data tab, PNG/SVG/CSV
 │   ├── share/ShareButton.tsx         Read-only link creation and revocation
 │   ├── layout/                       AppShell, Sidebar, TopBar, Brand
@@ -81,8 +85,16 @@ npm run test:e2e
 npx playwright test --project=desktop
 ```
 
-The suite needs a running stack and a seeded account —
+The full suite needs a running stack and a seeded account —
 `bash scripts/e2e-seed.sh` from the repository root.
+
+The focused configs (`playwright.<name>.config.ts`) are what CI runs. Each
+starts its own Vite server on a fixed port and stubs the API with route
+handlers, so they need no stack:
+
+```bash
+npx playwright test --config playwright.freshness.config.ts
+```
 
 **Do not override `--workers`.** The config pins `workers: 1`; every spec signs
 in as the same account and several pick "the most recent X".

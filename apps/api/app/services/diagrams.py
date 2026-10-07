@@ -1,12 +1,8 @@
 """Figures a document draws for itself: which parts want one, and the mermaid for each.
 
-One planning call reads the drafted parts and names the places where a structure, flow,
-comparison or concept figure says more than the words. Each chosen part then goes through
-`diagram.draw`, which writes labelled mermaid in the house style. A deck keeps the result
-beside the slide's words (`slide["diagram"]`, rasterised by the browser); a report appends a
-mermaid fence its editor renders and stores. No image model and no approval card: the only
-cost is the writer's own tokens, and a person can still replace any figure with a drawn
-picture afterwards.
+One planning call picks the parts where a figure says more than the words; each goes
+through `diagram.draw`. A deck keeps the result in `slide["diagram"]`, a report appends a
+mermaid fence. No image model and no approval card: the cost is the writer's own tokens.
 """
 
 from __future__ import annotations
@@ -25,11 +21,34 @@ log = logging.getLogger(__name__)
 #: Figure kinds a document may draw for itself, with the name a reader sees.
 FIGURES = {"method": "구조도", "flow": "흐름도", "compare": "비교도", "concept": "개념도"}
 
-#: Figures per document; more than this and the deck reads as a picture book.
+#: Figures per document.
 MAX_FIGURES = 3
 
 Completion = Callable[[str, list[dict[str, str]], str, int], Awaitable[tuple[str, dict]]]
 Wrap = Callable[[str], list[dict[str, str]]]
+
+_STRICT_RULES = """규칙:
+- 수치의 비교는 표나 차트지 도식이 아니다. 제안하지 마라.
+- 「(표 있음)」이라고 적힌 부분은 이미 표로 비교한 곳이다. 거기에 비교도를 다시
+  그리지 마라. 비교도는 구조나 흐름 자체가 다를 때만 그린다.
+- 내용이 나열이나 서술뿐이고 구조·흐름·대비·층위가 없으면 제안하지 마라.
+  **없는 것이 정상이다.** 억지로 채우지 마라. 이점·효과·특징·요구 사항의 나열은
+  개념도가 아니다. 개념도는 상위 개념 아래 하위 개념이 놓이는 층위나 개념 사이의
+  관계가 본문에 **적혀 있을 때만** 그린다.
+"""
+
+#: Report planner rules: every part is a candidate, and a table does not rule out a
+#: comparison figure.
+_REPORT_RULES = """규칙:
+- 보고서는 그림이 있어야 읽힌다. 각 부분에서 **구성(요소와 관계)·흐름(단계·순서)·
+  대비(두 쪽 또는 여러 유형)·층위(상위·하위 개념, 분류)** 가운데 하나라도 본문에
+  적혀 있으면 그 부분에 도식을 제안하라. 분류(대상 환경 3갈래, 기능 4축 같은 것)는
+  개념도, 배포·처리 경로는 구조도나 흐름도, 두 방식의 대비는 비교도다.
+- 표가 있는 부분에도 비교도를 그릴 수 있다. 표의 숫자를 옮기지 말고, 두 쪽의
+  구조·흐름·구성 요소가 어떻게 다른지를 그려라.
+- 수치 자체(점유율, 금액, 비율)를 보여 주는 그림은 차트의 일이다. 제안하지 마라.
+- 서론·요약·결론·참고문헌처럼 구조가 없는 부분은 건너뛴다.
+"""
 
 _PROMPT = """아래는 {what}의 부분들이다. 각 부분의 제목과 내용을 읽고, **글보다 도식이 더
 잘 전달하는 곳**에만 도식을 하나씩 제안하라.
@@ -46,15 +65,7 @@ _PROMPT = """아래는 {what}의 부분들이다. 각 부분의 제목과 내용
 - compare: 비교도. 기존과 제안, 또는 두 안의 대비가 내용일 때.
 - concept: 개념도. 개념들의 층위와 관계가 내용일 때.
 
-규칙:
-- 수치의 비교는 표나 차트지 도식이 아니다. 제안하지 마라.
-- 「(표 있음)」이라고 적힌 부분은 이미 표로 비교한 곳이다. 거기에 비교도를 다시
-  그리지 마라. 비교도는 구조나 흐름 자체가 다를 때만 그린다.
-- 내용이 나열이나 서술뿐이고 구조·흐름·대비·층위가 없으면 제안하지 마라.
-  **없는 것이 정상이다.** 억지로 채우지 마라. 이점·효과·특징·요구 사항의 나열은
-  개념도가 아니다. 개념도는 상위 개념 아래 하위 개념이 놓이는 층위나 개념 사이의
-  관계가 본문에 **적혀 있을 때만** 그린다.
-- 한 부분에 하나, 서로 다른 부분에, 최대 {limit}개.
+{rules}- 한 부분에 하나, 서로 다른 부분에, 최대 {limit}개.
 - description 에는 그릴 내용을 **한국어로 구체적으로** 적는다: 구성 요소나 단계의
   이름, 그 사이의 관계와 방향, 비교도라면 양쪽의 이름과 마주 볼 항목. 이름은 그
   부분의 본문에 쓰인 용어 그대로. 본문에 없는 요소를 지어내지 마라.
@@ -95,14 +106,12 @@ async def plan(
     slide: bool,
     wrap: Wrap | None = None,
     limit: int = MAX_FIGURES,
+    at_least: int = 0,
 ) -> tuple[list[Planned], dict[str, int]]:
-    """Figures for these `(title, text)` parts; only `eligible` indices may get one.
+    """Figures for these `(title, text)` parts; only `eligible` indices may get one. Never raises.
 
-    `complete` is the caller's completion function (the deck's or the report's), so the
-    call is priced and retried like the writer's own; `wrap` puts the prompt into the
-    caller's messages (system rules, reference blocks), so the planner sees the same
-    sources as the writer and nothing else. Never raises: an unusable answer is an
-    empty plan.
+    `complete` and `wrap` are the caller's, so the call is priced like the writer's and sees
+    the same sources.
     """
     allowed = sorted(set(eligible))
     if not allowed:
@@ -117,6 +126,7 @@ async def plan(
         request=request[:1500],
         parts=listed[:9000],
         limit=limit,
+        rules=_STRICT_RULES if slide else _REPORT_RULES,
         caption_rule=(
             "12자 안쪽의 이름이다. 「그림」이라는 말은 넣지 않는다."
             if slide
@@ -131,14 +141,22 @@ async def plan(
         log.info("figure planning failed: %s", exc)
         text = "[]"
     planned = parse(text, count=len(parts), limit=limit, eligible=allowed)
-    if not planned and asks_for_diagrams(request):
-        # The person asked for a 구조도 or 흐름도 in so many words; an empty plan is a miss,
-        # not a judgement. One more look, told what was asked.
-        asked = "·".join(dict.fromkeys(_ASKS_DIAGRAM.findall(request or ""))) or "도식"
+    asked_for = not planned and asks_for_diagrams(request)
+    short = len(planned) < min(at_least, len(allowed))
+    if asked_for or short:
+        # Explicitly requested diagrams, or fewer than `at_least`: one retry, told why.
+
+        if asked_for:
+            asked = "·".join(dict.fromkeys(_ASKS_DIAGRAM.findall(request or ""))) or "도식"
+            reason = (f"원래 요청이 {asked}를 명시적으로 요구한다. "
+                      "요구한 종류마다 그것이 적힌 부분을")
+        else:
+            reason = (f"이 문서에는 도식이 적어도 {at_least}개 필요하다. 구성·흐름·대비·분류가 "
+                      "가장 뚜렷하게 적힌 부분을")
         nudged = prompt + (
-            f"\n\n원래 요청이 {asked}를 명시적으로 요구한다. 요구한 종류마다 그것이 적힌 "
-            "부분을 찾아 하나씩 제안하라(구조가 적힌 부분엔 method, 단계·순서가 적힌 부분엔 "
-            "flow, 두 안의 대비가 적힌 부분엔 compare). 정말 없을 때만 [] 로 답하라."
+            f"\n\n{reason} 찾아 하나씩 제안하라(구조가 적힌 부분엔 method, 단계·순서가 적힌 "
+            "부분엔 flow, 두 안의 대비가 적힌 부분엔 compare, 분류엔 concept). "
+            "정말 없을 때만 [] 로 답하라."
         )
         try:
             text, more = await complete(

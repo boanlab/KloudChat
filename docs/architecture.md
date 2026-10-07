@@ -51,9 +51,11 @@ by the API container, which issues a virtual key per user and calls upstream
 with it. Credits are enforced by KloudChat, with the LiteLLM budget ceiling as a
 backstop.
 
-The backend address is stored through the admin screen (Settings → System →
-Integrations). One address derives the LiteLLM address and the six tool
-endpoints by appending paths; hosting one feature elsewhere means overriding
+The browser reaches the API only through the web container, whose nginx
+serves the bundle and proxies `/api` and `/llm` to the `api` service (one or
+more replicas, no published port). The backend address is stored through the
+admin screen (System → Features → Feature integrations). One address derives
+the LiteLLM address and the six tool endpoints by appending paths; hosting one feature elsewhere means overriding
 that one field. A feature left blank drops out of the tool list and everything
 else keeps working.
 
@@ -176,8 +178,12 @@ Migrations live under `alembic/versions/`. The principal tables:
   `stopped` on either when 중단 was pressed — same shape, the reader's choice
 - `jobs` — video only. Without `provider_job_id`, a restart orphans a
   half-generated clip
-- `system_settings` — LiteLLM address and master key, SMTP. Database values
+- `system_settings` — LiteLLM address and master key, backend and tool
+  addresses, enabled surfaces, branding, SMTP, signup policy. Database values
   override environment variables
+- `governance` — the one instance-wide policy row: privacy guard and masking,
+  internal-material routing, Auto routing lanes, outline model, intent filter,
+  idle sign-out, retention
 
 `files` carries the scope it belongs to: `project_id` for project knowledge,
 `session_id` for a one-off attachment, `agent_id` for an agent's searchable
@@ -237,9 +243,11 @@ Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
 Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
 `fetch_url` (Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo
-forecast, keyless), `execute_code` (sandboxed), `create_artifact`,
-`create_chart`, `share_note`, and `search_knowledge` over an agent's own
-documents and the files uploaded into the conversation (§8). Tools from
+forecast, keyless), `execute_code` (sandboxed), `calculate` (bounded exact
+arithmetic, no code execution; `tools/arithmetic.py`), `check_ncs_answer`
+(`tools/ncs_check.py`), `create_artifact`, `create_chart`, `share_note`,
+`use_skill`, and `search_knowledge` over an agent's own documents and the files
+uploaded into the conversation (§8). Tools from
 installed MCP connectors are added to these.
 
 **The web-search toggle has three positions.** `context.search_plan` turns the
@@ -264,26 +272,13 @@ hit's `publishedDate` reaches the model as 「게시일」 so the newest wins. A
 makes at most three searches and six page reads; past either cap the model is
 told to answer from what it has.
 
-**The web-search toggle has three positions.** `context.search_plan` turns the
-toggle and the user's words into two facts: whether the web tools (`web_search`,
-`weather`) are offered this turn, and which tool the first hop must call. 「켬」
-offers them and forces a search every turn; 「끔」 offers nothing unless the
-words explicitly ask for research; 「자동」, the default, offers them and forces
-the first hop only when the words ask for research, for something that changes
-with time (news, prices, versions, schedules, a year), or for the weather —
-otherwise the model decides under a lighter rule (`_WEB_SEARCH_AUTO`) that says
-what to look up and what to answer outright. A strict-local route offers none of
-this, whatever the toggle says. Weather questions force the `weather` tool
-rather than a search, since a search engine returns encyclopaedia pages for
-「분당 날씨」.
-
 **Sources are cited by number, never typed.** `run_turn` renumbers the `[n]`
 entries of every search result so the numbers run across the whole turn and
 gives a fetched page a number of its own; the prompt asks the model to cite
 `[3]` at the end of a sentence and not to copy URLs. After the answer,
 `_link_citations` turns each `[n]` into a link to that source and a numbered
 「출처」 list is appended; numbers no result carries stay as text. A model that
-types a URL anyway is checked against the tool results as before. A stream
+types a URL anyway is checked against the tool results. A stream
 that repeats one letter or digit forty times in a row (a decoder stuck on a
 long article id) is closed there: the run is retracted, and a URL it broke is
 completed when exactly one tool result starts the same way, dropped otherwise.
@@ -323,6 +318,13 @@ Both are two-pass: one outline call returns the title and the table of
 contents, then one call per section or slide, each carrying what the previous
 ones wrote. Six listed sections means six are coming, which is what makes the
 progress indicator honest.
+
+**The plan is approved before anything is written.** The outline turn ends
+with a `proposal` event: the plan (title, parts, visual style, proposed
+pictures) is stored on the session and shown as a card, and writing starts
+when the person approves it, possibly edited. When the material is too thin to
+write from, the turn asks instead (`needs`, `services/grounding.py`) and writes
+nothing.
 
 A failed section is marked and the rest continues.
 
@@ -373,9 +375,7 @@ prompt; a chart or metrics answer replaces the slide's chart or metrics, not
 just its notes, and a title the person asked to change (「제목을 …로 바꿔 줘」) is
 taken, quoted text verbatim. 「위험 장을 하나 추가해 줘」 is an `insert`: the
 revision planner names the new part and its place, the router slots a blank
-part in and rewrites only it, so the other slides stay byte for byte, where the
-earlier route re-planned and rewrote the whole deck and lost the table the
-person asked for. A restructure (「6장으로 줄여」) is told to hit the count
+part in and rewrites only it, so the other slides stay byte for byte. A restructure (「6장으로 줄여」) is told to hit the count
 exactly, merge only what was named, and keep every other part's title and
 content.
 
@@ -392,31 +392,17 @@ its words (`revise.requested_title`). An insert aimed *into* an existing part
 (「비용 절에 표를 넣어 줘」) is that part's edit (`into_existing_part`), and one
 that names its neighbour (「요청 사항 장 앞에」) lands exactly there
 (`place_insert`). The deck writer is told that every figure the person wrote
-must appear once, after a status deck twice dropped 「파일럿 4개 부서 742명」.
+must appear once.
 
 **A term swap is done by hand.** 「문서 전체에서 「A」를 「B」로 통일해 줘」 is a string
 replacement across every text field (`revise.term_swap`, `replace_term`): exact,
-instant, and nothing else moves — where asking the model to retype six sections
-took two minutes and risked rewording them.
-
-**Where figures come from, measured.** With the figure card accepted, an
-architecture report got its three diagrams in the right sections (구조도 in
-전체 구조, 흐름도 in 요청 처리 흐름, 비교도 in the comparison), a revision added
-a node to the flow diagram and its sentence to the prose, and turning the
-comparison into a table dropped the 비교도 as the rule says. Pictures from the
-image model are proposed only for illustration or real objects, never for
-structure or numbers, so a technical report gets none — by design. Decks draw
-no pictures on their own. A deck's structure slide must sit on a layout the
-figure planner may draw on: planned as `steps` it became numbered boxes, planned
-as `chart` a bar chart of made-up component counts (`structure_as_drawable`
-moves such a slide to `bullets`). Mermaid is rasterised by the browser when the
-document is opened, so an export made before anyone opened the document carries
-no figures; after one view the docx carried two images and the pdf four.
+instant, and nothing else moves, rather than a model retyping and possibly
+rewording every section.
 
 **The words name the part.** When a revision instruction names exactly one
 existing part (「다음 단계 장을 연표로」), that part is the target whatever the
-planner guessed — another part, or a restructure of the whole deck, which the
-planner once answered with a nine-slide re-plan (`revise.named_target`); a
+planner guessed — another part, or a restructure of the whole deck
+(`revise.named_target`); a
 shorter name inside a longer part's name counts as the longer part's mention,
 and an instruction that asks for a structural change (add, remove, merge,
 reorder, a new count) is left to the planner. When the request itself asked for a
@@ -426,19 +412,16 @@ a request that never mentioned diagrams stands as the planner's judgement.
 
 **An outline has to be a deck.** A salvaged outline can be the planner's notes
 to itself — 「Slides: 5 to 12. (6 is fine)」, repeated section names, an English
-plan for a Korean request; one such plan was written out as thirty-nine slides
-over seven minutes. `deck.sane_outline` refuses it so the outline is asked for
-once more. A restructure strips the original request's part counts
+plan for a Korean request. `deck.sane_outline` refuses it so the outline is
+asked for once more. A restructure strips the original request's part counts
 (`revise.without_counts`) so the note's count is the only one the planner
-reads: two counts in one text cancel to none, and with none to hit nothing
-stopped the thirty-nine. A section rewrite that drops the section's mermaid
+reads. A section rewrite that drops the section's mermaid
 figure, or redraws it as ASCII boxes, gets the figure back (`revise.keep_figure`)
 unless the person asked for it to go.
 
 **A stated count is a restructure.** 「전체를 6장으로 줄여 줘」 against a nine-slide
 deck is re-planned whatever the revision planner read it as — a partial edit, or
-a request for a new document, which it once answered with 「새 문서 요청」 and did
-nothing (`revise.count_change`). A count equal to the current one, or no count,
+a request for a new document (`revise.count_change`). A count equal to the current one, or no count,
 leaves the planner's reading alone.
 
 **One or two over the count.** Asked twice for exactly N slides and still over,
@@ -515,14 +498,20 @@ downloaded and opened outside the sandbox, the last because the wrapper already
 wrote that heading and a second one prints the title twice.
 
 **Figures a document draws for itself.** After the draft, one planning call
-(`services/diagrams.py`) names the parts where a structure, flow, comparison
-or concept figure says more than the words; `services/diagram.py` writes each
-as mermaid in the house style. A deck keeps it beside the slide's words
-(`slide.diagram`), the panel renders it live and stores its raster on the
-slide (`POST /artifacts/{id}/slides/diagram`) for the exporters; a report
-appends a mermaid fence the editor already renders and caches. No image
-model and no card: the only cost is the writer's tokens. A picture a person
-places on that slide replaces the figure.
+(`services/diagrams.py`) names up to three parts where a structure, flow,
+comparison or concept figure (구조도·흐름도·비교도·개념도) says more than the
+words; a report writer can also place one inline with a `[[그림: …]]` mark.
+`services/diagram.py` writes each as a mermaid flowchart in the house style.
+`diagram_render` draws that flowchart with the deck renderer's own shapes
+(`diagram_shapes`) on a one-slide deck and has the print sidecar render it to
+PNG, so the panel, the PDF, the report and the `.pptx` show the same picture;
+the `.pptx` itself carries native, editable shapes. Without the sidecar, or for
+a chart the shapes cannot draw, the mermaid source is kept and rendered by the
+browser. No image model and no card: the only cost is the writer's tokens. A
+picture a person places on that slide replaces the figure. Pictures from the
+image model are proposed on the outline card only for illustration or real
+objects, never for structure or numbers, and a deck's structure slide is moved
+off layouts the figure planner cannot draw on (`deck.structure_as_drawable`).
 
 **Pictures come from the other direction.** The writing model cannot make one
 and cannot reference one — `sanitise` drops every `src` that is not already
@@ -585,11 +574,8 @@ declared: an undeclared custom property is not an error anywhere, and
 Two constraints shape every seed:
 
 **No script.** Artifacts render in a `sandbox=""` iframe, so a deck navigates
-by CSS scroll-snap rather than a keyboard runtime, and one that cannot run
-model-written JavaScript in a browser. That is less of a limit than it reads
-as: open-design's own report and deck templates ship example files with no
-`<script>` in them at all, drawing their charts as inline SVG. What a seed
-gives up is interaction, not design.
+by CSS scroll-snap rather than a keyboard runtime, and charts are drawn as
+inline SVG. What a seed gives up is interaction, not design.
 
 **Print is the export.** Every seed carries `@media print` rules and an
 `@page` rule that put one slide or section on one page. `apps/print` reads
@@ -695,10 +681,36 @@ anybody's rows and therefore still safe to leave open.
 
 Three surfaces carry the same rules in their prompts — do not invent figures,
 do not pad, keep emoji out of headings — stated in `craft`, in the per-surface
-system prompts, and in the starter skills. Nothing read the answer back to see
-whether they held. `services/lint.py` does, on every report, deck and HTML
-artifact, and it costs no model call: the check is free, and acting on it stays
-explicit. Findings are stored on the artifact, so a document that was fine when
+system prompts, and in the starter skills. Two stages read the answer back.
+
+**Verify and repair (reports).** After the sections are written,
+`verify.verify_and_repair` runs a list of checks (`services/checks.py`). Each
+check only finds: the sentence, why it is wrong, and how to tell whether a
+rewrite still is. Code checks cost nothing — numeric issues, one metric stated
+with two values, references to a source's chapters the reader does not have
+(「해당 자료」), sentences that give a settled figure another value, and scaled
+metric slips. Model checks run once, before the repair: a judge on the
+figure sentences (only when a separate outline model exists, so the writer
+does not judge itself), claims checked against the web when search is on, and
+assessment items worked through by the judge (`services/fact_check.py`). One
+`repair` call rewrites the found sentences; a rewrite is kept only when the
+check that raised it no longer fires. Then the code checks run again. What
+remains, plus model findings no rule can confirm, is listed in the turn's
+「품질 점검」 step for the reader to check — never passed off as done.
+
+Around it: `key_figures` settles the figures a document set fixes (판매가,
+변동비, 손익분기, 목표, 예산 …) once from the material, tells the writer, and
+mends table rows and slides that drift from them; `calc` has the code sandbox
+compute derived values before the prose is written; `units` corrects a money
+table's unit label against the amounts the person gave; and
+`quality_gate.report_findings` / `deck_findings` read the finished report or
+deck for form defects — a broken block, a table with no caption, a figure
+nobody mentions, a number stated two ways. Decks get the code-side checks
+(settled figures, scaled numbers, missing sequence members) but not the
+model verify stage.
+
+**Lint.** `services/lint.py` runs on every report, deck and HTML artifact, and
+it costs no model call: the check is free, and acting on it stays explicit. Findings are stored on the artifact, so a document that was fine when
 it was made does not start reporting problems because the rules were tightened
 afterwards.
 
@@ -929,13 +941,16 @@ carry script, and that file loads for every visitor.
 
 Both are contained within this instance.
 
-**Transcription** records in the browser and sends the audio to Whisper.
+**Transcription** records in the browser and sends the audio to Whisper (or,
+without one, to the `STT_OR_MODEL` chat model, which takes the audio off the
+network).
 `webkitSpeechRecognition` needs no backend but streams the microphone to a third
 party, so it is not used. Recordings are not stored, and the transcript fills
 the composer rather than being sent.
 
-**Fact-checking** extracts only checkable claims from a deck and verifies them
-through SearXNG. One rule makes it safe: **a confident verdict (`supported` or
+**Fact-checking** (`POST /artifacts/{id}/slides/factcheck` and
+`sections/factcheck`) extracts only checkable claims from a slide or a report
+section and verifies them through SearXNG. One rule makes it safe: **a confident verdict (`supported` or
 `unsupported`) must carry a source URL, and with nothing to point at it drops to
 `uncertain`.** A badge with no evidence stops the reader looking where they
 should. Opinions are not extracted.
@@ -1055,17 +1070,17 @@ and can never be selected as a privacy-safe route. Egress decisions bypass the
 if that refresh fails, no cached strict alias is trusted.
 
 Governance authorization likewise bypasses its process-local display cache. If
-the authoritative policy row cannot be read, every chat, comparison and legacy
+the authoritative policy row cannot be read, every chat, comparison and
 report/slides send path fails closed with `503 governance_unavailable` before
 model discovery, transcript writes, billing, virtual-key issuance or upstream
 calls. This also blocks a strict-local request: without the row the server does
-not know whether legacy masking, intent filtering or blocked categories apply.
+not know whether organisation-wide masking, intent filtering or blocked categories apply.
 
 Strict-local turns disable web search, URL fetching and remote connector tools.
 Their tool registry is built from in-process runners only, rather than building
 remote connectors and filtering them afterwards. Tool output on an external
 turn is inspected before every follow-up completion and masked before it enters
-that prompt. While either guard or legacy masking is active, every persisted
+that prompt. While either the guard or organisation-wide masking is active, every persisted
 model-generated textual field (answer, comparison variants, timeline details,
 artifact payloads and routing metadata) is deterministically masked with the
 `answer` scope described next, even when the inbound envelope was clean. Title
@@ -1092,11 +1107,13 @@ The selectable guard covers chat and model comparison. Reports, slides, media
 generation and the `/llm` compatibility API always mask and present no
 decision flow.
 
-### Auto cost routing
+### Auto routing
 
 Auto is a session mode, not a model alias. `sessions.model` always stores the
-last real model the person selected as the quality ceiling; the separate
-`routing_mode` field says whether an eligible turn may use an economy model.
+last real model the person selected; the separate `routing_mode` field is
+`manual`, `auto` (cost: a low-complexity turn may use an economy model) or
+`auto_quality` (a high-complexity turn may use an administrator-ordered upgrade
+model that does not widen the data boundary and keeps its tools).
 This prevents a synthetic `auto` id from reaching LiteLLM and keeps manual
 model selection authoritative.
 
@@ -1106,20 +1123,23 @@ decision owns the turn. A clean, ordinary chat turn may be classified by a
 live, zero-cost strict-local model using the caller's virtual key, redacted
 LiteLLM logging and `disable_fallbacks`. The classifier receives the complete
 answer-visible messages and quality-model tool schema snapshot. If that payload
-exceeds 8,000 characters, it is not truncated and the quality ceiling is kept.
-Only a high-confidence low-complexity JSON verdict can select an economy model;
-every timeout, malformed response or uncertain state keeps the quality ceiling.
+exceeds 80,000 characters, it is not truncated and the chosen model is kept.
+Only a high-confidence JSON verdict moves a turn (low on the cost lane, high on
+the quality lane); every timeout, malformed response or uncertain state keeps
+the chosen model. Report and deck turns are classified on the request text;
+a turn moved to strict-local for its internal material stays there.
 
 Economy candidates are administrator-ordered and revalidated against the live
 catalogue, caller allowlist, context window, data boundary and both token
-prices. `hybrid`, `unknown` and `privacyOnly` models are excluded. The chosen
+prices. `unknown` and `privacyOnly` models are excluded, and none may have a
+wider boundary than the chosen model. The chosen
 answer call receives no tools and also disables fallback, so an unbounded tool
 result cannot invalidate the checked context fit and a failed economy route
 cannot cause a second, hidden premium charge. Message routing stores the
 quality, selected and actual models plus enum-only decision metadata; classifier
 prompts and free-form model reasoning are never persisted.
 
----
+### Chat answer shaping
 
 **Standing rules are repeated next to the question.** An earlier user message
 that sets a rule for every later answer (「앞으로 … 세 문장 이내로」, "from now on
@@ -1130,24 +1150,19 @@ transcript; the replay is where a small model attends. A skill fetched through
 `use_skill` is told that such rules take precedence over its own instructions.
 
 **The auto toggle's forced search asks about the world.** `needs_web_search`
-used to fire on any time word — 「오늘 하루」, 「내일 발표」, 「서버 비용」, 「마감」 —
-so a pasted schedule or the person's own budget forced a web search before the
-model saw the message; in a 42-turn auto-mode run all fifteen searches were
-forced this way and none chosen by the model. It now stands down when the person
-is telling rather than asking (their team, memo, rule, code), when the question
-is about the conversation (「아까」, 「그 규칙」, 「지금 코드」), when it is arithmetic
-on supplied numbers or a rule of thumb (「몇 장이 적당해?」, 「보통 얼마」), and when a
-sentence has a time word but no world cue (news, price, version, law, office).
-The search tool stays offered; only the forced first hop is withheld.
+stands down when the person is telling rather than asking (their team, memo,
+rule, code), when the question is about the conversation (「아까」, 「그 규칙」,
+「지금 코드」), when it is arithmetic on supplied numbers or a rule of thumb
+(「몇 장이 적당해?」, 「보통 얼마」), and when a sentence has a time word but no
+world cue (news, price, version, law, office). The search tool stays offered;
+only the forced first hop is withheld.
 
-**Auto search is for the world, not the conversation.** With the search toggle
-on auto the model chooses when to search; it was searching on a pasted schedule,
-on "what rule did I set at the start today" and on "what does this code do when
-all values are blank". The auto instruction now names what never needs a search
-(the conversation itself, the user's own figures and the arithmetic on them,
-code behaviour, textbook principles, rules of thumb) and ties searching to
-answers that depend on events after training or today's values; `create_chart`
-is for charts the user asked for, not for trend questions.
+**Auto search is for the world, not the conversation.** The auto instruction
+names what never needs a search (the conversation itself, the user's own
+figures and the arithmetic on them, code behaviour, textbook principles, rules
+of thumb) and ties searching to answers that depend on events after training
+or today's values; `create_chart` is for charts the user asked for, not for
+trend questions.
 
 **A rough figure still says where to check.** A question about the usual level
 of a changing value (「왕복 요금은 보통 얼마나 해?」) forces no search, but the
@@ -1158,18 +1173,16 @@ conversation's files ground it.
 
 **Length follows the question.** The chat contract asks for two to four
 sentences of prose on a casual question or quick fact, with structure only when
-the user asks for detail or the material has parallel parts; the internal model
-otherwise answers a stew-cooking question with headed bullet sections.
+the user asks for detail or the material has parallel parts.
 
 **One answer, once.** A small model sometimes restates its whole answer after
 the prompt's silent self-check. When a tool-less hop ends with one block written
 twice in a row, the agent keeps the first copy and takes the second back with a
 `retract` event (`_repeated_tail`), so neither the stream nor the stored message
 shows the paragraph twice. The style guide's worked example is marked as showing
-form only and uses a neutral domain, after a transfer-learning example came back
-as fact in an answer about transfer learning.
+form only and uses a neutral domain, so its content is not repeated as fact.
 
-### Boundaries tightened by the whole-codebase review
+### Other boundaries
 
 - A `stdio` connector is a command the API server runs: only an administrator
   may register one, and the child inherits a minimal environment (`PATH`,
@@ -1188,8 +1201,8 @@ as fact in an answer about transfer learning.
 - A finished video is claimed once across replicas by flipping its stage with
   a conditional update; a cancel that landed first wins, and nothing is stored
   or charged after it.
-- A chat turn is claimed on the session row (`running_turn`, `running_since`,
-  migration 0050) in the same transaction as its question, released when the
+- A chat turn is claimed on the session row (`running_turn`, `running_since`)
+  in the same transaction as its question, released when the
   answer settles or stop is pressed, and ignored once older than ten minutes.
   Two replicas serialize on the row; the second sees the claim and answers 409.
 - The first signup is decided under a transaction-scoped advisory lock, so two
@@ -1204,6 +1217,13 @@ as fact in an answer about transfer learning.
 - Sidebar day buckets compare local calendar dates, not elapsed milliseconds.
 
 ## 8. Agent knowledge and retrieval
+
+An agent can carry documents of its own: files uploaded to it, and pages read
+once from a URL and stored as text. They are `files` rows with `agent_id` set,
+so extraction, blob storage and token counting are the same as anywhere else.
+
+They are **searched, not injected**: an agent's shelf is reached through the
+`search_knowledge` tool, so retrieval happens when the model asks for it.
 
 Project knowledge is indexed as well: a project has its own collection
 (`projects.index_key`, minted on the first indexed document) that holds its
@@ -1222,14 +1242,8 @@ backfills files uploaded before the index existed. The lexical shelf the tool
 also reads includes the project's files, so a passage the budget could not
 carry whole is still reachable by lookup.
 
-An agent can carry documents of its own: files uploaded to it, and pages read
-once from a URL and stored as text. They are `files` rows with `agent_id` set,
-so extraction, blob storage and token counting are the same as anywhere else.
-
-They are **searched, not injected**. Project knowledge goes into every turn
-whole inside a character budget; past that budget the block degrades to a list
-of filenames. An agent's shelf is reached through a `search_knowledge` tool
-instead, so retrieval happens when the model asks for it.
+Project knowledge is also injected: it shares the turn's file budget and is
+excerpted around the question once it no longer fits whole (§7).
 
 Files uploaded into a conversation sit on the same shelf. They are injected
 (§7) *and* searchable: the tool is what finds the passage the injected excerpt
@@ -1269,8 +1283,8 @@ which travels in URLs and API responses. Deleting an agent drops its collection.
 
 ```
 apps/web/src/
-  pages/        one per route, plus settings/ — three user tabs and the
-                admin system tab with its sections
+  pages/        one per route, plus settings/ — the five account tabs and
+                the admin System screen's sections
   components/   chat · report · slides · chart · artifacts · media · layout · ui
   store/        useStore.ts — a single zustand store
   lib/          api.ts (the backend seam) · kinds.ts · i18n.ts · reportMarkdown.ts
@@ -1285,8 +1299,10 @@ still in flight — otherwise a late response overwrites the local write.
 ## 10. Verification
 
 ```bash
+cd apps/api && pytest -q             # unit and pipeline tests, no services
 bash scripts/smoke-test.sh           # auth, approval, rotation and suspension checks (non-destructive)
-cd apps/web && npx playwright test   # E2E — pinned to workers: 1
+cd apps/web && npx playwright test --config playwright.<name>.config.ts   # focused, API stubbed (CI)
+cd apps/web && npx playwright test   # full E2E against a running stack — pinned to workers: 1
 ```
 
 **Do not override `--workers`.** Every spec uses the same account and several
@@ -1306,16 +1322,14 @@ passes identically before and after a change is guarding nothing.
 - **The video playback spec generates a new clip on every run** (12,000
   credits). Exclude it with `--grep-invert` when iterating.
 - **Fact-checking** costs one search and one model call per claim, capped at
-  four claims per slide.
+  four claims per slide or section.
 - **The first-signup bootstrap test** needs an empty database and is skipped by
   default.
-- **Speech-to-text requires a Whisper backend.** Without one the composer's
-  microphone is not rendered, and the `youtube` connector handles only videos
-  that have captions.
-- **A single API instance is assumed.** Migrations run on container start,
-  runtime settings are cached in-process, and the stop signal for a running
-  turn is held in that process — `POST /sessions/{id}/stop` reaches the turn
-  only when it lands on the replica running it. See
+- **Speech-to-text needs a Whisper backend or `STT_OR_MODEL`.** With neither
+  the composer's microphone is not rendered. The `youtube` connector handles
+  only videos that have captions.
+- **Runtime settings are cached per replica** for 15 seconds, so with several
+  API replicas a change reaches the others within that window. See
   [deployment.md](deployment.md#scaling-notes).
 - **A region needs a mounted GeoLite2 file.** There is no network lookup, by
   design, so without one every screen shows an address and no place.

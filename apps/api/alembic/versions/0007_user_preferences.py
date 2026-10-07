@@ -1,11 +1,4 @@
-"""Per-user behaviour preferences.
-
-The settings screen carried three switches — streaming, automatic memory,
-usage display — with nowhere to put them, and said so on the page. This is
-where they go.
-
-JSONB rather than columns: they are read and written whole with the profile,
-never queried across users, and the set will grow.
+"""Per-user behaviour preferences, as one JSONB column read and written with the profile.
 
 Revision ID: 0007
 Revises: 0006

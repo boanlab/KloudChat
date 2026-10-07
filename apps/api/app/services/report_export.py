@@ -29,7 +29,7 @@ from reportlab.platypus import (
 from reportlab.platypus import Image as RLImage
 
 from app.services import charts as chartkit
-from app.services import design, doc_type, fonts, pictures, richtext
+from app.services import design, doc_formats, doc_type, fonts, pictures, richtext
 
 log = logging.getLogger(__name__)
 
@@ -288,6 +288,19 @@ _MARKERS = ("•", "–", "·")
 _INDENT = 14.0
 
 
+def _unfenced(lines: list[str]) -> list[tuple[str, Any, str, int]]:
+    """A plain fence's lines as prose; a picture among them as a picture."""
+    out: list[tuple[str, Any, str, int]] = []
+    for one in lines:
+        if not one.strip():
+            continue
+        if "](data:image/" in one or re.match(r"^\s*!\[[^\]]*\]\(", one):
+            out.extend(_markdown_to_lines(one.strip()))
+        else:
+            out.append(("body", one, "", 0))
+    return out
+
+
 def _markdown_to_lines(
     text: str, grids: list[richtext.Grid] | None = None
 ) -> list[tuple[str, Any, str, int]]:
@@ -298,6 +311,7 @@ def _markdown_to_lines(
     payload. `marker` is `•` or `3.`; `depth` is the indent level (two spaces
     each). Numbering follows Markdown: the first item's number starts the run.
     """
+    text = richtext.detach_tables(text)
     out: list[tuple[str, Any, str, int]] = []
     number = 0
     #: Numbering per list depth; deeper levels are cleared when a level closes.
@@ -369,8 +383,9 @@ def _markdown_to_lines(
                     # Placed by key; the exporters look up the browser's raster.
                     out.append(("diagram", {"source": source, "key": diagram_key(source)}, "", 0))
                 else:
-                    # Any other fence goes out as prose.
-                    out.extend(("body", one, "", 0) for one in fence if one.strip())
+                    # Any other fence goes out as prose, read as Markdown: a picture
+                    # inside it is drawn, never printed as its base64.
+                    out.extend(_unfenced(fence))
                 fence = None
                 fence_lang = ""
             else:
@@ -454,7 +469,7 @@ def _markdown_to_lines(
     close_table()
     if fence:
         # An unclosed fence is a truncated document, not a diagram.
-        out.extend(("body", one, "", 0) for one in fence if one.strip())
+        out.extend(_unfenced(fence))
     return out
 
 
@@ -1126,6 +1141,217 @@ def _docx_picture(document, picture: dict) -> None:
 
 #: Body paragraphs go in `Body Text`, not `Normal`, so a 서식's body settings
 #: apply without touching headings.
+# ── documents by purpose: the title block and heading numbers ────────────
+
+_HEADS = ("cover", "header", "memo", "press", "paper")
+
+
+def _title_block(block: Any) -> dict | None:
+    """The artifact's `titleBlock`, cleaned; None when the document has none.
+
+    See `doc_formats`: `head` picks the layout, `fields` are `[label, value]` pairs and an
+    empty value is a blank the person fills in, printed as `doc_formats.BLANK`.
+    """
+    if not isinstance(block, dict) or not block:
+        return None
+    fields: list[tuple[str, str]] = []
+    for pair in block.get("fields") or []:
+        if not isinstance(pair, (list, tuple)) or not pair:
+            continue
+        label = " ".join(str(pair[0] or "").split())
+        value = " ".join(str((pair[1] if len(pair) > 1 else "") or "").split())
+        if label:
+            fields.append((label, value))
+    head = str(block.get("head") or "header")
+    keywords = block.get("keywords")
+    return {
+        "head": head if head in _HEADS else "header",
+        "label": " ".join(str(block.get("label") or "").split()),
+        "numbering": str(block.get("numbering") or "none"),
+        "fields": fields,
+        "subtitle": " ".join(str(block.get("subtitle") or "").split()),
+        # None: the format has no abstract; "": an abstract still to be written.
+        "abstract": str(block.get("abstract") or "").strip() if "abstract" in block else None,
+        "keywords": (
+            [" ".join(str(word).split()) for word in keywords if str(word).strip()]
+            if isinstance(keywords, list)
+            else None
+        ),
+    }
+
+
+def _shown(value: str) -> str:
+    return value or doc_formats.BLANK
+
+
+def _paper_line(label: str, value: str) -> str:
+    """An author or affiliation line under a paper's title."""
+    return value if value and label in ("저자", "소속") else f"{label}: {_shown(value)}"
+
+
+def _dateline(fields: list[tuple[str, str]]) -> str:
+    """A press release's 배포일 · 보도 시점 · 문의처 row."""
+    return "  |  ".join(f"{label} {_shown(value)}" for label, value in fields)
+
+
+class _HeadingNumbers:
+    """Running heading numbers in the title block's style (`doc_formats.number_heading`).
+
+    Level 1 is a section heading, level 2 a section marked `level: 2` or a heading inside
+    a section's content. The reference list appended for export is not numbered.
+    """
+
+    def __init__(self, block: dict | None) -> None:
+        self.style = block["numbering"] if block else "none"
+        self.counters = [0, 0, 0]
+
+    def section(self, section: dict) -> str:
+        if section.get("id") == "references":
+            return ""
+        return self.next(2 if section.get("level") == 2 else 1)
+
+    def next(self, level: int) -> str:
+        if self.style == "none":
+            return ""
+        self.counters[level - 1] += 1
+        for deeper in range(level, 3):
+            self.counters[deeper] = 0
+        try:
+            number = doc_formats.number_heading(self.style, level, self.counters)
+        except IndexError:  # past XII in roman: plain digits rather than a failed export
+            number = f"{self.counters[level - 1]}."
+        return f"{number} " if number else ""
+
+
+def _docx_title_block(document, title: str, block: dict, visualise_heading) -> None:
+    """The head of a document by purpose: cover page, field table, memo rows, press
+    header or paper header, in place of the plain title."""
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Pt, RGBColor
+
+    grey = RGBColor(0x99, 0x99, 0x99)
+    muted = RGBColor(0x66, 0x66, 0x66)
+    head = block["head"]
+    centred = head in ("cover", "paper")
+
+    def value_run(paragraph, value: str, **kwargs):
+        run = paragraph.add_run(_shown(value))
+        if not value:
+            run.font.color.rgb = grey
+        for key, setting in kwargs.items():
+            setattr(run, key, setting)
+        return run
+
+    def line(
+        text: str = "",
+        *,
+        size: float = 0,
+        bold: bool = False,
+        colour=None,
+        before: float = 0,
+        after: float = 4,
+        center: bool = centred,
+    ):
+        paragraph = document.add_paragraph(style=_BODY)
+        if text:
+            run = paragraph.add_run(text)
+            run.bold = bold
+            if size:
+                run.font.size = Pt(size)
+            if colour is not None:
+                run.font.color.rgb = colour
+        paragraph.paragraph_format.space_before = Pt(before)
+        paragraph.paragraph_format.space_after = Pt(after)
+        if center:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        return paragraph
+
+    def heading(prefix: str = "") -> None:
+        paragraph = document.add_heading("", level=0)
+        if prefix:
+            paragraph.add_run(prefix)
+        paragraph.add_run(title)
+        visualise_heading(paragraph, 0)
+        if prefix:
+            paragraph.runs[0].font.size = Pt(doc_type.TYPE["h1"])
+        if centred:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    def table(pairs: list[tuple[str, str]], per_row: int, widths: tuple[float, float]) -> None:
+        if not pairs:
+            return
+        rows = -(-len(pairs) // per_row)
+        grid = document.add_table(rows=rows, cols=per_row * 2)
+        try:
+            grid.style = "Table Grid"
+        except Exception:  # noqa: BLE001 — a 서식 file without the style keeps its own
+            pass
+        _docx_cell_margins(grid)
+        if head == "cover":
+            grid.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for index, (label, value) in enumerate(pairs):
+            row, column = divmod(index, per_row)
+            label_cell = grid.cell(row, column * 2)
+            value_cell = grid.cell(row, column * 2 + 1)
+            label_cell.width, value_cell.width = Cm(widths[0]), Cm(widths[1])
+            label_run = label_cell.paragraphs[0].add_run(label)
+            label_run.bold = True
+            value_run(value_cell.paragraphs[0], value)
+
+    fields = block["fields"]
+    if head == "cover":
+        # No cover page: the title block heads page one and the text follows it.
+        if block["label"]:
+            line(block["label"], size=doc_type.TYPE["h2"], colour=muted, after=6)
+        heading()
+        if block["subtitle"]:
+            line(block["subtitle"], size=doc_type.TYPE["h1"], colour=muted, after=6)
+        table(fields, 1, (4.0, 8.0))
+        line(after=12)
+    elif head == "memo":
+        table(fields, 1, (3.5, 12.5))
+        line(after=2)
+        heading("제목  ")
+    elif head == "press":
+        line("보도자료", size=doc_type.TYPE["h1"], bold=True, after=6)
+        heading()
+        if block["subtitle"]:
+            line(block["subtitle"], size=doc_type.TYPE["h1"], colour=muted, after=8)
+        dateline = line(after=12)
+        for index, (label, value) in enumerate(fields):
+            if index:
+                dateline.add_run("  |  ").font.color.rgb = grey
+            dateline.add_run(f"{label} ").bold = True
+            value_run(dateline, value)
+    elif head == "paper":
+        heading()
+        if block["subtitle"]:
+            line(block["subtitle"], size=doc_type.TYPE["h1"], colour=muted)
+        for label, value in fields:
+            paragraph = line(after=2)
+            if value and label in ("저자", "소속"):
+                paragraph.add_run(value)
+            else:
+                paragraph.add_run(f"{label}: ")
+                value_run(paragraph, value)
+        if block["abstract"] is not None:
+            line("초록", bold=True, before=12, after=2, center=False)
+            value_run(line(after=6, center=False), block["abstract"])
+        if block["keywords"] is not None:
+            paragraph = line(after=10, center=False)
+            paragraph.add_run("핵심어: ").bold = True
+            value_run(paragraph, ", ".join(block["keywords"]))
+    else:  # header
+        if block["label"]:
+            line(block["label"], size=doc_type.TYPE["caption"], colour=muted, after=2)
+        heading()
+        if block["subtitle"]:
+            line(block["subtitle"], size=doc_type.TYPE["h2"], colour=muted, after=6)
+        table(fields, 2, (2.6, 5.4))
+        line(after=4)
+
+
 _BODY = "Body Text"
 
 
@@ -1136,6 +1362,7 @@ def to_docx(
     tokens: dict[str, str] | None = None,
     template: str = "",
     page_settings: dict | None = None,
+    title_block: dict | None = None,
 ) -> bytes:
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
@@ -1202,8 +1429,13 @@ def to_docx(
             shade.set(qn("w:fill"), (style or {}).get("accent", "#5b5bd6").lstrip("#"))
             paragraph._p.get_or_add_pPr().append(shade)
 
-    title_heading = document.add_heading(title, level=0)
-    visualise_heading(title_heading, 0)
+    head_block = _title_block(title_block)
+    numbers = _HeadingNumbers(head_block)
+    if head_block:
+        _docx_title_block(document, title, head_block, visualise_heading)
+    else:
+        title_heading = document.add_heading(title, level=0)
+        visualise_heading(title_heading, 0)
     if _wants_toc(sections):
         _table_of_contents(document)
         _update_fields_on_open(document)
@@ -1217,7 +1449,10 @@ def to_docx(
     #: Charts are numbered across the document; each is its own part.
     charts = 0
     for section in sections:
-        section_heading = document.add_heading(section.get("heading") or "", level=1)
+        number = numbers.section(section)
+        section_heading = document.add_heading(
+            f"{number}{section.get('heading') or ''}" if section.get("heading") else "", level=1
+        )
         visualise_heading(section_heading, 1)
         lines = _markdown_to_lines(section.get("content") or "", section.get("tables"))
         formatted = list(section.get("_formatting") or [])
@@ -1271,6 +1506,8 @@ def to_docx(
             block, format_cursor = _next_format(formatted, clean, format_cursor)
             if kind == "heading":
                 paragraph = document.add_heading("", level=2)
+                if number := numbers.next(2):
+                    paragraph.add_run(number)
                 if block:
                     _docx_styled(paragraph, block, clean)
                 else:
@@ -1652,12 +1889,158 @@ def _pdf_table(rows: richtext.Grid | list[list[str]], styles: dict, accent) -> T
     return table
 
 
+def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> list:
+    """`_docx_title_block` for reportlab: the flowables that stand in for the plain title."""
+    head = block["head"]
+    T = doc_type.TYPE
+    centred = head in ("cover", "paper")
+    align = TA_CENTER if centred else TA_LEFT
+
+    def styled(name: str, parent: str, **options) -> ParagraphStyle:
+        return ParagraphStyle(name, parent=styles[parent], alignment=align, **options)
+
+    title_style = styled("tb-title", "title")
+    small = styled("tb-small", "body", textColor=HexColor("#666666"))
+    subtitle = styled(
+        "tb-sub", "body", fontSize=T["h1"], leading=T["h1"] * 1.4, textColor=HexColor("#555555")
+    )
+    cell = ParagraphStyle("tb-cell", parent=styles["body"], spaceAfter=0)
+    label_cell = ParagraphStyle("tb-label", parent=cell, fontName=bold_face)
+
+    def value(text: str) -> str:
+        if text:
+            return _escape(text)
+        return f'<font color="#999999">{_escape(doc_formats.BLANK)}</font>'
+
+    def fields_table(
+        per_row: int, widths: tuple[float, float], ruled: bool = False
+    ) -> Table | None:
+        pairs = block["fields"]
+        if not pairs:
+            return None
+        rows: list[list] = []
+        for start in range(0, len(pairs), per_row):
+            row: list = []
+            for label, text in pairs[start : start + per_row]:
+                row += [Paragraph(_escape(label), label_cell), Paragraph(value(text), cell)]
+            row += [""] * (per_row * 2 - len(row))
+            rows.append(row)
+        table = Table(rows, colWidths=[w * mm for w in widths] * per_row)
+        lines = (
+            [
+                ("LINEABOVE", (0, 0), (-1, 0), 1.0, HexColor("#333333")),
+                ("LINEBELOW", (0, 0), (-1, -1), 0.4, HexColor("#bbbbbb")),
+                ("LINEBELOW", (0, -1), (-1, -1), 1.0, HexColor("#333333")),
+            ]
+            if ruled
+            else [("GRID", (0, 0), (-1, -1), 0.4, HexColor("#bbbbbb"))]
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    *lines,
+                    *[
+                        ("BACKGROUND", (c, 0), (c, -1), HexColor("#f4f4f4"))
+                        for c in range(0, per_row * 2, 2)
+                    ],
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        if head == "cover":
+            table.hAlign = "CENTER"
+        return table
+
+    story: list = []
+    if head == "cover":
+        # No cover page: the title block heads page one and the text follows it.
+        if block["label"]:
+            story.append(Paragraph(_escape(block["label"]), small))
+            story.append(Spacer(1, 3 * mm))
+        story.append(Paragraph(_escape(title), title_style))
+        if block["subtitle"]:
+            story.append(Paragraph(_escape(block["subtitle"]), subtitle))
+        story.append(Spacer(1, 6 * mm))
+        if table := fields_table(1, (40, 80)):
+            story.append(table)
+        story.append(Spacer(1, 8 * mm))
+    elif head == "memo":
+        if table := fields_table(1, (35, 135), ruled=True):
+            story.append(table)
+        story.append(Spacer(1, 5 * mm))
+        story.append(
+            Paragraph(
+                f'<font size="{T["h1"]}">제목</font>&nbsp;&nbsp;{_escape(title)}', title_style
+            )
+        )
+        story.append(Spacer(1, 4 * mm))
+    elif head == "press":
+        story.append(
+            Paragraph(
+                "보도자료",
+                styled("tb-press", "h1", spaceBefore=0, textColor=HexColor("#666666")),
+            )
+        )
+        story.append(Paragraph(_escape(title), title_style))
+        if block["subtitle"]:
+            story.append(Paragraph(_escape(block["subtitle"]), subtitle))
+        story.append(Spacer(1, 2 * mm))
+        story.append(HRFlowable(width="100%", thickness=0.8, color=HexColor("#333333")))
+        dateline = "&nbsp;&nbsp;|&nbsp;&nbsp;".join(
+            f'<font name="{bold_face}">{_escape(label)}</font> {value(text)}'
+            for label, text in block["fields"]
+        )
+        story.append(Paragraph(dateline, small))
+        story.append(HRFlowable(width="100%", thickness=0.4, color=HexColor("#bbbbbb")))
+        story.append(Spacer(1, 6 * mm))
+    elif head == "paper":
+        story.append(Paragraph(_escape(title), title_style))
+        if block["subtitle"]:
+            story.append(Paragraph(_escape(block["subtitle"]), subtitle))
+        for label, text in block["fields"]:
+            shown = (
+                _escape(text)
+                if text and label in ("저자", "소속")
+                else f"{_escape(label)}: {value(text)}"
+            )
+            story.append(Paragraph(shown, styled(f"tb-line-{label}", "body", spaceAfter=1)))
+        story.append(Spacer(1, 5 * mm))
+        if block["abstract"] is not None:
+            story.append(Paragraph(f'<font name="{bold_face}">초록</font>', styles["body"]))
+            story.append(Paragraph(value(block["abstract"]), styles["body"]))
+        if block["keywords"] is not None:
+            story.append(
+                Paragraph(
+                    f'<font name="{bold_face}">핵심어:</font> '
+                    + value(", ".join(block["keywords"])),
+                    styles["body"],
+                )
+            )
+        story.append(Spacer(1, 4 * mm))
+    else:  # header
+        if block["label"]:
+            story.append(Paragraph(_escape(block["label"]), small))
+        story.append(Paragraph(_escape(title), title_style))
+        if block["subtitle"]:
+            story.append(Paragraph(_escape(block["subtitle"]), subtitle))
+        if table := fields_table(2, (28, 57)):
+            story.append(Spacer(1, 2 * mm))
+            story.append(table)
+        story.append(Spacer(1, 6 * mm))
+    return story
+
+
 def to_pdf(
     title: str,
     sections: list[dict],
     *,
     tokens: dict[str, str] | None = None,
     page_settings: dict | None = None,
+    title_block: dict | None = None,
 ) -> bytes:
     # Embedded Korean face — see services/fonts.py. Gothic unless the design says serif,
     # as on the page view; the sizes are the document scale every renderer reads.
@@ -1785,11 +2168,23 @@ def to_pdf(
         ),
     }
 
-    story: list = [Paragraph(_escape(title), styles["title"]), Spacer(1, 8 * mm)]
+    head_block = _title_block(title_block)
+    numbers = _HeadingNumbers(head_block)
+    story: list = (
+        _pdf_title_block(title, head_block, styles, bold_face)
+        if head_block
+        else [Paragraph(_escape(title), styles["title"]), Spacer(1, 8 * mm)]
+    )
     for index, section in enumerate(sections):
         if index:
             story.append(Spacer(1, 4 * mm))
-        story.append(Paragraph(_escape(section.get("heading") or ""), styles["h1"]))
+        number = numbers.section(section)
+        story.append(
+            Paragraph(
+                _escape(f"{number}{section.get('heading')}" if section.get("heading") else ""),
+                styles["h1"],
+            )
+        )
         #: This section's footnotes, drawn under it once the prose is done.
         notes: list[tuple[str, str]] = []
         formatted = list(section.get("_formatting") or [])
@@ -1868,7 +2263,7 @@ def to_pdf(
                 clean = _pdf_styled(block, plain)
             if kind == "heading":
                 paragraph_style = _pdf_block_style(styles["h2"], block) if block else styles["h2"]
-                story.append(Paragraph(clean, paragraph_style))
+                story.append(Paragraph(_escape(numbers.next(2)) + clean, paragraph_style))
             elif kind in ("bullet", "number"):
                 # `bulletText` hangs the marker, keeping two-digit numbers
                 # aligned with single-digit ones.
@@ -1907,7 +2302,6 @@ def to_pdf(
             story.append(Spacer(1, 3 * mm))
 
         if notes:
-            # A rule, then the notes.
             story.append(Spacer(1, 3 * mm))
             story.append(
                 HRFlowable(
@@ -2461,6 +2855,7 @@ def _hwpx_table(
     head_char_pr: int = 1,
     widths: list[int] | None = None,
     cell_para_pr: int | list[int] = 7,
+    header_row: bool = True,
 ) -> str:
     """A GFM table as an OWPML table, wrapped in its own paragraph.
 
@@ -2504,15 +2899,16 @@ def _hwpx_table(
                     if (dr, dc) != (0, 0):
                         covered.add((r + dr, column + dc))
             # Head row: bold at body size with a heavier rule under it.
-            fill = 3 if r == 0 else 2
+            head = r == 0 and header_row
+            fill = 3 if head else 2
             shape = cell_para_pr[column] if isinstance(cell_para_pr, list) else cell_para_pr
             lines = [_strip_inline(line) for line in cell.text.split("\n")] or [""]
             para = "".join(
-                _hwpx_para(line, shape, head_char_pr if r == 0 else char_pr) for line in lines
+                _hwpx_para(line, shape, head_char_pr if head else char_pr) for line in lines
             )
             width = sum(column_widths[column : column + across])
             cells.append(
-                f'<hp:tc name="" header="{1 if r == 0 else 0}" hasMargin="1" protect="0"'
+                f'<hp:tc name="" header="{1 if head else 0}" hasMargin="1" protect="0"'
                 f' editable="0" dirty="0" borderFillIDRef="{fill}">'
                 '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK"'
                 ' vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0"'
@@ -2548,12 +2944,86 @@ def _hwpx_table(
     return f'<hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="{char_pr}">{table}</hp:run></hp:p>'
 
 
+def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
+    """`_docx_title_block` as OWPML paragraphs. `lead` (section properties, page furniture)
+    must ride in the first paragraph's run, as it does on the plain title."""
+    head = block["head"]
+    out: list[str] = []
+
+    def para(text: str, para_pr: int, char_pr: int = 0) -> None:
+        nonlocal lead
+        if lead:
+            out.append(
+                f'<hp:p paraPrIDRef="{para_pr}" styleIDRef="0"><hp:run charPrIDRef="{char_pr}">'
+                f"{lead}<hp:t>{_hwpx_escape(text)}</hp:t></hp:run></hp:p>"
+            )
+            lead = ""
+        else:
+            out.append(_hwpx_para(text, para_pr, char_pr))
+
+    def table(per_row: int, widths: list[int]) -> None:
+        pairs = block["fields"]
+        if not pairs:
+            return
+        rows: list[list[str]] = []
+        for start in range(0, len(pairs), per_row):
+            row: list[str] = []
+            for label, value in pairs[start : start + per_row]:
+                row += [label, _shown(value)]
+            rows.append(row + [""] * (per_row * 2 - len(row)))
+        try:
+            out.append(_hwpx_table(rows, head_char_pr=0, widths=widths * per_row, header_row=False))
+        except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
+            log.warning("hwpx title block fell back to lines: %s", exc)
+            out.extend(_hwpx_para(" · ".join(row), 3) for row in rows)
+
+    if head == "cover":
+        # No cover page: the title block heads page one and the text follows it.
+        if block["label"]:
+            para(block["label"], 0, 0)
+        para(title, 0, 2)
+        if block["subtitle"]:
+            para(block["subtitle"], 0, 4)
+        table(1, [1, 2])
+        para("", 3)
+    elif head == "memo":
+        para("", 3)
+        table(1, [1, 4])
+        para(f"제목  {title}", 0, 2)
+    elif head == "press":
+        para("보도자료", 1, 3)
+        para(title, 0, 2)
+        if block["subtitle"]:
+            para(block["subtitle"], 0, 4)
+        para(_dateline(block["fields"]), 3, 0)
+    elif head == "paper":
+        para(title, 0, 2)
+        if block["subtitle"]:
+            para(block["subtitle"], 0, 4)
+        for label, value in block["fields"]:
+            para(_paper_line(label, value), 6, 0)
+        if block["abstract"] is not None:
+            para("초록", 2, 4)
+            para(_shown(block["abstract"]), 3, 0)
+        if block["keywords"] is not None:
+            para(f"핵심어: {_shown(', '.join(block['keywords']))}", 3, 0)
+    else:  # header
+        if block["label"]:
+            para(block["label"], 2, 0)
+        para(title, 0, 2)
+        if block["subtitle"]:
+            para(block["subtitle"], 0, 4)
+        table(2, [1, 2])
+    return out
+
+
 def to_hwpx(
     title: str,
     sections: list[dict],
     *,
     tokens: dict[str, str] | None = None,
     page_settings: dict | None = None,
+    title_block: dict | None = None,
 ) -> bytes:
     """The same document `to_docx` writes, as OWPML.
 
@@ -2641,11 +3111,17 @@ def to_hwpx(
         )
 
     # The section properties ride in the first paragraph's run.
-    body: list[str] = [
-        f'<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="2">'
-        f"{_hwpx_secpr(page_settings)}{_hwpx_page_furniture(title, page_settings)}"
-        f"<hp:t>{_hwpx_escape(title)}</hp:t></hp:run></hp:p>"
-    ]
+    lead = f"{_hwpx_secpr(page_settings)}{_hwpx_page_furniture(title, page_settings)}"
+    head_block = _title_block(title_block)
+    numbers = _HeadingNumbers(head_block)
+    body: list[str] = (
+        _hwpx_title_block(title, head_block, lead)
+        if head_block
+        else [
+            f'<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="2">'
+            f"{lead}<hp:t>{_hwpx_escape(title)}</hp:t></hp:run></hp:p>"
+        ]
+    )
     #: `BinData/imageN.png` and the `<opf:item id="imageN">` that resolves it.
     embedded: list[tuple[str, bytes, str]] = []
 
@@ -2667,8 +3143,9 @@ def to_hwpx(
 
     for section in sections:
         heading = (section.get("heading") or "").strip()
+        number = numbers.section(section)
         if heading:
-            body.append(_hwpx_para(heading, 1, 3))
+            body.append(_hwpx_para(f"{number}{heading}", 1, 3))
         formatted = list(section.get("_formatting") or [])
         format_cursor = 0
         #: Footnotes gathered under the section; `<hp:footNote>` is not used
@@ -2777,7 +3254,12 @@ def to_hwpx(
             clean = _raised_marks(_strip_inline(text))
             block, format_cursor = _next_format(formatted, _strip_inline(text), format_cursor)
             if kind == "heading":
-                body.append(styled_para(block, 2, 4) if block else _hwpx_para(clean, 2, 4))
+                number = numbers.next(2)
+                body.append(
+                    styled_para(block, 2, 4, number)
+                    if block
+                    else _hwpx_para(f"{number}{clean}", 2, 4)
+                )
             elif kind in ("bullet", "number"):
                 base_para = (4, 8, 9)[depth]
                 body.append(

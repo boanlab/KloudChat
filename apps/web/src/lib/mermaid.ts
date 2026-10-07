@@ -253,9 +253,9 @@ function shades(accent: string, paper: string, count: number): string[] {
 }
 
 /**
- * Figure theme for a paper, after PaperBanana's NeurIPS 2025 guide: light
- * desaturated pastel zones, rounded nodes, thin uniform strokes, one highlight
- * colour. `hot` is the one class the prompt may write (`node:::hot`).
+ * Figure theme for a paper: light desaturated pastel zones, rounded nodes, thin
+ * uniform strokes, one highlight colour. `hot` is the one class the prompt may
+ * write (`node:::hot`).
  */
 export function paperTheme(node: HTMLElement) {
   const base = theme(node)
@@ -265,18 +265,18 @@ export function paperTheme(node: HTMLElement) {
   const ink = read('--ink', '#1a1a1a')
   return {
     ...base,
-    fontFamily: "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "'Pretendard', 'Pretendard Variable', 'Inter', 'Helvetica Neue', Arial, sans-serif",
     themeVariables: {
       ...base.themeVariables,
       // Zones in light ice, nodes in light grey-blue with mid-saturation borders.
-      clusterBkg: '#eef4fb',
-      clusterBorder: '#b7c7de',
-      mainBkg: '#f7f9fc',
-      primaryColor: '#f7f9fc',
-      primaryBorderColor: '#7f96b8',
-      nodeBorder: '#7f96b8',
-      secondaryColor: '#fff8ec',
-      tertiaryColor: '#eef7f2',
+      clusterBkg: '#ffffff',
+      clusterBorder: '#c7d2e3',
+      mainBkg: '#eef2f8',
+      primaryColor: '#eef2f8',
+      primaryBorderColor: '#eef2f8',
+      nodeBorder: '#eef2f8',
+      secondaryColor: '#eef2f8',
+      tertiaryColor: '#ffffff',
       lineColor: '#5b6b82',
       textColor: ink,
       primaryTextColor: ink,
@@ -486,18 +486,19 @@ export function slideTheme(colours: { accent: string; ink: string; muted: string
     theme: 'base' as const,
     // `<text>`, not `<foreignObject>`: foreign content taints the canvas `rasterise` draws to.
     htmlLabels: false,
-    fontFamily: colours.font || "'Pretendard', 'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: colours.font || "'Pretendard', 'Pretendard Variable', 'Inter', 'Helvetica Neue', Arial, sans-serif",
     themeVariables: {
+      // Flat vector on white: groups are outlines, boxes one pale solid fill, no shadow.
       background: '#ffffff',
-      clusterBkg: '#eef4fb',
-      clusterBorder: '#b7c7de',
-      mainBkg: '#f7f9fc',
-      primaryColor: '#f7f9fc',
-      primaryBorderColor: '#7f96b8',
+      clusterBkg: '#ffffff',
+      clusterBorder: '#c7d2e3',
+      mainBkg: '#eef2f8',
+      primaryColor: '#eef2f8',
+      primaryBorderColor: '#eef2f8',
       primaryTextColor: colours.ink,
-      nodeBorder: '#7f96b8',
-      secondaryColor: '#fff8ec',
-      tertiaryColor: '#eef7f2',
+      nodeBorder: '#eef2f8',
+      secondaryColor: '#eef2f8',
+      tertiaryColor: '#ffffff',
       lineColor: '#5b6b82',
       textColor: colours.ink,
       edgeLabelBackground: '#ffffff',

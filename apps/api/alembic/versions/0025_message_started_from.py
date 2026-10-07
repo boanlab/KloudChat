@@ -1,21 +1,6 @@
-"""Which 시작점 a turn was begun from.
+"""The starting point (시작점) a turn began from, as `{"templateId", "title"}`.
 
-Picking a starting point used to type the template's whole framing into the
-composer, so the transcript recorded it as the person's own words. It is now
-carried beside the message instead, which leaves the question this column
-answers: a year later, what was this turn started from?
-
-`{"templateId": ..., "title": ...}` — the title alongside the id, because a
-built-in id names nothing to a reader and a saved template can be deleted.
-Never the prompt text: what the machinery was told is not what the person
-said, and this table is the record of the second.
-
-Nullable and null by default. Most turns start from nothing, and a turn that
-did is not a turn missing a value.
-
-No foreign key. Half the ids are built-ins that ship in the image and have no
-row to point at, and the other half must survive their `templates` row being
-removed — the whole reason the title is stored here.
+No foreign key: built-in ids have no row, and the title outlives a deleted template.
 
 Revision ID: 0025
 Revises: 0024

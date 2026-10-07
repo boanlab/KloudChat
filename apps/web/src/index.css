@@ -30,7 +30,7 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 /* A phone: a touch screen up to 1024px wide (foldables and landscape included), or any
-   viewport under 640px. Width alone missed wide phones. */
+   viewport under 640px. Width alone would miss wide phones. */
 @custom-variant phone {
   @media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem) {
     @slot;
@@ -146,9 +146,8 @@
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* On a phone the whole type scale steps up with the root, to what the ChatGPT and
-   Claude apps use: the desktop's compact 13px base reads as 18px, menus and
-   captions with it, and running text as 22px. */
+/* On a phone the whole type scale steps up with the root: the desktop's compact
+   13px base reads as 18px, menus and captions with it, and running text as 22px. */
 @media (pointer: coarse) and (max-width: 64rem), (max-width: 40rem) {
   html {
     font-size: 137.5%;
@@ -338,6 +337,34 @@ body {
 
 @layer components {
   /* Template-authored section HTML in the web view; the template's own styles stay in the paged shadow root. */
+  /* A report reads as a document: paragraphs justified, Korean words kept whole. */
+  .report-prose p,
+  .report-prose li {
+    text-align: justify;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  /* A figure sits in the text column: centred, never taller than a third of a page. */
+  .report-prose img {
+    display: block;
+    margin: 1.25rem auto 0.5rem;
+    max-width: 85%;
+    max-height: 420px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+  .report-prose figcaption,
+  .report-prose img + em,
+  .report-prose p:has(> img:only-child) + p > em:only-child {
+    display: block;
+    text-align: center;
+    font-size: 0.85em;
+    color: var(--color-muted, #6b7280);
+  }
+  .report-prose p:has(> img:only-child) {
+    text-align: center;
+  }
   .doc-html table {
     width: 100%;
     margin: 0.75rem 0;

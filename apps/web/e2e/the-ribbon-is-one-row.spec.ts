@@ -1,8 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { openAndSeedReport } from './helpers'
 
-/** 페이지뷰 + 편집 opens the editor now that 문서 수정 is gone; see the same two clicks
- *  wherever this file used to press that one button. */
+/** Opens the in-place editor: 페이지뷰, then 편집. */
 async function enterEditor(panel: import('@playwright/test').Locator) {
   await panel.getByRole('button', { name: '페이지뷰' }).click()
   await panel.getByRole('button', { name: '편집' }).click()

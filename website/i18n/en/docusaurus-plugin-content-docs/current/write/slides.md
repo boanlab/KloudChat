@@ -11,10 +11,9 @@ On the home screen, select **Slides** and enter the presentation topic and the a
 ## Items in the structure check
 
 - Slide titles and their order
-- **Impression**: tidy editorial, strong impression, calm whitespace, dark, split, warm paper, monochrome
-- **Purpose**: presenting with narration, or handing over the material only
+- **How will this be used?**: presenting with narration, or handing over the material only
 
-After writing, you can choose the slide design again in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
+The design is not chosen on the structure card. After writing, choose it in the panel from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome.
 
 ## Setting the number of slides
 
@@ -32,11 +31,11 @@ The model chooses the type that suits the content. It uses cover, table of conte
 
 ## Changing the design
 
-In the **Home** tab of the panel you can change the impression and the accent color, and run **Rebuild this slide**. If a design system is linked to the project, the deck follows its colors and typefaces.
+In the **Home** tab of the panel you can change the design and the accent color, and run **Redo this slide**. If a design system is linked to the project, the deck follows its colors and typefaces.
 
 ## Presentation mode
 
-Switch to full screen from **Slide Show** in the ribbon. Move between slides with `←` and `→`, and exit with `Esc`. It provides a presentation timer, speaker notes shown with the `N` key, and a slide list.
+Switch to full screen from **Slide show** in the ribbon. Move between slides with `←` and `→`, and exit with `Esc`. It provides a presentation timer, speaker notes shown with the `N` key, and a slide list.
 
 ## Export
 

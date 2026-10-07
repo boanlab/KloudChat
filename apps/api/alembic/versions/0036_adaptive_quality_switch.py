@@ -1,8 +1,4 @@
-"""A switch of its own for the lane that spends more.
-
-One flag governed both directions, and it was named and labelled for the one
-that saves — so turning on an upgrade path meant turning on cost routing with
-it, and an instance that wanted only the upgrade could not have it.
+"""A separate switch for quality-upgrade auto routing.
 
 Revision ID: 0036
 Revises: 0035
@@ -22,9 +18,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Off everywhere it lands. The lane it governs has no candidates on any
-    # existing installation, and one that did would be spending more than it
-    # was asked to.
+    # Off by default: the lane spends more than the chosen model.
     op.add_column(
         "governance",
         sa.Column(

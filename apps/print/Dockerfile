@@ -16,12 +16,23 @@ ENV PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
 # fonts-nanum: without a Korean face every Hangul glyph prints as a box.
+# libreoffice-impress-nogui + poppler-utils: figure decks (python-pptx) to PNG (/pptx/png).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates fonts-nanum \
+      ca-certificates fonts-nanum curl unzip \
+      libreoffice-impress-nogui poppler-utils \
       libx11-6 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 \
       libxcb1 libxkbcommon0 libexpat1 libdbus-1-3 libglib2.0-0 libnss3 \
       libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libasound2 libgbm1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Pretendard, the app's face, so a figure renders as the deck file and the web view do.
+# Pinned release (SIL Open Font License 1.1); fetched at build, never at run.
+ARG PRETENDARD_VERSION=1.3.9
+RUN curl -fsSL -o /tmp/pretendard.zip \
+      "https://github.com/orioncactus/pretendard/releases/download/v${PRETENDARD_VERSION}/Pretendard-${PRETENDARD_VERSION}.zip" \
+    && mkdir -p /usr/share/fonts/opentype/pretendard \
+    && unzip -j -o /tmp/pretendard.zip "public/static/Pretendard-*.otf" -d /usr/share/fonts/opentype/pretendard \
+    && rm /tmp/pretendard.zip && fc-cache -f >/dev/null
 
 RUN pip install --no-cache-dir \
       "fastapi==0.115.6" "uvicorn[standard]==0.34.0" "playwright==1.55.0" \

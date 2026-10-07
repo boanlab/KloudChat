@@ -133,14 +133,28 @@ _CHAT_TASK_CONTRACT = (
     "permissions still apply.\n"
     "- A request marked as one-off (「이번만」, 「이번 건은」, \"just this once\") changes "
     "only that answer; the next answer returns to the way the conversation was going.\n"
-    "- When the request is too ambiguous to act on, ask one short clarifying question "
-    "(one or two sentences) and stop. Do not list what the user might have meant or what "
-    "you could do, unless the choices are two or three and genuinely distinct.\n"
+    "- When a request has a sensible default reading, take it: state the assumption in "
+    "one sentence, answer in full, and end with one line on what would change under the "
+    "other reading. A scope that could go two ways (a course that could lean one way or "
+    "another, a plan for an unstated budget) has such a reading. Ask one short clarifying "
+    "question (one or two sentences) and stop only when no reading would give a useful "
+    "answer — the subject itself is unknown, or acting on a wrong guess would cost the "
+    "user something.\n"
     "- Match length to the question. A casual question, a quick fact or a one-line "
     "follow-up gets two to four sentences of plain prose: no headings, no bullet "
     "sections, no closing offer. Expand into structure only when the user asks for "
     "detail, a list, a comparison or a document, or when the material genuinely has "
     "several parallel parts.\n"
+    "- A question the user will act on — a legal, medical, money, travel or how-to "
+    "question, a plan — gets an answer they can act on: the steps in order with where and "
+    "how; the one mistake that costs the most, said plainly; a faster or cheaper "
+    "alternative when there is one; where to get help (the institution, not a phone number "
+    "you are not sure of); and how it applies to what they told you earlier in the "
+    "conversation. Medical and legal answers say when to see a professional.\n"
+    "- A request to make something — teaching material, test items, a schedule, a "
+    "budget, a design, a letter — gets every requested part at the detail a practitioner "
+    "uses: times, the questions to ask and the answers to expect, criteria, reasons for "
+    "each choice. A table cell holds what the reader needs, not a label for it.\n"
     "- For rewriting, translation, extraction and drafts, preserve the supplied meaning "
     "rather than completing an imagined scenario. Preserve negation, actors, units, labels "
     "and missing values. Do not invent dates, commitments, achievements or technical names "
@@ -435,12 +449,10 @@ STANDING_ACK = "네, 그 규칙을 계속 지키겠습니다."
 def standing_directives(history: list[dict[str, str]]) -> list[str]:
     """Earlier user messages that set a rule for every later answer, oldest first.
 
-    A small model honours a 「세 문장 이내」 set ten turns ago far more reliably when
-    the words are repeated next to the question than when they sit in the transcript's
-    opening; Claude keeps such a rule either way. Only short messages count — a long
+    Replayed next to the question because small models honour a rule there far more
+    reliably than at the transcript's opening. Only short messages count — a long
     message with 「앞으로」 in it is a task, not a rule — and a later withdrawal
-    (「원래대로」, 「규칙 취소」) clears them. The latest question is never replayed:
-    it is live.
+    (「원래대로」, 「규칙 취소」) clears them. The latest question is never replayed.
     """
     found: list[str] = []
     users = [i for i, m in enumerate(history) if m.get("role") == "user"]
@@ -471,11 +483,8 @@ TURN_CONTEXT_ACK = "첨부 파일을 확인했습니다. 이어지는 질문에 
 
 _CJK = re.compile(r"[ᄀ-ᇿ　-鿿가-힯豈-﫿＀-￯]")
 
-#: Tokens per character. Measured against the gateway's `prompt_tokens` on
-#: Qwen 3.8 with the chat system prompt and Korean conversation: these ratios
-#: over-count by about a fifth. That lean is on purpose — tokenisers in the
-#: Llama family spend more tokens on Hangul — because a budget that under-counts
-#: ends in a provider 400 while one that over-counts drops a turn a little early.
+#: Tokens per character, deliberately high (about a fifth over on Korean chat):
+#: an under-count ends in a provider 400, an over-count only drops a turn early.
 _TOKENS_PER_CJK_CHAR = 0.7
 _TOKENS_PER_OTHER_CHAR = 0.3
 #: Role and separator tokens a chat template adds around each message.
@@ -699,9 +708,8 @@ def needs_web_search(request: str) -> bool:
     The auto toggle forces a search on these. It must not fire when the person is
     telling us their own facts (「우리 팀 예산은 1200만 원」), asking about the
     conversation (「아까 그 규칙」, 「지금 코드는」), asking for arithmetic on numbers
-    they gave, or asking a rule of thumb (「발표 10분이면 몇 장이 적당해?」) — the way
-    a careful assistant answers those from what it has. The tool stays offered; only
-    the forced first hop is withheld.
+    they gave, or asking a rule of thumb (「발표 10분이면 몇 장이 적당해?」). The tool
+    stays offered; only the forced first hop is withheld.
     """
     text = request or ""
     if not _TIME_SENSITIVE.search(text):
@@ -726,7 +734,7 @@ def asks_weather(request: str) -> bool:
 
 
 #: Request phrasing that adds nothing to a search query. Each pattern is
-#: anchored at the end and uses no nested repetition (CodeQL's ReDoS check);
+#: anchored at the end and uses no nested repetition (ReDoS);
 #: `search_query` peels them off one layer at a time.
 _TAIL_VERB = re.compile(
     r"(?:^|\s)(?:[가-힣]+해 ?(?:줘|주세요|줄래|주실래요|봐|달라)|"
@@ -902,6 +910,67 @@ def search_site_scope(query: str, site: object = None) -> tuple[str, str]:
     return query, scoped
 
 
+#: A request for the literature itself — trends, prior work, key papers — rather than a
+#: fact: its searches go to the science lane too and bring back more results.
+_LITERATURE = re.compile(
+    r"연구\s{0,3}동향|선행\s{0,3}연구|관련\s{0,3}연구|문헌\s{0,3}(?:조사|정리|검토)|핵심\s{0,3}논문|"
+    r"대표\s{0,3}논문|논문(?:을|들을)?\s{0,3}(?:정리|찾|추천|골라|분석|조사)|서베이|"
+    r"\b(?:survey|literature|related work|prior work|state of the art|key papers)\b",
+    re.I,
+)
+
+
+def literature_request(request: str) -> bool:
+    """Whether the person asks about the research literature."""
+    return bool(_LITERATURE.search(instruction_part(request or "")))
+
+
+def instruction_part(request: str) -> str:
+    """The person's own instruction, without the material pasted under it: the text
+    before a 「---」 line, or before the first pasted line over 400 characters. The
+    planner's appended conditions (「덧붙인 조건:」) are part of the instruction wherever
+    they sit."""
+    text = request or ""
+    tail = ""
+    marker = text.find("\n\n덧붙인 조건:")
+    if marker >= 0:
+        text, tail = text[:marker], text[marker:]
+    cut = re.search(r"\n[ \t]{0,8}-{3,8}[ \t]{0,8}\n", text)
+    if cut:
+        return text[: cut.start()] + tail
+    offset = 0
+    for index, line in enumerate(text.split("\n")):
+        if index and len(line) > 400:
+            return text[:offset].rstrip() + tail
+        offset += len(line) + 1
+    return text + tail
+
+
+def pasted_material(request: str) -> str:
+    """The material pasted under the instruction, as a reference block; `""` when there
+    is none worth carrying apart (under 200 characters)."""
+    text = request or ""
+    marker = text.find("\n\n덧붙인 조건:")
+    if marker >= 0:
+        text = text[:marker]
+    rest = text[len(instruction_part(text)) :].strip()
+    rest = re.sub(r"^-{3,8}[ \t]{0,8}\n", "", rest).strip()
+    # A picture pasted with a report is its caption to the writer: the base64 would only
+    # spend the context the report's later sections need.
+    rest = re.sub(r"!\[([^\]]{0,200})\]\(data:[^)]{0,12000000}\)", r"[그림: \1]", rest)
+    return f"# 요청에 붙여 넣은 자료\n{rest}" if len(rest) > 200 else ""
+
+
+def prompt_request(request: str, limit: int) -> str:
+    """The request as a prompt quotes it: the whole of it when short; the instruction,
+    with a note that the pasted material is in the references, when material was pasted
+    — cutting the request at `limit` would hand the planner half a proposal."""
+    if not pasted_material(request):
+        return (request or "")[:limit]
+    note = "\n\n(이 요청에 붙여 넣은 자료 전체는 참고 자료에 실었다.)"
+    return instruction_part(request)[:limit] + note
+
+
 def search_hints(request: str) -> dict[str, object]:
     """What the user's own words say about where and how to search."""
     text = request or ""
@@ -938,7 +1007,10 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
             return True, "weather"
         if is_small_talk(request):
             return True, None
-        return True, "web_search" if explicit or needs_web_search(request) else None
+        # A question about the literature (trends, key papers) is answered from the
+        # papers, not from memory, even when it does not say 「검색」.
+        searched = explicit or needs_web_search(request) or literature_request(request)
+        return True, "web_search" if searched else None
     if toggle is True:
         return True, "weather" if weather else "web_search"
     if explicit:

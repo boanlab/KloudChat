@@ -44,10 +44,8 @@ def upgrade() -> None:
         ),
     )
 
-    # A deployed instance may have users but no governance row (the settings
-    # screen was never opened). It is still an existing install and must opt in
-    # deliberately. A fresh database has no users, so it keeps no row and the
-    # model/server default below remains guard-on when its first row is created.
+    # An existing install (users, no governance row) gets an explicit guard-off row;
+    # a fresh database keeps no row, so its first one gets the guard-on default.
     bind = op.get_bind()
     has_users = bool(bind.execute(sa.text("SELECT EXISTS (SELECT 1 FROM users)")).scalar())
     has_policy = bool(
@@ -72,8 +70,7 @@ def upgrade() -> None:
             )
         )
 
-    # Existing rows received false from the add-column default. Only future
-    # policy rows get the secure new-install default.
+    # Existing rows keep false from the add-column default; new rows default to on.
     op.alter_column("governance", "external_data_guard", server_default=sa.true())
     op.add_column("messages", sa.Column("routing", JSONB(), nullable=True))
     op.add_column("audit_events", sa.Column("metadata", JSONB(), nullable=True))

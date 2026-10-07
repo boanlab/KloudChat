@@ -1,7 +1,7 @@
 """Real save/read/export routes using only an in-memory synthetic workspace.
 
-The JSON fixtures are the actual PATCH bodies captured by the production-build
-Playwright table tests. Authentication is stubbed; persistence and exporters are not.
+The JSON fixtures are PATCH bodies as the web table editor sends them.
+Authentication is stubbed; persistence and exporters are not.
 """
 
 from __future__ import annotations

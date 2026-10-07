@@ -117,15 +117,18 @@
     /* Padding, content and the margin below add up to exactly one sheet, so on the
        editor's continuous page the second sheet starts with the first section rather
        than with the tail of the cover. Print measures the cover in millimetres below. */
-    min-height: calc(var(--page-h, 100vh) * 0.68 - 5.6rem);
-    padding: calc(var(--page-h, 100vh) * 0.32) 0 2.2rem;
-    margin: 0 0 3.4rem;
-    /* Paged.js does not read the print block below; the cover ends its page here too. */
-    break-after: page;
+    /* No cover page: a title block at the head of the first page, the rule under it,
+       and the first section right after. */
+    min-height: 0;
+    padding: 2.4rem 0 1.1rem;
+    margin: 0 0 2.2rem;
+    break-after: auto;
   }
   .cover h1 {
     margin: 0 0 0.9rem;
-    max-width: 22ch;
+    /* The title heads the first page now, not a cover: it takes the full measure and
+       wraps only when it is longer than a line. */
+    max-width: none;
     font-size: var(--doc-title);
     font-weight: 650;
     line-height: var(--doc-leading-title);
@@ -157,7 +160,7 @@
   .cover::after {
     content: "";
     display: block;
-    margin-top: auto;
+    margin-top: 1rem;
     height: 3px;
     background: var(--accent);
   }
@@ -386,7 +389,7 @@
   /* 도해·차트. 브라우저가 그려 그림으로 보관하고, 원본은 figure 가 들고 있다 —
      한 글자만 고쳐도 그림이 통째로 사라지던 자리다. */
   figure.diagram { margin: 1.3rem 0; text-align: center; break-inside: avoid; }
-  figure.diagram img { max-width: 100%; height: auto; }
+  figure.diagram img { max-width: 82%; max-height: 95mm; height: auto; }
   /* 아직 아무도 열어 보지 않아 그림이 없는 도해. 빈 자리를 남겨 두면 종이에
      구멍이 난 것처럼 보이므로, 무엇이 올 자리인지 말해 준다. */
   figure.diagram:empty::after {
@@ -502,7 +505,10 @@
   figure { margin: 1.3rem 0; break-inside: avoid; }
   /* A page scrolls, so width is the constraint — but a picture taller than the
      paper still breaks across two pages with nothing on the second. */
-  figure img { display: block; max-width: 100%; max-height: calc(var(--page-h, 100vh) * 0.6); width: auto; height: auto; }
+  /* A figure sits in the text column like a word processor's: centred, at most four
+     fifths of the column wide and about a third of an A4 page tall. */
+  figure img { display: block; margin: 0 auto; max-width: 82%; max-height: min(95mm, calc(var(--page-h, 100vh) * 0.38)); width: auto; height: auto; object-fit: contain; }
+  figcaption { text-align: center; }
   figcaption { margin-top: 0.5rem; }
 
   /* ── narrow ────────────────────────────────────────────────────────
@@ -526,12 +532,13 @@
     .page { max-width: none; margin: 0; padding: 0; min-height: 0; }
     /* `vh` is the page box on paper, so the cover is measured in millimetres
        instead: a third of the way down A4, with the accent rule at the foot. */
+    /* No cover page: the title heads the first page and the text follows under it. */
     .cover {
-      min-height: 232mm;
-      padding: 74mm 0 0;
-      margin: 0;
-      page-break-after: always;
-      break-after: page;
+      min-height: 0;
+      padding: 0 0 4mm;
+      margin: 0 0 8mm;
+      page-break-after: auto;
+      break-after: auto;
     }
     section { margin: 0 0 12mm; }
     /* 발치의 문서 이름. 인쇄된 두 번째 장부터는 이 종이가 무엇의 일부인지

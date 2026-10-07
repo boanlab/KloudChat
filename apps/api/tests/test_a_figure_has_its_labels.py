@@ -51,7 +51,7 @@ def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
 
 
 def test_an_edit_recomputes_the_findings() -> None:
-    """검사 결과는 매 저장마다 현재 절에서 다시 계산된다."""
+    """Check results are recomputed from the current sections on every save."""
     from app.models.workspace import ArtifactKind
     from app.routers.workspace import _relint
 
@@ -76,7 +76,7 @@ def test_a_source_without_a_publisher_does_not_fail_the_rewrite() -> None:
 
 
 def test_a_draft_is_cut_along_the_headings_it_was_asked_to_write() -> None:
-    """한 번에 쓴 초안은 목차의 제목 줄에서 잘린다 — 번호·콜론·띄어쓰기가 달라도."""
+    """A one-pass draft is split at the outline's headings, whatever the numbering or spacing."""
     from app.services.report import _split_draft
 
     draft = (
@@ -88,7 +88,7 @@ def test_a_draft_is_cut_along_the_headings_it_was_asked_to_write() -> None:
     parts = _split_draft(draft, ["요약", "세 대안의 비교", "권고안과 다음 단계"])
     assert parts["요약"] == "권고는 교체입니다."
     assert parts["세 대안의 비교"].startswith("| 기준 | A |")
-    # 목차에 없는 소제목은 절 안에 굵은 글씨로 남는다.
+    # A subheading not in the outline stays inside the section as bold text.
     assert "**결론**" in parts["세 대안의 비교"]
     assert parts["권고안과 다음 단계"] == "교체를 권고합니다."
 
@@ -122,7 +122,7 @@ def test_sections_named_after_alternatives_fold_into_one_comparison() -> None:
         "위험과 남은 문제",
         "권고안과 다음 단계",
     ]
-    # 비교 절이 이미 있으면 그대로 두고, 대안 이름이 없는 문서는 손대지 않는다.
+    # An existing comparison section is kept; a document naming no alternatives is untouched.
     assert _fold_alternatives(["요약", "대안 비교", "권고"], ["교체"]) == [
         "요약",
         "대안 비교",
@@ -132,7 +132,7 @@ def test_sections_named_after_alternatives_fold_into_one_comparison() -> None:
 
 
 def test_bullets_that_arrive_as_objects_become_lines() -> None:
-    """모델이 불릿을 `{"left","right"}` 객체로 내면 한 줄로 잇는다."""
+    """A bullet given as a `{"left","right"}` object is joined into one line."""
     from app.services.deck import _clean_bullets
 
     out = _clean_bullets(
@@ -151,7 +151,7 @@ def test_a_subject_the_request_never_named_becomes_a_question() -> None:
     assert _subject_missing('{"title": "보고", "subject": "", "sections": []}', ask)
     topical = "학과 서버 교체 여부를 정하는 보고서를 써 줘"
     assert not _subject_missing('{"subject": "학과 서버 교체", "sections": []}', topical)
-    # 계획이 subject 를 말하지 않았으면 판단하지 않는다.
+    # No judgement when the plan states no subject.
     assert not _subject_missing('{"title": "x", "sections": ["a"]}', ask)
 
 
@@ -160,17 +160,17 @@ def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None
 
     ask = "「신규 소재 적용 타당성 검토」 보고서를 써 주세요. 시험 방법, 결과, 위험, 권고 순서로."
     assert _results_without_data(ask, [])
-    # 수치가 요청에 있거나 파일이 붙었으면 묻지 않는다.
+    # No question when the request has figures or a file is attached.
     assert not _results_without_data(ask + " 인장 강도 420 MPa, 피로 수명 12% 향상.", [])
     assert not _results_without_data(ask, ["# 시험 성적서\n인장 강도 420"])
-    # 결과를 말하지 않는 문서는 자료가 없어도 쓴다.
+    # A document that reports no results is written without material.
     assert not _results_without_data("신입생 오리엔테이션 안내문을 써 주세요.", [])
-    # 자료가 있다고 말하고 붙이지 않았으면 묻는다.
+    # Material mentioned but not attached: ask.
     assert _results_without_data("학과 세미나 녹취를 회의록으로 바꿔 주세요.", [])
     assert not _results_without_data("학과 세미나 녹취를 회의록으로 바꿔 주세요.", ["녹취: …"])
-    # 동향·문헌처럼 검색으로 쓰는 문서는 자료를 묻지 않는다.
+    # Documents written from search (trends, literature) do not ask for material.
     assert not _results_without_data("PEFT 최근 1년 동향 분석 보고서를 써 주세요.", [])
-    # 「초안을 써 주세요」는 자료가 있다는 말이 아니다. 학위논문 장은 그 사람의 연구가 있어야 쓴다.
+    # 「초안을 써 주세요」 does not say material exists; a thesis chapter needs real research.
     assert not _results_without_data("행사 안내문 초안을 써 주세요.", [])
     assert _results_without_data("학위논문 3장 「제안 방법」 초안을 써 주세요.", [])
 
@@ -245,7 +245,7 @@ def test_a_timeline_padded_with_invented_steps_becomes_bullets() -> None:
     out = _split_deck_draft(draft, slides, set(), request)
     assert out[0]["layout"] == "bullets" and "timeline" not in out[0]
     assert out[0]["bullets"][0].startswith("2027년 1월 1일")
-    # 요청에 시점이 둘 이상 있으면 그것만 남긴다.
+    # When the request names two or more points in time, only those are kept.
     request2 = request + " 9월 15일 초안 리뷰, 9월 20일 마감."
     draft2 = (
         '{"slides":[{"title":"적용 시점","layout":"timeline","timeline":['
@@ -279,10 +279,10 @@ def test_the_requests_data_table_is_carried_into_the_results() -> None:
     out = _carry_table(request, headings, dict(drafted))
     assert out["결과"].startswith("측정 데이터는 다음과 같습니다.\n\n| f (Hz) | Vout |")
     assert out["결과"].endswith("100 Hz에서 1.99…")
-    # 초안에 이미 표가 있으면 그대로.
+    # A draft that already has a table is left as is.
     with_table = {**drafted, "결과": "| f | g |\n|---|---|\n| 100 | 1 |"}
     assert _carry_table(request, headings, dict(with_table)) == with_table
-    # 요청에 표가 없으면 그대로.
+    # A request without a table is left as is.
     assert _carry_table("표 없는 요청", headings, dict(drafted)) == drafted
 
 
@@ -368,7 +368,7 @@ def test_a_slide_that_says_the_same_thing_in_other_words_is_dropped() -> None:
             ],
         },
     }
-    # 같은 말을 bands 로 다시 한 장이 뒤에 오면 bullets 쪽이 빠진다. 일정 장은 남는다.
+    # A bullets slide restated by a later bands slide is dropped; a schedule slide stays.
     assert _retold(slides, drafted) == {1}
 
 
@@ -382,7 +382,7 @@ def test_an_english_request_gets_an_english_rule_and_a_korean_one_none() -> None
     )
     assert "entire output in English" in language_rule(english)
     assert language_rule("학과 서버 교체 여부를 정하는 보고서를 써 주세요.") == ""
-    # 한국어 요청에 영어 낱말이 섞여도 한국어다.
+    # A Korean request with English words mixed in is still Korean.
     assert language_rule("PEFT 기법 LoRA, Adapter, Prefix Tuning 동향을 정리해 주세요.") == ""
     messages = build_document_messages(SessionKind.report, "prompt", request=english)
     assert "entire output in English" in messages[0]["content"]
@@ -429,13 +429,13 @@ def test_a_rewrite_does_not_borrow_another_sections_table() -> None:
 
     table = "| 기준 | 교체 | 클라우드 |\n|---|---|---|\n| 첫해 | 2,780만 원 | 744만 원 |"
     body = f"현황입니다.\n\n{table}\n\n그래서 셋을 견줍니다."
-    # 다른 절에 같은 표가 있으면 뺀다.
+    # A table duplicated in another section is removed.
     assert _without_borrowed_tables(body, "", [f"비교.\n\n{table}"], "근거를 보강") == (
         "현황입니다.\n\n그래서 셋을 견줍니다."
     )
-    # 원래 표가 없었고 표를 달라고도 안 했으면 뺀다.
+    # Removed when there was no table and none was asked for.
     assert "|" not in _without_borrowed_tables(body, "현황 줄글", [], "근거를 보강")
-    # 표를 달라고 했으면 남긴다.
+    # Kept when a table was asked for.
     assert table in _without_borrowed_tables(body, "현황 줄글", [], "표로 정리해 줘")
 
 
@@ -466,9 +466,9 @@ def test_a_slide_left_with_nothing_after_its_chart_is_dropped_is_written_again()
         '"notes":"노트"},{"title":"비용","layout":"metrics","metrics":[["75","총 소요 시간"]]}]}'
     )
     out = _split_deck_draft(draft, slides, {"75"}, "75분 강의")
-    # 지어낸 차트가 빠지고 남은 것이 없으면 초안에서 빠져 따로 쓴다.
+    # An invented chart is removed; a part left empty is written separately.
     assert 0 not in out
-    # 지표 하나짜리 metrics 는 metrics 가 아니다.
+    # A single-metric `metrics` block is not metrics.
     assert 1 not in out or out[1].get("layout") != "metrics"
 
 
@@ -558,7 +558,7 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
     picture = await figures.suggest(
         title="공정", about="작업 환경", context="…", model="m", api_key="k", look="editorial"
     )
-    # 카탈로그에 없는 서식 이름은 서식이 아니다 — 그림은 그대로 그린다.
+    # A 서식 name not in the catalogue is not a 서식; the picture is drawn as asked.
     assert picture is not None and picture.template_id == "" and picture.figure == ""
     assert picture.prompt == "a cleanroom technician"
 

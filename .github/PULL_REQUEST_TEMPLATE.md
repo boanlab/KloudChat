@@ -19,7 +19,8 @@ the code. The next person to touch it will not have this pull request open.
 
 <!-- Tick what you actually ran, and paste the failing-before output if there is one. -->
 
-- [ ] `npm run lint && npm run build` in `apps/web`
+- [ ] `npm run lint && npm run test:config && npm run build` in `apps/web`
+- [ ] `npx playwright test --config playwright.<name>.config.ts` in `apps/web` (say which configs)
 - [ ] `ruff check . && pytest -q` in `apps/api`
 - [ ] `npx playwright test --project=desktop` (say which specs)
 - [ ] `bash scripts/smoke-test.sh` against a live stack

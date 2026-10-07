@@ -3,7 +3,8 @@ import base from './playwright.config'
 
 export default defineConfig({
   ...base,
-  testMatch: 'session-hydration.spec.ts',
+  // The composer's clipboard paste rides along: same fixture style, no backend.
+  testMatch: ['session-hydration.spec.ts', 'composer-paste.spec.ts'],
   retries: 0,
   reporter: 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5303', trace: 'retain-on-failure' },

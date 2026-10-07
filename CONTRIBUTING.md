@@ -16,7 +16,8 @@ obvious from the code.
 
 ## Getting a stack running
 
-KloudChat runs web, API, print-renderer, initialization, and database services.
+KloudChat runs web, API, print-renderer and database services, plus two
+one-shot containers: `init` (data directory ownership) and `migrate` (Alembic).
 Models and tools are **not** part of this repository — they live in
 [`KloudChat-LLM`][backend], and KloudChat reaches them through a single gateway
 URL configured at runtime.
@@ -30,8 +31,11 @@ sed -i "s/^KCHAT_JWT_SECRET=.*/KCHAT_JWT_SECRET=$(openssl rand -hex 32)/" .env
 
 make build      # docker compose -f docker-compose.yml \
                 #                -f docker-compose.build.yml up -d --build
-curl localhost:8100/api/health
+curl localhost:5173/api/health
 ```
+
+The API publishes no host port; everything goes through the web container's
+`/api` proxy on 5173.
 
 `docker compose up -d` on its own pulls the published images, which is what a
 deployment wants. As a contributor you want the build overlay above, so that
@@ -62,7 +66,8 @@ Or run it directly against a containerised API:
 ```bash
 cd apps/web
 npm ci
-npm run dev        # http://localhost:5173, proxies /api to :8100
+API_BASE_URL=http://localhost:5173 npm run dev -- --port 5174
+                   # proxies /api through the web container
 npm run lint
 npm run build      # tsc -b && vite build — the typecheck is part of the build
 ```
@@ -81,12 +86,15 @@ ruff check .
 pytest -q
 ```
 
-The API talks to Postgres over asyncpg, so the unit tests deliberately cover
-only the pure parts — binary format parsing, pricing arithmetic. Anything that
-needs a database is covered by the integration scripts in [`scripts/`](scripts)
-or by Playwright.
+Most unit tests exercise pure functions and the document pipelines against
+fake model replies; the ones that need a database run on an in-memory SQLite
+through `aiosqlite` (part of `.[dev]`). Postgres-specific behaviour is covered
+by the integration scripts in [`scripts/`](scripts) or by Playwright. A model
+column added to a table also needs adding to any hand-written test DDL under
+`apps/api/tests/`.
 
-Migrations are applied on container start (`alembic upgrade head`). To add one:
+Migrations are applied by the one-shot `migrate` container before any `api`
+replica starts. To add one:
 
 ```bash
 docker compose exec api alembic revision --autogenerate -m "short description"
@@ -104,6 +112,7 @@ Three layers, in increasing cost:
 | Layer | Command | Needs |
 | --- | --- | --- |
 | Unit | `pytest -q` in `apps/api` | nothing |
+| Web focused | `npx playwright test --config playwright.<name>.config.ts` in `apps/web` | nothing — each starts its own Vite server and stubs the API, as in CI |
 | API integration | `bash scripts/smoke-test.sh` | a running stack + an admin account |
 | Browser | `npx playwright test` in `apps/web` | a running stack + a seeded account |
 
@@ -155,10 +164,12 @@ guarding nothing.
 
 ## Conventions
 
-**Comments carry decisions, not descriptions.** The code says what it does. A
-comment earns its place by recording why it is that way — a unit, an ordering
-constraint, a fail-closed default, a failure that was actually observed. All
-comments and documentation are written in English.
+**Comments explain the non-obvious why, and nothing else.** The code says what
+it does. A comment is a short English noun phrase or sentence recording a
+reason the code cannot show — a unit, an ordering constraint, a fail-closed
+default. No history or provenance ("was", "used to", "after the incident"), no
+anecdotes, no commented-out code. Documentation describes the current state,
+not how it got there. All comments and documentation are written in English.
 
 **Fail closed on anything priced.** A provider reporting a cost of zero means
 "unknown", not "free". Unknown prices are dropped from the catalogue with a
@@ -186,8 +197,9 @@ are what upstream calls are made with.
   explains why, if that is not obvious.
 - Fill in the pull request template — particularly the verification section.
   "Tested locally" is not a verification.
-- CI must be green: lint and build for the web app, `ruff` and `pytest` for the
-  API, `shellcheck` for the scripts, and every image must build.
+- CI must be green: lint, config tests, build and the focused Playwright
+  configs for the web app, `ruff` and `pytest` for the API, `shellcheck` for
+  the scripts, and every changed image must build.
 
 ## Where things live
 

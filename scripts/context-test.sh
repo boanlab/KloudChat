@@ -11,7 +11,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib/env.sh"
 
 API=${API:-http://localhost:8100/api}
-# ADMIN_* as in the other scripts; EMAIL / PASS still accepted.
+# ADMIN_* as in the other scripts; EMAIL / PASS also accepted.
 EMAIL=${ADMIN_EMAIL:-${EMAIL:-admin@example.com}}
 PASS=${ADMIN_PASS:-${PASS:-KloudChat-Admin-1234}}
 MODEL=${MODEL:-local/qwen3.6-27b}

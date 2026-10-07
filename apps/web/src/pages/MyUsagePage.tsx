@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
-import { Card, EmptyState } from '@/components/ui'
+import { Button, Card, EmptyState } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { type MyUsage, meApi } from '@/lib/api'
 import { cn, formatTokens } from '@/lib/utils'
@@ -15,14 +15,23 @@ export function MyUsagePage() {
   const t = useT()
   const [days, setDays] = useState(30)
   const [data, setData] = useState<MyUsage | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let live = true
-    void meApi.usage(days).then((d) => live && setData(d))
+    meApi.usage(days).then(
+      (d) => {
+        if (!live) return
+        setData(d)
+        setFailed(false)
+      },
+      () => live && setFailed(true),
+    )
     return () => {
       live = false
     }
-  }, [days])
+  }, [days, attempt])
 
   const cycle = data?.cycle
   const pct = cycle && cycle.allowance > 0 ? Math.min(100, (cycle.used / cycle.allowance) * 100) : 0
@@ -87,7 +96,20 @@ export function MyUsagePage() {
         </Card>
       )}
 
-      {data && data.totals.requests === 0 ? (
+      {/* A failed load says so; an empty layout would read as no usage. */}
+      {failed && !data ? (
+        <div className="mt-6">
+          <EmptyState
+            icon={<BarChart3 size={18} />}
+            title={t('사용량을 불러오지 못했습니다.')}
+            action={
+              <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
+                {t('다시 시도')}
+              </Button>
+            }
+          />
+        </div>
+      ) : !data ? null : data.totals.requests === 0 ? (
         <div className="mt-6">
           <EmptyState
             icon={<BarChart3 size={18} />}

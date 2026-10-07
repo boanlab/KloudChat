@@ -1,10 +1,9 @@
 """Labelled method/flow/concept figures as mermaid source, written by a model and drawn by the
 client.
 
-Style rules follow PaperBanana's NeurIPS diagram guide (Zhu et al., 2026):
-zones as subgraphs, rounded processes / square data / cylinder stores, solid
-forward and dashed auxiliary edges, one `hot` highlight. The mermaid source is
-what is stored; the picture is derived from it.
+House style: zones as subgraphs, rounded processes / square data / cylinder stores, solid
+forward and dashed auxiliary edges, one `hot` highlight. The mermaid source is what is
+stored; the picture is derived from it.
 """
 
 from __future__ import annotations
@@ -36,7 +35,11 @@ _RULES = """
 - 방법 구조도·처리 흐름도는 `flowchart LR`. 왼쪽이 입력, 오른쪽이 결과.
   층(세로 깊이)은 3개 이하.
 - 개념도는 `flowchart TB`. 바탕이 되는 개념이 위, 갈래가 가운데, 목표가
-  아래. 위계는 위아래로 읽힌다.
+  아래. 위계는 위아래로 읽힌다. **분류(같은 급의 갈래 여럿)는 상위 개념에서 각
+  갈래로만 선을 긋는다.** 같은 급의 갈래끼리 화살표로 잇지 마라 — 분류는 순서가
+  아니다. 화살표의 연쇄는 단계·처리 흐름에만 쓴다.
+- 성과 수치(「탐지 시간 90% 단축」)는 처리 단계가 아니다. 흐름의 마지막 노드로
+  넣지 말고 본문이나 캡션에 둔다.
 - 그림의 비율은 4:3 에서 16:9 사이여야 한다. 가로로 길게 늘어선 그림은 지면 폭에
   맞춰 줄어 글자를 읽을 수 없고, 세로로 긴 그림은 한 면을 다 먹는다. 처리 흐름의
   단계가 6개를 넘으면 **두세 줄로 접어라**: `flowchart TB` 에 단계군 subgraph
@@ -83,7 +86,8 @@ _RULES = """
 """
 
 
-#: A figure that shares a slide with words: a box about 3:2, read from the back of a room.
+#: Size rules for a figure that shares a slide with words.
+
 _SLIDE_RULES = """
 ## 슬라이드용
 이 그림은 발표 슬라이드 제목 아래 가로로 긴 띠(가로:세로 약 5:1)에 들어가고, 그 아래에

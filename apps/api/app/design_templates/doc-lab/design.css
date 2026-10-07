@@ -50,3 +50,9 @@ section:last-of-type h2 { color: var(--accent); border-bottom-color: var(--rule)
 @media print {
   .cover { min-height: 0; padding: 0 0 1rem; page-break-after: auto; break-after: auto; }
 }
+
+/* 한눈에: 표는 모든 칸에 선을 긋는 실험 기록장, 절 제목은 이중 밑줄. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; padding-bottom: 0.3rem; border-bottom: 3px double var(--ink); }
+table, table th, table td { border: 1px solid var(--border); }
+table th, table td { padding: 0.35em 0.6em; }
+table thead th { background: var(--wash); }

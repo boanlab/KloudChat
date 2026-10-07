@@ -18,8 +18,8 @@ display and feature settings reach the others within the cache TTL. Two values
 that can authorize external data movement deliberately bypass that rule:
 governance is read fresh for every egress decision, and model-boundary metadata
 is refreshed from LiteLLM before strict-local eligibility is trusted. If the
-authoritative governance read fails, chat, comparison and the legacy
-report/slides send path return `503 governance_unavailable` before reading the
+authoritative governance read fails, chat, comparison and the report/slides
+send path return `503 governance_unavailable` before reading the
 model catalogue, creating a message, issuing a key, charging credit or calling
 an upstream model. A cached policy remains useful for display, but never
 authorizes raw, masked or strict-local egress.
@@ -70,38 +70,47 @@ anything else.
 | `KCHAT_ADMIN_EMAIL` | `BOOTSTRAP_ADMIN_EMAIL` | — | Applied only when the database has no accounts at all. Blank means the first signup becomes administrator. |
 | `KCHAT_ADMIN_PASSWORD` | `BOOTSTRAP_ADMIN_PASSWORD` | — | Set both to create an administrator on first boot. Never commit a value — this file is published. |
 | `KCHAT_SIGNUP_MODE` | `SIGNUP_MODE` | `approval` | `open` (active immediately), `approval` (admin approves), `closed` (signup disabled). |
-| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` | Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
+| `KCHAT_DEFAULT_MONTHLY_CREDITS` | `DEFAULT_MONTHLY_CREDITS` | `500000` in `.env.example` (compose falls back to `1000000` when the variable is unset) | Assigned at approval unless the administrator overrides it. 1 credit = $0.00001, so 500,000 ≈ $5/month. |
 | `KCHAT_DEFAULT_CHAT_MODEL` | `DEFAULT_CHAT_MODEL` | `local/qwen3.8-27b` | Falls back to the surface's cheapest model when absent from the catalogue. |
 | `KCHAT_DEFAULT_REPORT_MODEL` / `KCHAT_DEFAULT_SLIDES_MODEL` | `DEFAULT_REPORT_MODEL` / `DEFAULT_SLIDES_MODEL` | — | Per-surface defaults for 보고서 and 발표 자료. Empty falls back to the chat default. |
 | `KCHAT_DEFAULT_IMAGE_MODEL` | `DEFAULT_IMAGE_MODEL` | `google/gemini-2.5-flash-image` | Default picture model. Gemini's image models take the aspect ratio as a parameter; the OpenAI ones return a square whatever is asked. Absent from the catalogue → cheapest image model. |
 | `KCHAT_DEFAULT_AUDIO_MODEL` / `KCHAT_DEFAULT_VIDEO_MODEL` | `DEFAULT_AUDIO_MODEL` / `DEFAULT_VIDEO_MODEL` | `openai/gpt-audio-mini` / `google/veo-3.1-lite` | The 오디오/동영상 surface keeps one default per modality. Absent from the catalogue → cheapest model of that modality. |
 
-### Auto cost routing
+### Auto routing
 
-Auto routing is off until an administrator completes **Admin → System → Model
-routing**. It requires:
+Auto has two lanes, each with its own switch under **System → Routing**, and
+both are off until an administrator configures them:
 
-- one live model declared by LiteLLM as `self_hosted` and `strictLocal`, with
-  zero input and output credit cost, for classification;
-- one to three ordered economy models declared as either `self_hosted` or
-  `external`, with known prices and no `privacyOnly` flag.
+- **Auto · 비용 절약** (cost) sends a turn classified as low-complexity to one of
+  one to three ordered economy models: cheaper than the chosen model on known
+  prices, with a stated context window, no `privacyOnly` flag, and a boundary
+  no wider than the chosen model's.
+- **Auto · 품질 우선** (quality) sends a turn classified as high-complexity to one
+  of one to three ordered upgrade models. An upgrade never widens the data
+  boundary of the chosen model and keeps the turn's tools.
 
-`hybrid` and `unknown` models are deliberately not economy candidates. A
+Both need one live classifier model declared by LiteLLM as `self_hosted` and
+`strictLocal`, with zero input and output credit cost.
+
+`unknown` models are never economy candidates; a `hybrid` one qualifies only
+under a `hybrid` or `external` chosen model, an `external` one only under an
+`external` chosen model. A
 local-looking alias can fall back to an external provider, so its advertised
-zero cost is not sufficient evidence that the turn is cheaper. The classifier
-may be `privacyOnly`; answer models may not, which keeps privacy capacity
-reserved for protected traffic.
+zero cost is not sufficient evidence that the turn stays inside.
+The classifier may be `privacyOnly`; answer models may not, which keeps privacy
+capacity reserved for protected traffic.
 
 Auto is an explicit, per-conversation choice. The selected real model remains
-the quality ceiling and a new conversation starts in manual mode. It applies
-only to ordinary chat without attachments, web search, selected skills,
-agents, projects or comparison. A classifier outage or uncertain verdict keeps
-the quality model. Classification includes the complete answer-visible message
-envelope and tool definitions; if that bounded payload exceeds 8,000 characters,
-Auto keeps the quality model instead of truncating context. Once a cheaper
-answer model is selected, the answer runs without tools and disables LiteLLM
-fallback, so a later tool result cannot overflow the smaller context window and
-an error is shown instead of silently retrying the premium model.
+the reference model and a new conversation starts in manual mode. In chat, a
+turn with attachments, forced web search, selected skills, a starting
+template, an agent or a project keeps the chosen model, as does a turn that
+requires calculation on the cost lane. A classifier outage or uncertain
+verdict keeps the chosen model. Classification reads the complete
+answer-visible message envelope and tool definitions; if that payload exceeds
+80,000 characters, Auto keeps the chosen model instead of truncating context.
+A cost-routed answer runs without tools and with LiteLLM fallback disabled, so
+a later tool result cannot overflow the smaller context window and an error is
+shown instead of silently retrying the premium model.
 
 ### Transport
 
@@ -111,7 +120,7 @@ an error is shown instead of silently retrying the premium model.
 | `KCHAT_CORS_ORIGINS` | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON array of exact origins. Credentialed requests make a wildcard impossible. |
 | `KCHAT_WEB_PORT` | — | `5173` | Host port for the web container. |
 | `KCHAT_API_URL` | `KCHAT_API_URL` | `http://api:8100` | nginx upstream, resolved at run time so the API can move hosts without an image rebuild. `api` is the compose service name, not a fixed container: nginx re-resolves it on every request (`resolver 127.0.0.11`), so it reaches every `api` replica. |
-| `KCHAT_API_REPLICAS` | `API_REPLICAS` | `1` | `api` instances. Migrations run once in a separate `migrate` job first, so replicas booting together never race `alembic upgrade head`. There is no fixed host port past one replica — reach a specific instance with `docker compose exec api sh`, not `curl localhost:8100`. The stop button's cancellation signal is per-process (`_STOPPING` in `app/routers/sessions.py`); above one replica each process also broadcasts and listens for it over Postgres `NOTIFY` (`services/stop_signal.py`), so a stop request reaches whichever instance is actually streaming. At the default of `1`, this adds no Postgres traffic — the broadcast is skipped and no listener connection is held open. |
+| `KCHAT_API_REPLICAS` | `API_REPLICAS` | `1` | `api` instances. Migrations run once in the one-shot `migrate` container first, so replicas booting together never race `alembic upgrade head`. The `api` service publishes no host port — reach the API through the web container (`curl localhost:5173/api/health`) or one instance with `docker compose exec api sh`. The stop button's cancellation signal is per-process (`_STOPPING` in `app/routers/sessions.py`); above one replica each process also broadcasts and listens for it over Postgres `NOTIFY` (`services/stop_signal.py`), so a stop request reaches whichever instance is actually streaming. At `1` the broadcast is skipped and no listener connection is held open. |
 
 ### Database
 
@@ -126,13 +135,11 @@ Postgres is published on host port **5433** because 5432 is commonly already
 taken by a vector database on the same host. Change both credentials before
 exposing the port beyond the compose network.
 
-The `api` container runs one uvicorn process, so `DB_POOL_SIZE +
-DB_MAX_OVERFLOW` is its entire database budget. Postgres's own
-`max_connections` (100 by default) is the ceiling across every process
-sharing the database — raise it before raising the pool past what a single
-process needs. Scaling `api` to more than one process would also need a
-shared cancellation signal for the stop button (see `_STOPPING` in
-`app/routers/sessions.py`) before `--workers` or multiple replicas are safe.
+Each `api` replica runs one uvicorn process, so `DB_POOL_SIZE +
+DB_MAX_OVERFLOW` is that replica's database budget. Postgres's own
+`max_connections` (100 by default) is the ceiling across every replica
+sharing the database: replicas × (pool + overflow), plus one listener
+connection per replica above one, must stay under it.
 
 ### Advanced
 
@@ -142,7 +149,9 @@ Not exposed in `.env.example`; set them directly on the `api` service in
 
 Four of them compose already passes through from `.env`: `ENV` as
 `KCHAT_ENV`, `TITLE_MODEL` as `KCHAT_TITLE_MODEL`, `TIMEZONE` as
-`KCHAT_TIMEZONE` and `GEOIP_DATABASE` as `KCHAT_GEOIP_DATABASE`.
+`KCHAT_TIMEZONE` and `GEOIP_DATABASE` as `KCHAT_GEOIP_DATABASE`. The others,
+including the thinking switches listed in `.env.example`, take effect only
+when added to the `api` service's `environment:`.
 
 | Variable | Default | Notes |
 | --- | --- | --- |
@@ -152,12 +161,12 @@ Four of them compose already passes through from `.env`: `ENV` as
 | `LOGIN_MAX_FAILURES` | `5` | Failed sign-ins in a row, on one address, before it is locked. Counted from the audit log, so no extra table; a success ends the run. Unknown addresses are locked the same way so the response does not say which exist. |
 | `LOGIN_LOCKOUT_MIN` | `15` | How long a locked address refuses sign-in, measured from the last failure. Attempts while locked are logged as `locked` and neither verify the password nor extend the lock. |
 | `REFRESH_GRACE_SEC` | `15` | Window in which a just-rotated refresh token may be replayed without being treated as theft. Two tabs restoring a session at once send the same cookie; without the leeway, the loser is logged out of everything. |
-| `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a local 122B model genuinely runs for minutes. |
+| `CHAT_TIMEOUT_SEC` | `900` | A tool-using turn on a large local model runs for minutes. |
 | `CHAT_STALL_SEC` | `180` | The longest gap allowed between two chunks of a streamed model reply; a stream that stops sending is given up here instead of at `CHAT_TIMEOUT_SEC`. Time to the first token counts, so keep it above a long prompt's prefill. |
 | `TOOL_TIMEOUT_SEC` | `300` | Per-tool ceiling. `MAX_TOOL_HOPS` is what bounds the turn. |
 | `MAX_TOOL_HOPS` | `8` | Model↔tool round trips per turn; past eight a model is usually in a retry loop. The last hop runs without tools so the turn still ends in an answer. |
 | `MAX_UPLOAD_MB` | `200` | Exists so one upload cannot fill the disk. |
-| `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the usage screen's 지금 정리 button. `0` disables the sweep. Living accounts are never touched. |
+| `STORAGE_RECLAIM_AT` | `0.8` | Disk fill (used ÷ total) past which the files of deleted accounts are removed, oldest first, until the volume is back under it. Checked every 30 minutes and from the admin usage screen's 고아 파일 정리 button. `0` disables the sweep. Living accounts are never touched. |
 | `FILE_CONTEXT_CHARS` | `24000` | Floor for the characters of attached text carried per turn before excerpting. A model that reports its context window gets 35 % of it (about 2.5 characters a token, capped at 150,000), so a sixteen-page paper reaches a 128k-token model whole. |
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
@@ -172,6 +181,12 @@ Four of them compose already passes through from `.env`: `ENV` as
 | `LITELLM_TIMEOUT_SEC` / `LITELLM_PROBE_TIMEOUT_SEC` | `20` / `4` | The master-key client — provisioning a user, issuing a key, listing the catalogue — and the probe behind the admin connection test. **Not the model call**, which is `CHAT_TIMEOUT_SEC` above; raising this one will not help a generation that is being cut off. |
 | `AUTO_ROUTING_CLASSIFIER_TIMEOUT_SEC` | `8` | Auto's classification call. On timeout the quality model answers. |
 | `FILE_STORAGE_DIR` | `/srv/data/files` | Where uploads and generated media are written. Mount it, or a container rebuild loses every picture. |
+| `SELF_HOSTED_CHAT_THINKING` | `false` | Whether self-hosted chat models may think before answering. Off sends `enable_thinking: false` to the models named below. Set through `KCHAT_SELF_HOSTED_CHAT_THINKING`. |
+| `SELF_HOSTED_THINKING_MODELS` | `flash-next` | Comma-separated name fragments of self-hosted models that think unless told not to. Set through `KCHAT_SELF_HOSTED_THINKING_MODELS`. |
+| `EXTERNAL_CHAT_THINKING` | `false` | The same for external chat models; off sends OpenRouter's `reasoning` switch. Set through `KCHAT_EXTERNAL_CHAT_THINKING`. |
+| `INTERNAL_DATA_STRICT_LOCAL_DEFAULT` | `true` | Default of the governance switch that keeps turns carrying internal material (attachments, project files, memories) on strict-local models. The admin screen's value wins once saved. |
+| `API_REPLICAS` / `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `10` / `20` | Set through `KCHAT_API_REPLICAS`, `KCHAT_DB_POOL_SIZE`, `KCHAT_DB_MAX_OVERFLOW` (above). |
+| `SMTP_HOST` … `SMTP_FROM` | — | Seed values for **System → Mail**; the admin screen wins. |
 
 ---
 
@@ -230,27 +245,41 @@ never reach the database and read `내부망`.
 
 ---
 
-## Runtime settings (Settings → System)
+## Runtime settings (System)
 
-Stored in `system_settings`, editable by administrators, applied without a
-restart. Secrets in this table are encrypted at rest with `SECRET_KEY` (or,
-when that is unset, a key derived from `JWT_SECRET`).
+The **System** screen (`/admin/system`, in the account menu) is stored in
+`system_settings`, editable by administrators, and applied without a restart.
+Secrets in this table are encrypted at rest with `SECRET_KEY` (or, when that is
+unset, a key derived from `JWT_SECRET`).
 
-### Integrations
+### Proxy
 
-- **Backend gateway address** — one field. Saving it fills in the LiteLLM
-  address and the six tool endpoints. Each field has its own connection test,
-  and any one of them can be overridden if you host that feature elsewhere.
-- **LiteLLM master key** — entered separately. The tool endpoints need no key.
-- **SMTP** — host, port, security (`starttls` / `ssl` / `none`), username,
-  password, envelope sender. Named modes rather than a boolean because the two
-  encrypted modes use different ports and a different handshake, and picking
-  the wrong one produces a timeout with no clue which.
+- **LiteLLM address** — empty uses the server's address (`LITELLM_BASE_URL`,
+  else derived from the backend address).
+- **Master key** — never displayed once saved; leaving the field blank keeps
+  the current key. The tool endpoints need no key.
+- Connection test, model list refresh, and the models hidden because their
+  price is unknown.
 
-  With no SMTP host, outbound mail is disabled and password reset is hidden.
-  Telling people to contact an administrator beats a reset link that never
-  arrives. The only mail this system sends is a password reset the person asked
-  for.
+### Features
+
+- **Enabled surfaces** — see below.
+- **Feature integrations** — one **server address** (the backend gateway)
+  derives the LiteLLM address and the six tool endpoints. Each feature has its
+  own address field and connection test; a filled field overrides the derived
+  one if you host that feature elsewhere.
+
+### Mail
+
+Host, port, security (`starttls` / `ssl` / `none`), username, password,
+envelope sender. Named modes rather than a boolean because the two encrypted
+modes use different ports and a different handshake, and picking the wrong one
+produces a timeout with no clue which.
+
+With no SMTP host, outbound mail is disabled and password reset is hidden.
+Telling people to contact an administrator beats a reset link that never
+arrives. The only mail this system sends is what a person triggered: a password
+reset they asked for, or the confirmation of an address they signed up with.
 
 ### Signup
 
@@ -264,17 +293,17 @@ when that is unset, a key derived from `JWT_SECRET`).
   the switch is inert and signups go through unverified, and the screen says
   so.
 
-### Model routing
+### Routing
 
-The Auto cost routing classifier and economy models — see
-[Auto cost routing](#auto-cost-routing) — and the outline model, which plans
+The Auto routing classifier, economy and upgrade models — see
+[Auto routing](#auto-routing) — and the outline model, which plans
 a document before the surface's own model writes it.
 
 ### Shared templates
 
 Starting points published to every account by an administrator.
 
-### Enabled surfaces
+### Enabled surfaces (Features)
 
 Report, slides, image and audio/video can be turned on and off. Chat cannot —
 without conversation there is nothing this instance can do.
@@ -296,12 +325,21 @@ screen has to render it before anyone is authenticated — and SVG can carry
 script. The stored filename contains a content hash, so replacing the logo
 changes its URL and no cache serves the old one.
 
-### Governance
+### Governance (Security · audit, `/admin/governance`)
 
-Prohibited-intent categories, message-body retention and two compatible privacy
-policies are available:
+Prohibited-intent categories, message-body retention, an idle sign-out timer
+(enforced by the browser; `0` disables it) and three privacy policies are
+available:
 
-- **PII masking** is the legacy organisation-wide upper bound. When enabled,
+- **Internal material stays strict-local** (내부 자료는 strict-local로만) — on by
+  default (`INTERNAL_DATA_STRICT_LOCAL_DEFAULT`). A chat, report or deck turn
+  that carries the organisation's own material — an attachment, a project's
+  files or instructions, a memory — runs on the strict-local twin of the chosen
+  model (`local/x` → `strict-local/x`), else the first strict-local safe model,
+  else it is refused with `internal_data_requires_strict_local`. This is decided
+  before any Auto lane, and a strict-local writer is never moved outward.
+
+- **PII masking** is the organisation-wide upper bound. When enabled,
   matching content is always masked and raw external delivery cannot be
   enabled.
 - **External data guard** protects chat and model comparison. Administrators
@@ -309,8 +347,8 @@ policies are available:
   `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.
   The visible catalogue's top-to-bottom order is the fixed routing priority.
   Administrators may optionally allow a user to choose raw external delivery
-  after detection. A new policy row enables the guard and disallows raw
-  delivery; an existing row keeps guard off until configured.
+  after detection. A fresh install starts with the guard on and raw delivery
+  disallowed.
 
 Each user can choose `ask`, strict-local routing, masked external delivery or,
 when permitted, raw external delivery as the default action. The server

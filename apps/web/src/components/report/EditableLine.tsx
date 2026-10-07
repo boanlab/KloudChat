@@ -10,6 +10,8 @@ export function EditableLine({
   editable,
   onChange,
   placeholder,
+  className,
+  numberLabel,
 }: {
   as?: ElementType
   value: string
@@ -17,6 +19,9 @@ export function EditableLine({
   /** Called on blur and on Enter, never per keystroke. */
   onChange: (next: string) => void
   placeholder?: string
+  className?: string
+  /** Heading number shown before the text (`data-num`, drawn by CSS), never part of the value. */
+  numberLabel?: string
 }) {
   const node = useRef<HTMLElement>(null)
 
@@ -40,6 +45,8 @@ export function EditableLine({
       suppressContentEditableWarning
       spellCheck={false}
       data-placeholder={placeholder}
+      data-num={numberLabel || undefined}
+      className={className}
       onBlur={commit}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {

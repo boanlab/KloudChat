@@ -1,7 +1,4 @@
-"""다시 생성한 답은 앞의 답을 지우지 않고 데리고 간다.
-
-같은 질문을 다시 돌리면 새 답 행이 앞 답들을 `superseded` 에 차례로 품는다.
-화면은 ‹ k/n › 로 앞 답을 넘겨 보고, 대화는 마지막 답에서 이어진다.
+"""Earlier answers a regenerated answer replaces (`messages.superseded`).
 
 Revision ID: 0046
 Revises: 0045

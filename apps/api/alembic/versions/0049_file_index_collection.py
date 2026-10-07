@@ -1,7 +1,4 @@
-"""파일이 어느 색인 묶음에 들어갔는지 기록한다.
-
-대화를 다른 프로젝트로 옮기거나 지울 때 옛 묶음에 벡터가 남았다. 파일마다 실제로 들어간
-묶음 키를 적어 두어, 옮기면 옛 묶음에서 빼고 새 묶음에 다시 넣고, 지우면 그 묶음에서 뺀다.
+"""The index collection each file was written to, so a move or delete forgets the right one.
 
 Revision ID: 0049
 Revises: 0048

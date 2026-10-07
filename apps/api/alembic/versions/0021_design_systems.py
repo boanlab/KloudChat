@@ -1,15 +1,6 @@
-"""One look, shared by every surface a project produces.
+"""Design systems: one look shared by every surface a project produces.
 
-Before this, the deck accent was picked by the model out of a fixed palette and
-the exporters chose their own fonts, so a report, its deck and its cover image
-came out of the same project looking like three unrelated documents.
-
-`design_systems` holds four renderer tokens plus a short block of prose for the
-model. `projects.design_system_id` is nullable and null by default: an existing
-project keeps the previous behaviour exactly.
-
-`SET NULL` on delete rather than cascade — removing a look should cost the
-projects their look, not the projects.
+`SET NULL` on delete: removing a look leaves its projects without one.
 
 Revision ID: 0021
 Revises: 0020
@@ -70,16 +61,8 @@ def upgrade() -> None:
     _backfill_starter_designs()
 
 
-#: The same three looks `services/starter._DESIGNS` gives a new account.
-#:
-#: Duplicated here rather than imported because a migration has to keep working
-#: after that list is edited: it describes the database at revision 0020, not
-#: whatever the application ships today.
-#:
-#: This runs once. `starter.seed` only reaches its design block for an account
-#: with no agents — a fresh signup — so an existing account would otherwise
-#: never see one of these, and an account that deletes all three keeps them
-#: deleted. Both halves are deliberate.
+#: The starter looks for existing accounts, copied from `services/starter._DESIGNS`
+#: rather than imported so this revision does not change when that list does.
 _STARTER_DESIGNS = (
     (
         "기본",

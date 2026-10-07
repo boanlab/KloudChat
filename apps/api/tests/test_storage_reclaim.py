@@ -1,4 +1,4 @@
-"""디스크가 차면 지운 계정의 파일부터, 오래된 것부터 거둔다."""
+"""When the disk fills, files of deleted accounts are reclaimed first, oldest first."""
 
 from __future__ import annotations
 

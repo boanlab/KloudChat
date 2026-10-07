@@ -70,6 +70,7 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
             # The same request without the switch the provider refused.
             body = json.loads(response.request.content or b"{}")
             body.pop("reasoning", None)
+            body.update(thinking.switch(model))
             response = await client.post("/v1/chat/completions", json=body)
         response.raise_for_status()
         payload = response.json()

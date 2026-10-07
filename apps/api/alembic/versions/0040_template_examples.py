@@ -1,10 +1,4 @@
-"""시작점의 빈칸마다 예시가 붙는다.
-
-A card that listed five nouns and handed them to a placeholder was a card
-that asked for a format nobody had been shown. The built-in starting points
-now carry an example per blank and say what they cannot run without; a
-starting point somebody wrote down should not ask worse questions than one
-that shipped, so the row carries the same two lists.
+"""Per-blank examples and requirements on user-written starting points.
 
 Revision ID: 0040
 Revises: 0039

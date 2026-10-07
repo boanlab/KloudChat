@@ -30,7 +30,7 @@ async def test_zero_division_is_a_typed_failed_calculation(expression):
     {"expression": "12/0", "choices": ["1", "2"], "submitted_choice": 3},
     {"expression": "12/0", "choices": ["1", "1/0"]},
     {"expression": "12/3", "choices": ["1", "1/0"]},
-    {"expression": "(12/0)+(2**3)"},
+    {"expression": "(12/0)+(2**0.5)"},
     {"expression": "(12/0)+(7//2)"},
     {"expression": "(12/0)+(" + "9" * 65 + ")"},
     {"expression": "(12/0)+__import__('os')"},
@@ -117,3 +117,13 @@ async def test_arbitrary_tool_error_payload_cannot_become_a_literal_explanation(
     text = "".join(event["text"] for event in events if event["type"] == "delta")
     assert "0으로 나누" not in text and "정의되지" not in text
     assert "synthetic-secret" not in text and "UNVERIFIED" not in text
+
+
+def test_a_right_chain_and_a_plain_product_beside_a_scaled_answer_are_not_flagged():
+    from app.services import arithmetic
+
+    assert arithmetic.findings("영업이익은 4,000×12,000원−3,000만 원=1,800만 원입니다.") == []
+    assert arithmetic.findings("매출은 2,500×20,000원=5,000만 원입니다.") == []
+    assert arithmetic.findings("2,400 + 1,140 = 3,540만 원") == []
+    # A 10× slip is still caught, in either reading.
+    assert arithmetic.findings("매출은 2,500×20,000원=5억 원입니다.")

@@ -117,7 +117,10 @@ async def _complete(
             if thinking.refused(model, response):
                 response = await client.post(
                     "/v1/chat/completions",
-                    json={"model": model, "messages": messages, "max_tokens": max_tokens},
+                    json={
+                        "model": model, "messages": messages, "max_tokens": max_tokens,
+                        **thinking.switch(model),
+                    },
                 )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break

@@ -1,8 +1,4 @@
-"""Internal material stays on strict-local models.
-
-A turn carrying the organisation's own material — an attachment, a project's files or
-instructions, a memory — is answered by a strict-local model regardless of the model
-chosen, so that material never reaches a gateway with an external fallback.
+"""Governance switch keeping turns with internal material on strict-local models.
 
 Revision ID: 0051
 Revises: 0050

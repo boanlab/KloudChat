@@ -1,9 +1,4 @@
-"""Present-state answers without retrieved evidence: best effort, dated, marked unverified.
-
-Not a truth classifier. The model answers from what it knows, and the answer
-carries a caveat that says so — like a careful assistant does offline — instead
-of a refusal that would drop the conversation's thread.
-"""
+"""Present-state answers without retrieved evidence: best effort, dated, marked unverified."""
 
 from __future__ import annotations
 
@@ -12,26 +7,6 @@ from datetime import date
 
 from app.services.tools.base import SearchEvidence, Tool, ToolResult
 
-_MAX_PAST_CHARACTERS = 240
-_PAST_YEAR = re.compile(r"(?<!\d)((?:1\d{3}|20\d{2}))(?:\s*년|\b)")
-_PRESENT_MARKER = re.compile(
-    r"현재|현직|현행|지금|오늘|올해|내년|이번|최근|최신|여전히|앞으로|"
-    r"재임\s*중|재직\s*중|예정|예상|전망|"
-    r"\b(?:current(?:ly)?|incumbent|today|now|present(?:ly)?|still|upcoming|"
-    r"next|until|will|serves|holds|remains)\b",
-    re.I,
-)
-_PRESENT_TENSE = re.compile(
-    r"입니다|이다(?:[.!。]|$)|고\s*있(?:음|다|습니다|어(?:요)?|는)|\b(?:is|are|has|have)\b",
-    re.I,
-)
-_PAST_TENSE = re.compile(
-    r"했|하였|되었|됐|였|이었|왔(?:다|습니다|어요)|"
-    r"(?:취임|당선|출시|발표|공개|출범|설립|임명|완료|도입|퇴임|사임|폐지)(?:함|됨)|"
-    r"\b(?:was|were|had|became|served|announced|released|"
-    r"launched|appointed|elected|took)\b",
-    re.I,
-)
 _KNOWLEDGE_DETAIL = re.compile(r"(?:[1-9]\d*개 대목|자료 [1-9]\d*건 전문)")
 
 
@@ -40,12 +15,7 @@ def _korean(request: str) -> bool:
 
 
 def instruction(request: str) -> str:
-    """How to answer a present-state question with no retrieved evidence this turn.
-
-    The answer is still given — from what the model knows — but dated and marked
-    as unverified, and never phrased as what holds today. This is how a careful
-    assistant answers offline; a bare refusal would throw the conversation away.
-    """
+    """Instruction for a present-state question with no retrieved evidence this turn."""
     if _korean(request):
         return (
             "이 질문은 시간이 지나면 달라지는 현재 상태를 묻는데, 이번 요청에는 그것을 확인할 "
@@ -126,8 +96,7 @@ def usable_read_result(tool: Tool | None, result: ToolResult) -> bool:
     if re.match(r"\s*(?:오류|error|실패)\s*[:：]", result.content, re.I):
         return False
     if tool.source != "builtin":
-        # Authorized MCP read data is as useful as a retrieved snippet. Its
-        # presence does not certify relevance, freshness or truth.
+        # Authorized MCP read data counts as retrieved, without certifying its truth.
         return True
     if tool.name == "web_search":
         return isinstance(result.search_evidence, SearchEvidence) and bool(

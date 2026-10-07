@@ -1,12 +1,4 @@
-"""Templates an administrator provides to everyone.
-
-A template written from the gallery belongs to the person who wrote it. An
-organisation's own 공문 or 발표 양식 is not that: one person should enter it and
-every account should see it.
-
-`shared` is the flag, settable only by an administrator, and the gallery reads
-"mine, plus everything shared". Sharing rather than copying — a copy taken at
-signup would not follow a correction to the form.
+"""Templates an administrator shares with every account.
 
 Revision ID: 0017
 Revises: 0016

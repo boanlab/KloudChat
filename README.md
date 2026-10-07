@@ -50,11 +50,17 @@ with blanks, a small form to fill them, and the settings that shape implies —
 aspect, duration, voice — applied when you pick it. The finished sentence lands
 in the composer, where it is still yours to change.
 
-Every document is read back before it is stored — for placeholders nobody
-replaced, figures nobody could have sourced, lines repeated from another
-section — and that check costs nothing. Beside it, a review can be asked for:
-one reading by somebody who did not write the thing, scored out of ten against
-the shape it was written into. Neither corrects anything. Both hand you a list.
+A report is verified before it is shown. Code checks (numbers, a metric stated
+two ways, settled figures, references to a source the reader lacks) and model
+checks (a judge on figure sentences, claims checked against the web, assessment
+items worked through) name the sentences they find wrong; one repair pass
+rewrites only those, and the code checks run again. What is still found is
+listed in the turn's steps, never passed off as done. Every document is also
+linted when it is stored — for placeholders nobody replaced, figures nobody
+could have sourced, lines repeated from another section — at no model cost.
+Beside it, a review can be asked for: one reading by somebody who did not
+write the thing, scored out of ten against the shape it was written into. The
+lint and the review correct nothing; they hand you a list.
 
 **2. An agent can search its own documents.** Attach files or URLs to an agent
 and it looks them up through a tool when it needs background, rather than
@@ -99,15 +105,18 @@ requested, selected and actually executed models remain visible on the answer.
 ## Deployment shape
 
 ```
-┌─ KloudChat (this repository) ─┐        ┌─ KloudChat-LLM ─────────────────────┐
-│  kloudchat-web   :5173        │        │  gateway :8080                      │
-│  kloudchat-api   :8100        │──URL──▶│   /litellm  /tools/{search,fetch,   │
-│  kloudchat-db    :5433        │        │      exec,research,stt,index}       │
-│  kloudchat-print :8200        │        │                                      │
-│                               │        └─────────────────────────────────────┘
-│  /llm  ← coding agents        │
-└───────────────────────────────┘
+┌─ KloudChat (this repository) ──────┐        ┌─ KloudChat-LLM ─────────────────────┐
+│  kloudchat-web   :5173  /api /llm  │        │  gateway :8080                      │
+│   └▶ api × N     (internal :8100)  │──URL──▶│   /litellm  /tools/{search,fetch,   │
+│  kloudchat-db    :5433             │        │      exec,research,stt,index}       │
+│  kloudchat-print (internal :8200)  │        │                                     │
+└────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
+
+The web container is the only entry point: it serves the bundle and proxies
+`/api` and `/llm` to the `api` service, which runs as `KCHAT_API_REPLICAS`
+replicas (default 1) and publishes no host port. A one-shot `migrate`
+container applies database migrations before any replica starts.
 
 The boundary is **one address and one master key**. If the backend goes down,
 sign-in, history, workspace and settings keep working; only model calls and
@@ -125,7 +134,7 @@ cp .env.example .env
 sed -i "s/^KCHAT_JWT_SECRET=.*/KCHAT_JWT_SECRET=$(openssl rand -hex 32)/" .env
 
 docker compose up -d
-curl localhost:8100/api/health
+curl localhost:5173/api/health
 ```
 
 This pulls the published images from Docker Hub. To build them from the
@@ -147,9 +156,10 @@ accounts at all, so changing them later never resets an existing password.
 
 ### Connecting the backend
 
-In **Settings → System → Integrations**, paste the backend gateway address and
-save. The feature endpoints are filled in automatically by appending their
-paths. Print the address from the backend:
+In the account menu, open **System → Features** and paste the backend gateway
+address into **Feature integrations → Server address**, then save. The LiteLLM
+address and the feature endpoints are derived from it by appending their paths.
+Print the address from the backend:
 
 ```bash
 ./scripts/setup.sh urls    # run this in KloudChat-LLM
@@ -159,22 +169,27 @@ If you host one feature elsewhere, override that single field. Each field has a
 connection test, and a feature with an empty address drops quietly out of the
 tool list — conversation, files, projects, memory and agents are unaffected.
 
-The LiteLLM master key is entered separately on the same screen. The tool
+The LiteLLM master key is entered under **System → Proxy**, which also holds
+an explicit LiteLLM address when it is not behind the gateway. The tool
 endpoints need no key.
 
 ## What an administrator controls
 
-Under **Settings → System**:
+Under **System** (`/admin/system`, in the account menu):
 
 | | |
 |---|---|
-| **Integrations** | Backend gateway address, LiteLLM master key, per-feature tool endpoints with connection tests. |
-| **Model routing** | Auto cost routing — the strict-local classifier and the ordered economy models — and the outline model that plans documents. |
-| **Enabled surfaces** | Turn reports, slides, images and audio/video on or off. Chat is always on. Images and audio/video cost credits per generation, so they default to off. A disabled surface disappears from the UI *and* the server refuses to create sessions of that kind — hiding it alone leaves it enabled for anyone who types the URL. |
+| **Proxy** | LiteLLM address and master key, connection test, model list refresh, models hidden for an unknown price. |
+| **Routing** | Auto cost routing — the strict-local classifier and the ordered economy models — and the outline model that plans documents. |
+| **Features** | Enabled surfaces, and the feature integrations: one server address plus per-feature tool endpoints with connection tests. Chat is always on. Images and audio/video cost credits per generation, so they default to off. A disabled surface disappears from the UI *and* the server refuses to create sessions of that kind. |
 | **Shared templates** | Starting points every account sees. |
 | **Branding** | Name and logo for the sidebar and the sign-in screen. PNG, JPG or WebP up to 2 MB. |
 | **Mail** | SMTP for password reset and email verification. |
 | **Signup** | Mode, allowed mail domains, email verification. |
+
+Users and credits, organisation usage, and security and audit
+(`/admin/governance`: privacy routing, PII masking, intent filters, retention,
+audit log) are separate entries in the same menu.
 
 ## Connecting coding agents
 
@@ -219,7 +234,7 @@ without a translation fall back to Korean.
 | `/admin/governance` | External-model privacy routing, PII masking, intent filters, retention, audit log (admin) |
 | `/settings` · `/settings/preferences` · `/settings/personalization` · `/settings/keys` · `/settings/access` | Profile and password / defaults / personalization / API keys / sign-ins and security changes |
 | `/agent-setup` · `/api-setup` | Coding-agent and API connection guides (account menu) |
-| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` · `/signup` | Proxy and integrations / automatic model routing / enabled surfaces / shared templates / branding / SMTP / signup policy (admin) |
+| `/admin/system` · `/routing` · `/features` · `/templates` · `/branding` · `/mail` · `/signup` | LiteLLM proxy / automatic model routing / enabled surfaces and feature integrations / shared templates / branding / SMTP / signup policy (admin) |
 
 ### What each surface does differently
 
@@ -227,10 +242,11 @@ without a translation fall back to Korean.
   (`searching…`, `reading document…`) and collapse to one line when the turn
   settles. When the model calls `create_artifact` or `create_chart`, the result
   opens in the right-hand panel.
-- **Report** — a table-of-contents sidebar with section-by-section streaming.
+- **Report** — the outline is proposed first and writing starts once you
+  approve it; then a table-of-contents sidebar with section-by-section streaming.
   The **whole document is editable as Markdown**, and saving accumulates
   versions. Exports to docx, PDF, **HWPX** and Markdown.
-- **Slides** — the outline is settled first, then each slide is filled in.
+- **Slides** — the outline is proposed and approved first, then each slide is filled in.
   Thumbnail grid, speaker notes, per-slide text editing. Exports to pptx, PDF
   and Markdown — preview and both exports share one 960×540 geometry, so what
   you saw is what the file contains.

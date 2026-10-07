@@ -11,7 +11,7 @@ from app.services.hangul import read_back, tidy_spacing
 @pytest.mark.parametrize(
     ("wrote", "reads"),
     [
-        # All real samples from generated reports.
+        # Samples from generated reports.
         ("全自動化 시스템을 도입한다", "전자동화 시스템을 도입한다"),
         ("傳統的인 방화벽으로는 막지 못한다", "전통적인 방화벽으로는 막지 못한다"),
         ("動的 엔드포인트를 사용한다", "동적 엔드포인트를 사용한다"),
@@ -87,7 +87,7 @@ def test_the_keys_are_left_alone() -> None:
         ("경비원 1 인 상주, 200 석 규모", "경비원 1인 상주, 200석 규모"),
         ("연간 120 만 원, 3 년 총비용 3,600 만 원", "연간 120만 원, 3년 총비용 3,600만 원"),
         ("약 12 % 향상, 2 학기, 3 주차", "약 12% 향상, 2학기, 3주차"),
-        # SI 단위는 띄운 채로.
+        # SI units keep their space.
         ("R = 1.0 kΩ, 103 nF, 2.00 Vpp", "R = 1.0 kΩ, 103 nF, 2.00 Vpp"),
         ("3 일반인이 참석", "3 일반인이 참석"),
     ],

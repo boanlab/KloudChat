@@ -11,7 +11,7 @@
 | 작업 목록 | conversation list | 왼쪽 목록 |
 | 요청 / 턴 | request / turn | |
 | 답변 | answer | response 쓰지 않음 |
-| 다시 시도 | Try again | 버튼 |
+| 다시 시도 | Retry | 버튼 |
 | 작업 단계 | processing steps | |
 | 모델 | model | |
 | 데이터 경계 | data boundary | |

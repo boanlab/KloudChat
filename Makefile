@@ -20,7 +20,7 @@ help: ## List available targets
 
 ## ── Running ────────────────────────────────────────────────────────────────
 
-up: ## Start the published images (web :5173, api :8100, db :5433)
+up: ## Start the published images (web and /api on :5173, db :5433)
 	$(COMPOSE) up -d
 
 build: ## Start with every image built from this checkout

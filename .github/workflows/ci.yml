@@ -76,6 +76,11 @@ jobs:
       - name: Test session metadata hydration
         run: npx playwright test --config playwright.session-hydration.config.ts --workers=1
 
+      # Every report-panel tab, control, view switch, panel, error state and the sign-in
+      # landing, against a stored report: what a person clicks through before trusting it.
+      - name: Test report panel walkthrough and error states
+        run: npx playwright test --config playwright.report-audit.config.ts --workers=1
+
       - name: Test search masking feedback
         run: npx playwright test --config playwright.search-masking.config.ts
 

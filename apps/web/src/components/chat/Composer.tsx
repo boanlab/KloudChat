@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
-import { transcriptionsApi } from '@/lib/api'
+import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
@@ -41,6 +41,10 @@ import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
+
+/** Shown when a send timed out at the gateway: the turn may be running on the server. */
+const GATEWAY_NOTICE =
+  '응답이 늦어 연결이 끊겼습니다. 답이 진행 중이면 이 대화에 이어서 표시됩니다.'
 
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
@@ -299,11 +303,11 @@ function AvOptions() {
   )
 }
 
-// Composer state carried across the remount that creating a session causes.
-// Read once by the new composer and cleared.
 /** The toggle's three positions; `auto` is sent as `'auto'`, the others as booleans. */
 type WebSearchMode = 'auto' | 'on' | 'off'
 
+// Composer state carried across the remount that creating a session causes.
+// Read once by the new composer and cleared.
 type ComposerSnapshot = {
   sessionId: string
   value: string
@@ -900,6 +904,15 @@ export function Composer({
   )
   // This session's own turn only.
   const streaming = !!sessionId && !!running[sessionId]
+  // The gateway notice stands only until the turn it was about shows up: a running
+  // turn, or an answer growing in this conversation, means the request went through.
+  const lastAnswerLength = useStore((s) => {
+    const last = s.sessions.find((c) => c.id === sessionId)?.messages.at(-1)
+    return last?.role === 'assistant' ? last.content.length + (last.steps?.length ?? 0) : 0
+  })
+  useEffect(() => {
+    if (chatError === t(GATEWAY_NOTICE) && (streaming || lastAnswerLength > 0)) setChatError(null)
+  }, [chatError, streaming, lastAnswerLength, t])
   const busy = isMedia ? jobRunning : streaming
 
   useEffect(() => {
@@ -1042,6 +1055,21 @@ export function Composer({
       }
       setReusableSessionId((current) => current ?? attemptedSessionId)
       if (editScope) throw error
+      // A gateway timeout is not a refusal: the request may have reached the server and
+      // its turn may be running. The draft is not handed back (sending it again would
+      // ask twice); the conversation is reloaded so a running turn shows.
+      if (error instanceof ApiError && [502, 503, 504].includes(error.status) && attemptedSessionId) {
+        setComposerRestore({
+          sessionId: attemptedSessionId,
+          value: '',
+          attachments: [],
+          activatedSkillIds: skillIds,
+          startingTemplate: null,
+          error: t(GATEWAY_NOTICE),
+        })
+        void useStore.getState().openSession(attemptedSessionId)
+        return
+      }
       // Branch on the code: `errorMessage` swallows machine strings.
       const notice =
         errorCode(error) === 'auto_quality_model_required'

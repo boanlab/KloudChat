@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { SectionBody } from '@/components/report/SectionBody'
+import { cn } from '@/lib/utils'
+import { TitleBlock } from '@/components/report/TitleBlock'
+import { TITLE_BLOCK_CSS, cleanTitleBlock, counterStyle, numberingCss, sectionNumbers } from '@/components/report/docFormats'
 import { fontFamilyFor } from '@/components/report/docType'
 import { Badge } from '@/components/ui'
 import { ApiError, sharesApi, type SharedContext, type SharedPayload } from '@/lib/api'
@@ -171,7 +174,8 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
 
 function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
   const data = (payload.data ?? {}) as {
-    sections?: { heading: string; content: string }[]
+    sections?: { heading: string; content: string; level?: 1 | 2; format?: 'markdown' | 'html' }[]
+    titleBlock?: unknown
     slides?: Slide[]
     design?: DesignTokens | null
     content?: string
@@ -183,16 +187,21 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
   if (data.sections) {
     const visual = data.design?.visualStyle ?? 'editorial'
     const accent = data.design?.accent ?? '#5b5bd6'
+    const block = cleanTitleBlock(data.titleBlock)
+    const numbers = sectionNumbers(data.sections, block?.numbering ?? 'none')
     return (
-      <article className="overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10">
+      <article className={cn('overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10', block && 'fmt')}>
+        {block && <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}`}</style>}
         <div className={visual === 'poster' ? 'px-8 py-16 text-white' : visual === 'minimal' ? 'px-8 py-12' : 'border-t-8 px-8 py-12'} style={visual === 'poster' ? { background: `linear-gradient(145deg,${accent},color-mix(in srgb,${accent} 48%,#111827))` } : visual === 'minimal' ? { background: `color-mix(in srgb,${accent} 7%,#fff)` } : { borderColor: accent }}>
-          <h2 className={visual === 'poster' ? 'max-w-[15ch] text-4xl font-bold leading-tight' : visual === 'minimal' ? 'max-w-[22ch] text-2xl font-semibold' : 'text-3xl font-bold'}>{artifactTitle}</h2>
+          {block
+            ? <TitleBlock block={block} title={artifactTitle} />
+            : <h2 className={visual === 'poster' ? 'max-w-[15ch] text-4xl font-bold leading-tight' : visual === 'minimal' ? 'max-w-[22ch] text-2xl font-semibold' : 'text-3xl font-bold'}>{artifactTitle}</h2>}
         </div>
         <div className="space-y-10 px-8 py-10" style={{ fontFamily: fontFamilyFor(data.design?.font) }}>
           {data.sections.map((section, index) => (
-            <section key={index}>
-              <h3 className={visual === 'poster' ? 'mb-4 text-2xl font-bold' : visual === 'minimal' ? 'mb-3 text-sm font-semibold tracking-widest text-muted' : 'mb-4 border-b pb-2 text-xl font-semibold'} style={visual === 'poster' ? { color: accent } : undefined}>{section.heading}</h3>
-              <SectionBody section={section} />
+            <section key={index} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
+              <h3 className={visual === 'poster' ? 'mb-4 text-2xl font-bold' : visual === 'minimal' ? 'mb-3 text-sm font-semibold tracking-widest text-muted' : 'mb-4 border-b pb-2 text-xl font-semibold'} style={visual === 'poster' ? { color: accent } : undefined}>{numbers[index].label && `${numbers[index].label} `}{section.heading}</h3>
+              <SectionBody section={section} className={block ? 'tb-counted' : undefined} />
             </section>
           ))}
         </div>

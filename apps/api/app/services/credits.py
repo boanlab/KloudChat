@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from math import ceil
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import event, update
+from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -115,11 +117,13 @@ def settle(
     if credits <= 0:
         return
     surface = surface or surface_for(reason)
-    # An atomic SQL increment, not read-add-write: two turns of one account settling
-    # at once must both land. The loaded object carries the new value for this request.
+    # An atomic SQL increment, not read-add-write: two turns of one account settling at
+    # once must both land. It is queued on the session and run at its next flush
+    # (`_apply_credit_deltas`); the loaded object carries the new value for this request.
+    info = getattr(getattr(db, "sync_session", db), "info", None)
+    if isinstance(info, dict):
+        info.setdefault(_DELTAS, []).append((user.id, credits))
     before = int(user.credits_used or 0)
-    user.credits_used = User.credits_used + credits  # type: ignore[assignment]
-    db.add(user)
     set_committed_value(user, "credits_used", before + credits)
     db.add(
         CreditLedger(
@@ -131,6 +135,20 @@ def settle(
             surface=surface,
         )
     )
+
+
+_DELTAS = "kchat_credit_deltas"
+
+
+@event.listens_for(Session, "before_flush")
+def _apply_credit_deltas(session: Session, _context, _instances) -> None:
+    """The charges `settle` queued, written as one atomic increment each."""
+    for user_id, credits in session.info.pop(_DELTAS, []):
+        session.execute(
+            update(User)
+            .where(User.id == user_id)  # type: ignore[arg-type]
+            .values(credits_used=User.credits_used + credits)
+        )
 
 
 #: Ledger reason of a web search: zero credits, `units` searches, no model.

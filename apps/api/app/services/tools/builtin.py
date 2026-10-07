@@ -18,7 +18,7 @@ import httpx
 
 from app.core import logs
 from app.core.config import settings
-from app.services import index_client, knowledge, netguard, settings_store
+from app.services import credibility, index_client, knowledge, netguard, settings_store
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
 from app.services.tools.ncs_check import CHECK_NCS_ANSWER
@@ -461,7 +461,7 @@ async def _scrape(base_url: str, url: str) -> str:
     # Search results and model-picked addresses pass through here too: nothing on the
     # deployment's own network is fetched on a reader's behalf.
     if reason := await netguard.refusal(url):
-        log.info("scrape refused for %s: %s", logs.safe(url), reason)
+        log.info("scrape refused: %s", reason)
         return ""
     try:
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
@@ -473,10 +473,30 @@ async def _scrape(base_url: str, url: str) -> str:
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        log.info("scrape failed for %s: %s", logs.safe(url), logs.safe(exc))
+        log.info("scrape failed: %s", logs.safe(exc))
         return ""
+    if isinstance(payload, dict) and payload.get("success") is False:
+        # The reader answered but could not read (its browser died, the page refused):
+        # said loudly, since every search would otherwise read zero pages in silence.
+        log.warning(
+            "scrape reported failure: %s", logs.safe(str(payload.get("error") or "")[:200]),
+        )
+        _scrape_failures[0] += 1
+        if _scrape_failures[0] == _SCRAPE_ALARM:
+            # A health check can pass while every read fails; only this counter notices.
+            log.error(
+                "the page reader has failed %d times in a row — searches are reading no "
+                "pages; check the crawl4ai shim", _SCRAPE_ALARM,
+            )
+        return ""
+    _scrape_failures[0] = 0
     data = payload.get("data") or payload
     return (data.get("markdown") or data.get("content") or "").strip()
+
+
+#: Reader failures in a row, and the count at which they are reported as an outage.
+_scrape_failures = [0]
+_SCRAPE_ALARM = 20
 
 
 #: Shared with callers outside the tool loop (shelf ingestion, `services.research`).
@@ -504,6 +524,105 @@ def _search_source_url(value: Any) -> str | None:
     return url
 
 
+_SURVEY = re.compile(r"\b(?:survey|sok|systematization|review|overview|taxonomy)\b", re.I)
+
+#: A method or benchmark name as papers write it: StruQ, CaMeL, SecAlign, BIPIA.
+_WORK_NAME = re.compile(
+    r"(?<![\w-])([A-Z][a-z]{1,12}[A-Z][A-Za-z0-9]{0,12}|[A-Z]{4,10}[a-z]{0,3}[A-Z]?[A-Za-z]{0,6})(?![\w-])"
+)
+#: Names that are not works: field acronyms, companies, venues, formats.
+_NOT_A_WORK = frozenset("""
+LLM LLMs MLLM MLLMs ASR ASRs SOTA OpenAI NeurIPS ICLR ICML USENIX IEEE SIGSAC ACL EMNLP NAACL
+AAAI KDD COLM HTML JSON URL URLs API APIs GPU GPUs CPU USA OWASP MITRE GitHub ArXiv PyTorch
+HuggingFace LangChain ChatGPT DeepSeek RLHF SFT DPO KTO PPO LoRA BERT RoBERTa DeBERTa MacBook
+TODO NOTE FAQ RGB PGD GCG AUROC AUC ROC TPR FPR BLEU ROUGE ReAct CoT RAG SQL XSS PDF CSV
+""".split())
+_CHASE_PAPERS = 4
+_CHASE_NAMES = 6
+
+
+def _arxiv_html(url: str) -> str | None:
+    """The full-text HTML address of an arXiv paper link."""
+    m = re.search(r"arxiv\.org/(?:abs|pdf|html)/(\d{4}\.\d{4,5})", url or "")
+    return f"https://arxiv.org/html/{m.group(1)}" if m else None
+
+
+def cited_works(texts: list[str], known: str, limit: int = _CHASE_NAMES) -> list[str]:
+    """Names of works several of the papers mention — the field's reference points that
+    a keyword search ranks below last month's preprints. A name in only one paper is that
+    paper's own; acronyms of the field and names already among the hits are left out."""
+    docs = []
+    for text in texts:
+        names = {n for n in _WORK_NAME.findall(text or "") if n not in _NOT_A_WORK}
+        docs.append(names)
+    counts: dict[str, int] = {}
+    for names in docs:
+        for n in names:
+            counts[n] = counts.get(n, 0) + 1
+    lowered = (known or "").lower()
+    ranked = sorted(
+        (n for n, c in counts.items() if c >= 2 and n.lower() not in lowered),
+        key=lambda n: (-counts[n], n),
+    )
+    return ranked[:limit]
+
+
+async def _chase_citations(
+    backends: Any, hits: list[dict[str, Any]], topic: str, hints: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Hits for works the top papers cite in common, one per name, each found by name."""
+    pages = [u for u in (_arxiv_html(str(h.get("url") or "")) for h in hits) if u]
+    pages = list(dict.fromkeys(pages))[:_CHASE_PAPERS]
+    if len(pages) < 2:
+        return []
+    texts = await asyncio.gather(*(_scrape(backends.fetch, u) for u in pages))
+    known = " ".join(str(h.get("title") or "") for h in hits)
+    names = cited_works([t for t in texts if isinstance(t, str)], known)
+    if not names:
+        return []
+    words = " ".join([w for w in topic.split() if w.lower() not in ("survey", "sok")][:3])
+    found = await asyncio.gather(
+        *(_searxng(backends.search, f"{n} {words}", 5, kind="papers", hints=hints) for n in names),
+        return_exceptions=True,
+    )
+    out = []
+    for name, batch in zip(names, found, strict=True):
+        if not isinstance(batch, list):
+            continue
+        match = next(
+            (
+                h for h in batch
+                if isinstance(h, dict) and name.lower() in str(h.get("title") or "").lower()
+            ),
+            None,
+        )
+        if match:
+            out.append(match)
+    return out
+
+
+#: The server's literature lookup: queries per call and hits kept across them.
+_MAX_PLANNED = 6
+_MAX_PLANNED_HITS = 24
+
+
+def _interleave(batches: list[list[dict[str, Any]]], limit: int) -> list[dict[str, Any]]:
+    """Hits taken in turn from each query's list — every query's best first — each URL
+    once, up to `limit`."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for rank in range(max((len(b) for b in batches), default=0)):
+        for batch in batches:
+            if rank < len(batch) and isinstance(batch[rank], dict):
+                url = str(batch[rank].get("url") or "")
+                if url and url not in seen:
+                    seen.add(url)
+                    out.append(batch[rank])
+                    if len(out) >= limit:
+                        return out
+    return out
+
+
 async def web_search(args: dict[str, Any]) -> ToolResult:
     query = str(args.get("query") or "").strip()
     if not query:
@@ -521,15 +640,45 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     from app.services.context import needs_web_search
 
     hints = {k: args.get(k) for k in ("site", "time_range", "language", "official") if args.get(k)}
+    # The server's literature lookup: several planned queries in one call, so the answer
+    # draws on a field rather than on the five hits of one phrasing.
+    planned = [
+        str(q).strip()[:200] for q in (args.get("queries") or []) if str(q).strip()
+    ][:_MAX_PLANNED]
     try:
-        hits = await _searxng(
-            backends.search,
-            query,
-            settings.web_search_results,
-            fresh=needs_web_search(query),
-            kind=kind,
-            hints=hints,
-        )
+        if planned:
+            batches = await asyncio.gather(
+                *(
+                    _searxng(backends.search, q, 8, kind="papers", hints=hints)
+                    for q in planned
+                ),
+                return_exceptions=True,
+            )
+            hits = _interleave([b for b in batches if isinstance(b, list)], _MAX_PLANNED_HITS)
+            # Surveys first: they are what is read in full, and they name the field's
+            # foundational papers that a keyword search ranks below last month's preprints.
+            hits.sort(key=lambda h: not _SURVEY.search(str(h.get("title") or "")))
+            # Works the top papers cite in common, found by name and put up front.
+            chased = await _chase_citations(
+                backends, hits, planned[1] if len(planned) > 1 else planned[0], hints
+            )
+            seen = {str(h.get("url") or "") for h in hits}
+            chased = [h for h in chased if str(h.get("url") or "") not in seen]
+            hits = (chased + hits)[: _MAX_PLANNED_HITS + len(chased)]
+            query = " · ".join(planned)
+        else:
+            hits = await _searxng(
+                backends.search,
+                query,
+                (
+                    max(settings.web_search_results, 8)
+                    if args.get("scholarly")
+                    else settings.web_search_results
+                ),
+                fresh=needs_web_search(query),
+                kind=kind,
+                hints=hints,
+            )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
     hits = [
@@ -542,11 +691,17 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         for hit in hits
         if isinstance(hit, dict) and (url := _search_source_url(hit.get("url")))
     ]
+    # Blogs and content sites are not offered as sources while three others remain;
+    # official, scholarly and news-of-record hits are read first.
+    trusted = [hit for hit in hits if credibility.tier(hit["url"]) > 0]
+    if len(trusted) >= 3:
+        hits = trusted
+    hits.sort(key=lambda hit: credibility.tier(hit["url"]) < 2)
     if not hits:
         return ToolResult(
             content=f"'{query}' 에 대한 검색 결과가 없습니다.", detail="0개 결과", empty=True
         )
-    if _off_topic(hits, query):
+    if not planned and _off_topic(hits, query):
         return ToolResult(
             content=(
                 f"'{query}' 검색 결과가 질문과 무관한 것뿐입니다 — 검색 엔진이 제대로 "
@@ -559,7 +714,12 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
 
     # Top few read in full; the rest stay as titles the model can fetch by URL.
     bodies = await asyncio.gather(
-        *(_scrape(backends.fetch, h["url"]) for h in hits[: settings.web_search_scrape])
+        *(
+            _scrape(backends.fetch, h["url"])
+            for h in hits[
+                : max(settings.web_search_scrape, 5) if planned else settings.web_search_scrape
+            ]
+        )
     )
 
     lines = [f"'{query}' 검색 결과:\n"]
@@ -815,10 +975,8 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                     failed=True,
                 )
             # Nominatim's own top hit is relevance-ranked, not importance-ranked:
-            # a minor stop or shop sharing the name can outrank the place itself
-            # (a "후쿠오카" search once returned a Toyama railway stop ahead of
-            # anything in Fukuoka). Importance among the top few candidates is
-            # the closer proxy for "the place a person means".
+            # a minor stop or shop sharing the name can outrank the place itself.
+            # Importance among the top few candidates is the closer proxy.
             hit = max(hits, key=lambda h: float(h.get("importance") or 0))
             forecast = await client.get(
                 _FORECAST_URL,
@@ -1354,8 +1512,8 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
 
 def skill_tool(skills: list[tuple[str, str, str]]) -> Tool:
     """`use_skill`: the installed skills the person did not switch on, offered by their
-    `when_to_use` so the model can reach for one itself — the way a skill is meant
-    to be found — and read its instructions for the rest of the turn.
+    `when_to_use` so the model can reach for one itself and read its instructions for
+    the rest of the turn.
 
     `skills`: `(name, when_to_use, body)` for each candidate.
     """

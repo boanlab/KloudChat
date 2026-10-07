@@ -40,10 +40,12 @@ import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Tex
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens } from '@/lib/utils'
-import type { LintFinding, ReportArtifact, ReportSection, Source } from '@/types'
+import type { LintFinding, ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { copyText } from '@/lib/clipboard'
 import { DocumentEditor } from '@/components/report/DocumentEditor'
 import { SectionBody, sectionText } from '@/components/report/SectionBody'
+import { TitleBlock } from '@/components/report/TitleBlock'
+import { TITLE_BLOCK_CSS, cleanTitleBlock, counterStyle, numberingCss, sectionNumbers } from '@/components/report/docFormats'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
@@ -69,9 +71,8 @@ const DOC_ACCENTS: [string, string][] = [
  * `RibbonGroup`'s `label` is an `aria-label` only — nothing a sighted person
  * reads. Fine for a group that is one self-explanatory button, but "매거진형"
  * next to "보고 문서" gives no hint that one is a look and the other an export
- * format. Set inline, before the value, so it costs no extra row: a caption
- * stacked above once made every other single-line ribbon group in the same
- * row look shorter than its neighbours instead.
+ * format. Set inline, before the value, so it costs no extra row and keeps
+ * the group as tall as its single-line neighbours.
  */
 function RibbonCaption({ children }: { children: ReactNode }) {
   return <span className="font-semibold text-faint">{children}</span>
@@ -135,7 +136,6 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
   return (
     <>
       <Dropdown
-        align="right"
         trigger={() => (
           <Button size="sm" aria-label={t('그림 넣기')} title={t('그림 넣기')}>
             <ImagePlus size={14} />
@@ -286,14 +286,21 @@ function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceGap[] {
 /** Print tree portalled to `<body>`, outside the panel's clipping containers; `@media print` swaps it in. */
 function PrintDocument({ report }: { report: ReportArtifact }) {
   const t = useT()
+  const block = cleanTitleBlock(report.titleBlock)
+  const numbers = sectionNumbers(report.sections, block?.numbering ?? 'none')
   return createPortal(
-    <article data-print-doc lang="ko">
-      <h1>{report.title}</h1>
-      {report.sections.map((s) => (
-        <section key={s.id}>
-          <h2>{s.heading}</h2>
+    <article data-print-doc lang="ko" className={block ? 'fmt' : undefined}>
+      {block ? (
+        <>
+          <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}`}</style>
+          <TitleBlock block={block} title={report.title} />
+        </>
+      ) : <h1>{report.title}</h1>}
+      {report.sections.map((s, index) => (
+        <section key={s.id} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
+          <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>
           {/* No owner: printing must not store diagrams. */}
-          <SectionBody section={s} />
+          {block ? <div className="tb-counted"><SectionBody section={s} /></div> : <SectionBody section={s} />}
         </section>
       ))}
       {report.sources.length > 0 && (
@@ -597,10 +604,31 @@ export function ReportPanel({
   // Only the ref is used: the contents drawer is positioned against it.
   const panel = usePanelNarrow<HTMLDivElement>()
   const [tocOpen, setTocOpen] = useState(false)
+  // The ribbon's height, so the contents drawer opens below it; it wraps on a narrow panel.
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
+  const [headerHeight, setHeaderHeight] = useState(0)
+  useEffect(() => {
+    if (!headerEl) return
+    const measure = () => setHeaderHeight(headerEl.offsetHeight)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(headerEl)
+    return () => observer.disconnect()
+  }, [headerEl])
+  const [exportError, setExportError] = useState<string | null>(null)
+  /** One export; a failure is said under the ribbon instead of escaping as an error. */
+  const exportAs = (format: 'pdf' | 'docx' | 'hwpx' | 'md') => {
+    setExportError(null)
+    setSaveError(null)
+    void afterSaving(() => download(report.id, format, report.title)).catch((err) =>
+      setExportError(errorMessage(err, t('내보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.'))),
+    )
+  }
   // Markdown source editor for the whole document.
   const [editing, setEditing] = useState(false)
   // Ribbon slot the page editor's formatting bar is portalled into.
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null)
+  const [settingsSlot, setSettingsSlot] = useState<HTMLElement | null>(null)
   // Section open for a rewrite, its instruction, and the quoted passage.
   const [rewriting, setRewriting] = useState<string | null>(null)
   const [rewriteNote, setRewriteNote] = useState('')
@@ -1012,20 +1040,25 @@ export function ReportPanel({
     () => designTemplates.filter((row) => row.kind === 'document'),
     [designTemplates],
   )
+  // The head of a document by purpose and its heading numbers, for the web view.
+  const webBlock = cleanTitleBlock(report.titleBlock)
+  const webNumbers = sectionNumbers(report.sections, webBlock?.numbering ?? 'none')
   // Unsaved page-editor changes.
   const [pageEdits, setPageEdits] = useState<ReportSection[] | null>(null)
   const [pageTitle, setPageTitle] = useState<string | null>(null)
   const [pageSettingsEdits, setPageSettingsEdits] = useState<ReportArtifact['pageSettings'] | null>(null)
   const [reviewCommentEdits, setReviewCommentEdits] = useState<ReportArtifact['reviewComments'] | null>(null)
+  const [titleBlockEdits, setTitleBlockEdits] = useState<ReportTitleBlock | null>(null)
   const [pageSaving, setPageSaving] = useState(false)
   const pageSnapshot = (title: string, data: Partial<ReportArtifact>) => JSON.stringify({
     title,
     sections: data.sections ?? [],
     pageSettings: data.pageSettings ?? null,
     reviewComments: data.reviewComments ?? [],
+    titleBlock: data.titleBlock ?? null,
   })
   const pageBaseline = useRef(pageSnapshot(report.title, report))
-  const hasUnsavedEdit = (editing && draft !== baseline.current) || Boolean(pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits)
+  const hasUnsavedEdit = (editing && draft !== baseline.current) || Boolean(pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits)
   useEffect(() => {
     onDirtyChange?.(hasUnsavedEdit)
     return () => onDirtyChange?.(false)
@@ -1040,13 +1073,19 @@ export function ReportPanel({
     return () => window.removeEventListener('beforeunload', protect)
   }, [hasUnsavedEdit])
   useEffect(() => {
-    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits) {
+    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits && !titleBlockEdits) {
       pageBaseline.current = pageSnapshot(report.title, report)
     }
-  }, [report.title, report.sections, report.pageSettings, report.reviewComments, pageEdits, pageTitle, pageSettingsEdits, reviewCommentEdits])
+  }, [report.title, report.sections, report.pageSettings, report.reviewComments, report.titleBlock, pageEdits, pageTitle, pageSettingsEdits, reviewCommentEdits, titleBlockEdits])
+  /** Closes the Markdown source editor: unchanged, at once; changed, after the save (which
+   *  closes it on success and keeps it open, with the error, on failure). */
+  const leaveSourceEditor = () => {
+    if (draft !== baseline.current) void saveDocument()
+    else openEditor(false)
+  }
   // Commits pending edits, then acts.
   const afterSaving = async (act: () => void | Promise<void>) => {
-    if (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) await savePageEdits()
+    if (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits) await savePageEdits()
     else if (editing && draft !== baseline.current) await saveDocument()
     await act()
   }
@@ -1059,7 +1098,7 @@ export function ReportPanel({
 
   // Page-view save; separate from `saveDocument`, which round-trips through Markdown.
   const savePageEdits = async () => {
-    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits) return
+    if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits && !titleBlockEdits) return
     setPageSaving(true)
     setSaveError(null)
     try {
@@ -1078,6 +1117,7 @@ export function ReportPanel({
           ...report, title, sections,
           ...(pageSettingsEdits ? { pageSettings: pageSettingsEdits } : {}),
           ...(reviewCommentEdits ? { reviewComments: reviewCommentEdits } : {}),
+          ...(titleBlockEdits ? { titleBlock: titleBlockEdits } : {}),
         }),
         title,
         summary: t('서식 편집'),
@@ -1088,16 +1128,19 @@ export function ReportPanel({
       report.version = row.version
       if (pageSettingsEdits) report.pageSettings = pageSettingsEdits
       if (reviewCommentEdits) report.reviewComments = reviewCommentEdits
+      if (titleBlockEdits) report.titleBlock = titleBlockEdits
       pageBaseline.current = pageSnapshot(title, {
         ...report,
         sections,
         ...(pageSettingsEdits ? { pageSettings: pageSettingsEdits } : {}),
         ...(reviewCommentEdits ? { reviewComments: reviewCommentEdits } : {}),
+        ...(titleBlockEdits ? { titleBlock: titleBlockEdits } : {}),
       })
       setPageEdits(null)
       setPageTitle(null)
       setPageSettingsEdits(null)
       setReviewCommentEdits(null)
+      setTitleBlockEdits(null)
     } catch (err) {
       setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
     } finally {
@@ -1124,11 +1167,13 @@ export function ReportPanel({
       report.sections = data.sections ?? []
       report.pageSettings = data.pageSettings
       report.reviewComments = data.reviewComments
+      report.titleBlock = data.titleBlock
       pageBaseline.current = pageSnapshot(latest.title, data)
       setPageEdits(null)
       setPageTitle(null)
       setPageSettingsEdits(null)
       setReviewCommentEdits(null)
+      setTitleBlockEdits(null)
       setSaveError(null)
       setTick((value) => value + 1)
     } catch (err) {
@@ -1341,10 +1386,12 @@ export function ReportPanel({
       </Modal>
       {/* Mounted with the panel: `window.print()` is synchronous. */}
       <PrintDocument report={report} />
+      {/* Under the ribbon, not over it: the ribbon stays usable and the drawer's head shows. */}
       {tocOpen && (
         <button
           aria-label={t('목차 닫기')}
-          className="absolute inset-0 z-10 bg-black/30"
+          className="absolute inset-x-0 bottom-0 z-10 bg-black/20"
+          style={{ top: headerHeight }}
           onClick={() => setTocOpen(false)}
         />
       )}
@@ -1353,8 +1400,9 @@ export function ReportPanel({
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
-          tocOpen ? 'absolute inset-y-0 left-0 z-20 flex shadow-overlay' : 'hidden',
+          tocOpen ? 'absolute bottom-0 left-0 z-20 flex shadow-overlay' : 'hidden',
         )}
+        style={tocOpen ? { top: headerHeight } : undefined}
       >
         <div className="border-b border-line px-3 py-2.5">
           <p className="text-xs font-semibold tracking-wide text-faint uppercase">{t('목차')}</p>
@@ -1398,8 +1446,8 @@ export function ReportPanel({
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 max-sm:basis-full">
+        <header ref={setHeaderEl} className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
             <FileText size={15} className="shrink-0 text-accent" />
             <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={report.title}>
               {report.title}
@@ -1432,6 +1480,12 @@ export function ReportPanel({
                 setDocumentLayout('pages')
                 setView(viewBeforeEdit.current)
               }
+              // A panel belongs to its tab: leaving 「레이아웃」 closes the page settings,
+              // leaving 「검토」 the source list, leaving 「보기」 the table of contents.
+              if (tab !== 'layout') setPageSettingsOpen(false)
+              if (tab !== 'review') setPane('document')
+              if (tab !== 'view') setTocOpen(false)
+              setExportError(null)
               setRibbon(tab)
             }}
           >
@@ -1452,6 +1506,8 @@ export function ReportPanel({
             aria-label={t('웹뷰')}
             title={t('편집하기 좋은 한 줄 문서로 봅니다')}
             onClick={() => {
+              // The source editor covers both views; a view button closes it (saving first).
+              if (editing) leaveSourceEditor()
               if (view === 'page') {
                 void afterSaving(() => {})
                 setView('web')
@@ -1471,8 +1527,9 @@ export function ReportPanel({
             aria-label={t('페이지뷰')}
             title={t('서식이 적용된 A4 문서로 봅니다')}
             onClick={() => {
+              if (editing) leaveSourceEditor()
               if (view !== 'page') {
-                void afterSaving(() => {})
+                if (!editing) void afterSaving(() => {})
                 setView('page')
                 // The page view asks for room; web view gives it back.
                 if (onModeChange) {
@@ -1522,6 +1579,12 @@ export function ReportPanel({
           >
             <FileType2 size={13} />{t('페이지 설정')}
           </Button></RibbonGroup>}
+          {/* The page settings open inside the ribbon, not over the document. */}
+          {ribbon === 'layout' && pageSettingsOpen && (
+            <RibbonGroup wide label={t('페이지 설정')}>
+              <div ref={setSettingsSlot} className="min-w-0 flex-1" />
+            </RibbonGroup>
+          )}
           {/* Markdown source editor; hidden once any section is formatted. */}
           {ribbon === 'home' && view !== 'page' && !formatted && (
             <RibbonGroup label={t('원문')}>
@@ -1606,7 +1669,12 @@ export function ReportPanel({
                   // Pending edits are saved when a form is chosen, not when the menu opens.
                   onClick={() => void afterSaving(() => chooseTemplate(row.id))}
                 >
-                  {row.name}
+                  <span className="flex flex-col">
+                    <span>{row.name}</span>
+                    {row.description && (
+                      <span className="max-w-[18rem] truncate text-xs text-muted" title={row.description}>{row.description}</span>
+                    )}
+                  </span>
                 </MenuItem>
               ))}
             </Dropdown></RibbonGroup>
@@ -1649,12 +1717,12 @@ export function ReportPanel({
               setPageTitle(null)
               setPageSettingsEdits(null)
               setReviewCommentEdits(null)
+              setTitleBlockEdits(null)
               setSaveError(null)
             }}
           /></RibbonGroup>}
           {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
           {ribbon === 'file' && <RibbonGroup label={t('내보내기')}><Dropdown
-            align="right"
             trigger={() => (
               <Button size="sm">
                 <Download size={14} />
@@ -1670,22 +1738,22 @@ export function ReportPanel({
                     String(evidenceWarningCount),
                   )}
                 </MenuLabel>
-                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => setPane('sources')}>
+                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => { setRibbon('review'); setPane('sources') }}>
                   {t('먼저 근거 확인')}
                 </MenuItem>
               </>
             )}
             <MenuLabel>{t('형식 선택')}</MenuLabel>
-            <MenuItem hint="PDF" onClick={() => void afterSaving(() => download(report.id, 'pdf', report.title))}>
+            <MenuItem hint="PDF" onClick={() => exportAs('pdf')}>
               PDF
             </MenuItem>
-            <MenuItem hint="DOCX" onClick={() => void afterSaving(() => download(report.id, 'docx', report.title))}>
+            <MenuItem hint="DOCX" onClick={() => exportAs('docx')}>
               {t('Word 문서')}
             </MenuItem>
-            <MenuItem hint="HWPX" onClick={() => void afterSaving(() => download(report.id, 'hwpx', report.title))}>
+            <MenuItem hint="HWPX" onClick={() => exportAs('hwpx')}>
               {t('한글 문서')}
             </MenuItem>
-            <MenuItem hint="MD" onClick={() => void afterSaving(() => download(report.id, 'md', report.title))}>
+            <MenuItem hint="MD" onClick={() => exportAs('md')}>
               {t('마크다운 원문')}
             </MenuItem>
             <MenuItem icon={<Printer size={14} />} onClick={() => void afterSaving(() => window.print())}>
@@ -1700,7 +1768,7 @@ export function ReportPanel({
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
             </Button>
           </RibbonGroup>}
-          {ribbon === 'edit' && view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits) && <RibbonGroup label={t('저장')}>
+          {ribbon === 'edit' && view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits) && <RibbonGroup label={t('저장')}>
             <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
               {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
               {t('저장')}
@@ -1838,18 +1906,26 @@ export function ReportPanel({
                 onLayoutMode={setDocumentLayout}
                 onWebView={() => setView('web')}
                 toolbarSlot={ribbon === 'home' ? toolbarSlot : null}
-                onDirty={(sections, title, pageSettings, reviewComments) => {
+                settingsSlot={ribbon === 'layout' ? settingsSlot : null}
+                onDirty={(sections, title, pageSettings, reviewComments, titleBlock) => {
                   setPageEdits(sections)
                   if (title !== undefined) setPageTitle(title)
                   if (pageSettings !== undefined) setPageSettingsEdits(pageSettings)
                   if (reviewComments !== undefined) setReviewCommentEdits(reviewComments)
+                  if (titleBlock !== undefined) setTitleBlockEdits(titleBlock)
                 }}
               />
-              {saveError && (
+              {(saveError || exportError) && (
                 <div role="alert" className="absolute inset-x-4 bottom-4 z-20 rounded-card border border-danger/30 bg-panel px-4 py-3 shadow-lg">
-                  <p className="text-base text-danger">{saveError}</p>
-                  {saveError.includes(t('다른 곳에서 이미 수정')) && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="flex items-start gap-3">
+                    <TriangleAlert size={15} className="mt-0.5 shrink-0 text-danger" />
+                    <p className="min-w-0 flex-1 text-base leading-snug text-danger">{saveError ?? exportError}</p>
+                    <button type="button" aria-label={t('닫기')} className="-my-1 shrink-0 rounded p-1 text-muted hover:bg-elevated" onClick={() => { setSaveError(null); setExportError(null) }}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {saveError?.includes(t('다른 곳에서 이미 수정')) && (
+                    <div className="mt-2 flex flex-wrap gap-2 pl-7">
                       <Button size="sm" variant="secondary" onClick={() => void copyPageRecovery()}>
                         <Copy size={13} />
                         {recoveryCopied ? t('복사됨') : t('내 편집 내용 복사')}
@@ -1864,15 +1940,20 @@ export function ReportPanel({
               )}
             </div>
           ) : (
-          <article className="doc-web mx-auto max-w-2xl px-6 py-6" style={{ ...docVariables(), fontFamily: fontFamilyFor(report.design?.font) } as React.CSSProperties}>
-            <h1 className="mb-6 font-semibold tracking-tight">{report.title}</h1>
+          <article className={cn('doc-web mx-auto max-w-2xl px-6 py-6', webBlock && 'fmt')} style={{ ...docVariables(), fontFamily: fontFamilyFor(report.design?.font) } as React.CSSProperties}>
+            {webBlock ? (
+              <>
+                <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(webBlock.numbering)}`}</style>
+                <TitleBlock block={webBlock} title={report.title} />
+              </>
+            ) : <h1 className="mb-6 font-semibold tracking-tight">{report.title}</h1>}
             {report.sections.map((s, sectionIndex) => (
-              <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4">
+              <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4" style={webNumbers[sectionIndex].label ? counterStyle(webNumbers[sectionIndex]) : undefined}>
                 <div className="group/sec mb-2 flex items-center gap-2">
                   <h2
                     className={cn('font-semibold', s.status === 'pending' && 'text-faint')}
                   >
-                    {s.heading}
+                    {webNumbers[sectionIndex].label && `${webNumbers[sectionIndex].label} `}{s.heading}
                   </h2>
                   {!editing && (
                     // Opens rightward; the button sits at the column's left edge.
@@ -2015,6 +2096,7 @@ export function ReportPanel({
                     <SectionBody
                       section={s}
                       owner={{ artifactId: report.id, sectionId: s.id }}
+                      className={cn('report-prose', webBlock && 'tb-counted')}
                     />
                     {s.factCheck?.status === 'done' && (
                       <FactCheckResults
@@ -2035,6 +2117,16 @@ export function ReportPanel({
           </article>
           )
           )}
+          {/* Errors the web view and the source list would otherwise swallow. */}
+          {(saveError || exportError) && view !== 'page' && !editing && (
+            <div role="alert" className="sticky bottom-4 z-20 mx-4 mb-4 flex items-start gap-3 rounded-card border border-danger/30 bg-panel px-4 py-3 shadow-lg">
+              <TriangleAlert size={15} className="mt-0.5 shrink-0 text-danger" />
+              <p className="min-w-0 flex-1 text-base leading-snug text-danger">{saveError ?? exportError}</p>
+              <button type="button" aria-label={t('닫기')} className="-my-1 shrink-0 rounded p-1 text-muted hover:bg-elevated" onClick={() => { setSaveError(null); setExportError(null) }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
       <ConfirmDialog
@@ -2050,6 +2142,7 @@ export function ReportPanel({
           setPageTitle(null)
           setPageSettingsEdits(null)
           setReviewCommentEdits(null)
+          setTitleBlockEdits(null)
           if (action === 'close') onClose?.()
         }}
       />

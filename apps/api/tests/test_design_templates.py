@@ -206,7 +206,7 @@ def test_only_image_templates_hide_a_clause_from_the_composer():
         if template.kind == "image" and not template.figure:
             assert template.prompt_suffix.strip(), template.id
         elif template.kind == "image":
-            # 도식은 그림 모델로 가지 않는다 — 감출 화풍 문구가 없다.
+            # Figures do not go to an image model, so there is no style phrase to hide.
             assert not template.prompt_suffix, template.id
         else:
             assert not template.prompt_suffix, template.id
@@ -252,7 +252,7 @@ class _Markup(HTMLParser):
         '<table><tr><td background="javascript:alert(1)">셀</td></tr></table>',
         '<p title="x" onmouseover="alert(1)" data-x="javascript:alert(1)">본문</p>',
         '<img srcset="x onerror=alert(1)" src="data:image/png;base64,iVBORw0KGgo=">',
-        # An open quote that once swallowed the markup after it.
+        # An open quote that would swallow the markup after it.
         '<img srcset="x onerror=alert(1)><p>after</p>',
         '<p class="a" style="color:red" onclick=alert(1)>본문</p>',
         # Parser-level tricks: a tag inside a tag, a comment, foreign content, an unclosed element.

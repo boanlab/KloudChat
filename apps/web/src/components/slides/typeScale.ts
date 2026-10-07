@@ -59,9 +59,8 @@ export const TYPE = {
   gutterNumber: 22,
 } as const
 
-/** The body ladder in points, and the same ladder as `textScale` values. */
+/** The body ladder in points. */
 export const STEPS = [22, 18, 16, 14, 12] as const
-export const SCALES = STEPS.map((step) => Math.round((step / STEPS[0]) * 10000) / 10000)
 /** No text is drawn smaller than this, whatever the scale. */
 export const FLOOR_PT = 12
 

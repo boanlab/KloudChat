@@ -192,14 +192,15 @@ async def test_ten_choices_are_allowed_and_the_last_can_be_selected():
         "sum([1,2])",
         "lambda: 1",
         "1;2",
-        "1e3",
-        "1E-3",
         "0x10",
         "0b10",
         "1_000",
         "20%",
-        "2**3",
         "7//2",
+        "2**0.5",
+        "2**31",
+        "1e99",
+        "0**-1",
         "3j",
         "1,000",
         "1=1",
@@ -347,3 +348,15 @@ def test_source_cannot_call_eval_exec_compile_or_import_external_clients():
             assert not any(
                 name.split(".")[0] in {"httpx", "socket", "subprocess", "os"} for name in names
             )
+
+
+
+@pytest.mark.asyncio
+async def test_engineering_powers_and_scientific_notation_are_exact():
+    # Beam deflection: P L^3 / (48 E I) with P = 10 kN, L = 2 m, E = 200 GPa, I = 8.0e-6 m^4.
+    output = await calculate({"expression": "10000 * 2**3 / (48 * 200e9 * 8.0e-6)"})
+    data = json.loads(output.content)
+    assert not output.failed
+    assert data["exact"] == "1/960"
+    rounded = await calculate({"expression": "1E-3 * 10**3", "decimal_places": 2})
+    assert json.loads(rounded.content)["value"] == "1.00"

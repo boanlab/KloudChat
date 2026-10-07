@@ -19,8 +19,7 @@ _MIN_BLOCK_CHARS = 12
 _MAX_BULLETS = 7
 _MAX_BULLET_CHARS = 45
 
-#: A run of ideographs. Counted only when it is not a parenthesised gloss such as
-#: `분산(分散)`, which academic and legal documents use legitimately.
+#: A run of ideographs; a parenthesised gloss such as `분산(分散)` is legitimate.
 _HANJA = re.compile(r"[\u4e00-\u9fff]+")
 #: A gloss: ideographs inside brackets, wherever the brackets sit.
 _GLOSSED = re.compile(r"[(\[][^)\]]*[\u4e00-\u9fff][^)\]]*[)\]]")
@@ -55,9 +54,8 @@ _INVENTED_METRIC = re.compile(
 #: multiplication signs and footnote stars do not match.
 _STRAY_MARKDOWN = re.compile(r"\*\*(?=\S)(?=[^*\n]*[\s\uac00-\ud7a3])[^*\n]{1,80}?(?<=\S)\*\*")
 
-#: A line that begins as the JSON envelope the answer should have filled, which
-#: is what a block cut off at the token limit looks like. Line-anchored: a JSON
-#: fragment inside a sentence is legitimate.
+#: A line starting as the JSON envelope: a block cut off at the token limit.
+#: Line-anchored, since a JSON fragment inside a sentence is legitimate.
 _ENVELOPE = re.compile(r'^\s*\{\s*"(?:layout|body)"\s*:')
 
 #: Filler words. `P1`: the fix is a rewrite, not a correction.
@@ -70,7 +68,7 @@ _FILLER = re.compile(
 #: Emoji leading a heading or a list item.
 _LEADING_EMOJI = re.compile(r"^\s*[\U0001F300-\U0001FAFF✀-➿☀-⛿⬀-⯿]")
 
-_TAGS = re.compile(r"<[^>]+>")
+_TAGS = re.compile(r"<[^>]{1,2000}>")
 
 #: Where one line of an HTML block ends. `h3` is a column label, not an item,
 #: so it is lifted out by `_LABEL` instead of counted here.
@@ -146,11 +144,47 @@ def from_slides(slides: list[dict]) -> list[Part]:
                 if isinstance(pair, (list, tuple)) and len(pair) >= 2:
                     if line := " ".join(str(half) for half in pair[:2] if str(half).strip()):
                         lines.append(line)
+                elif isinstance(pair, dict):
+                    if line := " ".join(str(v) for v in pair.values() if str(v).strip()):
+                        lines.append(line)
+        # Every other field a pattern fills holds words too.
+        for key, value in slide.items():
+            if key in _NOT_WORDS or key in ("bullets", "body", "rows", "metrics", "chart",
+                                            "bands", "tiles", "timeline", "steps", "cards"):
+                continue
+            lines.extend(_leaf_lines(value))
         if slide.get("layout") in ("section", "agenda"):
             # A divider carries only its title, which is shorter than the emptiness floor.
             continue
         parts.append(Part(str(slide.get("title") or ""), lines))
     return parts
+
+
+#: Slide fields that describe the slide rather than say something on it.
+_NOT_WORDS = frozenset({
+    "id", "layout", "title", "notes", "accent", "image", "diagram", "textScale", "number",
+    "pattern", "theme", "visualStyle", "density", "factCheck", "status",
+})
+
+
+def _leaf_lines(value) -> list[str]:
+    """A field's words as lines: a list entry (or a pair, or a record) is one line."""
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, dict):
+        words = [str(v) for v in value.values() if isinstance(v, (str, int, float))]
+        line = " ".join(w for w in words if w.strip())
+        return [line] if line else []
+    if isinstance(value, (list, tuple)):
+        out = []
+        for entry in value:
+            if isinstance(entry, (list, tuple)):
+                if line := " ".join(str(c) for c in entry if str(c).strip()):
+                    out.append(line)
+            else:
+                out.extend(_leaf_lines(entry))
+        return out
+    return []
 
 
 def _chart_lines(chart: dict) -> list[str]:

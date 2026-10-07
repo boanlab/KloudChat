@@ -55,7 +55,7 @@ def test_quote_pairing_newlines_negation_and_prefix_whitespace_are_preserved(pro
 
 
 def test_long_unmatched_quote_inputs_finish_without_dropping_the_suffix():
-    # A subprocess bounds a regression without hanging the API test runner.
+    # A subprocess bounds a slow scan without hanging the test runner.
     script = """
 from app.services import context
 from app.services.freshness import fresh_fact_required, without_quoted_transform_sources

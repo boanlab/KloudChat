@@ -1,8 +1,7 @@
 """Deleting a conversation deletes what it produced.
 
 A conversation and its artifacts are one record: a report or deck does not outlive the
-request that made it, and a share link to it stops working. Before, the artifacts were
-detached and lingered on the artifacts screen with no conversation behind them.
+request that made it, and a share link to it stops working.
 """
 
 from __future__ import annotations

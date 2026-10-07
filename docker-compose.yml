@@ -56,10 +56,8 @@ services:
   api:
     image: boanlab/kloudchat-api:latest
     restart: unless-stopped
-    # More than one replica needs `docker compose exec`/`logs api` (service
-    # name), not a fixed container name — Compose refuses a shared name across
-    # replicas, and `kloudchat-api` as a single instance's name would round-robin
-    # nothing anyway.
+    # No container_name: Compose refuses one shared across replicas. Address the
+    # service as `api` (`docker compose exec api`, `logs api`).
     deploy:
       replicas: ${KCHAT_API_REPLICAS:-1}
     depends_on:
@@ -69,17 +67,16 @@ services:
         condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
-    # No fixed host port: N replicas can't share one, and nginx in `web`
-    # reaches every replica by the service name `api`, not this port. For
-    # direct/debug access to one instance: `docker compose exec api sh`, or
-    # temporarily scale to 1 and add `ports: ["8100:8100"]` back locally.
+    # No host port: replicas cannot share one, and nginx in `web` reaches them
+    # by the service name `api`. For direct access, `docker compose exec api sh`,
+    # or scale to 1 and add `ports: ["8100:8100"]` locally.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       ENV: ${KCHAT_ENV:-dev}
       DATABASE_URL: postgresql+asyncpg://${KCHAT_DB_USER:-kchat}:${KCHAT_DB_PASSWORD:-kchat}@kloudchat-db:5432/kchat
-      # Same count as `deploy.replicas`, above — this is how each process
-      # knows whether the stop button needs cross-process delivery.
+      # Same count as `deploy.replicas`; tells each process whether the stop
+      # button needs cross-process delivery.
       API_REPLICAS: ${KCHAT_API_REPLICAS:-1}
       # Each replica's own pool. Postgres's own max_connections (100 by
       # default) is the ceiling across every replica sharing the database.
@@ -104,6 +101,10 @@ services:
       BOOTSTRAP_ADMIN_PASSWORD: ${KCHAT_ADMIN_PASSWORD:-}
       # 1 credit = $0.00001; 1,000,000 ≈ $10/month.
       DEFAULT_MONTHLY_CREDITS: ${KCHAT_DEFAULT_MONTHLY_CREDITS:-1000000}
+      SELF_HOSTED_CHAT_THINKING: ${KCHAT_SELF_HOSTED_CHAT_THINKING:-false}
+      SELF_HOSTED_THINKING_MODELS: ${KCHAT_SELF_HOSTED_THINKING_MODELS:-flash-next}
+      EXTERNAL_CHAT_THINKING: ${KCHAT_EXTERNAL_CHAT_THINKING:-false}
+      INTERNAL_DATA_STRICT_LOCAL_DEFAULT: ${INTERNAL_DATA_STRICT_LOCAL_DEFAULT:-true}
       COOKIE_SECURE: ${KCHAT_COOKIE_SECURE:-false}
       CORS_ORIGINS: ${KCHAT_CORS_ORIGINS:-["http://localhost:5173"]}
       # The master key never leaves this container. A value saved in the admin

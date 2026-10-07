@@ -103,7 +103,7 @@ def _ring() -> tuple[MultiFernet, Fernet]:
     """`(opens, seals)`: secrets are sealed with `SECRET_KEY` and opened with it or, for rows
     written before it was set, with the key derived from `JWT_SECRET`.
 
-    Without `SECRET_KEY` both are the derived key, as before; `has_own_key` says which.
+    Without `SECRET_KEY` both are the derived key; `has_own_key` says which.
     """
     pair = (env_settings.secret_key, env_settings.jwt_secret)
     ring = _rings.get(pair)
@@ -168,7 +168,7 @@ def resealed(value: str, *, plain: bool = False) -> str | None:
     """`value` sealed under `SECRET_KEY`, or None when it already is, cannot be opened, or
     `SECRET_KEY` is unset.
 
-    `plain`: a value in the clear is sealed too (connector environments predate sealing).
+    `plain`: a value in the clear is sealed too; connector environments may hold one.
     """
     if not value or not has_own_key():
         return None

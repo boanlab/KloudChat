@@ -1,9 +1,6 @@
 """Per-user LiteLLM virtual keys.
 
-Each user carries their own key so the proxy's spend logs, budgets and rate
-limits resolve to a person. These columns are where it lives.
-
-`litellm_key` is Fernet ciphertext, not a key — see `services/settings_store`.
+`litellm_key` is Fernet ciphertext, not a key; see `services/settings_store`.
 
 Revision ID: 0005
 Revises: 0004

@@ -155,9 +155,7 @@ _FIGURE_RULE = (
     "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
 )
 
-#: The picture 서식's own composition rule, handed to the planner so a poster is planned
-#: as a poster — one subject, space for a title — and not as the diagram the format
-#: guide above leans toward.
+#: The picture 서식's composition rule, so a non-diagram template is not planned as a diagram.
 _TEMPLATE_RULE = (
     "- 이 그림은 다음 서식으로 만든다. 구도·분위기·여백을 이 규칙대로 잡고, 서식이 도식이 "
     "아니면 상자·화살표·단계 배열로 짜지 마라: {suffix}\n"
@@ -271,11 +269,11 @@ async def plan(
     template: str = "",
 ) -> tuple[str, dict[str, int]]:
     """`(prompt, usage)`: the request rewritten by a language model into a structured picture
-    prompt.
+    prompt; the request itself when the planner fails.
 
-    `template` is the picture 서식's prompt suffix; the planner composes to it instead of
-    defaulting to a diagram. Falls back to the request itself when the planner fails.
+    `template` is the picture 서식's prompt suffix the planner composes to.
     """
+
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
         "language the request is written in — the request's own words, quoted beside each "
@@ -315,6 +313,7 @@ async def plan(
                 # The same request without the switch the provider refused.
                 body = json.loads(response.request.content or b"{}")
                 body.pop("reasoning", None)
+                body.update(thinking.switch(model))
                 response = await client.post("/v1/chat/completions", json=body)
             response.raise_for_status()
             payload = response.json()
