@@ -15,8 +15,8 @@ This guide covers running KloudChat for real users. For a laptop trial, the
 
 ## What you are deploying
 
-Four long-running containers, one initialization container, and bind-mounted
-data directories:
+Four long-running services, two one-shot containers, and bind-mounted data
+directories:
 
 | Container | Port | Holds |
 | --- | --- | --- |
@@ -24,10 +24,13 @@ data directories:
 | `api` (`KCHAT_API_REPLICAS`, default 1) | internal only | All application logic; **the only process with the LiteLLM master key** |
 | `kloudchat-db` | 5433 → 5432 | Postgres 16 |
 | `kloudchat-print` | internal | Headless Chromium, HTML to PDF; reachable from the API only |
+| `kloudchat-init` | — | One-shot: hands the data directories to uid 1000 |
+| `kloudchat-migrate` | — | One-shot: `alembic upgrade head` before any `api` replica starts |
 
-`api` has no fixed container name or published port past one replica — `web`'s
-nginx reaches every instance by the compose service name. Reach one directly
-with `docker compose exec api sh`, not a container name or `localhost:8100`.
+`api` has no fixed container name and no published port — `web`'s nginx
+reaches every replica by the compose service name. Reach the API through the
+web container (`localhost:5173/api/…`), or one instance with
+`docker compose exec api sh`.
 
 ```
 ./data/postgres     database files
@@ -38,8 +41,8 @@ with `docker compose exec api sh`, not a container name or `localhost:8100`.
 The `kloudchat-init` container runs once before the API and exits.
 Docker creates bind-mount directories as root and the API runs as uid 1000, so
 it creates `files` and `uv-cache` and hands them over — without it, uploads
-fail with "permission denied" on a first boot only. It shows up as `Exited (0)`
-in `docker compose ps -a`, which is the expected state.
+fail with "permission denied" on a first boot only. It and `kloudchat-migrate`
+show up as `Exited (0)` in `docker compose ps -a`, which is the expected state.
 
 Models and tools are **not** part of this deployment. They live in
 [`KloudChat-LLM`](https://github.com/boanlab/KloudChat-LLM) and are
@@ -53,7 +56,7 @@ explicit "not connected".
 - ~2 GB disk for images, plus whatever generated media will need — a single
   video clip is tens of megabytes
 - A TLS terminator in front (see below)
-- Network reachability from `kloudchat-api` to the backend gateway. The browser
+- Network reachability from the `api` containers to the backend gateway. The browser
   needs no route to it at all.
 
 ## Install
@@ -80,6 +83,8 @@ Then pin the images. `docker-compose.yml` ships `:latest`, which moves with
 every push to main; a deployment wants a version tag:
 
 ```yaml
+  migrate:
+    image: boanlab/kloudchat-api:1.0.0
   api:
     image: boanlab/kloudchat-api:1.0.0
   print:
@@ -92,7 +97,7 @@ Then:
 
 ```bash
 docker compose up -d
-curl -fsS localhost:8100/api/health
+curl -fsS localhost:5173/api/health
 ```
 
 Create the administrator either by signing up first (the first account becomes
@@ -100,8 +105,9 @@ administrator) or by setting `KCHAT_ADMIN_EMAIL` and `KCHAT_ADMIN_PASSWORD`
 before the first start. Those two apply **only** when the database has no
 accounts, so they cannot be used to reset a forgotten password later.
 
-Finish in the UI: **Settings → System → Integrations**, paste the gateway
-address and the LiteLLM master key, and use each field's connection test.
+Finish in the UI, from the account menu's **System** screen: paste the gateway
+address under **Features → Feature integrations**, the LiteLLM master key under
+**Proxy**, and use each field's connection test.
 
 ## TLS and reverse proxy
 
@@ -188,12 +194,12 @@ Version tags are immutable. `:latest` is not: both a release and a later push to
 `main` write it, so it points at whichever happened most recently — after
 tagging `v1.2.3`, the next merge moves `:latest` past it.
 
-**Pin a version tag in production**, by editing the three `image:` lines in
+**Pin a version tag in production**, by editing the `image:` lines in
 `docker-compose.yml`. `:latest` is only ever a convenience, and a pinned tag
 committed to your deployment branch is a record of what is running.
 
 Running a fork's own build means changing the `boanlab/` namespace on the same
-three lines to the Docker Hub account that published it.
+lines to the Docker Hub account that published it.
 
 To build from a checkout instead — a patch you have not published, or an
 architecture with no published tag — overlay `docker-compose.build.yml`:
@@ -248,21 +254,22 @@ connector credentials) unreadable.
 
 ```bash
 git pull                      # compose file and .env.example changes
-$EDITOR docker-compose.yml    # bump the three image tags to the new version
+$EDITOR docker-compose.yml    # bump the image tags to the new version
 docker compose pull
 docker compose up -d
-docker compose logs -f api    # watch the migration
+docker compose logs migrate   # the migration's output
 ```
 
-Migrations run automatically on container start (`alembic upgrade head`). Take
-a database dump first — Alembic has no down-migration guarantee here.
+Migrations run automatically in the one-shot `migrate` container
+(`alembic upgrade head`) before the `api` replicas start. Take a database dump
+first — Alembic has no down-migration guarantee here.
 
 Rolling back means restoring the dump, not running a downgrade.
 
 ## Operational checks
 
 ```bash
-curl -fsS localhost:8100/api/health
+curl -fsS localhost:5173/api/health
 # {"status":"ok","litellm":"ok"}
 ```
 
@@ -291,21 +298,19 @@ them for one run.
 
 ## Scaling notes
 
-The current build assumes **one API instance**. Three things stand in the way
-of running more:
+The API scales horizontally: set `KCHAT_API_REPLICAS` and `docker compose up -d`.
 
-- **Migrations run on container start.** With multiple replicas, two containers
-  race the same migration. Move `alembic upgrade head` into a separate job
-  first.
-- **Runtime settings are cached in-process.** A change made on one replica
-  reaches the others within the cache TTL, not instantly.
-- **A running turn's stop signal is in-process.** `POST /sessions/{id}/stop`
-  reaches the turn only on the replica generating it, so 중단 would become
-  unreliable behind a round-robin balancer. Sticky sessions or a shared signal
-  is the fix.
+- **Migrations** run once, in `migrate`, before any replica starts.
+- **Runtime settings** are cached in-process for 15 seconds and invalidated on
+  write, so a change made on one replica reaches the others within that window.
+  Governance is read fresh for every egress decision.
+- **The stop signal** is broadcast over Postgres `NOTIFY` when there is more
+  than one replica (`services/stop_signal.py`), so 중단 reaches whichever
+  replica is streaming the turn. A turn is claimed on its session row, so two
+  replicas cannot answer the same conversation at once.
+- **The database pool** is per replica; replicas × (`DB_POOL_SIZE` +
+  `DB_MAX_OVERFLOW`) must stay under Postgres's `max_connections`.
 
-None is a hard barrier, but all three need addressing before adding replicas.
-
-Vertical headroom is mostly about concurrent streaming turns: each holds an
-upstream HTTP connection for as long as the answer takes. The database is not
-the bottleneck at small-team scale.
+Headroom is mostly about concurrent streaming turns: each holds an upstream
+HTTP connection for as long as the answer takes. The database is not the
+bottleneck at small-team scale.

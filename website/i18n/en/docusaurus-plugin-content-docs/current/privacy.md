@@ -21,7 +21,7 @@ The **data boundary**, which differs by model, is shown in the model list. [Choo
 
 ## Personal data detection
 
-KloudChat detects phone numbers, national ID numbers, payment card numbers, IP addresses, private keys, and email addresses. Names and addresses are excluded from detection.
+KloudChat detects phone numbers, national ID numbers, payment card numbers, IP addresses, private keys, API keys and JWT tokens, and email addresses. Names and addresses are excluded from detection.
 
 ### Chat and model comparison
 
@@ -34,7 +34,7 @@ If the administrator has enabled **Personal data protection for external models*
 | Send the original text to the external model | Sends the original text as it is. Shown only when the administrator allows it. |
 | Return to editing | Returns to the input box without sending. |
 
-To avoid choosing every time, set the default action in **Default handling for personal data detection** under Settings → Preferences.
+To avoid choosing every time, set the default action in **A request with personal data in it** → **What to do by default** under Settings → Preferences.
 
 ### Reports, slide decks, images, and the API
 

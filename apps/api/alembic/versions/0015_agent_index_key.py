@@ -1,10 +1,6 @@
 """Collection name for an agent's shelf in the retrieval index.
 
-Every operation at the index is scoped to a collection name, so that name is the
-whole authorisation. Not `agents.id`, which travels in URLs and API responses:
-32 bytes of urlsafe randomness, same shape as a share token.
-
-Nullable and filled on first use — an agent with no documents needs no shelf.
+The name is the index's whole authorisation, so it is random rather than `agents.id`.
 
 Revision ID: 0015
 Revises: 0014
@@ -28,8 +24,7 @@ def upgrade() -> None:
     op.add_column(
         "agents", sa.Column("index_key", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
     )
-    # Unique so two agents can never share a shelf. Partial, because "no key
-    # yet" is the normal state for an agent with nothing attached.
+    # Unique so two agents never share a shelf; partial because most agents have no key.
     op.create_index(
         "ux_agents_index_key",
         "agents",

@@ -260,3 +260,34 @@ test('HTML presentation keeps its sandboxed frame and shared controls', async ({
   await expect(dialog(page)).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
+
+test('up and down step through the slides, in the show and in the deck view', async ({ page }, testInfo) => {
+  const unexpected = await fixture(page, testInfo)
+  await page.keyboard.press('ArrowDown')
+  await expect(dialog(page).getByRole('heading', { name: '신청 진행 단계' })).toBeVisible()
+  await page.keyboard.press('ArrowUp')
+  await expect(dialog(page).getByRole('heading', { name: deck.title })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog(page)).toHaveCount(0)
+  // The deck view: the rail's current slide follows the keys. A portrait phone hides the
+  // rail, so there is nothing to read the position from.
+  const thumb = (n: number) => page.getByRole('button', { name: `${n}번 장`, exact: true }).first()
+  if (!(await thumb(1).isVisible())) {
+    expect(unexpected).toEqual([])
+    return
+  }
+  await expect(thumb(1)).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('ArrowDown')
+  await expect(thumb(2)).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('End')
+  await expect(thumb(deck.data.slides.length)).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('ArrowUp')
+  await expect(thumb(deck.data.slides.length - 1)).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Home')
+  await expect(thumb(1)).toHaveAttribute('aria-current', 'true')
+  // Typing in the composer is not navigation.
+  await page.getByLabel('프롬프트 입력').focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(thumb(1)).toHaveAttribute('aria-current', 'true')
+  expect(unexpected).toEqual([])
+})

@@ -19,9 +19,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    # Ordered, like the economy list beside it, and empty on every existing
-    # installation: an upgrade lane that switched itself on would spend money
-    # nobody agreed to.
+    # Ordered, and empty by default so the upgrade lane never turns itself on.
     op.add_column(
         "governance",
         sa.Column(

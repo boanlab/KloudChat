@@ -1,4 +1,4 @@
-"""검색 결과는 질문의 낱말을 더 많이 담은 것이 앞에 온다."""
+"""Search results holding more of the question's words come first."""
 
 from app.services.tools.builtin import _rank, _terms
 
@@ -19,7 +19,7 @@ def test_a_statistics_site_that_matches_one_word_goes_below_the_paper() -> None:
     ]
     ranked = _rank(rows, "social media depression meta-analysis")
     assert ranked[0]["title"].startswith("Social Media and Depression")
-    # 나머지는 엔진의 순서 그대로.
+    # The rest keep the engine's order.
     assert [r["title"][:6] for r in ranked[1:]] == ["Social", "Rockst"]
 
 
@@ -48,5 +48,5 @@ def test_results_that_share_no_word_with_the_query_are_off_topic() -> None:
     assert _off_topic(junk, "전고체 배터리 양산 일정 전망 2025")
     relevant = junk + [_row("전고체 배터리 양산", "https://x")]
     assert not _off_topic(relevant, "전고체 배터리 양산 일정")
-    # 한 낱말짜리 질문은 판단하지 않는다.
+    # A one-word question is not reranked.
     assert not _off_topic(junk, "전고체")

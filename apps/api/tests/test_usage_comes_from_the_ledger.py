@@ -393,6 +393,19 @@ async def test_settle_records_which_model_took_the_money(db) -> None:
     assert (row.model, row.delta, row.reason) == ("vendor/quality", -900, "chat.completion")
 
 
+async def test_a_charge_reaches_the_account_and_two_charges_both_land(db) -> None:
+    """A charge reaches `credits_used` as well as the ledger, and two charges both land."""
+    user = await _account(db)
+    settle(db, user, 900, reason="chat.completion", session_id="s-1", model="vendor/quality")
+    assert user.credits_used == 900  # this request sees its own charge
+    await db.commit()
+    settle(db, user, 100, reason="chat.completion", session_id="s-1", model="vendor/quality")
+    await db.commit()
+
+    stored = (await db.exec(sa.select(User.credits_used).where(User.id == user.id))).one()[0]
+    assert stored == 1000
+
+
 async def test_every_day_of_the_window_is_on_the_chart(db) -> None:
     """Days with no requests appear as zero rows."""
     user = await _account(db)
@@ -468,12 +481,12 @@ async def test_every_charge_says_which_surface_it_came_from(db) -> None:
     assert surface_for("image.generate") == "image"
     assert surface_for("audio.generate") == "av"
     assert surface_for("video.generate") == "av"
-    # 유도할 수 없으면 비워 둔다.
+    # Left empty when it cannot be derived.
     assert surface_for("document.plan") is None
     assert surface_for("document.revise") is None
     assert surface_for("design.extract") is None
 
-    # 원장에 적힌다.
+    # Written to the ledger.
     user = await _account(db)
     settle(db, user, 900, reason="deck.factcheck", session_id="s-1", model="vendor/quality")
     await db.commit()

@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react'
+import { detachTables } from '@/lib/markdownTables'
 import { fontFamilyFor } from '@/components/report/docType'
 import {
   AlignCenter,
@@ -38,6 +39,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
+import { TitleBlock } from '@/components/report/TitleBlock'
+import {
+  TITLE_BLOCK_CSS,
+  cleanTitleBlock,
+  counterStyle,
+  numberHtmlHeadings,
+  numberingCss,
+  sectionNumbers,
+  titleBlockHtml,
+} from '@/components/report/docFormats'
 import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
 import { FRAMES, drawFitting, framed, rasterise, theme } from '@/lib/mermaid'
@@ -56,7 +67,7 @@ import {
   type TemplateStyle,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { ReportArtifact, ReportSection, Source } from '@/types'
+import type { ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
 
@@ -594,10 +605,18 @@ function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
   return `
   .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
   .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
-  .page.paginated .cover { min-height: 232mm; padding: 74mm 0 0; margin: 0; }
+  .page.paginated .cover { min-height: 0; padding: 0 0 4mm; margin: 0 0 8mm; }
   .page.paginated section { margin: 0 0 12mm; }
   /* The editor keeps a paragraph inside every cell; the finished file has bare text there. */
   .page.paginated td > p, .page.paginated th > p { margin: 0; }
+  /* Justified like a printed report; Korean words are not broken mid-word. */
+  .page.paginated p, .page.paginated li { text-align: justify; word-break: keep-all; overflow-wrap: anywhere; }
+  .page.paginated td > p, .page.paginated th > p { text-align: left; }
+  /* Figures fit the column of a printed report: centred, at most 85% wide and 110 mm tall. */
+  .page.paginated img { display: block; margin: 6mm auto 2mm; max-width: 85%; max-height: 110mm; width: auto; height: auto; object-fit: contain; }
+  .page.paginated figure { margin: 6mm 0; text-align: center; }
+  .page.paginated figcaption { text-align: center; font-size: 0.85em; color: #555; margin-top: 2mm; }
+  .page.paginated p:has(> img:only-child) { text-align: center; }
 `
 }
 
@@ -608,7 +627,7 @@ const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break.ProseMirror-selectednode { border-color: var(--accent, #5b5bd6); }
 `
 
-function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, onWebView }: { html: string; css: string; settings: Required<PageSettings>; onSettings: (next: Required<PageSettings>) => void; settingsOpen: boolean; onEdit: () => void; onWebView: () => void }) {
+function PagedDocument({ html, css, settings, onSettings, settingsOpen, settingsSlot, onEdit, onWebView }: { html: string; css: string; settings: Required<PageSettings>; onSettings: (next: Required<PageSettings>) => void; settingsOpen: boolean; settingsSlot?: HTMLElement | null; onEdit: () => void; onWebView: () => void }) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
@@ -654,8 +673,11 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
          pulls fixed elements into the flow of each page and the running header above already
          carries the name, so the copy would only push the text down page by page. */
       .doc-foot { display: none !important; }
-      .cover { margin: 0 !important; }
-      .cover + * { break-before: page; }
+      /* A cover taller than the page cannot be split, and Paged.js retries it forever: a
+         template's extra top room (기말 리포트's 30vh) is clipped to the sheet. */
+      .cover { margin: 0 !important; box-sizing: border-box; max-height: ${297 - settings.margins.top - settings.margins.bottom - 4}mm !important; overflow: hidden; }
+      /* No cover page: whatever a template's cover asks for, the title heads page one. */
+      .cover { min-height: 0 !important; break-after: auto !important; }
       section { break-inside: auto; }
       h1, h2, h3, h4 { break-after: avoid; }
       p, li { orphans: 2; widows: 2; }
@@ -734,7 +756,8 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
             <button type="button" aria-label={t('확대')} title={t('확대')} disabled={pageScale >= 2} onClick={() => step(1)} className="grid size-8 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg disabled:opacity-40"><ZoomIn size={15} /></button>
           </div>
         )}
-        {settingsOpen && (
+        {/* In the ribbon when it gives a slot; above the page only as a fallback. */}
+        {settingsOpen && !settingsSlot && (
           <div className="basis-full rounded-card border border-line bg-panel p-3 shadow-sm" aria-label={t('페이지 설정 도구')}>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
@@ -746,6 +769,20 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, onEdit, 
               {(['top', 'right', 'bottom', 'left'] as const).map((side) => <label key={side} className="text-xs text-muted">{t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])}<input type="number" min={10} max={35} aria-label={t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])} value={settings.margins[side]} onChange={(event) => onSettings({ ...settings, margins: { ...settings.margins, [side]: Math.min(35, Math.max(10, Number(event.target.value) || 10)) } })} className="ml-1 h-8 w-16 rounded-control border border-line px-2 text-sm" /> mm</label>)}
             </div>
           </div>
+        )}
+        {settingsOpen && settingsSlot && createPortal(
+          <div className="w-full py-1" aria-label={t('페이지 설정 도구')}>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
+              <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(['top', 'right', 'bottom', 'left'] as const).map((side) => <label key={side} className="text-xs text-muted">{t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])}<input type="number" min={10} max={35} aria-label={t({ top: '위 여백', right: '오른쪽 여백', bottom: '아래 여백', left: '왼쪽 여백' }[side])} value={settings.margins[side]} onChange={(event) => onSettings({ ...settings, margins: { ...settings.margins, [side]: Math.min(35, Math.max(10, Number(event.target.value) || 10)) } })} className="ml-1 h-8 w-16 rounded-control border border-line px-2 text-sm" /> mm</label>)}
+            </div>
+          </div>,
+          settingsSlot,
         )}
       </div>
       {busy && <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted"><Loader2 size={16} className="animate-spin" />{t('페이지를 나누는 중…')}</div>}
@@ -799,6 +836,7 @@ export function DocumentEditor({
   onWebView,
   onDirty,
   toolbarSlot,
+  settingsSlot,
 }: {
   report: ReportArtifact
   /** Design template; empty renders the plain document seed. */
@@ -815,9 +853,12 @@ export function DocumentEditor({
     title?: string,
     pageSettings?: ReportArtifact['pageSettings'],
     reviewComments?: ReportArtifact['reviewComments'],
+    titleBlock?: ReportTitleBlock,
   ) => void
   /** Ribbon slot the formatting bar is portalled into; rendered in place when absent. */
   toolbarSlot?: HTMLElement | null
+  /** Ribbon slot the page settings are portalled into; above the page when absent. */
+  settingsSlot?: HTMLElement | null
 }) {
   const t = useT()
   const [style, setStyle] = useState<TemplateStyle | null>(null)
@@ -928,6 +969,18 @@ export function DocumentEditor({
     setRenamed(next)
     onDirty?.(compose(editsRef.current, next))
   }
+
+  // The document's head by purpose; its field values are edited in place.
+  const [titleBlock, setTitleBlock] = useState<ReportTitleBlock | null>(() => cleanTitleBlock(report.titleBlock))
+  const reblock = (next: ReportTitleBlock) => {
+    setTitleBlock(next)
+    onDirty?.(compose(editsRef.current, renamedRef.current), undefined, undefined, undefined, next)
+  }
+  const numbering = titleBlock?.numbering ?? 'none'
+  const numbers = sectionNumbers(
+    report.sections.map((s) => (edits[s.id] === undefined ? s : { ...s, content: edits[s.id], format: 'html' as const })),
+    numbering,
+  )
 
   const retitle = (next: string) => {
     if (!next || next === (editedTitle ?? report.title)) return
@@ -1041,16 +1094,19 @@ export function DocumentEditor({
     sectionNodes.current[comment.sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const previewHtml = `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`
+  const previewHtml = titleBlock
+    ? `<main class="page paginated-preview fmt">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section><h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${numberHtmlHeadings(bodyOf(section), numbering, numbers[index])}</section>`).join('')}</main>`
+    : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`
   const visualStyle = tokens?.visualStyle ?? 'editorial'
   const visualCss = visualStyle === 'poster'
     ? `.page .cover{background:linear-gradient(145deg,var(--accent),color-mix(in srgb,var(--accent) 48%,#111827));color:#fff;padding:30mm 22mm}.page .cover h1{color:#fff;font-size:30pt;max-width:15ch}.page section>h2{font-size:18pt;border:0;padding:0 0 4mm;color:var(--accent)}.page section{margin-bottom:14mm}.page blockquote,.page .callout{border-radius:3mm;background:color-mix(in srgb,var(--accent) 8%,#fff)}`
     : visualStyle === 'minimal'
-      ? `.page .cover{min-height:92mm;padding-top:30mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
+      ? `.page .cover{min-height:0;padding:10mm 8mm 8mm;background:color-mix(in srgb,var(--accent) 7%,#fff)}.page .cover h1{font-size:22pt;font-weight:600;max-width:22ch}.page section>h2{font-size:12pt;font-weight:650;letter-spacing:.08em;border:0;color:var(--muted)}.page section{margin-bottom:9mm}`
       : ''
   // The design's typeface, unless a template stylesheet has its own say.
   const fontCss = !style?.css && fontFamilyFor(tokens?.font) ? `.page{font-family:${fontFamilyFor(tokens?.font)}}` : ''
-  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}`
+  const formatCss = titleBlock ? `\n${TITLE_BLOCK_CSS}\n${numberingCss(numbering)}` : ''
+  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatCss}`
 
   if (error) return <p className="p-4 text-sm text-danger">{t(error)}</p>
   if (templateId && !style) {
@@ -1077,7 +1133,7 @@ export function DocumentEditor({
     : <div className="flex min-w-0 items-center overflow-x-auto border-b border-line bg-panel pr-2 max-sm:pr-1">{bar}</div>
 
   if (layoutMode === 'pages') {
-    return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
+    return <PagedDocument html={previewHtml} css={pageCss} settings={pageSettings} settingsOpen={settingsOpen} settingsSlot={settingsSlot} onEdit={() => onLayoutMode?.('edit')} onWebView={() => onWebView?.()} onSettings={(next) => { setPageSettings(next); onDirty?.(compose(edits, renamed), editedTitle ?? undefined, next) }} />
   }
 
   return (
@@ -1142,23 +1198,34 @@ export function DocumentEditor({
               {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
               <div
                 ref={setPage}
-                className="page paginated"
+                className={cn('page paginated', titleBlock && 'fmt')}
                 style={{ ['--sheet-h' as string]: `${usable}px` } as React.CSSProperties}
               >
-                <div className="cover">
-                  <EditableLine
-                    as="h1"
-                    value={editedTitle ?? report.title}
-                    editable={editable}
-                    onChange={retitle}
+                {titleBlock ? (
+                  <TitleBlock
+                    block={titleBlock}
+                    title={editedTitle ?? report.title}
+                    paged
+                    onChange={editable ? reblock : undefined}
+                    titleNode={<EditableLine as="h1" className="tb-title" value={editedTitle ?? report.title} editable={editable} onChange={retitle} />}
                   />
-                </div>
-                {report.sections.map((section) => (
-                  <section key={section.id} ref={(node) => { sectionNodes.current[section.id] = node }}>
+                ) : (
+                  <div className="cover">
+                    <EditableLine
+                      as="h1"
+                      value={editedTitle ?? report.title}
+                      editable={editable}
+                      onChange={retitle}
+                    />
+                  </div>
+                )}
+                {report.sections.map((section, index) => (
+                  <section key={section.id} ref={(node) => { sectionNodes.current[section.id] = node }} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
                     <EditableLine
                       value={renamed[section.id] ?? section.heading}
                       editable={editable}
                       onChange={(heading) => rename(section, heading)}
+                      numberLabel={numbers[index].label}
                     />
                     <SectionEditor
                       html={bodyOf(section)}
@@ -1270,7 +1337,7 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
       rows = []
     }
   }
-  for (const raw of (section.content || '').split('\n')) {
+  for (const raw of detachTables(section.content || '').split('\n')) {
     const line = raw.trim()
     const fenceMark = /^```+\s*([A-Za-z0-9_-]*)\s*$/.exec(line)
     if (fence !== null) {

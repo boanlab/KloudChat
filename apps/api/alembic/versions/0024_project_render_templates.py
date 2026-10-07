@@ -1,17 +1,6 @@
-"""The formats a project's work starts in.
+"""Per-surface rendering templates for a project's new sessions.
 
-`sessions.render_template_id` is per conversation and picked in the composer,
-so until now a project could carry a look but never a shape: "this project's
-reports are always the 공문 form" had to be said again in every new session.
-
-One JSONB map rather than a column per surface — `models.workspace.Project`
-argues that choice where the column is declared. Nullable and null by default:
-a project that never chose a format keeps the built-in track exactly.
-
-No foreign key, and no check constraint on the keys. The catalogue ships in
-the image rather than in a table, and the router refuses an id it cannot place
-on write; what the database can usefully promise here is that the column holds
-JSON.
+No foreign key: the catalogue ships in the image, and the router validates ids on write.
 
 Revision ID: 0024
 Revises: 0023

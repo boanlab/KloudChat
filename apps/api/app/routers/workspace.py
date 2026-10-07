@@ -669,11 +669,8 @@ async def list_artifacts(
     before_at: datetime | None = None,
     before_id: str | None = None,
 ):
-    """A page of the caller's artifacts as cards, newest first.
-
-    Keyset pagination: `(before_at, before_id)` is the last row the client has.
-    `q` matches the title only.
-    """
+    """A page of the caller's artifacts as cards, newest first; `q` matches the title."""
+    # Keyset pagination: `(before_at, before_id)` is the last row the client has.
     query = select(Artifact).where(Artifact.user_id == user.id)
     if kind:
         query = query.where(Artifact.kind == kind)
@@ -875,11 +872,8 @@ async def factcheck_slide(
 async def store_diagram(
     artifact_id: str, payload: DiagramPicture, user: CurrentUser, db: DbSession
 ):
-    """Stores a browser-rendered mermaid diagram image for the exporters.
-
-    A cache keyed by diagram source, beside the section body. No version
-    snapshot and no charge.
-    """
+    """Stores a browser-rendered mermaid diagram image for the exporters."""
+    # A cache keyed by diagram source: no version snapshot and no charge.
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
@@ -1150,12 +1144,8 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
 async def store_slide_diagram(
     artifact_id: str, payload: SlideDiagramPicture, user: CurrentUser, db: DbSession
 ):
-    """Stores the browser's raster of a slide's own figure as the slide picture.
-
-    The exporters read `image.src`; the panel keeps drawing the mermaid live. No version
-    snapshot and no charge, like a report's diagram cache. A picture a person placed is
-    never overwritten.
-    """
+    """Stores the browser's raster of a slide's own figure as the slide picture."""
+    # Read by the exporters as `image.src`; no version snapshot and no charge.
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.deck:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_deck")
@@ -1176,6 +1166,10 @@ async def store_slide_diagram(
     current = dict(target.get("image") or {})
     if current.get("src") and not current.get("diagram"):
         # A person put a picture here; the figure's raster does not replace it.
+        return ArtifactOut.of(artifact)
+    if current.get("renderer") == "pptx" and current.get("key") == payload.key:
+        # The server drew this figure from the deck's shapes; a browser's mermaid raster
+        # of the same source does not replace it.
         return ArtifactOut.of(artifact)
     if current.get("src") == payload.src:
         return ArtifactOut.of(artifact)
@@ -1258,9 +1252,7 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
 async def add_section_image(
     artifact_id: str, payload: SectionImage, user: CurrentUser, db: DbSession
 ):
-    """Appends an owned image artifact to one report section, as a `<figure>` for
-    HTML bodies or a Markdown image line otherwise. Snapshotted, no charge.
-    """
+    """Appends an owned image artifact to one report section. Snapshotted, no charge."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.report:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_report")
@@ -1308,9 +1300,7 @@ async def add_section_image(
 
 @router.post("/artifacts/{artifact_id}/blocks/rewrite", response_model=ArtifactOut)
 async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUser, db: DbSession):
-    """Rewrites one block of an HTML artifact and re-renders `content` from the blocks.
-    Charged and snapshotted.
-    """
+    """Rewrites one block of an HTML artifact and re-renders `content`. Charged, snapshotted."""
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is not ArtifactKind.html:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_a_page")
@@ -1787,9 +1777,7 @@ async def list_tool_catalog(user: CurrentUser, db: DbSession):
 
 @router.get("/skills/store", response_model=list[StoreSkillOut])
 async def list_skill_store(user: CurrentUser, db: DbSession):
-    """Org-shared skills owned by others. Kept apart from `GET /skills`, which
-    lists only runnable (owned) skills.
-    """
+    """Org-shared skills owned by others; `GET /skills` lists only owned ones."""
     rows = (
         await db.exec(
             select(Skill)
@@ -2037,10 +2025,7 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     status_code=status.HTTP_201_CREATED,
 )
 async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
-    """Copies a shared agent into this account, installing its shared skills too.
-
-    Knowledge files are the author's and are not copied.
-    """
+    """Copies a shared agent and its shared skills into this account, without knowledge files."""
     origin = await _shared(db, Agent, user, agent_id)
     mine = list((await db.exec(select(Agent).where(Agent.owner_id == user.id))).all())
     if (existing := _copy_of(mine, origin)) is not None:
@@ -2346,11 +2331,9 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
 
 @router.get("/artifacts/{artifact_id}/export")
 async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, format: str = "docx"):
-    """An owned artifact as a file.
-
-    Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`;
-    HTML artifacts take `html` plus the set matching their template; code takes `source`.
-    """
+    """An owned artifact as a file in the requested format."""
+    # Reports take `docx`, `pdf`, `hwpx` or `md`; decks take `pptx`, `pdf` or `md`;
+    # HTML artifacts take `html` plus the set matching their template; code takes `source`.
     artifact = await _own(db, Artifact, "user_id", user, artifact_id)
     if artifact.kind is ArtifactKind.code and format == "source":
         return _export_code_source(artifact)
@@ -2373,6 +2356,8 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
     )
     tokens = data.get("design") or None
     page_settings = data.get("pageSettings") or None
+    #: The head of a document by purpose (`doc_formats`): cover, field table, memo rows.
+    title_block = data.get("titleBlock") or None
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
 
@@ -2384,7 +2369,9 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
         media = "text/markdown; charset=utf-8"
         suffix = "md"
     elif format == "pdf":
-        body = report_export.to_pdf(title, sections, tokens=tokens, page_settings=page_settings)
+        body = report_export.to_pdf(
+            title, sections, tokens=tokens, page_settings=page_settings, title_block=title_block
+        )
         media = "application/pdf"
         suffix = "pdf"
     elif format == "docx":
@@ -2394,11 +2381,14 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
             tokens=tokens,
             template=docx_template,
             page_settings=page_settings,
+            title_block=title_block,
         )
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
     elif format == "hwpx":
-        body = report_export.to_hwpx(title, sections, tokens=tokens, page_settings=page_settings)
+        body = report_export.to_hwpx(
+            title, sections, tokens=tokens, page_settings=page_settings, title_block=title_block
+        )
         media = "application/hwp+zip"
         suffix = "hwpx"
     else:
@@ -2695,9 +2685,8 @@ async def list_design_templates(user: CurrentUser, surface: str | None = None):
 
 @router.get("/design-templates/usage", response_model=DesignTemplateUsageOut)
 async def design_template_usage(user: CurrentUser, db: DbSession):
-    """Sessions started per rendering template: `mine` for the caller, `popular`
-    across the installation. Aggregates only; no user is identifiable.
-    """
+    """Sessions started per rendering template, for the caller and across the installation."""
+    # Aggregates only; no user is identifiable.
     counts: dict[str, dict[str, int]] = {"mine": {}, "popular": {}}
     for key, mine_only in (("mine", True), ("popular", False)):
         query = (
@@ -2713,11 +2702,8 @@ async def design_template_usage(user: CurrentUser, db: DbSession):
 
 @router.get("/design-templates/{template_id}/preview")
 async def design_template_preview(template_id: str):
-    """The template's seed rendered around its sample, for the gallery card's iframe.
-
-    Unauthenticated: an iframe `src` cannot carry a header, and everything
-    served here ships in the image.
-    """
+    """The template's seed rendered around its sample, for the gallery card's iframe."""
+    # Unauthenticated: an iframe `src` cannot carry a header, and all of this ships in the image.
     template = design_templates.get(template_id)
     if template is None or not template.sample or not template.seed:
         raise HTTPException(

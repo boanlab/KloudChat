@@ -52,6 +52,9 @@ class _User:
 
 CATALOGUE = [
     {**LOCAL, "kinds": ["chat", "slides", "report"]},
+    {"id": "local/big", "dataBoundary": "hybrid", "kinds": ["chat", "slides", "report"]},
+    {"id": "strict-local/big", "dataBoundary": "self_hosted", "strictLocal": True,
+     "kinds": ["chat", "slides", "report"]},
     {**STRICT, "kinds": ["chat", "slides", "report"]},
     {**EXTERNAL, "kinds": ["chat", "slides", "report"]},
     {"id": "vendor/chat-only", "dataBoundary": "external", "kinds": ["chat"]},
@@ -82,9 +85,12 @@ def test_a_named_planner_is_used():
     assert planner("local/a") == "local/a"
 
 
-def test_a_privacy_routed_turn_gets_no_planner_at_all():
-    """A privacy-routed turn gets no separate planner."""
+def test_a_privacy_routed_turn_plans_only_on_a_strict_local_model():
+    """A privacy-routed turn keeps internal material inside: an external or hybrid planner
+    is refused, a strict-local one may plan."""
     assert planner("vendor/b", writer=STRICT, strict_local=True) == ""
+    assert planner("local/a", writer=STRICT, strict_local=True) == ""
+    assert planner("local/strict", writer=STRICT, strict_local=True) == "local/strict"
 
 
 def test_a_model_this_account_may_not_use_is_refused():
@@ -103,3 +109,8 @@ def test_a_planner_that_would_widen_the_turn_is_refused():
 
 def test_a_name_that_is_not_in_the_catalogue_is_refused():
     assert planner("vendor/gone") == ""
+
+
+def test_the_policy_names_a_local_planner_once_and_the_strict_route_takes_its_twin():
+    assert planner("local/big", writer=EXTERNAL) == "local/big"
+    assert planner("local/big", writer=STRICT, strict_local=True) == "strict-local/big"

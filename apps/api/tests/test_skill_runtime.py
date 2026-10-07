@@ -1081,7 +1081,9 @@ async def test_report_upstream_payloads_keep_workspace_context_role_separated(mo
 
     assert responses == []
     assert any(event["type"] == "report" for event in events)
-    assert len(posts) == 3
+    # Outline, section, figure plan, and the figure planner's second look (a report asks
+    # for at least one figure): every one keeps the same role boundaries.
+    assert len(posts) == 4
     _assert_document_payload_boundaries(posts, trusted, untrusted)
 
 

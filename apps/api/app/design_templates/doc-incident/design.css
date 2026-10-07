@@ -70,3 +70,10 @@ section:last-of-type h2 { color: var(--accent); }
 @media print {
   .cover { min-height: 0; padding: 1rem 0; page-break-after: auto; break-after: auto; }
 }
+
+/* 한눈에: 절 번호가 색 칸 안의 흰 숫자, 표 머리는 짙은 바탕 — 상황판처럼 읽힌다. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+h2::before { display: inline-block; min-width: 1.6em; padding: 0.05em 0.35em; margin-right: 0.6rem;
+             background: var(--accent); color: #fff; border-radius: 3px; text-align: center;
+             -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+table thead th { background: var(--accent-deep); color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

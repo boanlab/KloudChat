@@ -483,11 +483,9 @@ def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: boo
     """One block of authored HTML reduced to what the seed styles; artifacts are also opened outside
     the sandbox.
 
-    The markup is parsed the way a browser parses it (nh3, an HTML5 parser) and written
-    back from the tree, so an attribute a regex would not know about (`background=`,
-    `srcset=`) or a quote left open cannot carry anything past the allow lists. Tags outside
-    `_ALLOWED_TAGS` lose their markup and keep their words; `_REMOVED_WITH_CONTENT` go
-    whole.
+    Parsed as a browser would (nh3) and written back from the tree, so unknown attributes
+    or unclosed quotes cannot slip past the allow lists. Tags outside `_ALLOWED_TAGS` keep
+    their words only; `_REMOVED_WITH_CONTENT` go whole.
 
     `layouts`: the template's layout names to strip from the front.
     `editable_styles`: keep `_EDITABLE_STYLE` declarations (person-edited
@@ -520,8 +518,8 @@ def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: boo
 def _token_declarations(tokens: dict[str, str]) -> str:
     """Design tokens as CSS custom properties, shared by `render` and `stylesheet`.
 
-    The document type scale (`doc_type.CSS_VARIABLES`) rides along, so the seeds and
-    every 서식 draw their type from the one table the exporters read.
+    Includes `doc_type.CSS_VARIABLES`, the type scale the exporters also read.
+
     """
     return "\n".join(
         f"      --{name}: {value};"

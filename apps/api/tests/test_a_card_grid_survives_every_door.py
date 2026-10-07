@@ -1,4 +1,4 @@
-"""카드 격자와 강조 상자가 펜스·웹뷰·페이지뷰·세 내보내기를 모두 지나 살아남는다."""
+"""Card grids and callout boxes survive the fence, web view, page view and all three exports."""
 
 from __future__ import annotations
 
@@ -31,14 +31,14 @@ def test_the_writer_s_fence_reaches_the_exporters_as_a_grid():
 
 
 def test_a_grid_is_two_at_a_time_and_the_odd_one_gets_an_empty_partner():
-    """격자는 두 단이며 홀수 개면 마지막 짝이 빈다."""
+    """The grid has two columns; with an odd count the last pair is left half empty."""
     pairs = report_export._in_pairs([("가", []), ("나", []), ("다", [])])
     assert [len(row) for row in pairs] == [2, 2]
     assert pairs[1][1] == ("", [])
 
 
 def test_an_edited_section_comes_back_as_the_same_fence():
-    """HTML 로 저장된 절이 같은 펜스로 돌아온다."""
+    """A section stored as HTML comes back as the same fence."""
     assert richtext.to_markdown(_MARKUP).strip() == _FENCE
 
 
@@ -60,14 +60,14 @@ def test_a_callout_keeps_its_title_and_its_line():
 
 
 def test_a_grid_is_not_read_back_as_loose_headings():
-    """`_CONSTRUCT` 에서 카드 대안이 `<h3>`/`<ul>` 보다 먼저 온다."""
+    """In `_CONSTRUCT` the card alternative comes before `<h3>`/`<ul>`."""
     back = richtext.to_markdown(_MARKUP)
     assert "### 산출물" not in back
     assert back.startswith("```cards")
 
 
 def test_the_seed_styles_what_the_editor_writes():
-    """편집기가 쓰는 class 를 서식이 모두 그린다."""
+    """Every class the editor writes is styled by the templates."""
     from app.services import design_templates as dt
 
     seed = dt.get("doc-report").seed
@@ -92,7 +92,7 @@ _SECTIONS = [
 
 
 def test_all_three_files_carry_the_grid_as_words():
-    """세 내보내기 모두 격자를 그림이 아닌 글자로 담는다."""
+    """All three exports carry the grid as text, not as a picture."""
     import io
     import zipfile
 

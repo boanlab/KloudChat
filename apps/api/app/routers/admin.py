@@ -115,10 +115,7 @@ def _audit(db, request: Request, admin: User, action: str, target: str, detail: 
 
 @router.get("/settings")
 async def get_settings(admin: AdminUser, db: DbSession):
-    """Current system settings with the source of each value.
-
-    The master key is never returned: only whether one is set and a preview.
-    """
+    """Current system settings with the source of each value; never the master key itself."""
     values = await settings_store.all_values(force=True)
     smtp = await settings_store.smtp_config()
     signup = await settings_store.signup_policy()
@@ -268,10 +265,8 @@ async def test_settings(admin: AdminUser):
 
 @router.post("/settings/test-tool/{feature}")
 async def test_tool(feature: str, admin: AdminUser):
-    """Probes one tool backend.
-
-    Any status below 500 counts as reachable: an MCP endpoint answers GET with 405.
-    """
+    """Probes one tool backend."""
+    # Any status below 500 counts as reachable: an MCP endpoint answers GET with 405.
     if feature not in _TOOL_PROBES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_feature")
 
@@ -478,11 +473,7 @@ async def update_user(
 async def reset_password(
     user_id: str, payload: ResetPasswordRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Sets a new password and ends every sign-in the account holds.
-
-    The administrator hands the password over out of band; the person changes it
-    afterwards. Refresh tokens go so a leaked session does not outlive the reset.
-    """
+    """Sets a new password and ends every sign-in the account holds."""
     user = await _load(db, user_id)
     user.password_hash = hash_password(payload.password)
     db.add(user)
@@ -534,10 +525,7 @@ async def revoke_user_key(
 async def replace_litellm_key(
     user_id: str, payload: ReplaceKeyRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Binds a key the administrator already holds as the account's KloudChat key.
-
-    The proxy must know the key (`/key/info` answers); the old key is revoked first.
-    """
+    """Binds a key the proxy already knows as the account's KloudChat key, revoking the old one."""
     user = await _load(db, user_id)
     if not await litellm_service.health():
         raise HTTPException(
@@ -607,11 +595,7 @@ async def delete_user(
     db: DbSession,
     purge_files: bool = Query(True, alias="purgeFiles"),
 ):
-    """Removes an account and everything it owns. Not recoverable.
-
-    `purgeFiles=false` keeps the account's directory on disk until the storage
-    sweep reclaims it.
-    """
+    """Removes an account and everything it owns; `purgeFiles=false` leaves files to the sweep."""
     user = await _load(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_delete_self")
@@ -691,10 +675,8 @@ async def delete_user(
 async def set_allowed_models(
     user_id: str, payload: AllowedModelsRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Restricts an account to a list of models; empty means the whole catalogue.
-
-    Pushed to every key the account holds so the proxy enforces it too.
-    """
+    """Restricts an account to a list of models; empty means the whole catalogue."""
+    # Pushed to every key the account holds so the proxy enforces it too.
     user = await _load(db, user_id)
     user.allowed_models = list(payload.models)
     db.add(user)

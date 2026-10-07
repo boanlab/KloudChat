@@ -144,8 +144,6 @@ _LABELS = {
 PERSONAL = frozenset({"email", "phone", "government_id", "payment_card", "ip_address"})
 #: Details whose mere exposure is an incident, wherever they turn up.
 SECRETS = frozenset({"government_id", "payment_card", "api_key", "jwt", "private_key"})
-#: Details of an organisation or a network range; never masked.
-ORGANISATIONAL = frozenset({"landline", "role_email", "private_ip"})
 
 #: What each place in the pipeline masks. `egress`: the user's own words and
 #: files on their way to an external model. `tool`: pages fetched from the

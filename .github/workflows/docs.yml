@@ -1,11 +1,11 @@
-# 사용자 가이드를 GitHub Pages로 게시한다.
+# Publishes the user guide to GitHub Pages.
 #
-# 빌드 결과는 저장소에 커밋하지 않는다. website/ 를 빌드해서 Pages에 바로 넘기므로 맞춰 둘
-# gh-pages 브랜치가 없다.
+# website/ is built and handed straight to Pages; no build output is committed
+# and there is no gh-pages branch.
 #
-# 첫 실행 전에 관리자가 Settings → Pages → Source 를 "GitHub Actions" 로 바꿔야 한다. 그러면
-# https://boanlab.github.io/KloudChat/ 에 프로젝트 사이트로 뜬다. 프로젝트 사이트는 저장소마다
-# 따로 생기므로 조직에 하나뿐인 boanlab.github.io 를 차지하지 않는다.
+# Requires Settings → Pages → Source set to "GitHub Actions". The site is a
+# project site at https://boanlab.github.io/KloudChat/, so it does not take the
+# organization's single boanlab.github.io site.
 name: Docs site
 
 on:
@@ -14,7 +14,7 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/docs.yml'
-  # 코드 변경 없이 다시 게시하거나, 포크에서 미리 보고 싶을 때 쓴다.
+  # Republish without a code change, or preview from a fork.
   workflow_dispatch:
 
 permissions:
@@ -22,7 +22,7 @@ permissions:
   pages: write
   id-token: write
 
-# 한 번에 하나만 배포한다. 나중에 들어온 푸시는 앞의 것이 끝날 때까지 기다린다.
+# One deployment at a time; a later push waits for the running one.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -48,8 +48,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # 포크는 소유자와 저장소 이름이 다르므로 자기 Pages 주소로 빌드한다. 포크를 미리 보려고
-      # 이 파일을 고칠 일은 없다.
+      # A fork builds for its own Pages address, so previewing needs no edit here.
       - name: Resolve the site address
         run: |
           if [ "$GITHUB_REPOSITORY" != "boanlab/KloudChat" ]; then

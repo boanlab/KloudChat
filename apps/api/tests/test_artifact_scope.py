@@ -81,7 +81,7 @@ async def test_prose_long_enough_to_lose_in_a_transcript_earns_the_panel():
 
 @pytest.mark.asyncio
 async def test_the_person_asking_for_a_file_beats_the_guess():
-    """사람이 실제로 파일을 말했을 때는 사람이 이긴다."""
+    """When the person actually asked for a file, the person wins."""
     context, _result = await call(
         request="이 메일 txt 파일로 만들어 줘",
         kind="html",
@@ -94,7 +94,7 @@ async def test_the_person_asking_for_a_file_beats_the_guess():
 
 @pytest.mark.asyncio
 async def test_the_flag_cannot_speak_for_a_person_who_only_asked_for_writing():
-    """모델이 켠 `userRequested` 하나로 짧은 글이 문서가 되지는 않는다."""
+    """A model-set `userRequested` alone does not make short prose a document."""
     context, result = await call(
         request="내일 회의가 30분 미뤄졌다고 알리는 짧은 메일 초안 세 문장만 써줘.",
         kind="code",
@@ -122,7 +122,7 @@ async def test_a_file_asked_for_in_english_is_still_a_file():
 
 @pytest.mark.asyncio
 async def test_a_real_document_never_needed_the_flag():
-    """프로그램이 읽어 갈 파일은 요청이 비어 있어도 문서다."""
+    """A file a program reads back is a document even with an empty request."""
     context, _result = await call(
         kind="code", title="docker-compose.yml", content=COMPOSE, language="yaml"
     )
@@ -157,7 +157,7 @@ def test_the_rule_the_model_reads_names_both_sides():
 
 
 def test_the_flag_the_model_sets_is_described_as_the_person_s_words():
-    """도구 설명이 관문과 같은 말을 한다."""
+    """The tool description states the same rule as the gate."""
     flag = builtin_tools.CREATE_ARTIFACT.parameters["properties"]["userRequested"]
     assert "파일이나 문서 자체를" in flag["description"]
     assert "메일 초안" in flag["description"]

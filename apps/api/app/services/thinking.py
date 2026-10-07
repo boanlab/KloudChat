@@ -15,8 +15,8 @@ _HEADROOM = 700
 #: whose whole answer is one JSON object or one block of markup, never by chat.
 NO_REASONING = {"enabled": False}
 
-#: Models whose provider answered that reasoning cannot be turned off (OpenRouter's
-#: GLM flash: 「Reasoning is mandatory for this endpoint」). Learned per process.
+#: Models whose provider answered that reasoning cannot be turned off
+#: (「Reasoning is mandatory for this endpoint」). Learned per process.
 _MANDATORY: set[str] = set()
 
 
@@ -39,10 +39,15 @@ def template_switch(model: str) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": False}} if thinks_by_default(model) else {}
 
 
+#: What a model whose reasoning cannot be turned off is asked for instead: the least of
+#: it, so thinking does not consume the whole token ceiling.
+LEAST_REASONING = {"effort": "low"}
+
+
 def switch(model: str) -> dict:
-    """The fields that ask `model` for no thinking: the OpenRouter `reasoning` switch
-    unless its provider refused it, plus vLLM's chat-template switch where the model thinks."""
-    fields: dict = {} if model in _MANDATORY else {"reasoning": NO_REASONING}
+    """The fields that ask `model` for no thinking: the OpenRouter `reasoning` switch, or the
+    least reasoning where its provider refused that, plus vLLM's chat-template switch."""
+    fields: dict = {"reasoning": LEAST_REASONING if model in _MANDATORY else NO_REASONING}
     fields.update(template_switch(model))
     return fields
 

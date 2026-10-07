@@ -1,18 +1,4 @@
-"""Which surface a charge came from, and which model earned it.
-
-Every media charge was written with no model on it. The usage screen recovered
-one by looking at the session's own model, which works while the conversation
-exists and files the charge under 기타 the moment somebody deletes it — and the
-surface went the same way, since that was read off the session too.
-
-A ledger row should say what it paid for without depending on anything else
-surviving. `model` has been on the row since 0027 and the media routes now
-write it; `surface` is new here for the same reason.
-
-Backfilled where it can be recovered: the model from the artifact the charge
-produced, the surface from the session that is still there. Rows whose session
-and artifact are both gone keep their nulls — there is nothing left that knows,
-and a guess in a ledger is worse than a gap.
+"""Surface on credit-ledger rows, and backfill of model and surface where recoverable.
 
 Revision ID: 0032
 Revises: 0031
@@ -36,9 +22,7 @@ _MEDIA = "('video.generate', 'image.generate', 'audio.generate')"
 def upgrade() -> None:
     op.add_column("credit_ledger", sa.Column("surface", sa.String(), nullable=True))
 
-    # The model the charge actually paid, from the artifact it produced. One
-    # media session can hold several, so this takes the newest that names a
-    # model — a batch is one generator at one price.
+    # The model from the newest artifact of the session that names one.
     op.execute(f"""
         UPDATE credit_ledger l
            SET model = sub.model

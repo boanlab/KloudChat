@@ -43,3 +43,7 @@ section:first-of-type p { line-height: 1.72; }
   .cards > div { break-inside: avoid; }
   section { margin: 0 0 9mm; }
 }
+
+/* 한눈에: 색을 채운 표지, 절 제목은 강조색 글자, 표 머리는 강조색 바탕. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: var(--accent-deep); }
+table thead th { background: var(--accent); color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

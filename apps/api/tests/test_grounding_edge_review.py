@@ -1,4 +1,4 @@
-"""Adversarial current-fact boundaries found while reviewing the grounding patch."""
+"""Adversarial current-fact boundary cases."""
 
 from __future__ import annotations
 

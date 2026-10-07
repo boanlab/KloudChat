@@ -1,11 +1,4 @@
-"""Long-running generation jobs.
-
-Pictures and speech come back inside the request that asked for them. Video does
-not: the upstream returns a ticket and the clip arrives minutes later, so the
-work has to survive the request, the tab, and a restart of this service.
-
-The frontend already had a `Job` type, a job card and a `jobsApi` client. None of
-them were connected to anything, because there was no table and no endpoint.
+"""Long-running generation jobs (video) that survive the request and a restart.
 
 Revision ID: 0011
 Revises: 0010
@@ -37,8 +30,7 @@ def upgrade() -> None:
         sa.Column("prompt", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("model", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("params", JSONB(), nullable=True),
-        # The upstream's handle. Without it a restart orphans a clip that was
-        # paid for and is still being made.
+        # The upstream's handle, so a restart can resume polling.
         sa.Column("provider_job_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("artifact_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("credits_estimated", sa.Integer(), nullable=False, server_default="0"),

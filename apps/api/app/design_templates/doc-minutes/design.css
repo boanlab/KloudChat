@@ -37,3 +37,9 @@ ol.steps > li::before { min-width: 1.6em; color: var(--muted); }
 @media print {
   .cover { min-height: 0; padding: 0 0 0.9rem; page-break-after: auto; break-after: auto; }
 }
+
+/* 한눈에: 촘촘한 고딕, 절 제목은 회색 칸 머리처럼 짧고 낮다. */
+.page { line-height: 1.6; }
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; background: var(--wash);
+      padding: 0.3rem 0.6rem; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+h2::before { color: var(--muted); }

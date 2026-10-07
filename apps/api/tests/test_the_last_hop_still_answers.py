@@ -1,9 +1,8 @@
-"""도구 한도 이후 최종 답변 생성 계약."""
+"""After the tool limit, a final answer is still produced."""
 
 from __future__ import annotations
 
 import json
-from urllib.parse import urlparse
 
 import pytest
 
@@ -95,7 +94,7 @@ async def test_the_cap_ends_in_an_answer_written_without_tools(monkeypatch) -> N
 
 @pytest.mark.asyncio
 async def test_a_link_no_tool_returned_is_named_as_unverified(monkeypatch) -> None:
-    """검색 결과에 없던 링크는 답 끝에 그렇다고 적힌다."""
+    """A link not in the search results is flagged at the end of the answer."""
     seen: list[dict] = []
 
     class _Once(_Client):
@@ -146,7 +145,7 @@ async def test_a_link_no_tool_returned_is_named_as_unverified(monkeypatch) -> No
 
 @pytest.mark.asyncio
 async def test_uncited_search_links_are_not_presented_as_verified_sources(monkeypatch) -> None:
-    """검색한 답에는 모델이 잊어도 실제 도구 URL이 남는다."""
+    """A searched answer keeps the real tool URLs even when the model leaves them out."""
     seen: list[dict] = []
 
     class _SearchOnce(_Client):
@@ -239,21 +238,6 @@ async def test_exact_long_paragraphs_are_kept_once(monkeypatch) -> None:
     assert visible.count(paragraph) == 1
 
 
-def test_official_sources_sort_before_secondary_sources():
-    urls = [
-        "https://news.example.com/story/1",
-        "https://www.msit.go.kr/bbs/view.do?id=42",
-        "https://university.ac.kr/research/7",
-    ]
-    first = sorted(urls, key=agent._source_priority)[0]
-    assert urlparse(first).hostname == "www.msit.go.kr"
-
-
-def test_official_source_rank_requires_a_domain_boundary():
-    malicious = "https://www.msit.go.kr.attacker.example/report"
-    ordinary = "https://source.example/report"
-    assert agent._source_priority(malicious) == (2, malicious)
-    assert agent._source_priority(ordinary) == (2, ordinary)
 
 
 @pytest.mark.asyncio
@@ -310,7 +294,7 @@ async def test_an_institution_homepage_is_not_presented_as_direct_evidence(monke
 
 @pytest.mark.asyncio
 async def test_an_empty_completion_after_tools_is_asked_again(monkeypatch) -> None:
-    """도구를 쓰고 빈 답이 오면 한 번 더 물어 답을 받는다."""
+    """An empty answer after tool use is asked for once more."""
     seen: list[dict] = []
 
     class _Blank(_Client):
@@ -357,7 +341,7 @@ async def test_an_empty_completion_after_tools_is_asked_again(monkeypatch) -> No
 
 
 def test_a_repeating_stream_is_recognised() -> None:
-    """같은 문단이 네 번 나오면 되풀이로 본다. 짧은 답이나 다른 문장은 아니다."""
+    """The same paragraph four times is a loop; a short answer or different sentences are not."""
     paragraph = "역발행은 공급받는 자가 세금계산서를 발행하는 방식이며 절차가 다릅니다. " * 3
     assert agent._is_looping([paragraph] * 8)
     assert not agent._is_looping([paragraph])
@@ -367,7 +351,7 @@ def test_a_repeating_stream_is_recognised() -> None:
 
 @pytest.mark.asyncio
 async def test_a_looping_answer_is_cut_and_told(monkeypatch) -> None:
-    """되풀이하는 스트림은 끊기고, 끝에 그렇다는 말이 붙는다."""
+    """A looping stream is cut off and a note says so at the end."""
     seen: list[dict] = []
     paragraph = "역발행은 공급받는 자가 세금계산서를 발행하는 방식이며 절차가 다릅니다. " * 3
     chunk = json.dumps({"choices": [{"delta": {"content": paragraph}}]}, ensure_ascii=False)
@@ -399,7 +383,7 @@ async def test_a_looping_answer_is_cut_and_told(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> None:
-    """429 는 잠깐 기다렸다 다시 하고, 두 번째에 답이 오면 그 답을 쓴다."""
+    """A 429 is retried after a short wait, and the second answer is used."""
     seen: list[dict] = []
     waited: list[float] = []
 
@@ -439,7 +423,7 @@ async def test_a_rate_limit_is_retried_before_it_is_reported(monkeypatch) -> Non
 
 @pytest.mark.asyncio
 async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch) -> None:
-    """검색이 전부 빈손이면 답 밑에 확인하지 못했다고 적힌다."""
+    """When every search comes back empty, the answer notes that nothing was verified."""
     seen: list[dict] = []
 
     class _Searching(_Client):
@@ -487,7 +471,7 @@ async def test_an_answer_whose_searches_all_came_back_empty_says_so(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_narration_before_a_tool_is_taken_back(monkeypatch) -> None:
-    """도구를 부르며 한 짧은 말은 답에서 빠지고, 화면에도 retract 로 알린다."""
+    """Text spoken while calling a tool leaves the answer; the screen gets `retract`."""
     seen: list[dict] = []
 
     class _Narrating(_Client):
@@ -528,7 +512,7 @@ async def test_narration_before_a_tool_is_taken_back(monkeypatch) -> None:
     ]
     retracted = [e["text"] for e in events if e["type"] == "retract"]
     assert retracted == ["검색해 보겠습니다."]
-    # 모델에게는 제 말이 그대로 돌아간다 — 대화 맥락은 줄지 않는다.
+    # The model gets its own words back unchanged, so the conversation context is intact.
     assert seen[1]["messages"][-1]["content"] == "찾은 것"
     assert "검색해 보겠습니다." in (seen[1]["messages"][-2].get("content") or "")
 

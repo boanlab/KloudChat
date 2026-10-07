@@ -98,7 +98,7 @@ def test_the_image_prompt_carries_the_colour_and_the_house_style():
     assert "bold graphic" in composed
     # Order: the picked chip, the design's instruction, the aspect last.
     assert composed.index("photorealistic") < composed.index("bold graphic")
-    # 비율만이 아니라 방향까지 말한다.
+    # Orientation is stated, not only the ratio.
     assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
 
 
@@ -409,28 +409,28 @@ def test_the_outline_picks_a_look_when_nobody_described_one() -> None:
     """The outline call picks `visual_style` from the subject when the request names none."""
     from app.services import deck
 
-    # 아웃라인이 고른 인상은 그대로 쓰인다.
+    # The look the outline picked is used as is.
     assert deck._theme_style('{"theme": "청록", "style": "포스터형"}') == "poster"
     assert deck._theme_style('{"style": "미니멀"}') == "minimal"
     assert deck._theme_style('{"style": "편집형"}') == "editorial"
-    # 이름을 모르면 고르지 않았다고 답한다 — 부르는 쪽이 기본값을 정한다.
+    # An unknown name reads as no pick; the caller sets the default.
     assert deck._theme_style('{"style": "무지개"}') == ""
     assert deck._theme_style("{}") == ""
 
 
 def test_a_request_that_names_a_look_still_wins() -> None:
-    """사람이 말한 것이 모델이 고른 것보다 먼저다."""
+    """What the person said comes before what the model picked."""
     from app.services import design
 
-    # 요청에 적힌 인상은 그대로 읽힌다.
+    # A look named in the request is read as is.
     assert design.visual_style_for("포스터처럼 강렬하게 만들어 줘") == "poster"
     assert design.visual_style_for("담백하고 절제된 학술 발표") == "minimal"
-    # 아무 말이 없으면 기본값이고, 그 자리를 아웃라인이 채운다.
+    # With nothing said it is the default, and the outline fills it in.
     assert design.visual_style_for("전사 교육 계획 발표자료") == "editorial"
 
 
 def test_a_document_also_picks_its_look_from_the_subject() -> None:
-    """보고서도 덱과 같은 규칙으로 인상을 고른다."""
+    """A report picks its look by the same rule as a deck."""
     from app.services import report
 
     assert report._outline_style('{"title": "…", "style": "미니멀"}') == "minimal"

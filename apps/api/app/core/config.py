@@ -46,11 +46,8 @@ class Settings(BaseSettings):
 
     # ── database ───────────────────────────────────────────────────────
     database_url: str = "postgresql+asyncpg://kchat:kchat@localhost:5432/kchat"
-    #: Per-process pool. The single uvicorn process this image runs holds at
-    #: most `db_pool_size + db_max_overflow` connections; Postgres's own
-    #: `max_connections` (100 by default) is the ceiling across every process
-    #: sharing the database, so raise both together if this ever runs as more
-    #: than one process.
+    #: Per-process pool: at most `db_pool_size + db_max_overflow` connections each, all
+    #: processes together under Postgres's `max_connections`.
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
@@ -173,7 +170,7 @@ class Settings(BaseSettings):
     #: environment turns it off so flows with fake catalogues can be exercised.
     internal_data_strict_local_default: bool = True
     #: The same for external chat models: off sends OpenRouter's `reasoning` switch; a
-    #: provider that refuses it (GLM flash) is remembered and thinks anyway.
+    #: provider that refuses it is remembered and thinks anyway.
     external_chat_thinking: bool = False
 
     #: Per-surface overrides. Empty falls back to `default_chat_model`.

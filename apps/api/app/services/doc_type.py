@@ -1,10 +1,8 @@
 """One type scale for documents.
 
-Sizes are PowerPoint-style points, the unit every renderer of a report already thinks in:
-the A4 page view and the printed PDF (CSS `pt`), the reportlab fallback, the `.docx`
-(`Pt`) and the `.hwpx` (1/100 pt). `apps/web/src/components/report/docType.ts` carries
-the same table for the web view, and a test keeps the two equal. A document never
-shrinks its type to fit; it takes another page.
+Sizes are points, shared by the page view, PDF, `.docx` and `.hwpx` (1/100 pt).
+`apps/web/src/components/report/docType.ts` mirrors the table; a test keeps them equal.
+A document never shrinks its type to fit; it takes another page.
 """
 
 from __future__ import annotations

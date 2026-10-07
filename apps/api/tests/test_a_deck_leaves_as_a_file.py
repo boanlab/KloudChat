@@ -26,7 +26,7 @@ def test_every_deck_template_ships_a_form() -> None:
 
 
 def test_the_form_is_made_of_layouts_and_not_of_drawings() -> None:
-    """모든 글자가 자리표시자 안에 있다."""
+    """All text sits inside placeholders."""
     for row in _decks():
         deck = Presentation(row.form_file)
         assert len(deck.slides) > 0, f"{row.id}: 양식에 슬라이드가 없습니다"
@@ -37,7 +37,7 @@ def test_the_form_is_made_of_layouts_and_not_of_drawings() -> None:
 
 
 def test_the_design_is_on_the_master_rather_than_on_the_runs() -> None:
-    """글꼴도 색도 크기도 마스터가 들고 있다."""
+    """Font, colour and size are all held by the master."""
     #: First-level sizes seen across the catalogue, per style list.
     scales: dict[str, set[int]] = {}
 
@@ -93,7 +93,7 @@ def test_the_design_is_on_the_master_rather_than_on_the_runs() -> None:
 
 
 def test_the_template_ships_without_slides() -> None:
-    """`template.pptx` 는 마스터와 레이아웃뿐이다."""
+    """`template.pptx` holds only the master and layouts."""
     for row in _decks():
         base = pathlib.Path(row.form_file).with_name("template.pptx")
         assert base.is_file(), f"{row.id} 에 template.pptx 가 없습니다"
@@ -101,7 +101,7 @@ def test_the_template_ships_without_slides() -> None:
 
 
 def test_the_contents_use_the_wide_canvas() -> None:
-    """16:9 캔버스의 자리표시자가 4:3 좌표에 남아 있지 않다."""
+    """No placeholder on the 16:9 canvas keeps 4:3 coordinates."""
     for row in _decks():
         deck = Presentation(row.form_file)
         assert deck.slide_width / deck.slide_height > 1.7, f"{row.id}: 16:9 가 아닙니다"
@@ -135,7 +135,7 @@ def test_the_contents_use_the_wide_canvas() -> None:
 
 
 def test_the_export_is_built_on_the_template_it_was_written_in() -> None:
-    """덱도 제 서식의 파일 위에 지어진다."""
+    """A deck is built on its own 서식's file."""
     import io
 
     from app.services import deck_export

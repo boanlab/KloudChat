@@ -8,8 +8,8 @@ const t = (text: string) => translate('en', text)
 
 /** Korean that is correct to leave: user content and slugs. */
 const ALLOWED = [
-  /^[가-힣]$/, // 이름 첫 글자로 만든 마크, 언어 토글의 '한'
-  /^[가-힣A-Za-z0-9]+(-[가-힣A-Za-z0-9]+)+$/, // 슬러그
+  /^[가-힣]$/, // a name's initial as a mark; the language toggle's '한'
+  /^[가-힣A-Za-z0-9]+(-[가-힣A-Za-z0-9]+)+$/, // slug
   // Mixed English and Korean on one line means interpolated user content.
   /[A-Za-z]{3}.*[가-힣]|[가-힣].*[A-Za-z]{3}/,
 ]

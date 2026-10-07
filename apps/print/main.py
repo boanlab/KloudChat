@@ -9,7 +9,11 @@ a request from inside the deployment.
 from __future__ import annotations
 
 import asyncio
+import base64
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response
 from playwright.async_api import Browser, BrowserContext, Error as PlaywrightError, async_playwright
@@ -25,6 +29,21 @@ TIMEOUT_MS = 30_000
 
 class Job(BaseModel):
     html: str = Field(max_length=MAX_HTML)
+
+
+#: A one-slide figure deck is tens of kilobytes; this bounds a hostile one.
+MAX_PPTX_B64 = 8 * 1024 * 1024
+
+
+class SlideJob(BaseModel):
+    #: The .pptx, base64-encoded; its first slide is rendered.
+    pptx: str = Field(max_length=MAX_PPTX_B64)
+    #: Output resolution; 192 dpi draws a 10-inch figure 1920 px wide.
+    dpi: int = Field(default=192, ge=72, le=300)
+
+
+#: LibreOffice runs one conversion at a time: its user profile is not shared safely.
+_office = asyncio.Lock()
 
 
 class _Chromium:
@@ -107,3 +126,45 @@ async def pdf(job: Job) -> Response:
     finally:
         await context.close()
     return Response(content=out, media_type="application/pdf")
+
+
+async def _run(*command: str, timeout: float) -> None:
+    process = await asyncio.create_subprocess_exec(
+        *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        _, err = await asyncio.wait_for(process.communicate(), timeout)
+    except asyncio.TimeoutError as exc:
+        process.kill()
+        raise HTTPException(status_code=504, detail="render_timeout") from exc
+    if process.returncode:
+        raise HTTPException(status_code=422, detail=f"render_failed: {err.decode()[-300:]}")
+
+
+@app.post("/pptx/png")
+async def pptx_png(job: SlideJob) -> Response:
+    """The first slide of a .pptx as a PNG, via LibreOffice (PDF) and poppler.
+
+    Nothing is fetched: the slide embeds its pictures, and the container has no route out."""
+    try:
+        blob = base64.b64decode(job.pptx, validate=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="bad_pptx") from exc
+    work = Path(tempfile.mkdtemp(prefix="slide-"))
+    try:
+        source = work / "figure.pptx"
+        source.write_bytes(blob)
+        async with _office:
+            await _run(
+                "soffice", f"-env:UserInstallation=file://{work}/profile", "--headless",
+                "--norestore", "--convert-to", "pdf", "--outdir", str(work), str(source),
+                timeout=60,
+            )
+        await _run(
+            "pdftoppm", "-r", str(job.dpi), "-f", "1", "-l", "1", "-png", "-singlefile",
+            str(work / "figure.pdf"), str(work / "figure"),
+            timeout=30,
+        )
+        return Response(content=(work / "figure.png").read_bytes(), media_type="image/png")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)

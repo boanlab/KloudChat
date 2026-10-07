@@ -1,9 +1,5 @@
 """An administrator can correct a name or address, reset a password, and see the whole
 catalogue when restricting an account.
-
-Before, the users screen could suspend, delete, re-key and restrict an account but not
-fix a typo in its name or get a locked-out person back in; and the restriction picker
-listed the administrator's own models rather than the catalogue.
 """
 
 from __future__ import annotations

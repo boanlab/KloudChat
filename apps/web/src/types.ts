@@ -3,6 +3,8 @@
  * No proxy credential appears here: virtual keys are issued and used server-side only.
  */
 
+import type { PatternName } from '@/components/slides/patterns'
+
 /* ── identity ───────────────────────────────────────────────────────── */
 
 export type UserRole = 'admin' | 'user'
@@ -218,7 +220,7 @@ export interface PrivacyRouting {
   }
 }
 
-/** Legacy stored policy reply; new factual questions use model answers with caveats. */
+/** A server policy reply found in stored transcripts; current turns answer through a model with caveats. */
 export interface FreshnessAbstention {
   answerOrigin: 'server_policy'
   actualModel: null
@@ -228,7 +230,7 @@ export interface FreshnessAbstention {
   }
 }
 
-/** A tool-authored answer; earlier routing/classification work is not ruled out. */
+/** An answer written by a tool rather than a model; routing may still have run before it. */
 export interface ToolResultAnswer {
   answerOrigin: 'tool_result'
   toolName: 'calculate'
@@ -492,6 +494,21 @@ export interface ReportArtifact extends ArtifactBase {
   /** 서식 the page view is drawn in; absent is the plain report seed. */
   templateId?: string
   design?: DesignTokens | null
+  /** Head of a document by purpose (`services/doc_formats.py`); absent is a plain title. */
+  titleBlock?: ReportTitleBlock | null
+}
+
+/** A document's head by purpose: cover page, field table, memo rows, press or paper header. */
+export interface ReportTitleBlock {
+  format: string
+  label: string
+  head: 'cover' | 'header' | 'memo' | 'press' | 'paper'
+  numbering: 'decimal' | 'roman' | 'korean' | 'official' | 'none'
+  /** `[label, value]`; an empty value is a blank the person fills in, shown as 「(기입)」. */
+  fields: [string, string][]
+  subtitle?: string
+  abstract?: string
+  keywords?: string[]
 }
 
 export interface ChartArtifact extends ArtifactBase {
@@ -540,6 +557,7 @@ export interface Slide {
     | 'steps'
     | 'cards'
     | 'closing'
+    | PatternName
   title: string
   /** `section` only: `01.`, `02.` over the title. */
   number?: string
@@ -558,9 +576,13 @@ export interface Slide {
   steps?: [string, string][]
   /** `[이름, 한두 줄]`, titled boxes side by side. */
   cards?: [string, string][]
+  /** Pattern slides of shape `pairs` (see `slide_patterns.py`): `[left, right]`. */
+  items?: [string, string][]
+  /** Pattern slides of shape `columns`: named lists side by side. */
+  columns?: { title: string; items: string[] }[]
   /** Every series carries exactly as many values as there are categories. */
   chart?: {
-    kind: 'bar' | 'line'
+    kind: 'bar' | 'line' | 'pie' | 'donut' | 'hbar' | 'stacked'
     unit?: string
     categories: string[]
     series: { name: string; values: number[] }[]
@@ -583,6 +605,9 @@ export interface Slide {
     size?: 'small' | 'medium' | 'large' | 'full'
     /** The browser's raster of `diagram`, stored for the exporters; a placed picture clears it. */
     diagram?: boolean
+    /** 'pptx': drawn on the server from the deck renderer's shapes; shown as is. */
+    renderer?: string
+    key?: string
   }
   /** A structure, flow, comparison or concept figure the deck drew for itself as mermaid.
    *  The panel renders it live; its raster travels in `image` for the exporters. */

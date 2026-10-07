@@ -1,7 +1,4 @@
-"""Governance policy, enforced rather than displayed.
-
-One row per instance (`id = 'default'`): these are organisation-wide rules, not
-per-user preferences, and an admin sets them once.
+"""Governance policy: one organisation-wide row, `id = 'default'`.
 
 Revision ID: 0008
 Revises: 0007

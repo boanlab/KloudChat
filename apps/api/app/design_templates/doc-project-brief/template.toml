@@ -4,8 +4,8 @@ kind = "document"
 # 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
 # 자동으로 붙고 skills_applied 로 화면에 공지된다.
 skills = ["decision-memo", "brief-one-page"]
-name = "프로젝트 브리프"
-description = "색을 채운 표지 아래 개요 한 문단, 그리고 산출물·목표·이해관계자·성공 기준을 나란히 놓는 카드 격자"
+name = "프로젝트 개요서"
+description = "프로젝트 목표·산출물·이해관계자 · 색 표지, 카드 격자"
 category = "업무"
 fills = ["프로젝트", "책임자", "기간"]
 example_prompt = "프로젝트 브리프를 만들어 줘. 표지에 프로젝트명·책임자·기간을 적고, 개요 한 문단 뒤에 산출물·목표·이해관계자·성공 기준을 카드로 나란히 놓아 줘.\n\n프로젝트: "
@@ -16,7 +16,7 @@ layouts = ["cover", "section"]
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Project brief"
-description_en = "A filled cover, one paragraph of overview, then deliverables, objectives, stakeholders and success criteria side by side as cards"
+description_en = "Goals, deliverables, stakeholders · filled cover, cards"
 category_en = "Work"
 fills_en = ["Project", "Owner", "Dates"]
 example_prompt_en = "Write a project brief. Put the project name, owner and dates on the cover, then one paragraph of overview, then deliverables, objectives, stakeholders and success criteria as cards.\n\nProject: "

@@ -11,7 +11,7 @@ This page describes the limits the service allows and what to do for each error 
 | Item | Limit |
 |---|---|
 | A single file | 200MB |
-| Images | PNG, JPG, GIF, WebP, up to 4MB, on a model that supports image recognition |
+| Images | PNG, JPG, GIF, WebP, up to 4MB, on a strict-local model that supports image recognition |
 | Audio and video files | 25MB, when speech transcription is connected |
 | Number of slides | Up to 50 slides (5 to 12 if you do not specify a number) |
 | Number of report sections | 3 to 12 sections |
@@ -27,7 +27,7 @@ This page describes the limits the service allows and what to do for each error 
 ## Processing time limits
 
 - A single request runs for up to 15 minutes. Past that it ends with an error.
-- If the model sends nothing for 3 minutes, the request ends with an error. In that case use **Try another model**.
+- If the model sends nothing for 3 minutes, the request ends with an error. In that case use **Another model**.
 - Reports and slide decks are written in order, section by section or slide by slide. A 20-slide deck takes several minutes, and video generation takes longer and shows progress.
 
 ## What to do for each error message
@@ -40,7 +40,7 @@ Search for the message exactly as it appears on the screen.
 | You do not have enough credits this month | The remaining credits are less than the estimated cost of this request | Reduce the options such as slide count or length, or use a free model |
 | Cannot connect to the model server | Model gateway failure | Try again shortly. Contact your administrator if it continues |
 | Could not get an answer because of a model server error | The gateway refused the request (including when the files or the conversation exceed the model window) | Upload the files again in a new conversation, or narrow the question |
-| The model did not respond, so the request was stopped. Try generating again with another model | No text arrived for 3 minutes | **Try another model** |
+| The model did not respond, so the request was stopped. Try generating again with another model | No text arrived for 3 minutes | **Another model** |
 | The model server request limit was exceeded | Gateway rate limit | Try again shortly |
 | The model server refused authentication | Gateway key problem | Contact your administrator |
 | The model server does not have this model | The model list has changed | Choose another model. The administrator refreshes the list |
@@ -49,7 +49,7 @@ Search for the message exactly as it appears on the screen.
 | No models are available right now | The gateway is not connected | Contact your administrator |
 | The request was not sent because the personal data checker is unavailable | Protection feature failure | Contact your administrator. Sending is blocked for safety |
 | An administrator policy blocked this request | The request matches a blocked topic | Check what the request says |
-| The answer was cut off, so only this much remains | The connection dropped (tab closed or network) | Select **Try again**. It generates again from the start |
+| The answer was cut off, so only this much remains | The connection dropped (tab closed or network) | Select **Retry**. It generates again from the start |
 | The attachment could not be found. Attach it again | The file was deleted | Attach it again |
 | The selected skill cannot be applied to this request | The skill conditions (tool or model) are not met | Remove the skill or change the model |
 | This agent reads its instructions from the original, and the original has been deleted or is no longer public | The original of an agent with private content is gone | Use another agent |
@@ -61,11 +61,11 @@ Search for the message exactly as it appears on the screen.
 
 ## Features that are not provided
 
-- Editing a sent message and sending it again. Copy the prompt and send it as a new message. An answer that failed to generate offers **Try again** and **Try another model**.
+- Editing a sent message inside the same conversation. **Edit message** creates a new conversation with the edited message. [Conversation basics](chat/basics#editing-a-sent-message)
 - Several users editing one conversation together. Sharing is read only.
 - Two-factor authentication.
 - Model comparison and keyboard shortcuts on the mobile screen. The tool buttons are inside **More tools**.
 
 ## Model limitations
 
-A model can present things it does not know as if they were fact. For information that changes or cannot be memorized, such as organization details, dates, and figures, turn on web search or attach source material. An answer that shows no sources is an answer that did not go through search. You can check a report against its sources with **Fact check**, and verify calculations with **Code execution**.
+A model can present things it does not know as if they were fact. For information that changes or cannot be memorized, such as organization details, dates, and figures, turn on web search or attach source material. An answer that shows no sources is an answer that did not go through search. You can check a report against its sources with **Fact check**, and calculations are verified with **Arithmetic check** or **Code execution**.

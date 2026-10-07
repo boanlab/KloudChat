@@ -68,12 +68,28 @@ function useHomeAfterApproval(status: string | undefined) {
   }, [status, navigate])
 }
 
+/** A sign-in lands where this account may go. The tab keeps the address the last person
+ *  left it on (an admin who approved this account and signed out on /admin/users), and a
+ *  member arriving there would meet 「권한 없음」 as the first page. */
+function useLandingAfterSignIn(authenticated: boolean, role: string | undefined) {
+  const navigate = useNavigate()
+  const was = useRef(authenticated)
+  useEffect(() => {
+    const signedIn = !was.current && authenticated
+    was.current = authenticated
+    if (!signedIn || !role) return
+    if (window.location.pathname.startsWith('/admin') && role !== 'admin') navigate('/', { replace: true })
+  }, [authenticated, role, navigate])
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
   const status = useStore((s) => s.user?.status)
+  const role = useStore((s) => s.user?.role)
   useAllowanceRefresh()
   useHomeAfterApproval(status)
+  useLandingAfterSignIn(authenticated, role)
 
   if (authLoading) return <Spinner />
 

@@ -20,12 +20,8 @@ from app.services import settings_store
 log = logging.getLogger(__name__)
 
 CLASSIFIER_VERSION = "auto-cost-2026-09-03.v2"
-# Must hold an ordinary chat envelope including `context._WRITING` and tool
-# definitions; above it Auto refuses to route.
-#: The classifier reads the whole envelope the answer model gets — system prompt, tool
-#: definitions and history — so the cap is the classifier's, not a chat turn's: a 27B
-#: strict-local classifier reads 80k characters (~20k tokens) in well under a second of
-#: prefill. At 12k the chat system prompt and tools alone put every turn over the cap.
+#: Cap on the whole answer-model envelope (system prompt, tool definitions, history) the
+#: classifier reads; above it Auto refuses to route. Must fit an ordinary chat envelope.
 MAX_CLASSIFIER_CHARS = 80_000
 MIN_LOW_CONFIDENCE = 0.9
 MIN_HIGH_CONFIDENCE = 0.9

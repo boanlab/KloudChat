@@ -28,29 +28,21 @@ def upgrade() -> None:
         sa.Column("id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("token", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("owner_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        # Exactly one is set. A share is of a *thing*, and the two things worth
-        # handing someone are a finished artifact and the conversation that made
-        # it — the second is what "have a look at how this came about" needs.
+        # Exactly one is set: an artifact or a conversation.
         sa.Column("artifact_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("session_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-        # A real enum type, like every other enum column here. Declared as a
-        # plain string it still *stored* fine, and then every query comparing
-        # the column to a `ShareScope` member asked Postgres to cast to a type
-        # that did not exist.
+        # A real enum type: queries compare it to `ShareScope` members.
         sa.Column("scope", sa.Enum("workspace", "link", name="sharescope"), nullable=False),
         sa.Column("views", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        # Revoked rather than deleted: someone who shared something and changed
-        # their mind wants the link dead, and wants to know it once existed.
+        # Revoked rather than deleted, so the link's history stays visible.
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["owner_id"], ["users.id"]),
         sa.ForeignKeyConstraint(["artifact_id"], ["artifacts.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    # The token is the whole authorisation, so the lookup has to be exact and
-    # unique — a second row with the same token would be two people's content
-    # behind one URL.
+    # The token is the whole authorisation, so it must be unique.
     op.create_unique_constraint("uq_shares_token", "shares", ["token"])
     op.create_index("ix_shares_owner_id", "shares", ["owner_id"])
     op.create_index("ix_shares_artifact_id", "shares", ["artifact_id"])

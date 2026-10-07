@@ -462,7 +462,7 @@ async def test_a_huge_python_integer_is_rejected_before_string_conversion():
         ["1+", "80"],
         ["9" * 65, "80"],
         [10**64, 80],
-        "[1e2,80]",
+        "[1e99,80]",
         ["(" * 40 + "1" + ")" * 40, "80"],
     ],
 )

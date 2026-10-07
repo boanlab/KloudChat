@@ -10,11 +10,12 @@ KloudChat 사용자 가이드와 관리자 가이드의 소스입니다. [Docusa
 
 | 경로 | 내용 |
 |---|---|
-| `docs/` | 한국어 본문 31개 |
+| `docs/` | 한국어 본문 |
 | `i18n/en/` | 영어 번역. 본문과 화면 문구 |
 | `src/pages/index.tsx` | 첫 페이지 |
-| `src/components/` | 첫 페이지의 특징 격자와 등장 효과 |
-| `static/img/guide/` | 화면 캡처 30장 |
+| `src/components/` | 첫 페이지의 화면 캐러셀, 특징 격자, 등장 효과 |
+| `static/img/guide/` | 본문에 쓰는 화면 캡처 |
+| `GLOSSARY-en.md` | 영어 번역 용어표 |
 
 ## 로컬에서 보기
 
@@ -43,10 +44,9 @@ npm run serve
 npm run write-translations -- --locale en
 ```
 
-용어는 나누어 번역해도 갈리지 않도록 정해 두었습니다. 새 문서를 쓸 때 그 표를 따르십시오.
+영어 용어는 `GLOSSARY-en.md` 에 정해 두었습니다. 새 문서를 번역할 때 그 표를 따르고, 화면 문구는 `apps/web/src/lib/i18n.ts` 의 영어 번역과 맞추십시오.
 
 ## 게시
 
 `main` 의 `website/` 가 바뀌면 `.github/workflows/docs.yml` 이 빌드해서 Pages로 올립니다.
-저장소 관리자가 Settings → Pages → Source 를 **GitHub Actions** 로 한 번 바꿔 두어야 첫
-배포가 됩니다. 코드 변경 없이 다시 올리려면 Actions 에서 **Docs site** 를 직접 실행하십시오.
+저장소의 Settings → Pages → Source 가 **GitHub Actions** 로 설정되어 있어야 합니다. 코드 변경 없이 다시 올리려면 Actions 에서 **Docs site** 를 직접 실행하십시오.

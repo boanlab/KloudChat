@@ -26,6 +26,7 @@ Models that support tool calling, marked 🔧 in the list, use the following too
 |---|---|
 | Web search · Page reading · Weather | Runs searches and reads the body text of the pages it needs. |
 | Code execution | Performs calculations, table processing, and chart generation with real code. This path is accurate for arithmetic on large numbers. |
+| Arithmetic check | Calculates arithmetic and powers exactly on the server, and compares the result with answer choices or a submitted answer. It needs no extra server, and requests that call for a calculation use it first. |
 | Find in files | Searches inside attached files and agent material. |
 | Artifacts · Chart creation | Produces the result as a document or a chart in the right panel. |
 | Shared notes | Leaves a note for other conversations in the same project to reference. |

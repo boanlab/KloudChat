@@ -259,7 +259,7 @@ def test_the_shipped_limits_are_the_ones_the_instructions_state():
     assert dt.get("doc-report").limits == {}
 
 
-# ── 중국어 한자가 한국어 문장에 섞인 것 ───────────────────────────────
+# ── Chinese characters mixed into Korean prose ─────────────────────────
 
 
 def test_a_chinese_word_in_korean_prose_is_flagged():

@@ -1,4 +1,4 @@
-"""세션에 지금 도는 턴을 적어, 복제본이 달라도 한 번에 한 답만 쓰게 한다.
+"""The turn running on a session, so only one answer is written at a time across replicas.
 
 Revision ID: 0050
 Revises: 0049

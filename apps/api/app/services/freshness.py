@@ -1,8 +1,7 @@
 """All-domain grounded-answer guidance and catalogue-backed accuracy notices.
 
-The legacy political detector below is only a lookup hint and a way to recognize
-old stored policy replies. It never decides whether an answer may be generated.
-Neither an instruction nor an accuracy notice certifies that an answer is true.
+The political-office detector is only a lookup hint and a way to recognize stored
+policy replies; it never decides whether an answer may be generated.
 """
 
 from __future__ import annotations
@@ -207,8 +206,7 @@ def with_answer_policy(
     )
     for message in result:
         if message.get("role") == "assistant" and isinstance(message.get("content"), str):
-            # Earlier answers stay: they are the conversation. The current-fact
-            # instruction already says they are not evidence for the present state.
+            # Earlier answers stay; the current-fact instruction says they are not evidence.
             message["content"] = _without_trailing_notices(message["content"])[0]
     if result and result[0].get("role") == "system":
         existing = str(result[0].get("content") or "")
@@ -331,8 +329,7 @@ _SAME_FACT_FOLLOWUP = re.compile(
 def is_same_fact_followup(request: str) -> bool:
     """Recognize only a short, whole-message nudge with no new named subject.
 
-    This alone is never a freshness decision. The caller must also require an
-    immediately preceding stored server-policy hold and its guarded user turn.
+    Not a freshness decision alone; the caller also requires a preceding policy hold.
     """
     if not isinstance(request, str) or len(request) > 256:
         return False
@@ -402,10 +399,9 @@ def without_quoted_transform_sources(text: str) -> str:
 
 
 def fresh_fact_required(request: str, *, as_of: date | None = None) -> bool:
-    """Legacy political lookup hint; never an answer-availability gate.
+    """Political-office lookup hint; never an answer-availability gate.
 
-    Call with the latest user's request, not the assembled system/history/reference
-    envelope. General answer guidance and caveats apply regardless of this hint.
+    Call with the latest user request, not the assembled message envelope.
     """
     reference_year = (as_of or datetime.now(UTC).date()).year
     text = without_quoted_transform_sources(unicodedata.normalize("NFC", request or ""))
@@ -471,27 +467,9 @@ def fresh_fact_required(request: str, *, as_of: date | None = None) -> bool:
 
 
 def names_the_present(request: str) -> bool:
-    """Whether the request's own words ask about now (「현재」「지금」「최신」「올해」…).
-
-    A price or a rule asked about plainly can be read off the person's own documents;
-    the same question with 「지금」 in it asks what holds today.
-    """
+    """Whether the request's own words ask about now (「현재」「지금」「최신」「올해」…)."""
     text = unicodedata.normalize("NFC", request or "")
     return bool(_LIVE.search(text) or _CURRENT_TIME.search(text))
-
-
-def abstention_response(request: str) -> str:
-    """An evidence limitation, not a claim that a search ran or the model is outdated."""
-    if re.search(r"[가-힣]", unicodedata.normalize("NFC", request or "")):
-        return (
-            "현재 정보를 확인할 수 없어 현직 인물이나 정치 상황을 단정할 수 없습니다. "
-            "최신 공식 자료를 제공하거나 검색을 허용한 환경에서 확인해 주세요."
-        )
-    return (
-        "I cannot verify the current officeholder or political situation, so I cannot state "
-        "it as a present fact. Provide a current official source or verify it in an "
-        "environment where search is allowed."
-    )
 
 
 # A freshness boundary is narrower than a general search hint: "now" alone
@@ -548,8 +526,8 @@ _FACT_TRANSFORM_ONLY = re.compile(
     re.I,
 )
 _FACT_YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})(?:\s*년|\b)")
-#: A ballpark ask (「보통 얼마나 해?」) wants the usual order of magnitude, which the
-#: model may give with its ordinary caveats; only a live marker makes it a current fact.
+#: A ballpark ask (「보통 얼마나 해?」) wants the usual magnitude; only a live marker
+#: makes it a current fact.
 _FACT_BALLPARK = re.compile(
     r"보통|대략|어림|평균적으로|일반적으로|대충|통상|"
     r"\b(?:typically|usually|roughly|approximately|on\s+average|ballpark|in\s+general)\b",
@@ -558,13 +536,9 @@ _FACT_BALLPARK = re.compile(
 
 
 def ballpark_current_value(request: str) -> bool:
-    """A question about the *usual* level of a changing value (「왕복 요금은 보통 얼마나
-    해?」, "what does a ticket typically cost?").
+    """A question about the *usual* level of a changing value (「보통 얼마나 해?」).
 
-    Not a current-fact request — `current_fact_required` skips these so no search is
-    forced — but the figure the model gives is still from its training data, so the
-    answer carries the light caveat a careful assistant adds: a rough figure, and where
-    to check today's.
+    Not a current-fact request, but the answer still gets a light caveat.
     """
     if not isinstance(request, str) or len(request) > 4_000:
         return False
@@ -632,11 +606,7 @@ _FACT_NO_LIVE_CLAIM = re.compile(
 
 
 def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
-    """Select mutable present facts, not model confidence or answer truth.
-
-    Inspect only the latest user request. This conservative lexical boundary is
-    intentionally not a classifier for every possible factual uncertainty.
-    """
+    """Select mutable present facts in the latest user request; a conservative lexical test."""
     if not isinstance(request, str):
         return False
     reference_year = (as_of or datetime.now(UTC).date()).year
@@ -740,7 +710,7 @@ def current_fact_required(request: str, *, as_of: date | None = None) -> bool:
         if fresh_fact_required(clause, as_of=as_of):
             return True
         if _FACT_BALLPARK.search(clause) and not live:
-            # 「왕복 요금은 보통 얼마나 해?」: the usual figure, not today's.
+            # The usual figure, not today's.
             continue
         if _MUTABLE_ROLE.search(clause) and (live or _IDENTITY.search(clause)):
             return True

@@ -45,3 +45,8 @@ section:last-of-type h2 { color: var(--accent); }
   .cover { min-height: 0; padding: 0 0 1.1rem; page-break-after: auto; break-after: auto; }
   section:last-of-type { break-inside: avoid; }
 }
+
+/* 한눈에: 절 제목이 옅은 강조색 띠 위에 놓이고, 표는 줄무늬로 견준다. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; background: var(--accent-wash); padding: 0.45rem 0.7rem;
+      border-left: 4px solid var(--accent); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+table thead th { background: var(--ink); color: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

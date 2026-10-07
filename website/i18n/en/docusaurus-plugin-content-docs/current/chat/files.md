@@ -14,7 +14,7 @@ Attach files with 📎 in the composer, and the model answers from their content
 |---|---|---|
 | Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | The file must contain text. Scanned images are not recognized. |
 | Text and code | .txt, .md, .csv, .tsv, .json, and most code files | Read as text. |
-| Images | PNG, JPG, GIF, WebP | **4MB or smaller**. Sent only to models that support image recognition, marked 👁 in the list. |
+| Images | PNG, JPG, GIF, WebP | **4MB or smaller**. Sent only to **strict-local** models that support image recognition, marked 👁 in the list. |
 | Audio and video | mp3, wav, mp4, and similar | **25MB or smaller**. Converted to text and read when the administrator has connected speech transcription. |
 
 The maximum size for a single file is 200MB. Older Office formats (.doc, .ppt, .xls) are not supported. A file that could not be read appears as **Unread attachment** in the processing steps of the answer.
@@ -37,4 +37,4 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 
 ## Attaching images
 
-Images are sent only to models that support image recognition. If you select a model without image recognition, the file is attached but the model cannot see its content. Images from earlier requests are not sent again, so attach the image again to ask more about it.
+Images are sent only to strict-local models that support image recognition. The personal data check reads text only, so images never go to a model that may send data outside the organization. If you select any other model, the file is attached but the model cannot see its content. Images from earlier requests are not sent again, so attach the image again to ask more about it.

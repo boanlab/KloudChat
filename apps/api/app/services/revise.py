@@ -231,9 +231,8 @@ _ORDER_SWAP = re.compile(
 def order_swap(instruction: str, parts: list[str]) -> tuple[int, int] | None:
     """Indices of the two existing parts the instruction asks to trade places, or `None`.
 
-    A swap is a rearrangement, not a rewrite: when both names match parts (exactly, or
-    one name a prefix/word-subset of the other, as `named_target` matches), the two are
-    swapped in place and the model is not asked to redraw the deck around them."""
+    Both names must match parts (see `_match_part`); the swap is done without a model call.
+    """
     text = " ".join((instruction or "").split())
     match = _ORDER_SWAP.search(text)
     if not match:
@@ -268,9 +267,10 @@ def _match_part(name: str, parts: list[str]) -> int | None:
 
 
 def term_swap(instruction: str) -> tuple[str, str] | None:
-    """`(old, new)` when the instruction is a document-wide replacement of one quoted
-    term by another, else None. Done by string replacement: exact, instant, and nothing
-    else in the document moves — which is what 「그 외는 바꾸지 마」 means."""
+    """`(old, new)` when the instruction replaces one quoted term by another document-wide.
+
+    Applied by plain string replacement, so nothing else in the document moves.
+    """
     text = " ".join((instruction or "").split())
     match = _TERM_SWAP.search(text)
     if not match or not _SWAP_SCOPE.search(text):
@@ -330,14 +330,9 @@ _GENERIC_TITLE_WORDS = frozenset({
 def carry_parts(
     new: list[dict], old: list[dict], *, is_deck: bool, mentioned: str
 ) -> tuple[list[dict], int]:
-    """The re-planned document with every part the person did not touch carried over
-    from the document they were looking at.
+    """The re-planned parts, with each unchanged, unmentioned part's words carried from `old`.
 
-    A restructure (「6장으로 줄여」, 「위험 장을 둘 추가해 줘」) is planned again and written
-    again; a part whose name survived unchanged and which the instruction never
-    mentioned is the same part, and a person who asked to shorten a deck did not ask
-    to have its untouched slides retyped. The new part keeps its position, id and
-    accent; its words come from the old one.
+    A carried part keeps its new position, id and accent. Returns `(parts, carried count)`.
     """
     said = (mentioned or "").lower()
     by_name: dict[str, dict] = {}
@@ -350,9 +345,7 @@ def carry_parts(
     for part in new:
         name = _part_name(part, is_deck)
         previous = by_name.get(name)
-        # A part the instruction names (「지표와 진척은 한 장으로」) is being changed:
-        # it is written fresh, particles and all. A generic word the note happens to use
-        # (「다음」 in a note about 「다음 단계」-less changes) names nothing.
+        # A part the instruction names is rewritten; generic title words name nothing.
         tokens = [t for t in name.split() if len(t) >= 2 and t.lower() not in _GENERIC_TITLE_WORDS]
         named = name.lower() in said or (
             bool(tokens) and all(token.lower() in said for token in tokens)
@@ -409,9 +402,10 @@ _ADD_PART = re.compile(
 
 
 def explicit_insert(message: str, parts: list[str]) -> Plan | None:
-    """An instruction that names one new part to add, as an insert plan placed by its own
-    words (「요청 사항 장 앞에」), without asking the planner; `None` otherwise — several
-    parts, a part that already exists, or a count change are the planner's to read."""
+    """An insert plan for an instruction that adds exactly one new, named part; else `None`.
+
+    Several parts, an existing part, or a count change are left to the planner.
+    """
     text = " ".join((message or "").split())
     if re.search(r"\d{1,3}\s{0,8}장으로|줄여|늘려|합쳐|합치|삭제|빼", text):
         return None
@@ -429,8 +423,7 @@ def explicit_insert(message: str, parts: list[str]) -> Plan | None:
 
 
 def place_insert(plan: Plan, parts: list[str], message: str) -> Plan:
-    """An insert whose words name the neighbour (「요청 사항 장 앞에」, 「결론 뒤에」) goes
-    exactly there; the planner's guess is kept only when the words say nothing."""
+    """The insert placed beside the part its words name (「결론 뒤에」), else where planned."""
     if not plan.inserts:
         return plan
     text = " ".join((message or "").split())
@@ -470,11 +463,10 @@ _STRUCTURAL_ASK = re.compile(
 
 
 def named_target(plan: Plan, parts: list[str], message: str) -> Plan:
-    """When the words name exactly one existing part as the thing to change (「다음 단계
-    장을 연표로」), that part is the target, whatever the planner guessed — a different
-    part, or a restructure of the whole deck. Two names, or none, leave the planner's
-    reading alone, as do a whole-document or insert plan and any instruction that asks
-    for a structural change (add, remove, merge, reorder, a new count)."""
+    """The plan retargeted to the one existing part the words name (「다음 단계 장을 연표로」).
+
+    Zero or several names, whole/insert plans and structural asks keep the planner's plan.
+    """
     if plan.scope not in ("parts", "outline"):
         return plan
     if plan.scope == "parts" and not plan.targets:
@@ -483,40 +475,35 @@ def named_target(plan: Plan, parts: list[str], message: str) -> Plan:
     if _STRUCTURAL_ASK.search(text):
         # Merging, adding, removing or reordering parts is the planner's call to make.
         return plan
-    # A name counts only when the words point at it as a part (「다음 단계 장을」): a date
-    # in the instruction that happens to be a slide's title (「9/22 오픈」) is not a mention.
+    # A name counts only when followed by a part word (「다음 단계 장을」), not as bare text.
     mentioned = [
         i for i, name in enumerate(parts)
         if len(name.strip()) >= 2 and re.search(rf"{re.escape(name.strip())}{_PART_WORD}", text)
     ]
     if not mentioned:
-        # 「다음 단계 장을 …」 names a slide called 「다음 단계와 마무리」: the phrase before
-        # 장/절 is the name's core, and the one part carrying it is the one meant.
+        # The phrase before 장/절 as the core of one part's name.
         phrase = _NAMED_PHRASE.search(text)
         if phrase:
             core = phrase.group(1).strip()
             holders = [i for i, name in enumerate(parts) if core and core in name]
             words = [w for w in core.split() if len(w) >= 2]
             if not holders and words:
-                # 「오버헤드 결과 장을」 for a slide called 「오버헤드 측정 결과」: every word
-                # of the phrase is in that one name, so that is the part.
+                # Every word of the phrase in one part's name.
                 holders = [i for i, name in enumerate(parts) if all(w in name for w in words)]
             shares_a_word = any(any(w in name for w in words) for name in parts)
             if len(holders) == 1:
                 mentioned = holders
                 text = text.replace(core, parts[holders[0]].strip(), 1)
             elif not holders and not shares_a_word and len(core) >= 2 and plan.scope == "parts":
-                # 「다음 단계 장을 연표로」 when no slide is called that: the person believes
-                # the deck has one. Guessing another slide and rewriting it is the one
-                # thing not to do; the part is made, where a last part belongs.
+                # A named part that does not exist is added before the closing part,
+                # rather than guessing another part to rewrite.
                 last_is_closing = bool(parts) and bool(_CLOSING_NAME.search(parts[-1]))
                 closing = len(parts) - 1 if last_is_closing else len(parts)
                 return Plan(
                     scope="insert", after=closing - 1, names=[core], note=plan.note,
                     usage=plan.usage,
                 )
-    # A name inside a longer named part (「다음 단계」 inside 「요청 사항 및 다음 단계」) is the
-    # longer part's mention, not its own.
+    # A name contained in a longer mentioned name belongs to the longer one.
     mentioned = [i for i in mentioned if not any(
         j != i and parts[i].strip() in parts[j].strip() and len(parts[j]) > len(parts[i])
         for j in mentioned
@@ -563,12 +550,8 @@ def _ascii_art(block: str) -> bool:
 
 
 def keep_figure(old: str, new: str, instruction: str) -> str:
-    """The rewritten section with its figure back, when the rewrite dropped the mermaid
-    fence and the person did not ask for the figure to go.
-
-    A rewrite is prose work; the figure under the prose belongs to the section the way
-    its table does, and a model that was told to add one sentence has no business
-    losing it. A new fence in the rewrite (the figure itself was changed) is kept as is."""
+    """The rewritten section with the old mermaid fence restored, unless the rewrite has its
+    own fence or the instruction asked to remove the figure."""
     if "```mermaid" in (new or "") or "```mermaid" not in (old or ""):
         return new
     if _REMOVE_FIGURE.search(instruction or ""):
@@ -576,8 +559,7 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
     fence = _FENCE.search(old)
     if not fence:
         return new
-    # A model asked to touch the flow sometimes redraws it as ASCII boxes in a code
-    # block; that drawing goes, the real figure comes back.
+    # ASCII-box drawings standing in for the figure are dropped.
     body = _ANY_FENCE.sub(lambda m: "" if _ascii_art(m.group(1)) else m.group(0), new or "")
     return f"{body.rstrip()}\n\n{fence.group(0).strip()}"
 
@@ -589,9 +571,7 @@ _COUNT_MENTION = re.compile(
 
 
 def without_counts(request: str) -> str:
-    """The request with its part counts taken out, so a restructure's own count
-    (「6장으로 줄인다」 in the note) is the only one the planner reads. Two counts in one
-    text cancel to none, and an outline with no count to hit went to thirty-nine slides."""
+    """The request with its part counts removed, so the planner reads only the note's count."""
     return " ".join(_COUNT_MENTION.sub(" ", request or "").split())
 
 
@@ -612,8 +592,7 @@ _BODY_TOO = re.compile(r"본문도|내용도|슬라이드도|글머리표도|함
 
 
 def notes_only(message: str) -> bool:
-    """Whether the instruction is about speaker notes and nothing else (「모든 장에 발표자
-    노트를 두 문장씩 넣어 줘」): the slides' words are not to move."""
+    """Whether the instruction asks only for speaker notes, leaving the slides' words alone."""
     text = " ".join((message or "").split())
     return bool(_NOTES_ASK.search(text)) and not _BODY_TOO.search(text)
 
@@ -626,8 +605,7 @@ _EVERY_PART = re.compile(
 
 
 def notes_everywhere(plan: Plan, parts: list[str], message: str) -> Plan:
-    """A notes request for every slide is a whole-deck pass, however many parts the
-    planner picked; the planner's cap of three targets is for rewrites of words."""
+    """A notes request for every slide as a whole-deck pass, past the planner's target cap."""
     if plan.scope in ("outline", "new") or not parts:
         return plan
     text = " ".join((message or "").split())
@@ -639,9 +617,7 @@ def notes_everywhere(plan: Plan, parts: list[str], message: str) -> Plan:
 
 
 def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
-    """「6장으로 줄여 줘」 against a nine-part document is a restructure, whatever the
-    planner read it as — a partial edit, or a request for a new document: the words
-    state a count the document on screen does not have."""
+    """An outline plan when the words state a new part count (「6장으로 줄여 줘」)."""
     if plan.scope == "outline" or not parts:
         return plan
     match = _TARGET_COUNT.search(" ".join((message or "").split()))
@@ -650,9 +626,8 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     wanted = int(match.group(1))
     if wanted <= 0 or wanted == len(parts):
         return plan
-    # The note carries the target count once and no other: 「9장을 6장으로」 would cancel
-    # to no count at all for the planner that has to hit it. A word leads the number:
-    # merged as a bullet, 「- 6장으로」 reads as a range to the count parser.
+    # Exactly one count in the note (two would cancel), led by a word so a bullet
+    # 「- 6장으로」 is not read as a range.
     note = f"장수는 {wanted}장으로 맞춘다. {without_counts(plan.note)}".strip()
     return Plan(scope="outline", note=note[:600], usage=plan.usage)
 
@@ -662,9 +637,7 @@ _PART_TEXT_CHARS = 600
 
 
 def outline_block(parts: list[str], texts: list[str] | None = None) -> str:
-    """The current skeleton, for the planner that draws the next one from it — with each
-    part's words when given, so a merged part keeps what the parts it absorbs said (the
-    risk table a later turn added is in the deck, not in the original request)."""
+    """The current outline for the restructure planner, with each part's words when given."""
     lines = []
     for i, name in enumerate(parts):
         lines.append(f"{i + 1}. {name}")
@@ -698,10 +671,12 @@ def _dedupe_tables(slides: list[dict]) -> list[dict]:
 
 
 def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """A restructure that merged a table slide into another (「이슈·위험도 한 장으로」) keeps
-    the absorbed slide's rows: an old table slide whose title is gone from the deck and
-    whose name the instruction says lends its rows, by first cell, to the new table slide
-    that shares a word with it — up to six rows, header included."""
+    """Rows of table slides merged away by a restructure, moved into the slide that absorbed them.
+
+    A gone slide the instruction names gives its rows to a new table slide sharing a title
+    word, up to six rows with the header.
+    """
+
     said = (mentioned or "").lower()
     # The writer's own repeats give up their slots before absorbed rows ask for them.
     new = _dedupe_tables(new)
@@ -736,10 +711,8 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
                 break
             key = str(row[0]).strip()
             key_tokens = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", key))
-            # 「p95 응답시간 미달」 beside 「p95 2.8초」, 「조직도 API 보안 미완」 beside 「조직도
-            # API」: the host already has that row under its own words — every word of the
-            # key is there, or a distinctive one (three Hangul syllables, or a name with a
-            # digit like p95) is.
+            # Already covered: every key word is in the host, or one distinctive word
+            # (three+ Hangul syllables, or containing a digit like p95) is.
             distinctive = {
                 t for t in key_tokens if (len(t) >= 3 and not t.isascii()) or re.search(r"\d", t)
             }
@@ -749,16 +722,11 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
             if key and key not in have and not covered:
                 cells = [str(c) for c in row][:width]
                 host["rows"].append(cells + [""] * (width - len(cells)))
-    # An absorbed row that says what a row already says (in other words) goes too.
     return _dedupe_tables(new)
 
 
 def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """A timeline the planner renamed (「다음 단계」 → 「오픈까지 남은 일정」) is still the
-    person's timeline: when a new timeline shares a date with an old one and the
-    instruction did not name the old slide, the old pairs (the dates the person listed)
-    replace the rewritten ones under the new title."""
-    said = (mentioned or "").lower()
+    """New timelines that share a date with a longer old timeline take back the old pairs."""
 
     def keys(slide: dict) -> set[str]:
         out = set()
@@ -769,9 +737,6 @@ def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> lis
                     out.add("/".join(str(int(x)) for x in digits[:2]))
         return out
 
-    # A restructure carries no instruction to drop dates (that is a revision of the
-    # timeline itself), so the planner's note naming the slide does not exclude it.
-    del said
     old_timelines = [s for s in old if s.get("layout") == "timeline" and keys(s)]
     for slide in new:
         if slide.get("layout") != "timeline":
@@ -786,8 +751,7 @@ def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> lis
 
 
 def _merge_phrases(said: str) -> list[set[str]]:
-    """The word sets of each 「A와 B는 한 장으로」 phrase in an instruction, one per
-    comma- or sentence-separated segment, particles stripped."""
+    """Word sets of each 「A와 B는 한 장으로」 phrase, one per segment, particles stripped."""
     out: list[set[str]] = []
     for segment in re.split(r"[.。,，\n;]", said or ""):
         m = re.search(r"^(.{0,60}?)\s{0,8}(?:한\s{0,8}장|하나)\s{0,8}(?:으로|에)", segment)
@@ -802,8 +766,7 @@ def _merge_phrases(said: str) -> list[set[str]]:
 
 
 def _destination(gone: dict, tables: list[dict], said: str) -> dict | None:
-    """The new table slide a gone table's rows belong to: one sharing a title word the
-    instruction mentions, else the one named with it in the same 「… 한 장으로」 phrase."""
+    """The new table slide a gone table's rows belong to, by title word or merge phrase."""
     title = str(gone.get("title") or "")
     tokens = {t for t in _title_tokens(title) if t.lower() in said}
     host = next((s for s in tables if _title_tokens(str(s.get("title") or "")) & tokens), None)
@@ -820,10 +783,10 @@ def _destination(gone: dict, tables: list[dict], said: str) -> dict | None:
 
 
 def unmix_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """A restructure's writer, shown every old table, sometimes pours the progress rows
-    into the issues table. A row whose first cell is a row of a gone table that belongs to
-    a different slide (or to none) leaves the table it strayed into; a table keeps at
-    least two body rows."""
+    """Rows of a gone table removed from tables other than their destination.
+
+    A table keeps at least two body rows.
+    """
     said = (mentioned or "").lower()
     new_titles = {str(s.get("title") or "") for s in new}
     tables = [s for s in new if isinstance(s.get("rows"), list) and len(s.get("rows") or []) > 1]
@@ -860,10 +823,10 @@ _TIMELINE_WORDS = ("단계", "일정", "로드맵", "타임라인", "계획", "�
 def keep_timeline_layout(
     new: list[dict], old: list[dict], *, mentioned: str, request: str = ""
 ) -> list[dict]:
-    """A timeline the person asked for (「연표로 바꿔 줘」) survives a restructure that redrew
-    its slide as steps or bullets: when the old deck had a timeline the instruction did
-    not name and the new deck has none, the new slide about the same thing (a shared title
-    word, or a title about 단계·일정·로드맵) becomes that timeline again."""
+    """An old timeline slide the instruction did not name, restored when the new deck has none.
+
+    The new slide sharing a title word (or about 단계·일정·로드맵) becomes the timeline.
+    """
     said = (mentioned or "").lower()
     if any(s.get("layout") == "timeline" for s in new):
         return new
@@ -886,9 +849,7 @@ def keep_timeline_layout(
             None,
         )
         if host is None:
-            # The planner dropped the timeline slide to make the count. A slide nobody
-            # asked for gives up its slot instead: an agenda the request never named,
-            # else a one-line statement that is not one of the person's parts.
+            # No host: an unrequested agenda or statement slide gives up its slot.
             asked = f"{said} {(request or '').lower()}"
             filler = next(
                 (
@@ -938,8 +899,8 @@ def refresh_agenda(slides: list[dict]) -> list[dict]:
 
 
 def document_block(parts: list[str], texts: list[str]) -> str:
-    """The document on screen, as material for a restructure's writer: what a merged or
-    renamed part absorbs is here, numbers and dates the original request never had."""
+    """The current document's words, as source material for a restructure's writer."""
+
     chunks = []
     for i, name in enumerate(parts):
         text = " ".join((texts[i] if i < len(texts) else "").split())

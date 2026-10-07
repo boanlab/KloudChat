@@ -1,8 +1,4 @@
-"""Checks on a document plan (headings with a layout each) before anything is written.
-
-Used by the `deck` and `page` tracks. Small models tend to reach for one
-layout and stay there; `flat_layouts` detects that.
-"""
+"""Checks on a document plan (headings with a layout each) before anything is written."""
 
 from __future__ import annotations
 
@@ -37,8 +33,35 @@ _COUNT_WORDS = {
 _FIGURE_WORDS = (["표"], ["그림"], ["도표"], ["차트"], ["사진"], ["도식"], ["그래프"])
 
 
+def requested_range(
+    request: str, units: tuple[str, ...], *, maximum: int
+) -> tuple[int, int] | None:
+    """A stated range of the total (「8~10장」) from the instruction only; None without one.
+
+    An exact total (`requested_count`) takes precedence."""
+    from app.services.context import instruction_part
+
+    text = " ".join(instruction_part(request or "").split())
+    unit = "|".join(re.escape(value) for value in units)
+    for match in re.finditer(
+        rf"(?<![\d.])(\d{{1,2}})\s{{0,2}}[~～–-]\s{{0,2}}(\d{{1,2}})\s{{0,2}}(?:개\s{{0,2}})?(?:{unit})",
+        text,
+    ):
+        prefix = text[max(0, match.start() - 8) : match.start()].rstrip()
+        if prefix.endswith(("제", "본문", "본론", "내용")):
+            continue
+        lo, hi = int(match.group(1)), int(match.group(2))
+        if 1 <= lo < hi <= maximum:
+            return lo, hi
+    return None
+
+
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
     """An explicit total, not a page reference, range or count of just the body."""
+    # A count inside pasted material (「GPU는 A100 1장」 in a draft) is not the document's.
+    from app.services.context import instruction_part
+
+    request = instruction_part(request)
     # Normalize once so spacing and each candidate's context have bounded work.
     request = " ".join(request.split())
     words = "|".join(sorted(_COUNT_WORDS, key=len, reverse=True))
@@ -57,11 +80,11 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
         if prefix.endswith(("제", "본문", "본론", "내용")):
             continue
         if prefix.split()[-1:] in _FIGURE_WORDS:
-            # 「3년 TCO 표 한 장 포함」 counts a table, not the deck (「발표 5장」 is the deck).
+            # 「표 한 장」 counts a table, not the document.
             continue
         after = request[match.end() : match.end() + 8]
         if re.match(r"\s{0,8}(?:으로|에)\s{0,8}(?:합|묶|병합|넣|정리|모아|담)", after):
-            # 「지표와 진척은 한 장으로 합치고」 merges parts; it is not the deck's total.
+            # 「… 한 장으로 합치고」 merges parts; it is not the total.
             continue
         if re.match(r"[A-Za-z가-힣]", suffix) and not suffix.startswith(
             ("으로", "로", "짜리", "만", "을", "를", "은", "는", "에", "이", "가")
@@ -73,8 +96,8 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
             continue
         value = min(value, maximum)
         if prefix.endswith(("총", "전체", "표지 포함", "표지포함", "장수는", "장수")):
-            # 「총 N장」 「장수는 N장으로 맞춘다」 state the total outright; the last such
-            # statement wins, since a revision's note comes after the original 「장수 8장」.
+            # 「총 N장」 states the total outright; the last such statement wins, as a
+            # revision note follows the original.
             authoritative.append(value)
             continue
         if value == 1 and suffix.startswith("으로"):
@@ -83,7 +106,7 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
     if authoritative:
         return authoritative[-1]
     if len(found) > 1 and 1 in found and one_into:
-        # 「이슈·위험도 한 장으로.」 beside 「6장으로 줄여」: the one merges, it is no total.
+        # A 「한 장으로」 beside another count merges parts; it is not the total.
         found.discard(1)
     return next(iter(found)) if len(found) == 1 else None
 

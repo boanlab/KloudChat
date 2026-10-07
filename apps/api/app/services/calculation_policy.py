@@ -1,9 +1,6 @@
 """Conservative request-only cues for a required arithmetic tool call.
 
-This is not a semantic classifier: attachments, general anaphoric follow-ups,
-spelled-out numbers and requests over the bound remain outside this policy. The direct
-extractor copies only an explicit expression; it never builds a word-problem
-equation, evaluates arithmetic, or grants a tool permission.
+Not a semantic classifier; the direct extractor only copies an explicit expression.
 """
 
 from __future__ import annotations
@@ -140,7 +137,7 @@ _PLAIN_NUMBER = re.compile(rf"{_FOLLOWUP_NUMBER}\Z")
 
 
 def _mask_quoted_intent(text: str) -> str:
-    # Cache each opener's first closing quote in one reverse pass. Apostrophes
+    # Each opener's first closing quote, found in one reverse pass. Apostrophes
     # inside English words are not delimiters; Korean suffixes can follow quotes.
     ends: list[int | None] = [None] * len(text)
     next_closing: dict[str, int] = {}
@@ -259,8 +256,7 @@ def _answer_modifiers_only(remainder: str) -> bool:
 def is_calculation_followup(request: str) -> bool:
     """Recognize one explicit previous-result operation, never infer its operand.
 
-    This cue alone grants nothing: the caller must bind it to a completed,
-    same-session arithmetic chain. Other wording remains ordinary model routing.
+    Grants nothing alone: the caller must bind it to a completed same-session chain.
     """
     if not isinstance(request, str) or len(request) > 1024 or _has_non_positional_notation(request):
         return False
@@ -289,10 +285,7 @@ def is_plain_numeric_answer(answer: str) -> bool:
 def direct_calculation_expression(request: str) -> str | None:
     """Copy one unambiguous user expression for an already-authorized calculator.
 
-    The whole request must match: a literal expression, an optional question,
-    and at most one answer-format and one no-file suffix. Unknown wording returns
-    None so normal model-directed tool handling remains responsible. In particular,
-    equations with a supplied result and word problems are never rewritten here.
+    The whole request must be the expression plus optional question/format suffixes; else None.
     """
     if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
         return None
@@ -347,8 +340,7 @@ def direct_calculation_expression(request: str) -> str | None:
 def requires_calculation(request: str) -> bool:
     """Recognize supplied-number arithmetic without inferring absent operands.
 
-    A false result is absence of a strong request cue, not proof that no tool is
-    useful. Callers must preserve ordinary model-directed tools on that path.
+    False means no strong cue, not that no tool is useful.
     """
     if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
         return False
@@ -385,8 +377,7 @@ def requires_calculation(request: str) -> bool:
             continue
         if _PROGRAM.search(words) and _BUILD.search(words):
             continue
-        # A format conversion is not unit arithmetic. Keep the rest of the
-        # clause so "calculate ... then convert to JSON" still requires a tool.
+        # A format conversion is not unit arithmetic; the rest of the clause still counts.
         words = _REPRESENTATION_CONVERSION.sub(" ", words)
         eligible.append((data, words))
     # A self-contained expression does not need a missing operand from another task.
@@ -399,8 +390,7 @@ def requires_calculation(request: str) -> bool:
     number_count = len(_NUMBER.findall(_CORRECTION.sub(" ", data)))
     if number_count < 1:
         return False
-    # Eligible clauses preserve commands but omit quoted instructions. Splitting
-    # "and" between operands leaves whitespace, accepted by the addition grammar.
+    # Splitting on "and" between operands leaves whitespace the addition grammar accepts.
     arithmetic_action = _has_numeric_arithmetic_action(" ".join(words for _, words in eligible))
     for raw, words in eligible:
         if number_count >= 2 and (

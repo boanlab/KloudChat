@@ -1,15 +1,4 @@
-"""Who opened a shared link.
-
-`shares.views` was a counter. It answers "is anyone reading this" and not "who
-has seen it" — and the second is the question somebody asks the moment they
-realise they shared the wrong thing, or shared the right thing with the wrong
-scope. A number cannot answer it and neither can this migration retroactively:
-there is nothing to backfill, so the existing counter stays exactly as it is
-and the naming starts from here.
-
-A signed-in reader is named. An anonymous one has no account by construction —
-`link` scope exists for recipients who have none — and their address is the
-only thing this server ever learns about them.
+"""Who opened a shared link: one row per reader visit.
 
 Revision ID: 0030
 Revises: 0029

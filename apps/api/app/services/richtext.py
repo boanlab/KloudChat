@@ -617,3 +617,28 @@ __all__ = [
     "tidy_tables",
     "to_markdown",
 ]
+
+
+#: 「… 같습니다. | 주파수 (Hz) | 측정 이득 |」 — a table's header glued to the sentence
+#: before it, so Markdown reads the whole table as one paragraph.
+_GLUED_HEADER = re.compile(
+    r"^(?P<prose>[^|\n]{0,4000}\S)[ \t]{0,8}(?P<head>\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$"
+)
+_SEPARATOR_ROW = re.compile(
+    r"^[ \t]{0,8}\|?(?:[ \t]{0,8}:?-{2,}:?[ \t]{0,8}\|){1,40}[ \t]{0,8}(?::?-{2,}:?)?[ \t]{0,8}$"
+)
+
+
+def detach_tables(text: str) -> str:
+    """A table header written on the same line as prose moves to its own line, a blank
+    line between, when the next line is the table's separator row."""
+    lines = (text or "").split("\n")
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        following = lines[index + 1] if index + 1 < len(lines) else ""
+        glued = _GLUED_HEADER.match(line) if _SEPARATOR_ROW.match(following) else None
+        if glued:
+            out.extend([glued.group("prose").rstrip(), "", glued.group("head")])
+            continue
+        out.append(line)
+    return "\n".join(out)

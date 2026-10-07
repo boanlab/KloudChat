@@ -1,8 +1,6 @@
-"""가입한 주소가 진짜인지 메일로 확인한다.
+"""Email verification tickets and `users.email_verified_at`.
 
-관리자가 켜면 새 계정은 메일의 링크를 누른 뒤에야 가입한 것으로 친다.
-`users.email_verified_at` 은 그 순간이고, 확인을 요구받지 않은 계정 — 이미
-있는 계정 전부 — 은 만든 때로 채운다. 비어 있음 = 링크가 아직 밖에 있음.
+Existing accounts are backfilled with their creation time; null means a link is outstanding.
 
 Revision ID: 0042
 Revises: 0041

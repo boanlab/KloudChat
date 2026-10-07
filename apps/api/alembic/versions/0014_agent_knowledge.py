@@ -1,12 +1,4 @@
-"""Documents an agent can search.
-
-Two columns on `files` rather than a table of its own: an agent's knowledge is a
-file, with the same extraction, blob storage and token count. `agent_id` says
-whose shelf it sits on; `source_url` records text read from a page rather than
-uploaded, which is a snapshot and not a subscription.
-
-Retrieval is lexical in-process, with an optional vector index in the model
-stack — see `services/knowledge.py`.
+"""Documents an agent can search: `agent_id` and `source_url` on `files`.
 
 Revision ID: 0014
 Revises: 0013
@@ -33,8 +25,7 @@ def upgrade() -> None:
     op.add_column(
         "files", sa.Column("source_url", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
     )
-    # Deleting an agent takes its shelf with it: knowledge attached to nothing is
-    # a row nobody can reach and nobody can delete.
+    # Deleting an agent deletes its knowledge files.
     op.create_foreign_key(
         "fk_files_agent_id", "files", "agents", ["agent_id"], ["id"], ondelete="CASCADE"
     )

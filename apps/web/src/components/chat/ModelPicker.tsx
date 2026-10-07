@@ -121,7 +121,10 @@ export function ModelPicker({
     (kind === 'chat' || kind === 'report' || kind === 'slides') &&
     Boolean(session?.agentId && !session.model && !agents.some((agent) => agent.id === session.agentId))
   // Auto belongs to a session, so it needs one or a caller that can create one.
-  const canRouteAuto = kind === 'chat' && (Boolean(sessionId) || Boolean(onEnableAuto))
+  // Chat, report and deck writers can be routed; the server settles a document's lane
+  // after keeping internal material strict-local.
+  const canRouteAuto = (kind === 'chat' || kind === 'report' || kind === 'slides') &&
+    (Boolean(sessionId) || Boolean(onEnableAuto))
   const persistSelection = async (action: () => void | Promise<void>) => {
     if (selectionPending) return
     setSelectionPending(true)

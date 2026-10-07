@@ -19,7 +19,7 @@ You can change your name and your password. To change the password, enter the cu
 | Item | Description |
 |---|---|
 | Default model per screen | The model applied to new conversations on each screen, such as Chat, Reports, and Slides. It is saved to the account, so it applies the same way on every device. |
-| Default handling for personal data detection | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). [Privacy](../privacy) |
+| A request with personal data in it → What to do by default | Choose from asking every time, switching to strict-local, masking, and sending the original text (when the administrator allows it). [Privacy](../privacy) |
 | Response streaming | When it is off, the answer is shown all at once after it is complete. |
 | Save memory automatically | Automatically saves information that stays valid, for each answer. |
 | Token and credit display | Sets whether usage is shown at the bottom of the answer. |

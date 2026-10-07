@@ -29,9 +29,9 @@ test('구성안을 건드리지 않으면 그대로 생성이라고 말한다', 
   // Nothing to revert, so no revert button.
   await expect(page.getByRole('button', { name: '처음 제안으로' })).toHaveCount(0)
 
-  // Picking an impression counts as an edit.
+  // Picking a use (slides) counts as an edit; the look is not asked on the card.
   const another = page
-    .getByRole('button', { name: /강한 인상|차분한 여백/ })
+    .getByRole('button', { name: /자료만 전달/ })
     .first()
   if (await another.isVisible().catch(() => false)) {
     await another.click()

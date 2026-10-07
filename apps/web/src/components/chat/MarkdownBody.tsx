@@ -1,4 +1,5 @@
 import { Check, Copy, X } from 'lucide-react'
+import { detachTables } from '@/lib/markdownTables'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
@@ -42,7 +43,7 @@ function ZoomableImage({ src, alt }: { src: string | undefined; alt: string }) {
       >
         <img src={src} alt={alt} className="block h-auto max-w-full rounded-card" />
       </button>
-      {alt ? <span className="mt-1.5 block text-base text-muted">{alt}</span> : null}
+      {alt ? <span className="mt-1.5 block text-center text-base text-muted">{alt}</span> : null}
       {open && (
         <span
           role="dialog"
@@ -125,11 +126,11 @@ function loadHighlighter(): Promise<Highlighter> {
   return highlighterPromise
 }
 
-//: Highlighting waits for the text to stop changing: while an answer streams, the
-//: block grows every frame and re-tokenising it each time is wasted work.
+// Highlighting waits for the text to stop changing: while an answer streams, the
+// block grows every frame and re-tokenising it each time is wasted work.
 const SETTLE_MS = 300
 
-//: Above this, highlighting is skipped: a pasted log is not worth the parse.
+// Above this, highlighting is skipped: a pasted log is not worth the parse.
 const HIGHLIGHT_LIMIT = 20_000
 
 /** Highlighted HTML for `text`, or null until the highlighter is in and the language known. */
@@ -244,7 +245,7 @@ export function MarkdownBody({
   className?: string
   owner?: DiagramOwner
 }) {
-  const source = useMemo(() => normaliseMath(children), [children])
+  const source = useMemo(() => detachTables(normaliseMath(children)), [children])
   return (
     <div
       className={cn(
@@ -254,7 +255,9 @@ export function MarkdownBody({
     >
       <ReactMarkdown
         // remark-cjk-friendly: CommonMark will not close `**` before a Korean particle.
-        remarkPlugins={[remarkGfm, remarkCjkFriendly, remarkMath]}
+        // A single tilde is a range in Korean prose (「100~500 Hz」), not strikethrough:
+        // only `~~text~~` strikes.
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkCjkFriendly, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         // react-markdown blanks `data:` URLs by default; embedded rasters pass.
         urlTransform={(url, key, node) =>

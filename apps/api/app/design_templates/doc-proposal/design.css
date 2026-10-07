@@ -46,3 +46,12 @@ table tbody tr:last-child td {
 }
 table td:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }
 table th:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }
+
+/* 한눈에: 큰 두 자리 절 번호(01, 02)를 제목 위에 세우는 제안서. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-weight: 750; }
+h2 { display: block; }
+h2::before { content: counter(sec, decimal-leading-zero); display: block; margin: 0 0 0.15rem;
+             background: none; border: 0; border-radius: 0; padding: 0; min-width: 0; text-align: left;
+             line-height: 1; color: var(--accent); }
+.pagedjs_page h2[data-counter-sec-value]::before { content: "0" attr(data-counter-sec-value); }
+table thead th { background: var(--accent-wash); border-bottom: 2px solid var(--accent); }

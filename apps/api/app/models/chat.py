@@ -93,12 +93,10 @@ class ChatSession(SQLModel, table=True):
     #: questions or outline it is waiting on. At most one per session.
     pending: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     #: What stands in for the turns too old to send: `{"through": <message id>,
-    #: "text": ..., "turns": n}`. Rebuilt from itself plus the turns dropped since,
-    #: never from the whole transcript again. Null until the conversation outgrows
-    #: the model's window.
+    #: "text": ..., "turns": n}`, extended with the turns dropped since. Null until the
+    #: conversation outgrows the model's window.
     summary: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     #: Skills switched on for this conversation. A skill picked for one turn stays on
-    #: for the turns after it, the way a skill a person reaches for keeps applying,
     #: until the person takes it off (session PATCH) or picks a different set.
     skill_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     #: The chat turn running on this session, across replicas: a token claimed with a

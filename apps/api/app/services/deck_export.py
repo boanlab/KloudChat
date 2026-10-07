@@ -25,7 +25,16 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas
 
-from app.services import charts, deck, deck_type, design, fonts, pictures
+from app.services import (
+    charts,
+    deck,
+    deck_type,
+    design,
+    diagram_shapes,
+    fonts,
+    pictures,
+    slide_patterns,
+)
 
 log = logging.getLogger(__name__)
 
@@ -113,7 +122,9 @@ _PICTURE_SPAN = 300.0
 
 def _has_words(data: dict) -> bool:
     """Whether the slide says anything besides its title and picture."""
-    return any(data.get(key) for key in ("bullets", "body", "rows", "metrics", "chart", *_PAIRED))
+    return any(
+        data.get(key) for key in ("bullets", "body", "rows", "metrics", "chart", *_PAIRED)
+    ) or _has_pattern_words(data, slide_patterns.BY_NAME.get(str(data.get("layout") or "")))
 
 
 def _picture_span(data: dict) -> float:
@@ -127,6 +138,10 @@ def _picture_span(data: dict) -> float:
 _EMU_PER_PT = 12700
 
 #: (latin, East Asian) faces keyed by `design.FONTS`; see `_font`.
+class _Drawn(Exception):
+    """The figure was drawn as shapes; its picture is not placed."""
+
+
 _FACES = {
     "gothic": ("Segoe UI", "맑은 고딕"),
     "serif": ("Georgia", "바탕"),
@@ -438,13 +453,6 @@ def _mix_floats(
     return tuple(colour[i] * weight + onto[i] * (1 - weight) for i in range(3))  # type: ignore[return-value]
 
 
-def _table_size(rows: int) -> float:
-    """The preview's fitted table cell size in its 225-unit drawing; both exporters scale by the
-    same ratio.
-    """
-    return deck_type.table_size(rows)
-
-
 def _font(
     run,
     *,
@@ -597,6 +605,17 @@ def _pptx_pairs(
         height = min((42 if compact else 100) * _K, room - (24 if compact else 10))
         name_pt = 14.0 if compact else _u("cardName")
         text_pt = 12.0 if compact else _u("cardText")
+        if compact and measure:
+            # Under a figure the cards grow to their longest text, so no sentence spills out.
+            need = max(
+                26
+                + name_pt * scale * 1.3
+                * max(1, len(_wrap(name, measure, name_pt * scale, span - 28)))
+                + 10 + text_pt * scale * deck_type.LEADING["cardText"]
+                * len(_wrap(text, measure, text_pt * scale, span - 28)) + 14
+                for name, text in pairs
+            )
+            height = min(max(height, need), room - 24)
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _box(
@@ -825,7 +844,28 @@ def _written(slides: list[dict]) -> list[dict]:
 
 def _filled(slide: dict) -> bool:
     """Whether anything but the placeholder is on this slide."""
-    return any(slide.get(key) for key in ("bullets", "rows", "metrics", "chart", "image", *_PAIRED))
+    return any(
+        slide.get(key) for key in ("bullets", "rows", "metrics", "chart", "image", *_PAIRED)
+    ) or _has_pattern_words(slide, slide_patterns.BY_NAME.get(str(slide.get("layout") or "")))
+
+
+def _strip_need(
+    pairs: list[tuple[str, str]], layout: str, width: float, font: str, bold: str, scale: float
+) -> float:
+    """The height the compact card strip under a figure needs for its longest card, so the
+    figure band above gives it that much and no sentence is cut."""
+    if layout != "cards" or not pairs:
+        return 0.0
+    gap = 18.0
+    span = (width - gap * (len(pairs) - 1)) / len(pairs)
+    name_pt, text_pt = 14.0 * scale, 12.0 * scale
+    lead = text_pt * deck_type.LEADING["cardText"]
+    return 10 + max(
+        26
+        + name_pt * 1.3 * max(1, len(_wrap(name, bold, name_pt, span - 28)[:2]))
+        + 10 + lead * len(_wrap(text, font, text_pt, span - 28)) + 14
+        for name, text in pairs
+    )
 
 
 def _pairs_of(slide: dict, layout: str) -> list[tuple[str, str]]:
@@ -921,6 +961,1726 @@ def _fill(
     return drawn_width, drawn_height, horizontal, vertical, horizontal, vertical
 
 
+# ---------------------------------------------------------------------------------------------
+# Pattern slides (`slide_patterns`): one drawing per arrangement, laid out once as a scene of
+# rectangles, ovals, polygons and fitted text in page points (top-down), then painted into the
+# .pptx or onto the .pdf canvas. Both files therefore share the geometry and the wrapping.
+
+_Colour = tuple[float, float, float]
+
+_WHITE_F: _Colour = (1.0, 1.0, 1.0)
+_DARK_F: _Colour = (0.1, 0.1, 0.1)
+
+#: SWOT quadrant colours: strengths, weaknesses, opportunities, threats.
+_SWOT = (
+    ("S", (0.18, 0.62, 0.42)),
+    ("W", (0.86, 0.58, 0.16)),
+    ("O", (0.23, 0.51, 0.96)),
+    ("T", (0.85, 0.30, 0.30)),
+)
+#: Positive and negative panel colours for `posneg` columns.
+_POSITIVE: _Colour = (0.18, 0.62, 0.42)
+_NEGATIVE: _Colour = (0.85, 0.33, 0.31)
+#: Column titles that mark the negative side of a `posneg` pair.
+_NEGATIVE_WORDS = (
+    "오해",
+    "단점",
+    "하지",
+    "문제",
+    "위험",
+    "약점",
+    "나쁜",
+    "금지",
+    "Don",
+    "Myth",
+    "Con",
+)
+
+#: How far a slice or series moves from the accent: (percent of accent, toward dark?).
+_SHADES = ((100, False), (55, False), (68, True), (30, False), (45, True), (78, False))
+
+
+def _shade(accent: _Colour, index: int) -> _Colour:
+    """The `index`-th distinct shade of the accent for slices, series and steps."""
+    percent, dark = _SHADES[index % len(_SHADES)]
+    return _mix_floats(accent, percent, onto=_DARK_F if dark else _WHITE_F)
+
+
+def _floats(colour) -> _Colour:
+    """An RGBColor (0–255) as reportlab floats."""
+    return (colour[0] / 255, colour[1] / 255, colour[2] / 255)
+
+
+def _rgb_of(colour: _Colour) -> RGBColor:
+    return RGBColor(*(max(0, min(255, round(c * 255))) for c in colour))
+
+
+def _fit_text(
+    text: str, face: str, size: float, width: float, height: float, leading: float, floor: float
+) -> tuple[float, list[str], bool]:
+    """`(size, lines, cut)`: the largest size from `size` down to `floor` at which `text`
+    wraps into `height`; at the floor the lines that fit, the last one ending in an ellipsis.
+
+    The measured width keeps a margin, since PowerPoint's faces run a little wider than the
+    PDF's.
+    """
+    measure = max(1.0, width * 0.94)
+    current = size
+    while True:
+        lines = _wrap(text, face, current, measure) or [""]
+        if len(lines) * current * leading <= height + 0.5 or current <= floor:
+            break
+        current = max(floor, current - (2 if current > 16 else 1))
+    fits = max(1, int((height + 0.5) // (current * leading)))
+    if len(lines) <= fits:
+        return current, lines, False
+    kept = lines[:fits]
+    kept[-1] = kept[-1][: max(1, len(kept[-1]) - 1)].rstrip() + "…"
+    return current, kept, True
+
+
+@dataclass
+class _Text:
+    x: float
+    y: float
+    w: float
+    h: float
+    text: str
+    lines: list[str]
+    size: float
+    bold: bool
+    colour: _Colour
+    align: str
+    valign: str
+    leading: float
+
+
+class _Scene:
+    """Shapes and fitted text in page points, top-down, for either exporter."""
+
+    def __init__(self, *, font: str, bold: str, scale: float, look: Look, ground: _Colour):
+        self.font, self.bold_face, self.scale = font, bold, scale
+        self.look, self.ground = look, ground
+        self.items: list[tuple] = []
+
+    def rect(self, x, y, w, h, *, fill=None, line=None, width=0.75, radius=0.0) -> None:
+        self.items.append(("rect", x, y, w, h, fill, line, width, radius))
+
+    def oval(self, x, y, w, h, *, fill=None, line=None, width=0.75) -> None:
+        self.items.append(("oval", x, y, w, h, fill, line, width))
+
+    def poly(self, points, *, fill=None, line=None, width=0.75, closed=True) -> None:
+        self.items.append(("poly", [tuple(p) for p in points], fill, line, width, closed))
+
+    def panel(self, x, y, w, h, *, fill, line) -> None:
+        """A card in the look's manner: filled, or outlined on the ground."""
+        radius = self.look.radius * 1.2 if self.look.radius else 0.0
+        if self.look.card == "outlined":
+            self.rect(x, y, w, h, fill=self.ground, line=line, radius=radius)
+        else:
+            self.rect(x, y, w, h, fill=fill, radius=radius)
+
+    def badge(self, x, y, side, *, fill) -> None:
+        """The look's mark: a disc or a square."""
+        if self.look.badge == "circle":
+            self.oval(x, y, side, side, fill=fill)
+        else:
+            self.rect(x, y, side, side, fill=fill)
+
+    def size(self, size: float) -> float:
+        """A type-scale size at the slide's text scale, never under the floor."""
+        return max(float(deck_type.FLOOR_PT), size * self.scale)
+
+    def text(
+        self,
+        text: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        size: float,
+        *,
+        colour: _Colour,
+        bold: bool = False,
+        align: str = "left",
+        valign: str = "top",
+        leading: float = 1.3,
+        fixed: bool = False,
+        floor: float | None = None,
+    ) -> float:
+        """Text fitted into the box; returns the height it takes. `fixed` sizes skip the
+        slide's text scale (marks inside badges)."""
+        text = str(text or "").strip()
+        if not text or w <= 4 or h <= 4:
+            return 0.0
+        start = size if fixed else self.size(size)
+        least = min(start, float(deck_type.FLOOR_PT) if floor is None else floor)
+        face = self.bold_face if bold else self.font
+        fitted, lines, cut = _fit_text(text, face, start, w, h, leading, least)
+        shown = text
+        if cut:
+            shown = text[: max(1, sum(len(line) for line in lines) - 1)].rstrip() + "…"
+        self.items.append(
+            ("text", _Text(x, y, w, h, shown, lines, fitted, bold, colour, align, valign, leading))
+        )
+        return len(lines) * fitted * leading
+
+    def bullets(
+        self,
+        items: list[str],
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        size: float,
+        *,
+        colour: _Colour,
+        dot: _Colour,
+        leading: float = 1.35,
+    ) -> None:
+        """A list of short items with a dot each, shrunk together until all fit."""
+        current = self.size(size)
+        least = min(current, float(deck_type.FLOOR_PT))
+        while True:
+            wrapped = [_wrap(item, self.font, current, (w - 18) * 0.94) or [""] for item in items]
+            total = sum(len(lines) for lines in wrapped) * current * leading
+            total += max(0, len(items) - 1) * current * 0.55
+            if total <= h + 0.5 or current <= least:
+                break
+            current = max(least, current - (2 if current > 16 else 1))
+        cursor = y
+        for item, lines in zip(items, wrapped, strict=True):
+            line_height = current * leading
+            if cursor + line_height > y + h + 0.5:
+                break
+            need = min(len(lines) * line_height, y + h - cursor)
+            self.oval(x + 2, cursor + line_height / 2 - 3, 6, 6, fill=dot)
+            self.text(
+                item,
+                x + 18,
+                cursor,
+                w - 18,
+                need,
+                current,
+                colour=colour,
+                leading=leading,
+                fixed=True,
+                floor=current,
+            )
+            cursor += len(lines) * line_height + current * 0.55
+
+    def arrow(self, x1, y, x2, *, colour, head=9.0, width=2.5) -> None:
+        """A horizontal arrow from `x1` to `x2` at height `y`."""
+        self.poly([(x1, y), (x2 - head, y)], line=colour, width=width, closed=False)
+        self.poly(
+            [(x2 - head - 1, y - head * 0.7), (x2, y), (x2 - head - 1, y + head * 0.7)], fill=colour
+        )
+
+
+def _pattern_items(data: dict) -> list[tuple[str, str]]:
+    """`items` as `(left, right)`; the right may be empty (a checklist entry)."""
+    out: list[tuple[str, str]] = []
+    for item in data.get("items") or []:
+        if isinstance(item, dict):
+            item = list(item.values())
+        if not isinstance(item, (list, tuple)) or not item:
+            continue
+        left = str(item[0]).strip()
+        right = str(item[1]).strip() if len(item) > 1 else ""
+        if left or right:
+            out.append((left, right))
+    return out
+
+
+def _pattern_columns(data: dict) -> list[tuple[str, list[str]]]:
+    """`columns` as `(title, items)`; the pattern shape is `{"title", "items"}`."""
+    out: list[tuple[str, list[str]]] = []
+    for column in data.get("columns") or []:
+        if not isinstance(column, dict):
+            continue
+        title = str(column.get("title") or "").strip()
+        items = [str(i).strip() for i in (column.get("items") or []) if str(i).strip()]
+        if title or items:
+            out.append((title, items))
+    return out
+
+
+def _pattern_metrics(data: dict) -> list[tuple[str, str]]:
+    return [
+        (str(pair[0]), str(pair[1]))
+        for pair in (data.get("metrics") or [])
+        if isinstance(pair, (list, tuple)) and len(pair) >= 2
+    ]
+
+
+def _has_pattern_words(data: dict, pattern) -> bool:
+    """Whether a pattern slide carries the field its shape is drawn from."""
+    if pattern is None:
+        return False
+    if pattern.shape == "pairs":
+        return bool(_pattern_items(data))
+    if pattern.shape == "columns":
+        return bool(_pattern_columns(data))
+    return False
+
+
+#: Chart kinds the pattern slides draw beyond `bar` and `line`.
+_MORE_CHARTS = ("pie", "donut", "hbar", "stacked")
+
+
+def _pattern_chart_of(data: dict, pattern) -> dict | None:
+    """`_chart_of` with the chart's own kind kept when a pattern draws it, else the pattern's."""
+    chart = _chart_of(data)
+    if chart is None:
+        return None
+    raw = str((data.get("chart") or {}).get("kind") or "")
+    kind = raw if raw in (*_MORE_CHARTS, "bar", "line") else str(pattern.params.get("kind"))
+    chart["kind"] = kind if kind in (*_MORE_CHARTS, "bar", "line") else "bar"
+    return chart
+
+
+def _percent(value: str) -> float:
+    """`"72%"` → 72; a bare number above 1 is read as a percentage, below as a fraction."""
+    found = re.search(r"-?\d+(?:[.,]\d+)?", value.replace(",", ""))
+    if not found:
+        return 0.0
+    number = float(found.group().replace(",", "."))
+    if "%" not in value and 0 < number <= 1:
+        number *= 100
+    return max(0.0, min(100.0, number))
+
+
+def _star(cx: float, cy: float, radius: float) -> list[tuple[float, float]]:
+    import math
+
+    points = []
+    for index in range(10):
+        r = radius if index % 2 == 0 else radius * 0.45
+        angle = -math.pi / 2 + index * math.pi / 5
+        points.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return points
+
+
+def _pattern_scene(
+    pattern,
+    data: dict,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    room: float,
+    accent: _Colour,
+    ink: _Colour,
+    muted: _Colour,
+    tint: _Colour,
+    hair: _Colour,
+    ground: _Colour,
+    look: Look,
+    font: str,
+    bold: str,
+    scale: float,
+) -> _Scene | None:
+    """The pattern slide's body laid out in the body box, or None when its field is empty."""
+    import math
+
+    sc = _Scene(font=font, bold=bold, scale=scale, look=look, ground=ground)
+    render, params = pattern.render, pattern.params
+    L, T, W, R = left, top, width, room
+    white = _WHITE_F
+
+    if pattern.shape == "text":
+        body = str(data.get("body") or "").strip()
+        if not body:
+            return None
+        mode = params.get("mode")
+        if mode == "definition":
+            term = str(data.get("title") or "").strip()
+            sc.rect(L, T + 8, 6, R - 24, fill=accent)
+            used = sc.text(
+                term, L + 28, T + 8, W - 28, 44, _u("bodyNarrow") + 4, colour=accent, bold=True
+            )
+            sc.text(
+                body,
+                L + 28,
+                T + 8 + used + 14,
+                W - 28,
+                R - used - 46,
+                _u("quote"),
+                colour=ink,
+                leading=1.45,
+            )
+        elif mode == "hypothesis":
+            height = min(R - 16, 210.0)
+            sc.panel(L, T + 8, W, height, fill=tint, line=hair)
+            sc.rect(L + 28, T + 34, 84, 40, fill=accent, radius=6 if look.radius else 0)
+            sc.text(
+                "가설",
+                L + 28,
+                T + 34,
+                84,
+                40,
+                18,
+                colour=white,
+                bold=True,
+                align="center",
+                valign="middle",
+                fixed=True,
+            )
+            sc.text(
+                body,
+                L + 136,
+                T + 30,
+                W - 164,
+                height - 44,
+                _u("quote"),
+                colour=ink,
+                bold=True,
+                valign="middle",
+                leading=1.4,
+                floor=14,
+            )
+        else:  # question
+            mark = T + R * 0.12
+            sc.rect(L + (W - 62) / 2, mark, 62, 5, fill=accent)
+            sc.text(
+                body,
+                L + 40,
+                mark + 22,
+                W - 80,
+                R * 0.72,
+                _u("statement"),
+                colour=ink,
+                bold=True,
+                align="center",
+                valign="middle",
+                leading=1.35,
+                floor=16,
+            )
+        return sc
+
+    if pattern.shape == "metrics":
+        metrics = _pattern_metrics(data)
+        if not metrics:
+            return None
+        mode = params.get("mode")
+        if mode == "compare" and len(metrics) >= 2:
+            gap = 110.0
+            span = (W - gap) / 2
+            height = min(R - 16, 220.0)
+            for position, (figure, label) in enumerate(metrics[:2]):
+                x = L + position * (span + gap)
+                colour = muted if position == 0 else accent
+                sc.panel(x, T + 8, span, height, fill=tint if position else ground, line=hair)
+                sc.rect(x, T + 8, span, 5, fill=colour)
+                sc.text(
+                    figure,
+                    x + 20,
+                    T + 30,
+                    span - 40,
+                    height * 0.5,
+                    _u("bigNumber"),
+                    colour=colour,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    leading=1.15,
+                    floor=24,
+                )
+                sc.text(
+                    label,
+                    x + 20,
+                    T + 30 + height * 0.5 + 6,
+                    span - 40,
+                    height * 0.5 - 50,
+                    _u("metricLabel") + 2,
+                    colour=muted,
+                    align="center",
+                )
+            sc.arrow(
+                L + span + 24,
+                T + 8 + height / 2,
+                L + span + gap - 24,
+                colour=accent,
+                head=14,
+                width=4,
+            )
+            return sc
+        if mode == "bars":
+            count = len(metrics)
+            step = min(R / count, 66.0)
+            label_w = W * 0.3
+            value_size = sc.size(_u("cardName") + 4)
+            widest = max(pdfmetrics.stringWidth(f, bold, value_size) for f, _ in metrics)
+            value_w = min(max(96.0, widest / 0.92 + 4), W * 0.25)
+            track_x = L + label_w + 18
+            track_w = W - label_w - 18 - value_w - 14
+            for position, (figure, label) in enumerate(metrics):
+                y = T + position * step
+                bar = 18.0
+                mid = y + (step - 8) / 2
+                sc.text(
+                    label,
+                    L,
+                    y,
+                    label_w,
+                    step - 8,
+                    _u("cardName"),
+                    colour=ink,
+                    bold=True,
+                    valign="middle",
+                )
+                sc.rect(
+                    track_x, mid - bar / 2, track_w, bar, fill=_mix_floats(accent, 14, onto=ground)
+                )
+                share = _percent(figure) / 100
+                if share > 0:
+                    sc.rect(track_x, mid - bar / 2, max(2.0, track_w * share), bar, fill=accent)
+                sc.text(
+                    figure,
+                    track_x + track_w + 14,
+                    y,
+                    value_w,
+                    step - 8,
+                    _u("cardName") + 4,
+                    colour=accent,
+                    bold=True,
+                    valign="middle",
+                )
+            return sc
+        # grid
+        count = len(metrics)
+        cols = count if count <= 3 else 2 if count == 4 else 3
+        rows = math.ceil(count / cols)
+        gap = 18.0
+        span = (W - gap * (cols - 1)) / cols
+        height = min((R - 8 - gap * (rows - 1)) / rows, 150.0)
+        for position, (figure, label) in enumerate(metrics):
+            row, col = divmod(position, cols)
+            x = L + col * (span + gap)
+            y = T + 8 + row * (height + gap)
+            sc.panel(x, y, span, height, fill=tint, line=hair)
+            sc.rect(x, y, span, 5, fill=accent)
+            used = sc.text(
+                figure,
+                x + 16,
+                y + 16,
+                span - 32,
+                height * 0.55,
+                _u("metric"),
+                colour=accent,
+                bold=True,
+                leading=1.15,
+                floor=20,
+            )
+            sc.text(
+                label,
+                x + 16,
+                y + 16 + used + 4,
+                span - 32,
+                height - used - 28,
+                _u("metricLabel"),
+                colour=muted,
+            )
+        return sc
+
+    if pattern.shape == "columns":
+        columns = _pattern_columns(data)
+        if not columns:
+            return None
+        tone = params.get("tone")
+        count = len(columns)
+        gap = {"vs": 84.0, "beforeafter": 76.0}.get(tone, 20.0) if count == 2 else 20.0
+        span = (W - gap * (count - 1)) / count
+        height = R - 10
+        head = 48.0
+        for position, (name, items) in enumerate(columns):
+            x = L + position * (span + gap)
+            if tone == "posneg":
+                # The negative panel is whichever one its title marks so (오해·단점·하지 말 것),
+                # else the second.
+                negative = any(word in name for word in _NEGATIVE_WORDS) or (
+                    position == 1 and not any(word in columns[0][0] for word in _NEGATIVE_WORDS)
+                )
+                colour = _NEGATIVE if negative else _POSITIVE
+            elif tone == "beforeafter":
+                colour = muted if position == 0 else accent
+            elif tone == "vs":
+                colour = accent if position == 0 else _mix_floats(accent, 60, onto=_DARK_F)
+            else:
+                colour = accent
+            radius = look.radius * 1.2 if look.radius else 0.0
+            sc.rect(x, T + 6, span, head, fill=colour, radius=radius)
+            sc.text(
+                name,
+                x + 12,
+                T + 6,
+                span - 24,
+                head,
+                _u("cardName"),
+                colour=white,
+                bold=True,
+                align="center",
+                valign="middle",
+                leading=1.2,
+            )
+            body_fill = _mix_floats(colour, max(look.tint, 7), onto=ground)
+            sc.panel(x, T + 6 + head + 6, span, height - head - 6, fill=body_fill, line=hair)
+            sc.bullets(
+                items,
+                x + 18,
+                T + 6 + head + 22,
+                span - 36,
+                height - head - 40,
+                _u("cardText") + 2,
+                colour=ink,
+                dot=colour,
+            )
+        if count == 2 and tone == "vs":
+            side = 56.0
+            cx = L + span + gap / 2
+            cy = T + 6 + height / 2
+            sc.oval(cx - side / 2, cy - side / 2, side, side, fill=accent, line=ground, width=3)
+            sc.text(
+                "VS",
+                cx - side / 2,
+                cy - side / 2,
+                side,
+                side,
+                18,
+                colour=white,
+                bold=True,
+                align="center",
+                valign="middle",
+                fixed=True,
+            )
+        elif count == 2 and tone == "beforeafter":
+            sc.arrow(
+                L + span + 16,
+                T + 6 + height / 2,
+                L + span + gap - 16,
+                colour=accent,
+                head=14,
+                width=4,
+            )
+        return sc
+
+    # pairs
+    pairs = _pattern_items(data)
+    if not pairs:
+        return None
+    count = len(pairs)
+
+    if render == "grid":
+        style = params.get("style") or "card"
+        cols = max(1, min(int(params.get("cols") or 3), count))
+        rows = math.ceil(count / cols)
+        gap = 18.0
+        span = (W - gap * (cols - 1)) / cols
+        cap = {"card": 200.0, "feature": 150.0, "person": 170.0}.get(style, 200.0)
+        height = min((R - 8 - gap * (rows - 1)) / rows, cap)
+        for position, (name, text) in enumerate(pairs):
+            row, col = divmod(position, cols)
+            in_row = min(cols, count - row * cols)
+            x = L + (cols - in_row) * (span + gap) / 2 + col * (span + gap)
+            y = T + 8 + row * (height + gap)
+            sc.panel(x, y, span, height, fill=tint, line=hair)
+            if style == "person":
+                side = min(60.0, height * 0.4)
+                sc.oval(x + (span - side) / 2, y + 14, side, side, fill=accent)
+                sc.text(
+                    name[:1],
+                    x + (span - side) / 2,
+                    y + 14,
+                    side,
+                    side,
+                    side * 0.45,
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    fixed=True,
+                )
+                below = y + 14 + side + 10
+                used = sc.text(
+                    name,
+                    x + 10,
+                    below,
+                    span - 20,
+                    30,
+                    _u("cardName"),
+                    colour=ink,
+                    bold=True,
+                    align="center",
+                )
+                sc.text(
+                    text,
+                    x + 10,
+                    below + used + 4,
+                    span - 20,
+                    y + height - below - used - 10,
+                    _u("cardText"),
+                    colour=muted,
+                    align="center",
+                )
+            elif style == "feature":
+                side = 34.0
+                sc.badge(x + 16, y + 16, side, fill=accent)
+                sc.text(
+                    f"{position + 1:02d}",
+                    x + 16,
+                    y + 16,
+                    side,
+                    side,
+                    14,
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    fixed=True,
+                )
+                sc.text(
+                    name,
+                    x + 16 + side + 12,
+                    y + 16,
+                    span - 44 - side,
+                    side,
+                    _u("cardName"),
+                    colour=ink,
+                    bold=True,
+                    valign="middle",
+                    leading=1.2,
+                )
+                sc.text(
+                    text,
+                    x + 16,
+                    y + 16 + side + 12,
+                    span - 32,
+                    height - side - 40,
+                    _u("cardText"),
+                    colour=muted,
+                    leading=1.45,
+                )
+            else:
+                sc.rect(x, y, span, 5, fill=accent)
+                used = sc.text(
+                    name,
+                    x + 16,
+                    y + 20,
+                    span - 32,
+                    min(64.0, height * 0.4),
+                    _u("cardName") + (4 if cols == 2 else 0),
+                    colour=accent,
+                    bold=True,
+                )
+                sc.text(
+                    text,
+                    x + 16,
+                    y + 20 + used + 8,
+                    span - 32,
+                    height - used - 40,
+                    _u("cardText") + (2 if cols == 2 else 0),
+                    colour=ink,
+                    leading=1.5,
+                )
+        return sc
+
+    if render == "list":
+        marker = params.get("marker") or "number"
+        stacked = marker in ("qa", "ref")
+        step = min(R / count, 92.0 if stacked else 66.0)
+        column = 48.0
+        for position, (name, text) in enumerate(pairs):
+            y = T + position * step
+            inner = step - 10
+            mark = 28.0
+            mark_y = y + 4 if stacked else y + (inner - mark) / 2
+            if marker == "number":
+                sc.badge(L, mark_y, mark, fill=accent)
+                sc.text(
+                    str(position + 1),
+                    L,
+                    mark_y,
+                    mark,
+                    mark,
+                    14,
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    fixed=True,
+                )
+            elif marker == "check":
+                sc.rect(
+                    L + 2,
+                    mark_y + 2,
+                    mark - 4,
+                    mark - 4,
+                    line=accent,
+                    width=1.75,
+                    radius=4 if look.radius else 0,
+                )
+                sc.poly(
+                    [(L + 8, mark_y + 14), (L + 12.5, mark_y + 19), (L + 21, mark_y + 9)],
+                    line=accent,
+                    width=2.5,
+                    closed=False,
+                )
+            elif marker == "qa":
+                sc.badge(L, mark_y, mark, fill=accent)
+                sc.text(
+                    "Q",
+                    L,
+                    mark_y,
+                    mark,
+                    mark,
+                    14,
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    fixed=True,
+                )
+            elif marker == "term":
+                sc.rect(L + 10, y + 6, 5, inner - 12, fill=accent)
+            elif marker == "star":
+                sc.poly(_star(L + mark / 2, mark_y + mark / 2, mark / 2), fill=accent)
+            elif marker == "target":
+                sc.oval(L + 1, mark_y + 1, mark - 2, mark - 2, line=accent, width=2)
+                sc.oval(L + 8, mark_y + 8, mark - 16, mark - 16, line=accent, width=2)
+                sc.oval(L + mark / 2 - 2.5, mark_y + mark / 2 - 2.5, 5, 5, fill=accent)
+            else:  # ref
+                sc.text(
+                    f"[{position + 1}]",
+                    L,
+                    mark_y,
+                    column - 6,
+                    mark,
+                    14,
+                    colour=accent,
+                    bold=True,
+                    valign="middle",
+                    fixed=True,
+                )
+            x = L + column
+            if stacked:
+                used = sc.text(
+                    name, x, y + 4, W - column, inner * 0.5, _u("cardName"), colour=ink, bold=True
+                )
+                answer_x = x
+                if marker == "qa" and text:
+                    sc.text(
+                        "A", x, y + 4 + used + 4, 20, 24, 14, colour=accent, bold=True, fixed=True
+                    )
+                    answer_x = x + 22
+                sc.text(
+                    text,
+                    answer_x,
+                    y + 4 + used + 4,
+                    W - (answer_x - L),
+                    inner - used - 8,
+                    _u("cardText"),
+                    colour=muted,
+                )
+            elif text:
+                split = (W - column) * 0.36
+                sc.text(
+                    name, x, y, split, inner, _u("cardName"), colour=ink, bold=True, valign="middle"
+                )
+                sc.text(
+                    text,
+                    x + split + 16,
+                    y,
+                    W - column - split - 16,
+                    inner,
+                    _u("cardText"),
+                    colour=muted,
+                    valign="middle",
+                )
+            else:
+                sc.text(
+                    name,
+                    x,
+                    y,
+                    W - column,
+                    inner,
+                    _u("cardName"),
+                    colour=ink,
+                    bold=True,
+                    valign="middle",
+                )
+            if position < count - 1:
+                sc.rect(L, y + step - 3, W, 0.75, fill=hair)
+        return sc
+
+    if render == "flow":
+        style = params.get("style") or "arrow"
+        if style == "chevron":
+            depth, gap, height = 24.0, 4.0, 70.0
+            span = (W + (count - 1) * (depth - gap)) / count
+            for position, (name, text) in enumerate(pairs):
+                x = L + position * (span - depth + gap)
+                y = T + 14
+                points = [
+                    (x, y),
+                    (x + span - depth, y),
+                    (x + span, y + height / 2),
+                    (x + span - depth, y + height),
+                    (x, y + height),
+                ]
+                if position:
+                    points.append((x + depth, y + height / 2))
+                shade = _mix_floats(accent, 100 - 35 * position / max(1, count - 1), onto=ground)
+                sc.poly(points, fill=shade)
+                inset = depth + 4 if position else 14
+                sc.text(
+                    name,
+                    x + inset,
+                    y,
+                    span - depth - inset - 2,
+                    height,
+                    _u("stepName"),
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    leading=1.2,
+                )
+                sc.text(
+                    text,
+                    x + (depth if position else 0),
+                    y + height + 16,
+                    span - depth,
+                    R - height - 34,
+                    _u("stepText"),
+                    colour=ink,
+                    align="center",
+                    leading=1.45,
+                )
+            return sc
+        if style == "phase":
+            gap = 12.0
+            span = (W - gap * (count - 1)) / count
+            label_h = 38.0
+            band_y = T + 6 + label_h + 8
+            for position, (when, text) in enumerate(pairs):
+                x = L + position * (span + gap)
+                shade = _mix_floats(accent, 100 - 40 * position / max(1, count - 1), onto=ground)
+                sc.text(
+                    when,
+                    x,
+                    T + 6,
+                    span,
+                    label_h,
+                    _u("stepName") + 2,
+                    colour=accent,
+                    bold=True,
+                    valign="bottom",
+                    leading=1.2,
+                )
+                sc.rect(x, band_y, span, 12, fill=shade)
+                sc.oval(x - 2, band_y - 5, 22, 22, fill=shade, line=ground, width=3)
+                card_y = band_y + 30
+                sc.panel(x, card_y, span, T + R - card_y - 6, fill=tint, line=hair)
+                sc.text(
+                    text,
+                    x + 14,
+                    card_y + 14,
+                    span - 28,
+                    T + R - card_y - 34,
+                    _u("stepText"),
+                    colour=ink,
+                    leading=1.45,
+                )
+            return sc
+        # arrow
+        gap = 46.0
+        span = (W - gap * (count - 1)) / count
+        height = min(R - 20, 200.0)
+        y = T + 10
+        for position, (name, text) in enumerate(pairs):
+            x = L + position * (span + gap)
+            sc.panel(x, y, span, height, fill=tint, line=hair)
+            sc.rect(x, y, span, 5, fill=accent)
+            used = sc.text(
+                name,
+                x + 14,
+                y + 20,
+                span - 28,
+                56,
+                _u("stepName"),
+                colour=accent,
+                bold=True,
+                align="center",
+                leading=1.2,
+            )
+            sc.text(
+                text,
+                x + 14,
+                y + 20 + used + 10,
+                span - 28,
+                height - used - 44,
+                _u("stepText"),
+                colour=ink,
+                align="center",
+                leading=1.45,
+            )
+            if position < count - 1:
+                sc.arrow(x + span + 8, y + height / 2, x + span + gap - 8, colour=accent)
+        return sc
+
+    if render == "vflow":
+        axis = min(170.0, W * 0.22)
+        step = min(R / count, 70.0)
+        size = 18.0
+        centre = 12.0
+        if count > 1:
+            sc.rect(L + axis - 1, T + centre, 2, step * (count - 1), fill=tint)
+        for position, (when, what) in enumerate(pairs):
+            y = T + position * step
+            sc.text(
+                when,
+                L,
+                y,
+                axis - 24,
+                step - 6,
+                size,
+                colour=accent,
+                bold=True,
+                align="right",
+                leading=1.3,
+            )
+            sc.oval(L + axis - 8, y + centre - 8, 16, 16, fill=accent, line=ground, width=3)
+            sc.text(what, L + axis + 24, y, W - axis - 24, step - 6, size, colour=ink, leading=1.3)
+        return sc
+
+    if render == "stack":
+        funnel = params.get("shape") == "funnel"
+        figure = min(W * 0.52, 440.0)
+        gap = 6.0
+        height = min(66.0, (R - 8 - gap * (count - 1)) / count)
+        total = count * height + gap * (count - 1)
+        y0 = T + 6
+        cx = L + figure / 2
+
+        def span_at(offset: float) -> float:
+            t = offset / total
+            return figure * ((1 - 0.6 * t) if funnel else (0.24 + 0.76 * t))
+
+        text_x = L + figure + 36
+        for position, (name, text) in enumerate(pairs):
+            y = y0 + position * (height + gap)
+            upper = span_at(y - y0)
+            lower = span_at(y - y0 + height)
+            sc.poly(
+                [
+                    (cx - upper / 2, y),
+                    (cx + upper / 2, y),
+                    (cx + lower / 2, y + height),
+                    (cx - lower / 2, y + height),
+                ],
+                fill=_mix_floats(accent, 100 - 45 * position / max(1, count - 1), onto=ground),
+            )
+            narrow = min(upper, lower)
+            sc.text(
+                name,
+                cx - narrow / 2 + 8,
+                y,
+                narrow - 16,
+                height,
+                _u("cardName"),
+                colour=white,
+                bold=True,
+                align="center",
+                valign="middle",
+                leading=1.15,
+            )
+            edge = cx + max(upper, lower) / 2
+            sc.rect(edge + 6, y + height / 2, text_x - edge - 14, 0.75, fill=hair)
+            sc.text(
+                text,
+                text_x,
+                y,
+                L + W - text_x,
+                height,
+                _u("cardText"),
+                colour=ink,
+                valign="middle",
+                leading=1.35,
+            )
+        return sc
+
+    if render == "cycle":
+        node_w = 190.0 if count <= 4 else 160.0
+        node_h = 76.0
+        cx, cy = L + W / 2, T + R / 2
+        ry = max(40.0, R / 2 - node_h / 2 - 4)
+        rx = min(W / 2 - node_w / 2 - 4, ry * 2.1)
+        sc.oval(
+            cx - rx, cy - ry, rx * 2, ry * 2, line=_mix_floats(accent, 40, onto=ground), width=3
+        )
+        for position in range(count):
+            angle = -math.pi / 2 + 2 * math.pi * (position + 0.5) / count
+            px, py = cx + rx * math.cos(angle), cy + ry * math.sin(angle)
+            dx, dy = -rx * math.sin(angle), ry * math.cos(angle)
+            norm = math.hypot(dx, dy) or 1.0
+            dx, dy = dx / norm, dy / norm
+            sc.poly(
+                [
+                    (px + dx * 9, py + dy * 9),
+                    (px - dx * 6 - dy * 8, py - dy * 6 + dx * 8),
+                    (px - dx * 6 + dy * 8, py - dy * 6 - dx * 8),
+                ],
+                fill=accent,
+            )
+        for position, (name, text) in enumerate(pairs):
+            angle = -math.pi / 2 + 2 * math.pi * position / count
+            px, py = cx + rx * math.cos(angle), cy + ry * math.sin(angle)
+            x, y = px - node_w / 2, py - node_h / 2
+            # Opaque even in an outlined look, so the ring passes behind the node.
+            sc.rect(
+                x,
+                y,
+                node_w,
+                node_h,
+                fill=tint,
+                line=hair,
+                radius=look.radius * 1.2 if look.radius else 0.0,
+            )
+            sc.rect(x, y, 5, node_h, fill=accent)
+            used = sc.text(
+                name,
+                x + 14,
+                y + 8,
+                node_w - 22,
+                28,
+                _u("cardName") - 2,
+                colour=accent,
+                bold=True,
+                align="center",
+                leading=1.2,
+            )
+            sc.text(
+                text,
+                x + 14,
+                y + 10 + used,
+                node_w - 22,
+                node_h - used - 16,
+                _u("cardText") - 2,
+                colour=ink,
+                align="center",
+                leading=1.3,
+            )
+        return sc
+
+    if render == "quad":
+        swot = params.get("mode") == "swot"
+        gap = 14.0
+        span = (W - gap) / 2
+        height = (R - 6 - gap) / 2
+        for position, (name, text) in enumerate(pairs[:4]):
+            row, col = divmod(position, 2)
+            x = L + col * (span + gap)
+            y = T + 6 + row * (height + gap)
+            if swot:
+                letter, colour = _SWOT[position]
+                sc.panel(
+                    x,
+                    y,
+                    span,
+                    height,
+                    fill=_mix_floats(colour, 11, onto=ground),
+                    line=_mix_floats(colour, 45, onto=ground),
+                )
+                side = 34.0
+                sc.badge(x + 14, y + 14, side, fill=colour)
+                sc.text(
+                    letter,
+                    x + 14,
+                    y + 14,
+                    side,
+                    side,
+                    18,
+                    colour=white,
+                    bold=True,
+                    align="center",
+                    valign="middle",
+                    fixed=True,
+                )
+                sc.text(
+                    name,
+                    x + 14 + side + 12,
+                    y + 14,
+                    span - side - 40,
+                    side,
+                    _u("cardName"),
+                    colour=colour,
+                    bold=True,
+                    valign="middle",
+                )
+                sc.text(
+                    text,
+                    x + 16,
+                    y + 14 + side + 10,
+                    span - 32,
+                    height - side - 34,
+                    _u("cardText"),
+                    colour=ink,
+                    leading=1.45,
+                )
+            else:
+                sc.panel(x, y, span, height, fill=tint, line=hair)
+                sc.rect(x, y, 5, height, fill=accent)
+                used = sc.text(
+                    name, x + 22, y + 14, span - 38, 32, _u("cardName"), colour=accent, bold=True
+                )
+                sc.text(
+                    text,
+                    x + 22,
+                    y + 14 + used + 6,
+                    span - 38,
+                    height - used - 32,
+                    _u("cardText"),
+                    colour=ink,
+                    leading=1.45,
+                )
+        return sc
+
+    return None
+
+
+def _pptx_scene(slide, scene: _Scene, faces: tuple[str, str]) -> None:
+    """Paints a scene as shapes and textboxes."""
+    from pptx.enum.text import MSO_AUTO_SIZE
+
+    def outline(shape, fill, line, width) -> None:
+        if fill is not None:
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = _rgb_of(fill)
+        else:
+            shape.fill.background()
+        if line is not None:
+            shape.line.color.rgb = _rgb_of(line)
+            shape.line.width = Emu(int(width * _EMU_PER_PT))
+        else:
+            shape.line.fill.background()
+        shape.shadow.inherit = False
+
+    for item in scene.items:
+        kind = item[0]
+        if kind == "rect":
+            _, x, y, w, h, fill, line, width, radius = item
+            shape = _shape(
+                slide,
+                MSO_SHAPE.ROUNDED_RECTANGLE if radius else MSO_SHAPE.RECTANGLE,
+                left=x,
+                top=y,
+                width=w,
+                height=h,
+            )
+            if radius:
+                shape.adjustments[0] = min(0.5, (radius * 2) / max(1.0, min(w, h)))
+            outline(shape, fill, line, width)
+        elif kind == "oval":
+            _, x, y, w, h, fill, line, width = item
+            outline(
+                _shape(slide, MSO_SHAPE.OVAL, left=x, top=y, width=w, height=h), fill, line, width
+            )
+        elif kind == "poly":
+            _, points, fill, line, width, closed = item
+            vertices = [(int(px * _EMU_PER_PT), int(py * _EMU_PER_PT)) for px, py in points]
+            builder = slide.shapes.build_freeform(*vertices[0], scale=1.0)
+            builder.add_line_segments(vertices[1:], close=closed)
+            outline(builder.convert_to_shape(), fill, line, width)
+        else:
+            text: _Text = item[1]
+            frame = _textbox(slide, left=text.x, top=text.y, width=text.w, height=text.h)
+            frame.margin_left = frame.margin_right = 0
+            frame.margin_top = frame.margin_bottom = 0
+            frame.auto_size = MSO_AUTO_SIZE.NONE
+            frame.vertical_anchor = {
+                "middle": MSO_ANCHOR.MIDDLE,
+                "bottom": MSO_ANCHOR.BOTTOM,
+            }.get(text.valign, MSO_ANCHOR.TOP)
+            paragraph = frame.paragraphs[0]
+            paragraph.alignment = {"center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}.get(
+                text.align, PP_ALIGN.LEFT
+            )
+            paragraph.line_spacing = Pt(text.size * text.leading)
+            run = paragraph.add_run()
+            run.text = text.text
+            _font(
+                run,
+                size=round(text.size * 2) / 2,
+                bold=text.bold,
+                colour=_rgb_of(text.colour),
+                faces=faces,
+            )
+
+
+def _pdf_scene(pdf, scene: _Scene) -> None:
+    """Paints a scene onto the canvas; reportlab's y runs up, so every top is flipped."""
+    for item in scene.items:
+        kind = item[0]
+        if kind in ("rect", "oval"):
+            x, y, w, h, fill, line, width = item[1:8]
+            if fill is not None:
+                pdf.setFillColorRGB(*fill)
+            if line is not None:
+                pdf.setStrokeColorRGB(*line)
+                pdf.setLineWidth(width)
+            stroke, filled = int(line is not None), int(fill is not None)
+            if kind == "oval":
+                pdf.ellipse(x, _H - y - h, x + w, _H - y, stroke=stroke, fill=filled)
+            elif item[8]:
+                pdf.roundRect(x, _H - y - h, w, h, item[8], stroke=stroke, fill=filled)
+            else:
+                pdf.rect(x, _H - y - h, w, h, stroke=stroke, fill=filled)
+        elif kind == "poly":
+            _, points, fill, line, width, closed = item
+            path = pdf.beginPath()
+            for position, (px, py) in enumerate(points):
+                (path.moveTo if position == 0 else path.lineTo)(px, _H - py)
+            if closed:
+                path.close()
+            if fill is not None:
+                pdf.setFillColorRGB(*fill)
+            if line is not None:
+                pdf.setStrokeColorRGB(*line)
+                pdf.setLineWidth(width)
+                pdf.setLineJoin(1)
+                pdf.setLineCap(1)
+            pdf.drawPath(path, stroke=int(line is not None), fill=int(fill is not None))
+            pdf.setLineJoin(0)
+            pdf.setLineCap(0)
+        else:
+            text: _Text = item[1]
+            used = len(text.lines) * text.size * text.leading
+            block = text.y
+            if text.valign == "middle":
+                block += (text.h - used) / 2
+            elif text.valign == "bottom":
+                block += text.h - used
+            pdf.setFillColorRGB(*text.colour)
+            pdf.setFont(scene.bold_face if text.bold else scene.font, text.size)
+            for position, line in enumerate(text.lines):
+                baseline = _H - (
+                    block + text.size * text.leading * (position + 0.5) + text.size * 0.35
+                )
+                if text.align == "center":
+                    pdf.drawCentredString(text.x + text.w / 2, baseline, line)
+                elif text.align == "right":
+                    pdf.drawRightString(text.x + text.w, baseline, line)
+                else:
+                    pdf.drawString(text.x, baseline, line)
+
+
+def _pptx_pattern(
+    slide,
+    pattern,
+    data: dict,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    room: float,
+    accent: RGBColor,
+    ink: RGBColor,
+    muted: RGBColor,
+    tint: RGBColor,
+    hair: RGBColor,
+    ground: RGBColor,
+    look: Look,
+    faces: tuple[str, str],
+    font: str,
+    bold: str,
+    scale: float,
+) -> bool:
+    """Draws a pattern slide's body by its arrangement; False when it has nothing to draw."""
+    scene = _pattern_scene(
+        pattern,
+        data,
+        left=left,
+        top=top,
+        width=width,
+        room=room,
+        accent=_floats(accent),
+        ink=_floats(ink),
+        muted=_floats(muted),
+        tint=_floats(tint),
+        hair=_floats(hair),
+        ground=_floats(ground),
+        look=look,
+        font=font,
+        bold=bold,
+        scale=scale,
+    )
+    if scene is None:
+        return False
+    _pptx_scene(slide, scene, faces)
+    return True
+
+
+def _pdf_pattern(
+    pdf,
+    pattern,
+    data: dict,
+    *,
+    left: float,
+    top: float,
+    width: float,
+    room: float,
+    accent: _Colour,
+    ink: _Colour,
+    muted: _Colour,
+    tint: _Colour,
+    hair: _Colour,
+    ground: _Colour,
+    look: Look,
+    font: str,
+    bold: str,
+    scale: float,
+) -> bool:
+    """The `.pdf` twin of `_pptx_pattern`; `top` is from the top of the page, as there."""
+    scene = _pattern_scene(
+        pattern,
+        data,
+        left=left,
+        top=top,
+        width=width,
+        room=room,
+        accent=accent,
+        ink=ink,
+        muted=muted,
+        tint=tint,
+        hair=hair,
+        ground=ground,
+        look=look,
+        font=font,
+        bold=bold,
+        scale=scale,
+    )
+    if scene is None:
+        return False
+    _pdf_scene(pdf, scene)
+    return True
+
+
+def _pptx_chart_more(
+    slide,
+    chart: dict,
+    *,
+    accent: RGBColor,
+    muted: RGBColor,
+    ink: RGBColor,
+    ground: RGBColor,
+    width: float,
+    faces: tuple[str, str],
+    left: float,
+    top: float,
+    room: float,
+) -> None:
+    """Pie, donut, horizontal bar and stacked column as native charts."""
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LABEL_POSITION, XL_LEGEND_POSITION
+    from pptx.oxml import parse_xml
+    from pptx.oxml.ns import nsdecls
+
+    kind = chart["kind"]
+    categories = list(chart["categories"])
+    series = list(chart["series"])
+    round_chart = kind in ("pie", "donut")
+    if round_chart:
+        series = series[:1]
+    if kind == "hbar":
+        # PowerPoint draws bar categories bottom-up; reversed, the first reads at the top.
+        categories = categories[::-1]
+        series = [(name, values[::-1]) for name, values in series]
+    payload = CategoryChartData()
+    payload.categories = categories
+    for name, values in series:
+        payload.add_series(name or " ", values)
+    frame = slide.shapes.add_chart(
+        {
+            "pie": XL_CHART_TYPE.PIE,
+            "donut": XL_CHART_TYPE.DOUGHNUT,
+            "hbar": XL_CHART_TYPE.BAR_CLUSTERED,
+            "stacked": XL_CHART_TYPE.COLUMN_STACKED,
+        }[kind],
+        Emu(int(left * _EMU_PER_PT)),
+        Emu(int(top * _EMU_PER_PT)),
+        Emu(int(width * _EMU_PER_PT)),
+        Emu(int(room * _EMU_PER_PT)),
+        payload,
+    )
+    graph = frame.chart
+    unit = chart.get("unit") or ""
+    accent_f = _floats(accent)
+    if not round_chart:
+        charts.apply(graph, kind="bar", unit=unit, accent=accent, muted=muted, faces=faces)
+        plot = graph.plots[0]
+        plot.gap_width = 60
+        if kind == "stacked":
+            plot.overlap = 100
+            for position, item in enumerate(plot.series):
+                item.format.fill.solid()
+                item.format.fill.fore_color.rgb = _rgb_of(_shade(accent_f, position))
+        return
+
+    charts._plain_frame(graph)
+    graph.has_title = False
+    graph.has_legend = True
+    graph.legend.position = XL_LEGEND_POSITION.RIGHT
+    graph.legend.include_in_layout = False
+    charts._text(graph.legend.font, muted, 14, faces)
+    plot = graph.plots[0]
+    plot.vary_by_categories = True
+    for position, point in enumerate(plot.series[0].points):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = _rgb_of(_shade(accent_f, position))
+        point.format.line.color.rgb = ground
+        point.format.line.width = Emu(int(1.5 * _EMU_PER_PT))
+    plot.has_data_labels = True
+    labels = plot.data_labels
+    labels.number_format = f'#,##0.##"{unit}"' if unit else "#,##0.##"
+    labels.number_format_is_linked = False
+    labels.show_value = True
+    if kind == "pie":
+        labels.position = XL_LABEL_POSITION.OUTSIDE_END
+        charts._text(labels.font, ink, 14, faces)
+    else:
+        charts._text(labels.font, RGBColor(0xFF, 0xFF, 0xFF), 14, faces)
+        labels.font.bold = True
+    # The round plot sits in a square on the left; the legend keeps the right.
+    side = room * 0.86
+    plot_area = graph._chartSpace.find(qn("c:chart")).find(qn("c:plotArea"))
+    for existing in plot_area.findall(qn("c:layout")):
+        plot_area.remove(existing)
+    plot_area.insert(
+        0,
+        parse_xml(
+            f"<c:layout {nsdecls('c')}><c:manualLayout>"
+            '<c:layoutTarget val="inner"/><c:xMode val="edge"/><c:yMode val="edge"/>'
+            f'<c:x val="{0.12:.4f}"/><c:y val="{0.07:.4f}"/>'
+            f'<c:w val="{side / width:.4f}"/><c:h val="{side / room:.4f}"/>'
+            "</c:manualLayout></c:layout>"
+        ),
+    )
+    if kind == "donut":
+        for hole in plot_area.iter(qn("c:holeSize")):
+            hole.set("val", "55")
+        total = sum(series[0][1])
+        cx = left + width * 0.12 + side / 2
+        cy = top + room * 0.07 + side / 2
+        box = _textbox(slide, left=cx - side * 0.25, top=cy - 30, width=side * 0.5, height=60)
+        box.vertical_anchor = MSO_ANCHOR.MIDDLE
+        paragraph = box.paragraphs[0]
+        paragraph.alignment = PP_ALIGN.CENTER
+        run = paragraph.add_run()
+        run.text = f"{_tick_label(total)}{unit}"
+        _font(run, size=24, bold=True, colour=accent, faces=faces)
+
+
+def _divisions(ceiling: float) -> int:
+    """Gridline count whose steps read as whole numbers: four, else five."""
+    return 4 if ceiling < 10 or (ceiling / 4) == int(ceiling / 4) else 5
+
+
+def _pdf_chart_more(
+    pdf,
+    chart: dict,
+    *,
+    accent: _Colour,
+    muted: _Colour,
+    ink: _Colour,
+    ground: _Colour,
+    top: float,
+    width: float,
+    font: str,
+    bold: str,
+    left: float = 72.0,
+) -> None:
+    """The `.pdf` twin of `_pptx_chart_more`, drawn by hand; `top` is a canvas y."""
+    import math
+
+    kind = chart["kind"]
+    unit = chart.get("unit") or ""
+    categories = chart["categories"]
+    bottom = _H - _BODY_BOTTOM + 6
+    height = top - bottom
+    if height < 60 or width < 100:
+        return
+
+    if kind in ("pie", "donut"):
+        values = [max(0.0, v) for v in chart["series"][0][1]]
+        total = sum(values)
+        if total <= 0:
+            return
+        radius = height * 0.43
+        cx, cy = left + width * 0.12 + radius, bottom + height / 2
+        start = 90.0
+        middles = []
+        pdf.setStrokeColorRGB(*ground)
+        pdf.setLineWidth(1.5)
+        for position, value in enumerate(values):
+            extent = 360.0 * value / total
+            pdf.setFillColorRGB(*_shade(accent, position))
+            if extent >= 359.99:
+                pdf.circle(cx, cy, radius, stroke=0, fill=1)
+            elif extent > 0:
+                pdf.wedge(
+                    cx - radius,
+                    cy - radius,
+                    cx + radius,
+                    cy + radius,
+                    start - extent,
+                    extent,
+                    stroke=1,
+                    fill=1,
+                )
+            middles.append(math.radians(start - extent / 2))
+            start -= extent
+        hole = radius * 0.55 if kind == "donut" else 0.0
+        if hole:
+            pdf.setFillColorRGB(*ground)
+            pdf.circle(cx, cy, hole, stroke=0, fill=1)
+            pdf.setFillColorRGB(*accent)
+            pdf.setFont(bold, 24)
+            pdf.drawCentredString(cx, cy - 8, f"{_tick_label(total)}{unit}")
+        pdf.setFont(bold, 14)
+        for value, angle in zip(values, middles, strict=True):
+            if value <= 0:
+                continue
+            label = f"{_tick_label(value)}{unit}"
+            if hole:
+                reach = (radius + hole) / 2
+                pdf.setFillColorRGB(1, 1, 1)
+            else:
+                reach = radius + 18
+                pdf.setFillColorRGB(*ink)
+            x, y = cx + reach * math.cos(angle), cy + reach * math.sin(angle)
+            pdf.drawCentredString(x, y - 5, label)
+        # Legend on the right.
+        legend_x = cx + radius + 60
+        line = 26.0
+        y = cy + line * (len(categories) - 1) / 2
+        pdf.setFont(font, 14)
+        for position, name in enumerate(categories):
+            pdf.setFillColorRGB(*_shade(accent, position))
+            pdf.rect(legend_x, y - 2, 12, 12, stroke=0, fill=1)
+            pdf.setFillColorRGB(*muted)
+            pdf.drawString(legend_x + 20, y, name)
+            y -= line
+        return
+
+    series = chart["series"]
+    if kind == "hbar":
+        values = [value for _, items in series for value in items]
+        if max(values + [0]) <= 0:
+            return
+        ceiling = _nice_ceiling(max(values))
+        label_w = min(width * 0.3, 240.0)
+        plot_left = left + label_w + 12
+        plot_w = width - label_w - 12 - 50
+        plot_top = top - 6
+        plot_bottom = bottom + 24
+        step = (plot_top - plot_bottom) / len(categories)
+        pdf.setFont(font, 11)
+        parts = _divisions(ceiling)
+        for tick in range(parts + 1):
+            x = plot_left + plot_w * tick / parts
+            pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+            pdf.setLineWidth(0.5)
+            pdf.line(x, plot_bottom, x, plot_top)
+            pdf.setFillColorRGB(*muted)
+            pdf.drawCentredString(x, plot_bottom - 16, _tick_label(ceiling * tick / parts))
+        if unit:
+            pdf.drawString(plot_left + plot_w + 10, plot_bottom - 16, unit)
+        thick = step * 0.6 / len(series)
+        for position, name in enumerate(categories):
+            row_top = plot_top - position * step
+            pdf.setFillColorRGB(*muted)
+            pdf.setFont(font, 12)
+            label = _wrap(name, font, 12, label_w)[0]
+            pdf.drawRightString(left + label_w, row_top - step / 2 - 4, label)
+            for series_index, (_name, items) in enumerate(series):
+                value = items[position]
+                y = row_top - step * 0.2 - thick * (series_index + 1)
+                pdf.setFillColorRGB(*_shade(accent, series_index))
+                pdf.rect(plot_left, y, plot_w * max(0.0, value) / ceiling, thick, stroke=0, fill=1)
+                if thick < 9:
+                    continue
+                pdf.setFillColorRGB(*ink)
+                pdf.setFont(font, 11)
+                pdf.drawString(
+                    plot_left + plot_w * max(0.0, value) / ceiling + 4,
+                    y + thick / 2 - 4,
+                    _tick_label(value),
+                )
+        return
+
+    # stacked
+    sums = [sum(max(0.0, items[i]) for _, items in series) for i in range(len(categories))]
+    if max(sums + [0]) <= 0:
+        return
+    ceiling = _nice_ceiling(max(sums))
+    plot_bottom = bottom + (40 if len(series) > 1 else 20)
+    plot_height = top - plot_bottom - 30
+    step = width / len(categories)
+    pdf.setFont(font, 11)
+    parts = _divisions(ceiling)
+    for tick in range(parts + 1):
+        y = plot_bottom + plot_height * tick / parts
+        pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+        pdf.setLineWidth(0.5)
+        pdf.line(left, y, left + width, y)
+        pdf.setFillColorRGB(*muted)
+        pdf.drawRightString(left - 6, y - 4, _tick_label(ceiling * tick / parts))
+    if unit:
+        pdf.setFillColorRGB(*muted)
+        pdf.drawString(left - 30, plot_bottom + plot_height + 12, unit)
+    bar = step * 0.5
+    for position in range(len(categories)):
+        x = left + step * (position + 0.5) - bar / 2
+        y = plot_bottom
+        for series_index, (_name, items) in enumerate(series):
+            value = max(0.0, items[position])
+            segment = plot_height * value / ceiling
+            pdf.setFillColorRGB(*_shade(accent, series_index))
+            pdf.rect(x, y, bar, segment, stroke=0, fill=1)
+            y += segment
+    pdf.setFillColorRGB(*muted)
+    pdf.setFont(font, 12)
+    for position, label in enumerate(categories):
+        pdf.drawCentredString(left + step * (position + 0.5), plot_bottom - 18, label)
+    if len(series) > 1:
+        x = left
+        for series_index, (name, _values) in enumerate(series):
+            pdf.setFillColorRGB(*_shade(accent, series_index))
+            pdf.circle(x + 4, plot_bottom - 36, 3.5, stroke=0, fill=1)
+            pdf.setFillColorRGB(*muted)
+            pdf.drawString(x + 13, plot_bottom - 40, name)
+            x += 24 + pdfmetrics.stringWidth(name, font, 12)
+
+
+_WRITTEN_NUMBER = re.compile(r"^\s*(?:\d{1,2}|[IVX]{1,4})\s?[.)．:]\s*")
+
+
+def _without_written_numbers(slides: list[dict]) -> list[dict]:
+    """A divider and the agenda print their own 「01」; a 「01.」 the model wrote into a
+    divider's title or an agenda line would print the number twice."""
+    def bare(text: object) -> str:
+        return _WRITTEN_NUMBER.sub("", str(text or "")).strip() or str(text or "")
+
+    out = []
+    for slide in slides:
+        if slide.get("layout") == "section" and slide.get("number"):
+            slide = {**slide, "title": bare(slide.get("title"))}
+        elif slide.get("layout") == "agenda" and slide.get("bullets"):
+            slide = {**slide, "bullets": [bare(b) for b in slide["bullets"]]}
+        out.append(slide)
+    return out
+
+
 def to_pptx(
     title: str,
     slides: list[dict],
@@ -934,6 +2694,7 @@ def to_pptx(
     `tokens` is the design system copied onto the artifact; `template` is the
     서식's `.pptx`, whose master and theme the file is built on.
     """
+    slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
     faces = _FACES[style["font"]] if style else _FACES["gothic"]
     ink = _rgb(style["ink"]) if style else _INK
@@ -949,6 +2710,7 @@ def to_pptx(
     typescale = [1.0]
     #: The `.pdf` face, for measuring how many lines a title takes.
     measure = fonts.korean(style["font"] if style else "gothic")
+    measure_bold = fonts.korean(style["font"] if style else "gothic", bold=True)
 
     def paint(
         run,
@@ -968,6 +2730,26 @@ def to_pptx(
             colour=colour or ink,
             faces=faces,
         )
+
+    def native_figure(
+        slide, data: dict, *, left: float, top: float, width: float, height: float,
+        accent: RGBColor,
+    ) -> bool:
+        """The slide's own figure drawn as shapes in the box; False leaves the picture."""
+        made = data.get("diagram")
+        source = made.get("source") if isinstance(made, dict) else None
+        graph = diagram_shapes.parse(str(source or ""))
+        if graph is None:
+            return False
+        try:
+            diagram_shapes.draw_pptx(
+                slide, graph, left=left, top=top, width=width, height=height,
+                accent=accent, font=faces[1],
+            )
+        except Exception as exc:  # noqa: BLE001 — the picture is the fallback
+            log.warning("figure not drawn as shapes, keeping the picture: %s", exc)
+            return False
+        return True
 
     def paint_rich(
         paragraph,
@@ -1137,9 +2919,13 @@ def to_pptx(
         picture = _picture_of(data)
         picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
+        pattern = slide_patterns.BY_NAME.get(layout)
+        if pattern is not None and pattern.shape == "chart":
+            chart = _pattern_chart_of(data, pattern)
+        pattern_words = _has_pattern_words(data, pattern)
         picture_left = bool(
             picture
-            and (bullets or rows or metrics or chart or body)
+            and (bullets or rows or metrics or chart or body or pattern_words)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
         # A picture beside text narrows the text column; alone, it is centred.
@@ -1148,7 +2934,7 @@ def to_pptx(
             - 144
             - (
                 picture_span + 24
-                if picture and (bullets or rows or metrics or chart or body)
+                if picture and (bullets or rows or metrics or chart or body or pattern_words)
                 else 0
             )
         )
@@ -1374,8 +3160,20 @@ def to_pptx(
             if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
                 image_bytes, _caption = picture
                 text_width, text_left = _W - 144, 72.0
-                band_width, band_height = _fit(image_bytes, box=(text_width, room * 0.56))
+                need = _strip_need(
+                    pairs, layout, text_width, measure, measure_bold, typescale[0]
+                )
+                band = max(room * 0.3, min(room * 0.56, room - need - 32))
+                band_width, band_height = _fit(image_bytes, box=(text_width, band))
+                drawn = native_figure(
+                    slide, data, left=text_left, top=body_top, width=text_width,
+                    height=min(room * 0.5, band), accent=accent,
+                )
+                if drawn:
+                    band_height = min(room * 0.5, band)
                 try:
+                    if drawn:
+                        raise _Drawn
                     slide.shapes.add_picture(
                         io.BytesIO(image_bytes),
                         Emu(int((text_left + (text_width - band_width) / 2) * _EMU_PER_PT)),
@@ -1383,6 +3181,8 @@ def to_pptx(
                         Emu(int(band_width * _EMU_PER_PT)),
                         Emu(int(band_height * _EMU_PER_PT)),
                     )
+                except _Drawn:
+                    pass
                 except Exception as exc:  # noqa: BLE001 — a bad picture is not a failed export
                     log.warning("could not place a figure band into the deck: %s", exc)
                 body_top += band_height + 8
@@ -1390,7 +3190,32 @@ def to_pptx(
                 picture = None
                 compact = True
 
-            if pairs:
+            if (
+                pattern is not None
+                and pattern.shape != "chart"
+                and _pptx_pattern(
+                    slide,
+                    pattern,
+                    data,
+                    left=text_left,
+                    top=body_top,
+                    width=text_width,
+                    room=room,
+                    accent=accent,
+                    ink=ink,
+                    muted=muted,
+                    tint=tint,
+                    hair=hair,
+                    ground=ground,
+                    look=look,
+                    faces=faces,
+                    font=measure,
+                    bold=measure_bold,
+                    scale=typescale[0],
+                )
+            ):
+                pass
+            elif pairs:
                 _pptx_pairs(
                     slide,
                     pairs,
@@ -1408,6 +3233,20 @@ def to_pptx(
                     scale=typescale[0],
                     measure=measure,
                     compact=compact,
+                )
+            elif chart and chart["kind"] in _MORE_CHARTS:
+                _pptx_chart_more(
+                    slide,
+                    chart,
+                    accent=accent,
+                    muted=muted,
+                    ink=ink,
+                    ground=ground,
+                    width=text_width,
+                    faces=faces,
+                    left=text_left,
+                    top=body_top,
+                    room=room,
                 )
             elif chart:
                 _pptx_chart(
@@ -1607,7 +3446,7 @@ def to_pptx(
 
         if picture:
             image_bytes, image_caption = picture
-            alone = not (bullets or rows or metrics or chart or body)
+            alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:
@@ -1618,7 +3457,22 @@ def to_pptx(
                 crop_left = crop_top = crop_right = crop_bottom = 0.0
             left = (72 if picture_left else 72 + text_width + 24) if not alone else (_W - width) / 2
             top = body_top + max(0.0, (room - height) / 2)
+            if (data.get("image") or {}).get("diagram") and native_figure(
+                slide, data,
+                left=(72 if picture_left else 72 + text_width + 24) if not alone else 72.0,
+                top=body_top, width=box[0] if not alone else _W - 144, height=room - 30,
+                accent=accent,
+            ):
+                width, height = (box[0] if not alone else _W - 144), room - 30
+                left = (72 if picture_left else 72 + text_width + 24) if not alone else 72.0
+                top = body_top
+                fill = False
+                picture_drawn = True
+            else:
+                picture_drawn = False
             try:
+                if picture_drawn:
+                    raise _Drawn
                 shape = slide.shapes.add_picture(
                     io.BytesIO(image_bytes),
                     Emu(int(left * _EMU_PER_PT)),
@@ -1631,6 +3485,14 @@ def to_pptx(
                     shape.crop_top = crop_top
                     shape.crop_right = crop_right
                     shape.crop_bottom = crop_bottom
+            except _Drawn:
+                if image_caption:
+                    frame = _textbox(
+                        slide, left=left, top=top + height + 6, width=max(width, 120), height=24
+                    )
+                    run = frame.paragraphs[0].add_run()
+                    run.text = image_caption
+                    paint(run, size=_u("caption"), colour=muted)
             except Exception as exc:  # noqa: BLE001 — one bad picture, not a failed export
                 log.warning("could not place a picture in the pptx: %s", exc)
             else:
@@ -1851,6 +3713,16 @@ def _pdf_pairs(
         name_size = S(14.0 if compact else _u("cardName"))
         text_size = S(12.0 if compact else _u("cardText"))
         text_lead = text_size * deck_type.LEADING["cardText"]
+        if compact:
+            # Under a figure the cards grow to their longest text, so no sentence is cut.
+            need = max(
+                20
+                + name_size * (1 + 1.3 * (len(_wrap(name, bold, name_size, span - 28)[:2]) - 1))
+                + 12 + text_size
+                + text_lead * (len(_wrap(text, font, text_size, span - 28)) - 1) + 12
+                for name, text in pairs
+            )
+            height = min(max(height, need), room - 24)
         for index, (name, text) in enumerate(pairs):
             item_left = left + index * (span + gap)
             _pdf_box(
@@ -2034,6 +3906,7 @@ def _wrap(text: str, font: str, size: float, width: float) -> list[str]:
 
 def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = None) -> bytes:
     """The deck as a PDF, one slide per page, without notes."""
+    slides = _without_written_numbers(slides)
     style = design.normalise_tokens(tokens) if tokens else None
     font = fonts.korean(style["font"] if style else "gothic")
     bold = fonts.korean(style["font"] if style else "gothic", bold=True)
@@ -2068,9 +3941,13 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
         picture = _picture_of(data)
         picture_span = _picture_span(data)
         pairs = _pairs_of(data, layout)
+        pattern = slide_patterns.BY_NAME.get(layout)
+        if pattern is not None and pattern.shape == "chart":
+            chart = _pattern_chart_of(data, pattern)
+        pattern_words = _has_pattern_words(data, pattern)
         picture_left = bool(
             picture
-            and (bullets or rows or metrics or chart or body)
+            and (bullets or rows or metrics or chart or body or pattern_words)
             and str((data.get("image") or {}).get("position") or "") == "left"
         )
         # Same split as the .pptx.
@@ -2079,7 +3956,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             - 144
             - (
                 picture_span + 24
-                if picture and (bullets or rows or metrics or chart or body)
+                if picture and (bullets or rows or metrics or chart or body or pattern_words)
                 else 0
             )
         )
@@ -2299,7 +4176,9 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
             if picture and (data.get("image") or {}).get("diagram") and _has_words(data):
                 image_bytes, _caption = picture
                 text_width, text_left = _W - 144, 72.0
-                band_width, band_height = _fit(image_bytes, box=(text_width, room * 0.56))
+                need = _strip_need(pairs, layout, text_width, font, bold, ts)
+                band = max(room * 0.3, min(room * 0.56, room - need - 32))
+                band_width, band_height = _fit(image_bytes, box=(text_width, band))
                 try:
                     pdf.drawImage(
                         ImageReader(io.BytesIO(image_bytes)),
@@ -2317,7 +4196,31 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                 compact = True
             y = _H - body_top
 
-            if pairs:
+            if (
+                pattern is not None
+                and pattern.shape != "chart"
+                and _pdf_pattern(
+                    pdf,
+                    pattern,
+                    data,
+                    left=text_left,
+                    top=body_top,
+                    width=text_width,
+                    room=room,
+                    accent=accent,
+                    ink=ink,
+                    muted=muted,
+                    tint=tint,
+                    hair=hair,
+                    ground=ground,
+                    look=look,
+                    font=font,
+                    bold=bold,
+                    scale=ts,
+                )
+            ):
+                pass
+            elif pairs:
                 _pdf_pairs(
                     pdf,
                     pairs,
@@ -2337,6 +4240,20 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
                     room=room,
                     bold=bold,
                     compact=compact,
+                )
+            elif chart and chart["kind"] in _MORE_CHARTS:
+                _pdf_chart_more(
+                    pdf,
+                    chart,
+                    accent=accent,
+                    muted=muted,
+                    ink=ink,
+                    ground=ground,
+                    top=y,
+                    width=text_width,
+                    font=font,
+                    bold=bold,
+                    left=text_left,
                 )
             elif chart:
                 _pdf_chart(
@@ -2501,7 +4418,7 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
 
         if picture:
             image_bytes, image_caption = picture
-            alone = not (bullets or rows or metrics or chart or body)
+            alone = not (bullets or rows or metrics or chart or body or pattern_words)
             box = (_W - 260, room) if alone else (picture_span, room)
             fill = str((data.get("image") or {}).get("fit") or "") == "cover"
             if fill:

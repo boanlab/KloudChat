@@ -2559,6 +2559,19 @@ async function applyUserChange(set: Set, pending: Promise<User>) {
 type Set = (u: Partial<State> | ((s: State) => Partial<State>)) => void
 type Get = () => State
 
+/** A document draft's title while it is written: the request's opening words, but on an
+ *  approval the outline's own title (or a placeholder) — the approval message says what
+ *  to do, not what the document is called. */
+function draftTitle(
+  text: string,
+  gate: { approve?: boolean; plan?: Record<string, unknown> },
+  placeholder: string,
+): string {
+  if (!gate.approve) return text.slice(0, 60)
+  const planned = gate.plan?.title
+  return typeof planned === 'string' && planned.trim() ? planned.trim().slice(0, 60) : placeholder
+}
+
 /** The UI's step categories; anything else is a tool call. */
 const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
 
@@ -3565,7 +3578,9 @@ async function streamReport(
   const draft: Artifact = {
     id: draftId,
     kind: 'report',
-    title: text.slice(0, 60),
+    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
+    // the approved outline's title stands in until the server names the document.
+    title: draftTitle(text, gate, tr('보고서 작성 중')),
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -3771,7 +3786,9 @@ async function streamDeck(
   const draft: Artifact = {
     id: draftId,
     kind: 'deck',
-    title: text.slice(0, 60),
+    // An approval's text is an instruction (「고친 구성으로 생성해 주세요」), not a title:
+    // the approved outline's title stands in until the server names the document.
+    title: draftTitle(text, gate, tr('슬라이드 작성 중')),
     version: 1,
     createdAt: now,
     updatedAt: now,

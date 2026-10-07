@@ -250,16 +250,6 @@ def _project_instructions(project: Project | None) -> str:
     return f"# 프로젝트 지침 — {project.name}\n{project.instructions.strip()}"
 
 
-async def _project_blocks(
-    db: AsyncSession,
-    user: User,
-    project: Project | None,
-    focus: str = "",
-    budget: int | None = None,
-) -> tuple[str, str, list[ContextFile]]:
-    """Returns trusted instructions, untrusted project knowledge, and its cost."""
-    knowledge, used = await _project_knowledge(db, user, project, focus, budget)
-    return _project_instructions(project), knowledge, used
 
 
 async def _project_knowledge(
@@ -908,10 +898,9 @@ async def assemble(
                     for stored in earlier
                 )
     # Project knowledge shares the one file budget with this turn's attachments and
-    # the carried ones, as in a project whose files and uploads fill one context:
-    # it takes what they left, never less than a quarter of the budget, so a big
-    # upload narrows the knowledge to the relevant passages instead of doubling
-    # the fixed cost and pushing the conversation itself out of the window.
+    # the carried ones: it takes what they left, never less than a quarter of the
+    # budget, so a big upload narrows the knowledge to the relevant passages instead
+    # of pushing the conversation itself out of the window.
     # Knowledge is read around what was asked: the explicit focus (a document
     # surface's answers) when there is one, else the question itself.
     whole_budget = file_budget or settings.file_context_chars

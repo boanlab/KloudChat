@@ -47,18 +47,20 @@ make dev
 #                -f docker-compose.dev.yml up -d --build
 ```
 
-or run Vite on the host against the containerised API:
+or run Vite on the host against the running stack. The API publishes no host
+port, so proxy through the web container and take another port:
 
 ```bash
 cd apps/web
 npm ci
-npm run dev          # http://localhost:5173, proxying /api to :8100
+API_BASE_URL=http://localhost:5173 npm run dev -- --port 5174
 ```
 
 Checks:
 
 ```bash
 npm run lint         # oxlint
+npm run test:config  # node --test for the Vite config
 npm run build        # tsc -b && vite build
 ```
 
@@ -93,10 +95,13 @@ pytest -q
 
 Python 3.12, FastAPI, SQLModel over asyncpg, Alembic.
 
-Unit tests deliberately cover only the pure parts — binary format parsing,
-pricing arithmetic. Anything that needs a database is covered by the
-integration scripts or by Playwright, because a mocked async session tends to
-test the mock.
+Most unit tests exercise pure functions and the document pipelines against
+fake model replies (`tests/conftest.py` turns web search off unless a test
+patches it). Tests that need a database run on in-memory SQLite through
+`aiosqlite`, which `.[dev]` installs; without it they error locally while CI
+still runs them. Some tests create tables with hand-written DDL, so a column
+added to a model may need adding there too. Postgres-specific behaviour is
+covered by the integration scripts or by Playwright.
 
 Iterating against the container without rebuilding:
 
@@ -106,12 +111,15 @@ docker compose restart api
 docker compose exec api python -c "from app.core.config import settings; print(settings.env)"
 ```
 
-Interactive API docs are served at <http://localhost:8100/docs> when `ENV=dev`.
+Interactive API docs are served at `/docs` on the API process when `ENV=dev`
+(the web container proxies only `/api` and `/llm`, so reach it from inside the
+compose network, e.g. `docker compose exec api curl -s localhost:8100/docs`).
 They are disabled in `prod`.
 
 ## Migrations
 
-Applied on container start. To add one:
+Applied by the one-shot `migrate` container before the `api` replicas start.
+To add one:
 
 ```bash
 make revision m="add widget table"
@@ -131,7 +139,7 @@ generated file conflict with the last hand-edited one.
 
 ## Tests
 
-Three layers, in increasing cost:
+Four layers, in increasing cost:
 
 ### Unit
 
@@ -140,6 +148,17 @@ cd apps/api && pytest -q
 ```
 
 No services required.
+
+### Focused browser checks
+
+```bash
+cd apps/web
+npx playwright test --config playwright.freshness.config.ts
+```
+
+The `playwright.<name>.config.ts` files are what CI runs. Each starts its own
+Vite server on a fixed port and stubs the API with route handlers, so no stack
+or account is needed.
 
 ### API integration
 
@@ -252,8 +271,9 @@ root and the API runs as uid 1000. Check that it completed:
 `docker compose ps -a | grep init`.
 
 **Every `/api/` call 502s after recreating `api`.** The web container's
-nginx resolves the upstream through a variable specifically to avoid this, so
-if it happens, check that `KCHAT_API_URL` is set on `kloudchat-web`.
+nginx resolves the upstream through a variable on every request (Docker's
+resolver, 10-second validity), so this should not persist; if it does, check
+that `KCHAT_API_URL` is set on `kloudchat-web`.
 
 **The model list is empty.** `GET /api/admin/settings` reports which models
 were dropped and why. A model whose price is unknown is removed deliberately —

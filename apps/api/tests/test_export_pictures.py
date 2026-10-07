@@ -345,3 +345,27 @@ def test_a_figure_is_centred_in_every_format():
     assert '<hp:p paraPrIDRef="5" styleIDRef="0"><hp:run charPrIDRef="4">' in section_xml
     header = hwpx.read("Contents/header.xml").decode()
     assert '<hh:paraPr id="5"' in header and 'horizontal="CENTER"' in header
+
+
+def test_cards_under_a_figure_keep_every_word_in_the_deck_pdf():
+    """The strip of cards under a drawn figure grows to fit its longest text."""
+    from pypdf import PdfReader
+
+    cards = [
+        ["감시", "에이전트가 보내는 프롬프트와 도구 호출을 기록하고 이상 행동을 찾아낸다"],
+        ["정책 통제",
+         "사람이 정한 허용 범위를 벗어나는 행동을 실행 전에 차단하거나 승인을 요구한다"],
+        ["격리 실행", "에이전트가 만든 코드나 명령을 샌드박스에서 돌려 실제 시스템 피해를 막는다"],
+        ["거버넌스",
+         "누가 어떤 에이전트를 어디까지 자율 실행하게 할지 권한과 감사 기록을 관리한다"],
+    ]
+    slide = {
+        "title": "보안 솔루션 구분과 역할",
+        "layout": "cards",
+        "cards": cards,
+        "image": {"src": f"data:image/png;base64,{png(400, 150)}", "diagram": True},
+    }
+    pdf = deck_export.to_pdf("t", [slide], tokens=TOKENS)
+    text = re.sub(r"\s+", "", "".join(p.extract_text() for p in PdfReader(io.BytesIO(pdf)).pages))
+    for _, sentence in cards:
+        assert re.sub(r"\s+", "", sentence) in text

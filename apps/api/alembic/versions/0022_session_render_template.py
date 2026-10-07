@@ -1,14 +1,7 @@
 """The rendering template a session writes into.
 
-A design template is a shape, not a prompt: picking one changes what comes out
-of the surface, so it has to survive a reload the way the model choice does.
-
-Nullable and null by default — a session with no template uses the built-in
-track (markdown sections, JSON slides) exactly as before.
-
-Not a foreign key: the catalogue ships inside the API image rather than in a
-table, and an id that disappears in an upgrade must degrade to "no template"
-rather than to a session that will not load.
+Not a foreign key: the catalogue ships in the image, and an unknown id must degrade to
+"no template".
 
 Revision ID: 0022
 Revises: 0021

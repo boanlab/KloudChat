@@ -64,3 +64,9 @@ section:last-of-type h2 { color: var(--accent); }
   }
   section { margin: 0 0 8mm; }
 }
+
+/* 한눈에: 두 단, 절 제목은 강조색 위 굵은 선 아래의 작은 고딕 꼬리표. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; color: var(--accent-deep);
+      padding-top: 0.5rem; border-top: 3px solid var(--accent); }
+h2::before { color: var(--accent-deep); }
+table thead th { background: var(--accent-wash); }

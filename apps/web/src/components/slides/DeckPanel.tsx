@@ -33,7 +33,7 @@ import {
   X,
   ChevronDown,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   PanelControls,
@@ -51,6 +51,8 @@ import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindi
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
+import { PatternView } from '@/components/slides/PatternView'
+import { PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
 import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
@@ -72,8 +74,15 @@ export function hasContent(slide: Slide): boolean {
       slide.timeline?.length ||
       slide.steps?.length ||
       slide.cards?.length ||
+      slide.items?.length ||
+      slide.columns?.length ||
       slide.diagram?.source,
   )
+}
+
+/** 「01. 시장 구조」 → 「시장 구조」: a divider and the agenda print the number themselves. */
+function unnumbered(title: string): string {
+  return title.replace(/^\s*(?:\d{1,2}|[IVX]{1,4})\s?[.)．:]\s*/, '').trim() || title
 }
 
 /** Whether a slide says anything besides its title and picture. */
@@ -88,7 +97,9 @@ function hasWords(slide: Slide): boolean {
       slide.tiles?.length ||
       slide.timeline?.length ||
       slide.steps?.length ||
-      slide.cards?.length,
+      slide.cards?.length ||
+      slide.items?.length ||
+      slide.columns?.length,
   )
 }
 
@@ -97,10 +108,11 @@ function overflowRisk(slide: Slide): boolean {
   const titleLoad = Math.ceil((slide.title?.length ?? 0) / 34)
   const bulletLoad = (slide.bullets ?? []).reduce((sum, row) => sum + Math.max(1, Math.ceil(row.length / 38)), 0)
   const tableLoad = (slide.rows ?? []).length * 1.35
-  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0, slide.steps?.length ?? 0, slide.cards?.length ?? 0) * 1.6
+  const pairLoad = Math.max(slide.metrics?.length ?? 0, slide.bands?.length ?? 0, slide.tiles?.length ?? 0, slide.timeline?.length ?? 0, slide.steps?.length ?? 0, slide.cards?.length ?? 0, slide.items?.length ?? 0) * 1.6
+  const columnLoad = Math.max(0, ...(slide.columns ?? []).map((column) => column.items.length)) * 1.2
   const chartLoad = (slide.chart?.categories.length ?? 0) * 0.8 + (slide.chart?.series.length ?? 0) * 0.8
   const scale = slide.textScale ?? 1
-  return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + chartLoad) * scale > 10
+  return (titleLoad * 1.5 + bulletLoad + tableLoad + pairLoad + columnLoad + chartLoad) * scale > 10
 }
 
 function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide] | null {
@@ -119,6 +131,12 @@ function splitStructuredSlide(slide: Slide, continuation: string): [Slide, Slide
     const [head, ...body] = slide.rows!
     const at = Math.ceil(body.length / 2)
     return make({ rows: [head, ...body.slice(0, at)] }, { rows: [head, ...body.slice(at)] })
+  }
+  // Lists and grids of a pattern split in halves; a quad, a cycle or a flow is one whole.
+  const pattern = patternOf(slide.layout)
+  if (pattern?.shape === 'pairs' && ['list', 'vflow', 'grid'].includes(pattern.render) && (slide.items?.length ?? 0) >= 4) {
+    const at = Math.ceil(slide.items!.length / 2)
+    return make({ items: slide.items!.slice(0, at) }, { items: slide.items!.slice(at) })
   }
   for (const field of PAIRED) {
     const values = slide[field]
@@ -198,7 +216,7 @@ const LOOKS: Record<VisualStyle, Look> = {
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
-const LAYOUTS: { id: Slide['layout']; label: string }[] = [
+const BASE_LAYOUTS: { id: Slide['layout']; label: string }[] = [
   { id: 'title', label: '표지' },
   { id: 'agenda', label: '목차' },
   { id: 'section', label: '구분 장' },
@@ -216,6 +234,25 @@ const LAYOUTS: { id: Slide['layout']; label: string }[] = [
   { id: 'tiles', label: '표식' },
   { id: 'timeline', label: '연표' },
   { id: 'closing', label: '마무리' },
+]
+
+/** Picker groups for the patterns, by arrangement; `slide_patterns.py` holds the table. */
+const PATTERN_GROUPS: { label: string; renders: Pattern['render'][] }[] = [
+  { label: '격자·카드', renders: ['grid'] },
+  { label: '목록', renders: ['list'] },
+  { label: '흐름·단계', renders: ['flow', 'vflow', 'stack', 'cycle'] },
+  { label: '비교·분석', renders: ['quad', 'columns'] },
+  { label: '수치·차트', renders: ['kpi', 'chart'] },
+  { label: '한 문장', renders: ['text'] },
+]
+
+/** Every layout the picker offers, grouped: the base layouts first, then the patterns. */
+const LAYOUT_GROUPS: { label: string; layouts: { id: Slide['layout']; label: string }[] }[] = [
+  { label: '기본', layouts: BASE_LAYOUTS },
+  ...PATTERN_GROUPS.map((group) => ({
+    label: group.label,
+    layouts: PATTERNS.filter((pattern) => group.renders.includes(pattern.render)).map((pattern) => ({ id: pattern.name, label: pattern.label })),
+  })),
 ]
 
 /** The looks in the order the picker shows them, with what each one does to a slide. */
@@ -339,18 +376,40 @@ function pairFields(layout: Paired | null, pairs?: [string, string][]): Partial<
   }
 }
 
+/** The slide's `[left, right]` pairs, from a paired layout or a pairs pattern; `null` if it has none. */
+function pairsOf(slide: Slide): [string, string][] | null {
+  const paired = pairedLayout(slide)
+  if (paired) return slide[paired] ?? []
+  if (patternOf(slide.layout)?.shape === 'pairs') return slide.items ?? []
+  return null
+}
+
+/** `"이름: 설명"` (or `이름 — 설명`) → `['이름', '설명']`; a line with neither keeps it whole on the left. */
+function splitPair(line: string): [string, string] | null {
+  const match = /^(.{1,40}?)\s*(?::\s|：|\s[—–-]\s)\s*(.+)$/.exec(line.trim())
+  return match ? [match[1].trim(), match[2].trim()] : null
+}
+
 /** Re-shape one slide without leaving invisible content from its old layout. */
 function relayout(slide: Slide, layout: Slide['layout']): Slide {
   if (layout === slide.layout) return slide
-  const oldPairs = pairedLayout(slide)
-  const pairs = oldPairs
-    ? slide[oldPairs] ?? []
-    : slide.metrics ?? slide.rows?.map((row) => [row[0] ?? '', row.slice(1).join(' · ')] as [string, string]) ?? []
+  const columns = slide.columns?.filter((column) => column.title || column.items.length) ?? []
+  const pairs: [string, string][] =
+    pairsOf(slide) ??
+    (columns.length
+      ? columns.flatMap((column) => column.items.map((item) => [column.title, item] as [string, string]))
+      : null) ??
+    slide.metrics ??
+    slide.rows?.map((row) => [row[0] ?? '', row.slice(1).join(' · ')] as [string, string]) ??
+    []
+  const target = patternOf(layout)
   const lines = slide.bullets?.length
     ? slide.bullets
     : slide.body
-      ? [slide.body]
-      : pairs.map(([left, right]) => [left, right].filter(Boolean).join(' — '))
+      // A pattern takes back the lines a one-line layout joined with ` · `.
+      ? (target ? slide.body.split(' · ').filter(Boolean) : [slide.body])
+      : pairs.map(([left, right]) => [left, right].filter(Boolean).join(columns.length ? ': ' : ' — '))
+  const keepsChart = layout === 'chart' || target?.shape === 'chart'
   const clean: Slide = {
     ...slide,
     layout,
@@ -358,8 +417,49 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
     bullets: undefined,
     rows: undefined,
     metrics: undefined,
-    chart: layout === 'chart' ? slide.chart : undefined,
+    items: undefined,
+    columns: undefined,
+    chart: keepsChart && slide.chart
+      ? {
+          ...slide.chart,
+          // A chart pattern fixes its kind; back on the plain chart, a kind it cannot draw becomes bars.
+          kind: (target?.params.kind as NonNullable<Slide['chart']>['kind'] | undefined)
+            ?? (slide.chart.kind === 'line' ? 'line' : 'bar'),
+        }
+      : undefined,
     ...pairFields(null),
+  }
+  // Pairs a new pairs layout carries: the old pairs, else lines split at「:」or numbered.
+  const carried = (number: boolean): [string, string][] =>
+    pairs.length
+      ? pairs
+      : lines.map((line, i) => splitPair(line) ?? (number ? [String(i + 1).padStart(2, '0'), line] : [line, '']))
+  if (target) {
+    const [, most] = target.count
+    if (target.shape === 'pairs') return { ...clean, items: carried(false) }
+    if (target.shape === 'text') return { ...clean, body: slide.body || lines.join(' · ') || undefined }
+    if (target.shape === 'chart') return clean
+    if (target.shape === 'metrics') {
+      const metrics = pairs.length
+        ? pairs.slice(0, most)
+        : lines.slice(0, most).map((line, i) => splitPair(line) ?? ([String(i + 1), line] as [string, string]))
+      return { ...clean, metrics }
+    }
+    // columns: kept as they were, else pairs grouped by their left side (the inverse of flattening).
+    if (columns.length) return { ...clean, columns }
+    const grouped: { title: string; items: string[] }[] = []
+    for (const [left, right] of carried(false)) {
+      const into = grouped.find((column) => column.title === left)
+      if (into) {
+        if (right) into.items.push(right)
+      } else grouped.push({ title: left, items: right ? [right] : [] })
+    }
+    // More groups than the pattern has panels: the rest join the last panel, labelled.
+    const kept = grouped.slice(0, most)
+    for (const extra of grouped.slice(most)) {
+      kept[kept.length - 1].items.push(...(extra.items.length ? extra.items.map((item) => `${extra.title}: ${item}`) : [extra.title]))
+    }
+    return { ...clean, columns: kept }
   }
   if (layout === 'title' || layout === 'section' || layout === 'quote' || layout === 'statement') {
     return { ...clean, body: lines.join(' · ') || undefined }
@@ -372,7 +472,10 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
     return { ...clean, bullets: lines.slice(0, 3), body: slide.body || undefined }
   }
   if (layout === 'table') {
-    const rows = slide.rows ?? pairs.map(([left, right]) => [left, right])
+    const rows = slide.rows
+      ?? (columns.length
+        ? [columns.map((column) => column.title), ...Array.from({ length: Math.max(...columns.map((column) => column.items.length)) }, (_, r) => columns.map((column) => column.items[r] ?? ''))]
+        : pairs.map(([left, right]) => [left, right]))
     return { ...clean, rows: rows.length ? rows : lines.map((line) => [line]) }
   }
   if (layout === 'metrics') {
@@ -382,10 +485,7 @@ function relayout(slide: Slide, layout: Slide['layout']): Slide {
     return { ...clean, metrics }
   }
   if ((PAIRED as readonly string[]).includes(layout)) {
-    const next = pairs.length
-      ? pairs
-      : lines.map((line, i) => [String(i + 1).padStart(2, '0'), line] as [string, string])
-    return { ...clean, ...pairFields(layout as Paired, next) }
+    return { ...clean, ...pairFields(layout as Paired, carried(true)) }
   }
   return { ...clean, bullets: lines }
 }
@@ -397,11 +497,6 @@ function slideFor(slides: Slide[], where: string): Slide | undefined {
   if (exact) return exact
   const loose = (text: string) => text.replace(/\s+/g, '')
   return slides.find((s) => loose(s.title) === loose(where))
-}
-
-/** Keeps the half-typed working copy unless a different slide arrived. */
-function pick(next: Slide, working: Slide): Slide {
-  return next.id === working.id ? working : next
 }
 
 /**
@@ -446,7 +541,13 @@ export function SlideView({
   // The slide as typed; a ref so re-renders do not move the caret.
   const working = useRef(slide)
   const canvas = useRef<HTMLDivElement>(null)
-  working.current = editable ? { ...working.current, ...pick(slide, working.current) } : slide
+  // Every edit reaches the parent through `onEdit`, so a slide object the parent has not
+  // seen before (a layout picked, a row typed in the data editor) is newer than the copy.
+  const seen = useRef(slide)
+  if (!editable || slide !== seen.current) {
+    working.current = slide
+    seen.current = slide
+  }
   const edit = (patch: Partial<Slide>) => {
     working.current = { ...working.current, ...patch }
     onEdit?.(working.current)
@@ -509,14 +610,18 @@ export function SlideView({
     color: visualStyle === 'mono' ? look.bg : '#fff',
     borderRadius: look.badge === 'circle' ? '50%' : px(look.radius / 2),
   })
-  const rows = slide.rows ?? []
-  const metrics = slide.metrics ?? []
+  // A pattern draws its own body (`PatternView`); the generic shapes below stay out of its way.
+  const pattern = patternOf(slide.layout)
+  const rows = pattern ? [] : (slide.rows ?? [])
+  const metrics = pattern ? [] : (slide.metrics ?? [])
   const paired = pairedLayout(slide)
   const pairs = (paired ? (slide[paired] ?? []) : []).filter(
     ([left, right]) => left?.trim() && right?.trim(),
   )
-  const chart = slide.chart
-  const contentElement: SlideElement = chart
+  const chart = pattern ? undefined : slide.chart
+  const contentElement: SlideElement = pattern
+    ? pattern.shape === 'chart' ? 'chart' : pattern.shape === 'metrics' ? 'metrics' : 'cards'
+    : chart
     ? 'chart'
     : rows.length
       ? 'table'
@@ -657,7 +762,7 @@ export function SlideView({
           {...typed('title', (text) => ({ title: text }))}
           {...selectable('title')}
         >
-          {rich('title', slide.title || (closing ? t('마무리') : ''))}
+          {rich('title', (slide.layout === 'section' && slide.number ? unnumbered(slide.title) : slide.title) || (closing ? t('마무리') : ''))}
         </h3>
         {closing && slide.bullets && slide.bullets.length > 0 && (
           <ul style={{ marginTop: px(12), fontSize: pt(TYPE.closingBullets), lineHeight: LEADING.body, color: onAccent ? 'rgba(255,255,255,0.92)' : look.ink }}>
@@ -785,7 +890,7 @@ export function SlideView({
                 'flex min-w-0 flex-1 flex-col',
                 // Paired shapes cannot overflow (see `stack`), so they centre;
                 // bullets can, and a centred overflow clips at both ends.
-                PAIRED.includes(slide.layout as (typeof PAIRED)[number]) && 'justify-center',
+                (PAIRED.includes(slide.layout as (typeof PAIRED)[number]) || pattern) && 'justify-center',
                 figured && 'hidden',
               )}
               data-overflow-box
@@ -937,6 +1042,26 @@ export function SlideView({
                   ))}
                 </div>
               )}
+              {pattern && (
+                <PatternView
+                  slide={slide}
+                  pattern={pattern}
+                  kit={{
+                    accent,
+                    look,
+                    tint,
+                    onAccent: visualStyle === 'mono' ? look.bg : '#fff',
+                    px,
+                    pt,
+                    scale,
+                    boxed,
+                    typed,
+                    rich,
+                    current: () => working.current,
+                    gutter: look.ornament === 'gutter',
+                  }}
+                />
+              )}
               {chart && <SlideChart chart={chart} accent={accent} scale={scale} />}
               {metrics.length > 0 && slide.layout === 'big-number' && (
                 <div className="flex flex-1 flex-col justify-center">
@@ -1073,13 +1198,14 @@ export function SlideView({
                           bullets: (working.current.bullets ?? []).map((old, at) => (at === i ? text : old)),
                         }))}
                       >
-                        {rich(`bullets.${i}`, b)}
+                        {rich(`bullets.${i}`, unnumbered(b))}
                       </span>
                     </li>
                   ))}
                 </ol>
               )}
               {slide.bullets &&
+                !pattern &&
                 slide.layout !== 'agenda' &&
                 rows.length === 0 &&
                 metrics.length === 0 &&
@@ -1109,6 +1235,7 @@ export function SlideView({
                 </ul>
               )}
               {slide.body &&
+                !pattern &&
                 !slide.bullets?.length &&
                 pairs.length === 0 &&
                 rows.length === 0 &&
@@ -1138,8 +1265,21 @@ export function SlideView({
                 {...selectable('image')}
               >
                 {figured ? (
-                  <div className="flex min-h-0 w-full shrink-0 justify-center" style={{ height: figureAlone ? '100%' : '56%' }}>
-                    <SlideFigure slide={slide} accent={accent} look={look} artifactId={artifactId} />
+                  // Beside words the figure takes what they leave: the words are never cut.
+                  <div
+                    className={cn('flex min-h-0 w-full justify-center', figureAlone ? 'shrink-0' : 'flex-1')}
+                    style={figureAlone ? { height: '100%' } : { maxHeight: '62%' }}
+                  >
+                    {/* The server drew this figure from the deck file's shapes: shown as it is. */}
+                    {slide.image?.renderer === 'pptx' && slide.image.src ? (
+                      <img
+                        src={slide.image.src}
+                        alt={slide.image.caption || slide.diagram?.caption || t('그림')}
+                        className="max-h-full min-h-0 w-full object-contain"
+                      />
+                    ) : (
+                      <SlideFigure slide={slide} accent={accent} look={look} artifactId={artifactId} />
+                    )}
                   </div>
                 ) : slide.image?.src ? (
                   <img
@@ -1152,11 +1292,11 @@ export function SlideView({
                   />
                 ) : null}
                 {figured && !figureAlone && slide.layout === 'cards' && pairs.length > 0 && (
-                  <div className="flex min-h-0 shrink-0 overflow-hidden" style={{ gap: px(8), maxHeight: '40%' }}>
+                  <div className="flex shrink-0" style={{ gap: px(8) }}>
                     {pairs.map(([name, text], i) => (
                       <div
                         key={i}
-                        className="flex min-w-0 flex-1 flex-col overflow-hidden"
+                        className="flex min-w-0 flex-1 flex-col"
                         style={boxed({ borderTop: `${px(2)} solid ${accent}`, padding: `${px(5)} ${px(6)}` })}
                       >
                         <div style={{ fontSize: pt(14), fontWeight: 700, color: accent, lineHeight: 1.3 }}>{name}</div>
@@ -1166,7 +1306,7 @@ export function SlideView({
                   </div>
                 )}
                 {figured && !figureAlone && slide.layout !== 'cards' && (
-                  <ul className="m-0 flex min-h-0 shrink-0 list-none flex-col overflow-hidden p-0" style={{ gap: px(2), maxHeight: '40%' }}>
+                  <ul className="m-0 flex shrink-0 list-none flex-col p-0" style={{ gap: px(2) }}>
                     {(slide.bullets ?? []).map((line, i) => (
                       <li key={i} className="flex" style={{ gap: px(6), fontSize: pt(14), lineHeight: 1.45 }}>
                         <span style={{ color: accent }}>•</span>
@@ -1418,6 +1558,17 @@ function SlidePicture({ deck, slide }: { deck: DeckArtifact; slide: Slide }) {
  * `SlideView` does not draw.
  */
 function toLines(slide: Slide): string {
+  const pattern = patternOf(slide.layout)
+  if (pattern) {
+    // A pattern's own field only: pairs and columns as `|` rows (a column: title, then its items).
+    const own =
+      pattern.shape === 'pairs' ? (slide.items ?? []).map(([left, right]) => `| ${left} | ${right} |`)
+      : pattern.shape === 'columns' ? (slide.columns ?? []).map((column) => `| ${[column.title, ...column.items].join(' | ')} |`)
+      : pattern.shape === 'metrics' ? (slide.metrics ?? []).map(([figure, label]) => `| ${figure} | ${label} |`)
+      : pattern.shape === 'text' ? [slide.body ?? '']
+      : []
+    return [slide.title, ...own].filter(Boolean).join('\n')
+  }
   const rows = (slide.rows ?? []).map((row) => `| ${row.join(' | ')} |`)
   const metrics = (slide.metrics ?? []).map(([figure, label]) => `| ${figure} | ${label} |`)
   const paired = pairedLayout(slide)
@@ -1448,9 +1599,21 @@ function toCells(line: string): string[] | null {
 
 function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: Slide) => void }) {
   const t = useT()
+  const pattern = patternOf(slide.layout)
   const paired = pairedLayout(slide)
-  const pairs = paired ? slide[paired] ?? [] : slide.metrics ?? []
-  const pairLabels = paired === 'timeline'
+  const patternPairs = pattern?.shape === 'pairs'
+  const pairs = paired ? slide[paired] ?? [] : patternPairs ? slide.items ?? [] : slide.metrics ?? []
+  const pairLabels = pattern
+    ? pattern.shape === 'metrics' ? ['수치', '설명']
+      : pattern.params.marker === 'qa' ? ['질문', '답']
+      : pattern.params.marker === 'term' ? ['용어', '정의']
+      : pattern.params.marker === 'ref' ? ['저자', '출처']
+      : pattern.render === 'vflow' || pattern.params.style === 'phase' ? ['시점', '내용']
+      : pattern.params.style === 'person' ? ['이름', '역할']
+      : pattern.render === 'quad' ? ['칸', '내용']
+      : pattern.render === 'flow' || pattern.render === 'stack' || pattern.render === 'cycle' ? ['단계', '내용']
+      : ['항목', '설명']
+    : paired === 'timeline'
     ? ['시점', '내용']
     : slide.layout === 'metrics' || slide.layout === 'big-number'
       ? ['수치', '설명']
@@ -1504,10 +1667,61 @@ function SlideDataEditor({ slide, onChange }: { slide: Slide; onChange: (next: S
     )
   }
 
-  if (!paired && slide.layout !== 'metrics') return null
+  if (pattern?.shape === 'text') {
+    return (
+      <div className="space-y-2 rounded-card border border-line bg-panel p-3">
+        <label className="block text-xs font-semibold text-muted">
+          {t(pattern.params.mode === 'question' ? '질문' : pattern.params.mode === 'definition' ? '정의' : '가설')}
+          <Textarea
+            rows={3}
+            aria-label={t('본문')}
+            value={slide.body ?? ''}
+            onChange={(event) => onChange({ ...slide, body: event.target.value })}
+            className="mt-1"
+          />
+        </label>
+      </div>
+    )
+  }
+
+  if (pattern?.shape === 'columns') {
+    const columns = slide.columns ?? []
+    const write = (next: { title: string; items: string[] }[]) => onChange({ ...slide, columns: next })
+    return (
+      <div className="space-y-2 rounded-card border border-line bg-panel p-3">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-muted">{t('단 편집')}</p>
+          <Button size="sm" disabled={columns.length >= pattern.count[1]} onClick={() => write([...columns, { title: '', items: [] }])}>{t('단 추가')}</Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {columns.map((column, index) => (
+            <div key={index} className="space-y-1">
+              <div className="flex gap-1">
+                <Input
+                  aria-label={t('{n}번째 단 제목').replace('{n}', String(index + 1))}
+                  value={column.title}
+                  onChange={(event) => write(columns.map((old, i) => i === index ? { ...old, title: event.target.value } : old))}
+                />
+                <Button size="sm" disabled={columns.length <= 1} onClick={() => write(columns.filter((_, i) => i !== index))}>{t('삭제')}</Button>
+              </div>
+              <Textarea
+                rows={4}
+                aria-label={t('{n}번째 단 항목').replace('{n}', String(index + 1))}
+                value={column.items.join('\n')}
+                onChange={(event) => write(columns.map((old, i) => i === index ? { ...old, items: event.target.value.split('\n') } : old))}
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-2xs text-faint">{t('한 줄에 한 항목씩 씁니다.')}</p>
+      </div>
+    )
+  }
+
+  if (!paired && !patternPairs && slide.layout !== 'metrics' && pattern?.shape !== 'metrics') return null
   const writePairs = (next: [string, string][]) => onChange({
     ...slide,
-    ...(paired ? pairFields(paired, next) : { metrics: next }),
+    ...(paired ? pairFields(paired, next) : patternPairs ? { items: next } : { metrics: next }),
   })
   return (
     <div className="space-y-2 rounded-card border border-line bg-panel p-3">
@@ -1599,7 +1813,7 @@ export function PresentStage({
   // Capture phase, stopped here: a bubbling Escape would also close the host dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const keys = ['Escape', 'ArrowRight', 'ArrowLeft', ' ', 'n', 'N']
+      const keys = ['Escape', 'ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', ' ', 'n', 'N']
       if (!keys.includes(e.key)) return
       e.preventDefault()
       e.stopPropagation()
@@ -1607,8 +1821,8 @@ export function PresentStage({
         if (document.fullscreenElement === stageRef.current) void document.exitFullscreen()
         onClose()
       }
-      if (e.key === 'ArrowRight' || e.key === ' ') onIndex(Math.min(index + 1, count - 1))
-      if (e.key === 'ArrowLeft') onIndex(Math.max(index - 1, 0))
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) onIndex(Math.min(index + 1, count - 1))
+      if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) onIndex(Math.max(index - 1, 0))
       if (e.key.toLowerCase() === 'n') setShowNotes((s) => !s)
     }
     document.addEventListener('keydown', onKey, true)
@@ -2190,6 +2404,7 @@ export function DeckPanel({
     const words = rest.filter((line) => toCells(line) === null)
     // Pairs read from the same `|` lines as table rows; extra cells are rejoined.
     const sourceSlide = slideDraft ?? slide
+    const pattern = patternOf(sourceSlide.layout)
     const paired = pairedLayout(sourceSlide)
     const pairs: [string, string][] = paired
       ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')])
@@ -2204,8 +2419,30 @@ export function DeckPanel({
           : { ...sourceSlide, layout: 'table', rows: table, metrics: undefined }
         : { ...sourceSlide, rows: undefined, metrics: undefined, ...(paired ? pairFields(null) : null) }
 
+    // A pattern keeps its layout and reads its own field back from the box.
+    const patternEdit = (): Slide | null => {
+      if (!pattern) return null
+      const base: Slide = { ...sourceSlide, title, notes, bullets: undefined, rows: undefined }
+      if (pattern.shape === 'pairs') {
+        const items = table.length
+          ? table.map((cells) => [cells[0], cells.slice(1).join(' | ')] as [string, string])
+          : words.map((line) => splitPair(line) ?? ([line, ''] as [string, string]))
+        return { ...base, items, body: undefined }
+      }
+      if (pattern.shape === 'columns') {
+        const columns = table.map(([head, ...rest]) => ({ title: head, items: rest.filter(Boolean) }))
+        return { ...base, columns: columns.length ? columns : sourceSlide.columns, body: undefined }
+      }
+      if (pattern.shape === 'metrics') {
+        const metrics = table.map((cells) => [cells[0], cells.slice(1).join(' ')] as [string, string])
+        return { ...base, metrics: metrics.length ? metrics : sourceSlide.metrics, body: undefined }
+      }
+      if (pattern.shape === 'text') return { ...base, body: words.join(' ') || undefined }
+      return { ...base, body: undefined }
+    }
     const edited: Slide =
-      sourceSlide.layout === 'chart' && sourceSlide.chart
+      patternEdit() ??
+      (sourceSlide.layout === 'chart' && sourceSlide.chart
         ? { ...sourceSlide, title, notes, body: undefined, bullets: undefined }
       : paired && pairs.length > 0
         ? {
@@ -2238,7 +2475,7 @@ export function DeckPanel({
                   bullets: words,
                   body: undefined,
                   notes,
-                }
+                })
 
     const slides = deck.slides.map((s, i) => (i === index ? edited : s))
     savingLock.current = true
@@ -2536,6 +2773,38 @@ export function DeckPanel({
     setRailToggled(false)
   }
 
+  // Up/Down (and Left/Right, PageUp/PageDown, Home/End) step through the slides while the
+  // deck is shown and nothing else has the keys: not while a slide is being edited,
+  // presented (the show has its own keys), typed into, or covered by a menu or dialog.
+  const goRef = useRef(go)
+  goRef.current = go
+  useEffect(() => {
+    if (editing || presenting) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"]')) return
+      if (document.querySelector('[role="menu"], [role="dialog"][aria-modal="true"]')) return
+      const last = deck.slides.length - 1
+      const step: Record<string, number> = {
+        ArrowDown: index + 1, ArrowRight: index + 1, PageDown: index + 1,
+        ArrowUp: index - 1, ArrowLeft: index - 1, PageUp: index - 1, Home: 0, End: last,
+      }
+      if (!(event.key in step)) return
+      event.preventDefault()
+      const next = Math.max(0, Math.min(step[event.key], last))
+      if (next === index) return
+      goRef.current(next)
+      // The rail follows: the chosen thumbnail scrolls into view.
+      requestAnimationFrame(() =>
+        document.querySelector(`[aria-label="${t('{n}번 장').replace('{n}', String(next + 1))}"]`)
+          ?.scrollIntoView({ block: 'nearest' }),
+      )
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editing, presenting, index, deck.slides.length, t])
+
   const saveReviewComments = async (comments: typeof reviewComments, summary: string) => {
     setReviewSaving(true)
     setError(null)
@@ -2773,8 +3042,12 @@ export function DeckPanel({
                       })}
                       className="h-8 max-w-28 rounded-control border-0 bg-transparent px-1 text-sm text-fg outline-none hover:bg-elevated"
                     >
-                      {LAYOUTS.map((candidate) => (
-                        <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>
+                      {LAYOUT_GROUPS.map((group) => (
+                        <optgroup key={group.label} label={t(group.label)}>
+                          {group.layouts.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>{t(candidate.label)}</option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>
@@ -3311,15 +3584,19 @@ export function DeckPanel({
                         {t('아래로 옮기기')}
                       </MenuItem>
                       <MenuItem onClick={removeSlide}>{t('이 장 지우기')}</MenuItem>
-                      <MenuLabel>{t('레이아웃')}</MenuLabel>
-                      {LAYOUTS.map((candidate) => (
-                        <MenuItem
-                          key={candidate.id}
-                          checked={candidate.id === slide.layout}
-                          onClick={() => changeLayout(candidate.id)}
-                        >
-                          {t(candidate.label)}
-                        </MenuItem>
+                      {LAYOUT_GROUPS.map((group, g) => (
+                        <Fragment key={group.label}>
+                          <MenuLabel>{g === 0 ? t('레이아웃') : t(group.label)}</MenuLabel>
+                          {group.layouts.map((candidate) => (
+                            <MenuItem
+                              key={candidate.id}
+                              checked={candidate.id === slide.layout}
+                              onClick={() => changeLayout(candidate.id)}
+                            >
+                              {t(candidate.label)}
+                            </MenuItem>
+                          ))}
+                        </Fragment>
                       ))}
                       <MenuLabel>{t('글자 크기')}</MenuLabel>
                       <MenuItem
@@ -3394,24 +3671,26 @@ export function DeckPanel({
                         </label>
                       </div>
                     )}
-                    {slideDraft?.layout === 'chart' && slideDraft.chart && selectedElement === 'chart' && (
+                    {(slideDraft?.layout === 'chart' || patternOf(slideDraft?.layout)?.shape === 'chart') && slideDraft?.chart && selectedElement === 'chart' && (
                       <div className="space-y-3 rounded-card border border-line bg-panel p-3">
                         <div className="flex flex-wrap items-end gap-3">
-                          <label className="text-xs text-muted">
-                            {t('차트 종류')}
-                            <select
-                              aria-label={t('차트 종류')}
-                              value={slideDraft.chart.kind}
-                              onChange={(event) => setSlideDraft((current) => current?.chart ? ({
-                                ...current,
-                                chart: { ...current.chart, kind: event.target.value as 'bar' | 'line' },
-                              }) : current)}
-                              className="mt-1 block h-9 rounded-control border border-line bg-panel px-2 text-sm"
-                            >
-                              <option value="bar">{t('막대')}</option>
-                              <option value="line">{t('꺾은선')}</option>
-                            </select>
-                          </label>
+                          {slideDraft.layout === 'chart' && (
+                            <label className="text-xs text-muted">
+                              {t('차트 종류')}
+                              <select
+                                aria-label={t('차트 종류')}
+                                value={slideDraft.chart.kind}
+                                onChange={(event) => setSlideDraft((current) => current?.chart ? ({
+                                  ...current,
+                                  chart: { ...current.chart, kind: event.target.value as 'bar' | 'line' },
+                                }) : current)}
+                                className="mt-1 block h-9 rounded-control border border-line bg-panel px-2 text-sm"
+                              >
+                                <option value="bar">{t('막대')}</option>
+                                <option value="line">{t('꺾은선')}</option>
+                              </select>
+                            </label>
+                          )}
                           <label className="min-w-28 flex-1 text-xs text-muted">
                             {t('단위')}
                             <Input

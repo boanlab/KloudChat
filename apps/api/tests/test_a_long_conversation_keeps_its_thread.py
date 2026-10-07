@@ -448,7 +448,7 @@ async def test_a_failed_answer_is_not_carried_as_an_earlier_answer(monkeypatch):
 
     assert captured["earlier_answers"] is None
     assert captured["superseded_ids"] is None
-    # A failed reply still goes at once, as before.
+    # A failed reply still goes at once.
     assert db.deleted == [partial]
 
 
@@ -692,7 +692,7 @@ def test_a_stream_of_one_punctuation_mark_is_stopped():
     one_at_a_time = ["!"] * 3000
     assert _runaway(one_at_a_time) is not None
     assert _is_looping(one_at_a_time)
-    # Letters and digits as before, and a Hangul syllable.
+    # Letters, digits and a Hangul syllable.
     assert _runaway(["0"] * 50) is not None
     assert _runaway(["아"] * 50) is not None
     # Code banners and markdown rules are not a stuck decoder.
@@ -882,8 +882,7 @@ def test_only_a_verification_or_date_hedge_counts_as_a_caveat():
 
 
 def test_the_style_guide_carries_no_worked_example_the_model_could_quote_as_fact():
-    """A transfer-learning example in the guide came back as "내 300장" in an answer
-    about transfer learning before the person ever mentioned 300 photos."""
+    """The style guide holds no worked example (such as "300장") a model could repeat as fact."""
     from app.services import context
 
     source = open(context.__file__, encoding="utf-8").read()
@@ -1594,7 +1593,7 @@ def test_a_rename_with_both_names_quoted_takes_the_new_one():
     assert requested_title("제목을 「새 이름」으로, 「옛 이름」은 버려") == "새 이름"
 
 
-# ── the whole-codebase review's findings ─────────────────────────────────
+# ── assorted boundaries: environment, archives, turn claims, pictures, looks ──
 
 
 def test_a_stdio_server_inherits_only_a_minimal_environment(monkeypatch):
@@ -1801,8 +1800,7 @@ def test_a_brief_with_one_number_or_no_body_slides_is_left_alone():
 
 @pytest.mark.asyncio
 async def test_an_order_swap_is_routed_in_place_without_asking_the_planner(monkeypatch):
-    """「보안 규칙 장과 필수 계정 장의 순서를 바꿔 줘」 used to be read as a restructure, so
-    the deck was redrawn (and grew a 목차) to move two slides. It is now an in-place plan."""
+    """「보안 규칙 장과 필수 계정 장의 순서를 바꿔 줘」 is an in-place swap, not a restructure."""
     from types import SimpleNamespace
 
     from app.routers import sessions as sessions_router
@@ -1953,8 +1951,8 @@ def test_a_provider_that_refuses_the_reasoning_switch_is_remembered():
     assert thinking.refused(
         model, R(status_code=400, text='{"error":{"message":"Reasoning is mandatory"}}')
     )
-    # From then on the switch is left out, so the next call is not refused again.
-    assert thinking.switch(model) == {}
+    # From then on the least reasoning is asked for instead, which the provider accepts.
+    assert thinking.switch(model) == {"reasoning": {"effort": "low"}}
     thinking._MANDATORY.discard(model)
 
 
@@ -2034,28 +2032,9 @@ def test_the_default_local_model_plans_for_a_different_writer_but_not_for_itself
     assert same is not None and same["id"] == local["id"]
 
 
-def test_an_editor_flags_repeats_and_filler_and_keeps_only_fact_preserving_edits():
-    from app.services.report import drop_redundant_kpi, edit_keeps_facts, editing_issues
+def test_a_kpi_block_that_repeats_its_table_is_dropped():
+    from app.services.report import drop_redundant_kpi
 
-    earlier = [
-        "파일럿은 4개 부서 742명을 대상으로 6주간 운영되었습니다. 월 검색량은 6.1만 건입니다."
-    ]
-    body = (
-        "파일럿은 4개 부서의 742명 참여자를 대상으로 6주간 운영되었습니다. 평균 검색 시간을 "
-        "추적했습니다. 나머지 지표를 확인하는 데는 자료에 다른 문제가 명시되어 있지 않습니다."
-    )
-    issues = editing_issues(body, earlier)
-    assert any(i.startswith("앞 절과 같은 말") for i in issues)
-    assert any(i.startswith("빈말") for i in issues)
-    assert editing_issues("검색 시간은 14분에서 3분으로 줄었습니다.", earlier) == []
-    # An edit that drops or invents a number, or halves the text, is refused.
-    kept = (
-        "742명을 6주간 살피며 모든 검색의 평균 소요 시간을 추적했습니다. 그 밖의 문제는 없었습니다."
-    )
-    assert edit_keeps_facts(body, kept)
-    invented = "742명을 6주간 살폈고 평균 검색 시간을 추적했습니다. 비용은 300만 원입니다."
-    assert not edit_keeps_facts(body, invented)
-    assert not edit_keeps_facts(body, "짧게.")
     table = (
         "| 지표 | 수치 |\n|---|---|\n| 참여 인원 | 742명 |\n| 만족도 | 4.1/5 |\n\n"
         "```kpi\n742명 | 참여 인원\n4.1/5 | 만족도\n```\n\n설명."
@@ -2088,21 +2067,9 @@ def test_speaker_notes_that_only_read_the_slide_aloud_are_dropped():
     assert notes_without_echo(meta, slide) == spoken
 
 
-def test_the_editor_sees_the_same_facts_told_in_new_words_and_a_bold_heading_at_the_top():
-    from app.services.report import _without_own_heading, editing_issues
+def test_a_bold_heading_repeating_the_section_title_is_dropped():
+    from app.services.report import _without_own_heading
 
-    earlier = [
-        "파일럿은 4개 부서 742명을 대상으로 6주간 운영되었습니다. 월 검색량은 6.1만 건입니다."
-    ]
-    reworded = (
-        "대상은 4개 부서의 742명 참여자였고, 기간은 6주간이었습니다. "
-        "측정 지표는 평균 검색 시간입니다."
-    )
-    issues = editing_issues(reworded, earlier)
-    assert any("다시 말함" in i for i in issues)
-    # New numbers are new facts, not a restatement.
-    fresh = editing_issues("검색 시간은 14분에서 3분으로 줄었습니다.", earlier)
-    assert not any("다시 말함" in i for i in fresh)
     body = "**위험과 대응**\n\np95 미달 위험은 권한 필터링 개선이 목표에 닿지 못할 때 생깁니다."
     assert _without_own_heading(body, "위험").startswith("p95 미달 위험은")
     bold_prose = "**굵은 강조는 본문입니다.** 이어지는 글."
@@ -2456,7 +2423,7 @@ def test_a_restructure_shows_the_writer_what_each_part_says():
     assert "1. 위험\n   내용: 위험 | 영향 | 대응 권한 필터 개선 지연" in block
     assert "2. 다음 단계\n   내용: 9/8 권한 필터 개선 배포" in block
     assert "요청 원문에 없는 것도 지금 문서에 있으면 남긴다" in block
-    # Without texts the block is the bare skeleton it always was.
+    # Without texts the block is the bare skeleton.
     assert "내용:" not in outline_block(["위험", "다음 단계"])
 
 
@@ -3001,3 +2968,158 @@ def test_a_ledger_amount_off_by_a_power_of_ten_is_the_ledger_amount():
     assert "연 5,640만 원" in fixed
     # An amount that is not a ledger result is left alone.
     assert fix_ledger_magnitudes("예비비 300만 원.", request) == "예비비 300만 원."
+
+
+def test_a_review_of_a_draft_that_mentions_experiments_is_a_review_and_a_paper_is_researched():
+    from app.services.context import instruction_part, literature_request
+    from app.services.report import (
+        _genre_rule,
+        _own_material,
+        scholarly_document,
+        unwrap_json_prose,
+    )
+
+    review = (
+        "아래 논문 초안을 보안 워크숍 프로그램 위원 입장에서 피어리뷰해 줘.\n\n---\n"
+        + "## 실험 설계\n측정 지표는 ASR과 Utility. 실험 결과는 실험 예정.\n" * 20
+    )
+    assert instruction_part(review).startswith("아래 논문 초안을")
+    assert _genre_rule(review).startswith("장르: 학회 피어리뷰")
+    draft = (
+        "보안 워크숍 투고용 논문 초안을 써 줘. 실험은 아직 안 했어.\n\n---\n" + "실험 측정 " * 200
+    )
+    assert _genre_rule(draft).startswith("장르: 학술 논문 초안")
+    assert scholarly_document(draft) and not _own_material(draft)
+    lab = "이번 주 실험 측정 결과로 실험 보고서를 써 줘. " + "| 주파수 | 이득 |\n" * 30
+    assert _genre_rule(lab).startswith("장르: 실험 보고서") and _own_material(lab)
+    assert literature_request("간접 프롬프트 인젝션 방어 연구 동향을 정리해 줘")
+    assert not literature_request("오늘 서울 날씨 알려 줘")
+    fenced = '```json\n{"section": "참고문헌", "content": "[1] Greshake et al. 2023."}\n```'
+    assert unwrap_json_prose(fenced) == "[1] Greshake et al. 2023."
+
+
+def test_a_comma_listed_order_names_the_slides():
+    from app.services.deck import arrow_parts
+
+    request = (
+        "아래 논문 초안으로 학회 15분 발표 자료를 만들어 줘. 10~12장, 청중은 보안 연구자. "
+        "문제 정의, 위협 모델, 제안 방법, 실험 설계, 기대 효과, 한계와 향후 계획 순서로. "
+        "발표자 노트도 장마다 써 줘.\n\n---\n본문"
+    )
+    assert arrow_parts(request) == [
+        "문제 정의", "위협 모델", "제안 방법", "실험 설계", "기대 효과", "한계와 향후 계획"
+    ]
+    assert arrow_parts("가나다 순으로 정렬해 줘") == []
+
+
+def test_a_literature_question_searches_on_auto():
+    from app.services.context import search_plan
+
+    ask = "그중 이 분야를 이해하는 데 꼭 읽어야 할 핵심 논문 3편을 골라서 각각 분석해 줘."
+    assert search_plan("auto", ask) == (True, "web_search")
+    assert search_plan("auto", "고마워!")[1] is None
+    assert search_plan(False, ask) == (False, None)
+
+
+def test_a_reference_list_is_one_entry_per_line_each_paper_once_and_citations_follow():
+    from app.services.report import tidy_references
+
+    sections = [
+        {"heading": "관련 연구", "format": "markdown",
+         "content": "SecAlign은 선호 최적화로 방어한다 [1] [11]. MCPTox는 벤치마크다 [3]."},
+        {"heading": "참고문헌", "format": "markdown", "content": (
+            "[1] Chen, S. et al. SecAlign: Defending Against Prompt Injection with Preference "
+            "Optimization. CCS 2025.\n\n[2] Liu, S. When the Manual Lies. 2026. "
+            "[3] Wang, Z. MCPTox: A Benchmark for Tool Poisoning Attack. arXiv:2508.14925.\n\n"
+            "[11] SecAlign: Defending Against Prompt Injection with Preference Optimization. "
+            "arXiv:2410.05451, 2024."
+        )},
+    ]
+    out = tidy_references(sections)
+    refs = out[1]["content"].strip().split("\n\n")
+    assert len(refs) == 3 and refs[1].startswith("[2] Liu") and refs[2].startswith("[3] Wang")
+    assert out[0]["content"] == "SecAlign은 선호 최적화로 방어한다 [1]. MCPTox는 벤치마크다 [3]."
+
+
+def test_counts_and_slide_lists_inside_pasted_material_are_not_the_decks():
+    from app.services.context import instruction_part
+    from app.services.deck import arrow_parts, requested_slides
+
+    request = (
+        "아래 논문 초안으로 학회 15분 발표 자료를 만들어 줘. 10~12장, 청중은 보안 연구자. "
+        "문제 정의, 위협 모델, 제안 방법, 실험 설계, 기대 효과, 한계와 향후 계획 순서로.\n\n---\n"
+        "## 실험 설계\nGPU는 A100 80GB 1장 또는 H100 1장으로 충분합니다. 입력 → 필터 → 출력.\n"
+    )
+    assert requested_slides(request) is None
+    assert arrow_parts(request)[-1] == "한계와 향후 계획"
+    # The planner's conditions stay part of the instruction even after pasted material.
+    merged = request + "\n\n덧붙인 조건:\n- 장수는 6장으로 맞춘다"
+    assert requested_slides(merged) == 6
+    assert "장수는 6장" in instruction_part(merged)
+
+
+@pytest.mark.asyncio
+async def test_a_literature_lookup_searches_every_planned_query_and_interleaves_them(monkeypatch):
+    from app.services.tools import builtin
+
+    calls = []
+
+    async def fake(base, query, count, **kwargs):
+        calls.append((query, kwargs.get("kind")))
+        return [
+            {"url": f"https://arxiv.org/abs/{query[:3]}{i}", "title": f"{query} paper {i}",
+             "snippet": "prompt injection defense"}
+            for i in range(3)
+        ]
+
+    class Backends:
+        search = "http://search"
+        fetch = ""
+
+    async def tools_config():
+        return Backends()
+
+    async def no_scrape(*_a, **_k):
+        return ""
+
+    monkeypatch.setattr(builtin, "_searxng", fake)
+    monkeypatch.setattr(builtin.settings_store, "tools_config", tools_config)
+    monkeypatch.setattr(builtin, "_scrape", no_scrape)
+    result = await builtin.web_search(
+        {"query": "aaa", "queries": ["aaa", "bbb", "ccc"], "kind": "papers", "scholarly": True}
+    )
+    assert [q for q, _ in calls] == ["aaa", "bbb", "ccc"]
+    assert all(kind == "papers" for _, kind in calls)
+    order = [line for line in result.content.splitlines() if line.startswith("[")]
+    assert order[0].startswith("[1] aaa paper 0") and order[1].startswith("[2] bbb paper 0")
+    assert result.detail.startswith("9개 결과")
+
+
+def test_a_reference_table_becomes_one_numbered_entry_per_line():
+    from app.services.report import tidy_references
+
+    body = (
+        "본 논문은 다음 문헌을 인용합니다.\n| 번호 | 저자 | 연도 | 제목 | 출처 |\n"
+        "| :--- | :--- | :--- | :--- | :--- |\n|\n\n[1] | Zhan et al. | 2025 | 적응형 공격 | "
+        "Findings of NAACL |\n|\n\n[2] | (미정) | 2024 | AgentDojo | arXiv (2406.13352) |\n\n"
+        "위 표에 제시된 문헌은 핵심 자료입니다."
+    )
+    out = tidy_references([{"heading": "참고문헌", "format": "markdown", "content": body}])
+    lines = [line for line in out[0]["content"].split("\n") if line.strip()]
+    assert lines[0] == "본 논문은 다음 문헌을 인용합니다."
+    assert lines[1] == "[1] Zhan et al. 2025. 적응형 공격. Findings of NAACL."
+    assert lines[2] == "[2] 2024. AgentDojo. arXiv (2406.13352)."
+    assert len(lines) == 3
+
+
+def test_works_several_papers_cite_are_the_ones_chased():
+    from app.services.tools.builtin import cited_works
+
+    texts = [
+        "SecAlign builds on StruQ and is compared with BIPIA and the LLM baseline. SecAlign wins.",
+        "We evaluate CaMeL and StruQ on AgentDojo; BIPIA is static. LLM and ASR are reported.",
+        "AgentDojo, CaMeL and Spotlighting are defenses or benchmarks we compare against StruQ.",
+    ]
+    names = cited_works(texts, known="AgentDojo: A Dynamic Environment")
+    # In two or more papers, not already among the hits, not a field acronym.
+    assert names[:1] == ["StruQ"] and set(names) == {"StruQ", "BIPIA", "CaMeL"}

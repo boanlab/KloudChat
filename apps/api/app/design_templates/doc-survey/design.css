@@ -46,3 +46,8 @@ table td small { display: inline; }
   tr { break-inside: avoid; }
   thead { display: table-header-group; }
 }
+
+/* 한눈에: 절 제목 왼쪽 굵은 막대, 수치 표는 오른쪽 정렬에 옅은 머리. */
+h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; padding-left: 0.7rem; border-left: 5px solid var(--accent); }
+table td { font-variant-numeric: tabular-nums; }
+table thead th { background: var(--accent-wash); }

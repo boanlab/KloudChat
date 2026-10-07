@@ -5,8 +5,8 @@ cover_page = false
 # 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
 # 자동으로 붙고 skills_applied 로 화면에 공지된다.
 skills = ["incident-timeline"]
-name = "장애 보고"
-description = "무슨 일이 있었고, 왜 일어났고, 다시 안 나게 무엇을 바꾸는가"
+name = "장애·사고 보고서"
+description = "장애·사고의 경위·원인·재발 방지 · 번호 칸, 짙은 표 머리"
 category = "업무"
 fills = ["발생 시각", "영향 범위", "대응한 사람"]
 example_prompt = "장애 보고서를 써 줘. 시간순 기록과 원인, 재발 방지책을 나눠서 적고, 사람을 탓하지 말고 시스템을 봐 줘.\n\n발생 시각과 영향: "
@@ -17,7 +17,7 @@ layouts = ["cover", "section"]
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Incident report"
-description_en = "What happened, why, and what changes so it does not happen again"
+description_en = "What happened, why, what changes · boxed numbers"
 category_en = "Work"
 fills_en = ["Detected at", "Blast radius", "Responders"]
 example_prompt_en = "Write an incident report. Separate the timeline, the cause and the follow-ups, and look at the system rather than at people.\n\nDetected at and impact: "

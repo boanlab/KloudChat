@@ -158,8 +158,7 @@ def test_a_thin_list_is_padded_with_benched_hits() -> None:
 
 
 def test_hits_without_the_querys_proper_nouns_are_dropped() -> None:
-    """A FastAPI question once returned a Unity asset, a drama page and an
-    adult site: many shared common words, none of them the subject."""
+    """Hits that share only common words with the query, none of its subject, are dropped."""
     rows = [
         {
             "title": "PostProcessing Controller | Unity",
@@ -209,7 +208,7 @@ def test_hits_without_the_querys_proper_nouns_are_dropped() -> None:
         "published": "",
     }
     assert not builtin._anchored(plesk, builtin._anchors("Ubuntu 24.04 지원 종료일"))
-    # Korean-only queries have no anchors and keep the old behaviour.
+    # Korean-only queries have no anchors and are not filtered.
     assert builtin._anchors("2026년 최저임금 시급") == ([], [])
 
 

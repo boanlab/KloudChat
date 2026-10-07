@@ -4,8 +4,8 @@ kind = "document"
 # 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
 # 자동으로 붙고 skills_applied 로 화면에 공지된다.
 skills = ["evidence", "terms"]
-name = "보고 문서"
-description = "표지 한 장을 따로 두고, 수치마다 근거를 각주로 다는 A4 세로 문서"
+name = "표준 보고서"
+description = "일반 보고서 · 표지 한 장, 기본 모양, 수치마다 각주"
 category = "업무"
 fills = ["목적", "독자", "기간"]
 example_prompt = "제출용 보고 문서를 써 줘. 확인되지 않은 수치는 쓰지 말고, 수치마다 어디서 온 값인지 각주에 달아 줘. 마지막에 다음 행동을 적어 줘.\n\n목적과 독자: "
@@ -15,8 +15,8 @@ layouts = ["cover", "section"]
 # English half of the catalogue. The UI picks a side by language;
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
-name_en = "Report"
-description_en = "A cover of its own, then section by section, with every figure footnoted to its source"
+name_en = "Standard report"
+description_en = "General report · cover page, serif headings, footnoted figures"
 category_en = "Work"
 fills_en = ["Purpose", "Audience", "Period"]
 example_prompt_en = "Write a report to submit. Leave out any figure you cannot source, footnote where each figure came from, and end with the next actions.\n\nPurpose and audience: "

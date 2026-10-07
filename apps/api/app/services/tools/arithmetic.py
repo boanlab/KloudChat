@@ -18,8 +18,12 @@ _MAX_DEPTH = 32
 _MAX_INTEGER_BITS = 512
 _MAX_CHOICES = 10
 _FIELDS = frozenset({"expression", "choices", "submitted_choice", "decimal_places"})
-_CHARACTERS = frozenset("0123456789.+-*/() \t\r\n")
-_NUMBER = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)\Z")
+_CHARACTERS = frozenset("0123456789.+-*/()eE \t\r\n")
+#: A decimal, optionally in scientific notation (「8.0e-6」, 「2E5」) with a small exponent.
+_NUMBER = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,2})?\Z")
+#: Largest exponent in 「a ** n」 and in scientific notation: enough for engineering
+#: units, small enough that an exact rational stays within the bit budget.
+_MAX_EXPONENT = 30
 _SCOPE = (
     "입력한 식의 산술과 선지 일치만 검증했습니다. "
     "식이 문제의 조건과 단위에 맞는지는 별도로 확인해야 합니다."
@@ -83,7 +87,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
     for node in nodes:
         if not isinstance(node, (
             ast.Expression, ast.Constant, ast.UnaryOp, ast.BinOp,
-            ast.UAdd, ast.USub, ast.Add, ast.Sub, ast.Mult, ast.Div,
+            ast.UAdd, ast.USub, ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow,
         )):
             raise _InvalidCalculation
         if isinstance(node, ast.Constant):
@@ -92,6 +96,23 @@ def _expression(raw: object) -> tuple[str, Fraction]:
                 type(node.value) not in (int, float)
                 or not _NUMBER.fullmatch(literal)
                 or sum(character.isdigit() for character in literal) > _MAX_NUMBER_DIGITS
+            ):
+                raise _InvalidCalculation
+            exponent = re.search(r"[eE]([+-]?[0-9]+)$", literal)
+            if exponent and abs(int(exponent.group(1))) > _MAX_EXPONENT:
+                raise _InvalidCalculation
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            # The exponent is a whole-number literal, checked before anything is
+            # evaluated: 「2 ** 0.5」 is invalid wherever it sits in the expression.
+            power = node.right
+            sign = 1
+            if isinstance(power, ast.UnaryOp) and isinstance(power.op, (ast.UAdd, ast.USub)):
+                sign = -1 if isinstance(power.op, ast.USub) else 1
+                power = power.operand
+            if not (
+                isinstance(power, ast.Constant)
+                and type(power.value) is int
+                and abs(sign * power.value) <= _MAX_EXPONENT
             ):
                 raise _InvalidCalculation
 
@@ -105,6 +126,16 @@ def _expression(raw: object) -> tuple[str, Fraction]:
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = evaluate(node.operand, level + 1)
             return -value if isinstance(node.op, ast.USub) else value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
+            # Only a whole-number power: 「L ** 3」, 「10 ** -6」. A fractional power has no
+            # exact rational value.
+            base = evaluate(node.left, level + 1)
+            power = evaluate(node.right, level + 1)
+            if power.denominator != 1 or abs(power.numerator) > _MAX_EXPONENT:
+                raise _InvalidCalculation
+            if not base and power.numerator < 0:
+                raise _DivisionByZero
+            return _bounded(base ** power.numerator)
         if isinstance(node, ast.BinOp) and isinstance(
             node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)
         ):
@@ -226,8 +257,9 @@ async def calculate(arguments: dict[str, Any]) -> ToolResult:
 CALCULATE = Tool(
     name="calculate",
     description=(
-        "사칙연산을 정확히 계산하고 숫자 선지·제출 답을 대조합니다. "
-        "숫자, + - * /, 괄호만 사용하세요. 단위는 제외하고 퍼센트는 *100을 명시하세요. "
+        "사칙연산과 정수 거듭제곱을 정확히 계산하고 숫자 선지·제출 답을 대조합니다. "
+        "숫자(8.0e-6 같은 지수 표기 가능), + - * /, ** (정수 지수), 괄호만 사용하세요. "
+        "단위는 제외하고 퍼센트는 *100을 명시하세요. "
         "decimal_places는 문제에 반올림 지시가 있을 때만 지정하세요. "
         "문제 조건과 식이 맞는지 판단하거나 일반 코드를 실행하지 않습니다."
     ),
@@ -237,7 +269,10 @@ CALCULATE = Tool(
             "expression": {
                 "type": "string",
                 "maxLength": _MAX_EXPRESSION_CHARS,
-                "description": "Numeric expression using + - * / and parentheses; no units or %.",
+                "description": (
+                    "Numeric expression using + - * /, ** with a whole exponent, "
+                    "scientific notation and parentheses; no units or %."
+                ),
             },
             "choices": {
                 "type": "array",

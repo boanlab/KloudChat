@@ -1,7 +1,4 @@
-"""Model comparison stores its alternatives on the message.
-
-The alternatives belong with the turn that produced them — read and written
-whole, never queried across rows, like `steps` and `usage`.
+"""Model comparison alternatives stored on the message, read and written whole.
 
 Revision ID: 0006
 Revises: 0005

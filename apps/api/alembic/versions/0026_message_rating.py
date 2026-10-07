@@ -1,16 +1,4 @@
-"""좋아요 / 싫어요, kept.
-
-The two buttons under every answer have been drawing themselves from local
-state since they were added: a person marked an answer wrong, the thumb lit,
-and the next reload forgot it. This column is where the verdict goes.
-
-`'up'` / `'down'` / null, as a plain string rather than a database enum — a
-third verdict should be a change to the model file, not a type migration.
-
-Null is "nobody said" rather than "neither": an answer nobody rated and an
-answer somebody weighed and shrugged at are different facts, and only the
-first is true of every row that exists today. That is also why there is no
-backfill — every existing message is unrated, which is what null already says.
+"""Reader rating on an answer: `'up'`, `'down'` or null, as a plain string.
 
 Revision ID: 0026
 Revises: 0025

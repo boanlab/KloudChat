@@ -52,6 +52,5 @@ def test_a_day_past_the_third_gets_a_weekday_not_a_repeated_date():
     text = format_weather("후쿠오카", _daily(dates))
 
     assert "9월 14일(월)" in text
-    # The fallback this replaced named the day with its own ISO date, which then
-    # got the date appended again right after it: "2026-09-14(2026-09-14)".
+    # The ISO date is not used as the day's name with the date appended again.
     assert "2026-09-14(2026-09-14)" not in text

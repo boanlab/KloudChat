@@ -1,11 +1,4 @@
-"""User-added starting points for the template gallery.
-
-Same shape as a built-in (kind, group, title, description, fills, prompt) plus
-`file_id`: an uploaded form whose extracted text is attached when the template
-is picked, so a draft follows the original's shape.
-
-Owned by one user. Sharing a template is an ACL question this table does not
-answer.
+"""User-added starting points for the template gallery, optionally carrying a form file.
 
 Revision ID: 0013
 Revises: 0012
@@ -37,8 +30,7 @@ def upgrade() -> None:
         sa.Column("description", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("fills", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("prompt", sa.Text(), nullable=False),
-        # The form itself. `SET NULL` rather than cascade: deleting the file
-        # should cost the attachment, not the template someone wrote around it.
+        # `SET NULL`: deleting the form file keeps the template.
         sa.Column("file_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),

@@ -1585,9 +1585,10 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
         **_external_model("external/economy"),
         "inputCreditCost": 1,
         "creditCost": 2,
-        # 16k: the context-fit gate measures UTF-8 bytes and the chat system
-        # turn alone is ~4.5k, so a 4k window would fail before the classifier.
-        "contextWindow": 16_000,
+        # 24k: the context-fit gate measures UTF-8 bytes and the chat system turn and
+        # tool definitions grow with the prompt; a small window would fail before the
+        # classifier, which is not what this test is about.
+        "contextWindow": 24_000,
         "supportsTools": False,
     }
     await _patch_guard_dependencies(

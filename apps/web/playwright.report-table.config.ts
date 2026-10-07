@@ -3,7 +3,7 @@ import base from './playwright.config'
 
 export default defineConfig({
   ...base,
-  testMatch: 'report-table-roundtrip.spec.ts',
+  testMatch: ['report-table-roundtrip.spec.ts', 'report-title-block.spec.ts'],
   reporter: process.env.CI ? 'github' : 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5201', trace: 'retain-on-failure' },
   webServer: {

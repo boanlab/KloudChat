@@ -4,7 +4,7 @@ import unicodedata
 
 import pytest
 
-from app.services.freshness import FRESHNESS_INSTRUCTION, abstention_response, fresh_fact_required
+from app.services.freshness import FRESHNESS_INSTRUCTION, fresh_fact_required
 
 
 @pytest.mark.parametrize(
@@ -149,22 +149,6 @@ def test_history_nonfactual_tasks_and_other_domains_are_out_of_scope(prompt):
 def test_decomposed_korean_has_the_same_policy():
     request = "현재 대한민국 대통령은 누구야?"
     assert fresh_fact_required(unicodedata.normalize("NFD", request))
-
-
-@pytest.mark.parametrize("prompt", ["현재 대통령은 누구야?", "현직 총리가 누구야?"])
-def test_korean_abstention_does_not_claim_an_officeholder_or_a_search(prompt):
-    response = abstention_response(prompt)
-    assert "확인할 수 없어" in response
-    assert "단정" in response
-    assert "최신 공식 자료" in response
-    assert "검색했습니다" not in response
-
-
-def test_short_english_question_gets_english_abstention():
-    response = abstention_response("Who is president now?")
-    assert "cannot verify" in response
-    assert "current official source" in response
-    assert "verified that" not in response
 
 
 def test_date_instruction_never_invents_a_training_cutoff():

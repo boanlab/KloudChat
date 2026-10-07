@@ -23,12 +23,12 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await expect(page.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
 
   await page.getByRole('button', { name: '장 편집' }).click()
-  await page.getByRole('menuitemcheckbox', { name: '카드' }).click()
+  await page.getByRole('menuitemcheckbox', { name: '카드', exact: true }).click()
   await expect(page.getByText(/다른 곳에서 이미 수정/)).toHaveCount(0)
   if (title) await expect(page.getByText(title, { exact: false }).first()).toBeVisible()
   // The menu closes before its PATCH finishes; reopening waits for the trigger to re-enable.
   await page.getByRole('button', { name: '장 편집' }).click()
-  await expect(page.getByRole('menuitemcheckbox', { name: '카드' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('menuitemcheckbox', { name: '카드', exact: true })).toHaveAttribute('aria-checked', 'true')
   await page.keyboard.press('Escape')
 
   await page.reload()
@@ -39,5 +39,5 @@ test('슬라이드를 복제하고 내용을 유지한 채 레이아웃을 바�
   await expect(page.getByText(`${before + 1}장`, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '2번 장' }).click()
   await page.getByRole('button', { name: '장 편집' }).click()
-  await expect(page.getByRole('menuitemcheckbox', { name: '카드' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('menuitemcheckbox', { name: '카드', exact: true })).toHaveAttribute('aria-checked', 'true')
 })

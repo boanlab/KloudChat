@@ -1,8 +1,7 @@
-"""Deterministic Korean text fixes for model output: Hanja read back to Hangul, stray spaces closed.
+"""Deterministic Korean text fixes for model output: Hanja to Hangul, spacing, stray Cyrillic.
 
-Parenthesised glosses (`분산(分散)`) and code are left alone; the gloss rule is
-`lint`'s own so the two never disagree. A substitution can be a wrong word
-(`試點` → 시점), so every one is reported back to the caller.
+Glosses and code are left alone, using `lint`'s gloss rule. A substitution can pick a
+wrong word, so every one is reported back to the caller.
 """
 
 from __future__ import annotations
@@ -85,3 +84,75 @@ def tidy_spacing(text: str) -> str:
 
 
 __all__ = ["read_back", "tidy_spacing"]
+
+
+#: Cyrillic inside a Korean word (「프로мп트」): a sampling slip.
+_STRAY = re.compile(r"[\u0400-\u04FF]")
+_MIXED_WORD = re.compile(r"[가-힣\u0400-\u04FF]*[가-힣][가-힣\u0400-\u04FF]*")
+
+
+#: Loanwords a slip most often lands in, for when the document never spells one cleanly.
+_COMMON_TERMS = (
+    "프롬프트 에이전트 컨텍스트 파이프라인 플랫폼 클라우드 인프라 데이터베이스 아키텍처 "
+    "프레임워크 알고리즘 네트워크 엔드포인트 게이트웨이 프로토콜 인터페이스 시스템 서비스 "
+    "솔루션 모델 벤더 컴플라이언스 거버넌스 리스크 시나리오 프로세스 프로젝트 모니터링 "
+    "대시보드 워크플로 오케스트레이션 인젝션 마이크로서비스 컨테이너 쿠버네티스 템플릿"
+)
+
+
+_CYRILLIC_SOUND = str.maketrans({
+    "м": "ㅁ", "п": "ㅍ", "т": "ㅌ", "к": "ㅋ", "с": "ㅅ", "н": "ㄴ", "л": "ㄹ", "р": "ㄹ",
+    "б": "ㅂ", "д": "ㄷ", "г": "ㄱ", "в": "ㅂ", "з": "ㅈ", "ж": "ㅈ", "ч": "ㅊ", "ш": "ㅅ",
+    "ф": "ㅍ", "х": "ㅎ", "ц": "ㅊ", "а": "ㅏ", "о": "ㅗ", "е": "ㅔ", "э": "ㅔ", "и": "ㅣ",
+    "ы": "ㅡ", "у": "ㅜ", "ю": "ㅠ", "я": "ㅑ", "й": "ㅣ",
+})
+_LEADS = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+_VOWELS = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
+_TAILS = ["", *"ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ"]
+
+
+def _jamo(word: str) -> str:
+    """A word as the sounds it is written with: Hangul split into jamo, Cyrillic read as
+    the nearest jamo, the silent initial ㅇ dropped."""
+    out = []
+    for ch in word.lower().translate(_CYRILLIC_SOUND):
+        code = ord(ch) - 0xAC00
+        if 0 <= code < 11172:
+            lead, vowel, tail = code // 588, (code % 588) // 28, code % 28
+            onset = "" if _LEADS[lead] == "ㅇ" else _LEADS[lead]
+            out.append(onset + _VOWELS[vowel] + _TAILS[tail])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def repair_mixed_script(text: str, vocabulary: str = "") -> tuple[str, list[str]]:
+    """Korean words with Cyrillic inside, replaced by the closest clean word or stripped.
+
+    Returns (text, changed words). Greek is left alone, being notation."""
+    import difflib
+
+    if not _STRAY.search(text or ""):
+        return text, []
+    clean_words = {
+        w for w in re.findall(r"[가-힣]{2,}", f"{text} {vocabulary} {_COMMON_TERMS}")
+    }
+    changed: list[str] = []
+
+    def mend(m: re.Match) -> str:
+        word = m.group(0)
+        if not _STRAY.search(word) or not re.search(r"[가-힣]", word):
+            return word
+        skeleton = _STRAY.sub("", word)
+        # Compared by sound: the slip is the right sound in the wrong alphabet.
+        heard = _jamo(word)
+        candidates = [w for w in clean_words if abs(len(w) - len(skeleton)) <= 2]
+        scored = sorted(
+            ((difflib.SequenceMatcher(None, heard, _jamo(w)).ratio(), w) for w in candidates),
+            reverse=True,
+        )
+        fixed = scored[0][1] if scored and scored[0][0] >= 0.6 else skeleton
+        changed.append(f"{word}→{fixed}")
+        return fixed
+
+    return _MIXED_WORD.sub(mend, text), changed
