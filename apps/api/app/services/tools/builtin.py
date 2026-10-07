@@ -451,14 +451,6 @@ async def _searxng(
     return _select(hits, query, count)
 
 
-def _host(url: str) -> str:
-    """The address's host alone for a log line: no path, query or credentials."""
-    try:
-        return logs.safe(urlsplit(url).hostname or "?")
-    except ValueError:
-        return "?"
-
-
 async def _scrape(base_url: str, url: str) -> str:
     """Page body as Markdown through the shim; empty string on failure.
 
@@ -469,7 +461,7 @@ async def _scrape(base_url: str, url: str) -> str:
     # Search results and model-picked addresses pass through here too: nothing on the
     # deployment's own network is fetched on a reader's behalf.
     if reason := await netguard.refusal(url):
-        log.info("scrape refused for %s: %s", _host(url), reason)
+        log.info("scrape refused: %s", reason)
         return ""
     try:
         async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
@@ -481,14 +473,13 @@ async def _scrape(base_url: str, url: str) -> str:
             response.raise_for_status()
             payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
-        log.info("scrape failed for %s: %s", _host(url), logs.safe(exc))
+        log.info("scrape failed: %s", logs.safe(exc))
         return ""
     if isinstance(payload, dict) and payload.get("success") is False:
         # The reader answered but could not read (its browser died, the page refused):
         # said loudly, since every search would otherwise read zero pages in silence.
         log.warning(
-            "scrape reported failure for %s: %s",
-            _host(url), logs.safe(str(payload.get("error") or "")[:200]),
+            "scrape reported failure: %s", logs.safe(str(payload.get("error") or "")[:200]),
         )
         _scrape_failures[0] += 1
         if _scrape_failures[0] == _SCRAPE_ALARM:
