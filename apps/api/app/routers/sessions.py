@@ -5676,7 +5676,7 @@ async def _run_page(
                             )
                         ),
                         "wordCount": sum(
-                            len(re.sub(r"<[^>]+>", " ", b.get("html") or "").split())
+                            len(re.sub(r"<[^>]{1,2000}>", " ", b.get("html") or "").split())
                             for b in blocks
                         ),
                         **({"design": design_tokens} if design_tokens else {}),
@@ -6397,7 +6397,7 @@ async def _revise_document(
                     }
                 )
         except Exception as exc:  # noqa: BLE001 — one bad part is not a failed turn
-            log.warning("revision of %r failed: %s", label, exc)
+            log.warning("revision of %r failed: %s", logs.safe(label), logs.safe(exc))
             yield chat_service.sse(
                 {"type": "step", "id": f"r{index}", "label": label, "status": "error"}
             )

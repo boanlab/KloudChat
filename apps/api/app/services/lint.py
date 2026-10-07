@@ -68,7 +68,7 @@ _FILLER = re.compile(
 #: Emoji leading a heading or a list item.
 _LEADING_EMOJI = re.compile(r"^\s*[\U0001F300-\U0001FAFF✀-➿☀-⛿⬀-⯿]")
 
-_TAGS = re.compile(r"<[^>]+>")
+_TAGS = re.compile(r"<[^>]{1,2000}>")
 
 #: Where one line of an HTML block ends. `h3` is a column label, not an item,
 #: so it is lifted out by `_LABEL` instead of counted here.

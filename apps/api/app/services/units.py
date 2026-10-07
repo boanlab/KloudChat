@@ -164,7 +164,7 @@ def _ko_number(raw: str) -> float:
     percent = text.endswith("%")
     # 「8천만」 → 「8000만」, 「5천」 → 「5000」: a thousand of the digit before it.
     text = re.sub(
-        r"(\d[\d,]*(?:\.\d+)?)천",
+        r"(\d[\d,]{0,20}(?:\.\d{1,15})?)천",
         lambda m: f"{float(m.group(1).replace(',', '')) * 1000:g}",
         text,
     )
@@ -289,7 +289,7 @@ def fix_written_arithmetic(text: str) -> str:
                 ):
                     sentence = sentence[: figure.start(1)] + written + sentence[figure.end(1):]
             return sentence
-        out = re.sub(r"[^.!?\n]*(?:\([^)]*\)[^.!?\n]*)*[.!?]?", agree, out)
+        out = re.sub(r"[^.!?\n]{0,2000}(?:\([^)]{0,500}\)[^.!?\n]{0,2000}){0,20}[.!?]?", agree, out)
     # A figure that is also an operand somewhere (「4,000만원 × 2회」) is not the result.
     operands = " ".join(m.group("lhs") for m in _KO_EXPRESSION.finditer(out))
     for wrong, right in fixes.items():

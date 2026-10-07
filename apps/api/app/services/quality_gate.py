@@ -10,7 +10,7 @@ from typing import Any
 
 from app.services import units
 
-_IMAGE = re.compile(r"!\[[^\]]*\]\(data:[^)]{0,9000000}\)")
+_IMAGE = re.compile(r"!\[[^\]]{0,2000}\]\(data:[^)]{0,9000000}\)")
 _FENCE_GLUED = re.compile(r"(?m)^(?!\s*```).*\S[ \t]*```")
 _STRAY_CAPTION = re.compile(r"(?m)^\s*표\s?\d{0,3}\s?[:：]|^\s*표\s?\d{1,3}\s*$")
 _PIPE_ROW = re.compile(r"(?m)^(?!\s*\|)[^\n|`]+ \| [^\n|]+ \| [^\n]+$")
@@ -63,7 +63,10 @@ def report_findings(
         numbers = [int(n) for _, n in found]
         if numbers != list(range(1, len(numbers) + 1)):
             add(f"{kind}_numbering", "document", str(numbers))
-    labels = r"!\[[^\]]*\]\([^)]*\)|\*\*표 \d+\.[^*\n]*\*\*|^\*그림 \d+\.[^\n]*\*$"
+    labels = (
+        r"!\[[^\]]{0,2000}\]\([^)]{0,9000000}\)"
+        r"|\*\*표 \d{1,3}\.[^*\n]{0,2000}\*\*|^\*그림 \d{1,3}\.[^\n]{0,2000}\*$"
+    )
     body_only = re.sub(labels, "", whole, flags=re.M)
     for name, _ in figures + tables:
         if not re.search(re.escape(name) + r"(?![.\d])", body_only):
@@ -86,7 +89,7 @@ def report_findings(
         raw = str(sec.get("content") or "")
         if report.unfence_pictures(raw) != raw:
             add("picture_in_code", heading)
-        rule = re.compile(r"^\s*\|?\s*:?-{2,}")
+        rule = re.compile(r"^\s{0,16}\|?\s{0,16}:?-{2}")
         table_starts = [i for i, line in enumerate(lines[:-1])
                         if line.strip().startswith("|") and rule.match(lines[i + 1])]
         for start in table_starts:
@@ -302,7 +305,7 @@ def question_choices(material: str) -> list[tuple[str, str, list[str], list[tupl
         block: list[str] = []
         for line in lines:
             # A choice line starts with its mark; an answer line like 「정답 ③」 does not.
-            if re.match(r"\s*(?:[-*]\s*)?[①-⑩]", line):
+            if re.match(r"\s{0,16}(?:[-*]\s{0,8})?[①-⑩]", line):
                 block.append(line)
             elif block or line.strip():
                 break

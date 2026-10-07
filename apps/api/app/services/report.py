@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from app.core import logs
 from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
@@ -1100,7 +1101,8 @@ _SOURCE_INNARDS = re.compile(
     r"|(?<![가-힣A-Za-z])pp?\.\s?\d{1,4}"
     r"|(?:해당|이|그|동|위)\s(?:매뉴얼|백서|가이드라인|가이드|안내서|지침|자료|문서)(?:은|는|이|가|에서|에|의)"
 )
-_SENTENCE = re.compile(r"(?:[^.!?\n]|(?<=\bp)\.|(?<=\bpp)\.|(?<=\d)\.(?=\d))*?(?<!\bp)(?<!\bpp)[.!?](?:\s{0,2}\[\d{1,3}\](?:\[\d{1,3}\])*)?(?=\s|$)")
+# One `.` alternative (the cases are lookarounds) so no dot can be read two ways.
+_SENTENCE = re.compile(r"(?:[^.!?\n]|(?:(?<=\bp)|(?<=\bpp)|(?<=\d)(?=\.\d))\.){0,2000}?(?<!\bp)(?<!\bpp)[.!?](?:\s{0,2}\[\d{1,3}\](?:\[\d{1,3}\]){0,20})?(?=\s|$)")
 
 
 def source_innard_sentences(sections: list[dict]) -> dict[int, list[str]]:
@@ -1148,7 +1150,7 @@ def collapse_repeated_citations(body: str) -> str:
         ):
             out.append(block)
             continue
-        parts = re.split(r"(?<=[.!?。])(\s+)(?=\S)", block)
+        parts = re.split(r"(?<=[.!?。])(\s{1,64})(?=\S)", block)
         sentences = parts[0::2]
         cites = [_cited(sentence) for sentence in sentences]
         for index in range(len(sentences) - 1):
@@ -1442,8 +1444,8 @@ def fix_table_formulas(body: str) -> str:
             power = round(__import__("math").log10(ratio)) if ratio > 0 else 0
             if power != 0 and abs(ratio / 10 ** power - 1) < 0.01:
                 fixed[k] = f" {_won_like(product, cell.strip())} "
-                old = re.search(r"\d[\d,.]*\s?(?:조|억|만)", cell)
-                new = re.search(r"\d[\d,.]*\s?(?:조|억|만)", fixed[k])
+                old = re.search(r"\d[\d,.]{0,20}\s?(?:조|억|만)", cell)
+                new = re.search(r"\d[\d,.]{0,20}\s?(?:조|억|만)", fixed[k])
                 if old and new:
                     corrected[old.group(0)] = new.group(0)
         out.append("|" + "|".join(fixed) + "|" if fixed != cells else line)
@@ -1461,9 +1463,9 @@ def _table_rows(body: str):
     """(label, value cell, line index, cells) for each body row of each table in `body`."""
     lines = (body or "").split("\n")
     for i, line in enumerate(lines):
-        if not line.strip().startswith("|") or re.match(r"^\s*\|?\s*:?-{2,}", line):
+        if not line.strip().startswith("|") or re.match(r"^\s{0,16}\|?\s{0,16}:?-{2}", line):
             continue
-        if i + 1 < len(lines) and re.match(r"^\s*\|?\s*:?-{2,}", lines[i + 1]):
+        if i + 1 < len(lines) and re.match(r"^\s{0,16}\|?\s{0,16}:?-{2}", lines[i + 1]):
             continue  # the head row
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) >= 2 and cells[0]:
@@ -1475,7 +1477,7 @@ def fill_undecided_cells(sections: list[dict]) -> list[dict]:
 
     Rows are matched by their first cell."""
     decided: dict[str, str] = {}
-    unit = re.compile(r"\d.*(?:원|만|억|조|%|명|박스|회|개월|건)")
+    unit = re.compile(r"\d.{0,300}(?:원|만|억|조|%|명|박스|회|개월|건)")
     for sec in sections:
         for label, value, _, _ in _table_rows(str(sec.get("content") or "")):
             if _UNDECIDED.match(value) or not re.search(r"\d", value):
@@ -1542,7 +1544,7 @@ _YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})\s?년")
 #: A comparison cell the writer could not fill from the first search.
 _GAP = re.compile(
     r"명시\s?(?:없|되지)|확인\s?필요|자료\s?(?:없|에\s?없)|정보\s?없|공개\s?(?:안|되지)|미정|미확인"
-    r"|^\s*[-—]\s*$|^\s*\(?\s*N/?A\s*\)?\s*$",
+    r"|^\s{0,16}[-—]\s{0,16}$|^\s{0,16}\(?\s{0,8}N/?A\s{0,8}\)?\s{0,16}$",
     re.I,
 )
 _GAPS_PER_REPORT = 4
@@ -1571,7 +1573,7 @@ def table_gaps(sections: list[dict]) -> list[tuple[int, int, int, str, str]]:
     """`(section, line, column, row label, column header)` for each comparison cell left
     open (「(자료에 배포 방식 명시 없음)」, 「—」), at most one per row."""
     found: list[tuple[int, int, int, str, str]] = []
-    rule = re.compile(r"^\s*\|?\s*:?-{2,}")
+    rule = re.compile(r"^\s{0,16}\|?\s{0,16}:?-{2}")
     for si, sec in enumerate(sections):
         lines = str(sec.get("content") or "").split("\n")
         for i in range(len(lines) - 1):
@@ -1634,7 +1636,7 @@ async def fill_gaps_from_search(
     out = [dict(sec) for sec in sections]
     for (si, li, col, label, header), result in zip(gaps, looked, strict=True):
         if isinstance(result, BaseException):
-            log.info("gap search for %r failed: %s", label, result)
+            log.info("gap search for %r failed: %s", logs.safe(label), logs.safe(result))
             continue
         answer, findings, used = result
         spent["inputTokens"] += int(findings.usage.get("inputTokens", 0)) + int(
@@ -1662,7 +1664,7 @@ async def fill_gaps_from_search(
         cells[col] = answer
         lines[li] = "| " + " | ".join(cells) + " |"
         out[si]["content"] = "\n".join(lines)
-        log.info("filled %r / %r from a second search", label, header)
+        log.info("filled %r / %r from a second search", logs.safe(label), logs.safe(header))
     return out, spent
 
 
@@ -1800,7 +1802,7 @@ def relabel_unit_columns(sections: list[dict]) -> list[dict]:
                 fixed = [re.sub(r"\((?:천|만|백만|억)\s?원\)", "(원)", c) if c.strip() in wrong
                          else c for c in cells]
                 if fixed != cells:
-                    log.info("column unit set to won: %s", [c.strip() for c in cells if c.strip() in wrong])
+                    log.info("column unit set to won: %s", logs.safe([c.strip() for c in cells if c.strip() in wrong]))
                     lines[i] = "|".join(fixed)
         out.append({**sec, "content": "\n".join(lines)})
     return out
@@ -1829,7 +1831,7 @@ def restore_choices(sections: list[dict], material: str) -> list[dict]:
             if at is None or "①" in lines[at]:
                 continue
             end = at + 1
-            while end < len(lines) and re.match(r"\s*(?:[-*]\s*)?[①-⑩]", lines[end]):
+            while end < len(lines) and re.match(r"\s{0,16}(?:[-*]\s{0,8})?[①-⑩]", lines[end]):
                 end += 1
             log.info("choices put back under %r", stem[:40])
             lines[at + 1:end] = [line.strip() for line in block]
@@ -1848,7 +1850,7 @@ def normalize_document(
     for sec in sections:
         mended, slips = hangul.repair_mixed_script(str(sec.get("content") or ""), context[:20000])
         if slips:
-            log.info("mended mixed-script words in %r: %s", sec.get("heading"), slips[:5])
+            log.info("mended mixed-script words in %r: %s", logs.safe(sec.get("heading")), logs.safe(slips[:5]))
         out.append({**sec, "content": mended})
     out = relabel_unit_columns(out)
     try:
@@ -1920,7 +1922,7 @@ def numeric_issues(sections: list[dict]) -> list[tuple[int, str, str]]:
                 amounts = [
                     _amount_or_none(a)
                     for a in re.findall(
-                        r"\d[\d,]*(?:\.\d+)?\s?(?:천만|조|억|만)\s?(?:\d[\d,]*\s?(?:억|만))?", sentence
+                        r"\d[\d,]{0,20}(?:\.\d{1,15})?\s?(?:천만|조|억|만)\s?(?:\d[\d,]{0,20}\s?(?:억|만))?", sentence
                     )
                 ]
                 if rate and len(set(years)) == 2 and len(amounts) == 2 and all(amounts):
@@ -2111,7 +2113,7 @@ def unfence_pictures(body: str) -> str:
     out: list[str] = []
     i = 0
     while i < len(lines):
-        opening = re.match(r"^\s*```\s*([\w-]*)\s*$", lines[i])
+        opening = re.match(r"^\s{0,16}```\s{0,16}([\w-]{0,100})\s{0,200}$", lines[i])
         if not opening:
             out.append(lines[i])
             i += 1
@@ -2149,13 +2151,13 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             else m.group(0), body)
         if body.lstrip().startswith("{"):
             # A body the draft handed back wrapped as JSON, closed or cut off.
-            body = re.sub(r'\n?\s*"\s*\}\s*\}?\s*$', "", unwrap_json_prose(body).replace(
+            body = re.sub(r'\n?\s{0,200}"\s{0,200}\}\s{0,200}\}?\s{0,200}$', "", unwrap_json_prose(body).replace(
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", body))
             # 「<br>」 written for a line break: a cell keeps its parts with 「 · 」.
             body = "\n".join(
-                re.sub(r"\s*<\s*br\s*/?\s*>\s*", " · " if line.lstrip().startswith("|") else " ",
+                re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",
                        line, flags=re.I)
                 for line in body.split("\n")
             )
@@ -2185,7 +2187,7 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
         for i, line in enumerate(lines):
             if (figure := _FIGURE_LINE.match(line.strip())) or line.strip().startswith("```mermaid"):
                 counts["그림"] += 1
-                old = re.match(r"\s*그림\s?(\d{1,3})", figure.group("alt")) if figure else None
+                old = re.match(r"\s{0,16}그림\s?(\d{1,3})", figure.group("alt")) if figure else None
                 if old:
                     moved["그림"].setdefault(old.group(1), counts["그림"])
             elif (line.strip().startswith("|") and i + 1 < len(lines) and rule.match(lines[i + 1])
@@ -3813,7 +3815,7 @@ async def write(
         findings.append({"code": f.code, "where": str(sections[f.section].get("heading") or ""),
                          "detail": f"{f.sentence[:80]} — {f.why[:200]}"})
     if findings:
-        log.warning("report quality findings: %s", [(f["code"], f["where"]) for f in findings][:12])
+        log.warning("report quality findings: %s", logs.safe([(f["code"], f["where"]) for f in findings][:12], 2000))
     yield {
         "type": "step", "id": "quality",
         "label": "품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건: "
@@ -4141,7 +4143,7 @@ _LEADING_CONCLUSION = re.compile(r"결론|요약|제언|권고|핵심\s*요약|e
 
 
 def _section_text(section: dict) -> str:
-    return re.sub(r"<[^>]+>", " ", str(section.get("content") or ""))
+    return re.sub(r"<[^>]{1,2000}>", " ", str(section.get("content") or ""))
 
 
 def trim_leading_conclusion(sections: list[dict]) -> list[dict]:
@@ -4687,15 +4689,15 @@ def additions_needed(
 
 #: A question's own line: numbered (「### 1.」, 「**③ (개념, 중)**」, 「문항 4」) and asking.
 _QUESTION_NUMBER = re.compile(
-    r"^\s*(?:#{1,4}\s*)?(?:\*\*)?\s*(?:\[?\d{1,2}\s?[.)\]번]|[①-⑩]|문항\s?\d{1,2}|Q\d{1,2})"
+    r"^\s{0,16}(?:#{1,4}\s{0,8})?(?:\*\*)?\s{0,8}(?:\[?\d{1,2}\s?[.)\]번]|[①-⑩]|문항\s?\d{1,2}|Q\d{1,2})"
 )
 #: 「쓰시오」 asks; 「착용해 주십시오」 is a notice's request, not a question.
-_ASKS = re.compile(r"\?|(?<!십)시오\.?|것은\??\s*(?:\*\*)?\s*$|무엇인가|설명하라|쓰라")
+_ASKS = re.compile(r"\?|(?<!십)시오\.?|것은\??\s{0,16}(?:\*\*)?\s{0,16}$|무엇인가|설명하라|쓰라")
 _ASKED_FOR = re.compile(r"문항|평가|퀴즈|시험|문제")
 #: A line that belongs to the question above it.
 _QUESTION_TAIL = re.compile(
-    r"^(?:[①-⑩]|\(?[1-5가-마]\)|[-*+]\s|\||>|---|#{1,4}\s*(?:\*\*)?\s*(?:정답|해설|채점|모범)|"
-    r"(?:\*\*)?\s*(?:정답|해설|풀이|채점|"
+    r"^(?:[①-⑩]|\(?[1-5가-마]\)|[-*+]\s|\||>|---|#{1,4}\s{0,8}(?:\*\*)?\s{0,8}(?:정답|해설|채점|모범)|"
+    r"(?:\*\*)?\s{0,8}(?:정답|해설|풀이|채점|"
     r"모범|예시\s?답|배점|평가\s?기준|부분\s?점수|오답|\d{1,2}\s?점)|.{0,40}\d{1,2}\s?점\)?$)"
 )
 _ASSESSMENT_HEADING = re.compile(r"평가|문항|퀴즈")
@@ -4766,7 +4768,7 @@ def question_set(material: str) -> str:
         end -= 1
     block = [line for line in lines[stems[0]:end] if line.strip() != "---"]
     # Headings inside become bold lines: the section keeps its own level.
-    block = [re.sub(r"^\s*#{1,4}\s*(.+?)\s*$", r"**\1**", line) for line in block]
+    block = [re.sub(r"^\s{0,16}#{1,4}\s{0,16}(.{1,2000}?)\s{0,64}$", r"**\1**", line) for line in block]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(block)).strip()
 
 
@@ -4809,8 +4811,8 @@ def add_missing_endpoints(sections: list[dict], material: str) -> list[dict]:
             key = (m, path.rstrip("/"))
             if key not in given:
                 rest = line.split(path, 1)[-1]
-                note = re.sub(r"^[\s`|:：—–-]+|[\s`|]+$", "", rest)
-                note = re.sub(r"\s*\|\s*", " · ", note)
+                note = re.sub(r"^[\s`|:：—–-]{1,200}|[\s`|]{1,200}$", "", rest)
+                note = re.sub(r"\s{0,16}\|\s{0,16}", " · ", note)
                 given[key] = note[:80]
     body_idx = [
         i for i, s in enumerate(sections)
@@ -5011,7 +5013,7 @@ def unwrap_json_prose(text: str) -> str:
     """A section body the model wrapped as a one-key JSON object (`{"결과의 섹션 본문":
     "..."}`) is that string; anything else comes back as it was."""
     stripped = (text or "").strip()
-    fence = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", stripped, re.S)
+    fence = re.fullmatch(r"```(?:json)?\s{0,64}(\{.{0,200000}\})\s{0,64}```", stripped, re.S)
     if fence:
         stripped = fence.group(1)
     if stripped.startswith("{") and not stripped.endswith("}"):

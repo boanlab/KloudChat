@@ -12,9 +12,9 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import both_passes
 
 from app.services import diagrams, quality_gate, report
-from tests.conftest import both_passes
 
 LONG = " ".join(
     f"보안 운영은 {n}단계에서 탐지와 대응을 묶어 자동화하는 방향으로 이동하고 있습니다."

@@ -18,7 +18,7 @@ _BLOCK = re.compile(
     r"|figcaption|dl|dt|dd|hr|br)\b[^>]*>",
     re.I,
 )
-_TAG = re.compile(r"<[^>]+>")
+_TAG = re.compile(r"<[^>]{1,2000}>")
 #: `<strong>가</strong>` → `**가**`. Nested emphasis keeps only the outer mark.
 _EMPHASIS = (
     (re.compile(r"<(strong|b)\b[^>]*>(.*?)</\1\s*>", re.S | re.I), r"**\2**"),

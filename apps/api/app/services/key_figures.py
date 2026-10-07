@@ -10,6 +10,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+from app.core import logs
 from app.services import units
 
 log = logging.getLogger(__name__)
@@ -226,7 +227,9 @@ def mend_rows(text: str, figures: list[Figure]) -> str:
             values = _values(cells[1])
             if (len(values) == 1 and values[0][0] == figure.unit and figure.number is not None
                     and abs(values[0][1] - figure.number) > 1e-6 * max(1.0, figure.number)):
-                log.info("row %r set to the settled %s", cells[0], figure.value)
+                log.info(
+                    "row %r set to the settled %s", logs.safe(cells[0]), logs.safe(figure.value)
+                )
                 cells[1] = figure.value
                 lines[i] = "| " + " | ".join(cells) + " |"
             break
@@ -234,7 +237,7 @@ def mend_rows(text: str, figures: list[Figure]) -> str:
 
 
 #: Material worth settling: an amount in won, boxes, people, households or percent.
-HAS_VALUES = re.compile(r"\d[\d,]*\s?(?:만|억|조)?\s?(?:원|박스|명|가구|%)")
+HAS_VALUES = re.compile(r"\d[\d,]{0,20}\s?(?:만|억|조)?\s?(?:원|박스|명|가구|%)")
 
 
 async def settle(material: str, complete, model: str, api_key: str) -> tuple[list[Figure], dict]:
