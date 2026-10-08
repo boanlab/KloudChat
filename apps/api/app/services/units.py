@@ -13,6 +13,13 @@ _LABEL_SPOT = re.compile(
 )
 _CELL_NUMBER = re.compile(r"^\**\s{0,2}(-?\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}\**$")
 
+#: Zero-width, right after a sentence mark: no sentence ends inside a dotted date or number
+#: run (「2026. 11. 16.(월)」, 「12. 31.」, 「1. 2.」) — not at a digit's dot before a digit
+#: or 「(」, nor at the dot that closes such a run.
+NO_NUMBER_DOT_BREAK = r"(?!(?<=\d\.)\s{0,8}[\d(])(?<!\d\.\s\d\.)(?<!\d\.\s\d\d\.)"
+#: Whitespace that ends a sentence: after .!?。 outside a dotted date or number run.
+SENTENCE_BREAK = re.compile(r"(?<=[.!?。])" + NO_NUMBER_DOT_BREAK + r"\s+")
+
 
 def _scale(word: str) -> float:
     word = (word or "").replace(" ", "").removesuffix("원")

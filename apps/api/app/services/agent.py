@@ -18,7 +18,7 @@ from typing import Any, Literal, TypedDict
 import httpx
 
 from app.core.config import settings
-from app.services import current_evidence, settings_store, thinking
+from app.services import current_evidence, internal_words, settings_store, thinking
 from app.services.chat import ChatStreamError, step_label, step_title
 from app.services.context import literature_request
 from app.services.tools import arithmetic
@@ -263,6 +263,7 @@ async def _stream_once(
 #: Text shorter than this, written in a hop that then called tools, is
 #: narration (「검색해 보겠습니다」), not an answer.
 _NARRATION_CHARS = 400
+_DIGIT = re.compile(r"\d")
 
 #: `web_search` calls per turn; other tools keep the normal hop budget.
 MAX_WEB_SEARCHES = 3
@@ -382,6 +383,15 @@ def _answer_anomaly(text: str, messages: list[dict[str, Any]]) -> tuple[str, str
                     "답이 사용자의 언어로 쓰이지 않았습니다. 한국어로 이번 질문에 답하세요."
                 )
     return None
+
+
+#: A numeric blank in an answer the data could fill.
+_COMPUTABLE_BLANK = re.compile(r"\[(?:수치|측정값|비율|평균|합계|건수|일수|값)\]")
+_COMPUTE_BLANKS = (
+    "답에 「[수치]」 같은 빈칸이 남았습니다. 첨부 데이터로 셀 수 있는 값(이상치를 뺀 평균, "
+    "비율 등)이면 run_code 로 계산해 그 출력으로 채운 답을 처음부터 다시 쓰세요. 데이터로 셀 수 "
+    "없는 값만 빈칸으로 둡니다."
+)
 
 
 def _repeated_tail(text: str) -> str:
@@ -651,7 +661,7 @@ async def run_turn(
     force_tool: str | None = None,
     #: Required gate; only eligible arithmetic reads may precede it. Hop prose stays private.
     preflight_tool: str | None = None,
-    #: A non-arithmetic NCS decision must not unlock a required numeric answer.
+    #: Only a verified arithmetic result may unlock a required numeric answer.
     calculation_required: bool = False,
     #: A ballpark question about a changing value: answered from knowledge, streamed
     #: live, and closed with the caveat — no hold, no forced lookup.
@@ -696,7 +706,7 @@ async def run_turn(
             preset_call = None
         if force_tool == "web_search":
             force_tool = None
-    if calculation_required and preflight_tool not in {"calculate", "check_ncs_answer"}:
+    if calculation_required and preflight_tool != "calculate":
         raise ChatStreamError("preflight_tool_unavailable")
     if calculation_expression is not None and (
         not calculation_required
@@ -751,7 +761,7 @@ async def run_turn(
             tool.name for tool in tools
             if tool.read_only is True
             and tool.name not in {
-                "calculate", "check_ncs_answer", "execute_code",
+                "calculate", "execute_code",
                 "create_artifact", "create_chart", "share_note",
             }
             and (not ctx.allowed or tool.name in ctx.allowed)
@@ -795,7 +805,10 @@ async def run_turn(
     #: Long text written in a hop that then called tools; retracted at the end
     #: if the final answer repeats it.
     held: list[str] = []
+    #: Long text with figures written in a hop that then called tools; dropped.
+    provisional: list[str] = []
     anomaly_retried = False
+    blanks_retried = False
     while True:
         acc: _Accumulator | None = None
         hop_text: list[str] = []
@@ -982,6 +995,13 @@ async def run_turn(
             if len(spoken) < _NARRATION_CHARS:
                 del answer_text[len(answer_text) - len(hop_text) :]
                 yield {"type": "retract", "text": spoken}
+            elif _DIGIT.search(spoken):
+                # Figures written before the tool answered are a draft: off the screen
+                # and out of the next hop; restored only if no real answer follows.
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": spoken}
+                provisional.append(spoken)
+                acc.content.clear()
             else:
                 held.append(spoken)
         if acc.looped:
@@ -1036,6 +1056,18 @@ async def run_turn(
                     conversation.append({"role": "user", "content": anomaly[1]})
                     closing = True
                     continue
+            if (spoken_now and hop and not blanks_retried and "run_code" in by_name
+                    and hop < settings.max_tool_hops and _COMPUTABLE_BLANK.search(spoken_now)):
+                # 「[수치]일」 for a value the data computes (data-analysis-4 r2: the mean
+                # without the 187-day outlier): taken back and asked once to compute it.
+                blanks_retried = True
+                log.info("numeric blank in a run_code answer, asking once to compute it")
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": _COMPUTE_BLANKS})
+                continue
             if hop and not spoken_now:
                 # Tools ran but the answer is empty: ask once more without tools.
                 conversation.append(acc.assistant_message())
@@ -1106,7 +1138,7 @@ async def run_turn(
             reuse_arithmetic = bool(
                 arithmetic_gate_pending
                 and tool.name == preflight_tool
-                and tool.name in {"calculate", "check_ncs_answer"}
+                and tool.name == "calculate"
                 and tool.source == "builtin"
                 and tool.read_only
             )
@@ -1136,8 +1168,6 @@ async def run_turn(
                     except (ValueError, TypeError):
                         evidence = None
                     verified = isinstance(evidence, dict) and "exact" in evidence
-                    if tool.name == "check_ncs_answer":
-                        verified = verified and evidence.get("arithmetic_verified") is True
                     if verified:
                         pending.set_result(deepcopy(result))
                 return result
@@ -1193,8 +1223,6 @@ async def run_turn(
                 except (ValueError, TypeError):
                     evidence = None
                 verified = isinstance(evidence, dict) and "exact" in evidence
-                if call["name"] == "check_ncs_answer":
-                    verified = verified and evidence.get("arithmetic_verified") is True
                 if not verified:
                     result.failed = True
                     result.detail = "수치 검산 미완료"
@@ -1227,6 +1255,14 @@ async def run_turn(
                 collect(result.detail)
             if result.final_text is not None:
                 collect(result.final_text)
+            if result.trace:
+                # Step-only text: masked like `detail`, never fed back to the model.
+                trace_masker = sanitize_tool_output or sanitize_step_detail
+                if trace_masker is not None:
+                    result.trace = {
+                        key: trace_masker(value)[0] if isinstance(value, str) else value
+                        for key, value in result.trace.items()
+                    }
             if sanitize_tool_output is not None:
                 result.content, protected = sanitize_tool_output(result.content)
                 if result.detail:
@@ -1282,7 +1318,11 @@ async def run_turn(
                 "label": visible_label(tool, call["name"], done=True),
                 "status": "error" if result.failed else "done",
                 **({"detail": result.detail} if result.detail else {}),
+                **({"outputs": result.outputs} if result.outputs else {}),
+                **(result.trace or {}),
             }
+            if not result.failed and call["name"] != "web_search":
+                ctx.outputs.append(result.content)
             result.content = _number_sources(result.content, sources, call)
             conversation.append(
                 {
@@ -1389,6 +1429,14 @@ async def run_turn(
     # Post-processing: retract repeated held text and duplicate paragraphs,
     # then annotate the answer's URLs against `seen_urls`.
     answer = "".join(answer_text)
+    if provisional and len(answer.strip()) < min(300, len(provisional[-1].strip()) // 2):
+        # The tools ran but the last hop wrote next to nothing (「차트를 붙였습니다」):
+        # the last draft was the answer after all.
+        restored = provisional[-1].rstrip() + ("\n\n" + answer.lstrip() if answer.strip() else "")
+        if answer:
+            yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": restored}
+        answer = restored
     for spoken in held:
         at = answer.find(spoken)
         final = answer[at + len(spoken) :] if at >= 0 else ""
@@ -1398,6 +1446,13 @@ async def run_turn(
     answer, duplicate_paragraphs = _without_duplicate_paragraphs(answer)
     for paragraph in duplicate_paragraphs:
         yield {"type": "retract", "text": paragraph}
+    scrubbed = internal_words.scrub(answer, document=False)
+    if scrubbed != answer:
+        # A settled block's or a step's name (「확정 수치 블록」, 「date-calc」) is ours, not
+        # the reader's; the answer is re-sent without the sentence that names it.
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": scrubbed}
+        answer = scrubbed
     linked, cited = _link_citations(answer, sources)
     if linked != answer:
         # The citations sit mid-text, so the answer is re-sent whole.

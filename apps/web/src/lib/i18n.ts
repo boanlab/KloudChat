@@ -251,6 +251,8 @@ const EN: Record<string, string> = {
   '날씨': 'Weather',
   '문서 가져오기': 'Fetch page',
   '코드 실행': 'Run code',
+  '스킬 스크립트': 'Skill script',
+  '파일 작업': 'File work',
   '심층 조사': 'Deep research',
   '음성 전사': 'Transcription',
   '자료 검색': 'Knowledge search',
@@ -307,8 +309,8 @@ const EN: Record<string, string> = {
     'Browse the store',
   '아직 에이전트가 없습니다':
     'No agents yet',
-  '워크스페이스 스토어에서 가져오거나, 직접 하나 만들어 시작하세요.':
-    'Import one from the workspace store, or make your own.',
+  '기본으로 제공되는 에이전트는 없습니다. 직접 만들거나, 동료가 공개한 에이전트를 스토어에서 가져오세요.':
+    'No agents ship built in. Make your own, or take one a colleague shared from the store.',
   '공유된 에이전트가 없습니다':
     'Nothing shared yet',
   '내 에이전트를 편집해 모두에게 공개하면 여기에 올라갑니다.':
@@ -1070,6 +1072,11 @@ const EN: Record<string, string> = {
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
   '{name} 서식 해제': 'Clear the {name} format',
   '이 서식으로 시작': 'Start with this',
+  '전체 미리보기': 'Full preview',
+  '이전 슬라이드': 'Previous slide',
+  '다음 슬라이드': 'Next slide',
+  '{n}번 슬라이드': 'Slide {n}',
+  '슬라이드 목록': 'Slides',
   // ── 시작점 · 버전 · 프로젝트 자료 ───────────────────────
   '어떤 인상으로 만들까요?': 'What impression should it make?',
   '결과물 디자인': 'How the result looks',
@@ -1417,6 +1424,7 @@ const EN: Record<string, string> = {
   '문서 검사': 'Document checks',
   '메모': 'Notes',
   '검토 메모': 'Review notes',
+  '결재란': 'Approval box',
   '탐색': 'Navigate',
   '재생': 'Play',
   '내보내기 전 확인 {n}건': '{n} thing(s) to check before exporting',
@@ -1782,6 +1790,22 @@ const EN: Record<string, string> = {
   '사용자가 경고 후 원문 전송을 선택할 수 있게 합니다. 개인정보 마스킹 정책이 켜져 있으면 항상 금지됩니다.':
     'Lets somebody send the original after a warning. Always refused while PII masking is on.',
   '실제 실행 모델': 'Model that answered',
+  '글자 수(코드 측정)': 'Length (measured by code)',
+  '답안 {n}': 'Answer {n}',
+  '공백 포함': 'with spaces',
+  '공백 제외': 'without spaces',
+  '한글 2바이트': 'Korean 2-byte',
+  '자': ' chars',
+  '바이트': ' bytes',
+  '초과': 'over',
+  '하한 미달': 'under the minimum',
+  '다시 씀': 'rewritten',
+  '다시 써도 범위 밖 — 직접 맞춰 주세요': 'still out of range after the rewrite — adjust it by hand',
+  '자료에 없는 항목': 'Not in your material',
+  '지어내지 말고 [구체적 성과 수치]처럼 비워 두세요': 'leave a blank like [specific figure] instead of making it up',
+  '같은 경험 반복(확인 필요)': 'Same experience told twice (check)',
+  '세는 법이 없어 공백 포함으로 맞췄습니다': 'No counting rule given; counted with spaces',
+  '바이트 규칙이 없어 가장 엄격한 기준(UTF-8, 줄바꿈 2바이트)으로 맞췄습니다': 'No byte rule given; counted strictly (UTF-8, line break 2 bytes)',
   '안전한 로컬 모델로 전환': 'Switch to a safe local model',
   '외부 모델 개인정보 보호': 'Privacy on external models',
   '외부 모델로 보내기 전에 처리 방법을 선택하세요. 탐지된 실제 값은 표시하거나 기록하지 않습니다.':
@@ -1875,6 +1899,7 @@ const EN: Record<string, string> = {
   '이대로 생성': 'Write this',
   '이대로 계속': 'Continue',
   '있는 자료로 진행': 'Go with what arrived',
+  '알면 적어 주세요. 비워 두면 빈칸으로 둡니다': 'Fill it in if you know it; left empty, it stays a blank',
   '이대로 생성해 주세요': 'Write this',
   '있는 자료로 진행해 주세요': 'Go with what arrived',
   '먼저 위 항목을 골라 주세요': 'Choose above first',
@@ -2068,6 +2093,27 @@ const EN: Record<string, string> = {
     'Checks formulas, units, denominators and baselines in code and records provenance.',
   '답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환이 포함될 때.':
     'When figures drive a decision or require unit conversion.',
+  '글에 적힌 계산식·증감률·비중·단위 변환을 스크립트로 다시 계산해 적힌 값과 대조하고, 어긋난 곳을 알려 줍니다.':
+    'Recomputes the formulas, changes, shares and unit conversions in a text with a script, compares them with the stated values and flags mismatches.',
+  '답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환·증감률·비중이 여러 개 들어 있을 때.':
+    'When figures drive a decision or a text holds several unit conversions, changes or shares.',
+  '엑셀 정리': 'Spreadsheet cleanup',
+  '제목·빈 행·합계·주석이 섞인 엑셀이나 CSV를 머리글 한 줄과 데이터만 남은 표로 정리하고, 바꾼 내용을 변경내역 시트로 남깁니다.':
+    'Turns an Excel or CSV sheet cluttered with titles, blank rows, totals and notes into one header row and data, and records each change on a change-log sheet.',
+  '첨부한 엑셀·CSV를 정리·변환하거나 분석하기 전에 표 모양을 바로잡아야 할 때. "1,234" 같은 글자 숫자, 천원·백만원 단위, 여러 형식의 날짜, 합계·소계 행이 섞여 있을 때.':
+    'When an attached Excel or CSV file needs tidying before conversion or analysis: numbers stored as text like "1,234", 천원/백만원 units, mixed date formats, total and subtotal rows.',
+  'PDF 표 → 엑셀': 'PDF table → Excel',
+  'PDF에 들어 있는 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다.':
+    'Moves the tables in a PDF into Excel sheets, joining tables that continue across pages and dropping repeated headers.',
+  '첨부한 PDF의 표(거래내역, 단가표, 명세서 등)를 엑셀로 옮기거나 표의 숫자로 계산해야 할 때.':
+    'When the tables in an attached PDF (statements, price lists, itemised bills) must go into Excel or be calculated with.',
+  '스크립트': 'Scripts',
+  '정해진 스크립트를 샌드박스에서 첨부 파일에 실행합니다.':
+    'Runs these fixed scripts on attached files in the sandbox.',
+  '만든 파일을 내려받습니다': 'Download the file it made',
+  '코드 보기': 'Show code',
+  '출력 보기': 'Show output',
+  '{n}번째 시도의 코드': 'Code from attempt {n}',
   '의사결정 메모': 'Decision memo',
   '대안과 판단 기준을 비교해 권고안, 리스크, 다음 행동으로 정리합니다.':
     'Compares options and criteria, then states a recommendation, risks and next actions.',
@@ -2133,7 +2179,6 @@ const EN: Record<string, string> = {
   '코드 리뷰 관점': 'Code review lens',
   '제안 발표 도우미': 'Pitch deck assistant',
   '수식 풀이': 'Worked equations',
-  '논문 리뷰어': 'Paper reviewer',
   '미디어': 'Media',
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
@@ -2155,6 +2200,8 @@ const EN: Record<string, string> = {
   '웹 검색 중': 'Searching the web',
   '문서 읽는 중': 'Reading the document',
   '코드 실행 중': 'Running code',
+  '스킬 스크립트 실행 중': 'Running a skill script',
+  '파일 작업 중': 'Working on files',
   '아티팩트 만드는 중': 'Creating the artifact',
   '차트 그리는 중': 'Drawing the chart',
   '공유 메모 남기는 중': 'Leaving a shared note',
@@ -2594,6 +2641,43 @@ const EN: Record<string, string> = {
   '새 대화에 전송 기록이 있습니다. 저장된 답변을 확인한 뒤 다시 시도하세요.': 'The new conversation contains a sent message. Check the saved reply before retrying.',
   '전송 상태를 확인하지 못했습니다. 새 대화를 새로고침해 확인한 뒤 다시 시도하세요.': 'The send status could not be confirmed. Reload the new conversation and check it before retrying.',
 
+  '처음 여는 화면': 'Opens on',
+  '이 에이전트로 새 대화를 열 때의 화면입니다. 나머지 화면은 시작 버튼과 문서 넘기기로 씁니다.': 'Where a new conversation with this agent opens. Its other surfaces are reached from the start buttons and by handing a chat over to a document.',
+  '첫 번째 화면': 'First surface',
+  '문서 서식': 'Document template',
+  '보고서·슬라이드 대화가 이 서식으로 시작합니다. 입력창에서 다른 서식을 고르면 그것이 이깁니다.': 'Report and slides conversations start on this template. A template picked in the composer wins.',
+  '정하지 않음': 'None',
+  '문서 형식': 'Document format',
+  '서식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.': 'When the template fixes no format, the report\'s head fields and section rules follow this one.',
+  '요청에 따라': 'From the request',
+  '프로젝트의 디자인보다 먼저 씁니다. 다른 사람의 디자인이면 내 디자인 중 같은 이름의 것을 씁니다.':
+    "Wins over the project's design. When it is someone else's, your own design of the same name is used.",
+  '다른 사람의 디자인': 'Someone else\'s design',
+  '시작할 화면': 'Start on',
+  '{name} 만들기': 'Make {name}',
+  '{kind}로 시작': 'Start in {kind}',
+  '이 대화를 자료로 같은 에이전트가 {name}을 씁니다': 'The same agent writes {name} from this conversation',
+  '지금까지 나눈 대화로 {name} 초안을 만들어 주세요.': 'Draft {name} from our conversation so far.',
+  '문서로 넘기지 못했습니다. 다시 시도하세요.': 'Could not hand this over to a document. Try again.',
+  '피어리뷰': 'Peer review',
+  '학술 논문': 'Research paper',
+  '실험 보고서': 'Lab report',
+  '회의록': 'Minutes',
+  '보도자료': 'Press release',
+  '간이기안문': 'Internal approval draft',
+  '공문·안내문': 'Official letter or notice',
+  '장애 보고서': 'Incident report',
+  '결과 보고서': 'Result report',
+  '연구·조사 계획서': 'Research plan',
+  '추진 계획(안)': 'Action plan (draft)',
+  '개조식 보고서': 'Bullet-style briefing (개조식)',
+  '업무·현황 보고': 'Status report',
+  '프로젝트 제안서': 'Project proposal',
+  '고객 제안서': 'Client proposal',
+  '비교·분석 보고서': 'Comparison report',
+  '경력기술서': 'Career history',
+  '기획안·업무 문서': 'Planning memo',
+  '대학 과제 리포트': 'Term paper',
 }
 
 export function translate(lang: Lang, text: string): string {

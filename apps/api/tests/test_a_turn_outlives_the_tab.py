@@ -11,7 +11,14 @@ from app.routers import sessions
 
 @pytest.mark.parametrize(
     "runner",
-    ["_run_turn", "_run_report", "_run_deck", "_run_page", "_revise_document"],
+    [
+        "_run_turn",
+        "_run_report",
+        "_run_deck",
+        "_run_page",
+        "_revise_document",
+        "_hand_over_document",
+    ],
 )
 def test_every_streamed_turn_is_detached(runner: str) -> None:
     """Every streamed route wraps its runner in `_survive_disconnect`."""

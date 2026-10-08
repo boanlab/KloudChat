@@ -203,6 +203,41 @@ async def test_with_no_address_at_all_it_says_which_setting_is_missing(monkeypat
 
 
 @pytest.mark.anyio
+async def test_a_fallback_model_missing_from_litellm_says_so(monkeypatch):
+    """LiteLLM's 「Invalid model name」 names the setting instead of a bare failure."""
+    from app.services import transcribe as t
+
+    async def litellm_config() -> tuple[str, str]:
+        return "https://llm.example/litellm", "sk"
+
+    class _Response:
+        status_code = 400
+        text = '{"error":{"message":"Invalid model name passed in model=mistralai/voxtral"}}'
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            return _Response()
+
+    monkeypatch.setattr(t.settings_store, "litellm_config", litellm_config)
+    monkeypatch.setattr(t.settings, "stt_or_model", "mistralai/voxtral")
+    monkeypatch.setattr(t.httpx, "AsyncClient", lambda **_kw: _Client())
+    with pytest.raises(t.TranscribeError, match="STT_OR_MODEL"):
+        await t._transcribe_via_openrouter(b"\x00" * 16, "회의.wav")
+
+
+def test_the_default_fallback_is_not_the_missing_voxtral_id():
+    from app.core.config import Settings
+
+    assert "voxtral" not in Settings.model_fields["stt_or_model"].default
+
+
+@pytest.mark.anyio
 async def test_whisper_hears_which_language_and_is_retried_only_off_the_pair(monkeypatch):
     """Whisper detects the language; only a guess outside ko/en is retried pinned to Korean."""
     from app.services import transcribe as t

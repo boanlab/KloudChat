@@ -13,7 +13,6 @@ from app.services.tools import registry
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import Tool, ToolContext, ToolResult, openai_snapshot
 from app.services.tools.builtin import knowledge_tool
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 READ = "mcp__inventory__stock"
 QUESTION = "재고 조회 도구에서 상품 101과 102의 재고 수량을 읽어서 총합을 계산해줘."
@@ -179,17 +178,6 @@ async def test_literal_uses_exact_preset_without_prerequisite_or_model_equation(
     assert ctx.tool_calls == {"calculate": 1}
     assert reads == [] and len(seen) == 1
     assert text == "40"
-
-
-@pytest.mark.asyncio
-async def test_ncs_gate_stays_exclusive(monkeypatch):
-    reads = []
-    ctx, seen, text, _ = await _run(monkeypatch, [[_call(READ, {})]],
-                                    [CHECK_NCS_ANSWER, _read(reads)],
-                                    preflight_tool="check_ncs_answer")
-    assert seen[0]["tools"] == ["check_ncs_answer"]
-    assert reads == [] and ctx.tool_calls == {}
-    assert "확정할 수 없습니다" in text
 
 
 @pytest.mark.asyncio

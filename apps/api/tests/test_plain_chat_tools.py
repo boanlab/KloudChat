@@ -1,18 +1,15 @@
-"""Domain tool selection, not a claim about any model's response formatting."""
-
-from dataclasses import replace
+"""Tool selection for plain chat, not a claim about any model's response formatting."""
 
 import pytest
 from fastapi import HTTPException
 from test_privacy import _external_model, _NoWriteDb, _patch_guard_dependencies, _request
 
-from app.models.chat import ChatSession, Message, Role
+from app.models.chat import ChatSession, Message
 from app.models.user import User
 from app.routers import sessions
 from app.schemas.chat import SendMessage
 from app.services import calculation_policy, settings_store
 from app.services.tools.base import openai_snapshot
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 from app.services.tools.registry import build_tools
 from app.services.workspace_context import AppliedSkill, ContextBlock, ContextFile, WorkspaceContext
 
@@ -51,7 +48,7 @@ async def _routed_turn(
     session = ChatSession(
         user_id=user.id,
         model=model["id"],
-        agent_id="ncs-agent" if agent else None,
+        agent_id="agent" if agent else None,
         project_id="project" if project else None,
     )
     await _patch_guard_dependencies(monkeypatch, session=session, models=[model], blocks=[])
@@ -158,56 +155,20 @@ async def _routed_turn(
 
 
 @pytest.mark.parametrize("strict", [False, True])
-async def test_plain_missing_counts_omits_ncs_schema_before_privacy_and_outbound(
-    monkeypatch, strict,
-):
+async def test_plain_missing_counts_needs_no_calculation_gate(monkeypatch, strict):
     captured = await _routed_turn(monkeypatch, strict=strict)
     assert "calculate" in captured["names"]
-    assert "check_ncs_answer" not in captured["names"]
-    assert "check_ncs_answer" not in captured["privacy_sources"][0]["tool_definitions"]
-    assert "check_ncs_answer" in captured["available"][0]
-    assert "check_ncs_answer" not in captured["available"][-1]
+    assert "calculate" in captured["privacy_sources"][0]["tool_definitions"]
     assert captured["calculation_required"] is False
     assert captured["preflight_tool"] is None
     assert not calculation_policy.requires_calculation(MISSING_COUNTS)
 
 
 @pytest.mark.parametrize("strict", [False, True])
-@pytest.mark.parametrize(
-    "question",
-    [
-        "NCS 수리 문항을 설명해줘.",
-        "ncs를 연습하고 싶어.",
-        "check_ncs_answer로 확인해줘.",
-        "선지를 함께 점검해줘.",
-        "내가 제출한 답을 채점해줘.",
-        "객관식 퀴즈를 내줘.",
-        "Please grade my answer.",
-        "Review this multiple-choice quiz.",
-    ],
-)
-async def test_explicit_ncs_and_grading_requests_keep_checker(monkeypatch, strict, question):
-    captured = await _routed_turn(monkeypatch, strict=strict, question=question)
-    assert "check_ncs_answer" in captured["names"]
-
-
-@pytest.mark.parametrize("role,keep", [(Role.user, True), (Role.assistant, False)])
-async def test_only_retained_user_requests_establish_ncs_followup(monkeypatch, role, keep):
-    captured = await _routed_turn(
-        monkeypatch, strict=True, question="다음 것도 해줘.", history=[(role, "NCS 연습 문제")]
-    )
-    assert ("check_ncs_answer" in captured["names"]) is keep
-
-
-@pytest.mark.parametrize("strict", [False, True])
-@pytest.mark.parametrize(
-    "context",
-    ["agent", "ncs-reasoning", "ncs-arithmetic", "unrelated-skill", "template", "user", "project"],
-)
-async def test_explicit_contexts_preserve_existing_tool_selection(monkeypatch, strict, context):
-    options = {}
+@pytest.mark.parametrize("context", ["agent", "unrelated-skill", "template", "user", "project"])
+async def test_explicit_contexts_keep_the_calculator(monkeypatch, strict, context):
     if context == "agent":
-        options = {"agent": True, "allowed": ["check_ncs_answer"]}
+        options = {"agent": True, "allowed": ["calculate"]}
     elif context == "template":
         options = {"starting_template": True}
     elif context in {"user", "project"}:
@@ -215,68 +176,30 @@ async def test_explicit_contexts_preserve_existing_tool_selection(monkeypatch, s
     else:
         options = {"skill": context}
     captured = await _routed_turn(monkeypatch, strict=strict, **options)
-    assert "check_ncs_answer" in captured["names"]
-    assert captured["preflight_tool"] == (
-        "check_ncs_answer" if context == "ncs-arithmetic" else None
-    )
+    assert "calculate" in captured["names"]
+    assert captured["preflight_tool"] is None
+
+
+@pytest.mark.parametrize("context", ["attachments", "carried", "knowledge"])
+async def test_file_contexts_keep_the_calculator(monkeypatch, context):
+    captured = await _routed_turn(monkeypatch, strict=True, file_context=context)
+    assert "calculate" in captured["names"]
 
 
 @pytest.mark.parametrize("strict", [False, True])
-@pytest.mark.parametrize("allowed", [[], ["calculate"]])
-async def test_explicit_ncs_never_adds_an_allowlist_excluded_checker(monkeypatch, strict, allowed):
-    captured = await _routed_turn(
-        monkeypatch, strict=strict, agent=True, allowed=allowed, question="NCS 개념을 설명해줘."
-    )
-    assert captured["names"] == allowed
-
-
-async def test_untrusted_ncs_source_is_not_a_workflow_selection(monkeypatch):
-    captured = await _routed_turn(
-        monkeypatch,
-        strict=True,
-        blocks=[ContextBlock("memory", "NCS quiz grading", False)],
-    )
-    assert "check_ncs_answer" not in captured["names"]
-
-
-@pytest.mark.parametrize("context", ["project", "attachments", "carried", "knowledge", "history"])
-async def test_file_and_project_contexts_preserve_existing_tools(monkeypatch, context):
-    options = {}
-    if context == "project":
-        options = {"project": True}
-    elif context == "history":
-        options = {"history": [(Role.user, "이 자료를 참고해줘.")], "history_attachment": True}
-    else:
-        options = {"file_context": context}
-    captured = await _routed_turn(monkeypatch, strict=True, **options)
-    assert "check_ncs_answer" in captured["names"]
-
-
-async def test_only_builtin_checker_is_filtered(monkeypatch):
-    other = replace(CHECK_NCS_ANSWER, source="synthetic_connector")
-    captured = await _routed_turn(monkeypatch, strict=False, extra_tool=other)
-    assert [tool.source for tool in captured["tools"] if tool.name == other.name] == [other.source]
-
-
-@pytest.mark.parametrize("checker", [False, True])
-async def test_calculation_instruction_mentions_only_selected_checker(monkeypatch, checker):
-    captured = await _routed_turn(
-        monkeypatch,
-        strict=True,
-        question="17 * 23은 얼마야?",
-        agent=checker,
-        allowed=["check_ncs_answer"] if checker else None,
-    )
-    assert captured["preflight_tool"] == ("check_ncs_answer" if checker else "calculate")
-    assert ("decision=calculate" in captured["messages"][0]["content"]) is checker
+async def test_calculation_uses_the_calculator(monkeypatch, strict):
+    captured = await _routed_turn(monkeypatch, strict=strict, question="17 * 23은 얼마야?")
+    assert captured["preflight_tool"] == "calculate"
+    assert "check_ncs_answer" not in captured["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("strict", [False, True])
-async def test_plain_chat_does_not_fall_back_to_unselected_checker(monkeypatch, strict):
+async def test_an_allowlist_without_the_calculator_refuses_a_calculation(monkeypatch, strict):
     await _routed_turn(
         monkeypatch,
         strict=strict,
         question="17 * 23은 얼마야?",
-        allowed=["check_ncs_answer"],
+        agent=True,
+        allowed=["create_chart"],
         expect_unavailable=True,
     )

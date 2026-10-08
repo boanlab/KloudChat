@@ -16,9 +16,8 @@ import re
 import shlex
 from typing import Any
 
-import httpx
-
 from app.core.config import settings
+from app.services import tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -149,7 +148,11 @@ async def _http_request(url: str, method: str, params: dict[str, Any] | None = N
 
     A server may return `Mcp-Session-Id` on `initialize` and reject requests without it.
     """
-    async with httpx.AsyncClient(timeout=settings.tool_timeout_sec) as client:
+    # The gateway key goes only to the deep-research address: a connector someone
+    # adds pointing at another tool path gets nothing it could not get without it.
+    async with tools_gateway.client(
+        timeout=settings.tool_timeout_sec, features=("research",)
+    ) as client:
         headers = {"Accept": "application/json, text/event-stream"}
 
         init = await client.post(

@@ -13,6 +13,7 @@ import asyncio
 import base64
 import binascii
 import contextlib
+import datetime as dt
 import json
 import logging
 import re
@@ -23,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, timedelta
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -42,6 +44,7 @@ from app.models.chat import (
     SessionKind,
     TurnFailure,
 )
+from app.models.governance import Governance
 from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
 from app.models.workspace import (
@@ -58,7 +61,12 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.models.workspace import Visibility as SkillVisibility
-from app.routers.workspace import forget_session_files, reindex_session_files
+from app.routers.workspace import (
+    artifact_file,
+    export_formats,
+    forget_session_files,
+    reindex_session_files,
+)
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
@@ -69,6 +77,8 @@ from app.schemas.chat import (
     DiagramStore,
     FigureSuggestion,
     FigureSuggestRequest,
+    HandoffIn,
+    HandoffOut,
     ImageRequest,
     MessageForkOut,
     MessageOut,
@@ -89,18 +99,25 @@ from app.services import (
     audiogen,
     calculation_policy,
     chart_code,
+    check_skills,
+    consistency,
     conversation_summary,
+    cover_letter,
     current_evidence,
     design_templates,
+    doc_formats,
     figures,
+    file_schema,
     freshness,
     governance,
     grounding,
     imagegen,
     index_client,
+    internal_words,
     lint,
     revise,
     richtext,
+    sandbox,
     settings_store,
     stop_signal,
     units,
@@ -179,12 +196,15 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
     {
         # No network egress; a "builtin" source alone is not proof of that.
         "calculate",
-        "check_ncs_answer",
         "search_knowledge",
         "create_artifact",
         "create_chart",
         # In-process: hands back the text of a skill the person installed.
         "use_skill",
+        # The self-hosted sandbox, networking off; `build_tools` offers these only when
+        # `sandbox_in_boundary` holds, and run_code then writes on a strict-local model.
+        "run_skill_script",
+        "run_code",
     }
 )
 
@@ -803,6 +823,25 @@ def _internal_data_present(
         if isinstance(routing, dict) and routing.get("action") == "internal_strict_local":
             return True
     return any(block.source in _INTERNAL_SOURCES for block in blocks or [])
+
+
+def _strict_route_possible(
+    model: dict, catalogue: list[dict], policy: Governance, user: User, *, auto_turn: bool
+) -> bool:
+    """Whether privacy routing could land this turn on a strict-local model, so its
+    in-boundary tools must be ready before the decision."""
+    if _strict_model(model):
+        return True
+    # Internal material moves the turn to the strict-local twin.
+    if policy.internal_data_strict_local and _strict_twin(
+        model, catalogue, set(user.allowed_models or [])
+    ):
+        return True
+    safe_ids = set(policy.privacy_safe_model_ids or [])
+    economy_ids = set(policy.adaptive_economy_model_ids or []) if auto_turn else set()
+    return any(
+        m.get("id") in safe_ids | economy_ids and _strict_model(m) for m in catalogue
+    )
 
 
 def _strict_twin(model: dict, catalogue: list[dict], allowed: set[str]) -> dict | None:
@@ -1635,6 +1674,12 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSession):
+    agent = await db.get(WorkspaceAgent, payload.agent_id) if payload.agent_id else None
+    if agent is not None and agent.owner_id != user.id and agent.visibility != AgentVisibility.org:
+        agent = None
+    # A kind the caller named wins; otherwise the agent's surface.
+    if "kind" not in payload.model_fields_set and agent is not None and agent.surface:
+        payload.kind = SessionKind(agent.surface)
     # Server-side refusal, not just a hidden menu entry.
     if payload.kind.value not in await settings_store.enabled_kinds():
         raise HTTPException(
@@ -1666,7 +1711,8 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         agent_id=payload.agent_id,
         model=payload.model or "",
         routing_mode=payload.routing_mode,
-        render_template_id=await _project_render_template(db, payload.project_id, payload.kind),
+        render_template_id=agent_template(agent, payload.kind)
+        or await _project_render_template(db, payload.project_id, payload.kind),
     )
     db.add(session)
     await db.commit()
@@ -1837,6 +1883,111 @@ async def fork_message(session_id: str, message_id: str, user: CurrentUser, db: 
     return output
 
 
+#: Characters of conversation carried into a document; the tail is kept.
+_HANDOFF_CHARS = 30_000
+#: Files from the conversation carried with it, most recent last.
+_HANDOFF_FILES = 8
+_HANDOFF_ROLE = {Role.user: "사용자", Role.assistant: "답변"}
+
+
+def handoff_transcript(messages: list[Message]) -> str:
+    """The conversation as plain text for the document writer; `""` when there is none.
+
+    Failed and empty turns are left out; past the bound, the oldest turns go first."""
+    turns = [
+        f"[{_HANDOFF_ROLE[m.role]}]\n{m.content.strip()}"
+        for m in messages
+        if m.role in _HANDOFF_ROLE and m.failure is None and (m.content or "").strip()
+    ]
+    kept: list[str] = []
+    used = 0
+    for turn in reversed(turns):
+        if kept and used + len(turn) > _HANDOFF_CHARS:
+            break
+        kept.append(turn[-_HANDOFF_CHARS:])
+        used += len(turn) + 2
+    return "\n\n".join(reversed(kept))
+
+
+@router.post(
+    "/{session_id}/handoff",
+    response_model=HandoffOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def handoff_session(
+    session_id: str, payload: HandoffIn, user: CurrentUser, db: DbSession
+):
+    """Opens a report or slides session from a chat, keeping its agent and project.
+
+    The new session takes the agent's 서식 for that surface. The conversation travels as a
+    text file the caller attaches to the document request, with the chat's own files."""
+    source = await _owned(db, user, session_id)
+    if source.kind is not SessionKind.chat:
+        raise HTTPException(status_code=422, detail="handoff_from_chat_only")
+    kind = SessionKind(payload.kind)
+    if kind.value not in await settings_store.enabled_kinds():
+        raise HTTPException(status_code=403, detail="이 기능은 사용할 수 없습니다.")
+    await _validate_session_links(
+        db, user, kind, project_id=source.project_id, agent_id=source.agent_id
+    )
+    agent = await db.get(WorkspaceAgent, source.agent_id) if source.agent_id else None
+    history = await _history(db, source.id)
+    earlier = list(dict.fromkeys(
+        str(item["id"])
+        for message in history
+        for item in message.attachments or []
+        if isinstance(item, dict) and item.get("id")
+    ))[-_HANDOFF_FILES:]
+    carried = (
+        (
+            await db.exec(
+                select(StoredFile).where(
+                    col(StoredFile.id).in_(earlier), StoredFile.user_id == user.id
+                )
+            )
+        ).all()
+        if earlier else []
+    )
+    by_id = {row.id: row for row in carried}
+    target = ChatSession(
+        user_id=user.id,
+        kind=kind,
+        project_id=source.project_id,
+        agent_id=source.agent_id,
+        routing_mode=RoutingMode.manual,
+        render_template_id=agent_template(agent, kind)
+        or await _project_render_template(db, source.project_id, kind),
+    )
+    files: list[StoredFile] = []
+    key = ""
+    if text := handoff_transcript(history):
+        record = StoredFile(
+            user_id=user.id,
+            session_id=target.id,
+            name="대화 기록.txt",
+            mime="text/plain",
+            text=text,
+            tokens=file_service.estimate_tokens(text),
+        )
+        data = text.encode()
+        record.size = len(data)
+        key = record.storage_key = file_service.write_blob(user.id, record.id, record.name, data)
+        files.append(record)
+    try:
+        db.add(target)
+        for row in files:
+            db.add(row)
+        await db.commit()
+    except BaseException:
+        await db.rollback()
+        if key:
+            file_service.delete_blob(key)
+        raise
+    await db.refresh(target)
+    files.extend(by_id[file_id] for file_id in earlier if file_id in by_id)
+    return HandoffOut(session=SessionOut.of(target, []), attachments=[FileOut.of(f) for f in files])
+
+
 async def _template_skills(
     db: AsyncSession,
     template: design_templates.DesignTemplate | None,
@@ -1866,6 +2017,10 @@ async def _template_skills(
     for key in template.skills:
         skill = by_key.get(key)
         if skill is None or (skill.kinds and kind.value not in skill.kinds):
+            continue
+        # A document or deck is written without tools: a skill that calls one is the
+        # pipeline's own check there (see `report_checks`), not words for the writer.
+        if skill.required_tools and kind is not SessionKind.chat:
             continue
         head = f"# 서식 스킬 — {skill.name}"
         body = skill.body.strip() or skill.description.strip()
@@ -1902,6 +2057,19 @@ async def _project_render_template(
         return None
     project = await db.get(Project, project_id)
     return design_templates.default_for(project.render_templates, kind) if project else None
+
+
+def agent_template(agent: WorkspaceAgent | None, kind: SessionKind) -> str | None:
+    """The agent's bound 서식 when it belongs to this surface, else `None`.
+
+    It wins over the project's default 서식: the agent exists to make that document. A 서식
+    picked later in the composer is stored on the session and wins over both."""
+    if agent is None or not agent.render_template_id:
+        return None
+    chosen = design_templates.get(agent.render_template_id)
+    if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
+        return None
+    return chosen.id if chosen.surface is kind else None
 
 
 def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | None:
@@ -2791,6 +2959,44 @@ def _edited_plan(sent: dict | None, stored: dict) -> dict:
     return out
 
 
+def _with_condition(request: str, line: str) -> str:
+    """`request` with one more line in its 「덧붙인 조건」 block, opening one if needed."""
+    if line in request:
+        return request
+    if "\n\n덧붙인 조건:\n" in request:
+        return f"{request}\n- {line}"
+    return grounding.merge_answers(request, {"_server": line})
+
+
+async def _agent_catalog_key(db: DbSession, agent: WorkspaceAgent | None) -> str | None:
+    """The shipped agent behind `agent` (itself or the one it was copied from), for its checks."""
+    if agent is None:
+        return None
+    if agent.catalog_key or not agent.origin_id:
+        return agent.catalog_key
+    origin = await db.get(WorkspaceAgent, agent.origin_id)
+    return origin.catalog_key if origin is not None else None
+
+
+def render_template_checks(session: ChatSession) -> tuple[str, ...]:
+    """The check skills the session's 서식 attaches."""
+    template = design_templates.get(session.render_template_id)
+    return template.check_skills if template is not None else ()
+
+
+def _today() -> dt.date:
+    return dt.datetime.now(ZoneInfo(settings.timezone)).date()
+
+
+def _just_asked(history: list[Message], question: grounding.Question, attachments) -> bool:
+    """Whether the last answer in this session was this same card over the same files."""
+    last = next((m for m in reversed(history) if m.role is Role.assistant), None)
+    card = ((last.routing or {}).get("askedCard") or {}) if last is not None else {}
+    return question.id in (card.get("ids") or []) and sorted(
+        card.get("attachments") or []
+    ) == sorted(attachments or [])
+
+
 async def _ask_before_writing(
     db: DbSession,
     session: ChatSession,
@@ -2824,6 +3030,13 @@ async def _ask_before_writing(
             session_id=session.id,
             role=Role.assistant,
             content=said,
+            # Read by `_just_asked`, so the same card is never put up twice in a row.
+            routing={
+                "askedCard": {
+                    "ids": [q.id for q in questions],
+                    "attachments": sorted(attachments),
+                }
+            },
         )
     )
     await db.commit()
@@ -2908,7 +3121,12 @@ async def send_message(
 
     # A document surface plans before it writes; `session.pending` holds the
     # half-finished turn, and a message while one is pending is a note on it.
-    pending = dict(session.pending or {}) if _plans_first(session) else {}
+    # A chat agent's gap card (`check_skills`) waits the same way, and only at that stage.
+    pending = (
+        dict(session.pending or {})
+        if _plans_first(session) or (session.pending or {}).get("stage") == "clarify"
+        else {}
+    )
     #: Set only via approval; a plain message never carries one.
     approved_plan: dict | None = None
     #: Set by the figure card; `None` until either button is pressed.
@@ -2933,8 +3151,27 @@ async def send_message(
     proceed_as_is = bool(
         pending and not payload.approve and payload.answers is not None and not payload.answers
     )
+    #: Files the reply brings that the pending turn did not have; only those are checked again.
+    reply_brings_files = bool(
+        pending
+        and payload.attachments
+        and set(payload.attachments) != set(pending.get("attachments") or [])
+    )
     if pending:
         answers = {**(pending.get("answers") or {}), **(payload.answers or {})}
+        if pending.get("stage") == "clarify" and not payload.approve and payload.answers is None:
+            # A typed reply answers the card's open questions; left unanswered, the next
+            # pass would put the same card up again. 「자료대로 진행해 줘」 answers no fact, and
+            # one reply to several facts is a note on all of them, not each one's value.
+            open_ids = [str(q.get("id") or "") for q in pending.get("questions") or []]
+            facts_asked = [q for q in open_ids if q.startswith(check_skills.GAP_PREFIX)]
+            for qid in open_ids:
+                if not qid or str(answers.get(qid) or "").strip() or not typed_content.strip():
+                    continue
+                if qid.startswith(check_skills.GAP_PREFIX) and (
+                        check_skills.goes_on(typed_content) or len(facts_asked) > 1):
+                    continue
+                answers[qid] = typed_content.strip()
         pending["answers"] = answers
         focus = grounding.focus_terms(answers)
         # Approval is the one path that does not plan again.
@@ -2943,12 +3180,17 @@ async def send_message(
         # Pictures agreed to, or `[]` when declined.
         if pending.get("stage") == "figures" and payload.include_figures is not None:
             approved_figures = list(pending.get("figures") or []) if payload.include_figures else []
+        # A fact the gap card asked reads as that fact: 「회의 일시: 10월 7일」.
+        shown = check_skills.labelled(answers, list(pending.get("questions") or []))
+        # The card's own label for picked answers is not a second note.
+        note = "" if payload.answers and typed_content.strip() == " · ".join(
+            str(v).strip() for v in payload.answers.values()) else typed_content
         payload = payload.model_copy(
             update={
                 "content": grounding.merge_answers(
                     str(pending.get("request") or ""),
                     # An approval is not a condition on the request.
-                    answers if payload.approve else {**answers, "_note": typed_content},
+                    shown if payload.approve else {**shown, "_note": note},
                 ),
                 # A reply carries the original request's attachments.
                 "attachments": payload.attachments or list(pending.get("attachments") or []),
@@ -3088,20 +3330,8 @@ async def send_message(
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
 
     requested_is_strict = _strict_model(requested_model)
-    strict_candidate_available = (
-        requested_is_strict
-        or any(
-            model.get("id") in set(policy.privacy_safe_model_ids or []) and _strict_model(model)
-            for model in catalogue_models
-        )
-        or (
-            auto_turn
-            and any(
-                model.get("id") in set(policy.adaptive_economy_model_ids or [])
-                and _strict_model(model)
-                for model in catalogue_models
-            )
-        )
+    strict_candidate_available = _strict_route_possible(
+        requested_model, catalogue_models, policy, user, auto_turn=auto_turn
     )
     # What the toggle (on / off / auto) and the sentence mean for this turn: whether the
     # web tools are offered, and the tool the first hop must call. Resolved before
@@ -3213,18 +3443,32 @@ async def send_message(
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
 
-    # Resolve selected context before narrowing either route's outbound schema snapshot.
-    candidate_tools = _plain_chat_tools(candidate_tools, session, workspace, content, history)
-    strict_tools = _plain_chat_tools(strict_tools, session, workspace, content, history)
     requested_tools = strict_tools if requested_is_strict else candidate_tools
 
     # Attachment shortfalls are known server-side, so ask before spending a planning call.
-    if _plans_first(session) and not pending.get("answers"):
-        short = grounding.file_shortfalls(workspace.attachments)
+    # A message while a turn is pending was checked when that turn began; it is asked
+    # about again only for files it brings itself.
+    short = grounding.file_shortfalls(workspace.attachments) if _plans_first(session) else []
+    # What the format needs and the material does not give (the attached gap check): asked on
+    # the same card, once, before the first draft — never on a revision or a follow-up chat turn.
+    agent_key = await _agent_catalog_key(db, agent_row)
+    check_keys = check_skills.attached(
+        agent_key=agent_key, template_checks=render_template_checks(session))
+    facts = check_skills.fact_set(workspace.doc_format, agent_key)
+    first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
+        m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
+    missing = check_skills.gaps(
+        check_keys, facts=facts, request=content, material="\n".join(workspace.untrusted),
+        today=_today(),
+    ) if first_draft else []
+    if (_plans_first(session) or missing) and (not pending or reply_brings_files):
         questions = grounding.questions_for(short)
         # Only when no file arrived at all.
         if not questions and (gap := grounding.missing_attachment(content, workspace.attachments)):
             questions = [gap]
+        questions += check_skills.questions(missing)
+        # The card just answered is not put up again, whatever the reply said.
+        questions = [q for q in questions if not _just_asked(history, q, payload.attachments)][:5]
         if questions:
             return await _ask_before_writing(
                 db,
@@ -3234,6 +3478,16 @@ async def send_message(
                 attachments=list(payload.attachments or []),
                 questions=questions,
             )
+    if missing and (blanks := check_skills.rule(check_keys, missing)):
+        # Going on without the facts the card asked for: each stays a bracket blank.
+        content = _with_condition(content, blanks)
+    if skipped := [f.name for f in short if f.state == "unreadable"]:
+        # Going on past the card: the writer is told which file is missing, by name.
+        content = _with_condition(
+            content,
+            f"읽지 못한 첨부({', '.join(skipped)})는 빼고 읽은 자료로 진행한다. "
+            "문서에 그 파일을 읽지 못해 반영하지 않았다고 이름을 들어 밝힌다.",
+        )
 
     protected_values: frozenset[str] = frozenset()
     if session.kind is SessionKind.chat:
@@ -3428,8 +3682,24 @@ async def send_message(
             *trusted_context,
             freshness.answer_instruction({**model, "knowledgeCutoff": None}, structured=True),
         ]
+    # Figures out of an attached table come from code run on the file, not from the
+    # model reading the rows in its context: the first hop is made to call run_code.
+    tables = (
+        _table_attachments(rows)
+        if session.kind is SessionKind.chat
+        and forced_tool is None
+        and any(tool.name == "run_code" for tool in tools)
+        and calculation_policy.asks_table_analysis(content)
+        else []
+    )
+    if tables:
+        forced_tool = "run_code"
+        brief = _table_analysis_instruction(tables)
+        if privacy_resolution and privacy_resolution.mask_outbound:
+            brief = _mask_list([brief], legacy=policy.pii_masking)[0]
+        trusted_context = [*trusted_context, brief]
     calculation_required = (
-        session.kind is SessionKind.chat and (
+        session.kind is SessionKind.chat and not tables and (
             calculation_policy.requires_calculation(content)
             or (
                 not payload.attachments
@@ -3437,14 +3707,10 @@ async def send_message(
             )
         )
     )
-    preflight_tool = _ncs_preflight_tool(
-        {skill.catalog_key for skill in workspace.applied_skills}, tools,
-    )
+    preflight_tool = None
     if calculation_required:
-        preflight_tool = preflight_tool or _calculation_preflight_tool(tools)
+        preflight_tool = _calculation_preflight_tool(tools)
         trusted_context = [*trusted_context, _CALCULATION_INSTRUCTION]
-        if preflight_tool == "check_ncs_answer":
-            trusted_context.append(_NCS_CALCULATION_INSTRUCTION)
     wire_history = [
         {"role": message.role.value, "content": body}
         for message, body in zip(history, outbound_history, strict=True)
@@ -3581,6 +3847,9 @@ async def send_message(
         # the question below, so two replicas serialize on the row and the second sees it.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     db.add(user_message)
+    if session.kind is SessionKind.chat and pending:
+        # This turn answers (or passes over) the chat agent's gap card.
+        session.pending = None
     # Request models are turn-only; lasting choices use the session settings API.
     if payload.model is None:
         # A substitute is for this turn only.
@@ -3714,6 +3983,33 @@ async def send_message(
         )
 
     # See `revising` above.
+    #: 「좋아, PDF로 줘」 asks for the document as a file, not for an edit; 「견적 고치고
+    #: PDF로」 revises first and hands the file over after.
+    asked_files = revise.export_request(typed_content) if revising else None
+    if (
+        revising
+        and asked_files is not None
+        and not asked_files[1]
+        and session.kind in (SessionKind.report, SessionKind.slides)
+    ):
+        return StreamingResponse(
+            _survive_disconnect(
+                _hand_over_document(
+                    user_id=user.id,
+                    session_id=session.id,
+                    formats=asked_files[0],
+                    routing=document_routing,
+                )
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+    if asked_files is not None:
+        content = revise.without_export(content)
     if revising and session.kind in (SessionKind.report, SessionKind.slides):
         # Reading the instruction is a judge's job: the local planner does it, so an
         # external writer's reasoning budget or output habits never decide the route.
@@ -3753,6 +4049,7 @@ async def send_message(
                         routing=document_routing,
                         plan=revision,
                         planner=planner,
+                        export_after=asked_files[0] if asked_files else None,
                     )
                 ),
                 media_type="text/event-stream",
@@ -3771,6 +4068,8 @@ async def send_message(
                     figures_plan=approved_figures,
                     image_model=image_model,
                     template=render_template,
+                    format_id=workspace.doc_format,
+                    check_keys=check_keys,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -3936,6 +4235,7 @@ async def send_message(
         session.kind is SessionKind.chat
         and not routed_down
         and not calculation_required
+        and not tables
         and answer_plan.wanted(content)
     ):
         plan_model, plan_key = model["id"], api_key
@@ -3972,6 +4272,7 @@ async def send_message(
                 context_steps=context_steps,
                 routing=privacy_resolution.routing if privacy_resolution else document_routing,
                 quality_model=requested_model if cost_route else None,
+                judge_model=(outline_model or model)["id"],
                 disable_fallbacks=bool(cost_route and cost_route.get("decision") == "routed"),
                 # Model output can introduce new findings, so it is masked at rest too.
                 mask_at_rest=policy.pii_masking or policy.external_data_guard,
@@ -4005,6 +4306,9 @@ async def send_message(
                     else None
                 ),
                 preflight_tool=preflight_tool,
+                check_keys=tuple(check_skills.of_stage(check_keys, "post")),
+                check_facts=facts,
+                check_material="\n".join(workspace.untrusted),
                 calculation_required=calculation_required,
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
@@ -4214,64 +4518,13 @@ async def _store_notes(
         )
 
 
-_NCS_TOOL_CONTEXT = re.compile(
-    r"(?<![a-z0-9_])ncs(?![a-z0-9_])|check_ncs_answer|선지|채점|객관식|퀴즈|"
-    r"\b(?:multiple[- ]choice|quiz|grading)\b|\bgrade\s+(?:my|this|the|these|answer)\b",
-    re.I,
-)
-
-
-def _plain_chat_tools(
-    tools: list[Tool],
-    session: ChatSession,
-    workspace: WorkspaceContext,
-    content: str,
-    history: list[Message],
-) -> list[Tool]:
-    """Keep domain protocols out of uncustomized chat; never expand existing permissions."""
-    if (
-        session.kind is not SessionKind.chat
-        or session.agent_id
-        or session.project_id
-        or workspace.applied_skills
-        or workspace.started_from
-        or workspace.attachments
-        or workspace.carried
-        or workspace.knowledge
-        or any(block.trusted and block.text.strip() for block in workspace.blocks)
-        or _NCS_TOOL_CONTEXT.search(content)
-        or any(
-            message.attachments or _NCS_TOOL_CONTEXT.search(message.content)
-            for message in history
-            if message.role is Role.user
-        )
-    ):
-        return tools
-    return [
-        tool for tool in tools
-        if tool.name != "check_ncs_answer" or tool.source != "builtin"
-    ]
-
-
-def _ncs_preflight_tool(skill_catalog_keys: set[str | None], tools: list[Tool]) -> str | None:
-    if "ncs-arithmetic" not in skill_catalog_keys:
-        return None
-    name = "check_ncs_answer"
-    if not any(tool.name == name and tool.source == "builtin" for tool in tools):
-        raise HTTPException(status_code=409, detail="ncs_verification_tool_unavailable")
-    return name
-
-
 _CALCULATION_INSTRUCTION = (
     "이 요청은 수치 계산이 필요합니다. 답변 전에 지정된 계산 도구를 호출하세요. "
     "계산이 아닌 질문(절차·조언·설명)이 함께 있어도 첫 응답은 계산 도구 호출이어야 하며, "
     "나머지 질문에는 계산 결과를 받은 뒤 함께 답하세요. "
     "문제에 주어진 값·분모·가중치·단위를 보존하여 식을 작성하고, 없는 조건을 만들지 마세요. "
-    "계산 결과를 설명할 때 도구의 값·선지·채점과 대조하고, 검산하지 않은 다른 수치를 "
+    "계산 결과를 설명할 때 도구의 값과 대조하고, 검산하지 않은 다른 수치를 "
     "해설에 보태지 마세요. 도구는 입력한 식의 산술만 검증하며 문제 해석까지 보증하지 않습니다."
-)
-_NCS_CALCULATION_INSTRUCTION = (
-    "check_ncs_answer를 사용할 때 계산할 조건이 갖춰졌으면 decision=calculate를 사용하세요."
 )
 
 
@@ -4306,12 +4559,66 @@ def _calculation_followup_required(
     return False
 
 
+def _material_text(messages: list[dict]) -> str:
+    """What the person gave this conversation (their turns and attached text), for grounding."""
+    parts = []
+    for one in messages:
+        if one.get("role") in ("assistant", "system"):
+            continue
+        content = one.get("content")
+        if isinstance(content, list):
+            content = " ".join(str(p.get("text") or "") for p in content if isinstance(p, dict))
+        parts.append(str(content or ""))
+    return "\n".join(parts)
+
+
 def _calculation_preflight_tool(tools: list[Tool]) -> str:
     available = {tool.name for tool in tools if tool.source == "builtin" and tool.read_only}
-    for name in ("calculate", "check_ncs_answer"):
-        if name in available:
-            return name
+    if "calculate" in available:
+        return "calculate"
     raise HTTPException(status_code=409, detail="calculation_tool_unavailable")
+
+
+_TABLE_SUFFIXES = (".csv", ".tsv", ".xlsx", ".xlsm", ".xls")
+_TABLE_MIMES = frozenset({
+    "text/csv",
+    "text/tab-separated-values",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroenabled.12",
+})
+
+
+def _table_attachments(rows: list[StoredFile]) -> list[StoredFile]:
+    """This turn's attachments that are data tables, by name or by detected type."""
+    return [
+        row for row in rows
+        if row.storage_key
+        and (row.name.lower().endswith(_TABLE_SUFFIXES) or (row.mime or "").lower() in _TABLE_MIMES)
+    ]
+
+
+def _table_analysis_instruction(files: list[StoredFile]) -> str:
+    """The forced run_code hop's brief: which files to read, under which columns."""
+    lines = []
+    for row in files[:6]:
+        try:
+            schema = file_schema.describe(row.name, file_service.read_blob(row.storage_key))
+        except OSError:
+            schema = ""
+        # Names and headers only: the preview rows are what the model must not copy.
+        heads = [
+            line.strip() for line in schema.splitlines()[1:]
+            if line.lstrip().startswith(("열(", "- 시트", "시트 "))
+        ][:6]
+        lines.append(f"- {row.name}" + (": " + " / ".join(heads) if heads else ""))
+    return (
+        "이 요청은 첨부한 표의 수치를 다룹니다. 첫 응답은 run_code 도구 호출이어야 합니다. 표의 "
+        "값을 답에 옮겨 적어 손으로 계산하지 말고, task 에 어느 파일의 어느 열로 무엇을 계산해 "
+        "print 로 보여 줄지 적으세요(files 에 파일 이름). 결과를 받은 뒤 답의 수치는 실행 결과에 "
+        "나온 값만 쓰고, 결과에 없는 수치가 필요하면 「[수치]」처럼 대괄호로 비워 두세요.\n"
+        "샌드박스 현재 디렉터리에 있는 파일:\n" + "\n".join(lines)
+    )
 
 
 async def _run_turn(
@@ -4343,6 +4650,8 @@ async def _run_turn(
     protect_enrichment: bool = False,
     privacy_audit_id: str | None = None,
     routing_audit_id: str | None = None,
+    #: Model that judges the finished answer (the planner when one is set).
+    judge_model: str = "",
     #: A tool the first hop must call. See `agent.run_turn`.
     force_tool: str | None = None,
     preflight_tool: str | None = None,
@@ -4363,6 +4672,12 @@ async def _run_turn(
     #: Rows of the answers being replaced; deleted with the new answer's insert,
     #: and left alone when the rerun produced nothing.
     superseded_ids: list[str] | None = None,
+    #: The agent's `post` check skills, run over the finished answer (`check_skills`).
+    check_keys: tuple[str, ...] = (),
+    #: The agent's fact set, which sets how strict the trace is.
+    check_facts: str = "",
+    #: Attached and carried files' text: what the answer's values may come from too.
+    check_material: str = "",
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -4379,6 +4694,7 @@ async def _run_turn(
     actual_model = model["id"]
     server_abstention = False
     tool_result_answer = False
+    length_check: dict | None = None
 
     # Set by the stop button, not by a closed socket.
     stopping = asyncio.Event()
@@ -4425,6 +4741,7 @@ async def _run_turn(
     )
     masker = governance.mask_legacy if legacy_masking else governance.mask
     strict_local = _strict_model(model)
+    ctx.strict_local = strict_local
     cost_routing = dict((routing or {}).get("costRouting") or {}) or None
 
     def classify_tool_output(value: str) -> list[dict[str, Any]]:
@@ -4608,6 +4925,57 @@ async def _run_turn(
         normalized = units.fix_magnitude_slips(normalized, first_user_message)
         # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        # A cover letter's 「[제출용 답안 n]」 blocks (or its numbered question headings) are
+        # measured by code against the stated limits and rewritten up to twice when out of
+        # range; the counts go under the answer.
+        material_text = _material_text(messages)
+        if check_keys:
+            # Every value the answer states traces to the person's words and files or to what
+            # the tools computed this turn and earlier; the rest become bracket blanks.
+            traced = check_skills.ground(
+                check_keys, normalized, material=f"{material_text}\n{check_material}",
+                computed=[*ctx.outputs, *(str(m.get("content") or "") for m in messages
+                                          if m.get("role") == "assistant")],
+                options=check_skills.options_for(check_facts, _today()),
+            )
+            if traced.found:
+                normalized = traced.text
+                ground_step = {
+                    "category": "thinking", "id": "grounding",
+                    "label": f"근거 없는 값 {len(traced.found)}개 → 빈칸",
+                    "status": "error" if traced.left else "done",
+                    "detail": traced.summary[:1500],
+                }
+                steps = [row for row in steps if row.get("id") != "grounding"] + [ground_step]
+                yield chat_service.sse({"type": "step", **ground_step})
+        if cover_letter.blocks(normalized, ctx.request, material_text):
+            yield chat_service.sse({"type": "step", "category": "thinking", "id": "text_fit",
+                                    "label": "글자 수 재는 중", "status": "running"})
+            try:
+                fitted = await cover_letter.post_process(
+                    normalized, request=ctx.request, material=material_text,
+                    complete=report_service._complete, model=model["id"], api_key=api_key,
+                    usage=usage, judge=judge_model,
+                )
+            except Exception:  # noqa: BLE001 — the answer stands unmeasured; the step says so
+                log.exception("cover letter post-processing failed for session %s", session_id)
+                fitted = None
+            if fitted is not None:
+                normalized = fitted.content
+                length_check = cover_letter.wire(fitted)
+            fit_step = {
+                "category": "thinking", "id": "text_fit",
+                "label": "글자 수(코드 측정)" if fitted is not None and fitted.rows
+                else "글자 수 기준 없음" if fitted is None else "자료 대조",
+                "status": "error" if fitted is not None and (
+                    fitted.flags or fitted.repeats
+                    or any(r.get("status") != "ok" for r in fitted.rows)
+                ) else "done",
+                **({"detail": fitted.detail[:1500]}
+                   if fitted is not None and fitted.detail else {}),
+            }
+            steps = [row for row in steps if row.get("id") != "text_fit"] + [fit_step]
+            yield chat_service.sse({"type": "step", **fit_step})
         if normalized != content:
             # The client retracts the first match, so replace the complete answer.
             yield chat_service.sse({"type": "retract", "text": content})
@@ -4616,6 +4984,7 @@ async def _run_turn(
         routing = {
             **(routing or {}),
             "accuracy": freshness.accuracy_metadata(model, actual_model),
+            **({"lengthCheck": length_check} if length_check else {}),
         }
         yield chat_service.sse({"type": "privacy_route", **routing})
     if failed == "stopped" and not any(usage.values()) and not skip_completion_work:
@@ -6122,6 +6491,8 @@ async def _revise_document(
     routing: dict[str, Any] | None = None,
     plan: revise.Plan | None = None,
     planner: dict | None = None,
+    #: Formats asked for in the same turn (「견적 고치고 PDF로」), handed over after the edit.
+    export_after: list[str] | None = None,
 ) -> AsyncIterator[str]:
     """Applies one instruction to the document on screen.
 
@@ -6308,7 +6679,37 @@ async def _revise_document(
         )
 
     changed = changed if by_hand else 0
-    for index in plan.targets:
+    # A follow-up that changes a criterion, figure, date or decision is revised wherever the
+    # document states or rests on it, the summary and conclusion included; the format's
+    # pre-pass runs again with it so the rewrites get the settled values.
+    order = list(plan.targets)
+    widened: list[int] = []
+    revision_pre = None
+    doc_format = str((data.get("titleBlock") or {}).get("format") or "")
+    if not by_hand and not is_deck and consistency.changes_content(instruction):
+        widened = consistency.dependents(
+            instruction, names, [str(p.get("content") or "") for p in parts], order)
+        order += widened
+        given = "\n\n".join(
+            x for x in (report_service._request_material(request), *material) if x.strip())
+        revision_pre = await consistency.settle_again(
+            doc_format, request, instruction, given, model=model["id"], api_key=api_key)
+        if revision_pre is not None and revision_pre.runs:
+            ran = [r["skill"] for r in revision_pre.runs if not r.get("skipped")]
+            yield chat_service.sse({
+                "type": "step", "id": "prepass", "status": "done",
+                "label": "사전 계산(수정 반영): " + ", ".join(dict.fromkeys(ran)) if ran
+                else "사전 계산(수정 반영) 건너뜀",
+                "detail": " · ".join(f"{r['skill']}: {r['summary']}"
+                                     for r in revision_pre.runs)[:1500],
+            })
+        if widened:
+            yield chat_service.sse({
+                "type": "step", "id": "route", "status": "done",
+                "label": "함께 고칠 곳: " + " · ".join(names[i] for i in widened),
+            })
+    settled_blocks = consistency.blocks_for_rewrite(revision_pre)
+    for index in order:
         part = parts[index]
         label = names[index] or f"{index + 1}"
         yield chat_service.sse(
@@ -6327,6 +6728,8 @@ async def _revise_document(
                     typed=instruction,
                     notes_only=revise.notes_only(instruction),
                 )
+                if revise.meta_talk(" ".join(_strings(written))):
+                    raise ValueError("본문 대신 대화 답이 나옴")
                 parts[index] = written
                 yield chat_service.sse({"type": "slide", "slide": written, "done": True})
             else:
@@ -6340,14 +6743,20 @@ async def _revise_document(
                     # The planner's paraphrase first, then the words as typed, so a detail
                     # the paraphrase dropped still lands.
                     note=(
-                        f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
+                        consistency.dependent_note(instruction)
+                        if index in widened
+                        else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
                         f"{instruction.strip()[:400]}"
                     ),
                     sources=list(data.get("sources") or []),
-                    material=material,
+                    material=[*material, *settled_blocks],
+                    doc_format=doc_format,
                 )
                 if not body.strip():
                     raise ValueError("빈 결과")
+                if revise.meta_talk(body):
+                    # A reply to the person is not the part; the part stays as it was.
+                    raise ValueError("본문 대신 대화 답이 나옴")
                 # A figure the section had stays unless the rewrite drew a new one or the
                 # person asked for it to go.
                 body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
@@ -6374,9 +6783,15 @@ async def _revise_document(
                         for p in parts[:index]
                         if not is_deck
                     ]
-                    body = report_service.trim_restatements(body, earlier)[0]
+                    gaejo = any(
+                        f.id == (data.get("titleBlock") or {}).get("format") and f.lists == "gaejo"
+                        for f in doc_formats.FORMATS
+                    )
+                    body = report_service.trim_restatements(body, earlier, keep_items=gaejo)[0]
+                body = internal_words.scrub(body)
                 # The rewrite is Markdown; an old `html` flag would show literal asterisks.
-                renamed = revise.requested_title(instruction) if len(plan.targets) == 1 else None
+                renamed = (revise.requested_title(instruction)
+                           if len(plan.targets) == 1 and index not in widened else None)
                 parts[index] = {
                     **part,
                     **({"heading": renamed} if renamed else {}),
@@ -6415,8 +6830,34 @@ async def _revise_document(
         yield chat_service.sse({"type": "done"})
         return
 
+    aligned_step: dict | None = None
+    if order and not is_deck and consistency.changes_content(instruction):
+        # One named figure, total, date or recommendation written two ways across parts is
+        # found by code, repaired once and read again; what stays is said in the step.
+        before_parts = [str(p.get("content") or "") for p in parts]
+        try:
+            parts, aligned_step, spent = await consistency.align(
+                parts, changed=set(plan.targets), instruction=instruction, request=request,
+                material="\n\n".join(material), pre=revision_pre, model=model["id"],
+                api_key=api_key)
+            usage["inputTokens"] += int(spent.get("inputTokens", 0))
+            usage["outputTokens"] += int(spent.get("outputTokens", 0))
+        except Exception:  # noqa: BLE001 — the revision stands; the step says it was not read
+            log.exception("revision consistency check failed")
+            aligned_step = {"type": "step", "id": "consistency", "status": "error",
+                            "label": "앞뒤 맞춤 검사 실패"}
+        for index, part in enumerate(parts):
+            if str(part.get("content") or "") != before_parts[index]:
+                yield chat_service.sse({
+                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
+                    "content": part.get("content"), "done": True,
+                })
+        yield chat_service.sse(aligned_step)
+
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     artifact_id: str | None = None
+    reply = ""
+    handed: dict | None = None
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
@@ -6437,14 +6878,26 @@ async def _revise_document(
                 data=data,
             )
             session.artifact_id = artifact_id
+            reply = f"{changed}곳을 고쳤습니다."
+            if export_after is not None:
+                await db.flush()
+                revised = await db.get(Artifact, artifact_id)
+                if revised is not None:
+                    handed, said = await _export_files(
+                        revised, export_after, user_id=user_id, session_id=session_id
+                    )
+                    reply = f"{reply} {said}"
             db.add(
                 Message(
                     session_id=session_id,
                     role=Role.assistant,
-                    content=f"{changed}곳을 고쳤습니다.",
+                    content=reply,
                     usage={**usage, "credits": credits},
                     model=model["id"],
                     routing=routing,
+                    steps=[x for x in (
+                        {k: v for k, v in (aligned_step or {}).items() if k != "type"}, handed
+                    ) if x] or None,
                 )
             )
             settle(
@@ -6462,13 +6915,148 @@ async def _revise_document(
 
     if artifact_id:
         yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+    if export_after is not None and artifact_id:
+        if handed:
+            yield chat_service.sse({"type": "step", **handed})
+        yield chat_service.sse({"type": "delta", "text": reply})
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "done"})
+
+
+def _strings(value: Any) -> list[str]:
+    """Every string inside a slide, for a check that reads its words."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+_FORMAT_NAMES = {
+    "pdf": "PDF",
+    "hwpx": "한글(HWPX)",
+    "docx": "Word(DOCX)",
+    "pptx": "PowerPoint(PPTX)",
+    "md": "마크다운",
+}
+
+
+async def _export_files(
+    artifact: Artifact, formats: list[str], *, user_id: str, session_id: str
+) -> tuple[dict | None, str]:
+    """The document as the asked formats, kept as chat files: the step that carries
+    their download chips (`None` when none was made) and what the reply says.
+
+    Uses the 파일 탭's exporters; the document itself is not touched.
+    """
+    offered = export_formats(artifact)
+    wanted = list(dict.fromkeys(formats)) or list(offered[:1])
+    makeable = [f for f in wanted if f in offered]
+    refused = [f for f in wanted if f not in offered]
+    outputs: list[dict] = []
+    failed: list[str] = []
+    for fmt in makeable:
+        try:
+            body, name = await artifact_file(artifact, fmt)
+            outputs.append(await sandbox.store_output(user_id, session_id, name, body))
+        except Exception as exc:  # noqa: BLE001 — one format failing still hands the others over
+            log.warning("export %s of %s failed: %s", fmt, artifact.id, logs.safe(exc))
+            failed.append(fmt)
+    said: list[str] = []
+    if outputs:
+        said.append(
+            " · ".join(f"「{row['name']}」" for row in outputs)
+            + " 파일을 만들었습니다. 아래에서 내려받으세요."
+        )
+    if refused:
+        what = "슬라이드는" if "pptx" in offered else "이 문서는"
+        names = ", ".join(_FORMAT_NAMES.get(f, f) for f in refused)
+        said.append(
+            f"{what} {names}(으)로 내보낼 수 없습니다. "
+            f"가능한 형식: {', '.join(_FORMAT_NAMES.get(f, f) for f in offered)}."
+        )
+    if failed:
+        said.append(
+            f"{', '.join(_FORMAT_NAMES.get(f, f) for f in failed)} 파일은 만들지 못했습니다. "
+            "파일 탭 → 내보내기에서 다시 받아 주세요."
+        )
+    step = (
+        {
+            "id": "export",
+            "label": f"파일 {len(outputs)}개 만듦",
+            "status": "done",
+            "detail": " · ".join(_FORMAT_NAMES.get(f, f) for f in makeable if f not in failed),
+            "outputs": outputs,
+        }
+        if outputs
+        else None
+    )
+    return step, " ".join(said)
+
+
+async def _hand_over_document(
+    *,
+    user_id: str,
+    session_id: str,
+    formats: list[str],
+    routing: dict[str, Any] | None = None,
+) -> AsyncIterator[str]:
+    """Answers a turn that only asks for the document as a file.
+
+    Never revises: the artifact and its version stay as they are.
+    """
+    if routing:
+        yield chat_service.sse({"type": "privacy_route", **routing})
+    yield chat_service.sse(
+        {"type": "step", "id": "export", "label": "파일 만드는 중", "status": "running"}
+    )
+    async with SessionLocal() as db:
+        session = await db.get(ChatSession, session_id)
+        artifact = (
+            await db.get(Artifact, session.artifact_id) if session and session.artifact_id else None
+        )
+        if session is None or artifact is None or not artifact.data:
+            yield chat_service.sse(
+                {"type": "step", "id": "export", "label": "파일 만들기", "status": "error"}
+            )
+            yield chat_service.sse({"type": "error", "message": "내보낼 문서를 찾지 못했습니다."})
+            yield chat_service.sse({"type": "done"})
+            return
+        step, said = await _export_files(
+            artifact, formats, user_id=user_id, session_id=session_id
+        )
+        if step is None:
+            said = said or "파일을 만들지 못했습니다. 파일 탭 → 내보내기에서 받아 주세요."
+        db.add(
+            Message(
+                session_id=session_id,
+                role=Role.assistant,
+                content=said,
+                usage={"inputTokens": 0, "outputTokens": 0, "credits": 0},
+                routing=routing,
+                steps=[step] if step else None,
+            )
+        )
+        session.updated_at = utcnow()
+        db.add(session)
+        await db.commit()
+    yield chat_service.sse(
+        {"type": "step", **step}
+        if step
+        else {"type": "step", "id": "export", "label": "파일 만들기", "status": "error"}
+    )
+    yield chat_service.sse({"type": "delta", "text": said})
+    yield chat_service.sse({"type": "usage", "inputTokens": 0, "outputTokens": 0, "credits": 0})
     yield chat_service.sse({"type": "done"})
 
 
 async def _run_report(
     *,
     template: design_templates.DesignTemplate | None = None,
+    #: The agent's bound `doc_formats` id; the 서식's own format wins over it.
+    format_id: str | None = None,
     outline_model: dict | None = None,
     #: `None` plans and offers; anything else is written as approved.
     approved_plan: dict | None = None,
@@ -6501,6 +7089,8 @@ async def _run_report(
     #: A restructure: the artifact whose untouched parts are carried over after writing.
     carry_from: str | None = None,
     carry_note: str = "",
+    #: Check skills the agent and the 서식 attach; None leaves it to the 서식.
+    check_keys: tuple[str, ...] | None = None,
 ) -> AsyncIterator[str]:
     """Drives one report to completion and settles it. The document is an artifact with versions."""
     sections: list[dict] = []
@@ -6535,6 +7125,10 @@ async def _run_report(
             trusted_context=trusted_context,
             untrusted_context=untrusted_context,
             project_sources=project_sources,
+            template_id=template.id if template else None,
+            format_id=format_id,
+            design_tokens=design_tokens,
+            check_keys=check_keys,
         )
         async for event in stream:
             if event["type"] in ("proposal", "needs"):

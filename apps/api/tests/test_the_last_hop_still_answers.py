@@ -524,3 +524,173 @@ def test_an_answer_written_twice_around_a_tool_is_recognised() -> None:
     )
     assert agent._repeats(first, "검증했습니다.\n\n" + first + "\n\n결과가 맞습니다.")
     assert not agent._repeats(first, "시뮬레이션 결과 두 과목이 남았습니다.")
+
+
+_DRAFT = (
+    "**결론부터**\n- 이번 학기 평균 평점: 참여 3.43, 미참여 3.44 — 차이가 0.01로 사실상 같음.\n"
+    "- 학년별로는 1학년만 참여(3.30)가 미참여(2.96)보다 높음.\n\n**데이터 정리**\n"
+    "- 원본 198행 → 완전 동일 중복 3건 제거 → 195행.\n"
+    "- 공과대학 55행은 100점 환산으로 들어와 있어 4.5 만점으로 환산해 통합.\n"
+    + "".join(f"| {g}학년 | {10 + g} | 3.{20 + g} | {40 + g} | 2.{90 + g} | +0.{30 + g} |\n"
+              for g in range(1, 5))
+    + "참여·미참여는 무작위 배분이 아니라 학생 스스로 선택한 것이므로 단정할 수 없습니다.\n"
+)
+_FINAL = (
+    "**결론**\n- 이번 학기 평균 평점: 참여 3.469, 미참여 3.303 — 참여가 0.166 높음.\n"
+    "- 원본 253행 → 중복 3건 제거 → 250행, 휴학 4행 제외 → 분석 246행.\n"
+    "- 직전 학기 평점도 참여 3.469, 미참여 3.247로 참여자가 원래 성적이 높았습니다.\n"
+    + "".join(f"| {g}학년 | {g * 6} | 3.{500 + g} | {70 - g * 9} | 3.{100 + g * 7} |\n"
+              for g in range(1, 5))
+    + "자발적 참여라 인과는 알 수 없고, 기선 격차가 대부분을 설명합니다.\n"
+)
+
+
+def _say(text: str) -> str:
+    return 'data: {"choices":[{"delta":{"content":' + json.dumps(text, ensure_ascii=False) + "}}]}"
+
+
+def _two_hop(first: str, final: str):
+    first_line, final_line = _say(first), _say(final)
+
+    class _Drafting(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            self._seen.append(json)
+            if len(self._seen) == 1:
+                return _Response([
+                    first_line,
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1",'
+                    '"function":{"name":"lookup","arguments":"{}"}}]}}]}',
+                    "data: [DONE]",
+                ])
+            return _Response([final_line, "data: [DONE]"])
+
+    return _Drafting
+
+
+async def _run_two_hop(monkeypatch, first: str, final: str):
+    seen: list[dict] = []
+    cls = _two_hop(first, final)
+
+    async def client(*_args, **_kwargs):
+        return cls(seen)
+
+    monkeypatch.setattr(agent, "_client", client)
+
+    async def lookup(_args):
+        return ToolResult(content="253행, 참여 3.469, 미참여 3.303")
+
+    tool = Tool(
+        name="lookup", description="찾는다", parameters={"type": "object"}, run=lookup, label="찾기"
+    )
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "튜터링 참여 학생 평점 비교해 줘"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    visible = ""
+    for event in events:
+        if event["type"] == "delta":
+            visible += event["text"]
+        elif event["type"] == "retract":
+            visible = visible.replace(event["text"], "", 1)
+    return events, visible, seen
+
+
+@pytest.mark.asyncio
+async def test_figures_written_before_the_tool_answered_are_withdrawn(monkeypatch) -> None:
+    """data-analysis-5: a draft 「198행 … 3.43 vs 3.44」 before run_code is not the answer."""
+    events, visible, seen = await _run_two_hop(monkeypatch, _DRAFT, _FINAL)
+    assert visible == _FINAL
+    assert any(e["type"] == "retract" and e["text"] == _DRAFT for e in events)
+    # The guessed figures do not anchor the hop that reads the tool result either.
+    assert "198행" not in json.dumps(seen[1]["messages"], ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_a_draft_stays_when_the_last_hop_says_next_to_nothing(monkeypatch) -> None:
+    answer = _FINAL + "\n**한계**\n" + "".join(
+        f"- 확인할 것 {n}: 직전 학기 평점·학년·단과대학으로 맞춘 비교가 필요합니다.\n"
+        for n in range(1, 4)
+    )
+    assert len(answer) >= agent._NARRATION_CHARS
+    _events, visible, _seen = await _run_two_hop(monkeypatch, answer, "차트를 붙였습니다.")
+    assert visible.startswith(answer.rstrip())
+    assert visible.endswith("차트를 붙였습니다.")
+
+
+@pytest.mark.asyncio
+async def test_a_turn_without_tools_is_unchanged(monkeypatch) -> None:
+    line = _say(_FINAL)
+
+    class _Plain(_Client):
+        def stream(self, _method: str, _path: str, *, json: dict) -> _Response:
+            return _Response([line, "data: [DONE]"])
+
+    async def client(*_args, **_kwargs):
+        return _Plain([])
+
+    monkeypatch.setattr(agent, "_client", client)
+    events = [
+        event
+        async for event in agent.run_turn(
+            "vendor/model",
+            [{"role": "user", "content": "평점 비교"}],
+            [],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    assert not any(e["type"] == "retract" for e in events)
+    assert "".join(e["text"] for e in events if e["type"] == "delta") == _FINAL
+
+
+@pytest.mark.asyncio
+async def test_the_stored_answer_is_the_post_tool_answer_only(monkeypatch) -> None:
+    """data-analysis-5 r2 stored both 「결론」 blocks; only the one after run_code stays."""
+    from test_privacy import _external_model
+    from test_tool_result_answer import _database
+
+    from app.models.chat import Message
+    from app.routers import sessions as sessions_router
+
+    user, session, _, _, added = _database(monkeypatch)
+    hops = []
+
+    async def stream(*_args, **_kwargs):
+        acc = agent._Accumulator()
+        if not hops:
+            acc.content = [_DRAFT]
+            acc.calls[0] = {"id": "c1", "name": "lookup", "arguments": "{}"}
+            hops.append(1)
+            yield "delta", _DRAFT
+        else:
+            acc.content = [_FINAL]
+            yield "delta", _FINAL
+        yield "done", acc
+
+    async def lookup(_args):
+        return ToolResult(content="253행, 참여 3.469, 미참여 3.303")
+
+    async def nothing(**_kwargs):
+        return None
+
+    monkeypatch.setattr(agent, "_stream_once", stream)
+    monkeypatch.setattr(sessions_router, "_store_artifacts", nothing)
+    monkeypatch.setattr(sessions_router, "_enrich_memory", nothing)
+    monkeypatch.setattr(sessions_router, "record_searches", lambda *_a, **_k: None)
+    monkeypatch.setattr(sessions_router, "settle", lambda *_a, **_k: None)
+    tool = Tool(name="lookup", description="찾는다", parameters={"type": "object"},
+                run=lookup, label="찾기", source="builtin", read_only=True)
+    chunks = [chunk async for chunk in sessions_router._run_turn(
+        user_id=user.id, api_key="k", auto_memory=False, session_id=session.id,
+        model={**_external_model("synthetic/paid"), "inputCreditCost": 1, "creditCost": 1},
+        messages=[{"role": "user", "content": "튜터링 참여 학생 평점 비교해 줘"}],
+        tools=[tool], first_user_message="튜터링 참여 학생 평점 비교해 줘", is_first_turn=False,
+    )]
+    stored = next(row for row in added if isinstance(row, Message))
+    assert stored.content == _FINAL
+    assert "198행" not in stored.content
+    assert any('"retract"' in chunk for chunk in chunks)

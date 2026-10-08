@@ -194,6 +194,7 @@ async def plan(
         "inputTokens": int(raw.get("prompt_tokens") or 0),
         "outputTokens": int(raw.get("completion_tokens") or 0),
     }
+    decided = within_named_parts(decided, parts, message)
     decided = named_target(into_existing_part(decided, parts, message), parts, message)
     decided = count_change(decided, parts, message)
     decided = notes_everywhere(decided, parts, message)
@@ -208,6 +209,116 @@ _START_OVER = re.compile(
 
 def obviously_new(message: str) -> bool:
     return bool(_START_OVER.search(message))
+
+
+#: What people call each export format. 「한글」 alone is also the language (「한글로 써
+#: 줘」), so it counts as the format only next to a file word or a hand-over verb.
+_FORMAT_WORDS = (
+    ("pdf", r"PDF|피디에프"),
+    (
+        "hwpx",
+        r"HWPX?|한컴|한글\s{0,2}(?=파일|문서|형식|포맷|버전)|"
+        r"한글(?=\s{0,2}(?:로|으로|도)\s{0,2}(?:줘|주세요|주시|주라|받|내려|같이|함께|둘|[,.!]|$)|"
+        r"\s{0,2}(?:이랑|랑|하고|와|과)\s{0,8}(?:PDF|워드|DOCX?|파일))",
+    ),
+    ("docx", r"DOCX?|워드|MS\s{0,2}워드|Word"),
+    ("pptx", r"PPTX?|파워\s{0,2}포인트|피피티"),
+    ("md", r"마크다운|Markdown"),
+)
+#: The format word's tail, up to where a hand-over ends: 「PDF로 줘」 「한글 파일도 같이」
+#: 「워드 파일로 바꿔 줘」 「한글 파일이랑 PDF」. 「PDF 첨부 자료의 …」 is not one.
+_FORMAT_TAIL = (
+    r"(?:\s{0,2}(?:파일|문서|형식|포맷|버전|본))?\s{0,2}"
+    r"(?:(?:이랑|랑|하고|와|과|및|[,/·])|(?:로|으로|도|만)?"
+    r"(?:\s{0,2}(?:같이|함께|둘\s{0,2}다|모두|전부))?"
+    r"(?:\s{0,2}(?:바꿔|변환해|저장해|뽑아|빼|내보내|출력해|만들어)\S{0,3})?"
+    r"(?=\s{0,2}(?:줘|주세요|주시|주라|주면|줄래|달라|받|내려|보내|부탁|좀|둘|같이|함께|"
+    r"[.!?,~]|$)))"
+)
+_FORMAT_ASK = [
+    (name, re.compile(rf"(?<![A-Za-z])(?:{words})(?![A-Za-z]){_FORMAT_TAIL}", re.I))
+    for name, words in _FORMAT_WORDS
+]
+#: A file asked for without naming its format.
+_FILE_ASK = re.compile(
+    r"다운로드|다운\s{0,2}받|내려\s{0,2}받|내보내\s{0,2}(?:줘|주세요|주시|줄래|기)|파일로\s{0,2}(?:줘|주세요|주시|받|저장|뽑)|"
+    r"파일\s{0,2}(?:좀\s{0,2})?(?:줘|주세요|주시)|파일로\s{0,2}(?:만들어|변환)"
+)
+#: An edit asked for in the same turn: 「견적 고치고 PDF로」 still revises.
+_EDIT_ASK = re.compile(
+    r"고쳐|고치|수정|바꿔|바꾸|변경|추가|넣어|넣고|빼고|빼\s{0,2}줘|삭제|지워|줄여|줄이|늘려|늘리|"
+    r"다시\s{0,2}(?:써|쓰|작성)|보완|보강|반영|손봐|다듬|채워|합쳐|나눠|옮겨|맞춰|정정|"
+    r"써\s{0,2}(?:줘|주세요)|작성해|요약해|강조|틀렸|잘못"
+)
+#: Someone else's edit, reported rather than asked for: 「인사팀장님이 고쳐서 올린대」.
+_THIRD_PARTY_EDIT = re.compile(
+    r"[가-힣]{1,10}(?:님이|께서|이|가)\s{1,3}(?:직접\s{1,3})?(?:고쳐|수정해|손봐|바꿔|다듬어)서"
+)
+
+
+def export_request(message: str) -> tuple[list[str], bool] | None:
+    """The file formats a turn asks for, and whether it also asks for an edit.
+
+    `None` when it asks for no file. An empty list asks for a file without naming
+    the format. Order follows the words.
+    """
+    text = " ".join((message or "").split())[:600]
+    if not text:
+        return None
+    found: list[tuple[int, str]] = []
+    rest = text
+    for name, pattern in _FORMAT_ASK:
+        for match in pattern.finditer(text):
+            found.append((match.start(), name))
+        rest = pattern.sub(" ", rest)
+    generic = bool(_FILE_ASK.search(rest))
+    if not found and not generic:
+        return None
+    rest = _FILE_ASK.sub(" ", rest)
+    rest = _THIRD_PARTY_EDIT.sub(" ", rest)
+    formats = list(dict.fromkeys(name for _, name in sorted(found)))
+    edits = bool(_EDIT_ASK.search(rest))
+    if edits and not formats:
+        # 「다운로드 버튼 설명을 추가해 줘」 is about the document, not a file request.
+        return None
+    return formats, edits
+
+
+def export_only(message: str) -> list[str] | None:
+    """The formats of a turn that only asks for the document as a file; `None` otherwise."""
+    asked = export_request(message)
+    if asked is None or asked[1]:
+        return None
+    return asked[0]
+
+
+def without_export(message: str) -> str:
+    """The instruction with its file request removed, for the rewriter."""
+    text = " ".join((message or "").split())
+    for _, pattern in _FORMAT_ASK:
+        text = pattern.sub(" ", text)
+    return " ".join(_FILE_ASK.sub(" ", text).split()) or message
+
+
+#: A rewrite that answers the person instead of being the part: 「PDF로 보내드리기는
+#: 여기에서 직접 처리할 수 없습니다. 다만 아래에 견적 절 본문을 완성해 두었으니…」.
+_META_TALK = re.compile(
+    r"(?:여기|이곳|이\s{0,2}화면|채팅|대화)(?:에서|서)?\s{0,4}(?:는\s{0,4})?(?:직접\s{0,4})?"
+    r"(?:처리|보내|전달|제공|생성|변환|첨부|만들)\S{0,6}\s{0,4}(?:수\s{0,2}없|어렵|못\s)|"
+    r"(?:보내|전달해|첨부해|변환해)\s{0,2}드리기(?:는|가)|"
+    r"(?:파일|PDF|문서)\S{0,3}\s{0,3}(?:직접\s{0,3})?(?:보내|첨부|전달)\S{0,4}\s{0,2}(?:수\s{0,2}없|어렵)|"
+    r"붙여\s{0,2}넣으신\s{0,2}(?:뒤|후)|"
+    r"아래(?:에|와\s{0,2}같이)\s{0,4}[^\n]{0,30}(?:완성해|작성해|정리해|고쳐)\s{0,2}"
+    r"(?:두었으니|드렸으니|두었습니다만)",
+    re.I,
+)
+_META_OPENING = re.compile(r"^\s{0,4}(?:(?:네|알겠습니다|물론입니다)[,.!\s]|요청하신\s{0,2}대로)")
+
+
+def meta_talk(body: str) -> bool:
+    """Whether a rewritten part carries the assistant talking about the request."""
+    text = str(body or "")
+    return bool(_META_OPENING.search(text) or _META_TALK.search(text[:4000]))
 
 
 #: 「관리형 OpenSearch Service」를 「AWS OpenSearch Service」로 통일해 줘 — a term swap.
@@ -528,6 +639,29 @@ def into_existing_part(plan: Plan, parts: list[str], message: str) -> Plan:
             rf"{re.escape(short)}\s*(?:절|장|부분)?\s*(?:에|안에|속에|의)\s", text
         ):
             return Plan(scope="parts", targets=[index], note=plan.note, usage=plan.usage)
+    return plan
+
+
+#: Words about the skeleton itself: 「3장을 맨 앞으로」, 「절을 합쳐」, 「목차 순서」.
+_SKELETON_WORDS = re.compile(
+    r"\d\s{0,2}(?:장|절|번)|장을|장은|절을|슬라이드|섹션|목차|구성|순서|합쳐|나눠"
+)
+
+
+def within_named_parts(plan: Plan, parts: list[str], message: str) -> Plan:
+    """An `outline` plan whose words only move or add content inside parts it names
+    (「예산 부족분 얘기를 맨 위로 올리래. 붙임에 … 추가해 줘」) is a pass over the document
+    as it is: re-planning it dropped the memo the document was written from (gaejo-report-4)."""
+    if not plan.restructures or not parts:
+        return plan
+    text = " ".join((message or "").split())
+    if _SKELETON_WORDS.search(text):
+        return plan
+    for name in parts:
+        short = name.strip()
+        if short and re.search(rf"{re.escape(short)}\s{{0,2}}(?:에|안에|속에)\s", text):
+            return Plan(scope="whole", targets=list(range(len(parts))), note=plan.note,
+                        usage=plan.usage)
     return plan
 
 
@@ -923,4 +1057,15 @@ def label(plan: Plan, parts: list[str]) -> str:
     return f"고치는 중: {named}"[:120]
 
 
-__all__ = ["MAX_TARGETS", "Plan", "label", "obviously_new", "outline_block", "plan"]
+__all__ = [
+    "MAX_TARGETS",
+    "Plan",
+    "export_only",
+    "export_request",
+    "label",
+    "meta_talk",
+    "obviously_new",
+    "outline_block",
+    "plan",
+    "without_export",
+]

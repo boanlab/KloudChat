@@ -104,7 +104,11 @@ export function ProposalCard({
 
   if (pending.stage === 'clarify') {
     const questions = pending.questions ?? []
-    const answered = questions.every((q) => picked[q.id])
+    // A question with no options is answered in its own box, and may be left empty.
+    const typed = (id: string) => (picked[id] ?? '').trim()
+    const answered =
+      questions.every((q) => q.options.length === 0 || picked[q.id]) &&
+      questions.some((q) => typed(q.id))
     return (
       <Shell tone="warn" icon={<FileWarning size={15} />} title={t('시작하기 전에')}>
         <div className="space-y-3">
@@ -112,6 +116,17 @@ export function ProposalCard({
             <div key={q.id}>
               <p className="text-base font-medium">{q.question}</p>
               {q.detail && <p className="mt-0.5 text-sm text-muted">{q.detail}</p>}
+              {q.options.length === 0 && (
+                <input
+                  value={picked[q.id] ?? ''}
+                  onChange={(e) =>
+                    setPicked((current) => ({ ...current, [q.id]: e.target.value }))
+                  }
+                  placeholder={t('알면 적어 주세요. 비워 두면 빈칸으로 둡니다')}
+                  aria-label={q.question}
+                  className="mt-1.5 w-full rounded-control border border-line bg-transparent px-2.5 py-1 text-base focus:border-accent focus:outline-none"
+                />
+              )}
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {q.options.map((option) => (
                   <button
@@ -139,7 +154,12 @@ export function ProposalCard({
               size="sm"
               disabled={streaming || !answered}
               title={answered ? undefined : t('먼저 위 항목을 골라 주세요')}
-              onClick={() => run({ answers: picked }, Object.values(picked).join(' · '))}
+              onClick={() => {
+                const given = Object.fromEntries(
+                  Object.entries(picked).filter(([, value]) => value.trim()),
+                )
+                run({ answers: given }, Object.values(given).join(' · '))
+              }}
             >
               {streaming ? <Loader2 size={13} className="animate-spin" /> : null}
               {t('이대로 계속')}

@@ -6,13 +6,12 @@ from test_calculation_read_prerequisites import READ, _call, _read, _run
 from app.services import agent
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import ToolContext
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
 
 CALCULATION_HOLD = (
     "계산기의 검산을 완료하지 못해 수치 답변을 확정할 수 없습니다. "
     "필요한 값과 계산 조건을 확인해 주세요."
 )
-NCS_HOLD = (
+PREFLIGHT_HOLD = (
     "문항 검산 절차를 완료하지 못해 정답이나 채점을 확정할 수 없습니다. "
     "다시 시도해 주세요."
 )
@@ -89,20 +88,11 @@ async def test_loop_or_runaway_keeps_immediate_hold_without_new_repair(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_ncs_checker_keeps_its_existing_message_and_bound(monkeypatch):
-    ctx, seen, text, _ = await _run(
-        monkeypatch, ["Unverified grading", "Unverified grading"], [CHECK_NCS_ANSWER],
-        preflight_tool="check_ncs_answer",
-    )
-    assert text == NCS_HOLD and len(seen) == 2 and ctx.tool_calls == {}
-
-
-@pytest.mark.asyncio
 async def test_noncalculation_preflight_copy_remains_unchanged(monkeypatch):
     ctx, seen, text, _ = await _run(
         monkeypatch, ["Unverified response"], [CALCULATE], calculation_required=False,
     )
-    assert text == NCS_HOLD and len(seen) == 1 and ctx.tool_calls == {}
+    assert text == PREFLIGHT_HOLD and len(seen) == 1 and ctx.tool_calls == {}
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,7 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ async def _whisper(
     if prompt.strip():
         form["prompt"] = prompt.strip()[:500]
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_TIMEOUT) as client:
             response = await client.post(
                 url, files={"file": (filename, data, "application/octet-stream")}, data=form
             )
@@ -199,6 +199,11 @@ async def _transcribe_via_openrouter(
         raise TranscribeError("음성 인식 서버에 연결하지 못했습니다.") from exc
     if response.status_code >= 400:
         log.warning("stt via openrouter %s: %s", response.status_code, response.text[:200])
+        if _unknown_model(response.text):
+            raise TranscribeError(
+                f"음성 인식 예비 모델({settings.stt_or_model})이 모델 목록에 없습니다. "
+                "STT_OR_MODEL을 확인해 주세요."
+            )
         raise TranscribeError("받아쓰지 못했습니다.")
     try:
         choices = (response.json() or {}).get("choices") or [{}]
@@ -208,6 +213,12 @@ async def _transcribe_via_openrouter(
     if not text or text.strip(" .\"'") == _NO_SPEECH:
         raise TranscribeError("들린 말이 없습니다.")
     return text
+
+
+def _unknown_model(body: str) -> bool:
+    """LiteLLM's answer for a model id missing from its model list."""
+    low = body[:2000].lower()
+    return "invalid model name" in low or "model_not_found" in low
 
 
 __all__ = ["MAX_BYTES", "TranscribeError", "available", "transcribe"]

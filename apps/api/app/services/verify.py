@@ -26,6 +26,8 @@ _REPAIR_PROMPT = """보고서의 문장들에 문제가 있다. 항목마다 그
 - 문제로 지적된 부분만 고친다. 나머지 내용·어조·길이는 그대로 둔다.
 - 인용 번호 [n]은 그대로 둔다. 근거 자료가 주어진 항목은 그 자료의 번호를 붙여도 된다.
 - 표의 행(「|」로 시작)은 같은 칸 수의 행으로 답한다.
+- 자료에 없는 이름·날짜·금액·수치는 지어내지 말고 「[담당자]」 「[기한]」 「[금액]」처럼
+  그 자리 이름을 대괄호로 둔다. 이미 있는 대괄호 빈칸은 그대로 둔다.
 - 지적이 틀렸다고 판단되면(다른 경우를 말하는 문장 등) 원문을 그대로 답한다.
 
 자료(요청과 앞 대화에서 정한 값):
@@ -66,6 +68,8 @@ class Doc:
     request: str = ""
     sources: list[dict] = field(default_factory=list)
     settled: list = field(default_factory=list)
+    #: `key_figures.Conflict`s: two values the material itself gives; never merged into one.
+    conflicts: list = field(default_factory=list)
 
 
 #: A check reads the document and names what it finds; a model check may spend tokens.
@@ -83,7 +87,7 @@ async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
     """Every check's findings merged to one per sentence, worst first."""
     usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
     results = await asyncio.gather(*(check(doc) for check in checks), return_exceptions=True)
-    merged: dict[tuple[int, str], Finding] = {}
+    merged: dict[tuple[int, str, bool], Finding] = {}
     for check, result in zip(checks, results, strict=True):
         if isinstance(result, BaseException):
             log.warning("check %s failed: %r", getattr(check, "__name__", check), result)
@@ -91,7 +95,8 @@ async def find(doc: Doc, checks: list[Check]) -> tuple[list[Finding], dict]:
         findings, spent = result
         _add(usage, spent)
         for f in findings:
-            key = (f.section, f.sentence)
+            # A judged finding is never folded into one the repair would rewrite on its word.
+            key = (f.section, f.sentence, f.auto)
             if key not in merged:
                 merged[key] = f
             elif f.why not in merged[key].why:
@@ -212,7 +217,7 @@ async def verify_and_repair(
     shown = [f for f in left if not f.auto and f.sentence in "\n".join(
         str(s.get("content") or "") for s in sections)]
     # Re-check with the free code checks only.
-    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled)
+    again = Doc(sections, doc.material, doc.request, doc.sources, doc.settled, doc.conflicts)
     remaining, spent = await find(again, [c for c in checks if not getattr(c, "uses_model", False)])
     _add(usage, spent)
     return sections, remaining + shown, usage

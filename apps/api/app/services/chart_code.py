@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store, thinking
+from app.services import settings_store, thinking, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +157,7 @@ async def _run(code: str) -> tuple[bytes | None, str]:
     root = backends.exec.rstrip("/")
     headers = {"x-api-key": settings.code_interpreter_api_key}
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+        async with tools_gateway.client(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
             response = await client.post(
                 f"{root}/exec", headers=headers, json={"code": code, "lang": "py"}
             )

@@ -25,10 +25,13 @@ _PROMPT = """아래 자료(앞선 대화와 첨부)에서, 이것으로 쓸 문�
 
 규칙:
 - 값은 자료에 적힌 그대로(단위 포함).
-- 자료가 같은 이름에 서로 다른 값을 주면 그 이름은 뺀다.
 - 최대 {n}개. 각 항목:
   {{"name": "박스당 판매가", "value": "20,000원", "aliases": ["판매가", "객단가"]}}
   aliases는 문서에서 같은 값을 부를 다른 이름(2~6자).
+- 자료가 같은 이름에 서로 다른 값을 주면(옛 메일과 새 메일, 소개서와 측정치) 그 이름은 확정하지 말고
+  값마다 출처와 시점을 붙여 따로 적는다:
+  {{"name": "1TB 복구 시간", "values": [{{"value": "2시간", "where": "제품 소개서", "when": ""}},
+  {{"value": "4.5시간", "where": "독립 측정", "when": "2026-09"}}]}}
 
 자료:
 {material}
@@ -117,28 +120,189 @@ def _stated_after(name: str, text: str, unit: str) -> list[float]:
     return found
 
 
-def parse(text: str, material: str) -> list[Figure]:
-    """The model's list, kept to what the material gives and does not contest."""
+@dataclass(slots=True)
+class Conflict:
+    """One named figure the material gives two or more values for, each with where it came from.
+
+    Kept, never settled: the writer is shown every value, and no check rewrites one into another."""
+
+    name: str
+    #: `{"value", "where", "when", "line"}` per value, in the material's order.
+    values: list[dict] = field(default_factory=list)
+
+    def numbers(self) -> list[tuple[str, float]]:
+        out = []
+        for value in self.values:
+            out.extend(_loose(str(value.get("value") or "")))
+        return out
+
+
+MAX_CONFLICTS = 8
+
+
+def _line_with(material: str, name: str, value: str) -> str:
+    """The material line that gives `value` (by number and unit), the one naming `name` first."""
+    wanted = _loose(value)
+    lines = [line.strip() for line in (material or "").splitlines() if line.strip()]
+    holding = [line for line in lines
+               if wanted and any(u == wanted[0][0] and abs(v - wanted[0][1]) < 1e-6 * max(1.0, v)
+                                 for u, v in _loose(line))]
+    named = [line for line in holding if name and name in line]
+    return ((named or holding or [""])[0])[:240]
+
+
+_DATE_IN_LINE = re.compile(
+    r"20\d{2}[-./년]\s?\d{1,2}(?:[-./월]\s?\d{1,2})?|(?<!\d)\d{1,2}/\d{1,2}(?!\d)"
+)
+
+
+#: A conflicting value may be a time, a size or a score, not only what is settled.
+_LOOSE = re.compile(
+    rf"(?P<amount>{units._TERM})\s?(?P<unit>원|박스|명|가구|개월|회|건|개|%|세트|시간|분|초|일|주|년|"
+    r"TB|GB|MB|km|kWh|kg|점|배|석|대|곳)"
+)
+
+
+def _loose(text: str) -> list[tuple[str, float]]:
+    out = []
+    for m in _LOOSE.finditer(text or ""):
+        try:
+            out.append((m.group("unit"), units._ko_number(m.group("amount"))))
+        except ValueError:
+            continue
+    return out
+
+
+def _conflict(name: str, values: list[dict], material: str) -> Conflict | None:
+    kept: list[dict] = []
+    seen: list[object] = []
+    flat = re.sub(r"\s+", "", material or "")
+    given = _loose(material)
+    for row in values:
+        value = str(row.get("value") or "").strip()[:40]
+        if not value:
+            continue
+        stated = _loose(value)
+        if stated:
+            unit, number = stated[0]
+            if not any(u == unit and abs(v - number) < 1e-6 * max(1.0, number) for u, v in given):
+                continue
+            key: object = (unit, number)
+        elif re.sub(r"\s+", "", value) in flat:
+            key = re.sub(r"\s+", "", value)  # a word value (a region, a plan name), verbatim
+        else:
+            continue
+        if key in seen:
+            continue
+        seen.append(key)
+        line = _line_with(material, name, value) or next(
+            (ln.strip()[:240] for ln in material.splitlines() if value in ln), "")
+        when = str(row.get("when") or "").strip()[:30]
+        if not when and (stamp := _DATE_IN_LINE.search(line)):
+            when = stamp.group(0)
+        kept.append({"value": value, "where": str(row.get("where") or "").strip()[:60],
+                     "when": when, "line": line})
+    return Conflict(name[:30], kept) if len(kept) >= 2 else None
+
+
+def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
+    """The model's list, kept to what the material gives; a contested name becomes a conflict."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in (text or "") else "[]"
     try:
         rows = json.loads(block)
     except (json.JSONDecodeError, ValueError):
-        return []
+        return [], []
     figures: list[Figure] = []
+    conflicts: list[Conflict] = []
     seen: set[str] = set()
     for row in rows if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
         name, value = str(row.get("name") or "").strip(), str(row.get("value") or "").strip()
+        if not name or name in seen:
+            continue
+        if isinstance(row.get("values"), list):
+            listed = [v if isinstance(v, dict) else {"value": v} for v in row["values"]]
+            if found := _conflict(name, listed, material):
+                seen.add(name)
+                conflicts.append(found)
+            continue
         aliases = [
             str(a).strip() for a in (row.get("aliases") or []) if 2 <= len(str(a).strip()) <= 8
         ]
         figure = Figure(name[:30], value[:30], aliases[:4])
-        if not name or name in seen or not _given(figure, material) or _contested(figure, material):
+        if not _given(figure, material):
             continue
         seen.add(name)
+        if _contested(figure, material):
+            # Two values under one name: both kept as a conflict, neither settled.
+            others = [
+                {"value": units._ko_written(v, "") + figure.unit}
+                for n in figure.names for v in _stated_after(n, material, figure.unit)
+            ]
+            if found := _conflict(name, [{"value": figure.value}, *others], material):
+                conflicts.append(found)
+            continue
         figures.append(figure)
-    return figures[:MAX_FIGURES]
+    return figures[:MAX_FIGURES], conflicts[:MAX_CONFLICTS]
+
+
+def parse(text: str, material: str) -> list[Figure]:
+    """The model's list, kept to what the material gives and does not contest."""
+    return parse_all(text, material)[0]
+
+
+#: How each kind of document treats two values for one thing.
+_ADOPT = {
+    "comparison": (
+        "「자료와 충돌」 절에 두 값을 출처·시점·측정 조건과 함께 나란히 적고, 어느 값을 "
+        "왜 따랐는지(같은 조건 측정 > 최신 > 소개서) 한 줄로 밝힌다. 조건이 다르면 "
+        "채택하지 말고 「조건 다름」으로 둔다."
+    ),
+    "minutes": (
+        "나중 결정·나중 메일의 값이 최종이다. 최종값을 쓰고 「○○에서 변경」을 비고에 남긴다."
+    ),
+    "gaejo": "자료가 명시적으로 바꾼 같은 항목만 최신 값으로 쓰고, 바뀐 사실을 한 줄로 남긴다.",
+    "client_proposal": (
+        "어느 값을 전제로 썼는지 밝히고, 확인할 것은 「전제·제외 범위·위험」 또는 질의 "
+        "목록에 남긴다."
+    ),
+}
+
+
+def conflict_block(conflicts: list[Conflict], doc_format: str | None = None) -> str:
+    """The values the material disagrees on, as the writer is shown them."""
+    if not conflicts:
+        return ""
+    lines = []
+    for c in conflicts:
+        shown = " / ".join(
+            v["value"] + (f"({', '.join(x for x in (v.get('where'), v.get('when')) if x)})"
+                          if v.get("where") or v.get("when") else "")
+            + (f" — 「{v['line'][:100]}」" if v.get("line") else "")
+            for v in c.values
+        )
+        lines.append(f"- {c.name}: {shown}")
+    rule = _ADOPT.get(
+        doc_format or "",
+        "어느 값을 썼는지와 그 이유를 문장에 밝힌다. 다른 값을 지우거나 하나로 합치지 않는다.",
+    )
+    return (
+        "# 자료끼리 다른 값\n같은 것을 자료가 서로 다른 값으로 적었다. 확정 수치가 아니다. "
+        + rule + "\n" + "\n".join(lines)
+    )
+
+
+def explains(sentences: list[str], conflicts: list[Conflict]) -> bool:
+    """Whether two places giving one metric two values are a conflict the material itself has."""
+    for c in conflicts:
+        numbers = c.numbers()
+        if len(numbers) < 2:
+            continue
+        if all(any(any(u == cu and abs(v - cv) < 1e-6 * max(1.0, cv) for cu, cv in numbers)
+                   for u, v in _loose(s)) for s in sentences):
+            return True
+    return False
 
 
 def block(figures: list[Figure]) -> str:
@@ -189,7 +353,7 @@ def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float
                     if wrote and abs(wrote[0] - figure.number) > 1e-6 * max(1.0, figure.number):
                         found.append((stripped, figure, wrote[0]))
             continue
-        for piece in re.split(r"(?<=[.!?])\s+", stripped):
+        for piece in units.SENTENCE_BREAK.split(stripped):
             if _CASE.search(piece):
                 continue
             for figure in figures:
@@ -240,19 +404,30 @@ def mend_rows(text: str, figures: list[Figure]) -> str:
 HAS_VALUES = re.compile(r"\d[\d,]{0,20}\s?(?:만|억|조)?\s?(?:원|박스|명|가구|%)")
 
 
-async def settle(material: str, complete, model: str, api_key: str) -> tuple[list[Figure], dict]:
-    """The named figures `material` settles, asked of the model once.
+async def settle_all(
+    material: str, complete, model: str, api_key: str
+) -> tuple[list[Figure], list[Conflict], dict]:
+    """The named figures `material` settles and the ones it gives two values for.
 
     `complete` is `(model, messages, api_key, max_tokens) -> (text, usage)`."""
     if not material or not HAS_VALUES.search(material):
-        return [], {"inputTokens": 0, "outputTokens": 0}
+        return [], [], {"inputTokens": 0, "outputTokens": 0}
     text, spent = await complete(
         model,
         [{"role": "user", "content": _PROMPT.format(n=MAX_FIGURES, material=material[:12000])}],
         api_key,
-        900,
+        1200,
     )
-    return parse(text, material), spent
+    figures, conflicts = parse_all(text, material)
+    if conflicts:
+        log.info("conflicting figures kept: %s", logs.safe([c.name for c in conflicts]))
+    return figures, conflicts, spent
+
+
+async def settle(material: str, complete, model: str, api_key: str) -> tuple[list[Figure], dict]:
+    """The named figures `material` settles, asked of the model once."""
+    figures, _, spent = await settle_all(material, complete, model, api_key)
+    return figures, spent
 
 
 #: An amount that is an operand: next to 「×」 or 「÷」 — 「3,000박스 × 2,000원」.

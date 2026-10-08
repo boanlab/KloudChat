@@ -51,6 +51,7 @@ from app.services import (
     imagegen,
     key_figures,
     pictures,
+    placeholders,
     quality_gate,
     ratelimit,
     research,
@@ -437,6 +438,8 @@ _DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장�
   고정」) 내용을 지어내지 마라. 무엇을 정해야 하는지를 적는다 — 「환경 이름:
   프로젝트명-연도 꼴로 통일(연구실에서 정함)」처럼. 「4~12자」 「밑줄 불가」 같은
   세부는 요청에 없으면 없는 것이다.
+- 요청과 자료에 없는 이름·날짜·금액·수치는 지어내지 말고 「[담당자]」 「[일자]」
+  「[금액]」처럼 그 자리 이름을 대괄호로 둔다.
 - 이모지(1️⃣ ✅ 🚀)를 쓰지 마라. 번호가 필요하면 timeline 이나 「1.」 을 쓴다.
 - 요청에 없는 주제로 장을 채우지 마라. 구성에 그런 제목이 있으면 요청이 말한 것으로
   좁혀서 쓴다.
@@ -450,16 +453,16 @@ JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...
 #: form with blanks. See `report._FRAME_RULE`.
 _FRAME_RULE = (
     "**이 발표는 자료 없이 틀만 쓴다.** 요청에 없는 연구·프로젝트·결과·수치·이름을 어떤 "
-    "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「(여기에: 연구 "
-    "질문)」 같은 괄호 빈칸으로만 채우고, 노트는 그 장에서 무엇을 말해야 하는지 한두 "
+    "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「[연구 질문]」 "
+    "같은 대괄호 빈칸으로만 채우고, 노트는 그 장에서 무엇을 말해야 하는지 한두 "
     "문장으로 안내한다. metrics·chart·table 은 머리글과 빈 칸만."
 )
 
 #: `_FRAME_RULE` repeated at the end of the draft prompt with an example.
 _FRAME_TAIL = (
     "\n\n" + _FRAME_RULE + '\n예: {"title": "연구 질문", "layout": "bullets", '
-    '"bullets": ["(여기에: 연구 질문 1)", "(여기에: 연구 질문 2)", '
-    '"(여기에: 왜 이 질문인가)"], "notes": "이 장에서는 연구 질문을 하나씩 읽고 '
+    '"bullets": ["[첫째 연구 질문]", "[둘째 연구 질문]", '
+    '"[왜 이 질문인가]"], "notes": "이 장에서는 연구 질문을 하나씩 읽고 '
     '왜 지금 이 질문인지 한 문장으로 말한다."}'
 )
 
@@ -934,7 +937,8 @@ def _bullets_from_notes(notes: object, limit: int = 4) -> list[str]:
     took away: the notes carry the same content in sentences, and a slide with words
     beats 「이 장을 쓰지 못했습니다」."""
     text = " ".join(str(n) for n in notes) if isinstance(notes, list) else str(notes or "")
-    parts = [p.strip() for p in re.split(r"(?<=[.!?。])\s+|(?<=다\.)\s*", text) if p.strip()]
+    stops = r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s+|(?<=다\.)\s*"
+    parts = [p.strip() for p in re.split(stops, text) if p.strip()]
     return [p.rstrip(".。")[:60] for p in parts[:limit] if len(p) >= 4]
 
 
@@ -1989,7 +1993,9 @@ _DRAFT_CONTENT = (
 )
 
 
-_SENTENCE_OR_DROPPED_STOP = re.compile(r"(?<=[.!?。])\s+|\n+|(?<=습니다|입니다|합니다|됩니다)\s+")
+_SENTENCE_OR_DROPPED_STOP = re.compile(
+    r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s+|\n+|(?<=습니다|입니다|합니다|됩니다)\s+"
+)
 
 
 def _salvaged_bullets(data: dict) -> list[str]:
@@ -3036,7 +3042,8 @@ async def _write_slides(
     for index, slide in enumerate(slides):
         if any(f["code"] == "placeholder" for f in quality_gate.deck_findings([slide])):
             needs[index] = ("자리표시 문구(「(여기에 …)」 등)를 지우고 그 자리에 실제 내용을 "
-                            "채워라 — 퀴즈라면 문항과 보기, 정답과 해설까지.")
+                            "채워라 — 퀴즈라면 문항과 보기, 정답과 해설까지. 자료에 없는 이름·"
+                            "날짜·금액은 「[담당자]」 「[일자]」처럼 대괄호로 남긴다.")
     for index in sorted(needs):
         slide = slides[index]
         try:
@@ -3075,10 +3082,16 @@ async def _write_slides(
     findings = quality_gate.deck_findings(slides)
     if findings:
         log.warning("deck quality findings: %s", [(f["code"], f["where"]) for f in findings][:12])
+    # Bracket blanks (「[담당자]」) are gaps left for the person: counted, not defects.
+    blanks, named = placeholders.summary(
+        s for slide in slides for s in quality_gate._strings(
+            {k: v for k, v in slide.items() if k not in ("image", "diagram")}))
     yield {
         "type": "step", "id": "quality",
-        "label": "품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건",
+        "label": ("품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건")
+        + (f" · 빈칸 {blanks}개" if blanks else ""),
         "status": "done" if not findings else "error",
+        **({"detail": f"채울 빈칸: {named}"} if blanks else {}),
     }
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
@@ -3997,7 +4010,7 @@ def notes_grounded(notes: str, facts: set[str]) -> str:
     """The notes minus any sentence whose numbers are not the request's: 「개발자 10명
     기준 하루 1시간 20분」 is an effect the presenter never measured."""
     kept = []
-    for sentence in re.split(r"(?<=[.!?。])\s+", (notes or "").strip()):
+    for sentence in units.SENTENCE_BREAK.split((notes or "").strip()):
         if not sentence.strip():
             continue
         if _numbers_come_from(re.findall(r"\d[\d,.]*(?:\s*(?:만|억|천))?", sentence), facts):
@@ -4056,7 +4069,7 @@ def notes_only_given(notes: str, slide: dict, request: str) -> str:
         return notes
     allowed = _stems_ko(" ".join([request, *_slide_lines(slide), str(slide.get("title") or "")]))
     kept = []
-    for sentence in re.split(r"(?<=[.!?。])\s+", notes.strip()):
+    for sentence in units.SENTENCE_BREAK.split(notes.strip()):
         if not sentence.strip():
             continue
         if len(_claim_words(sentence, allowed)) <= 2:
@@ -4065,13 +4078,13 @@ def notes_only_given(notes: str, slide: dict, request: str) -> str:
 
 
 def _sentence_count(text: str) -> int:
-    return len([x for x in re.split(r"(?<=[.!?。])\s+", (text or "").strip()) if x.strip()])
+    return len([x for x in units.SENTENCE_BREAK.split((text or "").strip()) if x.strip()])
 
 
 def _join_notes(existing: str, added: str) -> str:
     """Existing notes followed by the added sentences they do not already say."""
-    have = [x.strip() for x in re.split(r"(?<=[.!?。])\s+", existing or "") if x.strip()]
-    for sentence in re.split(r"(?<=[.!?。])\s+", added or ""):
+    have = [x.strip() for x in units.SENTENCE_BREAK.split(existing or "") if x.strip()]
+    for sentence in units.SENTENCE_BREAK.split(added or ""):
         sentence = sentence.strip()
         said = any(sentence == h or (len(sentence) > 12 and sentence in h) for h in have)
         if sentence and not said:
@@ -4096,7 +4109,7 @@ def notes_without_echo(notes: str, slide: dict) -> str:
         if len(_bigrams(line)) < 8 and line != str(slide.get("title") or "")
     ]
     kept: list[str] = []
-    for sentence in re.split(r"(?<=[.!?。])\s+", notes.strip()):
+    for sentence in units.SENTENCE_BREAK.split(notes.strip()):
         sentence = sentence.strip()
         if not sentence:
             continue
@@ -4211,7 +4224,7 @@ def _words_under_figure(slide: dict) -> None:
             # or the sentence the figure was drawn from, stands under it.
             drawn_from = str((slide.get("diagram") or {}).get("description") or "")
             source = str(slide.get("notes") or "") or drawn_from
-            sentences = re.split(r"(?<=[.!?。다])\s+", source)
+            sentences = re.split(r"(?<=[.!?。다])" + units.NO_NUMBER_DOT_BREAK + r"\s+", source)
             lines = [x.strip() for x in sentences if len(x.strip()) >= 8][:2]
         slide["layout"] = "bullets"
         # A short list the person wrote out (five weekdays, four accounts) stays whole

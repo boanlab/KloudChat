@@ -34,7 +34,10 @@ async def metrics(doc: Doc):
     """One metric stated with two values in two places: each place is told the other."""
     report = _report()
     found = []
-    for group in report.metric_conflicts(doc.sections)[:4]:
+    # The material's own two values for one thing are shown side by side on purpose.
+    groups = [g for g in report.metric_conflicts(doc.sections)
+              if not key_figures.explains([s for _, s in g], doc.conflicts)]
+    for group in groups[:4]:
         sentences = [s for _, s in group]
         for index, sentence in group:
             others = " / ".join(s[:120] for s in sentences if s != sentence)
@@ -99,7 +102,7 @@ def judge_figures(judge: str, api_key: str) -> Check:
         if not doc.settled:
             return [], {}
         flagged, spent = await report.judge_figure_sentences(
-            doc.sections, doc.settled, judge=judge, api_key=api_key
+            doc.sections, doc.settled, judge=judge, api_key=api_key, material=doc.material
         )
         # Shown, not rewritten: the judge also flags passing mentions, and no rule can
         # confirm its rewrite.

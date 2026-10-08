@@ -341,6 +341,16 @@ interface State {
   /** Titles only; transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
   openSession: (id: string) => Promise<void>
+  /**
+   * Continues an agent chat on the report or slides surface with the same agent: opens the
+   * session, then sends `text` with the conversation (as a file) and the chat's files.
+   */
+  handOff: (
+    fromSessionId: string,
+    kind: 'report' | 'slides',
+    text: string,
+    opts?: Pick<SendOptions, 'webSearch' | 'onSession'> & { attachments?: FileRow[] },
+  ) => Promise<string>
   forkBeforeMessage: (sessionId: string, messageId: string) => Promise<{
     sessionId: string; attachments: FileRow[]; attachmentIdMap: Record<string, string>
   }>
@@ -1447,6 +1457,32 @@ export const useStore = create<State>((set, get) => ({
     if (!session.messages.some((message) => message.id === messageId && message.role === 'user' && message.persisted)) return
     set({ messageEdit: { sessionId, messageId } })
   },
+  handOff: async (fromSessionId, kind, text, opts = {}) => {
+    const owner = get().user?.id
+    const epoch = get().accountEpoch
+    const result = await sessionsApi.handoff(fromSessionId, kind)
+    if (!owner || owner !== get().user?.id || epoch !== get().accountEpoch || !get().authenticated) {
+      throw new Error('account_changed')
+    }
+    const row = toSession(result.session, [])
+    set((state) => ({
+      sessions: [row, ...state.sessions.filter((c) => c.id !== row.id)],
+      projects: row.projectId
+        ? state.projects.map((p) =>
+            p.id === row.projectId ? { ...p, sessionIds: [row.id, ...p.sessionIds] } : p,
+          )
+        : state.projects,
+    }))
+    const files = [...result.attachments, ...(opts.attachments ?? [])]
+      .filter((file, at, all) => all.findIndex((other) => other.id === file.id) === at)
+    return get().send(row.id, kind, text, {
+      projectId: row.projectId,
+      webSearch: opts.webSearch,
+      attachments: files.map((file) => file.id),
+      attachmentNames: files.map((file) => file.name),
+      onSession: opts.onSession,
+    })
+  },
   forkBeforeMessage: async (sessionId, messageId) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
@@ -1636,6 +1672,7 @@ export const useStore = create<State>((set, get) => ({
 
       await streamTurn(turnSet, get, id, text, model, {
         model: opts.model,
+        answers: opts.answers,
         retryOf,
         webSearch: opts.webSearch,
         attachments: opts.attachments,
@@ -2495,6 +2532,10 @@ export const useStore = create<State>((set, get) => ({
       tools: a.tools,
       skillIds: a.skillIds,
       kinds: a.kinds,
+      surface: a.surface,
+      renderTemplateId: a.renderTemplateId,
+      docFormat: a.docFormat,
+      designSystemId: a.designSystemId,
       guide: a.guide,
       starters: a.starters.map((x) => x.trim()).filter(Boolean),
       shareMode: a.shareMode,
@@ -2671,6 +2712,11 @@ function toStep(raw: Record<string, unknown>): Step {
     memories: raw.memories as Step['memories'],
     files: raw.files as Step['files'],
     memoriesWritten: raw.memoriesWritten as number | undefined,
+    outputs: raw.outputs as Step['outputs'],
+    code: typeof raw.code === 'string' ? raw.code : undefined,
+    codeAttempt: typeof raw.codeAttempt === 'number' ? raw.codeAttempt : undefined,
+    stdout: typeof raw.stdout === 'string' ? raw.stdout : undefined,
+    stderr: typeof raw.stderr === 'string' ? raw.stderr : undefined,
     totalMemories: raw.totalMemories as number | undefined,
     personal: raw.personal as string[] | undefined,
     estimatedTokens: raw.estimatedTokens as number | undefined,
@@ -2968,6 +3014,7 @@ function toSkill(s: SkillRow): Skill {
     originId: s.originId ?? null,
     version: s.version,
     updatedAt: s.updatedAt,
+    scripts: s.scripts ?? [],
   }
 }
 
@@ -3008,6 +3055,11 @@ function toAgent(a: AgentRow): Agent {
     tools: a.tools,
     skillIds: a.skillIds,
     kinds: a.kinds as SessionKind[],
+    surface: (a.surface ?? null) as SessionKind | null,
+    renderTemplateId: a.renderTemplateId ?? null,
+    docFormat: a.docFormat ?? null,
+    designSystemId: a.designSystemId ?? null,
+    designName: a.designName ?? '',
     guide: a.guide ?? '',
     starters: a.starters ?? [],
     shareMode: a.shareMode ?? 'open',
@@ -3074,10 +3126,16 @@ async function streamTurn(
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     retryOf?: string
+    /** Answers to the agent's question card; `{}` goes on with what was given. */
+    answers?: Record<string, string>
     onAccepted?: () => void
   } = {},
 ) {
   let assistantId = uid('m')
+  // Any reply answers the question card; the server clears it with this turn.
+  if (get().sessions.find((c) => c.id === sessionId)?.pending?.stage === 'clarify') {
+    setPending(set, sessionId, () => null)
+  }
   const controller = new AbortController()
   const superseded = opts.retryOf ? earlierAnswers.get(opts.retryOf) : undefined
   if (opts.retryOf) earlierAnswers.delete(opts.retryOf)
@@ -3161,6 +3219,7 @@ async function streamTurn(
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
+        answers: opts.answers,
       },
       controller.signal,
     )) {
@@ -3208,14 +3267,20 @@ async function streamTurn(
                         ? m.routing.costRouting ?? event.costRouting
                         : event.costRouting,
                   }
-                : m.routing && 'action' in m.routing
-                  ? {
-                      ...m.routing,
-                      initialAction: m.routing.initialAction ?? m.routing.action,
-                      action: event.action,
-                      toolOutputMasked: event.count,
-                    }
-                  : m.routing,
+                : 'source' in event
+                  ? m.routing && 'action' in m.routing
+                    ? {
+                        ...m.routing,
+                        initialAction: m.routing.initialAction ?? m.routing.action,
+                        action: event.action,
+                        toolOutputMasked: event.count,
+                      }
+                    : m.routing
+                  : event.lengthCheck
+                    ? // No privacy routing on this turn: the measured lengths still go under the
+                      // answer now, as they will after a reload.
+                      ({ ...(m.routing ?? {}), lengthCheck: event.lengthCheck } as PrivacyRouting)
+                    : m.routing,
           }))
           break
         case 'model_route': {
@@ -3293,6 +3358,17 @@ async function streamTurn(
         case 'error':
           settled = true
           patch((m) => ({ ...m, error: streamFailureSentence(event, tr) }))
+          break
+        // The agent stopped to ask before answering; its card holds the questions.
+        case 'needs':
+          settled = true
+          setPending(set, sessionId, (p) => ({
+            stage: 'clarify',
+            request: text,
+            attachments: opts.attachments ?? p?.attachments ?? [],
+            answers: p?.answers ?? {},
+            questions: event.questions,
+          }))
           break
         case 'done':
           if (event.messageId) {

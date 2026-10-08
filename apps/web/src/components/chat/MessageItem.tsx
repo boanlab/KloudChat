@@ -32,7 +32,7 @@ import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ArtifactKind, CostRouting, Message, ModelInfo } from '@/types'
+import type { ArtifactKind, CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
@@ -196,6 +196,48 @@ function turnFailureNotice(
 }
 
 /** One turn of the transcript. Memoised; reads the store through narrow selectors so streaming re-renders one row. */
+const LENGTH_UNIT: Record<LengthCheck['rows'][number]['unit'], [string, string]> = {
+  chars_with_spaces: ['공백 포함', '자'],
+  chars_no_spaces: ['공백 제외', '자'],
+  bytes_utf8: ['UTF-8', '바이트'],
+  bytes_ko2: ['한글 2바이트', '바이트'],
+}
+
+/** 「답안 1: 공백 포함 692자 / 700자」 per submit block, as the server measured it. */
+function LengthLine({ check }: { check: LengthCheck }) {
+  const t = useT()
+  return (
+    <p className="mt-2 text-xs text-faint" aria-label={t('글자 수(코드 측정)')}>
+      <span>{t('글자 수(코드 측정)')}</span>
+      {check.rows.map((row) => {
+        const [counted, suffix] = LENGTH_UNIT[row.unit]
+        const off = row.status !== 'ok'
+        return (
+          <span key={row.number} className={cn('ml-2', off && 'text-danger')} title={row.assumed ? t(row.assumed) : undefined}>
+            {t('답안 {n}').replace('{n}', String(row.number))}: {t(counted)}{' '}
+            {row.value.toLocaleString()}{t(suffix)}
+            {row.limit !== null && <> / {row.limit.toLocaleString()}{t(suffix)}</>}
+            {row.status === 'over' && <> · {t('초과')}</>}
+            {row.status === 'under' && <> · {t('하한 미달')}</>}
+            {row.rewritten && !off && <> · {t('다시 씀')}</>}
+            {row.rewritten && off && <> · {t('다시 써도 범위 밖 — 직접 맞춰 주세요')}</>}
+          </span>
+        )
+      })}
+      {check.flags.length > 0 && (
+        <span className="ml-2 text-danger">
+          {t('자료에 없는 항목')}: {check.flags.join(', ')} — {t('지어내지 말고 [구체적 성과 수치]처럼 비워 두세요')}
+        </span>
+      )}
+      {(check.repeats?.length ?? 0) > 0 && (
+        <span className="ml-2 text-danger">
+          {t('같은 경험 반복(확인 필요)')}: {check.repeats?.join(' / ')}
+        </span>
+      )}
+    </p>
+  )
+}
+
 function MessageItemInner({
   message,
   sessionId,
@@ -274,6 +316,9 @@ function MessageItemInner({
   const toolAnswer = message.routing && 'answerOrigin' in message.routing &&
     message.routing.answerOrigin === 'tool_result' ? message.routing : null
   const routing = message.routing && 'action' in message.routing ? message.routing : null
+  const lengthCheck = message.routing && 'lengthCheck' in message.routing
+    ? message.routing.lengthCheck
+    : undefined
   const requestAction = routing?.initialAction ?? routing?.action
   const requestProtection = requestAction && requestAction !== 'none'
     ? requestAction === 'route_strict_local' || requestAction === 'strict_local'
@@ -600,6 +645,11 @@ function MessageItemInner({
         )}
         {streaming && message.content && (
           <span className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-blink bg-accent" />
+        )}
+
+        {lengthCheck && (lengthCheck.rows.length > 0 || lengthCheck.flags.length > 0 ||
+          (lengthCheck.repeats?.length ?? 0) > 0) && (
+          <LengthLine check={lengthCheck} />
         )}
 
         {shown.length > 0 && (

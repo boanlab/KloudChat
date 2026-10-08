@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ async def _search(query: str) -> list[dict[str, str]]:
     if not backends.search:
         return []
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_TIMEOUT) as client:
             response = await client.get(
                 f"{backends.search.rstrip('/')}/search",
                 params={"q": query, "format": "json", "language": "ko-KR"},

@@ -218,6 +218,26 @@ export interface PrivacyRouting {
     knowledgeCutoff: string | null
     cutoffSource: 'model_catalogue' | 'unknown'
   }
+  lengthCheck?: LengthCheck
+}
+
+/** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */
+export interface LengthCheck {
+  rows: {
+    number: number
+    unit: 'chars_with_spaces' | 'chars_no_spaces' | 'bytes_utf8' | 'bytes_ko2'
+    value: number
+    limit: number | null
+    min: number | null
+    status: 'ok' | 'over' | 'under'
+    newline?: number
+    rewritten?: boolean
+    assumed?: string
+  }[]
+  /** Numbers, titles or blind-hiring words the person's material does not carry. */
+  flags: string[]
+  /** The judge's 「same experience told the same way」 candidates, for the person to check. */
+  repeats?: string[]
 }
 
 /** A server policy reply found in stored transcripts; current turns answer through a model with caveats. */
@@ -265,6 +285,15 @@ export interface Step {
     totalChars: number
   }[]
   memoriesWritten?: number
+  /** Files a sandbox tool made and stored for the user, downloadable by id. */
+  outputs?: { id: string; name: string; size: number }[]
+  /** The code a sandbox tool ran last (bounded, masked); absent on older steps. */
+  code?: string
+  /** Which attempt wrote `code`, when the tool retried. */
+  codeAttempt?: number
+  /** Heads of what that run printed. */
+  stdout?: string
+  stderr?: string
   /** Total memories, when only the most recent were loaded. */
   totalMemories?: number
   /** Which halves of 개인 맞춤 설정 shaped the turn. */
@@ -502,13 +531,17 @@ export interface ReportArtifact extends ArtifactBase {
 export interface ReportTitleBlock {
   format: string
   label: string
-  head: 'cover' | 'header' | 'memo' | 'press' | 'paper'
+  head: 'cover' | 'header' | 'memo' | 'press' | 'paper' | 'draft'
   numbering: 'decimal' | 'roman' | 'korean' | 'official' | 'none'
-  /** `[label, value]`; an empty value is a blank the person fills in, shown as 「(기입)」. */
+  /** `[label, value]`; an empty value is a blank the person fills in, shown as its name in brackets (「[작성자]」). */
   fields: [string, string][]
   subtitle?: string
   abstract?: string
   keywords?: string[]
+  /** `gaejo`: lists drawn as □ / ○ / - / ㆍ and ※ lines as notes (개조식). */
+  lists?: 'gaejo'
+  /** The renderers end the body with 「끝.」. */
+  closing?: boolean
 }
 
 export interface ChartArtifact extends ArtifactBase {
@@ -757,6 +790,8 @@ export interface Skill {
   originId: string | null
   version: string
   updatedAt: string
+  /** Fixed scripts its package ships; empty for a plain skill. */
+  scripts?: string[]
 }
 
 /* ── MCP connectors ─────────────────────────────────────────────────── */
@@ -841,6 +876,16 @@ export interface Agent {
   /** null inherits turn selection; [] denies all selected skills. */
   skillIds: string[] | null
   kinds: SessionKind[]
+  /** Surface a new conversation opens on; null takes the first of `kinds`. */
+  surface: SessionKind | null
+  /** 서식 for sessions on that 서식's surface; wins over the project's default. */
+  renderTemplateId: string | null
+  /** `doc_formats` id for report sessions whose 서식 fixes none. */
+  docFormat: string | null
+  /** Wins over the project's design. */
+  designSystemId: string | null
+  /** That design's name, for a viewer who cannot see the row. */
+  designName?: string
   temperature: number
   color: string
   enabled: boolean

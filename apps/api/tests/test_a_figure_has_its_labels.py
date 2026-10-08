@@ -481,7 +481,7 @@ def test_money_in_a_document_with_no_figures_becomes_undetermined() -> None:
     )
     out = _without_invented_money(text)
     assert "380만 원" not in out and "1,140만 원" not in out and "2,400 만 원" not in out
-    assert out.count("(미정)") == 4 and "2026년" in out
+    assert out.count("[금액]") == 4 and "2026년" in out
 
 
 def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:

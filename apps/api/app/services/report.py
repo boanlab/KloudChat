@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import logging
 import re
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -17,8 +19,10 @@ from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
     calc,
+    check_skills,
     checks,
     design,
+    design_templates,
     diagram_render,
     diagrams,
     doc_formats,
@@ -27,10 +31,13 @@ from app.services import (
     grounding,
     hangul,
     imagegen,
+    internal_words,
     key_figures,
     pictures,
+    placeholders,
     quality_gate,
     ratelimit,
+    report_checks,
     research,
     richtext,
     settings_store,
@@ -149,9 +156,9 @@ Rules:
   them**, with their units and magnitudes exactly as given — do not move a yearly
   figure into 만 units or change the number of digits. Show the formula with a computed
   value (「월 비용 × 12개월 = 연 비용」). Never invent a figure that is not on the list —
-  user counts, ratios, causes of failure, damage, other costs, years; write 「(미정)」 or
-  「(확인 필요)」 where one is needed. Do not invent circumstances the request does not
-  give, such as the cause or course of an incident.
+  user counts, ratios, causes of failure, damage, other costs, years; where one is needed,
+  leave a blank naming it in brackets (「[금액]」 「[인원]」). Do not invent circumstances
+  the request does not give, such as the cause or course of an incident.
 - One register for the whole document. If earlier sections used 「~합니다」, so does this
   one; the first section uses 「~합니다」.
 - Write at the level a practitioner can use as is: for each step what, how and why,
@@ -159,8 +166,10 @@ Rules:
   give; do not end on a one-line summary. Details come only from the material and request.
 - **Never invent a specific value the material does not give** — amounts, dates,
   institutions, people, counterparties. Where a decision is needed, say what must be
-  decided instead of filling it in: 「예산 규모(미정)」, not 「예산 2억 원」;
-  「협약 기업(선정 필요)」, not 「A社·B社」.
+  decided instead of filling it in: 「[예산 규모]」, not 「예산 2억 원」;
+  「[협약 기업]」, not 「A社·B社」. Anything the request and material do not give is such a
+  bracket blank (「[담당자]」 「[일자]」), never made up; a 미정 the material itself states
+  stays as written (「미정(다음 회의에서 재논의)」).
 - A fact taken from the source list (material found by search) gets that source's number
   at the end of the sentence, like [1]. Never use a number that is not on the list. The
   [1], [2] marks in material the user pasted are not sources — do not number that
@@ -174,7 +183,7 @@ Rules:
 - A business plan or proposal states its assumptions once — price, unit cost, ARPU, CAC, churn, capacity, fixed cost — in one table, and every later figure is computed from that table; never a second value for the same assumption. Write each calculation as 「A × B = C」 with units so it can be checked.
 - A figure that shows a classification puts the kinds side by side under their parent, not in a row of arrows; arrows are for steps and data flow only.
 - When the request says a part must include something (「문항 포함」, 「예시 포함」, 「표로」), that thing itself appears in the part — the questions, the examples, the table — not a description of it. Material already written in the context (questions, a table, a calculation) is carried over as it is.
-- Do not write 「(미정)」 for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays 「(미정)」, and such inputs are listed once under 「확인 필요」.
+- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays a bracket blank (「[월 고정비]」), and such inputs are listed once under 「확인 필요」.
 - Do not copy these rules into the text; the reader never sees them.
 - Every sentence ends in the 「~합니다」 / 「~입니다」 form, table cells and list items aside; never end a sentence in 「~다.」 (「확인했다.」, 「필요하다.」).
 - Write the section in Korean.
@@ -197,7 +206,8 @@ Rules:
 - Do not add causes, reasons or judgements the material does not give — 「민감한 정보가
   포함되어 있어」, 「~때문으로 판단됩니다」 only if the material says so. What you do not know,
   leave out; do not write sentences explaining what is missing (「(자료에 없음)으로 처리해야
-  할 부분은 …」). Do not write sentences that add no fact, such as 「기반을 마련했습니다」 or
+  할 부분은 …」). A value the document needs and nobody gave is a bracket blank naming it
+  (「[담당자]」 「[기한]」 「[금액]」), never made up. Do not write sentences that add no fact, such as 「기반을 마련했습니다」 or
   「긍정적인 성과」.
 - Start each section with a `## 제목` line. Do not add sections that are not in the
   outline and do not drop any. No top-level heading (#); the title is set on the cover.
@@ -239,12 +249,13 @@ Rules:
   Write each calculation with formula and result, divisions to one decimal place
   (「월 비용 × 12개월 = 연 비용」, 「초기 비용 ÷ 연 비용 ≈ 회수 기간(년)」). Never invent a
   figure that is not on the list — user counts, ratios, periods, other costs, residual
-  values, years, working days; write 「(미정)」 or 「(확인 필요)」. Do not invent
+  values, years, working days; leave a bracket blank naming it (「[금액]」 「[인원]」). Do not invent
   circumstances the request does not give. When comparing a large and a small number,
   write both to check the direction.
 - Facts from the source list get the source number at the end of the sentence, like [1].
-  No numbers that are not on the list, no labels like [설계도면], and not the [1], [2]
-  marks of material the user pasted. No sources, no numbers.
+  No numbers that are not on the list, no source labels like [설계도면] as citations
+  (a blank like 「[담당자]」 is not one), and not the [1], [2] marks of material the user
+  pasted. No sources, no numbers.
 - One register for the whole document: 「~합니다」. No first person (「저는」 「우리는」) —
   「클라우드 이전을 권고합니다」, not 「저는 … 권고합니다」.
 - Numbers in a comparison table are the values computed earlier, copied as they are; do
@@ -258,7 +269,7 @@ Rules:
 - A business plan or proposal states its assumptions once — price, unit cost, ARPU, CAC, churn, capacity, fixed cost — in one table, and every later figure is computed from that table; never a second value for the same assumption. Write each calculation as 「A × B = C」 with units so it can be checked.
 - A figure that shows a classification puts the kinds side by side under their parent, not in a row of arrows; arrows are for steps and data flow only.
 - When the request says a part must include something (「문항 포함」, 「예시 포함」, 「표로」), that thing itself appears in the part — the questions, the examples, the table — not a description of it. Material already written in the context (questions, a table, a calculation) is carried over as it is.
-- Do not write 「(미정)」 for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays 「(미정)」, and such inputs are listed once under 「확인 필요」.
+- Do not leave a blank for a figure the stated assumptions let you compute (initial funding = monthly fixed cost × months to break-even, and so on): compute it and show the formula. Only an input nobody gave stays a bracket blank (「[월 고정비]」), and such inputs are listed once under 「확인 필요」.
 - Do not copy these rules into the text.
 - Every sentence ends in the 「~합니다」 / 「~입니다」 form, table cells and list items aside; never end a sentence in 「~다.」 (「확인했다.」, 「필요하다.」).
 - Write the document in Korean.
@@ -361,7 +372,7 @@ _NUMBER = re.compile(
 _FRAME_RULE = (
     "**이 문서는 자료 없이 틀만 쓴다.** 요청에 없는 사실·논의·결정·이름·수치를 어떤 것도 "
     "지어내지 마라. 절마다 그 절에 무엇을 적어야 하는지 한두 문장으로 안내하고, 채울 "
-    "자리는 「(여기에: 결정된 사항과 근거)」처럼 괄호 빈칸으로 둔다. 표는 머리글 행과 "
+    "자리는 「[결정된 사항과 근거]」처럼 그 이름을 대괄호로 둔다. 표는 머리글 행과 "
     "빈 칸만. 비용 계산·대안 비교처럼 요청에 없던 절이나 표를 보태지 마라. "
     "공식과 일반 원리는 써도 된다."
 )
@@ -374,6 +385,104 @@ _UNVERIFIED_NOTE = (
 
 #: A request that weighs options — the only kind the cost-table advice fits.
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
+
+#: Marks a 개조식 genre: `_shaped` drops the prose writer's paragraph rules for it.
+_GAEJO_STYLE = "쓰는 법: 개조식."
+
+#: 개조식 body and 공문서 notation, shared by the four 공문서 genres below.
+_GAEJO_RULE = (
+    _GAEJO_STYLE
+    + " 줄글 문단을 쓰지 않는다. 내용은 Markdown 목록으로 쓰고 깊이로 위계를 나타낸다 — "
+    "첫째 단계 `- `, 둘째 단계는 두 칸 들여 `  - `, 셋째 `    - `, 넷째 `      - `. "
+    "□·○·-·ㆍ 기호는 조판이 그리므로 직접 쓰지 않는다. 항목은 명사형으로 맺는다(「…함」 "
+    "「…임」 「…예정」 「…필요」) — 「~합니다」로 끝내지 않는다. 한 항목은 한두 줄, 수치에는 "
+    "단위를 붙인다(「320명」 「1,250만 원」). 보충 설명은 그 항목 다음 줄에 「※ 」로 시작하는 "
+    "한 줄로 쓴다. 표기: 날짜 「2026. 10. 7.」(연·월·일 글자 대신 온점, 앞자리 0 없이), "
+    "시각 「14:00」(24시각제), 결재받을 금액은 「금113,560원(금일십일만삼천오백육십원)」. "
+    "붙임은 마지막 절 끝에 「붙임  1. ○○○ 1부.」 한 줄, 둘 이상이면 다음 줄부터 "
+    "「2. ○○○ 1부.」 — 붙임이 하나면 번호 없이 「붙임  ○○○ 1부.」. 「끝.」은 쓰지 "
+    "않는다(조판이 붙인다). 자료에 없는 일시·장소·인원·금액·이름은 지어내지 말고 "
+    "그 자리 이름을 대괄호로 둔다(「[일시]」 「[장소]」 「[금액]」)."
+)
+
+#: Genre rules of the formats a 서식 can fix (`doc_formats.TEMPLATE_FORMATS`), by format id.
+_FORMAT_GENRES: dict[str, str] = {
+    "gaejo": (
+        "장르: 개조식 보고서(검토·현황·업무 보고). 첫 절 맨 앞에 ```callout 블록으로 핵심 "
+        "두 줄을 둔다 — 첫 줄 「핵심」, 다음 두 줄에 결론과 필요한 결정(또는 다음 조치)을 한 "
+        "줄씩. 절은 현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임 순서로. 세부 표·대안 비교·산출 근거는 본문에 두지 말고 「붙임」 절에 둔다. " + _GAEJO_RULE
+    ),
+    "internal_draft": (
+        "장르: 간이기안문(내부결재, 행정업무운영 시행규칙 별지 제2호서식). 생산등록번호·등록일·"
+        "결재일·공개 구분과 결재란(기안자·검토자·결재권자)은 조판이 그리니 본문에 쓰지 않는다. "
+        "본문은 결재받을 내용 하나 — 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에) "
+        "→ 행정 사항 → 붙임. 결재받을 금액은 산출 근거를 붙인다. 절은 두셋이면 충분하다. "
+        + _GAEJO_RULE
+    ),
+    "event_plan": (
+        "장르: 추진 계획(안)(행사·사업·교육). 절은 추진 배경 및 목적 → 추진 개요 → 세부 추진 "
+        "내용 → 소요 예산 → 추진 일정 → 기대 효과 순서. 추진 개요는 표(구분 | 내용)로 일시·"
+        "장소·대상·인원·주관을 한 행씩. 소요 예산은 표(항목 | 산출 근거 | 금액)로, 산출 "
+        "근거는 「단가 × 수량」, 마지막 행은 합계 — 합계는 항목 금액을 더한 값과 같아야 한다. "
+        "추진 일정은 표(일정 | 내용 | 담당). 기대 효과는 짐작한 수치 없이. 붙임이 있으면 "
+        "기대 효과 절 끝에. " + _GAEJO_RULE
+    ),
+    "result_report": (
+        "장르: 결과 보고서(행사·사업·교육·출장). 절은 개요 → 추진 경과 → 주요 결과·실적 → "
+        "성과 및 문제점 → 향후 계획(개선 사항) 순서. 개요는 표(구분 | 내용)로 일시·장소·참석·"
+        "주관을 한 행씩. 주요 결과는 수치로(참석 인원, 만족도, 집행액과 집행률) — 계획 대비가 "
+        "있으면 표(항목 | 계획 | 실적 | 비율). 문제점은 개선 사항과 짝지어 쓴다. 자료에 없는 "
+        "실적·만족도는 지어내지 않는다. " + _GAEJO_RULE
+    ),
+    "client_proposal": (
+        "장르: 고객 제안서. 고객이 RFP·제안요청서로 목차를 주었으면 그 목차와 순서를 그대로 "
+        "따른다. 주지 않았으면 제안 요약 → 고객 과제 이해 → 제안 내용 → 요구사항 대응표 → "
+        "추진 일정 → 수행 조직·투입 인력 → 견적 → 전제·제외 범위·위험 → 요청 사항 순서. "
+        "고객에 관한 사실(현황·과제·예산·일정·요구)은 RFP와 자료에 적힌 것만 쓰고, 고객 과제 "
+        "이해는 고객의 말(RFP 문구, 미팅 발언)을 따옴표로 하나 이상 옮겨 시작한다. 요구사항 "
+        "대응표는 표(요구 ID | 요구 내용 | 대응 방안 | 제안서 위치)로, 자료에 있는 요구 ID를 "
+        "하나도 빼지 않는다. 견적은 표(항목 | 수량 | 단위 | 단가 | 금액 | 비고)로 쓰고 아래에 "
+        "공급가액·부가세·합계 행을 둔다 — 금액 = 수량 × 단가, 합계 = 공급가액 + 부가세. "
+        "부가세 포함·별도를 표 위에 밝히고, 예산과는 같은 기준끼리만 견준다. 예산을 넘으면 "
+        "넘는다고 쓰고 단가를 바꾸지 말고 범위·기간 조정안을 따로 낸다. 실적·인증·수상·참조 "
+        "고객은 제안사 자료에 있는 것만 쓰고 지어내지 않는다 — 없으면 「[수행 실적]」 「[인증]」처럼 둔다. 「보장」 "
+        "「100%」 같은 약속을 쓰지 않는다. 자료끼리 어긋나면(기간·금액) 어느 쪽을 전제로 "
+        "했는지 쓰고 요청 사항에 질의로 남긴다. 자료에 없는 일정 날짜는 「협의」. 마지막 절은 "
+        "고객에게 요청하는 결정 한 줄로 맺는다."
+    ),
+    "comparison": (
+        "장르: 비교·분석 보고서. 절은 검토 목적과 판단 기준 → 대안 개요 → 비교표 → 출처별 "
+        "차이 → 조건 미확인 사항 → 권고와 조건 순서이고, 첫 절 첫 줄에 고른 대안과 그 조건을 "
+        "한 문장으로 둔다. 판단 기준 절에 필수 조건과 가중치(합 100)와 점수식(예: 비용 점수 = "
+        "최저 비용 ÷ 해당 안 비용 × 100)을 적는다 — 요청에 가중치가 없으면 「필수 조건을 "
+        "지키는 안 중 최저 비용」처럼 판단 규칙 하나를 밝힌다. 필수 조건을 못 맞춘 대안은 "
+        "값이 좋아도 「탈락(사유)」으로 표시하고 권고하지 않는다; 조건 확인이 안 된 대안은 "
+        "탈락과 구분해 「조건 미확인」으로 둔다. 비교표는 열 = 대안, 행 = 기준, 단위는 머리 "
+        "행에, 빈칸 없이 값 또는 「자료 없음」, 칸마다 출처 번호, 가중치가 있으면 마지막 행에 "
+        "가중 합계. 자료 없는 값을 추정해 채우거나 0점으로 몰래 처리하지 않는다. 같은 항목에 "
+        "출처마다 값이 다르면 출처별 차이 절에 표(항목 | 출처와 날짜 | 값 | 채택과 이유)로 "
+        "두 값을 나란히 적는다 — 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는다. "
+        "보증금처럼 돌려받는 돈은 비용에 넣지 않고 따로 적는다. 권고는 조건과 함께 쓴다(「○○이 "
+        "확인되면 A, 아니면 B」), 시나리오가 있으면 결론이 바뀌는 지점을 숫자로 보인다. "
+        "「상황에 따라 다르다」로 끝내지 않는다."
+    ),
+    "career_history": (
+        "장르: 경력기술서. 절은 경력 요약 → 경력 사항 → 주요 프로젝트 → 보유 기술 → 자격·교육 "
+        "순서. 이름·연락처·지원 회사는 머리에 있으니 본문에 다시 쓰지 않는다. 경력 요약은 총 "
+        "경력과 핵심 역량 세 줄. 경력 사항은 회사마다 표(회사 | 기간 | 소속·직급 | 담당 업무) "
+        "한 행, 주요 프로젝트는 회사별로 묶어 프로젝트마다 기간·역할·수행 내용·성과를 쓴다. "
+        "기간은 「YYYY.MM–YYYY.MM」(재직 중이면 「YYYY.MM–현재」), 시작·끝 달을 모두 넣어 "
+        "세고, 겹치는 기간은 총 경력에 한 번만 넣는다. 직함·직급·고용 형태·성과·수치는 자료에 "
+        "있는 것만 쓰고 부풀리지 않는다 — 수치가 없으면 수치 없이 한 일만 쓴다. 합병·사명 "
+        "변경은 「현 이름(구 이름)」 한 경력으로. 공백기를 숨기려 기간을 늘리지 않는다. 블라인드 "
+        "채용이라고 했으면 학교명·나이·생년·성별·가족·출신지·사진을 넣지 않는다. 표 안에 표를 "
+        "넣지 않는다."
+    ),
+}
+#: The same request words `doc_formats` reads, so the head and the body rules agree.
+_FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
+    key: re.compile(doc_formats.BY_ID[key].match, re.I) for key in _FORMAT_GENRES
+}
 
 #: Genre shape rules, matched on the request and given to the outline and the draft.
 _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -410,6 +519,13 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
         "선행 연구는 자료에 나온 조사·연구를 (기관 또는 저자 연도) 꼴로 인용하고 참고문헌에 모은다. "
         "통계 수치는 자료에 있는 것만, 출처 연도와 함께.",
     ),
+    (_FORMAT_PATTERNS["internal_draft"], _FORMAT_GENRES["internal_draft"]),
+    (_FORMAT_PATTERNS["result_report"], _FORMAT_GENRES["result_report"]),
+    (_FORMAT_PATTERNS["event_plan"], _FORMAT_GENRES["event_plan"]),
+    (_FORMAT_PATTERNS["gaejo"], _FORMAT_GENRES["gaejo"]),
+    (_FORMAT_PATTERNS["client_proposal"], _FORMAT_GENRES["client_proposal"]),
+    (_FORMAT_PATTERNS["comparison"], _FORMAT_GENRES["comparison"]),
+    (_FORMAT_PATTERNS["career_history"], _FORMAT_GENRES["career_history"]),
     (
         re.compile(r"지도안|교안|수업\s{0,3}계획|교수\s{0,3}[·ㆍ]?\s{0,3}학습\s{0,3}(?:지도|과정)안"),
         "장르: 교수·학습 지도안. 학습 목표는 「~할 수 있다」로 끝나는 행동 목표로 쓴다. 차시별 "
@@ -429,11 +545,11 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
         "리스크(품질·안전·물류)를 빠뜨리지 않는다. 같은 계획을 본문·표·목록에 되풀이하지 않는다.",
     ),
     (
-        re.compile(r"캡스톤|프로젝트\s{0,3}제안서|사업\s{0,3}제안서|기획서"),
+        re.compile(r"캡스톤|프로젝트\s{0,3}제안서|기획서"),
         "장르: 프로젝트 제안서. 요구사항은 ID(FR-01, NFR-01)를 붙인 표로, 시스템 설계는 "
         "구성 요소와 API(메서드·경로·설명)를 표로, 일정은 주차·마일스톤·산출물 표로, 역할은 "
         "이름·담당·산출물 표로, 위험은 위험·영향·대응 표로 쓴다. 자료에 없는 팀원 이름은 "
-        "「팀원 A」처럼 둔다.",
+        "「[팀원 이름]」처럼 둔다.",
     ),
     (
         re.compile(r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척"),
@@ -445,10 +561,11 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"회의록|녹취|미팅 ?메모|회의 ?메모"),
         "장르: 회의록. 결정·조치·미결은 표로(항목·담당·기한). 발언은 요약하되 판단을 보태지 "
-        "않고, 요약·권고 절을 만들지 않는다. 자료에 없는 담당자·기한은 「미정」.",
+        "않고, 요약·권고 절을 만들지 않는다. 자료에 없는 담당자·기한은 「[담당자]」 「[기한]」, "
+        "회의에서 미루기로 한 것은 「미정(다음 회의에서 결정)」처럼 자료의 말대로.",
     ),
     (
-        re.compile(r"장애|사고|incident|포스트모템|post-?mortem"),
+        re.compile(r"장애(?!인)|사고|incident|포스트모템|post-?mortem"),
         "장르: 장애 보고서. 시각열은 시각·사건·조치의 표로 싣는다. 영향은 누가·얼마나·얼마 동안을 "
         "숫자로, 원인은 확인된 것과 추정을 갈라, 재발 방지는 원인과 짝지은 표(조치·담당·기한). "
         "대응 절은 시각열에 없는 것(왜 그 결정을 했는지, 임시 조치)만 적고 시각열을 되풀이하지 "
@@ -469,7 +586,7 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
 
 
 _OWN_GENRES = re.compile(
-    r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|회의록|녹취|장애|사고|실험|측정"
+    r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|회의록|녹취|장애(?!인)|사고|실험|측정"
 )
 
 
@@ -496,13 +613,61 @@ def scholarly_document(request: str) -> bool:
     return bool(_SCHOLARLY_DOC.search(instruction_part(request)))
 
 
-def _genre_rule(request: str) -> str:
-    """The shape rule for the request's genre, or `""`; read from the instruction only."""
+def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None) -> str:
+    """The shape rule for the request's genre, or `""`; read from the instruction only.
+
+    A format fixed by the 서식 (`doc_formats.detect` with a template id) names its own rule,
+    so the head and the body agree."""
+    if fmt is not None and fmt.id in _FORMAT_GENRES:
+        return _FORMAT_GENRES[fmt.id]
     instruction = instruction_part(request)
     for pattern, rule in _GENRES:
         if pattern.search(instruction):
             return rule
     return ""
+
+
+#: Prose-writer rules a 개조식 genre contradicts; `_shaped` drops the whole rule.
+_PROSE_ONLY = (
+    "Prose is the default",
+    "A section is at least two",
+    "Break into paragraphs",
+    "One register for the whole document",
+    "Every sentence ends in the",
+)
+
+
+def _shaped(prompt: str, genre: str) -> str:
+    """`prompt` without the prose rules a 개조식 genre overrides; unchanged for any other."""
+    if _GAEJO_STYLE not in genre:
+        return prompt
+    out: list[str] = []
+    dropping = False
+    for line in prompt.split("\n"):
+        if line.startswith("- "):
+            dropping = any(phrase in line for phrase in _PROSE_ONLY)
+        elif not line.startswith("  "):
+            dropping = False
+        if not dropping:
+            out.append(line)
+    return "\n".join(out)
+
+
+def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[dict]:
+    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times."""
+    if fmt is None or fmt.lists != "gaejo":
+        return sections
+    return [
+        {
+            **sec,
+            "content": doc_formats.gaejo_markdown(
+                doc_formats.official_notation(str(sec.get("content") or ""))
+            ),
+        }
+        if not _REFERENCE_HEADING.search(str(sec.get("heading") or ""))
+        else sec
+        for sec in sections
+    ]
 
 
 _MONEY = re.compile(
@@ -511,8 +676,8 @@ _MONEY = re.compile(
 
 
 def _without_invented_money(text: str) -> str:
-    """Every sum of money replaced by (미정), for a document with no figures to draw on."""
-    return _MONEY.sub("(미정)", text)
+    """Every sum of money replaced by 「[금액]」, for a document with no figures to draw on."""
+    return _MONEY.sub("[금액]", text)
 
 
 _OWNER_HEADER = re.compile(r"담당|책임|owner", re.I)
@@ -523,18 +688,32 @@ _ISO_DAY = re.compile(r"\d{4}-(\d{2})-(\d{2})")
 _BLANK_CELLS = {"", "미정", "(미정)", "-", "—", "tbd", "n/a", "없음"}
 
 
-def _cell_sourced(cell: str, compact: str) -> bool:
+def _cell_sourced(
+    cell: str, compact: str, row: str = "", dates: list[dict] | None = None
+) -> bool:
     """Whether an owner or due-date cell names something the request or material names.
 
     A date matches by month and day in any of the usual spellings (9/10 · 9월 10일 ·
-    2026-09-10); a person or team by any word of two characters or more.
+    2026-09-10); a person or team by any word of two characters or more. With `dates`
+    (date-calc's readings, each bound to its source line) a date is kept when the line this
+    row came from resolves to it — not because the same day appears somewhere else.
     """
     flat = re.sub(r"\s+", "", cell)
-    if flat.lower().strip("*_`") in _BLANK_CELLS or flat in compact:
+    if placeholders.is_blank(cell) or flat.lower().strip("*_`") in _BLANK_CELLS or (
+        flat in compact and dates is None
+    ):
         return True
     days = [(int(m), int(d)) for m, d in _MONTH_DAY.findall(flat)] + [
         (int(m), int(d)) for m, d in _ISO_DAY.findall(flat)
     ]
+    if dates is not None and days:
+        entries = report_checks.bound_rows(row, dates)
+        if entries:
+            written = report_checks._cell_dates(cell, 0)
+            return any(report_checks.date_matches(w, e) for w in written for e in entries)
+        # A row that shares no word with any line: read as before.
+    elif dates is not None and flat in compact:
+        return True
     for month, day in days:
         if not (1 <= month <= 12 and 1 <= day <= 31):
             continue
@@ -554,8 +733,11 @@ def _cell_sourced(cell: str, compact: str) -> bool:
     return any(len(w) >= 2 and w in compact for w in words)
 
 
-def _unsourced_owner_dates(text: str, source: str) -> str:
-    """Owner (담당) and due-date (기한) cells the request and material never mention become 「미정」."""
+def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = None) -> str:
+    """Owner (담당) and due-date (기한) cells the request and material never mention become a
+    blank named by the column: 「[담당자]」, 「[기한]」.
+
+    `dates`: date-calc's readings of the material, which bind a resolved deadline to its line."""
     compact = re.sub(r"\s+", "", source)
     if not compact or "|" not in text:
         return text
@@ -574,9 +756,11 @@ def _unsourced_owner_dates(text: str, source: str) -> str:
             while i < len(lines) and lines[i].lstrip().startswith("|"):
                 if guarded:
                     cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                    row = " ".join(c for k, c in enumerate(cells) if k not in guarded or
+                                   _OWNER_HEADER.search(header[k] if k < len(header) else ""))
                     for k in guarded:
-                        if k < len(cells) and not _cell_sourced(cells[k], compact):
-                            cells[k] = "미정"
+                        if k < len(cells) and not _cell_sourced(cells[k], compact, row, dates):
+                            cells[k] = placeholders.for_header(header[k] if k < len(header) else "")
                     out.append("| " + " | ".join(cells) + " |")
                 else:
                     out.append(lines[i])
@@ -601,7 +785,7 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
         line = (
             "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
             "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 값이 들어갈 자리는 "
-            "「(미정)」「(측정값)」으로 비워 두고, 값을 셈하거나 지어내는 대신 무엇을 어떻게 "
+            "「[금액]」「[측정값]」처럼 그 이름을 대괄호로 비워 두고, 값을 셈하거나 지어내는 대신 무엇을 어떻게 "
             "측정·확인해야 하는지를 적는다. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 "
             "된다."
         )
@@ -774,22 +958,27 @@ _BACKOFF = (2.0, 6.0, 12.0, 20.0, 30.0)
 
 
 async def title_block_for(
-    fmt: doc_formats.DocFormat, request: str, title: str, model: str, api_key: str
+    fmt: doc_formats.DocFormat, request: str, title: str, model: str, api_key: str,
+    material: str = "",
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    """The format's head fields filled from the request; blanks when the model fails or a
-    value is not in the request."""
-    try:
-        text, spent = await _complete(
-            model,
-            [{"role": "user", "content": doc_formats.fill_prompt(fmt, request, title)}],
-            api_key,
-            400,
-        )
-        answer = _json_object_of(text)
-    except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
-        log.info("title block fill failed: %s", exc)
-        answer, spent = {}, {"inputTokens": 0, "outputTokens": 0}
-    return doc_formats.title_block(fmt, answer, request), spent
+    """The format's head fields: what code reads under a matching label in the request and
+    material first, the model asked only for the rest; a value neither gives stays blank."""
+    given = f"{request}\n{material}" if material.strip() else request
+    read = doc_formats.head_values(fmt, given)
+    spent = {"inputTokens": 0, "outputTokens": 0}
+    answer: dict[str, Any] = {}
+    if any(not read.get(name) for name in fmt.fields) or fmt.subtitle or fmt.keywords:
+        try:
+            text, spent = await _complete(
+                model,
+                [{"role": "user", "content": doc_formats.fill_prompt(fmt, request, title, material)}],
+                api_key,
+                400,
+            )
+            answer = _json_object_of(text)
+        except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+            log.info("title block fill failed: %s", exc)
+    return doc_formats.title_block(fmt, answer, given, read), spent
 
 
 def _json_object_of(text: str) -> dict[str, Any]:
@@ -803,6 +992,17 @@ def _json_object_of(text: str) -> dict[str, Any]:
 
 #: The most a re-asked, cut-off answer is given.
 _MOST_TOKENS = 16000
+
+
+def _tiebreak_model(model: str) -> str:
+    """The larger self-hosted model that settles two pre-pass readings that differ, on the
+    turn's own route: a strict-local turn gets its `strict-local/` twin, or its own model."""
+    big = (settings.code_fallback_model or "").strip()
+    if model.startswith("strict-local/"):
+        if big.startswith("local/"):
+            return "strict-local/" + big.split("/", 1)[1]
+        return big if big.startswith("strict-local/") else model
+    return big or model
 
 
 async def _complete(
@@ -1101,8 +1301,10 @@ _SOURCE_INNARDS = re.compile(
     r"|(?<![가-힣A-Za-z])pp?\.\s?\d{1,4}"
     r"|(?:해당|이|그|동|위)\s(?:매뉴얼|백서|가이드라인|가이드|안내서|지침|자료|문서)(?:은|는|이|가|에서|에|의)"
 )
-# One `.` alternative (the cases are lookarounds) so no dot can be read two ways.
-_SENTENCE = re.compile(r"(?:[^.!?\n]|(?:(?<=\bp)|(?<=\bpp)|(?<=\d)(?=\.\d))\.){0,2000}?(?<!\bp)(?<!\bpp)[.!?](?:\s{0,2}\[\d{1,3}\](?:\[\d{1,3}\]){0,20})?(?=\s|$)")
+# One `.` alternative (the cases are lookarounds) so no dot can be read two ways; a dot
+# inside a dotted date or number run (「2026. 11. 16.(월)」, 「1. 2.」) ends a sentence only
+# at the line's end.
+_SENTENCE = re.compile(r"(?:[^.!?\n]|(?:(?<=\bp)|(?<=\bpp)|(?<=\d)(?=\.\d)|(?<=\d)(?=\.(?:\s{1,2}\d|\s{0,2}\())|(?:(?<=\d\.\s\d)|(?<=\d\.\s\d\d))(?!\.\s{0,2}[\d(])(?!\.\s*$))\.){0,2000}?(?<!\bp)(?<!\bpp)(?:(?!(?<=\d)\.\s{0,2}[\d(])(?<!\d\.\s\d)(?<!\d\.\s\d\d)[.!?]|(?:(?<=\d\.\s\d)|(?<=\d\.\s\d\d))\.(?=\s*$))(?:\s{0,2}\[\d{1,3}\](?:\[\d{1,3}\]){0,20})?(?=\s|$)")
 
 
 def source_innard_sentences(sections: list[dict]) -> dict[int, list[str]]:
@@ -1146,11 +1348,11 @@ def collapse_repeated_citations(body: str) -> str:
         if (
             not stripped
             or "\n" in stripped
-            or re.match(r"^(?:\||#|>|[-*+]\s|\d{1,3}[.)]\s|```|!\[|\*\*표|\*그림)", stripped)
+            or re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[|\*\*표|\*그림)", stripped)
         ):
             out.append(block)
             continue
-        parts = re.split(r"(?<=[.!?。])(\s{1,64})(?=\S)", block)
+        parts = re.split(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"(\s{1,64})(?=\S)", block)
         sentences = parts[0::2]
         cites = [_cited(sentence) for sentence in sentences]
         for index in range(len(sentences) - 1):
@@ -1298,7 +1500,7 @@ def _scope(sentence: str) -> frozenset[str]:
 
 #: What each quality finding is called in the step list.
 #: Findings a model made and no rule can confirm: listed for the reader to check.
-_TO_CHECK = ("fact", "question", "judged_figure")
+_TO_CHECK = ("fact", "question", "judged_figure", *report_checks.MODEL_LABELS)
 
 _QUALITY_LABELS = {
     "unmentioned": "본문이 언급하지 않는 그림·표", "particle": "번호 뒤 조사",
@@ -1320,7 +1522,20 @@ _QUALITY_LABELS = {
     "metric_conflict": "같은 지표 다른 값", "empty_section": "빈 절",
     "table_value_conflict": "표 사이 값 불일치", "broken_glyph_or_cite": "깨진 글자·빈 인용",
     "numeric_inconsistency": "앞뒤가 맞지 않는 수치", "unbalanced_fence": "닫히지 않은 블록",
+    **report_checks.LABELS,
+    **report_checks.MODEL_LABELS,
 }
+
+
+#: A repair instruction's own voice: 「고쳐라」, 「맞춰라」, 「답하라」.
+_INSTRUCTION = re.compile(r"(?:고쳐|맞춰|답하|써|바로잡|채우|빼|확인해|하)라(?![가-힣])|말라")
+
+
+def reader_note(code: str, why: str) -> str:
+    """What a finding says to the reader on the quality step: never the repair prompt."""
+    if code == "judged_figure" or _INSTRUCTION.search(why or ""):
+        return _QUALITY_LABELS.get(code, "확인 필요")
+    return (why or "")[:200]
 
 
 _AMOUNT = re.compile(r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s?(조|억|만)?\s?(원|명|박스|회|개|건|%)?")
@@ -1456,7 +1671,7 @@ def fix_table_formulas(body: str) -> str:
     return text
 
 
-_UNDECIDED = re.compile(r"^\s*(?:\(미정\)|미정|TBD|-|—)\s*$")
+_UNDECIDED = re.compile(r"^\s*(?:\(미정\)|미정|TBD|-|—|\[[가-힣][가-힣 ·]{0,9}\])\s*$")
 
 
 def _table_rows(body: str):
@@ -1473,7 +1688,8 @@ def _table_rows(body: str):
 
 
 def fill_undecided_cells(sections: list[dict]) -> list[dict]:
-    """An assumption that is 「(미정)」 in one table and a figure in another takes the figure.
+    """An assumption that is 「[금액]」 or 「(미정)」 in one table and a figure in another takes
+    the figure.
 
     Rows are matched by their first cell."""
     decided: dict[str, str] = {}
@@ -1544,7 +1760,7 @@ _YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})\s?년")
 #: A comparison cell the writer could not fill from the first search.
 _GAP = re.compile(
     r"명시\s?(?:없|되지)|확인\s?필요|자료\s?(?:없|에\s?없)|정보\s?없|공개\s?(?:안|되지)|미정|미확인"
-    r"|^\s{0,16}[-—]\s{0,16}$|^\s{0,16}\(?\s{0,8}N/?A\s{0,8}\)?\s{0,16}$",
+    r"|^\s{0,16}\[[가-힣][가-힣 ·]{0,9}\]\s{0,16}$|^\s{0,16}[-—]\s{0,16}$|^\s{0,16}\(?\s{0,8}N/?A\s{0,8}\)?\s{0,16}$",
     re.I,
 )
 _GAPS_PER_REPORT = 4
@@ -1705,8 +1921,8 @@ def flagged_sentences(
             for m in _SENTENCE.finditer(line + " "):
                 if quality_gate._PLACEHOLDER.search(m.group(0)):
                     found.append((index, m.group(0).strip(), "자리표시(「(미정)」, 「(여기에 …)」 "
-                                  "등)가 남아 있다. 자료에 있는 값으로 채우고, 없으면 그 부분을 "
-                                  "빼고 자연스러운 문장으로 고쳐라."))
+                                  "등)가 남아 있다. 자료에 있는 값으로 채우고, 없으면 그 자리 "
+                                  "이름을 「[담당자]」 「[금액]」처럼 대괄호로 남겨라."))
     for index, sec in enumerate(sections):
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             continue
@@ -1731,15 +1947,24 @@ _JUDGE_FIGURES = """{figures}
 _JUDGED_PER_REPORT = 40
 
 
+def _all_in_material(sentence: str, known: list[float]) -> bool:
+    """Every number the sentence writes is one the material states (「약 1,200쪽」)."""
+    written = report_checks._material_numbers(sentence)
+    return bool(written) and all(report_checks._grounded(n, known) for n in written)
+
+
 async def judge_figure_sentences(
-    sections: list[dict], settled: list, *, judge: str, api_key: str
+    sections: list[dict], settled: list, *, judge: str, api_key: str, material: str = ""
 ) -> tuple[list[tuple[int, str, str]], dict]:
     """Settled-figure sentences the code passed, put to the judge model as yes/no questions.
 
-    Returns the ones it calls wrong, in `flagged_sentences`' shape, and the usage."""
+    A sentence whose every number the material states is not asked: it copies the
+    material, which the settled figures come from. Returns the ones the judge calls
+    wrong, in `flagged_sentences`' shape, and the usage."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not settled:
         return [], spent
+    known = report_checks._material_numbers(material)
     names = [n for f in settled for n in f.names]
     figures = "확정 수치: " + ", ".join(f"{f.name} {f.value}" for f in settled) + "."
     asked: list[tuple[int, str]] = []
@@ -1752,7 +1977,8 @@ async def judge_figure_sentences(
             for m in _SENTENCE.finditer(line + " "):
                 sentence = m.group(0).strip()
                 if (any(n in sentence for n in names) and re.search(r"\d", sentence)
-                        and not key_figures.conflicts(sentence, settled)):
+                        and not key_figures.conflicts(sentence, settled)
+                        and not (known and _all_in_material(sentence, known))):
                     asked.append((index, sentence))
     asked = asked[:_JUDGED_PER_REPORT]
     gate = asyncio.Semaphore(8)
@@ -2046,8 +2272,13 @@ def fix_pnl_tables(sections: list[dict]) -> list[dict]:
 
 #: A sentence about the writing instructions, not the subject: 「쓸 수 있는 수치 목록에 따르면」,
 #: 「… 절이 아직 작성되지 않았습니다」. The reader never saw the instructions.
+#: The writer's own check of a settled block (「85,000,000원 × 0.10 = 8,500,000원이 견적 확정 블록의
+#: 7,727,273원과 다릅니다」, client-proposal-3) is talk about the instructions too.
 _PROMPT_TALK = re.compile(
     r"쓸 수 있는 수치|수치 목록|요청 자료(?:에|의|로)|작성 지침|아직 (?:작성|쓰이)지 않았|개요(?:에|의) 따르면"
+    r"|(?:확정|계산)\s{0,2}블록|확정 날짜 블록"
+    r"|[×x*]\s{0,2}[\d.,]{1,12}\s{0,2}=\s{0,2}[\d,]{1,20}\s{0,2}원[^.\n]{0,80}?(?:과|와)\s{0,2}"
+    r"(?:다릅니다|다르다|달라|일치하지\s{0,2}않)"
 )
 #: A fence whose language sits on the next line: 「```」 then 「callout」.
 _LONE_LANGUAGE = re.compile(r"(?m)^```[ \t]*\n(callout|kpi|cards|diagram|mermaid|chart)[ \t]*$")
@@ -2164,7 +2395,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             # 「[[5]]」 and 「[]」 left by a citation pass: one number, or nothing.
             body = re.sub(r"\[\[(\d{1,3})\]\](?!\()", r"[\1]", body)
             body = re.sub(r"\s?\[\](?!\()", "", body)
-            body = drop_prompt_talk(drop_cut_rows(body))
+            body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(body)))
             # A settled figure slipped inside a formula is set back first, then every
             # product and sum is worked out again.
             body = key_figures.mend_operands(body, settled or [])
@@ -2362,7 +2593,7 @@ def _point_from_paragraph_before(result: list[str], name: str) -> None:
             continue
         if re.match(r"^\s*#", line):
             return
-        if re.match(r"^\s*(?:\||>|!\[|\*\*표|\*그림|```|[-*+]\s|\d{1,3}[.)]\s)", line):
+        if re.match(r"^\s*(?:\||>|!\[|\*\*표|\*그림|```|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s)", line):
             continue
         m = re.search(r"(\s?(?:\[\d{1,3}\])+)?([.!?。])$", line)
         if m:
@@ -2417,13 +2648,13 @@ def split_long_paragraphs(body: str, limit: int = 400) -> str:
             not fenced
             and "```" not in stripped
             and len(stripped) > limit
-            and not re.match(r"^(?:\||#|>|[-*+]\s|\d{1,3}[.)]\s|\[\[)", stripped)
+            and not re.match(r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|\[\[)", stripped)
             and "\n|" not in stripped
         )
         if not prose:
             out.append(block)
             continue
-        sentences = re.split(r"(?<=[.!?。])(?:\s+)(?=[^\s])", stripped)
+        sentences = re.split(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"(?:\s+)(?=[^\s])", stripped)
         chunk: list[str] = []
         size = 0
         for sentence in sentences:
@@ -2785,7 +3016,7 @@ def _grounded_figures(text: str, grounded: bool) -> str:
 
 
 _KPI_FENCE = re.compile(r"^```kpi\b.*?^```\s*$", re.S | re.M)
-_UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?", re.I)
+_UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?|\[[가-힣]", re.I)
 
 
 def _kpi_or_nothing(match: re.Match[str]) -> str:
@@ -2800,6 +3031,34 @@ def _kpi_or_nothing(match: re.Match[str]) -> str:
     ):
         return ""
     return match.group(0)
+
+
+def _pasted_without_marker(request: str) -> str:
+    """Material pasted after the instruction's first paragraph though no 「---」 or long
+    line marks it (120 characters or more); else `""`. Read for its facts only."""
+    head, _, rest = (request or "").strip().partition("\n\n")
+    rest = rest.strip()
+    return rest if head and len(rest) >= 120 else ""
+
+
+def _request_material(request: str) -> str:
+    """What the request itself gives as material, attachments or not: the pasted block,
+    a memo after the first paragraph, or else the request's own price lines.
+
+    A one-line 「[견적 메모]」 under an attached RFP was neither pasted (no 「---」, under
+    400 characters) nor read, and the writer made the MM up (client-proposal-3)."""
+    if pasted := pasted_material(request):
+        return pasted
+    if memo := _pasted_without_marker(request):
+        return f"# 요청에 붙여 넣은 자료\n{memo}"
+    lines = [line.strip() for line in (request or "").splitlines()
+             if report_checks.price_line(line)]
+    return "# 요청에 적은 자료\n" + "\n".join(lines) if lines else ""
+
+
+def _source_text(row: dict[str, Any]) -> str:
+    """A search source's words, so a value it gives traces to it."""
+    return " ".join(str(row.get(k) or "") for k in ("title", "snippet", "quote", "content", "text", "excerpt"))
 
 
 async def write(
@@ -2824,11 +3083,23 @@ async def write(
     #: Whether to research through `services.research` before planning.
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
+    #: The session's 서식; one in `doc_formats.TEMPLATE_FORMATS` fixes the format and genre.
+    template_id: str | None = None,
+    #: The agent's bound `doc_formats` id; used when the 서식 fixes none.
+    format_id: str | None = None,
+    #: The session's design tokens; the page count lays the body out in its face.
+    design_tokens: dict[str, str] | None = None,
+    #: Check skills the agent and the 서식 attach (`check_skills.attached`); None reads the
+    #: 서식's own.
+    check_keys: tuple[str, ...] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
     The caller owns persistence, billing and the artifact — this only writes.
     """
+    # The explicit 서식 wins, then the agent's bound format, then the words of the instruction.
+    doc_format = doc_formats.detect(instruction_part(request), template_id, format_id)
+    genre = _genre_rule(request, doc_format)
     # Outline tokens are counted apart: planning may run on another model.
     usage = {
         "inputTokens": 0,
@@ -2839,8 +3110,10 @@ async def write(
 
     # Research runs before the outline so the 목차 is planned on the sources.
     findings = research.Findings()
-    # A document on the person's own material is not searched.
-    if web_search and _own_material(request):
+    # A document on the person's own material is not searched; a 경력기술서 never is.
+    if web_search and (
+        _own_material(request) or (doc_format is not None and doc_format.id == "career_history")
+    ):
         web_search = False
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
@@ -2980,7 +3253,7 @@ async def write(
                         ask_rule=grounding.ASK_RULE if may_ask else grounding.PROCEED_RULE,
                         lo=wanted or _MIN_SECTIONS,
                         hi=wanted or _MAX_SECTIONS,
-                        genre=_genre_rule(request),
+                        genre=genre,
                         request=prompt_request(request, 2000),
                     )
                     + nudge,
@@ -3019,10 +3292,10 @@ async def write(
                         question=(
                             "어떤 연구입니까? 제안 방법의 이름과 핵심 아이디어, 있으면 "
                             "수식과 결과를 적어 주세요. 없으면 「있는 자료로 진행」— 내용 "
-                            "자리는 (미정)으로 비워 둔 틀을 씁니다."
+                            "자리는 [제안 방법]처럼 비워 둔 틀을 씁니다."
                             if re.search(r"논문", request)
                             else "바탕이 될 자료(녹취, 표, 측정값, 파일)를 붙이거나 적어 "
-                            "주세요. 없으면 「있는 자료로 진행」— 내용 자리는 (미정)으로 "
+                            "주세요. 없으면 「있는 자료로 진행」— 내용 자리는 [측정값]처럼 "
                             "비워 둔 틀을 씁니다."
                         ),
                         options=[],
@@ -3062,8 +3335,13 @@ async def write(
         )
         title, headings = _parse_outline(text)
         # 「아래 개요로 써 줘」 with the outline pasted: the person's sections, not new ones.
-        if given := given_outline(request):
-            headings = given
+        # 개조식 keeps its fixed shape: a planner's seven sections never fit one page.
+        fixed = given_outline(request) or (
+            list(doc_formats.GAEJO_OUTLINE)
+            if doc_format is not None and doc_format.id == "gaejo" and not wanted else []
+        )
+        if fixed:
+            headings = fixed
         headings = [
             without_instruction_aside(h, request) for h in with_listed_sections(headings, request)
         ]
@@ -3088,7 +3366,7 @@ async def write(
                 }
                 yield {"type": "usage", **usage}
                 return
-        if not given_outline(request) and not outline_is_json(text):
+        if not fixed and not outline_is_json(text):
             # The model wrote about the outline instead of giving it; one more ask for the
             # JSON. The list read out of its prose stands only if the ask fails again.
             log.info("report outline came as prose, asking for the JSON: %r", text[:300])
@@ -3124,7 +3402,7 @@ async def write(
                 again_title, again_headings = _parse_outline(again_text)
                 again_headings = [
                     without_instruction_aside(h, request)
-                    for h in with_listed_sections(given_outline(request) or again_headings, request)
+                    for h in with_listed_sections(fixed or again_headings, request)
                 ]
                 if len(again_headings) > len(headings):
                     title, headings, text = again_title or title, again_headings, again_text
@@ -3243,13 +3521,14 @@ async def write(
     # The figures the material settled are fixed before a word is written: every section
     # is told them, and what it wrote is read against them at the end.
     given_material = "\n\n".join(
-        [pasted_material(request) or "", *list(untrusted_context or [])]
+        [_request_material(request), *list(untrusted_context or [])]
     ).strip()
     settled: list[key_figures.Figure] = []
+    conflicts: list[key_figures.Conflict] = []
     if given_material:
         try:
             # A judgement, not prose: the planner's, when one is set.
-            settled, spent = await key_figures.settle(
+            settled, conflicts, spent = await key_figures.settle_all(
                 given_material, _complete, outline_model or model, api_key
             )
             plan_rules.count(usage, spent, planned_apart=bool(outline_model))
@@ -3258,9 +3537,57 @@ async def write(
         # What the inputs give (margin, break-even, the target's profit) is worked out by
         # code and settled with them.
         settled = [*settled, *key_figures.derived(settled)]
-        if settled:
-            document_context = [key_figures.block(settled), *document_context]
-            log.info("settled figures: %s", [(f.name, f.value) for f in settled])
+    # The format's own pre-pass: dates, the quote, scores and periods settled by code, in
+    # blocks of their own beside the settled figures (not under their cap).
+    prepass: report_checks.Prepass | None = None
+    format_id = doc_format.id if doc_format is not None else ""
+    if given_material and format_id in report_checks.PREPASS_FORMATS:
+        prepass_usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
+        try:
+            prepass = await report_checks.prepare(
+                format_id, request, given_material, complete=_complete,
+                model=outline_model or model, api_key=api_key, usage=prepass_usage,
+                today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
+                tiebreak_model=_tiebreak_model(outline_model or model),
+            )
+        except Exception as exc:  # noqa: BLE001 — written without it; the step says so
+            log.exception("report pre-pass failed")
+            yield {"type": "step", "id": "prepass", "label": "사전 계산 실패", "status": "error",
+                   "detail": f"코드 계산 없이 씀 ({type(exc).__name__})"}
+        plan_rules.count(usage, prepass_usage, planned_apart=bool(outline_model))
+    elif format_id in report_checks.PREPASS_FORMATS and format_id != "gaejo":
+        # A pre-pass that does not run says why.
+        yield {"type": "step", "id": "prepass", "label": "사전 계산 건너뜀", "status": "done",
+               "detail": "요청과 첨부에 계산할 자료가 없음"}
+    if format_id == "gaejo" and prepass is None:
+        # 개조식 is checked for its shape and pages even with nothing attached.
+        prepass = report_checks.Prepass(format_id=format_id)
+    if prepass is not None and prepass.costs_withheld and computed:
+        # Readings of the costs never agreed: no totals reach the writer, the sandbox's neither.
+        trusted_context = [c for c in trusted_context or [] if c != computed]
+    if prepass is not None and prepass.runs:
+        settled = [*settled, *[f for f in prepass.figures
+                               if f.name not in {s.name for s in settled}]]
+        document_context = [*prepass.blocks, *document_context]
+        ran = [r["skill"] for r in prepass.runs if not r.get("skipped")]
+        yield {
+            "type": "step", "id": "prepass",
+            "label": ("사전 계산: " + ", ".join(dict.fromkeys(ran))) if ran else "사전 계산 건너뜀",
+            "status": "error" if any(r.get("error") for r in prepass.runs) else "done",
+            "detail": " · ".join(f"{r['skill']}: {r['summary']}" for r in prepass.runs)[:1500],
+        }
+    elif prepass is not None and given_material and format_id != "gaejo":
+        yield {"type": "step", "id": "prepass", "label": "사전 계산 건너뜀", "status": "done",
+               "detail": "자료에서 이 서식이 계산할 값을 찾지 못함"}
+    if settled:
+        document_context = [key_figures.block(settled), *document_context]
+    if settled or (prepass is not None and prepass.blocks):
+        # The blocks are the writer's notes; their names never reach the page.
+        document_context = [*document_context, internal_words.WRITER_NOTE]
+        log.info("settled figures: %s", [(f.name, f.value) for f in settled])
+    if conflicts:
+        # Both values, with where and when: the writer shows them, nothing merges them.
+        document_context = [key_figures.conflict_block(conflicts, format_id), *document_context]
 
     # The whole document is drafted in one call so numbers and conclusions stay
     # consistent across sections, then cut along its headings. Sections the
@@ -3279,12 +3606,15 @@ async def write(
             model,
             build_document_messages(
                 SessionKind.report,
-                _DRAFT_PROMPT.format(
-                    outline="\n".join(f"## {h}" for h in headings),
-                    refs=refs,
-                    facts=_FRAME_RULE if frame else _facts_line(request, sources),
-                    genre=_genre_rule(request),
-                    request=prompt_request(request, 1500),
+                _shaped(
+                    _DRAFT_PROMPT.format(
+                        outline="\n".join(f"## {h}" for h in headings),
+                        refs=refs,
+                        facts=_FRAME_RULE if frame else _facts_line(request, sources),
+                        genre=genre,
+                        request=prompt_request(request, 1500),
+                    ),
+                    genre,
                 ),
                 request=request,
                 trusted_context=trusted_context,
@@ -3314,7 +3644,7 @@ async def write(
             model,
             build_document_messages(
                 SessionKind.report,
-                _SECTION_PROMPT.format(
+                _shaped(_SECTION_PROMPT.format(
                     heading=section["heading"],
                     outline=outline_text,
                     # Tail only: the whole document would crowd out the
@@ -3330,8 +3660,8 @@ async def write(
                     )[1],
                     others=_others_line(headings, index),
                     facts=_FRAME_RULE if frame else _facts_line(request, sources or []),
-                    genre=_genre_rule(request),
-                )
+                    genre=genre,
+                ), genre)
                 + (
                     # Told before writing so the section can refer to its figure.
                     "\n\n"
@@ -3458,7 +3788,7 @@ async def write(
         # before storing, so every reader sees the same text.
         body = richtext.detach_tables(unwrap_json_prose(body))
         if placeholder_heavy(body) and any(re.search(r"\d", m or "") for m in document_context):
-            # 「(미정)」 cells under an attached table of numbers: the model wrote the frame
+            # 「[측정값]」 cells under an attached table of numbers: the model wrote the frame
             # and left the data out. Asked once more, with the data in front of it.
             try:
                 refilled, more = await _complete(
@@ -3490,7 +3820,9 @@ async def write(
         is_reference = bool(_REFERENCE_HEADING.search(str(section["heading"] or "")))
         trimmed: list[str] = []
         if not is_reference:
-            body, trimmed = trim_restatements(body, earlier)
+            body, trimmed = trim_restatements(
+                body, earlier, keep_items=doc_format is not None and doc_format.lists == "gaejo"
+            )
         if trimmed:
             log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"], trimmed[0][:80])
         clean, _ = hangul.read_back(_without_own_heading(body, section["heading"]))
@@ -3517,6 +3849,7 @@ async def write(
                 "\n".join(
                     [request, *document_context, *[str(s.get("quote") or "") for s in sources or []]]
                 ),
+                prepass.bound_dates if prepass is not None and prepass.bound_dates else None,
             )
             if unverified and index == 0:
                 # Stated at the head of the first section.
@@ -3597,7 +3930,10 @@ async def write(
     # mermaid; the editor renders and stores them. Planned on the written sections, so the
     # planner reads what is actually there; a section with an approved picture keeps it.
     # A peer review evaluates someone else's paper; it draws nothing of its own.
-    reviewing = _genre_rule(request).startswith("장르: 학회 피어리뷰")
+    # A one-page 개조식 memo has no room for pictures it was not asked for either.
+    draws_nothing = _genre_rule(request).startswith("장르: 학회 피어리뷰") or (
+        format_id == "gaejo" and not diagrams.asks_for_diagrams(instruction_part(request))
+    )
     figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
     # The figures the writer placed in its text come first: drawn where the text put them,
     # and the prose already points at them (〔그림〕). The planner below only looks at the
@@ -3607,7 +3943,7 @@ async def write(
         marks = figure_marks(str(section.get("content") or ""))
         for mark in marks:
             content = str(section.get("content") or "")
-            if not mark["kind"] or reviewing or drawn >= figure_cap:
+            if not mark["kind"] or draws_nothing or drawn >= figure_cap:
                 section["content"] = drop_figure(content, mark["mark"])
                 continue
             name = mark["caption"] or diagrams.FIGURES[mark["kind"]]
@@ -3642,7 +3978,7 @@ async def write(
         i
         for i, section in enumerate(sections)
         if i not in wanted_figures and i not in has_figure
-        and str(section.get("content") or "").strip() and not reviewing
+        and str(section.get("content") or "").strip() and not draws_nothing
     ]
     if drawn >= figure_cap:
         eligible = []
@@ -3768,10 +4104,21 @@ async def write(
     )
     # The head of the document as its purpose shapes it — the lab's date and people, the
     # minutes' time and place, a paper's authors — filled only from the request.
-    if (fmt := doc_formats.detect(instruction_part(request))) is not None:
-        block, spent = await title_block_for(fmt, request, title, outline_model or model, api_key)
+    sections = gaejo_body(sections, doc_format)
+    head_block: dict | None = None
+    client_problem, head_fixed = "", None
+    if (fmt := doc_format) is not None:
+        block, spent = await title_block_for(
+            fmt, request, title, outline_model or model, api_key, given_material)
         usage["inputTokens"] += spent.get("inputTokens", 0)
         usage["outputTokens"] += spent.get("outputTokens", 0)
+        if prepass is not None and prepass.rfp:
+            # The cover names the client the RFP names, not a guess or the proposer.
+            head_fixed, client_problem = report_checks.client_head(
+                block, prepass.rfp, f"{request}\n{given_material}")
+            block = head_fixed or block
+        block = report_checks.minutes_head(block, prepass) or block
+        head_block = block
         yield {"type": "titleBlock", "titleBlock": block}
     # Verify: every check names what it finds, one repair rewrites those sentences, the
     # checks run again, and what is still found is said in the steps — never passed off.
@@ -3791,10 +4138,58 @@ async def write(
     if web_search:
         run_checks.append(fact_check.web_facts(judge, api_key))
     run_checks.append(fact_check.solve_questions(judge, api_key))
+    # The format's code checks join the same find → repair → find again.
+    format_checks = report_checks.checks(prepass)
+    run_checks.extend(format_checks)
+    # The format's judged checks: one judge call each, shown to the reader, never rewritten.
+    run_checks.extend(report_checks.model_checks(
+        prepass, complete=_complete, judge=judge, api_key=api_key))
+    format_codes = set(report_checks.LABELS)
+    before_codes: list[str] = []
+    if client_problem:
+        before_codes.append("client_name")
+    if prepass is not None and format_id == "minutes":
+        # Every action row carries 출처 and 비고; code adds the columns a table lacks.
+        sections, widened = report_checks.minutes_columns(sections, prepass.dates)
+        before_codes += ["minutes_columns"] * widened
+        sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
+        before_codes += ["minutes_due"] * filled
+        if prepass.undated:
+            # No meeting date anywhere: no day is written as the meeting's or worked out.
+            sections, undated = report_checks.minutes_undated(
+                sections, prepass.dates, f"{request}\n{given_material}")
+            before_codes += undated
+        # Owners and quantities the material does not hold are repaired by code, then
+        # looked for again after the verify stage's own rewrites.
+        sections, ungrounded = report_checks.minutes_grounding(
+            sections, f"{request}\n{given_material}")
+        before_codes += ungrounded
+    # Every value the document states traces to what was given or computed, else it is a
+    # blank: the attached check skills, before the verify stage and again after its rewrites.
+    if check_keys is None:
+        template = design_templates.get(template_id)
+        check_keys = check_skills.attached(template_checks=template.check_skills if template else ())
+    trace_material = "\n".join([request, given_material, *document_context])
+    trace_computed = [
+        *(prepass.blocks if prepass is not None else []), key_figures.block(settled), computed or "",
+        *(_source_text(row) for row in (sources or [])),
+    ]
+    trace_options = check_skills.options_for(format_id, dt.datetime.now(ZoneInfo(settings.timezone)).date())
+    traced = check_skills.Outcome("")
+    if given_material.strip() and format_id:
+        sections, traced = check_skills.ground_sections(
+            check_keys, sections, material=trace_material, computed=trace_computed, options=trace_options)
+        before_codes += ["ungrounded_value"] * len(traced.found)
+    if format_checks:
+        first, _ = await verify.find(
+            verify.Doc(sections, material_text, request, list(sources or []), settled, conflicts),
+            format_checks,
+        )
+        before_codes += [f.code for f in first]
     still_found: list[verify.Finding] = []
     try:
         sections, still_found, spent = await verify.verify_and_repair(
-            verify.Doc(sections, material_text, request, list(sources or []), settled),
+            verify.Doc(sections, material_text, request, list(sources or []), settled, conflicts),
             run_checks,
             complete=_complete,
             model=judge,
@@ -3807,25 +4202,150 @@ async def write(
         plan_rules.count(usage, spent, planned_apart=bool(outline_model))
     except Exception:  # noqa: BLE001 — the sentences stay as written; the gate reports them
         log.exception("verify stage failed")
+    after_codes = [f.code for f in still_found if f.code in format_codes]
+    if prepass is not None and format_id == "minutes":
+        sections, again = report_checks.minutes_grounding(sections, f"{request}\n{given_material}")
+        if again:
+            # Fixed again; what the second pass still finds is what stays.
+            sections, left = report_checks.minutes_grounding(sections, f"{request}\n{given_material}")
+            after_codes += left
+    if given_material.strip() and format_id:
+        # The verify stage rewrote sentences: what it brought in is traced once more.
+        sections, again = check_skills.ground_sections(
+            check_keys, sections, material=trace_material, computed=trace_computed, options=trace_options)
+        traced.found += again.found
+        before_codes += ["ungrounded_value"] * len(again.found)
+        traced.left = again.left
+        after_codes += ["ungrounded_value"] * len(again.left)
+    if client_problem and head_fixed is None:
+        after_codes.append("client_name")
+    # What the format must carry and the draft left out: added (one amendment each), then
+    # looked for again.
+    added_before: list[str] = []
+    added_after: list[str] = []
+    if prepass is not None:
+        for amendment in report_checks.amendments(
+            prepass, sections, given_material, request, conflicts, head_block
+        ):
+            added_before.append(amendment.code)
+            index = amendment.section
+            content = str(sections[index].get("content") or "")
+            if amendment.report_only:
+                pass
+            elif amendment.append:
+                sections[index] = {**sections[index], "content": content.rstrip() + "\n\n" + amendment.append}
+            else:
+                try:
+                    amended, spent = await _complete(
+                        model,
+                        [{"role": "user", "content": _AMEND_PROMPT.format(
+                            instruction=amendment.instruction, content=content)}],
+                        api_key,
+                        max_tokens=min(9000, 2 * len(content) + 1500),
+                    )
+                    usage["inputTokens"] += spent["inputTokens"]
+                    usage["outputTokens"] += spent["outputTokens"]
+                    amended = richtext.detach_tables(unwrap_json_prose(amended)).strip()
+                    if only_added(content, amended):
+                        sections[index] = {**sections[index], "content": amended}
+                except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
+                    log.info("amendment %s failed: %s", amendment.code, exc)
+            if amendment.missing(sections):
+                added_after.append(amendment.code)
+    if format_id == "career_history":
+        # Periods are written one way so the reader (and an ATS) reads them alike.
+        sections, tidied = report_checks.tidy_periods(sections)
+        if tidied:
+            log.info("career periods written one way: %d", tidied)
+    # A page limit (개조식: one page) is counted on the rendered body; condensed when it
+    # runs over, then counted again.
+    pages_note = ""
+    limit = (report_checks.page_limit(format_id, request, given_material)
+             if prepass is not None else None)
+    if limit and format_id in report_checks.PAGE_FORMATS:
+        shown_block = head_block
+        # 개조식 is judged on both files people get, laid out as exported: the body through
+        # the 붙임 list and its 「끝.」; the longer of the two counts.
+        by_hwpx = format_id in report_checks.PAGE_LIMITS
+
+        async def counted(rows: list[dict]) -> tuple[int | None, str]:
+            body = gaejo_body(rows, doc_format)
+            if by_hwpx:
+                hwpx, pdf = await report_checks.body_pages(title, body, shown_block, design_tokens)
+            else:
+                hwpx, pdf = None, await report_checks.page_count(
+                    title, body, shown_block, design_tokens)
+            note = " · ".join(f"{name} {n}쪽" for name, n in (("HWPX", hwpx), ("PDF", pdf)) if n)
+            return max(hwpx or 0, pdf or 0) or None, note
+
+        pages, counts = await counted(sections)
+        if pages and pages > limit and not by_hwpx:
+            # Over the RFP's limit: said, not cut by code — what to drop is the proposer's call.
+            added_before.append("page_over")
+            added_after.append("page_over")
+            pages_note = f"본문 쪽수({counts}) / 제한 {limit}쪽"
+        elif pages and pages > limit:
+            added_before.append("page_over")
+            # Up to two rounds, each told the pages it is at; a round that does not shorten
+            # the measured body (or lost a number) is dropped.
+            for _ in range(report_checks.CONDENSE_ROUNDS):
+                condensed = await report_checks.condense(
+                    sections, pages=pages, limit=limit, complete=_complete, model=model,
+                    api_key=api_key, usage=usage,
+                )
+                again, again_counts = await counted(condensed)
+                if again and again < pages:
+                    sections = condensed
+                    pages, counts = again, again_counts
+                if pages <= limit:
+                    break
+            if pages > limit:
+                added_after.append("page_over")
+            pages_note = f"본문 쪽수({counts}) / 요청 {limit}쪽"
+        elif pages:
+            pages_note = f"본문 쪽수({counts}) / 요청 {limit}쪽"
+    if format_checks or added_before or pages_note or traced.found:
+        record = report_checks.summary(before_codes + added_before, after_codes + added_after)
+        if traced.found:
+            record = " · ".join(x for x in (traced.summary, record) if x)
+        yield {
+            "type": "step", "id": "format_checks",
+            "label": "서식 검사: 문제 없음" if not before_codes and not added_before
+            else f"서식 검사 {len(before_codes) + len(added_before)}건 → 수리 후 "
+                 f"{len(after_codes) + len(added_after)}건",
+            "status": "error" if after_codes or added_after else "done",
+            "detail": " · ".join(x for x in (record, pages_note) if x)[:1500],
+        }
     # The finished document read once more for what a reader trips on; said in the steps
     # (and the log) so a defect is never passed off as done.
     findings = quality_gate.report_findings(sections, material_text, settled)
+    for f in [f for f in still_found if f.code in format_codes][:12]:
+        findings.append({"code": f.code, "where": str(sections[f.section].get("heading") or ""),
+                         "detail": f"{f.sentence[:80]} — {reader_note(f.code, f.why)}"})
+    for code in added_after:
+        findings.append({"code": code, "where": "document", "detail": pages_note if code == "page_over" else ""})
     # What the model checks found and no rule could confirm: listed for the reader to check.
     for f in [f for f in still_found if not f.auto][:12]:  # web, question, judged figures
         findings.append({"code": f.code, "where": str(sections[f.section].get("heading") or ""),
-                         "detail": f"{f.sentence[:80]} — {f.why[:200]}"})
+                         "detail": f"{f.sentence[:80]} — {reader_note(f.code, f.why)}"})
     if findings:
         log.warning("report quality findings: %s", logs.safe([(f["code"], f["where"]) for f in findings][:12], 2000))
+    # Bracket blanks (「[담당자]」) are gaps left for the person, not defects: counted and named.
+    blanks, named = placeholders.summary([str(s.get("content") or "") for s in sections], head_block)
+    # The places to check, for the reader: what the web check and the question check
+    # found that no rule could confirm or mend.
+    detail = " · ".join([f"채울 빈칸: {named}"] * bool(blanks)
+                       + [f["detail"] for f in findings if f["code"] in _TO_CHECK])[:1500]
     yield {
         "type": "step", "id": "quality",
-        "label": "품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건: "
-        + ", ".join(dict.fromkeys(_QUALITY_LABELS.get(f["code"], f["code"]) for f in findings)),
+        "label": ("품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건: "
+                  + ", ".join(dict.fromkeys(_QUALITY_LABELS.get(f["code"], f["code"]) for f in findings)))
+        + (f" · 빈칸 {blanks}개" if blanks else ""),
         "status": "done" if not findings else "error",
-        # The places to check, for the reader: what the web check and the question check
-        # found that no rule could confirm or mend.
-        **({"detail": " · ".join(f["detail"] for f in findings if f["code"] in _TO_CHECK)[:1500]}
-           if any(f["code"] in _TO_CHECK for f in findings) else {}),
+        **({"detail": detail} if detail else {}),
     }
+    # The repair pass rewrites sentences; the list shape is set again after it.
+    sections = gaejo_body(sections, doc_format)
     yield {"type": "report", "sections": sections}
     yield {"type": "usage", **usage}
 
@@ -3841,6 +4361,8 @@ async def rewrite_section(
     note: str = "",
     sources: list[dict] | None = None,
     material: list[str] | None = None,
+    #: The document's format (`titleBlock.format`); its genre rules hold for the rewrite too.
+    doc_format: str = "",
 ) -> tuple[str, dict]:
     """Rewrites one section with the rest of the document as context.
 
@@ -3855,6 +4377,8 @@ async def rewrite_section(
     )
     position = next((i for i, s in enumerate(sections) if s.get("id") == target_id), 0)
     role, blocks = _section_role(heading, position, len(sections), written)
+    fmt = doc_formats.BY_ID.get(doc_format)
+    genre = _genre_rule(request, fmt)
     prompt = _SECTION_PROMPT.format(
         heading=heading,
         outline=outline,
@@ -3872,8 +4396,9 @@ async def rewrite_section(
             ),
             sources or [],
         ),
-        genre=_genre_rule(request),
+        genre=genre,
     )
+    prompt = _shaped(prompt, genre)
     if note.strip():
         # Last and labelled, or it reads as part of the original request.
         prompt += (
@@ -3893,7 +4418,10 @@ async def rewrite_section(
     body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(body, heading))[0])
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
-    return _without_borrowed_tables(body, target.get("content") or "", others, note), spent
+    body = _without_borrowed_tables(body, target.get("content") or "", others, note)
+    if fmt is not None and fmt.lists == "gaejo":
+        body = doc_formats.gaejo_markdown(doc_formats.official_notation(body))
+    return body, spent
 
 
 def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
@@ -4007,7 +4535,9 @@ _SHOWN_ARITHMETIC = re.compile(
     r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}[-−–]\s{0,8}\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}=\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)"
 )
 _NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
-_SENTENCE_END = re.compile(r"(?<=[.!?。])\s{1,8}|(?<=다\.)\s{0,8}(?=[가-힣A-Za-z(「\d])")
+#: Typed 개조식 markers and the ※ note: list lines, like 「-」 and 「*」.
+_GAEJO_MARKS = ("□", "■", "○", "◦", "ㅇ", "ㆍ", "·", "∙", "※")
+_SENTENCE_END = re.compile(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s{1,8}|(?<=다\.)\s{0,8}(?=[가-힣A-Za-z(「\d])")
 
 
 def _number_keys(text: str) -> set[str]:
@@ -4051,7 +4581,7 @@ def trim_table_echo(body: str) -> str:
             fenced = not fenced
             out.append(line)
             continue
-        if fenced or line.lstrip().startswith(("|", "#", "-", "*", ">")) or not line.strip():
+        if fenced or line.lstrip().startswith(("|", "#", "-", "*", ">", *_GAEJO_MARKS)) or not line.strip():
             out.append(line)
             continue
         line = _SHOWN_ARITHMETIC.sub(r"\1", line)
@@ -4078,7 +4608,7 @@ _BARE_RATIO = re.compile(r"(?<![\d.%])0\.\d{1,15}(?![\d.%])")
 def fix_point_units(text: str) -> str:
     """「%p」 after a difference of bare ratios (0.xxx) goes; a sentence about percentages keeps it."""
     # Split with the separators kept, so paragraph breaks and fence lines survive.
-    parts = re.split(r"((?<=[.!?。])\s{1,8})", text)
+    parts = re.split(r"((?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s{1,8})", text)
     for i in range(0, len(parts), 2):
         sentence = parts[i]
         if _POINT_UNIT.search(sentence) and len(_BARE_RATIO.findall(sentence)) >= 2 and "%" not in (
@@ -4195,7 +4725,7 @@ def enforce_sentence_counts(sections: list[dict], request: str) -> list[dict]:
         for line in body.split("\n"):
             if line.strip().startswith("```"):
                 fenced = not fenced
-            if fenced or not line.strip() or line.lstrip().startswith(("|", "#", "-", "*", ">", "!")):
+            if fenced or not line.strip() or line.lstrip().startswith(("|", "#", "-", "*", ">", "!", *_GAEJO_MARKS)):
                 out.append(line)
                 continue
             kept = []
@@ -4281,10 +4811,14 @@ def fix_products(text: str) -> str:
     return out
 
 
-_PLACEHOLDER = re.compile(r"\((?:미정|측정값|값|TBD|TODO|n/a|추후\s*기입|확인\s*필요)\)", re.I)
-_FILL_PROMPT = """아래는 보고서의 "{heading}" 절 초안이다. 표와 문장에 (미정)·(측정값) 같은 빈자리가 남아
+_PLACEHOLDER = re.compile(
+    # Value holes only: a 「[담당자]」 is the person's to fill, not the attached data's.
+    r"\((?:미정|측정값|값|TBD|TODO|n/a|추후\s*기입|확인\s*필요)\)|\[(?:측정값|값|수치|금액)\]",
+    re.I,
+)
+_FILL_PROMPT = """아래는 보고서의 "{heading}" 절 초안이다. 표와 문장에 [측정값]·[금액] 같은 빈자리가 남아
 있다. 첨부 자료(참고 데이터)에 그 값들이 들어 있다. 빈자리를 자료의 실제 값으로 채워 절을
-다시 써라. 자료에 없는 값은 만들지 말고 그 칸은 「—」로 둔다. 절 제목 없이 본문만, 마크다운으로
+다시 써라. 자료에 없는 값은 만들지 말고 그 빈자리([측정값] 등)를 그대로 둔다. 절 제목 없이 본문만, 마크다운으로
 답하라. JSON 으로 싸지 마라.
 
 {body}"""
@@ -4297,7 +4831,10 @@ _FILLER = re.compile(
     r"필요할 것으로 판단됩니다|주목할 만합니다|의미가 있다고 할 수 있습니다)"
 )
 #: Sentence breaks at whitespace only, for the restatement trimming.
-_SPACED_SENTENCE_END = re.compile(r"(?<=[.!?。])\s+")
+_SPACED_SENTENCE_END = units.SENTENCE_BREAK
+#: A line's indent, and its indent with a list marker (Markdown or a typed 개조식 one).
+_LINE_LEAD = re.compile(r"^\s{0,24}")
+_LIST_LEAD = re.compile(r"^\s{0,24}(?:(?:[-*+]|\d{1,3}[.)]|[□■○◦ㅇㆍ·∙※])\s{1,4})?")
 #: A number with the unit glued to it (「742명」 「6.1만 건」 「14분」 「4.1점」 「7%」).
 _NUMBER_FACT = re.compile(r"(?<![A-Za-z\d])\d[\d,.]*(?:\s*(?:만|억|천))?[가-힣%]?")
 
@@ -4333,13 +4870,16 @@ _ASSESSMENT_LINE = re.compile(
 )
 
 
-def trim_restatements(body: str, earlier: list[str]) -> tuple[str, list[str]]:
+def trim_restatements(
+    body: str, earlier: list[str], *, keep_items: bool = False
+) -> tuple[str, list[str]]:
     """`(body without pure restatements and filler, the sentences cut)`.
 
     A sentence is cut only when it is safe to lose: every number in it (with its unit)
     already appears in an earlier section and it carries no word the earlier sections
     lack, or it is a filler sentence. Tables and blocks are never touched, and a section
-    is never emptied."""
+    is never emptied. With `keep_items` (a 개조식 body) list items are kept whole too:
+    each is a line of its own, and a cut one leaves its parent item hanging."""
     if not body.strip():
         return body, []
     # With no earlier sections the pool starts empty and grows sentence by sentence, so
@@ -4362,7 +4902,8 @@ def trim_restatements(body: str, earlier: list[str]) -> tuple[str, list[str]]:
             earlier_numbers |= set(_NUMBER_FACT.findall(cells))
             earlier_words |= _stems(cells)
         if (in_block or line.strip().startswith("|") or line.strip().startswith("#")
-                or not line.strip() or _ASSESSMENT_LINE.search(line)):
+                or not line.strip() or _ASSESSMENT_LINE.search(line)
+                or keep_items and _LIST_LEAD.match(line).group(0).strip()):
             out_lines.append(line)
             continue
         sentences = [x for x in _SPACED_SENTENCE_END.split(line) if x.strip()]
@@ -4406,8 +4947,14 @@ def trim_restatements(body: str, earlier: list[str]) -> tuple[str, list[str]]:
             # A section is never emptied: its first paragraph keeps its first sentence.
             kept = [sentences[0]]
             cut.remove(sentences[0].strip())
-        if kept or not sentences:
-            out_lines.append(" ".join(k.strip() for k in kept) if kept else line)
+        if kept and kept == sentences:
+            out_lines.append(line)
+        elif kept:
+            # The line's indent stays, and its list marker when the first sentence went.
+            lead = (_LINE_LEAD if sentences[0] in kept else _LIST_LEAD).match(line).group(0)
+            out_lines.append(lead + " ".join(k.strip() for k in kept))
+        elif not sentences:
+            out_lines.append(line)
     if not cut:
         return body, []
     return "\n".join(out_lines).strip() + "\n", cut
@@ -4468,7 +5015,7 @@ def drop_redundant_kpi(text: str) -> str:
 
 
 def placeholder_heavy(text: str) -> bool:
-    """Three or more 「(미정)」-style holes: a frame the data never reached."""
+    """Three or more 「[측정값]」- or 「(미정)」-style holes: a frame the data never reached."""
     return len(_PLACEHOLDER.findall(text or "")) >= 3
 
 
@@ -4486,7 +5033,7 @@ def _title_key(entry: str) -> str:
 
 def _references_from_table(body: str) -> str:
     """A reference list written as a table, as numbered lines: a row whose first cell is
-    「[n]」 becomes 「[n] cell. cell. cell.」 (empty and 「(미정)」 cells left out); the
+    「[n]」 becomes 「[n] cell. cell. cell.」 (empty, 「(미정)」 and 「[저자]」 cells left out); the
     header, the rule and prose around the table stay where they were."""
     if not re.search(r"(?m)^\s{0,3}\|", body):
         return body
@@ -4500,7 +5047,7 @@ def _references_from_table(body: str) -> str:
         if line.lstrip().startswith(("|", "[")) and number:
             rest = [
                 c.rstrip(". ") for c in cells[cells.index(first) + 1 :]
-                if c and c not in ("(미정)", "미정", "-", "–")
+                if c and c not in ("(미정)", "미정", "-", "–") and not placeholders.is_blank(c)
             ]
             out.append(f"{first} " + ". ".join(rest) + ".")
         elif re.fullmatch(r"\s{0,3}\|?[\s|:\-]{3,200}\|?\s{0,3}", line) or (
@@ -4531,18 +5078,18 @@ def _split_references(body: str) -> tuple[str, list[tuple[int, str]]] | None:
 #: 「…근거를 제공합니다」) does.
 _PROSE_END = re.compile(r"(?:니다|[이한된있없했였같않]다|이다|이에요|해요)\s{0,2}$")
 #: Where one entry ends and the next begins on the same line: before 「박찬승. 『」,
-#: 「Schmid, Andre.」, 「Lee, S. G.」 or a 「(저자 확인 필요)」 placeholder.
+#: 「Schmid, Andre.」, 「Lee, S. G.」 or a 「[저자]」 / 「(저자 확인 필요)」 placeholder.
 _NEXT_ENTRY = re.compile(
     r"(?<=[.)])\s{1,4}(?="
     r"[가-힣]{2,4}\s{0,1}(?:\([^()]{0,40}\))?\.\s{0,2}(?:\(\d{4}\)\.\s{0,2})?[『「]"
     r"|[A-Z][a-z]{1,30},\s(?:[A-Z][a-z]{1,30}|[A-Z]\.)"
-    r"|\(저자\s{0,2}확인\s{0,2}필요\)|\[\d{1,3}\]\s)"
+    r"|\(저자\s{0,2}확인\s{0,2}필요\)|\[저자\]|\[\d{1,3}\]\s)"
 )
 
 
 _ENTRY_START = re.compile(
     r"^(?:\[\d{1,3}\]|\d{1,3}[.)]|[-*]\s|[가-힣]{2,5}(?:\([^()]{0,40}\))?[.,]"
-    r"|[A-Z][A-Za-z'’-]{1,30},|\(저자|[『「*])"
+    r"|[A-Z][A-Za-z'’-]{1,30},|\(저자|\[저자\]|[『「*])"
 )
 
 
@@ -4604,6 +5151,7 @@ def reference_list_only(sections: list[dict]) -> list[dict]:
 _AMEND_PROMPT = """아래 절에 덧붙이기만 하라. {instruction}
 
 규칙: 있는 문장과 표 행은 한 글자도 바꾸거나 지우지 마라. 덧붙인 것 말고는 그대로 둔다.
+자료에 없는 값은 지어내지 말고 「[담당자]」처럼 그 자리 이름을 대괄호로 둔다.
 고친 절 본문만 답하라(제목·설명 없이).
 
 절:
@@ -4901,7 +5449,7 @@ def fill_reference_list(sections: list[dict], material: str) -> list[dict]:
              and len(line) <= 300),
             "",
         )
-        entries.append(found.replace("**", "") if found else f"{name} ({year}). (서지 확인 필요)")
+        entries.append(found.replace("**", "") if found else f"{name} ({year}). [서지 정보]")
     out = list(sections)
     out[index] = {**sections[index], "content": "\n\n".join(entries) + "\n"}
     return out

@@ -2771,7 +2771,6 @@ async def test_strict_registry_does_not_resolve_remote_tools_or_backends(
 
     assert [tool.name for tool in tools] == [
         "calculate",
-        "check_ncs_answer",
         "create_artifact",
         "create_chart",
         "search_knowledge",
@@ -3171,6 +3170,72 @@ async def test_strict_tool_detail_is_masked_for_storage_but_raw_result_stays_loc
         {"category": "email", "source": "tool_output", "count": 1},
         {"category": "phone", "source": "tool_output", "count": 1},
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hook", ["sanitize_step_detail", "sanitize_tool_output"])
+async def test_a_masked_turn_masks_the_step_code_and_output(monkeypatch, hook) -> None:
+    hops = 0
+
+    async def fake_stream_once(model, messages, tools, user_id, api_key, **_kwargs):
+        nonlocal hops
+        hops += 1
+        acc = agent._Accumulator()
+        acc.actual_model = "provider/strict-model"
+        if hops == 1:
+            acc.calls[0] = {"id": "call_0", "name": "run_code", "arguments": "{}"}
+        else:
+            acc.content.append("답")
+        yield "done", acc
+
+    async def run_tool(_arguments):
+        return ToolResult(
+            content="done",
+            detail="시도 1회",
+            trace={
+                "code": "print('owner person@example.com')",
+                "codeAttempt": 1,
+                "stdout": "owner person@example.com +1 (415) 555-2671",
+            },
+        )
+
+    async def plain_tool(_arguments):
+        return ToolResult(content="plain", detail="d")
+
+    monkeypatch.setattr(agent, "_stream_once", fake_stream_once)
+    tool = Tool(name="run_code", description="t", parameters={"type": "object"},
+                run=run_tool, label="파일 작업")
+    events = [
+        event
+        async for event in agent.run_turn(
+            "strict-local/model",
+            [{"role": "user", "content": "go"}],
+            [tool],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+            **{hook: governance.mask},
+            strict_local=hook == "sanitize_step_detail",
+        )
+    ]
+    done = next(e for e in events if e["type"] == "step" and e.get("status") == "done")
+    assert "person@example.com" not in json.dumps(done)
+    assert "555-2671" not in done["stdout"]
+    assert done["codeAttempt"] == 1 and done["code"].startswith("print(")
+
+    # A tool without a trace still yields the old step shape.
+    hops = 0
+    plain = Tool(name="run_code", description="t", parameters={"type": "object"},
+                 run=plain_tool, label="파일 작업")
+    events = [
+        event
+        async for event in agent.run_turn(
+            "strict-local/model",
+            [{"role": "user", "content": "go"}],
+            [plain],
+            ToolContext(user_id="user", session_id="session", api_key="key"),
+        )
+    ]
+    done = next(e for e in events if e["type"] == "step" and e.get("status") == "done")
+    assert not {"code", "codeAttempt", "stdout", "stderr"} & done.keys()
 
 
 @pytest.mark.asyncio
@@ -3904,3 +3969,19 @@ def test_a_session_that_handled_internal_material_stays_strict_local():
     plain = Message(id="m3", session_id="s2", role="assistant", content="…")
     plain.routing = {"action": "none"}
     assert not sessions._internal_data_present(session, [], None, [plain])
+
+
+def test_a_turn_internal_material_can_move_gets_its_strict_tools_ready():
+    """Data analysis on an attachment runs strict-local; run_code must still be offered."""
+    from app.routers import sessions
+
+    user = User(id="u-tools", email="tools@example.test", password_hash="hash", name="Tools")
+    hybrid = {**_external_model("local/qwen"), "dataBoundary": "hybrid"}
+    strict = {**_external_model("strict-local/qwen"), "dataBoundary": "self_hosted",
+              "strictLocal": True}
+    on = Governance(internal_data_strict_local=True)
+    off = Governance(internal_data_strict_local=False)
+    assert sessions._strict_route_possible(hybrid, [hybrid, strict], on, user, auto_turn=False)
+    assert not sessions._strict_route_possible(hybrid, [hybrid, strict], off, user, auto_turn=False)
+    assert not sessions._strict_route_possible(hybrid, [hybrid], on, user, auto_turn=False)
+    assert sessions._strict_route_possible(strict, [strict], off, user, auto_turn=False)

@@ -310,6 +310,18 @@ class MessageForkOut(Wire):
     attachment_id_map: dict[str, str]
 
 
+class HandoffIn(Wire):
+    #: The document surface to continue on; the agent must offer it.
+    kind: Literal["report", "slides"]
+
+
+class HandoffOut(Wire):
+    session: SessionOut
+    #: The conversation as one text file, then the files attached in it; send them with
+    #: the document request so the writer reads the conversation as material.
+    attachments: list[FileOut]
+
+
 class CompareRequest(Wire):
     content: str = Field(min_length=1)
     models: list[str] = Field(min_length=2, max_length=3)

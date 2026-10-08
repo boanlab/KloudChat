@@ -10,6 +10,7 @@ import type {
   DesignTokens,
   EarlierAnswer,
   FreshnessAbstention,
+  LengthCheck,
   Message,
   MessageRouting,
   ModelInfo,
@@ -823,6 +824,11 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
+  /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
+  handoff: (sessionId: string, kind: 'report' | 'slides') =>
+    call<{ session: SessionRow; attachments: FileRow[] }>(
+      `/sessions/${sessionId}/handoff`, body({ kind }),
+    ),
   forkBeforeMessage: (sessionId: string, messageId: string) =>
     call<{ session: SessionRow; attachments: FileRow[]; attachmentIdMap: Record<string, string> }>(
       `/sessions/${sessionId}/messages/${messageId}/fork`, { method: 'POST' },
@@ -1325,6 +1331,8 @@ export interface DesignTemplateRow {
   formFormat: string
   /** Whether `/design-templates/{id}/preview` has a miniature to show. */
   hasPreview: boolean
+  /** Slides in a deck's sample, each at `/preview?slide=N`; 0 for any other kind. */
+  slideCount: number
 }
 
 /** One argument's text in the language on screen. */
@@ -1407,6 +1415,8 @@ export interface SkillRow {
   installs: number
   originId: string | null
   updatedAt: string
+  /** Fixed scripts its package ships, run by `run_skill_script`. */
+  scripts?: string[]
 }
 
 export interface StoreSkillRow extends SkillRow {
@@ -1502,6 +1512,12 @@ export interface AgentRow {
   tools: string[] | null
   skillIds: string[] | null
   kinds: string[]
+  surface: string | null
+  renderTemplateId: string | null
+  docFormat: string | null
+  designSystemId: string | null
+  /** That design's name; the viewer's own design of this name stands in for one they cannot see. */
+  designName?: string
   /** How to use it, shown on the empty screen. */
   guide: string
   /** First messages offered as buttons there. */
@@ -1645,7 +1661,10 @@ export const jobsApi = {
 /* ── streaming ──────────────────────────────────────────────────────────*/
 
 export type StreamEvent =
-  | { type: 'step'; id: string; label: string; status: Step['status']; detail?: string }
+  | {
+      type: 'step'; id: string; label: string; status: Step['status']; detail?: string
+      outputs?: Step['outputs']; code?: string; codeAttempt?: number; stdout?: string; stderr?: string
+    }
   | { type: 'delta'; text: string }
   /** Text the agent took back — narration written before a tool ran, or an answer it then repeated. */
   | { type: 'retract'; text: string }
@@ -1680,6 +1699,8 @@ export type StreamEvent =
   | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }
+  /** A turn with no privacy routing still closes with what the server measured. */
+  | { type: 'privacy_route'; lengthCheck?: LengthCheck; accuracy?: PrivacyRouting['accuracy'] }
   | ({ type: 'model_route' } & CostRouting)
   | ({ type: 'freshness_abstention' } & FreshnessAbstention)
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)

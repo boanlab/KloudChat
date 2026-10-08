@@ -245,10 +245,12 @@ def test_hwpx_page_geometry_and_first_page_flags_follow_page_settings():
     body = archive.read("Contents/section0.xml").decode()
     assert 'hideFirstHeader="0"' in body
     assert 'hideFirstPageNum="1"' in body
-    assert 'top="7087"' in body
-    assert 'right="5386"' in body
-    assert 'bottom="5953"' in body
-    assert 'left="4819"' in body
+    # Hancom starts the body at top + header and ends it at bottom + footer from the edge.
+    margin = dict(re.findall(r'(\w+)="(\d+)"', re.search(r"<hp:margin [^>]*>", body).group(0)))
+    assert int(margin["top"]) + int(margin["header"]) == 7087
+    assert int(margin["bottom"]) + int(margin["footer"]) == 5953
+    assert margin["right"] == "5386"
+    assert margin["left"] == "4819"
 
 
 def test_hwpx_page_furniture_is_editable_and_uses_a_live_page_number():
@@ -374,7 +376,8 @@ def test_the_export_comes_out_in_the_template_it_was_written_in():
         io.BytesIO(report_export.to_docx("제목", SECTIONS, template=chosen.docx_template))
     )
     styles = themed.read("word/styles.xml").decode()
-    assert "함초롬" in styles
+    # Faces Word carries; 함초롬 is Hancom's own.
+    assert 'w:eastAsia="바탕"' in styles and "함초롬" not in styles
     assert "2B4C7E" in styles
 
 

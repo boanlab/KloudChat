@@ -116,7 +116,7 @@ def test_an_empty_reference_section_is_rebuilt_from_cited_works():
     out = report.fill_reference_list(sections, material)[1]["content"].split("\n\n")
     assert out[0] == "김상현, 『동아일보의 역사』, 동아일보사, 1990년."
     assert out[1] == "이영호, 『조선일보의 역사』, 조선일보사, 1995년."
-    assert out[2].strip() == "박재순 (1986). (서지 확인 필요)"
+    assert out[2].strip() == "박재순 (1986). [서지 정보]"
     # A list with entries is left as it is.
     entry = {"heading": "참고문헌", "content": "김상현 (1990). 『동아일보의 역사』."}
     listed = [sections[0], entry]

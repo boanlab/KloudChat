@@ -30,9 +30,10 @@ def test_one_long_cell_does_not_take_the_whole_table() -> None:
 
 
 def test_a_column_of_dates_keeps_a_floor() -> None:
+    """Widths are in ems (`_ems`): the column holds the whole date, digits at their own width."""
     rows = [["시기"], ["`28.03"]]
 
-    assert rx._column_weights(rows, 1)[0] >= len("`28.03")
+    assert rx._column_weights(rows, 1)[0] >= rx._ems("`28.03")
 
 
 def test_cells_read_from_the_left_rather_than_justified() -> None:

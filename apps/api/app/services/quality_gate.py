@@ -117,13 +117,14 @@ def report_findings(
         for block in re.split(r"\n\s*\n", body):
             text = block.strip()
             if (len(text) > 650 and "\n" not in text
-                    and not re.match(r"^(?:\||#|>|[-*+]\s|\d{1,3}[.)]\s|```|!\[)", text)):
+                    and not re.match(
+                        r"^(?:\||#|>|[-*+]\s|[□■○◦ㅇㆍ·∙※]\s|\d{1,3}[.)]\s|```|!\[)", text)):
                 add("long_paragraph", heading, f"{len(text)}자")
         heads = ("|", "!", "```", "#", "**표", "*그림")
         prose = [b for b in re.split(r"\n\s*\n", body)
                  if b.strip() and "\n" not in b.strip() and not b.strip().startswith(heads)]
         for block in prose:
-            sentences = re.split(r"(?<=[.!?])\s+", block)
+            sentences = units.SENTENCE_BREAK.split(block)
             cites = [report._cited(s) for s in sentences]
             for i in range(len(sentences) - 1):
                 bare = report._TRAILING_CITE.sub("", sentences[i])
@@ -356,7 +357,7 @@ def scaled_metric_slips(text: str) -> list[tuple[str, str, float, float]]:
     for line in (text or "").split("\n"):
         if line.lstrip().startswith(("```", "!", "#")):
             continue
-        for sentence in re.split(r"(?<=[.!?])\s+|\s\|\s", line):
+        for sentence in re.split(r"(?<=[.!?])" + units.NO_NUMBER_DOT_BREAK + r"\s+|\s\|\s", line):
             for m in _NAMED_METRIC.finditer(sentence):
                 # A total's words (누적, 총액) sit right by the name.
                 if _TOTAL_WORDS.search(sentence[max(0, m.start() - 6):m.start("value")]):

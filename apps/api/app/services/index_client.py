@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 
 from app.core import logs
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
 #: Stored file id: 32 hex characters (`uuid4().hex`).
 _ID = re.compile(r"[0-9a-f]{32}")
@@ -58,7 +58,7 @@ async def put_document(
     if not base or not collection:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_WRITE_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_WRITE_TIMEOUT) as client:
             response = await client.put(
                 f"{base}/documents",
                 json={
@@ -87,7 +87,7 @@ async def search(*, collection: str, query: str, limit: int = 4) -> list[dict[st
     if not base or not collection:
         return []
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.post(
                 f"{base}/search",
                 json={"collection": collection, "query": query[:4000], "limit": limit},
@@ -109,7 +109,7 @@ async def forget_document(*, collection: str, doc_id: str) -> bool:
     if not base or not collection:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.delete(
                 f"{base}/documents/{doc_id}", params={"collection": collection}
             )
@@ -129,7 +129,7 @@ async def forget_collection(*, collection: str) -> bool:
     if not base:
         return False
     try:
-        async with httpx.AsyncClient(timeout=_READ_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_READ_TIMEOUT) as client:
             response = await client.delete(f"{base}/collections/{collection}")
             response.raise_for_status()
     except httpx.HTTPError as exc:

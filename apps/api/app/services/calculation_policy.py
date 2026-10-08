@@ -32,6 +32,9 @@ _BUILD = re.compile(r"만들|작성|구현|개발|\b(?:write|build|create|genera
 _CODE = re.compile(r"\b(?:function\s+\w+\s*\(|def\s+\w+\s*\(|return\s+)", re.I)
 _DECLINE = re.compile(
     r"(?:계산|검산)(?:을|은|는|도)?\s*하지(?:는|도)?\s*(?:마|말)|"
+    # Material saying something was not worked out (「매출 영향은 계산 안 함」) asks nothing.
+    r"(?:계산|검산)(?:을|은|는|도)?\s{0,3}(?:안|못)\s{0,3}(?:함|했|하였|됨|됐)|"
+    r"(?:계산|검산)(?:을|은|는|도)?\s{0,3}하지\s{0,3}(?:않|못)(?:았|음|았음)|"
     r"\b(?:do\s+not|don['’]t|never)\s+(?:calculate|compute|evaluate|add|subtract|multiply|divide)\b",
     re.IGNORECASE,
 )
@@ -43,6 +46,20 @@ _MISSING = re.compile(
     re.IGNORECASE,
 )
 _CALCULATE = re.compile(r"계산|검산|산출|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
+#: A length limit on writing (「공백 포함 700자 이내」, 「1,000바이트 이내」): counted by text-fit
+#: after the answer, not an arithmetic request.
+_LENGTH_LIMIT = re.compile(
+    r"\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트|bytes?)\s{0,2}(?:이내|이하|내외|제한|미만|까지|안으로)"
+    r"|(?:공백|띄어쓰기)\s{0,2}(?:포함|제외)\s{0,2}\d[\d,]{0,6}\s{0,2}(?:자|글자|바이트)",
+    re.IGNORECASE,
+)
+_WRITING = re.compile(r"자기\s{0,2}소개서|자소서|문항|써\s{0,2}줘|작성|다듬|고쳐", re.IGNORECASE)
+#: An arithmetic ask, not a note that something was computed (「노쇼율 12.4% 계산」).
+_CALCULATE_ASK = re.compile(
+    r"계산\s{0,2}(?:해|하여|하고|해서|좀|부탁)|검산\s{0,2}(?:해|좀)|구해|얼마|몇\s{0,2}(?:%|퍼센트|원|명|개)"
+    r"|\b(?:calculate|compute)\b",
+    re.IGNORECASE,
+)
 #: "10분이 아니라 20분" / "not 10 but 20" / "10 → 20": a corrected value is one
 #: operand, not two.
 _CORRECTION = re.compile(
@@ -386,6 +403,9 @@ def requires_calculation(request: str) -> bool:
     data = " ".join(raw for raw, _ in eligible)
     if _MISSING.search(data):
         return False
+    if (_LENGTH_LIMIT.search(text) and _WRITING.search(intent)
+            and not any(_CALCULATE_ASK.search(words) for _, words in eligible)):
+        return False
     # "10분이 아니라 20분이야, 다시 계산해 줘" corrects one value; only the new one is supplied.
     number_count = len(_NUMBER.findall(_CORRECTION.sub(" ", data)))
     if number_count < 1:
@@ -404,3 +424,33 @@ def requires_calculation(request: str) -> bool:
             if len(units) >= 2 or _PERCENT_CONVERSION.search(raw):
                 return True
     return False
+
+
+#: A request for figures out of attached data: totals, rates, trends, a chart or a table.
+_TABLE_ANALYSIS = re.compile(
+    r"집계|평균|비율|비중|합계|총합|합산|추이|분석|차트|그래프|통계|증감|변화|비교|순위|"
+    r"최댓값|최솟값|최대|최소|중앙값|분포|표로|표\s{0,2}(?:를\s{0,2})?(?:만들|작성|정리)|"
+    r"몇\s{0,2}(?:%|퍼센트|명|개|건|권|원|배)|얼마|"
+    r"\b(?:average|mean|median|sum|total|ratio|share|trend|analy[sz]e|analysis|chart|plot|"
+    r"compare|aggregate|pivot)\b",
+    re.IGNORECASE,
+)
+#: A question that carries a figure (「3월 방문자는 몇이야?」, 「2025년 합은?」).
+_DIGIT_QUESTION = re.compile(r"\d[^\n?？]{0,80}[?？]|[?？][^\n]{0,80}\d")
+#: The person keeping the turn to a reading of the file.
+_DESCRIBE_ONLY = re.compile(
+    r"계산\s{0,2}(?:은|는|도)?\s{0,2}(?:없이|말고|빼고)|"
+    r"(?:설명|소개|내용\s{0,2}파악|구조)\s{0,2}만|"
+    r"\b(?:just|only)\s+(?:describe|explain|summari[sz]e)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_table_analysis(request: str) -> bool:
+    """Whether a request about attached tabular data wants figures computed from it."""
+    if not isinstance(request, str) or len(request) > _MAX_REQUEST_CHARS:
+        return False
+    text = unicodedata.normalize("NFKC", _FENCE.sub(" ", request))
+    if _DECLINE.search(text) or _DESCRIBE_ONLY.search(text):
+        return False
+    return bool(_TABLE_ANALYSIS.search(text) or _DIGIT_QUESTION.search(text))
