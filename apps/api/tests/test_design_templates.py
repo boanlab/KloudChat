@@ -988,3 +988,38 @@ def test_a_research_figure_prompt_carries_both_halves() -> None:
     assert "flowchart" in system and "subgraph" in system
     assert "인코더가 입력을 임베딩으로 바꾼다." in user
     assert "subgraph" not in user
+
+
+# ── 개조식: the body face follows the design ───────────────────────────
+
+
+def test_the_gaejo_body_face_follows_the_design_in_html_and_word():
+    import io
+
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    from app.services import report_export
+
+    gaejo = dt.get("doc-gaejo-report")
+    assert gaejo is not None and gaejo.body_face_from_design and gaejo.no_skills
+    assert dt.get("doc-minutes").no_skills
+    assert ".page {\n  font-family: var(--font-body);" in gaejo.seed
+    serif = dt.render(gaejo, title="t", tokens={"font": "serif"}, body="")
+    assert "--font-body: 'Nanum Myeongjo'" in serif
+
+    def faces(tokens):
+        data = report_export.to_docx(
+            "보고", [{"heading": "현황", "content": "- 항목 하나."}], tokens=tokens,
+            template=gaejo.docx_template, body_from_design=True,
+        )
+        styles = Document(io.BytesIO(data)).styles
+        return {
+            name: styles[name].element.rPr.find(qn("w:rFonts")).get(qn("w:eastAsia"))
+            for name in ("Body Text", "Normal", "Heading 1")
+        }
+
+    assert faces({"font": "serif"}) == {
+        "Body Text": "바탕", "Normal": "바탕", "Heading 1": "맑은 고딕"
+    }
+    assert faces({"font": "gothic"})["Body Text"] == "맑은 고딕"

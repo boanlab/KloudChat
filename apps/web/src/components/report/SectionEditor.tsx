@@ -10,6 +10,10 @@ import {
 } from '@tiptap/extension-text-style'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import { Extension, Node } from '@tiptap/core'
+import type { Node as PmNode } from '@tiptap/pm/model'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { figureColumns, isTotal } from '@/components/report/figureColumns'
 import {
   CalloutBlock,
   CardsBlock,
@@ -68,9 +72,65 @@ const ParagraphLineHeight = Extension.create({
   },
 })
 
+/** The 개조식 roles `GAEJO_CSS` styles (※ note, 붙임 line), kept through editing; a ※ item keeps its note role too. */
+const GAEJO_PARAGRAPHS = ['gaejo-note', 'gaejo-attach']
+
+const GaejoParagraph = Extension.create({
+  name: 'gaejoParagraph',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'listItem'],
+      attributes: {
+        gaejo: {
+          default: null,
+          parseHTML: (element) => GAEJO_PARAGRAPHS.find((name) => element.classList.contains(name)) ?? null,
+          renderHTML: (attributes) => (attributes.gaejo ? { class: attributes.gaejo } : {}),
+        },
+      },
+    }]
+  },
+})
+
 // Tiptap extensions (all MIT; no `@tiptap-pro`). The editor writes HTML,
 // hence a section's `format`; `services/richtext.py` converts back for the
 // exporters, and the server sanitises again on save.
+/** Figure columns flush right while editing: `.fig` on their cells and `.total` on a total row, as the preview and the exporters draw them. Decorations only; nothing is saved. */
+const FigureColumns = Extension.create({
+  name: 'figureColumns',
+  addProseMirrorPlugins() {
+    const mark = (doc: PmNode) => {
+      const found: Decoration[] = []
+      doc.descendants((node, pos) => {
+        if (node.type.name !== 'table') return true
+        const rows: { pos: number; node: PmNode }[] = []
+        node.forEach((row, offset) => rows.push({ pos: pos + 1 + offset, node: row }))
+        const text = rows.map(({ node: row }) => {
+          const cells: string[] = []
+          row.forEach((cell) => cells.push(cell.textContent))
+          return cells
+        })
+        const columns = figureColumns(text)
+        rows.forEach(({ pos: rowPos, node: row }, at) => {
+          if (at && isTotal(text[at])) found.push(Decoration.node(rowPos, rowPos + row.nodeSize, { class: 'total' }))
+          row.forEach((cell, offset, index) => {
+            if (columns.has(index)) found.push(Decoration.node(rowPos + 1 + offset, rowPos + 1 + offset + cell.nodeSize, { class: 'fig' }))
+          })
+        })
+        return false
+      })
+      return DecorationSet.create(doc, found)
+    }
+    return [new Plugin({
+      key: new PluginKey('figureColumns'),
+      state: {
+        init: (_, state) => mark(state.doc),
+        apply: (tr, old) => (tr.docChanged ? mark(tr.doc) : old),
+      },
+      props: { decorations(state) { return this.getState(state) } },
+    })]
+  },
+})
+
 const EXTENSIONS = [
   StarterKit.configure({
     // The section heading is drawn by the wrapper, so levels 1-2 are excluded.
@@ -83,8 +143,10 @@ const EXTENSIONS = [
   Color,
   BackgroundColor,
   ParagraphLineHeight,
+  GaejoParagraph,
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Table.configure({ resizable: true }),
+  FigureColumns,
   TableRow,
   TableHeader,
   TableCell,

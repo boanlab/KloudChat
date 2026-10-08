@@ -76,13 +76,13 @@ def test_the_docx_styles_carry_the_scale_and_cells_have_room() -> None:
     table = built.tables[0]
     margins = table._tbl.tblPr.find(qn("w:tblCellMar"))
     assert margins is not None and margins.find(qn("w:left")).get(qn("w:w")) == "120"
+    # The table size comes from the cell paragraphs' styles (표 머리·표 본문·표 숫자).
     sizes = {
-        run.font.size.pt
+        (run.font.size or paragraph.style.font.size).pt
         for row in table.rows
         for cell in row.cells
         for paragraph in cell.paragraphs
         for run in paragraph.runs
-        if run.font.size
     }
     assert sizes == {doc_type.TYPE["table"]}
 

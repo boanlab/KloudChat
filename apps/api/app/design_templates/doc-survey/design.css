@@ -31,11 +31,11 @@ table tbody tr:nth-child(odd) td {
   print-color-adjust: exact;
 }
 table td:not(:first-child), table th:not(:first-child) {
-  text-align: right;
-  padding-right: 0;
   padding-left: 1em;
   font-variant-numeric: tabular-nums;
 }
+/* 수치 열(`.fig`)만 오른쪽에 세운다. */
+table :is(td, th).fig { padding-right: 0; }
 
 /* 백분율과 표본 수가 한 칸에 같이 오는 표가 많다. 괄호 안은 눌러 둔다. */
 table td small { display: inline; }

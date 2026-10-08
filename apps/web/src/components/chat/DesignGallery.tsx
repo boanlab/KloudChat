@@ -29,6 +29,7 @@ import { cn, upsertById } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 import { TemplateForm } from '@/components/chat/TemplateForm'
+import { DeckSlideViewer, SlideFrame } from '@/components/chat/DeckSlideViewer'
 import { useDesignTemplates, useStartTemplate } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 
@@ -73,14 +74,26 @@ type Card = {
   sentence?: Sentence
 }
 
-/** Scaled live preview of a design template; sandboxed with no permissions. */
-function Thumbnail({ id, deck }: { id: string; deck: boolean }) {
-  const window_ = useRef<HTMLDivElement>(null)
+/** Live preview of a design template scaled to its box; sandboxed with no permissions. */
+function ScaledPreview({
+  id,
+  deck,
+  height,
+  scrolls = false,
+}: {
+  id: string
+  deck: boolean
+  /** Frame height at full size, before scaling. */
+  height: number
+  /** Whether the page inside may be scrolled (the full view) or is a still (the card). */
+  scrolls?: boolean
+}) {
+  const box = useRef<HTMLDivElement>(null)
   const width = deck ? 1280 : 820
   const [scale, setScale] = useState(0)
 
   useEffect(() => {
-    const node = window_.current
+    const node = box.current
     if (!node) return
     const fit = () => setScale(node.clientWidth / width)
     fit()
@@ -90,22 +103,71 @@ function Thumbnail({ id, deck }: { id: string; deck: boolean }) {
   }, [width])
 
   return (
-    <div
-      ref={window_}
-      className="relative h-28 shrink-0 overflow-hidden border-b border-line bg-elevated"
-      aria-hidden="true"
-    >
+    <div ref={box} className="relative w-full overflow-hidden" style={{ height: scale ? height * scale : undefined }}>
       <iframe
         src={`/api/design-templates/${id}/preview`}
         sandbox=""
-        tabIndex={-1}
+        tabIndex={scrolls ? 0 : -1}
         loading="lazy"
         title=""
-        className="pointer-events-none absolute left-0 top-0 origin-top-left"
+        className={cn('absolute left-0 top-0 origin-top-left bg-white', !scrolls && 'pointer-events-none')}
         // Hidden until measured, or one frame at scale 1 paints over the next card.
-        style={{ width, height: 448, transform: `scale(${scale})`, visibility: scale ? 'visible' : 'hidden' }}
+        style={{ width, height, transform: `scale(${scale})`, visibility: scale ? 'visible' : 'hidden' }}
       />
     </div>
+  )
+}
+
+/** The card's preview strip; a click opens the whole page. */
+function Thumbnail({ id, deck, onOpen }: { id: string; deck: boolean; onOpen: () => void }) {
+  const t = useT()
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        'relative shrink-0 cursor-zoom-in overflow-hidden border-b border-line bg-elevated text-left',
+        deck ? 'aspect-video' : 'h-28',
+      )}
+      aria-label={t('전체 미리보기')}
+      title={t('전체 미리보기')}
+    >
+      {/* A deck shows its cover slide whole. */}
+      {deck ? <SlideFrame id={id} n={1} /> : <ScaledPreview id={id} deck={deck} height={448} />}
+    </button>
+  )
+}
+
+/** The whole page of a design template, as it prints. */
+function FullPreview({
+  row,
+  english,
+  open,
+  onClose,
+  footer,
+}: {
+  row: DesignTemplateRow
+  english: boolean
+  open: boolean
+  onClose: () => void
+  footer: React.ReactNode
+}) {
+  const text = templateText(row, english)
+  const deck = row.kind === 'deck'
+  if (deck && row.slideCount > 0) {
+    return (
+      <Modal open={open} onClose={onClose} title={text.name} description={text.description} width="max-w-4xl" footer={footer}>
+        <DeckSlideViewer id={row.id} count={row.slideCount} />
+      </Modal>
+    )
+  }
+  return (
+    <Modal open={open} onClose={onClose} title={text.name} description={text.description} width="max-w-4xl" footer={footer}>
+      <div className="max-h-[75vh] overflow-y-auto rounded-control border border-line bg-elevated">
+        {/* A document shows a whole A4 page (820 × 1160) and scrolls on; a deck shows its 16:9 slide. */}
+        <ScaledPreview id={row.id} deck={deck} height={deck ? 720 : 2320} scrolls />
+      </div>
+    </Modal>
   )
 }
 
@@ -151,6 +213,19 @@ export function DesignTemplateCard({
 }) {
   const t = useT()
   const text = templateText(row, english)
+  const [previewing, setPreviewing] = useState(false)
+  const start = (
+    <Button
+      size="sm"
+      disabled={chosen}
+      onClick={() => {
+        setPreviewing(false)
+        onPick(row, row.arguments.length > 0 ? '' : text.examplePrompt)
+      }}
+    >
+      {chosen ? t('고른 서식') : row.figure ? t('이 도식으로 시작') : t('이 서식으로 시작')}
+    </Button>
+  )
   return (
     <div
       className={cn(
@@ -158,7 +233,18 @@ export function DesignTemplateCard({
         chosen ? 'border-accent' : 'border-line hover:border-line-strong',
       )}
     >
-      {row.hasPreview && <Thumbnail id={row.id} deck={row.kind === 'deck'} />}
+      {row.hasPreview && (
+        <>
+          <Thumbnail id={row.id} deck={row.kind === 'deck'} onOpen={() => setPreviewing(true)} />
+          <FullPreview
+            row={row}
+            english={english}
+            open={previewing}
+            onClose={() => setPreviewing(false)}
+            footer={start}
+          />
+        </>
+      )}
       {/* The middle scrolls; the foot stays put. */}
       <div className="flex min-h-0 flex-1 flex-col p-3">
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
@@ -183,15 +269,7 @@ export function DesignTemplateCard({
           )}
         </div>
         <div className="pt-2">
-          <Foot chosen={chosen}>
-            <Button
-              size="sm"
-              disabled={chosen}
-              onClick={() => onPick(row, row.arguments.length > 0 ? '' : text.examplePrompt)}
-            >
-              {chosen ? t('고른 서식') : row.figure ? t('이 도식으로 시작') : t('이 서식으로 시작')}
-            </Button>
-          </Foot>
+          <Foot chosen={chosen}>{start}</Foot>
         </div>
       </div>
     </div>

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import io
 import logging
+import math
 import re
+import unicodedata
 import zipfile
 from typing import Any
 
@@ -15,23 +18,94 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (
     HRFlowable,
     KeepTogether,
     PageBreak,
-    Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
 )
 from reportlab.platypus import Image as RLImage
+from reportlab.platypus import Paragraph as _Paragraph
 
 from app.services import charts as chartkit
-from app.services import design, doc_formats, doc_type, fonts, pictures, richtext
+from app.services import (
+    design,
+    doc_formats,
+    doc_type,
+    fonts,
+    pictures,
+    placeholders,
+    richtext,
+    table_figures,
+)
 
 log = logging.getLogger(__name__)
+
+#: Text between markup tags, where a missing glyph is looked for.
+_MARKUP = re.compile(r"(<[^>]*>)")
+
+
+def _glyphs(font: str) -> frozenset[int] | None:
+    """Code points a registered TTF draws; `None` for a CID or built-in face."""
+    try:
+        face = pdfmetrics.getFont(font).face
+    except Exception:  # noqa: BLE001 — an unknown name has nothing to say
+        return None
+    return frozenset(face.charToGlyph) if hasattr(face, "charToGlyph") else None
+
+
+_GLYPHS: dict[str, frozenset[int] | None] = {}
+
+
+def _with_fallback(markup: str, font: str) -> str:
+    """`markup` with every run of characters `font` cannot draw set in the gothic face.
+
+    reportlab has no per-glyph fallback: NanumMyeongjo has no Hanja at all, so a serif
+    PDF printed `漢字` as boxes. NanumGothic covers the KS X 1001 Hanja."""
+    if font not in _GLYPHS:
+        _GLYPHS[font] = _glyphs(font)
+    have = _GLYPHS[font]
+    if not have or markup.isascii():
+        return markup
+    bold = font.endswith("-bold")
+    fallback = fonts.korean("gothic", bold=bold)
+    if fallback == font:
+        return markup
+    if fallback not in _GLYPHS:
+        _GLYPHS[fallback] = _glyphs(fallback)
+    spare = _GLYPHS[fallback] or frozenset()
+
+    def swap(text: str) -> str:
+        out: list[str] = []
+        run: list[str] = []
+        for character in text:
+            code = ord(character)
+            if code > 0x2000 and code not in have and code in spare:
+                run.append(character)
+                continue
+            if run:
+                out.append(f'<font name="{fallback}">{"".join(run)}</font>')
+                run = []
+            out.append(character)
+        if run:
+            out.append(f'<font name="{fallback}">{"".join(run)}</font>')
+        return "".join(out)
+
+    return "".join(part if part.startswith("<") else swap(part) for part in _MARKUP.split(markup))
+
+
+class Paragraph(_Paragraph):
+    """reportlab's `Paragraph`, with the characters its face lacks drawn in another."""
+
+    def __init__(self, text, style=None, *args, **kwargs) -> None:
+        if isinstance(text, str) and style is not None:
+            text = _with_fallback(text, style.fontName)
+        super().__init__(text, style, *args, **kwargs)
 
 
 def citation_text(source: dict[str, Any], style: str = "APA") -> str:
@@ -302,14 +376,15 @@ def _unfenced(lines: list[str]) -> list[tuple[str, Any, str, int]]:
 
 
 def _markdown_to_lines(
-    text: str, grids: list[richtext.Grid] | None = None
+    text: str, grids: list[richtext.Grid] | None = None, levels: int = len(_MARKERS)
 ) -> list[tuple[str, Any, str, int]]:
     """`(kind, payload, marker, depth)` per line.
 
     Kinds: heading, bullet, number, body, note, table, image, chart, steps,
     kpi, cards, callout, diagram, pagebreak. A `table` carries its grid as the
     payload. `marker` is `•` or `3.`; `depth` is the indent level (two spaces
-    each). Numbering follows Markdown: the first item's number starts the run.
+    each), capped at `levels`. Numbering follows Markdown: the first item's number starts
+    the run.
     """
     text = richtext.detach_tables(text)
     out: list[tuple[str, Any, str, int]] = []
@@ -449,8 +524,10 @@ def _markdown_to_lines(
         elif bullet := re.match(r"^(\s*)[-*+]\s+(.*)$", line):
             number = 0
             counts.clear()
-            depth = min(len(bullet.group(1)) // 2, len(_MARKERS) - 1)
-            out.append(("bullet", bullet.group(2).strip(), _MARKERS[depth], depth))
+            depth = min(len(bullet.group(1)) // 2, levels - 1)
+            out.append(
+                ("bullet", bullet.group(2).strip(), _MARKERS[min(depth, len(_MARKERS) - 1)], depth)
+            )
         elif numbered := re.match(r"^(\s*)(\d{1,9})[.)]\s+(.*)$", line):
             depth = min(len(numbered.group(1)) // 2, len(_MARKERS) - 1)
             # Counted per level so a sub-list does not advance its parent.
@@ -471,6 +548,171 @@ def _markdown_to_lines(
         # An unclosed fence is a truncated document, not a diagram.
         out.extend(_unfenced(fence))
     return out
+
+
+#: 개조식 geometry in ems of the body size (편람 p.52): a depth sets in 2타, one Hangul,
+#: from its parent's marker; the marker hangs so a wrapped line meets the text.
+_GAEJO_STEP = 1.0
+_GAEJO_HANG = 1.5
+#: 붙임's later items stand under the first, after 「붙임  」: six 타.
+_ATTACH_HANG = 3.0
+def _hang(kind: str, depth: int) -> tuple[float, float]:
+    """`(start, hang)` in ems of the body size: where a 개조식 item's, ※ note's or 붙임
+    line's marker stands, and how far its text hangs from it."""
+    if kind == "attach":
+        return (0.0, _ATTACH_HANG) if depth == 0 else (_ATTACH_HANG, 0.0)
+    return depth * _GAEJO_STEP, _GAEJO_HANG
+
+
+#: Kinds that carry a line of text a 「끝.」 can follow.
+_TEXT_KINDS = ("body", "bullet", "number", "gaejo", "remark", "attach")
+_ATTACH_LINE = re.compile(r"^붙임(?:[\s\u00a0]{1,8}(.*))?$")
+
+
+def _gaejo_lines(lines: list[tuple[str, Any, str, int]]) -> list[tuple[str, Any, str, int]]:
+    """Lines of a 개조식 body: bullets as □ / ○ / - / ㆍ by depth (`gaejo`), a ※ line as a
+    note (`remark`), and the 붙임 paragraph with its numbered items under it (`attach`)."""
+    out: list[tuple[str, Any, str, int]] = []
+    attaching = False
+    for kind, text, marker, depth in lines:
+        if kind == "bullet":
+            level = min(depth, len(doc_formats.GAEJO_MARKERS) - 1)
+            if str(text).startswith("※"):
+                # A note under an item: ※ is its marker, at the item's depth.
+                out.append(("remark", str(text)[1:].strip(), "※", level))
+            else:
+                out.append(("gaejo", text, doc_formats.GAEJO_MARKERS[level], level))
+            attaching = False
+            continue
+        if kind == "body" and str(text).startswith("※"):
+            # A ※ under no item stands where a ○ would.
+            out.append(("remark", str(text)[1:].strip(), "※", 1))
+            attaching = False
+            continue
+        if kind == "body" and (found := _ATTACH_LINE.match(str(text))):
+            out.append(("attach", (found.group(1) or "").strip(), "붙임", 0))
+            attaching = True
+            continue
+        if kind == "number" and attaching:
+            out.append(("attach", f"{marker} {text}", "", 1))
+            continue
+        attaching = False
+        out.append((kind, text, marker, depth))
+    return out
+
+
+def _closed(lines: list[tuple[str, Any, str, int]], gap: str) -> list[tuple[str, Any, str, int]]:
+    """The last body's lines ending in `gap` + 「끝.」 (시행규칙 제4조제5항): after the last line
+    of text, or on a line of its own under a table or figure. A 「끝.」 the writer typed goes."""
+    kept: list[tuple[str, Any, str, int]] = []
+    for kind, text, marker, depth in lines:
+        if kind in _TEXT_KINDS:
+            text = doc_formats.without_closing(str(text))
+            if not text.strip() and kind != "attach":
+                continue
+        kept.append((kind, text, marker, depth))
+    tail = next(
+        (i for i in range(len(kept) - 1, -1, -1) if kept[i][0] not in ("note", "pagebreak")), None
+    )
+    if tail is not None and kept[tail][0] in _TEXT_KINDS:
+        kind, text, marker, depth = kept[tail]
+        kept[tail] = (kind, f"{str(text).rstrip()}{gap}끝.", marker, depth)
+    else:
+        kept.append(("body", f"{gap}끝.", "", 0))
+    return kept
+
+
+#: A 개조식 section that is the 붙임 list, not a body section (`doc_formats.GAEJO_OUTLINE`).
+_ATTACH_HEADING = re.compile(r"^\s{0,4}붙\s{0,2}임\s{0,4}$")
+#: A 붙임 section that lists nothing.
+_NO_ATTACHMENT = re.compile(r"^[\s\-*·]*(?:없음|해당\s?없음|-|—)?[\s.]*$")
+
+
+#: What a 붙임 carries in full after its list (a table moved there to keep the body short).
+_ATTACHED_KINDS = ("table", "image", "chart", "diagram")
+
+
+def _is_attachment(section: dict, block: dict | None) -> bool:
+    """Whether a 개조식 section is the 붙임: drawn as the closing 「붙임  1. ○○ 1부.」 lines
+    after the body, with no heading or number of its own."""
+    return bool(
+        block
+        and block.get("lists") == "gaejo"
+        and _ATTACH_HEADING.match(str(section.get("heading") or ""))
+    )
+
+
+def _drawn_sections(sections: list[dict], block: dict | None) -> list[dict]:
+    """The sections an exporter draws: a 개조식 붙임 that lists nothing goes."""
+    return [
+        s
+        for s in sections
+        if not (_is_attachment(s, block) and _NO_ATTACHMENT.match(str(s.get("content") or "")))
+    ]
+
+
+def _format_of(block: dict | None) -> str | None:
+    """The `doc_formats` id whose own scale (`doc_type.FORMAT_TYPE`) the document takes."""
+    return (block or {}).get("format") or None
+
+
+def _format_page(page_settings: dict | None, title_block: dict | None) -> dict | None:
+    """Page settings with the format's own margins (`doc_type.FORMAT_MARGINS`) where the
+    document sets none."""
+    own = doc_type.margins_for(_format_of(_title_block(title_block)))
+    if not own:
+        return page_settings
+    settings = dict(page_settings or {})
+    given = settings.get("margins") if isinstance(settings.get("margins"), dict) else {}
+    settings["margins"] = {**own, **given}
+    return settings
+
+
+def _last_body(sections: list[dict]) -> int:
+    """Index of the section 「끝.」 closes: the last one that is not the reference list."""
+    return next(
+        (i for i in range(len(sections) - 1, -1, -1) if sections[i].get("id") != "references"),
+        -1,
+    )
+
+
+def _section_lines(
+    section: dict, block: dict | None, last: bool, gap: str
+) -> list[tuple[str, Any, str, int]]:
+    """`_markdown_to_lines` for one section, set as its format asks (개조식, 「끝.」)."""
+    content = section.get("content") or ""
+    gaejo = bool(block and block.get("lists") == "gaejo")
+    attachment = _is_attachment(section, block)
+    if attachment:
+        # The 붙임 section's items under the 붙임 label: 「붙임  1. ○○ 1부.」.
+        content = doc_formats.attachment_body(content)
+    if not gaejo:
+        lines = _markdown_to_lines(content, section.get("tables"))
+    else:
+        lines = _gaejo_lines(
+            _markdown_to_lines(
+                doc_formats.gaejo_markdown(content),
+                section.get("tables"),
+                levels=len(doc_formats.GAEJO_MARKERS),
+            )
+        )
+    tail: list[tuple[str, Any, str, int]] = []
+    if attachment:
+        # 「끝.」 closes the 붙임 list; what was attached in full (a moved table) follows
+        # on a page of its own.
+        end = next(
+            (
+                i
+                for i, line in enumerate(lines)
+                if line[0] != "attach" or (i and line[2] == "붙임")
+            ),
+            len(lines),
+        )
+        if end and any(line[0] in _ATTACHED_KINDS for line in lines[end:]):
+            lines, tail = lines[:end], [("pagebreak", "", "", 0), *lines[end:]]
+    if block and block.get("closing") and last:
+        lines = _closed(lines, gap)
+    return lines + tail
 
 
 def _strip_inline(text: str) -> str:
@@ -678,34 +920,76 @@ def _update_fields_on_open(document) -> None:
         settings_element.append(flag)
 
 
-def _docx_type_scale(document) -> None:
+def _docx_margins(document, margins: dict[str, float]) -> None:
+    """Page margins in mm on every section, the rest of the page left as it is."""
+    from docx.shared import Mm
+
+    for section in document.sections:
+        section.top_margin = Mm(margins["top"])
+        section.bottom_margin = Mm(margins["bottom"])
+        section.left_margin = Mm(margins["left"])
+        section.right_margin = Mm(margins["right"])
+
+
+def _docx_type_scale(document, fmt: str | None = None) -> None:
     """Word's built-in styles at the document scale, so the file matches the page view.
 
-    A 서식's own Word file keeps its faces and colours; only the sizes are set here.
+    A 서식's own Word file keeps its faces and colours; only the sizes are set here, and a
+    format with its own spacing (`doc_type.FORMAT_SPACE`) its paragraph spacing too.
     """
+    from docx.enum.text import WD_LINE_SPACING
     from docx.shared import Pt
+
+    scale, leading = doc_type.type_for(fmt), doc_type.leading_for(fmt)
+    space = doc_type.space_for(fmt)
 
     sizes = {
         "Title": ("title", True),
         "Heading 1": ("h1", True),
         "Heading 2": ("h2", True),
         "Heading 3": ("h3", True),
+        "Heading 4": ("body", True),
         "Normal": ("body", False),
         "Body Text": ("body", False),
         "List Bullet": ("body", False),
         "List Number": ("body", False),
         "Caption": ("caption", False),
+        "List Bullet 2": ("body", False),
+        "List Bullet 3": ("body", False),
+        "표 머리": ("table", True),
+        "표 본문": ("table", False),
+        "표 숫자": ("table", False),
     }
     for name, (key, bold) in sizes.items():
         try:
             style = document.styles[name]
         except KeyError:
             continue
-        style.font.size = Pt(doc_type.TYPE[key])
+        style.font.size = Pt(scale[key])
         if bold:
             style.font.bold = True
         if key == "body":
-            style.paragraph_format.line_spacing = doc_type.LEADING["body"]
+            style.paragraph_format.line_spacing = leading["body"]
+        elif key == "table":
+            style.paragraph_format.line_spacing = leading["table"]
+        if space is None:
+            continue
+        # A ratio multiplies the face's own line height in Word (about 1.3 for Hangul), so
+        # 160% of the size is written as points, at least: the 160% the .hwpx sets.
+        form = style.paragraph_format
+        if name.startswith("Heading"):
+            form.space_before = Pt(space["headingBefore"])
+            form.space_after = Pt(space["headingAfter"])
+            ratio = leading["heading"]
+        elif name == "Title":
+            form.space_before = form.space_after = Pt(0)
+            ratio = leading["title"]
+        else:
+            if key == "body" and not bold:
+                form.space_after = Pt(space["item"])
+            ratio = leading["table" if key == "table" else "body"]
+        form.line_spacing = Pt(round(scale[key] * ratio, 1))
+        form.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
 
 
 def _korean_fonts(document) -> None:
@@ -713,7 +997,18 @@ def _korean_fonts(document) -> None:
     from docx.oxml.ns import qn
     from docx.shared import RGBColor
 
-    for name in ("Normal", "Body Text", "Title", "Heading 1", "Heading 2", "Heading 3"):
+    for name in (
+        "Normal",
+        "Body Text",
+        "Title",
+        "Heading 1",
+        "Heading 2",
+        "Heading 3",
+        "Heading 4",
+        "List Bullet",
+        "List Bullet 2",
+        "List Bullet 3",
+    ):
         try:
             style = document.styles[name]
         except KeyError:
@@ -723,6 +1018,11 @@ def _korean_fonts(document) -> None:
         # is set per heading where the design asks for it.
         if name.startswith("Heading") or name == "Title":
             style.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
+            style.font.italic = False
+            colour = style.element.rPr.find(qn("w:color"))
+            if colour is not None:
+                for attribute in ("w:themeColor", "w:themeShade", "w:themeTint"):
+                    colour.attrib.pop(qn(attribute), None)
         rpr = style.element.get_or_add_rPr()
         fonts = rpr.find(qn("w:rFonts"))
         if fonts is None:
@@ -733,6 +1033,48 @@ def _korean_fonts(document) -> None:
         fonts.set(qn("w:eastAsia"), "맑은 고딕")
         fonts.set(qn("w:ascii"), "Calibri")
         fonts.set(qn("w:hAnsi"), "Calibri")
+        # Word reads a theme face before the named one.
+        for attribute in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+            fonts.attrib.pop(qn(attribute), None)
+
+
+#: Styles that carry the body text in a 서식's Word file (`build_docx_templates`).
+_BODY_STYLES = (
+    "Normal", "Body Text", "List Bullet", "List Bullet 2", "List Bullet 3", "List Number",
+    "List Number 2", "List Number 3", "Quote", "Caption", "안내", "안내 목록", "표 본문",
+)
+
+
+def _docx_body_face(document, serif: bool) -> None:
+    """The body styles set in 바탕 or 맑은 고딕; headings and 표 머리 keep the file's face."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    face = "바탕" if serif else "맑은 고딕"
+    for name in _BODY_STYLES:
+        style = _docx_style(document, name)
+        if style is None:
+            continue
+        rpr = style.element.get_or_add_rPr()
+        fonts = rpr.find(qn("w:rFonts"))
+        if fonts is None:
+            fonts = OxmlElement("w:rFonts")
+            rpr.append(fonts)
+        fonts.set(qn("w:eastAsia"), face)
+        fonts.attrib.pop(qn("w:eastAsiaTheme"), None)
+
+
+def _docx_heading_face(run) -> None:
+    """A run in the heading face (맑은 고딕), wherever its paragraph's style points."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    rpr = run._r.get_or_add_rPr()
+    fonts = rpr.find(qn("w:rFonts"))
+    if fonts is None:
+        fonts = OxmlElement("w:rFonts")
+        rpr.insert(0, fonts)
+    fonts.set(qn("w:eastAsia"), "맑은 고딕")
 
 
 def _table_of_contents(document) -> None:
@@ -758,7 +1100,12 @@ def _docx_cell_margins(table, vertical_pt: float = 3.0, horizontal_pt: float = 6
     margins = properties.find(qn("w:tblCellMar"))
     if margins is None:
         margins = OxmlElement("w:tblCellMar")
-        properties.append(margins)
+        # Schema order: `tblLook` closes `tblPr`.
+        look = properties.find(qn("w:tblLook"))
+        if look is not None:
+            look.addprevious(margins)
+        else:
+            properties.append(margins)
     for side, points in (
         ("top", vertical_pt),
         ("bottom", vertical_pt),
@@ -773,24 +1120,97 @@ def _docx_cell_margins(table, vertical_pt: float = 3.0, horizontal_pt: float = 6
         node.set(qn("w:type"), "dxa")
 
 
-def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "") -> None:
-    """A real Word table, head row emphasised, merges merged.
+def _numeric_columns(rows: list[list[str]]) -> set[int]:
+    """Columns whose body cells are set flush right (`table_figures.figure_columns`)."""
+    return table_figures.figure_columns(rows)
 
-    Built as a full rectangle and merged afterwards; text is written after the
-    merge, since a merged cell keeps the text of every cell that went into it.
+
+def _docx_style(document, name: str):
+    """The named style, or `None` when the document has none by that name."""
+    try:
+        return document.styles[name]
+    except KeyError:
+        return None
+
+
+def _docx_table_styles(document) -> None:
+    """`표 머리`, `표 본문` and `표 숫자` paragraph styles when the file has none, so table
+    text is styled the way a 서식's own Word file styles it (`build_docx_templates`)."""
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
+
+    base = _docx_style(document, _BODY) or document.styles["Normal"]
+    for name, bold, right in (
+        ("표 머리", True, False),
+        ("표 본문", False, False),
+        ("표 숫자", False, True),
+    ):
+        if _docx_style(document, name) is not None:
+            continue
+        style = document.styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+        style.base_style = document.styles["표 본문"] if right else base
+        style.font.size = Pt(doc_type.TYPE["table"])
+        style.font.bold = bold
+        style.paragraph_format.space_after = Pt(0)
+        style.paragraph_format.line_spacing = doc_type.LEADING["table"]
+        if right:
+            style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+
+def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "") -> None:
+    """A real Word table, head row emphasised and repeated on every page, merges merged.
+
+    Columns share the text width by what they hold (`_column_shares`), in a fixed layout,
+    so no table runs past the margin; figures sit flush right in `표 숫자`. Built as a full
+    rectangle and merged afterwards; text is written after the merge, since a merged cell
+    keeps the text of every cell that went into it.
     """
     from docx.oxml import OxmlElement
     from docx.oxml.ns import qn
-    from docx.shared import Pt
+    from docx.shared import Emu, Pt
 
     grid = _export_grid(rows)
     if not grid.rows:
         return
     width = grid.width
+    flat = grid.flat()
+    numeric = _numeric_columns(flat)
+    _docx_table_styles(document)
     table = document.add_table(rows=len(grid.rows), cols=width)
-    table.style = "Table Grid"
+    table.style = _docx_style(document, "보고서 표") or "Table Grid"
     _docx_cell_margins(table)
 
+    # Widths in the text column, set before the merge so a merged cell sums its parts.
+    section = document.sections[-1]
+    text_width = int(section.page_width - section.left_margin - section.right_margin)
+    em = Pt(doc_type.TYPE["table"])
+    padding = Pt(12)  # both sides of a cell, `_docx_cell_margins`
+    room = max(0, text_width - width * padding)
+    shares = _column_shares(flat, width, max(width * 2, int(room // em)))
+    total = sum(shares) or width
+    column_widths = [int(padding + room * share // total) for share in shares]
+    column_widths[-1] += text_width - sum(column_widths)
+    table.autofit = False
+    for c, size in enumerate(column_widths):
+        table.columns[c].width = Emu(size)
+        for row in table.rows:
+            row.cells[c].width = Emu(size)
+    properties = table._tbl.tblPr
+    table_width = properties.find(qn("w:tblW"))
+    if table_width is None:
+        table_width = OxmlElement("w:tblW")
+        properties.append(table_width)
+    table_width.set(qn("w:w"), str(text_width * 1440 // 914400))
+    table_width.set(qn("w:type"), "dxa")
+    # The head row repeats at the top of every page the table runs onto.
+    repeat = OxmlElement("w:tblHeader")
+    repeat.set(qn("w:val"), "true")
+    table.rows[0]._tr.get_or_add_trPr().append(repeat)
+
+    head_style = _docx_style(document, "표 머리")
+    cell_style = _docx_style(document, "표 본문")
+    figure_style = _docx_style(document, "표 숫자")
     covered: set[tuple[int, int]] = set()
     for r, row in enumerate(grid.rows):
         column = 0
@@ -812,30 +1232,28 @@ def _docx_table(document, rows: richtext.Grid | list[list[str]], accent: str = "
             cell.text = lines[0]
             for extra in lines[1:]:
                 cell.add_paragraph(extra)
+            right = column in numeric and across == 1
+            style = head_style if r == 0 else figure_style if right else cell_style
             for paragraph in cell.paragraphs:
-                paragraph.paragraph_format.space_after = Pt(0)
-                for run in paragraph.runs:
-                    run.font.size = Pt(doc_type.TYPE["table"])
-            if r == 0:
-                if accent:
-                    properties = cell._tc.get_or_add_tcPr()
-                    shade = OxmlElement("w:shd")
-                    shade.set(qn("w:fill"), "F2F2F2")
-                    properties.append(shade)
-                    borders = properties.find(qn("w:tcBorders"))
-                    if borders is None:
-                        borders = OxmlElement("w:tcBorders")
-                        properties.append(borders)
-                    bottom = OxmlElement("w:bottom")
-                    bottom.set(qn("w:val"), "single")
-                    bottom.set(qn("w:sz"), "10")
-                    bottom.set(qn("w:color"), accent.lstrip("#").upper())
-                    borders.append(bottom)
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.bold = True
+                paragraph.style = style
+                if r == 0 and right:
+                    paragraph.alignment = figure_style.paragraph_format.alignment
+            if r == 0 and accent:
+                # Schema order: `tcBorders` before `shd`, both after the width and spans.
+                properties = cell._tc.get_or_add_tcPr()
+                borders = OxmlElement("w:tcBorders")
+                bottom = OxmlElement("w:bottom")
+                bottom.set(qn("w:val"), "single")
+                bottom.set(qn("w:sz"), "10")
+                bottom.set(qn("w:color"), accent.lstrip("#").upper())
+                borders.append(bottom)
+                properties.append(borders)
+                shade = OxmlElement("w:shd")
+                shade.set(qn("w:val"), "clear")
+                shade.set(qn("w:fill"), "F2F2F2")
+                properties.append(shade)
             column += across
-    document.add_paragraph().paragraph_format.space_after = Pt(4)
+    document.add_paragraph(style=_BODY).paragraph_format.space_after = Pt(4)
 
 
 #: Separator notes (ids -1 and 0) every footnotes part must open with, or Word repairs the file.
@@ -1080,6 +1498,70 @@ def _docx_cards(document, cards: list[tuple[str, list[str]]]) -> None:
     document.add_paragraph().paragraph_format.space_after = Pt(4)
 
 
+def _docx_core_box(document, callout: tuple[str, list[str]], space: dict[str, float]) -> None:
+    """The 핵심 lines of a 1쪽 보고 (`_pdf_core_box`): the label beside its lines in a thin
+    black box."""
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Pt
+
+    title, lines = callout
+    if not title:
+        return
+    _docx_gap(document, space["callout"])
+    table = document.add_table(rows=1, cols=2)
+    table.style = "Table Grid"
+    _docx_box(table, 6)
+    table.autofit = False
+    label, body = table.cell(0, 0), table.cell(0, 1)
+    # Both the grid and the cells: LibreOffice reads the one, Word the other.
+    table.columns[0].width, table.columns[1].width = Cm(2.2), Cm(14.8)
+    label.width, body.width = Cm(2.2), Cm(14.8)
+    label.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    head = label.paragraphs[0]
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    head.paragraph_format.space_after = Pt(0)
+    head.add_run(title).bold = True
+    for index, line in enumerate(lines or [""]):
+        written = body.paragraphs[0] if index == 0 else body.add_paragraph()
+        written.paragraph_format.space_after = Pt(0)
+        written.add_run(line)
+    _docx_gap(document, space["callout"])
+
+
+def _docx_gap(document, points: float) -> None:
+    """An empty paragraph `points` tall: the space a table cannot carry itself."""
+    from docx.enum.text import WD_LINE_SPACING
+    from docx.shared import Pt
+
+    gap = document.add_paragraph(style=_BODY)
+    form = gap.paragraph_format
+    form.space_before = form.space_after = Pt(0)
+    form.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    form.line_spacing = Pt(max(1.0, points))
+
+
+def _docx_box(table, size: int) -> None:
+    """Black rules of `size` eighths of a point round every cell of `table`."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    properties = table._tbl.tblPr
+    borders = properties.find(qn("w:tblBorders"))
+    if borders is None:
+        borders = OxmlElement("w:tblBorders")
+        properties.append(borders)
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        found = borders.find(qn(f"w:{edge}"))
+        if found is None:
+            found = OxmlElement(f"w:{edge}")
+            borders.append(found)
+        found.set(qn("w:val"), "single")
+        found.set(qn("w:sz"), str(size))
+        found.set(qn("w:space"), "0")
+        found.set(qn("w:color"), "000000")
+
+
 def _docx_callout(document, callout: tuple[str, list[str]]) -> None:
     """The boxed line, as a one-cell table so the border comes with it."""
     from docx.shared import Pt
@@ -1143,14 +1625,14 @@ def _docx_picture(document, picture: dict) -> None:
 #: apply without touching headings.
 # ── documents by purpose: the title block and heading numbers ────────────
 
-_HEADS = ("cover", "header", "memo", "press", "paper")
+_HEADS = ("cover", "header", "memo", "press", "paper", "draft")
 
 
 def _title_block(block: Any) -> dict | None:
     """The artifact's `titleBlock`, cleaned; None when the document has none.
 
     See `doc_formats`: `head` picks the layout, `fields` are `[label, value]` pairs and an
-    empty value is a blank the person fills in, printed as `doc_formats.BLANK`.
+    empty value is a blank the person fills in, printed as `doc_formats.blank(label)`.
     """
     if not isinstance(block, dict) or not block:
         return None
@@ -1177,21 +1659,46 @@ def _title_block(block: Any) -> dict | None:
             if isinstance(keywords, list)
             else None
         ),
+        "lists": "gaejo" if block.get("lists") == "gaejo" else "",
+        "closing": block.get("closing") is True,
+        "format": str(block.get("format") or ""),
     }
 
 
-def _shown(value: str) -> str:
-    return value or doc_formats.BLANK
+def _draft_grid(fields: list[tuple[str, str]]) -> richtext.Grid:
+    """The 간이기안문 head as one grid: register fields on the left, the 결재란 on the right
+    (직위 in the head row, a tall blank for the signature, 직위와 성명 under it)."""
+    register = [pair for pair in fields if pair[0] not in doc_formats.APPROVERS]
+    signers = dict(pair for pair in fields if pair[0] in doc_formats.APPROVERS)
+    height = max(len(register), 3)
+    rows: list[list[richtext.Cell]] = []
+    for index in range(height):
+        row: list[richtext.Cell] = []
+        label, value = register[index] if index < len(register) else ("", "")
+        row += [richtext.Cell(label), richtext.Cell(_shown(value, label) if label else "")]
+        if index == 0:
+            row += [richtext.Cell(name) for name in doc_formats.APPROVERS]
+        elif index == 1:
+            row += [richtext.Cell("", rowspan=height - 2) for _ in doc_formats.APPROVERS]
+        elif index == height - 1:
+            row += [richtext.Cell(_shown(signers.get(name, ""), name)) for name in doc_formats.APPROVERS]
+        rows.append(row)
+    return richtext.Grid(rows=rows)
+
+
+def _shown(value: str, label: str = "") -> str:
+    """The value, or the blank named by its field: 「[작성자]」."""
+    return value or doc_formats.blank(label)
 
 
 def _paper_line(label: str, value: str) -> str:
     """An author or affiliation line under a paper's title."""
-    return value if value and label in ("저자", "소속") else f"{label}: {_shown(value)}"
+    return value if value and label in ("저자", "소속") else f"{label}: {_shown(value, label)}"
 
 
 def _dateline(fields: list[tuple[str, str]]) -> str:
     """A press release's 배포일 · 보도 시점 · 문의처 row."""
-    return "  |  ".join(f"{label} {_shown(value)}" for label, value in fields)
+    return "  |  ".join(f"{label} {_shown(value, label)}" for label, value in fields)
 
 
 class _HeadingNumbers:
@@ -1202,11 +1709,12 @@ class _HeadingNumbers:
     """
 
     def __init__(self, block: dict | None) -> None:
+        self.block = block
         self.style = block["numbering"] if block else "none"
         self.counters = [0, 0, 0]
 
     def section(self, section: dict) -> str:
-        if section.get("id") == "references":
+        if section.get("id") == "references" or _is_attachment(section, self.block):
             return ""
         return self.next(2 if section.get("level") == 2 else 1)
 
@@ -1235,9 +1743,9 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
     head = block["head"]
     centred = head in ("cover", "paper")
 
-    def value_run(paragraph, value: str, **kwargs):
-        run = paragraph.add_run(_shown(value))
-        if not value:
+    def value_run(paragraph, value: str, label: str = "", **kwargs):
+        run = paragraph.add_run(_shown(value, label))
+        if not value or placeholders.is_blank(value):
             run.font.color.rgb = grey
         for key, setting in kwargs.items():
             setattr(run, key, setting)
@@ -1297,9 +1805,36 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
             label_cell.width, value_cell.width = Cm(widths[0]), Cm(widths[1])
             label_run = label_cell.paragraphs[0].add_run(label)
             label_run.bold = True
-            value_run(value_cell.paragraphs[0], value)
+            value_run(value_cell.paragraphs[0], value, label)
 
     fields = block["fields"]
+    if space := doc_type.space_for(block.get("format")):
+        # The 1쪽 보고: the title in a heavy box, the head fields one line under it, right.
+        scale = doc_type.type_for(block.get("format"))
+        frame = document.add_table(rows=1, cols=1)
+        frame.style = "Table Grid"
+        _docx_box(frame, 12)
+        boxed = frame.cell(0, 0).paragraphs[0]
+        boxed.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        boxed.paragraph_format.space_before = Pt(3)
+        boxed.paragraph_format.space_after = Pt(3)
+        run = boxed.add_run(title)
+        run.bold = True
+        run.font.size = Pt(scale["title"])
+        _docx_heading_face(run)
+        if fields:
+            row = line(size=scale["small"], before=3, after=space["head"], center=False)
+            row.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            for index, (label, value) in enumerate(fields):
+                if index:
+                    row.add_run("  ·  ").font.size = Pt(scale["small"])
+                key = row.add_run(f"{label} ")
+                key.bold = True
+                key.font.size = Pt(scale["small"])
+                value_run(row, value, label).font.size = Pt(scale["small"])
+        else:
+            line(after=space["head"])
+        return
     if head == "cover":
         # No cover page: the title block heads page one and the text follows it.
         if block["label"]:
@@ -1313,6 +1848,10 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
         table(fields, 1, (3.5, 12.5))
         line(after=2)
         heading("제목  ")
+    elif head == "draft":
+        _docx_draft_grid(document, fields, value_run)
+        line(after=2)
+        heading("제목  ")
     elif head == "press":
         line("보도자료", size=doc_type.TYPE["h1"], bold=True, after=6)
         heading()
@@ -1323,7 +1862,7 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
             if index:
                 dateline.add_run("  |  ").font.color.rgb = grey
             dateline.add_run(f"{label} ").bold = True
-            value_run(dateline, value)
+            value_run(dateline, value, label)
     elif head == "paper":
         heading()
         if block["subtitle"]:
@@ -1334,14 +1873,14 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
                 paragraph.add_run(value)
             else:
                 paragraph.add_run(f"{label}: ")
-                value_run(paragraph, value)
+                value_run(paragraph, value, label)
         if block["abstract"] is not None:
             line("초록", bold=True, before=12, after=2, center=False)
-            value_run(line(after=6, center=False), block["abstract"])
+            value_run(line(after=6, center=False), block["abstract"], "초록")
         if block["keywords"] is not None:
             paragraph = line(after=10, center=False)
             paragraph.add_run("핵심어: ").bold = True
-            value_run(paragraph, ", ".join(block["keywords"]))
+            value_run(paragraph, ", ".join(block["keywords"]), "핵심어")
     else:  # header
         if block["label"]:
             line(block["label"], size=doc_type.TYPE["caption"], colour=muted, after=2)
@@ -1350,6 +1889,44 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
             line(block["subtitle"], size=doc_type.TYPE["h2"], colour=muted, after=6)
         table(fields, 2, (2.6, 5.4))
         line(after=4)
+
+
+def _docx_draft_grid(document, fields: list[tuple[str, str]], value_run) -> None:
+    """`_draft_grid` as a Word table, the signature cells merged down."""
+    from docx.enum.table import WD_ROW_HEIGHT_RULE
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm
+
+    grid = _draft_grid(fields)
+    flat = grid.flat()
+    height, width = len(flat), grid.width
+    table = document.add_table(rows=height, cols=width)
+    try:
+        table.style = "Table Grid"
+    except Exception:  # noqa: BLE001 — a 서식 file without the style keeps its own
+        pass
+    _docx_cell_margins(table)
+    for column, size in enumerate((2.6, 3.6, 3.0, 3.0, 3.0)[:width]):
+        for row in table.rows:
+            row.cells[column].width = Cm(size)
+    labels = {label for label, _ in fields}
+    for r, cells in enumerate(flat):
+        for c, text in enumerate(cells):
+            paragraph = table.cell(r, c).paragraphs[0]
+            if c >= 2:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if not text:
+                continue
+            if text in labels and (c == 0 or r == 0):
+                paragraph.add_run(text).bold = True
+            else:
+                value_run(paragraph, text)
+    if height > 2:
+        for c in range(2, width):
+            table.cell(1, c).merge(table.cell(height - 2, c))
+    # The signature row is tall enough for a hand-written name.
+    table.rows[1].height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+    table.rows[1].height = Cm(1.0)
 
 
 _BODY = "Body Text"
@@ -1363,13 +1940,25 @@ def to_docx(
     template: str = "",
     page_settings: dict | None = None,
     title_block: dict | None = None,
+    #: The 서식's body face follows the design's `font` token (`DesignTemplate.body_face`).
+    body_from_design: bool = False,
 ) -> bytes:
     from docx import Document
     from docx.shared import Inches, Pt, RGBColor
 
     style = design.normalise_tokens(tokens) if tokens else None
-    #: Colour only: a run-level typeface would override the reviewer's template.
-    accent = RGBColor.from_string(style["accent"].lstrip("#").upper()) if style else None
+    head_block = _title_block(title_block)
+    sections = _drawn_sections(sections, head_block)
+    fmt = _format_of(head_block)
+    #: A format's own spacing (the 개조식 1쪽 보고), else None for the shared layout.
+    space = doc_type.space_for(fmt)
+    #: Colour only: a run-level typeface would override the reviewer's template. A memo
+    #: printed black (a format with its own spacing) has none.
+    accent = (
+        RGBColor.from_string(style["accent"].lstrip("#").upper())
+        if style and space is None
+        else None
+    )
 
     def recolour(heading) -> None:
         if accent is None:
@@ -1388,9 +1977,11 @@ def to_docx(
     document_is_plain = document is None
     if document is None:
         document = Document()
-        _page_setup(document, page_settings)
+        _page_setup(document, _format_page(page_settings, title_block))
     elif page_settings:
-        _page_setup(document, page_settings)
+        _page_setup(document, _format_page(page_settings, title_block))
+    elif own := doc_type.margins_for(fmt):
+        _docx_margins(document, own)
     visual_style = (style or {}).get("visualStyle") or "editorial"
 
     def visualise_heading(paragraph, level: int) -> None:
@@ -1429,7 +2020,6 @@ def to_docx(
             shade.set(qn("w:fill"), (style or {}).get("accent", "#5b5bd6").lstrip("#"))
             paragraph._p.get_or_add_pPr().append(shade)
 
-    head_block = _title_block(title_block)
     numbers = _HeadingNumbers(head_block)
     if head_block:
         _docx_title_block(document, title, head_block, visualise_heading)
@@ -1441,20 +2031,25 @@ def to_docx(
         _update_fields_on_open(document)
     if document_is_plain:
         _korean_fonts(document)
+    elif body_from_design:
+        _docx_body_face(document, serif=bool(style and style.get("font") == "serif"))
     # A 서식's own Word file keeps its faces and colours; the sizes are the document
     # scale either way, so the file reads at the size the page view showed.
-    _docx_type_scale(document)
+    _docx_type_scale(document, fmt)
 
     footnotes = _Footnotes()
     #: Charts are numbered across the document; each is its own part.
     charts = 0
-    for section in sections:
+    closing_at = _last_body(sections)
+    for at, section in enumerate(sections):
         number = numbers.section(section)
-        section_heading = document.add_heading(
-            f"{number}{section.get('heading') or ''}" if section.get("heading") else "", level=1
-        )
-        visualise_heading(section_heading, 1)
-        lines = _markdown_to_lines(section.get("content") or "", section.get("tables"))
+        if not _is_attachment(section, head_block):
+            section_heading = document.add_heading(
+                f"{number}{section.get('heading') or ''}" if section.get("heading") else "",
+                level=1,
+            )
+            visualise_heading(section_heading, 1)
+        lines = _section_lines(section, head_block, at == closing_at, "  ")
         formatted = list(section.get("_formatting") or [])
         format_cursor = 0
         #: Notes by mark, read ahead: a note is written after the sentence that cites it.
@@ -1480,7 +2075,10 @@ def to_docx(
                 _docx_cards(document, text)
                 continue
             if kind == "callout":
-                _docx_callout(document, text)
+                if space is not None:
+                    _docx_core_box(document, text, space)
+                else:
+                    _docx_callout(document, text)
                 continue
             if kind == "chart":
                 charts += 1
@@ -1513,13 +2111,28 @@ def to_docx(
                 else:
                     paragraph.add_run(clean)
             elif kind == "bullet":
-                paragraph = document.add_paragraph(style="List Bullet")
+                # Word's own list style per depth; a file without one sets the indent.
+                nested = _docx_style(
+                    document, ("List Bullet", "List Bullet 2", "List Bullet 3")[min(depth, 2)]
+                )
+                paragraph = document.add_paragraph(style=nested or "List Bullet")
                 if block and not _MARK.search(clean):
                     _docx_styled(paragraph, block, clean)
                 else:
                     footnotes.write(paragraph, clean, notes)
-                if depth:
+                if depth and nested is None:
                     paragraph.paragraph_format.left_indent = Inches(0.25 * (depth + 1))
+                cited |= _marks_in(clean)
+            elif kind in ("gaejo", "remark", "attach"):
+                paragraph = document.add_paragraph(style=_BODY)
+                _docx_hanging(paragraph, kind, marker, depth, fmt)
+                if block and not _MARK.search(clean):
+                    _docx_styled(paragraph, block, clean)
+                else:
+                    footnotes.write(paragraph, clean, notes)
+                if kind == "remark":
+                    for run in paragraph.runs:
+                        run.font.size = Pt(doc_type.type_for(fmt)["note"])
                 cited |= _marks_in(clean)
             elif kind == "number":
                 # Not "List Number": its numbering runs on across separate lists.
@@ -1547,6 +2160,32 @@ def to_docx(
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+def _docx_hanging(
+    paragraph, kind: str, marker: str, depth: int, fmt: str | None = None
+) -> None:
+    """A 개조식 item, ※ note or 붙임 line: the marker, a tab, and the text hung from it.
+
+    The tab stop sits where the hang ends, so a wrapped line meets the text in Word and
+    LibreOffice alike. `fmt` is the format whose scale and spacing it takes."""
+    from docx.shared import Pt
+
+    scale, space = doc_type.type_for(fmt), doc_type.space_for(fmt)
+    em = scale["body"]
+    start, hang = _hang(kind, depth)
+    form = paragraph.paragraph_format
+    form.left_indent = Pt(em * (start + hang))
+    form.first_line_indent = Pt(-em * hang)
+    form.space_after = Pt(space["item"] if space is not None else 3)
+    if space is not None and kind == "attach" and not depth:
+        # The 붙임 lines stand half a line under the body they close.
+        form.space_before = Pt(em / 2)
+    if marker:
+        form.tab_stops.add_tab_stop(Pt(em * (start + hang)))
+        run = paragraph.add_run(f"{marker}\t")
+        if kind == "remark":
+            run.font.size = Pt(scale["note"])
 
 
 def _at_depth(style, depth: int):
@@ -1838,17 +2477,31 @@ def _pdf_picture(picture: dict, styles: dict) -> list:
     return out
 
 
-def _pdf_table(rows: richtext.Grid | list[list[str]], styles: dict, accent) -> Table | None:
+def _pdf_table(
+    rows: richtext.Grid | list[list[str]], styles: dict, accent, text_width: float = 170 * mm
+) -> Table | None:
     """A drawn table, or `None` when there is nothing in it.
 
-    Cells are `Paragraph`s so long text wraps; merges are `SPAN` commands over
-    the covered rectangle.
+    Cells are `Paragraph`s so long text wraps (a word longer than its column is split);
+    merges are `SPAN` commands over the covered rectangle. Columns share `text_width` by
+    what they hold (`_column_shares`), the head row repeats on every page, and figures
+    sit flush right (`_numeric_columns`).
     """
     grid = _export_grid(rows)
     if not grid.rows:
         return None
     width = grid.width
-    body = [[Paragraph("", styles["body"]) for _ in range(width)] for _ in grid.rows]
+    flat = grid.flat()
+    numeric = _numeric_columns(flat)
+    plain = styles.get("cell", styles["body"])
+    head_style = styles.get("cell-head", plain)
+    figure_style = styles.get("cell-figure", plain)
+    padding = 8  # LEFTPADDING + RIGHTPADDING below
+    room = max(0.0, text_width - width * padding)
+    shares = _column_shares(flat, width, max(width * 2, int(room // plain.fontSize)))
+    total = sum(shares) or width
+    column_widths = [padding + room * share / total for share in shares]
+    body = [[Paragraph("", plain) for _ in range(width)] for _ in grid.rows]
     spans: list[tuple] = []
     covered: set[tuple[int, int]] = set()
     for r, row in enumerate(grid.rows):
@@ -1867,10 +2520,16 @@ def _pdf_table(rows: richtext.Grid | list[list[str]], styles: dict, accent) -> T
             if across > 1 or down > 1:
                 spans.append(("SPAN", (column, r), (column + across - 1, r + down - 1)))
             text = "<br/>".join(_escape(_strip_inline(line)) for line in source.text.split("\n"))
-            body[r][column] = Paragraph(text, styles["body"])
+            right = column in numeric and across == 1
+            cell_style = head_style if r == 0 else figure_style if right else plain
+            if r == 0 and right:
+                cell_style = ParagraphStyle(
+                    f"{head_style.name}-r", parent=head_style, alignment=TA_RIGHT
+                )
+            body[r][column] = Paragraph(text, cell_style)
             column += across
 
-    table = Table(body, colWidths=[(170 * mm) / width] * width, repeatRows=1)
+    table = Table(body, colWidths=column_widths, repeatRows=1)
     table.setStyle(
         TableStyle(
             [
@@ -1889,10 +2548,82 @@ def _pdf_table(rows: richtext.Grid | list[list[str]], styles: dict, accent) -> T
     return table
 
 
-def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> list:
+def _fields_line(fields: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """The 개조식 보고's head as one line: `(label, shown value)` pairs."""
+    return [(label, _shown(value, label)) for label, value in fields]
+
+
+def _pdf_core_box(callout: tuple[str, list[str]], styles: dict, width: float) -> Table | None:
+    """The 핵심 lines of a 1쪽 보고 in a thin box: the label in a narrow column, the lines
+    beside it at the body size."""
+    title, lines = callout
+    if not title:
+        return None
+    label = ParagraphStyle("coreLabel", parent=styles["h1"], spaceBefore=0, spaceAfter=0)
+    body = ParagraphStyle("coreBody", parent=styles["body"], spaceAfter=0)
+    label_width = label.fontSize * 4
+    cells = [Paragraph(_escape(line), body) for line in lines] or [Paragraph("", body)]
+    table = Table(
+        [[Paragraph(_escape(title), label), cells]],
+        colWidths=[label_width, width - label_width],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.8, HexColor("#1a1a1a")),
+                ("LINEAFTER", (0, 0), (0, 0), 0.4, HexColor("#1a1a1a")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    return table
+
+
+def _pdf_title_block(
+    title: str, block: dict, styles: dict, bold_face: str, width: float = 170 * mm
+) -> list:
     """`_docx_title_block` for reportlab: the flowables that stand in for the plain title."""
     head = block["head"]
-    T = doc_type.TYPE
+    T = doc_type.type_for(block.get("format"))
+    if space := doc_type.space_for(block.get("format")):
+        # The 1쪽 보고: the title boxed and centred, the head fields one line under it.
+        boxed = ParagraphStyle(
+            "tb-boxed", parent=styles["title"], fontName=bold_face, alignment=TA_CENTER,
+            spaceBefore=0, spaceAfter=0,
+        )
+        frame = Table([[Paragraph(_escape(title), boxed)]], colWidths=[width])
+        frame.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 1.5, HexColor("#1a1a1a")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
+        story: list = [frame]
+        if block["fields"]:
+            line = ParagraphStyle(
+                "tb-line", parent=styles["body"], fontSize=T["small"],
+                leading=T["small"] * 1.4, alignment=TA_RIGHT, spaceBefore=3, spaceAfter=0,
+            )
+            shown = "&nbsp;&nbsp;·&nbsp;&nbsp;".join(
+                f'<font name="{bold_face}">{_escape(label)}</font>&nbsp;'
+                + (
+                    _escape(value)
+                    if not placeholders.is_blank(value)
+                    else f'<font color="#999999">{_escape(value)}</font>'
+                )
+                for label, value in _fields_line(block["fields"])
+            )
+            story.append(Paragraph(shown, line))
+        story.append(Spacer(1, space["head"]))
+        return story
     centred = head in ("cover", "paper")
     align = TA_CENTER if centred else TA_LEFT
 
@@ -1907,10 +2638,10 @@ def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> l
     cell = ParagraphStyle("tb-cell", parent=styles["body"], spaceAfter=0)
     label_cell = ParagraphStyle("tb-label", parent=cell, fontName=bold_face)
 
-    def value(text: str) -> str:
-        if text:
+    def value(text: str, label: str = "") -> str:
+        if text and not placeholders.is_blank(text):
             return _escape(text)
-        return f'<font color="#999999">{_escape(doc_formats.BLANK)}</font>'
+        return f'<font color="#999999">{_escape(text or doc_formats.blank(label))}</font>'
 
     def fields_table(
         per_row: int, widths: tuple[float, float], ruled: bool = False
@@ -1922,7 +2653,7 @@ def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> l
         for start in range(0, len(pairs), per_row):
             row: list = []
             for label, text in pairs[start : start + per_row]:
-                row += [Paragraph(_escape(label), label_cell), Paragraph(value(text), cell)]
+                row += [Paragraph(_escape(label), label_cell), Paragraph(value(text, label), cell)]
             row += [""] * (per_row * 2 - len(row))
             rows.append(row)
         table = Table(rows, colWidths=[w * mm for w in widths] * per_row)
@@ -1978,6 +2709,15 @@ def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> l
             )
         )
         story.append(Spacer(1, 4 * mm))
+    elif head == "draft":
+        story.append(_pdf_draft_grid(block["fields"], cell, label_cell, value))
+        story.append(Spacer(1, 5 * mm))
+        story.append(
+            Paragraph(
+                f'<font size="{T["h1"]}">제목</font>&nbsp;&nbsp;{_escape(title)}', title_style
+            )
+        )
+        story.append(Spacer(1, 4 * mm))
     elif head == "press":
         story.append(
             Paragraph(
@@ -1991,7 +2731,7 @@ def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> l
         story.append(Spacer(1, 2 * mm))
         story.append(HRFlowable(width="100%", thickness=0.8, color=HexColor("#333333")))
         dateline = "&nbsp;&nbsp;|&nbsp;&nbsp;".join(
-            f'<font name="{bold_face}">{_escape(label)}</font> {value(text)}'
+            f'<font name="{bold_face}">{_escape(label)}</font> {value(text, label)}'
             for label, text in block["fields"]
         )
         story.append(Paragraph(dateline, small))
@@ -2005,18 +2745,18 @@ def _pdf_title_block(title: str, block: dict, styles: dict, bold_face: str) -> l
             shown = (
                 _escape(text)
                 if text and label in ("저자", "소속")
-                else f"{_escape(label)}: {value(text)}"
+                else f"{_escape(label)}: {value(text, label)}"
             )
             story.append(Paragraph(shown, styled(f"tb-line-{label}", "body", spaceAfter=1)))
         story.append(Spacer(1, 5 * mm))
         if block["abstract"] is not None:
             story.append(Paragraph(f'<font name="{bold_face}">초록</font>', styles["body"]))
-            story.append(Paragraph(value(block["abstract"]), styles["body"]))
+            story.append(Paragraph(value(block["abstract"], "초록"), styles["body"]))
         if block["keywords"] is not None:
             story.append(
                 Paragraph(
                     f'<font name="{bold_face}">핵심어:</font> '
-                    + value(", ".join(block["keywords"])),
+                    + value(", ".join(block["keywords"]), "핵심어"),
                     styles["body"],
                 )
             )
@@ -2047,9 +2787,18 @@ def to_pdf(
     style = design.normalise_tokens(tokens) if tokens else None
     korean = fonts.korean(style["font"] if style else "gothic")
     bold_face = fonts.korean(style["font"] if style else "gothic", bold=True)
-    T, L = doc_type.TYPE, doc_type.LEADING
+    head_block = _title_block(title_block)
+    sections = _drawn_sections(sections, head_block)
+    fmt = _format_of(head_block)
+    T, L = doc_type.type_for(fmt), doc_type.leading_for(fmt)
+    #: A format's own spacing (the 개조식 1쪽 보고), else None for the shared layout.
+    space = doc_type.space_for(fmt)
     # Without a design system the headings stay black.
     heading_colour = {"textColor": HexColor(style["accent"])} if style else {}
+    if space is not None:
+        # A memo printed black: headings in ink and the gothic heading face.
+        heading_colour = {"textColor": HexColor(style["ink"] if style else "#1a1a1a")}
+        bold_face = fonts.korean("gothic", bold=True)
 
     visual_style = (style or {}).get("visualStyle") or "editorial"
     accent_colour = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
@@ -2106,16 +2855,19 @@ def to_pdf(
             alignment=TA_LEFT,
             **title_options,
         ),
+        # Headings keep with what follows, rather than end a page alone.
         "h1": ParagraphStyle(
             "h1",
             parent=base["Heading1"],
             fontName=bold_face,
+            keepWithNext=1,
             **h1_options,
         ),
         "h2": ParagraphStyle(
             "h2",
             parent=base["Heading2"],
             fontName=bold_face,
+            keepWithNext=1,
             fontSize=T["h2"],
             leading=T["h2"] * L["heading"],
             spaceBefore=10,
@@ -2154,6 +2906,16 @@ def to_pdf(
             firstLineIndent=-6 * mm,
             spaceAfter=1,
         ),
+        # Table cells at the table size; the head row bold, figures flush right.
+        "cell": ParagraphStyle(
+            "cell",
+            parent=base["BodyText"],
+            fontName=korean,
+            fontSize=T["table"],
+            leading=T["table"] * L["table"],
+            alignment=TA_LEFT,
+            spaceAfter=0,
+        ),
         # Centred under a centred picture.
         "caption": ParagraphStyle(
             "cap",
@@ -2168,36 +2930,78 @@ def to_pdf(
         ),
     }
 
-    head_block = _title_block(title_block)
+    styles["cell-head"] = ParagraphStyle("cell-head", parent=styles["cell"], fontName=bold_face)
+    styles["cell-figure"] = ParagraphStyle("cell-figure", parent=styles["cell"], alignment=TA_RIGHT)
+    if space is not None:
+        # Headings close over their items, the items close under each other: 160% leading
+        # is the air between lines.
+        styles["h1"] = ParagraphStyle(
+            "h1-format",
+            parent=styles["h1"],
+            spaceBefore=space["headingBefore"],
+            spaceAfter=space["headingAfter"],
+        )
+    page_settings = page_settings or {}
+    margins = page_settings.get("margins") if isinstance(page_settings.get("margins"), dict) else {}
+    margins = {**(doc_type.margins_for(fmt) or {}), **margins}
+    left_mm, right_mm = float(margins.get("left", 22)), float(margins.get("right", 22))
+    #: The frame a table must fit in.
+    text_width = A4[0] - (left_mm + right_mm) * mm - 12  # the frame's own padding
+
     numbers = _HeadingNumbers(head_block)
     story: list = (
-        _pdf_title_block(title, head_block, styles, bold_face)
+        _pdf_title_block(title, head_block, styles, bold_face, text_width)
         if head_block
         else [Paragraph(_escape(title), styles["title"]), Spacer(1, 8 * mm)]
     )
-    for index, section in enumerate(sections):
-        if index:
-            story.append(Spacer(1, 4 * mm))
-        number = numbers.section(section)
-        story.append(
-            Paragraph(
-                _escape(f"{number}{section.get('heading')}" if section.get("heading") else ""),
-                styles["h1"],
-            )
+    closing_at = _last_body(sections)
+    em = T["body"]
+
+    def hanging(kind: str, depth: int) -> ParagraphStyle:
+        """A 개조식 item, ※ note or 붙임 line: the marker hung at its depth (`_docx_hanging`)."""
+        start, hang = _hang(kind, depth)
+        size = T["note"] if kind == "remark" else T["body"]
+        return ParagraphStyle(
+            f"{kind}-{depth}",
+            parent=styles["body"],
+            fontSize=size,
+            leading=size * (L["note"] if kind == "remark" else L["body"]),
+            leftIndent=em * (start + hang),
+            bulletIndent=em * start,
+            bulletFontName=korean,
+            bulletFontSize=size,
+            spaceAfter=space["item"] if space is not None else 3,
+            # The 붙임 lines stand half a line under the body they close.
+            spaceBefore=size / 2 if space is not None and kind == "attach" and not depth else 0,
         )
+
+    for index, section in enumerate(sections):
+        if _is_attachment(section, head_block):
+            pass  # no heading: the 붙임 lines close the body
+        else:
+            if index and space is None:
+                story.append(Spacer(1, 4 * mm))
+            number = numbers.section(section)
+            story.append(
+                Paragraph(
+                    _escape(f"{number}{section.get('heading')}" if section.get("heading") else ""),
+                    styles["h1"],
+                )
+            )
         #: This section's footnotes, drawn under it once the prose is done.
         notes: list[tuple[str, str]] = []
         formatted = list(section.get("_formatting") or [])
         format_cursor = 0
-        for kind, text, marker, depth in _markdown_to_lines(
-            section.get("content") or "", section.get("tables")
+        # Non-breaking: reportlab folds a run of plain spaces into one.
+        for kind, text, marker, depth in _section_lines(
+            section, head_block, index == closing_at, "\u00a0\u00a0"
         ):
             if kind == "pagebreak":
                 story.append(PageBreak())
                 continue
             if kind == "table":
                 accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
-                if drawn := _pdf_table(text, styles, accent):
+                if drawn := _pdf_table(text, styles, accent, text_width):
                     story.append(Spacer(1, 2 * mm))
                     story.append(drawn)
                     story.append(Spacer(1, 3 * mm))
@@ -2235,7 +3039,11 @@ def to_pdf(
                     story.append(Spacer(1, 4 * mm))
                 continue
             if kind == "callout":
-                if boxed := _pdf_callout(text, styles, style):
+                if space is not None and (boxed := _pdf_core_box(text, styles, text_width)):
+                    story.append(Spacer(1, space["callout"]))
+                    story.append(boxed)
+                    story.append(Spacer(1, space["callout"]))
+                elif boxed := _pdf_callout(text, styles, style):
                     story.append(Spacer(1, 3 * mm))
                     story.append(boxed)
                     story.append(Spacer(1, 4 * mm))
@@ -2264,6 +3072,15 @@ def to_pdf(
             if kind == "heading":
                 paragraph_style = _pdf_block_style(styles["h2"], block) if block else styles["h2"]
                 story.append(Paragraph(_escape(numbers.next(2)) + clean, paragraph_style))
+            elif kind in ("gaejo", "remark", "attach"):
+                style_for = hanging(kind, depth)
+                story.append(
+                    Paragraph(
+                        clean,
+                        _pdf_block_style(style_for, block) if block else style_for,
+                        bulletText=marker or None,
+                    )
+                )
             elif kind in ("bullet", "number"):
                 # `bulletText` hangs the marker, keeping two-digit numbers
                 # aligned with single-digit ones.
@@ -2318,8 +3135,6 @@ def to_pdf(
                 )
 
     buffer = io.BytesIO()
-    page_settings = page_settings or {}
-    margins = page_settings.get("margins") if isinstance(page_settings.get("margins"), dict) else {}
 
     def decorate(pdf, document, page: int, total: int) -> None:
         pdf.saveState()
@@ -2340,8 +3155,8 @@ def to_pdf(
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=float(margins.get("left", 22)) * mm,
-        rightMargin=float(margins.get("right", 22)) * mm,
+        leftMargin=left_mm * mm,
+        rightMargin=right_mm * mm,
         topMargin=float(margins.get("top", 22)) * mm,
         bottomMargin=float(margins.get("bottom", 20)) * mm,
         title=title,
@@ -2368,6 +3183,64 @@ def to_pdf(
 
     document.build(story, canvasmaker=NumberedCanvas)
     return buffer.getvalue()
+
+
+#: reportlab's frame keeps 6 pt inside its margins on every side, in mm.
+_FRAME_PADDING_MM = 6 / 72 * 25.4
+#: A line that starts the 붙임 list, where a 개조식 body ends (편람 p.52).
+_ATTACH_START = re.compile(r"^\s*붙임(?:[\s\u00a0]|$)", re.M)
+
+
+def pdf_pages(data: bytes, until: re.Pattern[str] | None = _ATTACH_START) -> tuple[int, int]:
+    """`(total, body)` pages of a PDF: `body` runs to the page holding the first line `until`
+    matches (the 붙임 list), or is the total when there is none."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data))
+    total = len(reader.pages)
+    if until is not None:
+        for number, page in enumerate(reader.pages, 1):
+            if until.search(page.extract_text() or ""):
+                return total, number
+    return total, total
+
+
+def hwpx_pages(
+    title: str,
+    sections: list[dict],
+    *,
+    tokens: dict[str, str] | None = None,
+    page_settings: dict | None = None,
+    title_block: dict | None = None,
+    until: re.Pattern[str] | None = _ATTACH_START,
+) -> tuple[int, int]:
+    """An estimate of the pages `to_hwpx` takes in 한글, as `pdf_pages` counts them
+    (`until`: the line the body runs to).
+
+    No Hancom engine runs here. The same sections go through `to_pdf` in the page box
+    `_hwpx_secpr` writes: A4, its left and right margins (30 mm unless set), the body from
+    `top` to `bottom` (20 and 15 mm unless set), at the document type scale and 160%
+    leading the `.hwpx` uses too. What differs, and why this is an estimate: Nanum faces
+    stand in for 함초롬 (similar widths, not the same), paragraphs keep the PDF's spacing,
+    and lines break where reportlab breaks them (at spaces, as Hancom's KEEP_WORD does).
+    Checked against rhwp's layout of the same `.hwpx` on the lineup render samples: equal
+    on 19 of 20, one page more on the other; laying the PDF out with the `.hwpx`'s
+    tighter paragraph spacing undercounted instead, so it does not. Treat a body that ends
+    in the last few lines of its page as a page more, and open the file in 한글 for the
+    final count.
+    """
+    settings = dict(_format_page(page_settings, title_block) or {})
+    given = settings.get("margins") if isinstance(settings.get("margins"), dict) else {}
+    margins = {}
+    for side, fallback in (("top", 20.0), ("bottom", 15.0), ("left", 30.0), ("right", 30.0)):
+        try:
+            value = max(10.0, min(35.0, float(given.get(side, fallback))))
+        except (TypeError, ValueError):
+            value = fallback
+        margins[side] = value - _FRAME_PADDING_MM
+    settings["margins"] = margins
+    data = to_pdf(title, sections, tokens=tokens, page_settings=settings, title_block=title_block)
+    return pdf_pages(data, until)
 
 
 #: The text column width, and the most height one figure may take, in mm.
@@ -2453,14 +3326,11 @@ _HWPX_CONTENT_HPF = """<?xml version="1.0" encoding="UTF-8"?>
 #: `paraPr@align` attribute is silently ignored.
 _HWPX_HEADER = """<?xml version="1.0" encoding="UTF-8"?>
 <hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"
- xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core" version="1.4" secCnt="1">
+ xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core"
+ xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph" version="1.4" secCnt="1">
  <hh:beginNum page="1" footnote="1" endnote="1" pic="1" tbl="1" equation="1"/>
  <hh:refList>
-  <hh:fontfaces itemCnt="1">
-   <hh:fontface lang="HANGUL" fontCnt="1">
-    <hh:font id="0" face="함초롬바탕" type="TTF" isEmbedded="0"/>
-   </hh:fontface>
-  </hh:fontfaces>
+{font_faces}
 {border_fills}
 {char_properties}
 {para_properties}
@@ -2470,11 +3340,36 @@ _HWPX_HEADER = """<?xml version="1.0" encoding="UTF-8"?>
  </hh:refList>
 </hh:head>"""
 
+#: The faces `charPr/fontRef` points at, by id: Hancom's own, installed with every 한글,
+#: so nothing is substituted. 바탕 for a serif body, 돋움 for headings and a gothic body.
+_HWPX_FACES = ("함초롬바탕", "함초롬돋움")
+_HWPX_SERIF, _HWPX_GOTHIC = 0, 1
+#: Character shapes set in the heading face: the title, h1 and h2.
+_HWPX_HEADING_SHAPES = (2, 3, 4)
+#: Every language slot `fontRef` names must have its list, or Hancom substitutes.
+_HWPX_LANGS = ("HANGUL", "LATIN", "HANJA", "JAPANESE", "OTHER", "SYMBOL", "USER")
+
+
+def _hwpx_font_faces() -> str:
+    fonts_xml = "".join(
+        f'    <hh:font id="{index}" face="{face}" type="TTF" isEmbedded="0"/>\n'
+        for index, face in enumerate(_HWPX_FACES)
+    )
+    return (
+        f'  <hh:fontfaces itemCnt="{len(_HWPX_LANGS)}">\n'
+        + "".join(
+            f'   <hh:fontface lang="{lang}" fontCnt="{len(_HWPX_FACES)}">\n{fonts_xml}   </hh:fontface>\n'
+            for lang in _HWPX_LANGS
+        )
+        + "  </hh:fontfaces>"
+    )
+
+
 #: Border definitions a cell points at by `borderFillIDRef`; an undefined id
 #: stops the file opening. Must sit between `fontfaces` and `charProperties`.
 #: Ids are 1-based: 1 none (the table frame), 2 body cell hairline, 3 head cell
 #: with a heavier line under it.
-_HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="3">
+_HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="5">
    <hh:borderFill id="1" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
     <hh:slash type="NONE" Crooked="0" isCounter="0"/>
     <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
@@ -2503,30 +3398,62 @@ _HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="3">
     <hh:bottomBorder type="SOLID" width="0.5 mm" color="#444444"/>
     <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
    </hh:borderFill>
+   <hh:borderFill id="4" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+    <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:leftBorder type="SOLID" width="0.25 mm" color="#000000"/>
+    <hh:rightBorder type="SOLID" width="0.25 mm" color="#000000"/>
+    <hh:topBorder type="SOLID" width="0.25 mm" color="#000000"/>
+    <hh:bottomBorder type="SOLID" width="0.25 mm" color="#000000"/>
+    <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
+   </hh:borderFill>
+   <hh:borderFill id="5" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+    <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:leftBorder type="SOLID" width="0.5 mm" color="#000000"/>
+    <hh:rightBorder type="SOLID" width="0.5 mm" color="#000000"/>
+    <hh:topBorder type="SOLID" width="0.5 mm" color="#000000"/>
+    <hh:bottomBorder type="SOLID" width="0.5 mm" color="#000000"/>
+    <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
+   </hh:borderFill>
   </hh:borderFills>"""
+#: The 1쪽 보고's 핵심 box and title box: black rules, thin and heavy.
+_HWPX_THIN_BOX, _HWPX_HEAVY_BOX = 4, 5
 
 #: The text column, in HWPUNIT: page width less both margins. A table wider
 #: than this is a table Hancom pushes off the page.
 _HWPX_TEXT_WIDTH = 59528 - 8504 - 8504
 
-#: A 10pt full-width Hangul character in HWPUNIT; column widths are reasoned about in characters.
-_HWPX_BODY_CHAR = 1000
-#: A row's nominal height; Hancom grows cells to fit.
+#: A full-width Hangul character at the body size in HWPUNIT (10.5 pt is 1050); column
+#: widths are reasoned about in characters, and a 10 pt guess wrapped 5-character names.
+_HWPX_BODY_CHAR = doc_type.hwp("body")
+#: The tallest table still set as a character: a third of the A4 body. A taller one may
+#: need to split across pages, which only an anchored table does (`_hwpx_table`).
+_HWPX_INLINE_TABLE = 25000
+#: A row's least height; a row is declared as tall as its text needs (`_hwpx_table`).
 _HWPX_ROW_HEIGHT = 2000
 #: Padding inside a cell, all four sides.
 _HWPX_CELL_MARGIN = 141
 
 
-#: `charPr@height` is in 1/100 pt.
-_HWPX_CHAR_SHAPES = (
-    # (id, height in 1/100 pt, bold) — the document scale, as the page view and the .docx.
-    (0, doc_type.hwp("body"), False),  # body
-    (1, doc_type.hwp("body"), True),  # body, bold
-    (2, doc_type.hwp("title"), True),  # document title
-    (3, doc_type.hwp("h1"), True),  # section heading  (h1)
-    (4, doc_type.hwp("h2"), True),  # sub-heading      (h2)
-    (5, doc_type.hwp("note"), False),  # footnote — smaller than the prose, and not bold
-)
+def _hwpx_char_shapes(scale: dict[str, float]) -> tuple[tuple[int, int, bool], ...]:
+    """`(id, height in 1/100 pt, bold)` per base character shape, at `scale` (`doc_type`)."""
+
+    def hwp(name: str) -> int:
+        return int(round(scale[name] * 100))
+
+    return (
+        (0, hwp("body"), False),  # body
+        (1, hwp("body"), True),  # body, bold
+        (2, hwp("title"), True),  # document title
+        (3, hwp("h1"), True),  # section heading  (h1)
+        (4, hwp("h2"), True),  # sub-heading      (h2)
+        (5, hwp("note"), False),  # footnote — smaller than the prose, and not bold
+    )
+
+
+#: `charPr@height` is in 1/100 pt: the document scale, as the page view and the .docx.
+_HWPX_CHAR_SHAPES = _hwpx_char_shapes(doc_type.TYPE)
 
 #: (id, horizontal align, left indent, space-before, space-after) in HWPUNIT
 #: (1/7200 in, so 1000 == 10 pt).
@@ -2549,15 +3476,37 @@ _HWPX_PARA_SHAPES = (
 _HWPX_LINE_SPACING = 160
 
 
+def _hwpx_para_shapes(space: dict[str, float] | None) -> tuple[tuple, ...]:
+    """`_HWPX_PARA_SHAPES` with a format's own spacing (`doc_type.FORMAT_SPACE`) over it:
+    headings close over their items, list items close under each other."""
+    if space is None:
+        return _HWPX_PARA_SHAPES
+    before, after = round(space["headingBefore"] * 100), round(space["headingAfter"] * 100)
+    item = round(space["item"] * 100)
+    own = {
+        0: (0, "CENTER", 0, 0, 0),
+        1: (1, "LEFT", 0, before, after),
+        3: (3, "JUSTIFY", 0, 0, item),
+        4: (4, "JUSTIFY", 1000, 0, item),
+        8: (8, "JUSTIFY", 2000, 0, item),
+        9: (9, "JUSTIFY", 3000, 0, item),
+    }
+    return tuple(own.get(shape[0], shape) for shape in _HWPX_PARA_SHAPES)
+
+
 #: Character-shape ids the accent colours: the title and section headings only.
 _HWPX_ACCENT_SHAPES = (2, 3)
 
 
 def _hwpx_char_properties(
     accent: str | None = None,
-    extras: list[tuple[int, int, bool, bool, bool, bool, str, str]] | None = None,
+    extras: list[tuple] | None = None,
     visual_style: str = "editorial",
+    body_face: int = _HWPX_SERIF,
+    base: tuple[tuple[int, int, bool], ...] = _HWPX_CHAR_SHAPES,
 ) -> str:
+    """`charPr` per shape. An extra may carry a ninth field, its face id; the base shapes
+    take the heading face (`_HWPX_HEADING_SHAPES`) or `body_face`."""
     items = []
     shapes = [
         (
@@ -2570,7 +3519,7 @@ def _hwpx_char_properties(
             accent if (accent and cid in _HWPX_ACCENT_SHAPES) else "#000000",
             "none",
         )
-        for cid, height, bold in _HWPX_CHAR_SHAPES
+        for cid, height, bold in base
     ]
     if visual_style == "poster":
         shapes = [
@@ -2601,11 +3550,13 @@ def _hwpx_char_properties(
             for cid, height, bold, italic, underline, strike, colour, shade in shapes
         ]
     shapes += list(extras or [])
-    for cid, height, bold, italic, underline, strike, colour, shade in shapes:
+    for cid, height, bold, italic, underline, strike, colour, shade, *face in shapes:
+        ref = face[0] if face else _HWPX_GOTHIC if cid in _HWPX_HEADING_SHAPES else body_face
         items.append(
             f'   <hh:charPr id="{cid}" height="{height}" textColor="{colour}"'
             f' shadeColor="{shade}" useFontSpace="0" useKerning="0">\n'
-            '    <hh:fontRef hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>\n'
+            f'    <hh:fontRef hangul="{ref}" latin="{ref}" hanja="{ref}" japanese="{ref}"'
+            f' other="{ref}" symbol="{ref}" user="{ref}"/>\n'
             '    <hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>\n'
             '    <hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>\n'
             '    <hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>\n'
@@ -2628,28 +3579,50 @@ def _hwpx_char_properties(
 
 
 def _hwpx_para_properties(
-    extras: list[tuple[int, str, int, int, int, int]] | None = None,
+    extras: list[tuple[int, ...]] | None = None,
+    base: tuple[tuple, ...] = _HWPX_PARA_SHAPES,
 ) -> str:
+    """`paraPr` per shape: `(id, align, left, prev, next, line spacing[, intent])`, lengths in
+    HWPUNIT (1/100 pt). A negative `intent` is 내어쓰기: the first line at `left`, the lines
+    after it set in by as much.
+
+    Hancom stores paragraph margins and spacing at twice their size: a plain `<hh:margin>`
+    is read that way, so 10 pt written as 1000 came out as 5 pt. The margins are written as
+    Hancom writes them: an `hp:switch` whose `HwpUnitChar` case holds the true lengths and
+    whose default holds them doubled, for readers that do not know the namespace.
+    """
+
+    def margin(intent: int, left: int, prev: int, nxt: int, scale: int, line_spacing: int) -> str:
+        return (
+            "<hh:margin>"
+            f'<hc:intent value="{intent * scale}" unit="HWPUNIT"/>'
+            f'<hc:left value="{left * scale}" unit="HWPUNIT"/>'
+            '<hc:right value="0" unit="HWPUNIT"/>'
+            f'<hc:prev value="{prev * scale}" unit="HWPUNIT"/>'
+            f'<hc:next value="{nxt * scale}" unit="HWPUNIT"/>'
+            "</hh:margin>"
+            f'<hh:lineSpacing type="PERCENT" value="{line_spacing}" unit="HWPUNIT"/>'
+        )
+
     items = []
-    shapes = [(*shape, _HWPX_LINE_SPACING) for shape in _HWPX_PARA_SHAPES] + list(extras or [])
-    for pid, align, left, prev, nxt, line_spacing in shapes:
+    shapes = [(*shape, _HWPX_LINE_SPACING) for shape in base] + list(extras or [])
+    for pid, align, left, prev, nxt, line_spacing, *hang in shapes:
+        intent = hang[0] if hang else 0
         items.append(
             f'   <hh:paraPr id="{pid}" tabPrIDRef="0" condense="0" fontLineHeight="0"'
             ' snapToGrid="1" suppressLineNumbers="0" checked="0">\n'
             f'    <hh:align horizontal="{align}" vertical="BASELINE"/>\n'
             '    <hh:heading type="NONE" idRef="0" level="0"/>\n'
             '    <hh:breakSetting breakLatinWord="KEEP_WORD" breakNonLatinWord="KEEP_WORD"'
-            ' widowOrphan="0" keepWithNext="0" keepLines="0" pageBreakBefore="0"'
+            # A heading stays with the paragraph under it, not alone at the foot of a page.
+            f' widowOrphan="0" keepWithNext="{1 if pid in (1, 2) else 0}" keepLines="0" pageBreakBefore="0"'
             ' lineWrap="BREAK"/>\n'
             '    <hh:autoSpacing eAsianEng="0" eAsianNum="0"/>\n'
-            "    <hh:margin>\n"
-            '     <hc:intent value="0" unit="HWPUNIT"/>\n'
-            f'     <hc:left value="{left}" unit="HWPUNIT"/>\n'
-            '     <hc:right value="0" unit="HWPUNIT"/>\n'
-            f'     <hc:prev value="{prev}" unit="HWPUNIT"/>\n'
-            f'     <hc:next value="{nxt}" unit="HWPUNIT"/>\n'
-            "    </hh:margin>\n"
-            f'    <hh:lineSpacing type="PERCENT" value="{line_spacing}" unit="HWPUNIT"/>\n'
+            "    <hp:switch>"
+            '<hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/HwpUnitChar">'
+            f"{margin(intent, left, prev, nxt, 1, line_spacing)}</hp:case>"
+            f"<hp:default>{margin(intent, left, prev, nxt, 2, line_spacing)}</hp:default>"
+            "</hp:switch>\n"
             "   </hh:paraPr>"
         )
     return (
@@ -2661,6 +3634,24 @@ def _hwpx_para_properties(
 
 def _hwpx_escape(text: str) -> str:
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+#: The 머리말·꼬리말 area: 10 mm, Hancom's own for a short header line and page number.
+_HWPX_FURNITURE = round(10 * 7200 / 25.4)
+
+
+def _hwpx_text_width(page_settings: dict | None = None) -> int:
+    """The text column `_hwpx_secpr` leaves, in HWPUNIT."""
+    margins = (page_settings or {}).get("margins")
+    margins = margins if isinstance(margins, dict) else {}
+
+    def side(name: str) -> float:
+        try:
+            return max(10.0, min(35.0, float(margins.get(name, 30))))
+        except (TypeError, ValueError):
+            return 30.0
+
+    return 59528 - round(side("left") * 7200 / 25.4) - round(side("right") * 7200 / 25.4)
 
 
 def _hwpx_secpr(page_settings: dict | None = None) -> str:
@@ -2681,6 +3672,11 @@ def _hwpx_secpr(page_settings: dict | None = None) -> str:
 
     first_header = "0" if bool(settings.get("firstPageHeader", False)) else "1"
     hide_page_number = "1" if str(settings.get("pageNumbers") or "page-total") == "none" else "0"
+    # Hancom starts the body at `top + header` and ends it at `bottom + footer` above the
+    # edge (the 머리말·꼬리말 areas sit inside the margin), so the page settings' margin, the
+    # body's distance from the edge as in the PDF and .docx, is split between the two.
+    top, bottom = unit("top", 20), unit("bottom", 15)
+    header, footer = min(_HWPX_FURNITURE, top // 2), min(_HWPX_FURNITURE, bottom // 2)
     return (
         '<hp:secPr id="" textDirection="HORIZONTAL" spaceColumns="1134" tabStop="8000"'
         ' tabStopVal="4000" tabStopUnit="HWPUNIT" outlineShapeIDRef="0" memoShapeIDRef="0"'
@@ -2691,9 +3687,9 @@ def _hwpx_secpr(page_settings: dict | None = None) -> str:
         f' border="SHOW_ALL" fill="SHOW_ALL" hideFirstPageNum="{hide_page_number}" hideFirstEmptyLine="0"'
         ' showLineNumber="0"/>'
         '<hp:pagePr landscape="WIDELY" width="59528" height="84188" gutterType="LEFT_ONLY">'
-        f'<hp:margin header="{unit("top", 20)}" footer="{unit("bottom", 15)}" gutter="0"'
+        f'<hp:margin header="{header}" footer="{footer}" gutter="0"'
         f' left="{unit("left", 30)}" right="{unit("right", 30)}"'
-        f' top="{unit("top", 20)}" bottom="{unit("bottom", 15)}"/></hp:pagePr>'
+        f' top="{top - header}" bottom="{bottom - footer}"/></hp:pagePr>'
         "</hp:secPr>"
     )
 
@@ -2810,23 +3806,56 @@ def _hwpx_page_furniture(title: str, page_settings: dict | None) -> str:
     return control("header", header, 10001) + control("footer", footer, 10002) + page_number
 
 
-def _column_weights(rows: list[list[str]], cols: int) -> list[int]:
-    """Column widths in characters, summing to what the text column holds.
+def _column_weights(
+    rows: list[list[str]], cols: int, text_width: int = _HWPX_TEXT_WIDTH
+) -> list[int]:
+    """Column widths in characters, summing to what the `.hwpx` text column holds."""
+    #: Characters the text column holds once cell margins are out.
+    budget = (text_width - cols * _HWPX_CELL_MARGIN * 2) // _HWPX_BODY_CHAR
+    return _column_shares(rows, cols, budget)
+
+
+def _ems(text: str) -> float:
+    """Width of `text` in ems of its size: Hangul, Hanja and full-width forms are one em,
+    digits and Latin capitals about 0.65, other ASCII a little over half (bold included), as
+    Nanum and 함초롬 set them.
+    Counting every character as an em gave a date column twice the room it uses."""
+    width = 0.0
+    for character in text:
+        if unicodedata.east_asian_width(character) in ("W", "F"):
+            width += 1.0
+        elif character.isdigit() or character.isupper():
+            width += 0.65
+        elif character == " ":
+            width += 0.3
+        else:
+            width += 0.55 if ord(character) < 0x2000 else 1.0
+    return width
+
+
+def _column_shares(rows: list[list[str]], cols: int, budget: int) -> list[int]:
+    """Column widths in ems, summing to `budget`, the ems a row holds (`_ems`).
 
     Each column first gets its longest word (Hancom splits Hangul between
     characters with no hyphen), then the rest is shared by text length. When
     the words alone do not fit, short needs are met first and the shortfall
-    falls on the columns that can wrap.
+    falls on the columns that can wrap. Every exporter sizes its tables this way.
     """
+    rows = [[_strip_inline(cell) for cell in row] for row in rows]
 
     def longest_word(column: int) -> int:
         return max(
-            (len(word) for row in rows if column < len(row) for word in row[column].split()),
+            (
+                # Half an em spare for Latin and digits, whose bold is wider; Hangul is not.
+                math.ceil(_ems(word) + (0.5 if re.search(r"[0-9A-Za-z]", word) else 0))
+                for row in rows
+                if column < len(row)
+                for word in row[column].split()
+            ),
             default=1,
         )
 
-    #: Characters the text column holds once cell margins are out.
-    budget = (_HWPX_TEXT_WIDTH - cols * _HWPX_CELL_MARGIN * 2) // _HWPX_BODY_CHAR
+    budget = max(budget, cols * 2)
     need = [max(2, min(longest_word(c), budget // 2)) for c in range(cols)]
     if sum(need) >= budget:
         # Short needs met first, in ascending order; the shortfall lands on the wide columns.
@@ -2837,7 +3866,20 @@ def _column_weights(rows: list[list[str]], cols: int) -> list[int]:
             out[column] = min(need[column], share)
             rest -= out[column]
         return out
-    want = [max((len(row[c]) for row in rows if c < len(row)), default=1) for c in range(cols)]
+    want = [
+        max(
+            (math.ceil(_ems(line)) for row in rows if c < len(row) for line in row[c].split("\n")),
+            default=1,
+        )
+        for c in range(cols)
+    ]
+    # A column of short values (a name, a date, 「메일 2」) gets its whole line before the
+    # prose columns share the rest; otherwise the prose takes the room and the short
+    # values wrap.
+    for column in sorted(range(cols), key=lambda c: want[c]):
+        grown = max(need[column], want[column])
+        if want[column] <= budget // cols and sum(need) - need[column] + grown <= budget:
+            need[column] = grown
     spare = budget - sum(need)
     extra = [max(0, w - n) for w, n in zip(want, need, strict=True)]
     total = sum(extra)
@@ -2848,6 +3890,64 @@ def _column_weights(rows: list[list[str]], cols: int) -> list[int]:
     return out
 
 
+def _pdf_draft_grid(fields: list[tuple[str, str]], cell, label_cell, value) -> Table:
+    """`_draft_grid` for reportlab: spans as `SPAN`, the 결재란 centred."""
+    grid = _draft_grid(fields)
+    flat = grid.flat()
+    labels = {label for label, _ in fields}
+    centred = ParagraphStyle("tb-sign", parent=cell, alignment=TA_CENTER)
+    centred_label = ParagraphStyle("tb-sign-label", parent=label_cell, alignment=TA_CENTER)
+    rows = []
+    for r, cells in enumerate(flat):
+        row = []
+        for c, text in enumerate(cells):
+            if text in labels and (c == 0 or r == 0):
+                row.append(Paragraph(_escape(text), centred_label if c >= 2 else label_cell))
+            elif c == 1 or (c >= 2 and text):
+                shown = value(text)
+                row.append(Paragraph(shown, centred if c >= 2 else cell))
+            else:
+                row.append("")
+        rows.append(row)
+    height = len(flat)
+    table = Table(
+        rows,
+        colWidths=[w * mm for w in (26, 40, 30, 30, 30)][: grid.width],
+        rowHeights=[None, 12 * mm, *([None] * (height - 2))] if height > 2 else None,
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#555555")),
+                ("BACKGROUND", (0, 0), (0, -1), HexColor("#f4f4f4")),
+                ("BACKGROUND", (2, 0), (-1, 0), HexColor("#f4f4f4")),
+                *(
+                    [("SPAN", (c, 1), (c, height - 2)) for c in range(2, grid.width)]
+                    if height > 2
+                    else []
+                ),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
+    table.hAlign = "LEFT"
+    return table
+
+
+#: The text column of the document being written (`to_hwpx` sets it from the page settings).
+_HWPX_COLUMN: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "hwpx_column", default=_HWPX_TEXT_WIDTH
+)
+#: The body character of the document being written, for row heights (`_hwpx_table`).
+_HWPX_CHAR: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "hwpx_char", default=_HWPX_BODY_CHAR
+)
+
+
 def _hwpx_table(
     rows: richtext.Grid | list[list[str]],
     *,
@@ -2856,6 +3956,9 @@ def _hwpx_table(
     widths: list[int] | None = None,
     cell_para_pr: int | list[int] = 7,
     header_row: bool = True,
+    figure_para_pr: int | None = None,
+    cell_char_pr: list[int] | None = None,
+    border_fill: int = 2,
 ) -> str:
     """A GFM table as an OWPML table, wrapped in its own paragraph.
 
@@ -2863,8 +3966,11 @@ def _hwpx_table(
     inside `hp:tbl`; `subList`, `cellAddr`, `cellSpan`, `cellSz`, `cellMargin`
     inside `hp:tc`. Every `borderFillIDRef` must exist in `_HWPX_BORDER_FILLS`.
     `widths` are relative column weights; `cell_para_pr` is 7 (left) or 6
-    (centred), or one per column. Cells covered by a merge are omitted, as OWPML
-    expects. Raises on anything it cannot render so the caller falls back to lines.
+    (centred), or one per column. `figure_para_pr`, a right-aligned shape, sets the
+    figures of `_numeric_columns` flush right. The head row is marked `header` and the
+    table `repeatHeader`, so it repeats on every page the table runs onto. Cells covered
+    by a merge are omitted, as OWPML expects. Raises on anything it cannot render so the
+    caller falls back to lines.
     """
     grid = _export_grid(rows)
     if not grid.rows:
@@ -2873,12 +3979,50 @@ def _hwpx_table(
     cols = grid.width
     if cols < 1 or cols > 12:
         raise ValueError(f"열이 {cols}개")
+    text_width = _HWPX_COLUMN.get()
     # Sums to exactly the text width; a rounding remainder shows as a short column.
-    weights = (widths or _column_weights(kept, cols))[:cols]
+    weights = (widths or _column_weights(kept, cols, text_width))[:cols]
     weights += [1] * (cols - len(weights))
     total = sum(weights) or cols
-    column_widths = [_HWPX_TEXT_WIDTH * w // total for w in weights]
-    column_widths[-1] += _HWPX_TEXT_WIDTH - sum(column_widths)
+    # Each column has its cell margins on top of its share of what is left, so a column
+    # sized to its longest word holds it.
+    room = max(0, text_width - cols * _HWPX_CELL_MARGIN * 2)
+    column_widths = [_HWPX_CELL_MARGIN * 2 + room * w // total for w in weights]
+    column_widths[-1] += text_width - sum(column_widths)
+    numeric = _numeric_columns(kept) if figure_para_pr is not None and header_row else set()
+
+    # Row heights as the text will need them. Hancom grows a cell to fit, but the declared
+    # sizes place the table and decide where it splits, and a reader that trusts them
+    # (rhwp) drew a 21-row table as nominal 2000-unit rows with the second lines cut.
+    em = _HWPX_CHAR.get()
+    pitch = em * _HWPX_LINE_SPACING // 100
+
+    def lines(text: str, width: int) -> int:
+        room = max(em, width - _HWPX_CELL_MARGIN * 2)
+        return sum(
+            max(1, math.ceil(_ems(_strip_inline(line)) * em / room))
+            for line in text.split("\n")
+        )
+
+    row_heights = [_HWPX_ROW_HEIGHT] * len(grid.rows)
+    taken: set[tuple[int, int]] = set()
+    for r, row in enumerate(grid.rows):
+        column = 0
+        for cell in row:
+            while (r, column) in taken:
+                column += 1
+            if column >= cols:
+                break
+            across = min(cell.colspan, cols - column)
+            down = min(cell.rowspan, len(grid.rows) - r)
+            for dr in range(down):
+                for dc in range(across):
+                    taken.add((r + dr, column + dc))
+            if down == 1:
+                width = sum(column_widths[column : column + across])
+                need = lines(cell.text, width) * pitch + _HWPX_CELL_MARGIN * 2
+                row_heights[r] = max(row_heights[r], need)
+            column += across
 
     body: list[str] = []
     #: Addresses covered by a merge that began above or to the left. OWPML wants
@@ -2900,12 +4044,15 @@ def _hwpx_table(
                         covered.add((r + dr, column + dc))
             # Head row: bold at body size with a heavier rule under it.
             head = r == 0 and header_row
-            fill = 3 if head else 2
+            fill = 3 if head else border_fill
             shape = cell_para_pr[column] if isinstance(cell_para_pr, list) else cell_para_pr
+            if column in numeric and across == 1:
+                shape = figure_para_pr
             lines = [_strip_inline(line) for line in cell.text.split("\n")] or [""]
-            para = "".join(
-                _hwpx_para(line, shape, head_char_pr if head else char_pr) for line in lines
-            )
+            char = head_char_pr if head else char_pr
+            if cell_char_pr is not None and column < len(cell_char_pr):
+                char = cell_char_pr[column]
+            para = "".join(_hwpx_para(line, shape, char) for line in lines)
             width = sum(column_widths[column : column + across])
             cells.append(
                 f'<hp:tc name="" header="{1 if head else 0}" hasMargin="1" protect="0"'
@@ -2917,7 +4064,7 @@ def _hwpx_table(
                 "</hp:subList>"
                 f'<hp:cellAddr colAddr="{column}" rowAddr="{r}"/>'
                 f'<hp:cellSpan colSpan="{across}" rowSpan="{down}"/>'
-                f'<hp:cellSz width="{width}" height="{_HWPX_ROW_HEIGHT * down}"/>'
+                f'<hp:cellSz width="{width}" height="{sum(row_heights[r : r + down])}"/>'
                 f'<hp:cellMargin left="{_HWPX_CELL_MARGIN}" right="{_HWPX_CELL_MARGIN}"'
                 f' top="{_HWPX_CELL_MARGIN}" bottom="{_HWPX_CELL_MARGIN}"/>'
                 "</hp:tc>"
@@ -2925,28 +4072,34 @@ def _hwpx_table(
             column += across
         body.append("<hp:tr>" + "".join(cells) + "</hp:tr>")
 
-    height = _HWPX_ROW_HEIGHT * len(grid.rows)
+    height = sum(row_heights)
+    # A table set as a character (글자처럼 취급) is one line of its paragraph and does not
+    # split across pages: rhwp drew the first 21 rows of a 40-row table and dropped the
+    # rest. A tall table is anchored to its paragraph instead (자리 차지), as Hancom writes
+    # its own long tables, and splits by rows with the head row repeated.
+    inline = "1" if height <= _HWPX_INLINE_TABLE else "0"
     table = (
         f'<hp:tbl id="0" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM"'
         ' textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL"'
         f' repeatHeader="1" rowCnt="{len(grid.rows)}" colCnt="{cols}" cellSpacing="0"'
         ' borderFillIDRef="1" noAdjust="0">'
-        f'<hp:sz width="{_HWPX_TEXT_WIDTH}" widthRelTo="ABSOLUTE" height="{height}"'
+        f'<hp:sz width="{text_width}" widthRelTo="ABSOLUTE" height="{height}"'
         ' heightRelTo="ABSOLUTE" protect="0"/>'
-        '<hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0"'
+        f'<hp:pos treatAsChar="{inline}" affectLSpacing="0" flowWithText="1" allowOverlap="0"'
         ' holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="COLUMN" vertAlign="TOP"'
         ' horzAlign="LEFT" vertOffset="0" horzOffset="0"/>'
         '<hp:outMargin left="0" right="0" top="0" bottom="283"/>'
         f'<hp:inMargin left="{_HWPX_CELL_MARGIN}" right="{_HWPX_CELL_MARGIN}"'
         f' top="{_HWPX_CELL_MARGIN}" bottom="{_HWPX_CELL_MARGIN}"/>' + "".join(body) + "</hp:tbl>"
     )
-    # `treatAsChar` puts the table in the run, so it gets its own paragraph.
+    # The table rides in a run, so it gets its own paragraph.
     return f'<hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="{char_pr}">{table}</hp:run></hp:p>'
 
 
-def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
+def _hwpx_title_block(title: str, block: dict, lead: str, right: int = 3) -> list[str]:
     """`_docx_title_block` as OWPML paragraphs. `lead` (section properties, page furniture)
-    must ride in the first paragraph's run, as it does on the plain title."""
+    must ride in the first paragraph's run, as it does on the plain title; `right` is a
+    right-aligned paragraph shape, for the 1쪽 보고's head fields."""
     head = block["head"]
     out: list[str] = []
 
@@ -2969,7 +4122,7 @@ def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
         for start in range(0, len(pairs), per_row):
             row: list[str] = []
             for label, value in pairs[start : start + per_row]:
-                row += [label, _shown(value)]
+                row += [label, _shown(value, label)]
             rows.append(row + [""] * (per_row * 2 - len(row)))
         try:
             out.append(_hwpx_table(rows, head_char_pr=0, widths=widths * per_row, header_row=False))
@@ -2977,6 +4130,27 @@ def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
             log.warning("hwpx title block fell back to lines: %s", exc)
             out.extend(_hwpx_para(" · ".join(row), 3) for row in rows)
 
+    if doc_type.space_for(block.get("format")) is not None:
+        # The 1쪽 보고: the title in a heavy box, the head fields one line under it, right.
+        try:
+            box = _hwpx_table(
+                [[title]], header_row=False, cell_para_pr=6, cell_char_pr=[2],
+                border_fill=_HWPX_HEAVY_BOX,
+            )
+        except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
+            log.warning("hwpx title box fell back to a line: %s", exc)
+            para(title, 0, 2)
+        else:
+            # The section properties ride in the box's own run, before the table.
+            run = '<hp:run charPrIDRef="0">'
+            out.append(box.replace(run, run + lead, 1))
+            lead = ""
+        if block["fields"]:
+            para(
+                "  ·  ".join(f"{label} {value}" for label, value in _fields_line(block["fields"])),
+                right, 5,
+            )
+        return out
     if head == "cover":
         # No cover page: the title block heads page one and the text follows it.
         if block["label"]:
@@ -2989,6 +4163,23 @@ def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
     elif head == "memo":
         para("", 3)
         table(1, [1, 4])
+        para(f"제목  {title}", 0, 2)
+    elif head == "draft":
+        para("", 3)
+        try:
+            out.append(
+                _hwpx_table(
+                    _draft_grid(block["fields"]),
+                    widths=[26, 40, 30, 30, 30],
+                    header_row=False,
+                    cell_para_pr=[7, 7, 6, 6, 6],
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
+            log.warning("hwpx 결재란 fell back to lines: %s", exc)
+            out.extend(
+                _hwpx_para(" · ".join(row), 3) for row in _draft_grid(block["fields"]).flat()
+            )
         para(f"제목  {title}", 0, 2)
     elif head == "press":
         para("보도자료", 1, 3)
@@ -3004,9 +4195,9 @@ def _hwpx_title_block(title: str, block: dict, lead: str) -> list[str]:
             para(_paper_line(label, value), 6, 0)
         if block["abstract"] is not None:
             para("초록", 2, 4)
-            para(_shown(block["abstract"]), 3, 0)
+            para(_shown(block["abstract"], "초록"), 3, 0)
         if block["keywords"] is not None:
-            para(f"핵심어: {_shown(', '.join(block['keywords']))}", 3, 0)
+            para(f"핵심어: {_shown(', '.join(block['keywords']), '핵심어')}", 3, 0)
     else:  # header
         if block["label"]:
             para(block["label"], 2, 0)
@@ -3025,6 +4216,29 @@ def to_hwpx(
     page_settings: dict | None = None,
     title_block: dict | None = None,
 ) -> bytes:
+    """The same document `to_docx` writes, as OWPML (`_hwpx_document`), its tables sized to
+    the text column the page settings leave."""
+    column = _HWPX_COLUMN.set(_hwpx_text_width(_format_page(page_settings, title_block)))
+    char = _HWPX_CHAR.set(
+        round(doc_type.type_for(_format_of(_title_block(title_block)))["body"] * 100)
+    )
+    try:
+        return _hwpx_document(
+            title, sections, tokens=tokens, page_settings=page_settings, title_block=title_block
+        )
+    finally:
+        _HWPX_CHAR.reset(char)
+        _HWPX_COLUMN.reset(column)
+
+
+def _hwpx_document(
+    title: str,
+    sections: list[dict],
+    *,
+    tokens: dict[str, str] | None = None,
+    page_settings: dict | None = None,
+    title_block: dict | None = None,
+) -> bytes:
     """The same document `to_docx` writes, as OWPML.
 
     Bullets are literal `•` text: a wrong numbering reference makes Hancom
@@ -3033,9 +4247,18 @@ def to_hwpx(
     with no raster yet is written as `[다이어그램]`.
     """
     style = design.normalise_tokens(tokens) if tokens else None
-    char_extras: list[tuple[int, int, bool, bool, bool, bool, str, str]] = []
+    #: 함초롬바탕 unless the design is a gothic one, as `to_pdf` picks its face.
+    body_face = _HWPX_GOTHIC if style and style.get("font") != "serif" else _HWPX_SERIF
+    head_block = _title_block(title_block)
+    sections = _drawn_sections(sections, head_block)
+    fmt = _format_of(head_block)
+    #: A format's own scale and spacing (the 개조식 1쪽 보고), else the shared ones.
+    scale, space = doc_type.type_for(fmt), doc_type.space_for(fmt)
+    char_shapes = _hwpx_char_shapes(scale)
+    para_shapes = _hwpx_para_shapes(space)
+    char_extras: list[tuple] = []
     char_ids: dict[tuple, int] = {}
-    para_extras: list[tuple[int, str, int, int, int, int]] = []
+    para_extras: list[tuple[int, ...]] = []
     para_ids: dict[tuple, int] = {}
 
     def colour(value: str, fallback: str) -> str:
@@ -3046,7 +4269,7 @@ def to_hwpx(
         return fallback
 
     def styled_char_id(run_style: dict, base: int) -> int:
-        _, base_height, base_bold = _HWPX_CHAR_SHAPES[base]
+        _, base_height, base_bold = char_shapes[base]
         size = str(run_style.get("font-size") or "")
         height = (
             round(float(found.group(1)) * 100)
@@ -3063,6 +4286,8 @@ def to_hwpx(
             "line-through" in decoration,
             colour(str(run_style.get("color") or ""), "#000000"),
             colour(str(run_style.get("background-color") or ""), "none"),
+            # The face of the shape it restyles: a heading stays in the heading face.
+            _HWPX_GOTHIC if base in _HWPX_HEADING_SHAPES else body_face,
         )
         if key not in char_ids:
             identifier = len(_HWPX_CHAR_SHAPES) + len(char_extras)
@@ -3071,7 +4296,10 @@ def to_hwpx(
         return char_ids[key]
 
     def styled_para_id(block: dict, base: int) -> int:
-        _, default_align, left, prev, nxt = _HWPX_PARA_SHAPES[base]
+        if base >= len(_HWPX_PARA_SHAPES):
+            # A hanging shape (`hanging_para_id`) keeps its own geometry.
+            return base
+        _, default_align, left, prev, nxt = para_shapes[base]
         block_style = block.get("style") or {}
         align = {
             "left": "LEFT",
@@ -3090,6 +4318,31 @@ def to_hwpx(
             identifier = len(_HWPX_PARA_SHAPES) + len(para_extras)
             para_ids[key] = identifier
             para_extras.append((identifier, *key))
+        return para_ids[key]
+
+    def figure_shape() -> int:
+        """A right-aligned table-cell shape, for the figures in a table."""
+        key = ("figure",)
+        if key not in para_ids:
+            identifier = len(_HWPX_PARA_SHAPES) + len(para_extras)
+            para_ids[key] = identifier
+            para_extras.append((identifier, "RIGHT", 0, 0, 0, _HWPX_LINE_SPACING))
+        return para_ids[key]
+
+    def hanging_para_id(kind: str, depth: int) -> int:
+        """The 내어쓰기 shape of a 개조식 item, ※ note or 붙임 line (`_docx_hanging`)."""
+        em = round(scale["body"] * 100)
+        start, hang = _hang(kind, depth)
+        after = round(space["item"] * 100) if space is not None else 100
+        # The 붙임 lines stand half a line under the body they close.
+        before = em // 2 if space is not None and kind == "attach" and not depth else 0
+        key = ("hang", round(em * start), -round(em * hang), before, after)
+        if key not in para_ids:
+            identifier = len(_HWPX_PARA_SHAPES) + len(para_extras)
+            para_ids[key] = identifier
+            para_extras.append(
+                (identifier, "LEFT", key[1], before, after, _HWPX_LINE_SPACING, key[2])
+            )
         return para_ids[key]
 
     def styled_para(block: dict, base_para: int, base_char: int, prefix: str = "") -> str:
@@ -3111,11 +4364,13 @@ def to_hwpx(
         )
 
     # The section properties ride in the first paragraph's run.
-    lead = f"{_hwpx_secpr(page_settings)}{_hwpx_page_furniture(title, page_settings)}"
-    head_block = _title_block(title_block)
+    paged = _format_page(page_settings, title_block)
+    lead = f"{_hwpx_secpr(paged)}{_hwpx_page_furniture(title, page_settings)}"
     numbers = _HeadingNumbers(head_block)
     body: list[str] = (
-        _hwpx_title_block(title, head_block, lead)
+        _hwpx_title_block(
+            title, head_block, lead, figure_shape() if space is not None else 3
+        )
         if head_block
         else [
             f'<hp:p paraPrIDRef="0" styleIDRef="0"><hp:run charPrIDRef="2">'
@@ -3141,18 +4396,19 @@ def to_hwpx(
             out.append(_hwpx_para(caption, 5, 4))
         return out
 
-    for section in sections:
+    closing_at = _last_body(sections)
+    for at, section in enumerate(sections):
         heading = (section.get("heading") or "").strip()
         number = numbers.section(section)
-        if heading:
+        if heading and not _is_attachment(section, head_block):
             body.append(_hwpx_para(f"{number}{heading}", 1, 3))
         formatted = list(section.get("_formatting") or [])
         format_cursor = 0
         #: Footnotes gathered under the section; `<hp:footNote>` is not used
         #: because a malformed one will not open.
         notes: list[tuple[str, str]] = []
-        for kind, text, marker, depth in _markdown_to_lines(
-            section.get("content") or "", section.get("tables")
+        for kind, text, marker, depth in _section_lines(
+            section, head_block, at == closing_at, "  "
         ):
             if kind == "pagebreak":
                 body.append(
@@ -3165,7 +4421,10 @@ def to_hwpx(
                 continue
             if kind == "table":
                 try:
-                    body.append(_hwpx_table(text))
+                    figures = bool(_numeric_columns(_export_grid(text).flat()))
+                    body.append(
+                        _hwpx_table(text, figure_para_pr=figure_shape() if figures else None)
+                    )
                 except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
                     log.warning("hwpx table fell back to lines: %s", exc)
                     for line in _table_as_lines(text):
@@ -3221,6 +4480,21 @@ def to_hwpx(
                         for line in items:
                             body.append(_hwpx_para(f"· {line}", 3))
                 continue
+            if kind == "callout" and space is not None and text[0]:
+                # The 1쪽 보고's 핵심: the label beside its lines in a thin black box.
+                label, lines = text
+                try:
+                    body.append(
+                        _hwpx_table(
+                            [[label, "\n".join(lines)]], header_row=False, widths=[1, 9],
+                            cell_para_pr=[6, 7], cell_char_pr=[3, 0],
+                            border_fill=_HWPX_THIN_BOX,
+                        )
+                    )
+                except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
+                    log.warning("hwpx core box fell back to lines: %s", exc)
+                    body.extend(_hwpx_para(line, 3) for line in [label, *lines])
+                continue
             if kind == "callout":
                 # One cell: 한글 has no left rule that survives a re-save.
                 title, lines = text
@@ -3260,8 +4534,22 @@ def to_hwpx(
                     if block
                     else _hwpx_para(f"{number}{clean}", 2, 4)
                 )
+            elif kind in ("gaejo", "remark", "attach"):
+                # Marker and one space: Hancom's tab stops are its own, a space is not.
+                lead_text = (
+                    f"{marker}  "
+                    if kind == "attach" and marker
+                    else (f"{marker} " if marker else "")
+                )
+                shape = hanging_para_id(kind, depth)
+                char = 5 if kind == "remark" else 0
+                body.append(
+                    styled_para(block, shape, char, lead_text)
+                    if block
+                    else _hwpx_para(f"{lead_text}{clean}", shape, char)
+                )
             elif kind in ("bullet", "number"):
-                base_para = (4, 8, 9)[depth]
+                base_para = (4, 8, 9)[min(depth, 2)]
                 body.append(
                     styled_para(block, base_para, 0, f"{marker} ")
                     if block
@@ -3317,13 +4605,17 @@ def to_hwpx(
         archive.writestr(
             "Contents/header.xml",
             _HWPX_HEADER.format(
+                font_faces=_hwpx_font_faces(),
                 border_fills=_HWPX_BORDER_FILLS,
                 char_properties=_hwpx_char_properties(
-                    style["accent"] if style else None,
+                    # A memo printed black: no accent on its title and headings.
+                    style["accent"] if style and space is None else None,
                     char_extras,
                     (style or {}).get("visualStyle") or "editorial",
+                    body_face,
+                    char_shapes,
                 ),
-                para_properties=_hwpx_para_properties(para_extras),
+                para_properties=_hwpx_para_properties(para_extras, para_shapes),
             ),
         )
         archive.writestr("Contents/section0.xml", section_xml)
@@ -3338,4 +4630,4 @@ def to_hwpx(
     return buffer.getvalue()
 
 
-__all__ = ["to_docx", "to_pdf", "to_hwpx"]
+__all__ = ["hwpx_pages", "pdf_pages", "to_docx", "to_hwpx", "to_pdf"]

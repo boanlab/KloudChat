@@ -36,6 +36,13 @@
 section { margin: 0 0 1.5rem; break-inside: auto; }
 h2 { break-after: avoid; }
 table, .callout, .kpi, .cards > div { break-inside: avoid; }
+/* 표가 든 절은 두 단을 가로질러 종이 폭을 다 쓴다. 반 단에 넣은 네 칸짜리 표는 칸마다
+   한두 글자씩 세로로 쌓이다가 종이 밖으로 밀려 잘렸다. 표 자체가 아니라 절을 가로지르게
+   하는 것은 표가 절 안에 있어서다. Chromium 은 flex 상자를 단 가로지르기에서 빼므로 그
+   절만 블록으로 둔다. */
+section:has(table) { column-span: all; display: block; }
+/* 용도별 머리 정보(`.tb`)도 표지처럼 두 단을 가로지른다. */
+.tb { column-span: all; }
 h2 { margin-bottom: 0.5rem; }
 p { margin-bottom: 0.6rem; }
 table { margin: 0.7rem 0; }

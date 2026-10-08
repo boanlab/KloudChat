@@ -29,7 +29,7 @@ from typing import Any
 import nh3
 
 from app.models.chat import SessionKind
-from app.services import design, doc_type, pictures
+from app.services import design, doc_formats, doc_type, format_css, pictures, table_figures
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -202,6 +202,15 @@ class DesignTemplate:
     sample: str
     #: Catalogue skills applied automatically in this 서식, by `catalog_key`.
     skills: tuple[str, ...]
+    #: `skills = []` written out: the 서식 brings no skills on purpose (its rules live in its
+    #: instructions and the agent's prompt), not by omission.
+    no_skills: bool = False
+    #: Check skills (`stage` in their SKILL.md) the server runs around writing in this 서식,
+    #: by catalogue key; `check_skills` because `checks` is the checklist below.
+    check_skills: tuple[str, ...] = ()
+    #: `body_face = "design"`: the body face follows the design's `font` token in every
+    #: export (its `design.css` reads `--font-body`); otherwise the 서식 fixes its faces.
+    body_face_from_design: bool = False
 
     @property
     def surface(self) -> SessionKind:
@@ -370,6 +379,9 @@ def _load() -> dict[str, DesignTemplate]:
                 if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
             },
             skills=tuple(str(k) for k in (meta.get("skills") or [])),
+            no_skills=meta.get("skills") == [],
+            check_skills=tuple(str(k) for k in (meta.get("check_skills") or [])),
+            body_face_from_design=meta.get("body_face") == "design",
             sample=_read(folder, "sample.html"),
         )
     return found
@@ -530,7 +542,9 @@ def _token_declarations(tokens: dict[str, str]) -> str:
             ("muted", tokens.get("muted", "#666666")),
             (
                 "font-body",
-                "'Nanum Myeongjo', 'Batang', serif"
+                # Linux fontconfig names the face `NanumMyeongjo`, Windows and macOS
+                # `Nanum Myeongjo`; with only the second the print sidecar fell back.
+                "'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif"
                 if tokens.get("font") == "serif"
                 else "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
             ),
@@ -542,12 +556,59 @@ def _token_declarations(tokens: dict[str, str]) -> str:
 
 
 def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body: str) -> str:
-    """The finished single file: seed with `{{TOKENS}}`, `{{TITLE}}` and `{{BODY}}` filled."""
+    """The finished single file: seed with `{{TOKENS}}`, `{{TITLE}}` and `{{BODY}}` filled.
+
+    Table cells in a column of figures are marked `.fig` (and a total row `.total`), so a
+    seed sets figures flush right and leaves a column of words left."""
     return (
         template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
         .replace("{{TITLE}}", escape(title))
-        .replace("{{BODY}}", body)
+        .replace("{{BODY}}", table_figures.mark_html(body))
     )
+
+
+def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
+    """The gallery card's page: the seed around `sample.html`, drawn as a finished document.
+
+    A 서식 bound to a document format (`doc_formats.TEMPLATE_FORMATS`) gets that format's
+    rules as the web draws them — the head block, heading numbers, 개조식 — so the sample's
+    `header.tb` reads as it will in a real document."""
+    if template.kind != "document":
+        return render(template, title=template.name, tokens=tokens, body=template.sample)
+    fmt = doc_formats.BY_ID.get(doc_formats.TEMPLATE_FORMATS.get(template.id, ""))
+    if fmt is None:
+        # No format: a title and the sections, its blanks still marked as the page view does.
+        css = f"{format_css.PLACEHOLDER_CSS}\n{format_css.PAGED_CSS}"
+        body = format_css.mark_placeholders(template.sample)
+    else:
+        css, body = format_css.preview(fmt, template.sample)
+    page = render(template, title=template.name, tokens=tokens, body=body)
+    return page.replace("</head>", f"<style>\n{css}\n</style>\n</head>", 1)
+
+
+#: One slide of a deck sample; slides never nest, so the first `</section>` closes it.
+_SLIDE = re.compile(r"<section\b[^>]*\bclass=\"slide\b[^\"]*\"[^>]*>.*?</section\s*>", re.S | re.I)
+
+#: A single slide fills the frame and the page does not scroll past it.
+_ONE_SLIDE = "<style>html, body { overflow: hidden; } .slide { height: 100vh; }</style>\n"
+
+
+def sample_slides(template: DesignTemplate) -> list[str]:
+    """The deck sample's slides in order, one `<section class="slide …">` each; empty for
+    any other kind.
+    """
+    if template.kind != "deck":
+        return []
+    return _SLIDE.findall(template.sample)
+
+
+def render_slide(template: DesignTemplate, *, tokens: dict[str, str], n: int) -> str | None:
+    """The seed around slide `n` (1-based) of the sample alone, or None when out of range."""
+    slides = sample_slides(template)
+    if not 1 <= n <= len(slides):
+        return None
+    page = render(template, title=template.name, tokens=tokens, body=slides[n - 1])
+    return _HEAD_END.sub(lambda _m: _ONE_SLIDE + "</head>", page, count=1)
 
 
 _STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
@@ -627,6 +688,7 @@ __all__ = [
     "escape",
     "figure",
     "pictures_in",
+    "preview",
     "for_surface",
     "get",
     "render",

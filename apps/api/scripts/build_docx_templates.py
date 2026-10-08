@@ -2,11 +2,14 @@
 
 Run from the API image:
 
-    docker compose run --rm --no-deps api python scripts/build_docx_templates.py
+    docker compose run --rm --no-deps api python scripts/build_docx_templates.py [folder ...]
+
+Named folders only, when given; otherwise every 서식.
 
 `_SPECS` mirrors each 서식's `seed.html` type scale; keep the two in step.
-Fonts must be faces every Hangul Windows and Hancom install carries, or Word
-substitutes silently.
+Fonts must be faces every Hangul Windows Word carries (맑은 고딕, 바탕), or Word
+substitutes silently; 함초롬 ships with Hancom only. Styles name their faces
+directly: a theme font (`asciiTheme`) would win over them in Word.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import sys
 from docx import Document
 from docx.enum.section import WD_ORIENT
 from docx.enum.style import WD_STYLE_TYPE
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Mm, Pt, RGBColor
@@ -42,8 +45,12 @@ class Spec:
         h2_pt: float,
         note: str,
         form: tuple[tuple, ...] = (),
+        spacing: tuple[float, float, float] | None = None,
     ) -> None:
         self.folder = folder
+        #: (before a heading, after it, after a paragraph) in pt, with 160% of the size as
+        #: the least line height; None keeps the shared spacing.
+        self.spacing = spacing
         self.form = form
         self.body_font = body_font
         self.heading_font = heading_font
@@ -84,8 +91,8 @@ def B(items: tuple[str, ...]) -> tuple:
 _SPECS = (
     Spec(
         "doc-report",
-        body_font="함초롬바탕",
-        heading_font="함초롬돋움",
+        body_font="바탕",
+        heading_font="맑은 고딕",
         accent="2B4C7E",
         body_pt=10.5,
         margins_mm=(20, 20, 20, 20),
@@ -115,8 +122,8 @@ _SPECS = (
     ),
     Spec(
         "doc-project-brief",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="3B5BDB",
         body_pt=10,
         margins_mm=(18, 18, 18, 18),
@@ -144,8 +151,8 @@ _SPECS = (
     ),
     Spec(
         "doc-brief",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="1F6F5C",
         body_pt=10,
         margins_mm=(16, 16, 16, 16),
@@ -173,8 +180,8 @@ _SPECS = (
     ),
     Spec(
         "doc-minutes",
-        body_font="함초롬바탕",
-        heading_font="함초롬돋움",
+        body_font="바탕",
+        heading_font="맑은 고딕",
         accent="5B4B8A",
         body_pt=10.5,
         margins_mm=(20, 18, 18, 18),
@@ -201,8 +208,8 @@ _SPECS = (
     ),
     Spec(
         "doc-notice",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="A2452C",
         body_pt=11,
         margins_mm=(22, 20, 20, 20),
@@ -227,8 +234,8 @@ _SPECS = (
     ),
     Spec(
         "doc-lab",
-        body_font="함초롬바탕",
-        heading_font="함초롬돋움",
+        body_font="바탕",
+        heading_font="맑은 고딕",
         accent="1F5673",
         body_pt=10,
         margins_mm=(18, 18, 18, 18),
@@ -268,8 +275,8 @@ _SPECS = (
     ),
     Spec(
         "doc-term-paper",
-        body_font="함초롬바탕",
-        heading_font="함초롬돋움",
+        body_font="바탕",
+        heading_font="맑은 고딕",
         accent="4B3B8F",
         body_pt=10.5,
         margins_mm=(25, 25, 25, 25),
@@ -295,8 +302,8 @@ _SPECS = (
     ),
     Spec(
         "doc-case",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="1F6FEB",
         body_pt=10.5,
         margins_mm=(20, 18, 18, 18),
@@ -323,8 +330,8 @@ _SPECS = (
     ),
     Spec(
         "doc-survey",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="0F766E",
         body_pt=10,
         margins_mm=(20, 18, 18, 18),
@@ -352,8 +359,8 @@ _SPECS = (
     ),
     Spec(
         "doc-incident",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="B42318",
         body_pt=10.5,
         margins_mm=(18, 18, 18, 18),
@@ -379,8 +386,8 @@ _SPECS = (
     ),
     Spec(
         "doc-proposal",
-        body_font="함초롬돋움",
-        heading_font="함초롬돋움",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
         accent="7C3AED",
         body_pt=10.5,
         margins_mm=(20, 20, 20, 20),
@@ -408,14 +415,260 @@ _SPECS = (
             P("이 문서를 읽고 무엇을 결정해 달라는 것인지 한 줄."),
         ),
     ),
+    # 공문서 계열. Faces every Hangul Windows Word carries (맑은 고딕, 바탕), not 함초롬:
+    # these files go to offices that open them in Word as often as in Hancom.
+    Spec(
+        "doc-gaejo-report",
+        # 바탕 for the 문서용 명조 the agent wears; the export sets the design's body face
+        # (`body_face = "design"`).
+        body_font="바탕",
+        heading_font="맑은 고딕",
+        accent="1A1A1A",
+        # The 1쪽 보고 scale and page (`doc_type.FORMAT_TYPE`, `FORMAT_SPACE`, `FORMAT_MARGINS`).
+        body_pt=12,
+        margins_mm=(20, 20, 15, 20),
+        title_pt=18,
+        h1_pt=14,
+        h2_pt=13,
+        spacing=(7, 2, 0),
+        note="개조식 보고서. □ ○ - ㆍ 계단, 맨 위 핵심 두 줄.",
+        form=(
+            H(0, "보고서 제목"),
+            T(("보고일", "보고자(부서)", "보고 대상"), rows=1),
+            T(("핵심",), rows=2),
+            P("맨 위 상자: 결론 한 줄, 필요한 결정(또는 다음 조치) 한 줄."),
+            H(1, "현황"),
+            P("□ 첫째 단계, ○ 둘째 단계, - 셋째, ㆍ 넷째. 항목은 명사형(…함, …임)으로 맺습니다."),
+            # `doc_formats.GAEJO_OUTLINE`: the sections the 개조식 보고 is written in.
+            H(1, "문제점 및 검토"),
+            H(1, "향후 조치 및 결정 요청"),
+            T(("조치", "담당", "기한")),
+            P("붙임  1. ○○○ 1부.  끝."),
+        ),
+    ),
+    Spec(
+        "doc-internal-draft",
+        body_font="바탕",
+        heading_font="맑은 고딕",
+        accent="1A1A1A",
+        body_pt=11,
+        margins_mm=(20, 20, 20, 20),
+        title_pt=15,
+        h1_pt=12,
+        h2_pt=11,
+        note="간이기안문(별지 제2호서식). 발신하지 않는 내부결재용.",
+        form=(
+            T(("생산등록번호", "등록일", "결재일", "공개 구분"), rows=1),
+            T(("기안자", "검토자", "결재권자"), rows=2),
+            H(0, "제목"),
+            H(1, "관련 근거"),
+            P("어떤 규정·계획·회의에 따른 일인지."),
+            H(1, "목적"),
+            H(1, "주요 내용"),
+            P("무엇을, 언제, 얼마에. 결재받을 금액은 「금○○원(금○○원)」과 산출 근거."),
+            H(1, "행정 사항"),
+            P("붙임  1. ○○○ 1부.  끝."),
+        ),
+    ),
+    Spec(
+        "doc-event-plan",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
+        accent="1A1A1A",
+        body_pt=10.5,
+        margins_mm=(20, 20, 20, 20),
+        title_pt=17,
+        h1_pt=12.5,
+        h2_pt=11,
+        note="추진 계획(안). 개요·예산·일정 표.",
+        form=(
+            H(0, "○○ 추진 계획(안)"),
+            T(("작성일", "작성 부서", "작성자"), rows=1),
+            H(1, "추진 배경 및 목적"),
+            H(1, "추진 개요"),
+            T(("구분", "내용"), rows=5),
+            P("일시·장소·대상·인원·주관을 한 행씩."),
+            H(1, "세부 추진 내용"),
+            H(1, "소요 예산"),
+            T(("항목", "산출 근거", "금액"), rows=4),
+            P("산출 근거는 「단가 × 수량」, 마지막 행은 합계."),
+            H(1, "추진 일정"),
+            T(("일정", "내용", "담당")),
+            H(1, "기대 효과"),
+            P("붙임  1. ○○○ 1부.  끝."),
+        ),
+    ),
+    Spec(
+        "doc-result-report",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
+        accent="1A1A1A",
+        body_pt=10.5,
+        margins_mm=(20, 20, 20, 20),
+        title_pt=17,
+        h1_pt=12.5,
+        h2_pt=11,
+        note="결과 보고서. 개요 표와 수치로 적는 결과.",
+        form=(
+            H(0, "○○ 결과 보고"),
+            T(("보고일", "보고 부서", "보고자"), rows=1),
+            H(1, "개요"),
+            T(("구분", "내용"), rows=4),
+            P("일시·장소·참석·주관을 한 행씩."),
+            H(1, "추진 경과"),
+            H(1, "주요 결과·실적"),
+            T(("항목", "계획", "실적", "비율")),
+            H(1, "성과 및 문제점"),
+            P("문제점마다 개선 사항을 짝지어 적습니다."),
+            H(1, "향후 계획(개선 사항)"),
+            P("붙임  1. ○○○ 1부.  끝."),
+        ),
+    ),
+    # 업무 문서 계열(고객 제안·비교·경력): 맑은 고딕 하나. 받는 쪽이 Word 로 연다.
+    Spec(
+        "doc-client-proposal",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
+        accent="1F3A5F",
+        body_pt=10.5,
+        margins_mm=(20, 20, 20, 20),
+        title_pt=20,
+        h1_pt=13,
+        h2_pt=11,
+        note="고객 제안서. RFP 목차, 요구사항 대응표, 부가세까지 맞는 견적.",
+        form=(
+            H(0, "○○ 사업 제안서"),
+            T(("고객사", "사업명", "제안사", "제안일", "담당자", "연락처", "유효기간"), rows=1),
+            P("RFP가 목차를 주었으면 아래 절 대신 그 목차와 순서를 따릅니다."),
+            H(1, "제안 요약"),
+            P("무엇을, 얼마에, 언제까지 하겠다는 것인지 세 줄."),
+            H(1, "고객 과제 이해"),
+            P("고객의 말(RFP 문구, 미팅 발언)을 따옴표로 옮겨 시작합니다."),
+            H(1, "제안 내용"),
+            H(1, "요구사항 대응표"),
+            T(("요구 ID", "요구 내용", "대응 방안", "제안서 위치")),
+            H(1, "추진 일정"),
+            T(("단계", "기간", "제안사가 할 일", "고객이 할 일")),
+            H(1, "수행 조직·투입 인력"),
+            T(("역할", "인원", "투입 기간", "주요 경력")),
+            H(1, "견적"),
+            P("부가세 포함·별도를 밝힙니다. 금액 = 수량 × 단가."),
+            T(("항목", "수량", "단위", "단가", "금액", "비고"), rows=3),
+            T(("공급가액", "부가세", "합계"), rows=1),
+            H(1, "전제·제외 범위·위험"),
+            H(1, "요청 사항"),
+            P("고객에게 요청하는 결정 한 줄."),
+        ),
+    ),
+    Spec(
+        "doc-comparison",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
+        accent="1F3A5F",
+        body_pt=10.5,
+        margins_mm=(20, 18, 18, 18),
+        title_pt=18,
+        h1_pt=12.5,
+        h2_pt=11,
+        note="비교·분석 보고서. 가중치·점수식이 보이는 비교표, 조건부 권고.",
+        form=(
+            H(0, "○○ 비교·분석"),
+            T(("검토 대상", "판단 기준", "작성일", "작성자"), rows=1),
+            H(1, "검토 목적과 판단 기준"),
+            P("첫 줄: 고른 대안과 그 조건. 이어서 필수 조건, 가중치(합 100), 점수식."),
+            H(1, "대안 개요"),
+            H(1, "비교표"),
+            P("열은 대안, 행은 기준. 빈칸 대신 「자료 없음」, 칸마다 출처 번호."),
+            T(("기준(가중치)", "안 1", "안 2", "안 3"), rows=4),
+            H(1, "출처별 차이"),
+            T(("항목", "출처와 날짜", "값", "채택과 이유")),
+            H(1, "조건 미확인 사항"),
+            B(("확인되지 않은 조건", "확인되면 결론이 어떻게 정해지는가")),
+            H(1, "권고와 조건"),
+            P("「○○이 확인되면 A, 아니면 B」. 조건이 바뀌면 결론이 바뀌는 지점."),
+        ),
+    ),
+    Spec(
+        "doc-career-history",
+        body_font="맑은 고딕",
+        heading_font="맑은 고딕",
+        accent="1A1A1A",
+        body_pt=10.5,
+        margins_mm=(18, 18, 18, 18),
+        title_pt=18,
+        h1_pt=12.5,
+        h2_pt=11,
+        note="경력기술서. 회사별 → 프로젝트별, 표 안에 표 없이.",
+        form=(
+            H(0, "경력기술서"),
+            T(("이름", "연락처", "이메일", "지원 회사", "지원 직무", "작성일"), rows=1),
+            H(1, "경력 요약"),
+            P("총 경력(겹친 기간은 한 번만)과 핵심 역량 세 줄."),
+            H(1, "경력 사항"),
+            T(("회사", "기간", "소속·직급", "담당 업무")),
+            H(1, "주요 프로젝트"),
+            H(2, "회사명 — 프로젝트명"),
+            P("기간 YYYY.MM–YYYY.MM · 역할 · 수행 내용 · 성과(자료에 있는 수치만)."),
+            H(1, "보유 기술"),
+            H(1, "자격·교육"),
+            T(("이름", "기관", "취득·수료 연월")),
+        ),
+    ),
 )
 
+
 def _east_asian(style, font: str) -> None:
-    """Sets the face for Latin and East Asian runs; `font.name` alone covers Latin only."""
+    """Sets the face for Latin and East Asian runs; `font.name` alone covers Latin only.
+
+    The theme attributes go: Word reads `asciiTheme` before `ascii`."""
     style.font.name = font
     element = style.element.rPr.rFonts
     element.set(qn("w:eastAsia"), font)
     element.set(qn("w:cs"), font)
+    for name in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+        element.attrib.pop(qn(name), None)
+
+
+def _ink(style, colour: RGBColor) -> None:
+    """A style's text colour, with Word's theme colour (the default blue) removed."""
+    style.font.color.rgb = colour
+    found = style.element.rPr.find(qn("w:color"))
+    if found is not None:
+        for name in ("w:themeColor", "w:themeShade", "w:themeTint"):
+            found.attrib.pop(qn(name), None)
+
+
+#: The table style the export and the form use: hairlines, a bold head row over an
+#: accent rule, cell padding. Word and Hancom read `tblStylePr`; the export also
+#: writes the head row's look on the cells, for viewers that do not.
+_TABLE_STYLE = (
+    '<w:style xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    ' w:type="table" w:customStyle="1" w:styleId="ReportTable">'
+    '<w:name w:val="보고서 표"/><w:basedOn w:val="TableGrid"/><w:uiPriority w:val="59"/>'
+    '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
+    "<w:tblPr><w:tblBorders>"
+    '<w:top w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    '<w:left w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    '<w:bottom w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    '<w:right w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    '<w:insideH w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    '<w:insideV w:val="single" w:sz="4" w:space="0" w:color="BBBBBB"/>'
+    "</w:tblBorders><w:tblCellMar>"
+    '<w:top w:w="60" w:type="dxa"/><w:left w:w="120" w:type="dxa"/>'
+    '<w:bottom w:w="60" w:type="dxa"/><w:right w:w="120" w:type="dxa"/>'
+    "</w:tblCellMar></w:tblPr>"
+    '<w:tblStylePr w:type="firstRow"><w:rPr><w:b/></w:rPr>'
+    '<w:tcPr><w:tcBorders><w:bottom w:val="single" w:sz="10" w:space="0" w:color="{accent}"/>'
+    '</w:tcBorders><w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/></w:tcPr></w:tblStylePr>'
+    "</w:style>"
+)
+
+
+def _table_style(document, accent: str) -> None:
+    """Adds `보고서 표` to the styles part; python-docx has no API for a table style."""
+    from docx.oxml import parse_xml
+
+    document.styles.element.append(parse_xml(_TABLE_STYLE.replace("{accent}", accent)))
 
 
 def _field(paragraph, instruction: str, placeholder: str = "") -> None:
@@ -454,20 +707,30 @@ def build(spec: Spec) -> pathlib.Path:
     # 160%: Korean needs more leading than Word's default.
     normal.paragraph_format.line_spacing = 1.6
 
+    # Every heading level the export writes, in the 서식's faces: one left alone keeps
+    # Word's theme face and blue.
+    ink = RGBColor.from_string("1A1A1A")
     for name, size, colour in (
         ("Title", spec.title_pt, accent),
         ("Heading 1", spec.h1_pt, accent),
-        ("Heading 2", spec.h2_pt, None),
+        ("Heading 2", spec.h2_pt, ink),
+        ("Heading 3", spec.body_pt + 0.5, ink),
+        ("Heading 4", spec.body_pt, ink),
     ):
         style = document.styles[name]
         _east_asian(style, spec.heading_font)
         style.font.size = Pt(size)
         style.font.bold = True
-        if colour is not None:
-            style.font.color.rgb = colour
+        style.font.italic = False
+        _ink(style, colour)
         style.paragraph_format.space_before = Pt(12 if name != "Title" else 0)
         style.paragraph_format.space_after = Pt(6)
         style.paragraph_format.keep_with_next = True
+    # The Title's rule under it, in the accent rather than the theme blue.
+    rule = document.styles["Title"].element.find(f"{qn('w:pPr')}/{qn('w:pBdr')}/{qn('w:bottom')}")
+    if rule is not None:
+        rule.set(qn("w:color"), spec.accent)
+        rule.attrib.pop(qn("w:themeColor"), None)
 
     # Body Text (본문) carries the writing; Normal is the base headings inherit from.
     body = document.styles["Body Text"]
@@ -482,7 +745,17 @@ def build(spec: Spec) -> pathlib.Path:
     subtitle.font.bold = False
     subtitle.font.color.rgb = RGBColor.from_string("666666")
 
-    for name in ("List Bullet", "List Number", "Quote", "Caption"):
+    # The depths the export writes a nested list in, as Word's own list styles.
+    for name in (
+        "List Bullet",
+        "List Bullet 2",
+        "List Bullet 3",
+        "List Number",
+        "List Number 2",
+        "List Number 3",
+        "Quote",
+        "Caption",
+    ):
         if name in [s.name for s in document.styles]:
             _east_asian(document.styles[name], spec.body_font)
             document.styles[name].font.size = Pt(spec.body_pt)
@@ -522,6 +795,30 @@ def build(spec: Spec) -> pathlib.Path:
     cell.paragraph_format.space_after = Pt(0)
     cell.paragraph_format.line_spacing = 1.2
 
+    # Figures in a table: flush right so the digits line up (금액·수량·합계).
+    figure = document.styles.add_style("표 숫자", WD_STYLE_TYPE.PARAGRAPH)
+    figure.base_style = cell
+    figure.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    _table_style(document, spec.accent)
+
+    if spec.spacing is not None:
+        before, after, item = spec.spacing
+        for name in ("Normal", "Body Text", "Title", "Heading 1", "Heading 2", "Heading 3"):
+            style = document.styles[name]
+            form = style.paragraph_format
+            if name.startswith("Heading"):
+                form.space_before, form.space_after = Pt(before), Pt(after)
+            elif name == "Title":
+                form.space_before = form.space_after = Pt(0)
+            else:
+                form.space_after = Pt(item)
+            # Points, at least: a ratio multiplies the face's own line height in Word.
+            size = style.font.size.pt if style.font.size else spec.body_pt
+            ratio = 1.6 if name in ("Normal", "Body Text") else 1.3
+            form.line_spacing = Pt(round(size * ratio, 1))
+            form.line_spacing_rule = WD_LINE_SPACING.AT_LEAST
+
     # The template ships empty; any paragraph left here would head every export.
     for paragraph in list(document.paragraphs):
         paragraph._element.getparent().remove(paragraph._element)
@@ -553,9 +850,13 @@ def build_form(spec: Spec) -> pathlib.Path | None:
             document.add_paragraph("", style="Body Text")
         elif block[0] == "t":
             _, columns, rows = block
-            # `Table Grid` keeps empty cells visible.
+            # `보고서 표` (on `Table Grid`) keeps empty cells visible; the head row repeats.
             table = document.add_table(rows=rows + 1, cols=len(columns))
-            table.style = "Table Grid"
+            table.style = document.styles["보고서 표"]
+            head_row = table.rows[0]._tr.get_or_add_trPr()
+            repeat = OxmlElement("w:tblHeader")
+            repeat.set(qn("w:val"), "true")
+            head_row.append(repeat)
             for index, name in enumerate(columns):
                 paragraph = table.rows[0].cells[index].paragraphs[0]
                 paragraph.text = name
@@ -571,7 +872,10 @@ def build_form(spec: Spec) -> pathlib.Path | None:
 
 
 def main() -> int:
+    only = set(sys.argv[1:])
     for spec in _SPECS:
+        if only and spec.folder not in only:
+            continue
         folder = ROOT / spec.folder
         if not folder.is_dir():
             print(f"없는 서식: {spec.folder}", file=sys.stderr)

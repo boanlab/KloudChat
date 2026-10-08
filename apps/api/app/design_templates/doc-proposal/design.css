@@ -38,14 +38,16 @@ h2::before {
   padding: 0.9rem 0.6rem;
 }
 
-/* 견적. 마지막 줄이 합계이고, 합계는 이 문서에서 가장 자주 찾는 한 줄이다. */
-table tbody tr:last-child td {
+/* 견적. 마지막 줄이 합계이고, 합계는 이 문서에서 가장 자주 찾는 한 줄이다. 합계를
+   둔 표만 — 첫 칸이 합계·총계인 줄(`table_figures` 가 `.total` 을 붙인다). */
+table tbody tr.total td {
   border-top: 2px solid var(--rule);
   border-bottom: 0;
   font-weight: 700;
 }
-table td:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }
-table th:not(:first-child) { text-align: right; padding-right: 0; padding-left: 1.2em; }
+table :is(td, th):not(:first-child) { padding-left: 1.2em; }
+/* 금액·수치 열(`.fig`)만 오른쪽에 세운다. 「도입 후」 같은 말 열은 왼쪽에 둔다. */
+table :is(td, th).fig { padding-right: 0; }
 
 /* 한눈에: 큰 두 자리 절 번호(01, 02)를 제목 위에 세우는 제안서. */
 h2 { font-family: 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; font-weight: 750; }

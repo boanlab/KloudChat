@@ -1,5 +1,11 @@
-<!-- 갤러리 카드가 이 조각을 seed 에 끼워 실물 축소본을 보여 준다.
-     이 서식의 서명 요소를 담되 짧게 — 카드는 우표 크기다.
-     절 이름과 표의 열은 `form.docx` 의 것이다. 카드가 보여 주는 모양과
-     '양식' 으로 내려받는 파일이 어긋나면 카드는 없는 서식을 광고한 셈이 된다. -->
-<div class="cover"><h1>스토리지 장애 보고</h1><dl><dt>등급</dt><dd>P1</dd><dt>영향</dt><dd>업로드 41분 중단</dd></dl></div><section><h2>요약</h2><p>업로드가 41분 멈췄다. 조회와 로그인은 영향이 없었다.</p></section><section><h2>시간순 기록</h2><table><thead><tr><th>시각(KST)</th><th>일어난 일</th><th>한 일</th></tr></thead><tbody><tr><td>14:02</td><td>쓰기 오류 경보</td><td>대응 시작</td></tr><tr><td>14:43</td><td>쓰기 정상화</td><td>복구 확인</td></tr></tbody></table></section>
+<!-- 갤러리 미리보기: 이 서식으로 다 쓴 문서 한 벌의 예시다(가상의 기관·인물).
+     머리(header.tb)는 `docFormats.ts` titleBlockHtml 이 그리는 그대로이고, 절 번호·개조식
+     기호·빈칸 표시는 미리보기가 제품과 같은 규칙으로 붙인다(`format_css.preview`).
+     절 이름은 이 서식의 기본 목차, 표의 합계·부가세·한글 금액·요일은
+     `tests/test_template_previews.py` 가 확인한다. -->
+<header class="tb tb-header"><p class="tb-label">장애 보고서</p><h1 class="tb-title">파일 업로드 41분 중단 장애 보고</h1><table class="tb-fields"><tbody><tr><th>발생 일시</th><td>2026. 9. 15.(화) 14:02 KST</td><th>영향 범위</th><td>파일 업로드 전체(조회·로그인 정상)</td></tr><tr><th>심각도</th><td>P1</td><th>작성자</th><td><span class="tb-blank doc-placeholder">[작성자]</span></td></tr></tbody></table></header>
+<section><h2>요약</h2><p>2026. 9. 15.(화) 14:02부터 14:43까지 41분 동안 모든 파일 업로드가 실패했다. 업로드 실패 요청은 3,412건이고, 조회와 로그인은 영향이 없었다. 저장소 노드 한 대의 디스크가 가득 차 쓰기가 막혔고, 경보가 업로드 실패보다 9분 늦게 울렸다.</p></section>
+<section><h2>시간순 기록</h2><table><thead><tr><th>시각(KST)</th><th>일어난 일</th><th>한 일</th></tr></thead><tbody><tr><td>13:48</td><td>노드 3 디스크 사용률 95% 도달(당시 경보 없음)</td><td>—</td></tr><tr><td>14:02</td><td>업로드 쓰기 실패 시작</td><td>—</td></tr><tr><td>14:11</td><td>오류율 경보 발생</td><td>당번 운영자가 대응 시작</td></tr><tr><td>14:38</td><td>노드 3 쓰기 대상에서 제외</td><td>남은 노드로 쓰기 전환</td></tr><tr><td>14:43</td><td>업로드 성공률 정상화</td><td>복구 확인, 공지 게시</td></tr></tbody></table></section>
+<section><h2>원인</h2><ul><li>직접 원인: 썸네일 변환 작업이 실패한 임시 파일을 지우지 않아 노드 3에만 쌓였다(9일간 약 1.8TB).</li><li>막지 못한 이유: 저장소 분산 설정이 사용률이 아니라 순번으로 노드를 골라, 가득 찬 노드에도 계속 쓰기를 보냈다.</li><li>늦게 안 이유: 디스크 사용률 경보가 없었고, 오류율 경보는 5분 평균 기준이라 9분 뒤에 울렸다.</li></ul></section>
+<section><h2>재발 방지</h2><table><thead><tr><th>조치</th><th>담당</th><th>기한</th></tr></thead><tbody><tr><td>실패한 변환 작업의 임시 파일 자동 삭제</td><td>미디어 개발</td><td>2026. 9. 30.(수)</td></tr><tr><td>사용률 90% 넘은 노드를 쓰기 대상에서 자동 제외</td><td>플랫폼 운영</td><td>2026. 10. 16.(금)</td></tr><tr><td>장애 대응 절차서에 저장소 점검 추가</td><td>[담당자]</td><td>2026. 10. 30.(금)</td></tr></tbody></table></section>
+<section><h2>탐지</h2><ul><li>디스크 사용률 80% 경보를 노드마다 추가한다(플랫폼 운영, 2026. 9. 30.(수)).</li><li>업로드 오류율 경보를 1분 평균으로 바꿔, 이번과 같은 장애를 2분 안에 알 수 있게 한다.</li></ul></section>

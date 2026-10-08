@@ -1,0 +1,22 @@
+/* 간이기안문 — 별지 제2호서식의 머리: 등록 정보와 결재란, 그 아래 제목.
+ *
+ * 결재란과 등록 정보는 조판이 표로 그린다(`titleBlock`의 `draft` 머리). 이 서식은
+ * 그 아래를 공문처럼 맞춘다: 명조 본문, 선 하나로 나뉜 제목, 색 없는 개조식 계단.
+ * 서명 칸은 손으로 이름을 쓸 높이를 남긴다. */
+
+.page { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; }
+.cover { min-height: 0; padding: 0.4rem 0 0; margin: 0 0 1.2rem; }
+.cover::after { display: none; }
+.cover h1 { max-width: none; margin: 0 0 0.6rem; padding-bottom: 0.6rem; border-bottom: 1px solid var(--ink); font-weight: 700; }
+/* 결재란(갤러리 카드): 직위, 서명 칸, 성명. */
+.cover table { width: auto; margin: 0 0 0.8rem auto; }
+.cover table th, .cover table td { min-width: 5.5rem; padding: 0.3em 0.6em; border: 1px solid var(--ink); text-align: center; color: var(--ink); }
+
+h2 { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; font-weight: 700; color: var(--ink); margin-bottom: 0.4rem; }
+h2::before { color: var(--ink); }
+section { margin-bottom: 1.2rem; }
+table thead th { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); color: var(--ink); }
+
+@media print {
+  .cover { min-height: 0; padding: 0.4rem 0 0; page-break-after: auto; break-after: auto; }
+}

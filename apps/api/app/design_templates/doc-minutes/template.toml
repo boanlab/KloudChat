@@ -1,10 +1,10 @@
 kind = "document"
 cover_page = false
 
-# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
-# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
-# 자동으로 붙고 skills_applied 로 화면에 공지된다.
-skills = ["minutes"]
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 검사는 서버 훅이 맡는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
 name = "회의록"
 description = "결정·할 일·담당·기한을 남기는 회의록 · 촘촘한 회색 머리"
 category = "업무"

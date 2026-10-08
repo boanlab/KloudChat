@@ -1,0 +1,27 @@
+/* 비교·분석 보고서 — 권고 한 줄, 그다음 같은 줄에서 견주는 표.
+ *
+ * 표지는 따로 두지 않는다. 제목 아래 머리 표(검토 대상·판단 기준…)가 바로 앉고,
+ * 본문의 주인공은 열 = 대안, 행 = 기준의 비교표다. 첫 열(기준)은 굵게, 줄무늬로
+ * 같은 줄을 따라 읽히게 하고, 숫자는 자리를 맞춰 세로로 읽히게 한다. */
+
+.page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
+
+.cover { min-height: 0; padding: 0 0 0.8rem; margin: 0 0 1.4rem; border-top: 4px solid var(--accent); padding-top: 1rem; }
+.cover::after { display: none; }
+
+h2 { font-weight: 750; }
+h2::before { color: var(--accent); }
+
+section table thead th {
+  background: var(--accent-wash);
+  border-bottom: 2px solid var(--accent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+section table td { font-variant-numeric: tabular-nums; }
+section table tbody td:first-child { font-weight: 600; }
+section table tbody tr:nth-child(even) td { background: var(--wash); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+@media print {
+  .cover { min-height: 0; page-break-after: auto; break-after: auto; }
+}

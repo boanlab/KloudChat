@@ -45,7 +45,7 @@ import { copyText } from '@/lib/clipboard'
 import { DocumentEditor } from '@/components/report/DocumentEditor'
 import { SectionBody, sectionText } from '@/components/report/SectionBody'
 import { TitleBlock } from '@/components/report/TitleBlock'
-import { TITLE_BLOCK_CSS, cleanTitleBlock, counterStyle, numberingCss, sectionNumbers } from '@/components/report/docFormats'
+import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, isAttachment, sectionNumbers, shapedSection } from '@/components/report/docFormats'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
@@ -287,20 +287,22 @@ function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceGap[] {
 function PrintDocument({ report }: { report: ReportArtifact }) {
   const t = useT()
   const block = cleanTitleBlock(report.titleBlock)
-  const numbers = sectionNumbers(report.sections, block?.numbering ?? 'none')
+  const numbers = sectionNumbers(report.sections, block?.numbering ?? 'none', block?.lists)
+  const closingAt = closingIndex(block, report.sections.length)
   return createPortal(
-    <article data-print-doc lang="ko" className={block ? 'fmt' : undefined}>
+    <article data-print-doc lang="ko" className={fmtClass(block) || undefined}>
       {block ? (
         <>
-          <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}`}</style>
+          <style>{formatCss(block)}</style>
           <TitleBlock block={block} title={report.title} />
         </>
       ) : <h1>{report.title}</h1>}
       {report.sections.map((s, index) => (
         <section key={s.id} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
-          <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>
+          {/* The 개조식 붙임 closes the body: its lines carry the 붙임 label. */}
+          {!isAttachment(s, block?.lists) && <h2>{numbers[index].label && `${numbers[index].label} `}{s.heading}</h2>}
           {/* No owner: printing must not store diagrams. */}
-          {block ? <div className="tb-counted"><SectionBody section={s} /></div> : <SectionBody section={s} />}
+          {block ? <div className="tb-counted"><SectionBody section={shapedSection(s, block, index === closingAt)} /></div> : <SectionBody section={s} />}
         </section>
       ))}
       {report.sources.length > 0 && (
@@ -1042,7 +1044,8 @@ export function ReportPanel({
   )
   // The head of a document by purpose and its heading numbers, for the web view.
   const webBlock = cleanTitleBlock(report.titleBlock)
-  const webNumbers = sectionNumbers(report.sections, webBlock?.numbering ?? 'none')
+  const webNumbers = sectionNumbers(report.sections, webBlock?.numbering ?? 'none', webBlock?.lists)
+  const webClosingAt = closingIndex(webBlock, report.sections.length)
   // Unsaved page-editor changes.
   const [pageEdits, setPageEdits] = useState<ReportSection[] | null>(null)
   const [pageTitle, setPageTitle] = useState<string | null>(null)
@@ -1940,10 +1943,10 @@ export function ReportPanel({
               )}
             </div>
           ) : (
-          <article className={cn('doc-web mx-auto max-w-2xl px-6 py-6', webBlock && 'fmt')} style={{ ...docVariables(), fontFamily: fontFamilyFor(report.design?.font) } as React.CSSProperties}>
+          <article className={cn('doc-web mx-auto max-w-2xl px-6 py-6', fmtClass(webBlock))} style={{ ...docVariables(), fontFamily: fontFamilyFor(report.design?.font) } as React.CSSProperties}>
             {webBlock ? (
               <>
-                <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(webBlock.numbering)}`}</style>
+                <style>{formatCss(webBlock)}</style>
                 <TitleBlock block={webBlock} title={report.title} />
               </>
             ) : <h1 className="mb-6 font-semibold tracking-tight">{report.title}</h1>}
@@ -1951,7 +1954,8 @@ export function ReportPanel({
               <section key={s.id} id={`sec-${s.id}`} className="mb-8 scroll-mt-4" style={webNumbers[sectionIndex].label ? counterStyle(webNumbers[sectionIndex]) : undefined}>
                 <div className="group/sec mb-2 flex items-center gap-2">
                   <h2
-                    className={cn('font-semibold', s.status === 'pending' && 'text-faint')}
+                    // The 개조식 붙임's lines carry the 붙임 label; the heading stays for the menu.
+                    className={cn('font-semibold', s.status === 'pending' && 'text-faint', isAttachment(s, webBlock?.lists) && 'sr-only')}
                   >
                     {webNumbers[sectionIndex].label && `${webNumbers[sectionIndex].label} `}{s.heading}
                   </h2>
@@ -2094,7 +2098,7 @@ export function ReportPanel({
                 ) : (
                   <>
                     <SectionBody
-                      section={s}
+                      section={{ ...s, content: shapedSection(s, webBlock, sectionIndex === webClosingAt).content }}
                       owner={{ artifactId: report.id, sectionId: s.id }}
                       className={cn('report-prose', webBlock && 'tb-counted')}
                     />

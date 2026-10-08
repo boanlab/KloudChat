@@ -1,0 +1,27 @@
+kind = "document"
+cover_page = false
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 기간 계산·금지어 검사는 뒤에 서버 훅으로 붙는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "경력기술서"
+description = "회사별 → 프로젝트별 경력 · 기간 YYYY.MM–YYYY.MM, 자료에 있는 성과만"
+category = "업무"
+fills = ["지원 회사와 직무", "경력 자료", "블라인드 채용 여부"]
+example_prompt = "아래 경력 자료로 경력기술서를 써 줘. 회사별로 기간·소속·직급·담당 업무를, 그 아래 프로젝트별로 기간·역할·수행 내용·성과를 정리하고, 자료에 없는 직함이나 수치는 넣지 마.\n\n지원 회사·직무: \n경력 자료: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Career history"
+description_en = "Company by company, project by project · periods YYYY.MM–YYYY.MM, only results on record"
+category_en = "Work"
+fills_en = ["Company and role applied for", "Career notes", "Blind hiring?"]
+example_prompt_en = "Write a Korean career history (경력기술서) from the notes below: per company the period, team, title and duties, then per project the period, role, work and results. Do not add titles or numbers the notes do not have.\n\nCompany and role: \nCareer notes: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

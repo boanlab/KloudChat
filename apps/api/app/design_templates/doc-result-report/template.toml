@@ -1,0 +1,30 @@
+kind = "document"
+cover_page = false
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = []
+# Run by the server after writing (app/skills/README.md).
+check_skills = ["grounding-check"]
+
+name = "결과 보고서"
+description = "행사·사업·교육·출장 결과 보고 · 개요 표, 수치로 적는 결과, 문제점과 개선 사항"
+category = "업무"
+fills = ["무엇의 결과인지", "참석·실적 수치", "문제점"]
+example_prompt = "아래 행사의 결과 보고서를 써 줘. 개요(일시·장소·참석·주관), 추진 경과, 주요 결과·실적, 성과 및 문제점, 향후 계획(개선 사항) 순서로 개조식으로 쓰고, 결과는 참석 인원·만족도·집행액처럼 수치로 적어 줘.\n\n행사와 결과: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Results report"
+description_en = "Results of an event, project, training or trip · overview table, figures, problems and fixes"
+category_en = "Work"
+fills_en = ["What it reports on", "Attendance and figures", "Problems"]
+example_prompt_en = "Write the results report for this event: overview (date, place, attendance, organiser), progress, main results in figures, achievements and problems, and next steps, in Korean bullet style.\n\nThe event and its results: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

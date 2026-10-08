@@ -1,0 +1,28 @@
+kind = "document"
+cover_page = false
+
+# 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.
+# 서식은 모양을 주고 스킬은 그 모양을 채우는 규칙을 준다. 문서 생성 시
+# 자동으로 붙고 skills_applied 로 화면에 공지된다.
+skills = []
+
+name = "간이기안문"
+description = "내부결재용 간이기안문(별지 제2호서식) · 결재란, 개조식 본문, 붙임과 끝."
+category = "업무"
+fills = ["결재받을 내용", "기안자·검토자·결재권자", "붙임"]
+example_prompt = "아래 건을 내부결재용 간이기안문으로 써 줘. 관련 근거, 목적, 주요 내용(무엇을, 언제, 얼마에), 행정 사항 순서로 개조식으로 쓰고, 결재받을 금액은 산출 근거와 함께 적어 줘. 결재란은 기안자 주무관, 검토자 팀장, 결재권자 처장으로.\n\n결재받을 내용: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Internal approval draft (간이기안문)"
+description_en = "Internal approval draft, Korean public form No. 2 · approval box, bullet body, 끝."
+category_en = "Work"
+fills_en = ["What needs approval", "Drafter, reviewer, approver", "Attachments"]
+example_prompt_en = "Write this up as an internal approval draft (간이기안문): grounds, purpose, what will be done (what, when, how much) and administrative notes in bullet style, with the amount to approve and how it was worked out. Approval box: drafter, team lead, director.\n\nWhat needs approval: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

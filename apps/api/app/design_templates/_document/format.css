@@ -1,0 +1,79 @@
+/* The web's document-format rules, verbatim, for pages the server renders (the gallery
+   preview): `apps/web/src/components/report/docFormats.ts` TITLE_BLOCK_CSS (with
+   `placeholders.ts` PLACEHOLDER_CSS where it interpolates it), GAEJO_CSS and CORE_CSS,
+   and PLACEHOLDER_CSS itself. `services/format_css.py` reads the parts between the
+   markers; a test keeps each equal to its TypeScript source. */
+/* @begin TITLE_BLOCK_CSS */
+.tb { margin: 0 0 10mm; }
+.tb .tb-title { margin: 0; font-size: var(--doc-title, 20pt); font-weight: 700; line-height: 1.3; }
+.tb .tb-label { margin: 0 0 2mm; font-size: 0.85em; letter-spacing: 0.04em; opacity: 0.7; }
+.tb .tb-subtitle { margin: 2mm 0 0; font-size: 1.2em; opacity: 0.8; }
+.tb .tb-blank { color: #9a9a9a; }
+.doc-placeholder { background: #fff3bf; color: #5c4400; border-radius: 2px; padding: 0 0.1em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.tb .tb-fields { border-collapse: collapse; font-size: 0.92em; }
+.tb .tb-fields th, .tb .tb-fields td { border: 1px solid color-mix(in srgb, currentColor 28%, transparent); padding: 1.6mm 3mm; text-align: left; vertical-align: middle; }
+.tb .tb-fields th { background: color-mix(in srgb, currentColor 6%, transparent); font-weight: 600; white-space: nowrap; width: 1%; }
+.tb .tb-key { font-weight: 700; white-space: nowrap; }
+.tb.tb-cover { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.tb.tb-cover .tb-title { max-width: 26ch; margin-inline: auto; font-size: calc(var(--doc-title, 20pt) * 1.25); }
+.tb.tb-cover .tb-fields { margin-top: auto; min-width: 60%; }
+.tb.tb-cover:not(.cover) .tb-fields { margin-top: 10mm; }
+.tb.tb-cover .tb-fields th { width: 30%; }
+.tb.tb-header .tb-fields { width: 100%; margin-top: 4mm; }
+.tb.tb-memo .tb-fields { width: 100%; border-top: 2px solid currentColor; border-bottom: 2px solid currentColor; }
+.tb.tb-memo .tb-fields th, .tb.tb-memo .tb-fields td { border-left: 0; border-right: 0; }
+.tb .tb-memo-title { display: flex; align-items: baseline; gap: 5mm; margin-top: 5mm; padding-bottom: 3mm; border-bottom: 1px solid currentColor; }
+.tb .tb-memo-title .tb-title { flex: 1; min-width: 0; }
+.tb.tb-press .tb-kicker { display: inline-block; margin: 0 0 4mm; padding-bottom: 1mm; border-bottom: 2px solid currentColor; font-size: 1.25em; font-weight: 800; letter-spacing: 0.3em; }
+.tb.tb-press .tb-title { font-size: calc(var(--doc-title, 20pt) * 1.2); }
+.tb .tb-dateline { display: flex; flex-wrap: wrap; gap: 1mm 6mm; margin: 4mm 0 0; padding: 2mm 0; border-top: 1.5px solid currentColor; border-bottom: 1px solid color-mix(in srgb, currentColor 28%, transparent); font-size: 0.92em; }
+.tb .tb-dateline > span { display: inline-flex; align-items: baseline; gap: 2mm; }
+.tb .tb-dateline b { white-space: nowrap; }
+.tb .tb-dateline .tb-input, .tb .tb-line .tb-input { width: auto; min-width: 9em; }
+.tb.tb-paper { text-align: center; }
+.tb.tb-paper .tb-line { margin: 1.5mm 0 0; }
+.tb.tb-paper .tb-line:first-of-type { margin-top: 5mm; }
+.tb .tb-abstract, .tb .tb-keywords { text-align: left; }
+.tb .tb-abstract { margin: 7mm 0 0; padding: 3mm 0; border-top: 1px solid color-mix(in srgb, currentColor 28%, transparent); }
+.tb .tb-abstract > p { margin: 1mm 0 0; }
+.tb .tb-keywords { margin: 2mm 0 0; padding-bottom: 3mm; border-bottom: 1px solid color-mix(in srgb, currentColor 28%, transparent); }
+.tb .tb-input { box-sizing: border-box; width: 100%; min-width: 6em; padding: 0; border: 0; border-bottom: 1px dashed color-mix(in srgb, currentColor 35%, transparent); background: transparent; color: inherit; font: inherit; text-align: inherit; }
+.tb textarea.tb-input { min-height: 4.5em; resize: vertical; }
+.tb .tb-input::placeholder { color: #9a9a9a; opacity: 1; }
+.tb .tb-input:focus { outline: 1px solid color-mix(in srgb, currentColor 40%, transparent); outline-offset: 1px; }
+.tb.tb-draft .tb-fields { width: 100%; }
+.tb.tb-draft .tb-fields th, .tb.tb-draft .tb-fields td { border-color: color-mix(in srgb, currentColor 60%, transparent); }
+.tb.tb-draft .tb-fields .tb-signer { width: 18%; text-align: center; }
+.tb.tb-draft .tb-fields td.tb-sign { height: 12mm; }
+.tb.tb-onepage .tb-box { padding: 1.5mm 4mm 2mm; border: 1.5pt solid currentColor; text-align: center; }
+.tb.tb-onepage .tb-box .tb-title { font-family: var(--font-head, inherit); font-size: var(--doc-title, 18pt); line-height: 1.3; }
+.tb.tb-onepage .tb-fieldline { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0 1.2em; margin: 1mm 0 0; font-size: var(--doc-small, 10pt); }
+.tb.tb-onepage .tb-fieldline b { font-weight: 700; }
+.tb.tb-onepage .tb-fieldline .tb-input { width: auto; min-width: 7em; }
+@media print { .tb.tb-cover { break-after: page; page-break-after: always; } }
+/* @end TITLE_BLOCK_CSS */
+/* @begin GAEJO_CSS */
+.fmt.gaejo ul:not(.steps) { list-style: none !important; margin: 0.3em 0 !important; padding-left: 0 !important; }
+.fmt.gaejo ul:not(.steps) ul { margin: 0.15em 0 0 -0.5em !important; }
+.fmt.gaejo ul:not(.steps) > li { position: relative; list-style: none !important; margin: 0.15em 0 !important; padding-left: 1.5em !important; }
+.fmt.gaejo ul:not(.steps) > li > p { margin: 0 !important; }
+.fmt.gaejo ul:not(.steps) > li::marker { content: none; }
+.fmt.gaejo ul:not(.steps) > li::before { content: '□'; position: absolute; left: 0; top: 0; color: inherit; font-weight: 400; }
+.fmt.gaejo ul:not(.steps) ul > li::before { content: '○'; }
+.fmt.gaejo ul:not(.steps) ul ul > li::before { content: '-'; }
+.fmt.gaejo ul:not(.steps) ul ul ul > li::before { content: 'ㆍ'; }
+.fmt.gaejo :is(p[data-note], p.gaejo-note) { margin: 0.2em 0 0.4em !important; padding-left: 2.5em; text-indent: -1.5em; font-size: 0.86em; }
+.fmt.gaejo ul:not(.steps) > li:is(.gaejo-note, [data-note]) { padding-left: 1.5em !important; text-indent: -1.5em; font-size: 0.86em; }
+.fmt.gaejo ul:not(.steps) > li:is(.gaejo-note, [data-note])::before { content: none; }
+.fmt.gaejo :is(p[data-attach], p.gaejo-attach) { margin: 0.5em 0 0 !important; padding-left: 2.6em; text-indent: -2.6em; }
+.fmt.gaejo p.gaejo-attach + p.gaejo-attach { margin-top: 0 !important; text-indent: 0; }
+/* @end GAEJO_CSS */
+/* @begin CORE_CSS */
+.fmt.tb-scaled .callout { display: grid !important; grid-template-columns: 4.2em 1fr; align-items: center; padding: 0 !important; border: 0.8pt solid currentColor !important; border-radius: 0 !important; background: none !important; }
+.fmt.tb-scaled .callout > :is(h3, h4) { grid-row: 1 / span 9; align-self: stretch; display: flex; align-items: center; justify-content: center; margin: 0 !important; padding: 0 0.3em; border-right: 0.5pt solid currentColor; color: inherit !important; font-size: var(--doc-h1) !important; }
+.fmt.tb-scaled .callout > p { margin: 0 !important; padding: 0 0.6em; }
+.fmt.tb-scaled .callout > p:nth-child(2) { padding-top: 0.2em; }
+.fmt.tb-scaled .callout > p:last-child { padding-bottom: 0.25em; }
+.fmt.tb-scaled h2 { color: inherit !important; }
+/* @end CORE_CSS */
+/* @begin PLACEHOLDER_CSS */.doc-placeholder { background: #fff3bf; color: #5c4400; border-radius: 2px; padding: 0 0.1em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }/* @end PLACEHOLDER_CSS */

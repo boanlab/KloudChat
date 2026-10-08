@@ -33,6 +33,63 @@ LEADING: dict[str, float] = {
     "note": 1.5,
 }
 
+#: A format's own scale over `TYPE` and `LEADING`, by `doc_formats` id. The 개조식 보고 is a
+#: one-page 공문서-style memo: a larger body at 160%, headings two points over it, the
+#: title boxed above. 15 pt, the common 휴먼명조 size, holds about 25 lines on A4; the
+#: one-page memos this format writes run to 30–35 (lineup gaejo-report-1: 13 pt ran 2.4
+#: lines over, 12 pt fits). Its sizes replace the shared ones wherever that format is drawn.
+FORMAT_TYPE: dict[str, dict[str, float]] = {
+    "gaejo": {
+        "title": 18,
+        "h1": 14,
+        "h2": 13,
+        "h3": 12,
+        "body": 12,
+        "table": 10.5,
+        "caption": 10.5,
+        "note": 10.5,
+        "small": 10,
+        "sectionNumber": 14,
+    },
+}
+
+FORMAT_LEADING: dict[str, dict[str, float]] = {
+    "gaejo": {"heading": 1.3, "body": 1.6, "table": 1.35, "note": 1.5},
+}
+
+#: Vertical space in points around a format's blocks, where the shared layout's own
+#: spacing would take the page: before and after a section heading, after a list item,
+#: around the 핵심 box, and under the title block.
+FORMAT_SPACE: dict[str, dict[str, float]] = {
+    "gaejo": {"headingBefore": 7, "headingAfter": 2, "item": 0, "callout": 4, "head": 6},
+}
+
+#: A format's page margins in mm (top, bottom, left, right) when the document sets none.
+FORMAT_MARGINS: dict[str, dict[str, float]] = {
+    "gaejo": {"top": 20, "bottom": 15, "left": 20, "right": 20},
+}
+
+
+def type_for(format_id: str | None) -> dict[str, float]:
+    """`TYPE` with the format's own sizes over it."""
+    return {**TYPE, **FORMAT_TYPE.get(format_id or "", {})}
+
+
+def leading_for(format_id: str | None) -> dict[str, float]:
+    """`LEADING` with the format's own ratios over it."""
+    return {**LEADING, **FORMAT_LEADING.get(format_id or "", {})}
+
+
+def space_for(format_id: str | None) -> dict[str, float] | None:
+    """The format's own spacing, or None where the shared layout spaces it."""
+    return FORMAT_SPACE.get(format_id or "")
+
+
+def margins_for(format_id: str | None) -> dict[str, float] | None:
+    """The format's own page margins in mm, or None."""
+    return FORMAT_MARGINS.get(format_id or "")
+
+
 #: CSS custom properties the page seeds read, in `pt`; `--doc-leading` is a ratio.
 CSS_VARIABLES: tuple[tuple[str, str], ...] = tuple(
     [(f"doc-{name}", f"{size:g}pt") for name, size in TYPE.items()]
@@ -55,4 +112,19 @@ def hwp(name: str) -> int:
     return int(round(TYPE[name] * 100))
 
 
-__all__ = ["CSS_VARIABLES", "LEADING", "TYPE", "hwp", "pt", "px"]
+__all__ = [
+    "CSS_VARIABLES",
+    "FORMAT_LEADING",
+    "FORMAT_MARGINS",
+    "FORMAT_SPACE",
+    "FORMAT_TYPE",
+    "LEADING",
+    "TYPE",
+    "hwp",
+    "leading_for",
+    "margins_for",
+    "pt",
+    "px",
+    "space_for",
+    "type_for",
+]

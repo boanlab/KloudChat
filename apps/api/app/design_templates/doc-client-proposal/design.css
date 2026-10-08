@@ -1,0 +1,26 @@
+/* 고객 제안서 — 고객의 말이 먼저, 견적의 합계가 마지막.
+ *
+ * 결재 담당자에게 가는 문서다. 표지는 자기 몫의 종이를 갖고 위에 강조색 띠 하나,
+ * 머리 표(고객사·사업명·제안사…)가 그 아래에 앉는다. 본문은 고딕 하나로 조용히 두고
+ * 색은 절 번호와 표 머리 띠에만 쓴다. 숫자는 자리를 맞춰 세로로 읽히게 한다. */
+
+.page { font-family: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif; }
+
+.cover {
+  border-top: 8px solid var(--accent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.cover::after { height: 1px; background: var(--border); }
+
+h2 { font-weight: 750; }
+h2::before { color: var(--accent); }
+
+/* 표 머리 띠: 인쇄기가 배경을 빼도 아래 선이 남는다. */
+section table thead th {
+  background: var(--accent-wash);
+  border-bottom: 2px solid var(--accent);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+section table td { font-variant-numeric: tabular-nums; }

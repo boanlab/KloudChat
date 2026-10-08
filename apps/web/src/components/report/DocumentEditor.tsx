@@ -40,13 +40,18 @@ import { createPortal } from 'react-dom'
 import { DocumentShell } from '@/components/report/DocumentShell'
 import { EditableLine } from '@/components/report/EditableLine'
 import { TitleBlock } from '@/components/report/TitleBlock'
+import { markFigureColumns } from '@/components/report/figureColumns'
 import {
-  TITLE_BLOCK_CSS,
   cleanTitleBlock,
+  closeHtml,
+  closingIndex,
   counterStyle,
+  fmtClass,
+  formatCss,
+  isAttachment,
   numberHtmlHeadings,
-  numberingCss,
   sectionNumbers,
+  shapedSection,
   titleBlockHtml,
 } from '@/components/report/docFormats'
 import { artifactsApi } from '@/lib/api'
@@ -70,6 +75,7 @@ import { cn } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
+import { PLACEHOLDER_CSS, markPlaceholders } from '@/lib/placeholders'
 
 const FONTS = [
   { label: '문서 기본', value: '' },
@@ -612,6 +618,7 @@ function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
   /* Justified like a printed report; Korean words are not broken mid-word. */
   .page.paginated p, .page.paginated li { text-align: justify; word-break: keep-all; overflow-wrap: anywhere; }
   .page.paginated td > p, .page.paginated th > p { text-align: left; }
+  .page.paginated :is(td, th).fig > p { text-align: right; }
   /* Figures fit the column of a printed report: centred, at most 85% wide and 110 mm tall. */
   .page.paginated img { display: block; margin: 6mm auto 2mm; max-width: 85%; max-height: 110mm; width: auto; height: auto; object-fit: contain; }
   .page.paginated figure { margin: 6mm 0; text-align: center; }
@@ -926,10 +933,6 @@ export function DocumentEditor({
   }, [templateId, tokens])
 
   const pictures = useDiagramPictures(report.sections, report.id, page)
-  const bodyOf = useCallback(
-    (section: ReportSection) => edits[section.id] ?? htmlOf(section, pictures),
-    [edits, pictures],
-  )
 
   // Retyped headings and title; text, not markup, so kept apart from `edits`.
   const [renamed, setRenamed] = useState<Record<string, string>>({})
@@ -977,10 +980,26 @@ export function DocumentEditor({
     onDirty?.(compose(editsRef.current, renamedRef.current), undefined, undefined, undefined, next)
   }
   const numbering = titleBlock?.numbering ?? 'none'
+  // The section 「끝.」 closes, when the format closes; its body ends in it in every view.
+  const closingAt = closingIndex(titleBlock, report.sections.length)
+  const bodyOf = useCallback(
+    (section: ReportSection) => edits[section.id] ?? htmlOf(
+      shapedSection(section, titleBlock, report.sections[closingAt]?.id === section.id),
+      pictures,
+      titleBlock?.lists === 'gaejo',
+    ),
+    [edits, pictures, titleBlock, closingAt, report.sections],
+  )
+  // The paged preview also closes an edited body; the editor shows it as typed.
+  const previewBody = (section: ReportSection, index: number) =>
+    index === closingAt && edits[section.id] !== undefined ? closeHtml(bodyOf(section)) : bodyOf(section)
   const numbers = sectionNumbers(
     report.sections.map((s) => (edits[s.id] === undefined ? s : { ...s, content: edits[s.id], format: 'html' as const })),
     numbering,
+    titleBlock?.lists,
   )
+  // The 개조식 붙임 closes the body: no heading of its own in the page or the preview.
+  const attachment = (section: ReportSection) => isAttachment({ heading: renamed[section.id] ?? section.heading }, titleBlock?.lists)
 
   const retitle = (next: string) => {
     if (!next || next === (editedTitle ?? report.title)) return
@@ -1094,9 +1113,11 @@ export function DocumentEditor({
     sectionNodes.current[comment.sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const previewHtml = titleBlock
-    ? `<main class="page paginated-preview fmt">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section><h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${numberHtmlHeadings(bodyOf(section), numbering, numbers[index])}</section>`).join('')}</main>`
-    : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`
+  // Bracket placeholders (「[담당자]」) are marked in the paged preview and print.
+  // Figure columns flush right (`.fig`), as the template preview and the exporters set them.
+  const previewHtml = markFigureColumns(markPlaceholders(titleBlock
+    ? `<main class="page paginated-preview ${fmtClass(titleBlock)}">${titleBlockHtml(titleBlock, editedTitle ?? report.title)}${report.sections.map((section, index) => `<section>${attachment(section) ? '' : `<h2${numbers[index].label ? ` data-num="${escapePagedText(numbers[index].label)}"` : ''}>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>`}${numberHtmlHeadings(previewBody(section, index), numbering, numbers[index])}</section>`).join('')}</main>`
+    : `<main class="page paginated-preview"><div class="cover"><h1>${escapePagedText(editedTitle ?? report.title)}</h1></div>${report.sections.map((section) => `<section><h2>${escapePagedText(renamed[section.id] ?? section.heading)}</h2>${bodyOf(section)}</section>`).join('')}</main>`))
   const visualStyle = tokens?.visualStyle ?? 'editorial'
   const visualCss = visualStyle === 'poster'
     ? `.page .cover{background:linear-gradient(145deg,var(--accent),color-mix(in srgb,var(--accent) 48%,#111827));color:#fff;padding:30mm 22mm}.page .cover h1{color:#fff;font-size:30pt;max-width:15ch}.page section>h2{font-size:18pt;border:0;padding:0 0 4mm;color:var(--accent)}.page section{margin-bottom:14mm}.page blockquote,.page .callout{border-radius:3mm;background:color-mix(in srgb,var(--accent) 8%,#fff)}`
@@ -1105,8 +1126,8 @@ export function DocumentEditor({
       : ''
   // The design's typeface, unless a template stylesheet has its own say.
   const fontCss = !style?.css && fontFamilyFor(tokens?.font) ? `.page{font-family:${fontFamilyFor(tokens?.font)}}` : ''
-  const formatCss = titleBlock ? `\n${TITLE_BLOCK_CSS}\n${numberingCss(numbering)}` : ''
-  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatCss}`
+  const formatRules = titleBlock ? `\n${formatCss(titleBlock)}` : ''
+  const pageCss = `${style?.css ?? ''}\n${visualCss}\n${fontCss}${formatRules}\n${PLACEHOLDER_CSS}`
 
   if (error) return <p className="p-4 text-sm text-danger">{t(error)}</p>
   if (templateId && !style) {
@@ -1198,7 +1219,7 @@ export function DocumentEditor({
               {/* `paginated` tells the template the sheet is drawn here; `--sheet-h` is the usable page height. */}
               <div
                 ref={setPage}
-                className={cn('page paginated', titleBlock && 'fmt')}
+                className={cn('page paginated', fmtClass(titleBlock))}
                 style={{ ['--sheet-h' as string]: `${usable}px` } as React.CSSProperties}
               >
                 {titleBlock ? (
@@ -1221,12 +1242,14 @@ export function DocumentEditor({
                 )}
                 {report.sections.map((section, index) => (
                   <section key={section.id} ref={(node) => { sectionNodes.current[section.id] = node }} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
-                    <EditableLine
-                      value={renamed[section.id] ?? section.heading}
-                      editable={editable}
-                      onChange={(heading) => rename(section, heading)}
-                      numberLabel={numbers[index].label}
-                    />
+                    {!attachment(section) && (
+                      <EditableLine
+                        value={renamed[section.id] ?? section.heading}
+                        editable={editable}
+                        onChange={(heading) => rename(section, heading)}
+                        numberLabel={numbers[index].label}
+                      />
+                    )}
                     <SectionEditor
                       html={bodyOf(section)}
                       editable={editable}
@@ -1292,8 +1315,11 @@ export function DocumentEditor({
   )
 }
 
-/** A section's body as HTML; a small Markdown subset (headings, lists, tables, quotes, images, fences). */
-function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
+/**
+ * A section's body as HTML; a small Markdown subset (headings, lists, tables, quotes, images, fences).
+ * `gaejo` keeps list nesting (two spaces a level) and marks ※ and 붙임 paragraphs for `GAEJO_CSS`.
+ */
+function htmlOf(section: ReportSection, pictures: Map<string, string>, gaejo = false): string {
   if (section.format === 'html') return section.content
   // Escapes `"` too: the output goes into attribute values (`data-source`).
   const escape = (s: string) =>
@@ -1312,10 +1338,35 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
   // Pending list items, table rows and fence lines; flushed when something else turns up.
   let items: string[] = []
   let ordered = false
+  // 개조식 items with their depth (1–4), drawn nested at flush.
+  let nested: { depth: number; ordered: boolean; html: string; note?: boolean }[] = []
+  let attaching = false
   let rows: string[][] = []
   let fence: string[] | null = null
   let fenceLang = ''
   const flush = () => {
+    if (nested.length) {
+      const open: string[] = []
+      let html = ''
+      for (const item of nested) {
+        if (item.depth > open.length) {
+          while (open.length < item.depth) {
+            const tag = item.ordered ? 'ol' : 'ul'
+            html += `<${tag}>`
+            open.push(tag)
+            // A skipped level still needs an item to hold the deeper list.
+            if (open.length < item.depth) html += '<li>'
+          }
+        } else {
+          while (open.length > item.depth) html += `</li></${open.pop()}>`
+          html += '</li>'
+        }
+        html += item.note ? `<li class="gaejo-note">${item.html}` : `<li>${item.html}`
+      }
+      while (open.length) html += `</li></${open.pop()}>`
+      out.push(html)
+      nested = []
+    }
     if (items.length) {
       const tag = ordered ? 'ol' : 'ul'
       out.push(`<${tag}>${items.map((i) => `<li>${i}</li>`).join('')}</${tag}>`)
@@ -1384,6 +1435,28 @@ function htmlOf(section: ReportSection, pictures: Map<string, string>): string {
     const bullet = /^[-*+]\s+(.*)$/.exec(line)
     const numbered = /^\d{1,9}[.)]\s+(.*)$/.exec(line)
     const quote = /^>\s*(.*)$/.exec(line)
+    if (gaejo && !heading) {
+      const depth = Math.min(Math.floor(raw.replace(/\t/g, '    ').search(/\S/) / 2) + 1, 4)
+      if (attaching && /^\d{1,3}\.\s/.test(line)) {
+        out.push(`<p class="gaejo-attach">${inline(line)}</p>`)
+        continue
+      }
+      attaching = false
+      if (bullet || numbered) {
+        // A table read before the list goes out first; the list itself keeps growing.
+        if (rows.length || items.length) flush()
+        const text = (bullet ?? numbered)![1]
+        // A ※ item is a note at its depth: ※ is its marker (`GAEJO_CSS`).
+        nested.push({ depth, ordered: !bullet, html: inline(text), note: Boolean(bullet) && text.startsWith('※') })
+        continue
+      }
+      if (line.startsWith('※') || line.startsWith('붙임')) {
+        flush()
+        attaching = line.startsWith('붙임')
+        out.push(`<p class="${attaching ? 'gaejo-attach' : 'gaejo-note'}">${inline(line)}</p>`)
+        continue
+      }
+    }
     if (heading) {
       flush()
       // The wrapper draws the section heading, so body headings start at h3.

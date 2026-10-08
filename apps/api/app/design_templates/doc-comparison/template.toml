@@ -1,0 +1,27 @@
+kind = "document"
+cover_page = false
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 점수 재계산·빈칸 검사는 뒤에 서버 훅으로 붙는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "비교·분석 보고서"
+description = "대안을 같은 기준으로 견주고 조건과 함께 권고 · 가중치·점수식이 보이는 비교표"
+category = "업무"
+fills = ["비교할 대안", "필수 조건과 가중치", "대안별 자료"]
+example_prompt = "아래 대안들을 비교·분석 보고서로 정리해 줘. 필수 조건을 먼저 적용하고, 가중치와 점수식을 밝힌 비교표를 만들고, 자료끼리 값이 다르면 출처와 날짜를 나란히 적어 줘. 권고는 조건과 함께.\n\n대안: \n필수 조건·가중치: \n자료: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Comparison report"
+description_en = "Weigh options on the same criteria and recommend with conditions · weights and scoring shown"
+category_en = "Work"
+fills_en = ["Options", "Must-haves and weights", "Material per option"]
+example_prompt_en = "Turn the options below into a comparison report. Apply the must-haves first, build a comparison table with the weights and the scoring formula, and where sources disagree show both values with their dates. Recommend with conditions.\n\nOptions: \nMust-haves and weights: \nMaterial: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

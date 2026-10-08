@@ -12,7 +12,7 @@ from xml.etree import ElementTree
 import pytest
 from pypdf import PdfReader
 
-from app.services import doc_formats, report_export
+from app.services import doc_formats, placeholders, report_export
 
 SECTIONS = [
     {
@@ -103,9 +103,10 @@ def test_each_head_type_carries_its_fields_and_numbers(head: str, kind: str):
             assert label in text, (label, kind)
         if value:
             assert value in text, (value, kind)
-    # A value the request never gave is a blank, printed as one — never invented.
-    assert any(not value for _, value in block["fields"])
-    assert doc_formats.BLANK in text
+    # A value the request never gave is a blank named by its field — never invented.
+    blanks = [label for label, value in block["fields"] if not value]
+    assert blanks
+    assert any(doc_formats.blank(label) in text for label in blanks), (blanks, kind)
 
     if block["numbering"] == "none":
         assert "1. 서론" not in text and "서론" in text
@@ -128,7 +129,7 @@ def test_a_document_without_a_title_block_is_unnumbered(kind: str):
         assert heading in text
     for numbered in ("1. 서론", "1.1 배경", "I. 서론", "가. 배경"):
         assert numbered not in text
-    assert doc_formats.BLANK not in text
+    assert not placeholders.found([text])
 
 
 def test_no_title_block_leaves_the_files_as_they_were():
@@ -170,4 +171,8 @@ def test_the_web_mirror_is_the_same_table():
     table = re.search(r"/\* wire:begin \*/(.*?)/\* wire:end \*/", source, re.S)
     assert table, "docFormats.ts must keep the table between wire markers"
     assert json.loads(table.group(1)) == doc_formats.wire()
-    assert f"BLANK = '{doc_formats.BLANK}'" in source
+    assert "export { blankFor }" in source
+    # The web marks the same placeholders the checks count.
+    mirror = (Path(__file__).resolve().parents[3] / "apps/web/src/lib/placeholders.ts").read_text(
+        encoding="utf-8")
+    assert f"/{placeholders.PLACEHOLDER.pattern}/g" in mirror

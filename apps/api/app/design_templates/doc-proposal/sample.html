@@ -1,5 +1,12 @@
-<!-- 갤러리 카드가 이 조각을 seed 에 끼워 실물 축소본을 보여 준다.
-     이 서식의 서명 요소를 담되 짧게 — 카드는 우표 크기다.
-     절 이름과 표의 열은 `form.docx` 의 것이다. 카드가 보여 주는 모양과
-     '양식' 으로 내려받는 파일이 어긋나면 카드는 없는 서식을 광고한 셈이 된다. -->
-<div class="cover"><h1>통합 로그 시스템 도입 제안</h1><p class="lead">제안 대상: 정보전략팀</p></div><section><h2>고객의 과제</h2><p>장애 원인을 찾는 데 평균 4시간이 든다.</p></section><section><h2>효과</h2><table><thead><tr><th>항목</th><th>지금</th><th>도입 후</th></tr></thead><tbody><tr><td>원인 추적</td><td>4시간</td><td>30분</td></tr></tbody></table></section>
+<!-- 갤러리 미리보기: 이 서식으로 다 쓴 문서 한 벌의 예시다(가상의 기관·인물).
+     머리(header.tb)는 `docFormats.ts` titleBlockHtml 이 그리는 그대로이고, 절 번호·개조식
+     기호·빈칸 표시는 미리보기가 제품과 같은 규칙으로 붙인다(`format_css.preview`).
+     절 이름은 이 서식의 기본 목차, 표의 합계·부가세·한글 금액·요일은
+     `tests/test_template_previews.py` 가 확인한다. -->
+<header class="tb tb-cover cover"><p class="tb-label">프로젝트 제안서</p><h1 class="tb-title">창고 재고 조회 대시보드 구축 제안</h1><table class="tb-fields"><tbody><tr><th>팀명</th><td>재고보미</td></tr><tr><th>팀원</th><td>4명</td></tr><tr><th>지도교수</th><td><span class="tb-blank doc-placeholder">[지도교수]</span></td></tr><tr><th>제출일</th><td>2026. 10. 8.</td></tr></tbody></table></header>
+<section><h2>고객의 과제</h2><blockquote>「재고가 시스템에는 있는데 창고에 없다는 전화가 하루에 열 통은 온다.」 — 누리물류 물류센터 운영팀장, 2026. 9. 22.(화) 미팅</blockquote><p>누리물류는 입·출고를 하루 한 번 엑셀로 맞춰 오후에는 재고가 실제와 어긋나고, 주문 담당자가 전화로 확인하는 데 하루 100분을 쓴다.</p></section>
+<section><h2>제안</h2><p><strong>바코드 스캔으로 입·출고를 바로 반영하는 재고 조회 대시보드를 만든다.</strong></p><ul><li>입·출고 담당자가 휴대용 스캐너로 찍으면 재고가 즉시 바뀐다.</li><li>주문 담당자는 대시보드에서 품목별 현재 재고와 마지막 변동 시각을 본다.</li></ul></section>
+<section><h2>효과</h2><table><thead><tr><th>항목</th><th>지금</th><th>도입 후(목표)</th></tr></thead><tbody><tr><td>재고 반영 시점</td><td>하루 1회(18시)</td><td>스캔 즉시</td></tr><tr><td>재고 확인 전화(하루)</td><td>10통</td><td>2통 이하</td></tr><tr><td>확인에 쓰는 시간(하루)</td><td>100분</td><td>20분 이하</td></tr></tbody></table><p>현재 값은 2026. 9. 14.(월)~9. 18.(금) 운영팀 기록이다.</p></section>
+<section><h2>일정</h2><table><thead><tr><th>기간</th><th>우리 팀</th><th>누리물류가 할 일</th></tr></thead><tbody><tr><td>2026. 10. 12.~10. 30.</td><td>현장 관찰, 화면 설계</td><td>품목 코드표 제공</td></tr><tr><td>2026. 11. 2.~12. 18.</td><td>개발, 스캐너 연동</td><td>시험용 계정 발급</td></tr><tr><td>2026. 12. 21.~2027. 1. 15.</td><td>시범 운영, 보완</td><td>담당자 2명 시범 참여, 검수</td></tr></tbody></table></section>
+<section><h2>견적</h2><p>학생 인건비는 받지 않으며, 아래 실비만 요청한다. 포함: 시범 기간 서버와 스캐너. 제외: 시범 이후 운영·유지보수.</p><table><thead><tr><th>항목</th><th>수량</th><th>단가</th><th>금액</th></tr></thead><tbody><tr><td>클라우드 서버</td><td>4개월</td><td>60,000원</td><td>240,000원</td></tr><tr><td>휴대용 바코드 스캐너</td><td>2대</td><td>180,000원</td><td>360,000원</td></tr><tr><td>합계</td><td></td><td></td><td>600,000원</td></tr></tbody></table></section>
+<section><h2>요청</h2><p>2026. 10. 16.(금)까지 제안 수락과 품목 코드표 담당자([담당자])를 정해 주십시오.</p></section>

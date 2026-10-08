@@ -273,6 +273,24 @@
   ul, ol { margin: 0 0 1.05rem; padding-left: 1.25rem; }
   li { margin: 0 0 0.35rem; }
   li::marker { color: var(--accent); }
+  /* 개조식 (`titleBlock.lists`): □ ○ - ㆍ by depth, each depth 2타 (one Hangul) in from
+     its parent's marker, the marker hung so a wrapped line meets the text; a ※ note is
+     smaller and set in, the 붙임 lines stand under their first item. The web app's
+     `GAEJO_CSS` and the file exporters draw the same. */
+  .gaejo ul { list-style: none; margin: 0.3em 0; padding-left: 0; }
+  .gaejo ul ul { margin: 0.15em 0 0 -0.5em; }
+  .gaejo ul > li { position: relative; margin: 0.15em 0; padding-left: 1.5em; }
+  .gaejo ul > li > p { margin: 0; }
+  .gaejo ul > li::before { content: "□"; position: absolute; left: 0; top: 0; }
+  .gaejo ul ul > li::before { content: "○"; }
+  .gaejo ul ul ul > li::before { content: "-"; }
+  .gaejo ul ul ul ul > li::before { content: "ㆍ"; }
+  .gaejo p.gaejo-note { margin: 0.2em 0 0.4em; padding-left: 2.5em; text-indent: -1.5em; font-size: 0.86em; }
+  /* A ※ under an item stands at that item's depth, ※ its own marker (no ○ before it). */
+  .gaejo ul > li.gaejo-note { padding-left: 1.5em; text-indent: -1.5em; font-size: 0.86em; }
+  .gaejo ul > li.gaejo-note::before { content: none; }
+  .gaejo p.gaejo-attach { margin: 0.5em 0 0; padding-left: 2.6em; text-indent: -2.6em; }
+  .gaejo p.gaejo-attach + p.gaejo-attach { margin-top: 0; text-indent: 0; }
   blockquote {
     margin: 1.3rem 0;
     padding: 0.1rem 0 0.1rem 1.1rem;
@@ -302,6 +320,9 @@
     vertical-align: top;
     font-variant-numeric: tabular-nums;
   }
+  /* A column of figures (`table_figures.mark_html` marks it `.fig`) sits flush right, its
+     head with it; a column of words stays left whatever its position. */
+  th.fig, td.fig { text-align: right; }
 
   /* ── the subordinate voice ─────────────────────────────────────────
      One size, one colour, one measure, everywhere in the catalogue: 0.84em,
@@ -559,7 +580,11 @@
     /* 각주는 자기 절과 같은 쪽에 있어야 뜻이 있다. */
     section > small { break-inside: avoid; break-before: avoid; }
     h2 { page-break-after: avoid; break-after: avoid; }
-    table, figure, blockquote { break-inside: avoid; }
+    figure, blockquote { break-inside: avoid; }
+    /* A table may run onto the next sheet, a row at a time, its head row repeated. */
+    table { break-inside: auto; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
   }
 
   /* ── 편집기 ─────────────────────────────────────────────────────────

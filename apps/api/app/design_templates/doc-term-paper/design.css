@@ -52,6 +52,6 @@ section > small:first-of-type { margin-top: 1.6rem; border-top: 1px solid var(--
 sup { color: var(--ink); font-weight: 600; }
 
 /* 한눈에: 본문 전체가 명조, 로마 숫자 절, 문단 들여쓰기 — 논문처럼 읽힌다. */
-.page { font-family: 'Nanum Myeongjo', 'Batang', serif; }
-h1, h2, h3 { font-family: 'Nanum Myeongjo', 'Batang', serif; }
+.page { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; }
+h1, h2, h3 { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; }
 h2 { text-align: center; }

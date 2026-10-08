@@ -5,8 +5,9 @@
  * 줄마다 바탕을 번갈아 깔아 가로로 견주기 쉽게 하고, 권고 절만 강조색 테두리를
  * 얻는다.
  *
- * 숫자는 오른쪽으로 세운다. 견준다는 것은 크기를 본다는 뜻이고, 자릿수가 맞지
- * 않으면 큰 수가 작아 보인다. */
+ * 숫자 열은 오른쪽으로 세운다(`.fig`, 조판이 숫자만 든 열에 붙인다). 견준다는 것은
+ * 크기를 본다는 뜻이고, 자릿수가 맞지 않으면 큰 수가 작아 보인다. 「주 3일」 「전면」
+ * 처럼 말로 된 열은 왼쪽에 둔다. */
 
 .cover { min-height: 0; padding: 0 0 1.1rem; margin: 0 0 1.8rem; }
 
@@ -19,17 +20,8 @@ table tbody tr:nth-child(even) td {
 }
 table td, table th { padding-left: 0.7em; }
 table td:first-child, table th:first-child { padding-left: 0; }
-table td:not(:first-child), table th:not(:first-child) {
-  text-align: right;
-  padding-right: 0.7em;
-}
+table td:not(:first-child), table th:not(:first-child) { padding-right: 0.7em; }
 table td { font-variant-numeric: tabular-nums; }
-/* 마지막 열이 권고 대안이라는 약속을 조판이 지킨다. */
-table td:last-child, table th:last-child {
-  border-left: 1px solid var(--hair);
-  padding-left: 0.9em;
-  font-weight: 650;
-}
 
 .kpi { border-top-width: 2px; border-bottom-width: 2px; }
 

@@ -5,7 +5,7 @@ import { Markdown } from '@/components/chat/Markdown'
 import { SectionBody } from '@/components/report/SectionBody'
 import { cn } from '@/lib/utils'
 import { TitleBlock } from '@/components/report/TitleBlock'
-import { TITLE_BLOCK_CSS, cleanTitleBlock, counterStyle, numberingCss, sectionNumbers } from '@/components/report/docFormats'
+import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, sectionNumbers, shapedSection } from '@/components/report/docFormats'
 import { fontFamilyFor } from '@/components/report/docType'
 import { Badge } from '@/components/ui'
 import { ApiError, sharesApi, type SharedContext, type SharedPayload } from '@/lib/api'
@@ -189,9 +189,10 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
     const accent = data.design?.accent ?? '#5b5bd6'
     const block = cleanTitleBlock(data.titleBlock)
     const numbers = sectionNumbers(data.sections, block?.numbering ?? 'none')
+    const closingAt = closingIndex(block, data.sections.length)
     return (
-      <article className={cn('overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10', block && 'fmt')}>
-        {block && <style>{`${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}`}</style>}
+      <article className={cn('overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10', fmtClass(block))}>
+        {block && <style>{formatCss(block)}</style>}
         <div className={visual === 'poster' ? 'px-8 py-16 text-white' : visual === 'minimal' ? 'px-8 py-12' : 'border-t-8 px-8 py-12'} style={visual === 'poster' ? { background: `linear-gradient(145deg,${accent},color-mix(in srgb,${accent} 48%,#111827))` } : visual === 'minimal' ? { background: `color-mix(in srgb,${accent} 7%,#fff)` } : { borderColor: accent }}>
           {block
             ? <TitleBlock block={block} title={artifactTitle} />
@@ -201,7 +202,7 @@ function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: 
           {data.sections.map((section, index) => (
             <section key={index} style={numbers[index].label ? counterStyle(numbers[index]) : undefined}>
               <h3 className={visual === 'poster' ? 'mb-4 text-2xl font-bold' : visual === 'minimal' ? 'mb-3 text-sm font-semibold tracking-widest text-muted' : 'mb-4 border-b pb-2 text-xl font-semibold'} style={visual === 'poster' ? { color: accent } : undefined}>{numbers[index].label && `${numbers[index].label} `}{section.heading}</h3>
-              <SectionBody section={section} className={block ? 'tb-counted' : undefined} />
+              <SectionBody section={shapedSection(section, block, index === closingAt)} className={block ? 'tb-counted' : undefined} />
             </section>
           ))}
         </div>

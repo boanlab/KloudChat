@@ -34,6 +34,8 @@ h2 { font-weight: 700; margin-bottom: 0.6rem; }
 h2::before { color: var(--ink); }
 section { margin-bottom: 1.9rem; }
 section > p, section > ul, section > ol, section > table { margin-left: 1.3rem; }
+/* A full-width table set in by the step would run past the right margin. */
+section > table { width: calc(100% - 1.3rem); }
 
 /* 계단 둘째 칸: 가. 나. 다. */
 /* `counter()` 는 `@counter-style` 의 `suffix` 를 붙이지 않는다 — 접미사는 목록
@@ -71,7 +73,7 @@ section:last-of-type { padding-top: 0.9rem; border-top: 1px solid var(--border);
 }
 
 /* 한눈에: 명조 본문, 가운데 제목과 이중선, 색 없이 검은 번호의 공문 계단. */
-.page { font-family: 'Nanum Myeongjo', 'Batang', serif; }
-h2 { font-family: 'Nanum Myeongjo', 'Batang', serif; color: var(--ink); }
+.page { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; }
+h2 { font-family: 'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif; color: var(--ink); }
 h2::before { color: var(--ink); }
 table thead th { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); }

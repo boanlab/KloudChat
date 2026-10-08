@@ -365,6 +365,12 @@ body {
   .report-prose p:has(> img:only-child) {
     text-align: center;
   }
+  /* A bracket placeholder (「[담당자]」): a gap left for the person to fill, marked in every view. */
+  .doc-placeholder {
+    background: color-mix(in srgb, var(--color-warn) 20%, transparent);
+    border-radius: 2px;
+    padding: 0 0.1em;
+  }
   .doc-html table {
     width: 100%;
     margin: 0.75rem 0;

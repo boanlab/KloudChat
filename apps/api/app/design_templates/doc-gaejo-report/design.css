@@ -1,0 +1,46 @@
+/* 개조식 보고서 — 상자 안 제목, 핵심 두 줄, □ ○ - ㆍ 의 계단.
+ *
+ * 윗사람이 한 장에서 판단하는 문서다. 제목은 굵은 선 상자 안에 가운데로 두고,
+ * 바로 아래 핵심 두 줄이 같은 굵기의 상자에 앉는다. 나머지는 개조식 계단 하나 —
+ * 기호와 들여쓰기는 공용 seed 의 `.gaejo` 규칙이 그린다. 색은 쓰지 않는다:
+ * 이 문서는 흑백으로 복사되어 결재판에 끼워진다. */
+
+/* 본문은 디자인의 서체(명조면 명조)를, 제목과 절 제목은 개조식 보고서에 흔한 고딕을 쓴다.
+   파일 내보내기도 같다: Word·한글·PDF 의 본문이 디자인의 서체를 따른다. */
+.page {
+  font-family: var(--font-body);
+  --font-head: 'Malgun Gothic', 'Nanum Gothic', 'NanumGothic', 'Pretendard', sans-serif;
+}
+.cover h1, h2 { font-family: var(--font-head); }
+
+.cover { min-height: 0; padding: 0.6rem 0 0; margin: 0 0 1.4rem; text-align: center; align-items: center; }
+.cover::after { display: none; }
+.cover h1 {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border: 2px solid var(--ink);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* 절 제목은 계단의 맨 윗단: 굵게, 색 없이. */
+h2 { font-weight: 800; color: var(--ink); margin-bottom: 0.4rem; }
+h2::before { color: var(--ink); }
+section { margin-bottom: 1.4rem; }
+
+/* 핵심 두 줄: 맨 위 상자. */
+.callout {
+  margin: 0 0 1.2rem;
+  padding: 0.6rem 0.9rem;
+  border: 1.5px solid var(--ink);
+  border-left-width: 1.5px;
+  background: transparent;
+  border-radius: 0;
+}
+table thead th { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); color: var(--ink); }
+
+@media print {
+  .cover { min-height: 0; padding: 0.6rem 0 0; page-break-after: auto; break-after: auto; }
+}

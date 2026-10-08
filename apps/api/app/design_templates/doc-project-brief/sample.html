@@ -1,5 +1,11 @@
-<!-- 갤러리 카드가 이 조각을 seed 에 끼워 실물 축소본을 보여 준다.
-     이 서식의 서명 요소를 담되 짧게 — 카드는 우표 크기다.
-     절 이름과 표의 열은 `form.docx` 의 것이다. 카드가 보여 주는 모양과
-     '양식' 으로 내려받는 파일이 어긋나면 카드는 없는 서식을 광고한 셈이 된다. -->
-<div class="cover filled"><h1>통합 로그 시스템 도입</h1><p class="lead">흩어진 로그를 한곳에 모아 장애 추적 시간을 줄인다.</p><dl><dt>책임자</dt><dd>정보전략팀</dd><dt>기간</dt><dd>2026. 9. — 2027. 4.</dd></dl></div><section><h2>개요</h2><p>장애 원인을 찾는 데 평균 4시간이 든다. 수집을 한곳으로 모아 30분 내로 줄인다.</p></section><section><h2>산출물과 목표</h2><section class="cards"><div><h3>산출물</h3><ul><li>수집 파이프라인</li><li>운영 인수인계서</li></ul></div><div><h3>목표</h3><ul><li>추적 30분 이내</li><li>운영 비용 25% 절감</li></ul></div></section></section>
+<!-- 갤러리 미리보기: 이 서식으로 다 쓴 문서 한 벌의 예시다(가상의 기관·인물).
+     머리(header.tb)는 `docFormats.ts` titleBlockHtml 이 그리는 그대로이고, 절 번호·개조식
+     기호·빈칸 표시는 미리보기가 제품과 같은 규칙으로 붙인다(`format_css.preview`).
+     절 이름은 이 서식의 기본 목차, 표의 합계·부가세·한글 금액·요일은
+     `tests/test_template_previews.py` 가 확인한다. -->
+<header class="tb tb-cover cover"><p class="tb-label">프로젝트 제안서</p><h1 class="tb-title">캠퍼스 시설 고장 신고 앱 프로젝트 개요서</h1><table class="tb-fields"><tbody><tr><th>팀명</th><td>고침팀</td></tr><tr><th>팀원</th><td>4명</td></tr><tr><th>지도교수</th><td><span class="tb-blank doc-placeholder">[지도교수]</span></td></tr><tr><th>제출일</th><td>2026. 10. 8.</td></tr></tbody></table></header>
+<section><h2>개요</h2><p>강의실·화장실 고장을 사진 한 장으로 신고하고 처리 상황을 받아 보는 앱을 2026. 10. 12.(월)부터 2027. 1. 29.(금)까지 만든다. 지금은 전화와 메일로 들어온 신고를 시설팀이 손으로 옮겨 적어 처리까지 평균 4.2일이 걸리고, 중복 신고가 30%에 이른다. 위치 기반 접수와 중복 묶기로 처리 기간을 2일 안으로 줄이는 것이 목표다.</p></section>
+<section><h2>산출물과 목표</h2><section class="cards"><div><h3>산출물</h3><ul><li>신고 앱(안드로이드·iOS)</li><li>시설팀 처리 화면(웹)</li><li>운영 인수인계서</li></ul></div><div><h3>목표</h3><ul><li>평균 처리 기간 4.2일 → 2일 이내</li><li>중복 신고 비율 30% → 10% 이하</li></ul></div></section></section>
+<section><h2>이해관계자와 성공 기준</h2><section class="cards"><div><h3>이해관계자</h3><ul><li>시설팀 — 처리 화면 사용, 검수</li><li>학생·교직원 — 신고</li><li>정보전산원 — 계정 연동 승인</li></ul></div><div><h3>성공 기준</h3><ul><li>시범 4주 동안 신고 200건 이상</li><li>시설팀 만족도 4.0점(5점) 이상</li></ul></div></section></section>
+<section><h2>일정과 예산</h2><table><thead><tr><th>단계</th><th>기간</th><th>산출물</th></tr></thead><tbody><tr><td>요구 분석</td><td>2026. 10. 12.(월)~10. 30.(금)</td><td>요구사항 명세</td></tr><tr><td>개발</td><td>2026. 11. 2.(월)~12. 18.(금)</td><td>앱·처리 화면</td></tr><tr><td>시범 운영</td><td>2026. 12. 21.(월)~2027. 1. 15.(금)</td><td>운영 보고</td></tr><tr><td>정리·발표</td><td>2027. 1. 18.(월)~1. 29.(금)</td><td>인수인계서</td></tr></tbody></table><table><thead><tr><th>항목</th><th>산출 근거</th><th>금액</th></tr></thead><tbody><tr><td>서버 임차</td><td>50,000원 × 4개월</td><td>200,000원</td></tr><tr><td>시험용 기기</td><td>350,000원 × 2대</td><td>700,000원</td></tr><tr><td>사용자 조사 사례비</td><td>10,000원 × 20명</td><td>200,000원</td></tr><tr><td>합계</td><td></td><td>1,100,000원</td></tr></tbody></table></section>
+<section><h2>전제와 위험</h2><section class="callout"><h3>계정 연동 승인 전에는 시범 운영을 열지 않는다</h3><p>정보전산원의 학내 계정 연동 승인(2026. 11. 27.(금) 요청 예정)이 없으면 시범 운영 일정 전체가 밀린다.</p></section><ul><li>위험: 시설팀 처리 인력이 시범 기간에 줄면 처리 기간 목표를 잴 수 없음</li></ul></section>

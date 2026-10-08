@@ -1,0 +1,30 @@
+kind = "document"
+cover_page = false
+# 본문 서체는 디자인의 서체(명조·고딕)를 따른다. 제목은 고딕 그대로.
+body_face = "design"
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 검사는 서버 훅이 맡는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+
+name = "개조식 보고서"
+description = "검토·현황 보고를 □ ○ - ㆍ 개조식으로 · 맨 위 핵심 두 줄, 끝에 붙임"
+category = "업무"
+fills = ["보고할 내용", "보고 대상", "결정이 필요한 것"]
+example_prompt = "아래 내용을 과장님께 올릴 개조식 보고서로 정리해 줘. 맨 위에 핵심 두 줄을 두고, 현황 → 문제점 → 검토 의견 → 향후 조치 순서로, 수치는 단위와 함께 적어 줘. 붙임 자료가 있으면 끝에 적어 줘.\n\n보고할 내용: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Bullet-style briefing (개조식)"
+description_en = "Review or status briefing in Korean bullet style (□ ○ - ㆍ) · two-line summary on top"
+category_en = "Work"
+fills_en = ["What to report", "Reported to", "Decision needed"]
+example_prompt_en = "Turn this into a Korean bullet-style (개조식) briefing for my manager: a two-line summary on top, then status, problems, review and next steps, with units on every number, and the attachments at the end.\n\nWhat to report: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'

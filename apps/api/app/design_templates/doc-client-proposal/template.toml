@@ -1,0 +1,26 @@
+kind = "document"
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 견적·요구 ID 검사는 뒤에 서버 훅으로 붙는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+name = "고객 제안서"
+description = "RFP 목차를 따르는 고객 제안 · 요구사항 대응표와 부가세까지 맞는 견적"
+category = "업무"
+fills = ["고객사와 사업명", "RFP·미팅 메모", "견적 근거"]
+example_prompt = "아래 RFP와 미팅 메모로 고객 제안서를 써 줘. RFP에 목차가 있으면 그 순서를 따르고, 요구 ID마다 대응 방안을 표로 정리하고, 견적은 공급가액·부가세·합계로 맞춰 줘. 우리 회사 자료에 없는 실적은 쓰지 마.\n\n고객사와 사업명: \n제안사 정보: \nRFP·메모: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Client proposal"
+description_en = "A proposal that follows the client's RFP · requirement matrix and a quote with VAT"
+category_en = "Work"
+fills_en = ["Client and project", "RFP or meeting notes", "Pricing basis"]
+example_prompt_en = "Write a client proposal from the RFP and meeting notes below. Follow the RFP's table of contents if it gives one, answer every requirement ID in a table, and total the quote as supply price, VAT and total. Do not claim references our company material does not list.\n\nClient and project: \nOur company: \nRFP or notes: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
