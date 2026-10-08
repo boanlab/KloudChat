@@ -380,6 +380,21 @@ export function SkillsPage() {
                 </div>
               </div>
             )}
+            {detail.scripts && detail.scripts.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-base font-medium">{t('스크립트')}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.scripts.map((script) => (
+                    <Badge key={script}>
+                      <span className="font-mono">scripts/{script}.py</span>
+                    </Badge>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-sm text-faint">
+                  {t('정해진 스크립트를 샌드박스에서 첨부 파일에 실행합니다.')}
+                </p>
+              </div>
+            )}
             <div>
               <p className="mb-1.5 text-base font-medium">{t('사용 시점')}</p>
               <p className="rounded-control border border-line bg-elevated px-3 py-2 text-md text-muted">

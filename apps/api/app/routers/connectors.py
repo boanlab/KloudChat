@@ -174,7 +174,7 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
     Existing `enabled` flags survive: a sync must not re-grant a revoked permission.
     """
     env = mcp.substitute(
-        await catalog.resolve_env(connector.env), user_id=user.id, user_email=user.email
+        await catalog.connector_env(connector), user_id=user.id, user_email=user.email
     )
     try:
         endpoint = await catalog.effective_endpoint(connector)

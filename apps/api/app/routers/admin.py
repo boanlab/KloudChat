@@ -61,7 +61,7 @@ from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
 from app.services import models as model_service
-from app.services import settings_store, starter
+from app.services import settings_store, starter, tools_gateway
 from app.services.credits import grant_initial_allowance, set_allowance
 from app.services.litellm import provision_user
 
@@ -266,7 +266,8 @@ async def test_settings(admin: AdminUser):
 @router.post("/settings/test-tool/{feature}")
 async def test_tool(feature: str, admin: AdminUser):
     """Probes one tool backend."""
-    # Any status below 500 counts as reachable: an MCP endpoint answers GET with 405.
+    # Any status below 500 counts as reachable (an MCP endpoint answers GET with
+    # 405), except the gateway's 401 for a missing or wrong tools key.
     if feature not in _TOOL_PROBES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_feature")
 
@@ -277,11 +278,19 @@ async def test_tool(feature: str, admin: AdminUser):
 
     url = base.rstrip("/") + _TOOL_PROBES[feature]
     try:
-        async with httpx.AsyncClient(timeout=settings.litellm_probe_timeout_sec) as client:
+        async with tools_gateway.client(timeout=settings.litellm_probe_timeout_sec) as client:
             response = await client.get(url)
     except httpx.HTTPError:
         return {"ok": False, "detail": "연결하지 못했습니다. 주소를 확인하세요."}
 
+    if response.status_code == 401 and await tools_gateway.is_tools_url(url):
+        # The gateway refuses `/tools/*` without the shared key.
+        detail = (
+            "게이트웨이가 도구 키를 거부했습니다. 양쪽 TOOLS_GATEWAY_KEY가 같은지 확인하세요."
+            if settings.tools_gateway_key
+            else "게이트웨이가 도구 키를 요구합니다. API의 TOOLS_GATEWAY_KEY를 설정하세요."
+        )
+        return {"ok": False, "detail": detail}
     if response.status_code < 500:
         return {"ok": True, "detail": f"연결됨 (http {response.status_code})"}
     if response.status_code in (502, 503):

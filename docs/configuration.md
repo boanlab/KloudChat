@@ -44,6 +44,7 @@ itself reads are in the second column.
 | `.env` | Container | Default | Notes |
 | --- | --- | --- | --- |
 | `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives the LiteLLM address and the six tool endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. |
+| `KCHAT_TOOLS_GATEWAY_KEY` | `TOOLS_GATEWAY_KEY` | — | Shared secret the gateway requires on every `/tools/*` request, sent as `X-Tools-Key`. Must equal `TOOLS_GATEWAY_KEY` in KloudChat-LLM's `.env`. Generate with `openssl rand -hex 32`. Attached only to requests under a configured tool address (see below); blank sends nothing and a gateway that requires it answers 401. |
 | `LITELLM_BASE_URL` | `LITELLM_BASE_URL` | derived | Only when LiteLLM is not behind the gateway. |
 | `LITELLM_MASTER_KEY` | `LITELLM_MASTER_KEY` | — | Never leaves the API process. Not returned by any route, including admin routes. |
 | `KCHAT_PRINT_BASE_URL` | `PRINT_BASE_URL` | `http://kloudchat-print:8200` | The printer — a headless browser that turns a finished document into a PDF that looks like the screen. Compose runs one, on a network with no route out. Blank turns it off: exports still produce a PDF, drawn by the structural renderer, carrying the words without the 서식's own layout. |
@@ -62,6 +63,45 @@ The gateway derives these paths:
 
 A feature with no address drops out of the tool list. It does not break
 anything else.
+
+#### Tools gateway key
+
+KloudChat-LLM's gateway refuses `/tools/*` with `401 {"error":"unauthorized"}`
+unless the request carries `X-Tools-Key: <TOOLS_GATEWAY_KEY>`. (`/litellm/*`
+and `/v1/*` are authenticated by LiteLLM itself; `/health` stays open.)
+
+The API attaches the key in one place, `services/tools_gateway.py`: every
+client that talks to a tool backend (web search, document fetch, code
+execution, the deep-research MCP connector, speech-to-text, the retrieval
+index, and the admin screen's connection test) is built by
+`tools_gateway.client()`, whose request hook adds the header only when the
+request URL lies under one of the six tool addresses in effect (same scheme,
+host, port and path prefix) and strips it otherwise — so it never reaches a
+fetched page, a user's own MCP server or a redirect target. The MCP client is
+narrower still: it sends the key only to the deep-research address. The `youtube`
+catalogue connector, a stdio process that calls speech-to-text itself, gets the
+key as `TOOLS_GATEWAY_KEY` only while its `WHISPER_URL` is the configured
+speech-to-text address. The admin screen's connection test reports a 401 from
+the gateway as a key mismatch.
+
+Where it is set:
+
+| Repository | File | Variable |
+| --- | --- | --- |
+| KloudChat | `.env` | `KCHAT_TOOLS_GATEWAY_KEY` (compose passes it to the API as `TOOLS_GATEWAY_KEY`) |
+| KloudChat-LLM | `.env` | `TOOLS_GATEWAY_KEY` (compose passes it to the gateway) |
+
+Rotation (brief 401s on tool calls between steps 3 and 4 are expected; run
+it when nobody is mid-turn):
+
+1. `openssl rand -hex 32` → the new key.
+2. Write it to both `.env` files.
+3. Recreate the API so it sends the new key: `docker compose up -d api`.
+4. Recreate only the gateway in KloudChat-LLM:
+   `docker compose up -d --no-deps --force-recreate gateway`.
+5. Check: Settings → System → Integrations → test each tool, or
+   `curl -s -o /dev/null -w '%{http_code}' -H "X-Tools-Key: $KEY" <BACKEND_BASE_URL>/tools/search/healthz`
+   (200) and the same without the header (401).
 
 ### Accounts and policy
 
@@ -173,7 +213,7 @@ when added to the `api` service's `environment:`.
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
 | `TITLE_MODEL` | `local/qwen3.8-27b` | Names conversations and extracts memories. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
-| `STT_OR_MODEL` | `mistralai/voxtral-small-24b-2507` | Fallback transcription model for hosts that cannot run Whisper. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
+| `STT_OR_MODEL` | `google/gemini-3.8-flash` | Fallback transcription model for hosts that cannot run Whisper. Must be a LiteLLM model that accepts `input_audio`. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
 | `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). Set through `KCHAT_GEOIP_DATABASE`. |

@@ -114,6 +114,9 @@ services:
       # Bootstrap value; the admin screen overrides it. A tool with no URL is
       # absent from the tool list rather than broken.
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-}
+      # Sent as X-Tools-Key to the tool addresses only; KloudChat-LLM's gateway
+      # refuses /tools/* without it. Same value as TOOLS_GATEWAY_KEY there.
+      TOOLS_GATEWAY_KEY: ${KCHAT_TOOLS_GATEWAY_KEY:-}
       # Blank disables the printer; PDFs then come from the structural renderer.
       PRINT_BASE_URL: ${KCHAT_PRINT_BASE_URL:-http://kloudchat-print:8200}
       FILE_STORAGE_DIR: /srv/data/files

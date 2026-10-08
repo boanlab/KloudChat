@@ -18,10 +18,22 @@ import httpx
 
 from app.core import logs
 from app.core.config import settings
-from app.services import credibility, index_client, knowledge, netguard, settings_store
+from app.services import (
+    credibility,
+    index_client,
+    knowledge,
+    netguard,
+    settings_store,
+    tools_gateway,
+)
 from app.services.tools.arithmetic import CALCULATE
 from app.services.tools.base import SearchEvidence, Tool, ToolContext, ToolResult
-from app.services.tools.ncs_check import CHECK_NCS_ANSWER
+from app.services.tools.sandbox_tools import (
+    EXECUTE_CODE,
+    RUN_CODE,
+    RUN_SKILL_SCRIPT,
+    execute_code,  # noqa: F401 — re-exported; services.calc calls builtin.execute_code
+)
 
 log = logging.getLogger(__name__)
 
@@ -405,7 +417,7 @@ async def _searxng(
             lane_requests.append(("english", {**base, "q": english, "language": "en"}))
     if hints.get("official") and not site:
         lane_requests.append(("official", {**base, "q": f"{_core_query(query)} site:go.kr"}))
-    async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
+    async with tools_gateway.client(timeout=_FETCH_TIMEOUT) as client:
         responses = await asyncio.gather(
             client.get(search_url, params=base),
             *(client.get(search_url, params=params) for _, params in lane_requests),
@@ -464,7 +476,7 @@ async def _scrape(base_url: str, url: str) -> str:
         log.info("scrape refused: %s", reason)
         return ""
     try:
-        async with httpx.AsyncClient(timeout=_FETCH_TIMEOUT) as client:
+        async with tools_gateway.client(timeout=_FETCH_TIMEOUT) as client:
             response = await client.post(
                 f"{base_url.rstrip('/')}/v1/scrape",
                 headers={"Authorization": f"Bearer {settings.scraper_api_key}"},
@@ -758,43 +770,6 @@ async def fetch_url(args: dict[str, Any]) -> ToolResult:
     return ToolResult(content=_truncate(body, 20_000), detail=f"{len(body):,}자")
 
 
-# ── code execution ─────────────────────────────────────────────────────
-
-
-async def execute_code(args: dict[str, Any]) -> ToolResult:
-    code = str(args.get("code") or "")
-    if not code.strip():
-        return ToolResult(content="오류: code 가 비었습니다.", failed=True)
-    backends = await settings_store.tools_config()
-    if not backends.exec:
-        return ToolResult(content="오류: 코드 실행이 설정되지 않았습니다.", failed=True)
-
-    # The sandbox names it "py", not "python".
-    lang = {"python": "py", "py": "py"}.get(str(args.get("language") or "python"), "py")
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=10.0)) as client:
-            response = await client.post(
-                f"{backends.exec.rstrip('/')}/exec",
-                headers={"x-api-key": settings.code_interpreter_api_key},
-                json={"code": code, "lang": lang},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        return ToolResult(content=f"오류: 코드 실행에 실패했습니다 ({exc}).", failed=True)
-
-    stdout = (payload.get("stdout") or "").strip()
-    stderr = (payload.get("stderr") or "").strip()
-    parts = []
-    if stdout:
-        parts.append(f"stdout:\n{_truncate(stdout, 8000)}")
-    if stderr:
-        parts.append(f"stderr:\n{_truncate(stderr, 4000)}")
-    if not parts:
-        parts.append("실행되었지만 출력이 없습니다. 결과를 보려면 print() 를 쓰세요.")
-    return ToolResult(content="\n\n".join(parts), failed=bool(stderr and not stdout))
-
-
 # ── registry ───────────────────────────────────────────────────────────
 
 WEB_SEARCH = Tool(
@@ -1027,25 +1002,6 @@ WEATHER = Tool(
     run=weather,
     label="날씨 확인 중",
     title="날씨",
-)
-
-EXECUTE_CODE = Tool(
-    name="execute_code",
-    description=(
-        "샌드박스에서 Python 코드를 실행합니다. 계산, 수식 전개(sympy), 데이터 처리에 "
-        "쓰세요. 결과는 반드시 print() 로 출력해야 보입니다. 네트워크는 막혀 있습니다."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "code": {"type": "string", "description": "실행할 코드. 출력은 print() 로."},
-            "language": {"type": "string", "enum": ["python"], "default": "python"},
-        },
-        "required": ["code"],
-    },
-    run=execute_code,
-    label="코드 실행 중",
-    title="코드 실행",
 )
 
 #: Report and deck are excluded: they have their own pipelines.
@@ -1493,7 +1449,7 @@ SHARE_NOTE = Tool(
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
     """Local tools plus configured backends; web search needs the per-turn toggle too."""
     backends = await settings_store.tools_config()
-    tools: list[Tool] = [CALCULATE, CHECK_NCS_ANSWER]
+    tools: list[Tool] = [CALCULATE]
     if backends.fetch:
         tools.append(FETCH_URL)
         if web_search_enabled and backends.search:
@@ -1504,6 +1460,8 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
         tools.append(WEATHER)
     if backends.exec:
         tools.append(EXECUTE_CODE)
+        tools.append(RUN_SKILL_SCRIPT)
+        tools.append(RUN_CODE)
     tools.append(CREATE_ARTIFACT)
     tools.append(CREATE_CHART)
     tools.append(SHARE_NOTE)

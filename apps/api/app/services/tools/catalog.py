@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services import settings_store
+from app.services import settings_store, tools_gateway
 
 _MCP_DIR = "/srv/mcp"
 
@@ -35,6 +35,8 @@ CATALOG: list[dict[str, Any]] = [
         "transport": "stdio",
         "endpoint": f"uv run --script {_MCP_DIR}/youtube.py",
         "env": {"WHISPER_URL": "${TOOLS_STT_URL}"},
+        # The gateway key goes in as TOOLS_GATEWAY_KEY, only while WHISPER_URL is the stt address.
+        "tools_key_for": ("WHISPER_URL", "stt"),
         "kinds": ["chat", "report"],
     },
     {
@@ -78,6 +80,25 @@ async def effective_endpoint(connector: Any) -> str:
         if entry and entry.get("endpoint"):
             return await resolve_urls(str(entry["endpoint"]))
     return await resolve_urls(connector.endpoint or "")
+
+
+async def connector_env(connector: Any) -> dict[str, str]:
+    """A connector's resolved environment, plus the gateway key for a catalogue server
+    that calls a tool backend itself (`tools_key_for`: the URL variable it calls and
+    the tool that address must be).
+
+    The key is added only when that variable resolves to that tool's configured
+    address, so a supplied override cannot point it elsewhere."""
+    env = await resolve_env(connector.env)
+    env.pop("TOOLS_GATEWAY_KEY", None)
+    entry = catalog_entry(connector.slug) if getattr(connector, "official", False) else None
+    target = (entry or {}).get("tools_key_for")
+    if target:
+        variable, feature = target
+        key = await tools_gateway.key_for(env.get(variable, ""), (feature,))
+        if key:
+            env["TOOLS_GATEWAY_KEY"] = key
+    return env
 
 
 async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:

@@ -3,15 +3,17 @@ import {
   Check,
   ChevronRight,
   CircleMinus,
+  Download,
   FileText,
   Loader2,
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, fileSize } from '@/lib/utils'
 import type { Step } from '@/types'
 import { useT } from '@/lib/useT'
+import { downloadFile } from '@/lib/api'
 
 /** m:ss since `since`, ticking while live. */
 function useElapsed(since: number | undefined, live: boolean) {
@@ -79,9 +81,83 @@ function StepRow({ step, live }: { step: Step; live: boolean }) {
         {step.detail && (
           <span className="ml-1.5 text-faint no-underline">— {step.detail}</span>
         )}
+        {step.outputs && step.outputs.length > 0 && <OutputFiles files={step.outputs} />}
+        {(step.code || step.stdout || step.stderr) && <RunTrace step={step} />}
       </span>
       <Icon size={12} className="mt-1 shrink-0 text-faint" />
     </div>
+  )
+}
+
+/** 코드 보기 / 출력 보기: what a sandbox step ran and printed, collapsed by default. */
+function RunTrace({ step }: { step: Step }) {
+  const t = useT()
+  const output = [step.stdout, step.stderr && `stderr:\n${step.stderr}`]
+    .filter(Boolean)
+    .join('\n\n')
+  return (
+    <span className="mt-1 block space-y-1 no-underline">
+      {step.code && (
+        <TraceBlock
+          summary={t('코드 보기')}
+          note={
+            step.codeAttempt && step.codeAttempt > 1
+              ? t('{n}번째 시도의 코드').replace('{n}', String(step.codeAttempt))
+              : undefined
+          }
+          text={step.code}
+        />
+      )}
+      {output && <TraceBlock summary={t('출력 보기')} text={output} />}
+    </span>
+  )
+}
+
+function TraceBlock({ summary, note, text }: { summary: string; note?: string; text: string }) {
+  return (
+    <details className="group text-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-faint hover:text-fg">
+        <ChevronRight size={12} className="shrink-0 transition-transform group-open:rotate-90" />
+        {summary}
+        {note && <span className="text-faint">· {note}</span>}
+      </summary>
+      <pre className="mt-1 max-h-80 overflow-auto whitespace-pre rounded-control border border-line bg-panel px-2.5 py-2 font-mono text-xs leading-relaxed text-fg">
+        {text}
+      </pre>
+    </details>
+  )
+}
+
+/** Download chips for the files a tool step made. */
+function OutputFiles({ files }: { files: NonNullable<Step['outputs']> }) {
+  const t = useT()
+  const [failed, setFailed] = useState(false)
+  const take = async (id: string, name: string) => {
+    setFailed(false)
+    try {
+      await downloadFile(id, name)
+    } catch {
+      setFailed(true)
+    }
+  }
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+      {files.map((file) => (
+        <button
+          key={file.id}
+          type="button"
+          title={t('만든 파일을 내려받습니다')}
+          onClick={() => void take(file.id, file.name)}
+          className="flex max-w-full items-center gap-1.5 rounded-control border border-line bg-panel px-2 py-1 text-sm transition-colors hover:border-strong hover:bg-elevated"
+        >
+          <FileText size={12} className="shrink-0 text-faint" />
+          <span className="truncate">{file.name}</span>
+          <span className="shrink-0 text-faint">{fileSize(file.size)}</span>
+          <Download size={12} className="shrink-0 text-faint" />
+        </button>
+      ))}
+      {failed && <span className="text-sm text-danger">{t('파일을 내려받지 못했습니다.')}</span>}
+    </span>
   )
 }
 

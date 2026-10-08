@@ -54,6 +54,10 @@ class ToolResult:
     #: The loop applies the same output/privacy masking before showing this text.
     final_text: str | None = None
     search_evidence: SearchEvidence | None = None
+    #: Files the call produced and stored for the user: `{"id", "name", "size"}`.
+    outputs: list[dict[str, Any]] | None = None
+    #: Step fields shown under 코드 보기 / 출력 보기: `code`, `codeAttempt`, `stdout`, `stderr`.
+    trace: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -79,6 +83,13 @@ class ToolContext:
     #: Calls that actually ran this turn, by tool name. `web_search` reaches
     #: the usage ledger as searches; a repeated call the loop refused is not here.
     tool_calls: dict[str, int] = field(default_factory=dict)
+    #: The turn runs on a strict-local model; a tool that calls a model stays strict-local too.
+    strict_local: bool = False
+    #: Sandbox state shared by this turn's code tools (see `services.sandbox`).
+    sandbox: dict[str, Any] = field(default_factory=dict)
+    #: What this turn's tools returned (run_code output, calculate results), in call order:
+    #: the computed values an answer's numbers may come from (`check_skills`).
+    outputs: list[str] = field(default_factory=list)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:

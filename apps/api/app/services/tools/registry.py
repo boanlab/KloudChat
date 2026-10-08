@@ -11,18 +11,20 @@ import logging
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app.core.config import settings
 from app.models.user import User
 from app.models.workspace import Connector, ConnectorStatus, ConnectorTool
-from app.services import mcp
+from app.services import mcp, settings_store
 from app.services.tools import catalog
 from app.services.tools.base import Tool, ToolResult
 from app.services.tools.builtin import (
     CALCULATE,
-    CHECK_NCS_ANSWER,
     CREATE_ARTIFACT,
     CREATE_CHART,
     EXECUTE_CODE,
     FETCH_URL,
+    RUN_CODE,
+    RUN_SKILL_SCRIPT,
     SHARE_NOTE,
     WEB_SEARCH,
     available_builtins,
@@ -94,7 +96,7 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
         if connector is None:
             continue
         env = mcp.substitute(
-            await catalog.resolve_env(connector.env),
+            await catalog.connector_env(connector),
             user_id=user.id,
             user_email=user.email,
         )
@@ -134,7 +136,12 @@ async def build_tools(
     if strict_local:
         # Only in-process built-ins; no connectors, no vector retrieval. `share_note`
         # is excluded because a note reaches later turns that may run on external models.
-        tools = [CALCULATE, CHECK_NCS_ANSWER, CREATE_ARTIFACT, CREATE_CHART]
+        tools = [CALCULATE, CREATE_ARTIFACT, CREATE_CHART]
+        wanted = allowed is None or bool({RUN_SKILL_SCRIPT.name, RUN_CODE.name} & set(allowed))
+        if settings.sandbox_in_boundary and wanted and (await settings_store.tools_config()).exec:
+            # The sandbox runs in the self-hosted stack with no network; run_code then
+            # writes its code on a strict-local model (see `sandbox_tools.code_models`).
+            tools += [RUN_SKILL_SCRIPT, RUN_CODE]
         include_connectors = False
         knowledge_collection = ""
     else:
@@ -166,10 +173,11 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
         tool.name: (tool.title or tool.label or tool.name, tool.name in available)
         for tool in (
             CALCULATE,
-            CHECK_NCS_ANSWER,
             WEB_SEARCH,
             FETCH_URL,
             EXECUTE_CODE,
+            RUN_SKILL_SCRIPT,
+            RUN_CODE,
             CREATE_ARTIFACT,
             CREATE_CHART,
             SHARE_NOTE,

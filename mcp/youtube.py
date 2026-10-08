@@ -18,6 +18,8 @@ Environment:
   WHISPER_URL  OpenAI-compatible `/v1/audio/transcriptions` base. Filled in by
                the connector runtime from the admin screen's speech-to-text
                address. Unset: only videos with captions work.
+  TOOLS_GATEWAY_KEY  Sent as `X-Tools-Key` to WHISPER_URL. Set by the connector
+               runtime only when WHISPER_URL is a configured tool address.
 """
 from __future__ import annotations
 
@@ -38,6 +40,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 LOG = logging.getLogger("youtube-mcp")
 
 WHISPER_URL = (os.getenv("WHISPER_URL") or "").rstrip("/")
+TOOLS_GATEWAY_KEY = (os.getenv("TOOLS_GATEWAY_KEY") or "").strip()
 
 mcp = FastMCP("youtube")
 
@@ -111,8 +114,11 @@ async def _post_audio(url: str, audio_path: str) -> str | None:
     with open(audio_path, "rb") as f:
         files = {"file": (os.path.basename(audio_path), f, "application/octet-stream")}
         data = {"response_format": "json"}
+        headers = {"X-Tools-Key": TOOLS_GATEWAY_KEY} if TOOLS_GATEWAY_KEY else {}
         async with httpx.AsyncClient(timeout=600) as c:
-            r = await c.post(f"{url}/v1/audio/transcriptions", files=files, data=data)
+            r = await c.post(
+                f"{url}/v1/audio/transcriptions", files=files, data=data, headers=headers
+            )
     if r.status_code >= 400:
         LOG.warning("whisper %s → HTTP %d: %s", url, r.status_code, r.text[:200])
         return None

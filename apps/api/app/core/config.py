@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     backend_base_url: str = ""
     #: HTML→PDF printer sidecar. Empty: PDFs fall back to the structural exporters.
     print_base_url: str = ""
+    #: Shared secret the gateway requires on `/tools/*` (`TOOLS_GATEWAY_KEY` in
+    #: KloudChat-LLM's .env). Sent as `X-Tools-Key`, only to the tool addresses;
+    #: see `services/tools_gateway.py`. Empty sends nothing.
+    tools_gateway_key: str = ""
     litellm_base_url: str = ""
     litellm_master_key: str = ""
     litellm_timeout_sec: float = 20.0
@@ -144,9 +148,21 @@ class Settings(BaseSettings):
     whisper_url: str = ""
     #: Fallback transcription model when `whisper_url` is unset, sent as
     #: chat/completions with an audio part. Microphone audio leaves the network;
-    #: "" keeps dictation internal.
-    stt_or_model: str = "mistralai/voxtral-small-24b-2507"
+    #: "" keeps dictation internal. Must be a LiteLLM model id that accepts
+    #: `input_audio`; the Voxtral id was never in the model list.
+    stt_or_model: str = "google/gemini-3.8-flash"
     code_interpreter_api_key: str = ""
+    #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
+    #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.
+    code_model: str = "local/qwen3.8-27b"
+    code_fallback_model: str = "local/qwen3.5-122b"
+    #: The sandbox runs inside the self-hosted stack with networking off, so its file
+    #: tools are offered to strict-local turns too. Off for a sandbox hosted elsewhere.
+    sandbox_in_boundary: bool = True
+    #: Offers skill packages marked `status: draft` (SKILL.md) for evaluation: seeded
+    #: private to the catalogue's administrator, never shared, and runnable by
+    #: `run_skill_script`. Off, drafts are neither seeded nor runnable.
+    skill_drafts: bool = False
     # Hits scraped in full; each is a page fetch.
     web_search_results: int = 5
     web_search_scrape: int = 3
