@@ -38,6 +38,7 @@ LABELS: dict[str, str] = {
     # a chat answer's finish
     "answer-normalize": "답 다듬기",
     "check:answer-grounding": "근거 확인",
+    "check:copy": "카피 점검",
     "text-fit": "분량 확인",
     "answer-replace": "답 바꾸기",
     # a revision

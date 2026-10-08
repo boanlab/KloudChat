@@ -354,6 +354,37 @@ def direct_calculation_expression(request: str) -> str | None:
     return expression
 
 
+#: A unit (paragraph or line) that asks for something: the person's own instruction.
+_REQUEST_CUE = re.compile(
+    r"줘|주세요|주실|해\s{0,2}봐|하세요|할래|해라|부탁|알려|구해|얼마|몇\s{0,2}(?:%|원|명|개)|[?？]"
+    r"|\b(?:please|calculate|compute|what|how)\b",
+    re.IGNORECASE,
+)
+#: A line under which the rest is pasted material (「---」).
+_RULE_LINE = re.compile(r"\n[ \t]{0,8}-{3,8}[ \t]{0,8}\n")
+
+
+def _mask_pasted_intent(text: str, intent: str) -> str:
+    """`intent` with pasted material blanked: only the person's own instruction states intent.
+
+    The material is what follows a 「---」 line, or — when the request has several paragraphs
+    (else lines) and one of them asks for something — each later unit that asks nothing
+    (「- 이번 호 내용: 예상 환급액 계산」). Its numbers still count as operands."""
+    rule = _RULE_LINE.search(text)
+    if rule:
+        return intent[: rule.start()] + re.sub(r"[^\n]", " ", intent[rule.start():])
+    units = [m for m in re.finditer(r"(?:[^\n]|\n(?![ \t]{0,8}\n))+", text)]
+    if len(units) < 2:
+        units = list(re.finditer(r"[^\n]+", text))
+    if len(units) < 2 or not any(_REQUEST_CUE.search(m.group()) for m in units):
+        return intent
+    out = list(intent)
+    for m in units[1:]:
+        if not _REQUEST_CUE.search(m.group()):
+            out[m.start():m.end()] = re.sub(r"[^\n]", " ", intent[m.start():m.end()])
+    return "".join(out)
+
+
 def requires_calculation(request: str) -> bool:
     """Recognize supplied-number arithmetic without inferring absent operands.
 
@@ -368,7 +399,7 @@ def requires_calculation(request: str) -> bool:
         return True
 
     # Quotes can supply numbers, but their embedded commands cannot establish intent.
-    intent = _mask_quoted_intent(text)
+    intent = _mask_pasted_intent(text, _mask_quoted_intent(text))
     clauses: list[tuple[str, str, str]] = []
     start = 0
     previous_delimiter = ""

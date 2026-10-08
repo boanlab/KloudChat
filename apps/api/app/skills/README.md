@@ -18,7 +18,8 @@ Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agent
 `check_skills = [...]` in a 서식's `template.toml` (`checks` there is already the checklist).
 `services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
 `check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
-`check:answer-grounding`; docs/architecture.md § Pipelines).
+`check:answer-grounding`; docs/architecture.md § Pipelines). `copy-check` runs as a stage of its
+own, `check:copy`, whenever a copy skill is on a chat turn (`services/copy_check.py`).
 
 The entry script's functions, by stage:
 

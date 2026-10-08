@@ -4,4 +4,4 @@
 name = "data-analysis"
 agents = ["data-analysis"]
 pre = ["check:gaps", "gap-card"]
-finish = ["answer-normalize", "check:answer-grounding", "text-fit", "answer-replace"]
+finish = ["answer-normalize", "check:answer-grounding", "check:copy", "text-fit", "answer-replace"]

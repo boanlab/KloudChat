@@ -71,6 +71,11 @@ RULES: list[tuple[str, str, str, str]] = [
      r"|데모\s*(?:신청|예약|요청|보기)|환불\s*(?:보장|보증|가능)|교환\s*(?:보장|가능)|설치\s*지원|1\s*\+\s*1|사은품|쿠폰",
      "자료에 없는 혜택·서비스(무료 체험·상담·데모·환불·사은품)를 약속하면 기만 광고가 되고 회사가 지킬 수 없다.",
      "자료에 있는 혜택만 쓴다. 없으면 실제로 할 수 있는 행동(가입·문의·자료 받기)으로 CTA를 바꾸거나 「[혜택]」으로 비운다."),
+    ("qualifier",
+     r"매일|매주|매달|날마다|항상|언제나|실시간|즉시|24\s*시간|365\s*일|당일\s*(?:발송|배송|처리|도착)"
+     r"|한\s*번에|원\s*클릭|클릭\s*한\s*번(?:에|으로|이면)?|무제한|빠짐없이|자동(?:으로|화)|누구나",
+     "빈도·속도·범위를 단정하는 말(매일·실시간·자동으로·한 번에)은 자료에 있을 때만 사실이다.",
+     "자료에 없으면 그 말을 빼고 자료에 있는 사실만 남긴다."),
     ("style",
      r"단순한\s*[가-힣A-Za-z ]{1,20}(?:이|가)\s*아닙니다|[가-힣]+(?:이|가)\s*아닌,\s|그\s*이상의|혁신적(?:인)?|획기적(?:인)?"
      r"|차원이\s*다른|새로운\s*패러다임|게임\s*체인저|한\s*단계\s*업그레이드|지금\s*바로\s*경험하세요"
@@ -155,6 +160,14 @@ def _clock_hours(material: str) -> set[tuple[float, str]]:
         hours.add((float(hour), "시"))
         if hour > 12:
             hours.add((float(hour - 12), "시"))
+    # 「오후 2시~3시」「10:00~20:00」: the span is 1시간, 10시간.
+    for match in re.finditer(r"(?<!\d)([01]?\d|2[0-3])\s{0,2}(?::[0-5]\d|시)\s{0,2}[~\-–]\s{0,2}(?:오전|오후)?\s{0,2}([01]?\d|2[0-3])\s{0,2}(?::[0-5]\d|시)",
+                             material or ""):
+        a, b = int(match.group(1)), int(match.group(2))
+        if b < a and b <= 12:
+            b += 12
+        if b > a:
+            hours.add((float(b - a), "시간"))
     return hours
 
 
@@ -168,18 +181,23 @@ def _in_placeholder(text: str, start: int, end: int) -> bool:
     return any(m.start() <= start and end <= m.end() for m in _PLACEHOLDER.finditer(text))
 
 
-def scan(text: str, material: str = "", category: str = "general") -> list[dict]:
+def _found(text: str, material: str = "", category: str = "general") -> list[dict]:
+    """Every occurrence with its span: `kind`, `match`, `start`, `end`, `grounded`, `severity`."""
     if category not in CATEGORIES:
         raise ValueError(f"category 는 {', '.join(CATEGORIES)} 가운데 하나")
     squashed = _squash(material)
     findings: list[dict] = []
-    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, match: str, start: int, grounded: bool, severity: str) -> None:
+        findings.append({"kind": kind, "match": match, "start": start, "end": start + len(match),
+                         "grounded": grounded, "severity": severity})
+
     for kind, pattern, _why, _fix in RULES:
         for match in re.finditer(pattern, text):
             phrase = match.group(0).strip()
-            if not phrase or (kind, phrase) in seen or _in_placeholder(text, match.start(), match.end()):
+            if not phrase or _in_placeholder(text, match.start(), match.end()):
                 continue
-            seen.add((kind, phrase))
+            start = match.start() + match.group(0).index(phrase)
             grounded = bool(squashed) and (_squash(phrase) in squashed or (
                 kind in ("offer", "urgency") and _tokens_in(phrase, squashed)))
             if kind == "style":
@@ -191,7 +209,7 @@ def scan(text: str, material: str = "", category: str = "general") -> list[dict]
                 severity = "check" if grounded else "block"
             else:
                 severity = "info" if grounded else "check"
-            findings.append({"kind": kind, "match": phrase, "grounded": grounded, "severity": severity})
+            add(kind, phrase, start, grounded, severity)
     if material:
         have = {(round(n["value"], 4), n["unit"]) for n in numbers(material)} | _clock_hours(material)
         values = {round(n["value"], 4) for n in numbers(material)} | {v for v, _ in _clock_hours(material)}
@@ -199,26 +217,33 @@ def scan(text: str, material: str = "", category: str = "general") -> list[dict]
             end = start + len(number["text"])
             if _in_placeholder(text, start, end) or _is_list_marker(text, start) or _PROPOSAL.match(text, end):
                 continue
+            # Ordinals: 「2주차」「3번째」「1회차」 number things, they claim nothing.
+            if re.match(r"\s?(?:차|번째|회차)", text[end:end + 4]):
+                continue
             key = (round(number["value"], 4), number["unit"])
             if key in have or (not number["unit"] and key[0] in values):
                 continue
-            if ("number", number["text"]) in seen:
-                continue
-            seen.add(("number", number["text"]))
-            loose = key[0] in values or number["unit"] in _COUNT_UNITS or not number["unit"]
-            findings.append({"kind": "number", "match": number["text"], "grounded": False,
-                             "severity": "check" if loose else "block"})
-    if material:
+            year = number["unit"] == "년" and 2000 <= number["value"] <= 2100
+            loose = key[0] in values or number["unit"] in _COUNT_UNITS or not number["unit"] or year
+            add("number", number["text"], start, False, "check" if loose else "block")
         for match in _WORD_NUMBER.finditer(text):
-            phrase = match.group(0)
-            if ("number", phrase) in seen or _squash(phrase) in squashed:
+            if _squash(match.group(0)) in squashed:
                 continue
-            seen.add(("number", phrase))
-            findings.append({"kind": "number", "match": phrase, "grounded": False, "severity": "block"})
+            add("number", match.group(0), match.start(), False, "block")
     for match in _PLACEHOLDER.finditer(text):
-        findings.append({"kind": "placeholder", "match": match.group(0), "grounded": False,
-                         "severity": "info"})
+        add("placeholder", match.group(0), match.start(), False, "info")
     return findings
+
+
+def scan(text: str, material: str = "", category: str = "general") -> list[dict]:
+    """The findings without spans, each phrase once per kind."""
+    out, seen = [], set()
+    for f in _found(text, material, category):
+        if f["kind"] != "placeholder" and (f["kind"], f["match"]) in seen:
+            continue
+        seen.add((f["kind"], f["match"]))
+        out.append({k: f[k] for k in ("kind", "match", "grounded", "severity")})
+    return out
 
 
 def _material(options: dict) -> str:
@@ -230,6 +255,208 @@ def _material(options: dict) -> str:
             raise ValueError(f"자료 파일을 찾지 못했습니다: {name}")
         text += "\n" + path.read_text(encoding="utf-8", errors="replace")
     return text
+
+
+# ── the server's check (stage: post) ─────────────────────────────────────
+
+#: Product words in the material that make disease wording a block.
+_CATEGORY_WORDS: tuple[tuple[str, re.Pattern], ...] = (
+    ("health_food", re.compile(r"건강\s{0,2}기능\s{0,2}식품|프로바이오틱스|유산균|영양제|비타민|오메가\s{0,2}3|홍삼|콜라겐")),
+    ("cosmetics", re.compile(r"화장품|크림|세럼|에센스|앰플|토너|로션|선크림|클렌징|스킨\s{0,2}케어")),
+    ("medical_device", re.compile(r"의료\s{0,2}기기")),
+    ("food", re.compile(r"식품|음료|카페|베이커리|빵|커피|원두|디저트|메뉴|음식|레스토랑|식당")),
+)
+
+#: What each kind becomes when the copy cannot keep it (`action`): a bracket blank, the word
+#: taken out, the sentence dropped, or a rewrite by the writer with the finding.
+ACTIONS = {"number": "blank", "offer": "blank", "testimonial": "drop", "qualifier": "remove",
+           "superlative": "rewrite", "comparison": "rewrite", "guarantee": "rewrite",
+           "urgency": "rewrite", "medical": "rewrite", "claim": "rewrite"}
+PLACEHOLDERS = {"number": "[수치]", "offer": "[혜택]", "testimonial": "[고객 사례]"}
+KIND_WORDS = {"number": "수치", "offer": "혜택", "testimonial": "후기", "qualifier": "단정어",
+              "superlative": "최상급", "comparison": "비교", "guarantee": "보장", "urgency": "긴급성",
+              "medical": "효능", "claim": "자료에 없는 사실"}
+_SENTENCE = re.compile(r"(?<=[.!?。])\s+")
+#: A list or label head kept when a line's only sentence goes: 「1. 」「- 」「**제목**: 」.
+_HEAD = re.compile(r"^\s{0,8}(?:[-*•·]\s{1,3}|\d{1,3}[.)]\s{1,3}|#{1,6}\s{1,3})?(?:\*{0,2}[^\n:：|]{1,20}\*{0,2}\s{0,2}[:：]\s{0,3})?")
+
+
+def category_of(material: str) -> str:
+    """The product category the material names, for how strict disease wording is."""
+    for name, pattern in _CATEGORY_WORDS:
+        if pattern.search(material or ""):
+            return name
+    return "general"
+
+
+def _judged(computed) -> list[dict]:
+    """The judge's reply in `computed`: `{"unsupported": [{"quote", "why"}]}`."""
+    out = []
+    for row in computed if isinstance(computed, list) else [computed]:
+        if isinstance(row, dict):
+            out += [u for u in row.get("unsupported") or [] if isinstance(u, dict) and str(u.get("quote") or "").strip()]
+    return out
+
+
+#: A short quoted mention: 「즉시」「100%」 named in a note, not used as a claim.
+_MENTION = re.compile(r"「[^「」\n]{1,24}」|“[^“”\n]{1,24}”|\"[^\"\n]{1,24}\"")
+
+
+def _mentioned(line: str, start: int, end: int) -> bool:
+    """The phrase is all (or nearly all) of a short quote: named, not claimed."""
+    return any(m.start() < start and end < m.end() and (m.end() - m.start() - 2) - (end - start) <= 6
+               for m in _MENTION.finditer(line))
+
+
+#: A sentence about the copy rather than in it: what was left out, what to fill in, what not
+#: to write (「무료 체험이 있으면 CTA에 넣으세요」「「최고」는 쓰지 않았습니다」).
+_NOTE = re.compile(r"있으면|없으면|않았|않습니다|않고|쓰지|넣지|빼고|뺐|제외|대신|금지|불가|피했|바꾸지|확장하지|쓸 수 없")
+#: Endings and particles that say nothing about the product.
+_STOP = {"있습", "합니", "됩니", "입니", "습니", "하는", "있는", "니다", "에서", "으로", "하고", "해서", "하면", "에게"}
+
+
+def _note(line: str, start: int) -> bool:
+    """The finding sits in a sentence that talks about the copy: a note, not a claim."""
+    head = max(line.rfind(". ", 0, start), line.rfind("다 ", 0, start))
+    tail = min((i for i in (line.find(". ", start), line.find("다.", start)) if i >= 0), default=len(line))
+    return bool(_NOTE.search(line[head + 1: tail + 2]))
+
+
+def _stated(quote: str, squashed: str) -> bool:
+    """Every word of a judged quote is in the material (its two-letter stems, every number): the
+    judge misread, the material says it."""
+    words = [w[:2] for w in re.findall(r"[가-힣]{2,}", quote) if w[:2] not in _STOP]
+    numbers = re.findall(r"\d+", quote)
+    return bool(words) and all(w in squashed for w in words) and all(n in squashed for n in numbers)
+
+
+def check(text: str, material: str, computed=None, options=None) -> list[dict]:
+    """Findings to act on, each `{"kind", "text", "line", "start", "end", "placeholder", "action", "why"}`.
+
+    Ungrounded numbers, offers, testimonials and qualifiers (fixed by code); ungrounded
+    superlatives, comparisons, guarantees, urgency, disease wording, and the statements the
+    judge (in `computed`) found no source for (rewritten by the writer, else fixed by code)."""
+    options = dict(options or {})
+    #: The kinds to act on (all by default); a plan's numbers and ranks are its own decisions.
+    kinds = set(options.get("kinds") or ACTIONS)
+    category = str(options.get("category") or category_of(material))
+    if category not in CATEGORIES:
+        category = "general"
+    lines = (text or "").split("\n")
+    out: list[dict] = []
+    for k, line in enumerate(lines):
+        taken: list[tuple[int, int]] = []
+        for f in sorted(_found(line, material, category), key=lambda f: (f["start"], -(f["end"] - f["start"]))):
+            kind = f["kind"]
+            if kind not in ACTIONS or kind not in kinds or f["grounded"]:
+                continue
+            if kind == "qualifier" and f["severity"] == "info":
+                continue
+            # A review the person writes is a 후기; only quoted, attributed praise or figures count.
+            if kind == "testimonial" and re.fullmatch(r"(?:고객|사용)\s*후기", f["match"]):
+                continue
+            if kind not in ("qualifier",) and f["severity"] != "block":
+                continue
+            if any(a < f["end"] and f["start"] < b for a, b in taken) or _mentioned(line, f["start"], f["end"]):
+                continue
+            if kind in ("offer", "qualifier", "superlative", "comparison", "guarantee", "urgency") and _note(line, f["start"]):
+                continue
+            taken.append((f["start"], f["end"]))
+            out.append({"kind": kind, "text": f["match"], "line": k, "start": f["start"], "end": f["end"],
+                        "placeholder": PLACEHOLDERS.get(kind, ""), "action": ACTIONS[kind],
+                        "why": GUIDE.get(kind, {}).get("why", "")})
+    squashed = _squash(material)
+    for row in _judged(computed) if "claim" in kinds else []:
+        quote = " ".join(str(row["quote"]).split())
+        if _stated(quote, squashed):
+            continue
+        for k, line in enumerate(lines):
+            at = line.find(quote)
+            if at < 0 or _in_placeholder(line, at, at + len(quote)):
+                continue
+            end = at + len(quote)
+            over = [f for f in out if f["line"] == k and f["start"] < end and at < f["end"]]
+            # The judge's span wins over code's smaller findings inside it.
+            if any(f["action"] == "rewrite" and not (at <= f["start"] and f["end"] <= end) for f in over):
+                continue
+            out = [f for f in out if f not in over]
+            out.append({"kind": "claim", "text": quote, "line": k, "start": at, "end": end,
+                        "placeholder": "", "action": "rewrite",
+                        "why": str(row.get("why") or "")[:200]})
+            break
+    return out
+
+
+def _fix_line(line: str, items: list[dict]) -> str | None:
+    """The line with its findings fixed; None when nothing of it is left."""
+    # Table cells: each value blanked in place; a row whose text cells all went is dropped.
+    if line.lstrip().startswith("|"):
+        for f in sorted(items, key=lambda f: -f["start"]):
+            line = line[: f["start"]] + _word(f) + line[f["end"]:]
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if any(f["action"] in ("drop", "rewrite") for f in items) and not any(
+                len(c) > 8 and not _PLACEHOLDER.fullmatch(c) for c in cells):
+            return None
+        return re.sub(r"(?<=\S)[ \t]{2,}", " ", line)
+    head = _HEAD.match(line).group(0)
+    parts, pos = [], len(head)
+    for piece in re.split(r"((?<=[.!?。])\s+)", line[len(head):]):
+        parts.append((pos, piece))
+        pos += len(piece)
+    sentences = sum(1 for _, p in parts if p.strip())
+    kept = []
+    for start, piece in parts:
+        mine = [f for f in items if start <= f["start"] < start + max(1, len(piece))]
+        if not mine:
+            kept.append(piece)
+            continue
+        if any(f["action"] in ("drop", "rewrite") for f in mine):
+            # The sentence goes; a line of one sentence (a list item, a headline) goes whole.
+            if sentences == 1:
+                return None
+            kept.append("")
+            continue
+        for f in sorted(mine, key=lambda f: -f["start"]):
+            piece = piece[: f["start"] - start] + _word(f) + piece[f["end"] - start:]
+        kept.append(piece)
+    body = re.sub(r"(?<=\S)[ \t]{2,}", " ", "".join(kept)).strip()
+    body = re.sub(r"[ \t]+([,.!?])", r"\1", body)
+    if not body:
+        return None
+    return head + body
+
+
+def _word(f: dict) -> str:
+    """What stands where the finding was: nothing for a qualifier, else its blank."""
+    return "" if f["action"] == "remove" else (f["placeholder"] or "[확인 필요]")
+
+
+def fix(text: str, findings: list[dict]) -> str:
+    """`text` with each finding fixed by code: a bracket blank, the word taken out, or the
+    sentence dropped (a testimonial, a statement no source holds) when its line keeps others."""
+    by_line: dict[int, list[dict]] = {}
+    for f in findings or []:
+        by_line.setdefault(int(f["line"]), []).append(f)
+    out = []
+    for k, line in enumerate((text or "").split("\n")):
+        if k not in by_line:
+            out.append(line)
+        elif (fixed := _fix_line(line, by_line[k])) is not None:
+            out.append(fixed)
+    return "\n".join(out)
+
+
+def summary(findings: list[dict]) -> str:
+    """「근거 없는 표현 3개 (수치 1 · 최상급 2): 「업계 1위」, …」."""
+    if not findings:
+        return ""
+    counts: dict[str, int] = {}
+    for f in findings:
+        word = KIND_WORDS.get(f["kind"], f["kind"])
+        counts[word] = counts.get(word, 0) + 1
+    kinds = " · ".join(f"{word} {n}" for word, n in counts.items())
+    shown = ", ".join(dict.fromkeys(f"「{f['text'].strip()[:30]}」" for f in findings))
+    return f"근거 없는 표현 {len(findings)}개 ({kinds}): {shown[:400]}"
 
 
 def main(argv: list[str]) -> int:

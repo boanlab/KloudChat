@@ -75,6 +75,8 @@ class Request:
     check_material: str = ""
     #: What the turn's tools printed.
     tool_outputs: list[str] = field(default_factory=list)
+    #: Catalogue keys of the skills on the turn (switched on or the agent's).
+    skill_keys: tuple[str, ...] = ()
     #: Whether this turn writes the first draft (the `pre` checks ask only then).
     first_draft: bool = False
     # A revision reads these.

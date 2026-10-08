@@ -4,8 +4,10 @@ description: 광고·홍보 문구를 채널 글자 수 한도(네이버·카카
 when_to_use: 써 둔 광고 문구·SNS 글·랜딩 카피가 채널 한도 안인지, 표시광고법상 위험한 표현이나 자료에 없는 수치가 있는지 확인할 때. 카피라이팅·광고 소재·헤드라인·SNS·콜드메일 스킬이 마지막에 부른다.
 kinds: [chat]
 required_tools: [run_skill_script]
-version: 0.1.0
+version: 0.2.0
 status: draft
+stage: post
+entry: claims
 ---
 Check copy with code, not by eye. Character counts and claim scans written by the model are wrong too often.
 
@@ -33,6 +35,14 @@ A table `| 문구 | 채널·필드 | 글자 수/한도 | 판정 |` from the `len
 ## Checklist
 - [ ] Counts and limits copied from the script.
 - [ ] 0 `block` findings left, or each one explained to the user with what evidence would allow it.
+
+## Server check (stage: post)
+When one of the copy skills is on the turn, the server runs this check over the finished chat answer as the `check:copy` stage — the model is not left to call it.
+- A judge reads the answer against the material once with `resources/judge.md` (fixed JSON reply: `unsupported` statements with exact quotes, and the pieces of copy per channel field the request names) and the reply is passed to `claims.check` in `computed`. A quote whose every word the material holds is dropped as a misreading.
+- `claims.check(text, material, computed=None, options=None)` → findings `{"kind", "text", "line", "start", "end", "placeholder", "action", "why"}`; `action` is `blank` (number → 「[수치]」, offer → 「[혜택]」), `remove` (qualifier such as 「매일」「실시간」), `drop` (a quoted, attributed testimonial: the sentence goes) or `rewrite` (superlative, comparison, guarantee, urgency, disease wording, the judge's statements). Short quoted mentions, notes about the copy (「…은 쓰지 않았습니다」「…이 있으면 넣으세요」) and ordinals (「2주차」) are not findings. `options.kinds` narrows the kinds: a content plan keeps its own numbers, dates and ranks.
+- `claims.fix(text, findings)` fixes by code: a value blanked, a word taken out, a sentence dropped, a one-sentence list item or headline row removed; `claims.summary(findings)` is the step line.
+- `length.targets(request)` names the limits (channel fields up to 150 characters, or a stated 「N자 이내」); `length.table_items` reads the pieces off table columns headed by a field (제목·설명·기본 문구 …), the judge adds the rest; `length.measured` measures them and `length.restate_counts` puts the measured counts beside them.
+- Order: code fixes → one rewrite by the writer with the `rewrite` findings and the pieces over a hard limit → scan again; what the scan finds and the judge's quotes the writer kept word for word are fixed by code. Both counts go in the 「카피 점검」 step.
 
 ---
 출처: coreyhaines31/marketingskills (MIT, © 2025 Corey Haines, commit b9ba399dd88b082b926e261e8ccfb843d20aa066)의 ad-creative·social 「Platform Specs」 검증 단계와 copywriting 「Honest over sensational」 원칙을 국내 채널 한도·표시광고법 점검 스크립트로 옮겼다. 한도 값의 출처는 `length` 의 `{"list": true}` 결과에 있다.

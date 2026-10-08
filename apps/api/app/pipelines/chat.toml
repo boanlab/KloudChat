@@ -1,6 +1,7 @@
 # A chat answer after the agent loop: normalized, traced by the agent's check skills,
-# measured when it carries cover-letter blocks, and swapped in when anything changed.
+# checked as copy when a copy skill wrote it, measured when it carries cover-letter blocks,
+# and swapped in when anything changed.
 
 name = "chat"
 pre = ["check:gaps", "gap-card"]
-finish = ["answer-normalize", "check:answer-grounding", "text-fit", "answer-replace"]
+finish = ["answer-normalize", "check:answer-grounding", "check:copy", "text-fit", "answer-replace"]

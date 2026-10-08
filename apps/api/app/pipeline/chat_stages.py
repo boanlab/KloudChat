@@ -120,7 +120,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                messages: list[dict], material: str,
                check_keys: tuple[str, ...], check_facts: str, check_material: str,
                tool_outputs: list[str], judge: str, kept_steps: list[dict],
-               usage: dict[str, Any]) -> Bundle:
+               usage: dict[str, Any], skill_keys: tuple[str, ...] = ()) -> Bundle:
     """A chat answer's bundle: the streamed answer, the turn's words and material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
@@ -128,6 +128,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
         check_keys=tuple(check_keys), model_info=model, actual_model=actual_model,
         first_message=first_message, messages=list(messages), check_facts=check_facts,
         check_material=check_material, tool_outputs=list(tool_outputs),
+        skill_keys=tuple(skill_keys),
     )
     return Bundle(
         request=req, material=Material(given=material),

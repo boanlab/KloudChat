@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 
 #: Fact sets keyed by agent rather than by format: the chat agents write no `doc_format`.
 _AGENT_FACTS = {"career-docs": "career-docs", "data-analysis": "data-analysis"}
+#: `post` checks run by a stage of their own (`check:copy`), not by `ground`.
+OWN_STAGE = frozenset({"copy-check"})
 #: The question ids the gap card uses, so answers are told from the file questions.
 GAP_PREFIX = "gap:"
 
@@ -173,6 +175,8 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
     """The attached `post` checks over `text`: check, fix once, check again."""
     outcome = Outcome(text)
     for key in of_stage(keys, "post"):
+        if key in OWN_STAGE:
+            continue
         try:
             module = skill_scripts.entry(key)
             found = module.check(outcome.text, material, computed, options)

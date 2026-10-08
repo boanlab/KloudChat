@@ -9,7 +9,8 @@ computed, blanks the rest, and checks again. Here each is a stage a pipeline fil
 - `gap-card` — the card those findings put up before writing, a stage the run waits at;
 - `check:grounding` / `check:grounding-again` — the attached `post` checks over a report's
   sections, before the verify stage and again after its rewrites;
-- `check:answer-grounding` — the same over a chat answer.
+- `check:answer-grounding` — the same over a chat answer;
+- `check:copy` — a chat answer written with a copy skill, checked as copy (`copy-check`).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from app.core.config import settings
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context, Wait
-from app.services import check_skills, key_figures
+from app.services import check_skills, copy_check, key_figures
 
 
 class GapCheck(Base):
@@ -185,6 +186,49 @@ class AnswerGrounding(Base):
         yield {"type": "step", **ground_step}
 
 
+class CopyCheck(Base):
+    """A chat answer written with a copy skill, checked as copy (`copy-check`): unsupported
+    numbers, offers, testimonials and qualifiers fixed by code; risky claims, statements no
+    source holds and pieces over their channel limit rewritten once by the writer, then
+    checked again (`services/copy_check.py`)."""
+
+    name = "check:copy"
+    kind = "check"
+    reads = ("request", "material.given", "document.answer")
+    writes = ("document.answer", "document.kept_steps")
+
+    def skip(self, bundle: Bundle) -> str:
+        req = bundle.request
+        if not copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs):
+            return "no copy skill on this turn"
+        return ""
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        from app.services import report
+
+        req, doc = bundle.request, bundle.document
+        yield {"type": "step", "category": "thinking", "id": "copy_check",
+               "label": "카피 점검 중", "status": "running"}
+        outcome = await copy_check.run(
+            doc.answer, request=req.text,
+            material=f"{bundle.material.given}\n{req.check_material}",
+            complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
+            usage=bundle.usage,
+            skills=copy_check.on_turn((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs))
+        doc.answer = outcome.text
+        still = [r for r in outcome.rows if r.get("hard") and (r["over"] or r["under"])]
+        step = {
+            "category": "thinking", "id": "copy_check",
+            "label": (f"카피 점검: 근거 없는 표현 {len(outcome.found)}개"
+                      + (f" · 한도 초과 {len(outcome.over)}개" if outcome.over else "")
+                      if outcome.changed else "카피 점검: 고칠 것 없음"),
+            "status": "error" if still else "done",
+            **({"detail": outcome.detail[:1500]} if outcome.detail else {}),
+        }
+        doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "copy_check"] + [step]
+        yield {"type": "step", **step}
+
+
 for _stage in (GapCheck(), GapCard(), GroundCheck("check:grounding", again=False),
-               GroundCheck("check:grounding-again", again=True), AnswerGrounding()):
+               GroundCheck("check:grounding-again", again=True), AnswerGrounding(), CopyCheck()):
     registry.register(_stage)

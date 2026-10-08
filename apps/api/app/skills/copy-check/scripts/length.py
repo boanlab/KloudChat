@@ -267,6 +267,139 @@ def listing(channel: str | None) -> list[dict]:
     return rows
 
 
+# ── the server's check: which channel a request names, and its limits ────────
+
+#: Channel names in a request (bounded patterns), first match per channel.
+_CHANNEL_WORDS: tuple[tuple[str, re.Pattern], ...] = (
+    ("naver_powerlink", re.compile(r"파워\s{0,2}링크|네이버\s{0,2}(?:검색\s{0,2})?광고")),
+    ("kakao_keyword", re.compile(r"카카오\s{0,2}키워드")),
+    ("kakao_display", re.compile(r"카카오\s{0,2}모먼트|모먼트\s{0,2}(?:네이티브|디스플레이)")),
+    ("google_rsa", re.compile(r"반응형\s{0,2}검색\s{0,2}광고|구글\s{0,2}(?:검색\s{0,2})?광고|google\s{0,2}ads|\bRSA\b", re.I)),
+    ("google_video", re.compile(r"유튜브\s{0,2}(?:동영상\s{0,2})?광고|구글\s{0,2}동영상\s{0,2}광고")),
+    ("meta", re.compile(r"메타\s{0,2}(?:\(|광고)|페이스북\s{0,2}광고|인스타(?:그램)?\s{0,2}광고|\bmeta\s{0,2}ads?\b", re.I)),
+    ("youtube", re.compile(r"유튜브\s{0,2}(?:영상\s{0,2})?제목")),
+    ("email", re.compile(r"(?:메일|뉴스레터)\s{0,2}제목")),
+)
+#: Fields whose text a judge can lift out of an answer whole: short ones.
+_SHORT = 150
+FIELD_WORDS = {"title": "제목", "description": "설명", "extra_title": "추가제목", "promo_text": "홍보문구",
+               "sublink": "서브링크", "profile_name": "프로필명", "slide_title": "슬라이드 제목",
+               "slide_price": "슬라이드 가격", "headline": "제목(헤드라인)", "long_headline": "긴 제목",
+               "path": "표시 경로", "cta": "행동 유도 문구", "primary_text": "기본 문구",
+               "business_name": "업체명", "subject": "메일 제목", "preheader": "미리보기 문구",
+               "item": "후보 하나하나"}
+#: 「30자 안으로」「공백 포함 40자 이내」: a limit the person set for every piece.
+_STATED = re.compile(r"(?<!\d)(\d{1,4})\s{0,2}(?:자|글자)\s{0,2}(?:안으로|안쪽|이내|이하|미만|까지|내로|를?\s{0,2}넘지)")
+
+
+def targets(request: str) -> list[dict]:
+    """The limits a request names: each channel's short fields, and a stated 「N자 이내」.
+
+    Each row: `key` (`channel.field`), `name`, `field`, `word`, `limit`, `unit`, `hard`, `min`."""
+    out: list[dict] = []
+    text = request or ""
+    for channel, pattern in _CHANNEL_WORDS:
+        if not pattern.search(text):
+            continue
+        spec = SPECS[channel]
+        for name, rule in spec["fields"].items():
+            if not rule.get("limit") or rule["limit"] > _SHORT:
+                continue
+            out.append({"key": f"{channel}.{name}", "name": spec["name"], "field": name,
+                        "word": FIELD_WORDS.get(name, name), "limit": rule["limit"],
+                        "unit": rule.get("unit", "chars"), "hard": rule.get("hard", True),
+                        **({"min": rule["min"]} if rule.get("min") else {})})
+    stated = _STATED.search(text)
+    if stated and 2 <= int(stated.group(1)) <= _SHORT:
+        # The person's own limit stands in for the channel's recommendations.
+        out = [row for row in out if row["hard"]]
+        out.append({"key": "stated.item", "name": "요청", "field": "item", "word": FIELD_WORDS["item"],
+                    "limit": int(stated.group(1)), "unit": "chars", "hard": True})
+    return out
+
+
+def measured(items: list[dict], rows: list[dict]) -> list[dict]:
+    """`items` (`{"key", "text"}`) measured against `rows` from `targets`; unknown keys skipped."""
+    by_key = {row["key"]: row for row in rows}
+    out = []
+    for item in items:
+        row = by_key.get(str(item.get("key") or ""))
+        text = str(item.get("text") or "").strip()
+        if row is None or not text:
+            continue
+        n = count(text, row["unit"])
+        out.append({**row, "text": text, "count": n, "over": max(0, n - row["limit"]),
+                    "under": max(0, row.get("min", 0) - n)})
+    return out
+
+
+#: Table headers that name a field: a column of 「제목」 cells is the channel's titles.
+FIELD_HEADERS = {
+    "title": ("제목", "타이틀"), "headline": ("제목", "헤드라인", "타이틀"), "description": ("설명",),
+    "extra_title": ("추가제목", "추가 제목"), "promo_text": ("홍보문구", "홍보 문구"),
+    "profile_name": ("프로필명",), "slide_title": ("슬라이드 제목",), "primary_text": ("기본 문구", "본문"),
+    "long_headline": ("긴 제목",), "subject": ("제목", "메일 제목"), "item": ("헤드라인", "제목", "후보", "문구"),
+}
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def table_items(text: str, rows: list[dict]) -> list[dict]:
+    """Pieces of copy read off the answer's tables: each cell under a header that names one of
+    `rows`' fields, as `{"key", "text"}` (a hard limit wins when two fields share a header)."""
+    if not rows:
+        return []
+    ranked = sorted(rows, key=lambda r: (not r.get("hard", True), r["key"] != "stated.item"))
+    out: list[dict] = []
+    lines = (text or "").split("\n")
+    k = 0
+    while k < len(lines):
+        line = lines[k]
+        if not line.lstrip().startswith("|") or k + 1 >= len(lines) or not re.match(r"\s{0,8}\|[\s:|-]{3,}$", lines[k + 1]):
+            k += 1
+            continue
+        keys = []
+        for header in _cells(line):
+            word = re.sub(r"[*`]", "", header).strip()
+            keys.append(next((r["key"] for r in ranked if word in FIELD_HEADERS.get(r["field"], ())), None))
+        k += 2
+        while k < len(lines) and lines[k].lstrip().startswith("|"):
+            for key, cell in zip(keys, _cells(lines[k]), strict=False):
+                cell = re.sub(r"^\*\*|\*\*$", "", cell).strip().strip("「」\"")
+                if key and cell and not re.fullmatch(r"[\d\s,.자]+|-+", cell):
+                    out.append({"key": key, "text": cell})
+            k += 1
+    return out
+
+
+#: A count the answer wrote beside a piece: 「(14자)」, or a table cell holding a number alone.
+_PAREN_COUNT = re.compile(r"[ \t]{0,2}[(（][ \t]{0,2}(?:공백\s{0,2}포함\s{0,2})?(\d{1,4})[ \t]{0,2}(?:자|글자)[ \t]{0,2}[)）]")
+
+
+def restate_counts(text: str, rows: list[dict]) -> str:
+    """The answer's own counts beside each measured piece replaced by the measured ones."""
+    lines = (text or "").split("\n")
+    for row in rows:
+        piece, n = row["text"], str(row["count"])
+        for k, line in enumerate(lines):
+            at = line.find(piece)
+            if at < 0:
+                continue
+            end = at + len(piece)
+            tail = line[end:]
+            m = _PAREN_COUNT.match(tail)
+            # A table cell holding the piece whole, then a cell holding a number alone.
+            cell = re.match(r"(?:\*\*)?[ \t]{0,3}\|[ \t]{0,3}(\d{1,4})[ \t]{0,3}(?:자)?[ \t]{0,3}(?=\|)", tail)
+            whole = re.search(r"\|[ \t]{0,3}(?:\*\*)?$", line[:at]) and re.match(r"(?:\*\*)?[ \t]{0,3}\|", tail)
+            if m:
+                lines[k] = line[:end] + tail[: m.start(1)] + n + tail[m.end(1):]
+            elif line.lstrip().startswith("|") and cell and whole:
+                lines[k] = line[:end] + tail[: cell.start(1)] + n + tail[cell.end(1):]
+    return "\n".join(lines)
+
+
 def main(argv: list[str]) -> int:
     try:
         options = json.loads(argv[1]) if len(argv) > 1 else {}
