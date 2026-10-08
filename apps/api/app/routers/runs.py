@@ -38,7 +38,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["runs"])
 
 #: Flows whose runs keep snapshots and store their own result.
-RERUNNABLE = ("write", "revise", "make")
+RERUNNABLE = ("write", "revise", "make", "compose")
 _MAX_ANSWER = 2000
 
 
@@ -123,12 +123,14 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
     start = payload.from_stage
     if start not in pipeline_runs.rerunnable_from(run.snapshots):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stage_not_rerunnable")
+    composed = run.flow == "compose"
     try:
-        pipe = pipeline_registry.pipeline(run.pipeline)
+        pipe = None if composed else pipeline_registry.pipeline(run.pipeline)
     except KeyError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="run_not_rerunnable") from None
-    if session.kind not in (SessionKind.report, SessionKind.slides):
+    if session.kind not in ((SessionKind.report, SessionKind.chat) if composed
+                            else (SessionKind.report, SessionKind.slides)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="run_not_rerunnable")
     if run.artifact_id and session.artifact_id and run.artifact_id != session.artifact_id:
         # The document on screen is another one now; a rerun would land on it.
@@ -164,6 +166,18 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
         db.add(user)
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
+    if composed:
+        # A user pipeline's run: its own steps, as they were when it ran.
+        from app.routers import user_pipelines
+
+        return StreamingResponse(
+            sessions._survive_disconnect(await user_pipelines.rerun(
+                session, run, start=start, answers=answers, user=user, db=db, model=model,
+                api_key=api_key)),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                     "X-Accel-Buffering": "no"},
+        )
     try:
         work = pipeline_runs.restore(run.params["request"], run.snapshots, before=start,
                                      api_key=api_key)

@@ -234,7 +234,8 @@ async function fixture(page: Page, testInfo: TestInfo) {
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return route.fulfill({ json: [] })
     if (method === 'GET' && (path.startsWith('/sessions/') && (path.endsWith('/messages') || path.endsWith('/jobs')))) return route.fulfill({ json: [] })
     if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/templates', '/connectors', '/connectors/catalog',
-      '/jobs', '/designs', '/prompt-templates', '/shares', '/design-templates', '/skills/store'].includes(path)) return route.fulfill({ json: [] })
+      '/jobs', '/designs', '/prompt-templates', '/shares', '/design-templates', '/skills/store',
+      '/user-pipelines', '/user-pipelines/store'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
@@ -368,7 +369,10 @@ test('agents: pipeline chain and the 흐름 tab', async ({ page }, testInfo) => 
   await shot('agent-card')
   await page.getByRole('button', { name: '편집', exact: true }).first().click()
   await page.getByRole('tab', { name: '흐름' }).click()
-  await expect(page.getByRole('button', { name: '복제해서 편집 (준비 중)' })).toBeDisabled()
+  // A read-only summary; flows are edited on the 「흐름」 page (user-pipelines.spec.ts).
+  const summary = page.getByTestId('agent-flow-summary')
+  await expect(summary.getByLabel('작업 흐름: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible()
+  await expect(summary.getByRole('link', { name: '흐름 편집' })).toBeVisible()
   await shot('agent-flow-tab')
   if (testInfo.project.name !== 'phone') {
     await page.keyboard.press('Escape')

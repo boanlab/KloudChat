@@ -68,7 +68,7 @@ _DDL = (
         model TEXT DEFAULT '',
         routing_mode TEXT,
         artifact_id TEXT,
-        render_template_id TEXT,
+        render_template_id TEXT, pipeline_id TEXT,
         index_key TEXT,
         pending TEXT,
         summary TEXT,

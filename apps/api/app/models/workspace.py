@@ -328,6 +328,8 @@ class Agent(SQLModel, table=True):
     #: a shared or seeded agent may name its owner's design, and the user's own design of
     #: the same name is worn instead (none when they hold none).
     design_system_id: str | None = Field(default=None)
+    #: A user pipeline (`UserPipeline`) the agent's turns run instead of its shipped flow.
+    pipeline_id: str | None = Field(default=None)
     #: `open`: a copy carries the prompt. `sealed`: a copy runs on the
     #: original's prompt without holding it.
     share_mode: str = Field(default="open")
@@ -519,6 +521,41 @@ class Template(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 
+# ── user pipelines ─────────────────────────────────────────────────────
+
+
+class UserPipeline(SQLModel, table=True):
+    """A pipeline a person composed from agents, skills and checks (`app.pipeline.compose`).
+
+    Private to its owner until an administrator approves it for the organisation: `review`
+    goes "" → `pending` (submitted) → `approved` (shown in the store, `visibility` org) or
+    `rejected` (with `review_note`). An edit sends an approved pipeline back to private."""
+
+    __tablename__ = "user_pipelines"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    owner_id: str = Field(foreign_key="users.id", index=True)
+    name: str
+    description: str = Field(default="")
+    #: The shipped pipeline (`app/pipelines/*.toml`) or the shared one it was copied from.
+    base: str | None = Field(default=None)
+    origin_id: str | None = Field(default=None, index=True)
+    #: `[{id, kind, ref, settings}]`, validated by `compose.validate` on every write.
+    stages: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: `private` or `org`; org only through approval.
+    visibility: str = Field(default="private")
+    #: "" · pending · approved · rejected
+    review: str = Field(default="")
+    review_note: str = Field(default="")
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: Counts every saved edit; a run keeps the version it ran.
+    version: int = Field(default=1)
+    installs: int = Field(default=0)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
 __all__ = [
     "Job",
     "JobStatus",
@@ -541,4 +578,5 @@ __all__ = [
     "StoredFile",
     "Template",
     "Transport",
+    "UserPipeline",
 ]

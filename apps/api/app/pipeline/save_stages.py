@@ -41,7 +41,9 @@ def rerun_note(turn: dict[str, Any]) -> str:
     from app.pipeline.labels import label
 
     stage = str(turn.get("rerun_from") or "")
-    return f"「{label(stage)}」 단계부터 다시 만들었습니다." if stage else ""
+    # A composed step names itself (`rerun_label`); a shipped stage by its registry label.
+    name = str(turn.get("rerun_label") or "") or label(stage)
+    return f"「{name}」 단계부터 다시 만들었습니다." if stage else ""
 
 
 class ReportSave(Base):

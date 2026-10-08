@@ -334,6 +334,82 @@ export interface DocMarks {
   sections: { sectionId: string; heading?: string; spans: DocMarkSpan[] }[]
 }
 
+/* ── user pipelines ─────────────────────────────────────────────────── */
+
+/** What a step of a user pipeline is. */
+export type PipelineStepKind = 'agent' | 'skill' | 'check' | 'review' | 'human' | 'export'
+
+/** One step of a user pipeline, as stored. */
+export interface PipelineStep {
+  id: string
+  kind: PipelineStepKind
+  ref: string
+  settings: {
+    instruction?: string
+    catalogKey?: string
+    model?: string
+    repair?: boolean
+    focus?: string
+    formats?: string[]
+  }
+  /** Korean name, from the server. */
+  title?: string
+  /** An agent step: `document` or `answer`. */
+  output?: string
+}
+
+/** One problem with a pipeline's order; `step` is 1-based, 0 for the whole pipeline. */
+export interface PipelineProblem {
+  step: number
+  code: string
+  message: string
+}
+
+export interface PipelineVerdict {
+  ok: boolean
+  surface: '' | 'report' | 'chat'
+  problems: PipelineProblem[]
+  warnings: PipelineProblem[]
+  titles?: string[]
+}
+
+/** A pipeline a person composed; shared through approval. */
+export interface UserPipeline {
+  id: string
+  name: string
+  description: string
+  base: string | null
+  originId: string | null
+  stages: PipelineStep[]
+  visibility: 'private' | 'org'
+  review: '' | 'pending' | 'approved' | 'rejected'
+  reviewNote: string
+  reviewedAt: string | null
+  version: number
+  installs: number
+  ownerId: string
+  ownerName: string
+  surface?: '' | 'report' | 'chat'
+  problems?: PipelineProblem[]
+  warnings?: PipelineProblem[]
+  boundAgents: { id: string; name: string }[]
+  createdAt: string | null
+  updatedAt: string | null
+  /** Store rows only. */
+  installed?: boolean
+  mine?: boolean
+}
+
+/** What 「+ 단계 추가」 offers besides agents. */
+export interface PipelineCatalogue {
+  maxSteps: number
+  skills: { ref: string; name: string; description: string; summary: string }[]
+  checks: { ref: string; name: string; description: string; needs: string[] }[]
+  human: { ref: string; name: string; description: string }[]
+  exportFormats: string[]
+  reviewModels: { id: string; label: string }[]
+}
+
 /** A pipeline definition, read-only (editing is phase 3). */
 export interface PipelineDefinition {
   name: string

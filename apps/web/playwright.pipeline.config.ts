@@ -4,7 +4,7 @@ import base from './playwright.config'
 // Pipeline stage screens against fixture data only; nothing reaches a server.
 export default defineConfig({
   ...base,
-  testMatch: ['pipeline-stages.spec.ts'],
+  testMatch: ['pipeline-stages.spec.ts', 'user-pipelines.spec.ts'],
   reporter: process.env.CI ? 'github' : 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5204', trace: 'retain-on-failure' },
   webServer: {

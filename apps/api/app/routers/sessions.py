@@ -3546,6 +3546,12 @@ async def send_message(
     agent_key = await _agent_catalog_key(db, agent_row)
     check_keys = check_skills.attached(
         agent_key=agent_key, template_checks=render_template_checks(session))
+    # A conversation bound to a user pipeline asks through its own steps (`human:gaps`).
+    from app.routers import user_pipelines
+
+    user_pipe = await user_pipelines.bound(db, user, session, agent_row)
+    if user_pipe is not None:
+        check_keys = ()
     facts = check_skills.fact_set(workspace.doc_format, agent_key)
     first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
@@ -4166,6 +4172,24 @@ async def send_message(
                 },
             )
 
+    if user_pipe is not None and route in ("report", "chat"):
+        # The person's own pipeline runs the turn (`user_pipelines`), or resumes it.
+        outbound = content
+        if privacy_resolution is not None and privacy_resolution.mask_outbound:
+            outbound = _mask_list([content], legacy=policy.pii_masking)[0]
+        elif policy.pii_masking:
+            outbound = _mask_text_tree([content], governance.mask_legacy)[0]
+        return await user_pipelines.turn_response(
+            db, user, session, user_pipe, pending=pending, approved_plan=approved_plan,
+            proceed_as_is=proceed_as_is, request=outbound, model=model,
+            outline_model=outline_model, api_key=api_key,
+            routing=(privacy_resolution.routing if privacy_resolution else document_routing),
+            trusted=list(trusted_context), untrusted=[*turn_context, *untrusted_context],
+            design_tokens=workspace.design_tokens, skills_event=skills_event,
+            context_steps=context_steps, web_search=effective_web_search and not strict_local,
+            attachments=list(payload.attachments or []), catalogue=catalogue_models,
+        )
+
     if session.kind is SessionKind.report:
         return StreamingResponse(
             _survive_disconnect(
@@ -4415,6 +4439,7 @@ async def send_message(
                 ),
                 preflight_tool=preflight_tool,
                 check_keys=tuple(check_skills.of_stage(check_keys, "post")),
+                skill_keys=tuple(s.catalog_key for s in workspace.applied_skills if s.catalog_key),
                 check_facts=facts,
                 check_material="\n".join(workspace.untrusted),
                 agent_key=agent_key or "",
@@ -4821,6 +4846,8 @@ async def _run_turn(
     superseded_ids: list[str] | None = None,
     #: The agent's `post` check skills, run over the finished answer (`check_skills`).
     check_keys: tuple[str, ...] = (),
+    #: Catalogue keys of the skills on the turn; a copy skill brings the copy check.
+    skill_keys: tuple[str, ...] = (),
     #: The agent's fact set, which sets how strict the trace is.
     check_facts: str = "",
     #: Attached and carried files' text: what the answer's values may come from too.
@@ -5074,7 +5101,7 @@ async def _run_turn(
             first_message=first_user_message, messages=messages,
             material=_material_text(messages), check_keys=check_keys, check_facts=check_facts,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
-            kept_steps=steps, usage=usage,
+            kept_steps=steps, usage=usage, skill_keys=skill_keys,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")

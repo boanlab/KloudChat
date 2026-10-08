@@ -1,7 +1,6 @@
 import {
   Calculator,
   ChevronRight,
-  Copy,
   Download,
   FolderOpen,
   MessageCircleQuestion,
@@ -10,7 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Fragment } from 'react'
-import { Badge, Button } from '@/components/ui'
+import { Badge } from '@/components/ui'
 import { CHAIN_LABEL, FLOW_LABEL, KIND_LABEL, chainStepOf, orderedFlows, pipelineChain, type ChainStep } from '@/lib/stages'
 import { useAgentPipeline } from '@/lib/useAgentPipeline'
 import { useT } from '@/lib/useT'
@@ -58,7 +57,7 @@ export function PipelineChain({ agentId, className, iconsOnly = false }: { agent
   )
 }
 
-/** The agent editor's 「흐름」 tab: each flow's stages with their kind and checks. Read-only for now. */
+/** An agent's shipped pipeline: each flow's stages with their kind and checks. Locked; `AgentFlowTab` copies it to edit. */
 export function PipelineFlowView({ agentId }: { agentId: string }) {
   const t = useT()
   const pipeline = useAgentPipeline(agentId)
@@ -75,10 +74,6 @@ export function PipelineFlowView({ agentId }: { agentId: string }) {
           </p>
           <PipelineChain agentId={agentId} className="mt-1" />
         </div>
-        <Button size="sm" disabled title={t('흐름 편집은 준비 중입니다.')}>
-          <Copy size={13} />
-          {t('복제해서 편집 (준비 중)')}
-        </Button>
       </div>
       {pipeline.checks && pipeline.checks.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted">

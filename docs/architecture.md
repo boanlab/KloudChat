@@ -850,7 +850,7 @@ bill through the router module, so tests that replace `sessions.SessionLocal` re
 revision, report, deck, chat); its record opens the stream. A stored report carries
 `data.marks` (placeholders, values the grounding check blanked with what stood there, what
 the verify stage left), found again in the current body by `GET /artifacts/{id}/marks`.
-`GET /pipelines`, `/pipelines/{name}` and `/agents/{id}/pipeline` read the definitions.
+`GET /pipelines`, `/pipelines/{name}` and `/agents/{id}/pipeline` read the shipped definitions.
 
 **Check skills are stages of the `check` kind.** A check skill's SKILL.md names its stage:
 `pre` checks run as `check:gaps` (one question card before the first draft); `post` checks
@@ -876,6 +876,59 @@ other HTTP call fails as offline; the clock and uuids are fixed. `tests/replay_b
 re-records a case from an acceptance run against a scripted model (the run's outline and
 sections, readings of its material); rebuild only when a change in behaviour is meant, and
 say so.
+
+**User pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`, migration
+0054). The shipped files stay locked; a person copies one (「복제해서 편집」 on an agent's 「흐름」
+tab → `POST /user-pipelines {fromAgentId}`, or a shared one from the store `{fromId}`) into a
+`UserPipeline` row of their own: a list of at most twelve coarse **steps**
+`{id, kind, ref, settings}` —
+
+| kind | ref / settings | needs | leaves |
+|---|---|---|---|
+| `agent` | an agent the person may run (own or organisation's), `instruction` | — | a document (report agent) or an answer (chat agent) |
+| `skill` | a script skill run by code (`date-calc`, `quote-calc`: the pre-pass steps) | — | material |
+| `check` | `grounding-check` (document or answer), `copy-check` (answer) | a product | findings, repaired once |
+| `review` | `model` (one the person may use), `repair`, `focus` | a product | findings in the grounding check's shape |
+| `human` | `gaps` (the question card) · `outline` (approval; just before a document agent) | a later agent | answers · an approved plan |
+| `export` | `formats` | a document | files (after the save) |
+
+`compose.validate` holds the order to these contracts before every save and on
+`POST /user-pipelines/validate` (the editor's live messages), one Korean line per problem
+(「1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.」), plus warnings (a card
+before an agent with no facts to ask is skipped). The **recursion guard** refuses an agent step
+whose agent is bound to this pipeline, directly or through the pipelines its agents are bound
+to, and binding an agent to a pipeline that runs it. The last agent decides the surface:
+`report` for a document, `chat` for an answer; an agent can only be bound to a pipeline whose
+surface matches its own.
+
+**Running.** A conversation runs a user pipeline when it was started with one
+(`POST /user-pipelines/{id}/start`, `sessions.pipeline_id`) or its agent is bound to one
+(`PUT /agents/{id}/user-pipeline`, `agents.pipeline_id`). `send_message` then skips the agent's
+own gap card and, for a new request on the report or chat route, hands the turn to
+`user_pipelines.turn_response`; a follow-up on a finished document still revises it with the
+document's own `revise` flow. `compose.compile_steps` makes one stage per step (named
+`3:check`, titled by the step) and a save stage (`report-save`, or the answer stored as the
+message) before the first export; the existing `Runner` and `runs.Recorder` run them as flow
+`compose` of pipeline `user:<id>`, so every step is recorded, kept and rerunnable
+(`POST …/runs/{id}/rerun` routes a `compose` run to `user_pipelines.rerun`, on the steps as they
+were when it ran: the definition, the agents and the review models ride on `Request.turn`).
+An **agent step** runs that agent's own flow as a sub-run: a document agent its format's
+`plan` (or the outline a `human:outline` step got approved) then `write`, with no save of its
+own; a chat agent one answer on its own prompt (tools stay with the conversation surface). What
+the previous agent produced is handed to the next as material (`Part(origin="handoff")`).
+A **review step** asks the chosen model for findings (quote, why, fix) over the product and the
+material, places them, applies the fixes once when `repair` is on, leaves the rest as
+`check-finding` marks, and is billed at its own model's price (`pipeline.review`). A **human
+step** raises `Wait`: what the run spent is billed, the card (`needs`) or the outline
+(`proposal`) is the session's pending turn with `pending.compose = {runId, stage}`, and the
+next message resumes the run from that step with the answers or the approved outline.
+
+**Sharing.** Private by default. `POST /user-pipelines/{id}/submit` (every agent step must be
+one others can run: a catalogue agent or one shared with the organisation) sets `review`
+`pending`; an administrator approves (`visibility` org, listed in `GET /user-pipelines/store`)
+or rejects with a reason (`/admin/user-pipelines/{id}/approve|reject`, the queue on the admin
+users page). A saved edit takes an approved pipeline back to private. A copy from the store
+remaps catalogue agents to the taker's own copies (`settings.catalogKey`).
 
 ### Asking for a review
 

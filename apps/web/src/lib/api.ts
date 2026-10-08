@@ -9,7 +9,11 @@ import type {
   CostRouting,
   DesignTokens,
   DocMarks,
+  PipelineCatalogue,
   PipelineDefinition,
+  PipelineStep,
+  PipelineVerdict,
+  UserPipeline,
   PipelineRun,
   PipelineStage,
   EarlierAnswer,
@@ -1691,6 +1695,33 @@ export async function* streamRerun(
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   yield* postStream(`/sessions/${sessionId}/runs/${runId}/rerun`, payload, signal)
+}
+
+export const userPipelinesApi = {
+  list: () => call<UserPipeline[]>('/user-pipelines'),
+  store: () => call<UserPipeline[]>('/user-pipelines/store'),
+  catalogue: () => call<PipelineCatalogue>('/user-pipelines/catalogue'),
+  get: (id: string) => call<UserPipeline>(`/user-pipelines/${id}`),
+  /** A new one: from an agent's shipped flow, from another pipeline, or from steps. */
+  create: (payload: { name?: string; description?: string; stages?: PipelineStep[]; fromAgentId?: string; fromId?: string }) =>
+    call<UserPipeline>('/user-pipelines', body(payload)),
+  update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
+    call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
+  validate: (stages: PipelineStep[], id?: string) =>
+    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id })),
+  submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
+  withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
+  bind: (agentId: string, pipelineId: string | null) =>
+    call<{ agentId: string; pipelineId: string | null }>(`/agents/${agentId}/user-pipeline`, {
+      method: 'PUT',
+      body: JSON.stringify({ pipelineId }),
+    }),
+  start: (id: string) =>
+    call<{ sessionId: string; kind: 'report' | 'chat'; pipelineId: string }>(`/user-pipelines/${id}/start`, { method: 'POST' }),
+  adminList: (review = 'pending') => call<UserPipeline[]>(`/admin/user-pipelines?review=${review}`),
+  approve: (id: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/approve`, { method: 'POST' }),
+  reject: (id: string, note: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/reject`, body({ note })),
 }
 
 export const pipelinesApi = {

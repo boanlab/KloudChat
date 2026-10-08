@@ -26,6 +26,7 @@ from app.routers import (
     shares,
     transcriptions,
     usage,
+    user_pipelines,
     workspace,
 )
 from app.services import bootstrap, litellm, settings_store, stop_signal, storage
@@ -98,6 +99,7 @@ app.include_router(models.router, prefix=settings.api_prefix)
 app.include_router(sessions.router, prefix=settings.api_prefix)
 app.include_router(runs.router, prefix=settings.api_prefix)
 app.include_router(pipelines.router, prefix=settings.api_prefix)
+app.include_router(user_pipelines.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)
 app.include_router(connectors.router, prefix=settings.api_prefix)
 app.include_router(jobs.router, prefix=settings.api_prefix)

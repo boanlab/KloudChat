@@ -86,6 +86,9 @@ class ChatSession(SQLModel, table=True):
     #: Rendering template id. Not a foreign key: the catalogue ships in the image,
     #: and an unknown id must degrade to "no template".
     render_template_id: str | None = Field(default=None)
+    #: A user pipeline this conversation runs (「이 흐름으로 시작」); an agent's binding
+    #: applies when this is unset.
+    pipeline_id: str | None = Field(default=None)
     #: Retrieval-index collection for files uploaded into this conversation, minted on
     #: the first indexed upload. Unguessable on purpose: the session id is in URLs.
     index_key: str | None = Field(default=None)

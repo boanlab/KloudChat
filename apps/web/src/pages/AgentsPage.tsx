@@ -27,12 +27,13 @@ import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
 import type { Agent, SessionKind } from '@/types'
-import { errorCode, errorMessage, templateText } from '@/lib/api'
+import { errorCode, errorMessage, templateText, userPipelinesApi } from '@/lib/api'
 import { DOC_FORMATS } from '@/components/report/docFormats'
 import { currentLang } from '@/lib/i18n'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
-import { PipelineChain, PipelineFlowView } from '@/components/agents/PipelineChain'
+import { PipelineChain } from '@/components/agents/PipelineChain'
+import { AgentFlowSummary } from '@/components/agents/PipelineEditor'
 
 const emptyAgent = (model: string): Agent => ({
   id: uid('ag'),
@@ -126,10 +127,13 @@ export function AgentsPage() {
   }, [ensureDesignTemplates])
   const english = currentLang() === 'en'
   const [draft, setDraft] = useState<Agent | null>(null)
-  // The editor opens on its settings; 「흐름」 is the read-only pipeline, per agent opened.
+  // The editor opens on its settings; 「흐름」 is the agent's pipeline, per agent opened.
   const [flowTab, setFlowTab] = useState<string | null>(null)
   const editorTab: 'settings' | 'flow' = draft && flowTab === draft.id ? 'flow' : 'settings'
   const setEditorTab = (tab: 'settings' | 'flow') => setFlowTab(tab === 'flow' ? draft?.id ?? null : null)
+  // The flow picked in 「흐름」, bound by the agent's own 「저장」.
+  const [flowPick, setFlowPick] = useState<{ agentId: string; pipelineId: string | null } | null>(null)
+  const pickedFlow = draft && flowPick?.agentId === draft.id ? flowPick.pipelineId : undefined
   const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
   const slugTaken = !!draft && agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const [tab, setTab] = useState<'mine' | 'store'>('mine')
@@ -414,6 +418,7 @@ export function AgentsPage() {
         onClose={() => {
           setDraft(null)
           setSaveError(null)
+          setFlowPick(null)
         }}
         title={agents.some((a) => a.id === draft?.id) ? t('에이전트 편집') : t('새 에이전트')}
         width="max-w-2xl"
@@ -432,7 +437,14 @@ export function AgentsPage() {
                 {t('삭제')}
               </Button>
             )}
-            <Button onClick={() => setDraft(null)}>{t('취소')}</Button>
+            <Button
+              onClick={() => {
+                setDraft(null)
+                setFlowPick(null)
+              }}
+            >
+              {t('취소')}
+            </Button>
             <Button
               variant="primary"
               disabled={saving || slugTaken}
@@ -451,6 +463,15 @@ export function AgentsPage() {
                     slug: draftSlug,
                     updatedAt: new Date().toISOString(),
                   })
+                  if (pickedFlow !== undefined) {
+                    try {
+                      await userPipelinesApi.bind(draft.id, pickedFlow)
+                    } catch (err) {
+                      setSaveError(errorMessage(err, t('이 흐름을 묶지 못했습니다. 흐름의 단계를 확인해 주세요.')))
+                      return
+                    }
+                    setFlowPick(null)
+                  }
                   setDraft(null)
                 } catch (err) {
                   // Keep the form open so the typed prompt is not lost.
@@ -479,20 +500,24 @@ export function AgentsPage() {
             ]}
           />
         )}
+        {draft && saveError && (
+          <p
+            role="status"
+            className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
+          >
+            {saveError}
+          </p>
+        )}
         {draft && editorTab === 'flow' && agents.some((a) => a.id === draft.id) ? (
           <div role="tabpanel" aria-label={t('흐름')} className="pt-1">
-            <PipelineFlowView agentId={draft.id} />
+            <AgentFlowSummary
+              agent={agents.find((a) => a.id === draft.id) ?? draft}
+              choice={pickedFlow}
+              onChoose={(pipelineId) => setFlowPick({ agentId: draft.id, pipelineId })}
+            />
           </div>
         ) : draft && (
           <>
-            {saveError && (
-              <p
-                role="status"
-                className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger"
-              >
-                {saveError}
-              </p>
-            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Field label={t('이름')} hint={t('필수 항목입니다.')}>

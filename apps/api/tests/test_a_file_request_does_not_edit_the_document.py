@@ -93,7 +93,8 @@ _DDL = (
     CREATE TABLE sessions (
         id TEXT PRIMARY KEY, user_id TEXT, kind TEXT, title TEXT DEFAULT '', project_id TEXT,
         agent_id TEXT, model TEXT DEFAULT '', routing_mode TEXT, artifact_id TEXT,
-        render_template_id TEXT, index_key TEXT, pending TEXT, summary TEXT, skill_ids TEXT,
+        render_template_id TEXT, pipeline_id TEXT, index_key TEXT, pending TEXT, summary TEXT,
+        skill_ids TEXT,
         running_turn TEXT, running_since DATETIME, pinned BOOLEAN DEFAULT 0,
         created_at DATETIME, updated_at DATETIME
     )

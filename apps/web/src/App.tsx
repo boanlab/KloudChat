@@ -24,6 +24,8 @@ const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage').then((m) => (
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
 const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })))
 const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ default: m.MyUsagePage })))
+const PipelinesPage = lazy(() => import('@/pages/PipelinesPage').then((m) => ({ default: m.PipelinesPage })))
+const PipelineEditPage = lazy(() => import('@/pages/PipelinesPage').then((m) => ({ default: m.PipelineEditPage })))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
@@ -115,6 +117,8 @@ function Authenticated() {
           <Route path="designs" element={<DesignsPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="skills" element={<SkillsPage />} />
+          <Route path="pipelines" element={<PipelinesPage />} />
+          <Route path="pipelines/:pipelineId" element={<PipelineEditPage />} />
           <Route path="memory" element={<MemoryPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="usage" element={<MyUsagePage />} />

@@ -14,6 +14,7 @@ import { Code2,
   ShieldCheck,
   Sparkles,
   Terminal as TerminalIcon,
+  Workflow,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
@@ -39,6 +40,9 @@ function AccountItems() {
       </MenuItem>
       <MenuItem icon={<Sparkles size={14} />} onClick={() => navigate('/skills')}>
         {t('스킬')}
+      </MenuItem>
+      <MenuItem icon={<Workflow size={14} />} onClick={() => navigate('/pipelines')}>
+        {t('흐름')}
       </MenuItem>
       <MenuItem icon={<Plug size={14} />} onClick={() => navigate('/connectors')}>
         {t('커넥터')}

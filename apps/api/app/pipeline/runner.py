@@ -183,7 +183,9 @@ class Runner:
     def _record(self, stage: Stage, status: str, reason: str = "") -> StepRecord:
         from app.pipeline.labels import label
 
-        return StepRecord(stage.name, stage.kind, status, reason, label=label(stage.name),
+        # A composed step carries its own title (`compose.Step.title`).
+        return StepRecord(stage.name, stage.kind, status, reason,
+                          label=getattr(stage, "title", "") or label(stage.name),
                           attempt=self.attempts.get(stage.name, 1),
                           run_id=self.recorder.run_id if self.recorder is not None else "")
 
