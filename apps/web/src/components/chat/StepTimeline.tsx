@@ -7,11 +7,14 @@ import {
   FileText,
   Loader2,
   TriangleAlert,
+  Workflow,
   Wrench,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { cn, fileSize } from '@/lib/utils'
-import type { Step } from '@/types'
+import type { PipelineRun, Step } from '@/types'
+import { StageList, TraceBlock } from './StageList'
+import { stageTone } from '@/lib/stages'
 import { useT } from '@/lib/useT'
 import { downloadFile } from '@/lib/api'
 
@@ -28,8 +31,8 @@ function useElapsed(since: number | undefined, live: boolean) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
-const icons = { thinking: Brain, tool: Wrench, artifact: FileText }
-const kindLabel = { thinking: '추론', tool: '도구 사용', artifact: '산출물' }
+const icons = { thinking: Brain, tool: Wrench, artifact: FileText, pipeline: Workflow }
+const kindLabel = { thinking: '추론', tool: '도구 사용', artifact: '산출물', pipeline: '작업 단계' }
 /** Steps the collapsed header names before counting the rest. */
 const COLLAPSED_NAMES = 3
 
@@ -113,21 +116,6 @@ function RunTrace({ step }: { step: Step }) {
   )
 }
 
-function TraceBlock({ summary, note, text }: { summary: string; note?: string; text: string }) {
-  return (
-    <details className="group text-sm">
-      <summary className="flex cursor-pointer list-none items-center gap-1 text-faint hover:text-fg">
-        <ChevronRight size={12} className="shrink-0 transition-transform group-open:rotate-90" />
-        {summary}
-        {note && <span className="text-faint">· {note}</span>}
-      </summary>
-      <pre className="mt-1 max-h-80 overflow-auto whitespace-pre rounded-control border border-line bg-panel px-2.5 py-2 font-mono text-xs leading-relaxed text-fg">
-        {text}
-      </pre>
-    </details>
-  )
-}
-
 /** Download chips for the files a tool step made. */
 function OutputFiles({ files }: { files: NonNullable<Step['outputs']> }) {
   const t = useT()
@@ -167,6 +155,10 @@ export function StepTimeline({
   live,
   failed,
   startedAt,
+  sessionId,
+  run,
+  rerunnable,
+  waitingSlot,
 }: {
   steps: Step[]
   live: boolean
@@ -174,12 +166,34 @@ export function StepTimeline({
   failed: boolean
   /** Epoch ms the turn started; drives the clock. */
   startedAt?: number
+  sessionId?: string
+  /** The pipeline run's stage records, listed apart from the tool steps. */
+  run?: PipelineRun
+  /** Report and slides: the rows offer 「이 단계부터 다시」 and show in full. */
+  rerunnable?: boolean
+  /** The question card, in the waiting stage's place. */
+  waitingSlot?: ReactNode
 }) {
   const t = useT()
   const elapsed = useElapsed(startedAt, live)
   // The reader's toggle wins over the liveness default.
   const [manual, setManual] = useState<boolean | null>(null)
-  if (steps.length === 0) return null
+  const stages = run && sessionId ? run.stages : []
+  if (steps.length === 0 && stages.length === 0) return null
+  // A pipeline turn reads as one list: its tool steps first, then the stages, under one header.
+  if (stages.length > 0) {
+    return (
+      <StageGroup
+        sessionId={sessionId!}
+        run={run!}
+        steps={steps}
+        live={live}
+        failed={failed}
+        rerunnable={rerunnable}
+        waitingSlot={waitingSlot}
+      />
+    )
+  }
 
   const done = steps.filter((s) => s.status === 'done').length
   const current = steps.find((s) => s.status === 'running')
@@ -244,6 +258,82 @@ export function StepTimeline({
           {steps.map((s) => (
             <StepRow key={s.id} step={s} live={live} />
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 「6단계 · 확인 1 · 건너뜀 2」: how many ran, how many want a look, how many were not needed. */
+function StageCounts({ run }: { run: PipelineRun }) {
+  const t = useT()
+  const skipped = run.stages.filter((s) => stageTone(s) === 'skipped').length
+  const ran = run.stages.length - skipped
+  const flagged = run.stages.filter((s) => stageTone(s) === 'findings' || stageTone(s) === 'failed').length
+  return (
+    <span className="font-normal text-faint">
+      {t('{n}단계').replace('{n}', String(ran))}
+      {flagged > 0 && <span className="text-warn"> · {t('확인 {n}').replace('{n}', String(flagged))}</span>}
+      {skipped > 0 && <span> · {t('건너뜀 {n}').replace('{n}', String(skipped))}</span>}
+    </span>
+  )
+}
+
+/** A turn whose only visible work is its stages: the stage list under its own header. */
+function StageGroup({
+  sessionId,
+  run,
+  steps,
+  live,
+  failed,
+  rerunnable,
+  waitingSlot,
+}: {
+  sessionId: string
+  run: PipelineRun
+  /** The turn's tool steps, listed above the stages. */
+  steps: Step[]
+  live: boolean
+  failed: boolean
+  rerunnable?: boolean
+  waitingSlot?: ReactNode
+}) {
+  const t = useT()
+  // A waiting card must be seen, not folded away.
+  const [manual, setManual] = useState<boolean | null>(null)
+  const expanded = manual ?? (live || run.status === 'waiting')
+  const last = run.stages.at(-1)
+  return (
+    <div className="animate-fade-up mb-3 overflow-hidden rounded-card border border-line bg-elevated/50" data-category="pipeline">
+      <button
+        onClick={() => setManual(!expanded)}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-elevated"
+      >
+        <ChevronRight size={13} className={cn('shrink-0 text-faint transition-transform', expanded && 'rotate-90')} />
+        <span className="shrink-0 font-medium text-muted">
+          {live ? t('작업 중') : run.status === 'waiting' ? t('답 기다림') : failed ? t('중단됨') : t('작업 완료')}
+        </span>
+        <span className="shrink-0 text-line-strong">|</span>
+        <Workflow size={13} className="shrink-0 text-accent" />
+        <span className="min-w-0 truncate text-fg">{expanded ? t('작업 단계') : last ? t(last.label) : ''}</span>
+        <span className="ml-auto shrink-0 whitespace-nowrap text-faint tabular-nums"><StageCounts run={run} /></span>
+      </button>
+      {expanded && (
+        <div className="border-t border-line px-3 py-2">
+          {steps.length > 0 && (
+            <div className="mb-1.5 space-y-1.5 border-b border-line/60 pb-2">
+              {steps.map((s) => <StepRow key={s.id} step={s} live={live} />)}
+            </div>
+          )}
+          <StageList
+            sessionId={sessionId}
+            run={run}
+            live={live}
+            compact={!rerunnable}
+            rerunnable={rerunnable}
+            waitingSlot={waitingSlot}
+          />
         </div>
       )}
     </div>

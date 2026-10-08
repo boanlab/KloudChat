@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { Composer, hasUnsentDraft } from '@/components/chat/Composer'
 import { ProposalCard } from '@/components/chat/ProposalCard'
+import { waitingCardMessageId } from '@/lib/stages'
 import { MessageItem } from '@/components/chat/MessageItem'
 import { ShareButton } from '@/components/share/ShareButton'
 import { DesignGallery } from '@/components/chat/DesignGallery'
@@ -416,7 +417,8 @@ export function SessionPage() {
     }
     return timeline.length
   }, [session?.pending, streaming, timeline])
-  const proposal = session?.pending ? (
+  // A question card the waiting stage already shows is not shown twice.
+  const proposal = session?.pending && !waitingCardMessageId(session) ? (
     <ProposalCard sessionId={session.id} pending={session.pending} kind={kind} />
   ) : null
 

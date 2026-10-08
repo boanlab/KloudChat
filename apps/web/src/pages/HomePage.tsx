@@ -7,6 +7,7 @@ import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignGallery } from '@/components/chat/DesignGallery'
 import { agentStartKind, kindMeta, kindOrder } from '@/lib/kinds'
+import { PipelineChain } from '@/components/agents/PipelineChain'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
@@ -79,48 +80,20 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('홈')}</span>} />
-      <PageBody className="phone:flex phone:min-h-full phone:flex-col">
-        {/* On a phone the greeting sits in the upper half and the composer at the bottom,
-            where the thumb and the keyboard are; the desk keeps its top-down order. */}
-        <div className="mb-5 text-center phone:mt-auto">
+      {/* Like a session: what there is to read scrolls, the composer stays docked at the bottom
+          with the surface chips on it. */}
+      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="home-scroll">
+      <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8">
+        {/* Top-aligned with room above; whatever is short leaves its space below, over the dock. */}
+        <div className="mt-[min(8vh,4rem)] mb-5 text-center phone:mt-[min(14vh,7rem)]">
           <h1 className="text-2xl font-semibold tracking-tight">
             {t('안녕하세요, {name}님').replace('{name}', user?.name ?? '')}
           </h1>
           <p className="mt-1 text-base text-muted">{t('무엇을 만들까요?')}</p>
         </div>
 
-        <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4">
-          {surfaces.map((k) => {
-            const meta = kindMeta[k]
-            const Icon = meta.icon
-            const on = k === active
-            return (
-              <button
-                key={k}
-                onClick={() => setKind(k)}
-                aria-pressed={on}
-                title={t(meta.tagline)}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
-                  on
-                    ? 'border-accent bg-accent-soft text-accent'
-                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
-                )}
-              >
-                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
-                {t(meta.label)}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
-        <div className="phone:mt-auto phone:pb-2">
-          <Composer key={active} sessionId={null} kind={active} autoFocus />
-        </div>
-
         {/* A phone keeps the greeting, the surface chips and the composer; the rest is desk work. */}
-        <div className="mx-auto mb-8 mt-3 w-full max-w-3xl px-4 phone:hidden">
+        <div className="mx-auto mb-4 mt-3 w-full max-w-3xl px-4 phone:hidden">
           <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
@@ -170,6 +143,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-base font-medium">{a.name}</span>
                     <span className="block truncate text-xs text-muted">{a.description}</span>
+                    <PipelineChain agentId={a.id} className="mt-1" />
                   </span>
                   <ArrowRight size={14} className="shrink-0 text-faint" />
                 </Card>
@@ -214,8 +188,39 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             </div>
           </section>
         )}
+      </div>
+      </div>
 
-      </PageBody>
+      <div className="shrink-0 pt-2" data-testid="home-dock">
+        <div role="group"
+          aria-label={t('만들 것')}
+          className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap justify-center gap-1.5 px-4 max-sm:flex-nowrap max-sm:justify-start max-sm:overflow-x-auto max-sm:[scrollbar-width:none]">
+          {surfaces.map((k) => {
+            const meta = kindMeta[k]
+            const Icon = meta.icon
+            const on = k === active
+            return (
+              <button
+                key={k}
+                onClick={() => setKind(k)}
+                aria-pressed={on}
+                title={t(meta.tagline)}
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-control border px-2.5 py-1.5 text-base transition-colors',
+                  on
+                    ? 'border-accent bg-accent-soft text-accent'
+                    : 'border-line text-muted hover:bg-elevated hover:text-fg',
+                )}
+              >
+                <Icon size={14} style={{ color: on ? undefined : meta.color }} />
+                {t(meta.label)}
+              </button>
+            )
+          })}
+        </div>
+        {/* `key` remounts on a surface change: draft, attachments and skill pick are per surface. */}
+        <Composer key={active} sessionId={null} kind={active} autoFocus />
+      </div>
     </>
   )
 }

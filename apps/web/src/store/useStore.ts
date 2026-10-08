@@ -32,6 +32,7 @@ import {
   setAccessToken,
   skillsApi,
   streamComparison,
+  streamRerun,
   streamSession,
   toolsApi,
   usageApi,
@@ -62,6 +63,8 @@ import type {
 import type {
   Agent,
   Artifact,
+  PipelineRun,
+  PipelineStage,
   Connector,
   Job,
   MemoryEntry,
@@ -374,6 +377,13 @@ interface State {
     opts?: SendOptions,
   ) => Promise<string>
   stopStreaming: (sessionId: string) => void
+  /** 「이 단계부터 다시」: reruns a stored run from one stage; the result is a new version. */
+  rerunStage: (
+    sessionId: string,
+    runId: string,
+    stage: { name: string; label: string },
+    answers?: Record<string, string>,
+  ) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
   /** Sets the skills that stay on for a conversation; `[]` switches them all off. */
   setSessionSkills: (id: string, skillIds: string[]) => Promise<void>
@@ -1725,6 +1735,15 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  rerunStage: async (sessionId, runId, stage, answers) => {
+    const session = get().sessions.find((c) => c.id === sessionId)
+    if (!session || get().running[sessionId]) return
+    const rerun = { runId, fromStage: stage.name, label: stage.label, answers }
+    const model = effectiveModelId(session, session.kind, get().agents, get().modelByKind)
+    if (session.kind === 'slides') await streamDeck(set, get, sessionId, '', model, undefined, undefined, { rerun })
+    else await streamReport(set, get, sessionId, '', model, undefined, undefined, { rerun })
+  },
+
   stopStreaming: (sessionId) => {
     // A closed response is deliberately *not* a stop on the server. Wait for
     // the explicit stop request to be acknowledged before closing it; the
@@ -2614,7 +2633,44 @@ function draftTitle(
 }
 
 /** The UI's step categories; anything else is a tool call. */
-const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact'])
+const STEP_TYPES = new Set<Step['type']>(['thinking', 'tool', 'artifact', 'pipeline'])
+
+/** The run a message streams: announced by a `run` event, filled stage by stage. */
+function runStarted(
+  m: Message,
+  e: { runId: string; pipeline?: string; flow?: string; parentId?: string | null; fromStage?: string | null },
+): Message {
+  const kept = m.run?.id === e.runId ? m.run.stages : []
+  return {
+    ...m,
+    run: {
+      id: e.runId, pipeline: e.pipeline, flow: e.flow, status: 'running',
+      parentId: e.parentId ?? null, fromStage: e.fromStage ?? null, stages: kept,
+    },
+  }
+}
+
+/** One stage record onto the message's run; a later attempt of the same stage replaces it. */
+function withStage(m: Message, stage: PipelineStage): Message {
+  const run: PipelineRun = m.run ?? { id: stage.runId ?? '', status: 'running', stages: [] }
+  const at = run.stages.findIndex((x) => x.name === stage.name)
+  const stages = at >= 0 ? run.stages.map((x, i) => (i === at ? stage : x)) : [...run.stages, stage]
+  const status: PipelineRun['status'] =
+    stage.status === 'waiting' ? 'waiting' : stage.status === 'failed' ? 'failed'
+      : stage.status === 'stopped' ? 'stopped' : run.status
+  return { ...m, run: { ...run, status, stages } }
+}
+
+/** A stored `routing.run`, when the message carries one. */
+function storedRun(routing: unknown): PipelineRun | undefined {
+  const run = (routing as { run?: PipelineRun } | null)?.run
+  return run && typeof run.id === 'string' && Array.isArray(run.stages) ? run : undefined
+}
+
+/** A live run is settled once its stream ends; what it was waiting on stays. */
+function settleRun(m: Message): Message {
+  return m.run && m.run.status === 'running' ? { ...m, run: { ...m.run, status: 'done' } } : m
+}
 
 /** Every turn ends with `usage` or `error`; a stream that ends with neither was cut off. */
 const CUT_OFF = '연결이 끊겨 답변이 중간에 멈췄습니다. 다시 시도해 주세요.'
@@ -2857,6 +2913,7 @@ function toMessage(raw: MessageRow): Message {
     model: raw.model,
     routing: raw.routing ?? undefined,
     steps: raw.steps?.map((s) => toStep(s as Record<string, unknown>)),
+    run: storedRun(raw.routing),
     attachments: raw.attachments?.map((a) =>
       typeof a === 'string'
         ? { name: a, size: '', type: '' }
@@ -3325,7 +3382,15 @@ async function streamTurn(
             },
           )
           break
+        case 'run':
+          patch((m) => runStarted(m, event))
+          break
         case 'step':
+          if (event.stage) {
+            const stage = event.stage
+            patch((m) => withStage(m, stage))
+            break
+          }
           patch((m) => {
             const step = toStep(event as unknown as Record<string, unknown>)
             const steps = m.steps ?? []
@@ -3420,6 +3485,7 @@ async function streamTurn(
   } finally {
     flushDeltas()
     if (!live && buffered) patch((m) => ({ ...m, content: buffered }))
+    patch(settleRun)
     if (!settled) {
       patch((m) => ({ ...m, error: tr(CUT_OFF) }))
       followDetachedTurn = accepted
@@ -3645,10 +3711,12 @@ async function streamReport(
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
     renderTemplateId?: string
+    /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
   const draftId = uid('a')
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const now = new Date().toISOString()
 
   const draft: Artifact = {
@@ -3669,8 +3737,11 @@ async function streamReport(
     wordCount: 0,
   }
 
-  // A planning pass produces no document, so it opens none.
-  const willWrite = gate.approve === true
+  // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
+  const willWrite = gate.approve === true && !gate.rerun
+  const targetId = gate.rerun
+    ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
+    : draftId
   set((s) => ({
     running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
@@ -3691,7 +3762,7 @@ async function streamReport(
   const patchReport = (fn: (a: ReportArtifact) => ReportArtifact) =>
     set((s) => ({
       artifacts: s.artifacts.map((a) =>
-        a.id === draftId && a.kind === 'report' ? fn(a) : a,
+        a.id === targetId && a.kind === 'report' ? fn(a) : a,
       ),
     }))
 
@@ -3701,7 +3772,12 @@ async function streamReport(
   let settled = false
 
   try {
-    for await (const e of streamSession(
+    for await (const e of gate.rerun ? streamRerun(
+      sessionId,
+      gate.rerun.runId,
+      { fromStage: gate.rerun.fromStage, ...(gate.rerun.answers ? { answers: gate.rerun.answers } : {}) },
+      controller.signal,
+    ) : streamSession(
       sessionId,
       {
         content: text,
@@ -3776,7 +3852,21 @@ async function streamReport(
             }
           })
           break
+        case 'run':
+          patchMessage(set, sessionId, assistantId, (m) => runStarted(m, e))
+          break
+        case 'done':
+          if (gate.rerun && e.messageId) {
+            adoptServerId(set, sessionId, assistantId, e.messageId)
+            assistantId = e.messageId
+          }
+          break
         case 'step':
+          if (e.stage) {
+            const stage = e.stage
+            patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
+            break
+          }
           set((s) => ({
             sessions: s.sessions.map((c) =>
               c.id === sessionId
@@ -3820,6 +3910,15 @@ async function streamReport(
     }
   } catch (err) {
     settled = true
+    // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
+    if (gate.rerun && isClientRefusal(err)) {
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
+        ),
+      }))
+      throw err
+    }
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -3829,6 +3928,13 @@ async function streamReport(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    patchMessage(set, sessionId, assistantId, (m) => {
+      const settledRun = settleRun(m)
+      // The server words the rerun's message the same way; shown until the transcript reloads.
+      return gate.rerun && !settledRun.content && !settledRun.error
+        ? { ...settledRun, content: tr('「{stage}」 단계부터 다시 만들었습니다.').replace('{stage}', gate.rerun.label) }
+        : settledRun
+    })
     endRun(set, sessionId)
     void get().loadSessions()
   }
@@ -3853,10 +3959,12 @@ async function streamDeck(
     /** Resent with the approval: the server assembles context fresh per request. */
     attachments?: string[]
     renderTemplateId?: string
+    /** 「이 단계부터 다시」: streams the rerun instead of a turn, into the document already open. */
+    rerun?: { runId: string; fromStage: string; label: string; answers?: Record<string, string> }
   } = {},
 ) {
   const draftId = uid('a')
-  const assistantId = uid('m')
+  let assistantId = uid('m')
   const now = new Date().toISOString()
 
   const draft: Artifact = {
@@ -3875,8 +3983,11 @@ async function streamDeck(
     draft: true,
   }
 
-  // A planning pass produces no document, so it opens none.
-  const willWrite = gate.approve === true
+  // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
+  const willWrite = gate.approve === true && !gate.rerun
+  const targetId = gate.rerun
+    ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
+    : draftId
   set((s) => ({
     running: { ...s.running, [sessionId]: noop },
     ...(willWrite ? { artifacts: [draft, ...s.artifacts], openArtifactId: draftId } : {}),
@@ -3896,7 +4007,7 @@ async function streamDeck(
 
   const patchDeck = (fn: (a: DeckArtifact) => DeckArtifact) =>
     set((s) => ({
-      artifacts: s.artifacts.map((a) => (a.id === draftId && a.kind === 'deck' ? fn(a) : a)),
+      artifacts: s.artifacts.map((a) => (a.id === targetId && a.kind === 'deck' ? fn(a) : a)),
     }))
 
   const controller = new AbortController()
@@ -3905,7 +4016,12 @@ async function streamDeck(
   let settled = false
 
   try {
-    for await (const e of streamSession(
+    for await (const e of gate.rerun ? streamRerun(
+      sessionId,
+      gate.rerun.runId,
+      { fromStage: gate.rerun.fromStage, ...(gate.rerun.answers ? { answers: gate.rerun.answers } : {}) },
+      controller.signal,
+    ) : streamSession(
       sessionId,
       {
         content: text,
@@ -3965,7 +4081,21 @@ async function streamDeck(
             }
           })
           break
+        case 'run':
+          patchMessage(set, sessionId, assistantId, (m) => runStarted(m, e))
+          break
+        case 'done':
+          if (gate.rerun && e.messageId) {
+            adoptServerId(set, sessionId, assistantId, e.messageId)
+            assistantId = e.messageId
+          }
+          break
         case 'step':
+          if (e.stage) {
+            const stage = e.stage
+            patchMessage(set, sessionId, assistantId, (m) => withStage(m, stage))
+            break
+          }
           set((s) => ({
             sessions: s.sessions.map((c) =>
               c.id === sessionId
@@ -4009,6 +4139,15 @@ async function streamDeck(
     }
   } catch (err) {
     settled = true
+    // A refused rerun stored nothing: its placeholder answer goes, and the stage row says why.
+    if (gate.rerun && isClientRefusal(err)) {
+      set((s) => ({
+        sessions: s.sessions.map((c) =>
+          c.id === sessionId ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) } : c,
+        ),
+      }))
+      throw err
+    }
     if (!(err instanceof DOMException && err.name === 'AbortError')) {
       patchMessage(set, sessionId, assistantId, (m) => ({
         ...m,
@@ -4018,6 +4157,13 @@ async function streamDeck(
     if (isClientRefusal(err)) throw err
   } finally {
     if (!settled) patchMessage(set, sessionId, assistantId, (m) => ({ ...m, error: tr(CUT_OFF) }))
+    patchMessage(set, sessionId, assistantId, (m) => {
+      const settledRun = settleRun(m)
+      // The server words the rerun's message the same way; shown until the transcript reloads.
+      return gate.rerun && !settledRun.content && !settledRun.error
+        ? { ...settledRun, content: tr('「{stage}」 단계부터 다시 만들었습니다.').replace('{stage}', gate.rerun.label) }
+        : settledRun
+    })
     endRun(set, sessionId)
     void get().loadSessions()
   }

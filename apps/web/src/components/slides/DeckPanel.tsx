@@ -49,6 +49,7 @@ import type { DeckArtifact, LintFinding, Slide } from '@/types'
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
@@ -3316,6 +3317,7 @@ export function DeckPanel({
             {t('텍스트 (노트 포함)')}
           </MenuItem>
         </Dropdown></RibbonGroup>}
+        {ribbon === 'review' && deck.sessionId && <RibbonGroup label={t('단계')}><RunStagesButton sessionId={deck.sessionId} /></RibbonGroup>}
         {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
           artifact={deck}
           hasUnsavedChanges={hasUnsavedEdit}

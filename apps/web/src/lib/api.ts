@@ -8,6 +8,10 @@
 import type {
   CostRouting,
   DesignTokens,
+  DocMarks,
+  PipelineDefinition,
+  PipelineRun,
+  PipelineStage,
   EarlierAnswer,
   FreshnessAbstention,
   LengthCheck,
@@ -1083,6 +1087,8 @@ function artifactParams(params: ArtifactQuery = {}) {
 }
 
 export const artifactsApi = {
+  /** Blanks and findings re-located against the current body. */
+  marks: (id: string) => call<DocMarks>(`/artifacts/${id}/marks`),
   /** Several at once. Ids this account does not own are skipped. */
   removeMany: (ids: string[]) =>
     call<{ deleted: number }>('/artifacts/delete', body({ ids })),
@@ -1658,12 +1664,56 @@ export const jobsApi = {
   cancel: (id: string) => call<JobRow>(`/jobs/${id}/cancel`, { method: 'POST' }),
 }
 
+/* ── pipeline runs and definitions ─────────────────────────────────────── */
+
+/** A run as stored: every stage with its evidence. */
+export interface RunRow extends PipelineRun {
+  sessionId: string
+  messageId: string | null
+  artifactId: string | null
+  artifactVersion: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const runsApi = {
+  get: (sessionId: string, runId: string) =>
+    call<RunRow>(`/sessions/${sessionId}/runs/${runId}`),
+  list: (sessionId: string, limit = 20) =>
+    call<RunRow[]>(`/sessions/${sessionId}/runs?limit=${limit}`),
+}
+
+/** 「이 단계부터 다시」: the same events as a normal turn of that surface. */
+export async function* streamRerun(
+  sessionId: string,
+  runId: string,
+  payload: { fromStage: string; answers?: Record<string, string> },
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  yield* postStream(`/sessions/${sessionId}/runs/${runId}/rerun`, payload, signal)
+}
+
+export const pipelinesApi = {
+  list: () => call<{ name: string; formats: string[]; agents: string[]; flows: string[] }[]>('/pipelines'),
+  get: (name: string) => call<PipelineDefinition>(`/pipelines/${encodeURIComponent(name)}`),
+  forAgent: (agentId: string) => call<PipelineDefinition>(`/agents/${agentId}/pipeline`),
+}
+
 /* ── streaming ──────────────────────────────────────────────────────────*/
 
 export type StreamEvent =
   | {
       type: 'step'; id: string; label: string; status: Step['status']; detail?: string
       outputs?: Step['outputs']; code?: string; codeAttempt?: number; stdout?: string; stderr?: string
+      /** `pipeline` for stage records; tool steps carry none or their own. */
+      category?: string
+      /** The rich stage record; absent on older servers and on tool steps. */
+      stage?: PipelineStage
+    }
+  /** A pipeline run announcing itself before its first stage record. */
+  | {
+      type: 'run'; runId: string; pipeline?: string; flow?: string
+      parentId?: string | null; fromStage?: string | null
     }
   | { type: 'delta'; text: string }
   /** Text the agent took back — narration written before a tool ran, or an answer it then repeated. */
@@ -1845,10 +1895,20 @@ async function* postStream(
   // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
   // stream; translated into events here so the runners need not know.
   if (res.headers.get('content-type')?.includes('application/json')) {
-    const answered = (await res.json()) as { pending?: PendingPlan | null; message?: string }
+    const answered = (await res.json()) as {
+      pending?: PendingPlan | null; message?: string; runId?: string; stage?: PipelineStage
+    }
     const pending = answered.pending
     // What the turn said, before what it asks; otherwise the bubble stays empty with a spinner.
     if (answered.message) yield { type: 'delta', text: answered.message }
+    // The waiting run and its card stage, as the stream would have said them.
+    if (answered.runId && answered.stage) {
+      yield { type: 'run', runId: answered.runId, flow: 'pre' }
+      yield {
+        type: 'step', category: 'pipeline', id: `stage:${answered.stage.name}`,
+        label: answered.stage.label, status: 'done', stage: answered.stage,
+      }
+    }
     if (pending?.stage === 'clarify' && pending.questions) {
       yield { type: 'needs', questions: pending.questions }
     } else if (pending?.stage === 'outline' && pending.plan) {

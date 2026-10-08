@@ -3,7 +3,7 @@
  * to fill in. Mirrors `app/services/placeholders.py`; a test keeps the pattern equal.
  * Not a Markdown link 「[text](url)」, a citation 「[1]」 or a check box 「[ ]」.
  */
-export const PLACEHOLDER = /(?<!\[)\[(?!(?:미정|참고|붙임|별첨|첨부|예시|주의|요약|결론|그림|표|공지|안내)\]|여기에)([가-힣](?:[가-힣 ·]{0,8}[가-힣])?)\](?!\(|\[|\])/g
+export const PLACEHOLDER = /(?<!\[)\[(?!(?:미정|참고|붙임|별첨|첨부|예시|주의|요약|결론|그림|표|공지|안내)\]|여기에|(?:그림|표|사진|도표|도식)\s)([가-힣](?:[가-힣 ·]{0,8}[가-힣])?)\](?!\(|\[|\])/g
 
 const OWN_NAME = /^[가-힣](?:[가-힣 ·]{0,8}[가-힣])?$/
 

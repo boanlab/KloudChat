@@ -46,6 +46,9 @@ import { useT } from '@/lib/useT'
 const GATEWAY_NOTICE =
   '응답이 늦어 연결이 끊겼습니다. 답이 진행 중이면 이 대화에 이어서 표시됩니다.'
 
+/** The prompt box grows to this height, then scrolls. */
+const COMPOSER_MAX_PX = 280
+
 const placeholders: Record<SessionKind, string> = {
   chat: '무엇이든 물어보세요',
   report: '보고서 주제와 넣고 싶은 절을 적으세요',
@@ -1110,11 +1113,31 @@ export function Composer({
     setPendingPrivacy(null)
   }
 
+  // Grows with its text up to the cap; a scrollbar only once the text is past it. Measured again
+  // when the box changes width (panel, rotation) or the web font arrives, which re-wrap the text.
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 280)}px`
+    let width = el.clientWidth
+    const fit = () => {
+      el.style.height = 'auto'
+      const full = el.scrollHeight
+      el.style.height = `${Math.min(full, COMPOSER_MAX_PX)}px`
+      el.style.overflowY = full > COMPOSER_MAX_PX ? 'auto' : 'hidden'
+    }
+    fit()
+    const resized = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      fit()
+    })
+    resized.observe(el)
+    let live = true
+    void document.fonts?.ready.then(() => { if (live) fit() })
+    return () => {
+      live = false
+      resized.disconnect()
+    }
   }, [value])
 
   /** Shared picker, drop, and paste upload path. */
@@ -1404,7 +1427,7 @@ export function Composer({
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-3xl px-4 pb-4" {...dropHandlers}>
+    <div className="relative mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" {...dropHandlers}>
       {dragging && (
         <div className="pointer-events-none absolute inset-x-4 inset-y-0 z-10 grid place-items-center rounded-panel border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
           <span className="flex items-center gap-2">
@@ -1744,7 +1767,7 @@ export function Composer({
           }
           aria-label={t('프롬프트 입력')}
           data-composer=""
-          className="w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:min-h-[3.25rem] phone:text-[1rem] phone:leading-[1.6]"
+          className="block w-full resize-none overflow-y-hidden bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:min-h-[3.25rem] phone:text-[1rem] phone:leading-[1.6]"
         />
 
         <div className="flex flex-wrap items-center gap-1 px-2 pb-2">

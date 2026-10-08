@@ -371,6 +371,24 @@ body {
     border-radius: 2px;
     padding: 0 0.1em;
   }
+  /* A blank the person can fill in place, and a value the grounding check blanked. */
+  .doc-placeholder[data-mark-fill] { cursor: text; }
+  .doc-placeholder[data-mark-fill]:hover,
+  .doc-placeholder[data-mark-fill]:focus-visible {
+    outline: 1px solid var(--color-warn);
+    outline-offset: 1px;
+  }
+  .doc-ungrounded {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: var(--color-danger);
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+  }
+  .doc-mark-current {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
   .doc-html table {
     width: 100%;
     margin: 0.75rem 0;

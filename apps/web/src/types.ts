@@ -102,6 +102,12 @@ export interface PendingQuestion {
   /** Suggested answers; free text is always accepted too. */
   options: string[]
   detail: string
+  /** Gap questions: the fact key, its name, why it matters and what stays if unanswered. */
+  fact?: string
+  label?: string
+  why?: string
+  placeholder?: string
+  freeText?: boolean
 }
 
 /** A generation waiting on the person who asked for it. */
@@ -117,6 +123,8 @@ export interface PendingPlan {
   request: string
   attachments: string[]
   answers: Record<string, string>
+  /** The waiting pipeline run this card belongs to. */
+  runId?: string
   questions?: PendingQuestion[]
   plan?: {
     title?: string
@@ -262,10 +270,86 @@ export type MessageRouting = PrivacyRouting | FreshnessAbstention | ToolResultAn
 
 export type Role = 'user' | 'assistant' | 'system'
 
+/* ── pipeline runs ──────────────────────────────────────────────────── */
+
+export type StageKind = 'compute' | 'model' | 'check' | 'io'
+export type StageStatus = 'done' | 'skipped' | 'stopped' | 'failed' | 'waiting' | 'cancelled'
+
+/** What a stage computed, found, changed or ran; present on live records and the full run. */
+export interface StageEvidence {
+  computed?: { name: string; value: string }[]
+  computedBlock?: string
+  findings?: { before?: string[]; after?: string[] }
+  changes?: { sectionId?: string; heading?: string; old: string; new: string }[]
+  code?: { code: string; stdout?: string; stderr?: string }[]
+  questions?: PendingQuestion[]
+}
+
+/** One stage of a pipeline run, as it ended. */
+export interface PipelineStage {
+  /** runId:stage:attempt. */
+  id: string
+  runId?: string
+  name: string
+  label: string
+  kind: StageKind
+  status: StageStatus
+  reason?: string
+  summary?: string
+  startedAt?: string
+  finishedAt?: string
+  ms?: number
+  attempt?: number
+  rerunnable?: boolean
+  evidence?: StageEvidence
+}
+
+/** A pipeline run a message settled (`routing.run`), or the one streaming now. */
+export interface PipelineRun {
+  id: string
+  pipeline?: string
+  flow?: string
+  status: 'running' | 'done' | 'stopped' | 'failed' | 'waiting' | 'cancelled'
+  parentId?: string | null
+  fromStage?: string | null
+  stages: PipelineStage[]
+}
+
+/** A highlighted span in a document: a blank, a value the grounding check blanked, a flagged sentence. */
+export interface DocMarkSpan {
+  kind: 'placeholder' | 'ungrounded-replaced' | 'check-finding'
+  start?: number
+  end?: number
+  text: string
+  original?: string
+  reason?: string
+  stage?: string
+  code?: string
+}
+
+export interface DocMarks {
+  artifactId?: string
+  version?: number
+  runId?: string
+  sections: { sectionId: string; heading?: string; spans: DocMarkSpan[] }[]
+}
+
+/** A pipeline definition, read-only (editing is phase 3). */
+export interface PipelineDefinition {
+  name: string
+  formats?: string[]
+  agents?: string[]
+  options?: Record<string, unknown>
+  checks?: string[]
+  flows: Record<string, { name: string; label: string; kind: StageKind; checks?: string[] }[]>
+  lists?: Record<string, string[]>
+}
+
 /** A unit of visible work inside an assistant turn. */
 export interface Step {
   id: string
-  type: 'thinking' | 'tool' | 'artifact'
+  /** `pipeline`: a stage record without the rich `stage` object (older servers, or a fallback). */
+  type: 'thinking' | 'tool' | 'artifact' | 'pipeline'
   label: string
   status: 'running' | 'done' | 'error'
   detail?: string
@@ -360,6 +444,8 @@ export interface Message {
   model?: string | null
   routing?: MessageRouting
   steps?: Step[]
+  /** The pipeline run this answer settled, from `routing.run` or the live stream. */
+  run?: PipelineRun
   artifactIds?: string[]
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
@@ -525,6 +611,8 @@ export interface ReportArtifact extends ArtifactBase {
   design?: DesignTokens | null
   /** Head of a document by purpose (`services/doc_formats.py`); absent is a plain title. */
   titleBlock?: ReportTitleBlock | null
+  /** Blanks and check findings stored at save; `GET /artifacts/{id}/marks` re-locates them live. */
+  marks?: DocMarks | null
 }
 
 /** A document's head by purpose: cover page, field table, memo rows, press or paper header. */

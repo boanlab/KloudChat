@@ -49,6 +49,9 @@ import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, isAtt
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { RunStagesButton } from '@/components/artifacts/RunStages'
+import { DocMarksLayer } from './DocMarks'
+import { fillBlank, useDocMarks } from '@/lib/docMarks'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
@@ -911,6 +914,36 @@ export function ReportPanel({
     }
   }
 
+  const [docEl, setDocEl] = useState<HTMLDivElement | null>(null)
+  const marks = useDocMarks(report, writing)
+  // A blank filled where it stands: the section's text with that blank replaced, saved as an edit.
+  const fillPlaceholder = async (sectionId: string, text: string, nth: number, value: string) => {
+    const at = report.sections.findIndex((s) => s.id === sectionId)
+    if (at < 0) return false
+    const content = fillBlank(report.sections[at].content, text, nth, value)
+    if (content === null) return false
+    setRestructuring(true)
+    setSaveError(null)
+    try {
+      const latest = await artifactsApi.get(report.id).catch(() => null)
+      const next = report.sections.map((s, i) => (i === at ? { ...s, content } : s))
+      const row = await artifactsApi.update(report.id, {
+        data: documentBody({ ...report, sections: next }),
+        summary: t('빈칸 채움: {text}').replace('{text}', text),
+        expectedVersion: latest?.version ?? report.version,
+      })
+      report.sections = next
+      report.version = row.version
+      setTick((n) => n + 1)
+      return true
+    } catch (err) {
+      setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
+      return false
+    } finally {
+      setRestructuring(false)
+    }
+  }
+
   const addSection = (at: number) => {
     const blank: ReportSection = {
       id: `s${Date.now().toString(36)}`,
@@ -1709,6 +1742,7 @@ export function ReportPanel({
               <div ref={setToolbarSlot} className="flex items-center" />
             </RibbonGroup>
           )}
+          {ribbon === 'review' && report.sessionId && <RibbonGroup label={t('단계')}><RunStagesButton sessionId={report.sessionId} /></RibbonGroup>}
           {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
             artifact={report}
             hasUnsavedChanges={hasUnsavedEdit}
@@ -1781,10 +1815,23 @@ export function ReportPanel({
         </header>
 
         <div
-          ref={docRef}
+          ref={(el) => {
+            docRef.current = el
+            setDocEl(el)
+          }}
           className="relative min-h-0 flex-1 overflow-y-auto"
           onMouseUp={readSelection}
         >
+          {pane === 'document' && !editing && (
+            <DocMarksLayer
+              root={docEl}
+              marks={marks}
+              scanKey={`${report.version}:${view}:${done}:${report.sections.length}`}
+              canFill={view === 'web' && !writing && !restructuring}
+              margin={view === 'web'}
+              onFill={fillPlaceholder}
+            />
+          )}
           {picked && (
             <div
               ref={handleRef}

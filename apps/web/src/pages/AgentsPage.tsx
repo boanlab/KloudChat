@@ -32,6 +32,7 @@ import { DOC_FORMATS } from '@/components/report/docFormats'
 import { currentLang } from '@/lib/i18n'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
+import { PipelineChain, PipelineFlowView } from '@/components/agents/PipelineChain'
 
 const emptyAgent = (model: string): Agent => ({
   id: uid('ag'),
@@ -125,6 +126,10 @@ export function AgentsPage() {
   }, [ensureDesignTemplates])
   const english = currentLang() === 'en'
   const [draft, setDraft] = useState<Agent | null>(null)
+  // The editor opens on its settings; 「흐름」 is the read-only pipeline, per agent opened.
+  const [flowTab, setFlowTab] = useState<string | null>(null)
+  const editorTab: 'settings' | 'flow' = draft && flowTab === draft.id ? 'flow' : 'settings'
+  const setEditorTab = (tab: 'settings' | 'flow') => setFlowTab(tab === 'flow' ? draft?.id ?? null : null)
   const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
   const slugTaken = !!draft && agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const [tab, setTab] = useState<'mine' | 'store'>('mine')
@@ -259,6 +264,7 @@ export function AgentsPage() {
                     <span className="font-mono text-xs text-faint">@{a.slug}</span>
                   </div>
                   <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(a.description)}</p>
+                  <PipelineChain agentId={a.id} className="mt-1.5" />
                 </div>
                 {a.ownerId === user?.id ? (
                   <Switch
@@ -463,7 +469,21 @@ export function AgentsPage() {
           </>
         }
       >
-        {draft && (
+        {draft && agents.some((a) => a.id === draft.id) && (
+          <Tabs<'settings' | 'flow'>
+            value={editorTab}
+            onChange={setEditorTab}
+            tabs={[
+              { id: 'settings', label: t('설정') },
+              { id: 'flow', label: t('흐름') },
+            ]}
+          />
+        )}
+        {draft && editorTab === 'flow' && agents.some((a) => a.id === draft.id) ? (
+          <div role="tabpanel" aria-label={t('흐름')} className="pt-1">
+            <PipelineFlowView agentId={draft.id} />
+          </div>
+        ) : draft && (
           <>
             {saveError && (
               <p

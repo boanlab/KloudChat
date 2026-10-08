@@ -37,6 +37,8 @@ import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
 import { StepTimeline } from './StepTimeline'
+import { ProposalCard } from './ProposalCard'
+import { waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
@@ -259,6 +261,11 @@ function MessageItemInner({
   const user = useStore((s) => s.user)
   const designTemplates = useStore((s) => s.designTemplates)
   const sessionKind = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.kind)
+  // The question card sits in this message's waiting stage when its run is the one waiting.
+  const waitingPending = useStore((s) => {
+    const session = s.sessions.find((c) => c.id === sessionId)
+    return waitingCardMessageId(session) === message.id ? session?.pending ?? null : null
+  })
   const editMessage = useStore((s) => s.editMessage)
   const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
   const renderTemplateId = useStore(
@@ -603,12 +610,18 @@ function MessageItemInner({
               )}
           </div>
         )}
-        {message.steps && message.steps.length > 0 && (
+        {((message.steps && message.steps.length > 0) || (message.run && message.run.stages.length > 0)) && (
           <StepTimeline
-            steps={message.steps}
+            steps={message.steps ?? []}
             live={!!streaming}
             failed={!!failed}
             startedAt={new Date(message.createdAt).getTime()}
+            sessionId={sessionId}
+            run={message.run}
+            rerunnable={sessionKind === 'report' || sessionKind === 'slides'}
+            waitingSlot={waitingPending && sessionKind ? (
+              <ProposalCard sessionId={sessionId} pending={waitingPending} kind={sessionKind} />
+            ) : undefined}
           />
         )}
 
