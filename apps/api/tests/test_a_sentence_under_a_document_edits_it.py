@@ -69,7 +69,7 @@ def test_the_planner_is_handed_the_current_skeleton():
     block = revise.outline_block(PARTS)
     assert "1. 서론" in block
     assert "4. 권고와 다음 행동" in block
-    assert "출발점" in block
+    assert "starting from this one" in block
 
 
 # ── the sentences that are plainly not a revision ──────────────────────

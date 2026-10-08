@@ -17,26 +17,26 @@ log = logging.getLogger(__name__)
 
 MAX_FIGURES = 12
 
-_PROMPT = """아래 자료(앞선 대화와 첨부)에서, 이것으로 쓸 문서 전체가 같은 값으로 써야 할 핵심
-수치를 뽑아라.
+_PROMPT = """From the material below (the earlier conversation and the attachments), extract the key
+figures that the whole document written from it must state with one and the same value.
 
-뽑을 것: 이름이 붙은 값 — 판매가·단가·원가·변동비·고정비·마진·손익분기 판매량·목표 판매량·
-고객 수·예산·투자액·기간·이탈률 같은 것. 문장 속 예시나 비교용 값은 뽑지 않는다.
+Extract: named values — such as 판매가·단가·원가·변동비·고정비·마진·손익분기 판매량·목표 판매량·
+고객 수·예산·투자액·기간·이탈률. Do not extract example or comparison values inside sentences.
 
-규칙:
-- 값은 자료에 적힌 그대로(단위 포함).
-- 최대 {n}개. 각 항목:
+Rules:
+- Each value exactly as written in the material (unit included).
+- At most {n}. Each item:
   {{"name": "박스당 판매가", "value": "20,000원", "aliases": ["판매가", "객단가"]}}
-  aliases는 문서에서 같은 값을 부를 다른 이름(2~6자).
-- 자료가 같은 이름에 서로 다른 값을 주면(옛 메일과 새 메일, 소개서와 측정치) 그 이름은 확정하지 말고
-  값마다 출처와 시점을 붙여 따로 적는다:
+  aliases are other names the document may use for the same value (2–6 characters, in Korean).
+- When the material gives one name different values (an old mail and a new one, a brochure and
+  a measurement), do not settle that name; list each value separately with its source and time:
   {{"name": "1TB 복구 시간", "values": [{{"value": "2시간", "where": "제품 소개서", "when": ""}},
   {{"value": "4.5시간", "where": "독립 측정", "when": "2026-09"}}]}}
 
-자료:
+Material:
 {material}
 
-JSON 배열 하나만 답하라."""
+Answer with one JSON array only."""
 
 #: A figure as written: 「20,000원」, 「3,000만 원」, 「2,500박스」, 「8%」, 「6개월」.
 _VALUE = re.compile(
@@ -255,17 +255,20 @@ def parse(text: str, material: str) -> list[Figure]:
 #: How each kind of document treats two values for one thing.
 _ADOPT = {
     "comparison": (
-        "「자료와 충돌」 절에 두 값을 출처·시점·측정 조건과 함께 나란히 적고, 어느 값을 "
-        "왜 따랐는지(같은 조건 측정 > 최신 > 소개서) 한 줄로 밝힌다. 조건이 다르면 "
-        "채택하지 말고 「조건 다름」으로 둔다."
+        "In the 「자료와 충돌」 section, write the two values side by side with their source, time "
+        "and measurement conditions, and state in one line which value you followed and why "
+        "(같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave "
+        "「조건 다름」."
     ),
     "minutes": (
-        "나중 결정·나중 메일의 값이 최종이다. 최종값을 쓰고 「○○에서 변경」을 비고에 남긴다."
+        "The value of the later decision or later mail is final. Write the final value and leave "
+        "「○○에서 변경」 in 비고."
     ),
-    "gaejo": "자료가 명시적으로 바꾼 같은 항목만 최신 값으로 쓰고, 바뀐 사실을 한 줄로 남긴다.",
+    "gaejo": "Use the latest value only for the same item the material explicitly changed, and "
+             "record the change in one line.",
     "client_proposal": (
-        "어느 값을 전제로 썼는지 밝히고, 확인할 것은 「전제·제외 범위·위험」 또는 질의 "
-        "목록에 남긴다."
+        "State which value you took as the premise, and leave what must be checked in "
+        "「전제·제외 범위·위험」 or the question list."
     ),
 }
 
@@ -285,10 +288,12 @@ def conflict_block(conflicts: list[Conflict], doc_format: str | None = None) -> 
         lines.append(f"- {c.name}: {shown}")
     rule = _ADOPT.get(
         doc_format or "",
-        "어느 값을 썼는지와 그 이유를 문장에 밝힌다. 다른 값을 지우거나 하나로 합치지 않는다.",
+        "State in the sentence which value you used and why. Do not drop the other value or "
+        "merge them into one.",
     )
     return (
-        "# 자료끼리 다른 값\n같은 것을 자료가 서로 다른 값으로 적었다. 확정 수치가 아니다. "
+        "# 자료끼리 다른 값\nThe material gives these things different values. They are not "
+        "settled figures (확정 수치). "
         + rule + "\n" + "\n".join(lines)
     )
 
@@ -311,10 +316,13 @@ def block(figures: list[Figure]) -> str:
         return ""
     lines = [f"- {f.name}: {f.value}" for f in figures]
     return (
-        "# 확정 수치\n앞선 대화와 자료에서 정해진 값이다. 이 문서의 모든 절·표·그림에서 이 이름의 "
-        "값은 아래 것만 쓰고, 다시 계산하거나 다른 값으로 바꾸지 마라. 이 값에서 계산한 수치는 "
-        "계산이 맞아야 한다. 가격 인상 같은 다른 경우를 따로 말할 때만 다른 값을 쓰고, 그때는 "
-        "그 경우임을 문장에 밝혀라.\n" + "\n".join(lines)
+        "# 확정 수치\nValues settled in the earlier conversation and the material. In every "
+        "section, table and figure of this document, use only the values below for these names; do "
+        "not recalculate them or change them to other values. Figures calculated from these values "
+        "must be calculated correctly. Use a different value only when separately discussing "
+        "another case, such as a price increase, and then say in the sentence that it is that "
+        "case.\n"
+        + "\n".join(lines)
     )
 
 

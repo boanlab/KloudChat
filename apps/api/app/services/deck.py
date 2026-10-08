@@ -110,20 +110,25 @@ UNWRITTEN = "이 장을 쓰지 못했습니다."
 _ACCENT = "#5b5bd6"
 
 #: Asked only when no design system fixes the accent.
-_THEME_RULE = """- theme 은 주제에 맞는 색 이름 하나다. 다음 중에서만 골라라:
+_THEME_RULE = """- theme is one colour name that suits the topic. Pick only from:
   {themes}
-- style 은 이 발표가 어떤 자리에서 읽히는지에 맞는 인상이다. 일곱 중 하나만 골라라:
-  · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 자리. 선과 넓은 여백.
-  · 포스터형 — 홍보·설명회·발표회처럼 눈길을 먼저 잡아야 하는 자리. 강한 색면.
-  · 미니멀 — 학술 발표·심사처럼 절제가 예의인 자리. 옅은 색과 작은 제목.
-  · 다크 — 기술·제품·데모처럼 화면을 어둡게 하고 보는 자리. 어두운 바탕에 빛나는 강조색.
-  · 분할형 — 사업 보고·제안·기관 발표. 왼쪽 색면과 큰 번호, 선으로 그린 상자.
-  · 따뜻한 — 교육·문화·복지·생활 주제. 크림색 종이 바탕과 둥근 상자.
-  · 흑백 — 디자인·건축·연구·전시. 검정 선과 큰 제목, 색은 쓰지 않는다.
-  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라. 같은 주제라도
-  자리가 다르면 다른 인상이다 — 늘 편집형으로 도망가지 마라.
-- 이 요청에는 theme "{theme}", style "{style}" 이 어울린다. 요청이 다른 색이나 인상을
-  말하지 않는 한 이 둘을 그대로 써라.
+- style is the impression that suits the occasion where this deck is read. Pick exactly one
+  of seven:
+  · 편집형 — occasions for reading and judging: reports, reviews, plans. Lines and wide margins.
+  · 포스터형 — occasions that must catch the eye first: promotion, info sessions, showcases.
+    Strong colour fields.
+  · 미니멀 — occasions where restraint is courtesy: academic talks, examinations. Pale colours
+    and small titles.
+  · 다크 — occasions watched on a darkened screen: technology, products, demos. A dark ground
+    with a glowing accent.
+  · 분할형 — business reports, proposals, institutional talks. A colour field on the left, large
+    numbers, boxes drawn in line.
+  · 따뜻한 — education, culture, welfare, everyday topics. A cream paper ground and rounded boxes.
+  · 흑백 — design, architecture, research, exhibitions. Black lines and large titles; no colour.
+  If the request states an impression, follow it; otherwise pick from the topic. The same topic
+  on a different occasion is a different impression — do not always fall back to 편집형.
+- For this request, theme "{theme}" and style "{style}" fit. Use both as given unless the
+  request names another colour or impression.
 """
 
 #: Stored `visualStyle` value → prompt label, for the suggestion the outline is shown.
@@ -231,128 +236,138 @@ _THEMES = {
     "먹": "#334155",
 }
 
-_OUTLINE_PROMPT = """다음 요청에 맞는 발표 슬라이드의 제목과 구성을 만들어라.
+_OUTLINE_PROMPT = """Make the title and slide structure of a presentation for the request below.
 
-규칙:
-- title 은 표지에 적힐 한 줄이다. 요청 문장을 그대로 옮기지 말고 주제를 가리키는
-  명사구로 써라. 마침표와 "~에 대한 발표" 같은 군말은 빼라.
-- **요청에 없는 소재를 지어내지 마라.** 요청이 문서의 쓰임만 말하고 무엇에 대한
-  것인지는 말하지 않았으면 — "연구계획 발표자료", "제안 발표" 처럼 — 그 쓰임을
-  가리키는 제목을 쓰고, 각 장은 그 쓰임이 요구하는 뼈대(배경·목표·방법·일정
-  따위)로 잡아라. 요청에 없던 분야나 연도를 골라 채운 발표는 듣는 사람의 것이
-  아니어서 그대로 쓸 수 없다.
-- subtitle 은 표지에서 제목 아래 작게 붙는 한 줄이다. 40자 이내로, 이 발표가
-  누구에게 무엇을 말하는지 적어라. 요청 문장을 그대로 옮기지 마라.
-- 슬라이드 {lo}~{hi}장.
-- 첫 장은 반드시 layout "title" 이고, 그 장의 제목은 발표 제목과 같게 하라.
-- **"chart" 와 "metrics" 는 요청에 그 숫자가 있을 때만.** 요청에 수치가 없는데
-  이 layout 을 고르면 그 장은 숫자를 지어내게 된다. 요청에 값이 여럿 있고 그
-  **모양**을 봐야 하면 "chart", 기억시킬 숫자가 두셋 있으면 "metrics", 값을
-  하나하나 읽어야 하면 "table".
-- **같은 기준으로 두셋을 견주는 장은 "table" 로 잡아라.** 대안 비교, 전후 대비,
-  단계별 조건처럼 값이 기준마다 갈리는 내용이다. 이런 내용을 bullets 로 늘어
-  놓으면 읽는 사람이 머릿속에서 표를 다시 그려야 한다.
-- **요청이 발표를 몇 부분으로 나누라고 했으면(「시장 구조, 핵심 취약점, 거버넌스
-  세 부분」) 부분마다 그 이름의 "section" 장을 두고, 그 뒤에 그 부분의 장들을
-  놓아라.** 목차는 그 부분 이름을 따른다.
-- **제목이 「주요 기업별」「국내외」처럼 대상을 약속하면 그 장에 실제 이름(기업·
-  제품·문서)을 적어라.** 범주 이름만으로 채우지 마라.
-- **여섯 장이 넘는 발표는 둘째 장에 "agenda"(목차) 를 넣어라.** 내용은 쓰지 마라 —
-  구성에서 채운다. 제목은 "목차" 또는 "발표 순서".
-- **마지막 장은 "closing"** — 기억할 것 두셋과 마무리 한 줄. 여섯 장이 넘는 발표에만.
-- 나머지 장은 말할 내용에 맞는 layout 을 골라라. 항목을 나열하면 "bullets",
-  둘을 나란히 견주거나 항목이 6개 이상이면 "two-column", 한 문장으로 남길
-  대목이면 "quote". quote 는 전체에서 최대 2장. **발표의 결론 한 마디를 크게 세우는
-  장은 "statement"** — 남의 말이 아니라 발표자가 말하려는 것, 전체에서 최대 1장.
-- **절차·단계·과정을 차례로 놓되 날짜가 없으면 "steps"** (3~5단계, 가로로 번호가
-  매겨진다). 접수→심사→선정, 조사→설계→구현→평가 처럼. 날짜가 있으면 "timeline".
-- **같은 급의 항목 셋넷에 각각 이름과 한두 줄 설명이 붙으면 "cards"** — 분야·전략·역할·
-  선택지처럼 나란히 놓고 보는 것. bands 는 이름표가 줄 앞에 서는 세로 목록이고,
-  cards 는 상자를 옆으로 세운다. 순서가 뜻을 가지면 steps 다.
-- **요청에 수치가 하나뿐인데 그 수치가 발표의 핵심이면 "big-number"** — 숫자 하나를
-  크게, 그 뜻을 한 줄로. 두셋이면 "metrics".
-- **왼쪽에 이름표를 달고 오른쪽에 내용을 놓는 장은 "bands" 로 잡아라.** 항목마다
-  이름이 붙는 내용이다 — 미션·배경·추진전략, 대상·기간·방식·수료, 학점·증명·연계
-  처럼. 이런 장 제목은 대개 "~은 무엇인가", "~ 개요", "~ 체계", "혜택" 이다.
-  같은 것을 bullets 로 쓰면 이름이 문장의 첫 낱말이 되고 이름이기를 그만둔다.
-- **"tiles" 는 요청이 머리글자·번호 묶음을 줄 때만**(4대 분야, P·H·A·S·E). 없는
-  묶음을 표식으로 세우면 「V·C·U」 같은 뜻 없는 글자가 된다.
-- **"timeline" 은 요청에 시점이나 절차의 순서가 있을 때만.** 연혁·일정·절차. 시점이
-  없는 내용을 timeline 으로 잡으면 연도를 지어내게 된다. 절차라도 명령어 순서면
-  bullets 가 낫다.
-- 문의처·연락처·적용 시기·신청 방법처럼 **사실을 전하는 장은 "bullets"** 다. quote 로
-  잡으면 내선 번호 대신 표어가 남는다. **퀴즈·연습 문제 장도 "bullets"** — 문제
-  자체를 항목으로 적는다. 상태 전이·구조·흐름처럼 그림으로 그릴 것은 chart 가
-  아니라 bands 나 bullets 다(chart 는 수치 계열만 그린다).
-- 아래 패턴도 layout 으로 쓸 수 있다. **장의 내용이 패턴의 쓰임에 맞으면 bullets 대신
-  그 패턴을 골라라** — 글머리만 이어지는 발표는 단조롭다.
-  장단점이면 pros-cons, 강점·약점·기회·위협이면 swot, 용어 풀이면 glossary, 질문과
-  답이면 faq, 절차 흐름이면 process, 기간별 계획이면 roadmap 처럼. 숫자 패턴(kpi-grid,
-  stat-bars, number-compare, chart-*)은 요청에 그 수치가 있을 때만.
-  - cards-2: 두 가지를 나란히 크게 — 두 방안, 두 축, 두 대상.
-  - cards-3: 같은 급의 세 항목 — 세 전략, 세 원칙, 세 기능.
-  - feature-grid: 기능·특징 4~6개를 격자로 — 제품 기능, 서비스 구성.
-  - team: 사람과 역할 — 팀원 소개, 역할 분담, 담당자.
-  - checklist: 확인할 것·준비물·요건 — 점검 목록.
-  - numbered: 순위·순서가 있는 항목 — 우선순위, 상위 N개, 요점 번호.
-  - faq: 예상 질문과 답 — Q&A, 자주 묻는 질문.
-  - glossary: 용어와 정의 — 개념 정리, 약어 풀이.
-  - takeaways: 기억할 것 두셋 — 결론 직전의 요약, 시사점.
-  - objectives: 목표·성과 지표 — 이번 과제가 이루려는 것.
-  - references: 출처 목록 — 발표의 참고문헌·자료 출처. 마지막 장 근처.
-  - process: 입력에서 출력으로 가는 처리 흐름 — 데이터 흐름, 업무 절차.
-  - chevron: 단계가 짧은 이름으로 이어지는 진행 — 추진 단계, 성숙도 단계.
-  - roadmap: 기간별 계획을 가로로 — 1~4주, 분기별, 학기 일정.
-  - milestones: 세로로 이어지는 주요 시점 — 연혁, 진행 이정표.
-  - pyramid: 위로 갈수록 좁아지는 위계 — 욕구 단계, 우선순위 층.
-  - funnel: 단계마다 줄어드는 양 — 전환 깔때기, 선별 과정.
-  - cycle: 끝이 처음으로 돌아가는 반복 — PDCA, 개선 주기.
-  - swot: 강점·약점·기회·위협 분석.
-  - matrix: 두 축으로 나눈 네 칸 — 중요도×긴급도, 비용×효과.
-  - compare-2: 두 대안을 항목별로 맞대어 — A안 대 B안, 기존 대 제안.
-  - compare-3: 세 대안 비교 — 세 기술, 세 정책안.
-  - pros-cons: 한 대상의 장점과 단점.
-  - before-after: 바뀌기 전과 후 — 개선 전후, 도입 전후.
-  - problem-solution: 문제와 그 해결책을 짝지어.
-  - myth-fact: 흔한 오해와 실제 — 통념 바로잡기.
-  - do-dont: 지침 — 해야 할 것과 하지 말 것.
-  - three-column: 세 갈래로 나뉜 내용 — 세 영역, 세 이해관계자.
-  - kpi-grid: 숫자 서너 개를 한눈에 — 현황 지표.
-  - stat-bars: 비율·달성률을 막대로 — 퍼센트 지표.
-  - number-compare: 한 지표의 전과 후 두 수 — 14분 → 3분.
-  - chart-pie: 전체에 대한 구성비 — 합이 100%인 비중.
-  - chart-donut: 구성비를 가운데 합계와 함께.
-  - chart-hbar: 이름이 긴 범주의 크기 비교 — 순위.
-  - chart-stacked: 범주마다 여러 구성이 쌓인 비교.
-  - question: 청중에게 던지는 물음 — 문제 제기, 토론 질문.
-  - definition: 핵심 개념 하나의 정의 — 제목이 용어.
-  - hypothesis: 연구 가설·주장 한 문장.
-- 맞는 패턴도 기본 layout 도 없으면 "bullets" 다. 한 발표에 같은 패턴을 두 번 쓰지
-  말고, 쓰임이 분명하지 않은 장에 패턴을 억지로 붙이지 마라.
-- **열 장을 넘는 발표에서 이야기가 갈리는 자리에는 "section" 을 한 장 넣어라.**
-  그 뒤에 오는 묶음의 이름만 적는 간지다. number 에 "01." 처럼 순서를 적고,
-  제목은 그 묶음의 이름으로 한다. 내용은 쓰지 마라 — 간지에 항목을 적으면
-  그건 간지가 아니라 목차다. 짧은 발표에는 넣지 마라.
-- **겁을 주거나 재촉하는 장은 만들지 마라.** "기회 손실", "마감 임박", "지금
-  결정하지 않으면" 같은 장은 내용이 없을 때 분량을 채우려고 만드는 장이다.
-  듣는 사람이 알아야 할 사실을 적고, 판단은 그 사람에게 맡겨라.
-- **한 장에는 그 장에서만 하는 말을 담아라.** 앞 장을 다른 낱말로 다시 쓴 장은
-  한 장이 아니라 여백이다.
-- **같은 layout 을 세 장 연속으로 쓰지 마라. bullets 는 연속 두 장까지.** 표지·목차·
-  간지·마무리를 뺀 나머지에서 최소 네 가지를 써라. 여덟 장 중 여섯이 bullets 인
-  발표는 넘겨도 넘긴 것 같지 않다 — 이름이 붙는 내용은 bands 나 cards 로, 절차는
-  steps 로, 비교는 table 로, 결론은 statement 로 모양을 주어라.
-{theme_rule}- 각 장 제목은 그 장에서 말할 내용을 가리키는 짧은 구절로. 순서대로 넘기면
-  하나의 발표가 되어야 한다.
-- 내용은 쓰지 마라. 제목과 layout 만.
+Rules:
+- title is the one line printed on the cover. Do not copy the request sentence; write a noun
+  phrase that names the topic. Drop the full stop and filler such as "~에 대한 발표".
+- **Do not invent subject matter the request does not give.** If the request only says what
+  the document is for and not what it is about — like "연구계획 발표자료", "제안 발표" —
+  write a title that names that use, and build each slide on the skeleton that use calls for
+  (배경·목표·방법·일정 and the like). A deck filled with a field or year the request never
+  named is not the audience's own and cannot be used as is.
+- subtitle is the one small line under the title on the cover. Within 40 characters, say who
+  this talk is for and what it tells them. Do not copy the request sentence.
+- {lo}~{hi} slides.
+- The first slide must have layout "title", and its title must be the same as the deck title.
+- **"chart" and "metrics" only when the request has those numbers.** Choosing these layouts
+  when the request has no figures makes the slide invent numbers. If the request has several
+  values whose **shape** must be seen, "chart"; two or three numbers to remember, "metrics";
+  values to be read one by one, "table".
+- **Make a slide that compares two or three things on the same criteria a "table".**
+  Comparing alternatives, before and after, conditions by stage — content whose values differ
+  by criterion. Laid out as bullets, the reader has to redraw the table in their head.
+- **If the request says to split the talk into parts (「시장 구조, 핵심 취약점, 거버넌스
+  세 부분」), give each part a "section" slide with that name, followed by that part's
+  slides.** The agenda follows those part names.
+- **When a title promises subjects such as 「주요 기업별」 or 「국내외」, put real names
+  (companies, products, documents) on that slide.** Do not fill it with category names only.
+- **A deck of more than six slides puts an "agenda" (목차) as its second slide.** Write no
+  content — it is filled from the structure. Title it "목차" or "발표 순서".
+- **The last slide is "closing"** — two or three things to remember and one closing line.
+  Only in decks of more than six slides.
+- For the other slides pick the layout that fits what will be said. A list of items is
+  "bullets"; two things side by side or six or more items, "two-column"; a passage to leave
+  as one sentence, "quote". At most 2 quote slides in all. **A slide that stands the talk's
+  one-line conclusion up large is "statement"** — what the presenter means to say, not
+  someone else's words; at most 1 in all.
+- **Procedures, stages or processes in order but without dates are "steps"** (3~5 stages,
+  numbered across). Like 접수→심사→선정, 조사→설계→구현→평가. With dates, "timeline".
+- **Three or four items of equal rank, each with a name and a line or two of description,
+  are "cards"** — fields, strategies, roles, options seen side by side. bands is a vertical
+  list with the label at the head of each row; cards stands boxes side by side. If the order
+  carries meaning, it is steps.
+- **If the request has only one figure and that figure is the heart of the talk,
+  "big-number"** — the one number large, its meaning in one line. Two or three, "metrics".
+- **Make a slide with a label on the left and its content on the right "bands".** Content
+  where each item has a name — 미션·배경·추진전략, 대상·기간·방식·수료, 학점·증명·연계.
+  Such slides are usually titled "~은 무엇인가", "~ 개요", "~ 체계", "혜택". Written as
+  bullets, the name becomes the first word of a sentence and stops being a name.
+- **"tiles" only when the request gives a set of initials or numbers** (4대 분야,
+  P·H·A·S·E). Markers for a set that does not exist become meaningless letters like
+  「V·C·U」.
+- **"timeline" only when the request has points in time or the order of a procedure.**
+  History, schedule, procedure. Content with no points in time laid out as a timeline makes
+  the slide invent years. Even for a procedure, a sequence of commands is better as bullets.
+- **A slide that conveys facts — contacts, when it applies, how to apply — is "bullets".**
+  As a quote, a slogan is left where the extension number should be. **Quiz and exercise
+  slides are "bullets" too** — write the questions themselves as items. Things to draw as a
+  picture — state transitions, structures, flows — are bands or bullets, not chart (chart only
+  draws numeric series).
+- The patterns below can also be used as layouts. **When a slide's content fits a pattern's
+  use, choose that pattern instead of bullets** — a deck of nothing but bullet lists is
+  monotonous. pros-cons for pros and cons, swot for strengths·weaknesses·opportunities·threats,
+  glossary for explaining terms, faq for questions and answers, process for a procedure flow,
+  roadmap for a plan by period, and so on. Numeric patterns (kpi-grid, stat-bars,
+  number-compare, chart-*) only when the request has those figures.
+  - cards-2: two things side by side, large — 두 방안, 두 축, 두 대상.
+  - cards-3: three items of equal rank — 세 전략, 세 원칙, 세 기능.
+  - feature-grid: 4~6 features or traits in a grid — 제품 기능, 서비스 구성.
+  - team: people and roles — 팀원 소개, 역할 분담, 담당자.
+  - checklist: things to check, things to bring, requirements — 점검 목록.
+  - numbered: items with a rank or order — 우선순위, 상위 N개, 요점 번호.
+  - faq: expected questions and answers — Q&A, 자주 묻는 질문.
+  - glossary: terms and definitions — 개념 정리, 약어 풀이.
+  - takeaways: two or three things to remember — 결론 직전의 요약, 시사점.
+  - objectives: goals and outcome indicators — what this project sets out to achieve.
+  - references: list of sources — the talk's references and data sources. Near the last slide.
+  - process: a processing flow from input to output — 데이터 흐름, 업무 절차.
+  - chevron: progress through stages with short names — 추진 단계, 성숙도 단계.
+  - roadmap: a plan by period, laid across — 1~4주, 분기별, 학기 일정.
+  - milestones: key points in time running down the slide — 연혁, 진행 이정표.
+  - pyramid: a hierarchy that narrows toward the top — 욕구 단계, 우선순위 층.
+  - funnel: a quantity that shrinks at each stage — 전환 깔때기, 선별 과정.
+  - cycle: a repetition whose end returns to the start — PDCA, 개선 주기.
+  - swot: analysis of strengths, weaknesses, opportunities and threats.
+  - matrix: four cells split by two axes — 중요도×긴급도, 비용×효과.
+  - compare-2: two alternatives matched item by item — A안 대 B안, 기존 대 제안.
+  - compare-3: comparing three alternatives — 세 기술, 세 정책안.
+  - pros-cons: the pros and cons of one subject.
+  - before-after: before and after a change — 개선 전후, 도입 전후.
+  - problem-solution: problems paired with their solutions.
+  - myth-fact: common misconceptions and the facts — 통념 바로잡기.
+  - do-dont: guidelines — what to do and what not to do.
+  - three-column: content split three ways — 세 영역, 세 이해관계자.
+  - kpi-grid: three or four numbers at a glance — 현황 지표.
+  - stat-bars: ratios or attainment rates as bars — 퍼센트 지표.
+  - number-compare: one indicator's two numbers, before and after — 14분 → 3분.
+  - chart-pie: shares of a whole — 합이 100%인 비중.
+  - chart-donut: shares with the total in the centre.
+  - chart-hbar: comparing the sizes of categories with long names — 순위.
+  - chart-stacked: a comparison where each category stacks several parts.
+  - question: a question put to the audience — 문제 제기, 토론 질문.
+  - definition: the definition of one key concept — the title is the term.
+  - hypothesis: one sentence of a research hypothesis or claim.
+- If neither a pattern nor a basic layout fits, it is "bullets". Do not use the same pattern
+  twice in one deck, and do not force a pattern onto a slide whose use is unclear.
+- **In a deck of more than ten slides, put one "section" slide where the story turns.** It is
+  a divider that only names the group that follows. Put the order in number, like "01.", and
+  title it with the group's name. Write no content — a divider that lists items is not a
+  divider but an agenda. Do not add one to a short deck.
+- **Do not make slides that frighten or rush.** Slides like "기회 손실", "마감 임박",
+  "지금 결정하지 않으면" are made to fill space when there is no content. State the facts the
+  audience needs to know and leave the judgement to them.
+- **Put on each slide only what that slide says.** A slide that restates the previous one in
+  other words is not a slide but blank space.
+- **Do not use the same layout on three slides in a row; bullets at most two in a row.** Use
+  at least four different layouts among the slides other than the cover, agenda, dividers and
+  closing. A deck where six of eight slides are bullets does not feel like it moves on — give
+  content a shape: named content as bands or cards, procedures as steps, comparisons as table,
+  conclusions as statement.
+{theme_rule}- Each slide title is a short phrase naming what that slide will say. Read in
+  order, they must make one talk.
+- Write no content. Only titles and layouts.
 {ask_rule}
-- 참고할 자료에 발표 양식·서식 문서가 있으면 그 문서의 장 순서를 그대로 따라라.
-  장수도 그 양식을 따르고, 일반적인 발표 구성으로 바꾸지 마라.
+- If the reference material includes a presentation template or form document, follow that
+  document's slide order exactly. Follow its slide count too; do not change it into a generic
+  talk structure.
+- Write title, subtitle, subject and slide titles in Korean unless the request itself is
+  written in English.
 
-JSON 객체로만 답하라. "subject" 에는 이 발표가 무엇에 대한 것인지를 **요청에 적힌
-말 그대로** 적어라 — 요청이 쓰임(중간발표, 학회 발표, 신청 발표)만 말하고 무엇에
-대한 것인지 말하지 않았으면 빈 문자열.
-예:
+Answer with a JSON object only. In "subject" write what this talk is about **in the request's
+own words** — if the request only names the use (중간발표, 학회 발표, 신청 발표) and not what
+it is about, an empty string.
+Example:
 {{"title": "전이학습의 소량 데이터 효율성",
   "subtitle": "의료 영상 연구자를 위한 30분 개요",
   "subject": "전이학습",
@@ -360,107 +375,122 @@ JSON 객체로만 답하라. "subject" 에는 이 발표가 무엇에 대한 것
              {{"title": "왜 데이터가 부족한가", "layout": "bullets"}},
              {{"title": "사전학습과 미세조정 비교", "layout": "table"}}]}}
 
-요청: {request}"""
+Request: {request}"""
 
-_DRAFT_PROMPT = """아래 구성대로 발표 전체를 한 번에 써라. 장마다 JSON 객체 하나.
+_DRAFT_PROMPT = """Write the whole deck in one pass, following the structure below. One JSON
+object per slide.
 
-구성(이 순서, 이 제목, 이 layout 그대로):
+Structure (this order, these titles, these layouts):
 {outline}
 
 {facts}
 
-장의 내용 필드 — layout 마다 하나만 채운다:
-- bullets: "bullets": ["항목", ...] {count}개. 각 항목은 한 줄 40자 이내, 마침표 없이.
-  **제목을 되풀이하는 항목(「requirements.txt 활용 방법」)이 아니라 그 장에서 실제로
-  말할 사실·명령·규칙**을 적는다. 명령어·파일 이름은 그대로 쓴다(`python -m venv .venv`).
-- two-column: "bullets": [...] {count_two}개. 앞 절반이 왼쪽, 뒤 절반이 오른쪽.
-- table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...] 첫 줄이 머리글. 3~5행,
-  2~4열. 칸은 짧게(15자 안쪽).
-- timeline: "timeline": [["시점 또는 단계", "일"], ...] 3~6개. 일은 한 줄. **시점과 단계는
-  요청에 있는 것만** — 요청에 날짜가 하나뿐이면 timeline 이 아니라 bullets 다. 「매주
-  월요일 제출」「분기별 점검」처럼 요청에 없는 절차를 만들어 칸을 채우지 마라.
-- bands: "bands": [["이름", "내용"], ...] 3~4개. 이름은 낱말 하나둘, 내용은 한 줄.
-- steps: "steps": [["단계", "내용"], ...] 3~5개. 단계는 이름 한 마디(번호 없이), 내용은
-  한 줄. 요청에 있는 절차만.
-- cards: "cards": [["이름", "내용"], ...] 3~4개. 이름은 한 마디, 내용은 한두 문장 80자
-  안쪽. 같은 급의 항목만.
-- statement: "title": 핵심 한 마디(12자 안쪽), "body": 그것을 푸는 한 문장(60자 안쪽).
-- big-number: "metrics": [["값", "이름"]] 하나, "body": 그 숫자의 뜻 한 줄. 값은 「쓸 수
-  있는 수치」에 있는 것만.
-- closing: "bullets": 기억할 것 2~3개(각 30자 안쪽), "body": 마무리 한 줄(「질문을
-  환영합니다」). 앞 장에서 말한 것만.
-- agenda: 내용 없이 "notes" 만 — 목차는 구성에서 채운다.
-- tiles: "tiles": [["표식", "이름"], ...] 3~6개. 표식은 머리글자·번호 한두 글자. **요청에
-  그런 묶음이 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.**
-- metrics: "metrics": [["값", "이름"], ...] 2~4개. **값은 「쓸 수 있는 수치」에 있는
-  것만.** 없으면 이 layout 을 쓰지 말고 bullets 로 바꿔라.
+Content fields of a slide — fill only the one for its layout:
+- bullets: "bullets": ["항목", ...], {count} items. Each item one line within 40 characters,
+  no full stop. **Not items that repeat the title (「requirements.txt 활용 방법」) but the
+  facts, commands and rules the slide actually says.** Write commands and file names as they
+  are (`python -m venv .venv`).
+- two-column: "bullets": [...], {count_two} items. The first half is the left column, the
+  second half the right.
+- table: "rows": [["기준", "A", "B"], ["행", "값", "값"], ...]; the first row is the header.
+  3~5 rows, 2~4 columns. Keep cells short (within 15 characters).
+- timeline: "timeline": [["시점 또는 단계", "일"], ...], 3~6 entries. Each event one line.
+  **Only points in time and stages the request has** — if the request has only one date, it
+  is not a timeline but bullets. Do not fill cells with procedures the request lacks, like
+  「매주 월요일 제출」「분기별 점검」.
+- bands: "bands": [["이름", "내용"], ...], 3~4 entries. The name one or two words, the
+  content one line.
+- steps: "steps": [["단계", "내용"], ...], 3~5 entries. The stage a one-word name (no number),
+  the content one line. Only procedures the request has.
+- cards: "cards": [["이름", "내용"], ...], 3~4 entries. The name one word, the content one or
+  two sentences within 80 characters. Only items of equal rank.
+- statement: "title": the key phrase (within 12 characters), "body": one sentence unpacking it
+  (within 60 characters).
+- big-number: "metrics": one [["값", "이름"]], "body": one line on what the number means. The
+  value only from the usable figures.
+- closing: "bullets": 2~3 things to remember (each within 30 characters), "body": one closing
+  line (「질문을 환영합니다」). Only what earlier slides said.
+- agenda: no content, only "notes" — the agenda is filled from the structure.
+- tiles: "tiles": [["표식", "이름"], ...], 3~6 entries. The marker one or two characters of
+  initials or numbers. **If the request has no such set, do not use this layout; change it to
+  bullets.**
+- metrics: "metrics": [["값", "이름"], ...], 2~4 entries. **Values only from the usable
+  figures.** If there are none, do not use this layout; change it to bullets.
 - chart: "chart": {{"kind": "bar"|"line", "unit": "단위", "categories": [...],
-  "series": [{{"name": "이름", "values": [...]}}]}}. 값은 「쓸 수 있는 수치」에 있는
-  것만. 없으면 bullets 로.
-- quote: "body": "한 문장" (60자 안쪽). 남길 만한 한 문장이 없으면 bullets 로. **요청에
-  있는 문장이거나 발표자가 직접 하는 한 문장 요약만.** 직원·고객·전문가의 소감이나
-  「직원들의 목소리」 같은 남의 말을 지어내지 마라 — 안내 자료에 없는 사람의 말을
-  실으면 그 자료는 거짓말을 한 것이다.
-- 패턴 layout: 모양에 따라 하나만 채운다 — 「items」 `[[이름, 내용], ...]`(목록·격자·흐름·사분면
-  계열), 「columns」 `[{{"title": 이름, "items": [...]}},
+  "series": [{{"name": "이름", "values": [...]}}]}}. Values only from the usable figures. If
+  there are none, use bullets.
+- quote: "body": "한 문장" (within 60 characters). If there is no sentence worth keeping, use
+  bullets. **Only a sentence from the request or a one-sentence summary in the presenter's own
+  voice.** Do not invent other people's words, such as remarks by staff, customers or experts or
+  「직원들의 목소리」 — material that quotes people who are not in it is lying.
+- Pattern layouts: fill only one, by shape — 「items」 `[[이름, 내용], ...]` (list, grid, flow
+  and quadrant families), 「columns」 `[{{"title": 이름, "items": [...]}},
   ...]`(compare-2·compare-3·pros-cons·before-after·problem-solution·myth-fact·do-dont·three-column),
-  「metrics」(kpi-grid·stat-bars·number-compare),
-  「chart」(chart-pie·chart-donut·chart-hbar·chart-stacked, kind 는 이름대로),
-  「body」(question·definition·hypothesis). 개수는 구성 단계에서 말한 쓰임에 맞게, 각 칸은 짧게.
-  swot 은 강점·약점·기회·위협 네 칸 그대로, pros-cons 는 「장점」「단점」 두 단.
-- title, section: 내용 없이 "notes" 만.
+  「metrics」 (kpi-grid·stat-bars·number-compare),
+  「chart」 (chart-pie·chart-donut·chart-hbar·chart-stacked, kind as named),
+  「body」 (question·definition·hypothesis). Counts fit the use given at the structure stage;
+  keep each cell short. swot keeps its four cells 강점·약점·기회·위협 as they are; pros-cons has
+  the two columns 「장점」「단점」.
+- title, section: no content, only "notes".
 
-모든 장에 "notes": 발표자가 이 장에서 **실제로 말할 문장** 3~5개. 「이 장에서는 ~를
-설명합니다」처럼 장을 소개하는 문장이 아니라, 청중에게 하는 말 그대로. 개념은 보기
-하나로 설명하고, 명령어가 있으면 무엇을 하는지 말한다.
+Every slide has "notes": 3~5 sentences the presenter **will actually say** on that slide. Not
+sentences that introduce the slide, like 「이 장에서는 ~를 설명합니다」, but the very words
+said to the audience. Explain a concept with one example; if there is a command, say what it
+does.
 
-규칙:
-- 장마다 그 장에서만 하는 말. 앞 장을 다른 낱말로 되풀이하지 마라.
-- **자료의 이름은 원문 그대로.** 첨부 데이터의 항목 이름·열 머리글·식별자(nginx, redis 같은
-  워크로드명, 제품명, 코드명)는 번역하거나 다른 말로 바꿔 부르지 않는다. 「웹 서버」가
-  아니라 「nginx」다.
-- **수치는 「쓸 수 있는 수치」에 있는 것과 그것으로 계산한 값만.** 없는 수치(비용,
-  퍼센트, 초, 명)를 만들지 마라. 겁을 주거나 재촉하는 장을 만들지 마라.
-- 영어 낱말을 한국어 문장에 섞지 말고, 중국어 한자를 쓰지 마라.
-- 구성의 layout 은 제안이다. **내용이 그 모양이 아니면 바꿔라** — 이름 규칙을
-  timeline 으로, 요약을 metrics 로 쓰지 마라. 기본은 bullets 이고, 두셋을 같은
-  기준으로 견주면 table, 항목마다 이름이 붙으면 bands(세로) 나 cards(가로 상자),
-  날짜 없는 절차는 steps, 시간 순서가 요청에 있을 때만 timeline, 남길 한 문장이
-  있을 때만 quote(전체 1장), 결론 한 마디는 statement, 「쓸 수 있는 수치」에 값이
-  있을 때만 metrics·chart·big-number, 요청이 머리글자 묶음을 줄 때만 tiles.
-  제목과 순서는 바꾸지 마라. 표지·목차·간지·마무리의 layout 은 바꾸지 마라.
-- 규칙·명령어를 가르치는 장이면 명령어 자체를 항목으로 쓴다: `python -m venv .venv`,
-  `pip freeze > requirements.txt`, `conda env create -f environment.yml`. **확신하는
-  명령어와 옵션만 쓴다.** 기억이 흐린 플래그(`--with-env`, `-s /archive`)를 만들어
-  넣으면 신입생이 그대로 쳐 보고 실패한다. 모르면 명령어 이름까지만 쓰고 옵션은
-  「(문서 참고)」로 둔다. 틀린 관행(`.venv` 를 git 에 올리기)을 가르치지 마라.
-- 요청이 규칙의 **이름만** 주고 내용을 주지 않았으면(「이름 규칙」, 「requirements
-  고정」) 내용을 지어내지 마라. 무엇을 정해야 하는지를 적는다 — 「환경 이름:
-  프로젝트명-연도 꼴로 통일(연구실에서 정함)」처럼. 「4~12자」 「밑줄 불가」 같은
-  세부는 요청에 없으면 없는 것이다.
-- 요청과 자료에 없는 이름·날짜·금액·수치는 지어내지 말고 「[담당자]」 「[일자]」
-  「[금액]」처럼 그 자리 이름을 대괄호로 둔다.
-- 이모지(1️⃣ ✅ 🚀)를 쓰지 마라. 번호가 필요하면 timeline 이나 「1.」 을 쓴다.
-- 요청에 없는 주제로 장을 채우지 마라. 구성에 그런 제목이 있으면 요청이 말한 것으로
-  좁혀서 쓴다.
+Rules:
+- Each slide says only its own thing. Do not repeat an earlier slide in other words.
+- **Names from the material stay as in the original.** Item names, column headers and
+  identifiers in attached data (workload names like nginx and redis, product names, code
+  names) are not translated or called by another name. It is 「nginx」, not 「웹 서버」.
+- **Figures only from the usable figures and values computed from them.** Do not make up
+  figures that are not there (costs, percentages, seconds, headcounts). Do not make slides
+  that frighten or rush.
+- Do not mix English words into Korean sentences, and do not use Chinese characters.
+- The structure's layouts are suggestions. **If the content is not that shape, change it** —
+  do not write naming rules as a timeline or a summary as metrics. The default is bullets;
+  two or three things compared on the same criteria are table; items that each carry a name
+  are bands (vertical) or cards (side-by-side boxes); a procedure without dates is steps;
+  timeline only when the request has a time order; quote only when there is a sentence to keep
+  (1 in all); a one-line conclusion is statement; metrics, chart and big-number only when the
+  usable figures have values; tiles only when the request gives a set of initials.
+  Do not change titles or order. Do not change the layouts of the cover, agenda, dividers and
+  closing.
+- On a slide that teaches rules or commands, write the commands themselves as items:
+  `python -m venv .venv`, `pip freeze > requirements.txt`, `conda env create -f
+  environment.yml`. **Write only commands and options you are sure of.** A half-remembered
+  flag (`--with-env`, `-s /archive`) gets typed in by a new student as is and fails. If unsure,
+  write only the command name and leave the options as 「(문서 참고)」. Do not teach wrong
+  practices (committing `.venv` to git).
+- If the request gives only the **name** of a rule and not its content (「이름 규칙」,
+  「requirements 고정」), do not invent the content. Write what has to be decided — like
+  「환경 이름: 프로젝트명-연도 꼴로 통일(연구실에서 정함)」. Details like 「4~12자」 or
+  「밑줄 불가」 do not exist unless the request has them.
+- Do not invent names, dates, amounts or figures absent from the request and material; leave
+  the slot's name in brackets, like 「[담당자]」 「[일자]」 「[금액]」.
+- Do not use emoji (1️⃣ ✅ 🚀). If numbering is needed, use timeline or 「1.」.
+- Do not fill slides with topics the request lacks. If the structure has such a title, narrow
+  it to what the request said.
+- Write the slide text and notes in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라: {{"slides": [{{"title": "...", "layout": "...", ...}}, ...]}}
+Answer with a JSON object only: {{"slides": [{{"title": "...", "layout": "...", ...}}, ...]}}
 
-원래 요청: {request}{tail}"""
+Original request: {request}{tail}"""
 
 
 #: Writer rule when the person chose 있는 자료로 진행 with no subject: write a
 #: form with blanks. See `report._FRAME_RULE`.
 _FRAME_RULE = (
-    "**이 발표는 자료 없이 틀만 쓴다.** 요청에 없는 연구·프로젝트·결과·수치·이름을 어떤 "
-    "것도 지어내지 마라. 장마다 그 장에 무엇을 넣어야 하는지 항목 이름과 「[연구 질문]」 "
-    "같은 대괄호 빈칸으로만 채우고, 노트는 그 장에서 무엇을 말해야 하는지 한두 "
-    "문장으로 안내한다. metrics·chart·table 은 머리글과 빈 칸만."
+    "**This deck writes only the frame, with no material.** Do not invent any research, "
+    "project, result, figure or name the request does not give. Fill each slide only with the "
+    "names of the items that belong on it and bracketed blanks like 「[연구 질문]」, and in the "
+    "notes say in one or two sentences what that slide should say. For metrics, chart and "
+    "table, only headers and empty cells."
 )
 
 #: `_FRAME_RULE` repeated at the end of the draft prompt with an example.
 _FRAME_TAIL = (
-    "\n\n" + _FRAME_RULE + '\n예: {"title": "연구 질문", "layout": "bullets", '
+    "\n\n" + _FRAME_RULE + '\nExample: {"title": "연구 질문", "layout": "bullets", '
     '"bullets": ["[첫째 연구 질문]", "[둘째 연구 질문]", '
     '"[왜 이 질문인가]"], "notes": "이 장에서는 연구 질문을 하나씩 읽고 '
     '왜 지금 이 질문인지 한 문장으로 말한다."}'
@@ -479,19 +509,22 @@ def _facts_line(request: str) -> str:
             found.append(token)
     if not found:
         return (
-            "쓸 수 있는 수치: (요청에 수치가 없다 — metrics·chart 를 쓰지 말고 숫자를 만들지 마라)"
+            "Usable figures: (the request has no figures — do not use metrics or chart, and do "
+            "not make up numbers)"
         )
     line = (
-        "쓸 수 있는 수치(요청에 있는 것 전부): "
+        "Usable figures (every one in the request): "
         + ", ".join(found[:30])
-        + " — 사용자가 적어 준 사실이므로 각각 어느 장에든 한 번은 나와야 한다. 빠뜨리지 마라."
+        + " — facts the user wrote down, so each must appear on some slide at least once. "
+        "Do not leave any out."
     )
     # Arithmetic the request implies, done once here (see `report.derived_values`).
     from app.services.report import derived_values
 
     if derived := derived_values(request):
         line += (
-            "\n계산된 값(식 그대로 옮겨 적고 다시 셈하지 마라; 그 값이 필요한 한 장에서만 쓴다): "
+            "\nComputed values (copy each expression as is and do not recompute it; use it "
+            "only on the one slide that needs it): "
             + "; ".join(derived)
         )
     return line
@@ -1153,124 +1186,134 @@ def _split_deck_draft(
 #: Per-slide prompt by layout; unknown layouts use `_BULLETS_PROMPT`.
 _PROMPTS: dict[str, str] = {}
 
-_BULLETS_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+_BULLETS_PROMPT = """You are writing only the "{heading}" slide of the deck below.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- bullets 는 {count}개. 각 항목은 한 줄, 40자 이내. 문장 부호로 끝내지 마라.
-- 슬라이드는 읽는 글이 아니라 보는 화면이다. 문단을 넣지 마라.
-- notes 는 이 장을 말로 설명할 때 할 이야기. 2~3문장.
-- 앞 장에서 한 말을 되풀이하지 마라.
-- 지어낸 수치를 쓰지 마라. 근거가 없으면 숫자 없이 써라.
-- 자료의 항목 이름·식별자(워크로드명·제품명·열 머리글)는 원문 그대로 쓴다. 번역·의역하지 않는다.
+Rules:
+- bullets: {count} items. Each item one line, within 40 characters. Do not end with punctuation.
+- A slide is a screen to look at, not text to read. Do not put paragraphs on it.
+- notes is what to say when explaining this slide aloud. 2~3 sentences.
+- Do not repeat what earlier slides said.
+- Do not write made-up figures. Without a basis, write without numbers.
+- Item names and identifiers from the material (workload names, product names, column headers)
+  stay as in the original. Do not translate or paraphrase them.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"bullets": ["학습 데이터 확보 비용", "라벨링 품질 편차"], "notes": "여기서는 ..."}}
+Answer with a JSON object only.
+Example: {{"bullets": ["학습 데이터 확보 비용", "라벨링 품질 편차"], "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_TABLE_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 값을 나란히 놓고 견주는 표 한 장이다.
+_TABLE_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide is one table that sets values side by side for comparison.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- rows 는 표의 줄이다. **첫 줄이 머리글**이고, 나머지가 값이다.
-- **열은 2~4개, 줄은 머리글 포함 3~6줄.** 화면에 띄우는 표다. 그보다 크면
-  뒷자리에서 읽히지 않는다.
-- 칸 하나는 **12자 이내**. 문장을 넣지 마라 — 표는 읽는 글이 아니라 견주는
-  자리다. 설명이 필요하면 notes 에 적어라.
-- 첫 열은 견주는 **기준**이고, 나머지 열이 그 기준에 대한 값이다.
-- 지어낸 수치를 쓰지 마라. 근거가 없으면 숫자 없이 써라.
-- 자료의 항목 이름·식별자(워크로드명·제품명·열 머리글)는 원문 그대로 쓴다. 번역·의역하지 않는다.
-- notes 는 이 표를 말로 설명할 때 할 이야기. 2~3문장.
+Rules:
+- rows are the table's rows. **The first row is the header**; the rest are values.
+- **2~4 columns, 3~6 rows including the header.** This table is shown on a screen. Any
+  larger and it cannot be read from the back rows.
+- One cell **within 12 characters**. Do not put sentences in — a table is a place to compare,
+  not text to read. If explanation is needed, put it in notes.
+- The first column is the **criterion** being compared; the other columns are the values for
+  that criterion.
+- Do not write made-up figures. Without a basis, write without numbers.
+- Item names and identifiers from the material (workload names, product names, column headers)
+  stay as in the original. Do not translate or paraphrase them.
+- notes is what to say when explaining this table aloud. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"rows": [["기준", "대안 A", "대안 B"],
+Answer with a JSON object only.
+Example: {{"rows": [["기준", "대안 A", "대안 B"],
               ["초기 비용", "0원", "약 3억"],
               ["도입 기간", "2주", "4개월"]],
       "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_CHART_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 수치를 그래프로 보여 주는 장이다.
+_CHART_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide shows figures as a chart.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- chart.kind 는 "bar" 또는 "line". 항목별 크기 비교는 bar, 시간에 따른 추이는
-  line.
-- chart.categories 는 가로축 항목. **3~8개.** 이름은 8자 이내.
-- chart.series 는 계열 목록. **1~2개.** 각 계열의 values 는 categories 와
-  **개수가 같아야 한다.**
-- chart.unit 은 세로축 단위 한 마디 — `건`, `%`, `억 원`. 없으면 빈 문자열.
-- **지어낸 수치를 쓰지 마라. 근거가 없으면 이 장을 쓰지 말고 bullets 로 답하라.**
-  그래프는 숫자보다 더 사실처럼 읽힌다.
-- notes 는 이 그래프가 무엇을 보여 주는지. 2~3문장.
+Rules:
+- chart.kind is "bar" or "line". bar for comparing sizes by item, line for a trend over
+  time.
+- chart.categories are the horizontal-axis items. **3~8.** Names within 8 characters.
+- chart.series is the list of series. **1~2.** Each series' values must have **the same count
+  as categories.**
+- chart.unit is the vertical axis's unit in one word — `건`, `%`, `억 원`. An empty string if
+  none.
+- **Do not write made-up figures. Without a basis, do not write this
+  slide; answer with bullets.** A chart reads as even more factual than numbers.
+- notes say what this chart shows. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"chart": {{"kind": "bar", "unit": "건",
+Answer with a JSON object only.
+Example: {{"chart": {{"kind": "bar", "unit": "건",
                 "categories": ["1분기", "2분기", "3분기", "4분기"],
                 "series": [{{"name": "처리 건수", "values": [120, 210, 380, 460]}}]}},
       "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_METRICS_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 숫자 두셋을 크게 띄우는 장이다.
+_METRICS_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide displays two or three numbers large.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- metrics 는 `[값, 이름]` 의 목록이다. **2~4개.**
-- 값은 **짧게** — `32%`, `1.4초`, `3억 원`. 문장을 넣지 마라.
-- 이름은 그 숫자가 무엇인지 한 마디로. **10자 이내.**
-- 지어낸 수치를 쓰지 마라. **근거가 없으면 이 장을 쓰지 말고 bullets 로 답하라.**
-  화면에 크게 띄운 숫자는 다른 어떤 것보다 사실처럼 읽힌다.
-- notes 는 이 숫자들이 어디서 온 값이고 무엇을 뜻하는지. 2~3문장.
+Rules:
+- metrics is a list of `[값, 이름]`. **2~4.**
+- The value is **short** — `32%`, `1.4초`, `3억 원`. Do not put sentences in.
+- The name says in one word what the number is. **Within 10 characters.**
+- Do not write made-up figures. **Without a basis, do not write this
+  slide; answer with bullets.** A number displayed large on screen reads as more factual
+  than anything else.
+- notes say where these numbers come from and what they mean. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"metrics": [["32%", "오탐 감소"], ["1.4초", "평균 응답"]],
+Answer with a JSON object only.
+Example: {{"metrics": [["32%", "오탐 감소"], ["1.4초", "평균 응답"]],
       "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_QUOTE_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 한 문장만 크게 띄우는 장이다.
+_QUOTE_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide displays only one sentence, large.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- body 는 한 문장. 60자 이내. 이 발표에서 가장 남길 만한 한 줄.
-- 실존 인물의 말을 인용하지 마라. 이 발표가 하는 주장을 써라.
-- notes 는 이 장을 말로 설명할 때 할 이야기. 2~3문장.
+Rules:
+- body is one sentence. Within 60 characters. The line from this talk most worth keeping.
+- Do not quote real people. Write the claim this talk makes.
+- notes is what to say when explaining this slide aloud. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"body": "데이터가 아니라 전이가 병목이다", "notes": "여기서는 ..."}}
+Answer with a JSON object only.
+Example: {{"body": "데이터가 아니라 전이가 병목이다", "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
 
 #: Seconds between retries of a rate-limited call when the gateway names no reset time.
@@ -1580,59 +1623,61 @@ def _parse_outline(text: str) -> tuple[str, str, list[dict[str, str]]]:
     return title, subtitle, plan
 
 
-_PAIRED_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
+_PAIRED_PROMPT = """You are writing only the "{heading}" slide of the deck below.
 {what}
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
+Rules:
 {rules}
-- 지어낸 내용을 쓰지 마라. 쓸 것이 없으면 이 장을 bullets 로 답하라.
-- notes 는 발표자가 이 장에서 말할 내용. 2~3문장.
+- Do not write made-up content. If there is nothing to write, answer this slide as bullets.
+- notes is what the presenter will say on this slide. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {example}
+Answer with a JSON object only.
+Example: {example}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
 #: Per paired layout: what it is for, its rules, and an example answer.
 _PAIRED_RULES = {
     "bands": (
-        "이 장은 왼쪽에 이름표, 오른쪽에 그 내용을 띠로 놓는 장이다.",
-        "- bands 는 `[이름, 내용]` 의 목록이다. **3~4개.**\n"
-        "- 이름은 그 줄이 무엇인지 가리키는 한 마디. **10자 이내** — 미션, 배경,"
-        " 추진전략, 기대효과 처럼.\n"
-        "- 내용은 한 문장. **90자 이내.** 문장을 둘 넣지 마라.\n"
-        "- 이름은 서로 겹치지 않는 다른 것이어야 한다.",
+        "This slide lays out bands: a label on the left, its content on the right.",
+        "- bands is a list of `[이름, 내용]`. **3~4.**\n"
+        "- The name is one word saying what the row is. **Within 10 characters** — like 미션,"
+        " 배경, 추진전략, 기대효과.\n"
+        "- The content is one sentence. **Within 90 characters.** Do not put in two sentences.\n"
+        "- The names must be distinct, not overlapping.",
         '{{"bands": [["미션", "선제적으로 AI 신기술에 대응하여 차세대 인재를 양성한다"],'
         ' ["배경", "AI 전환기에 기술수요와 인재 격차가 벌어지고 있다"]],'
         ' "notes": "여기서는 ..."}}',
     ),
     "tiles": (
-        "이 장은 글자나 번호를 크게 세우고 그 아래 이름을 붙이는 장이다.",
-        "- tiles 는 `[글자, 이름]` 의 목록이다. **3~6개.**\n"
-        "- 글자는 **4자 이내** — P, H, A, 01, ① 처럼 한눈에 들어오는 표식.\n"
-        "- 표식과 이름이 같은 말이면 안 된다. `[AI] AI 기본역량` 은 표식이"
-        " 아니라 같은 낱말을 두 번 쓴 것이다.\n"
-        "- 이름은 그 표식이 무엇인지. **24자 이내.**\n"
-        "- 표식들이 하나의 묶음으로 읽혀야 한다. 머리글자를 모으거나 번호를"
-        " 매기는 자리이지, 아무 글자나 크게 세우는 자리가 아니다.",
+        "This slide stands letters or numbers up large and puts a name beneath each.",
+        "- tiles is a list of `[글자, 이름]`. **3~6.**\n"
+        "- The letter is **within 4 characters** — a marker taken in at a glance, like P, H, A,"
+        " 01, ①.\n"
+        "- The marker and the name must not be the same word. `[AI] AI 기본역량` is not a"
+        " marker but the same word written twice.\n"
+        "- The name says what the marker is. **Within 24 characters.**\n"
+        "- The markers must read as one set. This is the place to gather initials or number"
+        " items, not to stand any letters up large.",
         '{{"tiles": [["P", "Physical AI"], ["H", "Human-centered AI"],'
         ' ["A", "Agentic AI"]], "notes": "여기서는 ..."}}',
     ),
     "timeline": (
-        "이 장은 시점과 그때 일어난 일을 차례로 놓는 장이다.",
-        "- timeline 은 `[시점, 일]` 의 목록이다. **3~7개.**\n"
-        "- 시점은 **12자 이내** — 2024.05, 1학기, 3년차 처럼.\n"
-        "- **자료에 실제 날짜가 없으면 날짜를 지어내지 마라.** 1단계·2단계,"
-        " 1~4주, 학기 초 처럼 상대적인 시점을 써라. 지어낸 날짜는 그럴듯해서"
-        " 사실로 읽히고, 발표장에서 되묻는 사람이 반드시 있다.\n"
-        "- 일은 그때 무엇이 있었는지 한 마디. **60자 이내.**\n"
-        "- 시간 순서대로 놓아라. 순서가 뒤섞이면 그건 연혁이 아니라 목록이다.",
+        "This slide sets out points in time and what happened then, in order.",
+        "- timeline is a list of `[시점, 일]`. **3~7.**\n"
+        "- The point in time is **within 12 characters** — like 2024.05, 1학기, 3년차.\n"
+        "- **If the material has no real dates, do not invent dates.** Use relative points"
+        " like 1단계·2단계, 1~4주, 학기 초. Invented dates are plausible, so they read as"
+        " fact, and someone at the talk always asks about them.\n"
+        "- The event is one phrase on what happened then. **Within 60 characters.**\n"
+        "- Put them in time order. Shuffled, it is not a history but a list.",
         '{{"timeline": [["2024.05", "1기 개설, 수료생 32명"],'
         ' ["2025.03", "2기 개설과 기업 연계 시작"]], "notes": "여기서는 ..."}}',
     ),
@@ -1641,23 +1686,26 @@ _PAIRED_RULES = {
 _PAIRED_RULES.update(
     {
         "steps": (
-            "이 장은 절차의 단계를 차례대로 가로로 놓는 장이다. 번호는 자리가 매긴다.",
-            "- steps 는 `[단계, 내용]` 의 목록이다. **3~5개.**\n"
-            "- 단계는 그 단계의 이름 한 마디. **12자 이내** — 접수, 심사, 선정, 협약"
-            " 처럼. 번호를 붙이지 마라.\n"
-            "- 내용은 그 단계에서 무엇을 하는지 한 줄. **60자 이내.**\n"
-            "- 순서대로 놓아라. 요청에 있는 절차만 — 없는 단계를 지어 칸을 채우지 마라.",
+            "This slide lays the stages of a procedure across, in order. The position supplies"
+            " the numbers.",
+            "- steps is a list of `[단계, 내용]`. **3~5.**\n"
+            "- The stage is that stage's name in one word. **Within 12 characters** — like 접수,"
+            " 심사, 선정, 협약. Do not add numbers.\n"
+            "- The content is one line on what is done at that stage. **Within 60 characters.**\n"
+            "- Put them in order. Only procedures the request has — do not invent stages to fill"
+            " the slots.",
             '{{"steps": [["접수", "온라인으로 신청서와 계획서를 낸다"],'
             ' ["심사", "서류와 발표로 평가한다"], ["협약", "선정 뒤 2주 안에 협약을 맺는다"]],'
             ' "notes": "여기서는 ..."}}',
         ),
         "cards": (
-            "이 장은 나란한 항목을 이름 붙은 상자로 놓는 장이다.",
-            "- cards 는 `[이름, 내용]` 의 목록이다. **3~4개.**\n"
-            "- 이름은 그 상자의 제목 한 마디. **14자 이내** — 교육, 연구, 산학, 국제화 처럼.\n"
-            "- 내용은 한두 문장. **80자 이내.**\n"
-            "- 항목은 서로 같은 급이어야 한다. 순서가 뜻을 가지면 steps, 이름표가"
-            " 줄 앞에 서야 하면 bands 다.",
+            "This slide lays parallel items out as named boxes.",
+            "- cards is a list of `[이름, 내용]`. **3~4.**\n"
+            "- The name is the box's title in one word. **Within 14 characters** — like 교육,"
+            " 연구, 산학, 국제화.\n"
+            "- The content is one or two sentences. **Within 80 characters.**\n"
+            "- The items must be of equal rank. If the order carries meaning, it is steps; if a"
+            " label must head each row, bands.",
             '{{"cards": [["교육", "전교생 AI 기초 과목을 필수로 연다"],'
             ' ["연구", "학과별 AI 융합 연구 과제를 지원한다"],'
             ' ["산학", "지역 기업과 실습 프로젝트를 잇는다"]], "notes": "여기서는 ..."}}',
@@ -1674,25 +1722,26 @@ _PROMPTS.update(
     }
 )
 
-_PATTERN_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 「{label}」 장이다 — {use}
+_PATTERN_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide is a 「{label}」 slide — {use}
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
+Rules:
 {rules}
-- 지어낸 내용·수치·사람·날짜를 쓰지 마라. 쓸 것이 이 모양에 맞지 않으면 이 장을
-  bullets 로 답하라: {{"bullets": [...], "notes": "..."}}
-- notes 는 발표자가 이 장에서 말할 내용. 2~3문장.
+- Do not write made-up content, figures, people or dates. If what there is to write does not
+  fit this shape, answer this slide as bullets: {{"bullets": [...], "notes": "..."}}
+- notes is what the presenter will say on this slide. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {example_with_notes}
+Answer with a JSON object only.
+Example: {example_with_notes}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
 _PROMPTS.update(
     {
@@ -1704,68 +1753,76 @@ _PROMPTS.update(
     }
 )
 
-_STATEMENT_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 발표의 핵심 메시지 하나를 크게 세우는 장이다 — 남의 말이 아니라 발표자의 결론.
+_STATEMENT_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide stands one key message of the talk up large — the presenter's conclusion, not
+someone else's words.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- title 은 크게 설 한 마디. **12자 이내** — 「전교생, AI 기초부터」 처럼.
-- body 는 그 한 마디를 푸는 한 문장. **60자 이내.** 없는 사실을 넣지 마라.
-- 겁을 주거나 재촉하는 말이 아니라, 발표가 말하려는 것.
-- notes 는 발표자가 이 장에서 말할 내용. 2~3문장.
+Rules:
+- title is the phrase to stand large. **Within 12 characters** — like 「전교생, AI 기초부터」.
+- body is one sentence unpacking that phrase. **Within 60 characters.** Do not add facts that
+  are not there.
+- What the talk means to say, not words that frighten or rush.
+- notes is what the presenter will say on this slide. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"title": "전교생, AI 기초부터", "body": "학과와 상관없이 같은 출발선에서 AI 를 쓰게 한다",
+Answer with a JSON object only.
+Example: {{"title": "전교생, AI 기초부터",
+          "body": "학과와 상관없이 같은 출발선에서 AI 를 쓰게 한다",
       "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_BIG_NUMBER_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 숫자 하나를 아주 크게 띄우고 그 뜻을 한 줄로 붙이는 장이다.
+_BIG_NUMBER_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide displays one number very large and adds its meaning in one line.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- metrics 는 `[값, 이름]` **하나.** 값은 짧게 — `32%`, `1.4초`, `3억 원`.
-- body 는 그 숫자가 무엇을 뜻하는지 한 문장. **60자 이내.**
-- 지어낸 수치를 쓰지 마라. **근거가 없으면 이 장을 쓰지 말고 bullets 로 답하라.**
-- notes 는 이 숫자가 어디서 온 값인지. 2~3문장.
+Rules:
+- metrics is **one** `[값, 이름]`. Keep the value short — `32%`, `1.4초`, `3억 원`.
+- body is one sentence on what that number means. **Within 60 characters.**
+- Do not write made-up figures. **Without a basis, do not write this
+  slide; answer with bullets.**
+- notes say where this number comes from. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"metrics": [["32%", "오탐 감소"]], "body": "새 규칙을 적용한 첫 달, 오탐 신고가 1/3 줄었다",
+Answer with a JSON object only.
+Example: {{"metrics": [["32%", "오탐 감소"]],
+          "body": "새 규칙을 적용한 첫 달, 오탐 신고가 1/3 줄었다",
       "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
-_CLOSING_PROMPT = """너는 아래 발표의 "{heading}" 슬라이드 한 장만 쓰고 있다.
-이 장은 마지막 장이다 — 기억할 것 두셋과 마무리 한 줄.
+_CLOSING_PROMPT = """You are writing only the "{heading}" slide of the deck below.
+This slide is the last one — two or three things to remember and one closing line.
 
-전체 구성:
+Full structure:
 {outline}
 
-앞 장에서 이미 말한 내용:
+Already said on earlier slides:
 {written}
 
-규칙:
-- bullets 는 이 발표에서 기억할 것. **2~3개**, 각 **30자 이내.** 앞 장에서 실제로 말한
-  것만 — 새 주장을 여기서 꺼내지 마라.
-- body 는 마무리 한 줄. **30자 이내** — 「질문을 환영합니다」, 「감사합니다」 처럼.
-- notes 는 발표자가 마무리하며 할 말. 2~3문장.
+Rules:
+- bullets are what to remember from this talk. **2~3**, each **within 30 characters.** Only
+  what earlier slides actually said — do not bring up a new claim here.
+- body is one closing line. **Within 30 characters** — like 「질문을 환영합니다」, 「감사합니다」.
+- notes is what the presenter says while closing. 2~3 sentences.
+- Write in Korean unless the request itself is written in English.
 
-JSON 객체로만 답하라.
-예: {{"bullets": ["2027년부터 전교생 필수", "학과별 실습으로 이어진다"],
+Answer with a JSON object only.
+Example: {{"bullets": ["2027년부터 전교생 필수", "학과별 실습으로 이어진다"],
       "body": "질문을 환영합니다", "notes": "여기서는 ..."}}
 
-원래 요청: {request}"""
+Original request: {request}"""
 
 _PROMPTS.update(
     {
@@ -1878,16 +1935,18 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
         # A question asks: 「?」, options, or a Korean question ending (「…입니까」).
         asking = r"\?|①|②|O\s?/\s?X|(?:니까|나요|까요|인가요?|일까|는가|시오)(?=[\s.\"']|$)"
         if at is not None and not re.search(asking, _shown(slides[at])):
-            needs[at] = ("이 장은 퀴즈다. 화면에 실제 문항 2~3개를 보기(①~④)나 O/X와 함께 쓰고, "
-                         "정답과 해설은 발표자 노트에 둔다. 안내문이나 요약으로 대신하지 마라.")
+            needs[at] = ("This slide is a quiz. Put 2~3 real questions on the screen with options "
+                         "(①~④) or O/X, and put the answers and explanations in the speaker "
+                         "notes. Do not substitute a notice or a summary.")
     if _ASKS_DECISION.search(asked):
         at = last_titled(re.compile(r"요청|승인|결정|제안"))
         if at is not None and not (
             re.search(r"\d", _shown(slides[at])) and re.search(r"승인|요청|결정|배정|투입",
                                                               _shown(slides[at]))
         ):
-            needs[at] = ("이 장은 결정을 요청하는 장이다. 무엇을(예산·인력·일정) 얼마나, 언제까지 "
-                         "승인해 달라는지 수치와 함께 화면에 쓴다. 노트에만 두지 마라.")
+            needs[at] = ("This slide asks for a decision. Write on the screen, with figures, what "
+                         "(budget, staff, schedule) is to be approved, how much, and by when. Do "
+                         "not leave it in the notes only.")
     minutes = _ASKS_MINUTES.search(asked)
     if minutes and _ASKS_LESSON.search(asked):
         total = int(minutes.group(1))
@@ -1896,12 +1955,15 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
         if planned < 0.6 * total:
             at = next((i for i, t in enumerate(titles) if re.search(r"목차|흐름|순서|오늘", t)),
                       1 if len(slides) > 1 else 0)
-            needs.setdefault(at, f"{total}분 수업의 단계별 시간 배분(예: 도입 5분·개념 15분·활동 "
-                                 f"15분·정리 10분, 합계 {total}분)을 이 장 화면에 넣는다.")
+            needs.setdefault(at, f"Put the time allocation by stage of the {total}-minute "
+                                 f"lesson (e.g. 도입 5분·개념 15분·활동 15분·정리 10분, 합계 "
+                                 f"{total}분) on this slide's screen.")
     for i, title in enumerate(titles):
         if _MONEY_TITLE.search(title) and not _MONEY.search(_shown(slides[i])):
-            needs.setdefault(i, "이 장은 수익성을 보여 주는 장이다. 자료의 손익 결과(판매가·원가, "
-                                "손익분기 판매량, 월 영업이익 등)를 수치로 화면에 쓴다.")
+            needs.setdefault(i, "This slide shows profitability. Write the material's "
+                                "profit-and-loss results (selling price and cost, break-even "
+                                "sales volume, monthly operating profit, etc.) on the screen as "
+                                "figures.")
     return needs
 
 
@@ -2677,12 +2739,13 @@ async def _write_slides(
         }
         template = _PROMPTS.get(slide["layout"], _BULLETS_PROMPT)
         density_rule = (
-            "\n\n이 자료는 발표자 없이 전달해 읽는 자료다. 표·근거·맥락을 한 장 안에서 "
-            "이해할 수 있게 쓰고, notes에만 핵심 설명을 숨기지 마라. 글자를 줄여 억지로 "
-            "채우지 말고 현재 layout의 읽기 쉬운 한도를 지켜라."
+            "\n\nThis material is handed out and read without a presenter. Write so the "
+            "tables, evidence and context can be understood within one slide, and do not hide "
+            "the key explanation in notes only. Do not cram by shrinking the text; keep within "
+            "the readable limits of the current layout."
             if density == "reading"
-            else "\n\n이 자료는 발표자가 설명하는 자료다. 한 장에는 한 가지 핵심만 두고, "
-            "짧은 문구와 넓은 여백을 우선하며 자세한 설명은 notes에 둬라."
+            else "\n\nThis material is explained by a presenter. Keep one key point per slide, "
+            "prefer short phrases and wide margins, and put detailed explanation in notes."
         )
         try:
             slide_messages: list[dict] | None = None
@@ -2697,7 +2760,7 @@ async def _write_slides(
                         template.format(
                             heading=slide["title"],
                             outline=outline_text,
-                            written="\n".join(written)[-3000:] or "(아직 없음)",
+                            written="\n".join(written)[-3000:] or "(none yet)",
                             # Prompts without `{count}` ignore the extra field.
                             count=(
                                 ("6~8" if slide["layout"] == "two-column" else "4~6")
@@ -2857,8 +2920,8 @@ async def _write_slides(
                         {"role": "assistant", "content": body[:400]},
                         {
                             "role": "user",
-                            "content": "앞 답에는 쓸 내용이 없었다. 이 장의 bullets 3~4개와 "
-                            "notes를 채운 JSON 객체 하나만 다시 써라.",
+                            "content": "The previous answer had no usable content. Write again "
+                            "only one JSON object filling this slide's bullets (3~4) and notes.",
                         },
                     ],
                     api_key,
@@ -2901,8 +2964,9 @@ async def _write_slides(
                                 request=request[:1200],
                             )
                             + (
-                                "\n\n요청이 「적어 준 것만」을 조건으로 했다. 화면과 요청에 있는 "
-                                "말로만 풀어 말하고, 새 사실·조언·제재 같은 내용을 더하지 마라."
+                                "\n\nThe request made 「적어 준 것만」 a condition. Say it only "
+                                "in words found on the screen and in the request, and add "
+                                "nothing new such as facts, advice or sanctions."
                                 if _ONLY_GIVEN.search(request or "")
                                 else ""
                             ),
@@ -2992,16 +3056,18 @@ async def _write_slides(
     for index, slide in enumerate(slides):
         if str(slide.get("body") or "").strip() == UNWRITTEN:
             needs[index] = (
-                f"이 장(「{slide.get('title') or ''}」)을 아직 쓰지 못했다. 제목이 말하는 내용을 "
-                "자료에서 찾아 화면 글과 발표자 노트를 채워라. 자료에 없으면 확인할 항목을 적어라."
+                f"This slide (「{slide.get('title') or ''}」) has not been written yet. Find what "
+                "its title speaks of in the material and fill the screen text and the speaker "
+                "notes. If the material lacks it, list the items to confirm."
             )
     for index, slide in enumerate(slides):
         words = "\n".join(quality_gate._strings({k: v for k, v in slide.items() if k != "image"}))
         if clash := key_figures.conflicts(words, settled or []):
             piece, figure, _ = clash[0]
             needs.setdefault(index, (
-                f"「{figure.name}」은 정해진 값이 {figure.value}인데 이 장은 「{piece[:80]}」로 "
-                "다르게 썼다. 정해진 값으로 고치고 그 값으로 계산한 수치도 맞춰라."
+                f"「{figure.name}」 has the settled value {figure.value}, but this slide wrote "
+                f"it differently as 「{piece[:80]}」. Correct it to the settled value and align "
+                "the figures computed from it."
             ))
     # A run the material lays out (1~3차시, M1~M6) comes through whole.
     material = "\n".join([request, *(untrusted_context or [])])
@@ -3013,8 +3079,9 @@ async def _write_slides(
                                    str(slides[i].get("title") or ""))), None)
         if where is not None:
             needs.setdefault(where, (
-                f"자료에 있는 {kind} 순서 중 {', '.join(missing)}이(가) 덱에 빠졌다. 이 장에 "
-                "자료의 순서를 빠짐없이 넣어라 — 칸이 모자라면 항목을 짧게 줄여라."))
+                f"Of the {kind} sequence in the material, {', '.join(missing)} is missing from "
+                "the deck. Put the material's sequence on this slide in full — if space runs "
+                "short, shorten the items."))
     deck_words = ["\n".join(quality_gate._strings({k: v for k, v in sl.items() if k != "image"}))
                   for sl in slides]
     for sentence, name, written, usual in quality_gate.scaled_metric_slips(
@@ -3022,8 +3089,9 @@ async def _write_slides(
         where = next((i for i, w in enumerate(deck_words) if sentence in w), None)
         if where is not None:
             needs.setdefault(where, (
-                f"「{name}」을 자료와 다른 장에서는 {usual:,.0f}(으)로 적었는데 이 장은 "
-                f"{written:,.0f}로 적어 자릿수가 다르다. 같은 기준이면 {usual:,.0f}로 고쳐라."))
+                f"「{name}」 is written as {usual:,.0f} in the material and on other slides, but "
+                f"this slide wrote {written:,.0f}, a different order of magnitude. If the basis "
+                f"is the same, correct it to {usual:,.0f}."))
     for index, slide in enumerate(slides):
         title = str(slide.get("title") or "")
         rest = "".join(quality_gate._strings({k: v for k, v in slide.items()
@@ -3033,17 +3101,21 @@ async def _write_slides(
                 and re.search(r"시사점|요약|결론|제언|마무리|핵심\s?(?:정리|메시지)", title)
                 and len(re.sub(r"\s|감사합니다|질문|Q\s?&\s?A|[.!]", "", rest)) < 6):
             needs.setdefault(index, (
-                f"이 장(「{title}」)은 화면에 내용이 없다. 제목이 말하는 핵심을 앞 장들에서 "
-                "골라 3개 안팎의 짧은 항목으로 화면에 채워라."))
+                f"This slide (「{title}」) has no content on the screen. Pick the key points its "
+                "title names from the earlier slides and fill the screen with about 3 short "
+                "items."))
     for index in foreign_slides(slides, request):
         needs.setdefault(index, (
-            "이 장을 다른 언어로 썼다. 같은 내용을 한국어로 다시 써라 — 제목·화면 글·발표자 "
-            "노트 모두. 고유명사·약어·단위만 원래대로 둔다."))
+            "This slide was written in another language. Rewrite the same content in Korean — "
+            "the title, the screen text and the speaker notes alike. Keep only proper nouns, "
+            "abbreviations and units as they were."))
     for index, slide in enumerate(slides):
         if any(f["code"] == "placeholder" for f in quality_gate.deck_findings([slide])):
-            needs[index] = ("자리표시 문구(「(여기에 …)」 등)를 지우고 그 자리에 실제 내용을 "
-                            "채워라 — 퀴즈라면 문항과 보기, 정답과 해설까지. 자료에 없는 이름·"
-                            "날짜·금액은 「[담당자]」 「[일자]」처럼 대괄호로 남긴다.")
+            needs[index] = ("Remove the placeholder text (「(여기에 …)」 and the like) and fill "
+                            "its place with real content — for a quiz, the questions and options, "
+                            "and the answers and explanations too. Leave names, dates and "
+                            "amounts the material does not have in brackets, like 「[담당자]」 "
+                            "「[일자]」.")
     for index in sorted(needs):
         slide = slides[index]
         try:
@@ -3441,8 +3513,9 @@ async def write(
         log.info("deck outline flat, unused: %s", ",".join(missing))
         try:
             retry_text, retry_spent = await ask(
-                "\n\n앞선 구성이 한 layout 에 몰렸다. 다시 짜라. "
-                "다음 layout 을 최소 한 번씩 쓰고, 같은 layout 을 세 장 연속으로 쓰지 마라: "
+                "\n\nThe previous structure leaned on one layout. Redo it. "
+                "Use each of the following layouts at least once, and do not use the same "
+                "layout on three slides in a row: "
                 + " / ".join(missing)
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
@@ -3466,9 +3539,10 @@ async def write(
         log.info("deck outline short: %d of %d slides, asking once more", len(plan), needed)
         try:
             retry_text, retry_spent = await ask(
-                f"\n\n앞선 구성은 {len(plan)}장이었다. 이 발표에는 최소 {needed}장이 필요하다. "
-                "다시 짜라 — 있는 장을 둘로 쪼개지 말고, 요청이 말한 흐름에서 아직 장이 없는 "
-                "대목(사례, 비교, 남은 문제, 정리)에 장을 주어라."
+                f"\n\nThe previous structure had {len(plan)} slides. This talk needs at least "
+                f"{needed}. Redo it — do not split existing slides in two; give slides to the "
+                "parts of the flow the request named that have none yet (cases, comparisons, "
+                "remaining problems, a summary)."
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline retry failed: %s", exc)
@@ -3494,8 +3568,8 @@ async def write(
         log.info("deck outline unreadable, asking once more; reply began: %r", head)
         try:
             retry_text, retry_spent = await ask(
-                "\n\n앞선 답을 읽을 수 없었다. 설명도 머리말도 코드펜스도 없이 "
-                "JSON 객체 하나만 출력하라."
+                "\n\nThe previous answer could not be read. Output only one JSON object, with "
+                "no explanation, preamble or code fence."
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline retry failed: %s", exc)
@@ -3523,8 +3597,9 @@ async def write(
     if wanted and plan and len(plan) != wanted:
         try:
             retry_text, retry_spent = await ask(
-                f"\n\n앞선 구성은 {len(plan)}장이었다. 표지와 목차를 포함해 전체가 정확히 "
-                f"{wanted}장이어야 한다. 요청한 내용을 빠뜨리지 말고 그 수에 맞춰 다시 구성하라."
+                f"\n\nThe previous structure had {len(plan)} slides. The whole deck, cover and "
+                f"agenda included, must be exactly {wanted} slides. Restructure it to that count "
+                "without leaving out anything the request asked for."
             )
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
             log.warning("deck outline size retry failed: %s", exc)
@@ -3727,13 +3802,13 @@ async def rewrite_slide(
     prompt = template.format(
         heading=target.get("title") or "",
         outline=outline,
-        written=written[-3000:] or "(아직 없음)",
+        written=written[-3000:] or "(none yet)",
         count="6~8" if layout == "two-column" else "3~5",
         request=request[:1500],
     )
     if note.strip():
         # Labelled, or it reads as part of the request.
-        prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
+        prompt += f"\n\nWhy this slide is rewritten now (must be reflected):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
         model,
@@ -3902,15 +3977,17 @@ _MONOTONE = "bullets"
 _DIAGRAM_LAYOUTS = ("bullets", "two-column", "cards", "bands", "tiles")
 
 
-_NOTES_PROMPT = """발표 "{heading}" 장의 화면에는 이미 이렇게 적혀 있다:
+_NOTES_PROMPT = """The screen of the "{heading}" slide already reads:
 {shown}
 
-발표자가 이 장에서 청중에게 실제로 입으로 말할 문장을 두 문장으로 써라. 화면의 문장을
-되풀이하지 말고, 왜 중요한지·청중이 기억할 한 가지·다음 장으로 넘어가는 말 가운데 골라라.
-「~을 강조합니다」「~을 설명합니다」처럼 무엇을 말할지 적는 지시문이 아니라, 그 말 자체를 써라.
-(예: 「이 숫자가 중요한 이유는 …입니다.」) 요청에 없는 수치나 사실은 지어내지 마라. 문장만 출력하라.
+Write two sentences the presenter will actually say aloud to the audience on this slide. Do
+not repeat the screen's sentences; choose among why it matters, the one thing the audience
+should remember, and words that lead to the next slide. Write the words themselves, not
+directions saying what to say such as 「~을 강조합니다」「~을 설명합니다」.
+(Example: 「이 숫자가 중요한 이유는 …입니다.」) Do not invent figures or facts the request does
+not have. Output only the sentences, in Korean unless the request itself is written in English.
 
-원래 요청: {request}"""
+Original request: {request}"""
 
 
 def _slide_lines_text(slide: dict) -> str:

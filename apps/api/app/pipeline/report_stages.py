@@ -247,8 +247,8 @@ class Assemble(Base):
         if project_reference_lines:
             mat.trusted.append(Part(
                 "# 프로젝트 자료 인용 번호\n"
-                "프로젝트 자료에서 가져온 사실을 사용한 문장 끝에는 아래 번호를 정확히 붙이세요. "
-                "목록에 없는 번호를 만들지 마세요.\n" + "\n".join(project_reference_lines),
+                "End each sentence that uses a fact from the project material with its exact "
+                "number below. Do not make up numbers that are not on the list.\n" + "\n".join(project_reference_lines),
                 "project"))
         mat.grounded = deck_rules.has_numbers(req.text, mat.document)
         if block := research.context_block(findings):
@@ -374,8 +374,9 @@ class Outline(Base):
         if wanted and len(headings) != wanted:
             try:
                 retry_text, retry_spent = await ask(
-                    f"\n\n앞선 목차는 {len(headings)}절이었다. 요청한 전체 목차는 정확히 "
-                    f"{wanted}절이다. 요청한 항목을 빠뜨리지 말고 그 수에 맞춰 다시 구성하라."
+                    f"\n\nThe previous 목차 had {len(headings)} sections. The requested 목차 has "
+                    f"exactly {wanted} sections. Rebuild it to that number without dropping any "
+                    "requested item."
                 )
             except _CAUGHT as exc:
                 log.warning("report outline size retry failed: %s", exc)
@@ -398,7 +399,8 @@ class Outline(Base):
             log.info("report outline came as prose, asking for the JSON: %r", text[:300])
             try:
                 json_text, json_spent = await ask(
-                    "\n\n앞선 답은 JSON 이 아니었다. 설명 없이 위 형식의 JSON 객체 하나만 답하라."
+                    "\n\nThe previous answer was not JSON. Answer with one JSON object in the "
+                    "format above only, with no explanation."
                 )
             except _CAUGHT as exc:
                 log.warning("report outline JSON retry failed: %s", exc)
@@ -419,8 +421,8 @@ class Outline(Base):
                         text[:1500])
             try:
                 again_text, again_spent = await ask(
-                    "\n\n앞선 답은 목차로 읽을 수 없었다. 위 형식의 JSON 객체 하나만, 절 제목만 "
-                    "짧게 적어 다시 답하라."
+                    "\n\nThe previous answer could not be read as a 목차. Answer again with one "
+                    "JSON object in the format above only, with short section headings only."
                 )
             except _CAUGHT as exc:
                 log.warning("report outline retry failed: %s", exc)
@@ -766,7 +768,7 @@ class Sections(Base):
                     outline=outline_text,
                     # Tail only: the whole document would crowd out the
                     # instruction by section six.
-                    written="\n\n".join(written)[-4000:] or "(아직 없음)",
+                    written="\n\n".join(written)[-4000:] or "(nothing yet)",
                     refs=refs,
                     request=prompt_request(request, 1500),
                     role=role[0],
@@ -792,17 +794,18 @@ class Sections(Base):
                     + (
                     # The assumptions section was written first; every other section
                     # computes from it rather than settling the same inputs again.
-                    "\n\n이 문서의 확정된 핵심 가정이다. 가격·원가·고정비·이탈률 같은 "
-                    "값은 아래 것만 쓰고, 같은 가정에 다른 값을 새로 정하지 마라. 가정 표를 "
-                    "다시 만들지 말고 필요하면 「핵심 가정」 절을 가리켜라.\n"
+                    "\n\nThese are this document's settled key assumptions. For values such as "
+                    "price, unit cost, fixed cost and churn, use only those below, and never set "
+                    "a new value for the same assumption. Do not rebuild the assumptions table; "
+                    "if needed, point to the 「핵심 가정」 section.\n"
                     + assumptions["text"][:3000]
                     if assumptions["text"] and index != assumptions["index"]
                     else ""
                 )
                     + (
-                    "\n\n이 문서는 긴 분량으로 요청되었다. 이 절은 문단 다섯에서 "
-                    "여덟, 1,500자 이상으로 — 자료의 수치를 근거로 풀어 쓰되 같은 말을 "
-                    "되풀이해 채우지 마라."
+                    "\n\nThis document was requested at long length. Write this section in "
+                    "five to eight paragraphs, 1,500 characters or more — develop it from the "
+                    "material's figures, and do not pad it by repeating yourself."
                     if long_form
                     else ""
                 )),
@@ -1058,8 +1061,8 @@ class Figures(Base):
         # Planned on the written sections, so the planner reads what is actually there; a
         # section with an approved picture keeps it. A peer review evaluates someone else's
         # paper; it draws nothing of its own. A one-page 개조식 memo has no room for
-        # pictures it was not asked for either.
-        draws_nothing = report._genre_rule(request).startswith("장르: 학회 피어리뷰") or (
+        # pictures it was not asked for either, and a 회의록 records the meeting, not figures.
+        draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
             ctx.options.get("draws") == "when-asked"
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )

@@ -1,33 +1,33 @@
-이 문서는 **추진 계획(안)** 서식으로 만든다. 행사·사업·교육을 결재받기 전에 무엇을,
-언제, 어디서, 얼마에 할지 한 번에 보이게 하는 문서다. 머리(작성일·작성 부서·작성자)와
-절 번호는 조판이 붙인다.
+Build this document with the **추진 계획(안)** format. Before an event, project or training is
+approved, it shows at once what will be done, when, where and for how much. The layout adds
+the head (작성일·작성 부서·작성자) and the section numbers.
 
-- 절은 추진 배경 및 목적 → 추진 개요 → 세부 추진 내용 → 소요 예산 → 추진 일정 →
-  기대 효과 순서로 놓는다.
-- 추진 개요는 표(구분 | 내용)로 일시·장소·대상·인원·주관을 한 행씩 쓴다.
-- 소요 예산은 표(항목 | 산출 근거 | 금액). 산출 근거는 「단가 × 수량」, 마지막 행은
-  합계이고 항목 금액을 더한 값과 같아야 한다.
-- 추진 일정은 표(일정 | 내용 | 담당).
-- 기대 효과는 짐작한 수치 없이 무엇이 달라지는지로 쓴다.
+- Order the sections 추진 배경 및 목적 → 추진 개요 → 세부 추진 내용 → 소요 예산 → 추진 일정 →
+  기대 효과.
+- 추진 개요 is a table (구분 | 내용) with one row each for 일시·장소·대상·인원·주관.
+- 소요 예산 is a table (항목 | 산출 근거 | 금액). 산출 근거 is 「단가 × 수량」; the last row is
+  the total and must equal the sum of the item amounts.
+- 추진 일정 is a table (일정 | 내용 | 담당).
+- Write 기대 효과 as what changes, without guessed figures.
 
 ## 개조식으로 쓰기
 
-- 줄글 문단을 쓰지 않는다. 내용은 목록으로 쓰고 깊이로 위계를 나타낸다 — 첫째
-  단계, 그 아래 둘째·셋째·넷째 단계. `□ ○ - ㆍ` 기호는 조판이 깊이에 맞춰 그리므로
-  직접 쓰지 않는다. HTML 로 쓸 때는 `<ul>` 을 안에 `<ul>` 로 겹친다.
-- 항목은 명사형으로 맺는다 — 「…함」 「…임」 「…예정」 「…필요」. 「~합니다」로 끝내지
-  않는다. 한 항목은 한두 줄.
-- 수치에는 단위를 붙인다(「320명」 「1,250만 원」 「3.2점(5점 척도)」).
-- 보충 설명은 그 항목 다음 줄에 「※ 」로 시작하는 한 줄로 쓴다. 조판이 작게, 들여서
-  그린다.
+- Do not write prose paragraphs. Write the content as lists and show hierarchy by depth —
+  the first level, then the second, third and fourth levels below it. The layout draws the
+  `□ ○ - ㆍ` symbols to match the depth, so do not type them. In HTML, nest `<ul>` inside `<ul>`.
+- End items in the noun form — 「…함」 「…임」 「…예정」 「…필요」. Do not end with 「~합니다」.
+  One item is one or two lines.
+- Attach units to figures (「320명」 「1,250만 원」 「3.2점(5점 척도)」).
+- Write a supplementary note as one line starting with 「※ 」 on the line after the item.
+  The layout draws it small and indented.
 
 ## 표기
 
-- 날짜 「2026. 10. 7.」 — 연·월·일 글자 대신 온점, 월·일 앞에 0을 쓰지 않는다.
-- 시각 「14:00」 — 24시각제, 쌍점.
-- 결재받을 금액 「금113,560원(금일십일만삼천오백육십원)」 — 숫자 뒤 괄호에 한글.
-- 붙임은 본문 다음 줄에 「붙임  1. ○○○ 1부.」, 둘 이상이면 다음 줄부터 「2. ○○○ 1부.」.
-  하나뿐이면 번호 없이 「붙임  ○○○ 1부.」. 「붙 임」처럼 띄우거나 쌍점을 붙이지 않는다.
-- 「끝.」은 쓰지 않는다. 조판이 본문이나 붙임의 마지막 글자 뒤에 두 칸 띄고 붙인다.
-- 명령, 경로, 식별자처럼 글자 그대로 옮겨야 뜻이 남는 것은 `<code>` 로 감싼다.
-- 자료에 없는 일시·장소·인원·금액·이름은 지어내지 않고 「[일시]」 「[금액]」처럼 그 자리 이름을 대괄호로 둔다.
+- Dates 「2026. 10. 7.」 — periods instead of the 연·월·일 characters, no leading 0 before month or day.
+- Times 「14:00」 — 24-hour clock, colon.
+- An amount to be approved 「금113,560원(금일십일만삼천오백육십원)」 — the amount in 한글 in parentheses after the digits.
+- 붙임 goes on the line after the body as 「붙임  1. ○○○ 1부.」; with two or more, from the next line 「2. ○○○ 1부.」.
+  With only one, no number: 「붙임  ○○○ 1부.」. Do not space it like 「붙 임」 or add a colon.
+- Do not write 「끝.」. The layout appends it two spaces after the last character of the body or of 붙임.
+- Wrap anything whose meaning survives only when copied character for character — commands, paths, identifiers — in `<code>`.
+- Do not invent times, places, headcounts, amounts or names not in the material; leave the slot's name in brackets, like 「[일시]」 「[금액]」.

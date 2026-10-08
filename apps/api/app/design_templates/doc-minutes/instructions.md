@@ -1,96 +1,99 @@
-이 문서는 **회의록** 템플릿으로 만든다. 표제부와 조판은 이미 정해져 있으니
-내용만 쓴다.
+Build this document with the **회의록** template. The title block and the layout are already
+set; write only the content.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표제부. `<p class="lead">` 한 줄로 무엇을 정하려고 모였는지 적고,
-  이어서 `<ul class="meta">` 안에 일시·장소·참석·기록을
-  `<li><strong>일시</strong> 2026-08-18 (화) 10:00~11:05</li>` 처럼 한 줄씩 적는다.
-  이 목록은 문서 오른쪽 좁은 칸에 세로로 서므로 한 줄은 20자 안쪽으로 줄인다.
-- `section` — 안건 하나, 또는 결정 사항·실행 항목 묶음. 안건 번호는 자동으로
-  붙으니 제목에 "1." 을 직접 쓰지 않는다.
+- `cover` — the title block. In one `<p class="lead">` line, state what the meeting was
+  gathered to decide, then inside `<ul class="meta">` write 일시·장소·참석·기록 one per line,
+  like `<li><strong>일시</strong> 2026-08-18 (화) 10:00~11:05</li>`.
+  This list stands vertically in the narrow column on the right of the document, so keep each line under 20 characters.
+- `section` — one agenda item, or a group of 결정 사항 or 실행 항목. Agenda numbers are added
+  automatically, so do not write "1." in the title yourself.
 
 ## 오른쪽 눈금자
 
-이 서식의 뼈대는 문서 오른쪽에 세로로 고정된 한 칸이다. 표제부에서는 일시와
-장소가, 본문에서는 담당과 기한이 모두 그 칸에 오른쪽 정렬로 못 박힌다. 두 달 뒤에
-오른쪽 가장자리만 훑어도 자기 이름과 날짜가 보이는 것이 이 서식의 전부다.
+The backbone of this format is one column fixed vertically on the right of the document. In
+the title block the date and place, and in the body every owner and deadline, are pinned
+right-aligned in that column. All this format is for is that two months later, skimming just
+the right edge shows each person their own name and date.
 
-결정 사항과 실행 항목은 그래서 문단이 아니라 `<ul class="rows">` 로 쓴다.
-항목 하나는 이렇게 생겼다.
+That is why 결정 사항 and 실행 항목 are written as `<ul class="rows">`, not paragraphs.
+One item looks like this.
 
     <li><strong>정해진 것 한 줄</strong> 왜 그렇게 정했는지 한두 문장. <small>정해원 · 8월 28일</small></li>
 
-- `<strong>` 은 결정이나 할 일 자체를 한 줄로. 문장 부호로 끝맺지 않아도 된다.
-- 그 뒤의 문장은 근거나 조건이다. 없으면 없는 대로 둔다.
-- `<small>` 은 눈금자에 걸리는 값이고 `<li>` 하나에 하나만 쓴다. `담당 · 기한`
-  형식으로 15자 안쪽, 곧 `정해원 · 8월 28일`, `이견 없음`, `전결 규정 §12` 처럼
-  짧게 쓴다. 문장을 넣으면 칸을 넘겨 두 줄 세 줄이 된다.
-- 담당이나 기한을 회의에서 정하지 않았으면 `<small>미정 · 미정</small>` 처럼 값 칸에는
-  「미정」만 쓰고, 왜 정하지 않았는지·언제 누가 정하는지(예: 9월 7일까지 담당 지정)는
-  앞 문장에 적는다. 자료에 아예 없으면 `<small>[담당자] · [기한]</small>` 처럼 대괄호로
-  비운다. 기한은 날짜(요일)·「미정」·「[기한]」 가운데 하나로만 쓰고,
-  「다음 주 금요일까지」 같은 원문 표현은 앞 문장에 남긴다. `<small>` 이 없는 줄은 나중에
-  아무도 자기 것으로 읽지 않는다.
+- `<strong>` is the decision or the task itself in one line. It need not end with punctuation.
+- The sentences after it are grounds or conditions. If there are none, leave them out.
+- `<small>` is the value that hangs on the ruler, one per `<li>`. In the form `담당 · 기한`,
+  under 15 characters — short, like `정해원 · 8월 28일`, `이견 없음`, `전결 규정 §12`.
+  A sentence there overflows the column into two or three lines.
+- If the owner or deadline was not decided in the meeting, write only 「미정」 in the value
+  cell, like `<small>미정 · 미정</small>`, and put why it was not decided and when and who will
+  decide it (e.g. 9월 7일까지 담당 지정) in the sentence before. If it is not in the material
+  at all, leave it as brackets like `<small>[담당자] · [기한]</small>`. Write a deadline only
+  as one of 날짜(요일)·「미정」·「[기한]」, and keep original wording such as
+  「다음 주 금요일까지」 in the sentence before. A line without `<small>` is later read by no one
+  as their own.
 
-표를 쓸 때도 같은 눈금을 쓴다. 열이 셋 이상이면 마지막 열은 담당이나 기한처럼
-짧은 값으로 두고, 긴 설명은 앞쪽 열에 넣는다.
+Tables use the same ruler. With three or more columns, keep the last column for short values
+such as owner or deadline, and put long explanations in the earlier columns.
 
 ## 쓸 수 있는 것
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, small` 뿐이다. `<h2>` 는 쓰지 마라 — 절 제목은 따로 붙는다.
-`class` 는 위에 적은 `lead`, `meta`, `rows` 세 개만 쓰고, 그 밖의 태그와 `style`,
-링크, 이미지는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, small`. Do not use `<h2>` — section titles are added separately.
+Use only the three `class` values `lead`, `meta`, `rows` above; any other tag, `style`,
+links and images are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 오간 말과 정해진 것을 섞지 마라. 논의는 문단으로, 결정은 `rows` 로 쓴다.
-- 실행 항목에는 담당자와 기한이 반드시 붙는다. 회의에서 정하지 않았으면 "미정"
-  이라고 적어 정하지 않았다는 사실을 남기고, 자료에 없으면 "[담당자]" "[기한]"으로 비운다.
-- 결론이 나지 않은 안건은 결론이 난 것처럼 쓰지 말고, 다음에 누가 언제 정하는지
-  까지 적는다.
-- 회의에서 나오지 않은 배경 설명을 지어내지 마라. 모르는 이름과 날짜는 「[담당자]」 「[일자]」처럼 대괄호로 비워 둔다.
-- 발언을 그대로 옮기지 말고 무엇을 주장했는지로 줄인다. 표현 자체가 남아야 할
-  때만 `<blockquote>` 를 쓴다.
+- Do not mix what was said with what was decided. Write discussion as paragraphs and decisions as `rows`.
+- Every action item must carry an owner and a deadline. If the meeting did not decide them,
+  write "미정" to record that they were not decided; if they are not in the material, leave "[담당자]" "[기한]".
+- Do not write an agenda item with no conclusion as if it were concluded; state who decides
+  it next and when.
+- Do not invent background that did not come up in the meeting. Leave unknown names and dates as brackets, like 「[담당자]」 「[일자]」.
+- Do not transcribe remarks verbatim; reduce them to what was argued. Use `<blockquote>`
+  only when the wording itself must be kept.
 
 ## 표·강조 수치·절차
 
-조판이 이 세 가지를 따로 그린다. 서식이 크기와 색을 쥐고 있으니 `style` 은 쓰지
-않는다.
+The layout draws these three separately. The format controls size and color, so do not
+use `style`.
 
-- **강조 수치** — 절의 결론이 되는 숫자가 두셋 있으면 `<div class="kpi">` 안에
-  칸마다 `<div><strong>값</strong><span>이름</span></div>` 을 쓴다. 최대 4개.
-  값은 `32%`, `1.4초` 처럼 짧게. 표에 있는 수치를 그대로 옮기지 않는다 — 표는
-  견주는 자리고 이 블록은 **하나를 기억시키는** 자리다.
-- **절차** — 차례대로 하는 일은 `<ol class="steps">` 에 `<li><strong>이름
-  </strong> <span>설명</span></li>` 로 쓴다. 번호는 조판이 붙이므로 직접 쓰지
-  않는다. 갈라지는 흐름은 절차가 아니다.
-- **표** — 비교·수치·일정은 `<table>` 로 쓴다. 3~5행이 적당하다.
+- **강조 수치** — if two or three numbers are the conclusion of a section, write them
+  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
+  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
+  table is for comparing, this block is for **making one thing remembered**.
+- **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
+  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
+  A branching flow is not a procedure.
+- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.
 
 ## 그래프
 
-수치의 **모양**이 요점이면 `<figure class="chart" data-source="…">` 로 쓴다.
-`data-source` 안에 숫자를 담고, 조판이 그린다.
+If the **shape** of the numbers is the point, write `<figure class="chart" data-source="…">`.
+Put the numbers in `data-source`; the layout draws it.
 
     <figure class="chart" data-source="bar | 건
     분기 | 처리 건수 | 반려 건수
     1분기 | 120 | 8
     2분기 | 210 | 11"></figure>
 
-- 첫 줄은 `종류 | 단위`. `bar` 는 항목별 비교, `line` 은 시간에 따른 추이.
-  둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-- 가로축 항목은 8개까지, 계열은 2개까지. **모든 줄의 값 개수가 계열 수와 같아야
-  한다** — 하나라도 비면 그 줄이 통째로 빠진다.
-- **지어낸 수치를 쓰지 않는다.** 그래프는 숫자보다 더 사실처럼 읽힌다. 근거가
-  없으면 그래프 대신 문장으로 쓴다.
+- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.
+  The second line is `가로축 이름 | 계열 이름들`. The rest are values.
+- At most 8 x-axis items and at most 2 series. **Every line must have as many values as
+  there are series** — if even one is missing, that whole line is dropped.
+- **Do not write invented figures.** A chart reads as more factual than numbers. Without
+  grounds, write a sentence instead of a chart.
 
 ## 절 이름
 
-- **참석** — 온 사람과 오지 못한 사람.
-- **논의** — 오간 이야기. 정해진 것과 섞지 않는다.
-- **결정 사항** — 정해진 것과 그렇게 정한 까닭.
-- **남은 쟁점** — 결론이 나지 않은 것. 다음에 누가 언제 정하는지 함께 적는다.
-- **실행 항목** — 누가, 무엇을, 언제까지.
+- **참석** — who came and who could not.
+- **논의** — what was discussed. Do not mix it with what was decided.
+- **결정 사항** — what was decided and why.
+- **남은 쟁점** — what was not concluded. State who decides it next and when.
+- **실행 항목** — who does what by when.

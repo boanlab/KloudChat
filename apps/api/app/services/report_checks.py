@@ -276,9 +276,10 @@ def _with_context(rows: list[dict], material: str) -> None:
 
 #: The date block's head when the meeting's date is nowhere: no date is worked out from today.
 _UNDATED_HEAD = (
-    "회의 일자: 자료와 요청에 없다. 머리 항목 일시와 본문(회의 개요 등)의 회의 날짜는 「[회의 일자]」로 "
-    "쓰고, 오늘·자료를 받은 날로 짐작하지 마라. 상대 기한(다음 주 금요일, 모레)은 날짜로 풀지 말고 기한 "
-    "칸에 「[기한]」, 비고에 「원문 「다음 주 금요일」, 회의 일자 미기재로 날짜 미확정」으로 쓴다."
+    "회의 일자: not in the material or the request. Write the meeting date in the head field 일시 and "
+    "in the body (회의 개요 etc.) as 「[회의 일자]」; do not guess it from today or the day the material "
+    "arrived. Do not resolve relative deadlines (다음 주 금요일, 모레) to dates: write 「[기한]」 in the "
+    "기한 cell and 「원문 「다음 주 금요일」, 회의 일자 미기재로 날짜 미확정」 in 비고."
 )
 
 
@@ -290,7 +291,7 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
     lines = []
     for r in relative[:40]:
         if r["status"] == _NO_BASE:
-            lines.append(f"- 「{r['text']}」 → 회의 일자가 없어 날짜로 풀지 않음: 기한 「[기한]」, 비고에 "
+            lines.append(f"- 「{r['text']}」 → not resolved (no meeting date): 기한 「[기한]」, in 비고 "
                          f"원문 「{r['text']}」 — 출처: 「{r['source_line'][:120]}」")
             continue
         where = f" — 출처: 「{r['source_line'][:120]}」(기준 {r['base_date']}"
@@ -303,20 +304,21 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
             every = "격주" if r.get("repeat") == "biweekly" else "매주"
             lines.append(f"- 「{r['text']}」 → {every} {r['weekday']}요일({r['first_date']}부터){where}")
         elif r["status"] == "unclear":
-            lines.append(f"- 「{r['text']}」 → 들리지 않음: 기한 「[기한]」, 원문은 비고에{where}")
+            lines.append(f"- 「{r['text']}」 → inaudible: 기한 「[기한]」, the original wording in 비고{where}")
         else:
-            lines.append(f"- 「{r['text']}」 → 날짜 하나로 정해지지 않음: 기한 「미정」, 원문은 비고에{where}")
+            lines.append(f"- 「{r['text']}」 → not one definite date: 기한 「미정」, the original wording in 비고{where}")
     head = f"기준일 {base}." if base else ""
     if base and base_note:
-        head = f"기준일 {base}({base_note} — 회의록에 이 기준을 밝힌다)."
+        head = f"기준일 {base}({base_note} — state this basis in the minutes)."
     if undated and not any(r["status"] in ("ok", "repeat") for r in relative):
         return "# 확정 날짜(코드 계산)\n" + _UNDATED_HEAD + ("\n" + "\n".join(lines) if lines else "")
     if undated:
-        head = _UNDATED_HEAD + f" 메일처럼 날짜가 적힌 줄만 그 날짜 기준({base})으로 풀었다."
+        head = _UNDATED_HEAD + f" Only lines that carry a date, such as mails, were resolved from that date ({base})."
     return (
-        "# 확정 날짜(코드 계산)\n" + head + " 자료의 상대 날짜를 코드가 풀었다. 기한 칸에는 아래 날짜를 "
-        "「2026-10-23(금)」처럼 쓰고 원문 표현은 비고에 둔다. 다시 계산하지 마라. 주말이라도 자료가 "
-        "옮기라고 하지 않으면 옮기지 않는다.\n" + "\n".join(lines)
+        "# 확정 날짜(코드 계산)\n" + head + " The code resolved the material's relative dates. In the "
+        "기한 cell write the dates below like 「2026-10-23(금)」 and put the original wording in 비고. "
+        "Do not recalculate. Do not move a date that falls on a weekend unless the material says "
+        "to.\n" + "\n".join(lines)
     )
 
 
@@ -339,24 +341,26 @@ def _lead_block(lead: dict) -> str:
         label = f"{r['label']}: " if r.get("label") else ""
         where = f" — 출처: 「{r['source_line'][:120]}」"
         if r["status"] != "ok":
-            lines.append(f"- {label}「{r['text']}」 → 날짜로 풀지 못함({r['reason']}): 날짜를 짐작하지 말고 "
-                         f"원문 그대로 둔다{where}")
+            lines.append(f"- {label}「{r['text']}」 → could not be resolved ({r['reason']}): do not guess "
+                         f"a date; keep the original wording{where}")
             continue
         verdict = _lead_verdict(r)
         lines.append(f"- {label}「{r['text']}」 → {r['shown']} ({r['anchor']} {r['start']} + "
                      f"{r['n']}{r['unit']})" + (f" · {verdict}" if verdict else "") + where)
-    deadline = (f"\n기한은 자료의 「{lead['deadline_line'][:120]}」이다. 기한 안·밖 판정도 위 그대로 쓴다."
+    deadline = (f"\nThe deadline is the material's 「{lead['deadline_line'][:120]}」. Use the within/over "
+                f"verdicts above as they are."
                 if lead.get("deadline") else "")
     return (
-        "# 확정 날짜(코드 계산 — 기준 날짜 + 기간)\n자료의 「발주 후 n주」 같은 기간을 자료가 밝힌 기준 날짜에 "
-        "더해 코드가 날짜로 풀었다. 완료·납품 예정일은 아래 날짜를 그대로 쓰고 다시 계산하지 마라.\n"
+        "# 확정 날짜(코드 계산 — 기준 날짜 + 기간)\nThe code turned periods such as the material's "
+        "「발주 후 n주」 into dates by adding them to the base date the material states. For completion "
+        "and delivery dates use the dates below as they are; do not recalculate.\n"
         + "\n".join(lines) + deadline
     )
 
 
-_QUOTE_PROMPT = """아래 자료에서 견적 계산에 쓸 값을 JSON 하나로 옮겨라. 계산하지 말고 자료에 적힌 값만 옮긴다.
+_QUOTE_PROMPT = """Copy the values for the quote calculation from the material below into one JSON object. Do not calculate; copy only the values written in the material.
 
-스키마:
+Schema:
 {{"vat_basis": "excl" 또는 "incl",
  "items": [{{"name": "PM", "mm": 1.5, "monthly_price": 7000000}},
            {{"name": "GPU 임차", "qty": 3, "unit": "개월", "unit_price": 1200000}},
@@ -367,23 +371,24 @@ _QUOTE_PROMPT = """아래 자료에서 견적 계산에 쓸 값을 JSON 하나�
  "scenarios": [{{"name": "6개월", "premise": "PM 6MM", "overrides": [{{"name": "PM", "mm": 6}}], "remove": [], "add": []}}],
  "quotes": [{{"vendor": "A사", "amount": 45650000, "vat_basis": "incl"}}]}}
 
-규칙:
-- 금액은 원 단위 정수(「900만 원」 → 9000000). 수량·MM 은 자료의 숫자 그대로.
-- 인력은 "mm" 과 "monthly_price" 로 옮긴다. MM 이 1인당이면(「퍼블리셔 2명 각 4MM」) "mm": 4, "people": 2.
-  표의 MM 칸이 이미 여러 명의 합이면(「AI 엔지니어 2명 | 12」) "mm": 12 만 쓰고 people 은 쓰지 않는다.
-- 뺀 항목도 자료의 단가·수량을 함께 옮긴다.
-- 자료가 부가세 기준을 밝히지 않으면 "". 고객이 부담하거나 범위에서 뺀 항목은 "excluded": true.
-- 항목마다 넣을지 뺄지를 자료의 요구사항(RFP 요구사항·보안·제약 조건)에 비추어 판정하라. 요구사항과
-  어긋나는 항목(예: 국외 이전 금지·국내 처리 요건인데 해외 API 사용료), 자료가 대체·제외·불가·미포함으로
-  적은 항목, 대안 둘 중 요구사항을 못 맞추는 쪽은 "excluded": true 와 "reason"(요구사항 번호와 이유
-  한 줄)을 단다. 넣는 항목에는 excluded 를 쓰지 않는다.
-- 업체별 총액만 있는 견적은 quotes 로, 대안·전제가 바뀌는 계산은 scenarios 로. 없으면 빈 목록.
-- 견적에 쓸 항목이 없으면 {{"items": [], "quotes": []}}.
+Rules:
+- Amounts are integers in won (「900만 원」 → 9000000). Quantities and MM exactly as the material's numbers.
+- Copy staff as "mm" and "monthly_price". If the MM is per person (「퍼블리셔 2명 각 4MM」): "mm": 4, "people": 2.
+  If the table's MM cell is already the sum over several people (「AI 엔지니어 2명 | 12」), write only "mm": 12 and no people.
+- For excluded items, copy the material's unit price and quantity as well.
+- If the material does not state the VAT basis, "". Items the client pays for or that are out of scope: "excluded": true.
+- Judge for each item whether to include or exclude it against the material's requirements (RFP 요구사항·보안·제약
+  조건). Items that conflict with a requirement (e.g. overseas API fees when transfer abroad is
+  banned or domestic processing is required), items the material marks as 대체·제외·불가·미포함, and whichever of
+  two alternatives fails a requirement get "excluded": true and a "reason" (the requirement number and why, one
+  line in Korean). Do not write excluded on items that are included.
+- Quotes with only a per-vendor total go in quotes; calculations where an alternative or premise changes go in scenarios. Empty lists if none.
+- If there are no items for a quote, {{"items": [], "quotes": []}}.
 
-자료:
+Material:
 {material}
 
-JSON 하나만 답하라."""
+Answer with one JSON object only."""
 
 
 def _material_numbers(text: str) -> list[float]:
@@ -582,22 +587,24 @@ def excluded_items(data: dict | None) -> list[dict]:
 
 def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool = False) -> str:
     lines = ["# 견적 확정 블록(코드 계산)",
-             "아래 금액은 자료의 단가·수량으로 코드가 계산했다(원 단위, 부가세 원 미만 절사). 견적 표의 "
-             "소계·공급가액(VAT 별도)·부가세·합계(VAT 포함)와 예산 대비 금액은 이 값만 쓰고 다시 "
-             "계산하지 마라. 단가를 바꾸지 마라. 금액마다 「공급가액(VAT 별도)」 「부가세」 「합계(VAT "
-             "포함)」처럼 기준을 붙이고 맨 「총액」으로 쓰지 마라. 부가세를 거꾸로 나누어 다른 공급가액을 "
-             "만들지 마라."]
+             "The code calculated the amounts below from the material's unit prices and quantities (in "
+             "won, VAT truncated below one won). For the quote table's 소계·공급가액(VAT 별도)·부가세·합계(VAT "
+             "포함) and the amounts against the budget, use only these values; do not recalculate. Do not "
+             "change unit prices. Label every amount with its basis, such as 「공급가액(VAT 별도)」 「부가세」 "
+             "「합계(VAT 포함)」, never as a bare 「총액」. Do not divide VAT back out to make a different "
+             "공급가액."]
     if result.get("lines"):
         lines.append(result["table_markdown"])
         lines.append(f"- 공급가액(VAT 별도): {result['supply_official']}")
         lines.append(f"- 부가세: {result['vat']:,}원")
         lines.append(f"- 합계(VAT 포함): {result['total_official']}")
         if result.get("vat_basis") == "incl":
-            lines.append("- 자료의 단가가 부가세 포함이라 공급가액은 합계에서 거꾸로 계산했다.")
+            lines.append("- The material's unit prices include VAT, so 공급가액 was worked back from the total.")
         elif assumed:
-            lines.append("- 자료의 단가에 부가세 기준이 없어 부가세 별도로 보았다. 이 전제를 견적에 밝힌다.")
+            lines.append("- The material's unit prices state no VAT basis, so they were taken as 부가세 별도. "
+                         "State this premise in the quote.")
     for item in excluded or []:
-        lines.append(f"- 제외: {item['name']} ({item['reason']}) — 견적 금액에 넣지 않는다.")
+        lines.append(f"- 제외: {item['name']} ({item['reason']}) — not part of the quote amount.")
     budget = result.get("budget")
     if budget and budget.get("vat_basis") in ("excl", "incl"):
         basis = "부가세 별도" if budget["vat_basis"] == "excl" else "부가세 포함"
@@ -605,10 +612,10 @@ def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool
         lines.append(f"- 예산 {budget['amount']:,}원({basis}) 대비 같은 기준 {budget['compared']:,}원: "
                      f"{word} {abs(budget['headroom']):,}원")
     elif budget:
-        lines.append(f"- 예산 {budget['amount']:,}원: 부가세 기준이 자료에 없음 — 별도로 보면 "
+        lines.append(f"- 예산 {budget['amount']:,}원: the material gives no VAT basis — taken as 별도: "
                      f"{'여유' if budget['if_excl']['within'] else '초과'} {abs(budget['if_excl']['headroom']):,}원, "
-                     f"포함으로 보면 {'여유' if budget['if_incl']['within'] else '초과'} "
-                     f"{abs(budget['if_incl']['headroom']):,}원. 어느 기준인지 전제로 밝힌다.")
+                     f"taken as 포함: {'여유' if budget['if_incl']['within'] else '초과'} "
+                     f"{abs(budget['if_incl']['headroom']):,}원. State which basis is the premise.")
     if head := result.get("per_head"):
         lines.append(f"- 1인당({head['n']}명): 부가세 별도 {head['excl']:,}원, 포함 {head['incl']:,}원")
     for row in result.get("scenarios") or []:
@@ -685,28 +692,29 @@ def career_periods(material: str, request: str, today: dt.date | None = None) ->
 
 def _career_block(span: dict) -> str:
     lines = ["# 기간 계산(코드)",
-             f"시작·끝 달을 모두 센 개월 수다(재직 중은 {span['as_of']} 까지). 경력 기간·총 경력은 이 값만 "
-             "쓰고 다시 계산하지 마라. 기간 표기는 「2019.04 ~ 2021.01」, 재직 중이면 「2023.03 ~ 현재」."]
+             f"Month counts with both the first and the last month counted (to {span['as_of']} for a current "
+             "job). Use only these values for each period and the total career; do not recalculate. Write "
+             "periods as 「2019.04 ~ 2021.01」, or 「2023.03 ~ 현재」 for a current job."]
     for p in span["periods"]:
-        side = "" if p["counted"] else " — 다른 경력과 병행: 총 경력에 더하지 않음"
+        side = "" if p["counted"] else " — concurrent with another job: not added to the total career"
         years, months = p["years_months"]
         shown = f"{years}년 {months}개월" if years and months else f"{years}년" if years else f"{months}개월"
         lines.append(f"- {p['label']}: {p['start'].replace('-', '.')} ~ "
                      f"{'현재' if p['ongoing'] else p['end'].replace('-', '.')} = {p['months']}개월({shown}){side}")
     if span.get("vague"):
-        lines.append("- 달까지 정해지지 않은 기간이 있다: " + " / ".join(span["vague"][:3])
-                     + " — 총 경력은 가정(예: 4월)을 밝히거나 확인을 요청한다.")
+        lines.append("- Some periods are not fixed to the month: " + " / ".join(span["vague"][:3])
+                     + " — for the total career, state the assumption (e.g. 4월) or ask for confirmation.")
     else:
         lines.append(f"- 총 경력(겹침 제외): {span['total_months']}개월 = {span['total_text']}")
     for gap in span.get("gaps") or []:
         lines.append(f"- 공백: {gap['start'].replace('-', '.')} ~ {gap['end'].replace('-', '.')} "
-                     f"({gap['months']}개월) — 숨기거나 기간을 늘리지 않는다")
+                     f"({gap['months']}개월) — do not hide it or stretch periods over it")
     return "\n".join(lines)
 
 
-_SCORE_PROMPT = """아래 자료와 요청에서 대안 비교의 점수 계산과 필수 조건 판정에 쓸 값을 JSON 하나로 옮겨라. 계산하지 마라.
+_SCORE_PROMPT = """From the material and the request below, copy into one JSON object the values for scoring the alternatives and checking the must-have conditions. Do not calculate.
 
-스키마:
+Schema:
 {{"criteria": [{{"name": "비용", "weight": 50, "kind": "cost"}},
               {{"name": "앱", "weight": 30, "kind": "yesno"}},
               {{"name": "성능", "weight": 20, "kind": "benefit"}}],
@@ -716,18 +724,18 @@ _SCORE_PROMPT = """아래 자료와 요청에서 대안 비교의 점수 계산�
  "options": [{{"name": "런큐브", "values": {{"비용": 18000000, "앱": "있음", "성능": null}},
               "musts": {{"SSO": "있음", "화상회의 인원": 100, "1대 가격": {{"value": 4200000, "vat_basis": "excl"}}}}}}]}}
 
-- kind: cost(낮을수록 좋음), benefit(높을수록 좋음), yesno(있음/없음). weight 는 요청·자료의 숫자 그대로.
-- musts 는 요청이 꼭 맞아야 한다고 한 조건(필수, 꼭, 안 된다, 이내, 이상)만. max 는 이하·이내, min 은 이상. 없으면 [].
-- 값이 자료에 없으면 null. 가중치가 하나도 없으면 {{"criteria": []}}.
-- 금액의 부가세 기준이 조건과 다르면 환산하지 말고 {{"value": 값, "vat_basis": "excl" 또는 "incl"}}로 둔다.
+- kind: cost (lower is better), benefit (higher is better), yesno (있음/없음). weight exactly as the number in the request or material.
+- musts: only the conditions the request says must be met (필수, 꼭, 안 된다, 이내, 이상). max is 이하·이내, min is 이상. [] if none.
+- null when the material has no value. If there are no weights at all, {{"criteria": []}}.
+- If an amount's VAT basis differs from the condition's, do not convert it; leave it as {{"value": 값, "vat_basis": "excl" 또는 "incl"}}.
 
-요청:
+Request:
 {request}
 
-자료:
+Material:
 {material}
 
-JSON 하나만 답하라."""
+Answer with one JSON object only."""
 
 
 def _q(value: Decimal) -> float:
@@ -812,20 +820,21 @@ def _score_block(result: dict) -> str:
             line += f" {row['renormalized']:g} |"
         rows.append(line)
     notes = [f"가중치 합 {result['weight_sum']:g}"
-             + ("" if abs(result["weight_sum"] - 100) < 1e-9 else " — 100이 아니다. 요청의 가중치를 그대로 썼다고 밝힌다")]
+             + ("" if abs(result["weight_sum"] - 100) < 1e-9 else " — not 100. State that the request's weights were used as given")]
     if result["missing"]:
-        notes.append("자료 없는 기준(" + ", ".join(result["missing"]) + "): 0점으로 둔 합계와, 그 기준을 빼고 "
-                     "100점으로 환산한 값을 함께 보인다")
+        notes.append("자료 없는 기준(" + ", ".join(result["missing"]) + "): show both the total with it scored 0 "
+                     "and the value rescaled to 100 without that criterion")
     if result["tie"]:
-        notes.append("동점: " + ", ".join(result["leaders"]) + " — 순서로 정하지 말고 동점이라고 쓴다")
-    return ("# 점수 계산(코드)\n비용은 최저 비용 ÷ 그 대안 비용 × 가중치, 높을수록 좋은 값은 그 값 ÷ 최고값 × "
-            "가중치, 있음/없음은 가중치/0. 점수 표는 이 값만 쓴다.\n" + "\n".join(rows) + "\n- "
+        notes.append("동점: " + ", ".join(result["leaders"]) + " — do not break the tie by order; write that it is a tie")
+    return ("# 점수 계산(코드)\nCost: lowest cost ÷ that alternative's cost × weight; higher-is-better values: "
+            "the value ÷ the highest value × weight; 있음/없음: weight or 0. Use only these values in the "
+            "score table.\n" + "\n".join(rows) + "\n- "
             + "\n- ".join(notes))
 
 
-_COST_PROMPT = """아래 요청과 자료에서 대안별 총비용 계산에 쓸 값을 JSON 하나로 옮겨라. 계산하지 말고 자료의 숫자만 옮긴다.
+_COST_PROMPT = """From the request and the material below, copy into one JSON object the values for computing each alternative's total cost. Do not calculate; copy only the material's numbers.
 
-스키마(예시는 다른 자료의 것이다. 이름과 숫자는 아래 자료에서 가져온다):
+Schema (the example comes from other material; take names and numbers from the material below):
 {{"period": "3년", "years": 3,
  "options": [
    {{"name": "<대안 1>", "items": [
@@ -841,30 +850,30 @@ _COST_PROMPT = """아래 요청과 자료에서 대안별 총비용 계산에 �
       "threshold": 1500, "years": 3}}]}}],
  "scenarios": [{{"name": "연 3,000장", "replace": [{{"from": 2000, "to": 3000}}]}}]}}
 
-필드(곱셈은 코드가 한다. 네가 곱하거나 합치지 마라):
-- unit_price: 자료에 적힌 단가 그대로(원). count: 단가가 붙는 대수·인원·개수(대당·1인당이면 그 수, 없으면 1).
-- per: 단가의 단위. "once"(한 번), "year"(연·년마다), "month"(월마다), 그 밖에는 사용량 단위
+Fields (the code does the multiplication; do not multiply or add anything yourself):
+- unit_price: the unit price exactly as written in the material (won). count: the number of units, people or items the price applies to (that number when the price is per unit or per person, otherwise 1).
+- per: the unit of the price. "once" (one time), "year" (each year), "month" (each month), otherwise the usage unit
   ("km", "시간", "장", "건" …).
-- years: 비교 기간의 햇수. 월 단가는 개월 수가 자료에 있으면 "months", 없으면 years 만 둔다.
-- usage: 사용량 단위 단가의 대당(1인당) 연 사용량. threshold: 그 사용량 가운데 이 값을 넘는 만큼만
-  요금이 붙을 때의 기준(「연 20,000km 초과 시」). 기준이 없으면 넣지 않는다.
-- rate: 단가의 비율(35% → 0.35)일 때만. sign: 줄이는 항목(보조금·지원금·잔존가치·매각액·환급)은 -1.
+- years: the number of years compared. For a monthly price, "months" if the material gives the number of months, otherwise only years.
+- usage: the yearly usage per unit (per person) for a price per usage unit. threshold: when only the usage above this value
+  is charged, that threshold (「연 20,000km 초과 시」). Leave it out when there is none.
+- rate: only when the price is a ratio of the unit price (35% → 0.35). sign: -1 for items that reduce the cost (보조금·지원금·잔존가치·매각액·환급).
 
-규칙:
-- options 에는 자료의 대안을 빠짐없이 모두 넣고, 대안마다 비용 항목(items)을 적는다.
-- 「연간」 비교는 years 1.
-- 다른 항목에 이미 포함된 비용(「보험·정비 포함」)은 따로 넣지 않는다. 별도라고 적힌 비용은 넣는다.
-- 출처마다 값이 다르면 더 최근의 공식 자료 값과 그 조건(지원 대수 한도 등)을 쓴다.
-- scenarios 는 요청이 묻는 전제 변화(주행 거리·인원·기간이 늘면)를 바뀌는 숫자로 적는다. 없으면 [].
-- 대안별 비용 항목이 없으면 {{"options": []}}.
+Rules:
+- Put every alternative in the material in options, none left out, each with its cost items (items).
+- A 「연간」 comparison is years 1.
+- Do not add separately a cost already included in another item (「보험·정비 포함」). Add costs stated as separate (별도).
+- If sources give different values, use the more recent official source's value and its conditions (such as a cap on the number of subsidized units).
+- scenarios: write the premise changes the request asks about (mileage, people or period going up) as the numbers that change. [] if none.
+- If there are no cost items per alternative, {{"options": []}}.
 
-요청:
+Request:
 {request}
 
-자료:
+Material:
 {material}
 
-JSON 하나만 답하라."""
+Answer with one JSON object only."""
 
 
 _ONCE = ("once", "한 번", "1회", "일시")
@@ -1039,8 +1048,9 @@ def _cost_block(result: dict) -> str:
         for row in entry["rows"]:
             rows.append(f"| {option} | {row['name']} | {_factor_text(row)} | {row['amount']:,} |")
         rows.append(f"| {option} | 합계 |  | {entry['total']:,} |")
-    lines = [f"# 총비용 계산(코드)\n{period} 총비용을 자료의 단가·수량으로 코드가 계산했다. 총비용 표와 비교 "
-             "문장의 금액은 이 값만 쓰고 다시 계산하지 마라.", "\n".join(rows)]
+    lines = [f"# 총비용 계산(코드)\nThe code calculated the {period} total costs from the material's unit prices "
+             "and quantities. Use only these values for the total cost table and the amounts in comparison "
+             "sentences; do not recalculate.", "\n".join(rows)]
     lines.append("- " + ", ".join(f"{o} {e['total']:,}원" for o, e in result["options"].items())
                  + f" → 가장 적은 대안: {result['lowest']}")
     for spec in result["scenarios"]:
@@ -1049,7 +1059,7 @@ def _cost_block(result: dict) -> str:
             f"{o} {e['total']:,}원" for o, e in totals.items())
                      + f" → 가장 적은 대안: {min(totals, key=lambda n: totals[n]['total'])}")
     if result["dropped"]:
-        lines.append("- 자료에 없는 값이라 계산에서 뺀 것: " + ", ".join(result["dropped"][:6]))
+        lines.append("- Left out of the calculation (values not in the material): " + ", ".join(result["dropped"][:6]))
     return "\n".join(lines)
 
 
@@ -1079,9 +1089,10 @@ def _json(text: str) -> dict:
 #: What a split vote leaves the writer: no totals, the places for them marked.
 _COST_SPLIT = "총비용 계산 불일치 — 직접 확인 필요"
 _COST_WITHHELD = (
-    "# 총비용 계산(코드): 확정 못 함\n자료에서 읽은 비용 항목이 읽을 때마다 달라 대안별 총비용을 확정하지 "
-    "못했다. 대안별 총비용·합계·차액·시나리오 합계는 계산하지 말고 「[금액]」으로 둔다. 자료에 적힌 "
-    "단가·수량·조건은 그대로 써도 된다.")
+    "# 총비용 계산(코드): 확정 못 함\nThe cost items read from the material differed on every reading, so the "
+    "total cost per alternative could not be settled. Do not calculate per-alternative total costs, sums, "
+    "differences or scenario totals; leave them as 「[금액]」. The unit prices, quantities and conditions "
+    "written in the material may be used as they are.")
 
 
 def _option_key(name: str) -> str:
@@ -2408,8 +2419,9 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
                     range(len(sections)), key=lambda k: len(_REQ_ID.findall(str(sections[k].get("content") or "")))))
                 out.append(Amendment(
                     index, "requirement_missing",
-                    "요구사항 대응표에 빠진 요구 ID 행을 같은 열 구성으로 표 끝에 덧붙여라. 대응 방안은 자료에 "
-                    "있는 범위에서만 쓰고, 없으면 「[대응 방안]」으로 둔다:\n" + "\n".join(
+                    "Append the requirement-ID rows missing from the 요구사항 대응표 to the end of the table, "
+                    "with the same columns. Write the 대응 방안 only as far as the material covers it; "
+                    "otherwise leave 「[대응 방안]」:\n" + "\n".join(
                         f"- {i}: {lines[i]}" for i in missing[:20]),
                     lambda secs, ids=missing: any(i not in _whole(secs) for i in ids)))
         stated = next((m.group(1).strip() for m in _VALIDITY.finditer(f"{request}\n{material}")), "")
@@ -2435,8 +2447,11 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
         if lines is None:
             out.append(Amendment(
                 first, "summary_missing",
-                "이 절 맨 앞에 ```callout 블록을 덧붙여라. 첫 줄은 「핵심」, 둘째 줄은 결론 한 줄, 셋째 줄은 "
-                "필요한 결정(없으면 다음 조치) 한 줄이다. 두 줄 모두 명사형으로 끝내고, 문서에 있는 내용과 숫자만 쓴다.",
+                "Add a callout block, opened by the line 「```callout」, at the very start of this section. Its "
+                "first line is 「핵심」, the "
+                "second one line of conclusion, the third one line of the decision needed (the next action "
+                "if none) — plain lines, not list items. End both lines in the noun form (명사형), and use only "
+                "content and numbers in the document.",
                 lambda secs: summary_lines(secs) is None))
         elif lines != 2:
             out.append(Amendment(
@@ -2470,8 +2485,9 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
                 + (f" — 자료: 「{v['line'][:100]}」" if v.get("line") else "") for v in conflict.values)
             out.append(Amendment(
                 index, "conflict_missing",
-                f"「{conflict.name}」에 대해 자료가 서로 다른 값을 준다. 두 값을 출처·시점과 함께 나란히 적고 "
-                f"어느 값을 따랐는지 한 줄로 밝혀라(표라면 행을 덧붙인다):\n{listed}",
+                f"The material gives different values for 「{conflict.name}」. Write the two values side by "
+                f"side with their source and time, and state in one line which value you followed (in a "
+                f"table, append a row):\n{listed}",
                 lambda secs, c=conflict: any(not _shown(v["value"], _whole(secs)) for v in c.values)))
         unverified = _unverified_options(sections, list((pre.scores or {}).get("options") or {}))
         if unverified:
@@ -2481,7 +2497,8 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
             if absent:
                 out.append(Amendment(
                     index, "unverified_missing",
-                    "「조건 미확인」으로 둔 대안과 무엇을 확인해야 하는지를 이 절에 덧붙여라: " + ", ".join(absent),
+                    "Append to this section the alternatives left as 「조건 미확인」 and what must be "
+                    "checked for each: " + ", ".join(absent),
                     lambda secs, i=index, a=absent: any(o not in str(secs[i].get("content") or "") for o in a)))
     return out
 
@@ -2616,17 +2633,17 @@ async def body_pages(
     return hwpx or None, pdf or None
 
 
-_CONDENSE_PROMPT = """아래는 개조식 보고서의 「{heading}」 절이다. 보고서 본문이 지금 {pages}쪽인데 {limit}쪽에 맞춰야 한다.
-이 절은 지금 {lines}줄({chars:,}자)이다. {target}줄 이하로 줄여 다시 써라(약 {cut}줄을 덜어 낸다).
+_CONDENSE_PROMPT = """Below is the 「{heading}」 section of a 개조식 report. The report body is now {pages} pages and must fit in {limit}.
+This section is now {lines} lines ({chars:,} characters). Rewrite it in {target} lines or fewer (cut about {cut} lines).
 
-규칙:
-- 경위·배경·세부 설명부터 줄이고, 결정 요청·법정 의무·예산 부족·기한은 그대로 남긴다.
-- 숫자는 바꾸지 않는다. 남기는 항목의 숫자는 원문 그대로.
-- 세부 표는 이미 「붙임」으로 옮겼다. 표를 다시 쓰지 말고, 덜어 낸 세부는 맨 끝에 「※ 세부는 붙임」 한 줄로 가리킨다.
-- 맨 앞 ```callout 블록(핵심 두 줄)이 있으면 그대로 둔다.
-- 개조식(□ ○ - ㆍ 깊이의 목록) 그대로. 절 제목은 쓰지 않는다.
+Rules:
+- Cut history, background and detailed explanation first; keep decision requests, legal obligations, budget shortfalls and deadlines.
+- Do not change numbers. Numbers in the items you keep stay exactly as in the original.
+- The detailed tables have already been moved to 「붙임」. Do not write the tables again; point to the details you cut with one last line 「※ 세부는 붙임」.
+- If there is a leading ```callout block (the two 핵심 lines), keep it as it is.
+- Keep the 개조식 form (lists with □ ○ - ㆍ depth). Do not write the section heading.
 
-절:
+Section:
 {content}"""
 
 #: Rounds of condensing a body that runs over its page limit; each is measured again.
@@ -3587,8 +3604,9 @@ def must_status(data: dict, numbers: list[float], material: str = "") -> dict | 
 
 def _must_block(result: dict) -> str:
     lines = ["# 필수 조건 판정(코드)",
-             "요청의 필수 조건(" + ", ".join(result["musts"]) + ")을 자료 값에 대어 본 결과다. 대안 상태는 이 값을 "
-             "따른다. 탈락 대안은 권고하지 않고, 조건 미확인 대안은 「확인되면 권고」처럼 조건부로만 쓴다."]
+             "The request's must-have conditions (" + ", ".join(result["musts"]) + ") checked against the "
+             "material's values. Each alternative's status follows this result. Do not recommend a 탈락 "
+             "alternative; recommend a 조건 미확인 alternative only conditionally, as in 「확인되면 권고」."]
     for option, row in result["options"].items():
         if row["status"] == "탈락":
             lines.append(f"- {option}: 탈락 — " + "; ".join(row["failed"]))
@@ -3597,7 +3615,7 @@ def _must_block(result: dict) -> str:
         else:
             lines.append(f"- {option}: 충족")
     if all(r["status"] == "탈락" for r in result["options"].values()):
-        lines.append("- 모든 대안이 탈락: 결론은 「조건을 모두 충족하는 대안 없음」")
+        lines.append("- Every alternative is 탈락: the conclusion is 「조건을 모두 충족하는 대안 없음」")
     return "\n".join(lines)
 
 
@@ -3678,34 +3696,37 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
 #: Seconds a judge call may take; past it the document goes on unjudged.
 JUDGE_TIMEOUT = 60.0
 
-_OWNER_PROMPT = """회의 자료와 회의록의 실행 항목이다. 자료가 담당을 바꾸거나(○○ 대신 △△, 메일로 변경) 새로 정한 항목 가운데
-회의록이 최종 담당을 쓰지 않은 행만 골라라. 자료에 근거가 없으면 고르지 마라.
+_OWNER_PROMPT = """Below are the meeting material and the action items of the minutes. Among the items whose owner the material
+changed (○○ 대신 △△, changed by mail) or newly assigned, pick only the rows where the minutes do not give the final owner.
+Do not pick a row the material gives no grounds for.
 
-자료:
+Material:
 {material}
 
-실행 항목(한 줄에 한 행):
+Action items (one row per line):
 {rows}
 
-JSON 하나만 답하라: {{"items": [{{"row": "행을 그대로", "final_owner": "자료의 최종 담당", "why": "자료 근거 한 줄"}}]}}"""
+Answer with one JSON object only: {{"items": [{{"row": "행을 그대로", "final_owner": "자료의 최종 담당", "why": "자료 근거 한 줄"}}]}}"""
 
-_BINDING_PROMPT = """자료와 문서의 숫자 문장이다. 숫자가 자료에서 다른 대상(다른 대안·항목·시나리오·기간)에 붙은 값인데
-문서가 엉뚱한 대상에 붙인 문장만 골라라. 계산한 값이나 자료에 없는 숫자는 고르지 마라.
+_BINDING_PROMPT = """Below are the material and the document's sentences with numbers. Pick only the sentences where the number
+belongs to a different target in the material (another alternative, item, scenario or period) and the document attached it to
+the wrong one. Do not pick calculated values or numbers not in the material.
 
-자료:
+Material:
 {material}
 
-문서 문장(한 줄에 하나):
+Document sentences (one per line):
 {lines}
 
-JSON 하나만 답하라: {{"items": [{{"sentence": "문장을 그대로", "number": "숫자", "belongs_to": "자료에서 그 숫자의 대상", "why": "한 줄"}}]}}"""
+Answer with one JSON object only: {{"items": [{{"sentence": "문장을 그대로", "number": "숫자", "belongs_to": "자료에서 그 숫자의 대상", "why": "한 줄"}}]}}"""
 
-_REPEAT_PROMPT = """아래는 한 지원자의 {what}이다. 같은 경험의 같은 상황·행동·결과를 두 곳 이상에서 되풀이한 문장만 골라라.
-같은 경험이라도 다른 측면(동기 한 줄과 과정 상세)이면 고르지 마라.
+_REPEAT_PROMPT = """Below is one applicant's {what}. Pick only the sentences that repeat the same situation, action or result
+of the same experience in two or more places. Do not pick them when they are different aspects of the same experience
+(a one-line motive and the detailed process).
 
 {text}
 
-JSON 하나만 답하라: {{"items": [{{"sentence": "뒤에 나온 문장을 그대로", "repeats": "앞에 나온 같은 내용", "why": "한 줄"}}]}}"""
+Answer with one JSON object only: {{"items": [{{"sentence": "뒤에 나온 문장을 그대로", "repeats": "앞에 나온 같은 내용", "why": "한 줄"}}]}}"""
 
 
 async def judge_json(complete: Complete, model: str, api_key: str, prompt: str,

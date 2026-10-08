@@ -15,10 +15,11 @@ from app.services import units
 
 #: Said to the writer beside the settled blocks.
 WRITER_NOTE = (
-    "# 작성 메모(내부)\n「확정 수치」「확정 날짜」「견적 확정 블록」「…(코드)」처럼 이름 붙은 "
-    "블록과 사전 계산·단계 이름은 작성용 내부 메모다. 문서에는 그 값만 쓰고, "
-    "블록·계산 단계·코드·지침의 이름이나 「코드가 계산했다」「코드 미해석」 같은 말은 "
-    "쓰지 마라. 날짜나 값을 정하지 못했으면 「확인 필요」라고만 쓴다."
+    "# 작성 메모(내부)\nBlocks named like 「확정 수치」「확정 날짜」「견적 확정 블록」「…(코드)」, "
+    "and the pre-calculation and step names, are internal notes (내부 메모) for writing. Put only "
+    "their values in the document — not the blocks or their notes as they stand, and never the "
+    "names of blocks, calculation steps, code or instructions, nor words like 「코드가 계산했다」 "
+    "「코드 미해석」. If a date or value could not be settled, write only 「확인 필요」."
 )
 
 #: Block, step and prompt-section names; anywhere a reader could see them.

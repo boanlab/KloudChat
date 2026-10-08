@@ -380,7 +380,7 @@ async def test_the_minutes_judge_runs_once_and_its_candidate_is_listed(monkeypat
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
         prompt = str(messages[-1]["content"])
-        if "최종 담당을 쓰지 않은 행" in prompt:
+        if "do not give the final owner" in prompt:
             judged.append(model)
             row = table.split("\n")[2]
             item = {"row": row, "final_owner": "남주무관", "why": "출장으로 변경"}

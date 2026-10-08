@@ -86,10 +86,13 @@ def test_the_heads_carry_the_business_fields_not_the_student_ones():
     [
         (
             "client_proposal",
-            ("RFP", "요구 ID", "공급가액·부가세·합계", "지어내지 않는다", "「협의」"),
+            ("RFP", "요구 ID", "공급가액·부가세·합계", "never invent them", "「협의」"),
         ),
-        ("comparison", ("가중치", "점수식", "출처별 차이", "조건 미확인", "자료 없음")),
-        ("career_history", ("YYYY.MM–YYYY.MM", "부풀리지 않는다", "블라인드", "표 안에 표")),
+        ("comparison", ("weights", "scoring formula", "출처별 차이", "조건 미확인", "자료 없음")),
+        (
+            "career_history",
+            ("YYYY.MM–YYYY.MM", "never inflated", "블라인드", "table inside a table"),
+        ),
     ],
 )
 def test_each_format_brings_its_genre_rules(format_id: str, musts: tuple[str, ...]):
@@ -106,8 +109,8 @@ def test_each_format_brings_its_genre_rules(format_id: str, musts: tuple[str, ..
 
 
 def test_the_capstone_genre_no_longer_claims_a_business_proposal():
-    assert report._genre_rule("사업 제안서 써 줘").startswith("장르: 고객 제안서")
-    assert report._genre_rule("캡스톤 프로젝트 제안서 써 줘").startswith("장르: 프로젝트 제안서")
+    assert report._genre_rule("사업 제안서 써 줘").startswith("Genre: 고객 제안서")
+    assert report._genre_rule("캡스톤 프로젝트 제안서 써 줘").startswith("Genre: 프로젝트 제안서")
 
 
 def test_every_mapped_template_exists():

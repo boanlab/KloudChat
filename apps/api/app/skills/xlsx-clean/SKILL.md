@@ -6,17 +6,17 @@ kinds: [chat, report]
 required_tools: [run_skill_script]
 version: 1.0.0
 ---
-첨부한 표를 정리할 때는 직접 코드를 쓰지 말고 고정 스크립트부터 돌린다.
+When cleaning an attached table, do not write code yourself; run the fixed script first.
 
-1. `run_skill_script` 를 skill `xlsx-clean`, script `clean` 으로 부른다.
-   args: `{"file": "<첨부 파일 이름>"}`. 시트 하나만 정리하려면 `"sheet"`, 머리글 위치를 사용자가
-   말했으면 `"header_row"`(1부터), 합계 행을 수식으로 다시 달려면 `"add_totals": true` 를 더한다.
-   합계 수식은 LibreOffice로 다시 계산해 값까지 저장된다.
-2. 결과 요약에서 시트별 머리글 행, 남은 행 수, 지운 행(제목·합계·주석·중복)과 숫자·날짜로 바꾼 열을
-   확인해 사용자에게 짧게 알린다. 지운 행이 데이터처럼 보이면(예: 지점 이름 행이 주석으로 빠짐)
-   그 행 번호를 말하고 `header_row` 를 바꿔 다시 돌릴지 묻는다.
-3. 정리한 파일로 이어서 할 일(피벗, 병합, 열 나누기, 조건 표시, 차트용 집계)은 `run_code` 에 맡긴다.
-   task 에는 `outputs/<이름>_정리.xlsx` 를 입력으로 쓰라고 적는다.
+1. Call `run_skill_script` with skill `xlsx-clean`, script `clean`.
+   args: `{"file": "<첨부 파일 이름>"}`. To clean only one sheet add `"sheet"`; if the user named the header
+   position add `"header_row"` (1-based); to re-add total rows as formulas add `"add_totals": true`.
+   Total formulas are recalculated with LibreOffice and saved with their values.
+2. From the result summary, check each sheet's header row, remaining row count, deleted rows (제목·합계·주석·중복) and the columns converted
+   to numbers or dates, and tell the user briefly. If a deleted row looks like data (e.g. a branch-name row dropped as a note),
+   give its row number and ask whether to rerun with a different `header_row`.
+3. Hand follow-up work on the cleaned file (pivots, merges, splitting columns, conditional marking, aggregates for charts) to `run_code`.
+   In the task, say to use `outputs/<이름>_정리.xlsx` as input.
 
-파일 안의 숫자를 대화에 옮겨 적을 때는 요약 JSON이나 출력 파일에 있는 값만 쓴다. 정리 결과 파일은
-사용자가 내려받을 수 있도록 단계에 붙어 있으니 내용을 길게 다시 적지 않는다.
+When copying numbers from the file into the conversation, use only values in the summary JSON or the output file. The cleaned file
+is attached to the step for the user to download, so do not rewrite its contents at length.

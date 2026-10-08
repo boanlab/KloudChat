@@ -1,61 +1,62 @@
-이 문서는 **한 장 요약** 템플릿으로 만든다. 조판은 이미 정해져 있으니 내용만
-쓴다. 읽는 사람은 30초 안에 "무엇을 정해야 하는가"와 "다음에 뭘 하는가"만
-찾는다. 두 장이 되는 순간 이 서식은 실패다.
+Build this document with the **한 장 요약** template. The layout is already set; write
+only the content. The reader looks, within 30 seconds, only for "what must be decided" and
+"what happens next". The moment it runs to two pages, this format has failed.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 맨 위 제목 블록. `<p class="lead">` 한 줄로 이 문서가 답하는 질문을
-  적는다. 표지 페이지가 아니라 한 장의 머리이므로 짧게 쓴다.
-- `section` — 항목 하나. 짧은 제목과 5줄 이내의 본문. 두 단으로 나뉘어 앉는다.
+- `cover` — the title block at the top. In one `<p class="lead">` line, state the
+  question this document answers. It is the head of a single page, not a cover page, so keep it short.
+- `section` — one item. A short title and a body of at most 5 lines. Items sit in two columns.
 
-## 규칙
+## Rules
 
-- **한 장에 들어가야 한다.** 항목은 4~6개, 각 항목은 5줄을 넘기지 않는다.
-- 항목 하나는 한 가지만 답한다. 결정할 것 · 지금 상황 · 대안 · 걸려 있는 것 ·
-  미루면 생기는 일처럼 나눈다.
-- **마지막 항목은 항상 다음 행동이다.** 조판이 마지막 항목만 한 장의 폭 전체에
-  깔고 색을 넣으므로, 다른 것을 마지막에 두면 그 자리에 잘못된 것이 강조된다.
-  누가, 무엇을, 언제까지 하는지 한 줄에 하나씩 쓴다.
-- 표는 대안을 같은 기준으로 비교할 때만 쓰고, 머리글을 뺀 **3행까지**만 쓴다.
-  표 하나는 한 단 안에 들어가야 한다. 열은 3개를 넘기지 않는다.
-- 단서·전제·산출 근거는 `<small>` 한 줄로 그 항목 끝에 붙인다. 그것 때문에
-  본문이 길어지면 안 된다.
+- **It must fit on one page.** 4–6 items, each no longer than 5 lines.
+- Each item answers one thing only. Split them like 결정할 것 · 지금 상황 · 대안 · 걸려 있는 것 ·
+  미루면 생기는 일.
+- **The last item is always the next action.** The layout spreads only the last item
+  across the full page width and colors it, so putting anything else last highlights the
+  wrong thing. Write who does what by when, one per line.
+- Use a table only to compare alternatives on the same criteria, and at most **3 rows**
+  excluding the header. A table must fit in one column. No more than 3 columns.
+- Attach caveats, assumptions and calculation grounds as one `<small>` line at the end of
+  the item. They must not lengthen the body.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, small, dl, dt, dd` 뿐이다. `<h2>` 는 쓰지 마라 — 항목 제목은
-따로 붙는다. 그 밖의 태그와 `style`, 링크, 이미지는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, small, dl, dt, dd`. Do not use `<h2>` — item titles are added
+separately. Any other tag, `style`, links and images are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
 ## 표·강조 수치·절차
 
-조판이 이 세 가지를 따로 그린다. 서식이 크기와 색을 쥐고 있으니 `style` 은 쓰지
-않는다.
+The layout draws these three separately. The format controls size and color, so do not
+use `style`.
 
-- **강조 수치** — 절의 결론이 되는 숫자가 두셋 있으면 `<div class="kpi">` 안에
-  칸마다 `<div><strong>값</strong><span>이름</span></div>` 을 쓴다. 최대 4개.
-  값은 `32%`, `1.4초` 처럼 짧게. 표에 있는 수치를 그대로 옮기지 않는다 — 표는
-  견주는 자리고 이 블록은 **하나를 기억시키는** 자리다.
-- **절차** — 차례대로 하는 일은 `<ol class="steps">` 에 `<li><strong>이름
-  </strong> <span>설명</span></li>` 로 쓴다. 번호는 조판이 붙이므로 직접 쓰지
-  않는다. 갈라지는 흐름은 절차가 아니다.
-- **표** — 비교·수치·일정은 `<table>` 로 쓴다. 3~5행이 적당하다.
+- **강조 수치** — if two or three numbers are the conclusion of a section, write them
+  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
+  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
+  table is for comparing, this block is for **making one thing remembered**.
+- **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
+  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
+  A branching flow is not a procedure.
+- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.
 
 ## 그래프
 
-수치의 **모양**이 요점이면 `<figure class="chart" data-source="…">` 로 쓴다.
-`data-source` 안에 숫자를 담고, 조판이 그린다.
+If the **shape** of the numbers is the point, write `<figure class="chart" data-source="…">`.
+Put the numbers in `data-source`; the layout draws it.
 
     <figure class="chart" data-source="bar | 건
     분기 | 처리 건수 | 반려 건수
     1분기 | 120 | 8
     2분기 | 210 | 11"></figure>
 
-- 첫 줄은 `종류 | 단위`. `bar` 는 항목별 비교, `line` 은 시간에 따른 추이.
-  둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-- 가로축 항목은 8개까지, 계열은 2개까지. **모든 줄의 값 개수가 계열 수와 같아야
-  한다** — 하나라도 비면 그 줄이 통째로 빠진다.
-- **지어낸 수치를 쓰지 않는다.** 그래프는 숫자보다 더 사실처럼 읽힌다. 근거가
-  없으면 그래프 대신 문장으로 쓴다.
+- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.
+  The second line is `가로축 이름 | 계열 이름들`. The rest are values.
+- At most 8 x-axis items and at most 2 series. **Every line must have as many values as
+  there are series** — if even one is missing, that whole line is dropped.
+- **Do not write invented figures.** A chart reads as more factual than numbers. Without
+  grounds, write a sentence instead of a chart.

@@ -1,31 +1,35 @@
-이 문서는 **비교·분석 보고서** 서식으로 만든다. 대안 2~5개를 같은 기준으로 견주고 하나를
-조건과 함께 권고하는 문서다. 머리(검토 대상·판단 기준·작성일·작성자)와 절 번호는 조판이
-붙인다.
+Build this document with the **비교·분석 보고서** format. It compares 2–5 alternatives on the
+same criteria and recommends one, with conditions. The layout adds the head
+(검토 대상·판단 기준·작성일·작성자) and the section numbers.
 
-- 절은 검토 목적과 판단 기준 → 대안 개요 → 비교표 → 출처별 차이 → 조건 미확인 사항 →
-  권고와 조건 순서로 놓는다.
-- 첫 절 첫 줄에 고른 대안과 그 조건을 한 문장으로 둔다.
+- Order the sections 검토 목적과 판단 기준 → 대안 개요 → 비교표 → 출처별 차이 → 조건 미확인 사항 →
+  권고와 조건.
+- Put the chosen alternative and its condition in one sentence on the first line of the
+  first section.
 
 ## 판단 기준
 
-- 필수 조건, 가중치(합 100), 점수식(예: 비용 점수 = 최저 비용 ÷ 해당 안 비용 × 100)을
-  비교표 앞에 적는다. 가중치가 없으면 「필수 조건을 지키는 안 중 최저 비용」처럼 판단
-  규칙 하나를 밝힌다.
-- 필수 조건을 못 맞춘 대안은 값이 좋아도 「탈락(사유)」으로 표시하고 권고하지 않는다.
-  조건 확인이 안 된 대안은 탈락과 구분해 「조건 미확인」으로 둔다.
+- Before the comparison table, state the mandatory conditions, the weights (summing to 100)
+  and the scoring formula (e.g. 비용 점수 = 최저 비용 ÷ 해당 안 비용 × 100). Without weights,
+  state one decision rule, like 「필수 조건을 지키는 안 중 최저 비용」.
+- Mark an alternative that fails a mandatory condition as 「탈락(사유)」, with the actual reason in the
+  parentheses (「탈락(화상회의 50명 < 60명)」), even if its values are good, and do not recommend it. Keep an alternative whose condition is not confirmed as
+  「조건 미확인」, distinct from elimination.
 
 ## 비교표
 
-- 열 = 대안, 행 = 기준. 단위는 머리 행에 적는다.
-- 빈칸 없이 값 또는 「자료 없음」. 칸마다 출처 번호. 가중치가 있으면 마지막 행에 가중 합계.
-- 자료 없는 값을 추정해 채우거나 0점으로 몰래 처리하지 않는다.
-- 보증금처럼 돌려받는 돈은 비용에 넣지 않고 따로 적는다.
+- Columns = alternatives, rows = criteria. Put units in the header row.
+- No empty cells: a value or 「자료 없음」. A source number in every cell. With weights, a
+  weighted total in the last row.
+- Do not estimate values missing from the material, or quietly score them 0.
+- Money that is returned, such as a deposit, is not a cost; list it separately.
 
 ## 출처와 권고
 
-- 같은 항목에 출처마다 값이 다르면 출처별 차이 절에 표(항목 | 출처와 날짜 | 값 | 채택과
-  이유)로 두 값을 나란히 적는다. 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는다.
-- 조건 미확인 사항은 무엇이 확인되면 결론이 정해지는지와 함께 목록으로 쓴다.
-- 권고는 조건과 함께(「○○이 확인되면 A, 아니면 B」). 시나리오가 있으면 결론이 바뀌는
-  지점을 숫자로 보인다. 「상황에 따라 다르다」로 끝내지 않는다.
-- 제품의 설정 이름·식별자처럼 글자 그대로 옮겨야 뜻이 남는 것은 `<code>` 로 감싼다.
+- When sources give different values for the same item, put both side by side in the
+  출처별 차이 section as a table (항목 | 출처와 날짜 | 값 | 채택과 이유). If measurement
+  conditions differ, do not adopt even the newest source outright.
+- List the unconfirmed conditions together with what, once confirmed, settles the conclusion.
+- Recommend with conditions (「○○이 확인되면 A, 아니면 B」). If there are scenarios, show in
+  numbers where the conclusion changes. Do not end with 「상황에 따라 다르다」.
+- Wrap anything whose meaning survives only when copied character for character — product setting names, identifiers — in `<code>`.

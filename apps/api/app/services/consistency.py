@@ -65,10 +65,12 @@ def dependents(
 
 def dependent_note(instruction: str) -> str:
     return (
-        f"이번 수정 요청(「{' '.join(instruction.split())[:300]}」)으로 다른 절의 "
-        "기준·수치·날짜·결정이 바뀌었다. 이 절에서 그 값을 말하거나 그 값에 기대는 "
-        "문장(요약·결론·권고·요청 사항 포함)을 바뀐 내용과 앞 절들에 맞춰 고친다. "
-        "사용자가 이미 준 값은 다시 묻지 말고 쓴다. 관련 없는 문장은 그대로 둔다."
+        f"This revision request (「{' '.join(instruction.split())[:300]}」) changed criteria, "
+        "figures, dates or decisions in other sections. Fix the sentences in this section that "
+        "state those values or rely on them (including the summary, conclusion, "
+        "recommendation and requests) to match the change and the preceding sections. Use "
+        "values the user already gave without asking again. Leave unrelated sentences as "
+        "they are."
     )
 
 

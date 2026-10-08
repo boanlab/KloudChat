@@ -269,7 +269,7 @@ async def test_one_metric_stated_two_ways_is_reconciled_against_the_sources(monk
 
     async def complete(model, messages, api_key, max_tokens):
         prompt = messages[0]["content"]
-        items = json.loads(prompt[prompt.index("항목:") + len("항목:"):].strip())
+        items = json.loads(prompt[prompt.index("Items:") + len("Items:"):].strip())
         scoped = [
             i["sentence"].replace("글로벌 AI 보안 시장은", "AI 사이버보안 시장 전체는", 1)
             if i["sentence"].startswith("글로벌")

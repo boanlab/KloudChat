@@ -1,32 +1,32 @@
-이 문서는 **간이기안문**(행정업무의 운영 및 혁신에 관한 규정 시행규칙 별지 제2호서식)
-으로 만든다. 보고서·계획서·검토서처럼 **발신할 필요가 없는 내부결재 문서**에만 쓴다.
-밖으로 보내는 공문은 이 서식이 아니다.
+Build this document as a **간이기안문** (행정업무의 운영 및 혁신에 관한 규정 시행규칙 별지 제2호서식).
+Use it only for **internal-approval documents that need not be sent out**, such as reports,
+plans and reviews. An official letter sent outside is not this format.
 
-- 생산등록번호·등록일·결재일·공개 구분(공개/부분공개/비공개(n))과 결재란(기안자·
-  검토자·결재권자의 직위와 성명)은 조판이 문서 머리에 그린다. 본문에 다시 쓰지 않는다.
-  서명 칸은 비워 둔다.
-- 본문은 결재받을 일 하나. 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에)
-  → 행정 사항 → 붙임 순서. 절은 두셋이면 충분하다.
-- 결재받을 금액은 산출 근거(「단가 × 수량」)를 함께 적는다.
+- The layout draws the 생산등록번호·등록일·결재일·공개 구분(공개/부분공개/비공개(n)) and the
+  approval box (position and name of 기안자·검토자·결재권자) at the head of the document. Do
+  not repeat them in the body. Leave the signature cells empty.
+- The body is one matter for approval. Order: 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에)
+  → 행정 사항 → 붙임. Two or three sections are enough.
+- For an amount to be approved, state its calculation grounds (「단가 × 수량」) with it.
 
 ## 개조식으로 쓰기
 
-- 줄글 문단을 쓰지 않는다. 내용은 목록으로 쓰고 깊이로 위계를 나타낸다 — 첫째
-  단계, 그 아래 둘째·셋째·넷째 단계. `□ ○ - ㆍ` 기호는 조판이 깊이에 맞춰 그리므로
-  직접 쓰지 않는다. HTML 로 쓸 때는 `<ul>` 을 안에 `<ul>` 로 겹친다.
-- 항목은 명사형으로 맺는다 — 「…함」 「…임」 「…예정」 「…필요」. 「~합니다」로 끝내지
-  않는다. 한 항목은 한두 줄.
-- 수치에는 단위를 붙인다(「320명」 「1,250만 원」 「3.2점(5점 척도)」).
-- 보충 설명은 그 항목 다음 줄에 「※ 」로 시작하는 한 줄로 쓴다. 조판이 작게, 들여서
-  그린다.
+- Do not write prose paragraphs. Write the content as lists and show hierarchy by depth —
+  the first level, then the second, third and fourth levels below it. The layout draws the
+  `□ ○ - ㆍ` symbols to match the depth, so do not type them. In HTML, nest `<ul>` inside `<ul>`.
+- End items in the noun form — 「…함」 「…임」 「…예정」 「…필요」. Do not end with 「~합니다」.
+  One item is one or two lines.
+- Attach units to figures (「320명」 「1,250만 원」 「3.2점(5점 척도)」).
+- Write a supplementary note as one line starting with 「※ 」 on the line after the item.
+  The layout draws it small and indented.
 
 ## 표기
 
-- 날짜 「2026. 10. 7.」 — 연·월·일 글자 대신 온점, 월·일 앞에 0을 쓰지 않는다.
-- 시각 「14:00」 — 24시각제, 쌍점.
-- 결재받을 금액 「금113,560원(금일십일만삼천오백육십원)」 — 숫자 뒤 괄호에 한글.
-- 붙임은 본문 다음 줄에 「붙임  1. ○○○ 1부.」, 둘 이상이면 다음 줄부터 「2. ○○○ 1부.」.
-  하나뿐이면 번호 없이 「붙임  ○○○ 1부.」. 「붙 임」처럼 띄우거나 쌍점을 붙이지 않는다.
-- 「끝.」은 쓰지 않는다. 조판이 본문이나 붙임의 마지막 글자 뒤에 두 칸 띄고 붙인다.
-- 명령, 경로, 식별자처럼 글자 그대로 옮겨야 뜻이 남는 것은 `<code>` 로 감싼다.
-- 자료에 없는 일시·장소·인원·금액·이름은 지어내지 않고 「[일시]」 「[금액]」처럼 그 자리 이름을 대괄호로 둔다.
+- Dates 「2026. 10. 7.」 — periods instead of the 연·월·일 characters, no leading 0 before month or day.
+- Times 「14:00」 — 24-hour clock, colon.
+- An amount to be approved 「금113,560원(금일십일만삼천오백육십원)」 — the amount in 한글 in parentheses after the digits.
+- 붙임 goes on the line after the body as 「붙임  1. ○○○ 1부.」; with two or more, from the next line 「2. ○○○ 1부.」.
+  With only one, no number: 「붙임  ○○○ 1부.」. Do not space it like 「붙 임」 or add a colon.
+- Do not write 「끝.」. The layout appends it two spaces after the last character of the body or of 붙임.
+- Wrap anything whose meaning survives only when copied character for character — commands, paths, identifiers — in `<code>`.
+- Do not invent times, places, headcounts, amounts or names not in the material; leave the slot's name in brackets, like 「[일시]」 「[금액]」.

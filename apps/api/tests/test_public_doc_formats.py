@@ -91,12 +91,12 @@ def test_a_public_document_head_carries_its_list_style_and_closing():
 def test_the_template_format_names_the_genre_and_drops_the_prose_rules():
     fmt = doc_formats.detect("신입생 행사 문서", "doc-event-plan")
     genre = report._genre_rule("신입생 행사 문서", fmt)
-    assert genre.startswith("장르: 추진 계획(안)") and "개조식" in genre
+    assert genre.startswith("Genre: 추진 계획(안)") and "개조식" in genre
     assert "금113,560원(금일십일만삼천오백육십원)" in genre and "2026. 10. 7." in genre
     # Without a template the words decide, as before.
     assert report._genre_rule("신입생 행사 문서") == ""
-    assert report._genre_rule("행사 결과 보고서 써 줘").startswith("장르: 결과 보고서")
-    assert report._genre_rule("장애인 지원 현황 보고") .startswith("장르: 현황")
+    assert report._genre_rule("행사 결과 보고서 써 줘").startswith("Genre: 결과 보고서")
+    assert report._genre_rule("장애인 지원 현황 보고") .startswith("Genre: 현황")
     shaped = report._shaped(report._SECTION_PROMPT, genre)
     assert "Prose is the default" not in shaped and "One register" not in shaped
     assert "Write only what belongs under" in shaped
@@ -129,7 +129,7 @@ async def test_the_report_pipeline_uses_the_sessions_template(monkeypatch):
     ]
     block = next(event["titleBlock"] for event in events if event["type"] == "titleBlock")
     assert block["format"] == "event_plan" and block["lists"] == "gaejo"
-    assert "장르: 추진 계획(안)" in calls[0] and "Prose is the default" not in calls[0]
+    assert "Genre: 추진 계획(안)" in calls[0] and "Prose is the default" not in calls[0]
     sections = next(event["sections"] for event in events if event["type"] == "report")
     first = sections[0]["content"]
     assert "- 신입생 적응 지원\n  - 2026. 3. 2. 14:00 개최 예정" in first

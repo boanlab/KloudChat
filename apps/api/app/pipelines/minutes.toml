@@ -20,3 +20,7 @@ revise = [
 prepass = ["date-calc"]
 checks = ["lead-dates", "minutes-rows", "material-blanks"]
 judged = ["judge-owners"]
+
+[options]
+# Diagrams only when the instruction asks for them: a 회의록 draws none by itself.
+draws = "when-asked"

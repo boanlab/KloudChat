@@ -1,85 +1,91 @@
-이 문서는 **실험 노트** 템플릿으로 만든다. 절 번호와 조판은 이미 정해져 있으니
-내용만 쓴다.
+Build this document with the **실험 노트** template. Section numbers and the layout are
+already set; write only the content.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. `<p class="lead">` 한 줄로 이 노트가 확인하려는 것을 적고, 이어서
-  두 칸짜리 `<table>` 로 과목·측정일·장비·소자·원자료 위치를 남긴다. 왼쪽 칸은 라벨,
-  오른쪽 칸은 값이며 값 칸은 고정폭으로 조판되니 날짜·모델명·경로처럼 그대로 옮겨야
-  하는 것을 넣는다.
-- `section` — 절 하나. 목적 → 방법 → 결과 → 한계 순서로 쓰고, 결과가 길면 여러 절로
-  나눈다. 절 제목은 왼쪽 여백 열에 번호와 함께 서므로 `목적`, `방법`, `결과`, `한계`,
-  `측정 조건`처럼 두세 글자로 짧게 짓는다. 긴 제목은 여백 열에서 네 줄이 된다.
+- `cover` — the cover. In one `<p class="lead">` line, state what this note sets out to
+  confirm, then record 과목·측정일·장비·소자·원자료 위치 in a two-column `<table>`. The left
+  column is the label, the right the value; value cells are set in monospace, so put there
+  what must be copied exactly, such as dates, model names and paths.
+- `section` — one section. Write in the order 목적 → 방법 → 결과 → 한계; split long results
+  into several sections. Section titles stand with their numbers in the left margin column,
+  so keep them to two or three characters, like `목적`, `방법`, `결과`, `한계`, `측정 조건`.
+  A long title becomes four lines in the margin column.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead, tbody,
-tr, th, td, small, figure, figcaption, dl, dt, dd, hr` 뿐이다. `<h2>` 는 쓰지 마라 —
-제목은 따로 붙는다. 그 밖의 태그와 `style`, 링크, 외부 이미지는 버려진다. 쓸 수 있는
-class 는 `lead` 와 `formula` 둘뿐이고, 나머지는 붙여도 아무 일도 일어나지 않는다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead, tbody,
+tr, th, td, small, figure, figcaption, dl, dt, dd, hr`. Do not use `<h2>` — the title is
+added separately. Any other tag, `style`, links and external images are discarded. The only
+allowed classes are `lead` and `formula`; any other has no effect.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
 ## 측정값
 
-- 측정값은 표로 쓴다. **첫 칸만 항목 이름이고 나머지 칸은 전부 수치다.** 나머지 칸은
-  고정폭 숫자로 오른쪽 끝에 맞춰 조판되므로, 그 칸에 단위나 문장을 같이 넣으면 자리가
-  어긋나 비교가 안 된다.
-- 단위는 열 제목에 한 번만 쓴다. `측정 f_c (Hz)`, `편차 (%)` 처럼.
-- 같은 열의 값은 소수 자리를 맞춘다. 계산값과 측정값을 나란히 둘 때는 어느 쪽이
-  계산이고 어느 쪽이 측정인지 열 제목에서 드러나게 한다.
-- 표 바로 다음 줄에 `<small><strong>표 1.</strong> 무엇을 몇 번 재었는지, 어떤 조건에서
-  잰 값인지</small>` 를 붙인다. 이 줄이 표의 각주 자리이고, 각주를 따로 절 끝으로
-  보내지 않는다.
+- Write measurements as tables. **Only the first column is the item name; every other
+  column is numeric.** Those columns are set as monospace numbers aligned right, so putting
+  units or sentences in them misaligns the values and breaks comparison.
+- Write the unit once, in the column title. Like `측정 f_c (Hz)`, `편차 (%)`.
+- Align decimal places within a column. When putting calculated and measured values side by
+  side, make the column titles show which is calculated and which is measured.
+- On the line right after the table, add `<small><strong>표 1.</strong> 무엇을 몇 번 재었는지, 어떤 조건에서
+  잰 값인지</small>`. This line is the table's footnote; do not move footnotes to the end of
+  the section.
 
 ## 계산과 기호
 
-- 식은 `<p class="formula">` 한 줄에 한 단계씩 쓴다. 여러 줄을 이어 쓰면 한 덩어리로
-  묶여 전개가 그대로 보인다. LaTeX 문법은 쓰지 말고 평문으로 적는다 —
-  `sqrt(...)`, `^2`, `f_c`, `·`, `→` 정도면 충분하다.
-- 결과 숫자만 쓰지 말고 그 숫자가 나온 식을 남긴다. 조교가 보는 것은 값이 아니라
-  전개다.
-- 기호와 단위를 정의할 때는 `<dl>` 을 쓴다. `<dt>` 에 기호를, `<dd>` 에 그 기호가
-  이 노트에서 정확히 무엇을 가리키는지 한두 문장으로 적는다.
+- Write formulas one step per `<p class="formula">` line. Consecutive lines are grouped
+  into one block, so the derivation shows as is. Do not use LaTeX syntax; write plain text —
+  `sqrt(...)`, `^2`, `f_c`, `·`, `→` are enough.
+- Do not write only the resulting number; keep the formula it came from. The TA looks at the
+  derivation, not the value.
+- To define symbols and units, use `<dl>`. Put the symbol in `<dt>` and, in `<dd>`, one or two
+  sentences on exactly what that symbol refers to in this note.
 
 ## 그 밖에
 
-- 방법은 다른 사람이 그대로 다시 할 수 있게 쓴다. 장비 이름, 모델명, 버전, 설정값,
-  반복 횟수를 빼지 않는다. 순서가 있는 절차는 `<ol>` 로 쓴다.
-- 회로도·배치·파형처럼 그림으로 설명할 것은 `<figure>` 안에 문장으로 적고,
-  `<figcaption><strong>그림 1.</strong> …</figcaption>` 을 그 안 마지막에 둔다.
-- 관측한 것과 해석한 것을 한 문장에 섞지 않는다. 해석은 문장을 나눠 근거와 함께 쓴다.
-- 예상과 어긋난 값은 지우지 말고 그대로 적고, 원인을 모르면 모른다고 쓴다. 짚이는
-  원인이 있으면 그것으로 얼마나 설명되고 얼마가 남는지까지 숫자로 적는다.
-- 마지막 절은 한계다. 이 노트로 말할 수 없는 것과, 조건이 달라지면 무너지는 것을 적는다.
+- Write the method so that someone else can repeat it exactly. Do not leave out equipment
+  names, model names, versions, settings or repeat counts. Write an ordered procedure as `<ol>`.
+- Describe in sentences inside `<figure>` what is explained with a picture — circuit
+  diagrams, layouts, waveforms — and put `<figcaption><strong>그림 1.</strong> …</figcaption>`
+  last inside it.
+- Do not mix what was observed and what was interpreted in one sentence. Write the
+  interpretation in separate sentences, with its grounds.
+- Do not delete values that deviate from expectations; write them as they are, and if the
+  cause is unknown, say it is unknown. If you suspect a cause, state in numbers how much it
+  explains and how much remains.
+- The last section is the limitations. State what this note cannot say, and what breaks if
+  conditions change.
 
 ## 표·강조 수치·절차
 
-조판이 이 세 가지를 따로 그린다. 서식이 크기와 색을 쥐고 있으니 `style` 은 쓰지
-않는다.
+The layout draws these three separately. The format controls size and color, so do not
+use `style`.
 
-- **강조 수치** — 절의 결론이 되는 숫자가 두셋 있으면 `<div class="kpi">` 안에
-  칸마다 `<div><strong>값</strong><span>이름</span></div>` 을 쓴다. 최대 4개.
-  값은 `32%`, `1.4초` 처럼 짧게. 표에 있는 수치를 그대로 옮기지 않는다 — 표는
-  견주는 자리고 이 블록은 **하나를 기억시키는** 자리다.
-- **절차** — 차례대로 하는 일은 `<ol class="steps">` 에 `<li><strong>이름
-  </strong> <span>설명</span></li>` 로 쓴다. 번호는 조판이 붙이므로 직접 쓰지
-  않는다. 갈라지는 흐름은 절차가 아니다.
-- **표** — 비교·수치·일정은 `<table>` 로 쓴다. 3~5행이 적당하다.
+- **강조 수치** — if two or three numbers are the conclusion of a section, write them
+  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
+  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
+  table is for comparing, this block is for **making one thing remembered**.
+- **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
+  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
+  A branching flow is not a procedure.
+- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.
 
 ## 그래프
 
-수치의 **모양**이 요점이면 `<figure class="chart" data-source="…">` 로 쓴다.
-`data-source` 안에 숫자를 담고, 조판이 그린다.
+If the **shape** of the numbers is the point, write `<figure class="chart" data-source="…">`.
+Put the numbers in `data-source`; the layout draws it.
 
     <figure class="chart" data-source="bar | 건
     분기 | 처리 건수 | 반려 건수
     1분기 | 120 | 8
     2분기 | 210 | 11"></figure>
 
-- 첫 줄은 `종류 | 단위`. `bar` 는 항목별 비교, `line` 은 시간에 따른 추이.
-  둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-- 가로축 항목은 8개까지, 계열은 2개까지. **모든 줄의 값 개수가 계열 수와 같아야
-  한다** — 하나라도 비면 그 줄이 통째로 빠진다.
-- **지어낸 수치를 쓰지 않는다.** 그래프는 숫자보다 더 사실처럼 읽힌다. 근거가
-  없으면 그래프 대신 문장으로 쓴다.
+- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.
+  The second line is `가로축 이름 | 계열 이름들`. The rest are values.
+- At most 8 x-axis items and at most 2 series. **Every line must have as many values as
+  there are series** — if even one is missing, that whole line is dropped.
+- **Do not write invented figures.** A chart reads as more factual than numbers. Without
+  grounds, write a sentence instead of a chart.

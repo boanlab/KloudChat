@@ -87,7 +87,7 @@ async def test_the_pre_pass_runs_without_weights_and_says_so():
     async def complete(model, messages, api_key, max_tokens):
         prompt = messages[0]["content"]
         calls.append(prompt)
-        if "총비용 계산에 쓸 값" in prompt:
+        if "computing each alternative's total cost" in prompt:
             return json.dumps(REPLY, ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
         return json.dumps({"criteria": [], "musts": [], "options": []}), {}
 
@@ -133,9 +133,9 @@ MESSENGER_REPLY = {"period": "1년", "options": [
 def _answering(cost: dict, check: dict | None = None):
     async def complete(model, messages, api_key, max_tokens, **kwargs):
         prompt = messages[0]["content"]
-        if "총비용 계산에 쓸 값" in prompt:
+        if "computing each alternative's total cost" in prompt:
             return json.dumps(cost, ensure_ascii=False), {}
-        if "점수 계산과 필수 조건" in prompt:
+        if "scoring the alternatives and checking the must-have" in prompt:
             return json.dumps(check or {"criteria": [], "musts": [], "options": []}), {}
         return "## 요약\n비교했다.", {"inputTokens": 1, "outputTokens": 1}
     return complete
@@ -216,7 +216,7 @@ def _by_turn(*replies: dict):
     asked: list[str] = []
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
-        if "총비용 계산에 쓸 값" in messages[0]["content"]:
+        if "computing each alternative's total cost" in messages[0]["content"]:
             asked.append(model)
             return json.dumps(replies[len(asked) - 1], ensure_ascii=False), {}
         return json.dumps({"criteria": [], "musts": [], "options": []}), {}
@@ -250,7 +250,7 @@ async def test_three_readings_that_all_differ_hand_the_writer_no_totals():
     assert pre.costs is None and pre.costs_withheld
     assert not any(b.startswith("# 총비용 계산(코드)\n") for b in pre.blocks)
     withheld = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 확정 못 함"))
-    assert "「[금액]」으로 둔다" in withheld and "197,900,000" not in withheld
+    assert "leave them as 「[금액]」" in withheld and "197,900,000" not in withheld
 
 
 async def test_scenarios_that_differ_between_agreeing_readings_are_left_out():
@@ -295,7 +295,8 @@ async def test_a_split_drops_the_sandbox_s_totals_too(monkeypatch):
 
     async def writer(model, messages, api_key, max_tokens, **kwargs):
         prompt = messages[0]["content"]
-        if "총비용 계산에 쓸 값" in prompt or "점수 계산과" in prompt:
+        if ("computing each alternative's total cost" in prompt
+                or "scoring the alternatives" in prompt):
             return await complete(model, messages, api_key, max_tokens)
         seen.append(json.dumps(messages, ensure_ascii=False))
         return "## 요약\n비교했다.", {"inputTokens": 1, "outputTokens": 1}

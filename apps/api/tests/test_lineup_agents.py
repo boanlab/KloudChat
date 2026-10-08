@@ -91,7 +91,7 @@ def test_career_docs_reads_its_surface_part_only():
     prompt = _BY_KEY["career-docs"]["system_prompt"]
     chat = workspace_context.surface_prompt(prompt, "chat")
     report = workspace_context.surface_prompt(prompt, "report")
-    common = "지원자에게 불리한 거짓은 쓰지 않는다"
+    common = "Do not write falsehoods; they work against the applicant"
     assert common in chat and common in report
     assert "text-fit" in chat and "「[제출용 답안 n]」" in chat
     assert "text-fit" not in report and "제출용 답안" not in report

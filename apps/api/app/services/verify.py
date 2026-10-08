@@ -19,24 +19,29 @@ MAX_REPAIRS = 16
 
 _CITE = re.compile(r"\[\d{1,3}\]")
 
-_REPAIR_PROMPT = """보고서의 문장들에 문제가 있다. 항목마다 그 문장만 고쳐서, 고친 문장들을 같은
-순서의 JSON 문자열 배열로만 답하라. 다른 말은 쓰지 마라.
+_REPAIR_PROMPT = """Some sentences in the report have problems. Fix only that sentence for each
+item, and answer only with the fixed sentences as a JSON array of strings in the same
+order. Write nothing else.
 
-규칙:
-- 문제로 지적된 부분만 고친다. 나머지 내용·어조·길이는 그대로 둔다.
-- 인용 번호 [n]은 그대로 둔다. 근거 자료가 주어진 항목은 그 자료의 번호를 붙여도 된다.
-- 표의 행(「|」로 시작)은 같은 칸 수의 행으로 답한다.
-- 자료에 없는 이름·날짜·금액·수치는 지어내지 말고 「[담당자]」 「[기한]」 「[금액]」처럼
-  그 자리 이름을 대괄호로 둔다. 이미 있는 대괄호 빈칸은 그대로 둔다.
-- 지적이 틀렸다고 판단되면(다른 경우를 말하는 문장 등) 원문을 그대로 답한다.
+Rules:
+- Fix only the part pointed out as the problem. Keep the rest of the content, tone and
+  length as they are.
+- Keep citation numbers [n] as they are. An item given evidence may add that evidence's
+  number.
+- Answer a table row (starting with 「|」) with a row of the same number of cells.
+- Do not make up names, dates, amounts or figures that are not in the material; put the
+  slot's name in brackets, like 「[담당자]」 「[기한]」 「[금액]」. Keep existing bracket blanks
+  as they are.
+- If you judge the finding wrong (e.g. the sentence is about a different case), answer
+  with the original sentence unchanged.
 
-자료(요청과 앞 대화에서 정한 값):
+Material (values set in the request and the earlier conversation):
 {material}
 
-참고 자료 목록(번호는 문서의 인용 번호):
+Sources (numbers are the document's citation numbers):
 {sources}
 
-항목:
+Items:
 {items}"""
 
 

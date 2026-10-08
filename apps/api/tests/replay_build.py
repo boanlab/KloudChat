@@ -1,6 +1,6 @@
 """Builds the replay fixtures from the lineup acceptance runs.
 
-    python tests/replay_build.py <accept-runs-dir> <data-dir> [<out-dir>]
+    python tests/replay_build.py <accept-runs-dir> <data-dir> [<out-dir> [<cases>]] [--live]
 
 Each case takes one run's request, approved outline and written sections (report), or its
 answer as streamed and its tool steps (chat). The current code is run against a scripted
@@ -9,7 +9,9 @@ sections it wrote, readings of its material — and every call is recorded with 
 What the code emitted is stored as the golden; `test_pipeline_replay` replays the recorded
 calls and must emit the same.
 
-Run it inside the API test image with the output directory mounted writable. Rebuild a
+With `--live` every prompt kind the case does not script goes to the live models through
+LiteLLM instead (`LiveResponder`), so a prompt change is recorded with what the models now
+write. Run it inside the API test image with the output directory mounted writable. Rebuild a
 fixture only when a change in behaviour is intended, and say so in the commit.
 """
 
@@ -142,24 +144,27 @@ CASES: dict[str, dict] = {
 
 #: Prompt markers → kind, first match wins.
 KINDS = [
-    ("outline", "보고서의 제목과 목차를 만들어라"),
+    ("outline", "Make the title and table of contents (목차) of a report"),
     ("draft", "Write the whole report in one pass"),
     ("section", 'You are writing only the "'),
-    ("fill", "빈자리를 자료의 실제 값으로 채워"),
-    ("key_figures", "같은 값으로 써야 할 핵심"),
-    ("quote", "견적 계산에 쓸 값을 JSON 하나로"),
-    ("costs", "대안별 총비용 계산에 쓸 값"),
-    ("scores", "대안 비교의 점수 계산과 필수 조건 판정"),
+    ("fill", "filling the blanks with the material's actual values"),
+    ("key_figures", "must state with one and the same value"),
+    ("quote", "values for the quote calculation"),
+    ("costs", "computing each alternative's total cost"),
+    ("scores", "scoring the alternatives and checking the must-have conditions"),
     ("head", "의 머리 정보를 채워라"),
     ("diagram_plan", "도식의 종류"),
     ("diagram", "그릴 것:"),
-    ("repair", "보고서의 문장들에 문제가 있다"),
-    ("amend", "아래 절에 덧붙이기만 하라"),
-    ("condense", "개조식 보고서의 「"),
+    ("repair", "Some sentences in the report have problems"),
+    ("amend", "Only add to the section below."),
+    ("condense", "section of a 개조식 report"),
     ("rewrite", "자기소개서 「[제출용 답안"),
-    ("revise_plan", "무엇을 고쳐 달라는 것인지 판정하라"),
+    ("revise_plan", "Decide what they are asking to change"),
     ("calc", "Python 으로 구한다"),
     ("judge", "골라라"),
+    ("judge", "Pick only the"),
+    ("judge", "pick only the"),
+    ("judge", "does this sentence wrongly write"),
     ("judge", "판정하라"),
 ]
 
@@ -248,10 +253,12 @@ class Responder:
             what = _after(last, "설명:")[:40] or "단계"
             return kind, f"```mermaid\nflowchart LR\n  a[{what}] --> b[검토] --> c[결정]\n```"
         if kind == "repair":
-            items = json.loads(_after(last, "항목:") or "[]")
+            items = json.loads(_after(last, "Items:") or "[]")
             return kind, json.dumps([i["sentence"] for i in items], ensure_ascii=False)
-        if kind in ("amend", "condense"):
+        if kind == "amend":
             return kind, _after(last, "절:")
+        if kind == "condense":
+            return kind, _after(last, "Section:")
         if kind == "fill":
             return kind, last.rsplit("\n\n", 1)[-1]
         if kind == "rewrite":
@@ -262,6 +269,35 @@ class Responder:
         if kind == "other":
             self.unknown.append(last[:200])
         return kind, "{}"
+
+
+class LiveResponder(Responder):
+    """Answers from the live models through LiteLLM (`--live`: `REPLAY_LIVE_URL`, the
+    OpenAI-style base such as `http://host.docker.internal:8080/litellm/v1`, and
+    `REPLAY_LIVE_KEY`). A case's scripted extra replies (the planted traps) still answer
+    their kinds. Calls block, so the turn schedules as it does when replayed."""
+
+    def __init__(self, spec: dict, run: Path, url: str, key: str) -> None:
+        import httpx
+
+        super().__init__(spec, run)
+        self.client = httpx.Client(base_url=url, timeout=900,
+                                   headers={"Authorization": f"Bearer {key}"})
+
+    def __call__(self, body: dict) -> tuple[str, str]:
+        import time
+
+        kind = kind_of(harness.whole_prompt(body))
+        if self.extra.get(kind):
+            return super().__call__(body)
+        sent = {k: v for k, v in body.items() if k not in ("stream", "stream_options")}
+        for attempt in range(6):
+            resp = self.client.post("/chat/completions", json=sent)
+            if resp.status_code < 500 and resp.status_code != 429:
+                break
+            time.sleep(10 * (attempt + 1))
+        resp.raise_for_status()
+        return kind, str(resp.json()["choices"][0]["message"].get("content") or "")
 
 
 def report_case(name: str, spec: dict, run: Path) -> dict:
@@ -404,9 +440,13 @@ def prepare(patch) -> None:
 
 
 def main() -> None:
-    runs, data = Path(sys.argv[1]), Path(sys.argv[2])
-    out = Path(sys.argv[3]) if len(sys.argv) > 3 else harness.FIXTURES
-    wanted = set(sys.argv[4].split(",")) if len(sys.argv) > 4 else set(CASES)
+    import os
+
+    args = [a for a in sys.argv[1:] if a != "--live"]
+    live = "--live" in sys.argv[1:]
+    runs, data = Path(args[0]), Path(args[1])
+    out = Path(args[2]) if len(args) > 2 else harness.FIXTURES
+    wanted = set(args[3].split(",")) if len(args) > 3 else set(CASES)
     for name, spec in CASES.items():
         if name not in wanted:
             continue
@@ -414,7 +454,9 @@ def main() -> None:
         case = (report_case(name, spec, run) if spec["kind"] == "report"
                 else revise_case(name, spec, run) if spec["kind"] == "revise"
                 else chat_case(name, spec, run, data))
-        responder = Responder(spec, run)
+        responder = (LiveResponder(spec, run, os.environ["REPLAY_LIVE_URL"],
+                                   os.environ["REPLAY_LIVE_KEY"]) if live
+                     else Responder(spec, run))
         calls, golden = asyncio.run(record(case, responder))
         root = out / name
         root.mkdir(parents=True, exist_ok=True)

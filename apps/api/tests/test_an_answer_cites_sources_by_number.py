@@ -201,8 +201,8 @@ def test_the_prompt_asks_for_numbers_not_urls() -> None:
     from app.services import context
 
     prompt = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
-    assert "URL 은 옮겨 적지" in prompt
-    assert "번호를 보고 시스템이 주소를 붙입니다" in prompt
+    assert "Do not copy URLs" in prompt
+    assert "the system attaches the address from the number" in prompt
 
 
 @pytest.mark.asyncio

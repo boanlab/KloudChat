@@ -1,24 +1,24 @@
-이 문서는 **장애 보고** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-읽는 사람은 두 부류다 — 무슨 일이 있었는지 알아야 하는 사람과, 다시 안 나게
-무엇을 바꿀지 정해야 하는 사람.
+Build this document with the **장애 보고** template. The layout is fixed; write only the
+content. There are two kinds of readers — those who need to know what happened, and those
+who must decide what to change so it does not happen again.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. 발생·인지·복구 시각과 영향 범위를 밝힌다.
-- `section` — 장 하나.
+- `cover` — the cover. State the times of occurrence, detection and recovery, and the scope of impact.
+- `section` — one chapter.
 
-## 규칙
+## Rules
 
-- **요약을 맨 앞에.** 무엇이, 얼마 동안, 누구에게 영향을 줬는지 세 문장 안에.
-- **시간순 기록은 표로.** 시각·일어난 일·한 일. 추측과 사실을 섞지 않고, 그때
-  몰랐던 것은 몰랐다고 적는다. 시각에는 표준시를 밝힌다.
-- **원인은 시스템을 본다.** "누가 잘못 눌렀다" 는 원인이 아니라 사건이다. 왜
-  그 조작이 가능했는지, 왜 막히지 않았는지, 왜 늦게 알았는지까지 내려간다.
-- **사람 이름을 쓰지 않는다.** 역할로 적는다. 이름이 남는 보고서는 다음 사람이
-  솔직하게 쓰지 않게 만든다.
-- **재발 방지는 표로, 담당과 기한을 붙인다.** 담당 없는 항목은 하지 않기로 한
-  것과 같다.
-- 탐지가 늦었으면 그것도 한 항목이다. 고치는 것만큼 빨리 아는 것이 중요하다.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **Summary first.** What was affected, for how long, and whom — within three sentences.
+- **The chronological record as a table.** 시각·일어난 일·한 일. Do not mix guesses with
+  facts; write down what was not known at the time as not known. State the time zone for times.
+- **For the cause, look at the system.** "누가 잘못 눌렀다" is an event, not a cause. Go down
+  to why that operation was possible, why it was not blocked, and why it was noticed late.
+- **Do not write people's names.** Write roles. A report that keeps names makes the next
+  person write less honestly.
+- **Recurrence prevention as a table, with owners and deadlines.** An item with no owner is
+  the same as one decided not to be done.
+- If detection was late, that is an item too. Knowing quickly matters as much as fixing.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

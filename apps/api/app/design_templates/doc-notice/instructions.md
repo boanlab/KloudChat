@@ -1,79 +1,80 @@
-이 문서는 **안내문** 템플릿으로 만든다. 공문 형식과 절 번호는 이미 조판되어
-있으니 알릴 내용만 쓴다.
+Build this document with the **안내문** template. The official-letter form and section numbers
+are already laid out; write only what is to be announced.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 문서 머리. `<p>` 한 줄로 누구에게 무엇을 알리는 문서인지 쓰고,
-  이어서 수신·시행·담당을 두 칸짜리 `<table>` 로 적는다. 세 줄은 반드시 있어야
-  하고, 담당에는 되물을 수단(내선·메일)을 함께 적는다.
-- `section` — 절 하나. 절 번호는 자동으로 붙으니 "1." 을 직접 쓰지 않는다.
+- `cover` — the document head. In one `<p>` line, state whom the document informs of what,
+  then write 수신·시행·담당 in a two-column `<table>`. All three lines must be there, and 담당
+  must include a way to ask back (내선·메일).
+- `section` — one section. Section numbers are added automatically, so do not write "1." yourself.
 
 ## 계단
 
-이 서식은 번호와 내용이 이루는 계단 하나로 되어 있다. 절 번호가 왼쪽 여백에
-서고, 그 절에 속한 모든 줄은 한 칸 들여쓰여 번호 오른쪽 선에 맞는다. 절 안에서
-더 나누어야 하면 `<ol>` 을 쓴다 — 가·나·다로 매겨진다. 순서가 뜻이 없는 나열은
-`<ul>` 을 쓰고, 대시로 찍힌다.
+This format is a single staircase of numbers and content. The section number stands in the
+left margin, and every line in that section is indented one step to align with the line to
+the right of the number. To subdivide within a section, use `<ol>` — it is lettered 가·나·다.
+For a list whose order carries no meaning, use `<ul>`; it is marked with dashes.
 
-절은 **근거 → 내용 → 협조 요청 → 붙임** 순서로 놓는다. 이 순서가 곧 결재선을
-통과하는 문서의 순서다.
+Order the sections **근거 → 내용 → 협조 요청 → 붙임**. This order is the order of a document
+passing through the approval line.
 
-- 첫 절은 근거다. 어떤 규정·회의·공고에 따른 안내인지 밝히고, 근거가 없으면
-  무엇을 보고 정한 것인지라도 적는다.
-- 내용 절에서 날짜·시간·장소·대상은 문장 안에 흩어 놓지 말고 한 줄에 하나씩
-  목록으로 적는다. 대상별로 값이 여럿이면 `<table>` 로 적는다 — 표는 일정표처럼
-  가로로 읽는 것일 때만 쓰고, 두 줄짜리 목록을 표로 만들지 않는다.
-- 협조 요청 절에는 받는 사람이 할 일을 모으고, 무엇을 언제까지 어디로 하는지
-  세 가지를 다 적는다. 할 일이 없으면 없다고 쓴다.
-- 마지막 절은 붙임이다. 자료 이름과 부수를 `<ol>` 로 한 줄에 하나씩
-  `임시 좌석 배치도 1부.` 처럼 적고, 마지막 항목 끝에 두 칸 띄고 `끝.` 을 붙인다.
-  붙임이 없으면 `붙임 없음  끝.` 한 줄만 쓴다.
-- 덧붙이는 주석은 `<small>` 로 그것이 설명하는 표나 문단 바로 아래에 한두 줄로
-  단다. 절의 본문을 `<small>` 로 쓰지 않는다.
+- The first section is the grounds. State which regulation, meeting or notice the announcement
+  follows; if there are no grounds, state at least what it was decided on.
+- In the content section, do not scatter dates, times, places and targets through sentences;
+  list them one per line. If there are several values per target, write a `<table>` — use a
+  table only for something read across, like a timetable, and do not turn a two-line list into a table.
+- In the 협조 요청 section, gather what the recipients must do, and state all three: what, by
+  when, and to where. If there is nothing to do, say so.
+- The last section is 붙임. List document names and copies in an `<ol>`, one per line, like
+  `임시 좌석 배치도 1부.`, and append `끝.` two spaces after the end of the last item.
+  If there is no attachment, write only the single line `붙임 없음  끝.`.
+- Attach an added note as one or two `<small>` lines right below the table or paragraph it
+  explains. Do not write a section's body in `<small>`.
 
 ## 쓸 수 있는 것
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, small` 뿐이다. `<h2>` 는 쓰지 마라 — 제목은 따로 붙는다.
-`class`, `style`, 링크, 이미지, 그 밖의 태그는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, small`. Do not use `<h2>` — the title is added separately.
+`class`, `style`, links, images and any other tag are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 합쇼체로 쓴다. "많은 관심 바랍니다" 같은 인사말과 수식은 넣지 않는다.
-- 강조는 `<strong>` 하나뿐이다. 색이나 기호로 강조하지 않는다 — 이 문서는
-  흑백으로 복사되어 게시판에 붙고, 남는 것은 굵기와 선뿐이다.
-- 아직 정해지지 않은 일정은 정해진 것처럼 쓰지 않는다. 미정이면 미정이라 쓰고,
-  언제 다시 알리는지 적는다.
+- Write in 합쇼체. Do not include greetings and flourishes such as "많은 관심 바랍니다".
+- Emphasis is `<strong>` only. Do not emphasize with color or symbols — this document is
+  photocopied in black and white and posted on a notice board, where only weight and lines survive.
+- Do not write an undecided schedule as if it were decided. If it is undecided, write 미정 and
+  state when it will be announced again.
 
 ## 표·강조 수치·절차
 
-조판이 이 세 가지를 따로 그린다. 서식이 크기와 색을 쥐고 있으니 `style` 은 쓰지
-않는다.
+The layout draws these three separately. The format controls size and color, so do not
+use `style`.
 
-- **강조 수치** — 절의 결론이 되는 숫자가 두셋 있으면 `<div class="kpi">` 안에
-  칸마다 `<div><strong>값</strong><span>이름</span></div>` 을 쓴다. 최대 4개.
-  값은 `32%`, `1.4초` 처럼 짧게. 표에 있는 수치를 그대로 옮기지 않는다 — 표는
-  견주는 자리고 이 블록은 **하나를 기억시키는** 자리다.
-- **절차** — 차례대로 하는 일은 `<ol class="steps">` 에 `<li><strong>이름
-  </strong> <span>설명</span></li>` 로 쓴다. 번호는 조판이 붙이므로 직접 쓰지
-  않는다. 갈라지는 흐름은 절차가 아니다.
-- **표** — 비교·수치·일정은 `<table>` 로 쓴다. 3~5행이 적당하다.
+- **강조 수치** — if two or three numbers are the conclusion of a section, write them
+  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
+  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
+  table is for comparing, this block is for **making one thing remembered**.
+- **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
+  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
+  A branching flow is not a procedure.
+- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.
 
 ## 그래프
 
-수치의 **모양**이 요점이면 `<figure class="chart" data-source="…">` 로 쓴다.
-`data-source` 안에 숫자를 담고, 조판이 그린다.
+If the **shape** of the numbers is the point, write `<figure class="chart" data-source="…">`.
+Put the numbers in `data-source`; the layout draws it.
 
     <figure class="chart" data-source="bar | 건
     분기 | 처리 건수 | 반려 건수
     1분기 | 120 | 8
     2분기 | 210 | 11"></figure>
 
-- 첫 줄은 `종류 | 단위`. `bar` 는 항목별 비교, `line` 은 시간에 따른 추이.
-  둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-- 가로축 항목은 8개까지, 계열은 2개까지. **모든 줄의 값 개수가 계열 수와 같아야
-  한다** — 하나라도 비면 그 줄이 통째로 빠진다.
-- **지어낸 수치를 쓰지 않는다.** 그래프는 숫자보다 더 사실처럼 읽힌다. 근거가
-  없으면 그래프 대신 문장으로 쓴다.
+- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.
+  The second line is `가로축 이름 | 계열 이름들`. The rest are values.
+- At most 8 x-axis items and at most 2 series. **Every line must have as many values as
+  there are series** — if even one is missing, that whole line is dropped.
+- **Do not write invented figures.** A chart reads as more factual than numbers. Without
+  grounds, write a sentence instead of a chart.

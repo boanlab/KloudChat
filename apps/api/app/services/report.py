@@ -53,57 +53,63 @@ def requested_sections(request: str) -> int | None:
     return plan_rules.requested_count(request, ("섹션", "절"), maximum=_MAX_SECTIONS)
 
 
-_OUTLINE_PROMPT = """다음 요청에 맞는 보고서의 제목과 목차를 만들어라.
+_OUTLINE_PROMPT = """Make the title and table of contents (목차) of a report for the request below.
 
-규칙:
-- 제목은 문서의 표지에 적힐 한 줄이다. 요청 문장을 그대로 옮기지 말고,
-  주제를 가리키는 명사구로 써라. 마침표와 "~에 대한 보고서" 같은 군말은 빼라.
-- **요청에 없는 소재를 지어내지 마라.** 요청이 문서의 쓰임만 말하고 무엇에 대한
-  것인지는 말하지 않았으면 그 쓰임을 가리키는 제목을 쓰고, 목차는 그 쓰임이
-  요구하는 뼈대로 잡아라. 요청에 없던 분야나 연도를 골라 채운 보고서는 읽는
-  사람의 것이 아니어서 그대로 쓸 수 없다.
-- 섹션 {lo}~{hi}개.
-- 각 섹션은 서로 겹치지 않고, 순서대로 읽으면 하나의 글이 되어야 한다. 절마다
-  **서로 다른 물음 하나**에 답한다 — 「비용 비교」와 「옵션 비교 분석」처럼 같은
-  물음을 둘로 쪼개지 마라.
-- 판단을 구하는 문서(검토·의사결정·제안·타당성)는 첫 절이 「요약」, 마지막 절이
-  「권고안과 다음 단계」다. 결론과 권고는 그 마지막 절 하나에만 있다. **현황·주간
-  보고, 회의록, 장애 보고서, 실험 보고서, 안내문은 판단을 구하는 문서가 아니다** —
-  요약·권고안 절을 붙이지 말고 그 장르의 항목이 목차다.
+Rules:
+- The title is the one line printed on the document's cover. Do not copy the request
+  sentence; write a noun phrase naming the subject. Leave out the full stop and filler
+  such as "~에 대한 보고서".
+- **Do not invent subject matter the request does not give.** If the request names only
+  what the document is for and not what it is about, write a title naming that use and
+  build the 목차 from the skeleton that use requires. A report filled with a field or a
+  year the request never named is not the reader's and cannot be used as is.
+- {lo}~{hi} sections.
+- Sections do not overlap, and read in order they make one piece of writing. Each section
+  answers **a different single question** — do not split one question in two, like
+  「비용 비교」 and 「옵션 비교 분석」.
+- A document that asks for a judgement (review, decision, proposal, feasibility) opens
+  with a 「요약」 section and ends with 「권고안과 다음 단계」. Conclusions and
+  recommendations live only in that last section. **Status and weekly reports, minutes,
+  incident reports, lab reports and notices do not ask for a judgement** — give them no
+  summary or recommendation section; that genre's items are the 목차.
 {genre}
-- **대안이 여럿인 결정 문서는 대안마다 절을 만들지 마라.** 「A의 경제적 분석」
-  「B의 경제적 분석」은 표 하나의 열을 절로 쪼갠 것이다. 대신 「대안 비교」 절
-  하나에서 같은 기준으로 견준다. **절 제목에 특정 대안의 이름(클라우드, 교체,
-  연장)을 넣지 마라** — 대안 이름이 제목에 있으면 그 절은 절이 아니라 표의 열이다.
-  그런 문서의 뼈대는 대개 이렇다: 요약 → 현황과 결정할 사안 → 비용 계산의 전제 →
-  대안 비교 → 위험과 남는 문제 → 권고안과 다음 단계. 계산이 비교보다 앞이다 —
-  표의 숫자는 그 앞 절에서 식으로 구한 값을 옮겨 적는 것이지 표에서 새로 셈하는
-  것이 아니다.
-  **그 뼈대는 대안을 고르는 문서에만 쓴다.** 회의록·실험 보고서·안내문·동향 분석에
-  「비용 계산의 전제」「대안 비교」를 넣지 마라.
-- **요청이 항목을 말했으면 그 항목이 목차다.** 「결정 사항, 반론, 다음 발표자와
-  기한을 나눠」라고 했으면 절은 그 셋(과 필요한 머리말)이고, 「목적·이론·장치·절차·
-  결과·오차 분석」이라고 했으면 그 여섯이다. 요청한 항목을 빼거나 다른 이름으로
-  바꾸지 마라. 축이 둘이면 — 「안건별로 결정·반론·조건·담당을 나눠」 — **한 축만
-  절로 삼는다**(안건마다 절 하나, 그 안에서 결정·반론·조건·담당을 소제목으로).
-  안건별 절과 항목별 절을 둘 다 만들면 같은 말이 두 번 나온다.
-- 요청이 분석할 항목을 셋 이상 나열했으면(「대상 환경, 배포 방법, 주요 기능, 적용 기술」)
-  그 항목들을 제품·벤더별로 한 표에서 견주는 절(예: 「솔루션별 종합 비교」)을 둔다.
-- 사업 기획·제안 문서는 「핵심 가정」(가격·원가·ARPU·CAC·이탈률·용량·고정비)을 한 곳에서
-  정하는 절을 앞쪽에 두고, 자금 계획과 운영 리스크(품질·안전·물류 등)를 빠뜨리지 않는다.
-- 섹션은 제목만. 내용은 쓰지 마라.
-- style 은 이 문서가 어디에 쓰이는지에 맞는 인상이다. 셋 중 하나만 골라라:
-  · 편집형 — 보고·검토·계획처럼 읽어서 판단하는 문서. 선과 넓은 여백.
-  · 포스터형 — 안내·홍보처럼 눈길을 먼저 잡아야 하는 문서. 강한 색면.
-  · 미니멀 — 논문·심사 자료처럼 절제가 예의인 문서. 옅은 색과 작은 제목.
-  요청에 인상이 적혀 있으면 그것을 따르고, 없으면 주제에서 골라라.
+- **In a decision document with several alternatives, do not give each alternative its
+  own section.** 「A의 경제적 분석」 「B의 경제적 분석」 split the columns of one table into
+  sections. Instead compare them on the same criteria in one 「대안 비교」 section. **Never
+  put a particular alternative's name (클라우드, 교체, 연장) in a section heading** — with
+  an alternative's name in its heading, the section is a table column, not a section.
+  Such a document usually runs: 요약 → 현황과 결정할 사안 → 비용 계산의 전제 → 대안 비교 →
+  위험과 남는 문제 → 권고안과 다음 단계. Calculation comes before comparison — the
+  table's numbers are copied from values derived by formula in the section before it,
+  not computed anew in the table.
+  **Use that skeleton only for a document that chooses between alternatives.** Do not put
+  「비용 계산의 전제」 or 「대안 비교」 into minutes, lab reports, notices or trend analyses.
+- **If the request names items, those items are the 목차.** For 「결정 사항, 반론, 다음
+  발표자와 기한을 나눠」 the sections are those three (plus any needed opening); for
+  「목적·이론·장치·절차·결과·오차 분석」 they are those six. Do not drop a requested item
+  or rename it. With two axes — 「안건별로 결정·반론·조건·담당을 나눠」 — **make sections of
+  one axis only** (one section per agenda item, with 결정·반론·조건·담당 as subheadings
+  inside). Sections for both agenda items and item types say everything twice.
+- If the request lists three or more things to analyse (「대상 환경, 배포 방법, 주요 기능,
+  적용 기술」), include a section that compares them by product or vendor in one table
+  (e.g. 「솔루션별 종합 비교」).
+- A business plan or proposal puts a section near the front that fixes the 「핵심 가정」
+  (price, unit cost, ARPU, CAC, churn, capacity, fixed cost) in one place, and does not
+  leave out the funding plan or operational risks (quality, safety, logistics, etc.).
+- Section headings only. Do not write their content.
+- style is the impression that fits where this document is used. Pick exactly one of three:
+  · 편집형 — documents read to make a judgement, such as reports, reviews and plans. Rules and wide margins.
+  · 포스터형 — documents that must catch the eye first, such as notices and promotions. Strong colour fields.
+  · 미니멀 — documents where restraint is the courtesy, such as papers and review material. Pale colours and small headings.
+  If the request states an impression, follow it; otherwise choose from the subject.
 {ask_rule}
-- 참고할 자료에 양식·서식 문서가 있으면 그 문서의 항목 순서를 그대로 목차로 써라.
-  개수도 그 양식을 따르고, 일반적인 보고서 목차로 바꾸지 마라.
+- If the reference material includes a form or template document, use its items in their
+  order as the 목차. Follow that form's count too; do not turn it into a generic report 목차.
 
-JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것인지를 **요청에 적힌
-말 그대로** 적어라 — 요청에 주제가 없으면 빈 문자열. 요청이 대안 여럿 가운데
-고르는 것이면 "alternatives" 에 그 대안들의 짧은 이름을 적어라(없으면 빈 배열).
+Answer with a JSON object only. In "subject" write what this document is about **in the
+request's own words** — an empty string if the request names no subject. If the request
+chooses among several alternatives, put their short names in "alternatives" (otherwise an
+empty array). Write the title and section headings in Korean unless the request is in English.
 예: {{"title": "전이학습의 소량 데이터 효율성", "style": "미니멀", "subject": "전이학습",
      "sections": ["요약", "배경", "방법", "결과", "한계", "결론"], "alternatives": []}}
 예: {{"title": "학과 서버 교체 여부 결정", "style": "편집형", "subject": "학과 서버 교체",
@@ -114,7 +120,7 @@ JSON 객체로만 답하라. "subject" 에는 이 문서가 무엇에 대한 것
      "sections": ["회의 개요", "결정 사항", "반론과 남은 쟁점", "다음 발표자와 기한"],
      "alternatives": []}}
 
-요청: {request}"""
+Request: {request}"""
 
 _SECTION_PROMPT = """You are writing only the "{heading}" section of the report below.
 
@@ -313,38 +319,38 @@ def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
 #: Block syntax per kind; a section is shown only the blocks it may use.
 _BLOCK_SYNTAX = {
     "table": (
-        "- 비교·항목별 값은 표로 쓴다. 행 사이에 빈 줄을 넣지 마라. 3~5행이 알맞고,\n"
-        "  표 앞에 무엇을 견주는지, 뒤에 그래서 무엇인지 한 문장씩 둔다.\n"
+        "- Write comparisons and per-item values as a table, with no blank lines between rows.\n"
+        "  3–5 rows suit; put one sentence before it (what is compared) and one after (so what).\n"
         "      | 기준 | 대안 A | 대안 B |\n"
         "      | --- | --- | --- |\n"
         "      | 초기 비용 | 0원 | 약 3억 원 |"
     ),
     "kpi": (
-        "- 절의 결론이 되는 숫자가 둘셋이면 ```kpi 블록에 `값 | 이름` 을 한 줄씩(최대 4개).\n"
-        "  표에 있는 값을 다시 넣지 마라. 그 숫자의 뜻은 본문이 말한다.\n"
+        "- If two or three numbers conclude the section, put them in a ```kpi block, one `값 | 이름` per line (at most 4).\n"
+        "  Do not repeat values that are in a table. The text says what the numbers mean.\n"
         "      ```kpi\n      32% | 오탐 감소\n      1.4초 | 평균 응답 시간\n      ```"
     ),
     "steps": (
-        "- 차례대로 하는 일은 ```steps 블록에 `이름 | 설명` 을 한 줄씩(최대 8단계).\n"
+        "- Work done in order goes in a ```steps block, one `이름 | 설명` per line (at most 8 steps).\n"
         "      ```steps\n      자료 수집 | 공개 데이터와 내부 로그를 모은다\n"
         "      정제 | 중복과 결측을 걸러낸다\n      ```"
     ),
     "cards": (
-        "- 서너 갈래를 같은 무게로 나란히 놓을 때(이해관계자·산출물·목표)는 ```cards 블록에\n"
-        "  `## 카드 제목` 아래 `- 줄` 을 붙인다(최대 6장, 장마다 다섯 줄 안쪽).\n"
+        "- To set three or four strands of equal weight side by side (이해관계자·산출물·목표), use a ```cards block:\n"
+        "  `- 줄` lines under `## 카드 제목` (at most 6 cards, five lines or fewer each).\n"
         "      ```cards\n      ## 산출물\n      - 네트워크 전면 교체\n      ## 목표\n"
         "      - 8개월 안에 완료\n      ```"
     ),
     "callout": (
-        "- 틀리면 뒤가 다 무너지는 전제·경고·기한 하나는 ```callout 블록에 첫 줄 제목,\n"
-        "  다음 줄 내용으로. 문서 전체에 하나까지.\n"
+        "- The one premise, warning or deadline that brings everything down if wrong goes in a ```callout block:\n"
+        "  title on the first line, text on the next. At most one in the whole document.\n"
         "      ```callout\n      승인 없이는 시작하지 않는다\n"
         "      9월 교무회의 승인 전까지는 계약도 발주도 하지 않는다.\n      ```"
     ),
     "chart": (
-        "- 한 항목이 시점에 따라 변하는 값(시점 4개 이상)은 표가 아니라 ```chart 블록.\n"
-        "  첫 줄 `종류 | 단위`, 둘째 줄 `가로축 이름 | 계열 이름들`, 나머지가 값이다.\n"
-        "  가로축 8개, 계열 2개까지. 값이 빈 줄은 통째로 빠진다. 지어낸 수치를 쓰지 마라.\n"
+        "- Values of one item that change over time (4 or more points) go in a ```chart block, not a table.\n"
+        "  First line `종류 | 단위`, second line `가로축 이름 | 계열 이름들`, the rest are values.\n"
+        "  Up to 8 x-axis points and 2 series. A row with an empty value is dropped whole. Never use invented figures.\n"
         "      ```chart\n      bar | 건\n      분기 | 처리 건수 | 반려 건수\n"
         "      1분기 | 120 | 8\n      2분기 | 210 | 11\n      ```"
     ),
@@ -357,11 +363,12 @@ _NUMBER = re.compile(
 
 #: Writer rule for a bare form, when 있는 자료로 진행 answered a question the document needs.
 _FRAME_RULE = (
-    "**이 문서는 자료 없이 틀만 쓴다.** 요청에 없는 사실·논의·결정·이름·수치를 어떤 것도 "
-    "지어내지 마라. 절마다 그 절에 무엇을 적어야 하는지 한두 문장으로 안내하고, 채울 "
-    "자리는 「[결정된 사항과 근거]」처럼 그 이름을 대괄호로 둔다. 표는 머리글 행과 "
-    "빈 칸만. 비용 계산·대안 비교처럼 요청에 없던 절이나 표를 보태지 마라. "
-    "공식과 일반 원리는 써도 된다."
+    "**This document is a bare form written without material.** Invent no facts, "
+    "discussions, decisions, names or figures the request does not give. In each section, "
+    "say in one or two sentences what belongs there, and leave each place to fill as its "
+    "name in brackets, like 「[결정된 사항과 근거]」. Tables get a header row and empty "
+    "cells only. Do not add sections or tables the request did not ask for, such as cost "
+    "calculations or alternative comparisons. Formulas and general principles are fine."
 )
 
 #: Opens a document written without a single web source, when one was looked for.
@@ -374,96 +381,118 @@ _UNVERIFIED_NOTE = (
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 
 #: Marks a 개조식 genre: `_shaped` drops the prose writer's paragraph rules for it.
-_GAEJO_STYLE = "쓰는 법: 개조식."
+_GAEJO_STYLE = "Style: 개조식."
 
 #: 개조식 body and 공문서 notation, shared by the four 공문서 genres below.
 _GAEJO_RULE = (
     _GAEJO_STYLE
-    + " 줄글 문단을 쓰지 않는다. 내용은 Markdown 목록으로 쓰고 깊이로 위계를 나타낸다 — "
-    "첫째 단계 `- `, 둘째 단계는 두 칸 들여 `  - `, 셋째 `    - `, 넷째 `      - `. "
-    "□·○·-·ㆍ 기호는 조판이 그리므로 직접 쓰지 않는다. 항목은 명사형으로 맺는다(「…함」 "
-    "「…임」 「…예정」 「…필요」) — 「~합니다」로 끝내지 않는다. 한 항목은 한두 줄, 수치에는 "
-    "단위를 붙인다(「320명」 「1,250만 원」). 보충 설명은 그 항목 다음 줄에 「※ 」로 시작하는 "
-    "한 줄로 쓴다. 표기: 날짜 「2026. 10. 7.」(연·월·일 글자 대신 온점, 앞자리 0 없이), "
-    "시각 「14:00」(24시각제), 결재받을 금액은 「금113,560원(금일십일만삼천오백육십원)」. "
-    "붙임은 마지막 절 끝에 「붙임  1. ○○○ 1부.」 한 줄, 둘 이상이면 다음 줄부터 "
-    "「2. ○○○ 1부.」 — 붙임이 하나면 번호 없이 「붙임  ○○○ 1부.」. 「끝.」은 쓰지 "
-    "않는다(조판이 붙인다). 자료에 없는 일시·장소·인원·금액·이름은 지어내지 말고 "
-    "그 자리 이름을 대괄호로 둔다(「[일시]」 「[장소]」 「[금액]」)."
+    + " No prose paragraphs. Write the content as Markdown lists and show the hierarchy by "
+    "depth — level one `- `, level two indented two spaces `  - `, level three `    - `, "
+    "level four `      - `. Do not write the □·○·-·ㆍ symbols yourself; typesetting draws them. "
+    "End items in the noun form (개조식 명사형 종결: 「…함」 「…임」 「…예정」 「…필요」) — never "
+    "in 「~합니다」. One or two lines per item; put units on numbers (「320명」 「1,250만 원」). "
+    "A supplementary note goes on the line after its item as one line starting with 「※ 」. "
+    "Notation: dates 「2026. 10. 7.」 (full stops instead of 연·월·일, no leading zeros), "
+    "times 「14:00」 (24-hour clock), an amount for approval 「금113,560원(금일십일만삼천오백육십원)」. "
+    "Attachments go at the end of the last section as one line 「붙임  1. ○○○ 1부.」, and from "
+    "the next line 「2. ○○○ 1부.」 if there are more — with one attachment, no number: "
+    "「붙임  ○○○ 1부.」. Do not write 「끝.」 (typesetting adds it). Do not invent dates and "
+    "times, places, head counts, amounts or names the material does not give; leave the "
+    "place's name in brackets (「[일시]」 「[장소]」 「[금액]」)."
 )
 
 #: Genre rules of the formats a 서식 can fix (`doc_formats.TEMPLATE_FORMATS`), by format id.
 _FORMAT_GENRES: dict[str, str] = {
     "gaejo": (
-        "장르: 개조식 보고서(검토·현황·업무 보고). 첫 절 맨 앞에 ```callout 블록으로 핵심 "
-        "두 줄을 둔다 — 첫 줄 「핵심」, 다음 두 줄에 결론과 필요한 결정(또는 다음 조치)을 한 "
-        "줄씩. 절은 현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임 순서로. 세부 표·대안 비교·산출 근거는 본문에 두지 말고 「붙임」 절에 둔다. " + _GAEJO_RULE
+        "Genre: 개조식 보고서(검토·현황·업무 보고). At the very start of the first section put "
+        "the two key lines in a callout block, opened by the line 「```callout」 (not a bare 「```」) — "
+        "first line 「핵심」 alone, then the conclusion and "
+        "the decision needed (or the next action) on one line each — plain lines inside the block, "
+        "not list items (the list rule below is for the body). Sections in this order: "
+        "현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임. Keep detailed tables, "
+        "alternative comparisons and calculation grounds out of the body; put them in the "
+        "「붙임」 section. " + _GAEJO_RULE
     ),
     "internal_draft": (
-        "장르: 간이기안문(내부결재, 행정업무운영 시행규칙 별지 제2호서식). 생산등록번호·등록일·"
-        "결재일·공개 구분과 결재란(기안자·검토자·결재권자)은 조판이 그리니 본문에 쓰지 않는다. "
-        "본문은 결재받을 내용 하나 — 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에) "
-        "→ 행정 사항 → 붙임. 결재받을 금액은 산출 근거를 붙인다. 절은 두셋이면 충분하다. "
+        "Genre: 간이기안문(내부결재, 행정업무운영 시행규칙 별지 제2호서식). Typesetting draws the "
+        "production registration number, registration date, approval date, disclosure class and "
+        "the approval box (기안자·검토자·결재권자), so do not write them in the body. The body is "
+        "the one matter for approval — 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에) → "
+        "행정 사항 → 붙임. An amount for approval carries its calculation grounds. Two or three "
+        "sections are enough. "
         + _GAEJO_RULE
     ),
     "event_plan": (
-        "장르: 추진 계획(안)(행사·사업·교육). 절은 추진 배경 및 목적 → 추진 개요 → 세부 추진 "
-        "내용 → 소요 예산 → 추진 일정 → 기대 효과 순서. 추진 개요는 표(구분 | 내용)로 일시·"
-        "장소·대상·인원·주관을 한 행씩. 소요 예산은 표(항목 | 산출 근거 | 금액)로, 산출 "
-        "근거는 「단가 × 수량」, 마지막 행은 합계 — 합계는 항목 금액을 더한 값과 같아야 한다. "
-        "추진 일정은 표(일정 | 내용 | 담당). 기대 효과는 짐작한 수치 없이. 붙임이 있으면 "
-        "기대 효과 절 끝에. " + _GAEJO_RULE
+        "Genre: 추진 계획(안)(행사·사업·교육). Sections in this order: 추진 배경 및 목적 → 추진 "
+        "개요 → 세부 추진 내용 → 소요 예산 → 추진 일정 → 기대 효과. 추진 개요 is a table "
+        "(구분 | 내용) with 일시·장소·대상·인원·주관 one row each. 소요 예산 is a table "
+        "(항목 | 산출 근거 | 금액); 산출 근거 is 「단가 × 수량」 and the last row is the total — "
+        "the total must equal the sum of the item amounts. 추진 일정 is a table "
+        "(일정 | 내용 | 담당). 기대 효과 without guessed figures. Attachments, if any, go at the "
+        "end of the 기대 효과 section. " + _GAEJO_RULE
     ),
     "result_report": (
-        "장르: 결과 보고서(행사·사업·교육·출장). 절은 개요 → 추진 경과 → 주요 결과·실적 → "
-        "성과 및 문제점 → 향후 계획(개선 사항) 순서. 개요는 표(구분 | 내용)로 일시·장소·참석·"
-        "주관을 한 행씩. 주요 결과는 수치로(참석 인원, 만족도, 집행액과 집행률) — 계획 대비가 "
-        "있으면 표(항목 | 계획 | 실적 | 비율). 문제점은 개선 사항과 짝지어 쓴다. 자료에 없는 "
-        "실적·만족도는 지어내지 않는다. " + _GAEJO_RULE
+        "Genre: 결과 보고서(행사·사업·교육·출장). Sections in this order: 개요 → 추진 경과 → "
+        "주요 결과·실적 → 성과 및 문제점 → 향후 계획(개선 사항). 개요 is a table (구분 | 내용) "
+        "with 일시·장소·참석·주관 one row each. 주요 결과 in figures (attendance, satisfaction, "
+        "amount spent and spending rate) — against the plan, if there is one, as a table "
+        "(항목 | 계획 | 실적 | 비율). Pair each problem with its improvement. Do not invent "
+        "results or satisfaction the material does not give. " + _GAEJO_RULE
     ),
     "client_proposal": (
-        "장르: 고객 제안서. 고객이 RFP·제안요청서로 목차를 주었으면 그 목차와 순서를 그대로 "
-        "따른다. 주지 않았으면 제안 요약 → 고객 과제 이해 → 제안 내용 → 요구사항 대응표 → "
-        "추진 일정 → 수행 조직·투입 인력 → 견적 → 전제·제외 범위·위험 → 요청 사항 순서. "
-        "고객에 관한 사실(현황·과제·예산·일정·요구)은 RFP와 자료에 적힌 것만 쓰고, 고객 과제 "
-        "이해는 고객의 말(RFP 문구, 미팅 발언)을 따옴표로 하나 이상 옮겨 시작한다. 요구사항 "
-        "대응표는 표(요구 ID | 요구 내용 | 대응 방안 | 제안서 위치)로, 자료에 있는 요구 ID를 "
-        "하나도 빼지 않는다. 견적은 표(항목 | 수량 | 단위 | 단가 | 금액 | 비고)로 쓰고 아래에 "
-        "공급가액·부가세·합계 행을 둔다 — 금액 = 수량 × 단가, 합계 = 공급가액 + 부가세. "
-        "부가세 포함·별도를 표 위에 밝히고, 예산과는 같은 기준끼리만 견준다. 예산을 넘으면 "
-        "넘는다고 쓰고 단가를 바꾸지 말고 범위·기간 조정안을 따로 낸다. 실적·인증·수상·참조 "
-        "고객은 제안사 자료에 있는 것만 쓰고 지어내지 않는다 — 없으면 「[수행 실적]」 「[인증]」처럼 둔다. 「보장」 "
-        "「100%」 같은 약속을 쓰지 않는다. 자료끼리 어긋나면(기간·금액) 어느 쪽을 전제로 "
-        "했는지 쓰고 요청 사항에 질의로 남긴다. 자료에 없는 일정 날짜는 「협의」. 마지막 절은 "
-        "고객에게 요청하는 결정 한 줄로 맺는다."
+        "Genre: 고객 제안서. If the client gave a 목차 in an RFP or 제안요청서, follow that 목차 "
+        "and its order exactly. Otherwise: 제안 요약 → 고객 과제 이해 → 제안 내용 → 요구사항 "
+        "대응표 → 추진 일정 → 수행 조직·투입 인력 → 견적 → 전제·제외 범위·위험 → 요청 사항. "
+        "Write facts about the client (situation, task, budget, schedule, requirements) only as "
+        "the RFP and material state them, and open 고객 과제 이해 by quoting at least one of the "
+        "client's own words (RFP wording, meeting remarks). 요구사항 대응표 is a table "
+        "(요구 ID | 요구 내용 | 대응 방안 | 제안서 위치) that leaves out none of the requirement "
+        "IDs in the material. 견적 is a table (항목 | 수량 | 단위 | 단가 | 금액 | 비고) with "
+        "공급가액·부가세·합계 rows below it — 금액 = 수량 × 단가, 합계 = 공급가액 + 부가세. "
+        "State above the table whether VAT is included or excluded (부가세 포함·별도), and compare "
+        "with the budget only on the same basis. If it exceeds the budget, say so; do not change "
+        "unit prices — offer a separate scope or period adjustment. Write track record, "
+        "certifications, awards and reference clients only as the proposer's material gives "
+        "them and never invent them — if there are none, leave 「[수행 실적]」 「[인증]」. Make "
+        "no promises like 「보장」 「100%」. Where the materials disagree (period, amount), say "
+        "which one you assumed and leave it as a question under 요청 사항. A schedule date the "
+        "material does not give is 「협의」. End the last section with one line stating the "
+        "decision asked of the client."
     ),
     "comparison": (
-        "장르: 비교·분석 보고서. 절은 검토 목적과 판단 기준 → 대안 개요 → 비교표 → 출처별 "
-        "차이 → 조건 미확인 사항 → 권고와 조건 순서이고, 첫 절 첫 줄에 고른 대안과 그 조건을 "
-        "한 문장으로 둔다. 판단 기준 절에 필수 조건과 가중치(합 100)와 점수식(예: 비용 점수 = "
-        "최저 비용 ÷ 해당 안 비용 × 100)을 적는다 — 요청에 가중치가 없으면 「필수 조건을 "
-        "지키는 안 중 최저 비용」처럼 판단 규칙 하나를 밝힌다. 필수 조건을 못 맞춘 대안은 "
-        "값이 좋아도 「탈락(사유)」으로 표시하고 권고하지 않는다; 조건 확인이 안 된 대안은 "
-        "탈락과 구분해 「조건 미확인」으로 둔다. 비교표는 열 = 대안, 행 = 기준, 단위는 머리 "
-        "행에, 빈칸 없이 값 또는 「자료 없음」, 칸마다 출처 번호, 가중치가 있으면 마지막 행에 "
-        "가중 합계. 자료 없는 값을 추정해 채우거나 0점으로 몰래 처리하지 않는다. 같은 항목에 "
-        "출처마다 값이 다르면 출처별 차이 절에 표(항목 | 출처와 날짜 | 값 | 채택과 이유)로 "
-        "두 값을 나란히 적는다 — 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는다. "
-        "보증금처럼 돌려받는 돈은 비용에 넣지 않고 따로 적는다. 권고는 조건과 함께 쓴다(「○○이 "
-        "확인되면 A, 아니면 B」), 시나리오가 있으면 결론이 바뀌는 지점을 숫자로 보인다. "
-        "「상황에 따라 다르다」로 끝내지 않는다."
+        "Genre: 비교·분석 보고서. Sections in this order: 검토 목적과 판단 기준 → 대안 개요 → "
+        "비교표 → 출처별 차이 → 조건 미확인 사항 → 권고와 조건; the first line of the first "
+        "section states the chosen alternative and its condition in one sentence. The criteria "
+        "section gives the must-have conditions, the weights (summing to 100) and the scoring "
+        "formula (e.g. 비용 점수 = 최저 비용 ÷ 해당 안 비용 × 100) — if the request gives no "
+        "weights, state one decision rule such as 「필수 조건을 지키는 안 중 최저 비용」. Mark "
+        "an alternative that fails a must-have 「탈락(사유)」, the actual reason in the parentheses "
+        "(「탈락(화상회의 50명 < 60명)」), however good its values, and do "
+        "not recommend it; an alternative whose condition is unconfirmed is 「조건 미확인」, kept "
+        "apart from 탈락. The comparison table: columns = alternatives, rows = criteria, units "
+        "in the header row, no empty cells — a value or 「자료 없음」, a source number in every "
+        "cell, and a weighted-total last row when there are weights. Never fill a missing value "
+        "by estimate or quietly score it 0. When sources give different values for the same "
+        "item, set both side by side in the 출처별 차이 section as a table "
+        "(항목 | 출처와 날짜 | 값 | 채택과 이유) — if the measurement conditions differ, do not "
+        "adopt the newer figure just because it is newer. Money that comes back, like a deposit "
+        "(보증금), is not a cost; list it separately. Write the recommendation with its condition "
+        "(「○○이 확인되면 A, 아니면 B」), and if there are scenarios, show in numbers where the "
+        "conclusion flips. Never end on 「상황에 따라 다르다」."
     ),
     "career_history": (
-        "장르: 경력기술서. 절은 경력 요약 → 경력 사항 → 주요 프로젝트 → 보유 기술 → 자격·교육 "
-        "순서. 이름·연락처·지원 회사는 머리에 있으니 본문에 다시 쓰지 않는다. 경력 요약은 총 "
-        "경력과 핵심 역량 세 줄. 경력 사항은 회사마다 표(회사 | 기간 | 소속·직급 | 담당 업무) "
-        "한 행, 주요 프로젝트는 회사별로 묶어 프로젝트마다 기간·역할·수행 내용·성과를 쓴다. "
-        "기간은 「YYYY.MM–YYYY.MM」(재직 중이면 「YYYY.MM–현재」), 시작·끝 달을 모두 넣어 "
-        "세고, 겹치는 기간은 총 경력에 한 번만 넣는다. 직함·직급·고용 형태·성과·수치는 자료에 "
-        "있는 것만 쓰고 부풀리지 않는다 — 수치가 없으면 수치 없이 한 일만 쓴다. 합병·사명 "
-        "변경은 「현 이름(구 이름)」 한 경력으로. 공백기를 숨기려 기간을 늘리지 않는다. 블라인드 "
-        "채용이라고 했으면 학교명·나이·생년·성별·가족·출신지·사진을 넣지 않는다. 표 안에 표를 "
-        "넣지 않는다."
+        "Genre: 경력기술서. Sections in this order: 경력 요약 → 경력 사항 → 주요 프로젝트 → 보유 "
+        "기술 → 자격·교육. Name, contact and the company applied to are in the head; do not "
+        "repeat them in the body. 경력 요약 is total experience and three lines of core "
+        "strengths. 경력 사항 is one table row per company (회사 | 기간 | 소속·직급 | 담당 업무); "
+        "주요 프로젝트 is grouped by company, giving each project's 기간·역할·수행 내용·성과. "
+        "Periods are 「YYYY.MM–YYYY.MM」 (「YYYY.MM–현재」 if still employed), counted including "
+        "both the start and end months, and overlapping periods count once toward total "
+        "experience. Titles, ranks, employment types, achievements and figures only as the "
+        "material gives them, never inflated — with no figures, write what was done without "
+        "figures. A merger or rename is one career as 「현 이름(구 이름)」. Do not stretch "
+        "periods to hide a gap. If the hiring is blind (블라인드 채용), leave out school name, "
+        "age, birth year, gender, family, hometown and photo. No table inside a table."
     ),
 }
 #: The same request words `doc_formats` reads, so the head and the body rules agree.
@@ -475,36 +504,42 @@ _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
 _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(r"피어\s{0,3}리뷰|peer\s{0,3}review|리뷰어|심사\s{0,3}(?:의견|보고)|프로그램\s{0,3}위원|메타\s{0,3}리뷰"),
-        "장르: 학회 피어리뷰. 원고를 평가하는 글이다 — 원고를 다시 쓰거나 원고에 없는 표·그림을 "
-        "만들지 않는다. 강점과 약점은 번호 목록으로 — 항목마다 첫 줄에 굵게 요지 한 문장, 이어서 "
-        "근거. 약점은 중요도 순으로, 하나마다 원고의 어느 절·주장이 문제인지와 어떻게 "
-        "고치면 되는지를 함께 쓴다. 새로움(가장 가까운 기존 연구와의 차이), 방법의 타당성(위협 "
-        "모델의 가정, 베이스라인의 공정성, 적응형 공격, 지표와 통계)을 반드시 다룬다. 원고가 "
-        "실험 전 단계라고 밝혔으면 결과가 없다는 점만으로 감점하지 말고, 설계가 질문에 답할 "
-        "수 있는지를 평가한다. 질문은 저자가 답할 수 있게 구체적으로.",
+        "Genre: 학회 피어리뷰. This evaluates a manuscript — do not rewrite it or make tables or "
+        "figures it does not have. Strengths and weaknesses as numbered lists — each item opens "
+        "with its point as one bold sentence, then the grounds. Weaknesses in order of "
+        "importance, each saying which section or claim of the manuscript is at fault and how "
+        "to fix it. Always cover novelty (the difference from the closest prior work) and the "
+        "soundness of the method (threat-model assumptions, fairness of baselines, adaptive "
+        "attacks, metrics and statistics). If the manuscript says it is pre-experiment, do not "
+        "mark it down merely for having no results; judge whether the design can answer the "
+        "question. Make questions specific enough for the authors to answer.",
     ),
     (
         re.compile(r"논문\s{0,3}초안|논문을\s{0,3}써|투고|학회\s{0,3}논문|워크숍\s{0,3}논문|paper\s{0,3}draft"),
-        "장르: 학술 논문 초안. 절은 요청 순서대로. 관련 연구는 확인된 실제 논문만 저자·연도와 "
-        "함께 인용하고, 연구마다 이 논문과 무엇이 다른지 한 문장으로. 표는 실험 설계와 결과 틀에만 "
-        "쓰고 관련 연구·위협 모델·방법은 산문으로. 실험을 아직 하지 않았으면 결과를 서술하지 않고 "
-        "가설과 계획으로 쓰며 결과 표는 「실험 예정」으로 비운다. 참고문헌은 본문에서 인용한 논문의 "
-        "목록이다 — 확인되지 않은 서지는 넣지 않는다.",
+        "Genre: 학술 논문 초안. Sections in the order the request gives. In related work cite "
+        "only confirmed real papers, with authors and year, and say in one sentence per work how "
+        "it differs from this paper. Use tables only for the experimental design and the results "
+        "frame; related work, threat model and method are prose. If the experiments are not done "
+        "yet, do not describe results — write hypotheses and plans, and leave the results table "
+        "empty as 「실험 예정」. The references are the list of papers cited in the text — no "
+        "unconfirmed bibliographic entries.",
     ),
     (
         re.compile(r"리포트|레포트|기말\s{0,3}(?:과제|보고서)|중간\s{0,3}(?:과제|보고서)|과제\s{0,3}보고서|에세이"),
-        "장르: 대학 과제 리포트. 서론 끝에 논지를 한 문장으로 밝히고, 본론의 각 절은 그 논지의 "
-        "한 갈래를 근거와 함께 편다 — 학설을 나열하지 않는다. 자료에 나온 연구·저서·사료는 "
-        "본문에 (저자 연도) 꼴로 인용하고, 끝의 참고문헌에 「저자 (연도). 『제목』. 출판사.」 "
-        "꼴로 모은다. 자료에 없는 서지·쪽수·인용문은 쓰지 않는다. 결론은 논지를 다시 말하고 "
-        "남은 질문 하나로 맺는다.",
+        "Genre: 대학 과제 리포트. State the thesis in one sentence at the end of the "
+        "introduction; each body section develops one strand of that thesis with evidence — do "
+        "not just list theories. Cite studies, books and sources from the material in the text "
+        "as (저자 연도), and collect them in the references at the end as 「저자 (연도). 『제목』. "
+        "출판사.」. Write no bibliographic entries, page numbers or quotations the material does "
+        "not give. The conclusion restates the thesis and ends with one open question.",
     ),
     (
         re.compile(r"연구\s{0,3}계획서|조사\s{0,3}계획서|연구\s{0,3}제안서"),
-        "장르: 연구·조사 계획서. 조사 전이므로 결과를 쓰지 않는다. 연구 질문과 가설은 RQ1·H1 "
-        "처럼 번호를 붙이고, 방법은 표본·측정 도구·절차·분석 순서로, 변수와 문항은 표로. "
-        "선행 연구는 자료에 나온 조사·연구를 (기관 또는 저자 연도) 꼴로 인용하고 참고문헌에 모은다. "
-        "통계 수치는 자료에 있는 것만, 출처 연도와 함께.",
+        "Genre: 연구·조사 계획서. The research has not been done, so write no results. Number "
+        "research questions and hypotheses like RQ1·H1; method in the order sample, instruments, "
+        "procedure, analysis; variables and items as tables. Cite prior surveys and studies from "
+        "the material as (기관 또는 저자 연도) and collect them in the references. Statistics only "
+        "as the material gives them, with the source year.",
     ),
     (_FORMAT_PATTERNS["internal_draft"], _FORMAT_GENRES["internal_draft"]),
     (_FORMAT_PATTERNS["result_report"], _FORMAT_GENRES["result_report"]),
@@ -515,59 +550,66 @@ _GENRES: tuple[tuple[re.Pattern[str], str], ...] = (
     (_FORMAT_PATTERNS["career_history"], _FORMAT_GENRES["career_history"]),
     (
         re.compile(r"지도안|교안|수업\s{0,3}계획|교수\s{0,3}[·ㆍ]?\s{0,3}학습\s{0,3}(?:지도|과정)안"),
-        "장르: 교수·학습 지도안. 학습 목표는 「~할 수 있다」로 끝나는 행동 목표로 쓴다. 차시별 "
-        "지도 계획은 차시마다 표 하나로 쓴다 — 열은 단계(도입·전개·정리) | 교수 활동 | 학생 "
-        "활동 | 시간(분) | 자료 및 유의점, 시간의 합이 차시 시간과 같아야 한다. 평가 계획에 "
-        "문항이 요구되면 문항 자체를 번호와 함께 적는다(객관식은 보기·정답, 서술형은 모범 "
-        "답안·채점 기준) — 문항을 설명만 하고 빼지 않는다. 자료에 이미 쓴 문항이 있으면 그대로 "
-        "옮긴다.",
+        "Genre: 교수·학습 지도안. Write learning objectives as behavioural objectives ending in "
+        "「~할 수 있다」. The per-lesson plan is one table per lesson — columns 단계(도입·전개·정리) "
+        "| 교수 활동 | 학생 활동 | 시간(분) | 자료 및 유의점, and the times must add up to the "
+        "lesson length. If the assessment plan calls for items, write the items themselves, "
+        "numbered (multiple choice with options and answer; open-ended with a model answer and "
+        "scoring criteria) — never describe the items and leave them out. Items already written "
+        "in the material are carried over as they are.",
     ),
     (
         re.compile(r"신\s{0,3}사업\s{0,3}기획|사업\s{0,3}(?:계획|기획)(?:서|안)|기획안"),
-        "장르: 사업 기획안. 앞쪽에 「핵심 가정」 표 하나(판매가·원가·ARPU·CAC·이탈률·용량·"
-        "고정비, 값과 근거)를 두고 이후의 모든 수치는 그 표에서 계산한다 — 같은 가정에 두 값을 "
-        "쓰지 않는다. 계산은 「A × B = C」 꼴로 단위와 함께 적는다. 손익은 월별 표(박스·매출·"
-        "공헌이익·고정비·영업이익)로, 실행 계획은 월별 표(목표·KPI·예산)로, 리스크는 리스크·"
-        "영향·대응·확인 시점 표로 쓴다. 자금 계획(초기 투자·운전자금·손익분기 시점)과 운영 "
-        "리스크(품질·안전·물류)를 빠뜨리지 않는다. 같은 계획을 본문·표·목록에 되풀이하지 않는다.",
+        "Genre: 사업 기획안. Put one 「핵심 가정」 table near the front (판매가·원가·ARPU·CAC·"
+        "이탈률·용량·고정비, with values and grounds), and compute every later figure from that "
+        "table — never two values for the same assumption. Write calculations as 「A × B = C」 "
+        "with units. Profit and loss as a monthly table (박스·매출·공헌이익·고정비·영업이익), the "
+        "execution plan as a monthly table (목표·KPI·예산), risks as a table of 리스크·영향·대응·"
+        "확인 시점. Do not leave out the funding plan (초기 투자·운전자금·손익분기 시점) or "
+        "operational risks (품질·안전·물류). Do not repeat the same plan in text, table and list.",
     ),
     (
         re.compile(r"캡스톤|프로젝트\s{0,3}제안서|기획서"),
-        "장르: 프로젝트 제안서. 요구사항은 ID(FR-01, NFR-01)를 붙인 표로, 시스템 설계는 "
-        "구성 요소와 API(메서드·경로·설명)를 표로, 일정은 주차·마일스톤·산출물 표로, 역할은 "
-        "이름·담당·산출물 표로, 위험은 위험·영향·대응 표로 쓴다. 자료에 없는 팀원 이름은 "
-        "「[팀원 이름]」처럼 둔다.",
+        "Genre: 프로젝트 제안서. Requirements as a table with IDs (FR-01, NFR-01); system design "
+        "as tables of components and APIs (메서드·경로·설명); schedule as a table of 주차·"
+        "마일스톤·산출물; roles as a table of 이름·담당·산출물; risks as a table of 위험·영향·"
+        "대응. A team member's name the material does not give stays as 「[팀원 이름]」.",
     ),
     (
         re.compile(r"주간|월간|업무 ?보고|진행 ?상황|현황 ?보고|진척"),
-        "장르: 현황·주간 보고. 한 쪽에 읽힌다 — 절마다 짧은 문장의 항목 서넛, 문단은 둘을 넘기지 "
-        "않는다. 「요약」 절 대신 첫 절 첫 줄에 이번 주의 결론 한 문장. 권고안 절을 만들지 않는다; "
-        "결정이 필요한 것은 「이슈」에 질문 형태로 적는다. 자료에 없는 원인·해석·전망("
-        "「~때문으로 판단됩니다」「달성 가능성 높음」)을 보태지 않는다.",
+        "Genre: 현황·주간 보고. It reads on one page — three or four short-sentence items per "
+        "section, never more than two paragraphs. Instead of a 「요약」 section, the first line of "
+        "the first section is this week's conclusion in one sentence. No recommendation section; "
+        "what needs a decision goes under 「이슈」 as a question. Add no causes, interpretations or "
+        "outlooks the material does not give (「~때문으로 판단됩니다」「달성 가능성 높음」).",
     ),
     (
         re.compile(r"회의록|녹취|미팅 ?메모|회의 ?메모"),
-        "장르: 회의록. 결정·조치·미결은 표로(항목·담당·기한). 발언은 요약하되 판단을 보태지 "
-        "않고, 요약·권고 절을 만들지 않는다. 자료에 없는 담당자·기한은 「[담당자]」 「[기한]」, "
-        "회의에서 미루기로 한 것은 「미정(다음 회의에서 결정)」처럼 자료의 말대로.",
+        "Genre: 회의록. Decisions, actions and open items as tables (항목·담당·기한). Summarise "
+        "remarks without adding judgement, and make no summary or recommendation section. An "
+        "owner or deadline the material does not give is 「[담당자]」 「[기한]」; what the meeting "
+        "agreed to postpone is written in the material's words, like 「미정(다음 회의에서 결정)」.",
     ),
     (
         re.compile(r"장애(?!인)|사고|incident|포스트모템|post-?mortem"),
-        "장르: 장애 보고서. 시각열은 시각·사건·조치의 표로 싣는다. 영향은 누가·얼마나·얼마 동안을 "
-        "숫자로, 원인은 확인된 것과 추정을 갈라, 재발 방지는 원인과 짝지은 표(조치·담당·기한). "
-        "대응 절은 시각열에 없는 것(왜 그 결정을 했는지, 임시 조치)만 적고 시각열을 되풀이하지 "
-        "않는다. 자료의 날짜에 연도가 없으면 연도를 붙이지 않는다. 책임을 묻는 문장을 쓰지 "
-        "않는다.",
+        "Genre: 장애 보고서. Give the timeline as a table of 시각·사건·조치. Impact in numbers — "
+        "who, how much, for how long; causes split into confirmed and presumed; prevention as a "
+        "table paired with the causes (조치·담당·기한). The response section gives only what the "
+        "timeline does not (why a decision was made, temporary measures) and does not repeat the "
+        "timeline. If a date in the material has no year, do not add one. Write no sentences "
+        "assigning blame.",
     ),
     (
         re.compile(r"실험|측정|시험 결과"),
-        "장르: 실험 보고서. 측정 데이터는 표로, 계산한 열을 더해서. 차이는 이론값과 나란히 계산해 "
-        "말하고, 요청에 없는 절차(반복 횟수, 장비 설정)를 지어내지 않는다.",
+        "Genre: 실험 보고서. Measured data as a table, with the computed columns added. State a "
+        "difference by computing it next to the theoretical value, and do not invent procedures "
+        "the request does not give (number of repetitions, equipment settings).",
     ),
     (
         re.compile(r"안내문|공지|가이드라인|규정|정책"),
-        "장르: 안내·정책 문서. 항목마다 원칙·허용·금지·예시를 짧게. 권고안·요약 절을 만들지 않고, "
-        "시행일·문의처를 끝에 둔다.",
+        "Genre: 안내·정책 문서. For each item, principle, allowed, forbidden and an example, "
+        "briefly. No recommendation or summary section; put the effective date and contact at "
+        "the end.",
     ),
 )
 
@@ -770,24 +812,27 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
                 found.append(token)
     if not found:
         line = (
-            "쓸 수 있는 수치: 없다. 요청과 자료에 수치가 하나도 없다 — **금액·기간·인원·"
-            "퍼센트·측정값·부품값·성능 향상률을 어떤 것도 쓰지 마라.** 값이 들어갈 자리는 "
-            "「[금액]」「[측정값]」처럼 그 이름을 대괄호로 비워 두고, 값을 셈하거나 지어내는 대신 무엇을 어떻게 "
-            "측정·확인해야 하는지를 적는다. 공식과 일반 원리(f_c = 1/(2πRC) 같은 것)는 써도 "
-            "된다."
+            "쓸 수 있는 수치: none. The request and material contain no figures at all — **write "
+            "no amounts, periods, head counts, percentages, measurements, component values or "
+            "performance gains of any kind.** Leave each place a value would go as its name in "
+            "brackets, like 「[금액]」「[측정값]」, and instead of computing or inventing a value, say "
+            "what must be measured or confirmed and how. Formulas and general principles "
+            "(such as f_c = 1/(2πRC)) are fine."
         )
         if _DECISION.search(request):
             line += (
-                " 「비용 계산의 전제」 절은 견적, 예산 한도, 대상 인원처럼 확인할 것을 적고, "
-                "비교표의 행은 비용 대신 「필요한 것」 「위험」 「되돌릴 수 있는가」로."
+                " The 「비용 계산의 전제」 section lists what must be confirmed, such as quotes, "
+                "the budget ceiling and the number of people covered, and the comparison table's "
+                "rows are 「필요한 것」 「위험」 「되돌릴 수 있는가」 instead of costs."
             )
         return line
-    line = "쓸 수 있는 수치(요청과 자료에 있는 것 전부): " + ", ".join(found[:40])
+    line = "쓸 수 있는 수치 (every figure in the request and material): " + ", ".join(found[:40])
     if derived := derived_values(request):
         # Implied arithmetic is done here, so the writer copies finished figures.
         line += (
-            "\n계산된 값(다시 셈하지 마라; 비용·비교처럼 그 값이 필요한 절에서 한 번만 쓰고 다른"
-            " 절에서 되풀이하지 마라; 표 셀에는 값만 적고 식은 머리글이나 문장에 한 번만): "
+            "\n계산된 값 (do not recompute; use each once, in the section that needs it such as"
+            " cost or comparison, and do not repeat it in other sections; table cells hold only the"
+            " value, the formula goes once in the header or a sentence): "
             + "; ".join(derived)
         )
     return line
@@ -882,9 +927,9 @@ def _others_line(headings: list[str], index: int) -> str:
     if not others:
         return ""
     return (
-        "다른 절의 몫(여기서 쓰지 마라): "
+        "Owned by other sections (do not write them here): "
         + " / ".join(others)
-        + ". 결론·권고·다음 단계는 그 이름을 가진 절에서만 쓴다."
+        + ". Conclusions, recommendations and next steps go only in the sections named for them."
     )
 
 
@@ -902,13 +947,15 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
     allowed: list[str] = []
     if has(_SUMMARY_WORDS) and index == 0:
         role = (
-            "보고서를 읽지 않을 사람을 위한 요약. 무엇을 결정해야 하는지, 권고가 무엇인지, "
-            "그 근거 둘을 문단 하나에서 둘로 쓴다. 표·블록·목록 없이 줄글로만. 200자 안팎."
+            "A summary for someone who will not read the report: what must be decided, what is "
+            "recommended, and two reasons, in one or two paragraphs. Prose only — no tables, "
+            "blocks or lists. About 200 characters."
         )
         return role, ""
     if has(_SUMMARY_WORDS) and index == total - 1:
         role = (
-            "결론. 앞에서 말한 것 가운데 남는 한 가지와 다음에 할 일을 문단 하나로. 표·블록 없이."
+            "Conclusion: the one thing that remains from what came before, and what to do next, "
+            "in one paragraph. No tables or blocks."
         )
         return role, ""
     if has(_TREND_WORDS):
@@ -930,13 +977,14 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
     for one in allowed:
         if one not in seen:
             seen.append(one)
-    role = "본문 절. 이 절의 제목이 약속한 것을 쓴다. 블록은 아래 허용된 것만, 한 절에 하나까지."
+    role = ("Body section: write what this section's heading promises. Blocks only of the "
+            "kinds allowed below, at most one per section.")
     rules = "\n".join(_BLOCK_SYNTAX[one] for one in seen)
-    return role, "- 이 절에서 쓸 수 있는 블록:\n" + rules
+    return role, "- Blocks this section may use:\n" + rules
 
 
 #: Placeholder for an empty source list; an empty block makes the model invent citations.
-_NO_REFS = "(없음. 번호 인용을 쓰지 마라.)"
+_NO_REFS = "(none. Do not use numbered citations.)"
 
 
 #: Seconds between retries of a rate-limited call when the gateway names no reset time.
@@ -1752,15 +1800,16 @@ _GAP = re.compile(
 )
 _GAPS_PER_REPORT = 4
 
-_GAP_PROMPT = """아래 웹 자료에서 「{label}」의 「{header}」를 찾아 표 칸 하나에 들어갈 한 줄(60자
-이내)로 적어라.
+_GAP_PROMPT = """Find 「{header}」 of 「{label}」 in the web material below and write it as one line
+(60 characters or fewer) for a single table cell.
 
-먼저 확인하라.
-- 같은 대상인가: 자료가 다루는 것이 「{label}」 그 회사·제품·업종인가(비슷한 다른 업종·회사는 아니다).
-- 같은 지표인가: 자료의 값이 「{header}」와 정의·단위·기간이 같은가(웹사이트 이탈률은 구독 해지율이 아니다).
-둘 다 맞을 때만 값을 적고, 그 값이 나온 자료 본문의 구절을 고치지 말고 그대로 옮겨라.
+Check first:
+- Same target: is the material about that very company, product or industry, 「{label}」 (a similar other industry or company is not)?
+- Same measure: does the material's value match 「{header}」 in definition, unit and period (a website bounce rate is not a subscription churn rate)?
+Write a value only when both hold, and copy the passage of the material's text it came from verbatim, unchanged.
+Write the value in Korean.
 
-JSON 하나만 답하라:
+Answer with one JSON object only:
 {{"same_target": true, "same_measure": true, "value": "칸에 들어갈 한 줄 [n]", "quote": "자료 구절"}}
 둘 중 하나라도 아니면 {{"same_target": false, "same_measure": false, "value": "", "quote": ""}}
 
@@ -1929,8 +1978,9 @@ def flagged_sentences(
 _JUDGE_FIGURES = """{figures}
 문장: {sentence}
 
-질문: 이 문장이 확정 수치와 어긋나는 값을 잘못 적었는가? 다른 경우를 가정한 시나리오, 총액,
-계산 과정, 다른 항목의 값은 어긋남이 아니다. 「예」 또는 「아니오」 한 단어로만 답하라."""
+Question: does this sentence wrongly write a value that contradicts the settled figures (확정 수치)?
+A scenario assuming a different case, a total, a step of a calculation, or the value of a
+different item is not a contradiction. Answer with one word only: 「예」 or 「아니오」."""
 _JUDGED_PER_REPORT = 40
 
 
@@ -3157,7 +3207,7 @@ async def rewrite_section(
     prompt = _SECTION_PROMPT.format(
         heading=heading,
         outline=outline,
-        written=written[-4000:] or "(아직 없음)",
+        written=written[-4000:] or "(nothing yet)",
         # The shelf keeps the document's citation numbers valid.
         refs=_refs_block(sources or []),
         request=request[:1500],
@@ -3177,9 +3227,10 @@ async def rewrite_section(
     if note.strip():
         # Last and labelled, or it reads as part of the original request.
         prompt += (
-            f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}\n"
-            "이유가 형식을 말하면(번호 목록 셋, 표 하나, 세 문장) 그 형식 그대로 쓴다. "
-            "이유에 없는 표·블록을 새로 보태지 말고, 다른 절에 이미 있는 표를 다시 그리지 마라."
+            f"\n\nWhy this section is being rewritten (must be applied):\n{note.strip()[:600]}\n"
+            "If the reason names a form (three numbered items, one table, three sentences), write "
+            "exactly that form. Add no tables or blocks the reason does not ask for, and do not "
+            "redraw a table another section already has."
         )
     body, spent = await _complete(
         model,
@@ -3591,10 +3642,11 @@ _PLACEHOLDER = re.compile(
     r"\((?:미정|측정값|값|TBD|TODO|n/a|추후\s*기입|확인\s*필요)\)|\[(?:측정값|값|수치|금액)\]",
     re.I,
 )
-_FILL_PROMPT = """아래는 보고서의 "{heading}" 절 초안이다. 표와 문장에 [측정값]·[금액] 같은 빈자리가 남아
-있다. 첨부 자료(참고 데이터)에 그 값들이 들어 있다. 빈자리를 자료의 실제 값으로 채워 절을
-다시 써라. 자료에 없는 값은 만들지 말고 그 빈자리([측정값] 등)를 그대로 둔다. 절 제목 없이 본문만, 마크다운으로
-답하라. JSON 으로 싸지 마라.
+_FILL_PROMPT = """Below is the draft of the report's "{heading}" section. Its tables and sentences still
+have blanks such as [측정값]·[금액]. The attached material (reference data) contains those values.
+Rewrite the section, filling the blanks with the material's actual values. Do not make up a
+value the material does not have; leave that blank ([측정값] etc.) as it is. Answer with the
+body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
 
 {body}"""
 
@@ -3923,11 +3975,12 @@ def reference_list_only(sections: list[dict]) -> list[dict]:
     return out
 
 
-_AMEND_PROMPT = """아래 절에 덧붙이기만 하라. {instruction}
+_AMEND_PROMPT = """Only add to the section below. {instruction}
 
-규칙: 있는 문장과 표 행은 한 글자도 바꾸거나 지우지 마라. 덧붙인 것 말고는 그대로 둔다.
-자료에 없는 값은 지어내지 말고 「[담당자]」처럼 그 자리 이름을 대괄호로 둔다.
-고친 절 본문만 답하라(제목·설명 없이).
+Rules: do not change or delete a single character of the existing sentences and table rows.
+Leave everything but what you add as it is. Do not invent values the material does not give;
+leave the place's name in brackets, like 「[담당자]」. Write additions in Korean.
+Answer with the amended section body only (no heading or explanation).
 
 절:
 {content}"""
@@ -4001,8 +4054,9 @@ def additions_needed(
         if works:
             listing = "\n".join(f"- {w}" for w in works)
             ask = (
-                "이 절의 문장 가운데 아래 문헌이 뒷받침하는 주장 끝에 (저자 연도) 인용을 덧붙여라. "
-                "목록에 없는 문헌은 쓰지 마라. 맞는 문헌이 없는 문장에는 붙이지 마라.\n" + listing
+                "Append a (저자 연도) citation to the end of each claim in this section that a "
+                "work below supports. Do not use works not on the list. Add nothing to a "
+                "sentence no work fits.\n" + listing
             )
             for i in body_idx:
                 if len(str(sections[i].get("content") or "")) >= 300:

@@ -1,18 +1,19 @@
-이 덱은 **심사 발표** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-듣는 사람은 심사위원이다. 무엇을 물었고, 어떻게 답했고, 어디까지만 답했는지를
-본다.
+Build this deck with the **심사 발표** template. The layout is fixed; write only the content.
+The audience is the review committee. They look at what was asked, how it was answered,
+and how far the answer goes.
 
-## 규칙
+## Rules
 
-- **연구 질문을 한 장에.** 배경보다 먼저 질문을 세운다. 질문이 없는 발표는
-  무엇을 심사할지가 없다.
-- **방법과 결과를 섞지 않는다.** 어떻게 봤는지와 무엇이 보였는지는 다른 장이다.
-- **결과는 그림이나 표로.** 수치를 문장으로 늘어놓으면 읽히지 않는다. 그림
-  아래에 그 그림이 말하는 것 한 줄.
-- **한계를 스스로 밝힌다.** 심사에서 지적될 것을 먼저 적는 편이 낫다. 무엇을
-  못 봤는지, 왜 못 봤는지.
-- **다음 계획을 마지막에.** 중간 심사라면 남은 기간에 무엇을 하는지.
-- 인용은 장 아래에 짧게. 발표 자료의 각주는 출처를 밝히는 정도로 족하다.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **The research question on one slide.** Set up the question before the background.
+  A talk without a question gives the committee nothing to review.
+- **Do not mix method and results.** How you looked and what you saw are separate slides.
+- **Results as figures or tables.** Numbers strung out in sentences do not get read.
+  Under each figure, one line on what the figure says.
+- **State the limitations yourself.** Better to write first what the review would point
+  out: what you could not examine, and why.
+- **Next plans at the end.** For an interim review, what you will do in the remaining period.
+- Keep citations short, at the bottom of the slide. Footnotes in slides only need to
+  name the source.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

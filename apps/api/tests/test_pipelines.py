@@ -85,7 +85,8 @@ def test_each_format_runs_what_the_if_chains_ran(fmt):
     assert (pipe.options.get("search", True) is False) == (fmt == "career_history")
     gaejo = fmt == "gaejo"
     assert (pipe.options.get("fixed_outline") == "gaejo") == gaejo
-    assert (pipe.options.get("draws") == "when-asked") == gaejo
+    # A one-page 개조식 memo and a 회의록 draw no figures unless asked.
+    assert (pipe.options.get("draws") == "when-asked") == (fmt in ("gaejo", "minutes"))
     assert bool(pipe.options.get("prepass_always")) == bool(pipe.options.get("prepass_quiet")) \
         == gaejo
 

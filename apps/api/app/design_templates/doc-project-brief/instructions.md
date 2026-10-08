@@ -1,20 +1,19 @@
-이 문서는 **프로젝트 브리프** 템플릿으로 만든다. 조판은 이미 정해져 있으니
-내용만 쓴다. 이 문서를 받는 사람은 처음부터 끝까지 읽지 않는다 — 자기 이름이
-어디 있는지, 언제까지인지, 무엇을 내놓아야 하는지를 찾는다. 찾을 수 없으면
-이 서식은 실패다.
+Build this document with the **프로젝트 브리프** template. The layout is already set; write
+only the content. Recipients do not read it from start to finish — they look for where their
+name is, by when, and what they must deliver. If they cannot find it, this format has failed.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 색이 채워진 표지 블록. `<p class="lead">` 한 줄로 이 프로젝트가
-  무엇을 하는 것인지 적고, `<dl>` 에 프로젝트명·책임자·기간을 넣는다.
-- `section` — 절 하나.
+- `cover` — a color-filled cover block. In one `<p class="lead">` line, state what this
+  project does, and put 프로젝트명·책임자·기간 in a `<dl>`.
+- `section` — one section.
 
-## 규칙
+## Rules
 
-- **첫 절은 개요이고, 한 문단이다.** 무엇을, 왜, 언제까지 하는지를 한 문단에
-  담는다. 세 문단이 되면 그건 개요가 아니라 본문이고, 아래 격자가 읽히지 않는다.
-- **본체는 카드 격자다.** `산출물과 목표`, `이해관계자와 성공 기준` 절은 각각
-  ```cards 블록 하나로 쓴다. 각 카드는 `## 제목` 아래 `- 줄` 로 적는다.
+- **The first section is the overview, and it is one paragraph.** Put what, why and by when
+  in one paragraph. Three paragraphs is body text, not an overview, and the grid below stops being read.
+- **The body is a card grid.** Write each of the `산출물과 목표` and `이해관계자와 성공 기준`
+  sections as one ```cards block. Write each card as `- 줄` lines under `## 제목`.
 
       ```cards
       ## 산출물
@@ -31,21 +30,21 @@
       - 교육 이수율 90%
       ```
 
-- **카드는 3~6장.** 두 장이면 격자일 이유가 없고 일곱 장이면 훑을 수 없다.
-  카드 제목은 명사로, 카드마다 줄은 다섯 줄 안쪽으로.
-- **산출물은 "무엇을 내놓는다" 로 쓴다.** "설계를 검토한다" 는 활동이고
-  "설계 검토서" 가 산출물이다. 받는 사람이 손에 쥐는 것을 적는다.
-- **성공 기준은 확인할 수 있어야 한다.** 숫자나 날짜로 쓴다. "원활한 운영" 은
-  아무도 확인할 수 없으므로 기준이 아니다.
-- **`전제와 위험` 절의 전제 하나는 강조 상자로 뽑는다.** 승인, 예산 확정,
-  외부 일정처럼 그것이 어긋나면 이 브리프 전체가 무효가 되는 것 하나만.
+- **3–6 cards.** With two there is no reason for a grid; with seven it cannot be skimmed.
+  Card titles are nouns, with at most five lines per card.
+- **Write deliverables as "what is handed over".** "설계를 검토한다" is an activity;
+  "설계 검토서" is a deliverable. Write what the recipient holds in hand.
+- **Success criteria must be verifiable.** Write them as numbers or dates. "원활한 운영" cannot
+  be verified by anyone, so it is not a criterion.
+- **Pull one assumption in the `전제와 위험` section into a callout box** — only the one whose
+  failure would void this whole brief, such as approval, budget confirmation or an external schedule.
 
       ```callout
       승인 전에는 발주하지 않는다
       9월 운영위 승인 전까지 계약도 발주도 하지 않는다.
       ```
 
-  문서 전체에 하나까지. 둘이면 둘 다 지나치게 된다.
-- **`일정과 예산` 절은 표로 쓴다.** 항목마다 값이 붙는 것은 격자가 아니라 표다.
-  카드 안에 표를 넣지 마라 — 카드는 훑는 자리이고 표는 견주는 자리다.
-- 명령어·경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로 감싼다.
+  At most one in the whole document. With two, both get skimmed past.
+- **Write the `일정과 예산` section as a table.** Items that each carry a value belong in a
+  table, not a grid. Do not put tables inside cards — cards are for skimming, tables for comparing.
+- Wrap anything that must be read **character for character**, such as commands and paths, in `<code>`.

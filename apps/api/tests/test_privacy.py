@@ -1668,7 +1668,7 @@ async def test_auto_routed_economy_turn_strips_exposed_tools_and_fallback(
     assert captured["tools"] == []
     assert captured["tool_definitions"] == []
     assert captured["disable_fallbacks"] is True
-    assert "도구 사용 규칙" not in captured["messages"][0]["content"]
+    assert "Tool rules:" not in captured["messages"][0]["content"]
 
 
 @pytest.mark.asyncio
@@ -2590,7 +2590,7 @@ async def test_strict_local_turn_admits_it_could_not_search(monkeypatch) -> None
 
     assert response.status_code == 200
     prompt = captured["messages"][0]["content"]
-    assert "검색 도구가 없습니다" in prompt
+    assert "this request has no search tool" in prompt
     assert "web_search 를 최소 한 번" not in prompt
 
 

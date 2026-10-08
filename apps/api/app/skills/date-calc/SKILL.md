@@ -6,19 +6,19 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 1.0.0
 ---
-날짜는 머리로 세지 말고 스크립트로 푼다.
+Do not count dates in your head; resolve them with the script.
 
-1. `run_skill_script` 를 skill `date-calc`, script `dates` 로 부른다. args 의 `op` 로 고른다.
-   - 상대 날짜: `{"op": "resolve", "base_date": "2026-10-12", "expressions": [{"text": "다음 주 금요일", "source_line": "<그 말이 나온 줄>"}]}`
-   - 자료 전체에서 찾기: `{"op": "scan", "text": "<메모·전사본>", "base_date": "2026-10-12"}` — 「[메일 — 10/9(금) …]」 줄부터는 그 메일 발신일이 기준이다.
-   - 기간: `{"op": "span", "periods": [{"label": "A사", "start": "2019-04", "end": "2021-01"}, {"label": "B사", "start": "2023-03", "end": "현재"}], "as_of": "2026-10"}` — 시작·끝 달 포함, 겹친 달은 한 번만, 공백 구간도 나온다. 병행 활동을 총합에서 빼려면 `"counted": false`.
-   - 더하기·기한: `{"op": "add", "date": "2026-10-19", "weeks": 8, "deadline": "2026-12-18"}`
-   - 자료의 납기·기간 한꺼번에: `{"op": "lead_times", "text": "<자료 전체>"}` — 「발주 2026. 10. 19.」와 「발주 후 8주」를 짝지어 날짜로 풀고, 자료의 완료 기한과 견준다(회의일 없이도 된다).
-   - 영업일: `{"op": "business_days", "start": "...", "end": "..."}`, `{"op": "add_business_days", "date": "...", "days": 5}`
-2. 기준일은 발언이면 회의일, 메일이면 그 메일 발신일이다. 회의일을 모르면 먼저 묻는다.
-3. 결과의 `weekend`·`holiday` 는 표시만 한다. 날짜를 옮기는 것은 자료가 그렇게 말할 때뿐이다.
-4. `unresolved`(날짜 하나로 정해지지 않음)·`unclear`(잡음으로 안 들림)는 날짜를 짐작하지 말고
-   `unresolved` 는 「미정」, `unclear` 는 「[기한]」으로 두고 원문 표현을 비고에 남긴다. 반복(`repeat`)은 「매주 월요일(2026-10-19부터)」처럼 쓴다.
+1. Call `run_skill_script` with skill `date-calc`, script `dates`. Choose with `op` in args.
+   - Relative dates: `{"op": "resolve", "base_date": "2026-10-12", "expressions": [{"text": "다음 주 금요일", "source_line": "<그 말이 나온 줄>"}]}`
+   - Find them across the material: `{"op": "scan", "text": "<메모·전사본>", "base_date": "2026-10-12"}` — from a 「[메일 — 10/9(금) …]」 line on, that mail's sending date is the reference.
+   - Periods: `{"op": "span", "periods": [{"label": "A사", "start": "2019-04", "end": "2021-01"}, {"label": "B사", "start": "2023-03", "end": "현재"}], "as_of": "2026-10"}` — start and end months inclusive, overlapping months counted once, gaps are reported too. To leave a concurrent activity out of the total, use `"counted": false`.
+   - Adding and deadlines: `{"op": "add", "date": "2026-10-19", "weeks": 8, "deadline": "2026-12-18"}`
+   - All lead times and periods in the material at once: `{"op": "lead_times", "text": "<자료 전체>"}` — pairs 「발주 2026. 10. 19.」 with 「발주 후 8주」, resolves them to dates, and checks them against the material's completion deadline (works without a meeting date).
+   - Business days: `{"op": "business_days", "start": "...", "end": "..."}`, `{"op": "add_business_days", "date": "...", "days": 5}`
+2. The reference day is the meeting day for remarks, and that mail's sending date for a mail. If the meeting day is unknown, ask first.
+3. `weekend` and `holiday` in the result are for display only. Move a date only when the material says so.
+4. For `unresolved` (not settled to a single date) and `unclear` (inaudible through noise), do not guess a date:
+   leave `unresolved` as 「미정」 and `unclear` as 「[기한]」, and keep the original wording in 비고. Write a repeat (`repeat`) like 「매주 월요일(2026-10-19부터)」.
 
-주말과 공휴일은 「관공서의 공휴일에 관한 규정」(2026년 4월 개정: 노동절·제헌절 추가, 대체공휴일 포함)과
-우주항공청 「2026년 월력요항」「2027년 월력요항」(2026-06-29 발표)을 따른다. 2026·2027년 밖의 공휴일은 들어 있지 않다(`holidays_unknown`).
+Weekends and public holidays follow 「관공서의 공휴일에 관한 규정」 (amended April 2026: 노동절·제헌절 added, substitute holidays included) and
+the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (published 2026-06-29). Holidays outside 2026–2027 are not included (`holidays_unknown`).

@@ -324,7 +324,7 @@ def test_career_periods_leave_side_work_out_of_the_total():
     assert "총 경력(겹침 제외): 82개월 = 6년 10개월" in block and "8개월" in block
     vague = report_checks.career_periods("A사 19년 봄 ~ 2021.01\n" + CAREER, "",
                                          dt.date(2026, 10, 7))
-    assert vague["vague"] and "확인을 요청" in report_checks._career_block(vague)
+    assert vague["vague"] and "ask for confirmation" in report_checks._career_block(vague)
 
 
 async def test_career_numbers_and_total_are_checked():

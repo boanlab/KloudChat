@@ -97,7 +97,7 @@ async def test_an_over_long_block_is_rewritten_once_and_measured_again():
     usage = {"inputTokens": 0, "outputTokens": 0}
     out = await cover_letter.post_process(answer, request=CAREER_1, material=CAREER_1,
                                           complete=complete, model="m", api_key="k", usage=usage)
-    assert len(asked) == 1 and "560~700자" in asked[0] and "20자 넘는다" in asked[0]
+    assert len(asked) == 1 and "560~700자" in asked[0] and "20자 over the limit" in asked[0]
     assert usage == {"inputTokens": 5, "outputTokens": 7}
     rows = {r["number"]: r for r in out.rows}
     assert rows[1]["value"] == 680 and rows[1]["status"] == "ok" and rows[1]["rewritten"]
@@ -278,7 +278,7 @@ async def test_a_block_still_short_after_two_rewrites_is_said_with_the_measured_
     assert first["status"] == "under" and first.get("rewritten")
     # Two tries per block, the second from the first's closer text.
     assert len([a for a in asked if "답안 1]" in a]) == 2
-    assert "지금 520자" in next(a for a in asked[::-1] if "답안 1]" in a)
+    assert "It is now 520자" in next(a for a in asked[::-1] if "답안 1]" in a)
     assert "답안 1 공백 포함 528자 / 700자 (다시 씀) — 32자 모자람" in out.detail
     assert "1 | 공백 포함 700자 이내 | 528자 | 700자" in out.content
 
@@ -312,8 +312,8 @@ async def test_career_docs_1_a_short_block_is_lengthened_from_the_material():
     out = await cover_letter.post_process(answer, request=request, material=request,
                                           complete=complete, model="m", api_key="k")
     prompt = asked[0]
-    assert "지금 492자" in prompt and "하한 560자보다 68자 모자란다" in prompt
-    assert "공백 포함 글자 수" in prompt and "[구체적 성과 수치]" in prompt
+    assert "It is now 492자" in prompt and "68자 short of the floor 560자" in prompt
+    assert "characters including spaces" in prompt and "[구체적 성과 수치]" in prompt
     # The person's memo is in the prompt: what may be added comes from there.
     assert "412kg → 338kg" in prompt
     rows = {r["number"]: r for r in out.rows}
@@ -342,8 +342,9 @@ async def test_career_docs_4_bytes_are_repaired_and_the_answer_states_the_server
     out = await cover_letter.post_process(answer, request=request, material=request,
                                           complete=complete, model="m", api_key="k")
     prompt = asked[0]
-    assert "한글 2바이트·그 밖 1바이트(줄바꿈 2바이트)" in prompt
-    assert "지금 538바이트" in prompt and "262바이트 모자란다" in prompt and "한글로 약" in prompt
+    assert "bytes with Hangul at 2 and everything else at 1 (a line break 2 bytes)" in prompt
+    assert "It is now 538바이트" in prompt and "262바이트 short of the floor" in prompt
+    assert "Hangul letters)" in prompt
     (row,) = out.rows
     assert row["status"] == "ok" and 800 <= row["value"] <= 1000 and row["unit"] == "bytes_ko2"
     assert "확인하지 못" not in out.content
@@ -387,8 +388,9 @@ async def test_career_docs_5_each_block_gets_two_tries_and_the_closest_is_kept()
                                           complete=complete, model="m", api_key="k")
     rows = {r["number"]: r for r in out.rows}
     assert tries == {2: 2, 3: 2}
-    assert "UTF-8 바이트(한글 3바이트" in asked[3][0] and "368바이트 넘는다" in asked[3][0]
-    assert "지금 1,600바이트" in asked[3][1]  # the second try starts from the closer text
+    assert "UTF-8 bytes (Hangul 3 bytes" in asked[3][0]
+    assert "368바이트 over the limit" in asked[3][0]
+    assert "It is now 1,600바이트" in asked[3][1]  # the second try starts from the closer text
     assert "35" in asked[2][1]  # told what not to add again
     assert rows[3]["status"] == "ok" and rows[3]["value"] <= 1500
     assert rows[3]["unit"] == "bytes_utf8"

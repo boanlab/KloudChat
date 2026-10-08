@@ -180,7 +180,7 @@ async def test_relative_deadlines_stay_words_and_the_step_says_why():
     assert "[회의 일자]" in run["summary"] and "기한 [기한], 원문은 비고" in run["summary"]
     block = next(b for b in pre.blocks if b.startswith("# 확정 날짜"))
     assert "「[회의 일자]」" in block and "2026-10" not in block
-    assert "「다음 주 금요일」 → 회의 일자가 없어 날짜로 풀지 않음: 기한 「[기한]」" in block
+    assert "「다음 주 금요일」 → not resolved (no meeting date): 기한 「[기한]」" in block
 
 
 async def test_said_today_reads_from_the_turn_s_date_and_says_so():

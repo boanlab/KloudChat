@@ -1,30 +1,32 @@
-이 발표는 **대비형 덱** 템플릿으로 만든다. 조명을 낮춘 큰 방에서 어두운 화면에
-큰 글씨로 놓인다. 뒷줄까지 읽혀야 하므로 한 장에 담기는 글자 수가 편집형보다
-훨씬 적다. 레이아웃과 색은 이미 정해져 있으니 내용만 쓴다.
+Build this presentation with the **대비형 덱** template. It is shown in large type on a
+dark screen in a big, dimmed room. It must be legible from the back row, so a slide holds
+far fewer characters than the editorial format. Layout and colors are already set; write
+only the content.
 
-이 서식에서 **모든 장은 화면 위쪽에 그어진 하나의 가로선을 공유한다.** 장 제목은
-그 선 바로 위에 매달리고 본문은 언제나 선 아래에서 시작한다. 그래서 제목은 한
-줄이어야 한다 — 20자 안쪽, 두 줄로 넘어가면 선을 밀고 올라간다.
+In this format, **every slide shares one horizontal line drawn near the top of the
+screen.** The slide title hangs right above that line and the body always starts below
+it. So the title must be one line — at most 20 characters; wrapping to two lines pushes
+the line up.
 
-각 장은 `layout` 하나와 그 장의 본문 HTML 조각으로 이루어진다. 쓸 수 있는
-layout 은 다섯 가지다.
+Each slide is one `layout` plus that slide's body HTML fragment. There are five layouts.
 
-- `cover` — 표지. `<p class="lead">` 한 줄로 이 발표가 누구에게 무엇을 말하는지 적는다. 화면 전체가 액센트 색으로 칠해지는 유일한 장이다.
-- `bullets` — 기본 장. `<ul><li>` 3~4개. 한 항목은 25자 이내의 한 줄. 두 줄로 넘어가면 항목이 아니라 문장이다.
-- `quote` — 이 발표에서 가장 남길 한 문장. `<blockquote>` 하나만 쓴다. 이 장의 제목은 인용문을 되풀이하는 자리가 아니라 그 문장을 무엇이라 부르는지 말하는 짧은 머리말이다 — `이번 분기에 남길 한 줄` 처럼.
-- `split` — 둘을 나란히 견줄 때. `<div class="cols"><div><h3>이름</h3>…</div><div><h3>이름</h3>…</div></div>` 두 칸은 칸막이 없이 여백으로만 갈리므로 각 칸에 `<h3>` 이름을 반드시 붙인다.
-- `table` — 수치나 항목 비교. `<table>` 하나. 열은 세 개까지. 지어낸 숫자는 쓰지 않는다.
+- `cover` — the cover. In one `<p class="lead">` line, state who this presentation addresses and what it tells them. The only slide whose whole screen is painted in the accent color.
+- `bullets` — the default slide. 3–4 `<ul><li>`. One item is one line of at most 25 characters. If it wraps to two lines, it is a sentence, not an item.
+- `quote` — the one sentence to leave from this presentation. A single `<blockquote>` only. This slide's title is not a place to repeat the quote but a short heading naming what that sentence is — like `이번 분기에 남길 한 줄`.
+- `split` — to set two things side by side. `<div class="cols"><div><h3>이름</h3>…</div><div><h3>이름</h3>…</div></div>` The two columns are separated only by space, without a divider, so always give each column an `<h3>` name.
+- `table` — comparing figures or items. One `<table>`. Up to three columns. Do not write invented numbers.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, div` 뿐이다. `<h2>` 는 쓰지 마라 — 장 제목은 따로 붙는다.
-쓸 수 있는 `class` 는 `lead` 와 `cols` 둘뿐이고, 그 밖의 태그와 `class`,
-`style`, 링크, 이미지는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, div`. Do not use `<h2>` — the slide title is added separately.
+The only allowed `class` values are `lead` and `cols`; any other tag, `class`,
+`style`, links and images are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 슬라이드는 읽는 글이 아니라 보는 화면이다. 문단을 늘어놓지 않는다.
-- 같은 layout 이 네 장 넘게 이어지면 발표가 지루해진다. `quote` 는 전체에서 최대 2장.
-- 근거 없는 수치를 쓰지 않는다. 없으면 숫자 없이 쓴다.
-- 강조는 `<strong>` 한 곳까지만. 어두운 화면에서 굵은 글씨가 여럿이면 어느 것도 굵지 않다.
+- A slide is a screen to look at, not text to read. Do not string paragraphs together.
+- When the same layout runs for more than four slides, the presentation gets dull. At most 2 `quote` slides in total.
+- Do not write figures without grounds. If there are none, write without numbers.
+- Emphasis is `<strong>` in one place only. On a dark screen, when several things are bold, none of them is.

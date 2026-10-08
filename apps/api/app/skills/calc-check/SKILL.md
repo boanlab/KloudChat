@@ -6,22 +6,22 @@ kinds: [chat, report]
 required_tools: [run_skill_script]
 version: 2.0.0
 ---
-수치를 설명하기 전에 적힌 값을 다시 계산한다. 하나짜리 사칙연산은 `calculate` 로 충분하고, 여러
-값을 한꺼번에 대조할 때 이 스크립트를 쓴다.
+Before explaining figures, recalculate the values as written. A single arithmetic operation is enough with `calculate`; use this
+script when checking several values at once.
 
-1. 입력값마다 출처·단위·기준 시점을 적는다. 주어진 값과 가정한 값을 구분한다.
-2. `run_skill_script` 를 skill `calc-check`, script `check` 로 부른다. args 는 `{"items": [...]}` 이고
-   항목은 다음 넷 중 하나다.
-   - 식: `{"label": "부가세", "expr": "1250000 * 0.1", "expected": 125000}`
-   - 증감률: `{"label": "매출 증가율", "kind": "change", "old": 120, "new": 150, "expected": 25}`
-     (퍼센트포인트는 `"as": "pp"`)
-   - 비중: `{"label": "비중", "kind": "share", "part": 30, "whole": 120, "expected": 25}`
-   - 단위: `{"label": "예산", "kind": "convert", "value": 1.2, "from": "억원", "to": "천원", "expected": 120000}`
-   반올림 자리를 정했으면 `"decimals"`, 허용 오차가 있으면 `"tolerance"` 를 넣는다.
-3. 결과의 불일치·오류 항목은 계산식과 함께 바로잡아 답에 쓴다. 분모가 0이거나 단위가 맞지 않는
-   항목은 계산을 멈추고 무엇이 빠졌는지 알린다.
-4. 퍼센트와 퍼센트포인트, 평균과 중앙값, 명목값과 실질값을 섞지 않는다. 답에는 입력값 → 식 →
-   결과 → 반올림 규칙 순서로 근거를 짧게 남긴다.
+1. For each input value, note its source, unit and reference date. Distinguish given values from assumed ones.
+2. Call `run_skill_script` with skill `calc-check`, script `check`. args is `{"items": [...]}`, and
+   each item is one of these four.
+   - Expression: `{"label": "부가세", "expr": "1250000 * 0.1", "expected": 125000}`
+   - Rate of change: `{"label": "매출 증가율", "kind": "change", "old": 120, "new": 150, "expected": 25}`
+     (percentage points: `"as": "pp"`)
+   - Share: `{"label": "비중", "kind": "share", "part": 30, "whole": 120, "expected": 25}`
+   - Unit: `{"label": "예산", "kind": "convert", "value": 1.2, "from": "억원", "to": "천원", "expected": 120000}`
+   If the rounding place is set, add `"decimals"`; if there is a tolerance, add `"tolerance"`.
+3. Correct mismatched or erroneous items from the result in the answer, together with the formula. For an item whose denominator
+   is 0 or whose units do not match, stop calculating and say what is missing.
+4. Do not mix percent and percentage points, mean and median, nominal and real values. In the answer, leave the grounds briefly in the
+   order input values → formula → result → rounding rule.
 
-값이 첨부한 엑셀·CSV 안에 있으면 먼저 `xlsx-clean` 으로 표를 정리하거나 `run_code` 로 집계한 뒤
-그 결과를 대조한다. 도구를 실행하지 못했으면 검산했다고 쓰지 말고 미검증이라고 밝힌다.
+If the values are inside an attached Excel or CSV file, first clean the table with `xlsx-clean` or aggregate with `run_code`, then check
+those results. If a tool could not run, do not write that you verified it; state that it is unverified.

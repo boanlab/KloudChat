@@ -1,90 +1,92 @@
-이 문서는 **보고 문서** 템플릿으로 만든다. 표지와 조판은 이미 정해져 있으니
-내용만 쓴다.
+Build this document with the **보고 문서** template. The cover and layout are already set;
+write only the content.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. 한 페이지를 다 쓴다. `<p class="lead">` 한 줄로 이 문서가
-  누구에게 무엇을 말하는지 적고, 이어서 `<dl>` 로 **목적 · 독자 · 기간 · 작성**
-  네 항목을 `<dt>`/`<dd>` 쌍으로 적는다. 모르는 항목은 넣지 않는다.
-- `section` — 본문 한 절. 문단과 목록을 섞어 쓴다. 절 번호는 조판이 붙이므로
-  본문에 "1." 같은 번호를 직접 쓰지 않는다.
+- `cover` — the cover. It takes a full page. In one `<p class="lead">` line, state who this
+  document addresses and what it tells them, then write the four items **목적 · 독자 · 기간 · 작성**
+  as `<dt>`/`<dd>` pairs in a `<dl>`. Leave out items you do not know.
+- `section` — one body section. Mix paragraphs and lists. The layout adds section numbers, so
+  do not write numbers like "1." in the body.
 
 ## 근거는 각주로 단다
 
-수치나 인용이 있는 문장 끝에 `<sup>*</sup>` 로 표시를 달고, 그 절 안에
-`<small>` 로 각주 본문을 쓴다. 각주는 조판이 절 발치에 모으고 `*`, `**`, `***`
-번호도 조판이 붙이므로, **표시와 각주의 순서만 맞추면 된다.**
+Mark the end of a sentence with a figure or quotation with `<sup>*</sup>`, and write the
+footnote text in `<small>` within that section. The layout gathers footnotes at the foot of the
+section and also adds the `*`, `**`, `***` numbering, so **you only need to keep the marks
+and the footnotes in the same order.**
 
     <p>사내 녹음 1,200문장으로 다시 측정했다.<sup>*</sup></p>
     <p>오탐은 3.2%로 떨어졌다.<sup>**</sup></p>
     <small>녹음 조건 — 실내 45dBA, 화자 12명. 원본은 연구소 NAS.</small>
     <small>2026년 7월 사내 측정. 직전 분기 5.1% 대비.</small>
 
-- `<sup>` 안에는 `*`, `**`, `***` 만 쓴다. 절마다 다시 `*` 부터 센다.
-- `<small>` 은 `<section>` 의 바로 아래 자식이어야 한다. `<p>` 안에 넣으면 본문에
-  섞여 버린다.
-- `<small>` 을 쓴 순서가 곧 `*`, `**` 순서다. 표시를 단 순서와 어긋나면 각주가
-  엉뚱한 문장을 가리킨다.
-- 출처, 측정 조건, 기준 시점, 확인하지 못한 범위처럼 **본문의 흐름을 끊지만
-  없으면 검증할 수 없는 것**을 각주에 쓴다. 본문에서 할 말을 여기로 미루지 않는다.
-- 수치나 인용에는 각주를 붙인다. 붙일 근거가 없다면 그 수치를 쓰지 않는 편이 낫다.
-- 각주는 한두 문장으로 짧게 쓴다. 각주가 문단보다 길면 본문으로 올린다.
-- 표시 없는 `<small>` 이나 각주 없는 `<sup>` 은 쓰지 않는다. 둘은 짝이다.
+- Inside `<sup>` write only `*`, `**`, `***`. Count from `*` again in each section.
+- `<small>` must be a direct child of `<section>`. Put inside a `<p>`, it gets mixed into the body.
+- The order you write `<small>` in is the `*`, `**` order. If it does not match the order of
+  the marks, a footnote points to the wrong sentence.
+- In footnotes, write **what breaks the flow of the body but without which it cannot be
+  verified** — sources, measurement conditions, reference dates, the range you could not
+  confirm. Do not push what belongs in the body down here.
+- Attach a footnote to figures and quotations. If there are no grounds to attach, better not
+  to write that figure.
+- Keep footnotes short, one or two sentences. If a footnote is longer than a paragraph, move it into the body.
+- Do not write a `<small>` without a mark or a `<sup>` without a footnote. They are a pair.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, sup, blockquote, table,
-thead, tbody, tr, th, td, small, dl, dt, dd` 뿐이다. `<h2>` 는 쓰지 마라 — 절 제목은
-따로 붙는다. 그 밖의 태그와 `style`, 링크, 이미지는 버려진다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, sup, blockquote, table,
+thead, tbody, tr, th, td, small, dl, dt, dd`. Do not use `<h2>` — section titles are added
+separately. Any other tag, `style`, links and images are discarded.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 비교·수치·일정은 표로 쓴다. 행 사이에 빈 줄을 넣지 마라 — 빈 줄이 들어가면
-  표가 아니라 문장으로 그려진다. `<table><thead><tr><th>…` 형태로 쓴다.
-- 한 절은 문단 2~4개 분량으로 쓴다. 목록만으로 절을 채우지 않는다.
-- 근거가 있는 수치만 쓰고, 어디서 온 값인지 각주에 밝힌다.
-- 앞 절에서 한 말을 되풀이하지 않는다.
+- Write comparisons, figures and schedules as tables. Do not put blank lines between rows —
+  with blank lines it is drawn as sentences, not a table. Write it in the form `<table><thead><tr><th>…`.
+- A section runs 2–4 paragraphs. Do not fill a section with lists alone.
+- Write only figures with grounds, and state in a footnote where each value came from.
+- Do not repeat what an earlier section said.
 
 ## 표·강조 수치·절차
 
-조판이 이 세 가지를 따로 그린다. 서식이 크기와 색을 쥐고 있으니 `style` 은 쓰지
-않는다.
+The layout draws these three separately. The format controls size and color, so do not
+use `style`.
 
-- **강조 수치** — 절의 결론이 되는 숫자가 두셋 있으면 `<div class="kpi">` 안에
-  칸마다 `<div><strong>값</strong><span>이름</span></div>` 을 쓴다. 최대 4개.
-  값은 `32%`, `1.4초` 처럼 짧게. 표에 있는 수치를 그대로 옮기지 않는다 — 표는
-  견주는 자리고 이 블록은 **하나를 기억시키는** 자리다.
-- **절차** — 차례대로 하는 일은 `<ol class="steps">` 에 `<li><strong>이름
-  </strong> <span>설명</span></li>` 로 쓴다. 번호는 조판이 붙이므로 직접 쓰지
-  않는다. 갈라지는 흐름은 절차가 아니다.
-- **표** — 비교·수치·일정은 `<table>` 로 쓴다. 3~5행이 적당하다.
+- **강조 수치** — if two or three numbers are the conclusion of a section, write them
+  inside `<div class="kpi">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.
+  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a
+  table is for comparing, this block is for **making one thing remembered**.
+- **절차** — write steps done in order as `<ol class="steps">` with `<li><strong>이름
+  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.
+  A branching flow is not a procedure.
+- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.
 
 ## 그래프
 
-수치의 **모양**이 요점이면 `<figure class="chart" data-source="…">` 로 쓴다.
-`data-source` 안에 숫자를 담고, 조판이 그린다.
+If the **shape** of the numbers is the point, write `<figure class="chart" data-source="…">`.
+Put the numbers in `data-source`; the layout draws it.
 
     <figure class="chart" data-source="bar | 건
     분기 | 처리 건수 | 반려 건수
     1분기 | 120 | 8
     2분기 | 210 | 11"></figure>
 
-- 첫 줄은 `종류 | 단위`. `bar` 는 항목별 비교, `line` 은 시간에 따른 추이.
-  둘째 줄은 `가로축 이름 | 계열 이름들`. 나머지가 값이다.
-- 가로축 항목은 8개까지, 계열은 2개까지. **모든 줄의 값 개수가 계열 수와 같아야
-  한다** — 하나라도 비면 그 줄이 통째로 빠진다.
-- **지어낸 수치를 쓰지 않는다.** 그래프는 숫자보다 더 사실처럼 읽힌다. 근거가
-  없으면 그래프 대신 문장으로 쓴다.
+- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.
+  The second line is `가로축 이름 | 계열 이름들`. The rest are values.
+- At most 8 x-axis items and at most 2 series. **Every line must have as many values as
+  there are series** — if even one is missing, that whole line is dropped.
+- **Do not write invented figures.** A chart reads as more factual than numbers. Without
+  grounds, write a sentence instead of a chart.
 
 ## 절 이름
 
-이 서식이 쓰는 절은 다음과 같다. 문서마다 이름을 새로 짓지 않는다 — 같은
-서식으로 쓴 문서 둘이 다른 목차를 갖고 있으면 읽는 쪽이 매번 구조를 새로
-익혀야 한다.
+These are the sections this format uses. Do not invent new names per document — if two
+documents in the same format have different tables of contents, the reader must learn the
+structure anew each time.
 
-- **검토 범위** — 무엇을 보고 무엇을 보지 않았는지. 밝히지 않으면 빠진 것이
-  실수로 읽힌다.
-- **확인한 것** — 수치와 인용에 각주 표시를 단 사실들.
-- **비교** — 같은 기준으로 견준 자리. 비교 값이라면 무엇 대비인지 밝힌다.
-- **권고와 남은 확인** — 무엇을 하자는 것과, 아직 확인하지 못한 것.
-- **읽는 사람이 할 일** — 마지막에 남는 것.
+- **검토 범위** — what was and was not examined. If not stated, what is missing reads as a mistake.
+- **확인한 것** — facts with footnote marks on their figures and quotations.
+- **비교** — where things are compared on the same criteria. For a comparison value, state what it is relative to.
+- **권고와 남은 확인** — what is proposed, and what has not been confirmed yet.
+- **읽는 사람이 할 일** — what is left at the end.

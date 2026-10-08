@@ -1,26 +1,28 @@
-이 문서는 **기말 리포트** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-읽는 사람은 채점자다. 주장이 무엇인지, 그 주장을 무엇이 받치는지, 받치는 것이
-어디서 왔는지 — 세 가지를 찾는다.
+Build this document with the **기말 리포트** template. The layout is fixed; write only the content.
+The reader is the grader. They look for three things — what the claim is, what supports it,
+and where the support came from.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. 제목과 부제, 그리고 과목·학번·제출일이 들어갈 자리.
-- `section` — 장 하나. `<h2>` 로 장 제목을 세우고 본문을 잇는다.
+- `cover` — the cover. The title and subtitle, plus places for 과목·학번·제출일.
+- `section` — one chapter. Set the chapter title with `<h2>` and continue with the body.
 
-## 규칙
+## Rules
 
-- **서론은 질문을 세운다.** 무엇을 묻는 글인지 첫 문단에서 밝힌다. 배경만
-  늘어놓고 질문이 없으면 채점자는 이 글이 무엇을 하려는지 모른다.
-- **한 장은 한 주장.** 장 제목이 곧 그 장의 주장이 되게 쓴다. "배경" 같은
-  제목은 그 장이 무엇을 말하는지 감추므로 피한다.
-- **인용한 자리마다 각주.** 남의 말이나 숫자를 쓴 문장에는 그 자리에 각주를
-  단다. 문단 끝에 몰아 달면 어느 문장이 어디서 왔는지 알 수 없다. 각주는
-  `[^1]` 로 달고 절 끝에 `[^1]: 저자, 『책』, 쪽수.` 로 받는다.
-- **확인하지 못한 것은 쓰지 않는다.** 기억으로 쓴 연도·인명·쪽수는 틀린다.
-  자료에서 확인한 것만 쓰고, 확인하지 못했으면 그 문장을 뺀다.
-- **결론은 요약이 아니다.** 서론에서 세운 질문에 답하고, 이 글이 다루지 못한
-  것을 한 줄로 밝힌다.
-- 참고문헌은 마지막 절에 모은다. 각주에 단 것과 목록이 어긋나면 안 된다.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **The introduction poses the question.** State in the first paragraph what the paper asks.
+  If it only lays out background without a question, the grader cannot tell what it is trying to do.
+- **One chapter, one claim.** Make the chapter title the chapter's claim. Avoid titles like
+  "배경", which hide what the chapter says.
+- **A footnote at every citation.** Put the footnote right at each sentence that uses someone
+  else's words or numbers. Gathered at the end of a paragraph, no one can tell which sentence
+  came from where. Mark footnotes with `[^1]` and define them at the end of the section as
+  `[^1]: 저자, 『책』, 쪽수.`.
+- **Do not write what you have not verified.** Years, names and page numbers written from
+  memory are wrong. Write only what you confirmed in the material; if you could not confirm it,
+  drop the sentence.
+- **The conclusion is not a summary.** Answer the question posed in the introduction, and
+  state in one line what the paper could not cover.
+- Gather references in the last section. The footnotes and the list must not disagree.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

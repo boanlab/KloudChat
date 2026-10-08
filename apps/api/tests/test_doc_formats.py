@@ -99,7 +99,7 @@ def test_pasted_material_is_carried_whole_and_the_prompt_quotes_the_instruction(
     assert block.startswith("# 요청에 붙여 넣은 자료") and block.endswith("이미지 매칭 정확도")
     quoted = prompt_request(request, 2000)
     assert quoted.startswith("아래 제안서로") and "FR-01" not in quoted
-    assert "참고 자료에 실었다" in quoted
+    assert "is in the reference data" in quoted
     # A short request is quoted as it is.
     assert prompt_request("팀 소개 발표 5장", 2000) == "팀 소개 발표 5장"
     assert pasted_material("팀 소개 발표 5장") == ""

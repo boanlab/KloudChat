@@ -1116,7 +1116,7 @@ def _assert_document_payload_boundaries(
         assert untrusted not in system_text
         assert untrusted in reference_text
         assert untrusted not in service_prompt
-        assert reference_text.startswith("# 참고 데이터")
+        assert reference_text.startswith("# Reference data")
         assert service_prompt.strip()
 
 

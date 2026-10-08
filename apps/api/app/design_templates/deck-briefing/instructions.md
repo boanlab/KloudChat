@@ -1,16 +1,19 @@
-이 덱은 **사내 브리핑** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-이 자료의 목적은 회의를 짧게 끝내는 것이다. 읽고 나면 물어볼 것이 줄어야 한다.
+Build this deck with the **사내 브리핑** template. The layout is fixed; write only the content.
+The purpose of this material is to keep the meeting short. After reading it, there should be fewer questions to ask.
 
-## 규칙
+## Rules
 
-- **첫 장에 오늘 정할 것.** 무엇을 결정하러 모였는지 한 줄. 없으면 이 회의는
-  공유이지 회의가 아니고, 그렇다고 적는다.
-- **정해진 것과 정할 것을 가른다.** 섞이면 듣는 사람이 이미 끝난 이야기를 다시
-  꺼낸다.
-- **진행 상황은 표로.** 항목·상태·담당. 상태는 '진행 중' 대신 무엇까지 됐는지.
-- **막힌 것을 숨기지 않는다.** 막혔으면 무엇 때문에 막혔고 누가 풀 수 있는지.
-- **마지막 장은 담당과 기한.** 담당 없는 항목은 하지 않기로 한 것과 같다.
-- 장은 여덟 장을 넘기지 않는다. 넘으면 회의가 아니라 보고서다.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **The first slide states what is decided today.** One line on what the meeting is
+  gathered to decide. If there is nothing, this is a briefing rather than a meeting; say so.
+- **Separate what is decided from what is to be decided.** Mixed together, listeners
+  reopen topics that are already closed.
+- **Show progress in a table.** 항목·상태·담당. For 상태, write how far it has got instead
+  of '진행 중'.
+- **Do not hide blockers.** If something is blocked, say what blocks it and who can
+  unblock it.
+- **The last slide is owners and deadlines.** An item with no owner is the same as one
+  decided not to be done.
+- No more than eight slides. Beyond that it is a report, not a meeting.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

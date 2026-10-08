@@ -20,8 +20,8 @@ log = logging.getLogger(__name__)
 #: Parts one instruction may touch before it becomes a whole-document pass.
 MAX_TARGETS = 3
 
-_PROMPT = """사용자가 이미 완성된 문서를 보면서 아래 문장을 입력했다.
-무엇을 고쳐 달라는 것인지 판정하라.
+_PROMPT = """The user typed the sentence below while looking at a finished document.
+Decide what they are asking to change.
 
 문서 제목: {title}
 
@@ -31,31 +31,33 @@ _PROMPT = """사용자가 이미 완성된 문서를 보면서 아래 문장을 
 사용자 입력:
 {message}
 
-판정 규칙:
-- 특정 부분을 고치라는 것이면 그 부분의 번호를 targets 에 담아라. 최대 {limit}개.
-- 어느 부분인지 말하지 않았어도 내용으로 짐작되면 그 부분을 골라라.
-- 문서 전체에 걸친 요청(예: "전체적으로 더 간결하게", "말투를 바꿔줘")이면
-  scope 를 "whole" 로 하라.
-- **새 부분(절·장) 자체를 하나나 둘 추가**하라는 요청("위험 장을 추가해 줘", "결론 앞에
-  한계 절을 넣어 줘")이면 scope 를 "insert" 로 하라 — 다른 부분은 그대로 두고 새 부분만
-  쓴다. 이미 있는 부분 **안에** 표·문단·수치를 넣으라는 요청("비용 절에 3년 TCO 표를
-  넣어 줘")은 insert 가 아니라 그 부분을 고치는 "parts" 다.
-  after 에는 새 부분이 들어갈 자리 바로 앞 부분의 번호(맨 앞이면 0), names 에는 새
-  부분의 제목, note 에는 새 부분의 내용과 형식(표·열·행 같은 지시를 빠짐없이)을 적어라.
-  자리를 말하지 않았으면 마지막 부분(마무리·결론) 앞에 넣는다.
-- **구성 자체를 바꾸는 요청**이면 scope 를 "outline" 로 하라. 부분의 수를 늘리거나
-  줄이기("20장으로", "3장 더", "절반으로"), 여러 부분을 추가·삭제·병합하기, 순서 바꾸기가
-  여기 든다. 이때 note 에는 바뀐 뒤의 구성을 적어라 — 수는 지금 구성을 기준으로
-  계산한 최종 수로(지금 6장에 "3장 더" 는 "9장으로 늘린다").
-- **다른 주제의 새 문서**를 원하는 것이면 scope 를 "new" 로 하라. 지금 문서를
-  고치는 것이 아니라 버리고 다시 쓰는 경우만 해당한다.
-- 애매하면 "whole" 이 아니라 가장 가까운 부분 하나를 고르는 쪽이 낫다. 문서
-  전체를 다시 쓰는 것은 사용자가 보고 있던 글을 통째로 바꾸는 일이다.
+Rules:
+- If it asks to change specific parts, put those parts' numbers in targets. At most {limit}.
+- If it does not name the part but the content makes it guessable, pick that part.
+- If the request spans the whole document (e.g. "전체적으로 더 간결하게", "말투를 바꿔줘"),
+  set scope to "whole".
+- If it asks to **add one or two new parts (sections/chapters) themselves** ("위험 장을 추가해 줘",
+  "결론 앞에 한계 절을 넣어 줘"), set scope to "insert": the other parts stay as they are and
+  only the new parts are written. A request to put a table, paragraph or figures **inside** an
+  existing part ("비용 절에 3년 TCO 표를 넣어 줘") is not insert but "parts", revising that part.
+  In after put the number of the part right before where the new part goes (0 for the very
+  start), in names the new parts' titles, and in note the new part's content and form (every
+  instruction such as tables, columns and rows, none left out). If no place was given, put it
+  before the last part (closing or conclusion).
+- If it asks to **change the structure itself**, set scope to "outline". This covers raising or
+  lowering the number of parts ("20장으로", "3장 더", "절반으로"), adding, deleting or merging
+  several parts, and reordering. Then write the structure after the change in note, with the
+  count as the final number computed from the current structure (6 parts now and "3장 더" is
+  "9장으로 늘린다").
+- If it wants **a new document on a different subject**, set scope to "new". This applies only
+  when the current document is to be thrown away and written again, not revised.
+- When unsure, picking the one nearest part is better than "whole". Rewriting the whole
+  document replaces wholesale the text the user was looking at.
 
-note 는 그 부분을 어떻게 고쳐야 하는지 한두 문장으로. 사용자의 말을 그대로
-옮기지 말고, 고칠 내용으로 적어라.
+note: one or two sentences on how to change that part. Do not copy the user's words; state the
+change to make. Write note in Korean.
 
-JSON 객체로만 답하라.
+Reply with a JSON object only.
 예: {{"scope": "parts", "targets": [3], "note": "분량을 절반으로 줄이고 표는 남긴다"}}
 예: {{"scope": "insert", "after": 5, "names": ["위험"],
      "note": "표로. 열은 위험·영향·대응, 행은 …"}}"""
@@ -780,14 +782,15 @@ def outline_block(parts: list[str], texts: list[str] | None = None) -> str:
             lines.append(f"   내용: {text[:_PART_TEXT_CHARS]}")
     listed = "\n".join(lines)
     return (
-        "# 지금 문서의 구성\n"
+        "# Current outline\n"
         f"{listed}\n"
-        "이 구성을 출발점으로 요청대로 구성을 다시 짜라. 요청한 수가 있으면 정확히 그 "
-        "수로 맞추고, 합치거나 빼라고 한 부분만 합치거나 빼라. 그 밖의 부분은 같은 제목으로 "
-        "그대로 두고, 요청이 말하지 않은 부분을 빼거나 주제를 바꾸지 마라. 지금 문서에 있는 "
-        "내용(수치·요청 사항·일정)은 어느 부분으로든 옮겨 남긴다. 합쳐지는 부분은 위 「내용」의 "
-        "표·수치·날짜를 그대로 가져와 한 부분에 담는다 — 요청 원문에 없는 것도 지금 문서에 "
-        "있으면 남긴다."
+        "Rebuild the outline as requested, starting from this one. If a number was asked for, "
+        "match it exactly; merge or drop only the parts the request says to merge or drop. Keep "
+        "every other part under the same title, and do not drop parts the request did not mention "
+        "or change the subject. Carry what the current document holds (figures, requested items, "
+        "schedules) over into some part. A merged part takes the tables, figures and dates "
+        "from its 「내용」 line above as they are, in one part — keep what is in the current "
+        "document even when the original request does not have it."
     )
 
 
@@ -1041,9 +1044,10 @@ def document_block(parts: list[str], texts: list[str]) -> str:
         if text:
             chunks.append(f"## {name}\n{text[:_PART_TEXT_CHARS]}")
     return (
-        "# 지금 문서의 내용\n"
-        "합치거나 이름을 바꾸는 부분은 아래 표·수치·날짜·항목을 그대로 옮겨 담는다. "
-        "요청 원문에 없어도 여기 있으면 이 문서의 사실이다.\n\n" + "\n\n".join(chunks)
+        "# Current document content\n"
+        "A part that is merged or renamed carries over the tables, figures, dates and items below "
+        "as they are. What is here is a fact of this document even if the original request does "
+        "not have it.\n\n" + "\n\n".join(chunks)
     )
 
 

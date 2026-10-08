@@ -291,29 +291,33 @@ def _flag_note(flags: list[str]) -> str:
             f"{hint}처럼 비워 두세요")
 
 
-_REWRITE = """아래는 자기소개서 「[제출용 답안 {n}]」의 글이다. {how} 기준으로 {low:,}~{high:,}{suffix} 안에 들어가게 고쳐 써라.
-지금 {value:,}{suffix}이라 {gap}. 약 {delta:,}{suffix}{verb}{approx} 목표는 {target:,}{suffix}이다.
+_REWRITE = """Below is the text of 자기소개서 「[제출용 답안 {n}]」 (a cover-letter answer). Rewrite it so that, counted as {how}, it falls within {low:,}~{high:,}{suffix}.
+It is now {value:,}{suffix}, so {gap}. {verb} it by about {delta:,}{suffix}{approx} The target is {target:,}{suffix}.
 
-규칙:
-- 사실·숫자·회사명·직함은 그대로 둔다. 아래 자료에 없는 사실, 숫자, 성과를 더하지 마라.
-- 「[구체적 성과 수치]」 같은 대괄호 빈칸은 채우지 말고 그대로 둔다.
+Rules:
+- Keep facts, numbers, company names and job titles as they are. Do not add facts, numbers or achievements that are not in the material below.
+- Leave bracket blanks such as 「[구체적 성과 수치]」 as they are; do not fill them.
 {rule}
-- 문단 나눔은 유지한다. 고친 글만 답하라(태그·제목·설명·글자 수 없이).{avoid}
+- Keep the paragraph breaks. Reply with the rewritten text only (no tag, title, explanation or character count). Write it in Korean.{avoid}
 
-자료(늘릴 때 쓸 수 있는 사실은 여기까지):
+Material (the only facts you may use when lengthening):
 {material}
 
 글:
 {text}"""
 
-_CUT = "- 줄일 때는 꾸밈말과 되풀이를 덜고, 사실과 수치는 남긴다."
-_ADD = ("- 늘릴 때는 위 자료에 있는 사실로만 이미 쓴 경험의 상황·행동·배운 점을 구체적으로 쓴다. "
-        "자료에 없는 수치·성과가 들어갈 자리는 「[구체적 성과 수치]」처럼 대괄호 빈칸으로 둔다.")
+_CUT = "- When shortening, trim modifiers and repetition; keep the facts and numbers."
+_ADD = ("- When lengthening, use only facts from the material above to describe the situation, "
+        "actions and lessons of the experiences already written in more concrete detail. Where a "
+        "number or achievement the material lacks would go, leave a bracket blank such as "
+        "「[구체적 성과 수치]」.")
 
-_HOW = {"chars_with_spaces": "공백 포함 글자 수", "chars_no_spaces": "공백 제외 글자 수",
-        "bytes_utf8": "UTF-8 바이트(한글 3바이트, 영문·숫자·공백 1바이트, 줄바꿈 {nl}바이트)",
-        "bytes_ko2": "한글 2바이트·그 밖 1바이트(줄바꿈 {nl}바이트)"}
-#: Bytes one Korean letter takes, for 「한글로 약 n자」.
+_HOW = {"chars_with_spaces": "characters including spaces (공백 포함 글자 수)",
+        "chars_no_spaces": "characters excluding spaces (공백 제외 글자 수)",
+        "bytes_utf8": "UTF-8 bytes (Hangul 3 bytes; Latin letters, digits and spaces 1 byte; "
+                      "a line break {nl} bytes)",
+        "bytes_ko2": "bytes with Hangul at 2 and everything else at 1 (a line break {nl} bytes)"}
+#: Bytes one Korean letter takes, for 「about n Hangul letters」.
 _PER_LETTER = {"bytes_utf8": 3, "bytes_ko2": 2}
 #: Rewrites per block.
 _ATTEMPTS = 2
@@ -342,17 +346,18 @@ def _rewrite_prompt(number: int, text: str, row: dict, limit: Limit, material: s
     target = max(low, min(high, target))
     delta = abs(row["value"] - target)
     per = _PER_LETTER.get(limit.unit)
-    approx = f"(한글로 약 {math.ceil(delta / per):,}자)" if per else ""
-    gap = (f"한도를 {row['over']:,}{row['suffix']} 넘는다" if over
-           else f"하한 {low:,}{row['suffix']}보다 {row['under']:,}{row['suffix']} 모자란다")
+    approx = f" (about {math.ceil(delta / per):,} Hangul letters)" if per else ""
+    gap = (f"it is {row['over']:,}{row['suffix']} over the limit" if over
+           else f"it is {row['under']:,}{row['suffix']} short of the floor {low:,}{row['suffix']}")
     return _REWRITE.format(
         n=number, how=_HOW[limit.unit].format(nl=row.get("newline", 2)), low=low, high=high,
         suffix=row["suffix"], value=row["value"], gap=gap, delta=delta,
-        verb=" 줄여라" if over else " 늘려라", approx=approx + "." if approx else ".",
+        verb="Shorten" if over else "Lengthen", approx=approx + "." if approx else ".",
         target=target, rule=_CUT if over else _ADD,
-        avoid=("\n- 지난번 고친 글에 자료에 없는 말이 들어가 버렸다. 쓰지 마라: " + ", ".join(avoid[:8]))
+        avoid=("\n- The last rewrite added words that are not in the material. Do not use: "
+               + ", ".join(avoid[:8]))
         if avoid else "",
-        material=(material or "(없음)").strip()[:6000], text=text)
+        material=(material or "(none)").strip()[:6000], text=text)
 
 
 Complete = Callable[..., Awaitable[tuple[str, dict]]]

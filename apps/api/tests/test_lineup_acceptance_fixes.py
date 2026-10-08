@@ -446,7 +446,7 @@ async def test_the_old_recommendation_left_in_summary_and_conclusion_is_repaired
     }
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
-        items = json.loads(messages[0]["content"].rsplit("항목:\n", 1)[1])
+        items = json.loads(messages[0]["content"].rsplit("Items:\n", 1)[1])
         out = []
         for item in items:
             sentence = item["sentence"]
@@ -518,7 +518,7 @@ async def test_the_pre_pass_runs_again_with_the_follow_up_and_its_blocks_reach_t
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
         prompts.append(messages[0]["content"])
-        if "점수 계산과 필수 조건" in messages[0]["content"]:
+        if "scoring the alternatives and checking the must-have" in messages[0]["content"]:
             return json.dumps(weighted, ensure_ascii=False), {}
         return "{}", {}
 
@@ -526,7 +526,8 @@ async def test_the_pre_pass_runs_again_with_the_follow_up_and_its_blocks_reach_t
     material = report._request_material(LMS_REQUEST)
     pre = await consistency.settle_again("comparison", LMS_REQUEST, LMS_FOLLOW_UP, material,
                                          model="m", api_key="k")
-    assert any("추가 요청: " + LMS_FOLLOW_UP in p for p in prompts if "점수 계산과" in p)
+    assert any("추가 요청: " + LMS_FOLLOW_UP in p for p in prompts
+               if "scoring the alternatives" in p)
     blocks = consistency.blocks_for_rewrite(pre)
     assert any(b.startswith("# 점수 계산(코드)") and "런큐브" in b for b in blocks)
     assert blocks[-1] == internal_words.WRITER_NOTE
@@ -595,7 +596,7 @@ async def test_mm_written_as_headcount_is_found_and_repaired_once():
     }
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
-        items = json.loads(messages[0]["content"].rsplit("항목:\n", 1)[1])
+        items = json.loads(messages[0]["content"].rsplit("Items:\n", 1)[1])
         return json.dumps([fixes.get(i["sentence"], i["sentence"]) for i in items],
                           ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
 

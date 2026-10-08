@@ -17,7 +17,7 @@ _ROWS = [
 def test_the_model_may_choose_a_table() -> None:
     assert "table" in deck._LAYOUTS
     assert "rows" in deck._TABLE_PROMPT
-    assert "머리글" in deck._TABLE_PROMPT
+    assert "The first row is the header" in deck._TABLE_PROMPT
 
 
 def test_rows_are_cleaned_into_a_rectangle() -> None:
@@ -92,8 +92,8 @@ _METRICS = [["32%", "오탐 감소"], ["1.4초", "평균 응답"], ["99.2%", "�
 
 def test_the_model_may_choose_metrics() -> None:
     assert "metrics" in deck._LAYOUTS
-    assert "지어낸 수치" in deck._METRICS_PROMPT
-    assert "bullets 로 답하라" in deck._METRICS_PROMPT
+    assert "Do not write made-up figures" in deck._METRICS_PROMPT
+    assert "answer with bullets" in deck._METRICS_PROMPT
 
 
 def test_a_figure_with_no_label_is_dropped() -> None:
@@ -145,8 +145,8 @@ _CHART = {
 
 def test_the_model_may_choose_a_chart() -> None:
     assert "chart" in deck._LAYOUTS
-    assert "지어낸 수치" in deck._CHART_PROMPT
-    assert "bullets 로 답하라" in deck._CHART_PROMPT
+    assert "Do not write made-up figures" in deck._CHART_PROMPT
+    assert "answer with bullets" in deck._CHART_PROMPT
 
 
 def test_a_series_shorter_than_its_categories_is_trimmed_not_padded() -> None:

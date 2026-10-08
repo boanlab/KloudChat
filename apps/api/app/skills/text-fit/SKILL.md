@@ -6,16 +6,16 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 1.0.0
 ---
-글자 수와 바이트는 세지 말고 스크립트로 잰다. 모델이 센 수는 틀린다.
+Do not count characters and bytes yourself; measure them with the script. Counts made by the model are wrong.
 
-1. 답마다 「[제출용 답안 n]」 줄 다음에 제출할 글만 둔다. 설명·거절 이유는 블록 밖에 쓴다.
-2. `run_skill_script` 를 skill `text-fit`, script `fit` 으로 부른다. args:
+1. For each answer, put only the text to submit after the 「[제출용 답안 n]」 line. Write explanations and reasons for refusal outside the block.
+2. Call `run_skill_script` with skill `text-fit`, script `fit`. args:
    `{"items": [{"label": "문항 1", "text": "<제출용 답안 1>", "limit": 700, "unit": "chars_with_spaces"}]}`
-   - unit: `chars_with_spaces`(공백 포함), `chars_no_spaces`(공백 제외), `bytes_utf8`(UTF-8 실제 바이트),
-     `bytes_ko2`(한글·한자·전각 2, 그 밖 1). 줄바꿈 바이트는 `"newline": 1` 또는 `2`.
-   - 하한은 기본 한도의 80%. 사용자가 「90% 이상」을 말하면 `"min_ratio": 0.9`.
-3. 「700자」처럼 세는 법이 없으면 공백 포함으로, 바이트 규칙을 모르면 가장 엄격한 기준(UTF-8, 줄바꿈 2바이트)으로
-   맞추고 그렇게 했다고 한 줄로 알린다.
-4. `over` 나 `under` 가 0이 아니면 고쳐 쓰고 한 번 더 잰다. 그 뒤로는 되풀이하지 않는다: 답을 마치면 서버가
-   「[제출용 답안 n]」 블록을 다시 재고, 범위를 벗어나면 고쳐 쓰고, 답 끝 글자 수 표의 값도 잰 값으로 바꾼다.
-   그래서 「확인하지 못함」이라고 쓰지 않는다.
+   - unit: `chars_with_spaces` (공백 포함), `chars_no_spaces` (공백 제외), `bytes_utf8` (actual UTF-8 bytes),
+     `bytes_ko2` (한글·한자·전각 2, everything else 1). Newline bytes: `"newline": 1` or `2`.
+   - The lower bound defaults to 80% of the limit. If the user says 「90% 이상」, use `"min_ratio": 0.9`.
+3. If the counting rule is not given, as in 「700자」, count with spaces; if the byte rule is unknown, fit the strictest basis (UTF-8, newline 2 bytes)
+   and say so in one line.
+4. If `over` or `under` is not 0, rewrite and measure once more. Do not repeat after that: when the answer is done, the server
+   re-measures the 「[제출용 답안 n]」 blocks, rewrites any that fall outside the range, and replaces the values in the character-count table at the end with the measured ones.
+   So do not write 「확인하지 못함」.

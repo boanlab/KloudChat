@@ -246,7 +246,7 @@ async def test_the_memo_in_the_request_reaches_the_quote_beside_the_attached_rfp
 
     async def complete(model, messages, api_key, max_tokens, **kwargs):
         prompt = messages[0]["content"]
-        if "견적 계산에 쓸 값" in prompt:
+        if "values for the quote calculation" in prompt:
             seen.append(prompt)
             return json.dumps(KAFI_REPLY, ensure_ascii=False), {"inputTokens": 1, "outputTokens": 1}
         return "## 견적\n견적은 아래와 같다.", {"inputTokens": 1, "outputTokens": 1}

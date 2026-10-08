@@ -1,37 +1,43 @@
-이 발표는 **강의형 덱** 템플릿으로 만든다. 강의실에서 넘기는 화면이고 글씨가
-크게 놓이므로 한 장에 들어가는 글자 수가 적다. 레이아웃과 색은 이미 정해져
-있으니 내용만 쓴다. 장 번호는 알약으로 장 맨 앞에 자동으로 붙는다.
+Build this presentation with the **강의형 덱** template. It is a screen paged through in a
+classroom with large type, so few characters fit on a slide. Layout and colors are
+already set; write only the content. The slide number is added automatically as a pill
+at the very start of the slide.
 
-각 장은 `layout` 하나와 그 장의 본문 HTML 조각으로 이루어진다. 쓸 수 있는
-layout 은 다섯 가지다.
+Each slide is one `layout` plus that slide's body HTML fragment. There are five layouts.
 
-- `cover` — 표지. `<p class="lead">` 한 줄에 과목·차시와 오늘 다룰 것을 적는다.
-- `bullets` — 기본 장. `<ul><li>` 3~4개. 한 항목은 25자 이내의 한 줄이다.
-  순서가 있는 절차라면 `<ul>` 대신 `<ol>` 을 쓴다 — 번호와 가는 선이 붙어
-  '차례대로 하는 일'로 읽힌다. 순서가 없는데 `<ol>` 을 쓰지는 않는다.
-- `example` — 개념과 예시를 짝지어 보여 주는 장. 개념은 `<p>` 한두 문장으로
-  먼저 쓰고, 예시는 `<div class="ex">` 안에 넣는다. 예시 칸에는 `<p>`,
-  `<ul><li>`, `<ol><li>` 를 쓴다. '예시'라는 말은 서식이 붙이므로 본문에
-  다시 쓰지 않는다.
-- `quote` — 오늘 남길 한 문장. `<blockquote>` 하나만.
-- `table` — 두세 가지를 나란히 견줄 때. `<table>` 하나, 행 4개 이내. 표에
-  단서가 필요하면 표 바로 뒤에 `<small>` 한 줄로 붙인다.
+- `cover` — the cover. In one `<p class="lead">` line, state the course and session and
+  what today covers.
+- `bullets` — the default slide. 3–4 `<ul><li>`. One item is one line of at most 25
+  characters (25자 이내). For an ordered procedure use `<ol>` instead of `<ul>` — numbers and a thin
+  line are added and it reads as 'steps done in order'. Do not use `<ol>` where there is
+  no order.
+- `example` — a slide pairing a concept with an example. Write the concept first in one
+  or two `<p>` sentences, then put the example inside `<div class="ex">`. In the example
+  box use `<p>`, `<ul><li>`, `<ol><li>`. The format adds the word '예시', so do not write
+  it again in the body.
+- `quote` — the one sentence to keep from today. A single `<blockquote>` only.
+- `table` — to set two or three things side by side. One `<table>`, at most 4 rows. If
+  the table needs a caveat, add one `<small>` line right after it.
 
-쓸 수 있는 태그는 `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
-tbody, tr, th, td, div, small` 뿐이다. `<h2>` 는 쓰지 마라 — 제목은 따로 붙는다.
-그 밖의 태그와 링크, 이미지는 버려진다. `class` 는 위에 적은 `lead` 와 `ex` 만
-뜻이 있고 나머지는 무시된다.
+The only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,
+tbody, tr, th, td, div, small`. Do not use `<h2>` — the title is added separately.
+Any other tag, links and images are discarded. Of `class`, only `lead` and `ex` above
+mean anything; the rest are ignored.
 
-명령, 경로, 식별자, 예외 이름처럼 **글자 그대로 옮겨야 뜻이 남는 것**은 `<code>` 로
-감싼다. `<code>` 는 한 조각짜리다 — 여러 줄짜리 코드 블록은 이 서식에 없으니, 길면
-가장 중요한 한 줄만 옮기고 나머지는 말로 적는다.
+Wrap anything whose meaning survives only when copied **character for character** —
+commands, paths, identifiers, exception names — in `<code>`. `<code>` is a single
+fragment — this format has no multi-line code blocks, so if it is long, copy only the
+most important line and describe the rest in words.
 
-- 개념을 말한 장 다음에는 예시가 온다. `example` 이 전체의 3분의 1 이상이 되게 하라.
-- 예시는 학생이 이미 아는 것에서 가져온다. 새 개념을 또 다른 새 개념으로 설명하지 않는다.
-- 처음 나오는 용어는 그 용어를 쓰기 전 장에서 뜻을 밝힌다.
-- `<strong>` 은 형광펜으로 칠해진다. 받아 적을 말에만 쓰고 한 장에 두 곳까지다.
-  세 곳부터는 아무 곳도 강조되지 않은 것과 같다.
-- 한 장은 한 걸음이다. 두 가지를 말해야 하면 장을 나눈다.
-- 뒷자리에서 읽는 크기다. 한 장에 6줄을 넘기지 않고, 한 줄이 두 행이 되면 줄인다.
-- 근거 없는 수치를 쓰지 않는다. 없으면 숫자 없이 쓴다.
-- 이모지를 제목이나 항목 앞에 붙이지 않는다.
+- A slide that states a concept is followed by an example. Make `example` at least a
+  third of all slides.
+- Draw examples from what students already know. Do not explain a new concept with
+  another new concept.
+- Define a term on a slide before the one where it is first used.
+- `<strong>` is painted as a highlighter. Use it only for words to note down, at most
+  two places per slide. From three on, it is as if nothing were emphasized.
+- One slide is one step. If two things must be said, split the slide.
+- It must be legible from the back row. No more than 6 lines per slide; if a line wraps
+  to two rows, shorten it.
+- Do not write figures without grounds. If there are none, write without numbers.
+- Do not put emoji in front of titles or items.

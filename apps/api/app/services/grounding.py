@@ -122,24 +122,28 @@ def missing_attachment(request: str, files: tuple[ContextFile, ...]) -> Question
 
 #: Outline-prompt rule: plan a bare topic without asking; ask only when the
 #: subject is absent or a named source is not in the material.
-ASK_RULE = """- 주제만 주어졌으면 되묻지 말고 그 주제를 처음 접하는 사람에게 설명하는
-  것으로 네가 알아서 구성하라. 한 단어짜리 요청도 마찬가지다.
-- **주제가 아예 없으면 되물어라.** 「처장님 결재용 한 장 보고 — 결정할 것, 대안
-  둘, 위험, 권고」처럼 요청이 문서의 **쓰임과 형식**만 말하고 무엇을 결정하는지,
-  어떤 대안인지, 무슨 주제인지를 말하지 않았으면, 그것은 네가 고를 수 있는 것이
-  아니다. 「전산망 교체」 같은 사안을 골라 채운 문서는 결재선에 올라가는 순간
-  거짓이 된다. 그때는 무엇에 대한 결정인지, 대안이 무엇인지를 물어라.
-- 요청이 특정 자료(첨부한 논문·문서·데이터)를 근거로 만들라는 것인데
-  참고 자료에 그 내용이 없거나, 요청한 대목이 자료에 담겨 있지 않으면
-  지어내지 말고 되물어라. 어느 경우든 구성 대신 아래 형식으로만 답하라.
+ASK_RULE = """- If only a subject is given, do not ask back; build it yourself as an explanation
+  for someone meeting the subject for the first time. The same goes for a one-word request.
+- **If there is no subject at all, ask back.** When the request names only the document's
+  **use and form**, like 「처장님 결재용 한 장 보고 — 결정할 것, 대안 둘, 위험, 권고」, and does
+  not say what is being decided, what the alternatives are or what the subject is, that is
+  not yours to pick. A document filled with a matter you chose, such as 「전산망 교체」,
+  becomes false the moment it goes up the approval line. Then ask what the decision is
+  about and what the alternatives are.
+- If the request is to build on specific material (an attached paper, document or data)
+  and the references do not contain it, or the requested part is not in the material, do
+  not make it up; ask back. In either case, answer only in the format below instead of an
+  outline.
   {{"needs": [{{"question": "무엇을 알아야 하는지 한 줄",
                 "options": ["고를 만한 답", "다른 답"]}}]}}
-  질문은 최대 3개. 사용자가 한 번에 답할 수 있는 것만 물어라."""
+  At most 3 questions. Ask only what the user can answer in one go. Write the questions
+  and options in Korean, like the example."""
 
 #: Replaces `ASK_RULE` on the pass after the user chose "있는 자료로 진행".
-PROCEED_RULE = """- 되묻지 마라. 사용자는 이미 "있는 자료로 진행"을 골랐다. 있는 자료로 구성하라.
-  자료에 없는 수치·날짜·이름·기관은 지어내지 말고 「[담당자]」처럼 대괄호 빈칸으로 둔다.
-  자료가 다루지 않는 대목은 구성에 「자료 없음」으로 드러나게 하라."""
+PROCEED_RULE = """- Do not ask back. The user already chose "있는 자료로 진행". Build from the
+  material there is. Do not make up figures, dates, names or organizations not in the
+  material; leave a bracket blank such as 「[담당자]」. Make the parts the material does not
+  cover show as 「자료 없음」 in the outline."""
 
 
 def parse_needs(text: str) -> list[Question] | None:

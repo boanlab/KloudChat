@@ -1,24 +1,26 @@
-이 문서는 **설문 분석** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-읽는 사람은 "이 숫자를 믿어도 되는가" 를 먼저 묻는다. 표본을 밝히지 않은
-분석은 읽히지 않는다.
+Build this document with the **설문 분석** template. The layout is fixed; write only the content.
+The reader first asks "can I trust these numbers". An analysis that does not state its sample
+does not get read.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. 조사 대상과 기간, 표본 수를 밝힌다.
-- `section` — 장 하나.
+- `cover` — the cover. State the survey population, the period and the sample size.
+- `section` — one chapter.
 
-## 규칙
+## Rules
 
-- **조사 개요를 먼저 쓴다.** 누구에게, 언제, 어떻게 물었는지. 배포 수와 회수
-  수, 회수율을 적는다. 회수율이 낮으면 낮다고 쓴다.
-- **표본을 표로 보인다.** 성별·연령·소속처럼 나눈 분포를 표로 놓는다. 표본이
-  한쪽으로 치우쳤으면 그 사실을 본문에 적는다.
-- **기술통계와 해석을 섞지 않는다.** 표는 숫자만, 해석은 표 아래 문단에.
-- **교차분석은 무엇과 무엇을 걸었는지 밝힌다.** 표 제목에 두 변수를 적고,
-  유의성을 봤다면 검정 이름과 값을 함께 쓴다. 보지 않았으면 "차이가 있다" 대신
-  "차이가 보인다" 라고 쓴다.
-- **상관을 인과로 쓰지 않는다.** 설문은 관계를 보여 주지 원인을 밝히지 않는다.
-- 한계 절을 반드시 둔다. 표본의 치우침, 자기보고의 한계, 묻지 못한 것.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **Write the survey overview (조사 개요) first.** Whom, when and how it asked. State the number
+  distributed, the number returned and the response rate. If the response rate is low, say so.
+- **Show the sample as a table.** Put the breakdown by gender, age, affiliation and so on in a
+  table. If the sample is skewed, state it in the body.
+- **Do not mix descriptive statistics (기술통계) with interpretation.** Tables hold only numbers;
+  interpretation goes in the paragraph below the table.
+- **For cross-tabulations, state what was crossed with what.** Put the two variables in the
+  table title; if you tested significance, give the test name and value. If you did not,
+  write "차이가 보인다" instead of "차이가 있다".
+- **Do not write correlation as causation.** A survey shows relationships; it does not
+  establish causes.
+- Always include a limitations section: sample skew, the limits of self-report, what was not asked.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

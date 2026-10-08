@@ -89,7 +89,7 @@ async def test_condensing_moves_tables_to_the_attachment_and_names_the_lines_to_
     assert "360,000,000원" in attachment and "표: 대안 비교" in attachment
     assert "| 일괄 교체" not in out[1]["content"] and "붙임 1" in out[1]["content"]
     prompt = next(p for p in asked if "「현황」" in p)
-    assert "지금 3쪽인데 1쪽" in prompt and "줄 이하로" in prompt
+    assert "is now 3 pages and must fit in 1" in prompt and "lines or fewer" in prompt
     assert "```callout" in prompt
 
 

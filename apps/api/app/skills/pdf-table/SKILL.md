@@ -6,14 +6,14 @@ kinds: [chat, report]
 required_tools: [run_skill_script]
 version: 1.0.0
 ---
-PDF 표는 모델이 쓴 파서보다 고정 스크립트가 정확하다. 표를 옮길 때는 늘 이 스크립트부터 쓴다.
+For PDF tables a fixed script is more accurate than a parser the model writes. Always use this script first when extracting a table.
 
-1. `run_skill_script` 를 skill `pdf-table`, script `extract` 로 부른다.
-   args: `{"file": "<PDF 이름>"}`. 특정 쪽만 원하면 `"pages": "2-4"` 를 더한다.
-2. 요약의 표마다 쪽 범위, 행 수, 열 이름, 첫 행을 보고 사용자에게 짧게 알린다. 표가 여러 개로
-   쪼개졌거나 열 이름이 `열1` 처럼 나오면 원문 표 모양이 특이한 것이니 그렇다고 말한다.
-3. 옮긴 표로 계산·집계·서식 변환을 더 하려면 `run_code` 에 `outputs/<이름>_표.xlsx` 를 입력으로
-   쓰라고 적어 맡긴다. 쪽 추출·병합·회전처럼 표가 아닌 PDF 작업도 `run_code` 로 한다.
+1. Call `run_skill_script` with skill `pdf-table`, script `extract`.
+   args: `{"file": "<PDF 이름>"}`. For specific pages only, add `"pages": "2-4"`.
+2. For each table in the summary, look at the page range, row count, column names and first row, and tell the user briefly. If a table
+   was split into several or the column names come out like `열1`, the original table has an unusual shape; say so.
+3. To do more calculation, aggregation or format conversion on the extracted table, hand it to `run_code`, saying to use
+   `outputs/<이름>_표.xlsx` as input. Non-table PDF work such as extracting, merging or rotating pages is also done with `run_code`.
 
-스캔본(글자가 그림인 PDF)은 읽지 못한다. 스크립트가 글자를 못 읽었다고 하면 그대로 알리고 숫자를
-지어내지 않는다.
+Scanned PDFs (text as images) cannot be read. If the script says it could not read the text, report that as it is and do not
+invent numbers.

@@ -1,24 +1,25 @@
-이 문서는 **케이스 분석** 템플릿으로 만든다. 조판은 정해져 있으니 내용만 쓴다.
-읽는 사람은 "그래서 무엇을 하라는 것인가"를 찾는다. 분석만 있고 권고가 없으면
-이 서식은 실패다.
+Build this document with the **케이스 분석** template. The layout is fixed; write only the
+content. The reader looks for "so what am I supposed to do". If there is analysis but no
+recommendation, this format has failed.
 
-각 절은 `layout` 하나와 그 절의 본문 HTML 조각으로 이루어진다.
+Each section is one `layout` plus that section's body HTML fragment.
 
-- `cover` — 표지. 대상 기업과 분석 기간을 밝힌다.
-- `section` — 장 하나.
+- `cover` — the cover. State the target company and the analysis period.
+- `section` — one chapter.
 
-## 규칙
+## Rules
 
-- **현황은 숫자로 쓴다.** "매출이 부진하다" 가 아니라 "매출이 3년 연속 줄어
-  2023년 대비 18% 낮다". 숫자가 없으면 그 문장은 의견이다.
-- **대안은 셋 안팎, 같은 기준으로.** 표를 쓰되 열은 대안, 행은 기준으로 놓아
-  같은 줄에서 견줄 수 있게 한다. 기준이 대안마다 다르면 비교가 아니다.
-- **하나를 고른다.** 권고 절은 어느 대안을, 어떤 기준에서, 무엇을 포기하고
-  고르는지 밝힌다. "상황에 따라 다르다" 로 끝나면 아무것도 말하지 않은 것이다.
-- **위험을 적는다.** 고른 안이 틀렸을 때 무엇이 일어나는지, 무엇을 보면 틀린
-  줄 알 수 있는지 한 줄씩.
-- 재무 수치는 출처와 기준 시점을 밝힌다. 단위(원·달러·백만)를 표 머리에 적어
-  본문에서 반복하지 않는다.
-- 명령어·예외 이름·파일 경로처럼 **글자 그대로 읽어야 하는 것**은 `<code>` 로
-  감싼다. 조판이 그 자리를 고정폭으로 세워 주므로, 따옴표로 대신하면 무엇이
-  코드이고 무엇이 인용인지 구별되지 않는다.
+- **Write the current state in numbers.** Not "매출이 부진하다" but "매출이 3년 연속 줄어
+  2023년 대비 18% 낮다". Without a number, the sentence is an opinion.
+- **About three alternatives, on the same criteria.** Use a table with alternatives as
+  columns and criteria as rows, so they can be compared on the same line. If the criteria
+  differ per alternative, it is not a comparison.
+- **Pick one.** The recommendation section states which alternative is chosen, on what
+  criterion, and what is given up. Ending with "상황에 따라 다르다" says nothing.
+- **Write down the risks (위험).** One line each on what happens if the chosen option is wrong,
+  and what to watch to know it is wrong.
+- State the source and reference date of financial figures. Put the unit (원·달러·백만) in
+  the table header and do not repeat it in the body.
+- Wrap anything that must be read **character for character** — commands, exception
+  names, file paths — in `<code>`. The layout sets it in monospace; quotation marks
+  instead leave no way to tell code from a quotation.

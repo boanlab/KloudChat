@@ -61,18 +61,18 @@ def test_auto_gets_the_lighter_rule() -> None:
     prompt = context.system_prompt(
         SessionKind.chat, with_tools=True, web_search=True, web_search_auto=True
     )
-    assert "오늘의 값에 달려 있을 때만" in prompt
-    assert "검색하지 않을 것" in prompt
-    assert "weather 도구" in prompt
+    assert "depends on events after your training or on today's values" in prompt
+    assert "Do not search:" in prompt
+    assert "the weather tool" in prompt
     # Not the every-turn nudge.
-    assert "사용자가 웹 검색을 켰습니다" not in prompt
-    assert "축마다" not in prompt
+    assert "The user turned on web search" not in prompt
+    assert "for each axis" not in prompt
 
 
 def test_a_forced_turn_keeps_the_full_nudge() -> None:
     prompt = context.system_prompt(SessionKind.chat, with_tools=True, web_search=True)
-    assert "축마다" in prompt
-    assert "오늘의 값에 달려 있을 때만" not in prompt
+    assert "for each axis" in prompt
+    assert "on today's values" not in prompt
 
 
 def test_build_messages_passes_the_auto_flag_through() -> None:
@@ -83,7 +83,7 @@ def test_build_messages_passes_the_auto_flag_through() -> None:
         web_search=True,
         web_search_auto=True,
     )
-    assert "오늘의 값에 달려 있을 때만" in messages[0]["content"]
+    assert "on today's values" in messages[0]["content"]
 
 
 # ── the weather tool ──────────────────────────────────────────────────

@@ -8,22 +8,22 @@ version: 1.0.0
 stage: pre
 entry: gaps
 ---
-쓰기 전에 빠진 사실만 한 번 묻는다. 자료가 이미 답한 것은 묻지 않는다.
+Before writing, ask once, only for missing facts. Do not ask about what the material already answers.
 
-1. `run_skill_script` 를 skill `gap-check`, script `gaps` 로 부른다.
+1. Call `run_skill_script` with skill `gap-check`, script `gaps`.
    args: `{"op": "check", "facts": "<서식 또는 에이전트 키>", "request": "<요청>", "material": "<자료>"}`
    `facts`: `minutes`·`client_proposal`·`gaejo`·`comparison`·`career_history`·`career-docs`·`data-analysis`.
-2. 결과 `findings` 가 비어 있으면 묻지 않고 쓴다. 있으면 질문(최대 4개)을 한 번에, 무엇이 없고 왜 필요한지와
-   함께 묻는다. 같은 질문을 두 번 잇달아 묻지 않는다.
-3. 사용자가 답하면 그 답을 자료로 삼아 쓴다. 「있는 자료로 진행」이면 결과의 `rule` 대로 그 자리를
-   대괄호 빈칸(「[회의 일자]」「[부가세 기준]」)으로 두고 지어내지 않는다.
+2. If `findings` in the result is empty, write without asking. Otherwise ask the questions (at most 4) all at once, each with what is
+   missing and why it is needed. Do not ask the same question twice in a row.
+3. When the user answers, write using the answer as material. On 「있는 자료로 진행」, follow the result's `rule`: leave those slots as
+   bracketed blanks (「[회의 일자]」「[부가세 기준]」) and do not invent them.
 
 ## 서버가 쓰는 인터페이스
 
-- `check(request, material, computed=None, options=None) -> list[dict]` — `options["facts"]` 로 사실 목록을
-  고른다. `computed` 는 서버 추출기가 이미 읽은 값(`meeting_date`, `clients`, `period`, `staff`, `priced`,
-  `vat`, `periods`); 있으면 그 값을 믿고 없으면 글에서 찾는다. 찾은 것마다
+- `check(request, material, computed=None, options=None) -> list[dict]` — `options["facts"]` selects the fact list.
+  `computed` holds the values the server extractors already read (`meeting_date`, `clients`, `period`, `staff`, `priced`,
+  `vat`, `periods`); if present they are trusted, otherwise they are looked for in the text. Each finding is
   `{"kind": "gap", "fact", "label", "question", "why", "placeholder"}`.
-- `rule(findings) -> str` — 「자료대로 진행」 때 작성자에게 줄 빈칸 규칙 한 줄.
-- `FACTS` — 서식·에이전트별로 선언한 필수 사실(문서를 바로 쓰지 못하게 막는 것만).
-- CLI: `python gaps.py '<JSON>'` — `op` 은 `check`·`rule`.
+- `rule(findings) -> str` — the one-line blank rule given to the writer on 「자료대로 진행」.
+- `FACTS` — the required facts declared per format and agent (only those that block writing the document right away).
+- CLI: `python gaps.py '<JSON>'` — `op` is `check` or `rule`.

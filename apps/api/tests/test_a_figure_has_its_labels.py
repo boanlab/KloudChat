@@ -178,9 +178,10 @@ def test_a_results_report_with_nothing_to_report_is_asked_for_its_data() -> None
 def test_the_cost_table_advice_is_kept_for_decisions() -> None:
     from app.services.report import _facts_line
 
-    assert "비교표의 행" in _facts_line("서버 교체와 클라우드 이전 대안을 비교해 주세요.", [])
-    assert "비교표의 행" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
-    assert "쓰지 마라" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+    decision = "서버 교체와 클라우드 이전 대안을 비교해 주세요."
+    assert "comparison table's rows" in _facts_line(decision, [])
+    assert "comparison table's rows" not in _facts_line("학과 세미나 회의록을 써 주세요.", [])
+    assert "write no amounts" in _facts_line("학과 세미나 회의록을 써 주세요.", [])
 
 
 def test_material_pasted_into_the_request_is_not_asked_for() -> None:
@@ -404,7 +405,7 @@ def test_an_english_question_puts_the_english_rule_in_the_chat_system_turn() -> 
     messages = build_messages(SessionKind.chat, history)
     assert "entire answer in English" in messages[0]["content"]
     korean = build_messages(SessionKind.chat, history[:1])
-    assert "in English" not in korean[0]["content"].split("글 쓰는 법")[0]
+    assert "in English" not in korean[0]["content"].split("Writing (the default")[0]
 
 
 def test_a_bullet_with_a_quantity_the_request_never_gave_is_dropped() -> None:
