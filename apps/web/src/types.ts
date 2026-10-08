@@ -144,6 +144,8 @@ export interface Session {
   title: string
   projectId: string | null
   agentId: string | null
+  /** The user pipeline this conversation runs (「이 흐름으로 시작」); its turns stay here. */
+  pipelineId?: string | null
   model: string
   /** Under `auto`, `model` is the quality ceiling. */
   routingMode: RoutingMode
@@ -1019,6 +1021,8 @@ export interface Agent {
   installs: number
   /** Stable key for shipped agents; null for user-authored ones. */
   catalogKey: string | null
+  /** The owner's user pipeline this agent's turns run; null runs its own flow. */
+  pipelineId?: string | null
   originId: string | null
   /** Published by an administrator; meaningful on store rows. */
   official: boolean

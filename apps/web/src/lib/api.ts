@@ -811,6 +811,7 @@ export interface SessionRow {
   title: string
   projectId: string | null
   agentId: string | null
+  pipelineId?: string | null
   model: string
   routingMode: Session['routingMode']
   artifactId: string | null
@@ -1542,6 +1543,7 @@ export interface AgentRow {
   visibility: string
   installs: number
   catalogKey: string | null
+  pipelineId?: string | null
   originId: string | null
   official: boolean
   installed: boolean

@@ -207,7 +207,7 @@ export function AgentFlowSummary({
 }
 
 /** A list-based editor for one of the person's pipelines: steps in order, each with its settings. */
-export function PipelineEditor({ pipeline }: { pipeline: UserPipeline }) {
+export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; onSaved?: (row: UserPipeline) => void }) {
   const t = useT()
   const navigate = useNavigate()
   const agents = useStore((s) => s.agents)
@@ -270,6 +270,7 @@ export function PipelineEditor({ pipeline }: { pipeline: UserPipeline }) {
         setSaved(out)
         setName(out.name)
         setSteps(bare(out.stages))
+        onSaved?.(out)
       }
     } catch (err) {
       setError(errorMessage(err, t(fallback)))
@@ -687,7 +688,7 @@ function StepPicker({
 }
 
 /** The store's shared pipelines: bring one into your own, or start a conversation with it. */
-export function PipelineStore() {
+export function PipelineStore({ onImported }: { onImported?: () => void } = {}) {
   const t = useT()
   const navigate = useNavigate()
   const loadSessions = useStore((s) => s.loadSessions)
@@ -731,6 +732,7 @@ export function PipelineStore() {
                     await userPipelinesApi.create({ fromId: p.id })
                     setNotice(t('내 흐름으로 가져왔습니다.'))
                     void reload()
+                    onImported?.()
                   } catch (err) {
                     setNotice(errorMessage(err, t('흐름을 가져오지 못했습니다.')))
                   }

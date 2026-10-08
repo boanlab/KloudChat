@@ -612,3 +612,121 @@ def test_the_migration_adds_and_drops_user_pipelines_on_sqlite():
 
 def test_runs_of_a_user_pipeline_are_rerunnable_flows():
     assert "compose" in runs_router.RERUNNABLE
+
+
+async def test_binding_refuses_a_cycle_through_another_pipeline(wired):
+    p = await _people(wired.local)
+    async with wired.local() as db:
+        runs_cmp = await up.create(up.PipelineIn(name="비교까지", stages=[
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
+        runs_mins = await up.create(up.PipelineIn(name="회의록까지", stages=[
+            {"kind": "agent", "ref": p.data.id}, {"kind": "agent", "ref": p.mins.id}]), p.me, db)
+        await up.bind_agent(p.mins.id, up.BindIn(pipeline_id=runs_cmp["id"]), p.me, db)
+        # 비교 → 회의록까지 → 회의록 → 비교까지 → 비교: both would stop running.
+        with pytest.raises(HTTPException) as caught:
+            await up.bind_agent(p.cmp.id, up.BindIn(pipeline_id=runs_mins["id"]), p.me, db)
+        problem = caught.value.detail["problems"][0]
+        assert problem["code"] == "bind_cycle"
+        assert "「비교까지」" in problem["message"]
+        mine = {r["id"]: r for r in await up.list_mine(p.me, db)}
+        assert mine[runs_cmp["id"]]["problems"] == []
+        assert mine[runs_mins["id"]]["problems"] == []
+
+
+def test_product_messages_take_the_right_particle():
+    from app.pipeline.compose import AgentInfo, validate
+
+    agents = {"c": AgentInfo(id="c", name="데이터 분석", output="answer"),
+              "d": AgentInfo(id="d", name="비교", output="document")}
+    said = [p.message for p in validate([
+        {"kind": "agent", "ref": "c", "settings": {}},
+        {"kind": "export", "ref": "", "settings": {"formats": ["hwpx"]}}], agents=agents).problems]
+    assert said == ["2번 내보내기(내보내기): 앞 단계에서 만든 문서가 있어야 합니다."]
+    said = [p.message for p in validate([
+        {"kind": "check", "ref": "grounding-check", "settings": {}},
+        {"kind": "agent", "ref": "d", "settings": {}}], agents=agents).problems]
+    assert said == ["1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다."]
+
+
+async def test_a_review_fix_with_a_figure_no_one_gave_is_not_applied(monkeypatch):
+    from app.pipeline.stage import Context
+
+    async def complete(model, messages, api_key, max_tokens):
+        return json.dumps({"findings": [
+            {"quote": "대출 [수치]권", "why": "빈칸", "fix": "대출 16,600권"},
+            {"quote": "방학 평균 5,800권", "why": "계산 오류", "fix": "방학 평균 6,100권"}]}), {}
+
+    monkeypatch.setattr(report, "_complete", complete)
+    bundle = Bundle(request=Request(text="비교해 줘", model="m", api_key="k",
+                                    untrusted=["7월 대출 6,100권, 8월 5,800권"]))
+    bundle.wire["product"] = {"stage": "1:agent", "kind": "document", "title": "보고"}
+    bundle.document.sections = [{"heading": "현황",
+                                 "content": "학기 대출 [수치]권. 방학 평균 5,800권."}]
+    step = compose.ReviewStep(1, {"kind": "review", "ref": "",
+                                  "settings": {"model": "m", "repair": True}}, "검토")
+    events = [e async for e in step.run(bundle, Context())]
+    # The figure the material has goes in; the one the reviewer worked out alone does not.
+    assert bundle.document.sections[0]["content"] == "학기 대출 [수치]권. 방학 평균 6,100권."
+    assert events[-1]["label"] == "지적 2개 · 고침 1개"
+    assert "자료에 없는 수치(16600)가 있어 적용하지 않음" in bundle.findings.still[0].why
+
+
+def test_a_handed_on_document_carries_captions_not_inline_pictures():
+    text = compose._document_text([{"heading": "현황", "content": (
+        "표 아래.\n\n![그림 1. 월별 방문자](data:image/png;base64," + "A" * 5000 + ")\n\n끝.")}])
+    assert text == "## 현황\n표 아래.\n\n[그림: 그림 1. 월별 방문자]\n\n끝."
+
+
+async def test_a_shared_pipeline_runs_on_the_takers_own_copies(wired):
+    from app.models.workspace import Visibility
+
+    p = await _people(wired.local)
+    async with wired.local() as db:
+        original = Agent(owner_id=p.admin.id, slug="o1", name="비교·분석 보고서", kinds=["report"],
+                         surface="report", doc_format="comparison",
+                         catalog_key="comparison-report", visibility=Visibility.org)
+        db.add(original)
+        await db.commit()
+        made = await up.create(up.PipelineIn(name="비교만", stages=[
+            {"kind": "agent", "ref": p.cmp.id}]), p.me, db)
+        await up.submit(made["id"], p.me, db)
+        await up.approve(made["id"], p.admin, db)
+        # The author's step runs the author's private copy; the taker holds their own copy
+        # and also sees the organisation's original: their copy is the one it runs on.
+        store = [r for r in await up.list_store(p.other, db) if r["id"] == made["id"]]
+        assert [(s["ref"], s["title"]) for s in store[0]["stages"]] == [
+            (p.their_cmp.id, "남의 비교 보고서")]
+        seen = await up.get_one(made["id"], p.other, db)
+        assert seen["problems"] == [] and seen["stages"][0]["ref"] == p.their_cmp.id
+        taken = await up.create(up.PipelineIn(from_id=made["id"]), p.other, db)
+        assert taken["stages"][0]["ref"] == p.their_cmp.id
+        # Someone with no copy runs the organisation's original.
+        third = User(email="t@example.com", name="셋", password_hash="x")
+        db.add(third)
+        await db.commit()
+        row = await db.get(UserPipeline, made["id"])
+        steps = up._steps_for(row, third, await up.agents_for(db, third))
+        assert steps[0]["ref"] == original.id
+        # The author's own view is untouched.
+        assert up._steps_for(row, p.me, await up.agents_for(db, p.me))[0]["ref"] == p.cmp.id
+
+
+async def test_a_chat_step_is_told_nobody_can_answer_a_question(monkeypatch):
+    seen: list[list[dict]] = []
+
+    async def complete(model, messages, api_key, max_tokens):
+        seen.append(messages)
+        return "학기 중 월평균 방문자 67,375명.", {"inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(report, "_complete", complete)
+    bundle = Bundle(request=Request(text="학기와 방학을 비교해 줘", model="m", api_key="k",
+                                    untrusted=["월,방문자\n3월,61200"]))
+    info = compose.AgentInfo(id="a", name="데이터 분석", output="answer",
+                             system_prompt="Ask which split the user wants before computing.")
+    step = compose.AgentStep(0, {"kind": "agent", "ref": "a", "settings": {}}, "데이터 분석",
+                             output="answer", after_outline=False, final=False)
+    await step._answer(bundle, info)
+    system = seen[0][0]["content"]
+    assert system.startswith("Ask which split")
+    assert "nobody can answer a question" in system and "Do not ask anything" in system
+    assert bundle.document.answer == "학기 중 월평균 방문자 67,375명."

@@ -1,5 +1,5 @@
 import { ArrowLeft, Copy, Lock, Pencil, Plus, Workflow } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -31,7 +31,7 @@ export function PipelinesPage() {
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
-  useEffect(() => {
+  const loadMine = useCallback(() => {
     let current = true
     void userPipelinesApi
       .list()
@@ -41,6 +41,7 @@ export function PipelinesPage() {
       current = false
     }
   }, [])
+  useEffect(loadMine, [loadMine])
 
   const create = async () => {
     setBusy(true)
@@ -79,7 +80,7 @@ export function PipelinesPage() {
         <div className="pt-4" role="tabpanel">
           {tab === 'mine' && <MyPipelines rows={mine} onShipped={() => setTab('shipped')} />}
           {tab === 'shipped' && <ShippedPipelines focus={params.get('agent')} />}
-          {tab === 'store' && <PipelineStore />}
+          {tab === 'store' && <PipelineStore onImported={loadMine} />}
         </div>
       </PageBody>
     </>
@@ -274,7 +275,7 @@ export function PipelineEditPage() {
             description={t('지워졌거나 내 흐름이 아닙니다.')}
           />
         )}
-        {row && <PipelineEditor key={row.id} pipeline={row} />}
+        {row && <PipelineEditor key={row.id} pipeline={row} onSaved={(saved) => setLoaded({ id: saved.id, row: saved })} />}
       </PageBody>
     </>
   )

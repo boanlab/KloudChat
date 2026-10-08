@@ -1413,6 +1413,22 @@ def _answer_in_flight(last: Message) -> bool:
     return (utcnow() - asked).total_seconds() < settings.chat_stall_sec
 
 
+def _reads_pasted_material(content: str) -> bool:
+    """A request about the material pasted under it (a commit log, notes, a source pack):
+    the dates and prices in that material are what it says, not a question about now. The
+    request's own words can still ask about the present (「지금 환율로」)."""
+    from app.services.context import instruction_part, pasted_material
+
+    if pasted_material(content):
+        return not freshness.names_the_present(instruction_part(content))
+    head, gap, rest = (content or "").partition("\n\n")
+    lines = [line for line in rest.splitlines() if line.strip()]
+    looks_pasted = len(rest.strip()) >= 120 and (
+        len(lines) >= 3 or bool(re.match(r"\s*[\[#|「<]", rest)))
+    return bool(gap) and len(head) <= 300 and looks_pasted and not freshness.names_the_present(
+        head)
+
+
 def _grounded_in_files(workspace: WorkspaceContext) -> bool:
     """Whether this turn carries readable file text: an attachment, an earlier upload or
     project knowledge that reached the model at least in part."""
@@ -3525,10 +3541,12 @@ async def send_message(
     if (
         fresh_fact
         and session.kind is SessionKind.chat
-        and _grounded_in_files(workspace)
-        and not freshness.names_the_present(content)
+        and (
+            (_grounded_in_files(workspace) and not freshness.names_the_present(content))
+            or _reads_pasted_material(content)
+        )
     ):
-        # A question about an attached document asks what it says, not what holds
+        # A question about an attached or pasted document asks what it says, not what holds
         # today: read it rather than look it up or withhold it.
         fresh_fact = False
         if forced_by_freshness and forced_tool == "web_search":
@@ -4430,6 +4448,7 @@ async def send_message(
                     if not fresh_fact
                     and freshness.ballpark_current_value(content)
                     and not _grounded_in_files(workspace)
+                    and not _reads_pasted_material(content)
                     else None
                 ),
                 force_tool=(

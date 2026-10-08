@@ -106,7 +106,8 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
             checks=check_skills.attached(
                 agent_key=key or None,
                 template_checks=template.check_skills if template is not None else ()),
-            shared=bool(key) or agent.visibility is Visibility.org)
+            shared=bool(key) or agent.visibility is Visibility.org,
+            mine=agent.owner_id == user.id)
     return out
 
 
@@ -146,8 +147,9 @@ async def _verdict(db: DbSession, user: User, steps: list[dict], *, self_id: str
 def _remap(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> list[dict]:
     """Agent steps pointed at agents the person can run: a catalogue agent the author held a
     copy of becomes the person's own copy of the same catalogue agent."""
-    by_key = {}
-    for info in agents.values():
+    by_key: dict[str, str] = {}
+    # Their own copy first, the organisation's original when they hold none.
+    for info in sorted(agents.values(), key=lambda a: not a.mine):
         if info.catalog_key:
             by_key.setdefault(info.catalog_key, info.id)
     out = []
@@ -157,6 +159,14 @@ def _remap(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> list[dict
             step = {**step, "ref": by_key[key]}
         out.append(step)
     return out
+
+
+def _steps_for(row: UserPipeline, user: User,
+               agents: dict[str, compose.AgentInfo]) -> list[dict]:
+    """The steps as `user` runs them: someone else's shared pipeline on the user's own agents
+    (the author's copies of catalogue agents are theirs alone)."""
+    steps = compose.normalize(row.stages)
+    return steps if row.owner_id == user.id else _remap(steps, agents)
 
 
 def _with_keys(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> list[dict]:
@@ -172,8 +182,8 @@ def _with_keys(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> list[
 
 def _out(row: UserPipeline, agents: dict[str, compose.AgentInfo], *,
          verdict: compose.Verdict | None = None, owner_name: str = "",
-         bound: list[dict] | None = None) -> dict[str, Any]:
-    steps = compose.normalize(row.stages)
+         bound: list[dict] | None = None, steps: list[dict] | None = None) -> dict[str, Any]:
+    steps = steps if steps is not None else compose.normalize(row.stages)
     return {
         "id": row.id, "name": row.name, "description": row.description, "base": row.base,
         "originId": row.origin_id,
@@ -243,7 +253,8 @@ async def list_store(user: CurrentUser, db: DbSession):
                  .all()) if owners else {}
     mine = {r.origin_id for r in (await db.exec(
         select(UserPipeline).where(UserPipeline.owner_id == user.id))).all() if r.origin_id}
-    return [{**_out(r, agents, owner_name=names.get(r.owner_id, "")),
+    return [{**_out(r, agents, owner_name=names.get(r.owner_id, ""),
+                    steps=_steps_for(r, user, agents)),
              "installed": r.id in mine, "mine": r.owner_id == user.id} for r in rows]
 
 
@@ -260,9 +271,9 @@ async def get_one(pipeline_id: str, user: CurrentUser, db: DbSession):
     if not _visible(row, user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
     agents = await agents_for(db, user)
-    verdict = await _verdict(db, user, compose.normalize(row.stages), self_id=row.id,
-                             agents=agents)
-    return _out(row, agents, verdict=verdict,
+    steps = _steps_for(row, user, agents)
+    verdict = await _verdict(db, user, steps, self_id=row.id, agents=agents)
+    return _out(row, agents, verdict=verdict, steps=steps,
                 bound=await _bound(db, user, row.id) if row.owner_id == user.id else [])
 
 
@@ -418,6 +429,19 @@ async def bind_agent(agent_id: str, payload: BindIn, user: CurrentUser, db: DbSe
         if any(s["kind"] == "agent" and s["ref"] == agent.id for s in steps):
             problems.append(compose.Problem(0, "bind_recursion",
                                             compose.MESSAGES["bind_recursion"]))
+        else:
+            # Another of my pipelines runs this agent: bound here, this pipeline must not lead
+            # back to it, or both stop running (each sees the other's agent as recursion).
+            graph = await _graph(db, user, agents)
+            holders = (await db.exec(select(UserPipeline).where(
+                UserPipeline.owner_id == user.id, UserPipeline.id != row.id))).all()
+            for other in holders:
+                if any(s["kind"] == "agent" and s["ref"] == agent.id
+                       for s in compose.normalize(other.stages)) and \
+                        compose._reaches(row.id, other.id, graph):
+                    problems.append(compose.Problem(0, "bind_cycle", compose.MESSAGES[
+                        "bind_cycle"].format(name=other.name)))
+                    break
         want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
         if want and _output(agent) != want:
             problems.append(compose.Problem(0, "bound_surface", (
@@ -443,7 +467,9 @@ async def start(pipeline_id: str, user: CurrentUser, db: DbSession):
     row = await db.get(UserPipeline, pipeline_id)
     if not _visible(row, user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
-    verdict = await _verdict(db, user, compose.normalize(row.stages), self_id=row.id)
+    agents = await agents_for(db, user)
+    verdict = await _verdict(db, user, _steps_for(row, user, agents), self_id=row.id,
+                             agents=agents)
     if not verdict.ok:
         raise _invalid(verdict)
     created = await sessions.create_session(SessionCreate(kind=SessionKind(verdict.surface)),
@@ -570,7 +596,7 @@ async def turn_response(
         definition = dict(stored.get("compose") or {})
         steps = compose.normalize(definition.get("stages"))
     else:
-        definition = _definition(row, compose.normalize(row.stages))
+        definition = _definition(row, _steps_for(row, user, agents))
         steps = definition["stages"]
     verdict = compose.validate(steps, agents=agents, self_id=row.id)
     if not verdict.ok:

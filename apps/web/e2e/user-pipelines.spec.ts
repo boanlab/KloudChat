@@ -351,6 +351,8 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
 
   await actions.getByRole('button', { name: '저장', exact: true }).click()
   await expect(actions.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
+  // The top bar names the flow as saved, not as it was opened.
+  await expect(page.locator('header').getByText('분석 → 비교 → 개조식 요약', { exact: true })).toBeVisible()
   const saved = state.mine()[0]
   expect(saved.stages.map((s) => s.kind)).toEqual(['agent', 'human', 'agent', 'check', 'agent', 'review', 'export'])
   expect(saved.stages[5].settings).toMatchObject({ model: 'fixture/judge', repair: true })
@@ -408,6 +410,10 @@ test('store: shared flows to import or start', async ({ page }, testInfo) => {
   await card.getByRole('button', { name: '가져오기' }).click()
   await expect(card.getByText('가져옴')).toBeVisible()
   expect(state.mine().map((p) => p.originId)).toEqual(['p7'])
+  // 내 흐름 shows the imported flow without a reload.
+  await expect(page.getByRole('tab', { name: /내 흐름/ })).toContainText('1')
+  await page.getByRole('tab', { name: /내 흐름/ }).click()
+  await expect(page.getByTestId('my-pipeline')).toHaveCount(1)
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })

@@ -1322,9 +1322,11 @@ export function Composer({
     // A document request typed into chat starts a new conversation on the
     // report or slides surface; starting points keep it here. An agent chat moves
     // only to a surface the agent names, and keeps the agent and the conversation.
-    const detected = kind === 'chat' && !sentStartingTemplate ? handoffSurface(text) : null
+    // A conversation that runs a user pipeline answers here: the pipeline is what it is for.
+    const movable = kind === 'chat' && !sentStartingTemplate && !session?.pipelineId && !sessionAgent?.pipelineId
+    const detected = movable ? handoffSurface(text) : null
     const agentHandoff =
-      kind === 'chat' && !sentStartingTemplate && sessionId && sessionAgent
+      movable && sessionId && sessionAgent
         ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
         : null
     if (agentHandoff && sessionId) {

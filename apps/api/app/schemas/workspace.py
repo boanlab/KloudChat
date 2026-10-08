@@ -457,6 +457,8 @@ class AgentOut(Wire):
     installs: int
     catalog_key: str | None = None
     origin_id: str | None = None
+    #: The owner's user pipeline this agent's turns run (`PUT /agents/{id}/user-pipeline`).
+    pipeline_id: str | None = None
     #: Published by an administrator. Store-only.
     official: bool = False
     #: The caller already holds a copy. Store-only.
@@ -497,6 +499,8 @@ class AgentOut(Wire):
         if a.sealed or withheld:
             out.system_prompt = ""
             out.sealed = True
+        if viewer_id is not None and a.owner_id != viewer_id:
+            out.pipeline_id = None  # the owner's own binding
         return out
 
 

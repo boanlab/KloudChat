@@ -247,6 +247,8 @@ class SessionOut(Wire):
     title: str
     project_id: str | None
     agent_id: str | None
+    #: The user pipeline this conversation's turns run (「이 흐름으로 시작」), or null.
+    pipeline_id: str | None = None
     model: str
     routing_mode: RoutingMode
     artifact_id: str | None
