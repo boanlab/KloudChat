@@ -2,5 +2,5 @@
 # measured when it carries cover-letter blocks, and swapped in when anything changed.
 
 name = "chat"
-pre = ["check:gaps"]
+pre = ["check:gaps", "gap-card"]
 finish = ["answer-normalize", "check:answer-grounding", "text-fit", "answer-replace"]

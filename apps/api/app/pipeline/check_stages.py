@@ -6,6 +6,7 @@ a `post` check traces every value the finished text states to the material or to
 computed, blanks the rest, and checks again. Here each is a stage a pipeline file lists:
 
 - `check:gaps` — the attached `pre` checks over the request and material;
+- `gap-card` — the card those findings put up before writing, a stage the run waits at;
 - `check:grounding` / `check:grounding-again` — the attached `post` checks over a report's
   sections, before the verify stage and again after its rewrites;
 - `check:answer-grounding` — the same over a chat answer.
@@ -20,7 +21,7 @@ from zoneinfo import ZoneInfo
 from app.core.config import settings
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
-from app.pipeline.stage import Base, Context
+from app.pipeline.stage import Base, Context, Wait
 from app.services import check_skills, key_figures
 
 
@@ -44,6 +45,56 @@ class GapCheck(Base):
         bundle.findings.gaps = check_skills.gaps(
             tuple(req.check_keys or ()), facts=req.check_facts, request=req.text,
             material=req.check_material, today=req.today)
+
+
+#: Questions on one card, at most.
+_CARD = 5
+
+
+def card_questions(bundle: Bundle) -> list[dict]:
+    """The card before writing: the router's file questions, then one per missing fact
+    (its fact key, label, why and the blank it stays as), less what the last card asked."""
+    card = bundle.request.turn.get("card") or {}
+    asked = set(card.get("asked") or [])
+    out = [{**q, "fact": "", "label": "", "why": str(q.get("detail") or ""),
+            "placeholder": "", "freeText": True} for q in card.get("files") or []]
+    for gap in bundle.findings.gaps:
+        wire = check_skills.questions([gap])[0].wire()
+        out.append({**wire, "fact": str(gap.get("fact") or ""),
+                    "label": str(gap.get("label") or ""), "why": str(gap.get("why") or ""),
+                    "placeholder": str(gap.get("placeholder") or ""), "freeText": True})
+    return [q for q in out if q.get("id") not in asked][:_CARD]
+
+
+class GapCard(Base):
+    """The question card before the first draft, as a stage the run waits at: what the
+    files did not deliver and what the `pre` checks found missing, on one card. The run
+    stops `waiting`; the answers come back as the next message (merged as material), or
+    「있는 자료로 진행」 leaves each fact its bracket blank."""
+
+    name = "gap-card"
+    kind = "io"
+    reads = ("request", "findings.gaps")
+    writes = ("findings.questions",)
+
+    def skip(self, bundle: Bundle) -> str:
+        card = bundle.request.turn.get("card")
+        if card is None:
+            return "no card on this turn"
+        if not card.get("may_ask"):
+            return "a reply to the card already up"
+        if not (card.get("plans_first") or bundle.findings.gaps):
+            return "nothing missing"
+        if not card_questions(bundle):
+            return "nothing left to ask"
+        return ""
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        questions = card_questions(bundle)
+        bundle.findings.questions = questions
+        raise Wait("waiting for answers", summary=f"질문 {len(questions)}개",
+                   evidence={"questions": questions})
+        yield {}  # an async generator
 
 
 def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
@@ -134,6 +185,6 @@ class AnswerGrounding(Base):
         yield {"type": "step", **ground_step}
 
 
-for _stage in (GapCheck(), GroundCheck("check:grounding", again=False),
+for _stage in (GapCheck(), GapCard(), GroundCheck("check:grounding", again=False),
                GroundCheck("check:grounding-again", again=True), AnswerGrounding()):
     registry.register(_stage)

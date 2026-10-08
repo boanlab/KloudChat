@@ -154,10 +154,48 @@ class Message(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
+class PipelineRun(SQLModel, table=True):
+    """One pass of a pipeline over a turn: its stage records and, after each stage, what
+    that stage changed on the work bundle — so the run can be resumed or run again from any
+    recorded stage in a later request.
+
+    Kept apart from `messages`: the snapshots are the turn's working state (material,
+    sections at every step) and are read only by a rerun, never with the transcript."""
+
+    __tablename__ = "pipeline_runs"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    #: Goes with its session (the database cascades a session's delete).
+    session_id: str = Field(foreign_key="sessions.id", index=True, ondelete="CASCADE")
+    user_id: str = Field(foreign_key="users.id", index=True)
+    #: The assistant message that settled it, and the artifact (and version) it wrote.
+    message_id: str | None = Field(default=None)
+    artifact_id: str | None = Field(default=None)
+    artifact_version: int | None = Field(default=None)
+    #: The run this one reran (or the waiting run it answered), and from which stage.
+    parent_id: str | None = Field(default=None)
+    from_stage: str | None = Field(default=None)
+    #: `app/pipelines/*.toml` name and flow (`write`, `revise`, `pre` …).
+    pipeline: str = Field(default="")
+    flow: str = Field(default="")
+    #: running · done · stopped · failed · waiting · cancelled
+    status: str = Field(default="running")
+    #: What the turn ran with, beyond the bundle (model, template, project, routing …).
+    params: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: `StepRecord.as_dict` per stage, in order.
+    stages: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    #: `{"start": {field: value}, "after": [{"stage", "fields": {field: value}}]}`, encoded
+    #: by `app.pipeline.runs` (changed fields only after each stage).
+    snapshots: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
+
+
 __all__ = [
     "ChatSession",
     "Message",
     "MessageRating",
+    "PipelineRun",
     "Role",
     "RoutingMode",
     "SessionKind",

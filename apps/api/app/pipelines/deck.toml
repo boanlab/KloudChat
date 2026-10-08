@@ -1,5 +1,10 @@
-# A deck on screen, revised by a follow-up: routed, its slides rewritten. Decks are written
-# by `deck.py` itself; only the revision runs here.
+# A deck: written by `deck.py` in one pass (`make`: it plans and offers, or writes the
+# approved outline), carried slides put back on a restructure, stored. A follow-up revises
+# it: routed, its slides rewritten.
 
 name = "deck"
-revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+make = ["deck-write", "deck-carry", "deck-save"]
+revise = [
+    "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
+    "revise-save",
+]

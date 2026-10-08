@@ -538,9 +538,10 @@ def test_the_revision_widens_settles_and_aligns():
 
     from app.pipeline import registry, revise_stages
 
-    # The revise flow: widened and settled again, then rewritten, then aligned.
+    # The revise flow: loaded, widened and settled again, then rewritten, aligned, stored.
     flow = list(registry.for_report("comparison").flow("revise"))
-    assert flow == ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+    assert flow == ["revise-load", "revise-route", "revise-widen", "revise-rewrite",
+                    "consistency", "revise-save"]
     widen = inspect.getsource(revise_stages.Widen.run)
     assert widen.find("consistency.dependents(") < widen.find("consistency.settle_again(")
     rewrite = inspect.getsource(revise_stages.Rewrite.run)

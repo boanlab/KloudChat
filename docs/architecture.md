@@ -759,28 +759,32 @@ artifact has the same per-block rewrite.
 
 ### Pipelines
 
-The report writer, a chat answer's finish, a revision and the hand-over of files are
-pipelines: an ordered list of named **stages** that read and write one typed **work
+The report writer, the deck and page writers, a model comparison, a chat answer's finish, a
+revision and the hand-over of files are pipelines: an ordered list of named **stages** that read and write one typed **work
 bundle**. A fix to one step lives in one stage with its own tests; every stage of every turn
 is recorded, run or not; and which stages a document runs is data, not an if-chain.
 
 **Where things are.** `app/pipeline/` holds the machinery: `bundle.py` (the work bundle),
 `stage.py` (the contract), `runner.py`, `registry.py`, and the stages by flow —
 `report_stages.py`, `check_stages.py`, `chat_stages.py`, `revise_stages.py`,
-`export_stages.py`. `app/pipelines/*.toml` declares the pipelines, one file per shipped
+`export_stages.py`, `save_stages.py` (the `io` stages that load and store a document),
+`make_stages.py` (deck, page, comparison), `route_stages.py`; `runs.py` keeps a run across
+requests, `marks.py` the spans a document's reader should look at, `labels.py` the stages'
+Korean names. `app/pipelines/*.toml` declares the pipelines, one file per shipped
 agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `career-docs`,
 `data-analysis`) plus the defaults `report` (any format no file claims), `dated`
-(`event_plan`, `result_report`), `chat` and `deck`.
+(`event_plan`, `result_report`), `chat`, `deck`, `page` and `compare`.
 
 **A pipeline file** names the formats and agents it serves and its flows:
 
 | key | what it lists | who runs it |
 |---|---|---|
-| `pre` | stages before the first draft (`check:gaps`) | `sessions._gaps` |
+| `pre` | stages before the first draft (`check:gaps`, `gap-card`) | `sessions._gaps` |
 | `plan` | the planning pass, ending with the offered outline | `report.write` without an approved plan |
 | `write` | the writing pass on the approved outline | `report.write` |
 | `finish` | a chat answer after the agent loop | `sessions._run_turn` |
-| `revise` | a follow-up applied to the document on screen | `sessions._revise_document` |
+| `revise` | a follow-up applied to the document on screen, `revise-load` … `revise-save` | `sessions._revise_document` |
+| `make` | a one-pass writer: deck, page, comparison | `sessions._make_pass`, `_run_comparison` |
 | `prepass` | the pre-pass steps (`report_checks.PREPASS_STEPS`) | `report_checks.prepare` |
 | `checks` | the format's code checks (`report_checks.CHECK_FAMILIES`) | `report_checks.checks` |
 | `judged` | the format's judged checks (`report_checks.JUDGED_CHECKS`) | `report_checks.model_checks` |
@@ -814,10 +818,39 @@ move) or `cancelled` (the turn was closed under it); the stages after a stop are
 as skipped. The records go to the log (`pipeline minutes.write: research:done,
 calc:skipped(nothing to compute…), …`), onto the bundle, and to `report.write(trace=[…])`.
 `run(start="verify")` resumes from a stage on a bundle the earlier ones filled.
-`StepRecord.wire()` is the record as a surface `step` (category `pipeline`);
-`KLOUDCHAT_PIPELINE_STEPS=1` sends them, off by default so the surface shows what it
-always showed. `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
+`StepRecord.wire()` is the record as a surface `step` (category `pipeline`, the whole record
+under `stage`: Korean label, summary, evidence, times, attempt); `KLOUDCHAT_PIPELINE_STEPS`
+sends them, on unless set to `0` (the test suite sets `0`; its recorded streams predate
+the records, and the replay test holds the stream with records to the same events plus one
+record per stage). `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
 refuses a stage that changed a field it did not declare.
+
+**Runs are kept.** A writing pass (report `write`, `revise`, a deck's or page's `make` on an
+approved outline) runs with a `runs.Recorder`: the bundle encoded before the first stage and,
+after each stage, the fields it changed. The run is a `PipelineRun` row (migration 0053;
+apart from `messages`, which the transcript reads whole) and a compact copy of its records
+on the message it settled (`routing.run`). `runs.restore` gives the bundle as it stood
+before any recorded stage; `POST /sessions/{id}/runs/{run}/rerun {fromStage, answers}` runs
+that stage and those after it again — the earlier ones are not run and their records are
+carried — and the flow's own save stage stores the result as a new version of the artifact,
+billed like a turn. A value that is a function (the verify stage's checks) is not encoded;
+the stage that built it registers a rebuild (`runs.REBUILT`). `tests/test_pipeline_replay.py`
+reruns every recorded report and revision from each of its stages and requires the same
+document, with no model call from the stages before the restart.
+
+**The gap card is a stage.** `pre` ends with `gap-card`, which raises `Wait`: the run is
+kept as `waiting`, the card's questions (fact, label, why, placeholder) ride on the pending
+turn with its run id, and the answer (or 「있는 자료로 진행」, which leaves each fact its
+bracket blank) closes it; the writing pass that follows names it as its parent.
+
+**Persistence and routing are stages.** `report-save`, `revise-load`, `revise-save`,
+`deck-save`, `page-save` and `compare-save` are `io` stages that reach the database and the
+bill through the router module, so tests that replace `sessions.SessionLocal` reach them.
+`send_message` decides where a turn goes with the `route` stage (page, file hand-over,
+revision, report, deck, chat); its record opens the stream. A stored report carries
+`data.marks` (placeholders, values the grounding check blanked with what stood there, what
+the verify stage left), found again in the current body by `GET /artifacts/{id}/marks`.
+`GET /pipelines`, `/pipelines/{name}` and `/agents/{id}/pipeline` read the definitions.
 
 **Check skills are stages of the `check` kind.** A check skill's SKILL.md names its stage:
 `pre` checks run as `check:gaps` (one question card before the first draft); `post` checks

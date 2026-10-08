@@ -322,6 +322,38 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
                 put(wanted["회의명"], seg)
             elif "장소" in wanted and _PLACE_WORD.search(seg):
                 put(wanted["장소"], seg)
+    listed = re.search(r"참석|출석|참가자|참여자", text or "")
+    if "참석자" in wanted and wanted["참석자"] not in out and not listed:
+        # A memo without an attendance line: the people it names (speakers, owners) are listed,
+        # marked as read from the material.
+        if len(people := named_people(text)) >= 2:
+            put(wanted["참석자"], ", ".join(people[:8]) + NAMED_NOTE)
+    return out
+
+
+#: What follows attendees read from the names in a memo, not from an attendance line.
+NAMED_NOTE = " (자료에 나온 이름 기준)"
+
+#: Who a memo names: 「포스터 → 지민」, 「… 하자 (회장)」, 「수아가 하기로」
+#: (gap-check reads the same).
+_NAMED = (
+    re.compile(r"(?:→|->|=>)\s{0,2}([가-힣]{2,4}|[가-힣]○○)"
+               r"(?=\s{0,2}(?:[,(]|$)|(?:이|가|님|씨)?\s{0,2}(?:담당|맡))", re.M),
+    re.compile(r"\((회장|부회장|위원장|부위원장|팀장|총무|간사|대표|사회자?|의장)\)\s{0,2}$",
+               re.M),
+    re.compile(r"(?<![가-힣])([가-힣]{2,3})(?:이|가)\s{0,2}(?:하기로|맡기로|맡는|담당하기로)"),
+)
+
+
+def named_people(text: str) -> list[str]:
+    """Names and roles the memo itself puts on someone, in order of first mention."""
+    found: list[tuple[int, str]] = []
+    for pattern in _NAMED:
+        found += [(m.start(1), m.group(1)) for m in pattern.finditer(text or "")]
+    out: list[str] = []
+    for _, name in sorted(found):
+        if name not in out and name not in ("누가", "누구"):
+            out.append(name)
     return out
 
 
@@ -364,8 +396,9 @@ def title_block(
         text = " ".join(str(value or "").split())[:80]
         if not text:
             return ""
-        # Every token of the value must appear in the request.
-        tokens = [t for t in re.split(r"[\s,·/()]+", text) if t]
+        # Every token of the value must appear in the request (the attendees' provenance note
+        # is the code's own words).
+        tokens = [t for t in re.split(r"[\s,·/()]+", text.removesuffix(NAMED_NOTE)) if t]
         return text if all(re.sub(r"\s+", "", t) in squeezed for t in tokens) else ""
 
     fields = [[name, grounded((read or {}).get(name)) or grounded(raw.get(name))]

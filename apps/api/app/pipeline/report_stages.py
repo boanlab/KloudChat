@@ -25,7 +25,7 @@ import httpx
 from app.core import logs
 from app.core.config import settings
 from app.models.chat import SessionKind
-from app.pipeline import registry
+from app.pipeline import registry, runs
 from app.pipeline.bundle import Bundle, Part
 from app.pipeline.stage import Base, Context, Stop
 from app.services import (
@@ -1287,6 +1287,39 @@ class TitleBlock(Base):
 # ── checks: find, repair, find again ─────────────────────────────────────
 
 
+def checks_of(bundle: Bundle) -> tuple[list, list]:
+    """The verify stage's checks and the format's code checks, from the bundle: functions,
+    so a run kept across requests builds them again (`runs.REBUILT`)."""
+    report, req = _report(), bundle.request
+    settled, prepass = bundle.computed.settled, bundle.computed.prepass
+    judge = req.judge
+    run_checks = list(checks.CODE_CHECKS)
+    # The judge reads the figure sentences only when it is not the writer, which
+    # over-flags its own sentences.
+    if req.outline_model and settled:
+        run_checks.append(checks.judge_figures(req.outline_model, req.api_key))
+    # The writer's knowledge is checked against the web, and every assessment item is
+    # worked through by the judge: what no rule can find.
+    if bundle.material.web_search:
+        run_checks.append(fact_check.web_facts(judge, req.api_key))
+    run_checks.append(fact_check.solve_questions(judge, req.api_key))
+    # The format's code checks join the same find → repair → find again.
+    format_checks = report_checks.checks(prepass)
+    run_checks.extend(format_checks)
+    # The format's judged checks: one judge call each, shown to the reader, never
+    # rewritten.
+    run_checks.extend(report_checks.model_checks(
+        prepass, complete=report._complete, judge=judge, api_key=req.api_key))
+    return run_checks, format_checks
+
+
+def _rebuild_checks(bundle: Bundle) -> None:
+    bundle.findings.checks, bundle.findings.format_checks = checks_of(bundle)
+
+
+runs.REBUILT["checks-plan"] = _rebuild_checks
+
+
 class ChecksPlan(Base):
     """The checks the verify stage runs, the check skills attached, the settled rows mended."""
 
@@ -1298,32 +1331,14 @@ class ChecksPlan(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         report, req, found = _report(), bundle.request, bundle.findings
-        settled, prepass = bundle.computed.settled, bundle.computed.prepass
+        settled = bundle.computed.settled
         bundle.document.sections = [
             sec if report._REFERENCE_HEADING.search(str(sec.get("heading") or ""))
             else {**sec, "content": key_figures.mend_rows(str(sec.get("content") or ""),
                                                           settled)}
             for sec in bundle.document.sections
         ]
-        judge = req.judge
-        run_checks = list(checks.CODE_CHECKS)
-        # The judge reads the figure sentences only when it is not the writer, which
-        # over-flags its own sentences.
-        if req.outline_model and settled:
-            run_checks.append(checks.judge_figures(req.outline_model, req.api_key))
-        # The writer's knowledge is checked against the web, and every assessment item is
-        # worked through by the judge: what no rule can find.
-        if bundle.material.web_search:
-            run_checks.append(fact_check.web_facts(judge, req.api_key))
-        run_checks.append(fact_check.solve_questions(judge, req.api_key))
-        # The format's code checks join the same find → repair → find again.
-        found.format_checks = report_checks.checks(prepass)
-        run_checks.extend(found.format_checks)
-        # The format's judged checks: one judge call each, shown to the reader, never
-        # rewritten.
-        run_checks.extend(report_checks.model_checks(
-            prepass, complete=report._complete, judge=judge, api_key=req.api_key))
-        found.checks = run_checks
+        found.checks, found.format_checks = checks_of(bundle)
         if found.client_problem:
             found.before.append("client_name")
         # Every value the document states traces to what was given or computed, else it is a

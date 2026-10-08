@@ -20,6 +20,8 @@ from app.routers import (
     keys,
     llm,
     models,
+    pipelines,
+    runs,
     sessions,
     shares,
     transcriptions,
@@ -94,6 +96,8 @@ app.include_router(llm.router)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(models.router, prefix=settings.api_prefix)
 app.include_router(sessions.router, prefix=settings.api_prefix)
+app.include_router(runs.router, prefix=settings.api_prefix)
+app.include_router(pipelines.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)
 app.include_router(connectors.router, prefix=settings.api_prefix)
 app.include_router(jobs.router, prefix=settings.api_prefix)

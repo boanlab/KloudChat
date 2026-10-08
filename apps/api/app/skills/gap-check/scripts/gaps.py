@@ -68,12 +68,34 @@ def _meeting_date(request: str, material: str, computed: dict) -> tuple[bool, st
     return False, ""
 
 
+#: Who a memo names: 「포스터 → 지민」, 「… 하자 (회장)」, 「수아가 하기로」. The same reading as
+#: `doc_formats.named_people`, which writes them into the head's 참석자 field.
+_NAMED = (
+    re.compile(r"(?:→|->|=>)\s{0,2}([가-힣]{2,4}|[가-힣]○○)(?=\s{0,2}(?:[,(]|$)|(?:이|가|님|씨)?\s{0,2}(?:담당|맡))", re.M),
+    re.compile(r"\((회장|부회장|위원장|부위원장|팀장|총무|간사|대표|사회자?|의장)\)\s{0,2}$", re.M),
+    re.compile(r"(?<![가-힣])([가-힣]{2,3})(?:이|가)\s{0,2}(?:하기로|맡기로|맡는|담당하기로)"),
+)
+
+
+def named_people(text: str) -> list[str]:
+    """Names and roles the memo itself puts on someone, in order of first mention."""
+    found: list[tuple[int, str]] = []
+    for pattern in _NAMED:
+        found += [(m.start(1), m.group(1)) for m in pattern.finditer(text or "")]
+    out: list[str] = []
+    for _, name in sorted(found):
+        if name not in out and name not in ("누가", "누구"):
+            out.append(name)
+    return out
+
+
 def _attendees(request: str, material: str, computed: dict) -> tuple[bool, str]:
     text = f"{request}\n{material}"
     if re.search(r"참석|참여자|출석|참가자|attend", text, re.I):
         return True, ""
     speakers = {m.group(1) for m in re.finditer(r"^\s{0,4}([가-힣A-Za-z○]{1,10})\s{0,2}[:：]\s", text, re.M)}
-    return len(speakers) >= 2, ""
+    # People the memo names (speakers, owners) stand in for a list: the head says so.
+    return len(speakers) >= 2 or len(named_people(text)) >= 2, ""
 
 
 def _action_dues(request: str, material: str, computed: dict) -> tuple[bool, str]:

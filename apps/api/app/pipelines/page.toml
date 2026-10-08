@@ -1,0 +1,5 @@
+# An HTML page under a non-document 서식: written by `page.py` in one pass (`make`: it plans
+# and offers, or writes the approved outline), then stored.
+
+name = "page"
+make = ["page-write", "page-save"]

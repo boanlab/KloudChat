@@ -14,7 +14,8 @@ and writes (`Stage.reads` / `Stage.writes`, dotted: `computed.settled`):
 - `findings` — what the checks found before and after their repair, the quality record;
 - `files` — files handed out (exports);
 - `steps` — one `StepRecord` per stage, written by the runner;
-- `usage` — tokens spent, by the writer and by the planner.
+- `usage` — tokens spent, by the writer and by the planner;
+- `wire` — the last event of each kind sent, kept by the runner.
 """
 
 from __future__ import annotations
@@ -83,6 +84,11 @@ class Request:
     # Handing over files reads these.
     user_id: str = ""
     export_formats: list[str] = field(default_factory=list)
+    #: What the router settles the turn with and the stages never change: the model
+    #: entries (`model`, `outline_model`), `project_id`, `routing`, `skills_event`,
+    #: `context_steps`, `carry_from`, `carry_note`, `export_after`, `run_id`. Read by the
+    #: `io` stages that store the result.
+    turn: dict[str, Any] = field(default_factory=dict)
 
     @property
     def judge(self) -> str:
@@ -149,6 +155,8 @@ class Plan:
     revision: Any = None
     order: list[int] = field(default_factory=list)
     widened: list[int] = field(default_factory=list)
+    #: The turn's target (`route`): page, handover, revise, report, deck or chat.
+    route: str = ""
 
 
 @dataclass(slots=True)
@@ -175,6 +183,10 @@ class Document:
     artifact: Any = None
     handed: dict | None = None
     reply: str = ""
+    #: A revision: what `revise-load` read (the request, the title, the kind, the files).
+    loaded: dict[str, Any] | None = None
+    #: What an `io` save stage stored: `{"artifactId", "credits", "messageId", "version"}`.
+    saved: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -200,6 +212,9 @@ class Findings:
     quality: list[dict] = field(default_factory=list)
     #: What the `pre` checks found the material does not give.
     gaps: list[dict] = field(default_factory=list)
+    #: The card put up before writing (`gap-card`): each question with its fact, label,
+    #: why, placeholder.
+    questions: list[dict] = field(default_factory=list)
     #: A revision's consistency step (`consistency.align`), when it ran.
     aligned: dict | None = None
 
@@ -217,6 +232,9 @@ class Bundle:
     files: list[dict[str, Any]] = field(default_factory=list)
     steps: list[StepRecord] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=dict)
+    #: The last event of each kind the stages sent (`titleBlock`, `sources`, `research`,
+    #: `title`), kept by the runner for the stage that stores the document.
+    wire: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     #: Fields the runner's strict mode watches.
     FIELDS = (
@@ -227,15 +245,16 @@ class Bundle:
         "answers",
         "computed.values", "computed.settled", "computed.conflicts", "computed.prepass",
         "plan.title", "plan.headings", "plan.frame", "plan.unverified", "plan.figures",
-        "plan.proposal", "plan.revision", "plan.order", "plan.widened",
+        "plan.proposal", "plan.revision", "plan.order", "plan.widened", "plan.route",
         "document.sections", "document.drafted", "document.written", "document.long_form",
         "document.head_block", "document.streamed", "document.answer", "document.kept_steps",
         "document.length_check", "document.data", "document.changed", "document.by_hand",
-        "document.handed", "document.reply",
+        "document.handed", "document.reply", "document.loaded", "document.saved",
         "findings.checks", "findings.format_checks", "findings.before", "findings.after",
         "findings.added_before", "findings.added_after", "findings.still", "findings.traced",
         "findings.pages_note", "findings.client_problem", "findings.head_fixed",
         "findings.check_keys", "findings.quality", "findings.gaps", "findings.aligned",
+        "findings.questions",
         "files",
     )
 

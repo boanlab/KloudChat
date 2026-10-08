@@ -4,15 +4,19 @@
 name = "minutes"
 formats = ["minutes"]
 agents = ["minutes"]
-pre = ["check:gaps"]
+pre = ["check:gaps", "gap-card"]
 plan = ["research", "material", "outline"]
 write = [
     "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
     "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
     "checks-plan", "minutes-repair", "check:grounding", "format-find", "verify",
     "minutes-reground", "check:grounding-again", "format-amend", "format-step", "quality",
+    "report-save",
 ]
-revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+revise = [
+    "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
+    "revise-save",
+]
 prepass = ["date-calc"]
 checks = ["lead-dates", "minutes-rows", "material-blanks"]
 judged = ["judge-owners"]

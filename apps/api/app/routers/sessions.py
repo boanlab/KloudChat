@@ -19,6 +19,7 @@ import logging
 import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, timedelta
@@ -39,6 +40,7 @@ from app.core.deps import CurrentUser, DbSession, client_ip
 from app.models.chat import (
     ChatSession,
     Message,
+    PipelineRun,
     Role,
     RoutingMode,
     SessionKind,
@@ -63,10 +65,14 @@ from app.models.workspace import (
 from app.models.workspace import Visibility as SkillVisibility
 from app.pipeline import chat_stages, export_stages, revise_stages
 from app.pipeline import registry as pipeline_registry
+from app.pipeline import runs as pipeline_runs
 from app.pipeline.bundle import Bundle as PipelineBundle
 from app.pipeline.bundle import Request as PipelineRequest
 from app.pipeline.runner import Runner as PipelineRunner
+from app.pipeline.runner import records_default as pipeline_records_on
 from app.pipeline.stage import Context as PipelineContext
+from app.pipeline.stage import StepRecord
+from app.pipeline.stage import Stop as PipelineStop
 from app.routers.workspace import (
     forget_session_files,
     reindex_session_files,
@@ -2851,6 +2857,10 @@ async def _settle_plan_turn(
     carry_from: str | None = None,
     #: The restructure instruction itself; parts it names are written fresh.
     carry_note: str = "",
+    #: The planning pass's stage records (`_run_summary`), kept on the message.
+    run: dict | None = None,
+    #: The run a card waited on before this pass, carried to the writing pass.
+    run_parent: str | None = None,
 ) -> None:
     """Stores a turn that planned or asked, and charges for the planning call.
 
@@ -2878,6 +2888,7 @@ async def _settle_plan_turn(
             # The approved outline is carried through the figure question.
             **(figures or {}),
             **({"carryFrom": carry_from, "carryNote": carry_note} if carry_from else {}),
+            **({"runId": run_parent} if run_parent and not questions else {}),
         }
         db.add(
             Message(
@@ -2892,6 +2903,7 @@ async def _settle_plan_turn(
                 ),
                 usage={**usage, "credits": credits},
                 model=model["id"],
+                **({"routing": {"run": run}} if run else {}),
             )
         )
         settle(
@@ -2985,15 +2997,6 @@ def _today() -> dt.date:
     return dt.datetime.now(ZoneInfo(settings.timezone)).date()
 
 
-def _just_asked(history: list[Message], question: grounding.Question, attachments) -> bool:
-    """Whether the last answer in this session was this same card over the same files."""
-    last = next((m for m in reversed(history) if m.role is Role.assistant), None)
-    card = ((last.routing or {}).get("askedCard") or {}) if last is not None else {}
-    return question.id in (card.get("ids") or []) and sorted(
-        card.get("attachments") or []
-    ) == sorted(attachments or [])
-
-
 async def _ask_before_writing(
     db: DbSession,
     session: ChatSession,
@@ -3001,15 +3004,21 @@ async def _ask_before_writing(
     request: str,
     typed: str,
     attachments: list[str],
-    questions: list[grounding.Question],
+    questions: list[dict],
+    pre: PipelineBundle | None = None,
 ) -> JSONResponse:
-    """Persist a clarification question without generating a document."""
+    """Persist a clarification question without generating a document.
+
+    The card is the `pre` run's `gap-card` stage, waiting: the run is kept, and its id rides
+    on the pending turn so the pass the answers start is filed under it."""
+    run_id = uuid4().hex
     session.pending = {
         "stage": "clarify",
         "request": request,
         "attachments": attachments,
-        "questions": [q.wire() for q in questions],
+        "questions": questions,
         "answers": {},
+        "runId": run_id,
     }
     session.updated_at = utcnow()
     db.add(session)
@@ -3022,37 +3031,109 @@ async def _ask_before_writing(
         )
     )
     said = "시작하기 전에 확인할 것이 있습니다."
-    db.add(
-        Message(
-            session_id=session.id,
-            role=Role.assistant,
-            content=said,
-            # Read by `_just_asked`, so the same card is never put up twice in a row.
-            routing={
-                "askedCard": {
-                    "ids": [q.id for q in questions],
-                    "attachments": sorted(attachments),
-                }
+    pipeline = str((pre.request.turn.get("pipeline") if pre is not None else "") or "")
+    summary = (_run_summary(pre, pipeline, "pre", run_id=run_id)
+               if pre is not None else None)
+    for row in (summary or {}).get("stages") or []:
+        row["runId"], row["id"] = run_id, f"{run_id}:{row['name']}:{row['attempt']}"
+    assistant = Message(
+        session_id=session.id,
+        role=Role.assistant,
+        content=said,
+        # Read by `_last_card`, so the same card is never put up twice in a row.
+        routing={
+            "askedCard": {
+                "ids": [q["id"] for q in questions],
+                "attachments": sorted(attachments),
             },
-        )
+            **({"run": summary} if summary else {}),
+        },
     )
+    db.add(assistant)
     await db.commit()
+    waiting = next((r for r in (pre.steps if pre is not None else [])
+                    if r.status == "waiting"), None)
+    if pre is not None:
+        await _persist_run(pre, _waiting_recorder(pre, run_id), session_id=session.id,
+                           user_id=session.user_id, saved={"messageId": assistant.id},
+                           pipeline=pipeline, flow="pre")
     # The sentence travels with the questions so the in-flight bubble is not empty.
-    return JSONResponse({"pending": session.pending, "message": said})
+    return JSONResponse({
+        "pending": session.pending, "message": said, "runId": run_id,
+        **({"stage": {**waiting.stage_wire(), "runId": run_id,
+                      "id": f"{run_id}:{waiting.stage}:{waiting.attempt}"}}
+           if waiting is not None else {}),
+    })
+
+
+def _waiting_recorder(pre: PipelineBundle, run_id: str) -> pipeline_runs.Recorder:
+    """A recorder for a `pre` run that is kept but never rerun: records, no snapshots."""
+    recorder = pipeline_runs.Recorder(run_id=run_id)
+    for record in pre.steps:
+        record.run_id = run_id
+    return recorder
+
+
+async def _close_waiting_run(run_id: str, *, answers: dict[str, str], as_is: bool,
+                             blanks: int) -> None:
+    """The card answered: its `gap-card` record done, saying how (best effort)."""
+    try:
+        async with SessionLocal() as db:
+            run = await db.get(PipelineRun, run_id)
+            if run is None or run.status != "waiting":
+                return
+            given = sum(1 for v in answers.values() if str(v or "").strip())
+            said = (f"있는 자료로 진행 · 빈칸 {blanks}개" if as_is else f"답 {given}개")
+            rows = []
+            for row in run.stages or []:
+                if row.get("status") == "waiting":
+                    row = {**row, "status": "done", "summary": said, "reason": ""}
+                rows.append(row)
+            run.stages = rows
+            run.status = "done"
+            run.updated_at = utcnow()
+            db.add(run)
+            # The card's message carries the compact run; a reloaded transcript shows it answered.
+            message = await db.get(Message, run.message_id) if run.message_id else None
+            compact = (message.routing or {}).get("run") if message is not None else None
+            if isinstance(compact, dict) and compact.get("id") == run_id:
+                stages = [{**row, "status": "done", "summary": said, "reason": ""}
+                          if row.get("status") == "waiting" else row
+                          for row in compact.get("stages") or []]
+                message.routing = {**message.routing,
+                                   "run": {**compact, "status": "done", "stages": stages}}
+                db.add(message)
+            await db.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("waiting run %s not closed", run_id)
 
 
 async def _gaps(keys: tuple[str, ...], *, facts: str, request: str, material: str,
-                first_draft: bool, doc_format: str | None, agent_key: str | None) -> list[dict]:
-    """The `pre` flow of the turn's pipeline (`check:gaps`): what the format needs and the
-    material does not give."""
+                first_draft: bool, doc_format: str | None, agent_key: str | None,
+                card: dict | None = None) -> PipelineBundle:
+    """The `pre` flow of the turn's pipeline: what the format needs and the material does
+    not give (`check:gaps`), and the card it puts up (`gap-card`, which waits). The bundle
+    comes back with `findings.gaps`, `findings.questions` and the stage records."""
     bundle = PipelineBundle(request=PipelineRequest(
         text=request, model="", api_key="", check_keys=tuple(keys), check_facts=facts,
-        check_material=material, today=_today(), first_draft=first_draft))
+        check_material=material, today=_today(), first_draft=first_draft,
+        turn={"card": card} if card is not None else {}))
     pipe = (pipeline_registry.for_report(doc_format) if doc_format
             else pipeline_registry.for_chat(agent_key))
-    async for _event in PipelineRunner(pipe.stages("pre"), name=f"{pipe.name}.pre").run(bundle):
+    runner = PipelineRunner(pipe.stages("pre"), name=f"{pipe.name}.pre", emit_records=False)
+    async for _event in runner.run(bundle):
         pass
-    return bundle.findings.gaps
+    bundle.request.turn["pipeline"] = pipe.name
+    return bundle
+
+
+def _last_card(history: list[Message], attachments) -> list[str]:
+    """The question ids of the card the last answer put up, when over the same files."""
+    last = next((m for m in reversed(history) if m.role is Role.assistant), None)
+    card = ((last.routing or {}).get("askedCard") or {}) if last is not None else {}
+    if sorted(card.get("attachments") or []) != sorted(attachments or []):
+        return []
+    return [str(x) for x in card.get("ids") or []]
 
 
 def _freshness_routing(reason: str) -> dict[str, Any]:
@@ -3468,26 +3549,31 @@ async def send_message(
     facts = check_skills.fact_set(workspace.doc_format, agent_key)
     first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
-    missing = await _gaps(check_keys, facts=facts, request=content,
-                          material="\n".join(workspace.untrusted), first_draft=first_draft,
-                          doc_format=workspace.doc_format, agent_key=agent_key)
-    if (_plans_first(session) or missing) and (not pending or reply_brings_files):
-        questions = grounding.questions_for(short)
-        # Only when no file arrived at all.
-        if not questions and (gap := grounding.missing_attachment(content, workspace.attachments)):
-            questions = [gap]
-        questions += check_skills.questions(missing)
-        # The card just answered is not put up again, whatever the reply said.
-        questions = [q for q in questions if not _just_asked(history, q, payload.attachments)][:5]
-        if questions:
-            return await _ask_before_writing(
-                db,
-                session,
-                request=content,
-                typed=typed_content,
-                attachments=list(payload.attachments or []),
-                questions=questions,
-            )
+    # The card's file questions: what did not arrive, or the attachment the request names.
+    file_questions = grounding.questions_for(short)
+    if not file_questions and (
+            gap := grounding.missing_attachment(content, workspace.attachments)):
+        file_questions = [gap]
+    pre = await _gaps(check_keys, facts=facts, request=content,
+                      material="\n".join(workspace.untrusted), first_draft=first_draft,
+                      doc_format=workspace.doc_format, agent_key=agent_key, card={
+                          "plans_first": _plans_first(session),
+                          "may_ask": not pending or reply_brings_files,
+                          "files": [q.wire() for q in file_questions],
+                          # The card just answered is not put up again, whatever the reply said.
+                          "asked": _last_card(history, payload.attachments),
+                      })
+    missing = pre.findings.gaps
+    if pre.findings.questions:
+        return await _ask_before_writing(
+            db,
+            session,
+            request=content,
+            typed=typed_content,
+            attachments=list(payload.attachments or []),
+            questions=pre.findings.questions,
+            pre=pre,
+        )
     if missing and (blanks := check_skills.rule(check_keys, missing)):
         # Going on without the facts the card asked for: each stays a bracket blank.
         content = _with_condition(content, blanks)
@@ -3910,6 +3996,10 @@ async def send_message(
         agent_row.runs += 1
         db.add(agent_row)
     await db.commit()
+    if pending.get("stage") == "clarify" and pending.get("runId"):
+        # The card is answered (or passed over): the run that waited on it is closed.
+        await _close_waiting_run(str(pending["runId"]), answers=dict(pending.get("answers") or {}),
+                                 as_is=proceed_as_is, blanks=len(missing))
 
     # Also issues the key to an account provisioned during a proxy outage.
     await litellm_service.ensure_key(user)
@@ -3945,9 +4035,23 @@ async def send_message(
     )
 
     render_template = design_templates.get(session.render_template_id)
-    # Document and deck templates go through the report and deck writers; only
-    # other template kinds use the block writer.
-    if render_template is not None and render_template.kind not in ("document", "deck"):
+    # See `revising` above.
+    #: 「좋아, PDF로 줘」 asks for the document as a file, not for an edit; 「견적 고치고
+    #: PDF로」 revises first and hands the file over after.
+    asked_files = revise.export_request(typed_content) if revising else None
+    # Which pipeline the turn goes to (the `route` stage): a page, a file hand-over, a
+    # revision, a report, a deck or a chat answer.
+    route, route_record = await _route_turn({
+        "kind": session.kind.value,
+        # Document and deck templates go through the report and deck writers; only
+        # other template kinds use the block writer.
+        "page_template": bool(
+            render_template is not None and render_template.kind not in ("document", "deck")),
+        "revising": revising,
+        "files_only": asked_files is not None and not asked_files[1],
+    })
+    _ROUTE.set(route_record)
+    if route == "page":
         return StreamingResponse(
             _survive_disconnect(
                 _run_page(
@@ -3992,16 +4096,7 @@ async def send_message(
             },
         )
 
-    # See `revising` above.
-    #: 「좋아, PDF로 줘」 asks for the document as a file, not for an edit; 「견적 고치고
-    #: PDF로」 revises first and hands the file over after.
-    asked_files = revise.export_request(typed_content) if revising else None
-    if (
-        revising
-        and asked_files is not None
-        and not asked_files[1]
-        and session.kind in (SessionKind.report, SessionKind.slides)
-    ):
+    if route == "handover":
         return StreamingResponse(
             _survive_disconnect(
                 _hand_over_document(
@@ -4020,7 +4115,7 @@ async def send_message(
         )
     if asked_files is not None:
         content = revise.without_export(content)
-    if revising and session.kind in (SessionKind.report, SessionKind.slides):
+    if route == "revise":
         # Reading the instruction is a judge's job: the local planner does it, so an
         # external writer's reasoning budget or output habits never decide the route.
         planner = outline_model or _local_planner(
@@ -4047,6 +4142,7 @@ async def send_message(
                 untrusted_context = [*untrusted_context, revise.document_block(skeleton, texts)]
             carry_from = session.artifact_id
             carry_note = f"{typed_content} {revision.note}"
+            route_record.summary = "구조 변경 → 다시 계획"
         else:
             return StreamingResponse(
                 _survive_disconnect(
@@ -4074,6 +4170,8 @@ async def send_message(
         return StreamingResponse(
             _survive_disconnect(
                 _run_report(
+                    # The run the card waited on, when this pass follows it.
+                    parent_run_id=str(pending.get("runId") or "") or None,
                     may_ask=not proceed_as_is and not _brings_material(content),
                     figures_plan=approved_figures,
                     image_model=image_model,
@@ -4340,6 +4438,40 @@ async def send_message(
     )
 
 
+async def _route_turn(facts: dict[str, Any]) -> tuple[str, StepRecord]:
+    """The `route` stage over what the router settled: the target and its record."""
+    from app.pipeline.route_stages import TARGETS
+
+    work = PipelineBundle(request=PipelineRequest(text="", model="", api_key="",
+                                                  turn={"route": facts}))
+    async for _event in PipelineRunner([pipeline_registry.stage("route")], name="route",
+                                       emit_records=False).run(work):
+        pass
+    record = work.steps[-1]
+    record.summary = TARGETS.get(work.plan.route, work.plan.route)
+    return work.plan.route, record
+
+
+#: The record of the `route` stage of the turn being answered: `_survive_disconnect` shows
+#: it at the head of the stream it wraps (set by `send_message` before it dispatches).
+_ROUTE: ContextVar[StepRecord | None] = ContextVar("turn_route", default=None)
+
+
+async def _routed(record: StepRecord, events: AsyncIterator[str]) -> AsyncIterator[str]:
+    if not pipeline_records_on():
+        async for chunk in events:
+            yield chunk
+        return
+    shown = False
+    async for chunk in events:
+        if not shown and '"privacy_route"' not in chunk[:40]:
+            shown = True
+            yield chat_service.sse(record.wire())
+        yield chunk
+    if not shown:
+        yield chat_service.sse(record.wire())
+
+
 #: Active cancellation signals grouped by session, local to this process.
 #: `stop_turn` also broadcasts over Postgres (`services.stop_signal`) so a
 #: request landing on a different replica still reaches whichever process is
@@ -4456,7 +4588,11 @@ async def _heartbeat(events: AsyncIterator[str]) -> AsyncIterator[str]:
 
 
 def _survive_disconnect(events: AsyncIterator[str]) -> AsyncIterator[str]:
-    """A turn's response: finishes behind a departed reader and stays alive while silent."""
+    """A turn's response: finishes behind a departed reader and stays alive while silent.
+    A turn `send_message` routed shows its route record first (`_ROUTE`)."""
+    if (record := _ROUTE.get()) is not None:
+        _ROUTE.set(None)
+        events = _routed(record, events)
     return _heartbeat(_detached(events))
 
 
@@ -4952,6 +5088,10 @@ async def _run_turn(
             **({"lengthCheck": length_check} if length_check else {}),
         }
         yield chat_service.sse({"type": "privacy_route", **routing})
+        # The answer keeps its finish records (`routing.run`), so a reloaded transcript lists
+        # them beside the tool steps as the stream did.
+        if summary := _run_summary(finish, pipe.name, "finish"):
+            routing = {**routing, "run": summary}
     if failed == "stopped" and not any(usage.values()) and not skip_completion_work:
         # A stopped stream never reaches the usage chunk; estimate, marked as one.
         usage = {
@@ -5474,8 +5614,43 @@ async def _run_comparison(
     """Fans out, merges the streams, then settles every column in one transaction.
 
     Interleaved on one connection: the turn is stored and billed as one thing
-    even when a column fails.
+    even when a column fails. The `compare` pipeline's `make` flow: `compare-answer`
+    (the fan-out), `compare-save` (the message and the bill).
     """
+    yield chat_service.sse({"type": "privacy_route", **routing})
+    work = PipelineBundle(request=PipelineRequest(
+        text="", model="", api_key=api_key, session_id=session_id, turn={
+            "user_id": user_id, "models": models, "messages": messages,
+            "current_fact_request": current_fact_request, "format_request": format_request,
+            "skills_event": skills_event, "context_steps": list(context_steps or []),
+            "routing": routing, "mask_at_rest": mask_at_rest,
+            "legacy_masking": legacy_masking, "protected_values": sorted(protected_values),
+            "privacy_audit_id": privacy_audit_id,
+        }))
+    pipe = pipeline_registry.pipeline("compare")
+    async for event in PipelineRunner(pipe.stages("make"), name="compare.make").run(work):
+        yield chat_service.sse(event)
+    saved = work.document.saved or {}
+    # The stored id; the browser's streaming id is provisional.
+    yield chat_service.sse({"type": "done", "credits": saved.get("credits", 0),
+                            "messageId": saved.get("messageId")})
+
+
+def _turn_args(work: PipelineBundle) -> dict[str, Any]:
+    turn = work.request.turn
+    return {**turn, "api_key": work.request.api_key, "session_id": work.request.session_id,
+            "protected_values": frozenset(turn.get("protected_values") or ())}
+
+
+async def _compare_answer(work: PipelineBundle) -> AsyncIterator[dict]:
+    """Every model's answer at once, streamed as variants; the columns onto the bundle."""
+    args = _turn_args(work)
+    user_id, api_key, models, messages = (args["user_id"], args["api_key"], args["models"],
+                                          args["messages"])
+    current_fact_request, format_request = args.get("current_fact_request"), \
+        str(args.get("format_request") or "")
+    skills_event, context_steps = args.get("skills_event"), args.get("context_steps")
+    routing, mask_at_rest = args["routing"], bool(args.get("mask_at_rest"))
     queue: asyncio.Queue[dict | None] = asyncio.Queue()
     routing_holder = {"value": routing}
     results: dict[str, dict] = {
@@ -5490,8 +5665,6 @@ async def _run_comparison(
         }
         for model in models
     }
-
-    yield chat_service.sse({"type": "privacy_route", **routing})
 
     async def run(model: dict) -> None:
         slot = results[model["id"]]
@@ -5587,14 +5760,27 @@ async def _run_comparison(
     task = asyncio.create_task(drive())
     try:
         if skills_event:
-            yield chat_service.sse(skills_event)
+            yield skills_event
         for step in context_steps or ():
-            yield chat_service.sse(_step_event(step))
+            yield _step_event(step)
         while (event := await queue.get()) is not None:
-            yield chat_service.sse(event)
+            yield event
     finally:
         await task
+    work.document.data = {"results": results, "routing": routing_holder["value"]}
 
+
+
+async def _compare_save(work: PipelineBundle) -> AsyncIterator[dict]:
+    """The columns stored as one message with its variants, billed as one turn."""
+    args = _turn_args(work)
+    user_id, session_id = args["user_id"], args["session_id"]
+    skills_event, context_steps = args.get("skills_event"), args.get("context_steps")
+    mask_at_rest, legacy_masking = bool(args.get("mask_at_rest")), bool(
+        args.get("legacy_masking"))
+    protected_values, privacy_audit_id = args["protected_values"], args.get("privacy_audit_id")
+    results = work.document.data.get("results") or {}
+    routing_holder = {"value": work.document.data.get("routing") or args["routing"]}
     masker = governance.mask_legacy if legacy_masking else governance.mask
 
     def at_rest(value: str) -> tuple[str, int]:
@@ -5655,9 +5841,11 @@ async def _run_comparison(
             # No model: one charge covers several.
             settle(db, settled, total, reason="chat.compare", session_id=session_id)
         await db.commit()
+    work.document.saved = {"credits": total, "messageId": answer.id}
+    return
+    yield  # an async generator
 
-    # The stored id; the browser's streaming id is provisional.
-    yield chat_service.sse({"type": "done", "credits": total, "messageId": answer.id})
+
 
 
 @router.post("/{session_id}/messages/{message_id}/variant", response_model=MessageOut)
@@ -5875,18 +6063,9 @@ async def _run_page(
 ) -> AsyncIterator[str]:
     """Drives one HTML artifact to completion and settles it.
 
-    A half-written page is still stored.
+    A half-written page is still stored. The work is the `page` pipeline's `make` flow:
+    `page-write`, `page-save`.
     """
-    blocks: list[dict] = []
-    proposal: dict | None = None
-    questions: list[dict] | None = None
-    html = ""
-    usage = {"inputTokens": 0, "outputTokens": 0}
-    doc_title = ""
-    #: What the research pass read; citations belong to the document.
-    sources: list[dict] = []
-    research_log: dict[str, Any] | None = None
-
     if routing:
         # First, so the model badge updates.
         yield chat_service.sse({"type": "privacy_route", **routing})
@@ -5894,66 +6073,45 @@ async def _run_page(
         yield chat_service.sse(skills_event)
     for step in context_steps or ():
         yield chat_service.sse(_step_event(step))
-    try:
-        stream = page_service.write(
-            web_search=web_search,
-            request=request,
-            approved_plan=approved_plan,
-            may_ask=may_ask,
-            model=model["id"],
-            outline_model=(outline_model or {}).get("id", ""),
-            api_key=api_key,
-            template=template,
-            tokens=design_tokens,
-            trusted_context=trusted_context,
-            untrusted_context=untrusted_context,
-            project_sources=project_sources,
-        )
-        async for event in stream:
-            if event["type"] in ("proposal", "needs"):
-                # Stopped on purpose: forwarded, and stored below instead of an artifact.
-                if event["type"] == "proposal":
-                    proposal = event["plan"]
-                else:
-                    questions = event["questions"]
-                yield chat_service.sse(event)
-                continue
-            if event["type"] == "page":
-                html = event["html"]
-                blocks = event["blocks"]
-                continue
-            if event["type"] == "sources":
-                sources = list(event.get("sources") or [])
-            if event["type"] == "research":
-                research_log = dict(event.get("research") or {})
-            if event["type"] == "title":
-                doc_title = str(event.get("title") or "").strip()
-            if event["type"] == "usage":
-                usage = {k: v for k, v in event.items() if k != "type"}
-                continue
-            yield chat_service.sse(event)
-    except Exception as exc:  # noqa: BLE001 — the turn must still settle
-        log.exception("page generation crashed for session %s", session_id)
-        yield chat_service.sse(_error_event("문서를 만들지 못했습니다.", exc))
+    turn = {
+        "user_id": user_id, "model": model, "outline_model": outline_model,
+        "project_id": project_id, "routing": routing, "skills_event": skills_event,
+        "context_steps": list(context_steps or []),
+        "writer": {
+            "web_search": web_search, "request": request, "approved_plan": approved_plan,
+            "may_ask": may_ask, "model": model["id"],
+            "outline_model": (outline_model or {}).get("id", ""),
+            "tokens": design_tokens, "trusted_context": trusted_context,
+            "untrusted_context": untrusted_context, "project_sources": project_sources,
+        },
+    }
+    work = PipelineBundle(request=PipelineRequest(
+        text=request, model=model["id"], api_key=api_key, approved_plan=approved_plan,
+        template_id=template.id, design_tokens=design_tokens, session_id=session_id,
+        turn=turn))
+    work.usage = {"inputTokens": 0, "outputTokens": 0}
+    async for chunk in _make_pass(work, pipeline_registry.pipeline("page"),
+                                  crashed="문서를 만들지 못했습니다.",
+                                  attachments=attachments, answers=answers):
+        yield chunk
 
-    # Planned or asked: stored on the session, no artifact written.
-    if proposal is not None or questions is not None:
-        await _settle_plan_turn(
-            session_id=session_id,
-            user_id=user_id,
-            request=request,
-            attachments=list(attachments or []),
-            answers=dict(answers or {}),
-            model=model,
-            outline_model=outline_model,
-            usage=usage,
-            proposal=proposal,
-            questions=questions,
-        )
-        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
-        yield chat_service.sse({"type": "done"})
-        return
 
+async def _page_save(work: PipelineBundle) -> AsyncIterator[dict]:
+    """The page stored: report blocks as HTML sections of a report, any other page as an
+    html artifact (billed); the message."""
+    from app.pipeline.save_stages import rerun_note
+
+    turn, request, usage = work.request.turn, work.request.text, work.usage
+    model, outline_model = turn["model"], turn.get("outline_model")
+    user_id, session_id = turn["user_id"], work.request.session_id
+    template = design_templates.get(work.request.template_id)
+    design_tokens = work.request.design_tokens
+    html = str(work.document.data.get("html") or "")
+    blocks = list(work.document.data.get("blocks") or [])
+    doc_title = str((work.wire.get("title") or {}).get("title") or "").strip()
+    sources = list((work.wire.get("sources") or {}).get("sources") or [])
+    research_log = (work.wire.get("research") or {}).get("research")
+    research_log = dict(research_log) if research_log is not None else None
     written = page_service.filled(blocks)
     credits = (
         0
@@ -5966,13 +6124,14 @@ async def _run_page(
             usage.get("outlineOutputTokens", 0),
         )
     )
-
+    saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None}
     artifact_id: str | None = None
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
-        if session is not None and user is not None:
+        if session is not None and user is not None and template is not None:
             title = (doc_title or session.title or request.strip()[:60] or template.name)[:200]
+            summary = (rerun_note(turn) or _regeneration_summary(request))[:80]
             if written and html and session.kind is SessionKind.report:
                 # Report blocks are stored as HTML sections so the page view can
                 # re-render them under any template; decks keep the html artifact.
@@ -5980,10 +6139,10 @@ async def _run_page(
                     db,
                     session,
                     user_id=user_id,
-                    project_id=project_id,
+                    project_id=turn.get("project_id"),
                     kind=ArtifactKind.report,
                     title=title,
-                    summary=_regeneration_summary(request),
+                    summary=summary,
                     data={
                         "kind": "report",
                         "templateId": template.id,
@@ -6023,10 +6182,10 @@ async def _run_page(
                     db,
                     session,
                     user_id=user_id,
-                    project_id=project_id,
+                    project_id=turn.get("project_id"),
                     kind=ArtifactKind.html,
                     title=title,
-                    summary=_regeneration_summary(request),
+                    summary=summary,
                     data={
                         "kind": "html",
                         "language": "html",
@@ -6068,25 +6227,25 @@ async def _run_page(
                     surface=session.kind.value,
                 )
             if artifact_id:
-                db.add(
-                    Message(
-                        session_id=session_id,
-                        role=Role.assistant,
-                        content=f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
-                        usage={**usage, "credits": credits},
-                        model=model["id"],
-                        steps=_prelude_steps(skills_event, context_steps) or None,
-                        routing=routing,
-                    )
+                message = Message(
+                    session_id=session_id,
+                    role=Role.assistant,
+                    content=rerun_note(turn)
+                    or f"{template.name}으로 {len(written)}개 부분을 작성했습니다.",
+                    usage={**usage, "credits": credits},
+                    model=model["id"],
+                    steps=_prelude_steps(turn.get("skills_event"),
+                                         turn.get("context_steps")) or None,
+                    routing=turn.get("routing"),
                 )
+                db.add(message)
+                saved.update(artifactId=artifact_id, messageId=message.id)
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
-
-    if artifact_id:
-        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
-    yield chat_service.sse({"type": "done"})
+    work.document.saved = saved
+    return
+    yield  # an async generator
 
 
 async def _run_deck(
@@ -6127,15 +6286,9 @@ async def _run_deck(
 ) -> AsyncIterator[str]:
     """Drives one deck to completion and settles it.
 
-    Same contract as `_run_report`: the deck is an artifact, not a chat message.
+    Same contract as `_run_report`: the deck is an artifact, not a chat message. The work is
+    the `deck` pipeline's `make` flow: `deck-write`, `deck-carry`, `deck-save`.
     """
-    slides: list[dict] = []
-    proposal: dict | None = None
-    questions: list[dict] | None = None
-    usage = {"inputTokens": 0, "outputTokens": 0}
-    doc_title = ""
-    research_log: dict[str, Any] | None = None
-
     if routing:
         # First, so the model badge updates.
         yield chat_service.sse({"type": "privacy_route", **routing})
@@ -6148,52 +6301,71 @@ async def _run_deck(
         trusted_context = [f"[서식: {template.name}]\n{template.instructions.strip()}"] + list(
             trusted_context or []
         )
+    turn = {
+        "user_id": user_id, "model": model, "outline_model": outline_model,
+        "project_id": project_id, "routing": routing, "skills_event": skills_event,
+        "context_steps": list(context_steps or []), "carry_from": carry_from,
+        "carry_note": carry_note,
+        "writer": {
+            "web_search": web_search, "figures_plan": figures_plan, "image_model": image_model,
+            "request": request, "approved_plan": approved_plan, "may_ask": may_ask,
+            "model": model["id"], "outline_model": (outline_model or {}).get("id", ""),
+            "trusted_context": list(trusted_context or []),
+            "untrusted_context": list(untrusted_context or []), "tokens": design_tokens,
+        },
+    }
+    work = PipelineBundle(request=PipelineRequest(
+        text=request, model=model["id"], api_key=api_key, approved_plan=approved_plan,
+        template_id=template.id if template else None, design_tokens=design_tokens,
+        session_id=session_id, turn=turn))
+    work.usage = {"inputTokens": 0, "outputTokens": 0}
+    async for chunk in _make_pass(work, pipeline_registry.pipeline("deck"),
+                                  crashed="슬라이드를 만들지 못했습니다.",
+                                  attachments=attachments, answers=answers):
+        yield chunk
+
+
+async def _make_pass(work: PipelineBundle, pipe: Any, *, crashed: str,
+                     attachments: list[str] | None = None, answers: dict | None = None,
+                     start: str | None = None, recorder: pipeline_runs.Recorder | None = None,
+                     carried: dict | None = None, attempts: dict | None = None,
+                     parent: Any = None) -> AsyncIterator[str]:
+    """A one-pass writer's `make` flow (deck, page): it plans and offers (settled here as a
+    plan turn), or writes the approved outline and its save stage stores it. Then the
+    artifact, the usage, done."""
+    turn, user_id, session_id = work.request.turn, work.request.turn["user_id"], \
+        work.request.session_id
+    model, outline_model = turn["model"], turn.get("outline_model")
+    if recorder is None and work.request.approved_plan is not None:
+        recorder = pipeline_runs.Recorder(run_id=uuid4().hex)
+    runner = PipelineRunner(pipe.stages("make"), name=f"{pipe.name}.make", recorder=recorder)
+    runner.attempts = dict(attempts or {})
+    if recorder is not None:
+        recorder.pipeline, recorder.flow = pipe.name, "make"
+        turn["run_id"] = recorder.run_id
+        recorder.begin(work, carried=carried)
+        if start is None and (event := _run_event(recorder.run_id, pipe.name, "make")):
+            yield chat_service.sse(event)
     try:
-        stream = deck_service.write(
-            web_search=web_search,
-            figures_plan=figures_plan,
-            image_model=image_model,
-            request=request,
-            approved_plan=approved_plan,
-            may_ask=may_ask,
-            model=model["id"],
-            outline_model=(outline_model or {}).get("id", ""),
-            api_key=api_key,
-            trusted_context=trusted_context,
-            untrusted_context=untrusted_context,
-            tokens=design_tokens,
-        )
-        async for event in stream:
-            if event["type"] in ("proposal", "needs"):
-                # Stopped on purpose: forwarded, and stored below instead of an artifact.
-                if event["type"] == "proposal":
-                    proposal = event["plan"]
-                else:
-                    questions = event["questions"]
-                yield chat_service.sse(event)
-                continue
-            if event["type"] == "deck":
-                slides = event["slides"]
-                continue
-            if event["type"] == "research":
-                research_log = dict(event.get("research") or {})
-            if event["type"] == "title":
-                doc_title = str(event.get("title") or "").strip()
-            if event["type"] == "usage":
-                usage = {k: v for k, v in event.items() if k != "type"}
-                continue
+        async for event in runner.run(work, PipelineContext(
+                options=dict(pipe.options), run_id=recorder.run_id if recorder else ""),
+                start=start):
             yield chat_service.sse(event)
     except Exception as exc:  # noqa: BLE001 — the turn must still settle
-        log.exception("deck generation crashed for session %s", session_id)
-        yield chat_service.sse(_error_event("슬라이드를 만들지 못했습니다.", exc))
-
+        log.exception("%s generation crashed for session %s", pipe.name, session_id)
+        yield chat_service.sse(_error_event(crashed, exc))
+    finally:
+        if parent is not None:
+            _carry_records(work, parent, start)
+    proposal, questions = work.plan.proposal, work.findings.questions or None
+    usage = work.usage
     # Planned or asked: stored on the session, no artifact written.
     if proposal is not None or questions is not None:
         drawn = (proposal or {}).pop("figures", None)
         await _settle_plan_turn(
             session_id=session_id,
             user_id=user_id,
-            request=request,
+            request=work.request.text,
             attachments=list(attachments or []),
             answers=dict(answers or {}),
             model=model,
@@ -6202,42 +6374,124 @@ async def _run_deck(
             proposal=proposal,
             questions=questions,
             figures={"plan": proposal, **drawn} if drawn and proposal else None,
-            carry_from=carry_from,
-            carry_note=carry_note,
+            carry_from=turn.get("carry_from"),
+            carry_note=str(turn.get("carry_note") or ""),
+            run=_run_summary(work, pipe.name, "make"),
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
         return
+    if work.document.saved is None and turn.get("user_id"):
+        # The writer died: what there is is stored as it stands (a deck records the
+        # failure), by the flow's own save stage.
+        save = pipeline_registry.stage(pipe.flow("make")[-1])
+        async for event in PipelineRunner([save], name=f"{pipe.name}.save",
+                                          emit_records=False).run(work):
+            yield chat_service.sse(event)
+    saved = work.document.saved or {}
+    if recorder is not None:
+        await _persist_run(work, recorder, session_id=session_id, user_id=user_id, saved=saved,
+                           parent=parent, from_stage=start)
+    if saved.get("artifactId"):
+        yield chat_service.sse({"type": "artifact", "artifactId": saved["artifactId"]})
+    yield chat_service.sse({"type": "usage", **usage, "credits": int(saved.get("credits") or 0)})
+    yield chat_service.sse({"type": "done"})
 
+
+async def _document_write(work: PipelineBundle, service: Any, payload: str
+                          ) -> AsyncIterator[dict]:
+    """A one-pass writer's stream (`deck_service.write`, `page_service.write`): its
+    proposal or question kept to settle the plan turn, its document onto the bundle, the
+    rest passed on."""
+    stream = service.write(**work.request.turn["writer"], api_key=work.request.api_key,
+                           **({"template": design_templates.get(work.request.template_id)}
+                              if payload == "page" else {}))
+    async for event in stream:
+        if event["type"] in ("proposal", "needs"):
+            # Stopped on purpose: forwarded, and settled by the caller instead of an artifact.
+            if event["type"] == "proposal":
+                work.plan.proposal = event["plan"]
+            else:
+                work.findings.questions = list(event["questions"] or [])
+            yield event
+            continue
+        if event["type"] == payload:
+            if payload == "deck":
+                work.document.sections = list(event["slides"])
+            else:
+                work.document.data = {"html": event["html"], "blocks": event["blocks"]}
+            continue
+        if event["type"] == "usage":
+            work.usage = {k: v for k, v in event.items() if k != "type"}
+            continue
+        yield event
+    if work.plan.proposal is not None or work.findings.questions:
+        raise PipelineStop("proposal offered" if work.plan.proposal is not None else "needs")
+
+
+def _deck_write(work: PipelineBundle) -> AsyncIterator[dict]:
+    return _document_write(work, deck_service, "deck")
+
+
+def _page_write(work: PipelineBundle) -> AsyncIterator[dict]:
+    return _document_write(work, page_service, "page")
+
+
+async def _deck_carry(work: PipelineBundle) -> AsyncIterator[dict]:
+    """A restructure: the slides the instruction did not touch carried over from the deck
+    it restructures."""
+    turn, request = work.request.turn, work.request.text
+    carry_from, carry_note = turn.get("carry_from"), str(turn.get("carry_note") or "")
+    slides = work.document.sections
+    if not deck_service.filled(slides):
+        return
+    async with SessionLocal() as db:
+        previous = await db.get(Artifact, carry_from)
+    if previous is None or not previous.data:
+        return
+    old_slides = list(previous.data.get("slides") or [])
+    slides, carried = revise.carry_parts(
+        slides, old_slides, is_deck=True, mentioned=carry_note
+    )
+    # The slides a merge absorbed lend their rows; a carried agenda lists the
+    # deck as it now is.
+    slides = revise.absorb_rows(slides, old_slides, mentioned=carry_note)
+    slides = revise.unmix_rows(slides, old_slides, mentioned=carry_note)
+    slides = revise.carry_by_content(slides, old_slides, mentioned=carry_note)
+    slides = revise.keep_timeline_layout(
+        slides, old_slides, mentioned=carry_note, request=request
+    )
+    slides = revise.refresh_agenda(slides)
+    # Carrying old slides back can drop a number the draft had restated; the
+    # person's figures are checked once more against the deck as it now stands.
+    deck_service.restate_missing_facts(slides, request)
+    work.document.sections = slides
+    if carried:
+        yield {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
+               "status": "done"}
+        for slide in slides:
+            yield {"type": "slide", "slide": slide, "done": True}
+
+
+async def _deck_save(work: PipelineBundle) -> AsyncIterator[dict]:
+    """The deck stored (a version when the session holds one), the message, the bill; a
+    deck with nothing written records the failure so a reload shows it."""
+    from app.pipeline.save_stages import rerun_note
+
+    turn, request, usage = work.request.turn, work.request.text, work.usage
+    model, outline_model = turn["model"], turn.get("outline_model")
+    user_id, session_id = turn["user_id"], work.request.session_id
+    carry_from, carry_note = turn.get("carry_from"), str(turn.get("carry_note") or "")
+    skills_event, context_steps = turn.get("skills_event"), turn.get("context_steps")
+    routing, approved_plan = turn.get("routing"), work.request.approved_plan
+    design_tokens = work.request.design_tokens
+    template = design_templates.get(work.request.template_id) if work.request.template_id \
+        else None
+    slides = work.document.sections
+    doc_title = str((work.wire.get("title") or {}).get("title") or "").strip()
+    research_log = (work.wire.get("research") or {}).get("research")
+    research_log = dict(research_log) if research_log is not None else None
     written = deck_service.filled(slides)
-    if carry_from and written:
-        async with SessionLocal() as db:
-            previous = await db.get(Artifact, carry_from)
-        if previous is not None and previous.data:
-            old_slides = list(previous.data.get("slides") or [])
-            slides, carried = revise.carry_parts(
-                slides, old_slides, is_deck=True, mentioned=carry_note
-            )
-            # The slides a merge absorbed lend their rows; a carried agenda lists the
-            # deck as it now is.
-            slides = revise.absorb_rows(slides, old_slides, mentioned=carry_note)
-            slides = revise.unmix_rows(slides, old_slides, mentioned=carry_note)
-            slides = revise.carry_by_content(slides, old_slides, mentioned=carry_note)
-            slides = revise.keep_timeline_layout(
-                slides, old_slides, mentioned=carry_note, request=request
-            )
-            slides = revise.refresh_agenda(slides)
-            # Carrying old slides back can drop a number the draft had restated; the
-            # person's figures are checked once more against the deck as it now stands.
-            deck_service.restate_missing_facts(slides, request)
-            if carried:
-                yield chat_service.sse(
-                    {"type": "step", "id": "carry", "label": f"그대로 둔 장 {carried}개",
-                     "status": "done"}
-                )
-                for slide in slides:
-                    yield chat_service.sse({"type": "slide", "slide": slide, "done": True})
-            written = deck_service.filled(slides)
     credits = (
         0
         if not written
@@ -6249,8 +6503,7 @@ async def _run_deck(
             usage.get("outlineOutputTokens", 0),
         )
     )
-
-    artifact_id: str | None = None
+    saved: dict[str, Any] = {"artifactId": None, "credits": credits, "messageId": None}
     async with SessionLocal() as db:
         session = await db.get(ChatSession, session_id)
         user = await db.get(User, user_id)
@@ -6291,10 +6544,10 @@ async def _run_deck(
                     db,
                     session,
                     user_id=user_id,
-                    project_id=project_id,
+                    project_id=turn.get("project_id"),
                     kind=ArtifactKind.deck,
                     title=title,
-                    summary=_regeneration_summary(request),
+                    summary=(rerun_note(turn) or _regeneration_summary(request))[:80],
                     data={
                         "kind": "deck",
                         "theme": "기본",
@@ -6311,18 +6564,16 @@ async def _run_deck(
                 session.artifact_id = artifact_id
                 # The proposal has become the document.
                 session.pending = None
-
-                db.add(
-                    Message(
-                        session_id=session_id,
-                        role=Role.assistant,
-                        content=f"{len(written)}장짜리 슬라이드를 만들었습니다.",
-                        usage={**usage, "credits": credits},
-                        model=model["id"],
-                        steps=_prelude_steps(skills_event, context_steps) or None,
-                        routing=routing,
-                    )
+                message = Message(
+                    session_id=session_id,
+                    role=Role.assistant,
+                    content=rerun_note(turn) or f"{len(written)}장짜리 슬라이드를 만들었습니다.",
+                    usage={**usage, "credits": credits},
+                    model=model["id"],
+                    steps=_prelude_steps(skills_event, context_steps) or None,
+                    routing=routing,
                 )
+                db.add(message)
                 settle(
                     db,
                     user,
@@ -6338,6 +6589,7 @@ async def _run_deck(
                     session_id=session_id,
                     surface=session.kind.value,
                 )
+                saved.update(artifactId=artifact_id, messageId=message.id)
             else:
                 # Nothing written: record the failure so a reload shows it.
                 db.add(
@@ -6354,11 +6606,9 @@ async def _run_deck(
             session.updated_at = utcnow()
             db.add(session)
             await db.commit()
-
-    if artifact_id:
-        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
-    yield chat_service.sse({"type": "done"})
+    work.document.saved = saved
+    return
+    yield  # an async generator
 
 
 #: The reference style a document's format uses; APA where the format names none.
@@ -6463,59 +6713,31 @@ async def _revise_document(
 
     `services.revise` says which parts it lands on (`plan`, when the caller already
     asked); those are rewritten with the surface's own machinery. Failures are
-    reported, never turned into a regeneration.
+    reported, never turned into a regeneration. The flow is the document's `revise`
+    pipeline: `revise-load`, then the route, widen, rewrite and align stages, then
+    `revise-save`; the run is kept so it can be rerun from a stage.
     """
     usage = {"inputTokens": 0, "outputTokens": 0}
     if routing:
         yield chat_service.sse({"type": "privacy_route", **routing})
 
-    async with SessionLocal() as db:
-        session = await db.get(ChatSession, session_id)
-        artifact = await db.get(Artifact, session.artifact_id) if session else None
-        if session is None or artifact is None or not artifact.data:
-            yield chat_service.sse({"type": "error", "message": "고칠 문서를 찾지 못했습니다."})
-            yield chat_service.sse({"type": "done"})
-            return
-        kind = artifact.kind
-        data = dict(artifact.data)
-        title = artifact.title or ""
-        # The request the document was written from and the files it drew on, so a
-        # rewrite keeps to the material instead of inventing plausible values.
-        turns = (
-            await db.exec(
-                select(Message)
-                .where(Message.session_id == session_id)
-                .order_by(col(Message.created_at))
-            )
-        ).all()
-        asked = [m for m in turns if m.role is Role.user and (m.content or "").strip()]
-        request = str(asked[0].content if asked else session.title or "")
-        file_ids = list(
-            dict.fromkeys(
-                str(a.get("id"))
-                for m in asked
-                for a in (m.attachments or [])
-                if isinstance(a, dict) and a.get("id")
-            )
-        )
-        material: list[str] = []
-        if file_ids:
-            files = (
-                await db.exec(
-                    select(StoredFile).where(
-                        col(StoredFile.id).in_(file_ids), StoredFile.user_id == user_id
-                    )
-                )
-            ).all()
-            budget = file_budget(model)
-            for stored in sorted(files, key=lambda f: file_ids.index(f.id)):
-                if not stored.text or budget <= 0:
-                    continue
-                text = stored.text[:budget]
-                budget -= len(text)
-                material.append(f"## {stored.name}\n{text}")
-
-    is_deck = kind is ArtifactKind.deck
+    turn = {"user_id": user_id, "model": model, "routing": routing,
+            "export_after": export_after}
+    # `revise-load` first: which pipeline revises it depends on what is on screen.
+    loading = PipelineBundle(request=PipelineRequest(
+        text="", model=model["id"], api_key=api_key, instruction=instruction,
+        session_id=session_id, turn=turn))
+    load = PipelineRunner([pipeline_registry.stage("revise-load")], name="revise.load",
+                          emit_records=False)
+    async for event in load.run(loading):
+        yield chat_service.sse(event)
+    loaded = loading.document.loaded or {}
+    if loaded.get("missing") or not loaded:
+        yield chat_service.sse({"type": "error", "message": "고칠 문서를 찾지 못했습니다."})
+        yield chat_service.sse({"type": "done"})
+        return
+    is_deck = loaded["kind"] == ArtifactKind.deck.value
+    data = dict(loaded["data"])
     parts = list(data.get("slides") if is_deck else data.get("sections") or [])
     if not parts:
         yield chat_service.sse({"type": "error", "message": "고칠 내용이 없습니다."})
@@ -6523,91 +6745,84 @@ async def _revise_document(
         return
 
     # The document's revise flow (`app/pipelines/*.toml` `revise`): route, widen to what
-    # rests on a changed fact, rewrite, align. A stage that ends the turn early has sent
-    # its own closing events.
+    # rests on a changed fact, rewrite, align, store. A stage that ends the turn early has
+    # sent its own closing events.
     doc_format = str((data.get("titleBlock") or {}).get("format") or "")
     work = revise_stages.bundle_for(
-        request=request, instruction=instruction, model=model, planner=planner,
-        api_key=api_key, is_deck=is_deck, title=title, data=data, parts=parts,
-        material=material, plan=plan, format_id=doc_format, usage=usage,
+        request=str(loaded.get("request") or ""), instruction=instruction, model=model,
+        planner=planner, api_key=api_key, is_deck=is_deck, title=str(loaded.get("title") or ""),
+        data=data, parts=parts, material=list(loaded.get("material") or []), plan=plan,
+        format_id=doc_format, usage=usage, session_id=session_id, turn=turn,
     )
+    work.steps.extend(loading.steps)
     pipe = (pipeline_registry.pipeline("deck") if is_deck
             else pipeline_registry.for_report(doc_format))
-    runner = PipelineRunner(pipe.stages("revise"), name=f"{pipe.name}.revise")
-    async for event in runner.run(work, PipelineContext(options=dict(pipe.options))):
-        yield chat_service.sse(event)
+    recorder = pipeline_runs.Recorder(run_id=uuid4().hex)
+    recorder.pipeline, recorder.flow = pipe.name, "revise"
+    turn["run_id"] = recorder.run_id
+    if run_event := _run_event(recorder.run_id, pipe.name, "revise"):
+        yield chat_service.sse(run_event)
+    if pipeline_records_on():
+        for record in loading.steps:
+            record.run_id = recorder.run_id
+            yield chat_service.sse(record.wire())
+    async for chunk in _revise_pass(work, pipe, recorder, session_id=session_id,
+                                    user_id=user_id):
+        yield chunk
+
+
+def _revise_stages(pipe: Any) -> list:
+    """A pipeline's revise flow after `revise-load` (run apart, before the pipeline is
+    known)."""
+    return [stage for stage in pipe.stages("revise") if stage.name != "revise-load"]
+
+
+async def _revise_pass(work: PipelineBundle, pipe: Any, recorder: pipeline_runs.Recorder, *,
+                       session_id: str, user_id: str, start: str | None = None,
+                       carried: dict | None = None, attempts: dict | None = None,
+                       parent: Any = None) -> AsyncIterator[str]:
+    """The revise flow over `work` (from `start` on a rerun), then what the stored revision
+    says: the artifact, the files handed over, the reply, the usage, done."""
+    runner = PipelineRunner(_revise_stages(pipe), name=f"{pipe.name}.revise", recorder=recorder)
+    runner.attempts = dict(attempts or {})
+    recorder.begin(work, carried=carried)
+    try:
+        async for event in runner.run(work, PipelineContext(options=dict(pipe.options),
+                                                            run_id=recorder.run_id),
+                                      start=start):
+            yield chat_service.sse(event)
+    finally:
+        if parent is not None:
+            _carry_records(work, parent, start)
+    saved = work.document.saved or {}
+    await _persist_run(work, recorder, session_id=session_id, user_id=user_id, saved=saved,
+                       parent=parent, from_stage=start)
     if any(r.status == "stopped" for r in work.steps):
         return
-    parts, title, changed = work.document.sections, work.plan.title, work.document.changed
-    aligned_step = work.findings.aligned
-
-    credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-    artifact_id: str | None = None
-    reply = ""
-    handed: dict | None = None
-    async with SessionLocal() as db:
-        session = await db.get(ChatSession, session_id)
-        user = await db.get(User, user_id)
-        if session is not None and user is not None:
-            data["slides" if is_deck else "sections"] = parts
-            if not is_deck:
-                data["wordCount"] = report_service.word_count(parts)
-                data["lint"] = lint.wire(lint.check(lint.from_sections(parts)))
-            # `_store_document` snapshots the previous body as a version.
-            artifact_id = await _store_document(
-                db,
-                session,
-                user_id=user_id,
-                project_id=session.project_id,
-                kind=kind,
-                title=title or "문서",
-                summary=instruction.strip()[:80] or "문서 수정",
-                data=data,
-            )
-            session.artifact_id = artifact_id
-            reply = f"{changed}곳을 고쳤습니다."
-            if export_after is not None:
-                await db.flush()
-                revised = await db.get(Artifact, artifact_id)
-                if revised is not None:
-                    handed, said = await _export_files(
-                        revised, export_after, user_id=user_id, session_id=session_id
-                    )
-                    reply = f"{reply} {said}"
-            db.add(
-                Message(
-                    session_id=session_id,
-                    role=Role.assistant,
-                    content=reply,
-                    usage={**usage, "credits": credits},
-                    model=model["id"],
-                    routing=routing,
-                    steps=[x for x in (
-                        {k: v for k, v in (aligned_step or {}).items() if k != "type"}, handed
-                    ) if x] or None,
-                )
-            )
-            settle(
-                db,
-                user,
-                credits,
-                reason="document.revise",
-                session_id=session_id,
-                model=model["id"],
-                surface=session.kind.value,
-            )
-            session.updated_at = utcnow()
-            db.add(session)
-            await db.commit()
-
-    if artifact_id:
-        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
-    if export_after is not None and artifact_id:
-        if handed:
-            yield chat_service.sse({"type": "step", **handed})
-        yield chat_service.sse({"type": "delta", "text": reply})
-    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    export_after = work.request.turn.get("export_after")
+    if saved.get("artifactId"):
+        yield chat_service.sse({"type": "artifact", "artifactId": saved["artifactId"]})
+    if export_after is not None and saved.get("artifactId"):
+        if saved.get("handed"):
+            yield chat_service.sse({"type": "step", **saved["handed"]})
+        yield chat_service.sse({"type": "delta", "text": saved.get("reply") or ""})
+    elif saved.get("artifactId") and start is not None:
+        # A rerun says what it did; a revision's reply is the changed count it stores.
+        yield chat_service.sse({"type": "delta", "text": saved.get("reply") or ""})
+    yield chat_service.sse({"type": "usage", **work.usage,
+                            "credits": int(saved.get("credits") or 0)})
     yield chat_service.sse({"type": "done"})
+
+
+def _carry_records(work: PipelineBundle, parent: Any, start: str | None) -> None:
+    """A rerun's records of the stages it did not run again: the parent run's own."""
+    if not start:
+        return
+    earlier = {str(r.get("stage")): r for r in (parent.stages or [])}
+    for index, record in enumerate(work.steps):
+        if record.status == "skipped" and record.reason == f"resumed from {start}":
+            if (row := earlier.get(record.stage)) is not None:
+                work.steps[index] = StepRecord.from_dict(row)
 
 
 async def _export_files(
@@ -6721,18 +6936,30 @@ async def _run_report(
     carry_note: str = "",
     #: Check skills the agent and the 서식 attach; None leaves it to the 서식.
     check_keys: tuple[str, ...] | None = None,
+    #: The run this pass follows (the card that waited before it).
+    parent_run_id: str | None = None,
 ) -> AsyncIterator[str]:
-    """Drives one report to completion and settles it. The document is an artifact with versions."""
-    sections: list[dict] = []
-    title_block: dict | None = None
+    """Drives one report to completion and settles it. The document is an artifact with versions.
+
+    The writing pass is the format's `write` flow ending in `report-save`, which stores the
+    artifact, the message and the bill; the run is kept (`PipelineRun`) so it can be run
+    again from any of its stages. A planning pass stops at its outline or question and is
+    settled here."""
     proposal: dict | None = None
     questions: list[dict] | None = None
     usage = {"inputTokens": 0, "outputTokens": 0}
-    #: From the outline step; empty when none was given.
-    doc_title = ""
-    #: The shelf the sections cited from, numbered as the prose refers to.
-    sources: list[dict] = []
-    research_log: dict[str, Any] | None = None
+    writing = approved_plan is not None
+    recorder = pipeline_runs.Recorder(run_id=uuid4().hex) if writing else None
+    built: list = []
+    announced = False
+    turn = _report_turn(
+        user_id=user_id, model=model, outline_model=outline_model, project_id=project_id,
+        routing=routing, skills_event=skills_event, context_steps=context_steps,
+        carry_from=carry_from, carry_note=carry_note,
+        run_id=recorder.run_id if recorder else "",
+    )
+    #: What the stream said, for a writer that does not store its own result.
+    told: dict[str, Any] = {}
 
     if routing:
         # First, so the model badge updates.
@@ -6759,8 +6986,16 @@ async def _run_report(
             format_id=format_id,
             design_tokens=design_tokens,
             check_keys=check_keys,
+            session_id=session_id,
+            turn=turn,
+            recorder=recorder,
+            bundle_out=built,
         )
         async for event in stream:
+            if not announced and built and recorder is not None:
+                announced = True
+                if run_event := _run_event(recorder.run_id, built[0][1], built[0][2]):
+                    yield chat_service.sse(run_event)
             if event["type"] in ("proposal", "needs"):
                 # Stopped on purpose: forwarded, and stored below instead of an artifact.
                 if event["type"] == "proposal":
@@ -6769,17 +7004,10 @@ async def _run_report(
                     questions = event["questions"]
                 yield chat_service.sse(event)
                 continue
+            if event["type"] in ("report", "titleBlock", "sources", "research", "title"):
+                told[event["type"]] = event
             if event["type"] == "report":
-                sections = event["sections"]
                 continue
-            if event["type"] == "titleBlock":
-                title_block = dict(event.get("titleBlock") or {})
-            if event["type"] == "sources":
-                sources = list(event.get("sources") or [])
-            if event["type"] == "research":
-                research_log = dict(event.get("research") or {})
-            if event["type"] == "title":
-                doc_title = str(event.get("title") or "").strip()
             if event["type"] == "usage":
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue
@@ -6788,6 +7016,7 @@ async def _run_report(
         log.exception("report generation crashed for session %s", session_id)
         yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
 
+    work = built[0][0] if built else None
     # Planned or asked: stored on the session, no artifact written.
     if proposal is not None or questions is not None:
         # The figure question is held until the outline is approved.
@@ -6806,149 +7035,148 @@ async def _run_report(
             figures={"plan": proposal, **drawn} if drawn and proposal else None,
             carry_from=carry_from,
             carry_note=carry_note,
+            run=_run_summary(work, built[0][1], built[0][2]) if work is not None else None,
+            run_parent=parent_run_id,
         )
         yield chat_service.sse({"type": "usage", **usage, "credits": 0})
         yield chat_service.sse({"type": "done"})
         return
 
-    if carry_from and sections:
+    if (work is None or work.document.saved is None) and "report" in told:
+        # A writer whose flow did not store the document (one stopped before its save
+        # stage, a replaced writer): `report-save` on what it sent.
+        work = _told_bundle(told, usage=usage, turn=turn, request=request,
+                            session_id=session_id, approved_plan=approved_plan,
+                            template=template, design_tokens=design_tokens, model=model)
+        try:
+            async for event in PipelineRunner([pipeline_registry.stage("report-save")],
+                                              name="report.save", emit_records=False).run(work):
+                yield chat_service.sse(event)
+        except Exception as exc:  # noqa: BLE001 — the turn must still settle
+            log.exception("report store failed for session %s", session_id)
+            yield chat_service.sse(_error_event("보고서를 만들지 못했습니다.", exc))
+        recorder = None
+    async for chunk in _report_tail(work, recorder=recorder, session_id=session_id,
+                                    user_id=user_id, usage=usage, parent=parent_run_id):
+        yield chunk
+
+
+def _told_bundle(told: dict[str, Any], *, usage: dict, turn: dict, request: str,
+                 session_id: str, approved_plan: dict | None, template: Any,
+                 design_tokens: dict | None, model: dict) -> PipelineBundle:
+    """A bundle holding what a writer's events said, for `report-save` alone."""
+    work = PipelineBundle(request=PipelineRequest(
+        text=request, model=model["id"], api_key="", approved_plan=approved_plan,
+        template_id=template.id if template else None, design_tokens=design_tokens,
+        session_id=session_id, turn=turn))
+    work.document.sections = list((told.get("report") or {}).get("sections") or [])
+    work.wire = {k: v for k, v in told.items() if k != "report"}
+    work.usage = {"inputTokens": 0, "outputTokens": 0, **usage}
+    return work
+
+
+# ── pipeline runs ─────────────────────────────────────────────────────
+
+
+#: Above any real run's snapshots (a long proposal's are a few MB); refuses a runaway one.
+_MAX_SNAPSHOTS = 24_000_000
+
+
+def _run_event(run_id: str, pipeline: str, flow: str, *, parent_id: str | None = None,
+               from_stage: str | None = None) -> dict | None:
+    """The `run` event a recorded pass opens with (records on only)."""
+    if not pipeline_records_on():
+        return None
+    return {"type": "run", "runId": run_id, "pipeline": pipeline, "flow": flow,
+            "parentId": parent_id, "fromStage": from_stage}
+
+
+def _run_status(records: list) -> str:
+    statuses = [r.status for r in records]
+    return next((x for x in ("failed", "cancelled", "waiting", "stopped") if x in statuses),
+                "done")
+
+
+def _run_summary(work: PipelineBundle, pipeline: str, flow: str, *, run_id: str = "",
+                 parent_id: str | None = None, from_stage: str | None = None) -> dict | None:
+    """The compact run kept on the message (`routing.run`): records without evidence."""
+    if not pipeline_records_on() or not work.steps:
+        return None
+    return {"id": run_id, "pipeline": pipeline, "flow": flow,
+            "status": _run_status(work.steps), "parentId": parent_id, "fromStage": from_stage,
+            "stages": [r.stage_wire(evidence=False) for r in work.steps]}
+
+
+async def _persist_run(work: PipelineBundle, recorder: pipeline_runs.Recorder, *,
+                       session_id: str, user_id: str, saved: dict | None = None,
+                       parent: Any = None, from_stage: str | None = None,
+                       pipeline: str = "", flow: str = "") -> str | None:
+    """Keeps the run (`PipelineRun`) and its compact copy on the message it settled.
+
+    Best effort: a run that cannot be kept costs the rerun, never the turn."""
+    saved = saved or {}
+    pipeline, flow = pipeline or recorder.pipeline, flow or recorder.flow
+    snapshots = recorder.snapshots()
+    if len(json.dumps(snapshots, ensure_ascii=False, default=str)) > _MAX_SNAPSHOTS:
+        # Kept without its snapshots: the records stand, the run cannot be rerun.
+        log.warning("pipeline run %s too large to keep its snapshots", recorder.run_id)
+        snapshots = {}
+    try:
         async with SessionLocal() as db:
-            previous = await db.get(Artifact, carry_from)
-        if previous is not None and previous.data:
-            sections, carried = revise.carry_parts(
-                sections, list(previous.data.get("sections") or []), is_deck=False,
-                mentioned=carry_note,
+            artifact = (await db.get(Artifact, saved["artifactId"])
+                        if saved.get("artifactId") else None)
+            row = PipelineRun(
+                id=recorder.run_id, session_id=session_id, user_id=user_id,
+                message_id=saved.get("messageId"), artifact_id=saved.get("artifactId"),
+                artifact_version=getattr(artifact, "version", None),
+                parent_id=parent if isinstance(parent, str) else getattr(parent, "id", None),
+                from_stage=from_stage,
+                pipeline=pipeline, flow=flow, status=_run_status(work.steps),
+                params={"request": recorder.request},
+                stages=[r.as_dict() for r in work.steps],
+                snapshots=snapshots,
             )
-            if carried:
-                yield chat_service.sse(
-                    {"type": "step", "id": "carry", "label": f"그대로 둔 절 {carried}개",
-                     "status": "done"}
-                )
-                for section in sections:
-                    yield chat_service.sse(
-                        {"type": "section", "sectionId": section.get("id"),
-                         "heading": section.get("heading"), "content": section.get("content"),
-                         "done": True}
-                    )
-    written = [s for s in sections if (s.get("content") or "").strip()]
-    credits = (
-        0
-        if not written
-        else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-        # The planner's own tokens at the planner's own price, when one ran.
-        + charge_for_tokens(
-            outline_model or model,
-            usage.get("outlineInputTokens", 0),
-            usage.get("outlineOutputTokens", 0),
-        )
-    )
-
-    artifact_id: str | None = None
-    async with SessionLocal() as db:
-        session = await db.get(ChatSession, session_id)
-        user = await db.get(User, user_id)
-        if session is not None and user is not None:
-            # Generated title first; the session title reads as the raw prompt.
-            title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
-            if carry_from and not revise.requested_title(carry_note):
-                kept = await db.get(Artifact, carry_from)
-                if kept is not None and kept.title:
-                    title = kept.title
-            if written:
-                artifact_design = design_tokens
-                if template is not None and template.look:
-                    # The template's look outranks the project default and the request.
-                    artifact_design = design_service.normalise_tokens(
-                        {**(design_tokens or {}), "visualStyle": template.look}
-                    )
-                elif not artifact_design:
-                    # No template or project look: the request picks the style and the
-                    # subject the colour.
-                    requested_style = str((approved_plan or {}).get("visualStyle") or "")
-                    accent = str(
-                        (approved_plan or {}).get("accent") or deck_service.topic_accent(request)
-                    )
-                    artifact_design = (
-                        design_service.normalise_tokens(
-                            {
-                                "visualStyle": requested_style,
-                                "accent": accent,
-                                "font": design_service.font_for(request, requested_style),
-                            }
-                        )
-                        if requested_style and requested_style != "editorial"
-                        else design_service.report_look_for(request, accent)
-                    )
-                artifact_id = await _store_document(
-                    db,
-                    session,
-                    user_id=user_id,
-                    project_id=project_id,
-                    kind=ArtifactKind.report,
-                    title=title,
-                    summary=_regeneration_summary(request),
-                    data={
-                        **({"templateId": template.id} if template else {}),
-                        "sections": [
-                            {
-                                "id": s["id"],
-                                "heading": s["heading"],
-                                "level": s.get("level", 1),
-                                "status": "done" if (s.get("content") or "").strip() else "pending",
-                                "content": s.get("content") or "",
-                            }
-                            for s in sections
-                        ],
-                        "sources": sources,
-                        # Kept so a later rewrite is held to the same request.
-                        "request": request[:4000],
-                        **({"research": research_log} if research_log is not None else {}),
-                        "lint": lint.wire(lint.check(lint.from_sections(sections))),
-                        # Snapshot, as for the deck.
-                        **({"design": artifact_design} if artifact_design else {}),
-                        **({"titleBlock": title_block} if title_block else {}),
-                        "citationStyle": _CITATION_STYLES.get(
-                            str((title_block or {}).get("format") or ""), "APA"
-                        ),
-                        "wordCount": report_service.word_count(sections),
-                    },
-                )
-                session.artifact_id = artifact_id
-                # The proposal has become the document.
-                session.pending = None
-
-                db.add(
-                    Message(
-                        session_id=session_id,
-                        role=Role.assistant,
-                        content=f"{len(written)}개 섹션으로 보고서를 작성했습니다.",
-                        usage={**usage, "credits": credits},
-                        model=model["id"],
-                        steps=_prelude_steps(skills_event, context_steps) or None,
-                        routing=routing,
-                    )
-                )
-                settle(
-                    db,
-                    user,
-                    credits,
-                    reason="report.generate",
-                    session_id=session_id,
-                    model=model["id"],
-                )
-                record_searches(
-                    db,
-                    user,
-                    _searches_in(research_log),
-                    session_id=session_id,
-                    surface=session.kind.value,
-                )
-            session.updated_at = utcnow()
-            db.add(session)
+            db.add(row)
+            if saved.get("messageId") and (
+                    summary := _run_summary(work, pipeline, flow, run_id=recorder.run_id,
+                                            parent_id=row.parent_id, from_stage=from_stage)):
+                message = await db.get(Message, saved["messageId"])
+                if message is not None:
+                    message.routing = {**(message.routing or {}), "run": summary}
+                    db.add(message)
             await db.commit()
+        return recorder.run_id
+    except Exception:  # noqa: BLE001
+        log.exception("pipeline run %s for session %s not kept", recorder.run_id, session_id)
+        return None
 
-    if artifact_id:
-        yield chat_service.sse({"type": "artifact", "artifactId": artifact_id})
+
+def _report_turn(*, user_id: str, model: dict, outline_model: dict | None,
+                 project_id: str | None, routing: dict | None, skills_event: dict | None,
+                 context_steps: list[dict] | None, carry_from: str | None, carry_note: str,
+                 run_id: str = "", rerun_from: str = "") -> dict[str, Any]:
+    """`Request.turn` of a report's writing pass: what `report-save` stores it with."""
+    return {
+        "user_id": user_id, "model": model, "outline_model": outline_model,
+        "project_id": project_id, "routing": routing, "skills_event": skills_event,
+        "context_steps": list(context_steps or []), "carry_from": carry_from,
+        "carry_note": carry_note, "run_id": run_id,
+        **({"rerun_from": rerun_from} if rerun_from else {}),
+    }
+
+
+async def _report_tail(work: PipelineBundle | None, *, recorder: pipeline_runs.Recorder | None,
+                       session_id: str, user_id: str, usage: dict, parent: Any = None,
+                       from_stage: str | None = None) -> AsyncIterator[str]:
+    """After a report's writing pass: the run kept, the artifact named, the usage, done."""
+    saved = (work.document.saved if work is not None else None) or {}
+    written = [s for s in (work.document.sections if work is not None else [])
+               if (s.get("content") or "").strip()]
+    if work is not None and recorder is not None:
+        await _persist_run(work, recorder, session_id=session_id, user_id=user_id,
+                           saved=saved, parent=parent, from_stage=from_stage)
+    if saved.get("artifactId"):
+        yield chat_service.sse({"type": "artifact", "artifactId": saved["artifactId"]})
     elif not written:
         # The writer came back with no body (a reply spent on thinking, an empty answer):
         # said, so the turn never ends on a blank page that looks finished.
@@ -6957,5 +7185,6 @@ async def _run_report(
             "보고서 본문을 쓰지 못했습니다. 다시 시도하거나 다른 모델을 골라 주세요.",
             code="empty_report",
         ))
+    credits = int(saved.get("credits") or 0)
     yield chat_service.sse({"type": "usage", **usage, "credits": credits})
     yield chat_service.sse({"type": "done"})

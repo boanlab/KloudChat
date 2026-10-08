@@ -4,15 +4,18 @@
 name = "comparison-report"
 formats = ["comparison"]
 agents = ["comparison-report"]
-pre = ["check:gaps"]
+pre = ["check:gaps", "gap-card"]
 plan = ["research", "material", "outline"]
 write = [
     "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
     "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
     "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
-    "format-amend", "format-step", "quality",
+    "format-amend", "format-step", "quality", "report-save",
 ]
-revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+revise = [
+    "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
+    "revise-save",
+]
 prepass = ["quote-calc", "staffing", "compare-cost", "compare-check"]
 checks = ["lead-dates", "compare-cells", "staff-counts", "material-blanks"]
 judged = ["judge-bindings"]

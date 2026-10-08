@@ -5,13 +5,16 @@
 # docs/architecture.md § Pipelines.
 
 name = "report"
-pre = ["check:gaps"]
+pre = ["check:gaps", "gap-card"]
 plan = ["research", "material", "outline"]
 write = [
     "research", "material", "approved-plan", "calc", "announce", "settle", "writer-notes",
     "draft", "sections", "figures", "additions", "normalize", "title-block",
     "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
-    "format-amend", "format-step", "quality",
+    "format-amend", "format-step", "quality", "report-save",
 ]
-revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+revise = [
+    "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
+    "revise-save",
+]
 checks = ["lead-dates"]

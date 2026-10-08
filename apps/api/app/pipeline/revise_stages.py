@@ -395,13 +395,13 @@ for _stage in (Route(), Widen(), Rewrite(), Consistency()):
 def bundle_for(*, request: str, instruction: str, model: dict, planner: dict | None,
                api_key: str, is_deck: bool, title: str, data: dict, parts: list[dict],
                material: list[str], plan: revise.Plan | None, format_id: str,
-               usage: dict) -> Bundle:
+               usage: dict, session_id: str = "", turn: dict | None = None) -> Bundle:
     """A revision's bundle: the document as loaded, the instruction, the material."""
     from app.pipeline.bundle import Spec
 
     req = Request(text=request, model=model["id"], api_key=api_key,
                   outline_model=(planner or {}).get("id", ""), instruction=instruction,
-                  is_deck=is_deck)
+                  is_deck=is_deck, session_id=session_id, turn=dict(turn or {}))
     return Bundle(
         request=req, spec=Spec(format_id=format_id),
         material=Material(parts=[Part(text, "attachment") for text in material]),

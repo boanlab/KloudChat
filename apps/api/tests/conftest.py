@@ -9,6 +9,9 @@ import os
 os.environ.setdefault("INTERNAL_DATA_STRICT_LOCAL_DEFAULT", "false")
 # Every pipeline stage is held to the bundle fields it declares (`app.pipeline.runner`).
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
+# The stage records are on in production; the suite's recorded streams predate them, so they
+# are off here and turned on by the tests that read them.
+os.environ.setdefault("KLOUDCHAT_PIPELINE_STEPS", "0")
 
 from typing import Any
 

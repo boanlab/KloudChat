@@ -58,8 +58,11 @@ def _load_stages() -> None:
         chat_stages,
         check_stages,
         export_stages,
+        make_stages,
         report_stages,
         revise_stages,
+        route_stages,
+        save_stages,
     )
 
 
@@ -79,7 +82,7 @@ class Pipeline:
         return [stage(n) for n in self.flow(flow)]
 
 
-_FLOWS = ("pre", "plan", "write", "finish", "prepass", "checks", "judged", "revise")
+_FLOWS = ("pre", "plan", "write", "finish", "prepass", "checks", "judged", "revise", "make")
 
 
 def _parse(path: Path) -> Pipeline:

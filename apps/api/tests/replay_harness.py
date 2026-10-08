@@ -279,6 +279,9 @@ async def run_chat(case: dict, patch: Patch) -> dict:
             "content": stored.content if stored else None,
             "steps": stored.steps if stored else None,
             "lengthCheck": (stored.routing or {}).get("lengthCheck") if stored else None,
+            # Only with the records on (`KLOUDCHAT_PIPELINE_STEPS`): the goldens predate them.
+            **({"run": stored.routing["run"]}
+               if stored and (stored.routing or {}).get("run") else {}),
         },
     }
 

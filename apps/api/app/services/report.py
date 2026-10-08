@@ -3081,6 +3081,14 @@ async def write(
     check_keys: tuple[str, ...] | None = None,
     #: Receives one record per stage (`StepRecord.as_dict`), run or not.
     trace: list[dict[str, Any]] | None = None,
+    #: The router's settlement of the turn (`Request.turn`): given, `report-save` stores the
+    #: written document; absent, the caller does.
+    turn: dict[str, Any] | None = None,
+    session_id: str = "",
+    #: Keeps the bundle after each stage, so the run can be rerun from one later.
+    recorder: Any = None,
+    #: Receives the work bundle once built, for the caller that stores the run.
+    bundle_out: list | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -3099,11 +3107,16 @@ async def write(
         approved_plan=approved_plan, may_ask=may_ask, figures_plan=figures_plan,
         image_model=image_model, web_search=web_search, project_sources=project_sources,
         template_id=template_id, format_id=format_id, design_tokens=design_tokens,
-        check_keys=check_keys,
+        check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
     )
     pipe = registry.for_report(bundle.spec.format_id)
     flow = "plan" if approved_plan is None else "write"
-    runner = Runner(pipe.stages(flow), name=f"{pipe.name}.{flow}")
+    if bundle_out is not None:
+        bundle_out.append((bundle, pipe.name, flow))
+    runner = Runner(pipe.stages(flow), name=f"{pipe.name}.{flow}", recorder=recorder)
+    if recorder is not None:
+        recorder.pipeline, recorder.flow = pipe.name, flow
+        recorder.begin(bundle)
     try:
         async for event in runner.run(bundle, Context(options=dict(pipe.options))):
             yield event

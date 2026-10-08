@@ -13,9 +13,10 @@ from collections.abc import Iterable
 
 #: 「[담당자]」 「[구체적 성과 수치]」: Hangul (spaces and · inside), 1–10 characters. Not a
 #: Markdown link 「[text](url)」, a citation 「[1]」, a check box 「[ ]」/「[x]」, a 「[[그림 …]]」
-#: mark, or a label a document uses for itself (「[참고]」 「[붙임]」).
+#: mark, a figure or table caption 「[그림 부스 배치]」, or a label a document uses for itself
+#: (「[참고]」 「[붙임]」).
 PLACEHOLDER = re.compile(
-    r"(?<!\[)\[(?!(?:미정|참고|붙임|별첨|첨부|예시|주의|요약|결론|그림|표|공지|안내)\]|여기에)"
+    r"(?<!\[)\[(?!(?:미정|참고|붙임|별첨|첨부|예시|주의|요약|결론|그림|표|공지|안내)\]|여기에|(?:그림|표|사진|도표|도식)\s)"
     r"([가-힣](?:[가-힣 ·]{0,8}[가-힣])?)\](?!\(|\[|\])"
 )
 
