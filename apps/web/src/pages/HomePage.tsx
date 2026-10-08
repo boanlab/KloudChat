@@ -6,7 +6,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
 import { DesignGallery } from '@/components/chat/DesignGallery'
-import { kindMeta, kindOrder } from '@/lib/kinds'
+import { agentStartKind, kindMeta, kindOrder } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
@@ -155,7 +155,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
                 <Card
                   key={a.id}
                   onClick={() =>
-                    void newSession(a.kinds[0] ?? active, { agentId: a.id })
+                    void newSession(agentStartKind(a, active), { agentId: a.id })
                       .then((id) => navigate(`/s/${id}`))
                       .catch((err: unknown) => setNotice(startFailure(err, t)))
                   }

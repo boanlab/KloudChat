@@ -317,6 +317,17 @@ class Agent(SQLModel, table=True):
     #: denies skills, and values form a hard allowlist.
     skill_ids: list | None = Field(default=None, sa_column=_json(nullable=True))
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Surface a new conversation with this agent opens on; one of `kinds` when that is set.
+    #: The other `kinds` stay reachable as secondary outputs (handoff, start buttons).
+    surface: str | None = Field(default=None)
+    #: 서식 for sessions on that 서식's surface; wins over the project's default 서식.
+    render_template_id: str | None = Field(default=None)
+    #: `doc_formats` id for report sessions whose 서식 fixes none.
+    doc_format: str | None = Field(default=None)
+    #: Design system for the agent's sessions; wins over the project's. Not a foreign key:
+    #: a shared or seeded agent may name its owner's design, and the user's own design of
+    #: the same name is worn instead (none when they hold none).
+    design_system_id: str | None = Field(default=None)
     #: `open`: a copy carries the prompt. `sealed`: a copy runs on the
     #: original's prompt without holding it.
     share_mode: str = Field(default="open")

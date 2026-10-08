@@ -243,12 +243,28 @@ Tools are attached only when the model supports function calling — giving them
 to a model that does not yields either a 400 from upstream or an invented call.
 Built-in tools (`services/tools/builtin.py`): `web_search` (SearXNG),
 `fetch_url` (Crawl4AI), `weather` (Nominatim geocoding plus the Open-Meteo
-forecast, keyless), `execute_code` (sandboxed), `calculate` (bounded exact
-arithmetic, no code execution; `tools/arithmetic.py`), `check_ncs_answer`
-(`tools/ncs_check.py`), `create_artifact`, `create_chart`, `share_note`,
+forecast, keyless), `execute_code` (sandboxed; files it names are mounted), `run_skill_script`, `run_code`, `calculate` (bounded exact
+arithmetic, no code execution; `tools/arithmetic.py`), `create_artifact`,
+`create_chart`, `share_note`,
 `use_skill`, and `search_knowledge` over an agent's own documents and the files
 uploaded into the conversation (§8). Tools from
 installed MCP connectors are added to these.
+
+**Script skills.** A skill may ship as a package, `app/skills/<key>/SKILL.md` (YAML
+front matter for the catalogue fields, markdown body for the instructions) plus fixed
+`scripts/*.py`; `services/skill_packages.py` loads them into the catalogue and finds a
+row's scripts by its `catalog_key`. Two sandbox tools work on the conversation's files
+(`tools/sandbox_tools.py`, `services/sandbox.py`): `run_skill_script` mounts the package
+read-only beside the files and runs one script with JSON arguments (through bash, so
+LibreOffice can recalculate formulas), and `run_code` hands a Korean task plus a
+code-computed schema of each file (`services/file_schema.py`) to the code model
+(`CODE_MODEL`, default `local/qwen3.8-27b`), runs the result, sends the error back once,
+then gives `CODE_FALLBACK_MODEL` one try. What a run writes under `outputs/` is stored
+as the user's files in the chat and listed on the step as `outputs` (download chips).
+One sandbox session serves a turn, kept on `ToolContext.sandbox`. The sandbox sits in
+the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
+are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
+twin of the code model.
 
 **The web-search toggle has three positions.** `context.search_plan` turns the
 toggle and the user's words into two facts: whether the web tools (`web_search`,
@@ -880,6 +896,19 @@ workspace, and taken from `/agents` and `/skills/store` a copy at a time.
 `POST /agents/{id}/install` and `POST /skills/{id}/install` do the copying, and
 both are idempotent: pressing 가져오기 twice returns the row you already have
 rather than a second one with the same name.
+
+The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the six
+lineup agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
+bindings, an explicit tool list — `[]` denies every tool — and skill keys). A
+prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines open parts read
+on that surface only (`workspace_context.surface_prompt`).
+`seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
+owner's rows whose `catalog_key` is no longer shipped; copies people installed
+are theirs and stay. Sharing is set on the first run only. That run is told
+apart by a catalogue agent, or a shipped skill that is shared or has been
+installed — skills seeded per account before the store carry keys too but were
+private and never installed — so a skill the administrator made private stays
+private.
 
 **Sharing means copyable, not usable in place.** A skill is only ever resolved
 out of its owner's account (`workspace_context._resolve_skills`), so a shared

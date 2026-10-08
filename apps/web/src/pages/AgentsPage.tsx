@@ -19,15 +19,17 @@ import {
   Tabs,
   Textarea,
 } from '@/components/ui'
-import { kindMeta, kindOrder } from '@/lib/kinds'
+import { agentKinds, agentStartKind, kindMeta, kindOrder } from '@/lib/kinds'
 import { useStableOrder } from '@/lib/useStableOrder'
 import { cn, relativeTime, uid } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
-import type { Agent } from '@/types'
-import { errorCode, errorMessage } from '@/lib/api'
+import type { Agent, SessionKind } from '@/types'
+import { errorCode, errorMessage, templateText } from '@/lib/api'
+import { DOC_FORMATS } from '@/components/report/docFormats'
+import { currentLang } from '@/lib/i18n'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 
@@ -45,6 +47,10 @@ const emptyAgent = (model: string): Agent => ({
   tools: [],
   skillIds: [],
   kinds: ['chat'],
+  surface: null,
+  renderTemplateId: null,
+  docFormat: null,
+  designSystemId: null,
   visibility: 'private',
   ownerId: '',
   ownerName: '',
@@ -71,6 +77,23 @@ function slugify(text: string): string {
   return base.slice(0, 60) || 'item'
 }
 
+const selectClass =
+  'h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none'
+
+/** The draft with `kinds`, minus the bindings those kinds no longer offer. */
+function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
+  const next = { ...draft, kinds }
+  const offered = agentKinds(next)
+  const templates = useStore.getState().designTemplates
+  const template = templates.find((row) => row.id === draft.renderTemplateId)
+  return {
+    ...next,
+    surface: next.surface && offered.includes(next.surface) ? next.surface : null,
+    renderTemplateId: template && !offered.includes(template.surface) ? null : next.renderTemplateId,
+    docFormat: offered.includes('report') ? next.docFormat : null,
+  }
+}
+
 export function AgentsPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -88,12 +111,19 @@ export function AgentsPage() {
     loadWorkspace,
     workspaceLoading,
     user,
+    designs,
+    designTemplates,
+    ensureDesignTemplates,
   } = useStore()
   const [skillQuery, setSkillQuery] = useState('')
 
   useEffect(() => {
     void loadWorkspace()
   }, [loadWorkspace])
+  useEffect(() => {
+    void ensureDesignTemplates()
+  }, [ensureDesignTemplates])
+  const english = currentLang() === 'en'
   const [draft, setDraft] = useState<Agent | null>(null)
   const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
   const slugTaken = !!draft && agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
@@ -141,6 +171,11 @@ export function AgentsPage() {
       .filter((name) => !availableTools.some((tool) => tool.name === name))
       .map((name) => ({ name, label: name, available: false })),
   ]
+  const offered = draft ? agentKinds(draft) : []
+  const offersReport = offered.includes('report')
+  const boundTemplates = designTemplates.filter(
+    (row) => row.kind !== 'image' && offered.includes(row.surface),
+  )
   const updateKnowledgeAvailability = useCallback(
     (hasKnowledge: boolean) => {
       setDraft((current) =>
@@ -319,7 +354,7 @@ export function AgentsPage() {
                     size="sm"
                     variant="primary"
                     onClick={() =>
-                      void newSession(a.kinds[0] ?? 'chat', { agentId: a.id })
+                      void newSession(agentStartKind(a), { agentId: a.id })
                         .then((id) => navigate(`/s/${id}`))
                         .catch((err: unknown) => setNotice(startFailure(err, t)))
                     }
@@ -341,13 +376,17 @@ export function AgentsPage() {
             description={
               tab === 'store'
                 ? t('내 에이전트를 편집해 모두에게 공개하면 여기에 올라갑니다.')
-                : t('워크스페이스 스토어에서 가져오거나, 직접 하나 만들어 시작하세요.')
+                : t('기본으로 제공되는 에이전트는 없습니다. 직접 만들거나, 동료가 공개한 에이전트를 스토어에서 가져오세요.')
             }
             action={
               tab === 'store' ? undefined : (
-                <Button variant="primary" onClick={() => setTab('store')}>
-                  <Download size={16} />
-                  {t('스토어 둘러보기')}
+                <Button
+                  variant="primary"
+                  disabled={models.length === 0}
+                  onClick={() => setDraft(emptyAgent(defaultModel))}
+                >
+                  <Plus size={16} />
+                  {t('새 에이전트')}
                 </Button>
               )
             }
@@ -569,10 +608,12 @@ export function AgentsPage() {
                     <button
                       key={k}
                       onClick={() =>
-                        setDraft({
-                          ...draft,
-                          kinds: on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k],
-                        })
+                        setDraft(
+                          withinKinds(
+                            draft,
+                            on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k],
+                          ),
+                        )
                       }
                       className={cn(
                         'rounded-control border px-2.5 py-1.5 text-base transition-colors',
@@ -587,6 +628,81 @@ export function AgentsPage() {
                 })}
               </div>
             </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label={t('처음 여는 화면')}
+                hint={t('이 에이전트로 새 대화를 열 때의 화면입니다. 나머지 화면은 시작 버튼과 문서 넘기기로 씁니다.')}
+              >
+                <select
+                  value={draft.surface ?? ''}
+                  onChange={(e) =>
+                    setDraft({ ...draft, surface: (e.target.value || null) as SessionKind | null })
+                  }
+                  className={selectClass}
+                >
+                  <option value="">{t('첫 번째 화면')}</option>
+                  {agentKinds(draft).map((k) => (
+                    <option key={k} value={k}>
+                      {t(kindMeta[k].label)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field
+                label={t('문서 서식')}
+                hint={t('보고서·슬라이드 대화가 이 서식으로 시작합니다. 입력창에서 다른 서식을 고르면 그것이 이깁니다.')}
+              >
+                <select
+                  value={draft.renderTemplateId ?? ''}
+                  onChange={(e) => setDraft({ ...draft, renderTemplateId: e.target.value || null })}
+                  className={selectClass}
+                >
+                  <option value="">{t('정하지 않음')}</option>
+                  {boundTemplates.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {`${t(kindMeta[row.surface].label)} · ${templateText(row, english).name}`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              {offersReport && (
+                <Field
+                  label={t('문서 형식')}
+                  hint={t('서식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}
+                >
+                  <select
+                    value={draft.docFormat ?? ''}
+                    onChange={(e) => setDraft({ ...draft, docFormat: e.target.value || null })}
+                    className={selectClass}
+                  >
+                    <option value="">{t('요청에 따라')}</option>
+                    {DOC_FORMATS.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {t(f.label)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              <Field label={t('디자인')} hint={t('프로젝트의 디자인보다 먼저 씁니다. 다른 사람의 디자인이면 내 디자인 중 같은 이름의 것을 씁니다.')}>
+                <select
+                  value={draft.designSystemId ?? ''}
+                  onChange={(e) => setDraft({ ...draft, designSystemId: e.target.value || null })}
+                  className={selectClass}
+                >
+                  <option value="">{t('정하지 않음')}</option>
+                  {designs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                  {draft.designSystemId && !designs.some((d) => d.id === draft.designSystemId) && (
+                    <option value={draft.designSystemId}>{t('다른 사람의 디자인')}</option>
+                  )}
+                </select>
+              </Field>
+            </div>
 
             <Field label={t('시스템 프롬프트')}>
               <Textarea

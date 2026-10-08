@@ -1,0 +1,240 @@
+"""The six shipped agents (lineup v1): their specs hold together and the seeder makes them."""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import JSON, MetaData
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlmodel import SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app.models.chat import ChatSession, SessionKind
+from app.models.user import User, UserRole
+from app.models.workspace import Agent, DesignSystem, Memory, Skill, StoredFile, Visibility
+from app.routers import workspace as ws
+from app.services import design_templates, doc_formats, starter, workspace_context
+from app.services.tools import registry
+
+_SHIPPED = {
+    "client-proposal": "고객 맞춤 제안서",
+    "gaejo-report": "개조식 보고서",
+    "minutes": "회의록",
+    "data-analysis": "데이터 분석",
+    "career-docs": "자기소개서·경력기술서",
+    "comparison-report": "비교·분석 보고서",
+}
+_BINDINGS = {
+    "client-proposal": ("report", "doc-client-proposal", "client_proposal", "기본"),
+    "gaejo-report": ("report", "doc-gaejo-report", "gaejo", "문서용 명조"),
+    "minutes": ("report", "doc-minutes", "minutes", "문서용 명조"),
+    "data-analysis": ("chat", None, None, "기본"),
+    "career-docs": ("chat", "doc-career-history", "career_history", "기본"),
+    "comparison-report": ("report", "doc-comparison", "comparison", "기본"),
+}
+_TOOLS = {
+    "data-analysis": ["run_code", "create_chart", "calculate"],
+    "career-docs": ["run_skill_script", "calculate"],
+}
+_BY_KEY = {spec["key"]: spec for spec in starter._AGENTS}
+
+
+def test_the_catalogue_ships_the_six_lineup_agents_in_order():
+    assert [spec["key"] for spec in starter._AGENTS] == list(_SHIPPED)
+    assert {key: spec["name"] for key, spec in _BY_KEY.items()} == _SHIPPED
+    for spec in starter._AGENTS:
+        assert spec["description"] and spec["guide"] and spec["starters"]
+        assert len(spec["system_prompt"]) > 400
+
+
+@pytest.mark.parametrize("key", list(_SHIPPED))
+def test_each_agent_names_its_tools_and_they_exist(key):
+    spec = _BY_KEY[key]
+    # Explicit, never inherited: report surfaces deny every chat tool.
+    assert "tools" in spec
+    assert spec["tools"] == _TOOLS.get(key, [])
+    known = {
+        tool.name
+        for tool in (
+            registry.CALCULATE, registry.RUN_CODE, registry.RUN_SKILL_SCRIPT, registry.CREATE_CHART
+        )
+    }
+    assert set(spec["tools"]) <= known
+
+
+@pytest.mark.parametrize("key", list(_SHIPPED))
+def test_each_agents_bindings_agree_with_its_kinds_templates_and_formats(key):
+    spec = _BY_KEY[key]
+    surface, template_id, format_id, design = _BINDINGS[key]
+    assert (spec["surface"], spec.get("template"), spec.get("doc_format"), spec["design"]) == (
+        surface, template_id, format_id, design
+    )
+    assert spec["surface"] in spec["kinds"]
+    if template_id:
+        template = design_templates.get(template_id)
+        assert template is not None and template.kind in design_templates.HTML_KINDS
+        assert template.surface.value in spec["kinds"]
+        assert doc_formats.TEMPLATE_FORMATS[template_id] == format_id
+    if format_id:
+        assert format_id in doc_formats.BY_ID and "report" in spec["kinds"]
+    assert design in {row["name"] for row in starter._DESIGNS}
+    skills = {row["key"]: row for row in starter._SKILLS}
+    for skill_key in spec["skills"]:
+        skill = skills[skill_key]
+        # A skill the agent's own tools cannot run would be refused when switched on.
+        assert set(skill.get("required_tools") or []) <= set(spec["tools"])
+        assert set(skill["kinds"]) & set(spec["kinds"])
+    assert spec["skills"] == (["text-fit"] if key == "career-docs" else [])
+
+
+def test_career_docs_reads_its_surface_part_only():
+    prompt = _BY_KEY["career-docs"]["system_prompt"]
+    chat = workspace_context.surface_prompt(prompt, "chat")
+    report = workspace_context.surface_prompt(prompt, "report")
+    common = "지원자에게 불리한 거짓은 쓰지 않는다"
+    assert common in chat and common in report
+    assert "text-fit" in chat and "「[제출용 답안 n]」" in chat
+    assert "text-fit" not in report and "제출용 답안" not in report
+    assert "‘병행 활동’" in report and "‘병행 활동’" not in chat
+    assert "[채팅에서]" not in chat + report and "[보고서에서]" not in chat + report
+    # A prompt with no surface parts reads the same everywhere.
+    plain = "너는 회의록을 쓴다."
+    assert workspace_context.surface_prompt(plain, "report") == plain
+
+
+# ── seeding ────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+async def db():
+    metadata = MetaData()
+    for table in SQLModel.metadata.sorted_tables:
+        copy = table.to_metadata(metadata)
+        for column in copy.columns:
+            if isinstance(column.type, JSONB):
+                column.type = JSON()
+                column.server_default = None
+    engine = create_async_engine("sqlite+aiosqlite://")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                metadata.create_all,
+                tables=[
+                    metadata.tables[model.__tablename__]
+                    for model in (User, Agent, Skill, DesignSystem, StoredFile, Memory, ChatSession)
+                ],
+            )
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            yield session
+    finally:
+        await engine.dispose()
+
+
+async def _admin(db) -> User:
+    admin = User(email="lineup-admin@example.com", name="Admin", password_hash="x",
+                 role=UserRole.admin)
+    db.add(admin)
+    await db.commit()
+    await starter.seed_designs(db, admin.id)
+    await db.commit()
+    return admin
+
+
+@pytest.mark.asyncio
+async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
+    admin = await _admin(db)
+    # An agent of the owner's own with a shipped name keeps its handle.
+    own = Agent(owner_id=admin.id, name="회의록", slug="회의록", system_prompt="내 회의록")
+    db.add(own)
+    await db.commit()
+
+    await starter.sync_catalog(db, admin)
+    await db.commit()
+    rows = {
+        row.catalog_key: row
+        for row in (await db.exec(select(Agent).where(Agent.catalog_key.is_not(None)))).all()
+    }
+    assert set(rows) == set(_SHIPPED)
+    designs = {
+        row.id: row.name
+        for row in (await db.exec(select(DesignSystem))).all()
+    }
+    skills = {row.id: row.catalog_key for row in (await db.exec(select(Skill))).all()}
+    for key, agent in rows.items():
+        spec = _BY_KEY[key]
+        surface, template_id, format_id, design = _BINDINGS[key]
+        assert agent.owner_id == admin.id
+        assert agent.visibility is Visibility.org
+        assert agent.name == _SHIPPED[key]
+        assert agent.tools == _TOOLS.get(key, [])
+        assert (agent.surface, agent.render_template_id, agent.doc_format) == (
+            surface, template_id, format_id
+        )
+        assert designs[agent.design_system_id] == design
+        assert [skills[i] for i in agent.skill_ids] == spec["skills"]
+        assert agent.system_prompt == spec["system_prompt"]
+        # What the agent API would accept for these values.
+        await ws._validate_agent_bindings(db, admin, {
+            "kinds": agent.kinds, "surface": agent.surface,
+            "render_template_id": agent.render_template_id, "doc_format": agent.doc_format,
+            "design_system_id": agent.design_system_id,
+        })
+    assert rows["minutes"].slug == "회의록-2" and own.slug == "회의록"
+    # Idempotent.
+    assert await starter.seed_catalog(db, admin.id) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(db):
+    admin = await _admin(db)
+    await starter.sync_catalog(db, admin)
+    await db.commit()
+    agent = (await db.exec(select(Agent).where(Agent.catalog_key == "career-docs"))).one()
+    for kind, present, absent in (
+        (SessionKind.chat, "text-fit", "‘병행 활동’"),
+        (SessionKind.report, "‘병행 활동’", "text-fit"),
+    ):
+        session = ChatSession(user_id=admin.id, agent_id=agent.id, kind=kind)
+        db.add(session)
+        await db.commit()
+        context = await workspace_context.assemble(db, admin, session)
+        role = next(b.text for b in context.blocks if b.source == "agent.instructions")
+        assert present in role and absent not in role
+
+
+@pytest.mark.asyncio
+async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name(db):
+    admin = await _admin(db)
+    await starter.sync_catalog(db, admin)
+    user = User(email="lineup-user@example.com", name="User", password_hash="x")
+    bare = User(email="lineup-bare@example.com", name="Bare", password_hash="x")
+    db.add_all([user, bare])
+    await db.commit()
+    await starter.seed_designs(db, user.id)
+    await db.commit()
+    agent = (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one()
+    own = (
+        await db.exec(
+            select(DesignSystem).where(
+                DesignSystem.owner_id == user.id, DesignSystem.name == "문서용 명조"
+            )
+        )
+    ).one()
+    assert agent.design_system_id != own.id
+
+    # The shared original and an installed copy both resolve to the user's own row.
+    copy = await ws.install_agent(agent.id, user, db)
+    for agent_id in (agent.id, copy.id):
+        session = ChatSession(user_id=user.id, agent_id=agent_id, kind=SessionKind.report)
+        db.add(session)
+        await db.commit()
+        design = await workspace_context.design_for(db, user, session)
+        assert design is not None and design.id == own.id
+    listed = next(row for row in await ws.list_agents(user, db) if row.id == agent.id)
+    assert listed.design_name == "문서용 명조"
+
+    # Someone holding no design of that name gets none.
+    session = ChatSession(user_id=bare.id, agent_id=agent.id, kind=SessionKind.report)
+    db.add(session)
+    await db.commit()
+    assert await workspace_context.design_for(db, bare, session) is None

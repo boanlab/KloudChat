@@ -32,7 +32,7 @@ from app.models.workspace import (
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
-from app.services import geoip, settings_store
+from app.services import design_templates, geoip, settings_store, skill_packages
 from app.services.prompt_templates import PromptTemplate, skill_names
 
 #: Nullable JSONB list column read as a list.
@@ -345,12 +345,15 @@ class SkillOut(Wire):
     #: The shared row this one was copied from.
     origin_id: str | None = None
     updated_at: datetime
+    #: Fixed scripts its package ships (`run_skill_script`); empty for a plain skill.
+    scripts: list[str] = Field(default_factory=list)
 
     @classmethod
     def of(cls, s: Skill) -> SkillOut:
         out = cls.model_validate(s, from_attributes=True)
         out.kinds = list(s.kinds or [])
         out.required_tools = list(s.required_tools or [])
+        out.scripts = skill_packages.script_names(s.catalog_key)
         return out
 
 
@@ -376,6 +379,7 @@ class StoreSkillOut(SkillOut):
         out = cls.model_validate(s, from_attributes=True)
         out.kinds = list(s.kinds or [])
         out.required_tools = list(s.required_tools or [])
+        out.scripts = skill_packages.script_names(s.catalog_key)
         out.owner_name = owner_name
         out.official = official
         out.installed = installed
@@ -434,6 +438,13 @@ class AgentOut(Wire):
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
     kinds: JsonList = Field(default_factory=list)
+    #: Bindings; see `Agent.surface` and the fields after it.
+    surface: str | None = None
+    render_template_id: str | None = None
+    doc_format: str | None = None
+    design_system_id: str | None = None
+    #: Name of that design, so a viewer who cannot see the row finds their own of that name.
+    design_name: str = ""
     guide: str = ""
     starters: JsonList = Field(default_factory=list)
     share_mode: Literal["open", "sealed"] = "open"
@@ -466,11 +477,13 @@ class AgentOut(Wire):
         has_knowledge: bool = False,
         official: bool = False,
         installed: bool = False,
+        design_name: str = "",
         #: Caller id; a sealed original's prompt is withheld from non-owners.
         viewer_id: str | None = None,
     ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
         out.owner_name = owner_name
+        out.design_name = design_name
         out.has_knowledge = has_knowledge
         out.official = official
         out.installed = installed
@@ -500,6 +513,13 @@ class AgentIn(Wire):
     tools: list[str] | None = None
     skill_ids: list[str] | None = None
     kinds: list[str] | None = None
+    #: Null: the first of `kinds` (chat when unrestricted). Must be one of `kinds` when set.
+    surface: str | None = Field(default=None, max_length=20)
+    #: A 서식 from `/design-templates` whose surface is one of `kinds`.
+    render_template_id: str | None = Field(default=None, max_length=60)
+    #: A `doc_formats` id; applies to report sessions whose 서식 fixes no format.
+    doc_format: str | None = Field(default=None, max_length=40)
+    design_system_id: str | None = Field(default=None, max_length=64)
     guide: str = Field(default="", max_length=2000)
     starters: list[str] = Field(default_factory=list, max_length=6)
     share_mode: Literal["open", "sealed"] = "open"
@@ -882,6 +902,8 @@ class DesignTemplateOut(Wire):
     form_format: str = ""
     #: Whether `/design-templates/{id}/preview` has something to show.
     has_preview: bool = False
+    #: Slides in a deck's sample, each its own `/preview?slide=N`; 0 for any other kind.
+    slide_count: int = 0
 
     @classmethod
     def of(cls, t: object) -> DesignTemplateOut:
@@ -917,6 +939,11 @@ class DesignTemplateOut(Wire):
             defaults=dict(t.defaults),
             form_format=t.form_file.rsplit(".", 1)[-1] if t.form_file else "",
             has_preview=bool(getattr(t, "sample", "") and getattr(t, "seed", "")),
+            slide_count=(
+                len(design_templates.sample_slides(t))
+                if t.kind == "deck" and getattr(t, "sample", "")
+                else 0
+            ),
         )
 
 

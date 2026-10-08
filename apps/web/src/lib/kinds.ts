@@ -1,5 +1,5 @@
 import { Clapperboard, FileText, Image, MessageSquare, Presentation } from 'lucide-react'
-import type { SessionKind } from '@/types'
+import type { Agent, SessionKind } from '@/types'
 
 /** Single source of truth for the five surfaces: nav, empty states, badges and routing read from here. */
 export const kindMeta: Record<
@@ -51,6 +51,22 @@ export const kindMeta: Record<
 }
 
 export const kindOrder: SessionKind[] = ['chat', 'report', 'slides', 'image', 'av']
+
+/** Surfaces an agent offers, in `kindOrder`; all of them when it names none. */
+export function agentKinds(agent: Pick<Agent, 'kinds'>): SessionKind[] {
+  return agent.kinds.length ? kindOrder.filter((k) => agent.kinds.includes(k)) : kindOrder
+}
+
+/**
+ * The surface a new conversation with this agent opens on: its bound surface, else the
+ * screen the person is on when the agent offers it, else its first surface.
+ */
+export function agentStartKind(agent: Pick<Agent, 'kinds' | 'surface'>, current?: SessionKind): SessionKind {
+  const offered = agentKinds(agent)
+  if (agent.surface && offered.includes(agent.surface)) return agent.surface
+  if (current && offered.includes(current)) return current
+  return offered[0] ?? 'chat'
+}
 
 /** Icons a project can wear. Shared so the create and edit forms agree. */
 export const PROJECT_EMOJIS = ['🧪', '📚', '🛠️', '📊', '🚀', '🧠', '🗂️', '🔬'] as const

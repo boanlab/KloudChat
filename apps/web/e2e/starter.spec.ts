@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-/** The shipped agent and skill catalogue is complete and wired together. */
+/** The shipped catalogue: skills, and the six lineup agents in the store. */
 
 const AS_USER = `async (path) => {
   const login = await fetch('/api/auth/login', {
@@ -14,7 +14,7 @@ const AS_USER = `async (path) => {
   return r.ok ? await r.json() : null
 }`
 
-test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다', async ({ page }) => {
+test('기본 스킬과 기본 에이전트 여섯 개가 갖춰져 있다', async ({ page }) => {
   await signIn(page)
 
   const { agents, skills } = await page.evaluate(async (fn) => {
@@ -24,27 +24,20 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
     }
   }, AS_USER)
 
-  // The product ships admin-owned `org` rows; a new account's own list starts empty.
-  const mine = agents.filter((a: { visibility: string }) => a.visibility === 'org')
-
-  expect(agents.length).toBeGreaterThanOrEqual(5)
-  expect(skills.length).toBeGreaterThanOrEqual(0)
-
-  // Counted, not applied to every row: a person's own agent is not held to the seeder's standard.
-  const wellFormed = agents.filter(
-    (agent: { systemPrompt: string; description: string; kinds: string[] }) =>
-      agent.systemPrompt.length > 40 && agent.description.length > 0 && agent.kinds.length > 0,
+  // People's own and shared agents may exist; the catalogue's six stand among them.
+  const official = agents.filter((a: { official?: boolean; catalogKey?: string | null }) =>
+    a.official || a.catalogKey,
   )
-  expect(wellFormed.length, '지침·설명·적용 화면을 갖춘 에이전트가 모자랍니다').toBeGreaterThanOrEqual(5)
+  const names = new Set(official.map((a: { name: string }) => a.name))
+  for (const name of ['고객 맞춤 제안서', '개조식 보고서', '회의록', '데이터 분석',
+    '자기소개서·경력기술서', '비교·분석 보고서']) {
+    expect(names.has(name), `${name} 없음`).toBe(true)
+  }
 
-  // Catalogue agents' skillIds point at catalogue skills; this account's /api/skills may be empty.
+  // This account's /api/skills may be empty; the catalogue stands in the store.
   const store = await page.evaluate(async (fn) => eval(fn)('/api/skills/store'), AS_USER)
   const catalogue = (store ?? []).concat(skills)
-  const ids = new Set(catalogue.map((s: { id: string }) => s.id))
   expect(catalogue.length).toBeGreaterThanOrEqual(5)
-  const attached = mine.flatMap((a: { skillIds: string[] }) => a.skillIds ?? [])
-  expect(attached.length).toBeGreaterThan(0)
-  for (const id of attached) expect(ids.has(id), '연결된 스킬이 존재하지 않습니다').toBe(true)
 
   // Official catalogue skills carry a procedure; personal rows may be one line.
   for (const skill of catalogue.filter((s: { official?: boolean; catalogKey?: string | null }) =>
@@ -55,9 +48,6 @@ test('기본 에이전트와 스킬이 갖춰져 있고 서로 연결돼 있다'
   }
 
   // On screen: catalogue rows stand in the 스토어 tab.
-  await page.goto('/agents')
-  await page.getByRole('tab', { name: /스토어/ }).click()
-  await expect(page.getByText(agents[0].name).first()).toBeVisible({ timeout: 15_000 })
   await page.goto('/skills')
   const shelf = catalogue[0] ?? skills[0]
   const shelfIsMine = skills.some((s: { id: string }) => s.id === shelf.id)

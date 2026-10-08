@@ -26,7 +26,7 @@ import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
 import { DesignGalleryModal, offersTemplates } from '@/components/chat/DesignGallery'
 import { errorCode, errorMessage, PrivacyDecisionError, templateText } from '@/lib/api'
 import { refusalSentence, startFailure } from '@/lib/failures'
-import { handoffSurface } from '@/lib/documentRequest'
+import { agentDocumentNames, agentHandoffSurface, handoffSurface } from '@/lib/documentRequest'
 import { DICTATION_EVENT, isMac } from '@/lib/shortcuts'
 import { currentLang } from '@/lib/i18n'
 import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
@@ -459,6 +459,7 @@ export function Composer({
   const [moreOpen, setMoreOpen] = useState(false)
   const folded = phone && !moreOpen
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
+  const handOff = useStore((s) => s.handOff)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
   const composerRestore = useStore((s) => s.composerRestore)
   const setComposerRestore = useStore((s) => s.setComposerRestore)
@@ -1296,8 +1297,31 @@ export function Composer({
       return
     }
     // A document request typed into chat starts a new conversation on the
-    // report or slides surface; agent chats and starting points keep it here.
-    const handoff = kind === 'chat' && !session?.agentId && !sentStartingTemplate ? handoffSurface(text) : null
+    // report or slides surface; starting points keep it here. An agent chat moves
+    // only to a surface the agent names, and keeps the agent and the conversation.
+    const detected = kind === 'chat' && !sentStartingTemplate ? handoffSurface(text) : null
+    const agentHandoff =
+      kind === 'chat' && !sentStartingTemplate && sessionId && sessionAgent
+        ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
+        : null
+    if (agentHandoff && sessionId) {
+      void handOff(sessionId, agentHandoff, text, {
+        attachments: sentAttachments,
+        webSearch: sentWebSearch,
+        onSession: (id) => navigate(`/s/${id}`),
+      }).catch((error: unknown) => {
+        setComposerRestore({
+          sessionId,
+          value: text,
+          attachments: sentAttachments,
+          activatedSkillIds: sentSkillIds,
+          startingTemplate: sentStartingTemplate,
+          error: errorMessage(error, t('문서로 넘기지 못했습니다. 다시 시도하세요.')),
+        })
+      })
+      return
+    }
+    const handoff = detected && !session?.agentId ? detected : null
     if (handoff) {
       let landedHandoffSessionId = sessionId
       void send(null, handoff, text, {

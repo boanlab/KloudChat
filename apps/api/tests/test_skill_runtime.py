@@ -4,6 +4,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from catalog_text_skills import use_text_skills
 from conftest import both_passes
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.testclient import TestClient
@@ -107,6 +108,10 @@ class _SeedDb:
             self.rows.append(row)
         if isinstance(row, Agent) and all(existing is not row for existing in self.agents):
             self.agents.append(row)
+
+    async def delete(self, row):
+        table = self.rows if isinstance(row, Skill) else self.agents
+        table[:] = [existing for existing in table if existing is not row]
 
 
 class _GetDb:
@@ -321,7 +326,8 @@ async def test_required_tool_and_surface_are_enforced():
 
 
 @pytest.mark.asyncio
-async def test_catalog_backfill_is_idempotent_and_preserves_edited_body():
+async def test_catalog_backfill_is_idempotent_and_preserves_edited_body(monkeypatch):
+    use_text_skills(monkeypatch)
     legacy = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -341,12 +347,13 @@ async def test_catalog_backfill_is_idempotent_and_preserves_edited_body():
     assert legacy.catalog_key == "citation"
     keys = [row.catalog_key for row in db.rows if row.catalog_key]
     assert len(keys) == len(set(keys))
-    calculation = next(row for row in db.rows if row.catalog_key == "calculation-unit-check")
-    assert calculation.required_tools == ["execute_code"]
+    calculation = next(row for row in db.rows if row.catalog_key == "calc-check")
+    assert calculation.required_tools == ["run_skill_script"]
 
 
 @pytest.mark.asyncio
-async def test_catalog_only_upgrades_an_exact_untouched_catalog_body():
+async def test_catalog_only_upgrades_an_exact_untouched_catalog_body(monkeypatch):
+    use_text_skills(monkeypatch)
     legacy = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -364,44 +371,84 @@ async def test_catalog_only_upgrades_an_exact_untouched_catalog_body():
 
 
 @pytest.mark.asyncio
-async def test_the_catalog_is_published_and_its_agents_point_at_its_skills():
+async def test_a_skill_that_became_a_package_keeps_its_row_and_gets_the_new_body():
+    old = _skill(
+        name="계산·단위 검증",
+        slug="계산-단위-검증",
+        body=starter._LEGACY_CATALOG_BODIES[("calc-check", "1.0.0")],
+        source=SkillSource.built_in,
+        catalog_key="calculation-unit-check",
+        required_tools=["execute_code"],
+        version="1.0.0",
+    )
+    db = _SeedDb([old])
+    await starter.seed_catalog(db, "admin-1")
+
+    assert old.catalog_key == "calc-check"
+    assert old.required_tools == ["run_skill_script"]
+    assert "run_skill_script" in old.body and old.version == "2.0.0"
+    assert [row.catalog_key for row in db.rows].count("calc-check") == 1
+
+
+#: A test-local catalogue agent; the product ships none for now.
+_CATALOGUE_AGENT = {
+    "key": "practice-coach",
+    "name": "연습 코치",
+    "description": "연습 문제를 내고 풀이를 점검합니다.",
+    "system_prompt": "너는 연습 코치다. 한 문항씩 내고 풀이를 점검한다.",
+    "guide": "문제를 요청하면 한 문항씩 냅니다.",
+    "starters": ["문제 하나 내 줘"],
+    "kinds": ["chat"],
+    "skills": ["quiz-writer", "calc-check"],
+}
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_seeds_exactly_the_agents_it_ships_even_none():
     db = _SeedDb([])
     assert await starter.seed_catalog(db, "admin-1") > 0
 
-    assert db.agents, "the catalogue ships agents, not only skills"
+    assert len(db.agents) == len(starter._AGENTS)
+    assert db.rows and all(row.visibility is Visibility.org for row in db.rows)
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_is_published_and_its_agents_point_at_its_skills(monkeypatch):
+    use_text_skills(monkeypatch)
+    monkeypatch.setattr(starter, "_AGENTS", [_CATALOGUE_AGENT])
+    db = _SeedDb([])
+    assert await starter.seed_catalog(db, "admin-1") > 0
+
+    assert [agent.catalog_key for agent in db.agents] == ["practice-coach"]
     assert all(row.visibility is Visibility.org for row in db.rows)
     assert all(agent.visibility is Visibility.org for agent in db.agents)
-    assert all(agent.catalog_key for agent in db.agents)
     # Allow-lists name row ids, not seeder slugs.
-    ids = {row.id for row in db.rows}
-    referenced = {skill_id for agent in db.agents for skill_id in (agent.skill_ids or [])}
-    assert referenced and referenced <= ids
+    ids = {row.catalog_key: row.id for row in db.rows}
+    assert db.agents[0].skill_ids == [ids["quiz-writer"], ids["calc-check"]]
 
 
 @pytest.mark.asyncio
-async def test_the_catalog_adopts_rows_seeded_before_it_existed():
-    """Existing admin copies become the catalogue instead of being duplicated."""
-    legacy_agent = Agent(
-        id="agent-1",
-        owner_id="admin-1",
-        name="논문 리뷰어",
-        slug="논문-리뷰어",
-        system_prompt="내가 고친 프롬프트",
+async def test_a_retired_catalogue_agent_is_removed_and_the_owners_own_agent_stays(monkeypatch):
+    monkeypatch.setattr(starter, "_AGENTS", [])
+    retired = Agent(
+        id="agent-1", owner_id="admin-1", name="옛 카탈로그", slug="옛-카탈로그",
+        system_prompt="옛 프롬프트", catalog_key="paper-reviewer", visibility=Visibility.org,
     )
-    db = _SeedDb([], agents=[legacy_agent])
+    own = Agent(id="agent-2", owner_id="admin-1", name="논문 리뷰어", slug="논문-리뷰어")
+    db = _SeedDb([], agents=[retired, own])
     await starter.seed_catalog(db, "admin-1")
 
-    assert len(db.agents) == len(starter._AGENTS)
-    assert legacy_agent.catalog_key == "paper-reviewer"
-    assert legacy_agent.visibility is Visibility.org
-    assert legacy_agent.system_prompt == "내가 고친 프롬프트"
+    assert db.agents == [own]
+    assert own.catalog_key is None
+    assert own.visibility is Visibility.private
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("catalog_key", ["english-tutor", "opic-master"])
-async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(catalog_key):
+async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(monkeypatch):
     """An unedited copy follows catalogue rewording; an edited one is left alone."""
-    spec = next(row for row in starter._AGENTS if row["key"] == catalog_key)
+    monkeypatch.setattr(starter, "_AGENTS", [_CATALOGUE_AGENT])
+    spec = _CATALOGUE_AGENT
+    catalog_key = spec["key"]
     catalogue = Agent(
         id="agent-1",
         owner_id="admin-1",
@@ -435,8 +482,9 @@ async def test_an_untouched_copy_follows_the_catalogue_and_an_edited_one_stays(c
 
 
 @pytest.mark.asyncio
-async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
+async def test_an_upgrading_instance_publishes_the_skills_it_already_had(monkeypatch):
     """Admin copies that already carry catalogue keys are still published."""
+    use_text_skills(monkeypatch)
     existing = _skill(
         name="인용 형식 맞추기",
         slug="인용-형식-맞추기",
@@ -451,8 +499,9 @@ async def test_an_upgrading_instance_publishes_the_skills_it_already_had():
 
 
 @pytest.mark.asyncio
-async def test_an_entry_retired_after_setup_stays_retired():
+async def test_an_entry_retired_after_setup_stays_retired(monkeypatch):
     """An entry switched back to 개인 is not republished on the next sign-in."""
+    use_text_skills(monkeypatch)
     db = _SeedDb([])
     await starter.seed_catalog(db, "admin-1")
     retired = next(row for row in db.rows if row.catalog_key == "citation")
@@ -461,6 +510,33 @@ async def test_an_entry_retired_after_setup_stays_retired():
     await starter.seed_catalog(db, "admin-1")
 
     assert retired.visibility is Visibility.private
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("installs", "published"),
+    [(0, True), (1, False)],
+    ids=["never-shared", "taken-from-the-store"],
+)
+async def test_the_first_run_is_told_apart_without_any_agents(installs, published, monkeypatch):
+    """With no agents to mark the catalogue, a shared or installed skill does.
+
+    Rows seeded per account before the shared catalogue are private and never
+    installed, so they are published once; after that, an entry the
+    administrator made private stays private even when all of them are.
+    """
+    monkeypatch.setattr(starter, "_AGENTS", [])
+    db = _SeedDb([])
+    await starter.seed_catalog(db, "admin-1")
+    for row in db.rows:
+        row.visibility = Visibility.private
+    db.rows[0].installs = installs
+
+    await starter.seed_catalog(db, "admin-1")
+    await starter.seed_catalog(db, "admin-1")
+
+    expected = Visibility.org if published else Visibility.private
+    assert all(row.visibility is expected for row in db.rows)
 
 
 @pytest.mark.asyncio

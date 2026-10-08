@@ -1,3 +1,7 @@
+import type { DesignTemplateRow } from '@/lib/api'
+import { DOC_FORMATS } from '@/components/report/docFormats'
+import type { Agent } from '@/types'
+
 /**
  * Detects chat sentences that are really orders for a document or a deck, so
  * the chat hands them to the report or slides surface. Deliberately narrow: a
@@ -6,7 +10,7 @@
  */
 
 const NOUN =
-  /(공문|공지문|안내문|보고서|기획서|제안서|계획서|회의록|보도자료|결과\s?보고|주간\s?보고|월간\s?보고|출장\s?보고|사후\s?분석|품의서|기안문|협조문|시말서|경위서|사유서|추천서|자기소개서|자소서|백서|매뉴얼|지침서|규정|약관|계약서|의견서|건의문|성명서|설문지|term paper|white paper|proposal|report|memo|minutes)/i
+  /(공문|공지문|안내문|보고서|기획서|제안서|계획서|회의록|보도자료|결과\s?보고|주간\s?보고|월간\s?보고|출장\s?보고|사후\s?분석|품의서|기안문|협조문|시말서|경위서|사유서|추천서|자기소개서|자소서|경력\s?기술서|백서|매뉴얼|지침서|규정|약관|계약서|의견서|건의문|성명서|설문지|term paper|white paper|proposal|report|memo|minutes)/i
 
 const VERB =
   /(작성|써\s?줘|써\s?주|써줄|써\s?볼|만들어|만들\s?줘|초안|draft|write|compose|prepare|뽑아|작업해)/i
@@ -36,4 +40,49 @@ export function handoffSurface(text: string): 'report' | 'slides' | null {
   if (isOrder(s, DECK)) return 'slides'
   if (isOrder(s, NOUN)) return 'report'
   return null
+}
+
+const SURFACE_WORDS = { report: /(보고서|문서|report)/i, slides: DECK } as const
+
+/**
+ * In an agent chat, the agent's document surface the sentence orders, or null to answer
+ * here. Only surfaces the agent offers, and only by name: the bound document's own name
+ * (its 서식 or format, e.g. 「경력기술서」) or the surface's word — so a 자기소개서 answer
+ * that agent writes in chat is not taken for a document.
+ */
+export function agentHandoffSurface(
+  text: string,
+  offered: readonly string[],
+  names: Partial<Record<'report' | 'slides', string[]>>,
+): 'report' | 'slides' | null {
+  const s = text.trim()
+  if (s.length < 4 || s.length > 1200) return null
+  for (const surface of ['slides', 'report'] as const) {
+    if (!offered.includes(surface)) continue
+    const own = (names[surface] ?? [])
+      .map((name) => name.replace(/\s+/g, ''))
+      .filter(Boolean)
+      // 「경력 기술서」 is 「경력기술서」: at most one space between any two letters.
+      .map((name) => [...name].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s?'))
+    const noun = own.length
+      ? new RegExp(`(${own.join('|')})|${SURFACE_WORDS[surface].source}`, 'i')
+      : SURFACE_WORDS[surface]
+    if (isOrder(s, noun)) return surface
+  }
+  return null
+}
+
+/** The names an agent's bound documents go by, per surface: its 서식 and its format. */
+export function agentDocumentNames(
+  agent: Pick<Agent, 'renderTemplateId' | 'docFormat'>,
+  templates: readonly Pick<DesignTemplateRow, 'id' | 'surface' | 'name' | 'nameEn'>[],
+): Partial<Record<'report' | 'slides', string[]>> {
+  const names: Partial<Record<'report' | 'slides', string[]>> = {}
+  const template = templates.find((row) => row.id === agent.renderTemplateId)
+  if (template && (template.surface === 'report' || template.surface === 'slides')) {
+    names[template.surface] = [template.name, template.nameEn]
+  }
+  const format = DOC_FORMATS.find((row) => row.id === agent.docFormat)
+  if (format) names.report = [...(names.report ?? []), format.label]
+  return names
 }

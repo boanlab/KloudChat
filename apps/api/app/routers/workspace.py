@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, status
@@ -84,6 +84,7 @@ from app.services import (
     deck_export,
     design_extract,
     design_templates,
+    doc_formats,
     factcheck,
     hangul,
     hwpx_import,
@@ -206,6 +207,40 @@ async def _validate_design_system_id(db: DbSession, user: User, design_id: str |
     row = await db.get(DesignSystem, design_id)
     if row is None or (row.owner_id != user.id and not row.shared):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="design_system_not_found")
+
+
+#: Agent fields that bind what a new conversation opens with.
+_AGENT_BINDINGS = ("surface", "render_template_id", "doc_format", "design_system_id")
+
+
+async def _validate_agent_bindings(
+    db: DbSession, user: User, values: dict[str, Any], *, check_design: bool = True
+) -> dict[str, Any]:
+    """The bindings with blanks as `None`, checked against each other and `kinds`.
+
+    `values` holds the agent's final `kinds` and binding fields."""
+    out = {name: (values.get(name) or None) for name in _AGENT_BINDINGS}
+    kinds = [str(k) for k in (values.get("kinds") or [])]
+    allowed = set(kinds) if kinds else {kind.value for kind in SessionKind}
+    if (surface := out["surface"]) is not None:
+        if surface not in {kind.value for kind in SessionKind}:
+            raise HTTPException(status_code=422, detail="agent_surface_unknown")
+        if surface not in allowed:
+            raise HTTPException(status_code=422, detail="agent_surface_not_in_kinds")
+    if (template_id := out["render_template_id"]) is not None:
+        chosen = design_templates.get(template_id)
+        if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
+            raise HTTPException(status_code=404, detail="design_template_not_found")
+        if chosen.surface.value not in allowed:
+            raise HTTPException(status_code=422, detail="design_template_surface_mismatch")
+    if (format_id := out["doc_format"]) is not None:
+        if format_id not in doc_formats.BY_ID:
+            raise HTTPException(status_code=422, detail="doc_format_unknown")
+        if SessionKind.report.value not in allowed:
+            raise HTTPException(status_code=422, detail="doc_format_needs_report")
+    if check_design:
+        await _validate_design_system_id(db, user, out["design_system_id"])
+    return out
 
 
 def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:
@@ -1458,6 +1493,7 @@ async def rewrite_section(
             api_key=api_key,
             note=payload.note,
             sources=list(data.get("sources") or []),
+            doc_format=str((data.get("titleBlock") or {}).get("format") or ""),
         )
     except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
         log.warning("section rewrite failed: %s", exc)
@@ -1991,10 +2027,25 @@ async def list_agents(user: CurrentUser, db: DbSession):
             )
         ).all()
     )
+    design_ids = {a.design_system_id for a in rows if a.design_system_id}
+    design_names = (
+        dict(
+            (
+                await db.exec(
+                    select(DesignSystem.id, DesignSystem.name).where(
+                        col(DesignSystem.id).in_(design_ids)
+                    )
+                )
+            ).all()
+        )
+        if design_ids
+        else {}
+    )
     return [
         AgentOut.of(
             agent,
             owner_name=names.get(agent.owner_id, ""),
+            design_name=design_names.get(agent.design_system_id or "", ""),
             has_knowledge=agent.id in readable_shelves,
             official=agent.owner_id in admins,
             installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
@@ -2008,8 +2059,13 @@ async def list_agents(user: CurrentUser, db: DbSession):
 async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_tool_names(db, user, payload.tools)
+    bindings = await _validate_agent_bindings(db, user, payload.model_dump())
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
-    agent = Agent(owner_id=user.id, slug=slug, **payload.model_dump(exclude={"slug"}))
+    agent = Agent(
+        owner_id=user.id,
+        slug=slug,
+        **{**payload.model_dump(exclude={"slug"}), **bindings},
+    )
     db.add(agent)
     await db.commit()
     await db.refresh(agent)
@@ -2077,6 +2133,9 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         tools=None if origin.tools is None else list(origin.tools),
         skill_ids=skill_ids,
         kinds=list(origin.kinds or []),
+        # The copy opens the way the original does; a design the taker cannot see is ignored
+        # at run time, not dropped here, so sharing it later makes it apply.
+        **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
         temperature=origin.temperature,
         color=origin.color,
         enabled=True,
@@ -2112,6 +2171,16 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             user,
             changes["tools"],
             grandfathered=set(agent.tools or []),
+        )
+    if "kinds" in changes or any(name in changes for name in _AGENT_BINDINGS):
+        final = {
+            name: changes[name] if name in changes else getattr(agent, name)
+            for name in ("kinds", *_AGENT_BINDINGS)
+        }
+        # A design kept from before (an installed copy's) is not re-checked.
+        keeps_design = final["design_system_id"] == agent.design_system_id
+        changes.update(
+            await _validate_agent_bindings(db, user, final, check_design=not keeps_design)
         )
     wanted = changes.pop("slug", None)
     if agent.sealed:
@@ -2339,7 +2408,34 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
         return _export_code_source(artifact)
     if artifact.kind not in (ArtifactKind.report, ArtifactKind.deck, ArtifactKind.html):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_exportable")
+    return await _export_document(artifact, format)
 
+
+def export_formats(artifact: Artifact) -> tuple[str, ...]:
+    """The file formats a document artifact leaves as, most common first."""
+    data = artifact.data or {}
+    if artifact.kind is ArtifactKind.deck:
+        return ("pdf", "pptx", "md")
+    if artifact.kind is ArtifactKind.html:
+        template = design_templates.get(str(data.get("templateId") or ""))
+        content = str(data.get("content") or "")
+        is_deck = template.kind == "deck" if template else 'class="slide' in content
+        return ("pdf", "pptx", "md") if is_deck else ("pdf", "docx", "hwpx", "md")
+    if artifact.kind is ArtifactKind.report:
+        return ("pdf", "docx", "hwpx", "md")
+    return ()
+
+
+async def artifact_file(artifact: Artifact, format: str) -> tuple[bytes, str]:
+    """A document artifact exported as `format` by the 파일 탭's own path: bytes and file name."""
+    response = await _export_document(artifact, format)
+    disposition = response.headers.get("content-disposition", "")
+    name = unquote(disposition.split("''", 1)[-1]) if "''" in disposition else f"문서.{format}"
+    return bytes(response.body), name
+
+
+async def _export_document(artifact: Artifact, format: str) -> Response:
+    """A report, deck or HTML artifact as a file."""
     if artifact.kind is ArtifactKind.html:
         return await _export_page(artifact, format)
 
@@ -2382,6 +2478,7 @@ async def export_artifact(artifact_id: str, user: CurrentUser, db: DbSession, fo
             template=docx_template,
             page_settings=page_settings,
             title_block=title_block,
+            body_from_design=bool(chosen and chosen.body_face_from_design),
         )
         media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         suffix = "docx"
@@ -2645,10 +2742,13 @@ async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUse
 
 @router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
-    """Deletes a design system; projects using it are detached in the same transaction."""
+    """Deletes a design system; projects and agents using it are detached in one transaction."""
     row = await _own(db, DesignSystem, "owner_id", user, design_id)
     await db.exec(
         update(Project).where(col(Project.design_system_id) == row.id).values(design_system_id=None)
+    )
+    await db.exec(
+        update(Agent).where(col(Agent.design_system_id) == row.id).values(design_system_id=None)
     )
     await db.delete(row)
     await db.commit()
@@ -2656,13 +2756,16 @@ async def delete_design(design_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/designs/delete")
 async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
-    """Bulk delete; projects using any of them are detached."""
+    """Bulk delete; projects and agents using any of them are detached."""
     rows = await _owned_many(db, DesignSystem, "owner_id", user, payload.ids)
     if not rows:
         return {"deleted": 0}
     ids = [row.id for row in rows]
     await db.exec(
         update(Project).where(col(Project.design_system_id).in_(ids)).values(design_system_id=None)
+    )
+    await db.exec(
+        update(Agent).where(col(Agent.design_system_id).in_(ids)).values(design_system_id=None)
     )
     await db.exec(delete(DesignSystem).where(col(DesignSystem.id).in_(ids)))
     await db.commit()
@@ -2701,20 +2804,24 @@ async def design_template_usage(user: CurrentUser, db: DbSession):
 
 
 @router.get("/design-templates/{template_id}/preview")
-async def design_template_preview(template_id: str):
-    """The template's seed rendered around its sample, for the gallery card's iframe."""
+async def design_template_preview(template_id: str, slide: int | None = None):
+    """The template's seed rendered around its sample, for the gallery card's iframe.
+
+    `slide` (1-based) renders that one slide of a deck sample alone, for the slide viewer.
+    """
     # Unauthenticated: an iframe `src` cannot carry a header, and all of this ships in the image.
     template = design_templates.get(template_id)
     if template is None or not template.sample or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
-    html = design_templates.render(
-        template,
-        title=template.name,
-        tokens=design_service.normalise_tokens(None),
-        body=template.sample,
-    )
+    tokens = design_service.normalise_tokens(None)
+    if slide is not None:
+        html = design_templates.render_slide(template, tokens=tokens, n=slide)
+        if html is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
+    else:
+        html = design_templates.preview(template, tokens)
     return HTMLResponse(
         html,
         headers={"Cache-Control": "public, max-age=86400"},

@@ -15,7 +15,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
-from app.models.chat import ChatSession, SessionKind
+from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import User
 from app.models.workspace import (
     Agent,
@@ -115,7 +115,7 @@ class WorkspaceContext:
     applied_skills: tuple[AppliedSkill, ...]
     #: `{"templateId", "title"}` of the 시작점 this turn began from, or None.
     started_from: dict[str, str] | None = None
-    #: Project design tokens; None (not defaults) when the project has no design system.
+    #: Design tokens (the project's, else the agent's); None (not defaults) when neither has one.
     design_tokens: dict[str, str] | None = None
     #: Names only: memory bodies are private and the timeline is screen-shared.
     loaded_memories: tuple[str, ...] = ()
@@ -127,6 +127,8 @@ class WorkspaceContext:
     carried: tuple[ContextFile, ...] = ()
     #: Pictures the model can see, in attachment order; empty when it cannot.
     pictures: tuple[TurnPicture, ...] = ()
+    #: The agent's bound `doc_formats` id on a report session, else None.
+    doc_format: str | None = None
 
     @property
     def trusted(self) -> list[str]:
@@ -190,15 +192,33 @@ def _with_prompt(agent: Agent, prompt: str) -> Agent:
 
 
 async def _load_design_system(
-    db: AsyncSession, user: User, project: Project | None
+    db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
 ) -> DesignSystem | None:
-    """The project's design system if it still exists and is visible; None otherwise."""
-    if project is None or not project.design_system_id:
-        return None
-    row = await db.get(DesignSystem, project.design_system_id)
-    if row is None or (row.owner_id != user.id and not row.shared):
-        return None
-    return row
+    """The design system that applies, if it still exists and is visible; None otherwise.
+
+    Same order as the 서식: the agent's bound design, then the project's. Sessions carry
+    no design of their own. An agent bound to a design the user cannot see (a seeded or
+    shared agent naming its owner's row) wears the user's own design of that name."""
+    if agent is not None and agent.design_system_id:
+        row = await db.get(DesignSystem, agent.design_system_id)
+        if row is not None and (row.owner_id == user.id or row.shared):
+            return row
+        if row is not None:
+            own = (
+                await db.exec(
+                    select(DesignSystem)
+                    .where(DesignSystem.owner_id == user.id, DesignSystem.name == row.name)
+                    .order_by(col(DesignSystem.created_at))
+                    .limit(1)
+                )
+            ).first()
+            if own is not None:
+                return own
+    if project is not None and project.design_system_id:
+        row = await db.get(DesignSystem, project.design_system_id)
+        if row is not None and (row.owner_id == user.id or row.shared):
+            return row
+    return None
 
 
 async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> Project | None:
@@ -229,10 +249,26 @@ def _personal_block(user: User, kind: SessionKind) -> str:
     return "\n".join(lines)
 
 
-def _agent_block(agent: Agent | None) -> str:
-    if agent is None or not agent.system_prompt.strip():
+#: A line opening a part of an agent prompt meant for one surface only (up to the next such
+#: line): one agent writes a cover letter in chat and a career history as a report.
+_SURFACE_PART = re.compile(r"^[ \t]{0,3}\[(채팅|보고서|슬라이드)에서\][ \t]{0,4}$", re.M)
+_SURFACE_WORDS = {"채팅": "chat", "보고서": "report", "슬라이드": "slides"}
+
+
+def surface_prompt(prompt: str, kind: str) -> str:
+    """The prompt as one surface reads it: the common part plus that surface's parts."""
+    parts = _SURFACE_PART.split(prompt or "")
+    kept = [parts[0].strip()]
+    for word, body in zip(parts[1::2], parts[2::2], strict=True):
+        if _SURFACE_WORDS[word] == kind:
+            kept.append(body.strip())
+    return "\n\n".join(part for part in kept if part)
+
+
+def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
+    if agent is None or not (prompt := surface_prompt(agent.system_prompt, kind.value)):
         return ""
-    return f"# 역할\n{agent.system_prompt.strip()}"
+    return f"# 역할\n{prompt}"
 
 
 #: Share of the file budget project knowledge keeps even when attachments took the rest.
@@ -738,6 +774,24 @@ async def _earlier_attachments(
     ]
 
 
+async def _given_file_ids(db: AsyncSession, session: ChatSession) -> set[str]:
+    """Files the person attached to this session's own messages; a document's exports are
+    stored in the session too, but are not material."""
+    rows = (
+        await db.exec(
+            select(Message.attachments).where(
+                Message.session_id == session.id, Message.role == Role.user
+            )
+        )
+    ).all()
+    return {
+        str(item["id"])
+        for attachments in rows
+        for item in attachments or []
+        if isinstance(item, dict) and item.get("id")
+    }
+
+
 async def assemble(
     db: AsyncSession,
     user: User,
@@ -764,7 +818,7 @@ async def assemble(
     """
     agent = await _load_agent(db, user, session)
     project = await _load_project(db, user, session)
-    design = await _load_design_system(db, user, project)
+    design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
     # Memories are chat-only; not loaded elsewhere so the context step reports none.
     if session.kind is SessionKind.chat:
@@ -785,7 +839,7 @@ async def assemble(
     # Least specific first; later blocks win where they disagree.
     if personal := _personal_block(user, session.kind):
         blocks.append(ContextBlock("user.instructions", personal, True))
-    if text := _agent_block(agent):
+    if text := _agent_block(agent, session.kind):
         blocks.append(ContextBlock("agent.instructions", text, True))
     if instructions:
         blocks.append(ContextBlock("project.instructions", instructions, True))
@@ -873,8 +927,17 @@ async def assemble(
     # take what is left of the same budget, excerpted around the new question, so a
     # long document carried for many turns costs at most the budget, never more.
     carried_files: tuple[ContextFile, ...] = ()
-    if session.kind is SessionKind.chat:
+    # A document turn that brings no file of its own works from the files the session was
+    # given: a follow-up re-planned as a new outline lost the memo and wrote 「원문 자료
+    # 없음」 (gaejo-report-4).
+    document_followup = (
+        session.kind in (SessionKind.report, SessionKind.slides) and not attachment_ids
+    )
+    if session.kind is SessionKind.chat or document_followup:
         earlier = await _earlier_attachments(db, user, session, exclude=set(attachment_ids or []))
+        if document_followup and earlier:
+            given = await _given_file_ids(db, session)
+            earlier = [stored for stored in earlier if stored.id in given]
         if earlier:
             remaining = (file_budget or settings.file_context_chars) - sum(
                 file.kept_chars for file in attached_files
@@ -928,6 +991,9 @@ async def assemble(
     return WorkspaceContext(
         tuple(blocks),
         applied,
+        doc_format=(
+            agent.doc_format if agent is not None and session.kind is SessionKind.report else None
+        ),
         started_from=(
             {"templateId": starting_point.id, "title": starting_point.title}
             if starting_point is not None
@@ -945,7 +1011,11 @@ async def assemble(
 
 async def design_for(db: AsyncSession, user: User, session: ChatSession) -> DesignSystem | None:
     """The session's design system, for surfaces (image generation) that never call `assemble`."""
-    return await _load_design_system(db, user, await _load_project(db, user, session))
+    try:
+        agent = await _load_agent(db, user, session)
+    except WorkspaceContextError:
+        agent = None
+    return await _load_design_system(db, user, await _load_project(db, user, session), agent)
 
 
 async def agent_settings(

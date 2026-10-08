@@ -11,7 +11,10 @@ import { DesignGallery } from '@/components/chat/DesignGallery'
 import { TopBar } from '@/components/layout/TopBar'
 import { JobCard } from '@/components/media/JobCard'
 import { Badge, Button, LoadingState } from '@/components/ui'
-import { kindMeta } from '@/lib/kinds'
+import { agentKinds, kindMeta } from '@/lib/kinds'
+import { templateText } from '@/lib/api'
+import { currentLang } from '@/lib/i18n'
+import { startFailure } from '@/lib/failures'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
@@ -45,11 +48,15 @@ function StartingFrom({
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  // The design comes with the project.
-  const design = useStore((s) => s.designs.find((d) => d.id === project?.designSystemId))
+  // The agent's design (or the viewer's own of that name), else the project's: the server's order.
+  const design = useStore((s) =>
+    s.designs.find((d) => d.id === found?.designSystemId) ??
+    (found?.designName ? s.designs.find((d) => d.name === found.designName) : undefined) ??
+    s.designs.find((d) => d.id === project?.designSystemId),
+  )
   const designReach = DESIGN_REACHES[kind]
 
-  if (!agent && !project) return null
+  if (!agent && !project && !(design && designReach)) return null
 
   const rows = [
     agent && {
@@ -128,9 +135,11 @@ function AgentGuide({
   const navigate = useNavigate()
   const send = useStore((s) => s.send)
   const streaming = useStore((s) => !!sessionId && !!s.running[sessionId])
-  if (!agent.guide && agent.starters.length === 0) return null
+  const surfaces = agent.kinds.length > 1 ? agentKinds(agent) : []
+  if (!agent.guide && agent.starters.length === 0 && surfaces.length === 0) return null
   return (
     <div className="animate-fade-up mx-auto mb-6 w-full max-w-2xl">
+      {surfaces.length > 0 && <AgentSurfaces agent={agent} sessionId={sessionId} kind={kind} />}
       {agent.guide && (
         <div className="flex items-start gap-3 rounded-card border border-line bg-panel px-4 py-3 text-base leading-relaxed text-muted">
           <Info size={15} className="mt-1 shrink-0 text-faint" />
@@ -161,6 +170,104 @@ function AgentGuide({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * One start button per surface an agent offers (자기소개서 in chat, 경력기술서 as a report):
+ * the current one is marked, the others open a new conversation there with the same agent.
+ */
+function AgentSurfaces({
+  agent,
+  sessionId,
+  kind,
+}: {
+  agent: Agent
+  sessionId: string | null
+  kind: SessionKind
+}) {
+  const t = useT()
+  const navigate = useNavigate()
+  const newSession = useStore((s) => s.newSession)
+  const setNotice = useStore((s) => s.setNotice)
+  const projectId = useStore((s) => s.sessions.find((c) => c.id === sessionId)?.projectId ?? null)
+  const template = useStore((s) => s.designTemplates.find((row) => row.id === agent.renderTemplateId))
+  return (
+    <div className="mb-3 flex flex-wrap justify-center gap-2" role="group" aria-label={t('시작할 화면')}>
+      {agentKinds(agent).map((k) => {
+        const Icon = kindMeta[k].icon
+        const name =
+          template && template.surface === k
+            ? t('{name} 만들기').replace('{name}', templateText(template, currentLang() === 'en').name)
+            : t('{kind}로 시작').replace('{kind}', t(kindMeta[k].label))
+        return (
+          <Button
+            key={k}
+            size="sm"
+            variant={k === kind ? 'primary' : 'secondary'}
+            aria-pressed={k === kind}
+            onClick={() => {
+              if (k === kind) return
+              void newSession(k, { agentId: agent.id, projectId })
+                .then((id) => navigate(`/s/${id}`, { replace: true }))
+                .catch((err: unknown) => setNotice(startFailure(err, t)))
+            }}
+          >
+            <Icon size={13} />
+            {name}
+          </Button>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * In an agent chat, makes the agent's document from the conversation: a report or slides
+ * session with the same agent, given the conversation as material. Only surfaces the agent
+ * names; an agent with no surfaces named stays a chat agent.
+ */
+function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string }) {
+  const t = useT()
+  const navigate = useNavigate()
+  const handOff = useStore((s) => s.handOff)
+  const setNotice = useStore((s) => s.setNotice)
+  const streaming = useStore((s) => !!s.running[sessionId])
+  const template = useStore((s) => s.designTemplates.find((row) => row.id === agent.renderTemplateId))
+  const [busy, setBusy] = useState(false)
+  const targets = (['report', 'slides'] as const).filter((k) => agent.kinds.includes(k))
+  return (
+    <>
+      {targets.map((k) => {
+        const Icon = kindMeta[k].icon
+        const name =
+          template && template.surface === k
+            ? templateText(template, currentLang() === 'en').name
+            : t(kindMeta[k].label)
+        return (
+          <Button
+            key={k}
+            size="sm"
+            disabled={busy || streaming}
+            title={t('이 대화를 자료로 같은 에이전트가 {name}을 씁니다').replace('{name}', name)}
+            onClick={() => {
+              setBusy(true)
+              void handOff(
+                sessionId,
+                k,
+                t('지금까지 나눈 대화로 {name} 초안을 만들어 주세요.').replace('{name}', name),
+                { onSession: (id) => navigate(`/s/${id}`) },
+              )
+                .catch((err: unknown) => setNotice(startFailure(err, t)))
+                .finally(() => setBusy(false))
+            }}
+          >
+            <Icon size={14} />
+            {t('{name} 만들기').replace('{name}', name)}
+          </Button>
+        )
+      })}
+    </>
   )
 }
 
@@ -441,6 +548,9 @@ export function SessionPage() {
         }
         right={
           <>
+            {session.kind === 'chat' && agent && session.messages.length > 0 && (
+              <HandOffButtons agent={agent} sessionId={session.id} />
+            )}
             {session && <ShareButton session={session} />}
             {sessionArtifact && !openArtifactId && (
               <Button size="sm" onClick={() => openArtifact(sessionArtifact.id)}>

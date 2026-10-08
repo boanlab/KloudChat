@@ -131,15 +131,15 @@ def _agent(**kwargs) -> Agent:
         **{
             "id": "agent-1",
             "owner_id": "admin-1",
-            "name": "논문 리뷰어",
-            "slug": "논문-리뷰어",
+            "name": "예시 에이전트",
+            "slug": "예시-에이전트",
             "description": "설명",
             "system_prompt": "프롬프트",
             "kinds": ["chat"],
             "tools": ["fetch_url"],
             "skill_ids": ["skill-1"],
             "visibility": Visibility.org,
-            "catalog_key": "paper-reviewer",
+            "catalog_key": "practice-coach",
             **kwargs,
         }
     )
