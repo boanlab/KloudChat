@@ -1,0 +1,18 @@
+# 비교·분석 보고서 (agent `comparison-report`, format `comparison`): each option's total read
+# twice and computed by code, must-have conditions and weighted scores settled before writing.
+
+name = "comparison-report"
+formats = ["comparison"]
+agents = ["comparison-report"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["quote-calc", "staffing", "compare-cost", "compare-check"]
+checks = ["lead-dates", "compare-cells", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]

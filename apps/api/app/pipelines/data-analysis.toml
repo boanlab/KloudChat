@@ -1,0 +1,7 @@
+# 데이터 분석 (agent `data-analysis`, chat): every number in the answer traces to what the
+# tools printed; the rest become bracket blanks.
+
+name = "data-analysis"
+agents = ["data-analysis"]
+pre = ["check:gaps"]
+finish = ["answer-normalize", "check:answer-grounding", "text-fit", "answer-replace"]

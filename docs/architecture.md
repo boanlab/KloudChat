@@ -757,6 +757,93 @@ Nothing is corrected automatically. The panel shows a count and a list; the
 report surface already has "이 절만 다시 쓰기" for acting on it, and an HTML
 artifact has the same per-block rewrite.
 
+### Pipelines
+
+The report writer, a chat answer's finish, a revision and the hand-over of files are
+pipelines: an ordered list of named **stages** that read and write one typed **work
+bundle**. A fix to one step lives in one stage with its own tests; every stage of every turn
+is recorded, run or not; and which stages a document runs is data, not an if-chain.
+
+**Where things are.** `app/pipeline/` holds the machinery: `bundle.py` (the work bundle),
+`stage.py` (the contract), `runner.py`, `registry.py`, and the stages by flow —
+`report_stages.py`, `check_stages.py`, `chat_stages.py`, `revise_stages.py`,
+`export_stages.py`. `app/pipelines/*.toml` declares the pipelines, one file per shipped
+agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `career-docs`,
+`data-analysis`) plus the defaults `report` (any format no file claims), `dated`
+(`event_plan`, `result_report`), `chat` and `deck`.
+
+**A pipeline file** names the formats and agents it serves and its flows:
+
+| key | what it lists | who runs it |
+|---|---|---|
+| `pre` | stages before the first draft (`check:gaps`) | `sessions._gaps` |
+| `plan` | the planning pass, ending with the offered outline | `report.write` without an approved plan |
+| `write` | the writing pass on the approved outline | `report.write` |
+| `finish` | a chat answer after the agent loop | `sessions._run_turn` |
+| `revise` | a follow-up applied to the document on screen | `sessions._revise_document` |
+| `prepass` | the pre-pass steps (`report_checks.PREPASS_STEPS`) | `report_checks.prepare` |
+| `checks` | the format's code checks (`report_checks.CHECK_FAMILIES`) | `report_checks.checks` |
+| `judged` | the format's judged checks (`report_checks.JUDGED_CHECKS`) | `report_checks.model_checks` |
+| `[options]` | switches the stages read: `search`, `fixed_outline`, `draws`, `prepass_always`, `prepass_quiet` | `ctx.options` |
+
+A report picks its pipeline by its format (`registry.for_report(doc_format.id)`, after
+`doc_formats.detect`), a chat answer by its catalogue agent (`registry.for_chat`), a
+revision by the document's `titleBlock.format` (a deck by `deck`).
+`tests/test_pipelines.py` holds every format to what the if-chains these files replaced
+selected — the same pre-pass steps in the same order, the same check families, the same
+format stages and options.
+
+**The bundle** (`Bundle`) has narrow, typed parts: `request` (what the turn was asked,
+never written), `spec` (format and genre), `material` (each `Part` with its origin:
+attachment, pasted, project, research, computed, settled, conflicts, prepass, note),
+`answers`, `computed` (computed values, settled figures and conflicts, the pre-pass),
+`plan`, `document` (sections, head block; a chat answer as streamed and as finished),
+`findings` (codes found before and after the repair, what the verify stage left, the
+grounding outcome, the quality record), `files`, `steps` (the records) and `usage`.
+
+**The stage contract** (`stage.py`): a stage has a `name`, a `kind` (`compute`, `model`,
+`check`, `io`), the dotted bundle fields it `reads` and `writes`, `skip(bundle)` — the
+reason it does not apply, or "" — and `run(bundle, ctx)`, an async generator that writes
+its fields and yields the wire events (`step`, `section`, `titleBlock` …) the surface shows.
+It ends the pipeline on purpose by raising `Stop(reason)` (an outline offered, a question
+card, a revision with nothing to do), after yielding its own closing events.
+
+**The runner** records one `StepRecord` per stage: `done`, `skipped` with the stage's
+reason, `stopped`, `failed` (the exception goes on to the caller, as it did before the
+move) or `cancelled` (the turn was closed under it); the stages after a stop are recorded
+as skipped. The records go to the log (`pipeline minutes.write: research:done,
+calc:skipped(nothing to compute…), …`), onto the bundle, and to `report.write(trace=[…])`.
+`run(start="verify")` resumes from a stage on a bundle the earlier ones filled.
+`StepRecord.wire()` is the record as a surface `step` (category `pipeline`);
+`KLOUDCHAT_PIPELINE_STEPS=1` sends them, off by default so the surface shows what it
+always showed. `KLOUDCHAT_PIPELINE_STRICT=1` (the test suite sets it, `tests/conftest.py`)
+refuses a stage that changed a field it did not declare.
+
+**Check skills are stages of the `check` kind.** A check skill's SKILL.md names its stage:
+`pre` checks run as `check:gaps` (one question card before the first draft); `post` checks
+run as `check:grounding` before the verify stage and `check:grounding-again` after its
+rewrites (report sections), and as `check:answer-grounding` on a chat answer. The verify
+stage and `consistency` are `check` stages too: find, repair once, find again.
+
+**Adding a stage.** Write a class on `stage.Base` in the flow's stage module (or a new one
+imported by `registry._load_stages`): name, kind, `reads`/`writes`, `skip`, `run`. Call
+helpers through their module (`report._complete`, `report.fix_products`) so a test that
+replaces one reaches the stage. Register it, list it in the pipelines that run it, and add
+its own test. A format-specific behaviour is a stage listed only in that format's file, or
+an `[options]` switch — not a format comparison inside a stage.
+
+**Replay tests.** `tests/test_pipeline_replay.py` replays recorded turns — one lineup
+acceptance run per format (minutes, 개조식, client proposal, comparison, career history,
+a long-form proposal through the parallel gate), the data-analysis and career-docs chat
+turns, and two revisions (one that widens, settles again and aligns) — and requires the
+same events, sections and stored rows as when they were recorded. `tests/replay_harness.py`
+answers every `/chat/completions` POST from `tests/fixtures/replay/<case>/calls.json` by
+the call's key (model, messages, max_tokens) and fails on a prompt it has no reply for; any
+other HTTP call fails as offline; the clock and uuids are fixed. `tests/replay_build.py`
+re-records a case from an acceptance run against a scripted model (the run's outline and
+sections, readings of its material); rebuild only when a change in behaviour is meant, and
+say so.
+
 ### Asking for a review
 
 `POST /artifacts/{id}/critique` is the other half: one reading of a finished

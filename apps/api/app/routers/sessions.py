@@ -61,9 +61,13 @@ from app.models.workspace import (
     StoredFile,
 )
 from app.models.workspace import Visibility as SkillVisibility
+from app.pipeline import chat_stages, export_stages, revise_stages
+from app.pipeline import registry as pipeline_registry
+from app.pipeline.bundle import Bundle as PipelineBundle
+from app.pipeline.bundle import Request as PipelineRequest
+from app.pipeline.runner import Runner as PipelineRunner
+from app.pipeline.stage import Context as PipelineContext
 from app.routers.workspace import (
-    artifact_file,
-    export_formats,
     forget_session_files,
     reindex_session_files,
 )
@@ -100,12 +104,9 @@ from app.services import (
     calculation_policy,
     chart_code,
     check_skills,
-    consistency,
     conversation_summary,
-    cover_letter,
     current_evidence,
     design_templates,
-    doc_formats,
     figures,
     file_schema,
     freshness,
@@ -113,14 +114,10 @@ from app.services import (
     grounding,
     imagegen,
     index_client,
-    internal_words,
     lint,
     revise,
-    richtext,
-    sandbox,
     settings_store,
     stop_signal,
-    units,
 )
 from app.services import agent as agent_service
 from app.services import auto_memory as auto_memory_service
@@ -3044,6 +3041,20 @@ async def _ask_before_writing(
     return JSONResponse({"pending": session.pending, "message": said})
 
 
+async def _gaps(keys: tuple[str, ...], *, facts: str, request: str, material: str,
+                first_draft: bool, doc_format: str | None, agent_key: str | None) -> list[dict]:
+    """The `pre` flow of the turn's pipeline (`check:gaps`): what the format needs and the
+    material does not give."""
+    bundle = PipelineBundle(request=PipelineRequest(
+        text=request, model="", api_key="", check_keys=tuple(keys), check_facts=facts,
+        check_material=material, today=_today(), first_draft=first_draft))
+    pipe = (pipeline_registry.for_report(doc_format) if doc_format
+            else pipeline_registry.for_chat(agent_key))
+    async for _event in PipelineRunner(pipe.stages("pre"), name=f"{pipe.name}.pre").run(bundle):
+        pass
+    return bundle.findings.gaps
+
+
 def _freshness_routing(reason: str) -> dict[str, Any]:
     return {
         "answerOrigin": "server_policy",
@@ -3457,10 +3468,9 @@ async def send_message(
     facts = check_skills.fact_set(workspace.doc_format, agent_key)
     first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
-    missing = check_skills.gaps(
-        check_keys, facts=facts, request=content, material="\n".join(workspace.untrusted),
-        today=_today(),
-    ) if first_draft else []
+    missing = await _gaps(check_keys, facts=facts, request=content,
+                          material="\n".join(workspace.untrusted), first_draft=first_draft,
+                          doc_format=workspace.doc_format, agent_key=agent_key)
     if (_plans_first(session) or missing) and (not pending or reply_brings_files):
         questions = grounding.questions_for(short)
         # Only when no file arrived at all.
@@ -4309,6 +4319,7 @@ async def send_message(
                 check_keys=tuple(check_skills.of_stage(check_keys, "post")),
                 check_facts=facts,
                 check_material="\n".join(workspace.untrusted),
+                agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
@@ -4678,6 +4689,8 @@ async def _run_turn(
     check_facts: str = "",
     #: Attached and carried files' text: what the answer's values may come from too.
     check_material: str = "",
+    #: The catalogue agent's key: which pipeline finishes the answer.
+    agent_key: str = "",
 ) -> AsyncIterator[str]:
     """Drives one assistant turn to completion and settles it.
 
@@ -4916,71 +4929,23 @@ async def _run_turn(
     skip_completion_work = server_abstention or tool_result_answer
     content = "".join(text_parts)
     if content.strip() and not failed and not skip_completion_work:
-        normalized = freshness.normalize_answer_notice(content, ctx.request, model, actual_model)
-        # This is the current stored user text, not the merged reference envelope.
-        normalized = normalize_raw_payload(normalized, first_user_message)
-        # A money table labelled in the wrong unit for the amounts the person gave.
-        normalized = units.fix_unit_labels(normalized, first_user_message)
-        # An amount the person gave, copied a power of ten off into a calculation.
-        normalized = units.fix_magnitude_slips(normalized, first_user_message)
-        # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
-        normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
-        # A cover letter's 「[제출용 답안 n]」 blocks (or its numbered question headings) are
-        # measured by code against the stated limits and rewritten up to twice when out of
-        # range; the counts go under the answer.
-        material_text = _material_text(messages)
-        if check_keys:
-            # Every value the answer states traces to the person's words and files or to what
-            # the tools computed this turn and earlier; the rest become bracket blanks.
-            traced = check_skills.ground(
-                check_keys, normalized, material=f"{material_text}\n{check_material}",
-                computed=[*ctx.outputs, *(str(m.get("content") or "") for m in messages
-                                          if m.get("role") == "assistant")],
-                options=check_skills.options_for(check_facts, _today()),
-            )
-            if traced.found:
-                normalized = traced.text
-                ground_step = {
-                    "category": "thinking", "id": "grounding",
-                    "label": f"근거 없는 값 {len(traced.found)}개 → 빈칸",
-                    "status": "error" if traced.left else "done",
-                    "detail": traced.summary[:1500],
-                }
-                steps = [row for row in steps if row.get("id") != "grounding"] + [ground_step]
-                yield chat_service.sse({"type": "step", **ground_step})
-        if cover_letter.blocks(normalized, ctx.request, material_text):
-            yield chat_service.sse({"type": "step", "category": "thinking", "id": "text_fit",
-                                    "label": "글자 수 재는 중", "status": "running"})
-            try:
-                fitted = await cover_letter.post_process(
-                    normalized, request=ctx.request, material=material_text,
-                    complete=report_service._complete, model=model["id"], api_key=api_key,
-                    usage=usage, judge=judge_model,
-                )
-            except Exception:  # noqa: BLE001 — the answer stands unmeasured; the step says so
-                log.exception("cover letter post-processing failed for session %s", session_id)
-                fitted = None
-            if fitted is not None:
-                normalized = fitted.content
-                length_check = cover_letter.wire(fitted)
-            fit_step = {
-                "category": "thinking", "id": "text_fit",
-                "label": "글자 수(코드 측정)" if fitted is not None and fitted.rows
-                else "글자 수 기준 없음" if fitted is None else "자료 대조",
-                "status": "error" if fitted is not None and (
-                    fitted.flags or fitted.repeats
-                    or any(r.get("status") != "ok" for r in fitted.rows)
-                ) else "done",
-                **({"detail": fitted.detail[:1500]}
-                   if fitted is not None and fitted.detail else {}),
-            }
-            steps = [row for row in steps if row.get("id") != "text_fit"] + [fit_step]
-            yield chat_service.sse({"type": "step", **fit_step})
-        if normalized != content:
-            # The client retracts the first match, so replace the complete answer.
-            yield chat_service.sse({"type": "retract", "text": content})
-            content = normalized
-            yield chat_service.sse({"type": "delta", "text": content})
+        # The agent's finish pipeline (`app/pipelines/*.toml` `finish`): normalized, traced
+        # by its check skills, a cover letter measured, the streamed text replaced if any
+        # of it changed.
+        finish = chat_stages.bundle_for(
+            answer=content, request=ctx.request, model=model, actual_model=actual_model,
+            api_key=api_key, session_id=session_id, today=_today(),
+            first_message=first_user_message, messages=messages,
+            material=_material_text(messages), check_keys=check_keys, check_facts=check_facts,
+            check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
+            kept_steps=steps, usage=usage,
+        )
+        pipe = pipeline_registry.for_chat(agent_key)
+        runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")
+        async for event in runner.run(finish, PipelineContext(options=dict(pipe.options))):
+            yield chat_service.sse(event)
+        steps, content = finish.document.kept_steps, finish.document.answer
+        length_check = finish.document.length_check
         routing = {
             **(routing or {}),
             "accuracy": freshness.accuracy_metadata(model, actual_model),
@@ -6552,307 +6517,29 @@ async def _revise_document(
 
     is_deck = kind is ArtifactKind.deck
     parts = list(data.get("slides") if is_deck else data.get("sections") or [])
-    names = [str(p.get("title" if is_deck else "heading") or "") for p in parts]
     if not parts:
         yield chat_service.sse({"type": "error", "message": "고칠 내용이 없습니다."})
         yield chat_service.sse({"type": "done"})
         return
 
-    swap = revise.term_swap(instruction)
-    reorder = revise.order_swap(instruction, names) if swap is None else None
-    if reorder is not None:
-        # Two parts trading places is a rearrangement done by hand: the model would
-        # redraw the deck (and add a 목차) to move two slides.
-        first, second = reorder
-        parts[first], parts[second] = parts[second], parts[first]
-        if not is_deck:
-            # A conclusion now at the front does not re-list what follows it.
-            parts = report_service.trim_leading_conclusion(parts)
-        yield chat_service.sse(
-            {"type": "step", "id": "route", "status": "done",
-             "label": f"순서 바꾸는 중: {names[first]} ↔ {names[second]}"}
-        )
-        for part in parts:
-            yield chat_service.sse(
-                {"type": "slide", "slide": part, "done": True}
-                if is_deck
-                else {
-                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
-                    "content": part.get("content"), "done": True,
-                }
-            )
-        plan = revise.Plan(scope="parts", targets=[], note=f"{names[first]} ↔ {names[second]}")
-        changed = 2
-    elif swap is not None:
-        # A term replacement across the document is done by hand: exact, instant, and
-        # nothing else moves. The model is not asked to retype six sections for it.
-        old_term, new_term = swap
-        parts, hits = revise.replace_term(parts, old_term, new_term)
-        title, title_hits = revise.replace_term(title, old_term, new_term)
-        hits += title_hits
-        yield chat_service.sse(
-            {"type": "step", "id": "route", "label": f"용어 바꾸는 중: {old_term} → {new_term}",
-             "status": "done" if hits else "error"}
-        )
-        if not hits:
-            yield chat_service.sse(
-                {"type": "delta", "text": f"문서에서 「{old_term}」을 찾지 못했습니다."}
-            )
-            yield chat_service.sse({"type": "usage", **usage, "credits": 0})
-            yield chat_service.sse({"type": "done"})
-            return
-        for part in parts:
-            yield chat_service.sse(
-                {"type": "slide", "slide": part, "done": True}
-                if is_deck
-                else {
-                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
-                    "content": part.get("content"), "done": True,
-                }
-            )
-        plan = revise.Plan(scope="parts", targets=[], note=f"{old_term} → {new_term}")
-        changed = hits
-    else:
-        yield chat_service.sse(
-            {"type": "step", "id": "route", "label": "무엇을 고칠지 보는 중", "status": "running"}
-        )
-    plan = plan or await revise.plan(
-        message=instruction, title=title, parts=names, model=(planner or model)["id"],
-        api_key=api_key,
-    )
-    usage["inputTokens"] += plan.usage["inputTokens"]
-    usage["outputTokens"] += plan.usage["outputTokens"]
-    if plan.inserts:
-        # New parts are written one by one and slotted in; the rest is untouched.
-        position = plan.after + 1
-        for offset, name in enumerate(plan.names):
-            if is_deck:
-                neighbour = parts[min(max(position - 1, 0), len(parts) - 1)]
-                parts.insert(position + offset, {
-                    "id": f"sl{position + offset}_{uuid.uuid4().hex[:6]}",
-                    "title": name,
-                    "layout": deck_service.requested_layout(instruction)
-                    or deck_service.requested_layout(plan.note)
-                    or "bullets",
-                    "accent": neighbour.get("accent"),
-                })
-            else:
-                parts.insert(position + offset, {
-                    "id": uuid.uuid4().hex,
-                    "heading": name,
-                    "content": "",
-                    "format": "markdown",
-                    "status": "done",
-                })
-        names = [str(p.get("title" if is_deck else "heading") or "") for p in parts]
-        plan = revise.Plan(
-            scope="parts",
-            targets=list(range(position, position + len(plan.names))),
-            note=plan.note,
-            usage=plan.usage,
-        )
-    by_hand = swap is not None or reorder is not None
-    if not by_hand and not plan.revises:
-        # A new-document request is said, not acted on.
-        yield chat_service.sse(
-            {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
-        )
-        yield chat_service.sse(
-            {
-                "type": "delta",
-                "text": "이건 지금 문서를 고치는 요청으로 보이지 않습니다. "
-                "새로 쓰려면 '새로 써 줘' 라고 알려 주세요.",
-            }
-        )
-        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
-        yield chat_service.sse({"type": "done"})
-        return
-
-    if not by_hand:
-        yield chat_service.sse(
-            {
-                "type": "step",
-                "id": "route",
-                "label": revise.label(plan, names),
-                "status": "done",
-            }
-        )
-
-    changed = changed if by_hand else 0
-    # A follow-up that changes a criterion, figure, date or decision is revised wherever the
-    # document states or rests on it, the summary and conclusion included; the format's
-    # pre-pass runs again with it so the rewrites get the settled values.
-    order = list(plan.targets)
-    widened: list[int] = []
-    revision_pre = None
+    # The document's revise flow (`app/pipelines/*.toml` `revise`): route, widen to what
+    # rests on a changed fact, rewrite, align. A stage that ends the turn early has sent
+    # its own closing events.
     doc_format = str((data.get("titleBlock") or {}).get("format") or "")
-    if not by_hand and not is_deck and consistency.changes_content(instruction):
-        widened = consistency.dependents(
-            instruction, names, [str(p.get("content") or "") for p in parts], order)
-        order += widened
-        given = "\n\n".join(
-            x for x in (report_service._request_material(request), *material) if x.strip())
-        revision_pre = await consistency.settle_again(
-            doc_format, request, instruction, given, model=model["id"], api_key=api_key)
-        if revision_pre is not None and revision_pre.runs:
-            ran = [r["skill"] for r in revision_pre.runs if not r.get("skipped")]
-            yield chat_service.sse({
-                "type": "step", "id": "prepass", "status": "done",
-                "label": "사전 계산(수정 반영): " + ", ".join(dict.fromkeys(ran)) if ran
-                else "사전 계산(수정 반영) 건너뜀",
-                "detail": " · ".join(f"{r['skill']}: {r['summary']}"
-                                     for r in revision_pre.runs)[:1500],
-            })
-        if widened:
-            yield chat_service.sse({
-                "type": "step", "id": "route", "status": "done",
-                "label": "함께 고칠 곳: " + " · ".join(names[i] for i in widened),
-            })
-    settled_blocks = consistency.blocks_for_rewrite(revision_pre)
-    for index in order:
-        part = parts[index]
-        label = names[index] or f"{index + 1}"
-        yield chat_service.sse(
-            {"type": "step", "id": f"r{index}", "label": label, "status": "running"}
-        )
-        try:
-            if is_deck:
-                written, spent = await deck_service.rewrite_slide(
-                    request=request,
-                    slides=parts,
-                    target_id=str(part.get("id") or ""),
-                    model=model["id"],
-                    api_key=api_key,
-                    note=plan.note,
-                    material=material,
-                    typed=instruction,
-                    notes_only=revise.notes_only(instruction),
-                )
-                if revise.meta_talk(" ".join(_strings(written))):
-                    raise ValueError("본문 대신 대화 답이 나옴")
-                parts[index] = written
-                yield chat_service.sse({"type": "slide", "slide": written, "done": True})
-            else:
-                body, spent = await report_service.rewrite_section(
-                    request=request,
-                    heading=label,
-                    sections=richtext.normalise(parts),
-                    target_id=str(part.get("id") or ""),
-                    model=model["id"],
-                    api_key=api_key,
-                    # The planner's paraphrase first, then the words as typed, so a detail
-                    # the paraphrase dropped still lands.
-                    note=(
-                        consistency.dependent_note(instruction)
-                        if index in widened
-                        else f"{plan.note}\n사용자가 입력한 문장(그대로 반영): "
-                        f"{instruction.strip()[:400]}"
-                    ),
-                    sources=list(data.get("sources") or []),
-                    material=[*material, *settled_blocks],
-                    doc_format=doc_format,
-                )
-                if not body.strip():
-                    raise ValueError("빈 결과")
-                if revise.meta_talk(body):
-                    # A reply to the person is not the part; the part stays as it was.
-                    raise ValueError("본문 대신 대화 답이 나옴")
-                # A figure the section had stays unless the rewrite drew a new one or the
-                # person asked for it to go.
-                body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
-                body = richtext.detach_tables(body)
-                # 「470만 원 × 36개월 = …」 is checked by arithmetic, not trusted.
-                body = report_service.trim_table_echo(
-                    report_service.drop_redundant_kpi(
-                        report_service.fix_point_units(
-                            report_service.undouble_words(
-                                report_service.fix_percent_formulas(
-                                    report_service.fix_ledger_magnitudes(
-                                        report_service.fix_products(body), request
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-                # The rewrite does not repeat what earlier sections already said, except
-                # on an add: a sentence the person asked for is kept even when it repeats.
-                if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
-                    earlier = [
-                        re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
-                        for p in parts[:index]
-                        if not is_deck
-                    ]
-                    gaejo = any(
-                        f.id == (data.get("titleBlock") or {}).get("format") and f.lists == "gaejo"
-                        for f in doc_formats.FORMATS
-                    )
-                    body = report_service.trim_restatements(body, earlier, keep_items=gaejo)[0]
-                body = internal_words.scrub(body)
-                # The rewrite is Markdown; an old `html` flag would show literal asterisks.
-                renamed = (revise.requested_title(instruction)
-                           if len(plan.targets) == 1 and index not in widened else None)
-                parts[index] = {
-                    **part,
-                    **({"heading": renamed} if renamed else {}),
-                    "content": richtext.tidy_tables(body),
-                    "format": "markdown",
-                    "status": "done",
-                }
-                parts[index].pop("factCheck", None)
-                if renamed:
-                    label = renamed
-                yield chat_service.sse(
-                    {
-                        "type": "section",
-                        "sectionId": part.get("id"),
-                        "heading": label,
-                        "content": body,
-                        "done": True,
-                    }
-                )
-        except Exception as exc:  # noqa: BLE001 — one bad part is not a failed turn
-            log.warning("revision of %r failed: %s", logs.safe(label), logs.safe(exc))
-            yield chat_service.sse(
-                {"type": "step", "id": f"r{index}", "label": label, "status": "error"}
-            )
-            continue
-        usage["inputTokens"] += spent["inputTokens"]
-        usage["outputTokens"] += spent["outputTokens"]
-        changed += 1
-        yield chat_service.sse(
-            {"type": "step", "id": f"r{index}", "label": label, "status": "done"}
-        )
-
-    if not changed:
-        yield chat_service.sse({"type": "error", "message": "고치지 못했습니다."})
-        yield chat_service.sse({"type": "usage", **usage, "credits": 0})
-        yield chat_service.sse({"type": "done"})
+    work = revise_stages.bundle_for(
+        request=request, instruction=instruction, model=model, planner=planner,
+        api_key=api_key, is_deck=is_deck, title=title, data=data, parts=parts,
+        material=material, plan=plan, format_id=doc_format, usage=usage,
+    )
+    pipe = (pipeline_registry.pipeline("deck") if is_deck
+            else pipeline_registry.for_report(doc_format))
+    runner = PipelineRunner(pipe.stages("revise"), name=f"{pipe.name}.revise")
+    async for event in runner.run(work, PipelineContext(options=dict(pipe.options))):
+        yield chat_service.sse(event)
+    if any(r.status == "stopped" for r in work.steps):
         return
-
-    aligned_step: dict | None = None
-    if order and not is_deck and consistency.changes_content(instruction):
-        # One named figure, total, date or recommendation written two ways across parts is
-        # found by code, repaired once and read again; what stays is said in the step.
-        before_parts = [str(p.get("content") or "") for p in parts]
-        try:
-            parts, aligned_step, spent = await consistency.align(
-                parts, changed=set(plan.targets), instruction=instruction, request=request,
-                material="\n\n".join(material), pre=revision_pre, model=model["id"],
-                api_key=api_key)
-            usage["inputTokens"] += int(spent.get("inputTokens", 0))
-            usage["outputTokens"] += int(spent.get("outputTokens", 0))
-        except Exception:  # noqa: BLE001 — the revision stands; the step says it was not read
-            log.exception("revision consistency check failed")
-            aligned_step = {"type": "step", "id": "consistency", "status": "error",
-                            "label": "앞뒤 맞춤 검사 실패"}
-        for index, part in enumerate(parts):
-            if str(part.get("content") or "") != before_parts[index]:
-                yield chat_service.sse({
-                    "type": "section", "sectionId": part.get("id"), "heading": part.get("heading"),
-                    "content": part.get("content"), "done": True,
-                })
-        yield chat_service.sse(aligned_step)
+    parts, title, changed = work.document.sections, work.plan.title, work.document.changed
+    aligned_step = work.findings.aligned
 
     credits = charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     artifact_id: str | None = None
@@ -6923,77 +6610,20 @@ async def _revise_document(
     yield chat_service.sse({"type": "done"})
 
 
-def _strings(value: Any) -> list[str]:
-    """Every string inside a slide, for a check that reads its words."""
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [s for v in value.values() for s in _strings(v)]
-    if isinstance(value, list):
-        return [s for v in value for s in _strings(v)]
-    return []
-
-
-_FORMAT_NAMES = {
-    "pdf": "PDF",
-    "hwpx": "한글(HWPX)",
-    "docx": "Word(DOCX)",
-    "pptx": "PowerPoint(PPTX)",
-    "md": "마크다운",
-}
-
-
 async def _export_files(
     artifact: Artifact, formats: list[str], *, user_id: str, session_id: str
 ) -> tuple[dict | None, str]:
     """The document as the asked formats, kept as chat files: the step that carries
     their download chips (`None` when none was made) and what the reply says.
 
-    Uses the 파일 탭's exporters; the document itself is not touched.
+    The `export` stage (`app.pipeline.export_stages`); the document itself is not touched.
     """
-    offered = export_formats(artifact)
-    wanted = list(dict.fromkeys(formats)) or list(offered[:1])
-    makeable = [f for f in wanted if f in offered]
-    refused = [f for f in wanted if f not in offered]
-    outputs: list[dict] = []
-    failed: list[str] = []
-    for fmt in makeable:
-        try:
-            body, name = await artifact_file(artifact, fmt)
-            outputs.append(await sandbox.store_output(user_id, session_id, name, body))
-        except Exception as exc:  # noqa: BLE001 — one format failing still hands the others over
-            log.warning("export %s of %s failed: %s", fmt, artifact.id, logs.safe(exc))
-            failed.append(fmt)
-    said: list[str] = []
-    if outputs:
-        said.append(
-            " · ".join(f"「{row['name']}」" for row in outputs)
-            + " 파일을 만들었습니다. 아래에서 내려받으세요."
-        )
-    if refused:
-        what = "슬라이드는" if "pptx" in offered else "이 문서는"
-        names = ", ".join(_FORMAT_NAMES.get(f, f) for f in refused)
-        said.append(
-            f"{what} {names}(으)로 내보낼 수 없습니다. "
-            f"가능한 형식: {', '.join(_FORMAT_NAMES.get(f, f) for f in offered)}."
-        )
-    if failed:
-        said.append(
-            f"{', '.join(_FORMAT_NAMES.get(f, f) for f in failed)} 파일은 만들지 못했습니다. "
-            "파일 탭 → 내보내기에서 다시 받아 주세요."
-        )
-    step = (
-        {
-            "id": "export",
-            "label": f"파일 {len(outputs)}개 만듦",
-            "status": "done",
-            "detail": " · ".join(_FORMAT_NAMES.get(f, f) for f in makeable if f not in failed),
-            "outputs": outputs,
-        }
-        if outputs
-        else None
-    )
-    return step, " ".join(said)
+    work = export_stages.bundle_for(artifact=artifact, formats=formats, user_id=user_id,
+                                    session_id=session_id)
+    async for _event in PipelineRunner([pipeline_registry.stage("export")],
+                                       name="export").run(work):
+        pass
+    return work.document.handed, work.document.reply
 
 
 async def _hand_over_document(

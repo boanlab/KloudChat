@@ -272,9 +272,11 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
                        model: str, api_key: str) -> report_checks.Prepass | None:
     """The format's pre-pass run again with the follow-up read as part of the request, so a
     changed weight, start month or budget reaches the rewrite as settled values."""
+    from app.pipeline import registry
     from app.services import report  # imported late: report is heavy and imports this tree
 
-    if format_id not in report_checks.PREPASS_FORMATS:
+    # Only a format whose pipeline names pre-pass steps has one to run again.
+    if not registry.prepass_for(format_id):
         return None
     # Options listed in the request itself (comparison-report-4) are its material.
     material = material if (material or "").strip() else request

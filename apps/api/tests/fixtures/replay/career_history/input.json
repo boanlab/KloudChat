@@ -1,0 +1,18 @@
+{
+ "name": "career_history",
+ "kind": "report",
+ "run": "career-docs-2__r1",
+ "now": "2026-10-08T16:00:00+09:00",
+ "write": {
+  "request": "해솔핀테크 시니어 백엔드 지원할 경력기술서 만들어 줘. 결제 쪽 경력을 앞에 세워 줘. 내 경력 정리한 거 붙일게.\n\n[경력 정리 — 박준영]\n지원: (주)해솔핀테크 시니어 백엔드 개발자 (공고 자격: 백엔드 개발 경력 6년 이상, 결제·정산 도메인 경험 우대)\n\n1) (주)라온페이 — 2019.03 ~ 2022.08, 백엔드 개발자(사원 → 2021.01 대리)\n - 결제 승인 API 리팩터링(2020): Java/Spring, 응답 시간 p95 820ms → 310ms\n - 정산 배치 이관(2021~2022): Oracle → PostgreSQL, 하루 약 1,200만 건, 이관 중 정산 누락 0건\n2) (주)모아커머스 — 2022.09 ~ 2026.08, 백엔드 개발자 → 2024.03부터 주문파트 파트장(팀원 4명)\n - 주문 시스템 MSA 전환(2023): Kotlin, Kafka, 분기 장애 9건 → 2건\n - 상품 검색 개선(2024): Elasticsearch, 검색 후 구매 전환율 3.1% → 3.9%\n - 신규 입사자 온보딩 문서 정리(2025)\n기술: Java, Kotlin, Spring Boot, PostgreSQL, Oracle, Kafka, Elasticsearch, AWS",
+  "model": "strict-local/qwen3.8-27b",
+  "outline_model": "strict-local/qwen3.5-122b",
+  "api_key": "k",
+  "web_search": false,
+  "template_id": "doc-career-history",
+  "format_id": "career_history",
+  "check_keys": [
+   "grounding-check"
+  ]
+ }
+}

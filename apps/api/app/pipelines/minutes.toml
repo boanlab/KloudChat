@@ -1,0 +1,18 @@
+# 회의록 (agent `minutes`, format `minutes`): dates resolved from the meeting day, action rows
+# repaired by code before the verify stage and again after it.
+
+name = "minutes"
+formats = ["minutes"]
+agents = ["minutes"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "minutes-repair", "check:grounding", "format-find", "verify",
+    "minutes-reground", "check:grounding-again", "format-amend", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["date-calc"]
+checks = ["lead-dates", "minutes-rows", "material-blanks"]
+judged = ["judge-owners"]

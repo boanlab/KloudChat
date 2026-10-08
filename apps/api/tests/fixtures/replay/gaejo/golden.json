@@ -1,0 +1,299 @@
+[
+ {
+  "type": "research",
+  "research": {
+   "enabled": false,
+   "searched": false,
+   "queries": [],
+   "selected": 0,
+   "excluded": 0,
+   "webSelected": 0,
+   "projectSelected": 0,
+   "projectExcluded": 0
+  }
+ },
+ {
+  "type": "step",
+  "id": "outline",
+  "label": "개요 잡는 중",
+  "status": "running"
+ },
+ {
+  "type": "step",
+  "id": "outline",
+  "label": "개요 4개 섹션",
+  "status": "done",
+  "detail": "현황 · 문제점 및 검토 · 향후 조치 및 결정 요청 · 붙임"
+ },
+ {
+  "type": "proposal",
+  "plan": {
+   "title": "본관 엘리베이터 3호기 우선 교체 및 순차 교체 추진 방안",
+   "sections": [
+    "현황",
+    "문제점 및 검토",
+    "향후 조치 및 결정 요청",
+    "붙임"
+   ],
+   "visualStyle": "editorial"
+  }
+ },
+ {
+  "type": "usage",
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "outlineInputTokens": 2247,
+  "outlineOutputTokens": 46
+ },
+ {
+  "type": "research",
+  "research": {
+   "enabled": false,
+   "searched": false,
+   "queries": [],
+   "selected": 0,
+   "excluded": 0,
+   "webSelected": 0,
+   "projectSelected": 0,
+   "projectExcluded": 0
+  }
+ },
+ {
+  "type": "title",
+  "title": "본관 엘리베이터 3호기 우선 교체 및 순차 교체 추진 방안"
+ },
+ {
+  "type": "sources",
+  "sources": []
+ },
+ {
+  "type": "section",
+  "sectionId": "s0_000000",
+  "heading": "현황",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s1_000000",
+  "heading": "문제점 및 검토",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s2_000000",
+  "heading": "향후 조치 및 결정 요청",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s3_000000",
+  "heading": "붙임",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "step",
+  "id": "prepass",
+  "label": "사전 계산: date-calc",
+  "status": "done",
+  "detail": "date-calc: 날짜 0개 풂 (기준일 없음)"
+ },
+ {
+  "type": "step",
+  "id": "draft",
+  "label": "초안 쓰는 중",
+  "status": "running"
+ },
+ {
+  "type": "step",
+  "id": "draft",
+  "label": "초안 쓰는 중",
+  "status": "done"
+ },
+ {
+  "type": "step",
+  "id": "s0_000000",
+  "label": "현황",
+  "status": "running",
+  "progress": {
+   "current": 1,
+   "total": 4
+  }
+ },
+ {
+  "type": "step",
+  "id": "s0_000000",
+  "label": "현황",
+  "status": "done",
+  "progress": {
+   "current": 1,
+   "total": 4
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s0_000000",
+  "heading": "현황",
+  "content": "- 본관 엘리베이터 3대 1998년 설치, 28년 차 운영 중임.\n  - 승강기 안전관리법상 설치 후 25년 경과 시 3년 주기 정밀안전검사 대상임.\n- 작년 정밀검사 결과 3호기 '조건부 합격' (권상기 마모, 1년 내 보수 조건) 수령함.\n- 고장 신고 건수 증가함.\n  - 2025년: 14건\n  - 2026년 1~9월: 19건\n- 2026년 8월 2호기 갇힘 사고 1건 발생 (119 출동, 인명 피해 없음) 함.\n- 업체(한결엘리베이터) 견적 및 공법 확인함.\n  - 단품 교체 비용: 대당 1억 2천만 원\n  - 단품 공사 기간: 대당 6주\n  - 3대 일괄 교체 시 본관 6층 계단 이동으로 학사 일정 저해, 불가 판단됨.\n  - 3대 순차 교체 시 전체 기간 18주, 2대 운행 유지 가능함.\n  - 첫 대 교체는 겨울방학(12월 22일~2월 27일) 내 완료 가능함.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s1_000000",
+  "label": "문제점 및 검토",
+  "status": "running",
+  "progress": {
+   "current": 2,
+   "total": 4
+  }
+ },
+ {
+  "type": "step",
+  "id": "s1_000000",
+  "label": "문제점 및 검토",
+  "status": "done",
+  "progress": {
+   "current": 2,
+   "total": 4
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s1_000000",
+  "heading": "문제점 및 검토",
+  "content": "- 내년도 시설 개보수 예산(총 9억 원) 한계 내 3대 전체 동시 교체 어려움.\n  - 기숙사 방수 사업(2억 5천만 원) 등 우선 사업과 예산 배분 충돌 예상.\n  - 담당 의견: 3호기 올겨울 교체, 나머지 2대 내년도 여름/겨울방학 분산 교체 방안 현실성 높음.\n- 순차 교체 시 전체 기간 18주, 방학 기간 활용 필수.\n  - 3호기(올겨울) → 1호기(내년 여름방학) → 2호기(내년 겨울방학) 순서 제안.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s2_000000",
+  "label": "향후 조치 및 결정 요청",
+  "status": "running",
+  "progress": {
+   "current": 3,
+   "total": 4
+  }
+ },
+ {
+  "type": "step",
+  "id": "s2_000000",
+  "label": "향후 조치 및 결정 요청",
+  "status": "done",
+  "progress": {
+   "current": 3,
+   "total": 4
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s2_000000",
+  "heading": "향후 조치 및 결정 요청",
+  "content": "- 결재 요청 사항\n  - 3호기 올겨울 우선 교체 사업 승인\n  - 내년도 예산 요구서에 잔여 2대분(2억 4천만 원) 반영 여부\n- 추진 일정\n  - 1단계: 3호기 교체 (올겨울 방학, 6주 소요)\n  - 2단계: 1호기 교체 (내년 여름방학, 6주 소요)\n  - 3단계: 2호기 교체 (내년 겨울방학, 6주 소요)\n- 소요 예산\n  - 3호기: 1억 2천만 원 (현재 연도 시설 예산에서 집행, 확인 필요)\n  - 1~2호기: 2억 4천만 원 (내년도 예산 요구서 반영 요청)",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s3_000000",
+  "label": "붙임",
+  "status": "running",
+  "progress": {
+   "current": 4,
+   "total": 4
+  }
+ },
+ {
+  "type": "step",
+  "id": "s3_000000",
+  "label": "붙임",
+  "status": "done",
+  "progress": {
+   "current": 4,
+   "total": 4
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s3_000000",
+  "heading": "붙임",
+  "content": "붙임  1. 한결엘리베이터 견적서 1부.",
+  "done": true
+ },
+ {
+  "type": "titleBlock",
+  "titleBlock": {
+   "format": "gaejo",
+   "label": "개조식 보고서",
+   "head": "memo",
+   "numbering": "korean",
+   "fields": [
+    [
+     "보고일",
+     ""
+    ],
+    [
+     "보고자(부서)",
+     "시설팀 김도윤 주무관"
+    ],
+    [
+     "보고 대상",
+     "시설과장"
+    ]
+   ],
+   "lists": "gaejo",
+   "closing": true
+  }
+ },
+ {
+  "type": "step",
+  "id": "format_checks",
+  "label": "서식 검사 1건 → 수리 후 1건",
+  "status": "error",
+  "detail": "핵심 두 줄 없음 1 → 1 · 본문 쪽수(HWPX 1쪽 · PDF 1쪽) / 요청 1쪽"
+ },
+ {
+  "type": "step",
+  "id": "quality",
+  "label": "품질 점검 1건: 핵심 두 줄 없음 · 빈칸 1개",
+  "status": "error",
+  "detail": "채울 빈칸: [보고일]"
+ },
+ {
+  "type": "report",
+  "sections": [
+   {
+    "id": "s0_000000",
+    "heading": "현황",
+    "level": 1,
+    "content": "- 본관 엘리베이터 3대 1998년 설치, 28년 차 운영 중임.\n  - 승강기 안전관리법상 설치 후 25년 경과 시 3년 주기 정밀안전검사 대상임.\n- 작년 정밀검사 결과 3호기 '조건부 합격' (권상기 마모, 1년 내 보수 조건) 수령함.\n- 고장 신고 건수 증가함.\n  - 2025년: 14건\n  - 2026년 1~9월: 19건\n- 2026년 8월 2호기 갇힘 사고 1건 발생 (119 출동, 인명 피해 없음) 함.\n- 업체(한결엘리베이터) 견적 및 공법 확인함.\n  - 단품 교체 비용: 대당 1억 2천만 원\n  - 단품 공사 기간: 대당 6주\n  - 3대 일괄 교체 시 본관 6층 계단 이동으로 학사 일정 저해, 불가 판단됨.\n  - 3대 순차 교체 시 전체 기간 18주, 2대 운행 유지 가능함.\n  - 첫 대 교체는 겨울방학(12월 22일~2월 27일) 내 완료 가능함."
+   },
+   {
+    "id": "s1_000000",
+    "heading": "문제점 및 검토",
+    "level": 1,
+    "content": "- 내년도 시설 개보수 예산(총 9억 원) 한계 내 3대 전체 동시 교체 어려움.\n  - 기숙사 방수 사업(2억 5천만 원) 등 우선 사업과 예산 배분 충돌 예상.\n  - 담당 의견: 3호기 올겨울 교체, 나머지 2대 내년도 여름/겨울방학 분산 교체 방안 현실성 높음.\n- 순차 교체 시 전체 기간 18주, 방학 기간 활용 필수.\n  - 3호기(올겨울) → 1호기(내년 여름방학) → 2호기(내년 겨울방학) 순서 제안."
+   },
+   {
+    "id": "s2_000000",
+    "heading": "향후 조치 및 결정 요청",
+    "level": 1,
+    "content": "- 결재 요청 사항\n  - 3호기 올겨울 우선 교체 사업 승인\n  - 내년도 예산 요구서에 잔여 2대분(2억 4천만 원) 반영 여부\n- 추진 일정\n  - 1단계: 3호기 교체 (올겨울 방학, 6주 소요)\n  - 2단계: 1호기 교체 (내년 여름방학, 6주 소요)\n  - 3단계: 2호기 교체 (내년 겨울방학, 6주 소요)\n- 소요 예산\n  - 3호기: 1억 2천만 원 (현재 연도 시설 예산에서 집행, 확인 필요)\n  - 1~2호기: 2억 4천만 원 (내년도 예산 요구서 반영 요청)"
+   },
+   {
+    "id": "s3_000000",
+    "heading": "붙임",
+    "level": 1,
+    "content": "붙임  1. 한결엘리베이터 견적서 1부."
+   }
+  ]
+ },
+ {
+  "type": "usage",
+  "inputTokens": 3841,
+  "outputTokens": 381,
+  "outlineInputTokens": 330,
+  "outlineOutputTokens": 33
+ }
+]

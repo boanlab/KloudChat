@@ -1,0 +1,17 @@
+# The report writer: every document a format below does not claim.
+#
+# `plan` runs when no outline is approved yet (it offers one and stops); `write` runs on the
+# approved outline. Stage names are `app.pipeline` registry names; see
+# docs/architecture.md § Pipelines.
+
+name = "report"
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "writer-notes",
+    "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+checks = ["lead-dates"]

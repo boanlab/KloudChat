@@ -536,13 +536,16 @@ async def test_the_pre_pass_runs_again_with_the_follow_up_and_its_blocks_reach_t
 def test_the_revision_widens_settles_and_aligns():
     import inspect
 
-    from app.routers import sessions
+    from app.pipeline import registry, revise_stages
 
-    source = inspect.getsource(sessions._revise_document)
-    assert source.find("consistency.dependents(") < source.find("consistency.settle_again(")
-    assert source.find("consistency.settle_again(") < source.find("report_service.rewrite_section(")
-    assert source.find("report_service.rewrite_section(") < source.find("consistency.align(")
-    assert "internal_words.scrub(body)" in source
+    # The revise flow: widened and settled again, then rewritten, then aligned.
+    flow = list(registry.for_report("comparison").flow("revise"))
+    assert flow == ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+    widen = inspect.getsource(revise_stages.Widen.run)
+    assert widen.find("consistency.dependents(") < widen.find("consistency.settle_again(")
+    rewrite = inspect.getsource(revise_stages.Rewrite.run)
+    assert "report.rewrite_section(" in rewrite and "internal_words.scrub(body)" in rewrite
+    assert "consistency.align(" in inspect.getsource(revise_stages.Consistency.run)
 
 
 # ── client proposal: MM is never written as headcount ───────────────────

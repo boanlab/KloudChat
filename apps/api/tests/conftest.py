@@ -7,6 +7,8 @@ import os
 # Flows under test use fake catalogues without strict-local twins; the rule that keeps
 # internal material strict-local is exercised by its own tests with the switch set.
 os.environ.setdefault("INTERNAL_DATA_STRICT_LOCAL_DEFAULT", "false")
+# Every pipeline stage is held to the bundle fields it declares (`app.pipeline.runner`).
+os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
 
 from typing import Any
 

@@ -1151,69 +1151,107 @@ async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool]
     return None, "split" if any(found(o) is not None for o in outcomes) else "empty", plain
 
 
+@dataclass(slots=True)
+class PrepassJob:
+    """What every pre-pass step is given: the turn's request and material, and the calls."""
+
+    format_id: str
+    request: str
+    material: str
+    complete: Complete
+    model: str
+    api_key: str
+    today: dt.date | None
+    tiebreak_model: str
+    usage: dict
+
+    def count(self, more: dict) -> None:
+        for key in ("inputTokens", "outputTokens"):
+            self.usage[key] = self.usage.get(key, 0) + int((more or {}).get(key, 0))
+
+
 async def prepare(
     format_id: str | None, request: str, material: str, *, complete: Complete, model: str,
     api_key: str, usage: dict | None = None, today: dt.date | None = None,
     tiebreak_model: str = "",
 ) -> Prepass:
-    """The format's pre-pass: what code settles before a word is written."""
+    """The format's pre-pass: what code settles before a word is written.
+
+    The steps and their order are the format's pipeline file's `prepass` list
+    (`app/pipelines/*.toml`); each records its run — done, skipped or failed — in
+    `Prepass.runs`."""
+    from app.pipeline import registry
+    from app.pipeline.runner import CURRENT_STAGE
+
     pre = Prepass(format_id=format_id or "")
     if not format_id or not (material or "").strip():
         return pre
-    spent = usage if usage is not None else {}
+    job = PrepassJob(format_id, request, material, complete, model, api_key, today,
+                     tiebreak_model, usage if usage is not None else {})
+    for name in registry.prepass_for(format_id):
+        token = CURRENT_STAGE.set(f"prepass:{name}")
+        try:
+            await PREPASS_STEPS[name](pre, job)
+        finally:
+            CURRENT_STAGE.reset(token)
+    return pre
 
-    def count(more: dict) -> None:
-        for key in ("inputTokens", "outputTokens"):
-            spent[key] = spent.get(key, 0) + int((more or {}).get(key, 0))
 
-    if format_id in DATE_FORMATS:
-        # Only minutes are about a day the material itself was made on; an RFP's or a
-        # memo's relative dates are not read from today.
-        base, source = (meeting_base(request, material, today) if format_id == "minutes"
-                        else (meeting_date(request, material), "text"))
-        if base is None and format_id == "minutes":
-            # The meeting's date is 「[회의 일자]」; relative deadlines stay words.
-            probe = today or dt.date.today()
-            rows = _undated(skill_scripts.dates().scan(material, probe), probe)
-        else:
-            rows = skill_scripts.dates().scan(material, base)
-        _with_context(rows, material)
-        pre.dates = rows
-        first = next((r["base_date"] for r in rows if r.get("base_date")),
-                     base.isoformat() if base else "")
-        pre.base_date = first
-        pre.base_source = source if base else ""
-        undated = format_id == "minutes" and base is None
-        if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
-            pre.blocks.append(block)
-        # 「발주 후 8주」 counts from the material's own absolute date, meeting date or not.
-        lead = skill_scripts.dates().lead_times(material)
-        lead_rows = [r for r in lead["items"] if r["status"] == "ok"]
-        if lead["items"]:
-            pre.lead = lead
-            pre.blocks.append(_lead_block(lead))
-        relative = [r for r in rows if r.get("kind") not in ("full_date", "month_day")]
-        parts = []
-        if relative or not lead_rows:
-            parts.append(
-                f"날짜 {sum(r['status'] in ('ok', 'repeat') for r in relative)}개 풂"
-                + (f", 미정·[기한] {sum(r['status'] in ('unresolved', 'unclear') for r in relative)}개"
-                   if any(r['status'] in ('unresolved', 'unclear') for r in relative) else "")
-                + (f", 회의 일자가 없어 날로 풀지 않음 {sum(r['status'] == _NO_BASE for r in relative)}개"
-                   " → 기한 [기한], 원문은 비고"
-                   if any(r['status'] == _NO_BASE for r in relative) else "")
-                + (f" (기준 {first}{', ' + w if (w := _base_words(pre.base_source)) else ''})"
-                   if first else " (회의 일자 없음 → [회의 일자])" if undated else " (기준일 없음)"))
-        if lead["items"]:
-            starts = ", ".join(dict.fromkeys(f"{r['anchor']} {r['start']}" for r in lead_rows))
-            late = sum(1 for r in lead_rows if r.get("within") is False)
-            parts.append(
-                f"기간 {len(lead_rows)}개 → 날짜" + (f"({starts} 기준)" if starts else "")
-                + (f", 기한 {lead['deadline']} 초과 {late}개" if lead.get("deadline") else "")
-                + (f", 못 풂 {len(lead['items']) - len(lead_rows)}개"
-                   if len(lead["items"]) > len(lead_rows) else ""))
-        pre.runs.append({"skill": "date-calc", "summary": " · ".join(parts)})
-    if format_id == "client_proposal" and (terms := rfp_terms(material, request)):
+async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
+    """Relative dates resolved against the meeting's (or the memo's) date; lead times
+    counted from the material's own anchor date."""
+    format_id, request, material, today = job.format_id, job.request, job.material, job.today
+    # Only minutes are about a day the material itself was made on; an RFP's or a
+    # memo's relative dates are not read from today.
+    base, source = (meeting_base(request, material, today) if format_id == "minutes"
+                    else (meeting_date(request, material), "text"))
+    if base is None and format_id == "minutes":
+        # The meeting's date is 「[회의 일자]」; relative deadlines stay words.
+        probe = today or dt.date.today()
+        rows = _undated(skill_scripts.dates().scan(material, probe), probe)
+    else:
+        rows = skill_scripts.dates().scan(material, base)
+    _with_context(rows, material)
+    pre.dates = rows
+    first = next((r["base_date"] for r in rows if r.get("base_date")),
+                 base.isoformat() if base else "")
+    pre.base_date = first
+    pre.base_source = source if base else ""
+    undated = format_id == "minutes" and base is None
+    if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
+        pre.blocks.append(block)
+    # 「발주 후 8주」 counts from the material's own absolute date, meeting date or not.
+    lead = skill_scripts.dates().lead_times(material)
+    lead_rows = [r for r in lead["items"] if r["status"] == "ok"]
+    if lead["items"]:
+        pre.lead = lead
+        pre.blocks.append(_lead_block(lead))
+    relative = [r for r in rows if r.get("kind") not in ("full_date", "month_day")]
+    parts = []
+    if relative or not lead_rows:
+        parts.append(
+            f"날짜 {sum(r['status'] in ('ok', 'repeat') for r in relative)}개 풂"
+            + (f", 미정·[기한] {sum(r['status'] in ('unresolved', 'unclear') for r in relative)}개"
+               if any(r['status'] in ('unresolved', 'unclear') for r in relative) else "")
+            + (f", 회의 일자가 없어 날로 풀지 않음 {sum(r['status'] == _NO_BASE for r in relative)}개"
+               " → 기한 [기한], 원문은 비고"
+               if any(r['status'] == _NO_BASE for r in relative) else "")
+            + (f" (기준 {first}{', ' + w if (w := _base_words(pre.base_source)) else ''})"
+               if first else " (회의 일자 없음 → [회의 일자])" if undated else " (기준일 없음)"))
+    if lead["items"]:
+        starts = ", ".join(dict.fromkeys(f"{r['anchor']} {r['start']}" for r in lead_rows))
+        late = sum(1 for r in lead_rows if r.get("within") is False)
+        parts.append(
+            f"기간 {len(lead_rows)}개 → 날짜" + (f"({starts} 기준)" if starts else "")
+            + (f", 기한 {lead['deadline']} 초과 {late}개" if lead.get("deadline") else "")
+            + (f", 못 풂 {len(lead['items']) - len(lead_rows)}개"
+               if len(lead["items"]) > len(lead_rows) else ""))
+    pre.runs.append({"skill": "date-calc", "summary": " · ".join(parts)})
+
+
+async def _proposal_rfp(pre: Prepass, job: PrepassJob) -> None:
+    """What the RFP fixes: the client's names, the period, the page limit."""
+    if terms := rfp_terms(job.material, job.request):
         pre.rfp = terms
         shown = [x for x in (
             "고객사 " + "·".join(terms["clients"][:2]) if terms.get("clients") else "",
@@ -1221,7 +1259,13 @@ async def prepare(
             f"사업 기간 {terms['months']}개월" if terms.get("months") else "",
             f"본문 {terms['pages']}쪽 이내" if terms.get("pages") else "") if x]
         pre.runs.append({"skill": "proposal-check", "summary": "RFP: " + ", ".join(shown)})
-    if format_id in QUOTE_FORMATS and _PRICE_LINE.search(material):
+
+
+async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
+    """The quote's lines read twice (a third reading settles a split) and summed by code."""
+    format_id, material, api_key = job.format_id, job.material, job.api_key
+    complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
+    if _PRICE_LINE.search(material):
         async def read_quote(override: str) -> tuple[Any, Any]:
             text, more = await complete(
                 override or model,
@@ -1275,10 +1319,19 @@ async def prepare(
             log.info("quote pre-pass failed: %s", logs.safe(repr(exc)))
             pre.runs.append({"skill": "quote-calc", "summary": f"견적 계산 실패 ({_failure(exc)})",
                              "error": True})
-    if format_id in QUOTE_FORMATS and not pre.staff:
+
+
+async def _staffing(pre: Prepass, job: PrepassJob) -> None:
+    if not pre.staff:
         # Read by code even when the quote reading did not settle.
-        pre.staff = staffing(material)
-    if format_id == "comparison" and len(_amounts(material)) >= 2:
+        pre.staff = staffing(job.material)
+
+
+async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
+    """Each option's total over the period, read twice and computed by code."""
+    request, material, api_key = job.request, job.material, job.api_key
+    complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
+    if len(_amounts(material)) >= 2:
         # Options priced by parts (unit price × count × years) settle their totals before
         # writing; with no 「단가」 line quote-calc never ran (comparison-report-5).
         given = f"{request}\n{material}"
@@ -1337,53 +1390,73 @@ async def prepare(
             log.info("cost pre-pass failed: %s", logs.safe(repr(exc)))
             pre.runs.append({"skill": "compare-cost", "summary": f"총비용 계산 실패 ({_failure(exc)})",
                              "error": True})
-    elif format_id == "comparison":
+    else:
         pre.runs.append({"skill": "compare-cost", "skipped": True,
                          "summary": "자료의 금액이 2개 미만이라 총비용 계산 안 함"})
-    if format_id == "comparison":
-        try:
-            text, more = await complete(
-                model, [{"role": "user", "content": _SCORE_PROMPT.format(
-                    request=request[:3000], material=material[:10000])}], api_key, 1500,
-            )
-            count(more)
-            data = _json(text)
-            numbers = _material_numbers(f"{request}\n{material}")
-            if musts := must_status(data, numbers, f"{request}\n{material}"):
-                pre.musts = musts
-                pre.blocks.append(_must_block(musts))
-                pre.runs.append({"skill": "compare-check", "summary": "필수 조건 " + ", ".join(
-                    f"{o} {r['status']}" for o, r in musts["options"].items())})
-            if not _WEIGHTS.search(f"{request}\n{material}") or any(
-                    not _grounded(c.get("weight"), numbers) for c in data.get("criteria") or []
-                    if isinstance(c, dict)):
-                data = {}
-            if result := scores(data):
-                pre.scores = result
-                pre.blocks.append(_score_block(result))
-                pre.runs.append({"skill": "compare-check", "summary":
-                                 f"점수 {len(result['options'])}개 대안 × {len(result['criteria'])}기준"
-                                 + (" (동점)" if result["tie"] else "")})
-            if not musts and not result:
-                pre.runs.append({"skill": "compare-check", "skipped": True, "summary": (
-                    "응답을 읽지 못해 판정·점수 계산 안 함" if not _json(text) else
-                    "요청·자료에 필수 조건과 가중치가 없어 판정·점수 계산 안 함")})
-        except Exception as exc:  # noqa: BLE001
-            log.info("score pre-pass failed: %s", logs.safe(repr(exc)))
-            pre.runs.append({"skill": "compare-check", "summary": f"점수 계산 실패 ({_failure(exc)})",
-                             "error": True})
-    if format_id == "career_history":
-        if span := career_periods(material, request, today or dt.date.today()):
-            pre.periods = span
-            pre.blocks.append(_career_block(span))
-            pre.runs.append({"skill": "date-calc", "summary":
-                             f"기간 {len(span['periods'])}개" + (
-                                 f" → 총 경력 {span['total_text']}" if not span.get("vague")
-                                 else " (달이 정해지지 않은 기간 있음)")})
-        else:
-            pre.runs.append({"skill": "date-calc", "skipped": True,
-                             "summary": "자료에서 경력 기간을 읽지 못해 기간 계산 안 함"})
-    return pre
+
+
+async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
+    """Must-have conditions judged per option, and weighted scores when weights are given."""
+    request, material, api_key = job.request, job.material, job.api_key
+    complete, model, count = job.complete, job.model, job.count
+    try:
+        text, more = await complete(
+            model, [{"role": "user", "content": _SCORE_PROMPT.format(
+                request=request[:3000], material=material[:10000])}], api_key, 1500,
+        )
+        count(more)
+        data = _json(text)
+        numbers = _material_numbers(f"{request}\n{material}")
+        if musts := must_status(data, numbers, f"{request}\n{material}"):
+            pre.musts = musts
+            pre.blocks.append(_must_block(musts))
+            pre.runs.append({"skill": "compare-check", "summary": "필수 조건 " + ", ".join(
+                f"{o} {r['status']}" for o, r in musts["options"].items())})
+        if not _WEIGHTS.search(f"{request}\n{material}") or any(
+                not _grounded(c.get("weight"), numbers) for c in data.get("criteria") or []
+                if isinstance(c, dict)):
+            data = {}
+        if result := scores(data):
+            pre.scores = result
+            pre.blocks.append(_score_block(result))
+            pre.runs.append({"skill": "compare-check", "summary":
+                             f"점수 {len(result['options'])}개 대안 × {len(result['criteria'])}기준"
+                             + (" (동점)" if result["tie"] else "")})
+        if not musts and not result:
+            pre.runs.append({"skill": "compare-check", "skipped": True, "summary": (
+                "응답을 읽지 못해 판정·점수 계산 안 함" if not _json(text) else
+                "요청·자료에 필수 조건과 가중치가 없어 판정·점수 계산 안 함")})
+    except Exception as exc:  # noqa: BLE001
+        log.info("score pre-pass failed: %s", logs.safe(repr(exc)))
+        pre.runs.append({"skill": "compare-check", "summary": f"점수 계산 실패 ({_failure(exc)})",
+                         "error": True})
+
+
+async def _career_periods(pre: Prepass, job: PrepassJob) -> None:
+    """Each period's months and the total, counted by code."""
+    material, request, today = job.material, job.request, job.today
+    if span := career_periods(material, request, today or dt.date.today()):
+        pre.periods = span
+        pre.blocks.append(_career_block(span))
+        pre.runs.append({"skill": "date-calc", "summary":
+                         f"기간 {len(span['periods'])}개" + (
+                             f" → 총 경력 {span['total_text']}" if not span.get("vague")
+                             else " (달이 정해지지 않은 기간 있음)")})
+    else:
+        pre.runs.append({"skill": "date-calc", "skipped": True,
+                         "summary": "자료에서 경력 기간을 읽지 못해 기간 계산 안 함"})
+
+
+#: The pre-pass steps a pipeline file's `prepass` list names.
+PREPASS_STEPS: dict[str, Callable[[Prepass, PrepassJob], Any]] = {
+    "date-calc": _date_calc,
+    "proposal-rfp": _proposal_rfp,
+    "quote-calc": _quote_calc,
+    "staffing": _staffing,
+    "compare-cost": _compare_cost,
+    "compare-check": _compare_check,
+    "career-periods": _career_periods,
+}
 
 
 # ── after writing: checks the verify stage repairs ───────────────────────
@@ -1995,69 +2068,105 @@ def lead_dates_missing(sections: list[dict], lead: dict | None) -> list[dict]:
             and not any(_day_matches(d, r["date"]) for d in days)]
 
 
+def _quote_totals_check(pre: Prepass) -> Check | None:
+    if not pre.quote:
+        return None
+    quote = pre.quote
+
+    async def proposal_quote(doc: Doc):
+        return await quote_totals(doc, quote)
+
+    return proposal_quote
+
+
+def _proposal_schedule_check(pre: Prepass) -> Check | None:
+    if not pre.rfp:
+        return None
+    rfp = pre.rfp
+
+    async def proposal_check(doc: Doc):
+        return await proposal_schedule(doc, rfp)
+
+    return proposal_check
+
+
+def _lead_dates_check(pre: Prepass) -> Check | None:
+    if not pre.lead:
+        return None
+    lead = pre.lead
+
+    async def lead_check(doc: Doc):
+        return await lead_time_dates(doc, lead)
+
+    return lead_check
+
+
+def _minutes_rows_check(pre: Prepass) -> Check:
+    dates = pre.dates
+
+    async def minutes_check(doc: Doc):
+        table_rows, _ = await minutes_rows(doc, dates)
+        list_rows, _ = await minutes_list_rows(doc, dates)
+        return table_rows + list_rows, {}
+
+    return minutes_check
+
+
+def _compare_cells_check(pre: Prepass) -> Check:
+    scored, musts = pre.scores, pre.musts
+
+    async def compare_check(doc: Doc):
+        cell_findings, _ = await comparison_cells(doc, scored)
+        advice, _ = await comparison_recommendation(doc, musts, scored)
+        return cell_findings + advice, {}
+
+    return compare_check
+
+
+def _career_numbers_check(pre: Prepass) -> Check:
+    periods = pre.periods
+
+    async def career_check(doc: Doc):
+        return await career_numbers(doc, periods)
+
+    return career_check
+
+
+def _staff_counts_check(pre: Prepass) -> Check | None:
+    if not pre.staff:
+        return None
+    roles = pre.staff
+
+    async def staff_check(doc: Doc):
+        return await staff_counts(doc, roles)
+
+    return staff_check
+
+
+#: The format code checks a pipeline file's `checks` list names, each built on the pre-pass
+#: (None when the pre-pass gave it nothing to check).
+CHECK_FAMILIES: dict[str, Callable[[Prepass], Check | None]] = {
+    "quote-totals": _quote_totals_check,
+    "proposal-schedule": _proposal_schedule_check,
+    "gaejo-style": lambda pre: gaejo_style,
+    "lead-dates": _lead_dates_check,
+    "minutes-rows": _minutes_rows_check,
+    "compare-cells": _compare_cells_check,
+    "career-numbers": _career_numbers_check,
+    "staff-counts": _staff_counts_check,
+    "material-blanks": lambda pre: material_blanks,
+}
+
+
 def checks(pre: Prepass | None) -> list[Check]:
-    """The format's code checks; they run before and after the repair."""
+    """The format's code checks, as its pipeline file's `checks` list names them; they run
+    before and after the repair."""
+    from app.pipeline import registry
+
     if pre is None:
         return []
-    out: list[Check] = []
-    if pre.format_id == "client_proposal" and pre.quote:
-        quote = pre.quote
-
-        async def proposal_quote(doc: Doc):
-            return await quote_totals(doc, quote)
-
-        out.append(proposal_quote)
-    if pre.format_id == "client_proposal" and pre.rfp:
-        rfp = pre.rfp
-
-        async def proposal_check(doc: Doc):
-            return await proposal_schedule(doc, rfp)
-
-        out.append(proposal_check)
-    if pre.format_id == "gaejo":
-        out.append(gaejo_style)
-    if pre.lead:
-        lead = pre.lead
-
-        async def lead_check(doc: Doc):
-            return await lead_time_dates(doc, lead)
-
-        out.append(lead_check)
-    if pre.format_id == "minutes":
-        dates = pre.dates
-
-        async def minutes_check(doc: Doc):
-            table_rows, _ = await minutes_rows(doc, dates)
-            list_rows, _ = await minutes_list_rows(doc, dates)
-            return table_rows + list_rows, {}
-
-        out.append(minutes_check)
-    if pre.format_id == "comparison":
-        scored, musts = pre.scores, pre.musts
-
-        async def compare_check(doc: Doc):
-            cell_findings, _ = await comparison_cells(doc, scored)
-            advice, _ = await comparison_recommendation(doc, musts, scored)
-            return cell_findings + advice, {}
-
-        out.append(compare_check)
-    if pre.format_id == "career_history":
-        periods = pre.periods
-
-        async def career_check(doc: Doc):
-            return await career_numbers(doc, periods)
-
-        out.append(career_check)
-    if pre.format_id in QUOTE_FORMATS and pre.staff:
-        roles = pre.staff
-
-        async def staff_check(doc: Doc):
-            return await staff_counts(doc, roles)
-
-        out.append(staff_check)
-    if pre.format_id in PREPASS_FORMATS:
-        out.append(material_blanks)
-    return out
+    built = (CHECK_FAMILIES[name](pre) for name in registry.checks_for(pre.format_id))
+    return [check for check in built if check is not None]
 
 
 # ── staffing: people are people, MM is effort ───────────────────────────
@@ -3710,19 +3819,25 @@ def judge_repeats(complete: Complete, judge: str, api_key: str) -> Check:
     return experience_repeat
 
 
+#: The judged checks a pipeline file's `judged` list names.
+JUDGED_CHECKS: dict[str, Callable[[Complete, str, str], Check]] = {
+    "judge-owners": lambda complete, judge, api_key: judge_owners(complete, judge, api_key),
+    "judge-bindings": lambda complete, judge, api_key: judge_bindings(complete, judge, api_key),
+    "judge-repeats": lambda complete, judge, api_key: judge_repeats(complete, judge, api_key),
+}
+
+
 def model_checks(pre: Prepass | None, *, complete: Complete | None, judge: str,
                  api_key: str) -> list[Check]:
-    """The format's judged checks (E5): one judge call each per document, findings shown to the
-    reader and never rewritten on the judge's word."""
+    """The format's judged checks (E5), as its pipeline file's `judged` list names them: one
+    judge call each per document, findings shown to the reader and never rewritten on the
+    judge's word."""
+    from app.pipeline import registry
+
     if pre is None or complete is None or not judge:
         return []
-    if pre.format_id == "minutes":
-        return [judge_owners(complete, judge, api_key)]
-    if pre.format_id in ("client_proposal", "comparison"):
-        return [judge_bindings(complete, judge, api_key)]
-    if pre.format_id == "career_history":
-        return [judge_repeats(complete, judge, api_key)]
-    return []
+    return [JUDGED_CHECKS[name](complete, judge, api_key)
+            for name in registry.judged_for(pre.format_id)]
 
 
 # ── the record ──────────────────────────────────────────────────────────

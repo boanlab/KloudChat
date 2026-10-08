@@ -1,0 +1,490 @@
+[
+ {
+  "type": "research",
+  "research": {
+   "enabled": false,
+   "searched": false,
+   "queries": [],
+   "selected": 0,
+   "excluded": 0,
+   "webSelected": 0,
+   "projectSelected": 0,
+   "projectExcluded": 0
+  }
+ },
+ {
+  "type": "step",
+  "id": "outline",
+  "label": "개요 잡는 중",
+  "status": "running"
+ },
+ {
+  "type": "step",
+  "id": "outline",
+  "label": "개요 7개 섹션",
+  "status": "done",
+  "detail": "요약 · 결정 기준과 필수 조건 · 대안 개요와 전제 · 대안 비교 분석 · 자료 불일치와 측정 조건 · 조건 미확인 사항과 검증 필요 · 권고안과 다음 단계"
+ },
+ {
+  "type": "proposal",
+  "plan": {
+   "title": "사내 메신저 솔루션 선정",
+   "sections": [
+    "요약",
+    "결정 기준과 필수 조건",
+    "대안 개요와 전제",
+    "대안 비교 분석",
+    "자료 불일치와 측정 조건",
+    "조건 미확인 사항과 검증 필요",
+    "권고안과 다음 단계"
+   ],
+   "visualStyle": "editorial"
+  }
+ },
+ {
+  "type": "usage",
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "outlineInputTokens": 2070,
+  "outlineOutputTokens": 51
+ },
+ {
+  "type": "research",
+  "research": {
+   "enabled": false,
+   "searched": false,
+   "queries": [],
+   "selected": 0,
+   "excluded": 0,
+   "webSelected": 0,
+   "projectSelected": 0,
+   "projectExcluded": 0
+  }
+ },
+ {
+  "type": "title",
+  "title": "사내 메신저 솔루션 선정"
+ },
+ {
+  "type": "sources",
+  "sources": []
+ },
+ {
+  "type": "step",
+  "id": "calc",
+  "label": "코드로 수치 계산 중",
+  "status": "running"
+ },
+ {
+  "type": "step",
+  "id": "calc",
+  "label": "코드 실행 없음 — 모델이 계산",
+  "status": "error"
+ },
+ {
+  "type": "section",
+  "sectionId": "s0_000000",
+  "heading": "요약",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s1_000000",
+  "heading": "결정 기준과 필수 조건",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s2_000000",
+  "heading": "대안 개요와 전제",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s3_000000",
+  "heading": "대안 비교 분석",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s4_000000",
+  "heading": "자료 불일치와 측정 조건",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s5_000000",
+  "heading": "조건 미확인 사항과 검증 필요",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "section",
+  "sectionId": "s6_000000",
+  "heading": "권고안과 다음 단계",
+  "content": "",
+  "done": false
+ },
+ {
+  "type": "step",
+  "id": "prepass",
+  "label": "사전 계산: compare-cost, compare-check",
+  "status": "done",
+  "detail": "compare-cost: 총비용 3개 대안(1년): 톡플로우 5,760,000원, 팀링크 엔터프라이즈 7,680,000원, 워크닷 7,200,000원 · compare-check: 필수 조건 톡플로우 충족, 팀링크 탈락, 워크닷 충족"
+ },
+ {
+  "type": "step",
+  "id": "draft",
+  "label": "초안 쓰는 중",
+  "status": "running"
+ },
+ {
+  "type": "step",
+  "id": "draft",
+  "label": "초안 쓰는 중",
+  "status": "done"
+ },
+ {
+  "type": "step",
+  "id": "s0_000000",
+  "label": "요약",
+  "status": "running",
+  "progress": {
+   "current": 1,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s0_000000",
+  "label": "요약",
+  "status": "done",
+  "progress": {
+   "current": 1,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s0_000000",
+  "heading": "요약",
+  "content": "톡플로우(1인 월 6,000원, 연 5,760,000원)를 권고합니다. SSO 연동과 60명 규모 화상회의라는 필수 조건을 모두 만족하는 두 대안 가운데 연간 비용이 가장 낮기 때문입니다.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s1_000000",
+  "label": "결정 기준과 필수 조건",
+  "status": "running",
+  "progress": {
+   "current": 2,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s1_000000",
+  "label": "결정 기준과 필수 조건",
+  "status": "done",
+  "progress": {
+   "current": 2,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s1_000000",
+  "heading": "결정 기준과 필수 조건",
+  "content": "SSO 연동과 60명 이상 동시 화상회의는 필수 조건입니다. SSO 미지원 요금제는 SSO 지원 상위 요금제로 올려 계산합니다. 화상회의 최대 인원이 60명 미만인 대안은 탈락합니다. 필수 조건을 충족하는 안 가운데 최저 연비를 기준으로 선택하며, 가중치가 없으므로 점수를 만들지 않습니다. 연비는 1인 월 가격 × 12개월 × 80명으로 계산합니다.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s2_000000",
+  "label": "대안 개요와 전제",
+  "status": "running",
+  "progress": {
+   "current": 3,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s2_000000",
+  "label": "대안 개요와 전제",
+  "status": "done",
+  "progress": {
+   "current": 3,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s2_000000",
+  "heading": "대안 개요와 전제",
+  "content": "팀링크는 기본 1인 월 4,500원이지만 SSO를 지원하지 않아 SSO 필수 요건에는 엔터프라이즈 1인 월 8,000원 기준으로 봅니다. 워크닷은 1인 월 7,500원이며 SSO를 지원합니다. 전제 80명은 이 보고서의 연비 계산에 쓰는 인원입니다.\n\n```callout\n80명 기준 연비\n연비 = 1인 월 단가 × 12개월 × 80명. 팀링크는 SSO 필수이므로 기본 요금제가 아닌 엔터프라이즈 단가 8,000원으로 계산합니다.\n```",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s3_000000",
+  "label": "대안 비교 분석",
+  "status": "running",
+  "progress": {
+   "current": 4,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s3_000000",
+  "label": "대안 비교 분석",
+  "status": "done",
+  "progress": {
+   "current": 4,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s3_000000",
+  "heading": "대안 비교 분석",
+  "content": "아래 표의 연비는 위 공식(1인 월 단가 × 12 × 80)으로 계산한 값입니다. 톡플로우 5,760,000원, 팀링크(엔터프라이즈) 7,680,000원, 워크닷 7,200,000원입니다. 톡플로어가 80명 중 5,760,000원이므로 워크닷보다 1,440,000원, 팀링크보다 1,920,000원 낮습니다.\n\n표: 필수 조건 충족과 80명 연비 비교\n| 기준(단위) | 톡플로우 | 팀링크(엔터프라이즈) | 워크닷 |\n| --- | --- | --- | --- |\n| SSO 연동(필수) | 충족 | 충족 | 충족 |\n| 화상회의 최대 인원(필수, ≥60명) | 100명(충족) | 50명(탈락) | 300명(충족) |\n| 1인 월 단가(원) | 6,000 | 8,000 | 7,500 |\n| 연비(원, 80명) | 5,760,000 | 7,680,000 | 7,200,000 |\n| 데이터센터 위치 | 국내 | 해외 | 국내 |\n\n팀링크 기본 요금제는 SSO를 지원하지 않아 탈락입니다. 팀링크 엔터프라이즈는 SSO를 만족하지만 화상회의 최대 50명으로 60명 요건을 못 맞혀 탈락입니다. 따라서 팀링크는 값이 좋아도 권고 대상이 아닙니다.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s4_000000",
+  "label": "자료 불일치와 측정 조건",
+  "status": "running",
+  "progress": {
+   "current": 5,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s4_000000",
+  "label": "자료 불일치와 측정 조건",
+  "status": "done",
+  "progress": {
+   "current": 5,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s4_000000",
+  "heading": "자료 불일치와 측정 조건",
+  "content": "기본과 엔터프라이즈 요금제 모두 이 값으로 보이며, 자료에 요금제별 인원 차이가 따로 적혀 있지 않습니다. 단가는 기본 4,500원과 엔터프라이즈 8,000원으로 구분됩니다. SSO는 기본이 미지원, 엔터프라이즈가 지원입니다. 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는 원칙에 따라, SSO 필수요건에는 엔터프라이즈 단가를 쓴다고 명시해 둘을 나란히 둡니다.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s5_000000",
+  "label": "조건 미확인 사항과 검증 필요",
+  "status": "running",
+  "progress": {
+   "current": 6,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s5_000000",
+  "label": "조건 미확인 사항과 검증 필요",
+  "status": "done",
+  "progress": {
+   "current": 6,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s5_000000",
+  "heading": "조건 미확인 사항과 검증 필요",
+  "content": "자료가 없는 값은 추측하지 않고 공란으로 둡니다. 도입 초기 설정 비용과 유지보수 인력은 [금액]입니다. SSO 연동 방식(SAML, OIDC 등)과 회사 인증서버 호환 여부는 [확인 필요]입니다. 국내·해외 데이터센터에 따른 개인정보처리방침 또는 규제 적합성 판단은 [담당자 확인 필요]입니다. 이 값들이 확정되면 연비에 합산하거나 탈락 사유로 반영해야 합니다.",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "s6_000000",
+  "label": "권고안과 다음 단계",
+  "status": "running",
+  "progress": {
+   "current": 7,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "s6_000000",
+  "label": "권고안과 다음 단계",
+  "status": "done",
+  "progress": {
+   "current": 7,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s6_000000",
+  "heading": "권고안과 다음 단계",
+  "content": "조건을 모두 확인한 뒤 톡플로우를 권고합니다. 팀링크는 SSO 미지원 또는 화상회의 50명으로 조건 미충족이라 선택지에서 제외합니다. 다음 단계는 회사 인증서버와 SSO 호환 검증, [금액]인 도입비를 확인, 톡플로우와 워크닷 데이터센터 정책 비교 순서입니다.\n\n```kpi\n5,760,000원 | 톡플로우 80명 연비\n1,440,000원 | 워크닷 대비 절감액\n1,920,000원 | 팀링크(엔터프라이즈) 대비 절감액\n80명 | 계산 기준 인원\n```",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "dia4",
+  "label": "팀링크 요금제별 SSO 지원과 단가 대비 그리는 중",
+  "status": "running",
+  "progress": {
+   "current": 5,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "dia4",
+  "label": "팀링크 요금제별 SSO 지원과 단가 대비",
+  "status": "done",
+  "progress": {
+   "current": 5,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s4_000000",
+  "heading": "자료 불일치와 측정 조건",
+  "content": "기본과 엔터프라이즈 요금제 모두 이 값으로 보이며, 자료에 요금제별 인원 차이가 따로 적혀 있지 않습니다. 단가는 기본 4,500원과 엔터프라이즈 8,000원으로 구분됩니다. SSO는 기본이 미지원, 엔터프라이즈가 지원입니다. 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는 원칙에 따라, SSO 필수요건에는 엔터프라이즈 단가를 쓴다고 명시해 둘을 나란히 둡니다.\n\n```mermaid\nflowchart LR\n  a[팀링크 요금제별 SSO 지원과 단가 대비] --> b[검토] --> c[결정]\n```\n\n*그림: 팀링크 요금제별 SSO 지원과 단가 대비*",
+  "done": true
+ },
+ {
+  "type": "step",
+  "id": "dia5",
+  "label": "미확인 사항 검증 및 반영 절차 그리는 중",
+  "status": "running",
+  "progress": {
+   "current": 6,
+   "total": 7
+  }
+ },
+ {
+  "type": "step",
+  "id": "dia5",
+  "label": "미확인 사항 검증 및 반영 절차",
+  "status": "done",
+  "progress": {
+   "current": 6,
+   "total": 7
+  }
+ },
+ {
+  "type": "section",
+  "sectionId": "s5_000000",
+  "heading": "조건 미확인 사항과 검증 필요",
+  "content": "자료가 없는 값은 추측하지 않고 공란으로 둡니다. 도입 초기 설정 비용과 유지보수 인력은 [금액]입니다. SSO 연동 방식(SAML, OIDC 등)과 회사 인증서버 호환 여부는 [확인 필요]입니다. 국내·해외 데이터센터에 따른 개인정보처리방침 또는 규제 적합성 판단은 [담당자 확인 필요]입니다. 이 값들이 확정되면 연비에 합산하거나 탈락 사유로 반영해야 합니다.\n\n```mermaid\nflowchart LR\n  a[미확인 사항 검증 및 반영 절차] --> b[검토] --> c[결정]\n```\n\n*그림: 미확인 사항 검증 및 반영 절차*",
+  "done": true
+ },
+ {
+  "type": "titleBlock",
+  "titleBlock": {
+   "format": "comparison",
+   "label": "비교·분석 보고서",
+   "head": "header",
+   "numbering": "decimal",
+   "fields": [
+    [
+     "검토 대상",
+     ""
+    ],
+    [
+     "판단 기준",
+     ""
+    ],
+    [
+     "작성일",
+     ""
+    ],
+    [
+     "작성자",
+     ""
+    ]
+   ]
+  }
+ },
+ {
+  "type": "step",
+  "id": "format_checks",
+  "label": "서식 검사 1건 → 수리 후 1건",
+  "status": "error",
+  "detail": "자료에 있는 값을 빈칸으로 둠 1 → 1"
+ },
+ {
+  "type": "step",
+  "id": "quality",
+  "label": "품질 점검 3건: 본문이 언급하지 않는 그림·표, 자료에 있는 값을 빈칸으로 둠 · 빈칸 12개",
+  "status": "error",
+  "detail": "채울 빈칸: [검토] 2 · [결정] 2 · [금액] 2 · [확인 필요] · [담당자 확인 필요] · [검토 대상] · [판단 기준] · [작성일] · [작성자]"
+ },
+ {
+  "type": "report",
+  "sections": [
+   {
+    "id": "s0_000000",
+    "heading": "요약",
+    "level": 1,
+    "content": "톡플로우(1인 월 6,000원, 연 5,760,000원)를 권고합니다. SSO 연동과 60명 규모 화상회의라는 필수 조건을 모두 만족하는 두 대안 가운데 연간 비용이 가장 낮기 때문입니다."
+   },
+   {
+    "id": "s1_000000",
+    "heading": "결정 기준과 필수 조건",
+    "level": 1,
+    "content": "SSO 연동과 60명 이상 동시 화상회의는 필수 조건입니다. SSO 미지원 요금제는 SSO 지원 상위 요금제로 올려 계산합니다. 화상회의 최대 인원이 60명 미만인 대안은 탈락합니다. 필수 조건을 충족하는 안 가운데 최저 연비를 기준으로 선택하며, 가중치가 없으므로 점수를 만들지 않습니다. 연비는 1인 월 가격 × 12개월 × 80명으로 계산합니다."
+   },
+   {
+    "id": "s2_000000",
+    "heading": "대안 개요와 전제",
+    "level": 1,
+    "content": "팀링크는 기본 1인 월 4,500원이지만 SSO를 지원하지 않아 SSO 필수 요건에는 엔터프라이즈 1인 월 8,000원 기준으로 봅니다. 워크닷은 1인 월 7,500원이며 SSO를 지원합니다. 전제 80명은 이 보고서의 연비 계산에 쓰는 인원입니다.\n\n```callout\n80명 기준 연비\n연비 = 1인 월 단가 × 12개월 × 80명. 팀링크는 SSO 필수이므로 기본 요금제가 아닌 엔터프라이즈 단가 8,000원으로 계산합니다.\n```"
+   },
+   {
+    "id": "s3_000000",
+    "heading": "대안 비교 분석",
+    "level": 1,
+    "content": "아래 표의 연비는 위 공식(1인 월 단가 × 12 × 80)으로 계산한 값입니다. 톡플로어가 80명 중 5,760,000원이므로 워크닷보다 1,440,000원, 팀링크보다 1,920,000원 낮습니다(표 1).\n\n**표 1. 필수 조건 충족과 80명 연비 비교**\n\n| 기준(단위) | 톡플로우 | 팀링크(엔터프라이즈) | 워크닷 |\n| --- | --- | --- | --- |\n| SSO 연동(필수) | 충족 | 충족 | 충족 |\n| 화상회의 최대 인원(필수, ≥60명) | 100명(충족) | 50명(탈락) | 300명(충족) |\n| 1인 월 단가(원) | 6,000 | 8,000 | 7,500 |\n| 연비(원, 80명) | 5,760,000 | 7,680,000 | 7,200,000 |\n| 데이터센터 위치 | 국내 | 해외 | 국내 |\n\n팀링크 기본 요금제는 SSO를 지원하지 않아 탈락입니다. 따라서 팀링크는 값이 좋아도 권고 대상이 아닙니다."
+   },
+   {
+    "id": "s4_000000",
+    "heading": "자료 불일치와 측정 조건",
+    "level": 1,
+    "content": "기본과 엔터프라이즈 요금제 모두 이 값으로 보이며, 자료에 요금제별 인원 차이가 따로 적혀 있지 않습니다. 단가는 기본 4,500원과 엔터프라이즈 8,000원으로 구분됩니다. SSO는 기본이 미지원, 엔터프라이즈가 지원입니다. 측정 조건이 다르면 최신 자료라도 바로 채택하지 않는 원칙에 따라, SSO 필수요건에는 엔터프라이즈 단가를 쓴다고 명시해 둘을 나란히 둡니다.\n\n```mermaid\nflowchart LR\n  a[팀링크 요금제별 SSO 지원과 단가 대비] --> b[검토] --> c[결정]\n```\n\n*그림 1. 팀링크 요금제별 SSO 지원과 단가 대비*"
+   },
+   {
+    "id": "s5_000000",
+    "heading": "조건 미확인 사항과 검증 필요",
+    "level": 1,
+    "content": "자료가 없는 값은 추측하지 않고 공란으로 둡니다. 도입 초기 설정 비용과 유지보수 인력은 [금액]입니다. SSO 연동 방식(SAML, OIDC 등)과 회사 인증서버 호환 여부는 [확인 필요]입니다. 국내·해외 데이터센터에 따른 개인정보처리방침 또는 규제 적합성 판단은 [담당자 확인 필요]입니다. 이 값들이 확정되면 연비에 합산하거나 탈락 사유로 반영해야 합니다.\n\n```mermaid\nflowchart LR\n  a[미확인 사항 검증 및 반영 절차] --> b[검토] --> c[결정]\n```\n\n*그림 2. 미확인 사항 검증 및 반영 절차*"
+   },
+   {
+    "id": "s6_000000",
+    "heading": "권고안과 다음 단계",
+    "level": 1,
+    "content": "조건을 모두 확인한 뒤 톡플로우를 권고합니다. 팀링크는 SSO 미지원 또는 화상회의 50명으로 조건 미충족이라 선택지에서 제외합니다. 다음 단계는 회사 인증서버와 SSO 호환 검증, [금액]인 도입비를 확인, 톡플로우와 워크닷 데이터센터 정책 비교 순서입니다.\n\n```kpi\n5,760,000원 | 톡플로우 80명 연비\n1,440,000원 | 워크닷 대비 절감액\n1,920,000원 | 팀링크(엔터프라이즈) 대비 절감액\n80명 | 계산 기준 인원\n```"
+   }
+  ]
+ },
+ {
+  "type": "usage",
+  "inputTokens": 6835,
+  "outputTokens": 584,
+  "outlineInputTokens": 2902,
+  "outlineOutputTokens": 319
+ }
+]

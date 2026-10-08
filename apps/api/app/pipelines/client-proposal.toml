@@ -1,0 +1,18 @@
+# 고객 제안서 (agent `client-proposal`, format `client_proposal`): the RFP's terms, the quote
+# read twice and summed by code, the body held to the RFP's page limit.
+
+name = "client-proposal"
+formats = ["client_proposal"]
+agents = ["client-proposal"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "page-limit", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["date-calc", "proposal-rfp", "quote-calc", "staffing"]
+checks = ["quote-totals", "proposal-schedule", "lead-dates", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]

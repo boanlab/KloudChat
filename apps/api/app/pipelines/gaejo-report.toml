@@ -1,0 +1,27 @@
+# 개조식 보고 (agent `gaejo-report`, format `gaejo`): the fixed four-part outline, no pictures
+# unless asked, checked for its shape and its one page even with nothing attached.
+
+name = "gaejo-report"
+formats = ["gaejo"]
+agents = ["gaejo-report"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "page-limit", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["date-calc", "quote-calc", "staffing"]
+
+checks = ["gaejo-style", "lead-dates", "staff-counts", "material-blanks"]
+
+[options]
+# The planner's outline is replaced by `doc_formats.GAEJO_OUTLINE` unless a size is asked.
+fixed_outline = "gaejo"
+# Diagrams only when the instruction asks for them.
+draws = "when-asked"
+# The pre-pass runs (empty) with nothing attached, and never says it was skipped.
+prepass_always = true
+prepass_quiet = true

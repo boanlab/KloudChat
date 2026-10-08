@@ -1,0 +1,24 @@
+# 취업 서류 (agent `career-docs`): the 경력기술서 (format `career_history`) is written from the
+# person's own material, never searched, its periods counted by code and written one way; a
+# 자기소개서 answer in chat is traced to the material and measured against its limits.
+
+name = "career-docs"
+formats = ["career_history"]
+agents = ["career-docs"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "career-periods-tidy", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["career-periods"]
+finish = ["answer-normalize", "check:answer-grounding", "text-fit", "answer-replace"]
+
+checks = ["lead-dates", "career-numbers", "material-blanks"]
+judged = ["judge-repeats"]
+
+[options]
+search = false

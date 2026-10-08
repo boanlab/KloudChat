@@ -76,7 +76,9 @@ def test_a_reply_to_the_person_is_not_a_section():
 
 
 def test_the_revision_rejects_a_reply_in_place_of_the_part():
-    source = inspect.getsource(sessions._revise_document)
+    from app.pipeline import revise_stages
+
+    source = inspect.getsource(revise_stages.Rewrite.run)
     assert source.count("revise.meta_talk(") == 2
 
 

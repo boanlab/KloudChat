@@ -1,0 +1,15 @@
+# Formats whose relative dates are resolved before writing (event plans, result reports).
+
+name = "dated"
+formats = ["event_plan", "result_report"]
+pre = ["check:gaps"]
+plan = ["research", "material", "outline"]
+write = [
+    "research", "material", "approved-plan", "calc", "announce", "settle", "prepass",
+    "writer-notes", "draft", "sections", "figures", "additions", "normalize", "title-block",
+    "checks-plan", "check:grounding", "format-find", "verify", "check:grounding-again",
+    "format-amend", "format-step", "quality",
+]
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]
+prepass = ["date-calc"]
+checks = ["lead-dates", "material-blanks"]

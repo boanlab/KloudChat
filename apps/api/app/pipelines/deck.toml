@@ -1,0 +1,5 @@
+# A deck on screen, revised by a follow-up: routed, its slides rewritten. Decks are written
+# by `deck.py` itself; only the revision runs here.
+
+name = "deck"
+revise = ["revise-route", "revise-widen", "revise-rewrite", "consistency"]

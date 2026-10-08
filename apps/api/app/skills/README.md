@@ -16,7 +16,9 @@ for every agent or 서식 that attaches it — the model is not left to call it.
 
 Attach a check by key: `checks = ["gap-check", "grounding-check"]` in `app/agents/<key>.toml`, or
 `check_skills = [...]` in a 서식's `template.toml` (`checks` there is already the checklist).
-`services/check_skills.py` resolves the attached keys and runs them.
+`services/check_skills.py` resolves the attached keys and runs them; the pipelines run them as
+`check` stages (`app/pipeline/check_stages.py`: `check:gaps`, `check:grounding`,
+`check:answer-grounding`; docs/architecture.md § Pipelines).
 
 The entry script's functions, by stage:
 
