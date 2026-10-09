@@ -26,7 +26,8 @@ export function HistoryPage() {
   const t = useT()
   const { sessions, deleteSessions, sessionsLoading, sessionsFailed, loadSessions } = useStore()
   const navigate = useNavigate()
-  const [query, setQuery] = useState('')
+  // The sidebar's 「모든 결과 보기」 carries its search here.
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [confirmAll, setConfirmAll] = useState(false)
   const [confirmPicked, setConfirmPicked] = useState(false)

@@ -160,7 +160,7 @@ export function AgentFlowSummary({
   const pickedId = choice === undefined ? bound?.id ?? null : choice
   const picked = (pickedId && mine?.find((p) => p.id === pickedId)) || null
   const fits = (mine ?? []).filter((p) => !p.surface || p.surface === (output === 'document' ? 'report' : 'chat'))
-  const editTo = picked ? `/pipelines/${picked.id}` : `/pipelines?tab=shipped&agent=${agent.id}`
+  const editTo = picked ? `/customize/workflows/${picked.id}` : `/customize?tab=workflows&view=mine&focus=${agent.id}`
 
   return (
     <div className="space-y-4" data-testid="agent-flow-summary">
@@ -287,7 +287,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
     try {
       await userPipelinesApi.remove(saved.id)
       guard.release()
-      navigate('/pipelines')
+      navigate('/customize?tab=workflows&view=mine')
     } catch (err) {
       setError(errorMessage(err, t('삭제하지 못했습니다.')))
       setBusy(false)

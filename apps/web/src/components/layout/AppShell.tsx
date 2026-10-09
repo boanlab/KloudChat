@@ -7,6 +7,7 @@ import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { KeyboardShortcuts } from './KeyboardShortcuts'
+import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
 
@@ -28,6 +29,46 @@ function UndoBar() {
         className="shrink-0 font-medium text-accent hover:underline"
       >
         {t('실행 취소')}
+      </button>
+    </div>
+  )
+}
+
+/** A passing, neutral message (「체험하려고 내 스킬에 추가했어요 · 빼기」); outlives navigation. */
+function ToastBar() {
+  const t = useT()
+  const toast = useStore((s) => s.toast)
+  const setToast = useStore((s) => s.setToast)
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 8_000)
+    return () => clearTimeout(timer)
+  }, [toast, setToast])
+  if (!toast) return null
+  return (
+    <div
+      role="status"
+      data-testid="toast"
+      className="animate-fade-up absolute bottom-16 left-1/2 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-card border border-line bg-panel px-4 py-2.5 text-base shadow-float"
+    >
+      <span className="min-w-0">{toast.text}</span>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action?.run()
+            setToast(null)
+          }}
+          className="shrink-0 font-medium text-accent hover:underline"
+        >
+          {toast.action.label}
+        </button>
+      )}
+      <button
+        onClick={() => setToast(null)}
+        aria-label={t('닫기')}
+        className="shrink-0 rounded-control p-0.5 text-faint hover:bg-elevated hover:text-fg"
+      >
+        <X size={14} />
       </button>
     </div>
   )
@@ -117,6 +158,7 @@ export function AppShell() {
       </main>
       <UndoBar />
       <NoticeBar />
+      <ToastBar />
       <KeyboardShortcuts />
       <IssueReportDialog />
     </div>
@@ -137,5 +179,24 @@ export function PageBody({
         {children}
       </div>
     </div>
+  )
+}
+
+/** A management page's top bar and scroll body; inside another screen (the 사용자 지정 hub), neither. */
+export function PageFrame({
+  title,
+  embedded = false,
+  children,
+}: {
+  title: string
+  embedded?: boolean
+  children: React.ReactNode
+}) {
+  if (embedded) return <>{children}</>
+  return (
+    <>
+      <TopBar left={<span className="text-base font-medium">{title}</span>} />
+      <PageBody>{children}</PageBody>
+    </>
   )
 }

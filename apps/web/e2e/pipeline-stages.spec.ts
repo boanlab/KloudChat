@@ -367,11 +367,10 @@ test('chat: compact stage list beside tool steps', async ({ page }, testInfo) =>
 test('agents: pipeline chain and the 워크플로 tab', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
-  await page.goto('/agents')
-  await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
+  await page.goto(`/customize/agents/${agent.id}`)
+  await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기').first()).toBeVisible({ timeout: 15_000 })
   await shot('agent-card')
-  await page.getByRole('button', { name: '편집', exact: true }).first().click()
-  await page.getByRole('tab', { name: '워크플로' }).click()
+  await page.getByRole('region', { name: '설정' }).getByText('워크플로 연결', { exact: true }).click()
   // A read-only summary; flows are edited on the 「워크플로」 page (user-pipelines.spec.ts).
   const summary = page.getByTestId('agent-flow-summary')
   await expect(summary.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible()

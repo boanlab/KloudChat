@@ -1,7 +1,6 @@
 import { Brain, Pin, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PageBody } from '@/components/layout/AppShell'
-import { TopBar } from '@/components/layout/TopBar'
+import { PageFrame } from '@/components/layout/AppShell'
 import {
   Badge,
   Button,
@@ -20,7 +19,7 @@ import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
 import { useT } from '@/lib/useT'
 
-export function MemoryPage() {
+export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
   const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
@@ -38,9 +37,9 @@ export function MemoryPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('메모리')}</span>} />
-      <PageBody>
+      <PageFrame title={t('메모리')} embedded={embedded}>
         <PageHeader
+          embedded={embedded}
           title={t('메모리')}
           description={t('대화에서 알게 된 사실을 하나씩 저장해 두면, 다음 대화에서 관련 있는 것만 골라 참고합니다.')}
           action={
@@ -145,7 +144,7 @@ export function MemoryPage() {
           })}
         </div>
         <ShowMore hidden={hidden} onMore={more} />
-      </PageBody>
+      </PageFrame>
 
       <ConfirmDialog
         open={!!confirming}

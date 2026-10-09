@@ -1,8 +1,7 @@
-import { Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowRight, Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
-import { recencyBucket } from '@/lib/days'
 import { kindMeta } from '@/lib/kinds'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -10,18 +9,6 @@ import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
-
-/** `visible` split into consecutive recency buckets, in the order the rows already have. */
-function groupByRecency(rows: Session[], t: (s: string) => string): [string, Session[]][] {
-  const groups: [string, Session[]][] = []
-  for (const row of rows) {
-    const bucket = recencyBucket(row.updatedAt, t)
-    const last = groups[groups.length - 1]
-    if (last && last[0] === bucket) last[1].push(row)
-    else groups.push([bucket, [row]])
-  }
-  return groups
-}
 
 const rowBase =
   'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
@@ -31,8 +18,10 @@ const rowState = (active: boolean) =>
     ? 'bg-selected font-medium text-fg'
     : 'text-muted hover:bg-elevated hover:text-fg'
 
-/** Unpinned conversations rendered per page. */
-const PAGE = 40
+/** Unpinned conversations the sidebar keeps in view; the rest are on 대화 기록. */
+const RECENT = 15
+/** Search matches listed before 「모든 결과 보기」 hands over to 대화 기록. */
+const MATCHES = 30
 
 interface NavRow {
   to: string
@@ -40,10 +29,11 @@ interface NavRow {
   icon: typeof Bot
 }
 
-// The rest of the workspace (agents, skills, connectors, memory, designs) lives in the account menu.
+// Agents, skills, workflows, connectors, memory and designs live in 「사용자 지정」.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 
 function SessionRow({
@@ -198,29 +188,22 @@ export function Sidebar() {
     return [...list].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
   }, [sessions, query])
 
+  const searching = query.trim() !== ''
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
-  // Rendered unpinned rows are capped; search still covers all of them.
-  const [shown, setShown] = useState(PAGE)
   // Row awaiting delete confirmation.
   const [confirming, setConfirming] = useState<Session | null>(null)
-  // The next page loads when the "more" button scrolls into view.
-  const moreRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => {
-    const el = moreRef.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setShown((n) => n + PAGE)
-      },
-      { rootMargin: '200px' },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [shown, query])
 
-  const visible = unpinned.slice(0, shown)
-  const hidden = unpinned.length - visible.length
+  // Like other chat apps: the most recent few, then a way to all of them. A search still runs
+  // over every conversation, not just the few shown.
+  const cap = searching ? MATCHES : RECENT
+  const recent = unpinned.slice(0, cap)
+  const hidden = unpinned.length - recent.length
+  // From the route, not `activeSessionId`, which outlives the conversation screen.
+  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
+  // The open conversation stays in view even when it is older than the recent few.
+  const openOlder = !searching ? unpinned.slice(cap).find((s) => s.id === openSessionId) : undefined
+  const visible = openOlder ? [...recent, openOlder] : recent
 
   const renderRow = (session: Session) => (
     <SessionRow
@@ -237,8 +220,6 @@ export function Sidebar() {
     />
   )
 
-  // From the route, not `activeSessionId`, which outlives the conversation screen.
-  const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
 
   const rail = useStore((s) => s.sidebar) === 'rail'
 
@@ -336,24 +317,25 @@ export function Sidebar() {
               <div className="space-y-0.5">{pinned.map(renderRow)}</div>
             </section>
           )}
-          {visible.length > 0 &&
-            // Newest first, under 오늘 · 어제 · 지난 7일 · 지난 30일 · 이전 headings.
-            groupByRecency(visible, t).map(([bucket, rows]) => (
-              <section key={bucket} className="mb-3">
-                <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {bucket}
-                </p>
-                <div className="space-y-0.5">{rows.map(renderRow)}</div>
-              </section>
-            ))}
-          {hidden > 0 && (
-            <button
-              ref={moreRef}
-              onClick={() => setShown((n) => n + PAGE)}
-              className="mt-1 min-h-8 w-full rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
+          {visible.length > 0 && (
+            // One heading: with this few rows, 오늘 · 어제 · 지난 7일 buckets were mostly one-row headings.
+            <section className="mb-2">
+              <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
+                {searching ? t('검색 결과') : t('최근')}
+              </p>
+              <div className="space-y-0.5">{visible.map(renderRow)}</div>
+            </section>
+          )}
+          {(hidden > 0 || (!searching && unpinned.length > 0)) && (
+            <NavLink
+              to={searching ? `/history?q=${encodeURIComponent(query.trim())}` : '/history'}
+              className="flex min-h-8 items-center gap-1 rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
-              {t('이전 대화')} {hidden.toLocaleString()}{t('개 더 보기')}
-            </button>
+              {searching
+                ? t('모든 결과 보기 ({n})').replace('{n}', unpinned.length.toLocaleString())
+                : t('모든 대화 보기')}
+              <ArrowRight size={13} aria-hidden />
+            </NavLink>
           )}
           {filtered.length === 0 && (
             <p className="px-2.5 py-6 text-center text-base text-faint">

@@ -12,9 +12,12 @@ import { useT } from '@/lib/useT'
 export function AgentKnowledge({
   agentId,
   onKnowledgeChange,
+  onNeedAgent,
 }: {
   agentId: string | null
   onKnowledgeChange?: (available: boolean) => void
+  /** Saves an unsaved agent so its first file can attach; resolves to its id, or null when it cannot. */
+  onNeedAgent?: () => Promise<string | null>
 }) {
   const t = useT()
   const [rows, setRows] = useState<FileRow[]>([])
@@ -57,6 +60,44 @@ export function AgentKnowledge({
   }, [agentId, replaceRows])
 
   if (!agentId) {
+    if (onNeedAgent) {
+      // The first file saves the agent, then attaches to it; the saved id re-renders this list.
+      const attachFirst = async (picked: File) => {
+        setBusy('file')
+        setError(null)
+        try {
+          const id = await onNeedAgent()
+          if (id) await agentsApi.knowledge.upload(id, picked)
+        } catch (err) {
+          setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
+        } finally {
+          setBusy(null)
+          if (fileInput.current) fileInput.current.value = ''
+        }
+      }
+      return (
+        <div className="space-y-2">
+          <p className="text-sm text-faint">
+            {t('파일을 붙이면 에이전트를 먼저 저장합니다. 이 에이전트가 그 안에서 찾아 답합니다.')}
+          </p>
+          <input
+            ref={fileInput}
+            type="file"
+            className="hidden"
+            aria-label={t('자료 파일')}
+            onChange={(e) => {
+              const picked = e.target.files?.[0]
+              if (picked) void attachFirst(picked)
+            }}
+          />
+          <Button size="sm" disabled={busy !== null} onClick={() => fileInput.current?.click()}>
+            {busy === 'file' ? <Loader2 size={13} className="animate-spin" /> : <Paperclip size={13} />}
+            {t('파일 붙이기')}
+          </Button>
+          {error && <p role="status" className="text-sm text-danger">{error}</p>}
+        </div>
+      )
+    }
     return (
       <Field label={t('자료')} hint={t('에이전트를 저장하면 자료를 붙일 수 있습니다')}>
         <p className="text-base text-faint">

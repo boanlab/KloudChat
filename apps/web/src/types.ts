@@ -1062,4 +1062,10 @@ export interface ToolCatalogEntry {
   name: string
   label: string
   available: boolean
+  /** 「기본 도구」 or the connector's name; older servers send none. */
+  group?: string
+  /** Short name a person reads; the raw `name` is technical detail. */
+  title?: string
+  /** One line on what it does. */
+  description?: string
 }

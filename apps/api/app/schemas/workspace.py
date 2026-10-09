@@ -535,6 +535,12 @@ class ToolCatalogOut(Wire):
     name: str
     label: str
     available: bool = True
+    #: 「기본 도구」 or the connector's name; the pickers group by it.
+    group: str = ""
+    #: Short name a person reads; the raw `name` is technical detail.
+    title: str = ""
+    #: One line on what it does.
+    description: str = ""
 
 
 # ── shares ─────────────────────────────────────────────────────────────

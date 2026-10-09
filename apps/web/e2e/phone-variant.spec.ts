@@ -71,7 +71,7 @@ async function mockChat(page: Page) {
     if (request.method() === 'GET' && [
       '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`, '/skills/store', '/user-pipelines', '/user-pipelines/store',
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
@@ -149,6 +149,37 @@ for (const scenario of [
         await toggle.click()
         await expect(badgeList).toBeHidden()
       }
+      expect(unexpected).toEqual([])
+    } finally {
+      await context.close()
+    }
+  })
+}
+
+for (const width of [390, 360]) {
+  test(`${width}: the 사용자 지정 hub fits the phone on every tab`, async ({ browser }, testInfo) => {
+    const context = await browser.newContext({
+      baseURL: String(testInfo.project.use.baseURL),
+      viewport: { width, height: 844 },
+      hasTouch: true,
+      locale: 'ko-KR',
+    })
+    try {
+      const page = await context.newPage()
+      const unexpected = await mockChat(page)
+      for (const tab of ['agents', 'skills', 'workflows', 'connectors', 'memory', 'designs']) {
+        await page.goto(`/customize?tab=${tab}`)
+        await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible()
+        await expect(page.getByRole('tab', { name: /./ }).first()).toBeVisible()
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), tab).toBeLessThanOrEqual(0)
+        const main = page.getByRole('main')
+        expect(await main.evaluate((el) => el.scrollWidth - el.clientWidth), tab).toBeLessThanOrEqual(0)
+      }
+      // The phone keeps 추가 in the top bar and filter and sort in one sheet.
+      await page.goto('/customize?tab=agents&view=explore')
+      await expect(page.locator('header').getByRole('button', { name: '추가' })).toBeVisible()
+      await page.getByRole('button', { name: '필터·정렬' }).click()
+      await expect(page.getByRole('dialog', { name: '필터·정렬' })).toBeVisible()
       expect(unexpected).toEqual([])
     } finally {
       await context.close()

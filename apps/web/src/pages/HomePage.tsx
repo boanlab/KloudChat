@@ -97,7 +97,7 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
             <div className="mb-2 flex items-baseline justify-between">
               <h2 className="text-base font-semibold">{t('에이전트에게 맡기기')}</h2>
               <button
-                onClick={() => navigate('/agents')}
+                onClick={() => navigate('/customize?tab=agents')}
                 className="min-h-8 px-1 text-sm text-muted hover:text-fg"
               >
                 {t('전체 보기')}

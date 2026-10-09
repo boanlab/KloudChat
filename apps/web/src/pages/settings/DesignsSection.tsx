@@ -177,7 +177,7 @@ function ExtractForm({
 }
 
 /** Design systems this account can attach to a project: tokens plus style prose. */
-export function DesignsSection() {
+export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract' } = {}) {
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
   const loadWorkspace = useStore((s) => s.loadWorkspace)
@@ -185,8 +185,9 @@ export function DesignsSection() {
   const [rows, setRows] = useState<DesignRow[]>([])
   const deleteMany = useStore((s) => s.deleteMany)
   const pick = useBulkSelect(rows.filter((r) => r.mine))
-  const [draft, setDraft] = useState<Partial<DesignRow> | null>(null)
-  const [extracting, setExtracting] = useState(false)
+  // 「+ 추가」 in the hub opens straight into the form or the reader.
+  const [draft, setDraft] = useState<Partial<DesignRow> | null>(initialMode === 'new' ? blank() : null)
+  const [extracting, setExtracting] = useState(initialMode === 'extract')
   // Source the draft was extracted from.
   const [readFrom, setReadFrom] = useState('')
   const [saving, setSaving] = useState(false)

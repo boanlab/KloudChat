@@ -1362,6 +1362,10 @@ interface ToolCatalogRow {
   name: string
   label: string
   available: boolean
+  /** 「기본 도구」 or the connector's name. */
+  group?: string
+  title?: string
+  description?: string
 }
 
 export const toolsApi = {
@@ -1685,6 +1689,8 @@ export type StreamEvent =
   /** The finished single file. Arrives once, after the last block. */
   | { type: 'page'; html: string; blocks: { title: string; layout: string }[]; templateId: string }
   | { type: 'title'; title: string }
+  /** The design a report will be saved with, sent before its first section so the draft wears it. */
+  | { type: 'design'; design: DesignTokens }
   /** The outline a document intends to write, offered before it writes it. */
   | { type: 'proposal'; plan: NonNullable<PendingPlan['plan']> }
   /** What it needs to know before it can plan at all. */

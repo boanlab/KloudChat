@@ -47,12 +47,10 @@ test('기본 스킬과 기본 에이전트 여섯 개가 갖춰져 있다', asyn
     expect(skill.whenToUse.length, `${skill.name} 사용 시점 없음`).toBeGreaterThan(0)
   }
 
-  // On screen: catalogue rows stand in the 스토어 tab.
-  await page.goto('/skills')
+  // On screen: catalogue rows stand in 사용자 지정 › 스킬 › 탐색.
   const shelf = catalogue[0] ?? skills[0]
   const shelfIsMine = skills.some((s: { id: string }) => s.id === shelf.id)
-  if (!shelfIsMine) {
-    await page.getByRole('tab', { name: /스토어/ }).click()
-  }
+  await page.goto(`/customize?tab=skills&view=${shelfIsMine ? 'mine' : 'explore'}`)
+  await page.getByRole('searchbox', { name: '검색' }).fill(shelf.name)
   await expect(page.getByText(shelf.name).first()).toBeVisible({ timeout: 15_000 })
 })

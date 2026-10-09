@@ -1671,7 +1671,7 @@ export function Composer({
                 )
               })}
               <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/skills')}>
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
                 {t('스킬 관리')}
               </MenuItem>
             </Dropdown>
@@ -1829,7 +1829,7 @@ export function Composer({
                 </MenuItem>
               ))}
               <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/connectors')}>
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=connectors')}>
                 {t('커넥터 관리')}
               </MenuItem>
             </Dropdown>

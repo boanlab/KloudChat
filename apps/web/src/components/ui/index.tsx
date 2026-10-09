@@ -693,16 +693,19 @@ export function PageHeader({
   title,
   description,
   action,
+  embedded = false,
 }: {
   title: string
   description?: string
   action?: ReactNode
+  /** Inside another screen that owns the heading: description and action only. */
+  embedded?: boolean
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 pb-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-base text-muted">{description}</p>}
+    <div className={cn('flex flex-wrap justify-between gap-4', embedded ? 'items-center pb-4' : 'items-end pb-6')}>
+      <div className="min-w-0 flex-1">
+        {!embedded && <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>}
+        {description && <p className={cn('text-base text-muted', !embedded && 'mt-1')}>{description}</p>}
       </div>
       {action}
     </div>

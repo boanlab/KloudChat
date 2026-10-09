@@ -466,6 +466,9 @@ interface State {
   /** Shell-level failure sentence for actions with no screen of their own. Cleared by the bar that shows it. */
   notice: string | null
   setNotice: (notice: string | null) => void
+  /** A neutral, passing message with at most one action (「빼기」); outlives navigation. */
+  toast: { text: string; action?: { label: string; run: () => void } } | null
+  setToast: (toast: { text: string; action?: { label: string; run: () => void } } | null) => void
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
@@ -550,14 +553,16 @@ interface State {
 
   // ── workspace ─────────────────────────────────────────────────────────
   toggleSkill: (id: string) => Promise<void>
-  upsertSkill: (s: Skill) => Promise<void>
+  /** Resolves to the saved row (a new one carries the server's id). */
+  upsertSkill: (s: Skill) => Promise<Skill>
   deleteSkill: (id: string) => Promise<void>
   loadSkillStore: () => Promise<void>
   installSkill: (id: string) => Promise<void>
   upsertMemory: (m: MemoryEntry) => Promise<void>
   deleteMemory: (id: string) => Promise<void>
   togglePinMemory: (id: string) => Promise<void>
-  upsertAgent: (a: Agent) => Promise<void>
+  /** Resolves to the saved row (a new one carries the server's id). */
+  upsertAgent: (a: Agent) => Promise<Agent>
   /** Copies a shared agent and the skills it runs on. */
   installAgent: (a: Agent) => Promise<void>
   deleteAgent: (id: string) => Promise<void>
@@ -2064,6 +2069,8 @@ export const useStore = create<State>((set, get) => ({
   setComposerRestore: (composerRestore) => set({ composerRestore }),
   notice: null,
   setNotice: (notice) => set({ notice }),
+  toast: null,
+  setToast: (toast) => set({ toast }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
   brand: { name: 'KloudChat', logo: '' },
@@ -2393,11 +2400,13 @@ export const useStore = create<State>((set, get) => ({
     }
     const exists = get().skills.some((s) => s.id === skill.id)
     const row = exists ? await skillsApi.update(skill.id, payload) : await skillsApi.create(payload)
+    const saved = toSkill(row)
     set((s) => ({
       skills: exists
-        ? s.skills.map((x) => (x.id === skill.id ? toSkill(row) : x))
-        : [toSkill(row), ...s.skills],
+        ? s.skills.map((x) => (x.id === skill.id ? saved : x))
+        : [saved, ...s.skills],
     }))
+    return saved
   },
   loadSkillStore: async () => {
     set({ skillStoreLoading: true, skillStoreError: false })
@@ -2519,11 +2528,13 @@ export const useStore = create<State>((set, get) => ({
     }
     const exists = get().agents.some((x) => x.id === a.id)
     const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
+    const saved = toAgent(row)
     set((s) => ({
       agents: exists
-        ? s.agents.map((x) => (x.id === a.id ? toAgent(row) : x))
-        : [toAgent(row), ...s.agents],
+        ? s.agents.map((x) => (x.id === a.id ? saved : x))
+        : [saved, ...s.agents],
     }))
+    return saved
   },
   deleteAgent: async (id) => {
     touchWorkspace()
@@ -3776,6 +3787,11 @@ async function streamReport(
           break
         case 'title':
           patchReport((a) => ({ ...a, title: e.title }))
+          break
+        case 'design':
+          // The look the saved report keeps; without it the draft wears the panel's default
+          // and changes under the reader when the document arrives.
+          patchReport((a) => ({ ...a, design: e.design }))
           break
         case 'sources':
           patchReport((a) => ({ ...a, sources: e.sources }))

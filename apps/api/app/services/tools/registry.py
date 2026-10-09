@@ -166,23 +166,63 @@ async def build_tools(
     return tools
 
 
+#: The group every in-process tool is listed under in the pickers.
+BUILTIN_GROUP = "기본 도구"
+
+#: One line a person reads in the tool picker; the model reads `Tool.description`.
+_BUILTIN_BLURB: dict[str, str] = {
+    "calculate": "사칙연산과 거듭제곱을 정확히 계산합니다.",
+    "web_search": "웹에서 최신 자료를 찾아 출처와 함께 답합니다.",
+    "fetch_url": "주소를 주면 그 웹 문서를 읽습니다.",
+    "execute_code": "샌드박스에서 Python 코드로 계산하고 데이터를 다룹니다.",
+    "run_skill_script": "스킬에 딸린 정해진 스크립트를 첨부 파일에 실행합니다.",
+    "run_code": "첨부한 엑셀·CSV·PDF 같은 파일을 읽고 고칩니다.",
+    "create_artifact": "문서·코드·웹 페이지 같은 결과물을 따로 만듭니다.",
+    "create_chart": "숫자를 차트로 그립니다.",
+    "share_note": "다음 단계가 이어받을 결론을 공유 메모에 남깁니다.",
+    "search_knowledge": "에이전트에 붙여 둔 자료에서 찾습니다.",
+}
+
+
+def _humanize(tool_name: str) -> str:
+    """`list_open_issues` → `list open issues`; a connector's tool with no title of its own."""
+    return tool_name.replace("__", " ").replace("_", " ").strip() or tool_name
+
+
+def _first_line(text: str) -> str:
+    line = (text or "").strip().splitlines()[0] if (text or "").strip() else ""
+    return line[:160]
+
+
 async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
-    """Tool names an agent or skill may reference, with labels and current availability."""
+    """Tool names an agent or skill may reference, with labels and current availability.
+
+    Each row also carries what the pickers show a person: `group` (기본 도구 or the
+    connector's name), a short `title` and a one-line `description`. The raw name stays
+    for the allowlist and is never the headline.
+    """
     available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
-    known: dict[str, tuple[str, bool]] = {
-        tool.name: (tool.title or tool.label or tool.name, tool.name in available)
-        for tool in (
-            CALCULATE,
-            WEB_SEARCH,
-            FETCH_URL,
-            EXECUTE_CODE,
-            RUN_SKILL_SCRIPT,
-            RUN_CODE,
-            CREATE_ARTIFACT,
-            CREATE_CHART,
-            SHARE_NOTE,
-        )
-    }
+    rows: dict[str, dict[str, object]] = {}
+    for tool in (
+        CALCULATE,
+        WEB_SEARCH,
+        FETCH_URL,
+        EXECUTE_CODE,
+        RUN_SKILL_SCRIPT,
+        RUN_CODE,
+        CREATE_ARTIFACT,
+        CREATE_CHART,
+        SHARE_NOTE,
+    ):
+        title = tool.title or tool.label or tool.name
+        rows[tool.name] = {
+            "name": tool.name,
+            "label": title,
+            "available": tool.name in available,
+            "group": BUILTIN_GROUP,
+            "title": title,
+            "description": _BUILTIN_BLURB.get(tool.name) or _first_line(tool.description),
+        }
 
     # Connector names stay valid while disconnected; availability is rechecked at execution.
     connectors = (
@@ -207,11 +247,22 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
             if connector is None:
                 continue
             name = qualified(connector.slug, row.name)
-            known[name] = (_label_for(connector, row.name), name in available)
+            rows[name] = {
+                "name": name,
+                "label": _label_for(connector, row.name),
+                "available": name in available,
+                "group": connector.name,
+                "title": _humanize(row.name),
+                "description": _first_line(row.description),
+            }
 
     # Exists only for an agent with shelf documents (see AgentOut.has_knowledge).
-    known["search_knowledge"] = ("에이전트 지식이 있을 때 검색", False)
-    return [
-        {"name": name, "label": label, "available": is_available}
-        for name, (label, is_available) in known.items()
-    ]
+    rows["search_knowledge"] = {
+        "name": "search_knowledge",
+        "label": "에이전트 지식이 있을 때 검색",
+        "available": False,
+        "group": BUILTIN_GROUP,
+        "title": "자료 찾기",
+        "description": _BUILTIN_BLURB["search_knowledge"],
+    }
+    return list(rows.values())

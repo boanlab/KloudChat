@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useRef } from 'react'
-import { Navigate, Route, BrowserRouter as Router, Routes, useNavigate } from 'react-router-dom'
+import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { kindOrder } from '@/lib/kinds'
@@ -21,21 +21,55 @@ const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => (
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
 const ApiSetupPage = lazy(() => import('@/pages/ApiSetupPage').then((m) => ({ default: m.ApiSetupPage })))
-const AgentsPage = lazy(() => import('@/pages/AgentsPage').then((m) => ({ default: m.AgentsPage })))
+const CustomizePage = lazy(() => import('@/pages/CustomizePage').then((m) => ({ default: m.CustomizePage })))
+const AgentDetailPage = lazy(() =>
+  import('@/pages/customize/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
+)
+const AgentCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.AgentCreatePage })))
+const SkillDetailPage = lazy(() =>
+  import('@/pages/customize/SkillDetailPage').then((m) => ({ default: m.SkillDetailPage })),
+)
+const SkillCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.SkillCreatePage })))
+const WorkflowEditPage = lazy(() =>
+  import('@/pages/customize/WorkflowEditPage').then((m) => ({ default: m.WorkflowEditPage })),
+)
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
-const DesignsPage = lazy(() => import('@/pages/DesignsPage').then((m) => ({ default: m.DesignsPage })))
-const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage').then((m) => ({ default: m.ConnectorsPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
 const IssuesPage = lazy(() => import('@/pages/IssuesPage').then((m) => ({ default: m.IssuesPage })))
-const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })))
 const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ default: m.MyUsagePage })))
-const PipelinesPage = lazy(() => import('@/pages/PipelinesPage').then((m) => ({ default: m.PipelinesPage })))
-const PipelineEditPage = lazy(() => import('@/pages/PipelinesPage').then((m) => ({ default: m.PipelineEditPage })))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
-const SkillsPage = lazy(() => import('@/pages/SkillsPage').then((m) => ({ default: m.SkillsPage })))
+
+/**
+ * The old addresses of the screens the 사용자 지정 hub took in. Each lands on its tab, keeping
+ * the query it carried; the old tab names map onto 내 항목 / 탐색.
+ */
+function ToHub({ tab }: { tab: string }) {
+  const { search } = useLocation()
+  const from = new URLSearchParams(search)
+  const to = new URLSearchParams({ tab })
+  const old = from.get('tab')
+  from.delete('tab')
+  if (tab === 'workflows') {
+    if (old === 'shipped') {
+      to.set('view', 'mine')
+      const agent = from.get('agent')
+      from.delete('agent')
+      if (agent) to.set('focus', agent)
+    } else if (old === 'store') to.set('view', 'explore')
+  }
+  if (tab === 'designs' && old === 'template') to.set('view', 'explore')
+  for (const [key, value] of from) to.set(key, value)
+  return <Navigate to={`/customize?${to.toString()}`} replace />
+}
+
+function ToWorkflow() {
+  const { pipelineId = '' } = useParams()
+  const { search } = useLocation()
+  return <Navigate to={`/customize/workflows/${pipelineId}${search}`} replace />
+}
 
 function Spinner() {
   return (
@@ -119,16 +153,22 @@ function Authenticated() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:projectId" element={<ProjectDetailPage />} />
           <Route path="artifacts" element={<ArtifactsPage />} />
-          <Route path="designs" element={<DesignsPage />} />
-          <Route path="agents" element={<AgentsPage />} />
-          <Route path="skills" element={<SkillsPage />} />
-          <Route path="pipelines" element={<PipelinesPage />} />
-          <Route path="pipelines/:pipelineId" element={<PipelineEditPage />} />
-          <Route path="memory" element={<MemoryPage />} />
+          <Route path="customize" element={<CustomizePage />} />
+          <Route path="customize/agents/new" element={<AgentCreatePage />} />
+          <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
+          <Route path="customize/skills/new" element={<SkillCreatePage />} />
+          <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />
+          <Route path="customize/workflows/:pipelineId" element={<WorkflowEditPage />} />
+          <Route path="designs" element={<ToHub tab="designs" />} />
+          <Route path="agents" element={<ToHub tab="agents" />} />
+          <Route path="skills" element={<ToHub tab="skills" />} />
+          <Route path="pipelines" element={<ToHub tab="workflows" />} />
+          <Route path="pipelines/:pipelineId" element={<ToWorkflow />} />
+          <Route path="memory" element={<ToHub tab="memory" />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="usage" element={<MyUsagePage />} />
           <Route path="issues" element={<IssuesPage />} />
-          <Route path="connectors" element={<ConnectorsPage />} />
+          <Route path="connectors" element={<ToHub tab="connectors" />} />
           <Route path="agent-setup" element={<AgentSetupPage />} />
           <Route path="api-setup" element={<ApiSetupPage />} />
           {/* Tabs live inside these pages, so the parent needs the splat. */}

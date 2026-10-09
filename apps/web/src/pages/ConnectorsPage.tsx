@@ -11,8 +11,7 @@ import {
   KeyRound,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PageBody } from '@/components/layout/AppShell'
-import { TopBar } from '@/components/layout/TopBar'
+import { PageFrame } from '@/components/layout/AppShell'
 import {
   Badge,
   Button,
@@ -405,7 +404,7 @@ function parseEnv(text: string): Record<string, string> {
   return out
 }
 
-export function ConnectorsPage() {
+export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
   const {
     connectors,
@@ -452,9 +451,9 @@ export function ConnectorsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('커넥터')}</span>} />
-      <PageBody>
+      <PageFrame title={t('커넥터')} embedded={embedded}>
         <PageHeader
+          embedded={embedded}
           title={t('커넥터')}
           description={t('MCP 서버를 붙여 외부 시스템을 도구로 씁니다. 인증 정보는 서버에만 저장되고, 도구 단위로 켜고 끌 수 있습니다.')}
           action={
@@ -539,7 +538,7 @@ export function ConnectorsPage() {
             ))
           )}
         </div>
-      </PageBody>
+      </PageFrame>
 
       <CredentialsModal entry={credentialsFor} onClose={() => setCredentialsFor(null)} />
       <ReCredentialModal

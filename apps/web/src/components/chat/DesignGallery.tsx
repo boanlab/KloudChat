@@ -1,5 +1,6 @@
-import { ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
+import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge, Button, Modal } from '@/components/ui'
 import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
@@ -309,8 +310,16 @@ export function DesignGalleryModal({
       description={t('결과물의 모양을 고릅니다.')}
       width="max-w-3xl"
     >
-        <div className="mb-3">
+        <div className="mb-3 flex items-baseline justify-between gap-2">
           <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
+          <Link
+            to="/customize?tab=designs&view=explore"
+            onClick={onClose}
+            className="inline-flex shrink-0 items-center gap-1 text-sm text-muted hover:text-fg"
+          >
+            {t('모두 보기')}
+            <ArrowRight size={13} aria-hidden />
+          </Link>
         </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">

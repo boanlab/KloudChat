@@ -267,13 +267,14 @@ async function addStep(page: Page, group: string, name: string) {
 }
 
 async function openAgentFlow(page: Page, name: string) {
-  await page.goto('/agents')
-  const card = page.locator('div.rounded-card').filter({ hasText: name }).first()
-  await expect(card).toBeVisible({ timeout: 15_000 })
-  await card.getByRole('button', { name: '편집', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '에이전트 편집' })
-  await dialog.getByRole('tab', { name: '워크플로' }).click()
-  return dialog
+  const agent = agents.find((a) => a.name === name)!
+  await page.goto(`/customize/agents/${agent.id}`)
+  // The agent's settings sit on its own screen; the flow is one folded group of them.
+  const settings = page.getByRole('region', { name: '설정' })
+  await expect(settings).toBeVisible({ timeout: 15_000 })
+  await settings.getByText('워크플로 연결', { exact: true }).click()
+  await expect(settings.getByTestId('agent-flow-summary')).toBeVisible()
+  return settings
 }
 
 test('editor: copy the shipped flow, edit, validate, save, share, bind, start', async ({ page }, testInfo) => {
@@ -294,14 +295,14 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
   await summary.getByRole('link', { name: '워크플로 편집' }).click()
 
   // 「워크플로 편집 →」 lands on the shipped flows, this agent's card picked out.
-  await expect(page).toHaveURL(new RegExp(`/pipelines\\?tab=shipped&agent=${cmpAgent.id}`))
+  await expect(page).toHaveURL(new RegExp(`/customize\\?tab=workflows&view=mine&focus=${cmpAgent.id}`))
   const shippedCard = page.locator(`[data-agent="${cmpAgent.id}"]`)
   await expect(shippedCard).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('shipped-pipeline')).toHaveCount(3)
   await shot('shipped-locked')
   await shippedCard.getByRole('button', { name: '복제해서 편집' }).click()
 
-  await expect(page).toHaveURL(/\/pipelines\/p1$/)
+  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
   const editor = page.getByTestId('pipeline-editor')
   const actions = page.getByTestId('pipeline-actions')
   await expect(editor).toBeVisible()
@@ -349,7 +350,7 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
   await expect(leave).toBeVisible()
   await shot('leave-guard')
   await leave.getByRole('button', { name: '취소' }).click()
-  await expect(page).toHaveURL(/\/pipelines\/p1$/)
+  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
   await expect(steps).toHaveCount(7)
 
   await actions.getByRole('button', { name: '저장', exact: true }).click()
@@ -367,8 +368,8 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
 
   // Saved, so the list link leaves without asking.
   await page.getByRole('link', { name: '워크플로 목록' }).click()
-  await expect(page).toHaveURL(/\/pipelines$/)
-  await expect(page.getByTestId('my-pipeline')).toHaveCount(1)
+  await expect(page).toHaveURL(/\/customize\?tab=workflows&view=mine$/)
+  await expect(page.getByTestId('item-card')).toHaveCount(1)
   await shot('my-flows')
 
   // Bind it from the agent editor; the agent's own 「저장」 applies it.
@@ -379,12 +380,12 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
   await shot('agent-summary-picked')
   expect(state.calls).not.toContain(`PUT /agents/${cmpAgent.id}/user-pipeline`)
   await dialog.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await expect(dialog.getByText('저장했습니다.')).toBeVisible()
   expect(state.calls).toContain(`PUT /agents/${cmpAgent.id}/user-pipeline`)
   dialog = await openAgentFlow(page, '비교 보고서')
   await expect(dialog.getByRole('combobox', { name: '연결할 워크플로' })).toHaveValue('p1')
   await dialog.getByRole('link', { name: '워크플로 편집' }).click()
-  await expect(page).toHaveURL(/\/pipelines\/p1$/)
+  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
   await expect(page.getByText('연결된 에이전트: 비교 보고서')).toBeVisible()
 
   await page.getByTestId('pipeline-actions').getByRole('button', { name: '이 워크플로로 시작' }).click()
@@ -402,21 +403,17 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
 test('store: shared flows to import or start', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
-  await page.goto('/pipelines')
-  await expect(page.getByText('아직 내 워크플로가 없습니다')).toBeVisible({ timeout: 15_000 })
-  await shot('empty')
-  await page.getByRole('tab', { name: '스토어' }).click()
-  await expect(page).toHaveURL(/tab=store/)
-  const card = page.getByTestId('shared-pipeline').first()
-  await expect(card).toBeVisible()
+  // Nothing of the person's own yet: the workflows tab opens on 탐색.
+  await page.goto('/pipelines?tab=store')
+  await expect(page).toHaveURL(/\/customize\?tab=workflows&view=explore/)
+  const card = page.getByTestId('item-card').filter({ hasText: '분석 → 비교 → 개조식 요약' }).first()
+  await expect(card).toBeVisible({ timeout: 15_000 })
   await shot('store')
-  await card.getByRole('button', { name: '가져오기' }).click()
-  await expect(card.getByText('가져옴')).toBeVisible()
-  expect(state.mine().map((p) => p.originId)).toEqual(['p7'])
-  // 내 워크플로 shows the imported flow without a reload.
-  await expect(page.getByRole('tab', { name: /내 워크플로/ })).toContainText('1')
-  await page.getByRole('tab', { name: /내 워크플로/ }).click()
-  await expect(page.getByTestId('my-pipeline')).toHaveCount(1)
+  await card.getByRole('button', { name: '분석 → 비교 → 개조식 요약 추가' }).click()
+  await expect.poll(() => state.mine().map((p) => p.originId)).toEqual(['p7'])
+  // 내 항목 shows the imported flow without a reload.
+  await page.getByRole('button', { name: '내 항목' }).click()
+  await expect(page.getByTestId('item-card')).toHaveCount(1)
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
