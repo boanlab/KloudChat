@@ -10,6 +10,7 @@ import math
 import re
 import unicodedata
 import zipfile
+from collections.abc import Callable
 from typing import Any
 
 import PIL.Image
@@ -1627,6 +1628,14 @@ def _docx_picture(document, picture: dict) -> None:
 
 _HEADS = ("cover", "header", "memo", "press", "paper", "draft")
 
+#: A cover page (`head="cover"`), as the page view draws it (`docFormats.ts` TITLE_BLOCK_CSS):
+#: the kind label and title start this far down the A4 sheet, the head table stands this far
+#: under the title, this share of the text width wide, its label column this share of it.
+_COVER_TOP = 0.30
+_COVER_GAP_MM = 16.0
+_COVER_TABLE = 0.64
+_COVER_LABEL_COLUMN = 0.28
+
 
 def _title_block(block: Any) -> dict | None:
     """The artifact's `titleBlock`, cleaned; None when the document has none.
@@ -1731,9 +1740,11 @@ class _HeadingNumbers:
         return f"{number} " if number else ""
 
 
-def _docx_title_block(document, title: str, block: dict, visualise_heading) -> None:
+def _docx_title_block(
+    document, title: str, block: dict, visualise_heading, accent: str | None = None
+) -> None:
     """The head of a document by purpose: cover page, field table, memo rows, press
-    header or paper header, in place of the plain title."""
+    header or paper header, in place of the plain title. `accent` colours a cover's bar."""
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import Cm, Pt, RGBColor
@@ -1836,14 +1847,7 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
             line(after=space["head"])
         return
     if head == "cover":
-        # No cover page: the title block heads page one and the text follows it.
-        if block["label"]:
-            line(block["label"], size=doc_type.TYPE["h2"], colour=muted, after=6)
-        heading()
-        if block["subtitle"]:
-            line(block["subtitle"], size=doc_type.TYPE["h1"], colour=muted, after=6)
-        table(fields, 1, (4.0, 8.0))
-        line(after=12)
+        _docx_cover(document, title, block, visualise_heading, accent, line, table)
     elif head == "memo":
         table(fields, 1, (3.5, 12.5))
         line(after=2)
@@ -1889,6 +1893,97 @@ def _docx_title_block(document, title: str, block: dict, visualise_heading) -> N
             line(block["subtitle"], size=doc_type.TYPE["h2"], colour=muted, after=6)
         table(fields, 2, (2.6, 5.4))
         line(after=4)
+
+
+#: What follows `w:pBdr` inside `w:pPr`; Word reads the children in schema order.
+_PPR_AFTER_BORDERS = (
+    "w:shd", "w:tabs", "w:suppressAutoHyphens", "w:kinsoku", "w:wordWrap", "w:overflowPunct",
+    "w:topLinePunct", "w:autoSpaceDE", "w:autoSpaceDN", "w:bidi", "w:adjustRightInd",
+    "w:snapToGrid", "w:spacing", "w:ind", "w:contextualSpacing", "w:mirrorIndents",
+    "w:suppressOverlap", "w:jc", "w:textDirection", "w:textAlignment", "w:textboxTightWrap",
+    "w:outlineLvl", "w:divId", "w:cnfStyle", "w:rPr", "w:sectPr", "w:pPrChange",
+)
+
+
+def _docx_put_borders(properties, borders) -> None:
+    """`borders` (a `w:pBdr`) into a paragraph's properties at its schema place."""
+    properties.insert_element_before(borders, *_PPR_AFTER_BORDERS)
+
+
+def _docx_cover(document, title: str, block: dict, visualise_heading, accent, line, table) -> None:
+    """A cover page: the accent bar at the top, the kind label and the title on the upper
+    third, the head table narrower and centred under them, then a page break."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Emu, Pt, RGBColor
+
+    page = document.sections[-1]
+    top = page.top_margin if page.top_margin is not None else Emu(int(20 * 36000))
+    width = (page.page_width or Emu(int(210 * 36000))) - (page.left_margin or 0) - (
+        page.right_margin or 0
+    )
+
+    bar = line(after=0, center=False)
+    borders = OxmlElement("w:pBdr")
+    edge = OxmlElement("w:top")
+    edge.set(qn("w:val"), "single")
+    edge.set(qn("w:sz"), "24")  # 3 pt
+    edge.set(qn("w:space"), "0")
+    edge.set(qn("w:color"), (accent or "#333333").lstrip("#").upper())
+    borders.append(edge)
+    _docx_put_borders(bar._p.get_or_add_pPr(), borders)
+    bar.paragraph_format.line_spacing = Pt(2)
+    # The bar line plus this space puts the label on the upper third of the sheet.
+    room = max(0.0, _COVER_TOP * 297 / 25.4 * 72 - Emu(top).pt - 2)
+    if block["label"]:
+        line(block["label"], size=doc_type.TYPE["coverLabel"], bold=True,
+             colour=RGBColor(0x77, 0x77, 0x77), before=room, after=10)
+    paragraph = document.add_heading("", level=0)
+    paragraph.add_run(title)
+    visualise_heading(paragraph, 0)
+    # The bar is the cover's accent; no rule under the title.
+    # Cleared here and in the Title style's own rule, which a 서식's Word file may carry.
+    properties = paragraph._p.get_or_add_pPr()
+    for found in properties.findall(qn("w:pBdr")):
+        properties.remove(found)
+    clear = OxmlElement("w:pBdr")
+    for side in ("top", "bottom"):
+        edge = OxmlElement(f"w:{side}")
+        edge.set(qn("w:val"), "nil")
+        clear.append(edge)
+    _docx_put_borders(properties, clear)
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_after = Pt(0)
+    if not block["label"]:
+        paragraph.paragraph_format.space_before = Pt(room)
+    for run in paragraph.runs:
+        run.font.size = Pt(doc_type.TYPE["cover"])
+    if block["subtitle"]:
+        line(block["subtitle"], size=doc_type.TYPE["h1"], colour=RGBColor(0x66, 0x66, 0x66),
+             before=8, after=0)
+    line(after=0).paragraph_format.space_before = Pt(_COVER_GAP_MM * 72 / 25.4 - 12)
+    across = width * _COVER_TABLE / 360000  # cm
+    table(block["fields"], 1, (across * _COVER_LABEL_COLUMN, across * (1 - _COVER_LABEL_COLUMN)))
+    if block["fields"] and document.tables:
+        grid = document.tables[-1]
+        # The width is the table's own, not the page's: Word and LibreOffice read the grid.
+        grid.autofit = False
+        twips = [round(across * share * 567) for share in (_COVER_LABEL_COLUMN, 1 - _COVER_LABEL_COLUMN)]
+        for column, size in zip(grid._tbl.tblGrid.findall(qn("w:gridCol")), twips, strict=False):
+            column.set(qn("w:w"), str(size))
+        wide = grid._tbl.tblPr.find(qn("w:tblW"))
+        if wide is None:
+            wide = OxmlElement("w:tblW")
+            grid._tbl.tblPr.append(wide)
+        wide.set(qn("w:w"), str(sum(twips)))
+        wide.set(qn("w:type"), "dxa")
+        for row in grid.rows:
+            shade = OxmlElement("w:shd")
+            shade.set(qn("w:val"), "clear")
+            shade.set(qn("w:fill"), "F2F2F2")
+            row.cells[0]._tc.get_or_add_tcPr().append(shade)
+    document.add_page_break()
 
 
 def _docx_draft_grid(document, fields: list[tuple[str, str]], value_run) -> None:
@@ -2022,7 +2117,10 @@ def to_docx(
 
     numbers = _HeadingNumbers(head_block)
     if head_block:
-        _docx_title_block(document, title, head_block, visualise_heading)
+        _docx_title_block(
+            document, title, head_block, visualise_heading,
+            accent=style["accent"] if style else None,
+        )
     else:
         title_heading = document.add_heading(title, level=0)
         visualise_heading(title_heading, 0)
@@ -2585,9 +2683,16 @@ def _pdf_core_box(callout: tuple[str, list[str]], styles: dict, width: float) ->
 
 
 def _pdf_title_block(
-    title: str, block: dict, styles: dict, bold_face: str, width: float = 170 * mm
+    title: str,
+    block: dict,
+    styles: dict,
+    bold_face: str,
+    width: float = 170 * mm,
+    accent=None,
+    top_mm: float = 22.0,
 ) -> list:
-    """`_docx_title_block` for reportlab: the flowables that stand in for the plain title."""
+    """`_docx_title_block` for reportlab: the flowables that stand in for the plain title.
+    `top_mm` is the page's top margin, which places a cover page's title."""
     head = block["head"]
     T = doc_type.type_for(block.get("format"))
     if space := doc_type.space_for(block.get("format")):
@@ -2688,17 +2793,41 @@ def _pdf_title_block(
 
     story: list = []
     if head == "cover":
-        # No cover page: the title block heads page one and the text follows it.
+        # A page of its own: the accent bar at the top, label and title on the upper third,
+        # the head table narrower and centred under them; the body starts on page two.
+        bar = 2.2
+        story.append(
+            HRFlowable(width="100%", thickness=bar, color=accent or HexColor("#333333"),
+                       spaceBefore=0, spaceAfter=0)
+        )
+        frame_top = top_mm * mm + 6  # reportlab's frame keeps 6 pt inside the margin
+        story.append(Spacer(1, max(0.0, _COVER_TOP * A4[1] - frame_top - bar)))
         if block["label"]:
-            story.append(Paragraph(_escape(block["label"]), small))
-            story.append(Spacer(1, 3 * mm))
-        story.append(Paragraph(_escape(title), title_style))
+            story.append(
+                Paragraph(
+                    _escape(block["label"]),
+                    styled("tb-kind", "body", fontName=bold_face, fontSize=T["coverLabel"],
+                           leading=T["coverLabel"] * 1.4, textColor=HexColor("#777777"),
+                           spaceAfter=0),
+                )
+            )
+            story.append(Spacer(1, 5 * mm))
+        story.append(
+            Paragraph(
+                _escape(title),
+                styled("tb-cover", "title", fontSize=T["cover"], leading=T["cover"] * 1.3,
+                       spaceBefore=0, spaceAfter=0),
+            )
+        )
         if block["subtitle"]:
+            story.append(Spacer(1, 4 * mm))
             story.append(Paragraph(_escape(block["subtitle"]), subtitle))
-        story.append(Spacer(1, 6 * mm))
-        if table := fields_table(1, (40, 80)):
+        story.append(Spacer(1, _COVER_GAP_MM * mm))
+        across = width * _COVER_TABLE / mm
+        label_mm = across * _COVER_LABEL_COLUMN
+        if table := fields_table(1, (label_mm, across - label_mm)):
             story.append(table)
-        story.append(Spacer(1, 8 * mm))
+        story.append(PageBreak())
     elif head == "memo":
         if table := fields_table(1, (35, 135), ruled=True):
             story.append(table)
@@ -2950,7 +3079,10 @@ def to_pdf(
 
     numbers = _HeadingNumbers(head_block)
     story: list = (
-        _pdf_title_block(title, head_block, styles, bold_face, text_width)
+        _pdf_title_block(
+            title, head_block, styles, bold_face, text_width,
+            accent=accent_colour, top_mm=float(margins.get("top", 22)),
+        )
         if head_block
         else [Paragraph(_escape(title), styles["title"]), Spacer(1, 8 * mm)]
     )
@@ -3369,7 +3501,7 @@ def _hwpx_font_faces() -> str:
 #: stops the file opening. Must sit between `fontfaces` and `charProperties`.
 #: Ids are 1-based: 1 none (the table frame), 2 body cell hairline, 3 head cell
 #: with a heavier line under it.
-_HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="5">
+_HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="6">
    <hh:borderFill id="1" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
     <hh:slash type="NONE" Crooked="0" isCounter="0"/>
     <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
@@ -3416,9 +3548,18 @@ _HWPX_BORDER_FILLS = """  <hh:borderFills itemCnt="5">
     <hh:bottomBorder type="SOLID" width="0.5 mm" color="#000000"/>
     <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
    </hh:borderFill>
+   <hh:borderFill id="6" threeD="0" shadow="0" centerLine="NONE" breakCellSeparateLine="0">
+    <hh:slash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:backSlash type="NONE" Crooked="0" isCounter="0"/>
+    <hh:leftBorder type="NONE" width="0.1 mm" color="#000000"/>
+    <hh:rightBorder type="NONE" width="0.1 mm" color="#000000"/>
+    <hh:topBorder type="SOLID" width="1.0 mm" color="{accent}"/>
+    <hh:bottomBorder type="NONE" width="0.1 mm" color="#000000"/>
+    <hh:diagonal type="NONE" width="0.1 mm" color="#000000"/>
+   </hh:borderFill>
   </hh:borderFills>"""
-#: The 1쪽 보고's 핵심 box and title box: black rules, thin and heavy.
-_HWPX_THIN_BOX, _HWPX_HEAVY_BOX = 4, 5
+#: The 1쪽 보고's 핵심 box and title box: black rules, thin and heavy; a cover page's bar.
+_HWPX_THIN_BOX, _HWPX_HEAVY_BOX, _HWPX_COVER_BAR = 4, 5, 6
 
 #: The text column, in HWPUNIT: page width less both margins. A table wider
 #: than this is a table Hancom pushes off the page.
@@ -4096,10 +4237,17 @@ def _hwpx_table(
     return f'<hp:p paraPrIDRef="3" styleIDRef="0"><hp:run charPrIDRef="{char_pr}">{table}</hp:run></hp:p>'
 
 
-def _hwpx_title_block(title: str, block: dict, lead: str, right: int = 3) -> list[str]:
+def _hwpx_title_block(
+    title: str,
+    block: dict,
+    lead: str,
+    right: int = 3,
+    cover: Callable[[], dict[str, int]] | None = None,
+) -> list[str]:
     """`_docx_title_block` as OWPML paragraphs. `lead` (section properties, page furniture)
     must ride in the first paragraph's run, as it does on the plain title; `right` is a
-    right-aligned paragraph shape, for the 1쪽 보고's head fields."""
+    right-aligned paragraph shape, for the 1쪽 보고's head fields; `cover` registers a cover
+    page's own shapes and returns their ids (`to_hwpx`)."""
     head = block["head"]
     out: list[str] = []
 
@@ -4152,14 +4300,43 @@ def _hwpx_title_block(title: str, block: dict, lead: str, right: int = 3) -> lis
             )
         return out
     if head == "cover":
-        # No cover page: the title block heads page one and the text follows it.
+        # A page of its own: the accent bar at the top, label and title on the upper third,
+        # the head table narrower and centred under them; the body starts on page two.
+        ids = cover() if cover else {"space": 3, "centre": 0, "gap": 3, "label": 0, "title": 2}
+        try:
+            # A zero-width space: a row with no text at all is dropped as an empty table.
+            bar = _hwpx_table([["\u200b"]], header_row=False, border_fill=_HWPX_COVER_BAR)
+        except Exception as exc:  # noqa: BLE001 — see `_hwpx_table`
+            log.warning("hwpx cover bar left out: %s", exc)
+            para("", ids["space"])
+        else:
+            run = '<hp:run charPrIDRef="0">'
+            out.append(bar.replace(run, run + lead, 1))
+            lead = ""
+            para("", ids["space"])
         if block["label"]:
-            para(block["label"], 0, 0)
-        para(title, 0, 2)
+            para(block["label"], ids["centre"], ids["label"])
+        para(title, ids["centre"], ids["title"])
         if block["subtitle"]:
-            para(block["subtitle"], 0, 4)
-        table(1, [1, 2])
-        para("", 3)
+            para(block["subtitle"], ids["centre"], 4)
+        para("", ids["gap"])
+        column = _HWPX_COLUMN.set(round(_HWPX_COLUMN.get() * _COVER_TABLE))
+        try:
+            share = round(_COVER_LABEL_COLUMN * 100)
+            start = len(out)
+            table(1, [share, 100 - share])
+            if len(out) > start:
+                # Anchored to its paragraph and centred in the column, as Hancom places a
+                # narrower table; set as a character it would follow the line's left edge.
+                out[start] = out[start].replace('treatAsChar="1"', 'treatAsChar="0"', 1).replace(
+                    'horzAlign="LEFT"', 'horzAlign="CENTER"', 1
+                )
+        finally:
+            _HWPX_COLUMN.reset(column)
+        out.append(
+            '<hp:p paraPrIDRef="3" styleIDRef="0" pageBreak="1">'
+            '<hp:run charPrIDRef="0"><hp:t/></hp:run></hp:p>'
+        )
     elif head == "memo":
         para("", 3)
         table(1, [1, 4])
@@ -4329,6 +4506,35 @@ def _hwpx_document(
             para_extras.append((identifier, "RIGHT", 0, 0, 0, _HWPX_LINE_SPACING))
         return para_ids[key]
 
+    def cover_shapes() -> dict[str, int]:
+        """A cover page's own shapes (`_hwpx_title_block`): the space down to the upper third,
+        centred lines, the gap over the head table, the label and title characters."""
+        given = (paged or {}).get("margins") if isinstance((paged or {}).get("margins"), dict) else {}
+        try:
+            top = max(10.0, min(35.0, float(given.get("top", 20))))
+        except (TypeError, ValueError):
+            top = 20.0
+        unit = 7200 / 25.4
+        # The bar is a one-row table: its row and the margin under it.
+        down = round((_COVER_TOP * 297 - top) * unit) - _HWPX_ROW_HEIGHT - 283
+
+        def shape(key: str, align: str, prev: int, nxt: int) -> int:
+            if key not in para_ids:
+                para_ids[key] = len(_HWPX_PARA_SHAPES) + len(para_extras)
+                para_extras.append((para_ids[key], align, 0, prev, nxt, _HWPX_LINE_SPACING))
+            return para_ids[key]
+
+        accent = colour(style["accent"], "#000000") if style and space is None else "#000000"
+        return {
+            "space": shape("cover-space", "CENTER", max(0, down), 0),
+            "centre": shape("cover-centre", "CENTER", 0, 0),
+            "gap": shape("cover-gap", "CENTER", round((_COVER_GAP_MM - 6) * unit), 0),
+            "label": styled_char_id(
+                {"font-size": f"{scale['coverLabel']:g}pt", "color": "#777777"}, 2
+            ),
+            "title": styled_char_id({"font-size": f"{scale['cover']:g}pt", "color": accent}, 2),
+        }
+
     def hanging_para_id(kind: str, depth: int) -> int:
         """The 내어쓰기 shape of a 개조식 item, ※ note or 붙임 line (`_docx_hanging`)."""
         em = round(scale["body"] * 100)
@@ -4369,7 +4575,8 @@ def _hwpx_document(
     numbers = _HeadingNumbers(head_block)
     body: list[str] = (
         _hwpx_title_block(
-            title, head_block, lead, figure_shape() if space is not None else 3
+            title, head_block, lead, figure_shape() if space is not None else 3,
+            cover=cover_shapes,
         )
         if head_block
         else [
@@ -4606,7 +4813,9 @@ def _hwpx_document(
             "Contents/header.xml",
             _HWPX_HEADER.format(
                 font_faces=_hwpx_font_faces(),
-                border_fills=_HWPX_BORDER_FILLS,
+                border_fills=_HWPX_BORDER_FILLS.replace(
+                    "{accent}", colour(style["accent"], "#333333") if style else "#333333"
+                ),
                 char_properties=_hwpx_char_properties(
                     # A memo printed black: no accent on its title and headings.
                     style["accent"] if style and space is None else None,

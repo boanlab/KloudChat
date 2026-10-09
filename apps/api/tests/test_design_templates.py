@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import time
 from html.parser import HTMLParser
@@ -308,21 +309,25 @@ def test_blocks_land_inside_the_structure_the_seed_styles():
     assert '<span class="num">2</span>' in body
 
 
-def test_a_one_pager_puts_its_sections_in_the_grid_and_its_cover_outside():
+def test_a_group_wrapper_holds_the_sections_and_leaves_the_cover_outside():
+    # No shipped 서식 groups its sections now; the wrapper is still read from `template.toml`.
+    grouped = dataclasses.replace(
+        dt.rendering(dt.GENERIC_ID), wrap_group='<div class="grid">{blocks}</div>'
+    )
     body = dt.assemble(
-        dt.get("doc-brief"),
+        grouped,
         [
             {"layout": "cover", "title": "제목", "html": "<p>한 줄</p>"},
             {"layout": "section", "title": "배경", "html": "<p>본문</p>"},
         ],
     )
-    assert body.index('<div class="cover">') < body.index('<div class="grid">')
+    assert body.index('<div class="cover cover-page">') < body.index('<div class="grid">')
     assert body.count('<div class="grid">') == 1
 
 
 def test_an_empty_block_is_left_out_rather_than_rendered_hollow():
     body = dt.assemble(
-        dt.get("doc-report"),
+        dt.rendering("_document"),
         [
             {"layout": "cover", "title": "제목", "html": "<p>한 줄</p>"},
             {"layout": "section", "title": "빈 절", "html": ""},
@@ -336,7 +341,7 @@ def test_an_empty_block_is_left_out_rather_than_rendered_hollow():
 
 def test_the_design_system_reaches_the_document_as_css_variables():
     html = dt.render(
-        dt.get("doc-report"),
+        dt.rendering("_document"),
         title="제목",
         tokens={"accent": "#7a1f3d", "ink": "#111827", "muted": "#6b7280", "font": "serif"},
         body="<section><h2>절</h2><p>본문</p></section>",
@@ -348,7 +353,9 @@ def test_the_design_system_reaches_the_document_as_css_variables():
 
 
 def test_a_title_cannot_break_out_of_the_document():
-    html = dt.render(dt.get("doc-report"), title="</title><script>x()</script>", tokens={}, body="")
+    html = dt.render(
+        dt.rendering("_document"), title="</title><script>x()</script>", tokens={}, body=""
+    )
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
 
@@ -377,7 +384,7 @@ def test_a_card_shows_the_shape_the_form_actually_has():
                 f"양식에는 그런 절이 없다 — {sorted(headings)}"
             )
         checked += 1
-    assert checked >= 10, "문서 서식이 이만큼은 있어야 이 시험이 무언가를 지킨다"
+    assert checked >= 8, "문서 서식이 이만큼은 있어야 이 시험이 무언가를 지킨다"
 
 
 # ── the outline ────────────────────────────────────────────────────────
@@ -421,7 +428,7 @@ def test_a_count_stated_in_the_request_is_honoured_within_bounds():
     deck = dt.get("deck-lecture")
     assert page.requested_blocks("30장", deck) == 30
     assert page.requested_blocks("200장", deck) == 50
-    assert page.requested_blocks("30쪽", dt.get("doc-report")) == 24
+    assert page.requested_blocks("30쪽", dt.rendering("_document")) == 24
 
 
 # ── image templates ────────────────────────────────────────────────────
@@ -557,7 +564,9 @@ async def test_a_failed_block_leaves_a_gap_and_the_rest_still_lands(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_an_outline_that_cannot_be_parsed_ends_the_turn_without_billing(monkeypatch):
-    events, posts = await _write(monkeypatch, dt.get("doc-report"), ["설명만 하고 JSON 은 없음"])
+    events, posts = await _write(
+        monkeypatch, dt.rendering("_document"), ["설명만 하고 JSON 은 없음"]
+    )
 
     assert len(posts) == 1  # no block calls were made
     assert not any(e["type"] == "page" for e in events)
@@ -646,7 +655,7 @@ def test_a_template_is_resolved_for_the_surface_that_can_use_it():
         ("nope", SessionKind.slides, 404),
         ("image-poster", SessionKind.image, 404),
         ("deck-editorial", SessionKind.report, 422),
-        ("doc-brief", SessionKind.slides, 422),
+        ("doc-comparison", SessionKind.slides, 422),
     ],
 )
 def test_a_template_the_surface_cannot_use_is_refused(template_id, kind, expected):
@@ -673,7 +682,7 @@ def test_a_plan_is_salvaged_out_of_malformed_json():
         '{"title: "이행 리스크", "layout": "section"}, '
         '{"title": "다음 행동", "layout": "section"}]'
     )
-    title, blocks = page._parse_outline(mangled, dt.get("doc-brief"))
+    title, blocks = page._parse_outline(mangled, dt.get("doc-comparison"))
 
     assert title == "학과 서버 교체"
     assert [b["title"] for b in blocks] == ["학과 서버 교체", "이행 리스크", "다음 행동"]
@@ -682,7 +691,7 @@ def test_a_plan_is_salvaged_out_of_malformed_json():
 
 def test_nothing_is_salvaged_from_prose():
     """Prose salvages to no plan."""
-    title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-brief"))
+    title, blocks = page._parse_outline("구성을 만들 수 없습니다.", dt.get("doc-comparison"))
     assert not blocks and not title
 
 
@@ -863,11 +872,11 @@ def test_a_project_starts_with_no_format_of_its_own():
 
 def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
     """`default_for` answers per surface and None for a surface not set."""
-    defaults = {"report": "doc-notice", "slides": "deck-proposal"}
-    assert dt.default_for(defaults, SessionKind.report) == "doc-notice"
+    defaults = {"report": "doc-minutes", "slides": "deck-proposal"}
+    assert dt.default_for(defaults, SessionKind.report) == "doc-minutes"
     assert dt.default_for(defaults, SessionKind.slides) == "deck-proposal"
     assert dt.default_for(defaults, SessionKind.image) is None
-    assert dt.default_for({"report": "doc-notice"}, SessionKind.slides) is None
+    assert dt.default_for({"report": "doc-minutes"}, SessionKind.slides) is None
 
 
 @pytest.mark.parametrize(
@@ -886,10 +895,10 @@ def test_a_default_the_catalogue_cannot_place_is_the_built_in_track(defaults):
 
 async def test_a_new_session_begins_in_its_projects_format():
     """A new session takes its project's format for that surface only."""
-    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+    db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
 
     started = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert started == "doc-notice"
+    assert started == "doc-minutes"
     assert await sessions_router._project_render_template(db, "p1", SessionKind.slides) is None
 
 
@@ -900,17 +909,18 @@ async def test_work_outside_a_project_is_not_a_lookup():
 
 async def test_the_composer_still_decides_this_conversation():
     """The project seeds the session; the composer's choice still resolves on its own."""
-    db = _Rows({"p1": _project(render_templates={"report": "doc-notice"})})
+    db = _Rows({"p1": _project(render_templates={"report": "doc-minutes"})})
 
     seeded = await sessions_router._project_render_template(db, "p1", SessionKind.report)
-    assert seeded == "doc-notice"
-    assert sessions_router._resolved_template_id("doc-brief", SessionKind.report) == "doc-brief"
+    assert seeded == "doc-minutes"
+    resolved = sessions_router._resolved_template_id("doc-comparison", SessionKind.report)
+    assert resolved == "doc-comparison"
 
 
 def test_clearing_one_surface_leaves_the_other_alone():
     assert workspace_router._validated_render_templates(None) is None
-    kept = workspace_router._validated_render_templates({"report": "doc-notice", "slides": ""})
-    assert kept == {"report": "doc-notice"}
+    kept = workspace_router._validated_render_templates({"report": "doc-minutes", "slides": ""})
+    assert kept == {"report": "doc-minutes"}
 
 
 @pytest.mark.parametrize(
@@ -919,7 +929,7 @@ def test_clearing_one_surface_leaves_the_other_alone():
         ({"report": "nope"}, 404),
         ({"image": "image-poster"}, 404),
         ({"report": "deck-editorial"}, 422),
-        ({"chat": "doc-brief"}, 422),
+        ({"chat": "doc-comparison"}, 422),
     ],
 )
 def test_a_project_format_the_surface_cannot_use_is_refused_like_the_composers(defaults, expected):

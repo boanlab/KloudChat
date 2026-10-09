@@ -9,6 +9,9 @@ from __future__ import annotations
 
 TYPE: dict[str, float] = {
     "title": 20,
+    #: A cover page's title and the kind label above it (`head="cover"`).
+    "cover": 26,
+    "coverLabel": 12,
     "lead": 11.5,
     "h1": 14,
     "h2": 12,

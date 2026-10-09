@@ -9,7 +9,6 @@
  * 오른쪽 여백이 필요 없다. 유인물이 아니라 화면이기 때문이다. */
 
 :root {
-  --h2-size: clamp(2rem, 4vw, 3rem);
   --measure: min(50rem, 78%);
 }
 
@@ -18,29 +17,23 @@
   position: absolute;
   left: var(--gut);
   right: auto;
-  top: calc(var(--pad-y) - 0.2rem);
+  top: calc(var(--pad-y) - 2.3rem);
   padding: 0.28em 0.85em;
   border-radius: 999px;
   background: var(--accent);
   color: #fff;
-  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
-h2 { padding-top: 2.6rem; }
 
-p, li { font-size: clamp(1.08rem, 1.55vw, 1.32rem); line-height: 1.48; }
-li + li { margin-top: 0.65em; }
 
 /* 개념 하나에 예시 하나. 예시 판이 이 서식에서 가장 자주 쓰이는 장이므로
    기본보다 크게, 그리고 왼쪽 강조선을 두껍게 둔다. */
-.slide.example > p { font-size: clamp(1.25rem, 2.15vw, 1.72rem); }
 .slide.example .ex,
 .slide.example > div { border-left-width: 8px; padding: 1.1rem 1.45rem; }
 .slide.example .ex::before,
-.slide.example > div::before { font-size: clamp(0.95rem, 1.4vw, 1.15rem); }
 
 .slide.cover .num {
   align-self: flex-start;

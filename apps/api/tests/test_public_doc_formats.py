@@ -61,7 +61,7 @@ def test_the_chosen_template_wins_over_the_words():
         assert design_templates.get(template_id) is not None, template_id
         # The words say lab; the 서식 says otherwise.
         assert doc_formats.detect("회로실험 결과 보고서", template_id).id == format_id
-    assert doc_formats.detect("회로실험 결과 보고서", "doc-report").id == "lab"
+    assert doc_formats.detect("회로실험 결과 보고서", "_document").id == "lab"
     assert doc_formats.detect("아무 문서", None) is None
 
 

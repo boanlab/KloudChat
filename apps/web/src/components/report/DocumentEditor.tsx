@@ -75,6 +75,7 @@ import { cn } from '@/lib/utils'
 import type { ReportArtifact, ReportSection, ReportTitleBlock, Source } from '@/types'
 import { useT } from '@/lib/useT'
 import { scopePagedStyles } from '@/components/report/scopePagedStyles'
+import { DEFAULT_PAGE_SETTINGS, pagedSheetCss, type PageSettings } from '@/components/report/pagedSheet'
 import { PLACEHOLDER_CSS, markPlaceholders } from '@/lib/placeholders'
 
 const FONTS = [
@@ -589,13 +590,6 @@ const escapePagedText = (text: string) => text
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
 
-const escapeCssContent = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ')
-
-type PageSettings = NonNullable<ReportArtifact['pageSettings']>
-const DEFAULT_PAGE_SETTINGS: Required<PageSettings> = {
-  header: '', footer: 'KloudChat', pageNumbers: 'page-total', firstPageHeader: false,
-  margins: { top: 18, right: 16, bottom: 20, left: 16 },
-}
 
 /** Class on the element every paginated page is inside; the scope for Paged.js rules. Shared with `index.css`. */
 const PAGED_SCOPE = 'paged-report-preview'
@@ -607,11 +601,13 @@ const PAGED_SCOPE = 'paged-report-preview'
  * page differs. The seed's `body` typography is repeated on the sheet, since a shadow root
  * has no body. `.page.paginated` outranks the seed's own `.paginated` rules.
  */
-function sheetGeometryCss(margins: Required<PageSettings>['margins']): string {
+function sheetGeometryCss(margins: PageSettings['margins']): string {
   return `
   .page.paginated { box-sizing: border-box; width: ${A4_WIDTH_PX}px; max-width: ${A4_WIDTH_PX}px; margin: 0 auto; padding: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm; min-height: ${A4_HEIGHT_PX}px; }
   .page.paginated { color: var(--ink); font-family: var(--font-body); font-size: var(--doc-body); line-height: var(--doc-leading-body); }
   .page.paginated .cover { min-height: 0; padding: 0 0 4mm; margin: 0 0 8mm; }
+  /* A cover page fills its sheet, and its margin carries the next block past the page gap. */
+  .page.paginated :is(.cover.tb-cover, .cover.cover-page) { min-height: ${297 - margins.top - margins.bottom}mm; padding: 72mm 0 0; margin: 0 0 ${margins.top + margins.bottom}mm; }
   .page.paginated section { margin: 0 0 12mm; }
   /* The editor keeps a paragraph inside every cell; the finished file has bare text there. */
   .page.paginated td > p, .page.paginated th > p { margin: 0; }
@@ -634,7 +630,7 @@ const EDITOR_PAGE_BREAK_CSS = `
   .ProseMirror .page-break.ProseMirror-selectednode { border-color: var(--accent, #5b5bd6); }
 `
 
-function PagedDocument({ html, css, settings, onSettings, settingsOpen, settingsSlot, onEdit, onWebView }: { html: string; css: string; settings: Required<PageSettings>; onSettings: (next: Required<PageSettings>) => void; settingsOpen: boolean; settingsSlot?: HTMLElement | null; onEdit: () => void; onWebView: () => void }) {
+function PagedDocument({ html, css, settings, onSettings, settingsOpen, settingsSlot, onEdit, onWebView }: { html: string; css: string; settings: PageSettings; onSettings: (next: PageSettings) => void; settingsOpen: boolean; settingsSlot?: HTMLElement | null; onEdit: () => void; onWebView: () => void }) {
   const t = useT()
   const host = useRef<HTMLDivElement>(null)
   const viewport = useRef<HTMLDivElement>(null)
@@ -656,44 +652,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
     target.replaceChildren()
     // Paged.js lays out at A4 width; the viewport scales the finished stack.
     target.style.width = `${A4_WIDTH_PX}px`
-    const sheet = URL.createObjectURL(new Blob([`
-      html, body { margin: 0; padding: 0; background: white; }
-      h1 { string-set: document-title content(text); }
-      ${css}
-      /* After the template's css: its own @page (20mm 18mm) would otherwise outrank these
-         margins, and the page settings would have no effect. */
-      @page {
-        size: A4;
-        margin: ${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm;
-        @top-left { content: ${settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)'}; color: #777; font-size: 8pt; }
-        @bottom-left { content: "${escapeCssContent(settings.footer)}"; color: #777; font-size: 8pt; }
-        @bottom-right { content: ${settings.pageNumbers === 'none' ? 'none' : settings.pageNumbers === 'page' ? 'counter(page)' : 'counter(page) " / " counter(pages)'}; color: #777; font-size: 8pt; }
-      }
-      @page:first { @top-left { content: ${settings.firstPageHeader ? (settings.header ? `"${escapeCssContent(settings.header)}"` : 'string(document-title)') : 'none'}; } }
-      /* The sheet's screen box (viewport-high, padded) must not reach Paged.js, or the cover
-         inside it is pushed to page two and page one comes out blank. The cover keeps the
-         seed's print size (232mm); what puts the first section on page two is a break
-         *before* it — Paged.js honours break-before, as the manual page breaks below show,
-         but not the cover's break-after. */
-      .page { min-height: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
-      /* The seed repeats the document name on every printed sheet as a fixed element; Paged.js
-         pulls fixed elements into the flow of each page and the running header above already
-         carries the name, so the copy would only push the text down page by page. */
-      .doc-foot { display: none !important; }
-      /* A cover taller than the page cannot be split, and Paged.js retries it forever: a
-         template's extra top room (기말 리포트's 30vh) is clipped to the sheet. */
-      .cover { margin: 0 !important; box-sizing: border-box; max-height: ${297 - settings.margins.top - settings.margins.bottom - 4}mm !important; overflow: hidden; }
-      /* No cover page: whatever a template's cover asks for, the title heads page one. */
-      .cover { min-height: 0 !important; break-after: auto !important; }
-      section { break-inside: auto; }
-      h1, h2, h3, h4 { break-after: avoid; }
-      p, li { orphans: 2; widows: 2; }
-      table, tbody { break-inside: auto !important; page-break-inside: auto !important; }
-      thead { display: table-header-group; }
-      tr { break-inside: avoid; page-break-inside: avoid; }
-      figure, img, pre, blockquote { break-inside: avoid; }
-      [data-page-break="true"] { break-before: page; height: 0; }
-    `], { type: 'text/css' }))
+    const sheet = URL.createObjectURL(new Blob([pagedSheetCss(css, settings)], { type: 'text/css' }))
     // Armed before Paged.js runs, which appends the template stylesheet to `document.head`.
     const unscope = scopePagedStyles(`.${PAGED_SCOPE}`)
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -769,7 +728,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
               <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
-              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as PageSettings['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
               <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -782,7 +741,7 @@ function PagedDocument({ html, css, settings, onSettings, settingsOpen, settings
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               <label className="text-xs text-muted">{t('머리말')}<input aria-label={t('머리말')} value={settings.header} onChange={(event) => onSettings({ ...settings, header: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
               <label className="text-xs text-muted">{t('꼬리말')}<input aria-label={t('꼬리말')} value={settings.footer} onChange={(event) => onSettings({ ...settings, footer: event.target.value })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm" /></label>
-              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as Required<PageSettings>['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
+              <label className="text-xs text-muted">{t('쪽 번호')}<select aria-label={t('쪽 번호')} value={settings.pageNumbers} onChange={(event) => onSettings({ ...settings, pageNumbers: event.target.value as PageSettings['pageNumbers'] })} className="mt-1 h-9 w-full rounded-control border border-line px-2 text-sm"><option value="page-total">{t('현재 / 전체')}</option><option value="page">{t('현재 쪽')}</option><option value="none">{t('표시 안 함')}</option></select></label>
               <label className="flex items-end gap-2 pb-2 text-xs text-muted"><input type="checkbox" checked={settings.firstPageHeader} onChange={(event) => onSettings({ ...settings, firstPageHeader: event.target.checked })} />{t('첫 쪽에도 머리말 표시')}</label>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -938,7 +897,7 @@ export function DocumentEditor({
   const [renamed, setRenamed] = useState<Record<string, string>>({})
   const renamedRef = useRef<Record<string, string>>({})
   const [editedTitle, setTitle] = useState<string | null>(null)
-  const [pageSettings, setPageSettings] = useState<Required<PageSettings>>({
+  const [pageSettings, setPageSettings] = useState<PageSettings>({
     ...DEFAULT_PAGE_SETTINGS,
     ...report.pageSettings,
     margins: { ...DEFAULT_PAGE_SETTINGS.margins, ...report.pageSettings?.margins },

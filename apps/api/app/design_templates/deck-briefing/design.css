@@ -9,28 +9,21 @@
  * 시간을 쓸 곳인지 읽기 전에 보이게 하는 것이 이 덱의 목적이다. */
 
 :root {
-  --h2-size: clamp(1.4rem, 2.4vw, 1.9rem);
   --measure: min(52rem, 82%);
-  --pad-y: 9vh;
 }
 
-h2 { margin-bottom: 1.4rem; padding-bottom: 0.4em; }
-p, li { font-size: clamp(1rem, 1.3vw, 1.12rem); line-height: 1.55; }
-li + li { margin-top: 0.4em; }
-h3 { font-size: 0.74rem; letter-spacing: 0.16em; }
+h3 { letter-spacing: 0.1em; }
 
 /* 나뉜 장. 왼쪽은 물러나고 오른쪽만 선다. */
-.slide.split .cols { grid-template-columns: 1fr 1fr; column-gap: clamp(1.5rem, 4vw, 3rem); }
+.slide.split .cols { grid-template-columns: 1fr 1fr; column-gap: 3rem; }
 .slide.split .cols > div:first-child { color: var(--receded); }
 .slide.split .cols > div + div {
-  padding-left: clamp(1rem, 2vw, 1.75rem);
+  padding-left: 1.75rem;
   border-left: 2px solid var(--accent-ink);
 }
 .slide.split .cols > div + div h3 { color: var(--accent-ink); }
 
 /* 표가 많은 덱이다. 줄을 좁혀 한 장에 더 들어가게 한다. */
-table { font-size: clamp(0.9rem, 1.15vw, 1rem); }
-th, td { padding: 0.4em 0.8em 0.4em 0; }
 
 .slide.cover {
   background: linear-gradient(90deg, var(--paper) 0 64%, var(--accent) 64% 100%);

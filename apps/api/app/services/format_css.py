@@ -128,9 +128,9 @@ def format_css(fmt: doc_formats.DocFormat) -> str:
     )
 
 
-#: The paged preview's own rules that a head block meets (`DocumentEditor.tsx` PagedDocument):
-#: no cover page, whatever the template's cover asks for.
-PAGED_CSS = ".cover { min-height: 0 !important; break-after: auto !important; }"
+#: The paged preview's own rules that a head block meets (`pagedSheet.ts`): a cover's height
+#: is its own; a cover page ends at its page break, not at a screen height.
+PAGED_CSS = ".cover { min-height: 0 !important; }"
 
 # `docFormats.ts` CALLOUT_HTML and CONTENT_HEADING_HTML.
 _CALLOUT = re.compile(

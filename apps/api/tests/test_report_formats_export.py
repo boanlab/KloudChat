@@ -141,11 +141,25 @@ def test_no_title_block_leaves_the_files_as_they_were():
     assert plain.read("Contents/section0.xml") == empty.read("Contents/section0.xml")
 
 
-def test_the_title_block_heads_page_one_without_a_cover_page():
-    """No cover page: the title block and the first section share page one."""
-    pdf = report_export.to_pdf("시험 문서", SECTIONS, title_block=_block("cover"))
-    first = PdfReader(io.BytesIO(pdf)).pages[0].extract_text() or ""
-    assert "담당교수" in first and "서론" in first
+def test_a_cover_head_owns_page_one():
+    """A cover page: label, title and the head table alone on page one, the title on its
+    upper third, the table narrower than the text; the first section opens page two."""
+    data = report_export.to_pdf("시험 문서", SECTIONS, title_block=_block("cover"))
+    pdf = PdfReader(io.BytesIO(data))
+    first, second = (pdf.pages[0].extract_text() or ""), (pdf.pages[1].extract_text() or "")
+    assert "대학 과제 리포트" in first and "시험 문서" in first and "담당교수" in first
+    assert "서론" not in first and "1. 서론" in second
+    lines: list[tuple[float, str]] = []
+
+    def visit(text, cm, tm, _font, _size):
+        if text.strip():  # the text's baseline on the page: the text matrix in the CTM
+            lines.append((tm[4] * cm[1] + tm[5] * cm[3] + cm[5], text.strip()))
+
+    pdf.pages[0].extract_text(visitor_text=visit)
+    height = float(pdf.pages[0].mediabox.height)
+    title_at = next(y for y, text in lines if "시험 문서" in text)
+    assert 0.58 < title_at / height < 0.72  # 28–42 % down the sheet
+
     docx = (
         zipfile.ZipFile(
             io.BytesIO(report_export.to_docx("시험 문서", SECTIONS, title_block=_block("cover")))
@@ -153,7 +167,12 @@ def test_the_title_block_heads_page_one_without_a_cover_page():
         .read("word/document.xml")
         .decode()
     )
-    assert 'w:type="page"' not in docx[: docx.index("서론")]
+    head = docx[: docx.index("서론")]
+    assert 'w:type="page"' in head
+    assert head.index("대학 과제 리포트") < head.index("시험 문서") < head.index("담당교수")
+    wide = re.search(r'<w:tblW [^>]*w:w="(\d+)"', head)
+    assert wide and int(wide.group(1)) < 0.7 * 9638  # A4 less 2 cm margins, in twips
+
     hwpx = (
         zipfile.ZipFile(
             io.BytesIO(report_export.to_hwpx("시험 문서", SECTIONS, title_block=_block("cover")))
@@ -161,7 +180,10 @@ def test_the_title_block_heads_page_one_without_a_cover_page():
         .read("Contents/section0.xml")
         .decode()
     )
-    assert 'pageBreak="1"' not in hwpx[: hwpx.index("서론")]
+    head = hwpx[: hwpx.index("서론")]
+    assert 'pageBreak="1"' in head
+    assert 'borderFillIDRef="6"' in head  # the accent bar
+    assert 'horzAlign="CENTER"' in head  # the head table, centred
 
 
 def test_the_web_mirror_is_the_same_table():

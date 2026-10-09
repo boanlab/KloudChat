@@ -29,7 +29,15 @@ from typing import Any
 import nh3
 
 from app.models.chat import SessionKind
-from app.services import design, doc_formats, doc_type, format_css, pictures, table_figures
+from app.services import (
+    deck_preview,
+    design,
+    doc_formats,
+    doc_type,
+    format_css,
+    pictures,
+    table_figures,
+)
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 
@@ -269,6 +277,8 @@ def _seed(folder: Path, meta: dict) -> str:
                 seed = shared.read_text(encoding="utf-8")
     if not seed:
         return ""
+    # A deck seed reads its sizes from the deck's one type scale.
+    seed = seed.replace("{{DECK_TYPE}}", deck_preview.type_declarations())
     face = _read(folder, "design.css").strip()
     if not face:
         return seed
@@ -304,6 +314,74 @@ def _read(folder: Path, name: str) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
+def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
+    """One 서식 from its folder and its `template.toml`."""
+    kind = str(meta.get("kind") or "")
+    wrap: dict[str, Any] = meta.get("wrap") or {}
+    return DesignTemplate(
+        id=folder.name,
+        kind=kind,
+        name=str(meta.get("name") or folder.name),
+        description=str(meta.get("description") or ""),
+        category=str(meta.get("category") or "일반"),
+        fills=tuple(str(f) for f in (meta.get("fills") or [])),
+        example_prompt=str(meta.get("example_prompt") or ""),
+        name_en=str(meta.get("name_en") or ""),
+        description_en=str(meta.get("description_en") or ""),
+        category_en=str(meta.get("category_en") or ""),
+        fills_en=tuple(str(f) for f in (meta.get("fills_en") or [])),
+        example_prompt_en=str(meta.get("example_prompt_en") or ""),
+        instructions=_read(folder, "instructions.md"),
+        markup=_seed_markup(folder, meta),
+        checklist=_read(folder, "checklist.md"),
+        prompt_suffix=str(meta.get("prompt_suffix") or ""),
+        figure=str(meta.get("figure") or ""),
+        dark=bool(meta.get("dark")),
+        look=_look(meta, kind),
+        arguments=tuple(
+            Argument(
+                name=str(arg.get("name") or ""),
+                label=str(arg.get("label") or ""),
+                label_en=str(arg.get("label_en") or ""),
+                default=str(arg.get("default") or ""),
+                default_en=str(arg.get("default_en") or ""),
+                options=tuple(str(o) for o in (arg.get("options") or [])),
+                options_en=tuple(str(o) for o in (arg.get("options_en") or [])),
+                long=bool(arg.get("long")),
+            )
+            for arg in (meta.get("arguments") or [])
+            if arg.get("name")
+        ),
+        defaults=dict(meta.get("defaults") or {}),
+        docx_template=str(folder / "template.docx") if (folder / "template.docx").is_file() else "",
+        pptx_template=str(folder / "template.pptx") if (folder / "template.pptx").is_file() else "",
+        cover_page=bool(meta.get("cover_page", True)),
+        form_file=next(
+            (
+                str(folder / name)
+                for name in ("form.docx", "form.pptx")
+                if (folder / name).is_file()
+            ),
+            "",
+        ),
+        seed=_seed(folder, meta),
+        layouts=tuple(str(x) for x in (meta.get("layouts") or ["cover", "section"])),
+        wrap_cover=str(wrap.get("cover") or "{body}"),
+        wrap_block=str(wrap.get("block") or "{body}"),
+        wrap_group=str(wrap.get("group") or ""),
+        limits={
+            key: int(value)
+            for key, value in (meta.get("limits") or {}).items()
+            if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
+        },
+        skills=tuple(str(k) for k in (meta.get("skills") or [])),
+        no_skills=meta.get("skills") == [],
+        check_skills=tuple(str(k) for k in (meta.get("check_skills") or [])),
+        body_face_from_design=meta.get("body_face") == "design",
+        sample=_read(folder, "sample.html"),
+    )
+
+
 def _load() -> dict[str, DesignTemplate]:
     found: dict[str, DesignTemplate] = {}
     if not _ROOT.is_dir():
@@ -314,76 +392,9 @@ def _load() -> dict[str, DesignTemplate]:
         if not manifest.is_file():
             continue
         meta: dict[str, Any] = tomllib.loads(manifest.read_text(encoding="utf-8"))
-        kind = str(meta.get("kind") or "")
-        if kind not in SURFACE:
+        if str(meta.get("kind") or "") not in SURFACE:
             continue
-        wrap: dict[str, Any] = meta.get("wrap") or {}
-        found[folder.name] = DesignTemplate(
-            id=folder.name,
-            kind=kind,
-            name=str(meta.get("name") or folder.name),
-            description=str(meta.get("description") or ""),
-            category=str(meta.get("category") or "일반"),
-            fills=tuple(str(f) for f in (meta.get("fills") or [])),
-            example_prompt=str(meta.get("example_prompt") or ""),
-            name_en=str(meta.get("name_en") or ""),
-            description_en=str(meta.get("description_en") or ""),
-            category_en=str(meta.get("category_en") or ""),
-            fills_en=tuple(str(f) for f in (meta.get("fills_en") or [])),
-            example_prompt_en=str(meta.get("example_prompt_en") or ""),
-            instructions=_read(folder, "instructions.md"),
-            markup=_seed_markup(folder, meta),
-            checklist=_read(folder, "checklist.md"),
-            prompt_suffix=str(meta.get("prompt_suffix") or ""),
-            figure=str(meta.get("figure") or ""),
-            dark=bool(meta.get("dark")),
-            look=_look(meta, kind),
-            arguments=tuple(
-                Argument(
-                    name=str(arg.get("name") or ""),
-                    label=str(arg.get("label") or ""),
-                    label_en=str(arg.get("label_en") or ""),
-                    default=str(arg.get("default") or ""),
-                    default_en=str(arg.get("default_en") or ""),
-                    options=tuple(str(o) for o in (arg.get("options") or [])),
-                    options_en=tuple(str(o) for o in (arg.get("options_en") or [])),
-                    long=bool(arg.get("long")),
-                )
-                for arg in (meta.get("arguments") or [])
-                if arg.get("name")
-            ),
-            defaults=dict(meta.get("defaults") or {}),
-            docx_template=str(folder / "template.docx")
-            if (folder / "template.docx").is_file()
-            else "",
-            pptx_template=str(folder / "template.pptx")
-            if (folder / "template.pptx").is_file()
-            else "",
-            cover_page=bool(meta.get("cover_page", True)),
-            form_file=next(
-                (
-                    str(folder / name)
-                    for name in ("form.docx", "form.pptx")
-                    if (folder / name).is_file()
-                ),
-                "",
-            ),
-            seed=_seed(folder, meta),
-            layouts=tuple(str(x) for x in (meta.get("layouts") or ["cover", "section"])),
-            wrap_cover=str(wrap.get("cover") or "{body}"),
-            wrap_block=str(wrap.get("block") or "{body}"),
-            wrap_group=str(wrap.get("group") or ""),
-            limits={
-                key: int(value)
-                for key, value in (meta.get("limits") or {}).items()
-                if key in ("max_bullets", "max_bullet_chars") and int(value) > 0
-            },
-            skills=tuple(str(k) for k in (meta.get("skills") or [])),
-            no_skills=meta.get("skills") == [],
-            check_skills=tuple(str(k) for k in (meta.get("check_skills") or [])),
-            body_face_from_design=meta.get("body_face") == "design",
-            sample=_read(folder, "sample.html"),
-        )
+        found[folder.name] = _template(folder, meta)
     return found
 
 
@@ -401,6 +412,54 @@ def for_surface(kind: SessionKind) -> list[DesignTemplate]:
 
 def get(template_id: str | None) -> DesignTemplate | None:
     return _TEMPLATES.get(template_id or "")
+
+
+#: The shared seed as a 서식 of its own, outside the catalogue.
+GENERIC_ID = "_document"
+
+#: Document 서식 taken out of the catalogue. Documents and sessions may still name them;
+#: `rendering` draws those in the shared seed, and nothing new can choose them.
+RETIRED = frozenset(
+    {
+        "doc-brief",
+        "doc-case",
+        "doc-incident",
+        "doc-lab",
+        "doc-notice",
+        "doc-project-brief",
+        "doc-proposal",
+        "doc-report",
+        "doc-survey",
+        "doc-term-paper",
+    }
+)
+
+_GENERIC = _template(
+    _ROOT / GENERIC_ID,
+    {
+        "kind": "document",
+        "name": "기본 서식",
+        "name_en": "Standard",
+        "category": "업무",
+        "category_en": "Work",
+        "layouts": ["cover", "section"],
+        "wrap": {
+            # The shared seed's cover owns its page (`seed.html` cover page).
+            "cover": '<div class="cover cover-page"><h1>{title}</h1>{body}</div>',
+            "block": "<section><h2>{title}</h2>{body}</section>",
+        },
+    },
+)
+
+
+def rendering(template_id: str | None) -> DesignTemplate | None:
+    """The 서식 a stored document is drawn and exported in: its own, or the shared seed when
+    it names a retired one (or the seed itself). None for any other unknown id."""
+    if found := get(template_id):
+        return found
+    if template_id in RETIRED or template_id == GENERIC_ID:
+        return _GENERIC
+    return None
 
 
 def default_for(defaults: Any, kind: SessionKind) -> str | None:
@@ -573,6 +632,11 @@ def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
     A 서식 bound to a document format (`doc_formats.TEMPLATE_FORMATS`) gets that format's
     rules as the web draws them — the head block, heading numbers, 개조식 — so the sample's
     `header.tb` reads as it will in a real document."""
+    if template.kind == "deck":
+        page = render(template, title=template.name, tokens=tokens, body=template.sample)
+        # Each slide at the body step the deck would settle on.
+        style = deck_preview.deck_style(sample_slides(template), template.seed)
+        return _HEAD_END.sub(lambda _m: style + "</head>", page, count=1)
     if template.kind != "document":
         return render(template, title=template.name, tokens=tokens, body=template.sample)
     fmt = doc_formats.BY_ID.get(doc_formats.TEMPLATE_FORMATS.get(template.id, ""))
@@ -608,7 +672,8 @@ def render_slide(template: DesignTemplate, *, tokens: dict[str, str], n: int) ->
     if not 1 <= n <= len(slides):
         return None
     page = render(template, title=template.name, tokens=tokens, body=slides[n - 1])
-    return _HEAD_END.sub(lambda _m: _ONE_SLIDE + "</head>", page, count=1)
+    style = _ONE_SLIDE + deck_preview.slide_style(slides, template.seed, n)
+    return _HEAD_END.sub(lambda _m: style + "</head>", page, count=1)
 
 
 _STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
@@ -677,6 +742,8 @@ def escape(text: str) -> str:
 
 
 __all__ = [
+    "GENERIC_ID",
+    "RETIRED",
     "form_text",
     "HTML_KINDS",
     "SURFACE",
@@ -692,6 +759,7 @@ __all__ = [
     "for_surface",
     "get",
     "render",
+    "rendering",
     "sanitise",
     "stylesheet",
 ]

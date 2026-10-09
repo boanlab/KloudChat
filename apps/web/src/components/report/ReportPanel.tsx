@@ -887,8 +887,9 @@ export function ReportPanel({
   // What the reader was looking at before the 「편집」 tab opened the page editor; leaving
   // that tab puts it back, so 「홈」 is not left showing the editor.
   const viewBeforeEdit = useRef<'web' | 'page'>('web')
-  // The template decides the exported file's styles; stored on the document.
-  const [templateId, setTemplateId] = useState(report.templateId || 'doc-report')
+  // The template decides the exported file's styles; stored on the document. With none
+  // the page view draws the shared seed (`_document`), as a retired 서식 does on the server.
+  const [templateId, setTemplateId] = useState(report.templateId || '_document')
   const [templateSaving, setTemplateSaving] = useState(false)
   const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
   const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#5b5bd6')

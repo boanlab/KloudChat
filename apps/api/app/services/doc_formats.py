@@ -179,10 +179,7 @@ APPROVERS = ("기안자", "검토자", "결재권자")
 
 #: Render templates that already fix the purpose.
 TEMPLATE_FORMATS = {
-    "doc-lab": "lab", "doc-minutes": "minutes", "doc-incident": "incident",
-    "doc-notice": "official", "doc-proposal": "proposal", "doc-project-brief": "proposal",
-    "doc-term-paper": "term", "doc-survey": "plan", "doc-brief": "biz",
-    "doc-gaejo-report": "gaejo", "doc-internal-draft": "internal_draft",
+    "doc-minutes": "minutes", "doc-gaejo-report": "gaejo", "doc-internal-draft": "internal_draft",
     "doc-event-plan": "event_plan", "doc-result-report": "result_report",
     "doc-client-proposal": "client_proposal", "doc-comparison": "comparison",
     "doc-career-history": "career_history",

@@ -213,18 +213,15 @@ def test_a_closing_format_ends_its_sample_with_kkeut(template_id: str) -> None:
 def test_the_preview_numbers_marks_and_aligns_as_the_product_does() -> None:
     with _client() as client:
         gaejo = client.get("/design-templates/doc-gaejo-report/preview").text
-        case = client.get("/design-templates/doc-case/preview").text
-        brief = client.get("/design-templates/doc-project-brief/preview").text
+        comparison = client.get("/design-templates/doc-comparison/preview").text
     # The format's own rules and its element.
     assert '<div class="fmt gaejo tb-scaled f-gaejo">' in gaejo
     assert ".tb.tb-onepage .tb-box" in gaejo
     assert '<h2 data-num="1.">현황</h2>' in gaejo
-    # A card's title is not numbered: its `::before` is the card's colour bar.
-    assert re.search(r"<h3>산출물</h3>", brief)
-    # Figures flush right, words left: 값 is figures, 안 1–3 hold 「주 1일」 「전면」.
-    assert '<td class="fig">71%</td>' in case
-    assert "<td>주 2일</td>" in case and "<td>전면</td>" in case
-    assert '<span class="doc-placeholder">[비율]</span>' in case
+    # Figures flush right, words left: 비용 is figures, the 기준 column words.
+    assert '<td class="fig">21,600,000</td>' in comparison
+    assert "<td>연 비용(원)</td>" in comparison
+    assert '<span class="doc-placeholder">[담당자]</span>' in comparison
 
 
 def test_no_document_template_sets_a_column_right_by_its_position() -> None:
