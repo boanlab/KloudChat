@@ -5,7 +5,7 @@ import { shellRead } from './shell-mocks'
  * Pipeline phase 2 screens against fixture data: the stage list in a report transcript and on the
  * 검토 tab, 「이 단계부터 다시」 streaming a new version, the question card as a waiting stage,
  * blanks and findings marked in the document (filled in place), the chat's compact stage list,
- * and an agent's pipeline on its card and in the editor's 「흐름」 tab.
+ * and an agent's pipeline on its card and in the editor's 「워크플로」 tab.
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -364,24 +364,24 @@ test('chat: compact stage list beside tool steps', async ({ page }, testInfo) =>
   expect(state.problems).toEqual([])
 })
 
-test('agents: pipeline chain and the 흐름 tab', async ({ page }, testInfo) => {
+test('agents: pipeline chain and the 워크플로 tab', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
   await page.goto('/agents')
-  await expect(page.getByLabel('작업 흐름: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
   await shot('agent-card')
   await page.getByRole('button', { name: '편집', exact: true }).first().click()
-  await page.getByRole('tab', { name: '흐름' }).click()
-  // A read-only summary; flows are edited on the 「흐름」 page (user-pipelines.spec.ts).
+  await page.getByRole('tab', { name: '워크플로' }).click()
+  // A read-only summary; flows are edited on the 「워크플로」 page (user-pipelines.spec.ts).
   const summary = page.getByTestId('agent-flow-summary')
-  await expect(summary.getByLabel('작업 흐름: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible()
-  await expect(summary.getByRole('link', { name: '흐름 편집' })).toBeVisible()
+  await expect(summary.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible()
+  await expect(summary.getByRole('link', { name: '워크플로 편집' })).toBeVisible()
   await shot('agent-flow-tab')
   if (testInfo.project.name !== 'phone') {
     await page.keyboard.press('Escape')
     await page.goto('/')
     await page.getByRole('button', { name: '보고서', exact: true }).first().click()
-    await expect(page.getByLabel('작업 흐름: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
     await page.getByText('에이전트에게 맡기기').scrollIntoViewIfNeeded()
     await page.waitForTimeout(400)
     await shot('home-agent-picker')

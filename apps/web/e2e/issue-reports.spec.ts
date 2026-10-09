@@ -4,7 +4,8 @@ import { openSidebar } from './helpers'
 /**
  * 「문의·신고」 against fixture data: a 👎 answer reported with the answer pinned, the session
  * shared only when ticked (and a strict-local one confirmed again), a screenshot sent along;
- * 「내 신고」 with the reply badge; the administrator's queue, status flow, reply, and the
+ * the account menu's 「문의·신고」 page with the reply badge and its 「새 신고」·「새 문의」, which keep
+ * the conversation the user came from; the administrator's queue, status flow, reply, and the
  * read-only session copy with the reported answer highlighted.
  */
 
@@ -192,6 +193,8 @@ function shooter(page: Page, testInfo: TestInfo) {
   let n = 0
   return async (name: string, full = false) => {
     n += 1
+    // Let menus, drawers and dialogs finish their transitions.
+    await page.waitForTimeout(400)
     await page.screenshot({ path: `${dir}/${testInfo.title.split(':')[0]}-${String(n).padStart(2, '0')}-${name}.png`, fullPage: full })
   }
 }
@@ -229,9 +232,9 @@ test('reporter: report a 👎 answer with consent, a screenshot and the extra st
   expect(state.calls).toEqual(['POST /files', 'POST /issues'])
   await shot('sent')
 
-  // An administrator answers; the badge and 「내 신고」 show it.
+  // An administrator answers; the badge and 「문의·신고」 show it.
   state.giveReply()
-  await dialog.getByRole('button', { name: '내 신고 보기' }).click()
+  await dialog.getByRole('button', { name: '문의·신고 보기' }).click()
   await expect(page).toHaveURL(/\/issues$/)
   const item = page.getByTestId('my-issue').first()
   await expect(item.getByText('새 답변')).toBeVisible()
@@ -243,20 +246,61 @@ test('reporter: report a 👎 answer with consent, a screenshot and the extra st
   expect(state.problems).toEqual([])
 })
 
-test('reporter: unticked sends no session; from the account menu', async ({ page }, testInfo) => {
+test('reporter: the account menu opens 「문의·신고」; new report and inquiry keep the session', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
+  const shot = shooter(page, testInfo)
   await page.goto(`/s/${sessionId}`)
   await openSidebar(page)
   await page.getByRole('button', { name: /^계정 메뉴/ }).first().click()
+  // One entry: no separate 「내 신고」.
+  await expect(page.getByRole('menuitem', { name: '내 신고' })).toHaveCount(0)
+  await shot('menu')
   await page.getByRole('menuitem', { name: '문의·신고' }).click()
-  const dialog = page.getByRole('dialog', { name: '문의·신고' })
-  await dialog.getByRole('radio', { name: '기능 요청' }).click()
-  await dialog.getByRole('textbox').first().fill('표를 CSV로 바로 받고 싶습니다.')
+  await expect(page).toHaveURL(/\/issues$/)
+  await expect(page.getByRole('heading', { name: '문의·신고' })).toBeVisible()
+  await expect(page.getByText('보낸 문의·신고가 없습니다')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await shot('page-empty', true)
+
+  // 「새 문의」 starts as an inquiry, the conversation the user came from on offer, not ticked.
+  await page.getByRole('button', { name: '새 문의' }).click()
+  let dialog = page.getByRole('dialog', { name: '문의·신고' })
+  await expect(dialog.getByRole('radio', { name: '문의' })).toHaveAttribute('aria-checked', 'true')
   await expect(dialog.getByText('세션 첨부')).toBeVisible()
+  await dialog.getByRole('textbox').first().fill('표를 CSV로 받을 수 있나요?')
   await dialog.getByRole('button', { name: '보내기' }).click()
   await expect(dialog.getByText('접수되었습니다')).toBeVisible()
-  expect(state.created[0]).toMatchObject({ kind: 'feature', shareSession: false, confirmInternal: false })
+  await dialog.getByRole('button', { name: '닫기', exact: true }).last().click()
+  expect(state.created[0]).toMatchObject({ kind: 'other', sessionId, shareSession: false, confirmInternal: false })
   expect(state.created[0].messageId).toBeUndefined()
+  await expect(page.getByTestId('my-issue')).toHaveCount(1)
+  await expect(page.getByTestId('my-issue').getByText('문의', { exact: true })).toBeVisible()
+
+  // 「새 신고」 starts as a bug report; the chooser still offers the rest.
+  await page.getByRole('button', { name: '새 신고' }).click()
+  dialog = page.getByRole('dialog', { name: '문의·신고' })
+  await expect(dialog.getByRole('radio', { name: '오류 신고' })).toHaveAttribute('aria-checked', 'true')
+  await shot('new-report')
+  await dialog.getByRole('radio', { name: '기능 요청' }).click()
+  await dialog.getByRole('textbox').first().fill('표를 CSV로 바로 받고 싶습니다.')
+  await dialog.getByLabel('이 세션을 관리자에게 공유합니다').check()
+  await dialog.getByRole('checkbox', { name: '내부 자료가 포함된 것을 알고 공유합니다' }).check()
+  await dialog.getByRole('button', { name: '보내기' }).click()
+  await expect(dialog.getByText('접수되었습니다')).toBeVisible()
+  await dialog.getByRole('button', { name: '닫기', exact: true }).last().click()
+  expect(state.created[1]).toMatchObject({ kind: 'feature', sessionId, shareSession: true })
+  await expect(page.getByTestId('my-issue')).toHaveCount(2)
+  await shot('page-list', true)
+
+  // Opened from outside a conversation there is none to attach. (A reload of the page keeps
+  // the router state, so leave it first.)
+  await page.goto('/')
+  await page.goto('/issues')
+  await page.getByRole('button', { name: '새 신고' }).click()
+  dialog = page.getByRole('dialog', { name: '문의·신고' })
+  await expect(dialog.getByRole('radio', { name: '오류 신고' })).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByRole('textbox').first()).toBeVisible()
+  await expect(dialog.getByText('세션 첨부')).toHaveCount(0)
   expect(state.unexpected).toEqual([])
   expect(state.problems).toEqual([])
 })

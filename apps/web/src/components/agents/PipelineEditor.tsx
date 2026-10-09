@@ -126,8 +126,8 @@ export function StepChips({ steps, className }: { steps: PipelineStep[]; classNa
 }
 
 /**
- * The agent editor's 「흐름」 tab: which flow the agent runs, read-only. The choice is applied with
- * the agent's own 「저장」; editing happens on the 「흐름」 page.
+ * The agent editor's 「워크플로」 tab: which flow the agent runs, read-only. The choice is applied with
+ * the agent's own 「저장」; editing happens on the 「워크플로」 page.
  */
 export function AgentFlowSummary({
   agent,
@@ -165,14 +165,14 @@ export function AgentFlowSummary({
   return (
     <div className="space-y-4" data-testid="agent-flow-summary">
       {owned && output && (
-        <Field label={t('연결할 흐름')} hint={t('에이전트를 저장하면 이 흐름으로 일합니다.')}>
+        <Field label={t('연결할 워크플로')} hint={t('에이전트를 저장하면 이 워크플로로 일합니다.')}>
           <Select
-            aria-label={t('연결할 흐름')}
+            aria-label={t('연결할 워크플로')}
             value={pickedId ?? ''}
             disabled={mine === null}
             onChange={(e) => onChoose(e.target.value || null)}
           >
-            <option value="">{t('기본 흐름')}</option>
+            <option value="">{t('기본 워크플로')}</option>
             {fits.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -183,7 +183,7 @@ export function AgentFlowSummary({
       )}
       <div className="space-y-2 rounded-card border border-line p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-base font-medium">{picked ? picked.name : t('기본 흐름')}</p>
+          <p className="min-w-0 truncate text-base font-medium">{picked ? picked.name : t('기본 워크플로')}</p>
           {picked ? (
             <Badge tone={REVIEW_TONE[picked.review]}>{t(REVIEW_LABEL[picked.review])}</Badge>
           ) : (
@@ -192,14 +192,14 @@ export function AgentFlowSummary({
         </div>
         {picked ? <StepChips steps={picked.stages} /> : <PipelineChain agentId={agent.id} />}
         {pickedId !== (bound?.id ?? null) && mine !== null && (
-          <p className="text-sm text-warn">{t('저장하면 이 흐름으로 바뀝니다.')}</p>
+          <p className="text-sm text-warn">{t('저장하면 이 워크플로로 바뀝니다.')}</p>
         )}
       </div>
       <Link
         to={editTo}
         className="inline-flex items-center gap-1 text-base font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
       >
-        {t('흐름 편집')}
+        {t('워크플로 편집')}
         <ArrowRight size={14} aria-hidden />
       </Link>
     </div>
@@ -302,7 +302,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
       await loadSessions()
       navigate(`/s/${made.sessionId}`)
     } catch (err) {
-      setError(errorMessage(err, t('이 흐름으로 시작하지 못했습니다.')))
+      setError(errorMessage(err, t('이 워크플로로 시작하지 못했습니다.')))
       setBusy(false)
     }
   }
@@ -311,7 +311,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
     <div className="space-y-3" data-testid="pipeline-editor">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1 basis-64">
-          <Field label={t('흐름 이름')}>
+          <Field label={t('워크플로 이름')}>
             <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
           </Field>
         </div>
@@ -405,7 +405,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
       <div
         className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-line bg-bg/95 px-4 pt-3 max-sm:gap-1 max-sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6"
         role="toolbar"
-        aria-label={t('흐름 작업')}
+        aria-label={t('워크플로 작업')}
         data-testid="pipeline-actions"
       >
         <Button variant="primary" size="sm" disabled={busy || !dirty || !verdict?.ok} onClick={() => void save()}>
@@ -435,7 +435,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
           onClick={() => void start()}
         >
           <Play size={13} className="max-sm:hidden" />
-          {t('이 흐름으로 시작')}
+          {t('이 워크플로로 시작')}
         </Button>
         {dirty && <span className="text-sm text-warn max-sm:hidden">{t('저장하지 않은 변경이 있습니다.')}</span>}
         <Button size="sm" variant="danger" className="ml-auto" disabled={busy} onClick={() => setConfirmDelete(true)}>
@@ -451,7 +451,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
         onClose={() => setConfirmDelete(false)}
         onConfirm={() => void remove()}
         title={t('{name} 삭제').replace('{name}', saved.name)}
-        description={t('이 흐름을 쓰던 에이전트는 기본 흐름으로 돌아갑니다.')}
+        description={t('이 워크플로를 쓰던 에이전트는 기본 워크플로로 돌아갑니다.')}
       />
       <ConfirmDialog
         open={guard.pending}
@@ -703,13 +703,13 @@ export function PipelineStore({ onImported }: { onImported?: () => void } = {}) 
     return (
       <EmptyState
         icon={<Workflow size={18} />}
-        title={t('공유된 흐름이 없습니다')}
-        description={t('내 흐름을 조직에 공유 요청하면 관리자 승인 뒤 여기에 올라옵니다.')}
+        title={t('공유된 워크플로가 없습니다')}
+        description={t('내 워크플로를 조직에 공유 요청하면 관리자 승인 뒤 여기에 올라옵니다.')}
       />
     )
   }
   return (
-    <div className="grid gap-3 sm:grid-cols-2" aria-label={t('공유된 흐름')}>
+    <div className="grid gap-3 sm:grid-cols-2" aria-label={t('공유된 워크플로')}>
       {rows.map((p) => (
         <Card key={p.id} className="space-y-2 p-4" data-testid="shared-pipeline">
           <div className="flex items-start justify-between gap-2">
@@ -730,11 +730,11 @@ export function PipelineStore({ onImported }: { onImported?: () => void } = {}) 
                 onClick={async () => {
                   try {
                     await userPipelinesApi.create({ fromId: p.id })
-                    setNotice(t('내 흐름으로 가져왔습니다.'))
+                    setNotice(t('내 워크플로로 가져왔습니다.'))
                     void reload()
                     onImported?.()
                   } catch (err) {
-                    setNotice(errorMessage(err, t('흐름을 가져오지 못했습니다.')))
+                    setNotice(errorMessage(err, t('워크플로를 가져오지 못했습니다.')))
                   }
                 }}
               >
@@ -750,12 +750,12 @@ export function PipelineStore({ onImported }: { onImported?: () => void } = {}) 
                   await loadSessions()
                   navigate(`/s/${made.sessionId}`)
                 } catch (err) {
-                  setNotice(errorMessage(err, t('이 흐름으로 시작하지 못했습니다.')))
+                  setNotice(errorMessage(err, t('이 워크플로로 시작하지 못했습니다.')))
                 }
               }}
             >
               <Play size={13} />
-              {t('이 흐름으로 시작')}
+              {t('이 워크플로로 시작')}
             </Button>
           </div>
         </Card>
@@ -776,11 +776,11 @@ export function PipelineApprovals() {
     void reload()
   }, [reload])
   return (
-    <section className="space-y-2 pt-8" aria-label={t('흐름 공유 승인')}>
-      <h2 className="text-lg font-semibold">{t('흐름 공유 승인')}</h2>
+    <section className="space-y-2 pt-8" aria-label={t('워크플로 공유 승인')}>
+      <h2 className="text-lg font-semibold">{t('워크플로 공유 승인')}</h2>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {rows !== null && rows.length === 0 ? (
-        <EmptyState icon={<ListTree size={18} />} title={t('승인을 기다리는 흐름이 없습니다')} />
+        <EmptyState icon={<ListTree size={18} />} title={t('승인을 기다리는 워크플로가 없습니다')} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {(rows ?? []).map((p) => (

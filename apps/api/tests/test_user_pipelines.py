@@ -276,7 +276,7 @@ async def test_a_pipeline_is_cloned_edited_shared_and_approved(wired):
     p = await _people(wired.local)
     async with wired.local() as db:
         made = await up.create(up.PipelineIn(from_agent_id=p.cmp.id), p.me, db)
-        assert made["name"] == "비교 보고서 흐름" and made["base"] == "comparison-report"
+        assert made["name"] == "비교 보고서 워크플로" and made["base"] == "comparison-report"
         assert [(s["kind"], s["title"]) for s in made["stages"]] == [
             ("human", "확인 질문"), ("agent", "비교 보고서")]
         assert made["surface"] == "report" and made["problems"] == []

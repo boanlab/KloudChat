@@ -15,7 +15,7 @@ import type { Agent, UserPipeline } from '@/types'
 
 type Tab = 'mine' | 'shipped' | 'store'
 
-/** 「흐름」: your own flows, the shipped ones to copy from, and the ones the organization shares. */
+/** 「워크플로」: your own flows, the shipped ones to copy from, and the ones the organization shares. */
 export function PipelinesPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -46,25 +46,25 @@ export function PipelinesPage() {
   const create = async () => {
     setBusy(true)
     try {
-      const made = await userPipelinesApi.create({ name: t('새 흐름') })
+      const made = await userPipelinesApi.create({ name: t('새 워크플로') })
       navigate(`/pipelines/${made.id}`)
     } catch (err) {
-      setNotice(errorMessage(err, t('흐름을 만들지 못했습니다.')))
+      setNotice(errorMessage(err, t('워크플로를 만들지 못했습니다.')))
       setBusy(false)
     }
   }
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('흐름')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('워크플로')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('흐름')}
-          description={t('에이전트·스킬·검사·검토·내보내기를 순서대로 엮은 작업 흐름입니다. 기본 흐름을 복제해 고치고, 에이전트에 연결하거나 바로 시작합니다.')}
+          title={t('워크플로')}
+          description={t('에이전트·스킬·검사·검토·내보내기를 순서대로 엮은 작업 절차입니다. 기본 워크플로를 복제해 고치고, 에이전트에 연결하거나 바로 시작합니다.')}
           action={
             <Button variant="primary" disabled={busy} onClick={() => void create()}>
               <Plus size={16} />
-              {t('새 흐름')}
+              {t('새 워크플로')}
             </Button>
           }
         />
@@ -72,8 +72,8 @@ export function PipelinesPage() {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: 'mine', label: t('내 흐름'), count: mine?.length },
-            { id: 'shipped', label: t('기본 흐름') },
+            { id: 'mine', label: t('내 워크플로'), count: mine?.length },
+            { id: 'shipped', label: t('기본 워크플로') },
             { id: 'store', label: t('스토어') },
           ]}
         />
@@ -94,11 +94,11 @@ function MyPipelines({ rows, onShipped }: { rows: UserPipeline[] | null; onShipp
     return (
       <EmptyState
         icon={<Workflow size={18} />}
-        title={t('아직 내 흐름이 없습니다')}
-        description={t('기본 흐름을 복제하거나 스토어에서 가져와 시작하세요.')}
+        title={t('아직 내 워크플로가 없습니다')}
+        description={t('기본 워크플로를 복제하거나 스토어에서 가져와 시작하세요.')}
         action={
           <Button size="sm" onClick={onShipped}>
-            {t('기본 흐름 보기')}
+            {t('기본 워크플로 보기')}
           </Button>
         }
       />
@@ -174,17 +174,17 @@ function ShippedPipelines({ focus }: { focus: string | null }) {
       const made = await userPipelinesApi.create({ fromAgentId: agent.id })
       navigate(`/pipelines/${made.id}`)
     } catch (err) {
-      setNotice(errorMessage(err, t('흐름을 복제하지 못했습니다.')))
+      setNotice(errorMessage(err, t('워크플로를 복제하지 못했습니다.')))
       setBusy(false)
     }
   }
 
   if (shipped.length === 0) {
-    return <EmptyState icon={<Workflow size={18} />} title={t('기본 흐름이 있는 에이전트가 없습니다')} />
+    return <EmptyState icon={<Workflow size={18} />} title={t('기본 워크플로가 있는 에이전트가 없습니다')} />
   }
   return (
     <div className="space-y-3">
-      <p className="text-sm text-muted">{t('기본 흐름은 고칠 수 없습니다. 복제하면 내 흐름으로 고칠 수 있습니다.')}</p>
+      <p className="text-sm text-muted">{t('기본 워크플로는 고칠 수 없습니다. 복제하면 내 워크플로로 고칠 수 있습니다.')}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {shipped.map((a) => (
           <Card
@@ -250,7 +250,7 @@ export function PipelineEditPage() {
         left={
           <span className="flex min-w-0 items-center gap-1.5 text-base">
             <Link to="/pipelines" className="shrink-0 text-muted hover:text-fg">
-              {t('흐름')}
+              {t('워크플로')}
             </Link>
             <span className="text-faint" aria-hidden>
               /
@@ -265,14 +265,14 @@ export function PipelineEditPage() {
           className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
         >
           <ArrowLeft size={14} aria-hidden />
-          {t('흐름 목록')}
+          {t('워크플로 목록')}
         </Link>
         {row === undefined && <LoadingState />}
         {row === null && (
           <EmptyState
             icon={<Workflow size={18} />}
-            title={t('이 흐름을 찾을 수 없습니다')}
-            description={t('지워졌거나 내 흐름이 아닙니다.')}
+            title={t('이 워크플로를 찾을 수 없습니다')}
+            description={t('지워졌거나 내 워크플로가 아닙니다.')}
           />
         )}
         {row && <PipelineEditor key={row.id} pipeline={row} onSaved={(saved) => setLoaded({ id: saved.id, row: saved })} />}

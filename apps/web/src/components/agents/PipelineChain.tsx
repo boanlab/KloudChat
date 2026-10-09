@@ -37,7 +37,7 @@ export function PipelineChain({ agentId, className, iconsOnly = false }: { agent
     <div className={cn('@container min-w-0', className)}>
     <p
       className="flex min-w-0 flex-nowrap items-center gap-x-0.5 overflow-hidden whitespace-nowrap text-xs text-muted"
-      aria-label={t('작업 흐름: {chain}').replace('{chain}', spoken)}
+      aria-label={t('워크플로: {chain}').replace('{chain}', spoken)}
       title={spoken}
     >
       {chain.map((step, i) => {
@@ -63,14 +63,14 @@ export function PipelineFlowView({ agentId }: { agentId: string }) {
   const pipeline = useAgentPipeline(agentId)
   if (pipeline === undefined) return <p className="py-6 text-center text-base text-faint">{t('불러오는 중…')}</p>
   if (pipeline === null) {
-    return <p className="py-6 text-center text-base text-faint">{t('이 에이전트의 작업 흐름을 불러오지 못했습니다.')}</p>
+    return <p className="py-6 text-center text-base text-faint">{t('이 에이전트의 워크플로를 불러오지 못했습니다.')}</p>
   }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-base font-medium">
-            {t('흐름')} <span className="font-mono text-sm text-faint">{pipeline.name}</span>
+            {t('워크플로')} <span className="font-mono text-sm text-faint">{pipeline.name}</span>
           </p>
           <PipelineChain agentId={agentId} className="mt-1" />
         </div>

@@ -10,7 +10,7 @@ import { issuesApi, type IssueCut, type IssueKind, type IssueStatus } from '@/li
 export const KIND_LABEL: Record<IssueKind, string> = {
   bug: '오류 신고',
   feature: '기능 요청',
-  other: '기타',
+  other: '문의',
 }
 
 export const STATUS_LABEL: Record<IssueStatus, string> = {

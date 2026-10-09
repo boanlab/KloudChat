@@ -78,7 +78,7 @@ function trail(): Row[] {
       detail: 'monthly=5000',
       metadata: { changes: { monthly_credits: [1000, 5000] } },
     },
-    { ...base, id: 'flow', at: at(6), actor: 'admin@example.com', action: 'pipeline.approve', target: '주간 보고 흐름', metadata: { changes: { review: ['pending', 'approved'] } } },
+    { ...base, id: 'flow', at: at(6), actor: 'admin@example.com', action: 'pipeline.approve', target: '주간 보고 워크플로', metadata: { changes: { review: ['pending', 'approved'] } } },
     { ...base, id: 'fail', at: at(7), actor: '시스템', action: 'login', target: 'evil@example.com', detail: 'failed', severity: 'warn' },
   ]
   for (let i = 0; i < 130; i += 1) {

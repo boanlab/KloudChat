@@ -1,5 +1,6 @@
-import { ChevronRight, Flag, Image as ImageIcon, Layers, Plus } from 'lucide-react'
+import { ChevronRight, Flag, Image as ImageIcon, Layers, MessageCircleQuestionMark, Plus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { IssueThread, StatusBadge } from '@/components/issues/IssueThread'
@@ -9,10 +10,15 @@ import { KIND_LABEL, useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
-/** 「내 신고」: what I reported, where it stands, and what the administrators said. */
+/**
+ * 「문의·신고」: what I sent, where it stands, and what the administrators said; new reports
+ * and inquiries start here. The account menu passes the conversation the user came from as
+ * router state, so a report started here can still attach it.
+ */
 export function IssuesPage() {
   const t = useT()
   const openReport = useIssues((s) => s.openReport)
+  const sessionId = (useLocation().state as { sessionId?: string } | null)?.sessionId
   const dialogOpen = useIssues((s) => s.open)
   const refreshUnread = useIssues((s) => s.refreshUnread)
   const [rows, setRows] = useState<IssueRow[] | null>(null)
@@ -41,17 +47,23 @@ export function IssuesPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('내 신고')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
       <PageBody className="max-w-3xl">
         <div className="flex flex-wrap items-end justify-between gap-3 pb-5">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t('내 신고')}</h1>
-            <p className="mt-1 text-base text-muted">{t('보낸 오류 신고와 기능 요청, 처리 상태와 관리자 답변입니다.')}</p>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">{t('문의·신고')}</h1>
+            <p className="mt-1 text-base text-muted">{t('보낸 오류 신고와 문의, 처리 상태와 관리자 답변입니다.')}</p>
           </div>
-          <Button variant="primary" onClick={() => openReport()}>
-            <Plus size={14} />
-            {t('새 신고')}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => openReport({ kind: 'other', sessionId })}>
+              <MessageCircleQuestionMark size={14} />
+              {t('새 문의')}
+            </Button>
+            <Button variant="primary" onClick={() => openReport({ kind: 'bug', sessionId })}>
+              <Plus size={14} />
+              {t('새 신고')}
+            </Button>
+          </div>
         </div>
         {failed && <ReloadNotice onRetry={load} />}
         {rows === null && !failed ? (
@@ -59,7 +71,7 @@ export function IssuesPage() {
         ) : rows && rows.length === 0 ? (
           <EmptyState
             icon={<Flag size={18} />}
-            title={t('보낸 신고가 없습니다')}
+            title={t('보낸 문의·신고가 없습니다')}
             description={t('오류가 나거나 필요한 기능이 있으면 알려 주세요.')}
           />
         ) : (

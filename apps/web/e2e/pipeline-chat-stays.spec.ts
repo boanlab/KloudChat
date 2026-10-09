@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * A conversation that runs a user pipeline (「이 흐름으로 시작」 on a chat flow) answers its
+ * A conversation that runs a user pipeline (「이 워크플로로 시작」 on a chat flow) answers its
  * first message there: a sentence that reads like a document order is the pipeline's input,
  * not a cue to move to a new report conversation (which would leave the pipeline behind).
  */
@@ -19,7 +19,7 @@ async function fixture(page: Page, extra: Record<string, unknown>) {
     { id: otherId, title: '다른 대화', kind: 'chat' },
     { id: reportId, title: '다른 보고서', kind: 'report' },
     { id: otherChatId, title: '별도 대화', kind: 'chat' },
-    { id: flowChat, title: '흐름 대화', kind: 'chat', ...extra },
+    { id: flowChat, title: '워크플로 대화', kind: 'chat', ...extra },
   ].map((row) => ({ model: 'fixture/base', routingMode: 'manual',
     projectId: null, agentId: null, artifactId: null, pinned: false,
     messages: [], messageCount: 0, made: null, createdAt: at, updatedAt: at, ...row }))

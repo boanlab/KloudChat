@@ -10,7 +10,7 @@
 - `POST /user-pipelines/{id}/submit` — asks for organisation sharing; an administrator
   approves or rejects it (`/admin/user-pipelines…`); an edit takes an approved one back;
 - `PUT /agents/{id}/user-pipeline` — an agent's turns run the pipeline instead of its own flow;
-- `POST /user-pipelines/{id}/start` — a new conversation that runs it (「이 흐름으로 시작」).
+- `POST /user-pipelines/{id}/start` — a new conversation that runs it (「이 워크플로로 시작」).
 
 A turn of a conversation bound to one (`sessions.send_message` → `turn_response`) is a run of
 flow `compose` (pipeline `user:<id>`): kept, rerunnable from any step, waiting at a human step
@@ -309,7 +309,7 @@ async def create(payload: PipelineIn, user: CurrentUser, db: DbSession):
                                   "report" if info.output == "document" else "chat")
         base = pipe.name
         steps = compose.from_shipped(info, pipe.name)
-        name = name or f"{info.name} 흐름"
+        name = name or f"{info.name} 워크플로"
     elif payload.from_id:
         origin = await db.get(UserPipeline, payload.from_id)
         if not _visible(origin, user):
@@ -361,8 +361,9 @@ async def update(pipeline_id: str, payload: PipelineIn, user: CurrentUser, db: D
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
                 "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
                 "problems": [{"step": 0, "code": "bound_surface",
-                              "message": ("이 흐름에 묶인 에이전트가 만드는 것과 마지막 에이전트가 "
-                                          "만드는 것이 다릅니다. 묶음을 먼저 풀어 주세요.")}],
+                              "message": ("이 워크플로에 묶인 에이전트가 만드는 것과 "
+                                          "마지막 에이전트가 만드는 것이 다릅니다. "
+                                          "묶음을 먼저 풀어 주세요.")}],
                 "warnings": []})
     if payload.name.strip():
         row.name = payload.name.strip()[:80]
@@ -450,8 +451,9 @@ async def bind_agent(agent_id: str, payload: BindIn, user: CurrentUser, db: DbSe
         want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
         if want and _output(agent) != want:
             problems.append(compose.Problem(0, "bound_surface", (
-                "문서를 만드는 흐름이라 보고서 에이전트에만 묶을 수 있습니다." if want == "document"
-                else "답을 만드는 흐름이라 대화 에이전트에만 묶을 수 있습니다.")))
+                "문서를 만드는 워크플로라 보고서 에이전트에만 묶을 수 있습니다."
+                if want == "document"
+                else "답을 만드는 워크플로라 대화 에이전트에만 묶을 수 있습니다.")))
         if problems:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
                 "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
@@ -615,11 +617,11 @@ async def turn_response(
         steps = definition["stages"]
     verdict = compose.validate(steps, agents=agents, self_id=row.id)
     if not verdict.ok:
-        said = f"흐름 「{row.name}」을 돌릴 수 없습니다: {verdict.problems[0].message}"
+        said = f"워크플로 「{row.name}」을 돌릴 수 없습니다: {verdict.problems[0].message}"
         return _stream(_refused(said,
                                 "pipeline_invalid", session_id=session.id, chat=chat))
     if verdict.surface != session.kind.value:
-        said = f"흐름 「{row.name}」이 만드는 것을 이 화면에서 보여 줄 수 없습니다."
+        said = f"워크플로 「{row.name}」이 만드는 것을 이 화면에서 보여 줄 수 없습니다."
         return _stream(_refused(said,
                                 "pipeline_surface", session_id=session.id, chat=chat))
     used = {s["ref"] for s in steps if s["kind"] == "agent"}
@@ -732,7 +734,7 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
                 yield _sse(event)
         except Exception as exc:  # noqa: BLE001 — the turn must still settle
             log.exception("pipeline %s crashed for session %s", pipeline, session_id)
-            yield _sse(sessions._error_event("흐름을 끝까지 돌리지 못했습니다.", exc))
+            yield _sse(sessions._error_event("워크플로를 끝까지 돌리지 못했습니다.", exc))
         finally:
             if parent is not None:
                 sessions._carry_records(work, parent, start)
@@ -748,7 +750,7 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
         if saved.get("artifactId"):
             yield _sse({"type": "artifact", "artifactId": saved["artifactId"]})
         elif not saved.get("messageId"):
-            yield _sse(sessions._error_event("흐름이 문서나 답을 남기지 못했습니다.",
+            yield _sse(sessions._error_event("워크플로가 문서나 답을 남기지 못했습니다.",
                                              code="empty_pipeline"))
         # Every counter, planner's and reviewer's included: the line under the answer adds
         # them up (`web/src/lib/usage.ts`).

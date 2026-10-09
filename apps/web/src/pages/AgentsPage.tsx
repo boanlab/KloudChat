@@ -127,11 +127,11 @@ export function AgentsPage() {
   }, [ensureDesignTemplates])
   const english = currentLang() === 'en'
   const [draft, setDraft] = useState<Agent | null>(null)
-  // The editor opens on its settings; 「흐름」 is the agent's pipeline, per agent opened.
+  // The editor opens on its settings; 「워크플로」 is the agent's pipeline, per agent opened.
   const [flowTab, setFlowTab] = useState<string | null>(null)
   const editorTab: 'settings' | 'flow' = draft && flowTab === draft.id ? 'flow' : 'settings'
   const setEditorTab = (tab: 'settings' | 'flow') => setFlowTab(tab === 'flow' ? draft?.id ?? null : null)
-  // The flow picked in 「흐름」, bound by the agent's own 「저장」.
+  // The flow picked in 「워크플로」, bound by the agent's own 「저장」.
   const [flowPick, setFlowPick] = useState<{ agentId: string; pipelineId: string | null } | null>(null)
   const pickedFlow = draft && flowPick?.agentId === draft.id ? flowPick.pipelineId : undefined
   const draftSlug = draft ? slugify(draft.slug || draft.name) : ''
@@ -467,7 +467,7 @@ export function AgentsPage() {
                     try {
                       await userPipelinesApi.bind(draft.id, pickedFlow)
                     } catch (err) {
-                      setSaveError(errorMessage(err, t('이 흐름을 묶지 못했습니다. 흐름의 단계를 확인해 주세요.')))
+                      setSaveError(errorMessage(err, t('이 워크플로를 묶지 못했습니다. 워크플로의 단계를 확인해 주세요.')))
                       return
                     }
                     setFlowPick(null)
@@ -496,7 +496,7 @@ export function AgentsPage() {
             onChange={setEditorTab}
             tabs={[
               { id: 'settings', label: t('설정') },
-              { id: 'flow', label: t('흐름') },
+              { id: 'flow', label: t('워크플로') },
             ]}
           />
         )}
@@ -509,7 +509,7 @@ export function AgentsPage() {
           </p>
         )}
         {draft && editorTab === 'flow' && agents.some((a) => a.id === draft.id) ? (
-          <div role="tabpanel" aria-label={t('흐름')} className="pt-1">
+          <div role="tabpanel" aria-label={t('워크플로')} className="pt-1">
             <AgentFlowSummary
               agent={agents.find((a) => a.id === draft.id) ?? draft}
               choice={pickedFlow}

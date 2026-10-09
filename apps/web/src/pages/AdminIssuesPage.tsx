@@ -87,7 +87,7 @@ function IssueList() {
     <>
       <TopBar left={<span className="text-base font-medium">{t('문의·신고')}</span>} />
       <PageBody>
-        <PageHeader title={t('문의·신고')} description={t('사용자가 보낸 오류 신고와 기능 요청을 확인하고 답합니다.')} />
+        <PageHeader title={t('문의·신고')} description={t('사용자가 보낸 오류 신고·기능 요청·문의를 확인하고 답합니다.')} />
         {data && (
           <div className="mb-4 flex flex-wrap gap-1.5" aria-label={t('상태별 건수')}>
             {STATUSES.map((s) => (
@@ -386,7 +386,7 @@ function IssueDetailView({ id }: { id: string }) {
                     </dd>
                     <dt className="text-faint">{t('모델')}</dt>
                     <dd className="[overflow-wrap:anywhere]">{context.models?.join(', ') || session.model || '—'}</dd>
-                    <dt className="text-faint">{t('에이전트·흐름')}</dt>
+                    <dt className="text-faint">{t('에이전트·워크플로')}</dt>
                     <dd>{[session.agent, session.pipeline].filter(Boolean).join(' · ') || '—'}</dd>
                     <dt className="text-faint">{t('메시지')}</dt>
                     <dd>{session.messageCount}</dd>

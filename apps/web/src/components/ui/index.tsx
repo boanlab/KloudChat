@@ -727,7 +727,8 @@ export function Tabs<T extends string>({
           aria-selected={value === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            '-mb-px border-b-2 px-3 py-2 text-base font-medium transition-colors',
+            // One line per tab: 「내 워크플로」 wrapped to two at phone width.
+            '-mb-px border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors max-sm:px-2.5',
             value === t.id
               ? 'border-accent text-fg'
               : 'border-transparent text-muted hover:text-fg',

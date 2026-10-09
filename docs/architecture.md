@@ -482,12 +482,17 @@ rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 The rendering catalogue: shapes the model writes into. They ship inside the API image
 under `app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
 `sample.html` always, plus the `instructions.md` and `checklist.md` a writing
-turn reads — which the media recipes, having no writing turn, do without.
+turn reads.
 
-The catalogue is a few dozen entries — `deck-*`, `doc-*`, `image-*`, `audio-*`
-and `video-*` — written against this product's constraints: no script and no
-parent-relative assets, because artifacts render in a `sandbox=""` iframe. The
-number is meant to stay readable.
+The catalogue is a few dozen entries — `deck-*` and `doc-*` only — written
+against this product's constraints: no script and no parent-relative assets,
+because artifacts render in a `sandbox=""` iframe. The number is meant to stay
+readable. The image, audio and video recipes (`image-*`, `audio-*`, `video-*`)
+were retired (`design_templates.RETIRED_MEDIA`, migration 0058 clears them from
+agents, starting points, conversations and project defaults): none ever shaped a
+stored file, so pictures and clips made with one open as before, and a request
+that still names one draws a plain picture. The composer's ▦ picker is on the
+report and slides surfaces only.
 
 Picking one **replaces the surface's built-in track**. A slides session with
 `render_template_id` set produces an `html` artifact through `services/page.py`
@@ -519,14 +524,25 @@ wrote that heading and a second one prints the title twice.
 (`services/diagrams.py`) names up to three parts where a structure, flow,
 comparison or concept figure (구조도·흐름도·비교도·개념도) says more than the
 words; a report writer can also place one inline with a `[[그림: …]]` mark.
-`services/diagram.py` writes each as a mermaid flowchart in the house style.
-`diagram_render` draws that flowchart with the deck renderer's own shapes
-(`diagram_shapes`) on a one-slide deck and has the print sidecar render it to
-PNG, so the panel, the PDF, the report and the `.pptx` show the same picture;
-the `.pptx` itself carries native, editable shapes. Without the sidecar, or for
-a chart the shapes cannot draw, the mermaid source is kept and rendered by the
-browser. No image model and no card: the only cost is the writer's tokens. A
-picture a person places on that slide replaces the figure. Pictures from the
+`services/diagram.py` writes each as a mermaid flowchart in the house style and
+`diagram.draw_native` draws it: `diagram_render` lays the flowchart out with the
+deck renderer's own shapes (`diagram_shapes`) on a one-slide deck and has the
+print sidecar render it to PNG, so the panel, the PDF, the report and the
+`.pptx` show the same picture; the `.pptx` itself carries native, editable
+shapes. A source the shapes cannot read (not a flowchart, more than
+`diagram_shapes.MAX_NODES` nodes) goes back to the writer once, told why; still
+unreadable, or with no sidecar answering (logged as a warning), the figure is
+left out — a report drops the mark and the 〔그림〕 pointing at it, a deck slide
+keeps its words. There is no mermaid fence or browser drawing in its place for a
+new figure; only chat answers draw mermaid in the browser, and documents stored
+before this rule keep their fences and browser rasters and still open and
+export. The same path serves a figure made by hand: the picture picker in a
+report or deck and the image surface's 구조도 · 흐름도 · 개념도 chips call
+`POST /sessions/{id}/diagrams`, which stores the PNG as an image artifact with
+its source, or answers 422 (`diagram_not_drawable` / `diagram_unrendered`). Placed
+on a slide, such a figure keeps its source as `slide.diagram` and is drawn again
+in the slide's accent. No image model and no card: the only cost is the writer's
+tokens. A picture from the image model placed on that slide replaces the figure. Pictures from the
 image model are proposed on the outline card only for illustration or real
 objects, never for structure or numbers, and a deck's structure slide is moved
 off layouts the figure planner cannot draw on (`deck.structure_as_drawable`).
@@ -886,7 +902,7 @@ sections, readings of its material); rebuild only when a change in behaviour is 
 say so.
 
 **User pipelines** (`app/pipeline/compose.py`, `app/routers/user_pipelines.py`, migration
-0054). The shipped files stay locked; a person copies one (「복제해서 편집」 on an agent's 「흐름」
+0054). The shipped files stay locked; a person copies one (「복제해서 편집」 on an agent's 「워크플로」
 tab → `POST /user-pipelines {fromAgentId}`, or a shared one from the store `{fromId}`) into a
 `UserPipeline` row of their own: a list of at most twelve coarse **steps**
 `{id, kind, ref, settings}` —

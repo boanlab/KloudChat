@@ -146,7 +146,7 @@ function IssueForm() {
                 navigate('/issues')
               }}
             >
-              {t('내 신고 보기')}
+              {t('문의·신고 보기')}
             </Button>
             <Button variant="primary" onClick={close}>{t('닫기')}</Button>
           </>
@@ -156,7 +156,7 @@ function IssueForm() {
           <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-success" />
           <div>
             <p className="font-medium">{t('접수되었습니다')}</p>
-            <p className="mt-0.5 text-muted">{t('관리자가 확인하면 내 신고에서 답변과 처리 상태를 볼 수 있습니다.')}</p>
+            <p className="mt-0.5 text-muted">{t('관리자가 확인하면 문의·신고에서 답변과 처리 상태를 볼 수 있습니다.')}</p>
           </div>
         </div>
       </Modal>
@@ -170,7 +170,7 @@ function IssueForm() {
       open
       onClose={close}
       title={t('문의·신고')}
-      description={t('오류를 알리거나 필요한 기능을 요청합니다.')}
+      description={t('오류를 알리거나, 필요한 기능을 요청하거나, 궁금한 점을 묻습니다.')}
       width="max-w-xl"
       footer={
         <>
@@ -213,7 +213,9 @@ function IssueForm() {
           onChange={(e) => setText(e.target.value)}
           placeholder={kind === 'feature'
             ? t('어떤 기능이 있으면 좋을지, 어디에 쓰려는지 적어 주세요.')
-            : t('무엇을 했을 때 어떤 결과가 나왔는지, 무엇을 기대했는지 적어 주세요.')}
+            : kind === 'other'
+              ? t('궁금한 점이나 알리고 싶은 내용을 적어 주세요.')
+              : t('무엇을 했을 때 어떤 결과가 나왔는지, 무엇을 기대했는지 적어 주세요.')}
         />
         <span className="block text-right text-xs tabular-nums text-faint">{text.length}/{MAX_BODY}</span>
       </label>
@@ -325,7 +327,7 @@ function IssueForm() {
         </summary>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-muted">
           <li>{t('앱 빌드, 브라우저, 화면 크기, 언어')}</li>
-          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·흐름, 단계 상태와 실패 사유, 결과물 판 번호')}</li>}
+          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·워크플로, 단계 상태와 실패 사유, 결과물 판 번호')}</li>}
         </ul>
       </details>
 

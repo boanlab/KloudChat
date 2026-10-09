@@ -5,7 +5,6 @@ import { Code2,
   ChevronDown,
   Activity,
   Flag,
-  Inbox,
   History,
   LogOut,
   Palette,
@@ -35,9 +34,8 @@ function AccountItems() {
   const users = useStore((s) => s.users)
   const logout = useStore((s) => s.logout)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
-  const openReport = useIssues((s) => s.openReport)
   const unreadIssues = useIssues((s) => s.unread)
-  // On a conversation, the form offers to attach it.
+  // On a conversation, carried to 「문의·신고」 so a report started there can attach it.
   const sessionId = useMatch('/s/:sessionId')?.params.sessionId
 
   return (
@@ -50,7 +48,7 @@ function AccountItems() {
         {t('스킬')}
       </MenuItem>
       <MenuItem icon={<Workflow size={14} />} onClick={() => navigate('/pipelines')}>
-        {t('흐름')}
+        {t('워크플로')}
       </MenuItem>
       <MenuItem icon={<Plug size={14} />} onClick={() => navigate('/connectors')}>
         {t('커넥터')}
@@ -78,15 +76,12 @@ function AccountItems() {
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
       </MenuItem>
-      <MenuItem icon={<Flag size={14} />} onClick={() => openReport({ sessionId })}>
-        {t('문의·신고')}
-      </MenuItem>
       <MenuItem
-        icon={<Inbox size={14} />}
-        onClick={() => navigate('/issues')}
+        icon={<Flag size={14} />}
+        onClick={() => navigate('/issues', { state: sessionId ? { sessionId } : null })}
         hint={unreadIssues > 0 ? `${t('새 답변')} ${unreadIssues}` : undefined}
       >
-        {t('내 신고')}
+        {t('문의·신고')}
       </MenuItem>
       <MenuItem icon={<Keyboard size={14} />} onClick={openShortcuts} hint={`${isMac() ? '⌘' : 'Ctrl'} /`}>
         {t('키보드 단축키')}

@@ -4,16 +4,16 @@ title: Formats and designs
 
 # Formats and designs
 
-These two features have similar names, but each has a different role and scope. Work you do often belongs to [agents](agents.md) and pipelines.
+These two features have similar names, but each has a different role and scope. Work you do often belongs to [agents](agents.md) and workflows.
 
 | Feature | Role | Where to select it | Scope |
 |---|---|---|---|
-| **Format** | The form of the output. The product includes 8 report formats, 7 slide formats, and 14 image formats. | ▦ Pick a format in the composer, and the account menu → Design → Formats tab | That conversation. Clear it with × on the chip |
+| **Format** | The form of the output. The product includes 8 report formats and 7 slide formats. | ▦ Pick a format in the composer, and the account menu → Design → Formats tab | That conversation. Clear it with × on the chip |
 | **Design system** | A setting that bundles colors, typefaces, and writing style. You link it to a project. | The account menu → Design | Every output in that project |
 
 ## Formats
 
-A format defines the structure rules and the typesetting of reports and slides. Select one and the **What this format checks** list appears. You edit a formatted document by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Formats are built into the product, so you cannot create new ones. Image, video and audio formats show blanks above the composer when picked, and what you fill in becomes the request.
+A format defines the structure rules and the typesetting of reports and slides. Select one and the **What this format checks** list appears. You edit a formatted document by rewriting it one block at a time, and you can export it as PDF, DOCX/PPTX, HWPX, HTML, or text. Formats are built into the product, so you cannot create new ones. Images, audio and video have no formats.
 
 ## Design systems
 
