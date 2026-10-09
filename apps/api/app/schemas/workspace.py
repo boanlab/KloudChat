@@ -716,20 +716,6 @@ class DesignSystemOut(Wire):
         return out
 
 
-class DesignArgumentOut(Wire):
-    """One blank in a media template's prompt, in both languages."""
-
-    name: str
-    label: str
-    label_en: str = ""
-    default: str = ""
-    default_en: str = ""
-    options: JsonList = Field(default_factory=list)
-    options_en: JsonList = Field(default_factory=list)
-    #: A paragraph field rather than a one-line one.
-    long: bool = False
-
-
 class DesignExtractIn(Wire):
     """Source to extract a design system from: exactly one of the two."""
 
@@ -776,14 +762,8 @@ class DesignTemplateOut(Wire):
     category_en: str = ""
     fills_en: JsonList = Field(default_factory=list)
     example_prompt_en: str = ""
-    #: Review checklist, one sentence per line, Korean only. Empty for media templates.
+    #: Review checklist, one sentence per line, Korean only.
     checks: JsonList = Field(default_factory=list)
-    #: Blanks in `example_prompt`, written `{name}`.
-    arguments: list[DesignArgumentOut] = Field(default_factory=list)
-    #: Composer settings this template implies: aspect, duration, voice.
-    defaults: dict[str, Any] = Field(default_factory=dict)
-    #: `method`, `flow` or `concept` for a diagram 서식; empty for a picture.
-    figure: str = ""
     #: Extension of the blank Office form (`docx`, `pptx`), or empty.
     form_format: str = ""
     #: Whether `/design-templates/{id}/preview` has something to show.
@@ -801,7 +781,6 @@ class DesignTemplateOut(Wire):
             description=t.description,
             category=t.category,
             fills=list(t.fills),
-            figure=getattr(t, "figure", "") or "",
             example_prompt=t.example_prompt,
             name_en=t.name_en,
             description_en=t.description_en,
@@ -809,20 +788,6 @@ class DesignTemplateOut(Wire):
             fills_en=list(t.fills_en),
             example_prompt_en=t.example_prompt_en,
             checks=list(t.checks),
-            arguments=[
-                DesignArgumentOut(
-                    name=a.name,
-                    label=a.label,
-                    label_en=a.label_en,
-                    default=a.default,
-                    default_en=a.default_en,
-                    options=list(a.options),
-                    options_en=list(a.options_en),
-                    long=bool(getattr(a, "long", False)),
-                )
-                for a in t.arguments
-            ],
-            defaults=dict(t.defaults),
             form_format=t.form_file.rsplit(".", 1)[-1] if t.form_file else "",
             has_preview=bool(getattr(t, "sample", "") and getattr(t, "seed", "")),
             slide_count=(

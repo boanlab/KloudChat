@@ -10,8 +10,6 @@ Ordering rules for a streaming turn:
 from __future__ import annotations
 
 import asyncio
-import base64
-import binascii
 import contextlib
 import datetime as dt
 import json
@@ -84,7 +82,6 @@ from app.schemas.chat import (
     CompareRequest,
     DiagramOut,
     DiagramRequest,
-    DiagramStore,
     FigureSuggestion,
     FigureSuggestRequest,
     HandoffIn,
@@ -2256,7 +2253,6 @@ async def suggest_figure(
     return FigureSuggestion(
         caption=figure.caption,
         prompt=figure.prompt,
-        template_id=figure.template_id,
         figure=figure.figure,
         description=figure.description,
         style=figure.style,
@@ -2292,8 +2288,8 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
         db.add(user)
         await db.commit()
     base_url, api_key = await litellm_service.credentials_for(user)
-    picture_template = design_templates.get(payload.template_id)
-    if payload.template_id and (picture_template is None or picture_template.kind != "image"):
+    # Image 서식 are retired; a client that still names one draws a plain picture.
+    if payload.template_id and not design_templates.is_retired_media(payload.template_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
         )
@@ -2311,19 +2307,15 @@ async def generate_images(session_id: str, payload: ImageRequest, user: CurrentU
             planned, _ = await imagegen.plan(
                 payload.prompt,
                 style=payload.style,
-                # A wordless 서식 (poster, cover, banner) outranks the label chip: the
-                # planner would otherwise write a title and captions the suffix then forbids.
-                labels="none" if picture_template and picture_template.wordless else payload.labels,
+                labels=payload.labels,
                 figure=payload.figure,
                 model=str(planner["id"]),
                 api_key=api_key,
-                template=picture_template.prompt_suffix if picture_template else "",
             )
     composed = imagegen.compose_prompt(
         planned,
         aspect=payload.aspect,
         style=payload.style,
-        template=picture_template.prompt_suffix if picture_template else "",
         design=design_service.image_clause(await design_for(db, user, session)),
         # A planned prompt already says it is one figure with no text.
         figure=payload.figure and planned == payload.prompt,
@@ -2524,7 +2516,8 @@ async def _draw_chart(
 
 @router.post("/{session_id}/diagrams", response_model=DiagramOut)
 async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentUser, db: DbSession):
-    """Writes a labelled figure as mermaid source; the client renders it."""
+    """Writes a labelled figure as flowchart source, draws it with the deck export's shapes and
+    keeps it as an image artifact. 422 when it cannot be drawn so; there is no browser path."""
     session = await _owned(db, user, session_id)
     catalogue = await model_service.list_models()
     usable = sorted(
@@ -2548,16 +2541,21 @@ async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentU
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
 
+    png: bytes | None = None
+    failure = ""
     try:
-        source, caption, usage = await diagram_service.draw(
+        source, caption, usage, png = await diagram_service.draw_native(
             description=payload.description,
             figure=payload.figure,
             model=model["id"],
             api_key=api_key,
             language=payload.language,
-            broken=payload.broken,
-            error=payload.error,
         )
+    except diagram_service.Undrawable as exc:
+        # Not drawable with the shapes even after one rewrite, or no renderer: no picture,
+        # and no browser drawing in its place. What the writer spent is still charged.
+        log.warning("diagram not drawn: %s", exc.reason)
+        source, caption, usage, failure = "", "", exc.usage, exc.reason
     except Exception as exc:  # noqa: BLE001 — the caller gets a reason, not a 500
         log.warning("diagram failed: %s", exc)
         raise HTTPException(
@@ -2565,7 +2563,9 @@ async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentU
         ) from exc
 
     charged = charge_for_tokens(
-        model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+        model,
+        int(usage.get("inputTokens") or usage.get("prompt_tokens") or 0),
+        int(usage.get("outputTokens") or usage.get("completion_tokens") or 0),
     )
     if charged:
         settle(
@@ -2577,29 +2577,56 @@ async def write_diagram(session_id: str, payload: DiagramRequest, user: CurrentU
             model=model["id"],
             surface=session.kind.value,
         )
-        await db.commit()
-    return DiagramOut(source=source, caption=caption, model=model["id"], credits=charged)
-
-
-@router.post("/{session_id}/diagrams/store", response_model=ArtifactOut)
-async def store_diagram_image(
-    session_id: str, payload: DiagramStore, user: CurrentUser, db: DbSession
-):
-    """Stores a client-rendered figure PNG as an image artifact with its mermaid source."""
-    session = await _owned(db, user, session_id)
-    try:
-        blob = base64.b64decode(payload.png, validate=True)
-    except (ValueError, binascii.Error) as exc:
+    if png is None:
+        if charged:
+            await db.commit()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="bad_png"
-        ) from exc
-    if len(blob) > 8_000_000:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="png_too_large"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="diagram_not_drawable" if failure == "not_drawable" else "diagram_unrendered",
         )
+    # Drawn with the deck file's own shapes, as the report and deck writers draw theirs.
+    width, height = _png_size(png)
+    artifact = _store_figure(
+        db, user, session, png=png, width=width, height=height, source=source,
+        caption=caption, description=payload.description, figure=payload.figure,
+        title=(caption or payload.description.split("\n")[0][:80]), model=str(model["id"]),
+        renderer="pptx",
+    )
+    await db.commit()
+    await db.refresh(artifact)
+    return DiagramOut(
+        source=source, caption=caption, model=model["id"], credits=charged,
+        artifact=ArtifactOut.of(artifact),
+    )
+
+
+def _png_size(png: bytes) -> tuple[int, int]:
+    """Width and height of a PNG from its header; zeros when it is not one."""
+    if png[:8] != b"\x89PNG\r\n\x1a\n" or len(png) < 24:
+        return 0, 0
+    return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
+
+
+def _store_figure(
+    db: AsyncSession,
+    user: User,
+    session: ChatSession,
+    *,
+    png: bytes,
+    width: int,
+    height: int,
+    source: str,
+    caption: str,
+    description: str,
+    figure: str,
+    title: str,
+    model: str,
+    renderer: str = "",
+) -> Artifact:
+    """A drawn figure kept as an image artifact with its mermaid source; added, not committed."""
     file_id = uuid.uuid4().hex
-    key = file_service.write_blob(user.id, file_id, "figure.png", blob)
-    title = (payload.title or payload.caption or "도식")[:200]
+    key = file_service.write_blob(user.id, file_id, "figure.png", png)
+    title = (title or caption or "도식")[:200]
     db.add(
         StoredFile(
             id=file_id,
@@ -2607,7 +2634,7 @@ async def store_diagram_image(
             session_id=session.id,
             name=f"{title[:40]}.png",
             mime="image/png",
-            size=len(blob),
+            size=len(png),
             storage_key=key,
             tokens=0,
         )
@@ -2621,26 +2648,26 @@ async def store_diagram_image(
         data={
             "kind": "image",
             "jobId": None,
-            "prompt": payload.description,
+            "prompt": description,
             "aspect": "16:9",
-            "actualAspect": f"{payload.width}:{payload.height}",
-            "width": payload.width,
-            "height": payload.height,
+            "actualAspect": f"{width}:{height}",
+            "width": width,
+            "height": height,
             "style": "figure",
             "seed": 0,
-            "model": payload.model,
+            "model": model,
             "src": f"{settings.api_prefix}/files/{file_id}/content",
             # The source is the artifact; the PNG is one rendering.
-            "figure": payload.figure,
-            "source": payload.source,
-            "caption": payload.caption,
+            "figure": figure,
+            "source": source,
+            "caption": caption,
+            # `pptx`: drawn by the server with the deck export's shapes.
+            **({"renderer": renderer} if renderer else {}),
         },
     )
     db.add(artifact)
-    _record_media(db, session, payload.description, [artifact], model=payload.model, credits=0)
-    await db.commit()
-    await db.refresh(artifact)
-    return ArtifactOut.of(artifact)
+    _record_media(db, session, description, [artifact], model=model, credits=0)
+    return artifact
 
 
 @router.post("/{session_id}/audio", response_model=ArtifactOut)

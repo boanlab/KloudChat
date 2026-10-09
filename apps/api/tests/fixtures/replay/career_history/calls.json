@@ -44,7 +44,7 @@
   }
  },
  {
-  "key": "be6817afdc75f8088bc64ef3",
+  "key": "570cd0c8464085b9e608a172",
   "stage": "figures",
   "kind": "diagram",
   "head": "그릴 것: 비교도 — 기존(또는 A안)과 제안(B안)의 대비를 나란히\n노드 이름과 캡션은 한국어로 쓴다.\n\n설명:\n좌측 '라온페이'와 우측 '모아커머스'를 대비: 좌측은 '결제 승인 API'와 '정산 배치 시스템'을 구성하며 '트랜잭션 처리·데이터 정합성'을 다루고, 우측은 '주문 시스",
@@ -55,7 +55,7 @@
   }
  },
  {
-  "key": "9032d76b1c634583c2581859",
+  "key": "a0d405823208a52bc7d9c982",
   "stage": "figures",
   "kind": "diagram",
   "head": "그릴 것: 처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지\n노드 이름과 캡션은 한국어로 쓴다.\n\n설명:\n2021~2022 정산 배치 이관 흐름: 'Oracle(원본 DB)'에서 시작해 '데이터 정합성 검증 로직(다층 설계)'을 거쳐 'PostgreSQL(이관 대상 DB)'로 이동하며",
@@ -66,7 +66,7 @@
   }
  },
  {
-  "key": "fe200cae5cff3a064cc8e14b",
+  "key": "481aeadff573530f32f965bf",
   "stage": "figures",
   "kind": "diagram",
   "head": "그릴 것: 개념도 — 개념들의 관계와 층위\n노드 이름과 캡션은 한국어로 쓴다.\n\n설명:\n보유 기술 스택의 층위: 상위층에 '클라우드 인프라(AWS)'와 '메시지 브로커·검색 엔진(Kafka, Elasticsearch)', 하위층에 '언어·프레임워크(Java, Kotlin, Spring ",
@@ -88,7 +88,7 @@
   }
  },
  {
-  "key": "06843981f9c33cbc7b1e92b1",
+  "key": "94ebbe2a1ecd971d47439020",
   "stage": "verify",
   "kind": "judge",
   "head": "Below is one applicant's 경력기술서. Pick only the sentences that repeat the same situation, action or result\nof the same experience in two or more places. Do not pi",
@@ -99,7 +99,7 @@
   }
  },
  {
-  "key": "f804c656eacfc647700fab0f",
+  "key": "22ba207c2d1bdfc5bfae0a85",
   "stage": "verify",
   "kind": "repair",
   "head": "Some sentences in the report have problems. Fix only that sentence for each\nitem, and answer only with the fixed sentences as a JSON array of strings in the sam",

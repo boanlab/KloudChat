@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { E2E_ADMIN, openSidebar, signIn, surfaceOn } from './helpers'
+import { E2E_ADMIN, openSidebar, signIn } from './helpers'
 
 /** The 서식 chip follows the session row across reloads and conversation changes;
  *  media 서식 leave no chip but name the option values they set. Model requests are stubbed. */
@@ -102,53 +102,4 @@ test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는
     timeout: 20_000,
   })
   await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toHaveCount(0)
-})
-
-test('이미지 서식은 그 그림에서 끝나고, 남은 옵션은 누가 정했는지 말한다', async ({ page }) => {
-  test.setTimeout(120_000)
-  await signIn(page)
-
-  // Stubbed: the request going out is the event.
-  let asked = 0
-  await page.route('**/api/sessions/*/images', async (route) => {
-    asked += 1
-    await route.fulfill({ json: [] })
-  })
-
-  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
-  await (await card(page, '포스터')).getByRole('button', { name: '이 서식으로 시작' }).click()
-  const chip = page.getByRole('button', { name: '포스터 서식 해제' })
-  await expect(chip).toBeVisible()
-  // The chips follow the 서식.
-  await expect(page.getByRole('button', { name: '비율 9:16' })).toBeVisible()
-
-  await page.getByLabel('프롬프트 입력').press('Enter')
-  await expect.poll(() => asked, { timeout: 30_000 }).toBe(1)
-
-  // An image 서식 is spent on the picture it shaped; no chip may remain.
-  await expect(chip).toHaveCount(0)
-
-  // The option values it set are a workspace-wide preference, so the bar names their source.
-  await expect(page.getByText('포스터 서식이 정한 값')).toBeVisible()
-
-  // Setting one by hand drops the attribution.
-  await page.getByRole('button', { name: '장수 1장' }).click()
-  await page.getByRole('menuitemcheckbox', { name: /2장/ }).click()
-  await expect(page.getByText('포스터 서식이 정한 값')).toHaveCount(0)
-})
-
-test('영상 서식이 정한 옵션은 칩이 없어도 출처를 말한다', async ({ page }) => {
-  test.setTimeout(120_000)
-  await signIn(page)
-
-  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
-  await (await card(page, '발표 오프닝')).getByRole('button', { name: '이 서식으로 시작' }).click()
-
-  // An a/v 서식 leaves no chip, so the values it set are attributed on the bar.
-  await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
-  await expect(page.getByText('발표 오프닝 서식이 정한 값')).toBeVisible()
-
-  await page.getByRole('button', { name: '해상도 1080p' }).click()
-  await page.getByRole('menuitem', { name: '720p' }).click()
-  await expect(page.getByText('발표 오프닝 서식이 정한 값')).toHaveCount(0)
 })

@@ -1414,12 +1414,9 @@ _DANGLING_REF = re.compile(
 )
 
 
-async def _figure_markdown(made: dict) -> str:
-    """The figure as the body carries it: drawn with the deck renderer's shapes and rendered
-    to a picture, or a mermaid fence (which the panel renders) when that cannot be done."""
-    png = await diagram_render.render_png(str(made.get("source") or ""))
-    if not png:
-        return diagrams.fence(made)
+def _figure_markdown(made: dict, png: bytes) -> str:
+    """The figure as the body carries it: the picture drawn with the deck renderer's shapes,
+    and its caption."""
     caption = str(made.get("caption") or "").strip() or "그림"
     return f"![{caption}]({diagram_render.data_uri(png)})\n\n*그림: {caption}*"
 

@@ -17,7 +17,7 @@ from app.models.chat import (
     TurnFailure,
 )
 from app.schemas.auth import Wire
-from app.schemas.workspace import FileOut
+from app.schemas.workspace import ArtifactOut, FileOut
 
 
 class MessageOut(Wire):
@@ -59,7 +59,7 @@ class ImageRequest(Wire):
     model: str | None = None
     aspect: str = "1:1"
     style: str = ""
-    #: An `image` design template; shapes the prompt only.
+    #: A retired image 서식 an older client may still name; ignored, anything else is refused.
     template_id: str | None = Field(default=None, max_length=60)
     #: Each picture is a separate upstream call and charge.
     count: int = Field(default=1, ge=1, le=4)
@@ -87,8 +87,6 @@ class FigureSuggestRequest(Wire):
 class FigureSuggestion(Wire):
     caption: str
     prompt: str
-    #: Image 서식 chosen, e.g. `image-scene`; empty draws a plain picture from `prompt`.
-    template_id: str = ""
     #: Mermaid figure kind (`flow`, `method`, `concept`) when the client should draw a diagram.
     figure: str = ""
     #: Diagram description, in Korean. Empty for pictures.
@@ -105,9 +103,6 @@ class DiagramRequest(Wire):
     figure: str = Field(default="method", max_length=20)
     model: str | None = None
     language: str = Field(default="ko", max_length=5)
-    #: Mermaid source the client failed to render, and the renderer's error.
-    broken: str = Field(default="", max_length=20000)
-    error: str = Field(default="", max_length=500)
 
 
 class DiagramOut(Wire):
@@ -115,21 +110,8 @@ class DiagramOut(Wire):
     caption: str = ""
     model: str = ""
     credits: int = 0
-
-
-class DiagramStore(Wire):
-    """A client-rendered diagram stored beside its source."""
-
-    source: str = Field(min_length=1, max_length=20000)
-    caption: str = Field(default="", max_length=500)
-    description: str = Field(default="", max_length=6000)
-    figure: str = Field(default="method", max_length=20)
-    title: str = Field(default="", max_length=200)
-    model: str = Field(default="", max_length=120)
-    #: PNG bytes, base64.
-    png: str = Field(min_length=1)
-    width: int = Field(default=0, ge=0, le=10000)
-    height: int = Field(default=0, ge=0, le=10000)
+    #: The figure drawn with the .pptx export's shapes and kept as an image artifact.
+    artifact: ArtifactOut | None = None
 
 
 class AudioRequest(Wire):
@@ -247,7 +229,7 @@ class SessionOut(Wire):
     title: str
     project_id: str | None
     agent_id: str | None
-    #: The user pipeline this conversation's turns run (「이 흐름으로 시작」), or null.
+    #: The user pipeline this conversation's turns run (「이 워크플로로 시작」), or null.
     pipeline_id: str | None = None
     model: str
     routing_mode: RoutingMode

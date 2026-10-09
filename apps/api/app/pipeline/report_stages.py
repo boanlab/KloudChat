@@ -1102,7 +1102,7 @@ class Figures(Base):
                 yield {"type": "step", "id": f"dia{index}", "label": f"{name} 그리는 중",
                        "status": "running", "progress": progress}
                 try:
-                    made, spent = await diagrams.make(
+                    made, spent, png = await diagrams.make(
                         diagrams.Planned(index, mark["kind"], mark["description"],
                                          mark["caption"]),
                         model=req.model, api_key=req.api_key, slide=False,
@@ -1115,7 +1115,7 @@ class Figures(Base):
                     continue
                 _count(bundle, spent)
                 section["content"] = content.replace(
-                    mark["mark"], await report._figure_markdown(made), 1)
+                    mark["mark"], report._figure_markdown(made, png), 1)
                 drawn += 1
                 yield {"type": "step", "id": f"dia{index}", "label": name, "status": "done",
                        "progress": progress}
@@ -1166,8 +1166,8 @@ class Figures(Base):
                 "progress": progress,
             }
             try:
-                made, spent = await diagrams.make(row, model=req.model, api_key=req.api_key,
-                                                  slide=False)
+                made, spent, png = await diagrams.make(
+                    row, model=req.model, api_key=req.api_key, slide=False)
             except Exception as exc:  # noqa: BLE001 — a section without its figure is still one
                 log.warning("report figure %r not drawn: %s", name, exc)
                 yield {
@@ -1180,7 +1180,7 @@ class Figures(Base):
                 continue
             _count(bundle, spent)
             section["content"] = (f"{section['content'].rstrip()}\n\n"
-                                  f"{await report._figure_markdown(made)}")
+                                  f"{report._figure_markdown(made, png)}")
             yield {
                 "type": "step",
                 "id": f"dia{row.index}",

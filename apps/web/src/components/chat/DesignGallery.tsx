@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Button, Modal } from '@/components/ui'
-import { argumentText, templateText, type DesignTemplateRow } from '@/lib/api'
+import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -151,7 +151,7 @@ export function DesignTemplateCard({
 }: {
   row: DesignTemplateRow
   english: boolean
-  onPick: (row: DesignTemplateRow, prompt: string) => void
+  onPick: (row: DesignTemplateRow) => void
   /** The template the session already uses. */
   chosen?: boolean
 }) {
@@ -164,10 +164,10 @@ export function DesignTemplateCard({
       disabled={chosen}
       onClick={() => {
         setPreviewing(false)
-        onPick(row, row.arguments.length > 0 ? '' : text.examplePrompt)
+        onPick(row)
       }}
     >
-      {chosen ? t('고른 서식') : row.figure ? t('이 도식으로 시작') : t('이 서식으로 시작')}
+      {chosen ? t('고른 서식') : t('이 서식으로 시작')}
     </Button>
   )
   return (
@@ -198,10 +198,10 @@ export function DesignTemplateCard({
           </div>
           <p className="line-clamp-2 text-sm text-muted">{text.description}</p>
           <Checks checks={row.checks} />
-          {/* Blanks are named here and asked in the composer. */}
-          {(row.arguments.length > 0 ? row.arguments.map((a) => argumentText(a, english).label) : text.fills).length > 0 && (
+          {/* What the person brings. */}
+          {text.fills.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {(row.arguments.length > 0 ? row.arguments.map((a) => argumentText(a, english).label) : text.fills).map((fill) => (
+              {text.fills.map((fill) => (
                 <span
                   key={fill}
                   className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
@@ -256,7 +256,6 @@ export function DesignGalleryModal({
   const start = useStartTemplate()
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const sessions = useStore((s) => s.sessions)
-  const setPendingTemplateBlanks = useStore((s) => s.setPendingTemplateBlanks)
 
   const english = currentLang() === 'en'
   const forSurface = useMemo(
@@ -266,7 +265,6 @@ export function DesignGalleryModal({
         .map((r) => ({ row: r, text: templateText(r, english) })),
     [rows, kind, english],
   )
-  const hasBlanks = forSurface.some(({ row }) => row.arguments.length > 0)
 
   const categories = useMemo(
     () => [...new Set(forSurface.map((c) => c.text.category))],
@@ -297,25 +295,9 @@ export function DesignGalleryModal({
     sessions.find((row) => row.id === sessionId)?.renderTemplateId ??
     null
 
-  const pick = (row: DesignTemplateRow, prompt: string) => {
+  const pick = (row: DesignTemplateRow) => {
     if (row.id === worn) return
-    start(row, prompt)
-    // Template arguments are asked in the composer.
-    if (row.arguments.length > 0) {
-      const text = templateText(row, english)
-      setPendingTemplateBlanks({
-        id: row.id,
-        title: text.name,
-        fills: row.arguments.map((a) => argumentText(a, english).label),
-        examples: row.arguments.map((a) => argumentText(a, english).initial),
-        blanks: row.arguments.map((a) => ({
-          name: a.name,
-          options: argumentText(a, english).options,
-          long: Boolean(a.long),
-        })),
-        examplePrompt: text.examplePrompt,
-      })
-    }
+    start(row)
     onClose()
   }
 
@@ -324,12 +306,11 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('서식 고르기')}
-      description={t('결과물의 모양을 고릅니다. 빈칸이 있는 서식은 입력창이 그 빈칸만 묻습니다.')}
+      description={t('결과물의 모양을 고릅니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3">
           <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
-          {hasBlanks && <p className="text-sm text-muted">{t('빈칸을 채우면 그대로 요청이 됩니다.')}</p>}
         </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
@@ -421,9 +402,10 @@ export function DesignGalleryModal({
   )
 }
 
-/** Whether a surface offers the picker; one gate for the gallery and composer buttons. */
+/** Whether a surface offers the picker; one gate for the gallery and composer buttons. Only
+ * the writing surfaces have 서식: image, audio and video ones were retired. */
 export function offersTemplates(kind: SessionKind): boolean {
-  return kind === 'report' || kind === 'slides' || kind === 'image' || kind === 'av'
+  return kind === 'report' || kind === 'slides'
 }
 
 /** Button that opens the gallery, shown where the surface has anything to offer. */

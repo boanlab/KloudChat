@@ -17,7 +17,7 @@ from app.routers import sessions as sessions_router
 from app.routers import workspace as workspace_router
 from app.schemas.workspace import DesignTemplateOut
 from app.services import design_templates as dt
-from app.services import imagegen, page, research
+from app.services import page, research
 
 # ── the shipped catalogue ──────────────────────────────────────────────
 
@@ -26,9 +26,6 @@ from app.services import imagegen, page, research
 _PREFIX = {
     "deck": "deck-",
     "document": "doc-",
-    "image": "image-",
-    "video": "video-",
-    "audio": "audio-",
 }
 
 
@@ -48,37 +45,28 @@ def test_a_template_lands_on_the_surface_its_kind_names(template):
 def test_a_shipped_template_is_complete(template):
     assert template.name and template.description and template.category
     assert template.example_prompt.strip()
-    # Only writing templates carry instructions and a seed.
-    if template.kind in dt.HTML_KINDS:
-        assert template.instructions.strip()
-    else:
-        assert not template.instructions
+    # Every 서식 left is a writing one, with instructions and a seed.
+    assert template.kind in dt.HTML_KINDS
+    assert template.instructions.strip()
     assert template.name_en and template.description_en and template.category_en
     assert template.example_prompt_en.strip()
-    if template.kind in dt.HTML_KINDS:
-        assert template.seed
-        assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
-    else:
-        assert not template.seed
+    assert template.seed
+    assert "{{TOKENS}}" in template.seed and "{{BODY}}" in template.seed
 
 
 @pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
 def test_a_writing_template_says_what_it_will_be_read_against(template):
-    """Writing templates ship at least three unbulleted checks; media templates ship none."""
-    if template.kind in dt.HTML_KINDS:
-        assert len(template.checks) >= 3, template.id
-        assert not any(line.startswith("-") for line in template.checks), template.id
-    else:
-        assert not template.checks
+    """Writing templates ship at least three unbulleted checks."""
+    assert len(template.checks) >= 3, template.id
+    assert not any(line.startswith("-") for line in template.checks), template.id
 
 
 def test_the_card_carries_the_rules_the_result_will_be_read_against():
-    """`DesignTemplateOut.checks` carries the template's checks; an image template's is empty."""
+    """`DesignTemplateOut.checks` carries the template's checks."""
     card = DesignTemplateOut.of(dt.get("doc-minutes"))
     assert card.checks == list(dt.get("doc-minutes").checks)
     assert any("실행 항목" in line for line in card.checks)
     assert card.model_dump(by_alias=True)["checks"] == card.checks
-    assert DesignTemplateOut.of(dt.get("image-poster")).checks == []
 
 
 @pytest.mark.parametrize(
@@ -164,34 +152,6 @@ def test_no_seed_justifies_korean(template):
     assert "text-align: justify" not in template.seed
 
 
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_every_blank_is_one_the_prompt_actually_has(template):
-    """Every argument appears in both example prompts with labels, defaults and matching options."""
-    for argument in template.arguments:
-        assert f"{{{argument.name}}}" in template.example_prompt, argument.name
-        assert f"{{{argument.name}}}" in template.example_prompt_en, argument.name
-        assert argument.label and argument.label_en
-        assert argument.default and argument.default_en
-        assert len(argument.options) == len(argument.options_en)
-        assert not argument.options or argument.default in argument.options
-
-
-@pytest.mark.parametrize("template", dt.all_templates(), ids=lambda t: t.id)
-def test_a_prompt_has_no_blank_without_an_argument_behind_it(template):
-    named = {a.name for a in template.arguments}
-    for placeholder in re.findall(r"\{([a-z_]+)\}", template.example_prompt):
-        assert placeholder in named, placeholder
-
-
-@pytest.mark.parametrize(
-    "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
-)
-def test_a_writing_arguments_are_only_for_media(template):
-    """Writing templates have no arguments or defaults."""
-    assert not template.arguments
-    assert not template.defaults
-
-
 @pytest.mark.parametrize(
     "template", [t for t in dt.all_templates() if t.kind in dt.HTML_KINDS], ids=lambda t: t.id
 )
@@ -199,27 +159,6 @@ def test_a_writing_template_can_print(template):
     """Every writing seed has print and `@page` rules."""
     assert "@media print" in template.seed
     assert "@page" in template.seed
-
-
-def test_only_image_templates_hide_a_clause_from_the_composer():
-    """Only picture (non-figure) image templates carry a hidden `prompt_suffix`."""
-    for template in dt.all_templates():
-        if template.kind == "image" and not template.figure:
-            assert template.prompt_suffix.strip(), template.id
-        elif template.kind == "image":
-            # Figures do not go to an image model, so there is no style phrase to hide.
-            assert not template.prompt_suffix, template.id
-        else:
-            assert not template.prompt_suffix, template.id
-
-
-def test_media_templates_carry_the_settings_they_imply():
-    """Media templates ship the settings their shape implies."""
-    assert dt.get("video-product").defaults["aspect"] == "16:9"
-    assert dt.get("video-opening").defaults["resolution"] == "1080p"
-    assert dt.get("audio-narration").defaults["audioKind"] == "narration"
-    assert dt.get("audio-bed").defaults["audioKind"] == "music"
-    assert dt.get("image-poster").defaults["aspect"] == "9:16"
 
 
 def test_a_script_is_removed_with_its_payload():
@@ -431,29 +370,6 @@ def test_a_count_stated_in_the_request_is_honoured_within_bounds():
     assert page.requested_blocks("30쪽", dt.rendering("_document")) == 24
 
 
-# ── image templates ────────────────────────────────────────────────────
-
-
-def test_an_image_template_shapes_the_prompt_after_the_chip_and_before_the_design():
-    composed = imagegen.compose_prompt(
-        "행사 그림",
-        aspect="16:9",
-        style="사진",
-        template=dt.get("image-poster").prompt_suffix,
-        design="primary colour #7a1f3d",
-    )
-    assert composed.index("photorealistic") < composed.index("poster composition")
-    assert composed.index("poster composition") < composed.index("#7a1f3d")
-    # Orientation is spelled out as well as the ratio.
-    assert composed.endswith("aspect ratio 16:9, landscape orientation, wider than it is tall")
-
-
-def test_without_a_template_the_image_prompt_is_unchanged():
-    assert imagegen.compose_prompt("표지", aspect="1:1", style="사진") == imagegen.compose_prompt(
-        "표지", aspect="1:1", style="사진", template="", design=""
-    )
-
-
 # ── one whole turn ─────────────────────────────────────────────────────
 
 
@@ -653,6 +569,7 @@ def test_a_template_is_resolved_for_the_surface_that_can_use_it():
     ("template_id", "kind", "expected"),
     [
         ("nope", SessionKind.slides, 404),
+        # A retired image 서식 is as unknown as any other id.
         ("image-poster", SessionKind.image, 404),
         ("deck-editorial", SessionKind.report, 422),
         ("doc-comparison", SessionKind.slides, 422),
@@ -950,43 +867,6 @@ def test_an_attribute_stripper_cannot_be_stalled_by_whitespace():
     assert "onclick" not in cleaned
     assert "style=" not in cleaned
     assert "href=" not in cleaned
-
-
-def test_the_research_figures_ask_for_a_paper_figure_not_a_picture() -> None:
-    """Research diagram templates declare `figure` and take a description; the teaser does not."""
-    from app.services import design_templates
-
-    family = {
-        template.id: template
-        for template in design_templates.all_templates()
-        if template.kind == "image" and template.category == "연구"
-    }
-    assert {"image-diagram", "image-method", "image-pipeline", "image-teaser"} <= set(family)
-
-    figures = {"image-diagram": "concept", "image-pipeline": "flow", "image-method": "method"}
-    drawn = {t.id: t for t in design_templates.all_templates() if t.kind == "image"}
-    assert drawn["image-infographic"].figure == "flow"
-    assert drawn["image-architecture"].figure == "method"
-    for template_id, figure in figures.items():
-        template = family[template_id]
-        assert template.figure == figure, template_id
-        assert not template.prompt_suffix, template_id
-        assert template.arguments[0].name == "description", template_id
-        assert template.arguments[0].long, template_id
-        names = [argument.name for argument in template.arguments]
-        assert names == ["description", "highlight", "language"], template_id
-        for argument in template.arguments[1:]:
-            assert len(argument.options) >= 2, f"{template_id}.{argument.name}"
-        for argument in template.arguments:
-            assert f"{{{argument.name}}}" in template.example_prompt, argument.name
-
-    teaser = family["image-teaser"]
-    assert not teaser.figure
-    suffix = teaser.prompt_suffix.lower()
-    for banned in ("no text", "no lettering", "no logos"):
-        assert banned in suffix, f"image-teaser: {banned}"
-    assert "flat even lighting" in suffix
-    assert "no drop shadows" in suffix
 
 
 def test_a_research_figure_prompt_carries_both_halves() -> None:

@@ -34,7 +34,7 @@ _PROMPT = """다음 문서에 그림을 넣는다면 어디에 무엇을 넣어�
 {request}
 
 규칙:
-- **구조도·흐름도·관계도는 제안하지 마라.** 그런 것은 본문에 mermaid 로 그린다
+- **구조도·흐름도·관계도는 제안하지 마라.** 그런 것은 도식으로 따로 그린다
   — 이미지 모델보다 정확하고, 글자가 깨지지 않으며, 값이 들지 않는다.
 - 수치 비교는 그림이 아니라 표다. 표로 될 것은 제안하지 마라.
 - 여기서 제안할 것은 **그림으로만 되는 것**이다. 개념을 은유로 보여 주는 삽화,
@@ -66,35 +66,39 @@ _ONE_PROMPT = """다음 자리에 넣을 그림 하나를 제안하라.
 이 자리의 내용:
 {context}
 
-쓸 수 있는 그림 서식 — 하나를 골라라:
-{catalogue}
+그림의 종류 — 하나를 골라 "figure" 에 적어라:
+- "flow": 흐름도. 단계·절차·순서가 있을 때.
+- "method": 구조도. 구성 요소와 그 관계(아키텍처, 방법의 짜임)가 있을 때.
+- "concept": 개념도. 개념의 층위와 관계일 때.
+- "": 그림(삽화). 장면·은유·실물·화면처럼 이름표 없이 보여 줄 것일 때.
 
 규칙:
-- 단계·절차·순서가 있으면 흐름도(infographic·pipeline), 구성 요소와 관계가
-  있으면 아키텍처·구조도(architecture·method), 개념의 층위와 관계면 개념도
-  (diagram), 기존과 제안의 대비면 티저(teaser), 장면·은유·실물이면 삽화
-  (scene), 화면이면 목업(mockup). 문서의 인상에 어울리는 것을 고른다.
+- 구조·흐름·개념은 그림 모델이 아니라 도식으로 그린다 — 이름표가 깨지지 않는다.
 - 수치 비교는 그림이 아니라 표다. 표로 될 것은 제안하지 마라.
 - 이 자리에 이미 있는 말을 그림으로 옮겨 적지 마라. 글이 못 하는 것을 그린다.
-- 도식(figure 가 있는 서식)을 골랐으면 "description" 에 그릴 내용을 **한국어로
+- 도식("figure" 가 비어 있지 않음)이면 "description" 에 그릴 내용을 **한국어로
   구체적으로** 적는다 — 구성 요소 이름, 단계 이름, 관계. 이름표가 그대로 그림에
   들어간다. "prompt" 는 비운다.
-- 그림 서식을 골랐으면 "prompt" 에 이미지 모델에 줄 영어 지시 한 문장을 적는다.
-  글자·숫자·표를 넣지 마라 — 들어간 글자는 깨져서 나온다. "description" 은 비운다.
+- 그림이면 "prompt" 에 이미지 모델에 줄 영어 지시 한 문장을 적는다. 문서의 인상에
+  어울리게. 글자·숫자·표를 넣지 마라 — 들어간 글자는 깨져서 나온다. "description" 은
+  비운다.
 - caption: 그림 아래에 붙을 한 줄 설명. 한국어. 20자 안쪽.
 
 JSON 객체로만 답하라.
-예: {{"template": "image-scene", "caption": "무균실 작업 장면", "prompt": "photorealistic \
+예: {{"figure": "", "caption": "무균실 작업 장면", "prompt": "photorealistic \
 view of a cleanroom technician in white coveralls handling equipment, soft even \
 lighting, shallow depth of field", "description": ""}}
-예: {{"template": "image-architecture", "caption": "수집·분석·집행 구성", "prompt": "", \
+예: {{"figure": "method", "caption": "수집·분석·집행 구성", "prompt": "", \
 "description": "이벤트 수집기가 커널 이벤트를 받아 분석 엔진으로 보내고, 분석 엔진이 \
 정책 엔진에 판정을 넘기며, 집행기가 컨테이너에 정책을 적용한다. 대시보드는 분석 \
 엔진에서 상태를 읽는다."}}"""
 
 
-#: Style chip per document look; looks not listed use the 서식's own default.
+#: Style chip per document look; looks not listed leave the choice to the planner.
 _LOOK_STYLE = {"minimal": "미니멀"}
+
+#: Mermaid figure kinds the suggestion may name; `diagrams.FIGURES` draws them.
+_KINDS = ("flow", "method", "concept")
 _LOOK_NAMES = {
     "editorial": "편집형",
     "poster": "포스터형",
@@ -106,19 +110,6 @@ _LOOK_NAMES = {
 }
 
 
-def _catalogue_lines() -> str:
-    """Image 서식 catalogue, one per line, for `_ONE_PROMPT`."""
-    from app.services import design_templates
-
-    rows = []
-    for template in design_templates.all_templates():
-        if template.kind != "image" or template.id in ("image-cover", "image-poster-bg"):
-            continue
-        kind = f"도식({template.figure})" if template.figure else "그림"
-        rows.append(f"- {template.id}: {template.name} — {template.description} [{kind}]")
-    return "\n".join(rows)
-
-
 @dataclass(slots=True)
 class Figure:
     """One proposed picture."""
@@ -127,10 +118,9 @@ class Figure:
     section: int
     caption: str
     prompt: str
-    template_id: str = ""
-    #: `flow` / `method` / `concept` when the 서식 draws a mermaid figure.
+    #: `flow` / `method` / `concept` for a figure drawn as shapes; empty for a picture.
     figure: str = ""
-    #: Diagram description, for the mermaid path.
+    #: Diagram description, for the figure path.
     description: str = ""
     style: str = ""
 
@@ -254,7 +244,6 @@ async def suggest(
                                 look=_LOOK_NAMES.get(look, "정해지지 않음"),
                                 about=about[:200],
                                 context=context[:2000],
-                                catalogue=_catalogue_lines(),
                             ),
                         }
                     ],
@@ -277,25 +266,16 @@ async def suggest(
         return None
     prompt = str(parsed.get("prompt") or "").strip()
     description = str(parsed.get("description") or "").strip()
-    template_id = str(parsed.get("template") or "").strip()
-    from app.services import design_templates
-
-    template = design_templates.get(template_id)
-    if template is None or template.kind != "image":
-        template, template_id = None, ""
-    figure = template.figure if template else ""
-    if figure and not description:  # nothing to diagram; fall back to a picture
+    figure = str(parsed.get("figure") or "").strip().lower()
+    if figure not in _KINDS or not description:  # nothing to diagram; fall back to a picture
         figure = ""
     if not figure and not prompt:
         return None
-    style = _LOOK_STYLE.get(look) or (
-        str((template.defaults or {}).get("style") or "") if template else ""
-    )
+    style = _LOOK_STYLE.get(look, "")
     return Figure(
         section=0,
         caption=str(parsed.get("caption") or "").strip()[:120],
-        prompt=prompt[:600],
-        template_id=template_id,
+        prompt="" if figure else prompt[:600],
         figure=figure,
         description=description[:3000],
         style=style,

@@ -78,7 +78,6 @@ import type {
   ReportArtifact,
   ReportSection,
   SessionKind,
-  TemplateBlanks,
   Variant,
   Skill,
   Step,
@@ -447,9 +446,6 @@ interface State {
   saveGovernance: (patch: Partial<GovernancePolicy>) => Promise<number>
 
   // ── image / audio-video ───────────────────────────────────────────────
-  /** The media 서식 whose defaults the option chips show; any manual chip change clears it. */
-  optionTemplate: DesignTemplateRow | null
-  setOptionTemplate: (template: DesignTemplateRow | null) => void
   imageOptions: { aspect: string; style: string; labels: 'auto' | 'ko' | 'en' | 'none'; count: number }
   setImageOptions: (patch: Partial<State['imageOptions']>) => void
   /** Text to drop into the composer; never sent on the user's behalf. */
@@ -473,9 +469,6 @@ interface State {
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
-  /** A media 서식's arguments picked in the gallery, handed to the composer. Consumed once. */
-  pendingTemplateBlanks: TemplateBlanks | null
-  setPendingTemplateBlanks: (blanks: TemplateBlanks | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` — brand, enabled surfaces and the rest of what
@@ -1888,13 +1881,10 @@ export const useStore = create<State>((set, get) => ({
     }
     const { promptId, answerId } = beginMediaTurn(set, id, prompt, true)
     beginRun(set, id)
-    // An image template is consumed by the turn; no session row ever holds it.
-    const picked = get().pendingTemplate
-    const templateId = picked?.kind === 'image' ? picked.id : undefined
-    if (picked) set({ pendingTemplate: null })
     try {
-      // A `figure` template goes to a language model as mermaid, drawn here with its source kept.
-      const figure = picked?.kind === 'image' ? picked.figure : undefined
+      // A 구조도·흐름도·개념도 chip goes to a language model as a flowchart, drawn by the server
+      // with the deck export's shapes and kept with its source; never the image model.
+      const figure = opts.raw ? undefined : FIGURE_STYLES[imageOptions.style]
       if (figure) {
         try {
           const rows = [await drawFigure(id, prompt, figure, modelByKind.chat || undefined)]
@@ -1925,7 +1915,6 @@ export const useStore = create<State>((set, get) => ({
         style: opts.raw ? '없음' : imageOptions.style,
         labels: imageOptions.labels,
         count: imageOptions.count,
-        templateId,
         raw: opts.raw,
       })
       set((s) => ({ artifacts: [...rows.map(toArtifact), ...s.artifacts] }))
@@ -2065,12 +2054,8 @@ export const useStore = create<State>((set, get) => ({
       .catch(() => get().openSession(sessionId))
   },
 
-  optionTemplate: null,
-  setOptionTemplate: (optionTemplate) => set({ optionTemplate }),
   imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
-  // A manual chip change drops the 서식 that authored the values.
-  setImageOptions: (patch) =>
-    set((s) => ({ imageOptions: { ...s.imageOptions, ...patch }, optionTemplate: null })),
+  setImageOptions: (patch) => set((s) => ({ imageOptions: { ...s.imageOptions, ...patch } })),
   draft: '',
   setDraft: (draft) => set({ draft }),
   pendingAttachment: null,
@@ -2081,8 +2066,6 @@ export const useStore = create<State>((set, get) => ({
   setNotice: (notice) => set({ notice }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
-  pendingTemplateBlanks: null,
-  setPendingTemplateBlanks: (pendingTemplateBlanks) => set({ pendingTemplateBlanks }),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -2108,8 +2091,7 @@ export const useStore = create<State>((set, get) => ({
   setAvOptions: (patch) =>
     set((s) => {
       const avOptions = { ...s.avOptions, ...patch }
-      // A manual chip change drops the 서식 that authored the values.
-      const next = { avOptions, optionTemplate: null }
+      const next = { avOptions }
       if (!patch.mode) return next
       // The av model follows the mode unless the current one already suits it.
       const wanted = patch.mode === 'video' ? 'video' : 'audio'
@@ -4302,57 +4284,39 @@ function chargeCredits(set: Set, credits: number) {
   }))
 }
 
-/** Description → mermaid → PNG (2× for print), drawn off-screen with the app's tokens; the source is stored with it. */
+/** Image-surface style chips that draw a figure instead of a picture, by figure kind. */
+export const FIGURE_STYLES: Record<string, 'method' | 'flow' | 'concept' | undefined> = {
+  구조도: 'method',
+  흐름도: 'flow',
+  개념도: 'concept',
+}
+
+/** Why a figure came back undrawn, in the person's words. */
+export const FIGURE_UNDRAWABLE = '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.'
+export const FIGURE_UNRENDERED = '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.'
+
+/**
+ * Description → flowchart → PNG, drawn by the server with the .pptx export's own shapes and
+ * kept as an image artifact with its source. A figure the shapes cannot draw is refused; no
+ * browser drawing stands in (only a chat answer's mermaid is drawn here).
+ */
 export async function drawFigure(
   sessionId: string,
   description: string,
   figure: string,
   model: string | undefined,
 ): Promise<ArtifactRow> {
-  const { drawOrExplain, paperStyles, paperTheme, rasterise } = await import('@/lib/mermaid')
   // The card writes 「이름표 언어: 영어」 into the request.
   const language = /이름표 언어\s*[:：]\s*영어|Label language\s*[:：]\s*English/i.test(description)
     ? 'en'
     : 'ko'
-  let written = await sessionsApi.diagram(sessionId, { description, figure, model, language })
-  const host = document.createElement('div')
-  host.style.position = 'absolute'
-  host.style.left = '-10000px'
-  host.style.width = '1200px'
-  document.body.appendChild(host)
   try {
-    const look = paperTheme(host)
-    const { hot, ...config } = look
-    let drawn = await drawOrExplain(written.source, config)
-    if ('error' in drawn) {
-      // One repair round: mermaid's error goes back to the writer with its source.
-      written = await sessionsApi.diagram(sessionId, {
-        description, figure, model, language,
-        broken: written.source, error: drawn.error,
-      })
-      drawn = await drawOrExplain(written.source, config)
-    }
-    if ('error' in drawn) throw new Error(tr('도식을 그리지 못했습니다. 설명을 조금 바꿔 다시 해 보세요.'))
-    let svg = drawn.svg
-    // Mermaid theme variables do not reach `:::hot`; inject a stylesheet.
-    svg = svg.replace(/<svg([^>]*)>/, (m) => `${m}<style>${paperStyles(hot)}</style>`)
-    const png = await rasterise(svg)
-    if (!png) throw new Error(tr('도식을 그림으로 저장하지 못했습니다.'))
-    // `width`/`height` may be percentages or absent; the viewBox is the layout.
-    const box = /viewBox="[\d.-]+ [\d.-]+ ([\d.]+) ([\d.]+)"/.exec(svg)
-    const size = box ?? /width="([\d.]+)[^"]*"[^>]*height="([\d.]+)/.exec(svg)
-    return await sessionsApi.storeDiagram(sessionId, {
-      source: written.source,
-      caption: written.caption,
-      description,
-      figure,
-      title: written.caption || description.split('\n')[0].slice(0, 80),
-      model: written.model,
-      png: png.replace(/^data:image\/png;base64,/, ''),
-      width: size ? Math.round(Number(size[1]) * 2) : 0,
-      height: size ? Math.round(Number(size[2]) * 2) : 0,
-    })
-  } finally {
-    host.remove()
+    const written = await sessionsApi.diagram(sessionId, { description, figure, model, language })
+    if (!written.artifact) throw new Error(tr(FIGURE_UNRENDERED))
+    return written.artifact
+  } catch (err) {
+    if (err instanceof ApiError && err.detail === 'diagram_not_drawable') throw new Error(tr(FIGURE_UNDRAWABLE))
+    if (err instanceof ApiError && err.detail === 'diagram_unrendered') throw new Error(tr(FIGURE_UNRENDERED))
+    throw err
   }
 }

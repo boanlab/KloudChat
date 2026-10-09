@@ -45,12 +45,9 @@ _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
 SURFACE: dict[str, SessionKind] = {
     "deck": SessionKind.slides,
     "document": SessionKind.report,
-    "image": SessionKind.image,
-    "video": SessionKind.av,
-    "audio": SessionKind.av,
 }
 
-#: Kinds that produce an HTML artifact; `image` templates only shape a prompt.
+#: Kinds that produce an HTML artifact: every kind the catalogue still has.
 HTML_KINDS = ("deck", "document")
 
 #: Tags a block may contain; others are unwrapped. No `h1`/`h2`: the wrapper
@@ -128,22 +125,6 @@ _BARE_AMP = re.compile(r"&(?!#?\w{1,32};)")
 
 
 @dataclass(frozen=True, slots=True)
-class Argument:
-    """One blank in a media template's prompt, filled in the composer."""
-
-    name: str
-    label: str
-    label_en: str
-    default: str
-    default_en: str
-    #: A closed list renders as a picker; empty renders as a text field.
-    options: tuple[str, ...]
-    options_en: tuple[str, ...]
-    #: Multi-line field.
-    long: bool = False
-
-
-@dataclass(frozen=True, slots=True)
 class DesignTemplate:
     id: str
     kind: str
@@ -171,15 +152,6 @@ class DesignTemplate:
     dark: bool
     #: `deck` only: one of `design.VISUAL_STYLES`. Empty for documents.
     look: str
-    #: Blanks in `example_prompt`, written `{name}`. Media templates only.
-    arguments: tuple[Argument, ...]
-    #: Composer settings this template implies (aspect, duration, voice).
-    defaults: dict[str, Any]
-    #: `image` only: English clause folded into the picture prompt.
-    prompt_suffix: str
-    #: `image` only: `method` / `flow` / `concept` sends the request to the
-    #: mermaid diagram path instead of the image model.
-    figure: str
     #: Path to `template.docx`, which `report_export` opens and appends to; empty for Word defaults.
     docx_template: str
     #: Path to `template.pptx`, which `deck_export` builds on; empty for PowerPoint defaults.
@@ -188,12 +160,6 @@ class DesignTemplate:
     cover_page: bool
     #: Path to the blank `form.docx` / `form.pptx` for download; empty when none.
     form_file: str
-
-    @property
-    def wordless(self) -> bool:
-        """An image 서식 whose suffix forbids lettering: the planner must not write any
-        text into the picture either, or the two halves of the prompt contradict."""
-        return "no text" in self.prompt_suffix.lower()
 
     #: The shell every slide or section is placed into.
     seed: str
@@ -334,25 +300,8 @@ def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
         instructions=_read(folder, "instructions.md"),
         markup=_seed_markup(folder, meta),
         checklist=_read(folder, "checklist.md"),
-        prompt_suffix=str(meta.get("prompt_suffix") or ""),
-        figure=str(meta.get("figure") or ""),
         dark=bool(meta.get("dark")),
         look=_look(meta, kind),
-        arguments=tuple(
-            Argument(
-                name=str(arg.get("name") or ""),
-                label=str(arg.get("label") or ""),
-                label_en=str(arg.get("label_en") or ""),
-                default=str(arg.get("default") or ""),
-                default_en=str(arg.get("default_en") or ""),
-                options=tuple(str(o) for o in (arg.get("options") or [])),
-                options_en=tuple(str(o) for o in (arg.get("options_en") or [])),
-                long=bool(arg.get("long")),
-            )
-            for arg in (meta.get("arguments") or [])
-            if arg.get("name")
-        ),
-        defaults=dict(meta.get("defaults") or {}),
         docx_template=str(folder / "template.docx") if (folder / "template.docx").is_file() else "",
         pptx_template=str(folder / "template.pptx") if (folder / "template.pptx").is_file() else "",
         cover_page=bool(meta.get("cover_page", True)),
@@ -433,6 +382,39 @@ RETIRED = frozenset(
         "doc-term-paper",
     }
 )
+
+#: Image, audio and video 서식, all taken out. Nothing ever drew a stored document in one:
+#: an image 서식 only shaped the prompt of the turn that picked it, an audio or video one only
+#: set the composer's chips. A request or a saved choice that still names one is read as
+#: naming none (`is_retired_media`).
+RETIRED_MEDIA = frozenset(
+    {
+        "audio-bed",
+        "audio-narration",
+        "image-architecture",
+        "image-banner",
+        "image-cover",
+        "image-diagram",
+        "image-infographic",
+        "image-mascot",
+        "image-method",
+        "image-mockup",
+        "image-persona",
+        "image-pipeline",
+        "image-poster",
+        "image-poster-bg",
+        "image-scene",
+        "image-teaser",
+        "video-opening",
+        "video-product",
+    }
+)
+
+
+def is_retired_media(template_id: str | None) -> bool:
+    """Whether the id names a retired image, audio or video 서식."""
+    return (template_id or "") in RETIRED_MEDIA
+
 
 _GENERIC = _template(
     _ROOT / GENERIC_ID,
@@ -744,10 +726,11 @@ def escape(text: str) -> str:
 __all__ = [
     "GENERIC_ID",
     "RETIRED",
+    "RETIRED_MEDIA",
+    "is_retired_media",
     "form_text",
     "HTML_KINDS",
     "SURFACE",
-    "Argument",
     "DesignTemplate",
     "all_templates",
     "assemble",

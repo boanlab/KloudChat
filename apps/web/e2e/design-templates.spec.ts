@@ -14,7 +14,7 @@ function zipNames(buffer: Buffer): string[] {
 }
 
 /** Design templates (서식) from the card to the exported file: the HTML document path.
- *  One deck and one document generated per run; image/av templates are exercised only up to the pick. */
+ *  One deck and one document generated per run. Image, audio and video 서식 are retired. */
 
 /** A named screenshot under `test-results/shots/`. */
 async function shot(page: Page, name: string) {
@@ -269,78 +269,40 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   expect(html).not.toContain('class="cover"')
 })
 
-test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵션까지 맞춰 준다', async ({ page }) => {
-  test.setTimeout(180_000)
-  await signIn(page)
-
-  test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
-  const imageGallery = await openGallery(page, ['image-poster', 'image-cover'])
-  const poster = await findCard(imageGallery, '포스터')
-  await expect(poster).toBeVisible({ timeout: 20_000 })
-
-  // The card lists its questions; the composer asks them.
-  await expect(poster.getByText('무엇을')).toBeVisible()
-  await expect(poster.getByRole('textbox')).toHaveCount(0)
-  await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
-
-  // Questions above the box, each blank with its example; usable without typing.
-  const imageQuestions = page.getByRole('group', { name: '포스터 빈칸' })
-  await expect(imageQuestions.getByLabel('포스터 · 무엇을')).toHaveAttribute('placeholder', '학과 연구 성과 발표회')
-  await imageQuestions.getByLabel('포스터 · 무엇을').fill('연구실 개방 행사')
-  await imageQuestions.getByLabel('포스터 · 분위기').selectOption('밝고 활기찬')
-  await shot(page, '08-image-blanks')
-  // The chips follow the 서식.
-  await expect(page.getByRole('button', { name: '비율 9:16' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '스타일 일러스트' })).toBeVisible()
-  // Sent as a sentence: filled values, examples for empty blanks.
-  let asked = ''
-  await page.route('**/api/sessions/*/images', async (route) => {
-    asked = (route.request().postDataJSON() as { prompt: string }).prompt
-    await route.fulfill({ json: [] })
-  })
-  await page.getByRole('button', { name: '전송' }).click()
-  await expect.poll(() => asked, { timeout: 30_000 }).toMatch(/연구실 개방 행사/)
-  expect(asked).toMatch(/밝고 활기찬/)
-  expect(asked).not.toMatch(/\{/)
-
-  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
-  const avGallery = await openGallery(page, ['video-product', 'video-opening'])
-  const opener = await findCard(avGallery, '발표 오프닝')
-  await expect(opener).toBeVisible({ timeout: 20_000 })
-  await opener.getByRole('button', { name: '이 서식으로 시작' }).click()
-  const videoQuestions = page.getByRole('group', { name: '발표 오프닝 빈칸' })
-  await videoQuestions.getByLabel('발표 오프닝 · 움직임').selectOption('가볍게 떠다니는 입자')
-  await shot(page, '09-video-blanks')
-  await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '종류 영상' })).toBeVisible()
-
-  const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
-  const bed = await findCard(audioGallery, '배경 음악')
-  await bed.getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByRole('group', { name: '배경 음악 빈칸' })).toBeVisible()
-  // The template switches the surface's mode.
-  await expect(page.getByRole('button', { name: '유형 음악' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '종류 오디오' })).toBeVisible()
-})
-
-test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 되지 않는다', async ({ page }) => {
+test('이미지·영상 표면에는 서식이 없고, 도식 칩은 도형으로 그린다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 
+  // Image, audio and video 서식 were retired: no picker on those surfaces.
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
-  const gallery = await openGallery(page, ['image-poster', 'image-cover'])
-  const card = await findCard(gallery, '포스터')
-  await expect(card).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(0)
+  await shot(page, '06-image-no-gallery')
 
-  // An image template's card shows its recipe, in the catalogue's own words.
-  await expect(card).toContainText('글자는 넣지 않고')
+  // A 구조도 · 흐름도 · 개념도 chip draws through the figure path, never the image model.
+  let drawn = ''
+  let painted = false
+  await page.route('**/api/sessions/*/diagrams', async (route) => {
+    drawn = (route.request().postDataJSON() as { figure: string }).figure
+    await route.fulfill({ status: 422, json: { detail: 'diagram_not_drawable' } })
+  })
+  await page.route('**/api/sessions/*/images', async (route) => {
+    painted = true
+    await route.fulfill({ json: [] })
+  })
+  await page.getByRole('button', { name: /^스타일/ }).click()
+  await page.getByRole('menuitemcheckbox', { name: '흐름도' }).click()
+  await page.getByLabel('프롬프트 입력').fill('요청이 게이트웨이를 거쳐 모델로 간다')
+  await page.getByLabel('프롬프트 입력').press('Enter')
+  await expect.poll(() => drawn, { timeout: 30_000 }).toBe('flow')
+  expect(painted).toBe(false)
+  await expect(page.getByText('이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.')).toBeVisible({
+    timeout: 20_000,
+  })
 
-  await shot(page, '06-image-gallery')
-  await card.getByRole('button', { name: '이 서식으로 시작' }).click()
-  // Questions open above the box; nothing lands in it.
-  await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-  await expect(page.getByRole('group', { name: '포스터 빈칸' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '포스터 서식 해제' })).toBeVisible()
+  test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(0)
 })
 
 test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나온다', async ({ page }) => {

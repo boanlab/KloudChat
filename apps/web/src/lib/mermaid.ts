@@ -63,27 +63,6 @@ export async function drawInto(node: HTMLElement, source: string, look: object):
   }
 }
 
-/** `draw`, but a parse failure comes back as mermaid's message so the writer can be asked for a repair. */
-export async function drawOrExplain(
-  source: string,
-  look: object,
-): Promise<{ svg: string } | { error: string }> {
-  try {
-    const { default: mermaid } = await import('mermaid')
-    mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true, ...look })
-    const id = `fig-${Math.random().toString(36).slice(2)}`
-    try {
-      const { svg } = await mermaid.render(id, plain(source))
-      return { svg }
-    } finally {
-      document.getElementById(id)?.remove()
-      document.getElementById(`d${id}`)?.remove()
-    }
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
-  }
-}
-
 /** Strips `style`, `classDef` and `linkStyle` lines so the 서식 owns every colour; nodes are untouched. */
 function plain(source: string): string {
   return source
@@ -250,52 +229,6 @@ function shades(accent: string, paper: string, count: number): string[] {
     const mix = count === 1 ? 0 : (i / (count - 1)) * 0.7
     return `#${hex(ar + (pr - ar) * mix)}${hex(ag + (pg - ag) * mix)}${hex(ab + (pb - ab) * mix)}`
   })
-}
-
-/**
- * Figure theme for a paper: light desaturated pastel zones, rounded nodes, thin
- * uniform strokes, one highlight colour. `hot` is the one class the prompt may
- * write (`node:::hot`).
- */
-export function paperTheme(node: HTMLElement) {
-  const base = theme(node)
-  const read = (name: string, fallback: string) =>
-    getComputedStyle(node).getPropertyValue(name).trim() || fallback
-  const accent = read('--accent', '#5b5bd6')
-  const ink = read('--ink', '#1a1a1a')
-  return {
-    ...base,
-    fontFamily: "'Pretendard', 'Pretendard Variable', 'Inter', 'Helvetica Neue', Arial, sans-serif",
-    themeVariables: {
-      ...base.themeVariables,
-      // Zones in light ice, nodes in light grey-blue with mid-saturation borders.
-      clusterBkg: '#ffffff',
-      clusterBorder: '#c7d2e3',
-      mainBkg: '#eef2f8',
-      primaryColor: '#eef2f8',
-      primaryBorderColor: '#eef2f8',
-      nodeBorder: '#eef2f8',
-      secondaryColor: '#eef2f8',
-      tertiaryColor: '#ffffff',
-      lineColor: '#5b6b82',
-      textColor: ink,
-      primaryTextColor: ink,
-      fontSize: '17px',
-    },
-    flowchart: {
-      ...base.flowchart,
-      // Drawn at its own size: with `useMaxWidth` the SVG says `width="100%"`
-      // and the rasteriser has no size to draw at.
-      useMaxWidth: false,
-      curve: 'basis' as const,
-      padding: 20,
-      rankSpacing: 56,
-      nodeSpacing: 48,
-      subGraphTitleMargin: { top: 12, bottom: 14 },
-    },
-    // Read by `paperStyles` below, not by mermaid.
-    hot: accent,
-  }
 }
 
 /**

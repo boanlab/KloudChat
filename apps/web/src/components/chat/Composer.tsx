@@ -5,7 +5,6 @@ import {
   Gauge,
   Globe,
   LayoutGrid,
-  LayoutTemplate,
   Mic,
   MoreHorizontal,
   Paperclip,
@@ -35,9 +34,9 @@ import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
-import { ChatSendRecoveryError, effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, PrivacyAction, SessionKind, Skill, TemplateBlanks } from '@/types'
-import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
+import { ChatSendRecoveryError, FIGURE_STYLES, effectiveModelId, useStore } from '@/store/useStore'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill } from '@/types'
+import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
@@ -58,7 +57,8 @@ const placeholders: Record<SessionKind, string> = {
 }
 
 // Mirrors `imagegen.STYLE_CHOICES`.
-const STYLES = ['자동', '도식', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
+// 구조도 · 흐름도 · 개념도 draw a figure with the deck export's shapes (`FIGURE_STYLES`), never the image model.
+const STYLES = ['자동', '구조도', '흐름도', '개념도', '인포그래픽', '차트', '사진', '일러스트', '미니멀', '3D 렌더', '수채화', '없음']
 const LABELS: { id: 'auto' | 'ko' | 'en' | 'none'; label: string }[] = [
   { id: 'auto', label: '자동' },
   { id: 'ko', label: '한국어' },
@@ -137,27 +137,6 @@ function OptionGroup<T extends string | number>({
   )
 }
 
-/** Names the media template whose values fill the option chips; gone once a chip is changed by hand. */
-function TemplateOptionNote({ kinds }: { kinds: readonly string[] }) {
-  const t = useT()
-  const template = useStore((s) => s.optionTemplate)
-  // Hidden while the template chip above already names it.
-  const chipped = useStore((s) => s.pendingTemplate)
-  if (!template || !kinds.includes(template.kind) || chipped?.id === template.id) return null
-  return (
-    <span
-      className="flex items-center gap-1 text-xs text-faint"
-      title={t('값을 직접 바꾸면 이 표시는 사라집니다')}
-    >
-      <LayoutGrid size={11} />
-      {t('{name} 서식이 정한 값').replace(
-        '{name}',
-        templateText(template, currentLang() === 'en').name,
-      )}
-    </span>
-  )
-}
-
 function ImageOptions({ model }: { model: ModelInfo | undefined }) {
   const t = useT()
   const { imageOptions, setImageOptions } = useStore()
@@ -192,7 +171,6 @@ function ImageOptions({ model }: { model: ModelInfo | undefined }) {
         onChange={(v) => setImageOptions({ count: v })}
         format={(v) => t('{n}장').replace('{n}', String(v))}
       />
-      <TemplateOptionNote kinds={['image']} />
     </>
   )
 }
@@ -300,7 +278,6 @@ function AvOptions() {
         onChange={(v) => setAvOptions({ durationSec: v })}
         format={(v) => t('{n}초').replace('{n}', String(v))}
       />
-      <TemplateOptionNote kinds={['video', 'audio']} />
     </>
   )
 }
@@ -440,10 +417,6 @@ export function Composer({
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
-  // A media 서식's blanks; spent on one turn.
-  const [templateBlanks, setTemplateBlanks] = useState<TemplateBlanks | null>(null)
-  const pendingTemplateBlanks = useStore((s) => s.pendingTemplateBlanks)
-  const setPendingTemplateBlanks = useStore((s) => s.setPendingTemplateBlanks)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const livePendingTemplate = useRef(pendingTemplate)
@@ -502,17 +475,6 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
-  // Values typed into the template's blanks, keyed by blank index.
-  const [blankValues, setBlankValues] = useState<Record<number, string>>({})
-
-  useEffect(() => {
-    if (!pendingTemplateBlanks) return
-    activeRestoreToken.current = null
-    setTemplateBlanks(pendingTemplateBlanks)
-    setBlankValues({})
-    setPendingTemplateBlanks(null)
-    requestAnimationFrame(() => ref.current?.focus())
-  }, [pendingTemplateBlanks, setPendingTemplateBlanks])
   const [uploading, setUploading] = useState(false)
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
@@ -700,7 +662,6 @@ export function Composer({
       : []
     liveActivatedSkillIds.current = standing
     setActivatedSkillIds(standing)
-    setTemplateBlanks(null)
     liveAttachments.current = []
     setAttachments([])
     setWebSearchMode('auto')
@@ -736,7 +697,6 @@ export function Composer({
     models,
     modelByKind,
     imageOptions,
-    setImageOptions,
     jobs,
     uploadFile,
     newSession,
@@ -916,8 +876,6 @@ export function Composer({
     }))
     liveAttachments.current = files
     setAttachments(files)
-    setTemplateBlanks(null)
-    setBlankValues({})
     requestAnimationFrame(() => { ref.current?.focus(); ref.current?.scrollIntoView({ block: 'nearest' }) })
     // A message edit is an explicit one-time injection, not an ordinary draft update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1136,25 +1094,8 @@ export function Composer({
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
 
-  // A media template fills one sentence; an empty blank keeps its default.
-  const withBlankValues = (typed: string) => {
-    if (!templateBlanks?.blanks) return typed
-    const values = Object.fromEntries(
-      templateBlanks.blanks.map((blank, index) => [
-        blank.name,
-        (blankValues[index] ?? '').trim() || templateBlanks.examples?.[index] || '',
-      ]),
-    )
-    const sentence = templateBlanks.examplePrompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
-      name in values ? values[name] : whole,
-    )
-    return [sentence, typed].filter(Boolean).join('\n')
-  }
-  // The template's sentence is whole even with empty blanks.
-  const blanksFilled = Boolean(templateBlanks?.blanks)
-
   const submit = (spoken?: string) => {
-    const text = withBlankValues((spoken ?? value).trim())
+    const text = (spoken ?? value).trim()
     if (!text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
@@ -1235,11 +1176,8 @@ export function Composer({
     liveValue.current = ''
     liveAttachments.current = []
     // Skills stay on: picked once, they apply to the conversation's later turns too.
-    // The blanks are spent on one turn, unlike the template chip.
     setValue('')
     setAttachments([])
-    setTemplateBlanks(null)
-    setBlankValues({})
     if (kind === 'av' && avOptions.mode === 'video') {
       // Video is a job; the card tracks it.
       void generateVideo(sessionId, text, {
@@ -1339,9 +1277,7 @@ export function Composer({
       attachments: attachmentIds,
       attachmentNames: attachmentLabels,
       activatedSkillIds: sentSkillIds,
-      // Writing surfaces only; an image template is applied by `generateImages`.
-      renderTemplateId:
-        shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
+      renderTemplateId: shownTemplate ? shownTemplate.id : undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -1396,7 +1332,6 @@ export function Composer({
           activeSkills.length > 0 ||
           autoBypassPreview ||
           autoPausedForCompare ||
-          templateBlanks ||
           // Same rule as the chip below: the session's own shape survives a reload.
           shownTemplate ||
           (compareMode && kind === 'chat')) && (
@@ -1460,9 +1395,6 @@ export function Composer({
                   type="button"
                   onClick={() => {
                     setPendingTemplate(null)
-                    // The template's questions go with it.
-                    setTemplateBlanks(null)
-                    setBlankValues({})
                     // Sticky server-side once used, so clear the session row too.
                     if (session?.renderTemplateId) {
                       void setSessionTemplate(session.id, null)
@@ -1473,24 +1405,6 @@ export function Composer({
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
-                  className="ml-0.5 text-faint hover:text-fg"
-                >
-                  <X size={10} />
-                </button>
-              </Badge>
-            )}
-            {/* Hidden while the template chip above names it. */}
-            {templateBlanks && !pendingTemplate && (
-              <Badge tone="accent">
-                <LayoutTemplate size={11} />
-                {templateBlanks.title}
-                <button
-                  type="button"
-                  onClick={() => {
-                    activeRestoreToken.current = null
-                    setTemplateBlanks(null)
-                  }}
-                  aria-label={t('{name} 서식 해제').replace('{name}', templateBlanks.title)}
                   className="ml-0.5 text-faint hover:text-fg"
                 >
                   <X size={10} />
@@ -1581,7 +1495,7 @@ export function Composer({
             >
               {unsupportedVideo
                 ? t('이 모델은 이 조합을 만들지 않습니다')
-                : pendingTemplate?.kind === 'image' && pendingTemplate.figure
+                : kind === 'image' && FIGURE_STYLES[imageOptions.style]
                   // A figure is drawn by the text model, not priced as a picture.
                   ? t('도식은 글 모델이 씁니다 · 그림 요금이 아닙니다')
                   : t('예상 {n} 크레딧').replace('{n}', estimate.toLocaleString())}
@@ -1589,67 +1503,6 @@ export function Composer({
           </div>
         )}
 
-        {/* Template blanks; they fill the template's sentence. */}
-        {!pending && templateBlanks && templateBlanks.fills.length > 0 && (
-          <div
-            role="group"
-            aria-label={t('{name} 빈칸').replace('{name}', templateBlanks.title)}
-            className="grid gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:grid-cols-2"
-          >
-            {templateBlanks.fills.map((fill, index) => {
-              const blank = templateBlanks.blanks?.[index]
-              const set = (next: string) => {
-                setBlankValues((all) => ({ ...all, [index]: next }))
-                // An aspect blank also sets the aspect chip, which is what the request reads.
-                if (blank?.name === 'aspect') {
-                  const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
-                  if (ratio && ASPECTS.includes(ratio)) setImageOptions({ aspect: ratio })
-                }
-              }
-              return (
-                <label key={`${fill}-${index}`} className={cn('block min-w-0', blank?.long && 'sm:col-span-2')}>
-                  <span className="mb-0.5 block text-xs font-medium text-muted">{fill}</span>
-                  {blank?.options?.length ? (
-                    <select
-                      // Unpicked, the template default shows and is sent.
-                      value={blankValues[index] ?? templateBlanks.examples?.[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      aria-label={`${templateBlanks.title} · ${fill}`}
-                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
-                    >
-                      {blank.options.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                  ) : blank?.long ? (
-                    <textarea
-                      value={blankValues[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      rows={4}
-                      placeholder={templateBlanks.examples?.[index] || ''}
-                      aria-label={`${templateBlanks.title} · ${fill}`}
-                      className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed placeholder:text-faint focus:border-accent focus:outline-none"
-                    />
-                  ) : (
-                    <input
-                      value={blankValues[index] ?? ''}
-                      onChange={(e) => set(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                          e.preventDefault()
-                          submit()
-                        }
-                      }}
-                      placeholder={templateBlanks.examples?.[index] || ''}
-                      aria-label={`${templateBlanks.title} · ${fill}`}
-                      className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
-                    />
-                  )}
-                </label>
-              )
-            })}
-          </div>
-        )}
         <textarea
           ref={ref}
           autoFocus={autoFocus}
@@ -1689,9 +1542,7 @@ export function Composer({
                   ? pending.stage === 'clarify'
                     ? t('답을 적거나, 위에서 고르세요')
                     : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                  : templateBlanks && templateBlanks.fills.length > 0
-                    ? t('덧붙일 말이 있으면 여기에 적으세요')
-                    : t(placeholders[kind])
+                  : t(placeholders[kind])
           }
           aria-label={t('프롬프트 입력')}
           data-composer=""
@@ -2046,7 +1897,7 @@ export function Composer({
             )}
             <button
               onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-              disabled={(!value.trim() && !blanksFilled && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
+              disabled={(!value.trim() && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
@@ -2059,7 +1910,7 @@ export function Composer({
                   ? t('생성을 멈춥니다')
                   : modelSelectionPending
                     ? t('모델 설정 저장 중…')
-                  : !value.trim() && !blanksFilled
+                  : !value.trim()
                     ? t('보낼 내용을 먼저 입력하세요')
                     : unsupportedVideo
                       ? t('이 모델은 이 조합을 만들지 않습니다')

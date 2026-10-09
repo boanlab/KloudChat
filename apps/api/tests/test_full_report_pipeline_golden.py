@@ -123,10 +123,11 @@ def model(monkeypatch):
         prompt = "\n".join(str(m.get("content") or "") for m in messages)
         return gateway.answer(prompt), {"inputTokens": 1, "outputTokens": 1}
 
-    async def make(planned, *, model, api_key, slide):
+    async def make(planned, *, model, api_key, slide, accent=""):
         source = "flowchart LR\n  a[사용자 요청] --> b[게이트웨이] --> c[마스킹] --> d[LLM 서버]"
         return ({"figure": planned.figure, "description": planned.description, "source": source,
-                 "caption": planned.caption, "key": "k"}, {"inputTokens": 0, "outputTokens": 0})
+                 "caption": planned.caption, "key": "k"}, {"inputTokens": 0, "outputTokens": 0},
+                b"\x89PNG\r\n\x1a\n")
 
     monkeypatch.setattr(report.settings_store, "litellm_config", litellm_config)
     monkeypatch.setattr(report, "_complete", complete)
@@ -144,7 +145,9 @@ async def test_the_finished_report_passes_the_quality_gate(model):
     assert findings == [], findings
     text = "\n\n".join(s["content"] for s in sections)
     assert "**표 1. 배포 방식 비교**" in text and "표 1과 같은 차이" in text
-    assert "그림 1과 같이" in text and "```mermaid" in text
+    # Figures are drawn as shapes and carried as pictures; no mermaid reaches a report.
+    assert "그림 1과 같이" in text and "data:image/png;base64," in text
+    assert "```mermaid" not in text
     assert "프롬프트 인젝션" in text and "생성형 AI 보안 시장은" in text
     assert "『AI 보안 위협 대응 매뉴얼』" in text
     # The kpi repeats a figure the text gives, so it goes (drop_redundant_kpi); either way

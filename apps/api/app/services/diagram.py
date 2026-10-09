@@ -1,9 +1,9 @@
-"""Labelled method/flow/concept figures as mermaid source, written by a model and drawn by the
-client.
+"""Labelled method/flow/concept figures as mermaid flowchart source, written by a model.
 
 House style: zones as subgraphs, rounded processes / square data / cylinder stores, solid
-forward and dashed auxiliary edges, one `hot` highlight. The mermaid source is what is
-stored; the picture is derived from it.
+forward and dashed auxiliary edges, one `hot` highlight. The source is what is stored; a
+report, a deck or the image surface draws it with the .pptx export's own shapes
+(`draw_native`). Only a chat answer's mermaid is drawn by the browser.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any
 
+from app.services import diagram_render, diagram_shapes
 from app.services.report import _complete
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,9 @@ _RULES = """
 - 노드 id 는 영문 소문자, 이름은 한 번만 정의한다. 화살표 양끝은 반드시
   **이미 정의한 id** 다 — 이름 없는 id 하나만 덜렁 두지 마라.
 - 노드는 12개 이하, 이름은 12자 안쪽. `/` 로 둘을 한 칸에 넣지 마라.
+- **첫 줄은 반드시 `flowchart LR` 또는 `flowchart TB` 다.** sequenceDiagram·mindmap·
+  classDiagram·timeline 같은 다른 mermaid 종류는 그릴 수 없다. 노드가
+  {max_nodes}개를 넘는 그림도 그릴 수 없다 — 묶음으로 줄여라.
 
 ## 선
 - 본류(순전파, 주 데이터 흐름)는 실선 `-->`.
@@ -106,7 +110,11 @@ def _messages(
     what = FIGURES.get(figure, FIGURES["method"])
     lang = "영어로" if language == "en" else "한국어로"
     return [
-        {"role": "system", "content": _RULES + (_SLIDE_RULES if slide else "")},
+        {
+            "role": "system",
+            "content": _RULES.replace("{max_nodes}", str(diagram_shapes.MAX_NODES))
+            + (_SLIDE_RULES if slide else ""),
+        },
         {
             "role": "user",
             "content": (
@@ -189,4 +197,75 @@ async def draw(
     return source, caption, usage
 
 
-__all__ = ["FIGURES", "draw"]
+#: Default accent of a figure outside a deck; a deck passes its own.
+ACCENT = "#2563EB"
+
+#: Said to the writer when its source is not a flowchart the shapes can draw.
+_NOT_DRAWABLE = (
+    "이 그림판은 flowchart 만 그린다. 첫 줄을 `flowchart LR` 또는 `flowchart TB` 로 하고, "
+    "노드를 {n}개 이하로 줄여라."
+)
+
+
+class Undrawable(ValueError):
+    """The figure is not one the shapes can draw even after a rewrite, or nothing renders it.
+
+    `usage` is what the attempt spent, so a caller can still charge it."""
+
+    def __init__(self, reason: str, usage: dict[str, Any] | None = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.usage = usage or {}
+
+
+def _added(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    keys = set(left) | set(right)
+    return {
+        k: int(left.get(k) or 0) + int(right.get(k) or 0)
+        for k in keys
+        if isinstance(left.get(k, 0), int | float) and isinstance(right.get(k, 0), int | float)
+    }
+
+
+async def draw_native(
+    *,
+    description: str,
+    figure: str,
+    model: str,
+    api_key: str,
+    language: str = "ko",
+    slide: bool = False,
+    accent: str = ACCENT,
+) -> tuple[str, str, dict[str, Any], bytes]:
+    """One figure written and drawn with the .pptx export's shapes, rendered to PNG.
+
+    Returns `(source, caption, usage, png)`. A source the shapes cannot read goes back to the
+    writer once, told why; still unreadable, or no renderer answering, raises `Undrawable`.
+    There is no browser fallback: a figure that cannot be drawn this way is left out.
+    """
+    source, caption, usage = await draw(
+        description=description, figure=figure, model=model, api_key=api_key,
+        language=language, slide=slide,
+    )
+    if diagram_shapes.parse(source) is None:
+        log.info("figure source not drawable as shapes; asking for a flowchart once")
+        try:
+            source, again, more = await draw(
+                description=description, figure=figure, model=model, api_key=api_key,
+                language=language, slide=slide, broken=source,
+                error=_NOT_DRAWABLE.format(n=diagram_shapes.MAX_NODES),
+            )
+        except ValueError as exc:
+            raise Undrawable("not_drawable", usage) from exc
+        usage = _added(usage, more)
+        caption = again or caption
+        if diagram_shapes.parse(source) is None:
+            raise Undrawable("not_drawable", usage)
+    png = await diagram_render.render_png(source, accent or ACCENT)
+    if not png:
+        log.warning("figure not drawn: the picture renderer did not answer")
+        raise Undrawable("renderer_unavailable", usage)
+    return source, caption, usage, png
+
+
+__all__ = ["ACCENT", "FIGURES", "Undrawable", "draw", "draw_native"]

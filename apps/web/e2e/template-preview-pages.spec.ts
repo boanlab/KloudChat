@@ -12,7 +12,7 @@ const row = {
   id: 'doc-client-proposal', kind: 'document', surface: 'report', name: '고객 제안서',
   description: 'RFP 목차를 따르는 고객 제안', category: '업무', fills: ['고객사와 사업명'],
   examplePrompt: '고객 제안서를 써 줘.', nameEn: 'Client proposal', descriptionEn: '', categoryEn: 'Work',
-  fillsEn: [], examplePromptEn: '', checks: [], arguments: [], defaults: {}, formFormat: '',
+  fillsEn: [], examplePromptEn: '', checks: [], formFormat: '',
   hasPreview: true, slideCount: 0,
 }
 

@@ -2,11 +2,13 @@ import { ImagePlus, Loader2, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ArtifactPreview } from '@/components/artifacts/ArtifactPanel'
 import { Button, Input } from '@/components/ui'
-import { errorMessage, sessionsApi } from '@/lib/api'
+import { ApiError, errorMessage, sessionsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useDesignTemplates } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
+
+/** What a figure kind is called on screen. */
+const FIGURE_NAMES: Record<string, string> = { method: '구조도', flow: '흐름도', concept: '개념도', compare: '비교도' }
 
 /**
  * Picks an existing image artifact for a slide or section, or generates one
@@ -52,16 +54,9 @@ export function PicturePicker({
   const canMake = imageOn && Boolean(sessionId)
   // True while the box holds the untouched suggestion.
   const [suggested, setSuggested] = useState(false)
-  // Template chosen by the suggestion; a figure template draws as mermaid.
-  const [chosen, setChosen] = useState<{
-    templateId: string
-    name: string
-    figure: string
-    description: string
-    style: string
-  } | null>(null)
+  // What the suggestion chose: a figure kind draws as shapes on the server, else a picture.
+  const [chosen, setChosen] = useState<{ figure: string; style: string } | null>(null)
   const chatModel = useStore((s) => s.modelByKind.chat)
-  const templates = useDesignTemplates()
 
   // Same-session pictures first.
   const pictures = artifacts
@@ -84,16 +79,7 @@ export function PicturePicker({
         // A figure shows its description (what gets drawn); a picture shows its prompt.
         setPrompt((row.figure ? row.description : row.prompt) ?? '')
         setSuggested(true)
-        if (row.templateId) {
-          const named = templates.find((one) => one.id === row.templateId)
-          setChosen({
-            templateId: row.templateId,
-            name: named?.name ?? row.templateId,
-            figure: row.figure ?? '',
-            description: row.description ?? '',
-            style: row.style ?? '',
-          })
-        }
+        setChosen({ figure: row.figure ?? '', style: row.style ?? '' })
         // A typed caption outranks the suggested one.
         if (row.caption) onCaption(caption.trim() || row.caption)
       })
@@ -116,7 +102,7 @@ export function PicturePicker({
     try {
       let rows: { id: string }[]
       if (chosen?.figure && suggested) {
-        // Figure path: the box holds the description `drawFigure` renders.
+        // Figure path: the box holds the description the server draws as shapes.
         rows = [await drawFigure(sessionId, asked, chosen.figure, chatModel || undefined)]
       } else {
         rows = await sessionsApi.images(sessionId, {
@@ -124,7 +110,6 @@ export function PicturePicker({
           aspect,
           style: chosen?.style ?? '',
           count: 1,
-          ...(chosen && !chosen.figure ? { templateId: chosen.templateId } : {}),
           // An illustration for a slide, not a rendering of one.
           figure: true,
         })
@@ -134,7 +119,12 @@ export function PicturePicker({
       if (rows[0]) onPick(rows[0].id)
       setPrompt('')
     } catch (err) {
-      setError(errorMessage(err, t('그림을 만들지 못했습니다.')))
+      // The drawing step's own sentences (an undrawable figure) are shown as they are.
+      setError(
+        err instanceof Error && !(err instanceof ApiError) && err.message
+          ? err.message
+          : errorMessage(err, t('그림을 만들지 못했습니다.')),
+      )
     } finally {
       setMaking(false)
     }
@@ -183,10 +173,10 @@ export function PicturePicker({
           </div>
           <p className="mt-1.5 flex items-center gap-1 text-xs text-faint">
             {suggested && <Sparkles size={11} className="shrink-0 text-accent" />}
-            {suggested && chosen
-              ? t('「{name}」 서식으로 만듭니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
+            {suggested && chosen?.figure
+              ? t('「{name}」로 그립니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.').replace(
                   '{name}',
-                  chosen.name,
+                  t(FIGURE_NAMES[chosen.figure] ?? '도식'),
                 )
               : suggested
                 ? t(

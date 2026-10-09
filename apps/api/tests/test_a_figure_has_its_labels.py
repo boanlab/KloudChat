@@ -482,7 +482,7 @@ def test_a_proposal_with_nothing_behind_it_is_asked_about() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_diagram_path(
+async def test_a_suggestion_names_its_figure_kind_and_a_figure_takes_the_diagram_path(
     monkeypatch,
 ) -> None:
     from app.services import figures
@@ -518,7 +518,7 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         figures.httpx,
         "AsyncClient",
         lambda **_kw: _Client(
-            '{"template": "image-architecture", "caption": "수집·분석·집행", "prompt": "", '
+            '{"figure": "method", "caption": "수집·분석·집행", "prompt": "", '
             '"description": "수집기가 이벤트를 분석 엔진으로 보내고 집행기가 정책을 적용한다."}'
         ),
     )
@@ -531,7 +531,7 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         look="minimal",
     )
     assert figure is not None
-    assert figure.template_id == "image-architecture" and figure.figure == "method"
+    assert figure.figure == "method"
     assert figure.description.startswith("수집기가") and figure.prompt == ""
     assert figure.style == "미니멀"
 
@@ -539,16 +539,18 @@ async def test_a_suggestion_picks_a_catalogue_template_and_a_figure_takes_the_di
         figures.httpx,
         "AsyncClient",
         lambda **_kw: _Client(
-            '{"template": "image-nope", "caption": "무균실", "prompt": "a cleanroom technician", '
+            '{"figure": "nope", "caption": "무균실", "prompt": "a cleanroom technician", '
             '"description": ""}'
         ),
     )
     picture = await figures.suggest(
         title="공정", about="작업 환경", context="…", model="m", api_key="k", look="editorial"
     )
-    # A 서식 name not in the catalogue is not a 서식; the picture is drawn as asked.
-    assert picture is not None and picture.template_id == "" and picture.figure == ""
+    # A kind the diagram path does not draw is a picture, drawn as asked.
+    assert picture is not None and picture.figure == ""
     assert picture.prompt == "a cleanroom technician"
+    # No catalogue is offered any more: the kinds are the prompt's own.
+    assert "{catalogue}" not in figures._ONE_PROMPT and '"figure"' in figures._ONE_PROMPT
 
 
 def test_a_genre_gets_its_own_shape_and_a_decision_report_gets_none() -> None:

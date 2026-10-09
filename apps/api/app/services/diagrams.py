@@ -1,8 +1,10 @@
-"""Figures a document draws for itself: which parts want one, and the mermaid for each.
+"""Figures a document draws for itself: which parts want one, and the drawing for each.
 
 One planning call picks the parts where a figure says more than the words; each goes
-through `diagram.draw`. A deck keeps the result in `slide["diagram"]`, a report appends a
-mermaid fence. No image model and no approval card: the cost is the writer's own tokens.
+through `diagram.draw_native`, which draws it with the .pptx export's shapes. A deck keeps
+the source in `slide["diagram"]` and the picture in `slide["image"]`, a report carries the
+picture. A figure that cannot be drawn so is left out. No image model and no approval card:
+the cost is the writer's own tokens.
 """
 
 from __future__ import annotations
@@ -221,21 +223,23 @@ def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list
 
 
 async def make(
-    planned: Planned, *, model: str, api_key: str, slide: bool
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """The mermaid for one planned figure, with its key for the browser's raster.
+    planned: Planned, *, model: str, api_key: str, slide: bool, accent: str = ""
+) -> tuple[dict[str, Any], dict[str, int], bytes]:
+    """The source for one planned figure with its key, the spend, and its PNG.
 
-    Raises when the model does not produce a diagram; callers leave the part as words.
+    Raises when the figure cannot be drawn (`diagram.Undrawable`, or no diagram at all);
+    callers leave the part as words.
     """
     # Imported here: `diagram` reaches the report writer, which reaches the deck rules.
     from app.services import diagram
 
-    source, caption, usage = await diagram.draw(
+    source, caption, usage, png = await diagram.draw_native(
         description=planned.description,
         figure=planned.figure,
         model=model,
         api_key=api_key,
         slide=slide,
+        accent=accent or diagram.ACCENT,
     )
     return {
         "figure": planned.figure,
@@ -246,7 +250,7 @@ async def make(
     }, {
         "inputTokens": int(usage.get("inputTokens") or 0),
         "outputTokens": int(usage.get("outputTokens") or 0),
-    }
+    }, png
 
 
 def fence(made: dict[str, Any]) -> str:

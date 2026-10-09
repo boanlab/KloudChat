@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from app.services import audiogen
-from app.services import design_templates as dt
 
 
 def test_a_length_reaches_the_model_as_a_sentence():
@@ -29,10 +28,3 @@ def test_no_length_leaves_the_prompt_alone():
 def test_every_voice_the_server_accepts_is_a_real_one(voice):
     """Every voice the composer offers is one the gateway accepts."""
     assert voice in audiogen.VOICES
-
-
-def test_a_narration_template_names_a_voice_the_composer_can_set():
-    """`audio-narration` names a voice the composer can set."""
-    template = dt.get("audio-narration")
-    assert template is not None
-    assert template.defaults.get("voice") in audiogen.VOICES

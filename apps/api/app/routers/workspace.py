@@ -80,6 +80,7 @@ from app.services import (
     deck_export,
     design_extract,
     design_templates,
+    diagram_render,
     doc_formats,
     factcheck,
     hangul,
@@ -1113,6 +1114,17 @@ async def _picture_bytes(db: DbSession, user: User, artifact_id: str) -> tuple[s
     return mime, blob
 
 
+async def _figure_of(db: DbSession, user: User, artifact_id: str) -> dict | None:
+    """The data of an owned image artifact that is a drawn figure (it keeps its flowchart
+    source), else None."""
+    picture = await db.get(Artifact, artifact_id)
+    if picture is None or picture.user_id != user.id or picture.kind is not ArtifactKind.image:
+        return None
+    data = picture.data or {}
+    source = str(data.get("source") or "")
+    return data if data.get("style") == "figure" and source.strip() else None
+
+
 @router.post("/artifacts/{artifact_id}/slides/image", response_model=ArtifactOut)
 async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUser, db: DbSession):
     """Embeds an owned image artifact on one slide as a `data:` URI. Snapshotted, no charge."""
@@ -1127,12 +1139,40 @@ async def add_slide_image(artifact_id: str, payload: SlideImage, user: CurrentUs
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slide_not_found")
 
     mime, blob = await _picture_bytes(db, user, payload.artifact_id)
-    target["image"] = {
-        "src": pictures.encode(mime, blob),
-        "caption": payload.caption.strip(),
-    }
-    # A picture placed by hand replaces the figure the deck drew for itself.
-    target.pop("diagram", None)
+    figure = await _figure_of(db, user, payload.artifact_id)
+    if figure is not None:
+        # A drawn figure keeps its source, so the .pptx draws it as shapes; its picture is
+        # drawn again in this slide's accent with the same shapes, as the deck draws its own.
+        source = str(figure.get("source") or "")
+        key = report_export.diagram_key(source)
+        caption = payload.caption.strip() or str(figure.get("caption") or "")
+        png = await diagram_render.render_png(
+            source, str(target.get("accent") or "") or "#2563EB"
+        )
+        target["diagram"] = {
+            "figure": str(figure.get("figure") or "method"),
+            "description": str(figure.get("prompt") or ""),
+            "source": source,
+            "caption": caption,
+            "key": key,
+        }
+        target["image"] = {
+            "src": diagram_render.data_uri(png) if png else pictures.encode(mime, blob),
+            "caption": caption,
+            "fit": "contain",
+            "position": "right",
+            "size": "full",
+            "diagram": True,
+            **({"renderer": "pptx", "key": key} if png or figure.get("renderer") == "pptx"
+               else {}),
+        }
+    else:
+        target["image"] = {
+            "src": pictures.encode(mime, blob),
+            "caption": payload.caption.strip(),
+        }
+        # A picture placed by hand replaces the figure the deck drew for itself.
+        target.pop("diagram", None)
 
     db.add(
         ArtifactVersion(

@@ -65,10 +65,12 @@ _STYLE_PHRASE = {
 }
 
 #: Chip names on the wire and on screen, in order. 자동 leaves the choice to
-#: the planner; 없음 sends no style; 차트 is drawn by `chart_code`.
+#: the planner; 없음 sends no style; 차트 is drawn by `chart_code`. The screen's
+#: 구조도 · 흐름도 · 개념도 chips never reach here: they draw a figure with the deck
+#: export's shapes (`diagram.draw_native`). 도식 stays in `_STYLE_PHRASE` for clients
+#: that still send it.
 STYLE_CHOICES = [
     "자동",
-    "도식",
     "인포그래픽",
     "차트",
     "사진",
@@ -109,7 +111,7 @@ _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬
 - 사진·장면·인물이면 구도·조명·렌즈·시간대를 적고, 화살표나 상자를 넣지 마라.
 - 슬라이드나 문서 화면 전체를 그리지 마라 — 그림 하나만.
 - 120~220 단어. 프롬프트만 출력하고 설명·머리말·따옴표·코드펜스는 붙이지 마라.
-{figure_rule}{template_rule}
+{figure_rule}
 형식 보기 — **모양만 따르고 낱말은 옮기지 마라.** 아래 보기의 요소·화살표 이름·용도는
 보기의 것이고, 네 답의 요소·이름은 전부 요청에서 가져온다:
 ---
@@ -153,12 +155,6 @@ _STYLE_RULE_AUTO = (
 _FIGURE_RULE = (
     "- 이 그림은 문서나 슬라이드 **안에** 들어간다. 제목·캡션·범례·페이지 틀 없이 그림 "
     "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
-)
-
-#: The picture 서식's composition rule, so a non-diagram template is not planned as a diagram.
-_TEMPLATE_RULE = (
-    "- 이 그림은 다음 서식으로 만든다. 구도·분위기·여백을 이 규칙대로 잡고, 서식이 도식이 "
-    "아니면 상자·화살표·단계 배열로 짜지 마라: {suffix}\n"
 )
 
 #: For a picture inside a slide or section: one figure, no text, no page frame.
@@ -226,12 +222,11 @@ def compose_prompt(
     *,
     aspect: str,
     style: str,
-    template: str = "",
     design: str = "",
     figure: bool = False,
     square_only: bool = False,
 ) -> str:
-    """The prompt as sent: request, figure clause, style, template, design system, aspect note.
+    """The prompt as sent: request, figure clause, style, design system, aspect note.
 
     Later phrases win where two disagree. The stored prompt stays what the
     person typed.
@@ -243,8 +238,6 @@ def compose_prompt(
     # A planned prompt already ends on its own Style line.
     if phrase and "\nStyle:" not in prompt:
         parts.append(phrase)
-    if template.strip():
-        parts.append(template.strip())
     if design.strip():
         parts.append(design.strip())
     if square_only:
@@ -266,12 +259,9 @@ async def plan(
     figure: bool,
     model: str,
     api_key: str,
-    template: str = "",
 ) -> tuple[str, dict[str, int]]:
     """`(prompt, usage)`: the request rewritten by a language model into a structured picture
     prompt; the request itself when the planner fails.
-
-    `template` is the picture 서식's prompt suffix the planner composes to.
     """
 
     label_rule = _LABEL_RULE.get(labels) or (
@@ -289,7 +279,6 @@ async def plan(
         label_rule=label_rule,
         style_rule=style_rule,
         figure_rule=_FIGURE_RULE if figure else "",
-        template_rule=_TEMPLATE_RULE.format(suffix=template.strip()) if template.strip() else "",
         request=request.strip()[:2000],
     )
     base, _ = await settings_store.litellm_config()

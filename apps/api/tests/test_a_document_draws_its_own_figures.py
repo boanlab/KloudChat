@@ -1,7 +1,8 @@
 """A deck or report draws structure, flow, comparison and concept figures for itself.
 
 The planner reads the drafted parts and names the places where a figure says more than the
-words; `diagram.draw` writes the mermaid in the house style; the browser rasterises it. No
+words; `diagram.draw` writes the flowchart in the house style and `diagram.draw_native` draws
+it with the .pptx export's shapes. No
 image model is involved, so nothing is proposed on a card or charged beyond the writer.
 """
 
@@ -113,11 +114,19 @@ async def test_a_made_figure_carries_its_source_caption_and_key(monkeypatch):
             {"inputTokens": 3, "outputTokens": 4},
         )
 
+    async def render_png(source, accent="#2563EB"):
+        return b"\x89PNG-" + accent.encode()
+
     monkeypatch.setattr(diagram, "draw", draw)
+    monkeypatch.setattr(diagram.diagram_render, "render_png", render_png)
     planned = diagrams.Planned(
         index=1, figure="flow", description="검색기에서 계획기로", caption=""
     )
-    made, usage = await diagrams.make(planned, model="m", api_key="k", slide=True)
+    made, usage, png = await diagrams.make(
+        planned, model="m", api_key="k", slide=True, accent="#5b5bd6"
+    )
+    # Drawn in the deck's accent.
+    assert png == b"\x89PNG-#5b5bd6"
     assert made["source"].startswith("flowchart LR")
     assert made["caption"] == "생성 순서"
     assert made["key"] == diagram_key(made["source"])
@@ -128,14 +137,18 @@ async def test_a_made_figure_carries_its_source_caption_and_key(monkeypatch):
     named = diagrams.Planned(
         index=1, figure="flow", description="검색기에서 계획기로", caption="생성 흐름"
     )
-    made, _ = await diagrams.make(named, model="m", api_key="k", slide=False)
+    made, _, png = await diagrams.make(named, model="m", api_key="k", slide=False)
+    assert png == b"\x89PNG-#2563EB"
     assert made["caption"] == "생성 흐름"
 
 
-def test_a_report_carries_the_figure_as_a_fence_with_its_caption():
-    text = diagrams.fence({"source": "flowchart LR\n  a --> b", "caption": "생성 흐름"})
-    assert text == "```mermaid\nflowchart LR\n  a --> b\n```\n\n*그림: 생성 흐름*"
-    assert diagrams.fence({"source": "flowchart LR\n  a --> b", "caption": ""}).endswith("```")
+def test_a_report_carries_the_figure_as_a_picture_with_its_caption():
+    from app.services import report
+
+    text = report._figure_markdown({"source": "flowchart LR\n  a --> b", "caption": "생성 흐름"},
+                                   b"\x89PNG")
+    assert text.startswith("![생성 흐름](data:image/png;base64,")
+    assert text.endswith("*그림: 생성 흐름*") and "```mermaid" not in text
 
 
 def test_a_part_that_already_has_a_table_is_marked_for_the_planner():
@@ -249,15 +262,15 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
             "outputTokens": 1,
         }
 
-    async def make(planned, *, model, api_key, slide):
-        assert slide is True
+    async def make(planned, *, model, api_key, slide, accent=""):
+        assert slide is True and accent == "#5b5bd6"
         return {
             "figure": planned.figure,
             "description": planned.description,
             "source": "flowchart LR\n  a(검색기) --> b(계획기)",
             "caption": planned.caption,
             "key": "abcdef0123456789",
-        }, {"inputTokens": 2, "outputTokens": 2}
+        }, {"inputTokens": 2, "outputTokens": 2}, b"\x89PNG"
 
     async def draw(figure, image_model, api_key):
         return {"src": "data:image/png;base64,AAAA", "caption": "그림"}
@@ -294,6 +307,9 @@ async def test_a_deck_plans_figures_from_its_draft_and_puts_them_beside_the_word
     assert final[1]["diagram"]["source"].startswith("flowchart LR")
     assert final[1]["diagram"]["caption"] == "생성 흐름"
     assert final[1]["diagram"]["key"] == "abcdef0123456789"
+    # The picture is the shapes' rendering, never a browser drawing.
+    assert final[1]["image"]["renderer"] == "pptx" and final[1]["image"]["diagram"] is True
+    assert final[1]["image"]["src"].startswith("data:image/png;base64,")
     # The cards slide keeps short cards under the figure; a long one is clipped and its
     # full text goes to the notes.
     assert final[1]["layout"] == "cards" and 1 <= len(final[1]["cards"]) <= 4

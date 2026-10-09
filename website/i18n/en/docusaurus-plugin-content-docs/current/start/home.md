@@ -35,7 +35,7 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 |---|---|---|
 | 📎 Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
 | 🎤 Dictate | Turns speech into text. Shown only when the administrator has connected speech transcription. | That input |
-| ▦ Pick a format | Selects the output format for reports, slides, images and so on. Not offered in Chat. | That conversation |
+| ▦ Pick a format | Selects the output format for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
 | ✦ Skills | Selects up to three skills to apply to the request. | That request |
 | ⫼ Compare models | Sends the same question to two or three models. Available only in Chat on the desktop. | That conversation. Cleared when you move to another conversation |
 | 🌐 Auto · On · Off | Switches the web search mode. | That request. A new conversation resets it automatically |

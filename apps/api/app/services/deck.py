@@ -3217,7 +3217,9 @@ async def _draw_figures(
             "progress": progress,
         }
         try:
-            made, spent = await diagrams.make(row, model=model, api_key=api_key, slide=True)
+            made, spent, png = await diagrams.make(
+                row, model=model, api_key=api_key, slide=True, accent=accent
+            )
         except Exception as exc:  # noqa: BLE001 — a slide without its figure is still a slide
             log.warning("slide figure %r not drawn: %s", name, exc)
             yield {
@@ -3232,18 +3234,17 @@ async def _draw_figures(
         usage["outputTokens"] += spent["outputTokens"]
         slide["diagram"] = made
         # Drawn with the deck file's own shapes and rendered to a picture: the panel, the
-        # PDF and the report show what the .pptx holds. None keeps the live mermaid.
-        if png := await diagram_render.render_png(made["source"], accent or "#2563EB"):
-            slide["image"] = {
-                "src": diagram_render.data_uri(png),
-                "caption": str(made.get("caption") or ""),
-                "fit": "contain",
-                "position": "right",
-                "size": "full",
-                "diagram": True,
-                "renderer": "pptx",
-                "key": made.get("key", ""),
-            }
+        # PDF and the report show what the .pptx holds.
+        slide["image"] = {
+            "src": diagram_render.data_uri(png),
+            "caption": str(made.get("caption") or ""),
+            "fit": "contain",
+            "position": "right",
+            "size": "full",
+            "diagram": True,
+            "renderer": "pptx",
+            "key": made.get("key", ""),
+        }
         _words_under_figure(slide)
         yield {
             "type": "step",

@@ -165,7 +165,7 @@
   }
  },
  {
-  "key": "1ceb12264bb187312f22fedd",
+  "key": "e26f50374b098f51995a3033",
   "stage": "figures",
   "kind": "diagram",
   "head": "그릴 것: 개념도 — 개념들의 관계와 층위\n노드 이름과 캡션은 한국어로 쓴다.\n\n설명:\n데이터 리터러시 교육 아래에 두 갈래로 나뉨: 왼쪽은 '대시보드 읽기'로 팀장·관리직이 담당하고 KPI 산정 로직 파악 및 비즈니스 맥락 추출 워크숍을 수행하며, 오른쪽은 '데이터 제작'으로 실무자가",
@@ -176,7 +176,7 @@
   }
  },
  {
-  "key": "062a39fb244ee157c83590c3",
+  "key": "6e6da20cd9e9d64b58505214",
   "stage": "figures",
   "kind": "diagram",
   "head": "그릴 것: 처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지\n노드 이름과 캡션은 한국어로 쓴다.\n\n설명:\n커리큘럼 최종 협의에서 시작하여 교육장 및 환경 점검, 강사 일정 확정, 교재 제작 및 배포 순서로 진행하고, 이후 교육 1차 수행에서 교육 2~4차 수행으로 순차 진행되며 마지막",
@@ -198,7 +198,7 @@
   }
  },
  {
-  "key": "9695d410a226de3c31aa1cfd",
+  "key": "40db61d4976d0a410bdfe6dc",
   "stage": "verify",
   "kind": "judge",
   "head": "Below are the material and the document's sentences with numbers. Pick only the sentences where the number\nbelongs to a different target in the material (anothe",

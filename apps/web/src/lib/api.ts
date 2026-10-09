@@ -892,9 +892,7 @@ export const sessionsApi = {
     call<{
       caption: string
       prompt: string
-      /** The image 서식 chosen for this place; empty when none fit. */
-      templateId?: string
-      /** `flow` / `method` / `concept` when the 서식 draws as mermaid. */
+      /** `flow` / `method` / `concept` when this place wants a figure drawn as shapes; empty for a picture. */
       figure?: string
       /** What to draw, for the diagram path. */
       description?: string
@@ -915,15 +913,13 @@ export const sessionsApi = {
       /** How the words in the picture are handled. */
       labels?: 'auto' | 'ko' | 'en' | 'none'
       count: number
-      /** An `image` design template. Shapes the prompt; produces no file of its own. */
-      templateId?: string
       /** Send the prompt as typed, skipping the planner. */
       raw?: boolean
       /** Asked for from inside a document: comes back as a figure, not a picture of a whole slide. */
       figure?: boolean
     },
   ) => call<ArtifactRow[]>(`/sessions/${sessionId}/images`, body(payload)),
-  /** A labelled figure as mermaid source in the house style; the client draws it. See `diagram.py`. */
+  /** A labelled figure written as a flowchart and drawn by the server with the .pptx export's shapes, kept as an image artifact. See `diagram.py`. */
   diagram: (
     sessionId: string,
     payload: {
@@ -931,29 +927,11 @@ export const sessionsApi = {
       figure: string
       model?: string
       language?: string
-      /** The source that would not draw, and mermaid's reason — asks for a repair. */
-      broken?: string
-      error?: string
     },
-  ) => call<{ source: string; caption: string; model: string; credits: number }>(
+  ) => call<{ source: string; caption: string; model: string; credits: number; artifact: ArtifactRow | null }>(
     `/sessions/${sessionId}/diagrams`,
     body(payload),
   ),
-  /** The drawn figure, kept as an image artifact with its source beside it. */
-  storeDiagram: (
-    sessionId: string,
-    payload: {
-      source: string
-      caption: string
-      description: string
-      figure: string
-      title: string
-      model: string
-      png: string
-      width: number
-      height: number
-    },
-  ) => call<ArtifactRow>(`/sessions/${sessionId}/diagrams/store`, body(payload)),
   /** One sound clip. Speech and music are different models behind `audioKind`. */
   audio: (
     sessionId: string,
@@ -1268,26 +1246,12 @@ export const designsApi = {
   remove: (id: string) => call<void>(`/designs/${id}`, { method: 'DELETE' }),
 }
 
-/** One blank in a media template's prompt, written `{name}` in the sentence. */
-interface DesignArgumentRow {
-  name: string
-  label: string
-  labelEn: string
-  default: string
-  defaultEn: string
-  /** A closed list renders as a picker; empty renders as a text field. */
-  options: string[]
-  optionsEn: string[]
-  /** A paragraph field rather than a one-line one. */
-  long?: boolean
-}
-
 /** A rendering 서식. Read-only: the catalogue ships inside the API image. */
 export interface DesignTemplateRow {
   id: string
-  /** `deck` · `document` · `image` */
+  /** `deck` · `document` */
   kind: string
-  /** The surface it is offered on — `slides`, `report` or `image`. */
+  /** The surface it is offered on — `slides` or `report`. */
   surface: SessionKind
   name: string
   description: string
@@ -1302,33 +1266,14 @@ export interface DesignTemplateRow {
   categoryEn: string
   fillsEn: string[]
   examplePromptEn: string
-  /** `method` · `flow` · `concept` when this image 서식 is drawn by the diagram path. */
-  figure?: string
-  /** Rubric lines a critique scores against. Korean only; media templates send an empty list. */
+  /** Rubric lines a critique scores against. Korean only. */
   checks: string[]
-  /** Blanks to fill before the sentence reaches the composer. */
-  arguments: DesignArgumentRow[]
-  /**
-   * Composer settings this template implies — aspect, duration, voice. Keys
-   * match the option stores: `aspect`, `style`, `count` for image; `mode`,
-   * `aspect`, `seconds`, `resolution`, `audio`, `audioKind` for audio/video.
-   */
-  defaults: Record<string, string | number | boolean>
   /** Extension of the downloadable blank Office form, when present. */
   formFormat: string
   /** Whether `/design-templates/{id}/preview` has a miniature to show. */
   hasPreview: boolean
   /** Slides in a deck's sample, each at `/preview?slide=N`; 0 for any other kind. */
   slideCount: number
-}
-
-/** One argument's text in the language on screen. */
-export function argumentText(argument: DesignArgumentRow, english: boolean) {
-  return {
-    label: (english && argument.labelEn) || argument.label,
-    initial: (english && argument.defaultEn) || argument.default,
-    options: english && argument.optionsEn.length ? argument.optionsEn : argument.options,
-  }
 }
 
 /** One card's text in the language on screen, falling back rather than blanking. */

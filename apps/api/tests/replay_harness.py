@@ -114,6 +114,25 @@ class Gateway:
             return await gateway.answer(request)
 
         patch(httpx.AsyncClient, "send", send)
+        install_renderer(patch)
+
+
+#: What the figure renderer returns offline: one white pixel, the same for every figure.
+FIGURE_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c63f8ffffff7f0009fb03fd2a86e38a0000000049454e44ae426082"
+)
+
+
+def install_renderer(patch: Patch) -> None:
+    """Figures drawn as shapes render offline to `FIGURE_PNG`; one the shapes cannot read
+    renders to nothing, as the sidecar would."""
+    from app.services import diagram_render, diagram_shapes
+
+    async def render_png(source: str, accent: str = "#2563EB") -> bytes | None:
+        return FIGURE_PNG if diagram_shapes.parse(source) is not None else None
+
+    patch(diagram_render, "render_png", render_png)
 
 
 # ── a fixed clock and fixed ids ─────────────────────────────────────────

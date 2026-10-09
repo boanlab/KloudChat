@@ -144,7 +144,7 @@ export interface Session {
   title: string
   projectId: string | null
   agentId: string | null
-  /** The user pipeline this conversation runs (「이 흐름으로 시작」); its turns stay here. */
+  /** The user pipeline this conversation runs (「이 워크플로로 시작」); its turns stay here. */
   pipelineId?: string | null
   model: string
   /** Under `auto`, `model` is the quality ceiling. */
@@ -478,21 +478,6 @@ export interface Variant {
   usage?: { inputTokens: number; outputTokens: number; credits: number }
   /** Set on the variant the user kept; the conversation continues from it. */
   chosen?: boolean
-}
-
-/** A media 서식's arguments, asked in the composer; the filled sentence becomes the prompt. */
-export interface TemplateBlanks {
-  /** The design template's id. */
-  id: string
-  title: string
-  /** Blank labels, in order. */
-  fills: string[]
-  /** One default per blank, in `fills` order; an empty blank sends it. */
-  examples?: string[]
-  /** Per blank, in `fills` order: options → picker, long → textarea, else a line. */
-  blanks?: { name: string; options?: string[]; long?: boolean }[]
-  /** The sentence the blanks fill, `{name}` per blank. */
-  examplePrompt: string
 }
 
 /** An answer a rerun replaced; kept so the reader can page back to it. */

@@ -37,8 +37,8 @@ function TemplateCatalogue() {
   }, [rows, enabledKinds])
 
   // No session yet: store the pick, then open the surface that consumes it.
-  const start = (row: DesignTemplateRow, prompt: string) => {
-    startTemplate(row, prompt)
+  const start = (row: DesignTemplateRow) => {
+    startTemplate(row)
     navigate(`/new/${row.surface}`)
   }
 
