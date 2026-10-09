@@ -232,6 +232,11 @@ async def _load(db: AsyncSession) -> dict[str, str]:
     return out
 
 
+async def stored(db: AsyncSession) -> dict[str, str]:
+    """Stored values as they are on `db` now, past the cache."""
+    return await _load(db)
+
+
 async def all_values(force: bool = False) -> dict[str, str]:
     now = time.monotonic()
     if not force and _cache["values"] is not None and now - _cache["at"] < _TTL:

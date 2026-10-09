@@ -1,0 +1,306 @@
+/**
+ * Screen words for the audit log: what each action code means, what each recorded
+ * field is called on its settings screen, and how a recorded value reads.
+ *
+ * Every code in `ACTIONS` (apps/api/app/services/audit.py) needs a label here;
+ * `tests/test_audit_log.py` checks it. Strings are Korean keys for `t()`.
+ */
+import { kindMeta } from '@/lib/kinds'
+import type { AuditRow } from '@/lib/api'
+import type { SessionKind } from '@/types'
+
+export const ACTION_LABEL: Record<string, string> = {
+  signup: '회원가입',
+  'signup.verified': '이메일 인증 완료',
+  'signup.verification_resent': '인증 메일 재발송',
+  login: '로그인',
+  logout: '로그아웃',
+  'password.change': '비밀번호 변경',
+  'password.reset_requested': '비밀번호 재설정 요청',
+  'password.reset': '비밀번호 재설정',
+  'session.revoke': '로그인 세션 종료',
+  'token.reuse': '토큰 재사용 감지',
+  'user.approve': '가입 승인',
+  'user.reject': '가입 반려',
+  'user.suspend': '계정 정지',
+  'user.reinstate': '정지 해제',
+  'user.role': '권한 변경',
+  'user.update': '계정 정보 수정',
+  'user.password_reset': '비밀번호 초기화',
+  'user.litellm_key': 'LiteLLM 키 교체',
+  'user.delete': '계정 삭제',
+  'user.models': '모델 허용 변경',
+  'credits.set': '크레딧 변경',
+  'key.create': 'API 키 발급',
+  'key.revoke': 'API 키 폐기',
+  'settings.update': '시스템 설정 변경',
+  'governance.update': '정책 변경',
+  'branding.logo': '로고 변경',
+  'branding.logo.clear': '로고 삭제',
+  'pipeline.approve': '흐름 승인',
+  'pipeline.reject': '흐름 거절',
+  'issue.update': '문제 신고 처리 변경',
+  'issue.snapshot_view': '신고된 대화 열람',
+  'storage.reclaim': '저장 공간 자동 정리',
+  'storage.reclaim.manual': '저장 공간 정리',
+  'filter.blocked': '의도 필터 차단',
+  'pii.masked': '개인정보 가림',
+  'routing.auto': 'Auto 라우팅',
+  'privacy.none': '개인정보 검사 통과',
+  'privacy.decision_required': '개인정보 처리 선택 요청',
+  'privacy.internal_strict_local': '내부 자료 strict-local 처리',
+  'privacy.internal_data_requires_strict_local': '내부 자료 전송 거절',
+  'privacy.strict_local': 'strict-local 모델로 전환',
+  'privacy.route_strict_local': 'strict-local 모델로 전환 (사용자 선택)',
+  'privacy.mask_external': '가려서 외부 전송',
+  'privacy.send_raw_external': '원문 외부 전송',
+  'privacy.mask_tool_output': '도구 결과 가림',
+  'privacy.strict_tool_output': '도구 결과 strict-local 처리',
+}
+
+/** A sign-in row's outcome lives in its detail. */
+const LOGIN_DETAIL: Record<string, string> = {
+  failed: '로그인 실패',
+  locked: '로그인 잠김',
+  refresh_reuse: '토큰 재사용 감지',
+}
+
+export function actionLabel(row: Pick<AuditRow, 'action' | 'detail'>): string {
+  if (row.action === 'login' && LOGIN_DETAIL[row.detail]) return LOGIN_DETAIL[row.detail]
+  return ACTION_LABEL[row.action] ?? row.action
+}
+
+/** Filter groups for 「행위 종류」: label and the codes sent as `action`. */
+export const ACTION_GROUPS: { id: string; label: string; codes: string }[] = [
+  { id: 'auth', label: '로그인 · 계정 보안', codes: 'login,signup,signup.*,password.*,session.*,token.*' },
+  { id: 'users', label: '사용자 관리', codes: 'user.*,credits.*' },
+  { id: 'settings', label: '시스템 설정 · 정책', codes: 'settings.*,governance.*,branding.*' },
+  { id: 'keys', label: 'API 키', codes: 'key.*' },
+  { id: 'pipelines', label: '흐름 검토', codes: 'pipeline.*' },
+  { id: 'issues', label: '문제 신고', codes: 'issue.*' },
+  { id: 'privacy', label: '개인정보 · 라우팅', codes: 'privacy.*,pii.*,filter.*,routing.*' },
+  { id: 'storage', label: '저장 공간', codes: 'storage.*' },
+]
+
+/** Recorded field names (governance, system settings, accounts) to their screen labels. */
+export const FIELD_LABEL: Record<string, string> = {
+  // governance
+  pii_masking: '개인정보 마스킹',
+  external_data_guard: '외부 모델 개인정보 보호',
+  allow_user_raw_external: '사용자 원문 외부 전송 허용',
+  privacy_safe_model_ids: 'strict-local 안전 모델',
+  adaptive_routing_enabled: 'Auto 비용 절약 라우팅',
+  adaptive_classifier_model_id: '난이도 분류 모델',
+  adaptive_economy_model_ids: '절약 모델 우선순위',
+  adaptive_quality_enabled: 'Auto 품질 우선 라우팅',
+  adaptive_quality_model_ids: '상향 모델 우선순위',
+  internal_data_strict_local: '내부 자료는 strict-local로만',
+  outline_model_id: '구성 단계 모델',
+  intent_filter: '의도 기반 필터',
+  blocked_categories: '차단할 주제',
+  retention_days: '대화 보존 기간',
+  idle_timeout_minutes: '유휴 자동 로그아웃',
+  // system settings
+  baseUrl: 'LiteLLM 주소',
+  masterKey: '마스터 키',
+  brand_name: '서비스 이름',
+  contact_email: '문의 주소',
+  enabled_kinds: '사용할 기능',
+  backend_base_url: '기능 서버 주소',
+  tools_search_url: '웹 검색 주소',
+  tools_fetch_url: '문서 가져오기 주소',
+  tools_exec_url: '코드 실행 주소',
+  tools_research_url: '심층 조사 주소',
+  tools_stt_url: '음성 전사 주소',
+  tools_index_url: '자료 검색 주소',
+  smtp_host: 'SMTP 서버',
+  smtp_port: 'SMTP 포트',
+  smtp_security: 'SMTP 보안',
+  smtp_username: 'SMTP 사용자 이름',
+  smtp_password: 'SMTP 비밀번호',
+  smtp_from: '보내는 주소',
+  app_base_url: '서비스 주소',
+  signup_mode: '가입 방식',
+  signup_domains: '가입 가능한 이메일 도메인',
+  signup_verify_email: '이메일 인증',
+  // accounts and reviews
+  status: '상태',
+  role: '권한',
+  monthly_credits: '월 크레딧',
+  allowed_models: '허용 모델',
+  name: '이름',
+  email: '이메일',
+  review: '검토 상태',
+  holdReason: '보류 사유',
+  assignee: '담당자',
+}
+
+/** Settings screen section of each system setting; mirrors `_SETTING_SECTION` in admin.py. */
+const SETTING_SECTION: Record<string, string> = {
+  baseUrl: 'proxy',
+  masterKey: 'proxy',
+  brand_name: 'branding',
+  contact_email: 'branding',
+  enabled_kinds: 'features',
+  backend_base_url: 'tools',
+  tools_search_url: 'tools',
+  tools_fetch_url: 'tools',
+  tools_exec_url: 'tools',
+  tools_research_url: 'tools',
+  tools_stt_url: 'tools',
+  tools_index_url: 'tools',
+  smtp_host: 'mail',
+  smtp_port: 'mail',
+  smtp_security: 'mail',
+  smtp_username: 'mail',
+  smtp_password: 'mail',
+  smtp_from: 'mail',
+  app_base_url: 'mail',
+  signup_mode: 'signup',
+  signup_domains: 'signup',
+  signup_verify_email: 'signup',
+}
+
+const SECTION_LABEL: Record<string, string> = {
+  proxy: 'LiteLLM 프록시',
+  branding: '브랜드',
+  features: '기능',
+  tools: '기능 서버',
+  mail: '메일 발송',
+  signup: '가입',
+  other: '기타',
+}
+
+/** Fields a row changed: from its recorded diff, else its comma-list detail (older rows). */
+export function changedFields(row: AuditRow): string[] {
+  const changes = row.metadata?.changes
+  if (changes && typeof changes === 'object') return Object.keys(changes)
+  if (row.action !== 'settings.update' && row.action !== 'governance.update') return []
+  return row.detail
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+/**
+ * The row's target as words. A settings change names its sections — older rows
+ * carried a stray `litellm` here whatever was saved.
+ */
+export function targetParts(row: AuditRow): string[] {
+  if (row.action === 'settings.update') {
+    const recorded = row.metadata?.sections
+    const sections = Array.isArray(recorded)
+      ? (recorded as string[])
+      : [...new Set(changedFields(row).map((f) => SETTING_SECTION[f] ?? 'other'))]
+    return ['시스템 설정', ...sections.map((s) => SECTION_LABEL[s] ?? s)]
+  }
+  return row.target ? [row.target] : []
+}
+
+/** Words for a `key=value` detail on older rows, and for the values some actions write. */
+const DETAIL_KEY: Record<string, string> = {
+  credits: '크레딧',
+  monthly: '월 크레딧',
+  role: '권한',
+  status: '상태',
+  sessions_revoked: '끝낸 로그인 세션',
+  others: '다른 세션 종료',
+}
+const DETAIL_WORD: Record<string, string> = {
+  replaced: '기존 키로 교체',
+  rotated: '새 키 발급',
+  failed: '',
+  locked: '',
+  refresh_reuse: '',
+}
+
+/** Free-text detail made readable, or '' when the label already says it. */
+export function detailWords(row: AuditRow, t: (s: string) => string): string {
+  const detail = row.detail.trim()
+  if (!detail) return ''
+  if (detail in DETAIL_WORD) return DETAIL_WORD[detail] ? t(DETAIL_WORD[detail]) : ''
+  if (changedFields(row).length) return ''
+  const pairs = detail.split(',').map((part) => part.trim())
+  if (pairs.every((part) => /^[a-z_]+=/.test(part))) {
+    return pairs
+      .map((part) => {
+        const [key, value] = part.split('=', 2)
+        return `${t(DETAIL_KEY[key] ?? key)} ${t(ENUM_VALUE[value] ?? value)}`
+      })
+      .join(' · ')
+  }
+  return detail
+}
+
+const ENUM_VALUE: Record<string, string> = {
+  active: '사용 중',
+  pending: '승인 대기',
+  suspended: '정지',
+  admin: '관리자',
+  user: '사용자',
+  approved: '승인',
+  rejected: '거절',
+  open: '바로 사용',
+  approval: '승인 후 사용',
+  closed: '받지 않음',
+  starttls: 'STARTTLS',
+  ssl: 'SSL',
+  none: '없음',
+  received: '접수',
+  checking: '확인 중',
+  resolved: '해결',
+  on_hold: '보류',
+}
+
+const MODEL_FIELDS = new Set([
+  'privacy_safe_model_ids',
+  'adaptive_classifier_model_id',
+  'adaptive_economy_model_ids',
+  'adaptive_quality_model_ids',
+  'outline_model_id',
+  'allowed_models',
+])
+
+/** One recorded value as the screen says it; model ids become their display names. */
+export function valueWords(
+  field: string,
+  value: unknown,
+  t: (s: string) => string,
+  modelName: (id: string) => string,
+): string {
+  if (value === null || value === undefined || value === '') {
+    return field === 'allowed_models' ? t('전체 모델') : t('(없음)')
+  }
+  if (typeof value === 'boolean') return value ? t('켬') : t('끔')
+  if (Array.isArray(value)) {
+    if (!value.length) return field === 'allowed_models' ? t('전체 모델') : t('(없음)')
+    return value.map((v) => valueWords(field, v, t, modelName)).join(', ')
+  }
+  if (typeof value === 'number') {
+    if (field === 'retention_days') return value ? t('{n}일').replace('{n}', String(value)) : t('계속 보관')
+    if (field === 'idle_timeout_minutes') return value ? t('{n}분').replace('{n}', String(value)) : t('사용 안 함')
+    return value.toLocaleString()
+  }
+  const text = String(value)
+  if (MODEL_FIELDS.has(field)) return modelName(text)
+  if (field === 'signup_verify_email') return ['1', 'true', 'on', 'yes'].includes(text.toLowerCase()) ? t('켬') : t('끔')
+  if (field === 'enabled_kinds') {
+    const kinds = text.split(',').filter(Boolean)
+    if (!kinds.length) return t('챗만')
+    return kinds.map((k) => t(kindMeta[k as SessionKind]?.label ?? k)).join(', ')
+  }
+  return ENUM_VALUE[text] ? t(ENUM_VALUE[text]) : text
+}
+
+/** Korean words a search could mean, mapped back to codes the server can match. */
+export function actionsMatching(query: string, t: (s: string) => string): string[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  const hit = (label: string) => label.toLowerCase().includes(q) || t(label).toLowerCase().includes(q)
+  const codes = Object.entries(ACTION_LABEL)
+    .filter(([, label]) => hit(label))
+    .map(([code]) => code)
+  // 「로그인 실패」 and the like are sign-in rows told apart by their detail.
+  if (Object.values(LOGIN_DETAIL).some(hit) && !codes.includes('login')) codes.push('login')
+  return codes
+}
