@@ -32,7 +32,7 @@ interface NavRow {
 // Agents, skills, workflows, connectors, memory and designs live in 「사용자 지정」.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
-  { to: '/artifacts', label: '아티팩트', icon: Layers },
+  { to: '/artifacts', label: '결과물', icon: Layers },
   { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 
@@ -232,7 +232,7 @@ export function Sidebar() {
       <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r border-line bg-sidebar py-3 transition-[width] duration-300">
         <Brand name={brand.name} logo={brand.logo} markOnly />
         <nav className="mt-3 flex flex-col items-center gap-1">
-          {[{ to: '/', label: '새로 만들기', icon: Plus, end: true }, ...workspaceNav].map(
+          {[{ to: '/', label: '새 대화', icon: Plus, end: true }, ...workspaceNav].map(
             ({ to, label, icon: Icon, ...rest }) => (
               <NavLink
                 key={to}
@@ -290,7 +290,7 @@ export function Sidebar() {
           }
         >
           <Plus size={15} />
-          {t('새로 만들기')}
+          {t('새 대화')}
         </NavLink>
         {workspaceNav.map(({ to, label, icon: Icon }) => (
           <NavLink

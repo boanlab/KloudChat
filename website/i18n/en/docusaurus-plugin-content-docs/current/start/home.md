@@ -13,7 +13,7 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 | Area | Description |
 |---|---|
 | Search | Searches past conversations by **title**. Shortcut `Ctrl+K`. |
-| New | Goes to the home screen so you can start new work. Shortcut `Ctrl+Shift+O`. |
+| New chat | Goes to the home screen so you can start new work. Shortcut `Ctrl+Shift+O`. |
 | Projects · Artifacts | Goes to the workspace that holds your grouped files and to the gallery of generated outputs. |
 | Conversation list | Shown in the order **Pinned**, **conversation list** (recent conversations) and **Earlier conversations … Show more**. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |
 | Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |

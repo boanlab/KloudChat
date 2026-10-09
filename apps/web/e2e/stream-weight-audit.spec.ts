@@ -53,7 +53,7 @@ test('스트림·적재 감사 — 끊긴 답변과 첫 화면 비용', async ({
   }
 
   checks++
-  if (/생각하는 중/.test(text)) {
+  if (/생각하는 중|답을 쓰는 중/.test(text)) {
     note('stream-stuck', '끊긴 답변', '영원히 생각하는 중이라고 표시된다')
   }
 

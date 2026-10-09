@@ -1204,8 +1204,8 @@ CREATE_ARTIFACT = Tool(
         "required": ["kind", "title", "content"],
     },
     run=create_artifact,
-    label="아티팩트 만드는 중",
-    title="아티팩트 생성",
+    label="결과물 만드는 중",
+    title="결과물 생성",
     read_only=False,
     wants_context=True,
 )

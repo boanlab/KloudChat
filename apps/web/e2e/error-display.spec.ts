@@ -27,7 +27,7 @@ test('실패한 답변은 쓰다 만 내용과 오류를 함께 보여 준다', 
   // The partial answer is kept.
   await expect(page.getByText('여기까지는 썼습니다.')).toBeVisible()
   await expect(page.getByText('⚠️')).toHaveCount(0)
-  await expect(page.getByText('생각하는 중…')).toHaveCount(0)
+  await expect(page.getByText('답을 쓰는 중…')).toHaveCount(0)
 })
 
 test('내용을 하나도 못 받은 실패도 오류로 보인다', async ({ page }) => {
@@ -48,7 +48,7 @@ test('내용을 하나도 못 받은 실패도 오류로 보인다', async ({ pa
   await page.getByLabel('프롬프트 입력').press('Enter')
 
   await expect(page.getByText('요청이 거부되었습니다.')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('생각하는 중…')).toHaveCount(0)
+  await expect(page.getByText('답을 쓰는 중…')).toHaveCount(0)
 })
 
 test('실패는 사유를 말한다 — 모델 서버에 닿지 못한 경우', async ({ page }) => {

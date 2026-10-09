@@ -92,14 +92,14 @@ async function mockChat(
 }
 
 function timeline(page: Page) {
-  return page.getByRole('button', { expanded: false }).filter({ hasText: /작업 완료|중단됨/ })
+  return page.getByRole('button', { expanded: false }).filter({ hasText: /답했습니다|답을 마치지 못했습니다|멈췄습니다/ })
 }
 
 test('재조회 후 답변을 마친 대화는 완료로 표시하고 이전 오류는 펼쳐서 볼 수 있다', async ({ page }, testInfo) => {
   const unexpected = await mockChat(page, [assistant()])
   const head = timeline(page)
-  await expect(head).toContainText('작업 완료')
-  await expect(head).not.toContainText('중단됨')
+  await expect(head).toContainText('답했습니다')
+  await expect(head).not.toContainText('답을 마치지 못했습니다')
   await expect(page.getByText(answer)).toBeVisible()
   await expect(head).toBeInViewport()
   if (process.env.TOOL_RECOVERY_SCREENSHOT_DIR) {
@@ -126,8 +126,8 @@ test('재조회 후 답변을 마친 대화는 완료로 표시하고 이전 오
 for (const failure of ['interrupted', 'stopped'] as const) {
   test(`${failure}: 도구가 성공했어도 답변이 끝나지 않았으면 중단으로 표시한다`, async ({ page }) => {
     const unexpected = await mockChat(page, [assistant({ steps: [retryRead], failure })])
-    await expect(timeline(page)).toContainText('중단됨')
-    await expect(timeline(page)).not.toContainText('작업 완료')
+    await expect(timeline(page)).toContainText(failure === 'stopped' ? '멈췄습니다' : '답을 마치지 못했습니다')
+    await expect(timeline(page)).not.toContainText('답했습니다')
     await expect(page.getByText(failure === 'stopped'
       ? '여기서 멈췄습니다.' : '답변이 중간에 끊겨 여기까지만 남았습니다.')).toBeVisible()
     expect(unexpected).toEqual([])
@@ -176,16 +176,16 @@ async function holdRetryStream(page: Page, end: 'success' | 'failure' | 'empty' 
 }
 
 for (const end of ['success', 'failure', 'stop'] as const) {
-  test(`재조회 진행 중은 작업 중이며 ${end} 종료 상태를 구별한다`, async ({ page }) => {
+  test(`재조회 진행 중은 답을 쓰는 중이며 ${end} 종료 상태를 구별한다`, async ({ page }) => {
     await holdRetryStream(page, end === 'stop' ? 'success' : end)
     const unexpected = await mockChat(page, [])
     await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 확인해 줘.')
     await page.getByLabel('프롬프트 입력').press('Enter')
-    const liveHead = page.getByRole('button', { expanded: true }).filter({ hasText: '작업 중' })
+    const liveHead = page.getByRole('button', { expanded: true }).filter({ hasText: '답을 쓰는 중…' })
     await expect(liveHead).toBeVisible()
     await expect(page.getByText('일시적인 조회 오류')).toBeVisible()
     await expect(page.getByText('운영 시간 재조회', { exact: false })).toBeVisible()
-    await expect(page.getByText('중단됨', { exact: true })).toHaveCount(0)
+    await expect(page.getByText('답을 마치지 못했습니다', { exact: true })).toHaveCount(0)
     if (end === 'stop') {
       await page.getByLabel('중지', { exact: true }).click()
     } else {
@@ -194,7 +194,7 @@ for (const end of ['success', 'failure', 'stop'] as const) {
         control.finishReadRetry!()
       })
     }
-    await expect(timeline(page)).toContainText(end === 'success' ? '작업 완료' : '중단됨')
+    await expect(timeline(page)).toContainText(end === 'success' ? '답했습니다' : end === 'stop' ? '멈췄습니다' : '답을 마치지 못했습니다')
     if (end === 'success') await expect(page.getByText(answer)).toBeVisible()
     if (end === 'failure') await expect(page.getByText('답변 전송이 중단되었습니다.')).toBeVisible()
     if (end === 'stop') await expect(page.getByText('여기서 멈췄습니다.')).toBeVisible()
@@ -208,12 +208,12 @@ for (const streamResponses of [true, false]) {
     const unexpected = await mockChat(page, [], { streamResponses })
     await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 확인해 줘.')
     await page.getByLabel('프롬프트 입력').press('Enter')
-    await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+    await expect(page.getByText('답을 쓰는 중…', { exact: true })).toBeVisible()
     await page.evaluate(() => {
       const control = window as typeof window & { finishReadRetry?: () => void }
       control.finishReadRetry!()
     })
-    await expect(timeline(page)).toContainText('중단됨')
+    await expect(timeline(page)).toContainText('답을 마치지 못했습니다')
     await expect(page.getByText('답변을 받지 못했습니다.')).toBeVisible()
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeVisible()
     if (streamResponses && process.env.TOOL_RECOVERY_SCREENSHOT_DIR) {
@@ -233,7 +233,7 @@ test('텍스트 없이 산출물만 도착하면 본문을 불러오는 동안�
   const unexpected = await mockChat(page, [], { artifactReady })
   await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 안내 파일로 만들어 줘.')
   await page.getByLabel('프롬프트 입력').press('Enter')
-  await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+  await expect(page.getByText('답을 쓰는 중…', { exact: true })).toBeVisible()
   const artifactResponse = page.waitForResponse('**/api/artifacts/library-hours')
   try {
     await page.evaluate(() => {
@@ -241,13 +241,13 @@ test('텍스트 없이 산출물만 도착하면 본문을 불러오는 동안�
       control.finishReadRetry!()
     })
     // The body request is held; the stream's artifact announcement is sufficient.
-    await expect(timeline(page)).toContainText('작업 완료')
+    await expect(timeline(page)).toContainText('답했습니다')
     await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
   } finally {
     releaseArtifact()
   }
   await artifactResponse
-  await expect(timeline(page)).toContainText('작업 완료')
+  await expect(timeline(page)).toContainText('답했습니다')
   await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toHaveCount(0)
   expect(unexpected).toEqual([])
 })
@@ -257,12 +257,12 @@ test('텍스트 일괄 표시 모드에서도 버퍼에 도착한 답변은 정�
   const unexpected = await mockChat(page, [], { streamResponses: false })
   await page.getByLabel('프롬프트 입력').fill('도서관 운영 시간을 확인해 줘.')
   await page.getByLabel('프롬프트 입력').press('Enter')
-  await expect(page.getByText('작업 중', { exact: true })).toBeVisible()
+  await expect(page.getByText('답을 쓰는 중…', { exact: true })).toBeVisible()
   await page.evaluate(() => {
     const control = window as typeof window & { finishReadRetry?: () => void }
     control.finishReadRetry!()
   })
-  await expect(timeline(page)).toContainText('작업 완료')
+  await expect(timeline(page)).toContainText('답했습니다')
   await expect(page.getByText(answer)).toBeVisible()
   await expect(page.getByText('답변을 받지 못했습니다.')).toHaveCount(0)
   expect(unexpected).toEqual([])

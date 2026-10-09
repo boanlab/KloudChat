@@ -107,7 +107,7 @@ test('메일 설정이 켜지면 로그인 화면에서 비밀번호를 재설�
   await page.getByRole('button', { name: '비밀번호 바꾸기' }).click()
 
   // Signed in on the spot.
-  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByRole('link', { name: '결과물' })).toBeVisible({ timeout: 30_000 })
   // The token leaves the address bar.
   expect(page.url()).not.toContain('token=')
 

@@ -10,12 +10,13 @@ import { SkillForm } from '@/components/customize/SkillForm'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Badge, ConfirmDialog, EmptyState, LoadingState, Switch } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
 /** /customize/skills/:id — an installed skill or a store one: what it does and its steps. */
 export function SkillDetailPage() {
   const t = useT()
+  const tHub = useTIn('hub')
   const navigate = useNavigate()
   const { skillId = '' } = useParams()
   const skills = useStore((s) => s.skills)
@@ -117,7 +118,7 @@ export function SkillDetailPage() {
           )
         }
       >
-        <DetailSection title={t('개요')}>
+        <DetailSection title={tHub('개요')}>
           {skill.description && <p className="text-base text-fg">{t(skill.description)}</p>}
           {skill.whenToUse && skill.whenToUse !== skill.description && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">

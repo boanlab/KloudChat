@@ -694,7 +694,7 @@ class Prepass(Base):
             _count(bundle, prepass_usage, planner=True)
         elif not quiet:
             # A pre-pass that does not run says why.
-            yield {"type": "step", "id": "prepass", "label": "사전 계산 건너뜀", "status": "done",
+            yield {"type": "step", "id": "prepass", "label": "사전 계산 해당 없음", "status": "done",
                    "detail": "요청과 첨부에 계산할 자료가 없음"}
         if ctx.options.get("prepass_always") and prepass is None:
             # 개조식 is checked for its shape and pages even with nothing attached.
@@ -715,12 +715,12 @@ class Prepass(Base):
             yield {
                 "type": "step", "id": "prepass",
                 "label": ("사전 계산: " + ", ".join(dict.fromkeys(ran))) if ran
-                else "사전 계산 건너뜀",
+                else "사전 계산 해당 없음",
                 "status": "error" if any(r.get("error") for r in prepass.runs) else "done",
                 "detail": " · ".join(f"{r['skill']}: {r['summary']}" for r in prepass.runs)[:1500],
             }
         elif prepass is not None and given and not quiet:
-            yield {"type": "step", "id": "prepass", "label": "사전 계산 건너뜀", "status": "done",
+            yield {"type": "step", "id": "prepass", "label": "사전 계산 해당 없음", "status": "done",
                    "detail": "자료에서 이 서식이 계산할 값을 찾지 못함"}
 
 

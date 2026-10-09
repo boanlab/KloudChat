@@ -56,7 +56,7 @@ class Wait(Stop):
 
 
 #: Words a record's legacy label adds for a status other than done.
-STATUS_WORDS = {"skipped": "건너뜀", "stopped": "멈춤", "failed": "실패", "waiting": "답 기다림",
+STATUS_WORDS = {"skipped": "해당 없음", "stopped": "멈춤", "failed": "실패", "waiting": "답 기다림",
                 "cancelled": "중단"}
 
 

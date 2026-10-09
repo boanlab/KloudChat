@@ -82,7 +82,7 @@ test('결과물 목록은 한 페이지씩 오고, 개수와 검색은 전체를
   const searched = page.waitForResponse(
     (r) => r.url().includes('/api/artifacts?') && r.url().includes('q=') && r.ok(),
   )
-  await page.getByLabel('아티팩트 검색').fill('보안')
+  await page.getByLabel('결과물 검색').fill('보안')
   const hits = (await (await searched).json()) as { title: string }[]
   expect(hits.length).toBeGreaterThan(0)
   // Every row matches.

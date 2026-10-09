@@ -262,7 +262,7 @@ test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testIn
   const shot = shooter(page, testInfo)
   await page.goto(`/s/${reportSession}?artifact=${artifactId}`)
   await expect(page.getByText('회의록을 만들었습니다.')).toBeVisible({ timeout: 15_000 })
-  const timeline = page.getByRole('button', { name: /작업 완료/ }).first()
+  const timeline = page.getByRole('button', { name: /보고서를 썼습니다/ }).first()
   if (phone) {
     // The panel covers the transcript on a phone; the transcript is read first.
     const close = panel(page).getByRole('button', { name: /닫기/ }).first()
@@ -274,7 +274,7 @@ test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testIn
   await shot('transcript-stages')
   // Status icons say what they mean.
   await expect(list.getByRole('img', { name: '실패' })).toBeVisible()
-  await list.getByRole('button', { name: '건너뛴 단계 2개' }).click()
+  await list.getByRole('button', { name: '해당 없는 단계 2개' }).click()
   await list.getByRole('button', { name: '검증 근거 보기', exact: true }).click()
   await expect(list.getByText('10월 7일').first()).toBeVisible()
   await list.getByRole('button', { name: '계산 근거 보기', exact: true }).click()
@@ -330,7 +330,7 @@ test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testIn
   await shot('rerun-confirm')
   await list.getByRole('button', { name: '다시 만들기' }).click()
   await expect(page.getByText('「검증」 단계부터 다시 만들었습니다.')).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: /작업 완료/ }).last().click().catch(() => undefined)
+  await page.getByRole('button', { name: /보고서를 썼습니다/ }).last().click().catch(() => undefined)
   await page.waitForTimeout(400)
   await shot('after-rerun')
   expect(state.posts).toContain(`POST /sessions/${reportSession}/runs/${runId}/rerun`)
@@ -356,7 +356,7 @@ test('chat: compact stage list beside tool steps', async ({ page }, testInfo) =>
   const shot = shooter(page, testInfo)
   await page.goto(`/s/${chatSession}`)
   await expect(page.getByText('공백 포함 684자로 700자 안에 듭니다.')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: /작업 완료/ }).first().click()
+  await page.getByRole('button', { name: /답했습니다/ }).first().click()
   await expect(page.locator('[data-category="pipeline"]')).toBeVisible()
   // Chat rows offer no rerun.
   await expect(page.getByRole('button', { name: /단계 메뉴/ })).toHaveCount(0)

@@ -36,7 +36,7 @@ test('링크를 만들면 로그인하지 않은 사람도 열 수 있다', asyn
   // `.first()`: the phrase may also be echoed in the answer.
   await expect(guest.getByText('공유 확인용입니다', { exact: false }).first()).toBeVisible()
   // Outside the shell.
-  await expect(guest.getByRole('link', { name: '아티팩트' })).toHaveCount(0)
+  await expect(guest.getByRole('link', { name: '결과물' })).toHaveCount(0)
 
   // Revoked links say nothing about having existed.
   await page.getByRole('button', { name: '공유', exact: true }).click()

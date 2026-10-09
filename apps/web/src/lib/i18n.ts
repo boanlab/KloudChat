@@ -372,11 +372,9 @@ const EN: Record<string, string> = {
   '이 페이지에 접근할 수 없습니다.': 'You cannot access this page.',
   '관리자 권한이 필요한 화면입니다. 다른 작업은 계속 사용할 수 있습니다.':
     'This page requires administrator access. You can continue using the rest of the workspace.',
-  '아티팩트': 'Artifacts',
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
-  '새로 만들기': 'New',
   '새 채팅 시작': 'Start a chat',
   '테마: 시스템 설정 따름': 'Theme: follow system',
   '테마: 밝게': 'Theme: light',
@@ -960,15 +958,15 @@ const EN: Record<string, string> = {
   '검색 결과가 없습니다': 'No results',
   '아직 대화가 없습니다': 'No conversations yet',
   '아직 주고받은 메시지가 없습니다': 'No messages yet',
-  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 아티팩트로 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
+  '자료와 지침을 프로젝트에 모아 두면, 모든 화면이 같은 맥락 위에서 작동합니다. 만든 결과물은 결과물 화면에 쌓이고 문서로 내보낼 수 있습니다.': 'Gather files and instructions into a project and every surface works from the same context. What you make is kept as artifacts and exports as documents.',
   '무엇이든 물어보세요': 'Ask anything',
   '만들고 싶은 이미지를 설명하세요': 'Describe the image you want',
   '만들고 싶은 영상이나 오디오를 설명하세요': 'Describe the video or audio you want',
   '보고서 주제와 넣고 싶은 절을 적으세요': 'Give the report topic and the sections you want',
   '발표 주제와 시간을 적으세요': 'Give the talk topic and length',
   'Enter 전송, Shift+Enter 줄바꿈': 'Enter to send, Shift+Enter for a new line',
-  'Enter 로 생성 · 만든 그림은 아티팩트에 쌓입니다': 'Enter to generate — images are kept as artifacts',
-  'Enter 로 생성 · 음성과 음악은 아티팩트에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
+  'Enter 로 생성 · 만든 그림은 결과물에 쌓입니다': 'Enter to generate — images are kept as artifacts',
+  'Enter 로 생성 · 음성과 음악은 결과물에 쌓입니다': 'Enter to generate — audio is kept as artifacts',
   'Enter 로 생성 · 구성을 잡은 뒤 한 장씩 채웁니다': 'Enter to generate — the outline comes first, then each slide',
   'Enter 로 생성 · 영상은 몇 분 걸리고 진행은 카드에 표시됩니다': 'Enter to generate — video takes minutes and progress shows on the card',
   '웹에서 최신 자료를 찾아 근거로 씁니다': 'Searches the web and cites what it finds',
@@ -1068,7 +1066,7 @@ const EN: Record<string, string> = {
   '커넥터 관리': 'Manage connectors',
   '이름 · 설명': 'Name · description',
   '프로젝트 삭제': 'Delete project',
-  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.':
+  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 결과물과 메모리는 그대로 남습니다.':
     'This cannot be undone. The instructions and knowledge files are deleted. Conversations are kept and leave the project; artifacts and memories are untouched.',
   '상태 새로고침': 'Refresh status',
   'Word 문서': 'Word document',
@@ -1131,7 +1129,7 @@ const EN: Record<string, string> = {
   '이전 내용은 버전 기록에 남습니다.': 'The previous version is kept in history.',
   '서버에 연결되면 도구 목록이 채워집니다': 'The tool list fills in once the server connects',
   '쓰기 도구는 실행 전에 확인을 요청합니다': 'Write tools ask before they run',
-  '아티팩트는 아티팩트 화면에 그대로 남습니다.': 'Artifacts stay on the artifacts screen.',
+  '결과물은 결과물 화면에 그대로 남습니다.': 'Artifacts stay on the artifacts screen.',
   '계정에 저장되므로 다른 기기에서도 같게 적용됩니다.': 'Saved to your account, so it applies on every device.',
   '변경했습니다. 다른 기기의 로그인은 모두 해제되었습니다.': 'Changed. Every other device has been signed out.',
   '이 프로젝트의 모든 대화에 시스템 프롬프트로 함께 전달됩니다.': 'Sent with every conversation in this project as a system prompt.',
@@ -1178,7 +1176,7 @@ const EN: Record<string, string> = {
   '{done}/{total} 섹션 · {words} 단어': '{done}/{total} sections · {words} words',
   '{list}번 장': 'Slides {list}',
   '{low}~{high} 크레딧 / 초': '{low}–{high} credits / sec',
-  '{name} ({email}) 의 대화·프로젝트·아티팩트·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.':
+  '{name} ({email}) 의 대화·프로젝트·결과물·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.':
     'Every conversation, project, artifact, memory and credit record belonging to {name} ({email}) goes, and the LiteLLM key is revoked. This cannot be undone.',
   '{name} 고정': 'Pin {name}',
   '{name} 다시 쓰기': 'Rewrite {name}',
@@ -1901,7 +1899,7 @@ const EN: Record<string, string> = {
   '그림 모델로 바꾸기': 'Replace with a drawn picture',
   '이 장의 도식은 글에서 자동으로 그린 것입니다. 이미지 모델의 그림으로 바꾸면 도식은 사라집니다.': 'This slide’s figure was drawn from its words. A picture from the image model replaces it.',
   '이 장': 'this slide',
-  '아티팩트 검색': 'Search artifacts',
+  '결과물 검색': 'Search artifacts',
   '찾는 결과물이 없습니다': 'Nothing matches',
   '제목의 다른 부분으로 찾아보세요.': 'Try another part of the title.',
   '구성 단계 모델': 'Planning model',
@@ -2021,7 +2019,7 @@ const EN: Record<string, string> = {
   '실패했습니다.': 'That did not work.',
   '쓰기 {n}': '{n} write',
   '아직 기록된 사건이 없습니다': 'Nothing recorded yet',
-  '아직 아티팩트가 없습니다': 'No artifacts yet',
+  '아직 결과물이 없습니다': 'No artifacts yet',
   '아직 작업이 없습니다': 'Nothing here yet',
   '아직 저장된 이전 판이 없습니다.': 'No earlier version saved yet.',
   '아직 프로젝트가 없습니다': 'No projects yet',
@@ -2051,7 +2049,6 @@ const EN: Record<string, string> = {
   'strict-local 모델로 전환': 'Switch to a strict-local model',
   'strict-local 안전 모델': 'Strict-local safe model',
   'strict-local로 보호됨': 'Kept strict-local',
-  '{n}단계 완료': '{n} steps done',
   '가린 뒤 기존 모델 사용': 'Mask, then use the chosen model',
   '개인정보 전용': 'Privacy only',
   '개인정보가 감지된 요청': 'A request with personal data in it',
@@ -2481,13 +2478,52 @@ const EN: Record<string, string> = {
   // ── 작업 단계 카드 ───────────────────────────────────────────────────
   '작업 목록': 'Work',
   '작업 중': 'Working',
-  '작업 완료': 'Done',
   '중단됨': 'Stopped',
+  // a turn's header: what is happening, or what happened
+  '답을 쓰는 중…': 'Writing the answer…',
+  '보고서를 쓰는 중…': 'Writing the report…',
+  '슬라이드를 만드는 중…': 'Making the slides…',
+  '개요를 잡는 중…': 'Drafting the outline…',
+  '고쳐 쓰는 중…': 'Revising…',
+  '파일을 만드는 중…': 'Making the file…',
+  '답했습니다': 'Answered',
+  '보고서를 썼습니다': 'Wrote the report',
+  '보고서를 고쳤습니다': 'Revised the report',
+  '슬라이드를 만들었습니다': 'Made the slides',
+  '슬라이드를 고쳤습니다': 'Revised the slides',
+  '파일을 만들었습니다': 'Made the file',
+  '만들었습니다': 'Done',
+  '개요를 보여 드렸습니다': 'Proposed an outline',
+  '구성을 보여 드렸습니다': 'Proposed a structure',
+  '확인할 것을 여쭸습니다': 'Asked what to confirm',
+  '보고서를 마치지 못했습니다': 'Could not finish the report',
+  '슬라이드를 마치지 못했습니다': 'Could not finish the slides',
+  '만들지 못했습니다': 'Could not make it',
+  '답을 마치지 못했습니다': 'Could not finish the answer',
+  '개요를 확인해 주세요': 'Please review the outline',
+  '구성을 확인해 주세요': 'Please review the structure',
+  '질문에 답해 주세요': 'Please answer the questions',
+  '그림을 넣을지 정해 주세요': 'Please decide on the pictures',
+  '멈췄습니다': 'Stopped',
+  '「{stage}」에서 멈춤': 'stopped at “{stage}”',
+  '{m}분': '{m}m',
+  '{m}분 {s}초': '{m}m {s}s',
+  '확인할 것 {n}개': '{n} to check',
+  '해당 없음': 'Not applicable',
+  '해당 없는 단계 숨기기': 'Hide stages that did not apply',
+  '해당 없는 단계 {n}개': '{n} stages did not apply',
+  '실행하지 않은 단계 숨기기': 'Hide stages that did not run',
+  '실행하지 않은 단계 {n}개': '{n} stages did not run',
+  '요청 살피기': 'Reading the request',
+  '대화로 답하기': 'Answer in chat',
+  '사전 계산 해당 없음': 'Pre-calculation not applicable',
+  '사전 계산(수정 반영) 해당 없음': 'Pre-calculation (revision) not applicable',
+  '새 대화': 'New chat',
+  '결과물 열기': 'Open artifact',
   '{n}단계': '{n} steps',
   '1단계': '1 step',
-  '1단계 완료': '1 step done',
   '문서 읽기': 'Read document',
-  '아티팩트 생성': 'Create artifact',
+  '결과물 생성': 'Create artifact',
   '차트 그리기': 'Draw chart',
   '공유 메모': 'Shared note',
   '자료 찾기': 'Search knowledge',
@@ -2498,14 +2534,13 @@ const EN: Record<string, string> = {
   '코드 실행 중': 'Running code',
   '스킬 스크립트 실행 중': 'Running a skill script',
   '파일 작업 중': 'Working on files',
-  '아티팩트 만드는 중': 'Creating the artifact',
+  '결과물 만드는 중': 'Creating the artifact',
   '차트 그리는 중': 'Drawing the chart',
   '공유 메모 남기는 중': 'Leaving a shared note',
   '자료 찾는 중': 'Searching knowledge',
   '심층 조사 중': 'Researching',
   '현재 시각 확인 중': 'Checking the time',
   '사용량 조회 중': 'Looking up usage',
-  '{n}개 남음': '{n} left',
   '추론': 'Reasoning',
   '도구 사용': 'Using a tool',
 
@@ -2946,7 +2981,6 @@ const EN: Record<string, string> = {
   '만들 것': 'What to make',
   // ── pipeline stages, marks and flows ───────────────────────────────
   '기록된 사유': 'Recorded reason',
-  '건너뜀 {n}': '{n} skipped',
   '앞 단계에서 멈춰 실행하지 않음': 'Not run: an earlier stage stopped',
   '시간이 초과됨': 'Timed out',
   '붙은 검사가 없음': 'No checks attached',
@@ -2985,9 +3019,6 @@ const EN: Record<string, string> = {
   '「{stage}」 단계부터 다시 만듭니다. 이 작업 뒤에 직접 고친 내용은 새 판에 들어가지 않고, 지금 판은 버전 기록에 남습니다.': 'Redo from “{stage}”. Edits you made after this run are not carried into the new version; this one stays in the version history.',
   '이 단계는 따로 남긴 근거가 없습니다.': 'This stage kept no details.',
   '작업 단계': 'Stages',
-  '건너뛴 단계 숨기기': 'Hide skipped stages',
-  '건너뛴 단계 {n}개': '{n} skipped stages',
-  '확인 {n}': '{n} to check',
   '답 기다림': 'Waiting for answers',
   '자료에 없음: 원래 값 {original} → {text}': 'Not in the material: was {original} → {text}',
   '확인이 필요한 문장': 'Sentence to check',
@@ -3262,6 +3293,21 @@ const EN: Record<string, string> = {
 export function translate(lang: Lang, text: string): string {
   if (lang === 'ko') return text
   return EN[text] ?? text
+}
+
+/**
+ * Words whose English depends on where they stand, keyed `context|Korean`: the 사용자 지정 hub's
+ * 「탐색」 is a catalog to explore, not the document panel's navigation; its 「개요」 is an
+ * overview, not a document outline. The Korean stays the same.
+ */
+const EN_IN: Record<string, string> = {
+  'hub|탐색': 'Explore',
+  'hub|개요': 'Overview',
+}
+
+export function translateIn(lang: Lang, context: string, text: string): string {
+  if (lang === 'ko') return text
+  return EN_IN[`${context}|${text}`] ?? translate(lang, text)
 }
 
 /** The current language for non-hook code: reads `<html lang>`, which the store keeps updated. */

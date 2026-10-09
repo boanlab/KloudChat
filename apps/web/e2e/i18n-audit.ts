@@ -102,7 +102,7 @@ export const AUDIT_ROUTES: [string, string][] = [
   ['/new/image', '새 이미지'],
   ['/new/av', '새 오디오·동영상'],
   ['/projects', '프로젝트'],
-  ['/artifacts', '아티팩트'],
+  ['/artifacts', '결과물'],
   ['/customize', '사용자 지정'],
   ['/history', '기록'],
   ['/usage', '사용량'],
@@ -122,7 +122,7 @@ export const AUDIT_ROUTES: [string, string][] = [
 ]
 
 const HEADINGS: Record<string, string> = {
-  '/projects': '프로젝트', '/artifacts': '아티팩트', '/customize': '사용자 지정',
+  '/projects': '프로젝트', '/artifacts': '결과물', '/customize': '사용자 지정',
   '/history': '대화 기록', '/usage': '사용량', '/agent-setup': 'AI 에이전트 연동',
   '/admin/users': '사용자 · 크레딧', '/admin/usage': '사용량', '/admin/governance': '보안 · 감사',
 }

@@ -2,7 +2,7 @@
  * Pipeline stage records as the person reads them: one status per row, the waiting card's
  * place, and an agent's pipeline as a short chain of steps.
  */
-import type { Message, PipelineDefinition, PipelineStage, Session } from '@/types'
+import type { Message, PipelineDefinition, PipelineRun, PipelineStage, Session } from '@/types'
 
 /** What a row's icon says: ✓ done, ! findings, ? waiting, – skipped, ✕ failed. */
 export type StageTone = 'done' | 'findings' | 'waiting' | 'skipped' | 'failed'
@@ -20,8 +20,87 @@ export const TONE_LABEL: Record<StageTone, string> = {
   done: '완료',
   findings: '확인할 것 있음',
   waiting: '답 기다림',
-  skipped: '건너뜀',
+  skipped: '해당 없음',
   failed: '실패',
+}
+
+/** Stage names whose stored label was renamed; older records read with today's word. */
+const RENAMED: Record<string, string> = {
+  route: '요청 살피기',
+}
+
+/** A stage's name as the person reads it today. */
+export function stageLabel(stage: Pick<PipelineStage, 'name' | 'label'>): string {
+  return RENAMED[stage.name] ?? stage.label
+}
+
+/** Summaries of a renamed stage, said as today's words. */
+const RENAMED_SUMMARY: Record<string, Record<string, string>> = {
+  route: { '대화 답': '대화로 답하기' },
+}
+
+export function stageSummary(stage: Pick<PipelineStage, 'name' | 'summary'>): string {
+  const summary = stage.summary ?? ''
+  return RENAMED_SUMMARY[stage.name]?.[summary] ?? summary
+}
+
+/** Skipped rows that were simply not needed, as against ones a stop or a cancel left unrun. */
+export function notApplicable(stage: PipelineStage): boolean {
+  return stage.status === 'skipped' && !/^stopped at |^cancel/.test(stage.reason ?? '')
+}
+
+type Kind = 'chat' | 'report' | 'slides' | 'image' | 'av'
+
+/** A planning pass: the run ended by offering its outline. */
+function planned(run?: PipelineRun): boolean {
+  return run?.flow === 'plan' ||
+    !!run?.stages.some((s) => s.status === 'stopped' && /proposal offered/.test(s.reason ?? ''))
+}
+
+/** What the turn is doing, said as an outcome in progress: 「보고서를 쓰는 중…」. */
+export function doingPhrase(kind: Kind | undefined, run?: PipelineRun): string {
+  if (planned(run)) return kind === 'slides' ? '구성을 잡는 중…' : '개요를 잡는 중…'
+  if (run?.flow === 'revise') return '고쳐 쓰는 중…'
+  if (run?.flow === 'export') return '파일을 만드는 중…'
+  if (kind === 'report') return '보고서를 쓰는 중…'
+  if (kind === 'slides') return '슬라이드를 만드는 중…'
+  if (kind === 'image' || kind === 'av') return '만드는 중…'
+  return '답을 쓰는 중…'
+}
+
+/** What the finished turn did: 「보고서를 썼습니다」. */
+export function donePhrase(kind: Kind | undefined, run?: PipelineRun): string {
+  if (planned(run)) return kind === 'slides' ? '구성을 보여 드렸습니다' : '개요를 보여 드렸습니다'
+  if (run?.flow === 'pre' || run?.stages.some((s) => s.status === 'waiting')) return '확인할 것을 여쭸습니다'
+  if (run?.flow === 'export') return '파일을 만들었습니다'
+  if (kind === 'report') return run?.flow === 'revise' ? '보고서를 고쳤습니다' : '보고서를 썼습니다'
+  if (kind === 'slides') return run?.flow === 'revise' ? '슬라이드를 고쳤습니다' : '슬라이드를 만들었습니다'
+  if (kind === 'image' || kind === 'av') return '만들었습니다'
+  return '답했습니다'
+}
+
+/** What did not get finished: 「보고서를 마치지 못했습니다」. */
+export function failedPhrase(kind: Kind | undefined): string {
+  if (kind === 'report') return '보고서를 마치지 못했습니다'
+  if (kind === 'slides') return '슬라이드를 마치지 못했습니다'
+  if (kind === 'image' || kind === 'av') return '만들지 못했습니다'
+  return '답을 마치지 못했습니다'
+}
+
+/** What the person is asked for while a run waits on them. */
+export function waitingPhrase(kind: Kind | undefined, pending: { stage: string } | null | undefined): string {
+  if (pending?.stage === 'clarify') return '질문에 답해 주세요'
+  if (pending?.stage === 'figures') return '그림을 넣을지 정해 주세요'
+  return kind === 'slides' ? '구성을 확인해 주세요' : '개요를 확인해 주세요'
+}
+
+/** Seconds from the first stage's start to the last stage's end, when the records carry both. */
+export function runSeconds(run: PipelineRun): number | null {
+  const starts = run.stages.map((s) => Date.parse(s.startedAt ?? '')).filter((n) => !Number.isNaN(n))
+  const ends = run.stages.map((s) => Date.parse(s.finishedAt ?? '')).filter((n) => !Number.isNaN(n))
+  if (!starts.length || !ends.length) return null
+  const seconds = Math.round((Math.max(...ends) - Math.min(...starts)) / 1000)
+  return seconds > 0 ? seconds : null
 }
 
 /** Whether a stage has anything behind 「보기」. */

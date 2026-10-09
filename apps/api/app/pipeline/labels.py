@@ -59,7 +59,7 @@ LABELS: dict[str, str] = {
     "page-save": "저장",
     "compare-answer": "모델별 답",
     "compare-save": "저장",
-    "route": "작업 고르기",
+    "route": "요청 살피기",
 }
 
 

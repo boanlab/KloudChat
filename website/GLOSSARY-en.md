@@ -44,7 +44,7 @@
 | 잘림 위험 | overflow risk | |
 | 버전 기록 | version history | |
 | 내보내기 | Export | 메뉴일 때 대문자 |
-| 아티팩트 | artifact | |
+| 결과물 | artifact | 사이드바·화면 이름은 Artifacts |
 | 공유 | sharing / Share | |
 | 사용량 | usage | |
 | 접속 기록 | sign-in history | |

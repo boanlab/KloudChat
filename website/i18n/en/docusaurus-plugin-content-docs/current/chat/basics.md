@@ -35,7 +35,7 @@ In Chat, select **Edit message** (the pencil icon) next to a message you sent. T
 
 ## Keeping conversation context
 
-Within the same conversation, earlier questions, answers, and attached files stay available. Short follow-ups such as "So what happens next?" or "Explain that in more detail" work fine. When the topic changes, start a new conversation with **New**. Earlier context does not mix in, so the answer is more accurate.
+Within the same conversation, earlier questions, answers, and attached files stay available. Short follow-ups such as "So what happens next?" or "Explain that in more detail" work fine. When the topic changes, press **New chat** in the sidebar. Earlier context does not mix in, so the answer is more accurate.
 
 ## Dictating a request
 

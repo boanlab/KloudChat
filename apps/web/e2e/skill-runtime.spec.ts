@@ -601,7 +601,7 @@ test('422로 거절된 턴은 입력 상태를 복원하고 재시도해도 한 
   await expect(page.getByRole('button', { name: '의사결정 메모 제거' })).toBeVisible()
   await expect(page.getByRole('button', { name: `${fileName} 제거` })).toBeVisible()
   await expect(page.getByRole('button', { name: '프롬프트 복사' })).toHaveCount(0)
-  await expect(page.getByText('생각하는 중…')).toHaveCount(0)
+  await expect(page.getByText('답을 쓰는 중…')).toHaveCount(0)
 
   await composer.press('Enter')
   const timeline = page.getByRole('button').filter({ hasText: '스킬 1개 적용' })

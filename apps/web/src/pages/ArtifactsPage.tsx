@@ -178,10 +178,10 @@ export function ArtifactsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('아티팩트')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('결과물')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('아티팩트')}
+          title={t('결과물')}
           description={t('만든 결과물이 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
         />
 
@@ -189,7 +189,7 @@ export function ArtifactsPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label={t('아티팩트 검색')}
+            aria-label={t('결과물 검색')}
             placeholder={t('제목으로 찾기')}
           />
         </div>
@@ -218,7 +218,7 @@ export function ArtifactsPage() {
           ) : artifacts.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
-              title={query ? t('찾는 결과물이 없습니다') : t('아직 아티팩트가 없습니다')}
+              title={query ? t('찾는 결과물이 없습니다') : t('아직 결과물이 없습니다')}
               description={
                 query
                   ? t('제목의 다른 부분으로 찾아보세요.')

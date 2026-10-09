@@ -12,9 +12,9 @@ import {
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { cn, fileSize } from '@/lib/utils'
-import type { PipelineRun, Step } from '@/types'
+import type { PipelineRun, SessionKind, Step } from '@/types'
 import { StageList, TraceBlock } from './StageList'
-import { stageTone } from '@/lib/stages'
+import { doingPhrase, donePhrase, failedPhrase, runSeconds, stageLabel, stageTone, waitingPhrase } from '@/lib/stages'
 import { useT } from '@/lib/useT'
 import { downloadFile } from '@/lib/api'
 
@@ -31,8 +31,40 @@ function useElapsed(since: number | undefined, live: boolean) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/** 「55초」, 「1분 5초」: how long a finished run took. */
+function durationWords(seconds: number, t: (text: string) => string): string {
+  const m = Math.floor(seconds / 60)
+  const sec = seconds % 60
+  if (m === 0) return t('{n}초').replace('{n}', String(sec))
+  if (sec === 0) return t('{m}분').replace('{m}', String(m))
+  return t('{m}분 {s}초').replace('{m}', String(m)).replace('{s}', String(sec))
+}
+
+/** How the turn stands, for its one-line header. */
+type Phase = 'live' | 'waiting' | 'failed' | 'stopped' | 'done'
+
+/** The header's outcome line: what is happening or what happened, in plain words. */
+function headline(
+  phase: Phase,
+  kind: SessionKind | undefined,
+  run: PipelineRun | undefined,
+  awaiting: string | null | undefined,
+  t: (text: string) => string,
+): string {
+  if (phase === 'live') return t(doingPhrase(kind, run))
+  if (phase === 'waiting') return t(waitingPhrase(kind, awaiting ? { stage: awaiting } : null))
+  if (phase === 'stopped') return t('멈췄습니다')
+  if (phase === 'failed') {
+    const where = run?.stages.find((s) => s.status === 'failed')
+    const said = t(failedPhrase(kind))
+    return where ? `${said} · ${t('「{stage}」에서 멈춤').replace('{stage}', t(stageLabel(where)))}` : said
+  }
+  const done = t(donePhrase(kind, run))
+  const seconds = run ? runSeconds(run) : null
+  return seconds ? `${done} · ${durationWords(seconds, t)}` : done
+}
+
 const icons = { thinking: Brain, tool: Wrench, artifact: FileText, pipeline: Workflow }
-const kindLabel = { thinking: '추론', tool: '도구 사용', artifact: '산출물', pipeline: '작업 단계' }
 /** Steps the collapsed header names before counting the rest. */
 const COLLAPSED_NAMES = 3
 
@@ -159,11 +191,20 @@ export function StepTimeline({
   run,
   rerunnable,
   waitingSlot,
+  kind,
+  stopped,
+  awaiting,
 }: {
   steps: Step[]
   live: boolean
   /** The turn's end state, not a recoverable error in an individual tool call. */
   failed: boolean
+  /** The reader stopped the turn: said as a stop, not a failure. */
+  stopped?: boolean
+  /** The surface the turn ran on; the header says what it made. */
+  kind?: SessionKind
+  /** The card this turn waits on (`outline`, `clarify`, `figures`), while it still waits. */
+  awaiting?: string | null
   /** Epoch ms the turn started; drives the clock. */
   startedAt?: number
   sessionId?: string
@@ -188,21 +229,21 @@ export function StepTimeline({
         run={run!}
         steps={steps}
         live={live}
-        failed={failed}
         rerunnable={rerunnable}
         waitingSlot={waitingSlot}
+        kind={kind}
+        awaiting={awaiting}
+        phase={phaseOf(live, failed, stopped, awaiting)}
+        startedAt={startedAt}
       />
     )
   }
 
-  const done = steps.filter((s) => s.status === 'done').length
+  const phase = phaseOf(live, failed, stopped, awaiting)
   const current = steps.find((s) => s.status === 'running')
   const expanded = manual ?? live
-  // Steps remaining, from the running step's own denominator.
-  const left = current?.progress ? current.progress.total - current.progress.current : null
   const head = current ?? steps.at(-1)!
   const HeadIcon = icons[head.type]
-  const rest = steps.filter((s) => s !== head)
 
   return (
     <div className="animate-fade-up mb-3 overflow-hidden rounded-card border border-line bg-elevated/50">
@@ -215,20 +256,20 @@ export function StepTimeline({
           size={13}
           className={cn('shrink-0 text-faint transition-transform', expanded && 'rotate-90')}
         />
-        <span className="shrink-0 font-medium text-muted">
-          {live ? t('작업 중') : failed ? t('중단됨') : t('작업 완료')}
-        </span>
-        <span className="shrink-0 text-line-strong">|</span>
         <HeadIcon size={13} className="shrink-0 text-accent" />
-        {/* Expanded, the step itself is highlighted below, so the header names the kind of work. */}
-        <span className="min-w-0 truncate text-fg">
-          {expanded ? t(kindLabel[head.type]) : t(head.label)}
+        <span className={cn('min-w-0 truncate font-medium', phase === 'failed' ? 'text-danger' : 'text-fg')}>
+          {headline(phase, kind, undefined, awaiting, t)}
         </span>
-        {!expanded && rest.length > 0 && (
+        {/* Folded while live, the step under way is named beside the headline. */}
+        {live && current && !expanded && (
+          <span className="min-w-0 truncate text-faint">· {t(current.label)}</span>
+        )}
+        {/* Collapsed, what it did is named after the outcome. */}
+        {!expanded && !live && (
           <span className="min-w-0 truncate text-faint">
-            · {rest.slice(0, COLLAPSED_NAMES).map((s) => t(s.label)).join(' · ')}
-            {rest.length > COLLAPSED_NAMES &&
-              ` · ${t('외 {n}개').replace('{n}', String(rest.length - COLLAPSED_NAMES))}`}
+            · {steps.slice(0, COLLAPSED_NAMES).map((s) => t(s.label)).join(' · ')}
+            {steps.length > COLLAPSED_NAMES &&
+              ` · ${t('외 {n}개').replace('{n}', String(steps.length - COLLAPSED_NAMES))}`}
           </span>
         )}
         {live && elapsed && (
@@ -236,22 +277,6 @@ export function StepTimeline({
             {elapsed}
           </span>
         )}
-        <span
-          className={cn(
-            'shrink-0 whitespace-nowrap text-faint tabular-nums',
-            !(live && elapsed) && 'ml-auto',
-          )}
-        >
-          {live && left !== null && left > 0
-            ? t('{n}개 남음').replace('{n}', String(left))
-            : live
-              ? done === 1
-                ? t('1단계 완료')
-                : t('{n}단계 완료').replace('{n}', String(done))
-              : steps.length === 1
-                ? t('1단계')
-                : t('{n}단계').replace('{n}', String(steps.length))}
-        </span>
       </button>
       {expanded && (
         <div className="space-y-1.5 border-t border-line px-3 py-2.5">
@@ -264,19 +289,28 @@ export function StepTimeline({
   )
 }
 
-/** 「6단계 · 확인 1 · 건너뜀 2」: how many ran, how many want a look, how many were not needed. */
-function StageCounts({ run }: { run: PipelineRun }) {
+/** Which phase a turn's header speaks for. */
+function phaseOf(
+  live: boolean,
+  failed: boolean,
+  stopped: boolean | undefined,
+  awaiting: string | null | undefined,
+): Phase {
+  if (live) return 'live'
+  if (awaiting) return 'waiting'
+  if (stopped) return 'stopped'
+  // A check that failed inside a finished run is flagged, not the turn's failure.
+  if (failed) return 'failed'
+  return 'done'
+}
+
+/** 「확인할 것 1개」: checks that left something to look at; the rest live in the list. */
+function Flagged({ run }: { run: PipelineRun }) {
   const t = useT()
-  const skipped = run.stages.filter((s) => stageTone(s) === 'skipped').length
-  const ran = run.stages.length - skipped
-  const flagged = run.stages.filter((s) => stageTone(s) === 'findings' || stageTone(s) === 'failed').length
-  return (
-    <span className="font-normal text-faint">
-      {t('{n}단계').replace('{n}', String(ran))}
-      {flagged > 0 && <span className="text-warn"> · {t('확인 {n}').replace('{n}', String(flagged))}</span>}
-      {skipped > 0 && <span> · {t('건너뜀 {n}').replace('{n}', String(skipped))}</span>}
-    </span>
-  )
+  const flagged = run.stages.filter((s) => s.status !== 'stopped' &&
+    (stageTone(s) === 'findings' || stageTone(s) === 'failed')).length
+  if (flagged === 0) return null
+  return <span className="text-warn">{t('확인할 것 {n}개').replace('{n}', String(flagged))}</span>
 }
 
 /** A turn whose only visible work is its stages: the stage list under its own header. */
@@ -285,24 +319,31 @@ function StageGroup({
   run,
   steps,
   live,
-  failed,
   rerunnable,
   waitingSlot,
+  kind,
+  awaiting,
+  phase,
+  startedAt,
 }: {
   sessionId: string
   run: PipelineRun
   /** The turn's tool steps, listed above the stages. */
   steps: Step[]
   live: boolean
-  failed: boolean
   rerunnable?: boolean
   waitingSlot?: ReactNode
+  kind?: SessionKind
+  awaiting?: string | null
+  phase: Phase
+  startedAt?: number
 }) {
   const t = useT()
+  const elapsed = useElapsed(startedAt, live)
   // A waiting card must be seen, not folded away.
   const [manual, setManual] = useState<boolean | null>(null)
   const expanded = manual ?? (live || run.status === 'waiting')
-  const last = run.stages.at(-1)
+  const current = steps.find((s) => s.status === 'running')
   return (
     <div className="animate-fade-up mb-3 overflow-hidden rounded-card border border-line bg-elevated/50" data-category="pipeline">
       <button
@@ -311,13 +352,16 @@ function StageGroup({
         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-elevated"
       >
         <ChevronRight size={13} className={cn('shrink-0 text-faint transition-transform', expanded && 'rotate-90')} />
-        <span className="shrink-0 font-medium text-muted">
-          {live ? t('작업 중') : run.status === 'waiting' ? t('답 기다림') : failed ? t('중단됨') : t('작업 완료')}
-        </span>
-        <span className="shrink-0 text-line-strong">|</span>
         <Workflow size={13} className="shrink-0 text-accent" />
-        <span className="min-w-0 truncate text-fg">{expanded ? t('작업 단계') : last ? t(last.label) : ''}</span>
-        <span className="ml-auto shrink-0 whitespace-nowrap text-faint tabular-nums"><StageCounts run={run} /></span>
+        <span className={cn('min-w-0 truncate font-medium', phase === 'failed' ? 'text-danger' : 'text-fg')}>
+          {headline(phase, kind, run, awaiting, t)}
+        </span>
+        {live && current && !expanded && (
+          <span className="min-w-0 truncate text-faint">· {t(current.label)}</span>
+        )}
+        <span className="ml-auto shrink-0 whitespace-nowrap text-sm text-faint tabular-nums">
+          {live ? elapsed : phase === 'done' && <Flagged run={run} />}
+        </span>
       </button>
       {expanded && (
         <div className="border-t border-line px-3 py-2">

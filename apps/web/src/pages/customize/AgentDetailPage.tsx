@@ -12,13 +12,14 @@ import { useItemActions } from '@/components/customize/tryItem'
 import { ConfirmDialog, EmptyState, LoadingState, Switch } from '@/components/ui'
 import { startFailure } from '@/lib/failures'
 import { agentStartKind } from '@/lib/kinds'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import { uid } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 
 /** /customize/agents/:id — what an agent does, its instructions, and (for its owner) its settings. */
 export function AgentDetailPage() {
   const t = useT()
+  const tHub = useTIn('hub')
   const navigate = useNavigate()
   const { agentId = '' } = useParams()
   const agents = useStore((s) => s.agents)
@@ -129,7 +130,7 @@ export function AgentDetailPage() {
           )
         }
       >
-        <DetailSection title={t('개요')}>
+        <DetailSection title={tHub('개요')}>
           {agent.description && <p className="text-base text-fg">{t(agent.description)}</p>}
           {agent.guide && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">

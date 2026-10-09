@@ -8,7 +8,7 @@ title: Glossary
 |---|---|
 | Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |
 | Conversation (대화) | The record of one piece of work. One row in the sidebar |
-| Artifact (아티팩트) | A result produced in a conversation. The right-hand panel and the gallery |
+| Artifact (결과물) | A result produced in a conversation. The right-hand panel and the gallery |
 | Format (서식) | The shape of the result (built in). It stays for the whole conversation |
 | Design system (디자인 시스템) | A bundle of colors, typefaces, and tone. Attached to a project |
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |

@@ -102,7 +102,7 @@ test('모바일 감사 — 390px 에서 일이 끝나는가', async ({ page }) =
   for (const [route, where] of [
     ['/', '홈'],
     ['/new/chat', '새 챗'],
-    ['/artifacts', '아티팩트'],
+    ['/artifacts', '결과물'],
     ['/history', '대화 기록'],
     ['/usage', '내 사용량'],
     ['/agent-setup', '에이전트 설정'],

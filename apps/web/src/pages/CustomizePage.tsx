@@ -38,7 +38,7 @@ import { BulkBar, useBulkSelect } from '@/components/ui/BulkSelect'
 import { errorMessage, userPipelinesApi } from '@/lib/api'
 import { kindMeta } from '@/lib/kinds'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { useT } from '@/lib/useT'
+import { useT, useTIn } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { ConnectorsPage } from '@/pages/ConnectorsPage'
 import { MemoryPage } from '@/pages/MemoryPage'
@@ -114,6 +114,7 @@ function TabStrip({ tab, onChange }: { tab: HubTab; onChange: (next: HubTab) => 
 /** 내 항목 / 탐색. */
 function Segment({ view, onChange }: { view: View; onChange: (next: View) => void }) {
   const t = useT()
+  const tHub = useTIn('hub')
   return (
     <div className="inline-flex shrink-0 rounded-control border border-line bg-elevated p-0.5" role="group" aria-label={t('보기')}>
       {(['mine', 'explore'] as const).map((id) => (
@@ -127,7 +128,7 @@ function Segment({ view, onChange }: { view: View; onChange: (next: View) => voi
             view === id ? 'bg-panel text-fg shadow-raised' : 'text-muted hover:text-fg',
           )}
         >
-          {id === 'mine' ? t('내 항목') : t('탐색')}
+          {id === 'mine' ? t('내 항목') : tHub('탐색')}
         </button>
       ))}
     </div>

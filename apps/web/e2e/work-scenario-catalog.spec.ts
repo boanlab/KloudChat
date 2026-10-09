@@ -65,5 +65,5 @@ test('근거와 후속 작업에 필요한 공통 UI가 실제 계정에서 발�
   await page.goto('/projects')
   await expect(page.getByRole('button', { name: '새 프로젝트' }).first()).toBeVisible()
   await page.goto('/artifacts')
-  await expect(page.getByRole('heading', { name: '아티팩트' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '결과물' })).toBeVisible()
 })

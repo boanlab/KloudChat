@@ -40,7 +40,7 @@ import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
 import { StepTimeline } from './StepTimeline'
 import { ProposalCard } from './ProposalCard'
-import { waitingCardMessageId } from '@/lib/stages'
+import { doingPhrase, waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
@@ -269,6 +269,11 @@ function MessageItemInner({
   const waitingPending = useStore((s) => {
     const session = s.sessions.find((c) => c.id === sessionId)
     return waitingCardMessageId(session) === message.id ? session?.pending ?? null : null
+  })
+  // The card this answer still waits on, said in its header (「개요를 확인해 주세요」).
+  const awaiting = useStore((s) => {
+    if (!last) return null
+    return s.sessions.find((c) => c.id === sessionId)?.pending?.stage ?? null
   })
   const editMessage = useStore((s) => s.editMessage)
   const editBlocked = useStore((s) => !!s.running[sessionId] || s.messageEditBusy)
@@ -513,6 +518,9 @@ function MessageItemInner({
   const named = linked.filter((a) => !isMedia(a))
   const failed = turnFailureNotice(message, madeHere, t)
   const stopped = !message.error && message.failure === 'stopped'
+  // One progress line per turn: the step header when there is one, else the waiting line.
+  const timelineShown =
+    (message.steps && message.steps.length > 0) || (message.run && message.run.stages.length > 0)
   // How many routing badges the row holds; a phone shows the count until tapped.
   const routingBadges = routing
     ? [
@@ -614,11 +622,14 @@ function MessageItemInner({
               )}
           </div>
         )}
-        {((message.steps && message.steps.length > 0) || (message.run && message.run.stages.length > 0)) && (
+        {timelineShown && (
           <StepTimeline
             steps={message.steps ?? []}
             live={!!streaming}
             failed={!!failed}
+            stopped={stopped}
+            kind={sessionKind}
+            awaiting={streaming ? null : awaiting}
             startedAt={new Date(message.createdAt).getTime()}
             sessionId={sessionId}
             run={message.run}
@@ -650,13 +661,13 @@ function MessageItemInner({
           !freshness &&
           !toolAnswer &&
           streaming &&
+          !timelineShown &&
           shown.length === 0 &&
           named.length === 0 && (
             <TurnProgress
               sessionId={sessionId}
               startedAt={new Date(message.createdAt).getTime()}
-              label={madeHere ? t('만드는 중…') : t('생각하는 중…')}
-              model={message.model ?? undefined}
+              label={t(doingPhrase(sessionKind))}
             />
           )
         )}

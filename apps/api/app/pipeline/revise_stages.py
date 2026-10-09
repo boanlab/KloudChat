@@ -206,7 +206,7 @@ class Widen(Base):
             yield {
                 "type": "step", "id": "prepass", "status": "done",
                 "label": "사전 계산(수정 반영): " + ", ".join(dict.fromkeys(ran)) if ran
-                else "사전 계산(수정 반영) 건너뜀",
+                else "사전 계산(수정 반영) 해당 없음",
                 "detail": " · ".join(f"{r['skill']}: {r['summary']}" for r in pre.runs)[:1500],
             }
         if widened:

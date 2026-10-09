@@ -391,7 +391,7 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
   await page.getByTestId('pipeline-actions').getByRole('button', { name: '이 워크플로로 시작' }).click()
   await expect(page).toHaveURL(new RegExp(`/s/${composedSession}`))
   await expect(page.getByText('4개 섹션으로 보고서를 작성했습니다.')).toBeVisible({ timeout: 10_000 })
-  await page.getByRole('button', { name: /작업 완료/ }).first().click()
+  await page.getByRole('button', { name: /보고서를 썼습니다/ }).first().click()
   await expect(page.getByTestId('stage-list').first()).toBeVisible()
   await shot('composed-run')
   expect(state.calls).toEqual(expect.arrayContaining(['POST /user-pipelines', 'PUT /user-pipelines/p1',

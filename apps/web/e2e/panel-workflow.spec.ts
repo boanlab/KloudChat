@@ -566,11 +566,11 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   // Approve the plan and leave the run going.
   await approveOnce(page, 360_000)
 
-  // Open while it runs, counting down against the outline's total.
-  const running = page.getByRole('button', { name: /작업 중/ })
+  // Open while it runs, each step counting against the outline's total.
+  const running = page.getByRole('button', { name: /만드는 중…/ })
   await expect(running).toBeVisible({ timeout: 180_000 })
   await expect(running).toHaveAttribute('aria-expanded', 'true')
-  await expect(page.getByText(/\d+개 남음/)).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByText(/\(\d+\/\d+\)/).first()).toBeVisible({ timeout: 180_000 })
 
   await expect(page.locator('.line-through').first()).toBeVisible({ timeout: 180_000 })
 
@@ -580,12 +580,12 @@ test('작업 단계 카드는 남은 개수를 세다 접힌다', async ({ page 
   const closePanel = page.locator('[data-panel="artifact"]').getByRole('button', { name: '닫기' })
   if (await closePanel.first().isVisible().catch(() => false)) await closePanel.first().click()
 
-  const done = page.getByRole('button', { name: /작업 완료|중단됨/ }).first()
+  const done = page.getByRole('button', { name: /만들었습니다|마치지 못했습니다/ }).first()
   await expect(done).toBeVisible()
   await expect(done).toHaveAttribute('aria-expanded', 'false')
   await done.click()
   await expect(done).toHaveAttribute('aria-expanded', 'true')
-  await expect(page.getByText(/\d+단계/).first()).toBeVisible()
+  await expect(page.locator('.line-through').first()).toBeVisible()
 })
 
 /** Closing and reopening the artifact panel from its conversation. */

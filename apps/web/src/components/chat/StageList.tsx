@@ -2,7 +2,7 @@ import { Check, ChevronRight, CircleAlert, CircleHelp, EllipsisVertical, Loader2
 import { useId, useState, type ReactNode } from 'react'
 import { Button, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
 import { ApiError, runsApi, type RunRow } from '@/lib/api'
-import { FINDING_LABEL, RERUN_ERROR, TONE_LABEL, hasEvidence, stageReason, stageTone, type StageTone } from '@/lib/stages'
+import { FINDING_LABEL, RERUN_ERROR, TONE_LABEL, hasEvidence, notApplicable, stageLabel, stageReason, stageSummary, stageTone, type StageTone } from '@/lib/stages'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -227,7 +227,7 @@ function StageRow({
   const why = tone === 'skipped' || tone === 'failed' || stage.status === 'stopped' || (tone === 'waiting' && !stage.summary)
     ? t(stageReason(stage))
     : ''
-  const line = [stage.summary, why].filter(Boolean).join(' · ')
+  const line = [stageSummary(stage), why].filter(Boolean).join(' · ')
 
   return (
     <li className="py-1" data-stage={stage.name} data-stage-status={stage.status}>
@@ -235,7 +235,7 @@ function StageRow({
         <span className="mt-px"><StageIcon tone={tone} size={compact ? 'sm' : 'md'} /></span>
         <div className="min-w-0 flex-1">
           <p className={cn('flex min-w-0 flex-wrap items-baseline gap-x-1.5', compact ? 'text-sm' : 'text-base')}>
-            <span className={cn('font-medium', tone === 'skipped' ? 'text-faint' : 'text-fg')}>{t(stage.label)}</span>
+            <span className={cn('font-medium', tone === 'skipped' ? 'text-faint' : 'text-fg')}>{t(stageLabel(stage))}</span>
             {(stage.attempt ?? 1) > 1 && (
               <span className="text-xs text-faint">{t('{n}번째').replace('{n}', String(stage.attempt))}</span>
             )}
@@ -258,7 +258,7 @@ function StageRow({
             onClick={() => void toggle()}
             aria-expanded={open}
             aria-controls={panelId}
-            aria-label={t('{stage} 근거 보기').replace('{stage}', t(stage.label))}
+            aria-label={t('{stage} 근거 보기').replace('{stage}', t(stageLabel(stage)))}
             className="shrink-0 rounded-control px-1.5 py-0.5 text-sm text-accent hover:bg-elevated focus-visible:outline-2 focus-visible:outline-accent"
           >
             {open ? t('접기') : t('보기')}
@@ -272,14 +272,14 @@ function StageRow({
                 variant="ghost"
                 size="icon"
                 disabled={busy}
-                aria-label={t('{stage} 단계 메뉴').replace('{stage}', t(stage.label))}
+                aria-label={t('{stage} 단계 메뉴').replace('{stage}', t(stageLabel(stage)))}
                 className="-my-1 shrink-0"
               >
                 <EllipsisVertical size={14} />
               </Button>
             )}
           >
-            <MenuLabel>{t(stage.label)}</MenuLabel>
+            <MenuLabel>{t(stageLabel(stage))}</MenuLabel>
             <MenuItem icon={<RotateCcw size={13} />} onClick={() => setConfirming(true)}>
               {t('이 단계부터 다시')}
             </MenuItem>
@@ -289,7 +289,7 @@ function StageRow({
       {confirming && (
         <div role="group" aria-label={t('이 단계부터 다시')} className="mt-1.5 ml-7 max-sm:ml-0 rounded-control border border-line bg-panel px-3 py-2 text-sm">
           <p className="text-fg">
-            {t('「{stage}」 단계부터 다시 만듭니다. 이 작업 뒤에 직접 고친 내용은 새 판에 들어가지 않고, 지금 판은 버전 기록에 남습니다.').replace('{stage}', t(stage.label))}
+            {t('「{stage}」 단계부터 다시 만듭니다. 이 작업 뒤에 직접 고친 내용은 새 판에 들어가지 않고, 지금 판은 버전 기록에 남습니다.').replace('{stage}', t(stageLabel(stage)))}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             <Button size="sm" variant="primary" autoFocus onClick={() => void rerun()}>
@@ -380,9 +380,14 @@ export function StageList({
           className="mt-1 flex items-center gap-1 rounded-control px-1 text-sm text-faint hover:text-fg"
         >
           <ChevronRight size={12} className={cn('transition-transform', showSkipped && 'rotate-90')} />
-          {showSkipped
-            ? t('건너뛴 단계 숨기기')
-            : t('건너뛴 단계 {n}개').replace('{n}', String(skipped.length))}
+          {/* Most skipped rows were simply not needed; a stop or a cancel leaves them unrun. */}
+          {skipped.every(notApplicable)
+            ? showSkipped
+              ? t('해당 없는 단계 숨기기')
+              : t('해당 없는 단계 {n}개').replace('{n}', String(skipped.length))
+            : showSkipped
+              ? t('실행하지 않은 단계 숨기기')
+              : t('실행하지 않은 단계 {n}개').replace('{n}', String(skipped.length))}
         </button>
       )}
     </div>
