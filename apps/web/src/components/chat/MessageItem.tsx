@@ -1,6 +1,4 @@
 import {
-  AudioLines,
-  BarChart3,
   Calculator,
   Check,
   ChevronLeft,
@@ -9,32 +7,29 @@ import {
   Copy,
   Download,
   FilePenLine,
-  FileText,
   Flag,
-  Image as ImageIcon,
   Loader2,
   Paperclip,
   Pencil,
-  Presentation,
   RotateCcw,
   ShieldAlert,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
   TriangleAlert,
-  Video,
 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
+import { ResultCard } from './ResultCard'
 import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
 import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
-import type { ArtifactKind, CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
+import type { CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
 import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
@@ -45,28 +40,6 @@ import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
 import { tokenTotals } from '@/lib/usage'
-
-const artifactIcon: Record<ArtifactKind, typeof FileText> = {
-  report: FileText,
-  deck: Presentation,
-  chart: BarChart3,
-  image: ImageIcon,
-  audio: AudioLines,
-  video: Video,
-  code: FileText,
-  html: FileText,
-}
-
-const artifactLabel: Record<ArtifactKind, string> = {
-  report: '보고서',
-  deck: '슬라이드',
-  chart: '차트',
-  image: '이미지',
-  audio: '오디오',
-  video: '동영상',
-  code: '코드',
-  html: 'HTML',
-}
 
 function costRouteDecisionLabel(
   route: CostRouting,
@@ -257,7 +230,6 @@ function MessageItemInner({
 }) {
   const t = useT()
   const artifacts = useStore((s) => s.artifacts)
-  const openArtifact = useStore((s) => s.openArtifact)
   const rateMessage = useStore((s) => s.rateMessage)
   const openReport = useIssues((s) => s.openReport)
   const retryMediaTurn = useStore((s) => s.retryMediaTurn)
@@ -402,7 +374,7 @@ function MessageItemInner({
           {startedFrom && (
             <p className="text-right text-xs text-faint">
               {shape
-                ? t('시작점 {name} · 서식 {title}')
+                ? t('시작점 {name} · 양식 {title}')
                     .replace('{name}', startedFrom.title)
                     .replace('{title}', templateText(shape, currentLang() === 'en').name)
                 : t('시작점 {name}').replace('{name}', startedFrom.title)}
@@ -719,30 +691,13 @@ function MessageItemInner({
           </div>
         )}
 
-        {named.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {named.map((a) => {
-              const Icon = artifactIcon[a.kind]
-              return (
-                <button
-                  key={a.id}
-                  onClick={() => openArtifact(a.id)}
-                  className="flex items-center gap-2 rounded-card border border-line bg-panel px-3 py-2 text-left transition-colors hover:border-accent hover:bg-elevated"
-                >
-                  <span className="grid size-7 place-items-center rounded-control bg-accent-soft text-accent">
-                    <Icon size={14} />
-                  </span>
-                  <span>
-                    <span className="block text-base font-medium">{a.title}</span>
-                    <span className="block text-xs text-faint">
-                      {t(artifactLabel[a.kind])} · v{a.version}
-                    </span>
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
+        {named.map((a, i) => (
+          <ResultCard
+            key={a.id}
+            artifact={a}
+            version={i === 0 ? message.artifactVersion : undefined}
+          />
+        ))}
 
         {!streaming && message.content && !message.variants && (
           <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>

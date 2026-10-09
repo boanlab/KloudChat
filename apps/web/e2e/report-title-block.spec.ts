@@ -82,7 +82,8 @@ async function fixture(page: Page, testInfo: TestInfo, titleBlock: unknown) {
 }
 
 async function enterEditor(page: Page) {
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  // 「편집」 in the panel header opens the page editor and the editing tabs.
+  await page.locator('[data-panel="artifact"] header').getByRole('button', { name: '편집', exact: true }).click()
   await expect(page.locator('.ProseMirror').first()).toBeVisible()
 }
 

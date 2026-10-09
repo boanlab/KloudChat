@@ -36,9 +36,9 @@ async function wearing(
 
 /** The gallery card for one 서식, found by search since the gallery pages its grid. */
 async function card(page: Page, name: string) {
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '양식 고르기' }).click()
   const dialog = page.getByRole('dialog')
-  const search = dialog.getByLabel('서식 검색')
+  const search = dialog.getByLabel('양식 검색')
   if (await search.count()) await search.fill(name)
   const found = dialog.locator('div.group', { hasText: name }).first()
   await expect(found).toBeVisible({ timeout: 20_000 })
@@ -51,7 +51,7 @@ test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다',
   const { id: sessionId } = await wearing(page, 'slides', 'deck-editorial', '편집형 덱을 입은 대화')
 
   await page.goto(`/s/${sessionId}`)
-  const chip = page.getByRole('button', { name: '편집형 덱 서식 해제' })
+  const chip = page.getByRole('button', { name: '편집형 덱 양식 해제' })
   await expect(chip).toBeVisible({ timeout: 20_000 })
 
   // The chip is the only place the shape is named.
@@ -63,9 +63,9 @@ test('세션이 입고 있는 서식은 새로고침해도 칩으로 남는다',
 
   // Taking it off reaches the row.
   await chip.click()
-  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '편집형 덱 양식 해제' })).toHaveCount(0)
   await page.reload()
-  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '편집형 덱 양식 해제' })).toHaveCount(0)
 })
 
 test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는다', async ({ page }) => {
@@ -85,8 +85,8 @@ test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는
   )
 
   await page.goto('/new/slides')
-  await (await card(page, '편집형 덱')).getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toBeVisible()
+  await (await card(page, '편집형 덱')).getByRole('button', { name: '이 양식으로 시작' }).click()
+  await expect(page.getByRole('button', { name: '편집형 덱 양식 해제' })).toBeVisible()
 
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')
   await page.getByLabel('프롬프트 입력').press('Enter')
@@ -98,8 +98,8 @@ test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는
   await expect(page).toHaveURL(new RegExp(`/s/${lecture}`), { timeout: 20_000 })
 
   // The pick was spent on its turn; this conversation shows only its own shape.
-  await expect(page.getByRole('button', { name: '강의형 덱 서식 해제' })).toBeVisible({
+  await expect(page.getByRole('button', { name: '강의형 덱 양식 해제' })).toBeVisible({
     timeout: 20_000,
   })
-  await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '편집형 덱 양식 해제' })).toHaveCount(0)
 })

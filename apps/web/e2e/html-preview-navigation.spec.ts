@@ -122,7 +122,7 @@ for (const [name, content] of Object.entries(documents)) {
         await expect(page).toHaveURL(/\/artifacts$/)
 
         const downloaded = page.waitForEvent('download')
-        await dialog.getByRole('button', { name: '내보내기', exact: true }).click()
+        await dialog.getByRole('button', { name: '내려받기', exact: true }).click()
         await page.getByRole('menuitem', { name: /원본 HTML/ }).click()
         const file = await downloaded
         expect(await readFile((await file.path())!, 'utf8')).toBe(content)

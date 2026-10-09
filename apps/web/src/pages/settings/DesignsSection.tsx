@@ -115,7 +115,7 @@ function ExtractForm({
         draft.source,
       )
     } catch (e) {
-      const said = errorMessage(e, t('문서에서 디자인 시스템을 읽어내지 못했습니다.'))
+      const said = errorMessage(e, t('문서에서 디자인을 읽어내지 못했습니다.'))
       setError(REFUSAL[said] ? t(REFUSAL[said]) : said)
     } finally {
       setBusy(false)
@@ -262,7 +262,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
 
   if (draft) {
     return (
-      <section aria-label={t('디자인 시스템')} className="space-y-4">
+      <section aria-label={t('내 디자인')} className="space-y-4">
         {readFrom && (
           <p className="rounded-control border border-line bg-elevated px-2.5 py-1.5 text-sm text-muted">
             {t('“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.').replace(
@@ -386,7 +386,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   }
 
   return (
-    <section aria-label={t('디자인 시스템')} className="space-y-3">
+    <section aria-label={t('내 디자인')} className="space-y-3">
       <BulkBar
         count={pick.count}
         allPicked={pick.allPicked}

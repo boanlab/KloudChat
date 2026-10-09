@@ -159,7 +159,7 @@ test('이미지 화면에서 만든 그림을 문서 한 자리에 넣는다', a
 
   // Zip entry names are stored uncompressed, so the media part is readable from the bytes.
   const saved = page.waitForEvent('download', { timeout: 60_000 })
-  await dialog.getByRole('button', { name: '내보내기' }).click()
+  await dialog.getByRole('button', { name: '내려받기' }).click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
   const file = await saved
   const bytes = await readFile(await file.path())

@@ -1,12 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, openAndSeedReport } from './helpers'
+import { E2E_ADMIN, openAndSeedReport, ribbonTab } from './helpers'
 
 async function enterPageEditor(page: import('@playwright/test').Page) {
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  const home = page.getByRole('toolbar', { name: '홈' })
+  const home = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
   await home.getByRole('button', { name: '페이지뷰' }).click()
   // A toggle, not a destination button: only press it if editing is actually off.
-  const edit = home.getByRole('button', { name: '편집' })
+  const edit = home.getByRole('button', { name: '편집', exact: true })
   if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 30_000 })
 }
@@ -62,8 +61,7 @@ test('커서 위치의 쪽 나누기를 표시·삭제·복원하고 저장한�
   await enterPageEditor(page)
   await expect(page.locator('.ProseMirror').first().locator('[data-page-break="true"]')).toHaveCount(1)
 
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '편집' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true }).click()
   const preview = page.getByLabel('실제 페이지 미리보기')
   await expect.poll(async () => Number(await preview.getAttribute('data-page-count') ?? 0), { timeout: 30_000 }).toBeGreaterThan(1)
 
@@ -243,8 +241,7 @@ test('보고서에서 인용·표·절 구조를 직접 고치고 다시 열 수
   await expect(page.locator('.ProseMirror').first()).toContainText('[1]')
   await expect(page.locator('.ProseMirror').first().locator('tr')).toHaveCount(2)
 
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('toolbar', { name: '홈' }).getByRole('button', { name: '웹뷰' }).click()
+  await page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '웹뷰' }).click()
   const sectionMenu = page.getByRole('button', { name: /절 편집/ }).first()
   await sectionMenu.click()
   await page.getByRole('menuitem', { name: '이 절 복제' }).click()

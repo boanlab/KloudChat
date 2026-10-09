@@ -6,8 +6,8 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill, UserPipeline } from '@/types'
 import type { ItemType } from './itemIcons'
 
-/** The hub's tabs, in order. 커넥터 and 메모리 show their own screens, without 탐색. */
-export const HUB_TABS = ['agents', 'skills', 'workflows', 'connectors', 'memory', 'designs'] as const
+/** The hub's tabs, in order. 커넥터 and 메모리 show their own screens, without 탐색; 양식 is one catalogue. */
+export const HUB_TABS = ['agents', 'skills', 'workflows', 'connectors', 'memory', 'templates', 'designs'] as const
 export type HubTab = (typeof HUB_TABS)[number]
 
 /** Tabs that list items as cards, with 내 항목 / 탐색, search, filter and sort. */
@@ -19,6 +19,7 @@ export const TAB_LABEL: Record<HubTab, string> = {
   workflows: '워크플로',
   connectors: '커넥터',
   memory: '메모리',
+  templates: '양식',
   designs: '디자인',
 }
 

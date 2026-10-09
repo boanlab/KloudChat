@@ -1,6 +1,6 @@
 /** 모두 고치기 rewrites each section once, with every finding in it grouped into one note. */
 import { expect, test } from '@playwright/test'
-import { openAndSeedReport } from './helpers'
+import { openAndSeedReport, ribbonTab } from './helpers'
 
 const BODY = [
   '## 배경',
@@ -27,7 +27,7 @@ test('모두 고치기는 절마다 한 번씩만 다시 쓴다', async ({ page 
   // Skips if the linter finds fewer than two problems in this body.
   await openAndSeedReport(page, BODY)
 
-  await page.getByRole('tab', { name: '검토', exact: true }).click()
+  await ribbonTab(page, '검토')
   const badge = page.getByRole('button', { name: '검사 결과' })
   await expect(badge).toBeVisible({ timeout: 20_000 })
   await badge.click()

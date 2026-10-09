@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { crc32 as zlibCrc32, deflateSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { signIn } from './helpers'
+import { signIn, ribbonTab } from './helpers'
 
 /** Inserting an image into a JSON deck slide: stored as a `data:` URI the preview and exporters read.
  *  Seeded through the API. */
@@ -124,7 +124,7 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   const dialog = page.getByRole('dialog')
   // The picture goes into the slide being shown.
   await dialog.getByRole('button', { name: '다음 장' }).click()
-  await dialog.getByRole('tab', { name: '삽입' }).click()
+  await ribbonTab(page, '삽입')
   await dialog.getByRole('button', { name: '그림 넣기' }).click()
   await page.getByRole('button', { name: pictureTitle, exact: true }).click()
   await page.getByLabel('설명').fill('그림 1. 슬라이드')
@@ -143,9 +143,9 @@ test('JSON 덱의 한 장에 그림을 넣고, 파일로 받으면 그림이 들
   expect(slides[1].image?.caption).toBe('그림 1. 슬라이드')
   expect(slides[0].image).toBeUndefined()
 
-  await dialog.getByRole('tab', { name: '파일' }).click()
+  // 「파일」 is gone: its commands sit in the panel header now.
   const saved = page.waitForEvent('download', { timeout: 60_000 })
-  await dialog.getByRole('button', { name: '내보내기' }).click()
+  await dialog.getByRole('button', { name: '내려받기' }).click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
   const file = await saved
   const bytes = await readFile(await file.path())

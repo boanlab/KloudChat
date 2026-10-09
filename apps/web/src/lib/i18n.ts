@@ -1374,8 +1374,8 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
-  '{name} 서식 해제': 'Clear the {name} format',
-  '이 서식으로 시작': 'Start with this',
+  '{name} 양식 해제': 'Clear the {name} template',
+  '이 양식으로 시작': 'Start with this',
   '전체 미리보기': 'Full preview',
   '이전 슬라이드': 'Previous slide',
   '다음 슬라이드': 'Next slide',
@@ -1400,7 +1400,7 @@ const EN: Record<string, string> = {
   '처리 내역 {n}건': '{n} handling notes',
   '처리 내역 접기': 'Hide handling notes',
   '카드의 준비물만 입력하면 요청을 구체화해 줍니다.': 'Fill in what the card asks for and the request writes itself.',
-  '서식 또는 용도 검색': 'Search formats or uses',
+  '양식 또는 용도 검색': 'Search templates or uses',
   '준비할 자료': 'What to bring',
   '선택 후 입력창에서 수정': 'Edit it in the box after choosing',
   '이번 요청에만 적용': 'For this request only',
@@ -1510,7 +1510,7 @@ const EN: Record<string, string> = {
   '보고서 메뉴': 'Report menu',
   '웹뷰': 'Web view',
   '페이지뷰': 'Page view',
-  '서식이 적용된 A4 문서로 봅니다': 'See it as an A4 document in its format',
+  '양식이 적용된 A4 문서로 봅니다': 'See it as an A4 document in its template',
   '실제 페이지': 'Page layout',
   '내용 편집': 'Edit content',
   '페이지': 'Page',
@@ -1878,13 +1878,13 @@ const EN: Record<string, string> = {
   '하려는 일을 고르면 필요한 자료와 결과물의 모양까지 함께 준비됩니다.':
     'Pick the job and the material it needs — and the shape it comes in — are set with it.',
   '어떤 모양으로 받을까요?': 'What shape should it come in?',
-  '조건에 맞는 서식이 없습니다.': 'No format matches.',
-  '서식 고르기': 'Pick a format',
-  '결과물의 서식을 고릅니다': 'Pick the format of the result',
-  '서식·스킬·커넥터·에이전트': 'Formats, skills, connectors, agents',
-  '서식에서 시작': 'Start from a format',
+  '조건에 맞는 양식이 없습니다.': 'No template matches.',
+  '양식 고르기': 'Pick a template',
+  '결과물의 양식을 고릅니다': 'Pick the template of the result',
+  '양식·스킬·커넥터·에이전트': 'Templates, skills, connectors, agents',
+  '양식에서 시작': 'Start from a template',
   '고른 색과 서체로 문서를 만들면 나오는 모양입니다.': 'What a document made in these colours and this typeface comes out looking like.',
-  '이 서식이 확인하는 것': 'What this template checks',
+  '이 양식이 확인하는 것': 'What this template checks',
   '되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.': 'This cannot be undone. {n} project(s) using it go back to the default look.',
   '되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.': 'This cannot be undone. No project is using this design.',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
@@ -2637,18 +2637,19 @@ const EN: Record<string, string> = {
   '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
 
   // ── 서식 갤러리 ─────────────────────────────────────────────────
-  '서식 추가': 'Add a form',
+  '양식 추가': 'Add a template',
   '내보내면 이 양식으로 나갑니다': 'The exported file comes out in this form',
-  '서식 바꾸기': 'Change of form',
-  '서식을 바꾸지 못했습니다.': 'The form could not be changed.',
-  '서식 검색': 'Search forms',
-  '이 서식이 확인하는 것 {n}개': '{n} things this form checks',
-  '찾는 서식이 없습니다.': 'No form matches that.',
+  '양식 바꾸기': 'Change of template',
+  '양식을 바꾸지 못했습니다.': 'The template could not be changed.',
+  '양식을 불러오지 못했습니다.': 'The template could not be loaded.',
+  '양식 검색': 'Search templates',
+  '이 양식이 확인하는 것 {n}개': '{n} things this template checks',
+  '찾는 양식이 없습니다.': 'No template matches that.',
   '이전 쪽': 'Previous page',
   '다음 쪽': 'Next page',
-  '서식 수정': 'Edit form',
-  '고른 서식': 'Chosen',
-  '이미 고른 서식입니다': 'Already chosen',
+  '양식 수정': 'Edit template',
+  '고른 양식': 'Chosen',
+  '이미 고른 양식입니다': 'Already chosen',
 
   // ── 컨트롤 상태 ─────────────────────────────────────────────────
   '이 답변이 도움이 되었습니다': 'This answer helped',
@@ -2729,13 +2730,13 @@ const EN: Record<string, string> = {
   '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
   '이 에이전트가 답합니다': 'answers here',
   '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
-  '결과물이 이 서식으로 나옵니다': 'the result comes out in this shape',
+  '결과물이 이 양식으로 나옵니다': 'the result comes out in this template',
   '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
   '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
 
   // ── 시작점 (legacy label on old turns) ──────────────────────────
   '시작점 {name}': 'From {name}',
-  '시작점 {name} · 서식 {title}': 'From {name} · in {title}',
+  '시작점 {name} · 양식 {title}': 'From {name} · in {title}',
 
   // ── 관리자 화면의 탭 ────────────────────────────────────────────
   '프록시': 'Proxy',
@@ -2772,15 +2773,18 @@ const EN: Record<string, string> = {
   '{n}종 모두 보기': 'See all {n}',
   '제품이 갖고 있는 결과물의 모양입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
     'The shapes a result can come out in. Pick one and its screen opens with the example sentence in the composer.',
-  '보여 줄 서식이 없습니다': 'No formats to show',
-  '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 서식이 여기에 나옵니다.':
-    'Turn on slides or reports and the formats those screens can use will appear here.',
+  '보여 줄 양식이 없습니다': 'No templates to show',
+  '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 양식이 여기에 나옵니다.':
+    'Turn on slides or reports and the templates those screens can use will appear here.',
+  '조건에 맞는 디자인이 없습니다.': 'No design matches.',
+  '아직 공유된 디자인이 없습니다': 'No shared designs yet',
+  '내 디자인을 모두에게 공개하면 여기에 올라옵니다.': 'Share one of your designs with everyone and it shows up here.',
 
   // ── 프로젝트의 기본 서식 ────────────────────────────────────────
-  '기본 서식': 'Default formats',
+  '기본 양식': 'Default templates',
   '이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
     'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
-  '{kind} 서식': '{kind} format',
+  '{kind} 양식': '{kind} template',
 
   // ── 버전 기록 ───────────────────────────────────────────────────
   '되돌리지 못했습니다.': 'Could not restore.',
@@ -2793,7 +2797,7 @@ const EN: Record<string, string> = {
 
   // ── 문서에서 디자인 읽기 ─────────────────────────────────────────
   '문서에서 가져오기': 'Read from a document',
-  '문서에서 디자인 시스템을 읽어내지 못했습니다.': 'No design system could be read out of that.',
+  '문서에서 디자인을 읽어내지 못했습니다.': 'No design could be read out of that.',
   '공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.':
     'Upload an official template or an earlier report, and its colours, type and voice become a draft. Nothing is saved until you have read it.',
   '문서 올리기': 'Upload a document',
@@ -2868,7 +2872,7 @@ const EN: Record<string, string> = {
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
   // ── 디자인 시스템 ───────────────────────────────────────────────
   '디자인': 'Design',
-  '디자인 시스템': 'Design systems',
+  '내 디자인': 'My designs',
   '디자인 추가': 'Add a design',
   '사용 안 함 — 기본 모양': 'None — the default look',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
@@ -2943,11 +2947,11 @@ const EN: Record<string, string> = {
   '처음 여는 화면': 'Opens on',
   '이 에이전트로 새 대화를 열 때의 화면입니다. 나머지 화면은 시작 버튼과 문서 넘기기로 씁니다.': 'Where a new conversation with this agent opens. Its other surfaces are reached from the start buttons and by handing a chat over to a document.',
   '첫 번째 화면': 'First surface',
-  '문서 서식': 'Document template',
-  '보고서·슬라이드 대화가 이 서식으로 시작합니다. 입력창에서 다른 서식을 고르면 그것이 이깁니다.': 'Report and slides conversations start on this template. A template picked in the composer wins.',
+  '문서 양식': 'Document template',
+  '보고서·슬라이드 대화가 이 양식으로 시작합니다. 입력창에서 다른 양식을 고르면 그것이 이깁니다.': 'Report and slides conversations start on this template. A template picked in the composer wins.',
   '정하지 않음': 'None',
   '문서 형식': 'Document format',
-  '서식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.': 'When the template fixes no format, the report\'s head fields and section rules follow this one.',
+  '양식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.': 'When the template fixes no format, the report\'s head fields and section rules follow this one.',
   '요청에 따라': 'From the request',
   '프로젝트의 디자인보다 먼저 씁니다. 다른 사람의 디자인이면 내 디자인 중 같은 이름의 것을 씁니다.':
     "Wins over the project's design. When it is someone else's, your own design of the same name is used.",
@@ -2984,7 +2988,7 @@ const EN: Record<string, string> = {
   '앞 단계에서 멈춰 실행하지 않음': 'Not run: an earlier stage stopped',
   '시간이 초과됨': 'Timed out',
   '붙은 검사가 없음': 'No checks attached',
-  '문서 서식이 정해지지 않음': 'No document format set',
+  '문서 형식이 정해지지 않음': 'No document format set',
   '미리 계산할 것이 없음': 'Nothing to pre-compute',
   '계산할 것이 없음': 'Nothing to calculate',
   '바뀐 곳이 없음': 'Nothing changed',
@@ -3179,9 +3183,9 @@ const EN: Record<string, string> = {
   '여기서 고른 화면의 @ 버튼에만 나타납니다.': 'It appears only under the @ button of the surfaces picked here.',
   '더 설정하기': 'More settings',
   '결과물 모양': 'Output shape',
-  '처음 여는 화면, 서식, 문서 형식, 디자인': 'First surface, template, document format, design',
+  '처음 여는 화면, 양식, 문서 형식, 디자인': 'First surface, template, document format, design',
   '이 에이전트로 새 대화를 열 때의 화면입니다.': 'The surface a new conversation with this agent opens on.',
-  '보고서·슬라이드 대화가 이 서식으로 시작합니다.': 'Report and slide conversations start with this template.',
+  '보고서·슬라이드 대화가 이 양식으로 시작합니다.': 'Report and slide conversations start with this template.',
   '프로젝트의 디자인보다 먼저 씁니다.': 'Wins over the project’s design.',
   '대화 시작': 'Conversation start',
   '사용법, 시작 문장': 'How to use, starters',
@@ -3240,7 +3244,7 @@ const EN: Record<string, string> = {
   '에이전트 만들기': 'Create agent',
   '스킬 만들기': 'Create skill',
   '워크플로 만들기': 'Create workflow',
-  '디자인 시스템 만들기': 'Create design system',
+  '디자인 만들기': 'Create design',
   '파일에서 읽어 오기': 'Read from a file',
   '필터': 'Filter',
   '필터 지우기': 'Clear filters',
@@ -3288,6 +3292,38 @@ const EN: Record<string, string> = {
   '검색 결과': 'Search results',
   '모든 대화 보기': 'All conversations',
   '모든 결과 보기 ({n})': 'All results ({n})',
+  // result cards, download menu, reuse, panel headers
+  '파일로 내려받기': 'Download as a file',
+  '내보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.': 'Could not export. Please try again shortly.',
+  '내보내기 전 확인': 'Check before exporting',
+  '이걸로 새로 시작': 'Start new from this',
+  '새 대화에 첨부': 'Attach to a new conversation',
+  '원본 파일': 'Original file',
+  '데이터 {n}행': '{n} data rows',
+  '{n}줄': '{n} lines',
+  'v{n} · 지금 v{m}': 'v{n} · now v{m}',
+  '열기': 'Open',
+  '내려받기 전 확인': 'Check before downloading',
+  '더보기': 'More',
+  '「{title}」 내용을 바탕으로 새 슬라이드를 만들어 주세요.': 'Make new slides based on “{title}”.',
+  '「{title}」 내용을 바탕으로 새 보고서를 써 주세요.': 'Write a new report based on “{title}”.',
+  '「{title}」 내용을 바탕으로 새로 써 주세요.': 'Write something new based on “{title}”.',
+  '결과물을 새 대화에 넣지 못했습니다.': 'Could not bring the result into a new conversation.',
+  '저장된 판': 'Saved version',
+  '보기 방식': 'View',
+  '출처와 근거, 문서 검사, 버전 기록': 'Sources and evidence, document check, version history',
+  '검토 · 확인 {count}': 'Review · {count} to check',
+  '편집 도구를 닫고 읽기로 돌아갑니다': 'Close the editing tools and go back to reading',
+  '보면서 바로 고칩니다': 'Edit right on the page',
+  '문서 양식 고르기': 'Choose a document template',
+  '검토 도구': 'Review tools',
+  '확인할 장, 문서 검사, 검토 메모, 버전 기록': 'Slides to check, document check, review notes, version history',
+  '이 장을 고칩니다': 'Edit this slide',
+  '이 장 고치기': 'Edit this slide',
+  '저장하거나 취소한 뒤 그림을 넣을 수 있습니다': 'Save or cancel first to insert a picture',
+  '저장하거나 취소한 뒤 디자인을 바꿀 수 있습니다': 'Save or cancel first to change the design',
+  '{name} 더보기': 'More for {name}',
+  '{name} 내려받기': 'Download {name}',
 }
 
 export function translate(lang: Lang, text: string): string {
@@ -3303,6 +3339,8 @@ export function translate(lang: Lang, text: string): string {
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
+  'hub|양식': 'Templates',
+  'hub|디자인': 'Designs',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

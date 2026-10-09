@@ -12,7 +12,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
 
   const name = `미리보기 검증 ${Date.now()}`
   await page.goto('/designs')
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
   await designs.getByLabel('이름', { exact: true }).fill(name)
   await designs.getByLabel('강조색 색상 코드').fill(ACCENT)
@@ -44,7 +44,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
 
   // The gallery opens on the project's own surface.
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '양식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByRole('button').first()).toBeVisible({
     timeout: 20_000,

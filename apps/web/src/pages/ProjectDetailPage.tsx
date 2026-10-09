@@ -409,7 +409,7 @@ export function ProjectDetailPage() {
         {formatSurfaces.length > 0 && (
           <Card className="space-y-3 p-4">
             <div>
-              <p className="text-base font-medium">{t('기본 서식')}</p>
+              <p className="text-base font-medium">{t('기본 양식')}</p>
               <p className="text-sm text-muted">
                 {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
               </p>
@@ -420,7 +420,7 @@ export function ProjectDetailPage() {
                   {t(kindMeta[kind].label)}
                 </span>
                 <select
-                  aria-label={t('{kind} 서식').replace('{kind}', t(kindMeta[kind].label))}
+                  aria-label={t('{kind} 양식').replace('{kind}', t(kindMeta[kind].label))}
                   value={project.renderTemplates[kind] ?? ''}
                   onChange={(e) =>
                     void updateProject(project.id, {

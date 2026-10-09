@@ -248,6 +248,19 @@ type SendOptions = {
   reconcileBeforeRetry?: boolean
 }
 
+/** What the result card asks of the panel it opens. */
+export interface ArtifactIntent {
+  artifactId: string
+  /** Changes on every request, so the same request twice is seen twice. */
+  nonce: number
+  /** The review pane: a report's sources and checks, a deck's review notes. */
+  pane?: 'review'
+  /** A deck slide by index. */
+  slide?: number
+  /** An earlier version, previewed from the version history. */
+  version?: number
+}
+
 interface State {
   // ── auth ──────────────────────────────────────────────────────────────
   user: User | null
@@ -451,6 +464,11 @@ interface State {
   /** Text to drop into the composer; never sent on the user's behalf. */
   draft: string
   setDraft: (text: string) => void
+  /** Where an opened artifact should land: its review pane, a slide, an earlier version. Read once by the panel. */
+  artifactIntent: ArtifactIntent | null
+  /** Opens the panel on `id` and hands it `intent`. */
+  openArtifactAt: (id: string, intent: Omit<ArtifactIntent, 'artifactId' | 'nonce'>) => void
+  clearArtifactIntent: () => void
   /** Form file a picked template carries to the composer. Consumed once. */
   pendingAttachment: FileRow | null
   setPendingAttachment: (file: FileRow | null) => void
@@ -2065,6 +2083,12 @@ export const useStore = create<State>((set, get) => ({
   setDraft: (draft) => set({ draft }),
   pendingAttachment: null,
   setPendingAttachment: (pendingAttachment) => set({ pendingAttachment }),
+  artifactIntent: null,
+  openArtifactAt: (id, intent) => {
+    set({ artifactIntent: { ...intent, artifactId: id, nonce: Date.now() } })
+    get().openArtifact(id)
+  },
+  clearArtifactIntent: () => set({ artifactIntent: null }),
   composerRestore: null,
   setComposerRestore: (composerRestore) => set({ composerRestore }),
   notice: null,
@@ -2887,6 +2911,7 @@ function toMessage(raw: MessageRow): Message {
     usage: raw.usage ?? undefined,
     startedFrom: raw.startedFrom ?? undefined,
     artifactIds: raw.artifactIds ?? undefined,
+    artifactVersion: raw.artifactVersion ?? undefined,
     failure: raw.failure ?? undefined,
     liked: raw.rating ?? null,
     superseded: raw.superseded ?? undefined,
@@ -3866,6 +3891,8 @@ async function streamReport(
         case 'artifact':
           // The server's copy replaces the draft; fetched in full since the panel needs the document.
           await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
+          // The answer names what it made, so its result card shows before a reload.
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, artifactIds: [e.artifactId] }))
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,
@@ -4093,6 +4120,7 @@ async function streamDeck(
           break
         case 'artifact':
           await Promise.all([get().loadArtifacts(), get().refreshArtifact(e.artifactId)])
+          patchMessage(set, sessionId, assistantId, (m) => ({ ...m, artifactIds: [e.artifactId] }))
           set((s) => ({
             artifacts: s.artifacts.filter((a) => a.id !== draftId),
             openArtifactId: e.artifactId,

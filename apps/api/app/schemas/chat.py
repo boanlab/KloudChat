@@ -34,6 +34,8 @@ class MessageOut(Wire):
     routing: dict | None = None
     #: Artifacts this turn produced, rendered in place of the answer.
     artifact_ids: list | None = None
+    #: The version of `artifact_ids[0]` this turn wrote, from its pipeline run; null when unknown.
+    artifact_version: int | None = None
     #: Legacy: the retired 시작점 an old turn began from, as `{templateId, title}`.
     started_from: dict | None = None
     rating: MessageRating | None = None
@@ -259,9 +261,12 @@ class SessionOut(Wire):
         preview: str | None = None,
         message_count: int = 0,
         made: SessionMade | None = None,
+        links: dict[str, tuple[str, int | None]] | None = None,
     ) -> SessionOut:
+        from app.services.message_links import linked
+
         out = cls.model_validate(s, from_attributes=True)
-        out.messages = [MessageOut.of(m) for m in messages] if messages is not None else None
+        out.messages = [linked(m, links) for m in messages] if messages is not None else None
         if messages:
             out.preview = snippet(messages[-1].content)
             out.message_count = len(messages)

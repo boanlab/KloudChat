@@ -1401,7 +1401,7 @@ export function Composer({
                     }
                   }}
                   disabled={!!editing}
-                  aria-label={t('{name} 서식 해제').replace(
+                  aria-label={t('{name} 양식 해제').replace(
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}
@@ -1608,8 +1608,8 @@ export function Composer({
                 'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
                 shownTemplate ? 'text-accent' : 'text-muted',
               )}
-              aria-label={t('서식 고르기')}
-              title={t('결과물의 서식을 고릅니다')}
+              aria-label={t('양식 고르기')}
+              title={t('결과물의 양식을 고릅니다')}
             >
               <LayoutGrid size={16} />
             </button>
@@ -1787,7 +1787,7 @@ export function Composer({
                   moreOpen ? 'bg-elevated text-fg' : 'text-muted',
                 )}
                 aria-label={moreOpen ? t('도구 접기') : t('도구 더보기')}
-                title={t('서식·스킬·커넥터·에이전트')}
+                title={t('양식·스킬·커넥터·에이전트')}
               >
                 <MoreHorizontal size={16} />
               </button>

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
-import { approvePlan, signIn } from './helpers'
+import { approvePlan, signIn, ribbonTab } from './helpers'
 
 /** Entry names from a zip's central directory; nothing is inflated. */
 function zipNames(buffer: Buffer): string[] {
@@ -43,13 +43,13 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   await approvePlan(page)
 
   // The outline lands first: the whole deck is on screen before any slide is written.
-  await page.getByRole('tab', { name: '보기', exact: true }).click({ timeout: 120_000 })
+  // 「보기」 is gone: its commands sit in the panel header now.
   // The 장 목록 button reads 「current/total」.
   await expect(page.getByRole('button', { name: '장 목록' })).toHaveText(/\d+\/[1-9]\d*/, { timeout: 120_000 })
 
   // 내보내기 stays disabled while any slide is still empty.
-  await page.getByRole('tab', { name: '파일', exact: true }).click()
-  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
+  // 「파일」 is gone: its commands sit in the panel header now.
+  const exportButton = page.getByRole('button', { name: '내려받기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 360_000 })
 
   // Found by session (the account is shared) and read by id (listing rows are partial).
@@ -140,10 +140,10 @@ test('슬라이드 한 장을 고치면 저장되고 새로고침 뒤에도 남�
   await expect(card).toBeVisible({ timeout: 20_000 })
   await card.click()
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('tab', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
+  await expect(page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true })).toBeVisible({ timeout: 20_000 })
 
   const edited = `수정한 제목 ${Date.now()}`
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await ribbonTab(page, '편집')
   await page.getByLabel('슬라이드 텍스트').fill(`${edited}\n첫째 항목\n둘째 항목`)
   await page.getByLabel('발표 노트').fill('여기서는 이렇게 말한다')
   await page.getByRole('button', { name: '저장', exact: true }).click()

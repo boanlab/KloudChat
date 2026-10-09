@@ -10,7 +10,7 @@ test('페이지뷰에서 제목과 절 제목을 고칠 수 있다', async ({ pa
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await artifactReady(page, 30_000)
   await page.getByRole('button', { name: '페이지뷰' }).click()
-  const edit = page.getByRole('button', { name: '편집' })
+  const edit = page.locator('[data-panel="artifact"] header, [role="dialog"] header').first().getByRole('button', { name: '편집', exact: true })
   if ((await edit.getAttribute('data-variant')) !== 'primary') await edit.click()
   await expect(page.locator('.page').first()).toBeVisible({ timeout: 30_000 })
 

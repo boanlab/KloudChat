@@ -37,7 +37,7 @@ Two methods are provided.
 |---|---|
 | "In four sections" | Sets the number of sections. The range is 3 to 12. |
 | "Review report", "weekly report", "meeting minutes", "incident report" | Applies a structure that suits the document type. Only documents that call for a judgment include summary and recommendation sections. |
-| Selecting a format from ▦ | Applies the structure rules and typesetting of that format. |
+| Selecting a template from ▦ | Applies the structure rules and typesetting of that template. |
 
 ## Export
 

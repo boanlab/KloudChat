@@ -314,8 +314,8 @@ test('report: stage list, evidence, marks, fill, rerun', async ({ page }, testIn
     await expect(panel(page).getByText('빈칸 2개')).toBeVisible()
     await shot('filled')
 
-    // The 검토 tab's 작업 단계.
-    await panel(page).getByRole('tab', { name: '검토', exact: true }).click()
+    // 작업 단계 under 검토, opened from the header while reading.
+    await panel(page).locator('header').getByRole('button', { name: /^검토/ }).click()
     await panel(page).getByRole('button', { name: /작업 단계/ }).click()
     const dialog = page.getByRole('dialog', { name: '작업 단계' })
     await expect(dialog).toBeVisible()

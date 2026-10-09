@@ -12,7 +12,7 @@ The ribbon consists of **Home · Edit · Insert · Layout · Review · View · F
 
 ### Home
 
-Switch between **Web view** and **Page view** (actual A4 pages), and change the document design (editorial, magazine, minimal), the accent color, and the **Template** (format). In web view, **Source** lets you edit the whole Markdown.
+Switch between **Web view** and **Page view** (actual A4 pages), and change the document design (editorial, magazine, minimal), the accent color, and the **Template**. In web view, **Source** lets you edit the whole Markdown.
 
 ### Edit
 
@@ -83,6 +83,6 @@ A snapshot is saved every time you save, rewrite, or restore. In the ribbon, ope
 
 If the same document was edited in another window, it asks you to choose between **Load the latest version** and **Copy my edits**.
 
-## Editing limits on documents with a format applied
+## Editing limits on documents with a template applied
 
-Reports and slides with a format applied support block-level rewriting only, and Markdown source editing is not provided. The export formats are PDF, DOCX/PPTX, HWPX, HTML, and text.
+Reports and slides with a template applied support block-level rewriting only, and Markdown source editing is not provided. The export formats are PDF, DOCX/PPTX, HWPX, HTML, and text.

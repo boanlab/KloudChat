@@ -222,7 +222,7 @@ without a translation fall back to Korean.
 | `/new/:kind` · `/s/:id` | The shared work surface. `kind` = chat, report, slides, image, av |
 | `/projects` · `/projects/:id` | Project instructions, knowledge files, member sessions, linked skills and memories |
 | `/artifacts` | Gallery of every output. Filter by kind, jump back to the originating session |
-| `/designs` · `?tab=template` | Design systems you make — colour, type, voice — and the 서식 catalogue the product ships, grouped by surface |
+| `/customize?tab=designs` · `?tab=templates` | 디자인 (designs) you make — colour, type, voice — and the 양식 (template) catalogue the product ships, grouped by surface. The old `/designs` and `/designs?tab=template` addresses redirect here |
 | `/agents` | System prompt, model, tool permissions, surfaces — plus the workspace store, where shared agents are copied into your own account |
 | `/skills` | `SKILL.md` front matter, applicable surfaces, enable toggle, and the same store for shared procedures |
 | `/memory` | user / feedback / project / reference types, global or project scope, `[[links]]` |

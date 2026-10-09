@@ -225,7 +225,7 @@ const REASONS: [RegExp, string][] = [
   [/timed? ?out|timeout/i, '시간이 초과됨'],
   [/^cancel/, '중단됨'],
   [/no check skills|no code checks/, '붙은 검사가 없음'],
-  [/no document format/, '문서 서식이 정해지지 않음'],
+  [/no document format/, '문서 형식이 정해지지 않음'],
   [/no pre-?pass/, '미리 계산할 것이 없음'],
   [/nothing to compute/, '계산할 것이 없음'],
   [/nothing changed|nothing rewritten/, '바뀐 곳이 없음'],

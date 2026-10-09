@@ -95,7 +95,7 @@ for (const width of [1440, 390]) {
     expect(await downloadedText(download)).toBe(source)
     expect(state.exports).toEqual([{ format: 'source', authorization: 'Bearer fixture-only' }])
     await expect(button).toBeEnabled()
-    await expect(page.getByRole('button', { name: '내보내기', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '내려받기', exact: true })).toHaveCount(0)
     const bounds = await button.boundingBox()
     expect(bounds!.x).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
@@ -155,7 +155,7 @@ test('HTML keeps its preview, source tabs and existing export formats', async ({
   await expect(page.locator('pre')).toHaveText(state.content)
   await page.getByRole('button', { name: '미리보기', exact: true }).click()
   await expect(page.locator('iframe').first()).toBeVisible()
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   const pending = page.waitForEvent('download')
   await page.getByRole('menuitem').filter({ hasText: 'HTML' }).click()
   const download = await pending

@@ -10,7 +10,7 @@ A project is a workspace that binds materials, instructions, and conversations t
 
 ## Creating
 
-Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the design system, and the **default format** for each screen (reports, slide decks).
+Go to the sidebar → **Projects** → New project, then enter a name, a description, and **project instructions**. After creation, the detail screen lets you set the icon, the design, and the **default template** for each screen (reports, slide decks).
 
 ## Tabs
 

@@ -2,7 +2,6 @@ import {
   Check,
   Code2,
   Copy,
-  Download,
   ExternalLink,
   FileText,
   Globe2,
@@ -16,6 +15,8 @@ import {
   Pencil,
   Plug,
   FileType2,
+  History,
+  MoreHorizontal,
   Printer,
   Quote,
   ShieldQuestion,
@@ -36,7 +37,7 @@ import {
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
 import { ArtifactRibbon, QuickAccess, RibbonGroup } from '@/components/artifacts/ArtifactRibbon'
 import { usePanelNarrow } from '@/lib/usePanelNarrow'
-import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, Modal, Textarea } from '@/components/ui'
+import { Button, ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator, Modal, Textarea } from '@/components/ui'
 import { artifactsApi, downloadArtifact as download, errorMessage } from '@/lib/api'
 import { fromMarkdown, toMarkdown } from '@/lib/reportMarkdown'
 import { cn, formatTokens } from '@/lib/utils'
@@ -49,6 +50,8 @@ import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, isAtt
 import { FactCheckResults } from '@/components/artifacts/FactCheckResults'
 import { LintFindings, byWhere, fixNote } from '@/components/artifacts/LintFindings'
 import { VersionHistory } from '@/components/artifacts/VersionHistory'
+import { citationNumbers, numericEvidenceGaps, type ExportFormat } from '@/components/artifacts/artifactExport'
+import { DownloadMenu, ReuseItems } from '@/components/artifacts/ResultActions'
 import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { DocMarksLayer } from './DocMarks'
 import { fillBlank, useDocMarks } from '@/lib/docMarks'
@@ -249,43 +252,6 @@ function citedSections(source: Source, sections: ReportSection[]): ReportSection
 }
 
 /** Every numbered marker found in the body, including numbers with no source. */
-function citationNumbers(sections: ReportSection[]): number[] {
-  const found = new Set<number>()
-  for (const section of sections) {
-    for (const match of sectionText(section).matchAll(/(?:\[|［)\s*(\d+)\s*(?:\]|］)/g)) {
-      found.add(Number(match[1]))
-    }
-  }
-  return [...found].sort((left, right) => left - right)
-}
-
-interface NumericEvidenceGap {
-  section: ReportSection
-  excerpts: string[]
-}
-
-/** Numeric claims that have no `[n]` marker in the same sentence. */
-function numericEvidenceGaps(sections: ReportSection[]): NumericEvidenceGap[] {
-  const numericFact = /\d[\d,.]*\s*(?:%|％|원|명|건|개|배|년|월|일|시간|분|초|점|대|회|쪽|페이지|GB|MB|km|kg)/i
-  const marker = /(?:\[|［)\s*\d+\s*(?:\]|］)/
-  const gaps: NumericEvidenceGap[] = []
-  for (const section of sections) {
-    const excerpts = sectionText(section)
-      .split(/(?<=[.!?。！？])\s+|\n+/)
-      .map((sentence) => sentence.trim())
-      .filter(
-        (sentence) =>
-          sentence.length > 0 &&
-          numericFact.test(sentence) &&
-          !marker.test(sentence) &&
-          !/^\d+[.)]\s/.test(sentence),
-      )
-      .slice(0, 3)
-    if (excerpts.length) gaps.push({ section, excerpts })
-  }
-  return gaps
-}
-
 /** Print tree portalled to `<body>`, outside the panel's clipping containers; `@media print` swaps it in. */
 function PrintDocument({ report }: { report: ReportArtifact }) {
   const t = useT()
@@ -593,7 +559,12 @@ export function ReportPanel({
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [mode, setMode] = useState<PanelMode>('wide')
-  const [ribbon, setRibbon] = useState<'home' | 'edit' | 'insert' | 'layout' | 'review' | 'view' | 'file'>('home')
+  // Reading shows a calm header; 「편집」 opens the ribbon, which holds only the editing tabs.
+  const [editMode, setEditMode] = useState(false)
+  const [ribbon, setRibbon] = useState<'text' | 'insert' | 'design' | 'review'>('text')
+  // The header folds its view switch and labels into ⋯ below this width (a phone, a squeezed panel).
+  const head = usePanelNarrow<HTMLDivElement>(540)
+  const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
   const [documentLayout, setDocumentLayout] = useState<'pages' | 'edit'>('pages')
   const [pageSettingsOpen, setPageSettingsOpen] = useState(false)
   const [pane, setPane] = useState<'document' | 'sources'>('document')
@@ -622,12 +593,11 @@ export function ReportPanel({
   }, [headerEl])
   const [exportError, setExportError] = useState<string | null>(null)
   /** One export; a failure is said under the ribbon instead of escaping as an error. */
-  const exportAs = (format: 'pdf' | 'docx' | 'hwpx' | 'md') => {
+  const exportAs = async (format: ExportFormat) => {
     setExportError(null)
     setSaveError(null)
-    void afterSaving(() => download(report.id, format, report.title)).catch((err) =>
-      setExportError(errorMessage(err, t('내보내지 못했습니다. 잠시 뒤 다시 시도해 주세요.'))),
-    )
+    if (format !== 'pdf' && format !== 'docx' && format !== 'hwpx' && format !== 'md') return
+    await afterSaving(() => download(report.id, format, report.title))
   }
   // Markdown source editor for the whole document.
   const [editing, setEditing] = useState(false)
@@ -1011,14 +981,14 @@ export function ReportPanel({
       const latest = await artifactsApi.get(report.id).catch(() => null)
       const row = await artifactsApi.update(report.id, {
         data: documentBody({ ...report, templateId: id }),
-        summary: t('서식 바꾸기'),
+        summary: t('양식 바꾸기'),
         expectedVersion: latest?.version ?? report.version,
       })
       report.templateId = id
       report.version = row.version
     } catch (err) {
       setTemplateId(was)
-      setSaveError(errorMessage(err, t('서식을 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('양식을 바꾸지 못했습니다.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1355,6 +1325,84 @@ export function ReportPanel({
     window.getSelection()?.removeAllRanges()
   }
 
+  const pageDirty = Boolean(pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits)
+  /** Drops local drafts after a version is restored; the editors still hold the old text. */
+  const restoredVersion = () => {
+    openEditor(false)
+    setPageEdits(null)
+    setPageTitle(null)
+    setPageSettingsEdits(null)
+    setReviewCommentEdits(null)
+    setTitleBlockEdits(null)
+    setSaveError(null)
+  }
+  const reviewLabel = evidenceWarningCount > 0
+    ? t('검토 · 확인 {count}').replace('{count}', String(evidenceWarningCount))
+    : t('검토')
+  /** 「편집」: the page editor in the document's own pages, with the editing ribbon over it. */
+  const enterEditMode = () => {
+    if (editing) leaveSourceEditor()
+    viewBeforeEdit.current = view
+    setView('page')
+    setDocumentLayout('edit')
+    setPageSettingsOpen(false)
+    setTocOpen(false)
+    // An A4 sheet needs room; a narrow panel widens for the editor.
+    if (mode === 'narrow') {
+      setMode('wide')
+      onModeChange?.('wide')
+    }
+    setRibbon('text')
+    setEditMode(true)
+  }
+  /** Back to reading, in the view it came from; unsaved page edits stay, with 저장 in the header. */
+  const leaveEditMode = () => {
+    setDocumentLayout('pages')
+    setPageSettingsOpen(false)
+    if (ribbon === 'review') setPane('document')
+    setView(viewBeforeEdit.current)
+    setEditMode(false)
+  }
+  const showWeb = () => {
+    // The source editor covers both views; a view button closes it (saving first).
+    if (editing) leaveSourceEditor()
+    if (editMode) {
+      setEditMode(false)
+      setDocumentLayout('pages')
+      setPageSettingsOpen(false)
+    }
+    if (view === 'page') {
+      void afterSaving(() => {})
+      setView('web')
+      if (onModeChange) {
+        setMode('narrow')
+        onModeChange('narrow')
+      }
+    }
+  }
+  const showPage = () => {
+    if (editing) leaveSourceEditor()
+    if (view !== 'page') {
+      if (!editing) void afterSaving(() => {})
+      setView('page')
+      // The page view asks for room; web view gives it back.
+      if (onModeChange) {
+        const wanted: PanelMode = mode === 'narrow' ? 'wide' : mode
+        setMode(wanted)
+        onModeChange(wanted)
+      }
+    }
+  }
+  // A result card asked for the review pane or an earlier version.
+  const intent = useStore((st) => (st.artifactIntent?.artifactId === report.id ? st.artifactIntent : null))
+  const clearIntent = useStore((st) => st.clearArtifactIntent)
+  useEffect(() => {
+    if (!intent) return
+    if (intent.pane === 'review') setPane('sources')
+    if (intent.version !== undefined) setHistoryRequest({ nonce: intent.nonce, version: intent.version })
+    clearIntent()
+  }, [intent, clearIntent])
+
   const scrollTo = (id: string) => {
     setActiveId(id)
     setTocOpen(false)
@@ -1493,162 +1541,174 @@ export function ReportPanel({
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header ref={setHeaderEl} className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2.5 max-sm:px-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+        <header ref={setHeaderEl} className="relative z-40 flex flex-wrap items-center gap-2 border-b border-line bg-panel px-4 py-2 max-sm:px-2">
+          <div ref={head.ref} className="flex w-full min-w-0 items-center gap-1.5">
             <FileText size={15} className="shrink-0 text-accent" />
             <p className="min-w-0 flex-1 truncate whitespace-nowrap text-base font-medium" title={report.title}>
               {report.title}
             </p>
+            {!head.narrow && (
+              <span className="shrink-0 text-xs text-faint tabular-nums" title={t('저장된 판')}>v{report.version}</span>
+            )}
+            {!head.narrow && (
+              <div role="group" aria-label={t('보기 방식')} className="ml-1 flex shrink-0 items-center rounded-control border border-line p-0.5">
+                <button
+                  type="button"
+                  aria-label={t('웹뷰')}
+                  aria-pressed={view !== 'page'}
+                  title={t('편집하기 좋은 한 줄 문서로 봅니다')}
+                  onClick={showWeb}
+                  className={cn('flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-medium', view !== 'page' ? 'bg-elevated text-fg' : 'text-muted hover:text-fg')}
+                >
+                  <Globe2 size={13} />
+                  {t('웹뷰')}
+                </button>
+                <button
+                  type="button"
+                  aria-label={t('페이지뷰')}
+                  aria-pressed={view === 'page'}
+                  title={t('양식이 적용된 A4 문서로 봅니다')}
+                  onClick={showPage}
+                  className={cn('flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-medium', view === 'page' ? 'bg-elevated text-fg' : 'text-muted hover:text-fg')}
+                >
+                  <FileType2 size={13} />
+                  {t('페이지뷰')}
+                </button>
+              </div>
+            )}
+            <QuickAccess label={t('빠른 도구')}>
+              <Button
+                size="sm"
+                variant={pane === 'sources' ? 'primary' : 'ghost'}
+                aria-pressed={pane === 'sources'}
+                aria-label={reviewLabel}
+                title={t('출처와 근거, 문서 검사, 버전 기록')}
+                onClick={() => setPane((p) => (p === 'sources' ? 'document' : 'sources'))}
+              >
+                <ShieldQuestion size={14} className={evidenceWarningCount > 0 && pane !== 'sources' ? 'text-warn' : undefined} />
+                {head.narrow ? (evidenceWarningCount > 0 ? <span className="text-2xs font-semibold text-warn">{evidenceWarningCount}</span> : null) : t('검토')}
+                {!head.narrow && evidenceWarningCount > 0 && (
+                  <span className="rounded-full bg-warn/15 px-1.5 text-2xs font-semibold text-warn">{evidenceWarningCount}</span>
+                )}
+              </Button>
+              {editing && (
+                <>
+                  <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
+                    <X size={13} />{!head.narrow && t('취소')}
+                  </Button>
+                  <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+                    {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{!head.narrow && t('저장')}
+                  </Button>
+                </>
+              )}
+              {!editing && pageDirty && (
+                <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
+                  {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  {!head.narrow && t('저장')}
+                </Button>
+              )}
+              <DownloadMenu
+                artifact={report}
+                compact={head.narrow}
+                disabled={writing}
+                take={exportAs}
+                onError={setExportError}
+                checksHeading={t('내보내기 전 근거 확인 {count}건').replace('{count}', String(evidenceWarningCount))}
+                checks={evidenceWarningCount > 0 ? [{
+                  label: t('먼저 근거 확인'),
+                  icon: <TriangleAlert size={14} />,
+                  onClick: () => setPane('sources'),
+                }] : []}
+                extra={
+                  <MenuItem icon={<Printer size={14} />} onClick={() => void afterSaving(() => window.print())}>
+                    {t('인쇄')}
+                  </MenuItem>
+                }
+              />
+              <Button
+                size="sm"
+                variant={editMode ? 'primary' : 'ghost'}
+                aria-pressed={editMode}
+                aria-label={t('편집')}
+                title={editMode ? t('편집 도구를 닫고 읽기로 돌아갑니다') : t('보면서 바로 고칩니다')}
+                disabled={writing}
+                onClick={() => (editMode ? leaveEditMode() : enterEditMode())}
+              >
+                <Pencil size={13} />
+                {!head.narrow && t('편집')}
+              </Button>
+              <Dropdown
+                align="right"
+                trigger={() => (
+                  <Button size="sm" variant="ghost" aria-label={t('더보기')} title={t('더보기')}>
+                    <MoreHorizontal size={15} />
+                  </Button>
+                )}
+              >
+                {head.narrow && (
+                  <>
+                    <MenuLabel>{t('보기 방식')}</MenuLabel>
+                    <MenuItem icon={<Globe2 size={14} />} checked={view !== 'page'} onClick={showWeb}>{t('웹뷰')}</MenuItem>
+                    <MenuItem icon={<FileType2 size={14} />} checked={view === 'page'} onClick={showPage}>{t('페이지뷰')}</MenuItem>
+                    <MenuSeparator />
+                  </>
+                )}
+                <MenuItem icon={<ListTree size={14} />} onClick={() => setTocOpen((o) => !o)} hint={`${done}/${report.sections.length}`}>
+                  {t('목차')}
+                </MenuItem>
+                {!formatted && !writing && (
+                  <MenuItem icon={<Code2 size={14} />} onClick={() => { if (editMode) leaveEditMode(); void startEditing() }}>
+                    {t('원문 편집')}
+                  </MenuItem>
+                )}
+                <MenuItem icon={<History size={14} />} onClick={() => setHistoryRequest((r) => ({ nonce: (r?.nonce ?? 0) + 1 }))}>
+                  {t('버전 기록')}
+                </MenuItem>
+                <MenuSeparator />
+                <ReuseItems artifact={report} />
+              </Dropdown>
+              <span className="max-sm:hidden">
+                <PanelControls mode={mode} onCycle={onModeChange && cycleMode} />
+              </span>
+              <PanelControls mode={mode} onClose={() => discardOr('close')} />
+            </QuickAccess>
+            <VersionHistory
+              bare
+              request={historyRequest}
+              artifact={report}
+              hasUnsavedChanges={hasUnsavedEdit}
+              currentData={report}
+              onRestored={restoredVersion}
+            />
           </div>
-          <QuickAccess label={t('빠른 도구')}>
-            <PanelControls mode={mode} onCycle={onModeChange && cycleMode} onClose={() => discardOr('close')} />
-          </QuickAccess>
-          <ArtifactRibbon
+          {editMode && <ArtifactRibbon
             label={t('보고서 메뉴')}
             tabs={[
-              { id: 'home', label: t('홈') }, { id: 'edit', label: t('편집') }, { id: 'insert', label: t('삽입') },
-              { id: 'layout', label: t('레이아웃') }, { id: 'review', label: t('검토') }, { id: 'view', label: t('보기') },
-              { id: 'file', label: t('파일') },
+              { id: 'text', label: t('글자') }, { id: 'insert', label: t('삽입') },
+              { id: 'design', label: t('디자인') }, { id: 'review', label: t('검토') },
             ] as const}
             active={ribbon}
-            // 「편집」 is a tab like the others: picking it opens the page editor.
             onChange={(tab) => {
-              if (tab === 'edit' && ribbon !== 'edit') {
-                viewBeforeEdit.current = view
+              // The page editor is where 글자 and 삽입 act; 디자인 may show the plain pages.
+              if ((tab === 'text' || tab === 'insert') && (view !== 'page' || documentLayout !== 'edit')) {
                 setView('page')
                 setDocumentLayout('edit')
-                setPageSettingsOpen(false)
-                // An A4 sheet needs room; a narrow panel widens for the editor.
-                if (mode === 'narrow') {
-                  setMode('wide')
-                  onModeChange?.('wide')
-                }
-              } else if (tab !== 'edit' && ribbon === 'edit') {
-                setDocumentLayout('pages')
-                setView(viewBeforeEdit.current)
               }
-              // A panel belongs to its tab: leaving 「레이아웃」 closes the page settings,
-              // leaving 「검토」 the source list, leaving 「보기」 the table of contents.
-              if (tab !== 'layout') setPageSettingsOpen(false)
-              if (tab !== 'review') setPane('document')
-              if (tab !== 'view') setTocOpen(false)
+              // A panel belongs to its tab: leaving 「디자인」 closes the page settings,
+              // leaving 「검토」 the source list.
+              if (tab !== 'design') setPageSettingsOpen(false)
+              if (tab !== 'review' && ribbon === 'review') setPane('document')
               setExportError(null)
               setRibbon(tab)
             }}
           >
-          {ribbon === 'view' && <RibbonGroup label={t('탐색')}><Button size="sm" aria-pressed={tocOpen} onClick={() => setTocOpen((o) => !o)}>
-            <ListTree size={13} />
-            {t('목차')} {done}/{report.sections.length}
-          </Button></RibbonGroup>}
-          {ribbon === 'review' && <RibbonGroup label={t('문서 검사')}><LintFindings
-            findings={report.lint}
-            artifact={report}
-            onFix={fixFinding}
-            onFixAll={fixAllFindings}
-          /></RibbonGroup>}
-          {ribbon === 'home' && <RibbonGroup label={t('보기')}>
-          <Button
-            size="sm"
-            variant={view !== 'page' ? 'primary' : 'secondary'}
-            aria-label={t('웹뷰')}
-            title={t('편집하기 좋은 한 줄 문서로 봅니다')}
-            onClick={() => {
-              // The source editor covers both views; a view button closes it (saving first).
-              if (editing) leaveSourceEditor()
-              if (view === 'page') {
-                void afterSaving(() => {})
-                setView('web')
-                if (onModeChange) {
-                  setMode('narrow')
-                  onModeChange('narrow')
-                }
-              }
-            }}
-          >
-            <Globe2 size={13} />
-            {t('웹뷰')}
-          </Button>
-          <Button
-            size="sm"
-            variant={view === 'page' ? 'primary' : 'secondary'}
-            aria-label={t('페이지뷰')}
-            title={t('서식이 적용된 A4 문서로 봅니다')}
-            onClick={() => {
-              if (editing) leaveSourceEditor()
-              if (view !== 'page') {
-                if (!editing) void afterSaving(() => {})
-                setView('page')
-                // The page view asks for room; web view gives it back.
-                if (onModeChange) {
-                  const wanted: PanelMode = mode === 'narrow' ? 'wide' : mode
-                  setMode(wanted)
-                  onModeChange(wanted)
-                }
-              }
-            }}
-          >
-            <FileType2 size={13} />
-            {t('페이지뷰')}
-          </Button>
-          {view === 'page' && (
-            <>
-              <span className="mx-1 h-5 w-px shrink-0 bg-line" />
-              <Button
-                size="sm"
-                variant={documentLayout === 'edit' ? 'primary' : 'secondary'}
-                aria-label={t('편집')}
-                aria-pressed={documentLayout === 'edit'}
-                title={
-                  documentLayout === 'edit'
-                    ? t('보면서 바로 고칩니다')
-                    : t('내보냈을 때 나올 모양 그대로 봅니다')
-                }
-                onClick={() =>
-                  setDocumentLayout((current) => (current === 'edit' ? 'pages' : 'edit'))
-                }
-              >
-                <Pencil size={13} />
-                {t('편집')}
-              </Button>
-            </>
-          )}
-          </RibbonGroup>}
-          {ribbon === 'layout' && <RibbonGroup label={t('페이지')}><Button
-            size="sm"
-            variant={pageSettingsOpen ? 'primary' : 'secondary'}
-            aria-label={t('페이지 설정')}
-            aria-pressed={pageSettingsOpen}
-            onClick={() => {
-              setView('page')
-              setDocumentLayout('pages')
-              setPageSettingsOpen((open) => !open)
-            }}
-          >
-            <FileType2 size={13} />{t('페이지 설정')}
-          </Button></RibbonGroup>}
-          {/* The page settings open inside the ribbon, not over the document. */}
-          {ribbon === 'layout' && pageSettingsOpen && (
-            <RibbonGroup wide label={t('페이지 설정')}>
-              <div ref={setSettingsSlot} className="min-w-0 flex-1" />
+          {ribbon === 'text' && view === 'page' && documentLayout === 'edit' && (
+            <RibbonGroup wide label={t('서식')}>
+              <div ref={setToolbarSlot} className="flex items-center" />
             </RibbonGroup>
           )}
-          {/* Markdown source editor; hidden once any section is formatted. */}
-          {ribbon === 'home' && view !== 'page' && !formatted && (
-            <RibbonGroup label={t('원문')}>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void startEditing()}
-              disabled={writing}
-              title={t('마크다운으로 한 번에 고칩니다')}
-              aria-label={t('원문 편집')}
-            >
-              <Code2 size={13} />
-              {t('원문')}
-            </Button>
-            </RibbonGroup>
-          )}
-          {ribbon === 'home' && (
+          {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
+          {ribbon === 'design' && (
             <RibbonGroup label={t('디자인')}>
             <Dropdown
               trigger={() => (
@@ -1674,7 +1734,7 @@ export function ReportPanel({
               ))}
             </Dropdown></RibbonGroup>
           )}
-          {ribbon === 'home' && (
+          {ribbon === 'design' && (
             <RibbonGroup label={t('강조색')}>
             <Dropdown
               trigger={() => (
@@ -1696,14 +1756,14 @@ export function ReportPanel({
               </label>
             </Dropdown></RibbonGroup>
           )}
-          {ribbon === 'home' && (
+          {ribbon === 'design' && (
             <RibbonGroup label={t('양식')}>
             <Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving}>
+                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('문서 양식 고르기')}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
                   <RibbonCaption>{t('양식')}</RibbonCaption>
-                  {documentTemplates.find((row) => row.id === templateId)?.name ?? t('서식')}
+                  {documentTemplates.find((row) => row.id === templateId)?.name ?? t('기본')}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
               )}
@@ -1726,6 +1786,31 @@ export function ReportPanel({
               ))}
             </Dropdown></RibbonGroup>
           )}
+          {ribbon === 'design' && <RibbonGroup label={t('페이지')}><Button
+            size="sm"
+            variant={pageSettingsOpen ? 'primary' : 'secondary'}
+            aria-label={t('페이지 설정')}
+            aria-pressed={pageSettingsOpen}
+            onClick={() => {
+              setView('page')
+              setDocumentLayout('pages')
+              setPageSettingsOpen((open) => !open)
+            }}
+          >
+            <FileType2 size={13} />{t('페이지 설정')}
+          </Button></RibbonGroup>}
+          {/* The page settings open inside the ribbon, not over the document. */}
+          {ribbon === 'design' && pageSettingsOpen && (
+            <RibbonGroup wide label={t('페이지 설정')}>
+              <div ref={setSettingsSlot} className="min-w-0 flex-1" />
+            </RibbonGroup>
+          )}
+          {ribbon === 'review' && <RibbonGroup label={t('문서 검사')}><LintFindings
+            findings={report.lint}
+            artifact={report}
+            onFix={fixFinding}
+            onFixAll={fixAllFindings}
+          /></RibbonGroup>}
           {ribbon === 'review' && <RibbonGroup label={t('근거')}><Button
             size="sm"
             aria-pressed={pane === 'sources'}
@@ -1747,82 +1832,14 @@ export function ReportPanel({
               </span>
             )}
           </Button></RibbonGroup>}
-          {/* Formatting bar slot; last in the tab because it is the widest group. */}
-          {ribbon === 'home' && view === 'page' && documentLayout === 'edit' && (
-            <RibbonGroup wide label={t('서식')}>
-              <div ref={setToolbarSlot} className="flex items-center" />
-            </RibbonGroup>
-          )}
           {ribbon === 'review' && report.sessionId && <RibbonGroup label={t('단계')}><RunStagesButton sessionId={report.sessionId} /></RibbonGroup>}
           {ribbon === 'review' && <RibbonGroup label={t('버전')}><VersionHistory
             artifact={report}
             hasUnsavedChanges={hasUnsavedEdit}
             currentData={report}
-            // An open editor still holds the pre-restore text; drop it.
-            onRestored={() => {
-              openEditor(false)
-              setPageEdits(null)
-              setPageTitle(null)
-              setPageSettingsEdits(null)
-              setReviewCommentEdits(null)
-              setTitleBlockEdits(null)
-              setSaveError(null)
-            }}
+            onRestored={restoredVersion}
           /></RibbonGroup>}
-          {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
-          {ribbon === 'file' && <RibbonGroup label={t('내보내기')}><Dropdown
-            trigger={() => (
-              <Button size="sm">
-                <Download size={14} />
-                {t('내보내기')}
-              </Button>
-            )}
-          >
-            {evidenceWarningCount > 0 && (
-              <>
-                <MenuLabel>
-                  {t('내보내기 전 근거 확인 {count}건').replace(
-                    '{count}',
-                    String(evidenceWarningCount),
-                  )}
-                </MenuLabel>
-                <MenuItem icon={<TriangleAlert size={14} />} onClick={() => { setRibbon('review'); setPane('sources') }}>
-                  {t('먼저 근거 확인')}
-                </MenuItem>
-              </>
-            )}
-            <MenuLabel>{t('형식 선택')}</MenuLabel>
-            <MenuItem hint="PDF" onClick={() => exportAs('pdf')}>
-              PDF
-            </MenuItem>
-            <MenuItem hint="DOCX" onClick={() => exportAs('docx')}>
-              {t('Word 문서')}
-            </MenuItem>
-            <MenuItem hint="HWPX" onClick={() => exportAs('hwpx')}>
-              {t('한글 문서')}
-            </MenuItem>
-            <MenuItem hint="MD" onClick={() => exportAs('md')}>
-              {t('마크다운 원문')}
-            </MenuItem>
-            <MenuItem icon={<Printer size={14} />} onClick={() => void afterSaving(() => window.print())}>
-              {t('인쇄')}
-            </MenuItem>
-          </Dropdown></RibbonGroup>}
-          {ribbon === 'edit' && editing && <RibbonGroup label={t('저장')}>
-            <Button size="sm" variant="ghost" disabled={saving} onClick={() => discardOr('cancel')} aria-label={t('편집 취소')}>
-              <X size={13} />{t('취소')}
-            </Button>
-            <Button variant="primary" size="sm" disabled={saving} onClick={() => void saveDocument()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}{t('저장')}
-            </Button>
-          </RibbonGroup>}
-          {ribbon === 'edit' && view === 'page' && (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits) && <RibbonGroup label={t('저장')}>
-            <Button size="sm" variant="primary" disabled={pageSaving} onClick={() => void savePageEdits()} aria-label={t('저장')} aria-keyshortcuts="Control+S Meta+S">
-              {pageSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-              {t('저장')}
-            </Button>
-          </RibbonGroup>}
-          </ArtifactRibbon>
+          </ArtifactRibbon>}
         </header>
 
         <div
@@ -1869,7 +1886,16 @@ export function ReportPanel({
             </div>
           )}
           {pane === 'sources' ? (
-            <div className="mx-auto max-w-2xl px-6 py-6">
+            <div className="mx-auto max-w-2xl px-6 py-6 max-sm:px-3">
+              {/* The review tools, reachable while reading; 편집 › 검토 holds the same ones. */}
+              {!(editMode && ribbon === 'review') && <section aria-label={t('검토')} className="mb-6 rounded-card border border-line bg-elevated/40 p-3">
+                <h2 className="mb-2 text-sm font-semibold">{t('검토')}</h2>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <LintFindings findings={report.lint} artifact={report} onFix={fixFinding} onFixAll={fixAllFindings} />
+                  {report.sessionId && <RunStagesButton sessionId={report.sessionId} />}
+                  <VersionHistory artifact={report} hasUnsavedChanges={hasUnsavedEdit} currentData={report} onRestored={restoredVersion} />
+                </div>
+              </section>}
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">{t('참고문헌')}</h2>
                 <Button size="sm" onClick={() => setAddingSource(true)}>
@@ -1964,10 +1990,10 @@ export function ReportPanel({
                 editable={!writing}
                 layoutMode={documentLayout}
                 settingsOpen={pageSettingsOpen}
-                onLayoutMode={setDocumentLayout}
+                onLayoutMode={(next) => (next === 'edit' && !editMode ? enterEditMode() : setDocumentLayout(next))}
                 onWebView={() => setView('web')}
-                toolbarSlot={ribbon === 'home' ? toolbarSlot : null}
-                settingsSlot={ribbon === 'layout' ? settingsSlot : null}
+                toolbarSlot={editMode && ribbon === 'text' ? toolbarSlot : null}
+                settingsSlot={editMode && ribbon === 'design' ? settingsSlot : null}
                 onDirty={(sections, title, pageSettings, reviewComments, titleBlock) => {
                   setPageEdits(sections)
                   if (title !== undefined) setPageTitle(title)

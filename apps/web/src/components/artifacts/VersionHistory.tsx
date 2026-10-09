@@ -1,5 +1,5 @@
 import { History } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Badge, Button, ConfirmDialog, Modal } from '@/components/ui'
 import { artifactsApi, errorMessage } from '@/lib/api'
 import type { ArtifactVersionRow } from '@/lib/api'
@@ -83,12 +83,18 @@ export function VersionHistory({
   onRestored,
   hasUnsavedChanges = false,
   currentData,
+  bare = false,
+  request = null,
 }: {
   artifact: { id: string; title: string; version: number }
   /** Called after a restore so the panel can drop local drafts. */
   onRestored?: () => void
   hasUnsavedChanges?: boolean
   currentData?: unknown
+  /** No button of its own: opened by `request` from a menu elsewhere. */
+  bare?: boolean
+  /** Opens the history (a new `nonce` each time), previewing `version` when it is an earlier one. */
+  request?: { nonce: number; version?: number } | null
 }) {
   const t = useT()
   const refreshArtifact = useStore((s) => s.refreshArtifact)
@@ -146,17 +152,27 @@ export function VersionHistory({
     }
   }
 
+  const asked = request?.nonce
+  useEffect(() => {
+    if (!asked || !request) return
+    void openHistory().then(() => {
+      if (request.version !== undefined && request.version < artifact.version) void previewVersion(request.version)
+    })
+    // Only a new request opens it; the functions are recreated every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked])
+
   return (
     <>
       {/* aria-label carries both names, since it replaces the visible text. */}
-      <Button
+      {!bare && <Button
         size="sm"
         aria-label={`${t('버전 기록')} · ${t('저장 시점')} v${artifact.version}`}
         onClick={() => void openHistory()}
       >
         <History size={13} />
         {t('저장 시점')} v{artifact.version}
-      </Button>
+      </Button>}
 
       <Modal
         open={open}

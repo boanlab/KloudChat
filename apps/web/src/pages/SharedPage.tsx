@@ -8,7 +8,8 @@ import { TitleBlock } from '@/components/report/TitleBlock'
 import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, sectionNumbers, shapedSection } from '@/components/report/docFormats'
 import { fontFamilyFor } from '@/components/report/docType'
 import { Badge } from '@/components/ui'
-import { ApiError, sharesApi, type SharedContext, type SharedPayload } from '@/lib/api'
+import { ApiError, sharesApi, type MessageRow, type SharedContext, type SharedPayload } from '@/lib/api'
+import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
 import { useT } from '@/lib/useT'
 import { SlideView } from '@/components/slides/DeckPanel'
@@ -35,7 +36,7 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
       key: 'format',
       icon: <LayoutGrid size={13} />,
       name: (english && context.format.nameEn) || context.format.name,
-      label: t('결과물이 이 서식으로 나옵니다'),
+      label: t('결과물이 이 양식으로 나옵니다'),
     },
   ].filter(Boolean) as { key: string; icon: React.ReactNode; name: string; label: string }[]
 
@@ -111,18 +112,32 @@ export function SharedPage() {
     )
   }
 
-  const conversation =
-    payload.kind === 'artifact'
-      ? ''
-      : payload.messages
-          .map((m) => {
-            const from =
-              m.role === 'user' && m.startedFrom
-                ? `\n\n_${t('시작점 {name}').replace('{name}', m.startedFrom.title)}_`
-                : ''
-            return `**${m.role === 'user' ? t('질문') : t('답변')}**${from}\n\n${m.content}`
-          })
-          .join('\n\n---\n\n')
+  const turn = (m: MessageRow) => {
+    const from =
+      m.role === 'user' && m.startedFrom
+        ? `\n\n_${t('시작점 {name}').replace('{name}', m.startedFrom.title)}_`
+        : ''
+    return `**${m.role === 'user' ? t('질문') : t('답변')}**${from}\n\n${m.content}`
+  }
+  const shared = payload.kind === 'artifact' ? null : payload.artifact
+  // Each turn on its own, so the answer that made the result carries its card.
+  const conversation = payload.kind === 'artifact' ? null : (
+    <div className="space-y-6">
+      {payload.messages.map((m, index) => (
+        <div key={m.id} className={cn(index > 0 && 'border-t border-line pt-6')}>
+          <Markdown>{turn(m)}</Markdown>
+          {m.role === 'assistant' && shared && (m.artifactIds?.length ?? 0) > 0 && (
+            <SharedResultCard
+              kind={shared.artifactKind}
+              title={shared.title}
+              data={shared.data}
+              onOpen={() => document.getElementById('shared-result')?.scrollIntoView({ behavior: 'smooth' })}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  )
 
   const startedWith =
     payload.kind === 'artifact'
@@ -143,11 +158,15 @@ export function SharedPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{payload.title}</h1>
         {startedWith && <StartedWithPanel context={startedWith} />}
       </header>
-      {artifact ? <SharedArtifact payload={artifact} title={payload.title} /> : <Markdown>{conversation}</Markdown>}
+      {artifact ? (
+        <div id="shared-result" className="scroll-mt-6">
+          <SharedArtifact payload={artifact} title={payload.title} />
+        </div>
+      ) : conversation}
       {payload.kind !== 'artifact' && payload.artifact && (
         <section className="mt-10 border-t border-line pt-8">
           <h2 className="mb-5 text-lg font-semibold">{t('대화 기록')}</h2>
-          <Markdown>{conversation}</Markdown>
+          {conversation}
         </section>
       )}
       <footer className="mt-10 border-t border-line pt-4 text-xs text-faint">

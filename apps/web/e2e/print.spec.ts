@@ -92,7 +92,7 @@ test('인쇄하면 보고서만 종이에 남는다', async ({ page }) => {
 
   // No controls.
   await expect(doc.getByRole('button')).toHaveCount(0)
-  for (const label of ['이 절만 다시 쓰기', '목차', '내보내기', '수정']) {
+  for (const label of ['이 절만 다시 쓰기', '목차', '내려받기', '수정']) {
     expect(printed, `인쇄본에 "${label}" 가 남아 있다`).not.toContain(label)
   }
 

@@ -80,7 +80,13 @@ async function fixture(page: Page, testInfo: TestInfo, options: Options = {}) {
 
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 const tab = (page: Page, name: string) => panel(page).getByRole('tab', { name, exact: true })
-const TABS = ['홈', '편집', '삽입', '레이아웃', '검토', '보기', '파일']
+/** The editing tabs; reading has none. */
+const TABS = ['글자', '삽입', '디자인', '검토']
+const editToggle = (page: Page) => panel(page).locator('header').getByRole('button', { name: '편집', exact: true })
+async function editMode(page: Page, on = true) {
+  const pressed = (await editToggle(page).getAttribute('aria-pressed')) === 'true'
+  if (pressed !== on) await editToggle(page).click()
+}
 
 /** What is open over the document: menus, dialogs, popovers. */
 async function openLayers(page: Page) {
@@ -98,8 +104,12 @@ test('walkthrough: every tab and control, with screenshots', async ({ page }, te
     await page.screenshot({ path: `${shots}/${String(n).padStart(2, '0')}-${name}.png` })
   }
   await shot('opened')
-  for (const name of TABS) {
-    await tab(page, name).click()
+  for (const name of ['읽기', ...TABS]) {
+    if (name === '읽기') await editMode(page, false)
+    else {
+      await editMode(page)
+      await tab(page, name).click()
+    }
     await page.waitForTimeout(500)
     await shot(`tab-${name}`)
     // Every enabled button in the ribbon, one at a time.
@@ -107,7 +117,8 @@ test('walkthrough: every tab and control, with screenshots', async ({ page }, te
     const labels = await ribbon.locator('button:visible:not([disabled])').evaluateAll((buttons) =>
       buttons.map((b) => (b.getAttribute('aria-label') || b.textContent || '').trim()).filter(Boolean))
     for (const label of labels) {
-      if (TABS.includes(label) || /닫기|Close|패널|확대|넓게|좁게/.test(label)) continue
+      // Mode and view switches change what the loop is walking; they have flows of their own.
+      if (TABS.includes(label) || /닫기|Close|패널|확대|넓게|좁게|문서만|^편집$|웹뷰|페이지뷰/.test(label)) continue
       const button = ribbon.getByRole('button', { name: label, exact: true }).first()
       if (!(await button.isVisible().catch(() => false))) continue
       await button.click({ timeout: 3000 }).catch((e) => notes.push(`click failed ${name}/${label}: ${String(e).slice(0, 80)}`))
@@ -166,56 +177,70 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   })
   await shot('back-to-web-settled')
 
-  await tab(page, '편집').click()
+  await editMode(page)
   await page.waitForTimeout(800)
   await shot('edit-tab')
-  await tab(page, '홈').click()
+  await editMode(page, false)
   await page.waitForTimeout(500)
   await check('leaving 편집 restores the web view it came from', async () => { await expect(webView(page)).toBeVisible({ timeout: 5000 }); return true })
   await homeButton(page, '페이지뷰').click()
   await page.waitForTimeout(500)
-  await homeButton(page, '편집').click().catch(() => {})
+  await editMode(page)
   await page.waitForTimeout(500)
   await homeButton(page, '웹뷰').click()
   await check('web view returns from the page editor', async () => { await expect(webView(page)).toBeVisible({ timeout: 5000 }); return true })
+  await check('the web view ends editing', async () => (await panel(page).getByRole('tablist').count()) === 0)
   await shot('back-to-web-2')
 
-  await tab(page, '레이아웃').click()
+  await editMode(page)
+  await tab(page, '디자인').click()
   await homeButton(page, '페이지 설정').click()
   await page.waitForTimeout(500)
-  await tab(page, '홈').click()
   await homeButton(page, '웹뷰').click()
   await check('web view returns after page settings', async () => { await expect(webView(page)).toBeVisible({ timeout: 5000 }); return true })
   await shot('back-to-web-3')
 
   // A panel opened from a tab closes when another tab is chosen.
   const settingsField = panel(page).getByText('머리말', { exact: true })
-  await tab(page, '레이아웃').click()
+  await editMode(page)
+  await tab(page, '디자인').click()
   await homeButton(page, '페이지 설정').click()
-  for (const other of ['홈', '편집', '삽입', '검토', '보기', '파일']) {
+  for (const other of ['글자', '삽입', '검토']) {
     await tab(page, other).click()
     await page.waitForTimeout(300)
     await check(`page settings hidden on ${other}`, async () => !(await settingsField.isVisible()))
   }
-  await tab(page, '레이아웃').click()
+  await tab(page, '디자인').click()
   await page.waitForTimeout(300)
-  await check('page settings closed when coming back to 레이아웃', async () => !(await settingsField.isVisible()))
+  await check('page settings closed when coming back to 디자인', async () => !(await settingsField.isVisible()))
 
   await tab(page, '검토').click()
-  await panel(page).locator('header').getByRole('button', { name: /출처/ }).click()
+  await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
   await page.waitForTimeout(400)
   const sourcesPane = panel(page).getByRole('heading', { name: '참고문헌' })
   await check('sources pane opens from 검토', async () => sourcesPane.isVisible())
-  for (const other of ['홈', '삽입', '레이아웃', '보기', '파일']) {
+  for (const other of ['글자', '삽입', '디자인']) {
+    await tab(page, '검토').click()
+    if (!(await sourcesPane.isVisible())) await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
     await tab(page, other).click()
     await page.waitForTimeout(300)
     await check(`sources pane closed on ${other}`, async () => !(await sourcesPane.isVisible()))
   }
-  await tab(page, '보기').click()
-  await panel(page).locator('header').getByRole('button', { name: /목차/ }).click()
+  // Reading: 검토 in the header opens the same pane with the review tools.
+  await editMode(page, false)
+  await panel(page).locator('header').getByRole('button', { name: /^검토/ }).click()
+  await check('검토 opens the sources and the review tools while reading', async () =>
+    (await sourcesPane.isVisible()) && (await panel(page).getByRole('region', { name: '검토' }).isVisible()))
+  await panel(page).locator('header').getByRole('button', { name: /^검토/ }).click()
+
+  const openToc = async () => {
+    await homeButton(page, '더보기').click()
+    await page.locator('[role="menu"]:visible').getByRole('menuitem', { name: /목차/ }).click()
+  }
+  await openToc()
   await page.waitForTimeout(400)
   await shot('toc-open')
-  await check('table of contents lists every section, below the ribbon', async () => {
+  await check('table of contents lists every section, below the header', async () => {
     const names = audit.data.sections.map((sec: { heading: string }) => sec.heading)
     for (const name of names) {
       const item = panel(page).locator('nav').getByRole('button', { name: new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first()
@@ -224,28 +249,25 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
     }
     return true
   })
-  await check('ribbon stays usable with the table of contents open', async () => {
-    await tab(page, '홈').click({ timeout: 2000 }); await tab(page, '보기').click({ timeout: 2000 })
+  await check('the header stays usable with the table of contents open', async () => {
+    await homeButton(page, '더보기').click({ timeout: 2000 }); await page.keyboard.press('Escape')
     return true
   })
-  await panel(page).locator('header').getByRole('button', { name: /목차/ }).click()
-  await page.waitForTimeout(300)
   const toc = panel(page).locator('nav, aside').filter({ hasText: '시장 및 도입 동향' }).first()
-  for (const other of ['홈', '파일']) {
-    await tab(page, other).click()
-    await page.waitForTimeout(300)
-    await check(`table of contents closed on ${other}`, async () => !(await toc.isVisible()))
-    await shot(`toc-after-${other}`)
-  }
+  await editMode(page)
+  await page.waitForTimeout(300)
+  await check('table of contents closed on 편집', async () => !(await toc.isVisible()))
+  await shot('toc-after-edit')
   // Menus close when their tab is left.
-  await tab(page, '홈').click()
+  await tab(page, '디자인').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
-  await tab(page, '파일').click()
+  await tab(page, '검토').click()
   await page.waitForTimeout(300)
   await check('accent menu closes on tab change', async () => (await openLayers(page)) === 0)
   await page.keyboard.press('Escape')
 
   // The 그림 넣기 menu opens inside the panel.
+  await editMode(page)
   await tab(page, '삽입').click()
   await panel(page).locator('header').getByRole('button', { name: /그림 넣기/ }).click()
   const menu = page.locator('[role="menu"]:visible').first()
@@ -279,6 +301,8 @@ test('errors: every failure says so in place, aligned, and can be left', async (
     await panel(page).getByRole('button', { name: /웹뷰/ }).last().click(); await expect(webView(page)).toBeVisible({ timeout: 5000 }); return true
   })
   // Save failure: change the accent while writes fail.
+  await editMode(page)
+  await tab(page, '디자인').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
   await page.locator('[role="menu"]:visible').getByText('파랑', { exact: true }).click()
   const saveError = panel(page).locator('[role="alert"] p').first()
@@ -294,22 +318,21 @@ test('errors: every failure says so in place, aligned, and can be left', async (
     return Math.abs(box.top - box.bottom) <= 3
   })
   // Template change failure.
-  await panel(page).locator('header').getByRole('button', { name: /양식/ }).click()
+  await panel(page).locator('header').getByRole('button', { name: '문서 양식 고르기' }).click()
   await page.locator('[role="menu"]:visible').getByText('고객 제안서').click()
   await page.waitForTimeout(800)
   await shot('template-failed')
   // No 서식 on the document: the button keeps its generic label, not the one that failed.
   await check('template failure keeps the old template name', async () =>
-    !((await panel(page).locator('header').getByRole('button', { name: /양식/ }).textContent())?.includes('고객 제안서') ?? true))
-  // Export failure (the mock answers 404).
-  await tab(page, '파일').click()
-  await panel(page).locator('header').getByRole('button', { name: /내보내기/ }).click()
+    !((await panel(page).locator('header').getByRole('button', { name: '문서 양식 고르기' }).textContent())?.includes('고객 제안서') ?? true))
+  // Export failure (the mock answers 404), from the header's 내려받기.
+  await panel(page).locator('header').getByRole('button', { name: '내려받기' }).click()
   await page.locator('[role="menu"]:visible').getByText('Word 문서').click()
   await page.waitForTimeout(1200)
   await shot('export-failed')
   await check('export failure is shown, not an earlier message', async () => {
     const text = await panel(page).locator('[role="alert"]').first().textContent()
-    return Boolean(text && !text.includes('서식을 바꾸지'))
+    return Boolean(text && !text.includes('양식을 바꾸지'))
   })
   await check('error banner can be dismissed', async () => {
     await panel(page).locator('[role="alert"]').getByRole('button', { name: '닫기' }).click()
@@ -356,7 +379,8 @@ test('flows: the source editor gives way to the views', async ({ page }, testInf
   test.setTimeout(120_000)
   await fixture(page, testInfo)
   const { failures, check } = checker()
-  await homeButton(page, '원문 편집').click()
+  await homeButton(page, '더보기').click()
+  await page.locator('[role="menu"]:visible').getByRole('menuitem', { name: /원문 편집/ }).click()
   await expect(panel(page).locator('textarea').first()).toBeVisible()
   await homeButton(page, '페이지뷰').click()
   await check('page view replaces the source editor', async () => { await expect(pagedView(page)).toBeVisible({ timeout: 30_000 }); return true })
@@ -403,19 +427,28 @@ test('errors: every section action that fails says so', async ({ page }, testInf
 
 test.describe('phone width', () => {
   test.use({ viewport: { width: 400, height: 860 } })
-  test('the panel at phone width: every tab fits and nothing spills', async ({ page }, testInfo) => {
+  test('the panel at phone width: reading and every tab fit and nothing spills', async ({ page }, testInfo) => {
     test.setTimeout(180_000)
     const state = await fixture(page, testInfo)
     const { failures, check } = checker()
     const shots = testInfo.outputPath('phone')
-    for (const name of TABS) {
-      await tab(page, name).click()
+    for (const name of ['읽기', ...TABS]) {
+      if (name !== '읽기') {
+        await editMode(page)
+        await tab(page, name).click()
+      }
       await page.waitForTimeout(500)
       await page.screenshot({ path: `${shots}/${name}.png` })
+      await check(`${name}: the ribbon takes under a fifth of the screen`, async () => {
+        if (!(await panel(page).getByRole('tablist').count())) return true
+        const box = await panel(page).getByRole('tablist').locator('..').boundingBox()
+        return Boolean(box && box.height < 860 / 5)
+      })
       await check(`${name}: no horizontal page scroll`, async () =>
         page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
       await check(`${name}: ribbon controls inside the screen`, async () => {
-        const boxes = await panel(page).locator('header button:visible:not([role="tab"])').evaluateAll((bs) =>
+        // The header row; the editing toolbar is one row that scrolls sideways on a phone.
+        const boxes = await panel(page).locator('header > div:first-child button:visible').evaluateAll((bs) =>
           bs.map((b) => ({ label: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 20), right: Math.round(b.getBoundingClientRect().right) })))
         const out = boxes.filter((b) => b.right > 401)
         if (out.length) console.log(`${name} outside: ${JSON.stringify(out)}`)

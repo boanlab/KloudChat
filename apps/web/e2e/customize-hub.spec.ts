@@ -74,8 +74,12 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await page.getByRole('tab', { name: '디자인' }).click()
   await expect(page.getByText('학과 공식 문서')).toBeVisible()
   await page.getByRole('button', { name: '탐색' }).click()
-  await expect(page.getByRole('region', { name: '서식 · 보고서' })).toBeVisible()
   await expect(page.getByRole('region', { name: '공유된 디자인' })).toContainText('기관 공용')
+  // The templates have their own tab now; 디자인 keeps only looks.
+  await expect(page.getByRole('region', { name: '양식 · 보고서' })).toHaveCount(0)
+  await page.getByRole('tab', { name: '양식' }).click()
+  await expect(page).toHaveURL(/tab=templates/)
+  await expect(page.getByRole('region', { name: '양식 · 보고서' })).toBeVisible()
 
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
@@ -97,7 +101,7 @@ const redirects: [string, RegExp][] = [
   ['/pipelines?tab=store', /\/customize\?tab=workflows&view=explore$/],
   [`/pipelines/${myPipelines[0].id}`, new RegExp(`/customize/workflows/${myPipelines[0].id}$`)],
   ['/designs', /\/customize\?tab=designs$/],
-  ['/designs?tab=template', /\/customize\?tab=designs&view=explore$/],
+  ['/designs?tab=template', /\/customize\?tab=templates$/],
   ['/connectors', /\/customize\?tab=connectors$/],
   ['/memory', /\/customize\?tab=memory$/],
 ]

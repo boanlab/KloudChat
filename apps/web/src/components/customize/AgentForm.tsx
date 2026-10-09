@@ -353,7 +353,7 @@ export function AgentForm({
       <div className="space-y-2" data-testid="agent-advanced">
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
-        <Group title={t('결과물 모양')} hint={t('처음 여는 화면, 서식, 문서 형식, 디자인')}>
+        <Group title={t('결과물 모양')} hint={t('처음 여는 화면, 양식, 문서 형식, 디자인')}>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label={t('처음 여는 화면')} hint={t('이 에이전트로 새 대화를 열 때의 화면입니다.')}>
               <Select value={draft.surface ?? ''} onChange={(e) => edit({ ...draft, surface: (e.target.value || null) as SessionKind | null })}>
@@ -365,7 +365,7 @@ export function AgentForm({
                 ))}
               </Select>
             </Field>
-            <Field label={t('서식')} hint={t('보고서·슬라이드 대화가 이 서식으로 시작합니다.')}>
+            <Field label={t('양식')} hint={t('보고서·슬라이드 대화가 이 양식으로 시작합니다.')}>
               <Select value={draft.renderTemplateId ?? ''} onChange={(e) => edit({ ...draft, renderTemplateId: e.target.value || null })}>
                 <option value="">{t('정하지 않음')}</option>
                 {boundTemplates.map((row) => (
@@ -376,7 +376,7 @@ export function AgentForm({
               </Select>
             </Field>
             {offered.includes('report') && (
-              <Field label={t('문서 형식')} hint={t('서식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}>
+              <Field label={t('문서 형식')} hint={t('양식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}>
                 <Select value={draft.docFormat ?? ''} onChange={(e) => edit({ ...draft, docFormat: e.target.value || null })}>
                   <option value="">{t('요청에 따라')}</option>
                   {DOC_FORMATS.map((f) => (

@@ -4,7 +4,7 @@ import base from './playwright.config'
 // 「사용자 지정」 hub, its forms and 체험 against fixture data only; nothing reaches a server.
 export default defineConfig({
   ...base,
-  testMatch: ['customize-hub.spec.ts', 'customize-forms.spec.ts', 'customize-try.spec.ts', 'customize-shots.spec.ts'],
+  testMatch: ['customize-hub.spec.ts', 'customize-forms.spec.ts', 'customize-try.spec.ts', 'customize-shots.spec.ts', 'customize-templates.spec.ts'],
   reporter: process.env.CI ? 'github' : 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5262', trace: 'retain-on-failure' },
   webServer: {

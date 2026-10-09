@@ -70,7 +70,6 @@ async function fixture(page: Page, testInfo: TestInfo, html = false) {
     return route.abort('blockedbyclient')
   })
   await page.goto(`/s/${sessionId}?artifact=${artifactId}`)
-  if (!html) await page.getByRole('tab', { name: '슬라이드 쇼', exact: true }).click()
   await page.getByRole('button', { name: '발표', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '발표 모드', exact: true })).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
@@ -231,7 +230,7 @@ test('JSON navigation and rotation retain the fitted slide without mutating its 
   await expect(dialog(page).getByText(deck.data.slides[2].notes!, { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(dialog(page)).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: '슬라이드 쇼', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '발표', exact: true })).toBeVisible()
   expect(unexpected).toEqual([])
 })
 

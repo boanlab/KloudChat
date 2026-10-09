@@ -506,6 +506,8 @@ export interface Message {
   /** The pipeline run this answer settled, from `routing.run` or the live stream. */
   run?: PipelineRun
   artifactIds?: string[]
+  /** The version of `artifactIds[0]` this turn wrote; absent on media turns and live rows. */
+  artifactVersion?: number
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
   /** `estimated` on a stopped turn: the server counts tokens itself since the proxy's final chunk never arrives. */

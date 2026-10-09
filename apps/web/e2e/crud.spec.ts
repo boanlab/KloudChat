@@ -49,7 +49,7 @@ test('디자인을 지우기 전에, 기본 모양으로 돌아갈 프로젝트 
   const tag = stamp()
 
   await page.goto('/designs')
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
   await designs.getByLabel('이름', { exact: true }).fill(`디자인${tag}`)
   await designs.getByRole('button', { name: '저장', exact: true }).click()

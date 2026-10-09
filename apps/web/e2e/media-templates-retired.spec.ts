@@ -108,7 +108,7 @@ async function shot(page: Page, name: string) {
 test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상에는 없다', async ({ page }, testInfo) => {
   await fixture(page, testInfo)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '서식 고르기' }).first().click()
+  await page.getByRole('button', { name: '양식 고르기' }).first().click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('회의록', { exact: true })).toBeVisible()
   // No media blanks are promised any more.
@@ -116,17 +116,17 @@ test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상
   // Settle the open animation for the picture.
   await page.waitForTimeout(400)
   await shot(page, 'report-gallery')
-  await dialog.getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByRole('button', { name: '회의록 서식 해제' })).toBeVisible()
+  await dialog.getByRole('button', { name: '이 양식으로 시작' }).click()
+  await expect(page.getByRole('button', { name: '회의록 양식 해제' })).toBeVisible()
 
   await page.goto('/new/image')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
   await shot(page, 'image-composer')
 
   await page.goto('/new/av')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
 })
 
 test('흐름도 칩은 서버의 도형 그림으로 가고 이미지 모델을 부르지 않는다', async ({ page }, testInfo) => {

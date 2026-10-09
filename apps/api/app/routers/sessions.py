@@ -118,6 +118,7 @@ from app.services import (
     imagegen,
     index_client,
     lint,
+    message_links,
     revise,
     settings_store,
     stop_signal,
@@ -1684,7 +1685,8 @@ async def get_session(session_id: str, user: CurrentUser, db: DbSession):
     session = await _owned(db, user, session_id)
     history = await _history(db, session_id)
     made = {} if any(m.content for m in history) else await _made(db, [session_id])
-    return SessionOut.of(session, history, made=made.get(session_id))
+    links = await message_links.run_links(db, session_id)
+    return SessionOut.of(session, history, made=made.get(session_id), links=links)
 
 
 @router.post("", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
@@ -2807,7 +2809,8 @@ async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbS
 @router.get("/{session_id}/messages", response_model=list[MessageOut])
 async def list_messages(session_id: str, user: CurrentUser, db: DbSession):
     await _owned(db, user, session_id)
-    return [MessageOut.of(m) for m in await _history(db, session_id)]
+    links = await message_links.run_links(db, session_id)
+    return [message_links.linked(m, links) for m in await _history(db, session_id)]
 
 
 def _earlier_answer(row: Message) -> dict[str, Any]:

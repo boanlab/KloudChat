@@ -48,7 +48,7 @@ const KEYWORDS: [RegExp, LucideIcon][] = [
   [/예산|견적|비용|가격|계산|budget|quote|cost|price|calc/, Calculator],
   [/보안|개인정보|security|privacy/, ShieldCheck],
   [/홍보|보도|마케팅|press|marketing/, Megaphone],
-  [/디자인|서식|브랜드|design|brand|template/, Palette],
+  [/디자인|서식|양식|브랜드|design|brand|template/, Palette],
   [/이미지|그림|사진|image|picture|photo/, Image],
   [/요약|정리|목록|summar|list/, ListChecks],
   [/글|작성|초안|자기소개|경력|write|draft|resume/, PenLine],

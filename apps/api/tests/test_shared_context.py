@@ -98,6 +98,21 @@ async def test_a_shape_an_upgrade_removed_degrades_to_no_format():
     assert payload["startedWith"]["format"] is None
 
 
+@pytest.mark.asyncio
+async def test_the_answer_that_wrote_the_document_names_it_and_its_version():
+    """A report turn stores no artifact ids; its run's link reaches the shared transcript."""
+    answer = _answered()
+    db = _Db(session=_session(), messages=[_asked(), answer])
+    db.runs = [(answer.id, "artifact-1", 3)]
+
+    payload = await shares_router.read_shared("token-1", _request(), db)
+
+    asked, answered = payload["messages"]
+    assert asked.artifact_ids is None and asked.artifact_version is None
+    assert answered.artifact_ids == ["artifact-1"]
+    assert answered.artifact_version == 3
+
+
 # ── fakes ──────────────────────────────────────────────────────────────
 
 
@@ -137,6 +152,7 @@ class _Db:
             scope=ShareScope.link,
         )
         self.commits = 0
+        self.runs: list[tuple[str, str, int | None]] = []
 
     async def get(self, model, row_id):
         rows = {
@@ -157,6 +173,9 @@ class _Db:
         if table == "share_views":
             # Every read is a first visit; the visit log has its own tests.
             return _Result([])
+        if table == "pipeline_runs":
+            # `(message_id, artifact_id, artifact_version)` rows, oldest first.
+            return _Result(self.runs)
         raise AssertionError(f"unexpected query: {query}")
 
     def add(self, _row):

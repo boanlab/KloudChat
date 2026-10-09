@@ -135,7 +135,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       expect(await dialog.frameLocator('iframe').locator('html').evaluate((node) => node.scrollWidth <= innerWidth)).toBe(true)
 
       const downloadReady = page.waitForEvent('download')
-      await dialog.getByRole('button', { name: '내보내기', exact: true }).click()
+      await dialog.getByRole('button', { name: '내려받기', exact: true }).click()
       await page.getByRole('menuitem', { name: /원본 HTML/ }).click()
       const download = await downloadReady
       expect(download.suggestedFilename()).toMatch(/\.html$/)

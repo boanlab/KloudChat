@@ -12,11 +12,11 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { DesignExplore } from '@/components/customize/DesignsTab'
+import { SharedDesigns, TemplateCatalogue } from '@/components/customize/DesignsTab'
 import {
   CARD_TABS,
   HUB_TABS,
@@ -91,8 +91,15 @@ function useHubParams() {
 /** Tabs as pills; on a phone they scroll sideways. */
 function TabStrip({ tab, onChange }: { tab: HubTab; onChange: (next: HubTab) => void }) {
   const t = useT()
+  const tHub = useTIn('hub')
+  const strip = useRef<HTMLDivElement>(null)
+  // On a phone the strip scrolls: keep the open tab (e.g. 양식, near the end) in view.
+  useEffect(() => {
+    const on = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+    on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [tab])
   return (
-    <div role="tablist" aria-label={t('사용자 지정')} className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
+    <div ref={strip} role="tablist" aria-label={t('사용자 지정')} className="-mx-1 flex min-w-0 gap-1 overflow-x-auto px-1 [scrollbar-width:none]">
       {HUB_TABS.map((id) => (
         <button
           key={id}
@@ -104,7 +111,7 @@ function TabStrip({ tab, onChange }: { tab: HubTab; onChange: (next: HubTab) => 
             tab === id ? 'bg-selected text-fg' : 'text-muted hover:bg-elevated hover:text-fg',
           )}
         >
-          {t(TAB_LABEL[id])}
+          {tHub(TAB_LABEL[id])}
         </button>
       ))}
     </div>
@@ -157,7 +164,7 @@ function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
           ? [{ label: '워크플로 만들기', icon: <Pencil size={14} />, run: () => void createWorkflow() }]
           : tab === 'designs'
             ? [
-                { label: '디자인 시스템 만들기', icon: <FilePlus2 size={14} />, run: () => navigate('/customize?tab=designs&view=mine&add=new') },
+                { label: '디자인 만들기', icon: <FilePlus2 size={14} />, run: () => navigate('/customize?tab=designs&view=mine&add=new') },
                 { label: '파일에서 읽어 오기', icon: <FileUp size={14} />, run: () => navigate('/customize?tab=designs&view=mine&add=extract') },
               ]
             : []
@@ -443,7 +450,7 @@ function SectionHead({ title, onAll }: { title: string; onAll?: () => void }) {
   )
 }
 
-/** /customize — 사용자 지정: agents, skills, workflows, connectors, memory and designs in one place. */
+/** /customize — 사용자 지정: agents, skills, workflows, connectors, memory, templates (양식) and designs in one place. */
 export function CustomizePage() {
   const t = useT()
   const navigate = useNavigate()
@@ -671,7 +678,7 @@ export function CustomizePage() {
     )
   }
 
-  const searchable = cardTab || (tab === 'designs' && view === 'explore')
+  const searchable = cardTab || tab === 'templates' || (tab === 'designs' && view === 'explore')
   const filterCount = filter.status.length + filter.kinds.length
 
   return (
@@ -689,9 +696,9 @@ export function CustomizePage() {
         {phone ? (
           <div className="mb-5 space-y-2.5">
             <TabStrip tab={tab} onChange={setTab} />
-            {hasView && (
+            {(hasView || searchable) && (
               <div className="flex items-center gap-1.5">
-                <Segment view={view} onChange={(next) => update({ view: next, all: null })} />
+                {hasView && <Segment view={view} onChange={(next) => update({ view: next, all: null })} />}
                 <span className="flex-1" />
                 {searchable && <SearchBox value={filter.q} onChange={(q) => update({ q })} phone />}
                 {cardTab && (
@@ -728,8 +735,9 @@ export function CustomizePage() {
             (view === 'mine' ? (
               <DesignsSection key={add ?? 'list'} initialMode={add === 'new' || add === 'extract' ? add : undefined} />
             ) : (
-              <DesignExplore query={filter.q} />
+              <SharedDesigns query={filter.q} />
             ))}
+          {tab === 'templates' && <TemplateCatalogue query={filter.q} />}
           {cardTab && (view === 'mine' ? mineBody() : exploreBody())}
         </div>
       </PageBody>

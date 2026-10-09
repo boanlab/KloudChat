@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
 
 test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 뒤 파일로 내보낸다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -26,10 +26,10 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   await page.goto('/artifacts')
   await page.getByRole('tab', { name: /^슬라이드/ }).click()
   await page.locator('button.aspect-video').first().click()
-  await page.getByRole('tab', { name: '검토', exact: true }).click()
+  await ribbonTab(page, '검토')
   await expect(page.getByRole('button', { name: '잘림 위험 장으로 이동' })).toBeVisible()
-  await page.getByRole('tab', { name: '홈', exact: true }).click()
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await ribbonTab(page, '홈')
+  await ribbonTab(page, '편집')
   await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
   await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
   await expect(page.getByText('한 장에 넣기 어렵습니다.')).toBeVisible({ timeout: 15_000 })
@@ -53,7 +53,7 @@ test('잘린 슬라이드를 감지하고 가독성 한계까지 자동 맞춘 �
   ])
   expect(result.files.every((file) => file.size > 1_000)).toBeTruthy()
 
-  await page.getByRole('tab', { name: '편집', exact: true }).click()
+  await ribbonTab(page, '편집')
   await expect(page.getByRole('button', { name: '잘린 내용 자동 맞춤' })).toBeVisible()
   await page.getByRole('button', { name: '잘린 내용 자동 맞춤' }).click()
   await expect(page.getByRole('button', { name: '내용을 다음 장으로 나누기' })).toBeVisible()

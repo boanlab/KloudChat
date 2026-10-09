@@ -590,7 +590,7 @@ a deck. The preview draws it where the exporters do, so what the panel shows
 is what the room sees. `services/pictures.py` owns the one rule underneath all
 of it: raster only, embedded only, never fetched.
 
-A 서식's typesetting is two files. `seed.html` — shared, named by `seed_from` —
+A 양식's (template's) typesetting is two files. `seed.html` — shared, named by `seed_from` —
 is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
 `@page` rule, the print rules, the shadow-root `:host`. `design.css` is
 identity: 회의록 packs a compact grey head, 신호 presents white on black. It is spliced in as a second `<style>`
@@ -600,12 +600,12 @@ document editor's shadow root by the same route. Two of them have no `design.css
 at all: `_document/seed.html` is the plain document's own design and `_deck/seed.html` is
 editorial's, which is what makes the shared file somebody's rather than nobody's.
 
-Retired document 서식 (`design_templates.RETIRED`) are gone from the catalogue,
+Retired document 양식 (`design_templates.RETIRED`) are gone from the catalogue,
 the gallery and every choice (migration 0055 clears them from agents, starting
 points and project defaults), but documents and conversations may still name
 one. `design_templates.rendering` draws those in `_document` alone, with its
 `template.docx`, so they keep opening, taking pictures and exporting; the page
-view of a report with no 서식 asks for the same seed by the id `_document`.
+view of a report with no 양식 asks for the same seed by the id `_document`.
 
 `test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses is
 declared: an undeclared custom property is not an error anywhere, and

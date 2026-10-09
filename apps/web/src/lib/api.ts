@@ -639,6 +639,19 @@ export const keysApi = {
   revoke: (id: string) => call<void>(`/keys/${id}`, { method: 'DELETE' }),
 }
 
+/** One export of an owned artifact, as the response, for a download or a reuse. */
+export async function fetchArtifactExport(
+  id: string,
+  format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
+): Promise<Response> {
+  const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+  return res
+}
+
 /**
  * Downloads an artifact export. A plain link cannot carry the access token, so
  * the file is fetched and handed to the browser as a blob.
@@ -648,11 +661,7 @@ export async function downloadArtifact(
   format: 'docx' | 'pdf' | 'hwpx' | 'pptx' | 'md' | 'html' | 'source',
   title: string,
 ) {
-  const res = await fetch(`${BASE_URL}/artifacts/${id}/export?format=${format}`, {
-    credentials: 'include',
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  })
-  if (!res.ok) throw new ApiError(res.status, await readDetail(res))
+  const res = await fetchArtifactExport(id, format)
 
   let filename = `${title.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'report'}.${format === 'source' ? 'txt' : format}`
   if (format === 'source') {
@@ -828,6 +837,8 @@ export interface MessageRow {
   rating: 'up' | 'down' | null
   /** Artifacts that are the answer (a picture, a clip); null when the turn answered in words. */
   artifactIds: string[] | null
+  /** The version of `artifactIds[0]` this turn wrote, from its pipeline run; absent when unknown. */
+  artifactVersion?: number | null
   /** How the turn ended when it did not end in an answer. */
   failure: 'no_answer' | 'interrupted' | null
   createdAt: string

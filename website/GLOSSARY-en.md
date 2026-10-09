@@ -29,7 +29,7 @@
 | 에이전트 | agent | |
 | 스킬 | skill | |
 | 시작점 | starting point | |
-| 서식 | format | 보고서·슬라이드의 서식 |
+| 양식 | template | 보고서·슬라이드의 양식 (글자 꾸밈의 「서식」은 formatting) |
 | 디자인 | design | 슬라이드 디자인 |
 | 프로젝트 | project | |
 | 메모리 | memory | |

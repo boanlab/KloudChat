@@ -21,9 +21,9 @@ title: 결과물
 |---|---|
 | 보고서 | PDF, Word(DOCX), 한글(HWPX), 마크다운 원문, 인쇄 |
 | 슬라이드 | PowerPoint(PPTX), PDF, 텍스트(노트 포함) |
-| 서식을 적용한 문서 | PDF, DOCX/PPTX, HWPX, HTML, 텍스트 |
+| 양식을 적용한 문서 | PDF, DOCX/PPTX, HWPX, HTML, 텍스트 |
 
-PDF는 디자인을 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 서식의 시각적 요소가 일부 달라질 수 있습니다.
+PDF는 디자인을 그대로 반영하고, DOCX와 PPTX는 편집 가능한 구조를 우선하므로 양식의 시각적 요소가 일부 달라질 수 있습니다.
 
 ## 갤러리
 

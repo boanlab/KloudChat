@@ -35,7 +35,7 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 |---|---|---|
 | 📎 Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
 | 🎤 Dictate | Turns speech into text. Shown only when the administrator has connected speech transcription. | That input |
-| ▦ Pick a format | Selects the output format for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
+| ▦ Pick a template | Selects the output template for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
 | ✦ Skills | Selects up to three skills to apply to the request. | That request |
 | ⫼ Compare models | Sends the same question to two or three models. Available only in Chat on the desktop. | That conversation. Cleared when you move to another conversation |
 | 🌐 Auto · On · Off | Switches the web search mode. | That request. A new conversation resets it automatically |
@@ -44,7 +44,7 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 | Model name ▾ | Selects the model to use. | Choosing it on Home makes it your account default, while choosing it during a conversation applies it to that conversation |
 | ↑ · ■ | Sends the request or stops generation. | — |
 
-The items currently in effect appear as chips above the composer: the project, the format, skills, attachments and the Auto state. Press × to remove one.
+The items currently in effect appear as chips above the composer: the project, the template, skills, attachments and the Auto state. Press × to remove one.
 
 ## Agents
 

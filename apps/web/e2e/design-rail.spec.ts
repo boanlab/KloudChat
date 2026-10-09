@@ -6,11 +6,11 @@ test('서식 고르기의 카드는 가로로 숨지 않는다', async ({ page }
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '양식 고르기' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
-  await expect(dialog.getByRole('button', { name: '이 서식으로 시작' }).first()).toBeVisible({
+  await expect(dialog.getByRole('button', { name: '이 양식으로 시작' }).first()).toBeVisible({
     timeout: 20_000,
   })
 
@@ -36,10 +36,10 @@ test('서식 고르기의 카드는 가로로 숨지 않는다', async ({ page }
 test('전체 서식 목록으로 가는 길이 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
-  await page.goto('/designs')
-  await expect(page.getByRole('tab', { name: '서식' })).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('tab', { name: '서식' }).click()
-  await expect(page.getByRole('button', { name: '이 서식으로 시작' }).first()).toBeVisible({
+  await page.goto('/customize')
+  await expect(page.getByRole('tab', { name: '양식' })).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('tab', { name: '양식' }).click()
+  await expect(page.getByRole('button', { name: '이 양식으로 시작' }).first()).toBeVisible({
     timeout: 20_000,
   })
 })

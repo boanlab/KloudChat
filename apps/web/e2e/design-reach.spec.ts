@@ -8,7 +8,7 @@ test('디자인이 닿는 곳을 프로젝트 화면과 빈 대화 화면이 똑
 
   const name = `말투 검증 ${Date.now()}`
   await page.goto('/designs')
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
   await designs.getByLabel('이름', { exact: true }).fill(name)
   await designs.getByLabel('한 줄 설명').fill('짧게, 명사구로')

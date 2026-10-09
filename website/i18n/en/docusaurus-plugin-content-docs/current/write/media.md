@@ -21,7 +21,7 @@ The result card provides enlarged view, download, **Generate again**, **Fix the 
 
 **Structure, flow and concept diagrams** do not use the image model. The text model writes the description as a flowchart, and the server draws it with the same shapes as the diagrams in reports and slides and keeps it as a picture. If there are too many steps or the content cannot be put as a flowchart, the message "This figure cannot be drawn. Try again with fewer steps." appears and no picture is made.
 
-Images, audio and video have no formats. ▦ Pick a format in the composer is offered only for reports and slides. The colors and the image style of the project design system are applied to the request as well.
+Images, audio and video have no templates. ▦ Pick a template in the composer is offered only for reports and slides. The colors and the image style of the project design are applied to the request as well.
 
 ## Audio
 

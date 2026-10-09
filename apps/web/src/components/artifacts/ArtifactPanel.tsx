@@ -255,7 +255,7 @@ function PageExport({ artifact }: { artifact: CodeArtifact }) {
       trigger={() => (
         <Button variant="secondary" size="sm" disabled={busy !== null}>
           <Download size={13} />
-          {t('내보내기')}
+          {t('내려받기')}
         </Button>
       )}
     >

@@ -149,7 +149,7 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
       r.status() === 200,
     { timeout: 20_000 },
   )
-  const picker = page.getByLabel('보고서 서식')
+  const picker = page.getByLabel('보고서 양식')
   await expect(picker).toBeVisible({ timeout: 20_000 })
   await picker.selectOption({ label: '회의록' })
   const stored = (await (await saved).json()) as { renderTemplates: Record<string, string> }
@@ -157,8 +157,8 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
 
   // The map is sent whole: setting one key must not clear the others.
   await page.reload()
-  await expect(page.getByLabel('보고서 서식')).toHaveValue('doc-minutes', { timeout: 20_000 })
-  await expect(page.getByLabel('슬라이드 서식')).toHaveValue('')
+  await expect(page.getByLabel('보고서 양식')).toHaveValue('doc-minutes', { timeout: 20_000 })
+  await expect(page.getByLabel('슬라이드 양식')).toHaveValue('')
 
   await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
   await page.getByRole('menuitem', { name: '보고서' }).click()
@@ -178,5 +178,5 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
     .toBeNull()
 
   await page.goto(`/projects/${projectId}`)
-  await expect(page.getByLabel('보고서 서식')).toHaveValue('doc-minutes', { timeout: 20_000 })
+  await expect(page.getByLabel('보고서 양식')).toHaveValue('doc-minutes', { timeout: 20_000 })
 })

@@ -1,7 +1,7 @@
 /** Regressions from real use, against a real backend and model. */
 
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, ribbonTab, seedPendingUser, signIn, surfaceOn } from './helpers'
+import { E2E_ADMIN, approvePlan, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, panelHeader } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -270,19 +270,18 @@ test('보고서를 만들면 섹션이 채워지고 내보낼 수 있다', async
   // Nothing is written until the plan is approved.
   await approvePlan(page, 480_000)
 
-  // The outline lands first, so the 목차 button (보기 tab) has a denominator; then the count completes.
+  // The outline lands first, so 목차 (header ⋯ menu) has a denominator; then the count completes.
   await expect(page.locator('[data-panel="artifact"]')).toBeVisible({ timeout: 180_000 })
-  await ribbonTab(page, '보기')
-  const counter = page.getByRole('button', { name: /목차 \d+\/[3-8]/ })
+  await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+  const counter = page.getByRole('menuitem', { name: /목차\s*\d+\/[3-8]/ })
   await expect(counter).toBeVisible({ timeout: 180_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 480_000 })
 
   const progress = await counter.innerText()
   const [done, total] = progress.match(/(\d+)\/(\d+)/)!.slice(1).map(Number)
   expect(done, '작성되지 않은 섹션').toBe(total)
-
-  await ribbonTab(page, '파일')
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   await expect(page.getByRole('menuitem', { name: 'Word 문서' })).toBeVisible()
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('menuitem', { name: 'Word 문서' }).click()

@@ -345,7 +345,7 @@
  {
   "type": "step",
   "id": "format_checks",
-  "label": "서식 검사: 문제 없음",
+  "label": "양식 검사: 문제 없음",
   "status": "done",
   "detail": ""
  },

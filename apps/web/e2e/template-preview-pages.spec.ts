@@ -52,7 +52,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
 
 test('a document 서식 previews as pages: the cover alone, the body from page 2', async ({ page }, testInfo) => {
   await fixture(page, testInfo)
-  await page.getByRole('button', { name: '서식 고르기' }).first().click()
+  await page.getByRole('button', { name: '양식 고르기' }).first().click()
   const dialog = page.getByRole('dialog')
 
   // The card shows page 1: the cover.

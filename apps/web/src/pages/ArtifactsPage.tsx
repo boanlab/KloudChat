@@ -4,6 +4,7 @@ import {
   FileText,
   Image as ImageIcon,
   Layers,
+  MoreHorizontal,
   Presentation,
   Video,
   Trash2,
@@ -21,11 +22,14 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { DeckPanel } from '@/components/slides/DeckPanel'
 import { ReportPanel } from '@/components/report/ReportPanel'
+import { ReuseItems } from '@/components/artifacts/ResultActions'
+import { reusable } from '@/lib/reuse'
 import {
   Badge,
   Button,
   Card,
   ConfirmDialog,
+  Dropdown,
   EmptyState,
   Input,
   LoadingState,
@@ -271,6 +275,18 @@ export function ArtifactsPage() {
                         <Icon size={14} className="shrink-0 text-accent" />
                         <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
                         <Badge>v{a.version}</Badge>
+                        {reusable(a) && (
+                          <Dropdown
+                            align="right"
+                            trigger={() => (
+                              <Button variant="ghost" size="icon" aria-label={t('{name} 더보기').replace('{name}', a.title)} title={t('더보기')}>
+                                <MoreHorizontal size={14} />
+                              </Button>
+                            )}
+                          >
+                            <ReuseItems artifact={a} />
+                          </Dropdown>
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"

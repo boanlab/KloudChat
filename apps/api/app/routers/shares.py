@@ -17,9 +17,8 @@ from app.core.deps import CurrentUser, DbSession, client_ip, current_user
 from app.models.chat import ChatSession, Message
 from app.models.user import utcnow
 from app.models.workspace import Agent, Artifact, Project, Share, ShareScope, ShareView
-from app.schemas.chat import MessageOut
 from app.schemas.workspace import ShareIn, ShareOut, ShareViewOut
-from app.services import design_templates
+from app.services import design_templates, message_links
 
 router = APIRouter(tags=["shares"])
 
@@ -205,6 +204,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
     if project is not None and project.user_id != session.user_id:
         project = None
     shape = design_templates.get(session.render_template_id)
+    links = await message_links.run_links(db, session.id)
     await db.commit()
     return {
         "kind": "session",
@@ -218,7 +218,7 @@ async def read_shared(token: str, request: Request, db: DbSession):
                 {"name": shape.name, "nameEn": shape.name_en} if shape is not None else None
             ),
         },
-        "messages": [MessageOut.of(m) for m in messages],
+        "messages": [message_links.linked(m, links) for m in messages],
         "artifact": (
             {
                 "title": artifact.title,

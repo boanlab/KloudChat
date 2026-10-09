@@ -57,12 +57,12 @@ test('workflow: started as its own run; a shipped flow starts with its agent', a
   expect(state.problems).toEqual([])
 })
 
-test('서식: 이 서식으로 시작 opens its surface', async ({ page }, testInfo) => {
+test('양식: 이 양식으로 시작 opens its surface', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  await page.goto('/customize?tab=designs&view=explore')
-  const region = page.getByRole('region', { name: '서식 · 보고서' })
+  await page.goto('/customize?tab=templates')
+  const region = page.getByRole('region', { name: '양식 · 보고서' })
   await expect(region).toBeVisible({ timeout: 15_000 })
-  await region.getByRole('button', { name: '이 서식으로 시작' }).click()
+  await region.getByRole('button', { name: '이 양식으로 시작' }).click()
   await expect(page).toHaveURL(/\/new\/report$/)
   expect(state.problems).toEqual([])
 })

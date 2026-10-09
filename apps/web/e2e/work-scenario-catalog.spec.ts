@@ -44,7 +44,7 @@ test('모든 업무 시나리오가 사용 가능한 작업 화면으로 연결�
     await expect(page).toHaveURL(new RegExp(`${route}$`))
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
     // Document and media surfaces offer their 서식; chat has none.
-    await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(surface === 'chat' ? 0 : 1)
+    await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(surface === 'chat' ? 0 : 1)
     if (surface !== 'image' && surface !== 'av') {
       await expect(page.getByRole('button', { name: '웹 검색' })).toBeVisible()
     }

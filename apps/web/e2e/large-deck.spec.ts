@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
 
 test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -47,7 +47,7 @@ test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', asyn
     await expect(thumbnails).toHaveCount(60)
     await thumbnails.nth(59).click()
     await expect(panel.getByText('60번 장').first()).toBeVisible()
-    await panel.getByRole('tab', { name: '보기', exact: true }).click()
+    // 「보기」 is gone: its commands sit in the panel header now.
     // The 장 목록 button carries the count.
     await expect(panel.getByRole('button', { name: '장 목록' })).toHaveText(/60\/60|60장/)
 
@@ -126,7 +126,6 @@ test('40절 장문 보고서를 조판하고 DOCX·PDF·HWPX로 내보낸다', a
     const panel = page.getByRole('dialog')
     await expect(panel.getByText(title).first()).toBeVisible({ timeout: 10_000 })
     expect(Date.now() - openedAt).toBeLessThan(5_000)
-    await panel.getByRole('tab', { name: '홈', exact: true }).click()
     await panel.getByRole('button', { name: '페이지뷰' }).click()
     const preview = panel.getByLabel('실제 페이지 미리보기')
     await expect(preview).toHaveAttribute('data-page-count', /\d+/, { timeout: 30_000 })

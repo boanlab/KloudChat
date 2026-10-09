@@ -14,7 +14,15 @@ from test_privacy import _external_model, _patch_guard_dependencies
 
 from app.core.db import get_session
 from app.core.deps import current_user
-from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind, TurnFailure
+from app.models.chat import (
+    ChatSession,
+    Message,
+    PipelineRun,
+    Role,
+    RoutingMode,
+    SessionKind,
+    TurnFailure,
+)
 from app.models.user import User
 from app.models.workspace import Agent, StoredFile
 from app.routers import sessions
@@ -40,7 +48,7 @@ async def engine():
                 metadata.create_all,
                 tables=[
                     metadata.tables[model.__tablename__]
-                    for model in (User, Agent, ChatSession, Message, StoredFile)
+                    for model in (User, Agent, ChatSession, Message, StoredFile, PipelineRun)
                 ],
             )
         yield engine

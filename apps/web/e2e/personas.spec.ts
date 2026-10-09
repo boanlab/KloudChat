@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn } from './helpers'
+import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, ribbonTab, panelHeader } from './helpers'
 import { personas } from './personas'
 
 /** Persona coverage: every `test.step` is one `Need` id from `personas.ts`. */
@@ -188,7 +188,7 @@ test.describe('페르소나 커버리지', () => {
                   page,
                   need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
                 )
-                await probe(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
+                await probe(page.getByRole('button', { name: '양식 고르기' })).toBeVisible()
                 break
 
               /* maths */
@@ -245,13 +245,15 @@ test.describe('페르소나 커버리지', () => {
               /* report */
               case 'eng-report-toc':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '보기', exact: true }).click()
-                await probe(page.getByRole('button', { name: /^목차/ }).first()).toBeVisible()
+                // 목차 sits in the panel header's ⋯ menu.
+                await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+                await probe(page.getByRole('menuitem', { name: /^목차/ }).first()).toBeVisible()
+                await page.keyboard.press('Escape')
                 break
               case 'hum-sources':
               case 'res-sources':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '검토', exact: true }).click()
+                await ribbonTab(page, '검토')
                 await probe(page.getByRole('button', { name: /출처/ })).toBeVisible()
                 break
               case 'grad-section-regen':
@@ -270,8 +272,8 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
-                await page.getByRole('tab', { name: '파일', exact: true }).click()
-                await page.getByRole('button', { name: '내보내기', exact: true }).click()
+                // 「파일」 is gone: its commands sit in the panel header now.
+                await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
                 break
 
@@ -283,8 +285,8 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
-                await page.getByRole('tab', { name: '파일', exact: true }).click()
-                await page.getByRole('button', { name: '내보내기', exact: true }).click()
+                // 「파일」 is gone: its commands sit in the panel header now.
+                await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
                 break
               case 'biz-notes':
@@ -368,7 +370,7 @@ test.describe('페르소나 커버리지', () => {
               case 'grad-version': {
                 await openNewest(page, '보고서')
                 // `.first()`: a conversation may show several artifacts, each with its own history.
-                await page.getByRole('tab', { name: '검토', exact: true }).click()
+                await ribbonTab(page, '검토')
                 const history = page.getByRole('button', { name: '버전 기록' }).first()
                 await probe(history).toBeVisible()
                 await history.click()

@@ -60,7 +60,8 @@ function ToHub({ tab }: { tab: string }) {
       if (agent) to.set('focus', agent)
     } else if (old === 'store') to.set('view', 'explore')
   }
-  if (tab === 'designs' && old === 'template') to.set('view', 'explore')
+  // The template catalogue (`/designs?tab=template`) is the 양식 tab now.
+  if (tab === 'designs' && old === 'template') to.set('tab', 'templates')
   for (const [key, value] of from) to.set(key, value)
   return <Navigate to={`/customize?${to.toString()}`} replace />
 }

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { inflateRawSync } from 'node:zlib'
 import { expect, test } from '@playwright/test'
-import { approvePlan, artifactReady, ribbonTab, signIn } from './helpers'
+import { approvePlan, artifactReady, signIn } from './helpers'
 
 /** A design system from the editor to the exported deck and report. One of each generated per run;
  *  the image path is covered in `tests/test_design_system.py`. */
@@ -47,7 +47,7 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
 
   const name = `디자인 검증 ${Date.now()}`
   await page.goto('/designs')
-  const designs = page.getByRole('region', { name: '디자인 시스템' })
+  const designs = page.getByRole('region', { name: '내 디자인' })
   await designs.getByRole('button', { name: '디자인 추가' }).click()
 
   await designs.getByLabel('이름', { exact: true }).fill(name)
@@ -126,9 +126,7 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
   expect(new Set(slides.map((s) => s.accent))).toEqual(new Set([ACCENT]))
   // Snapshotted onto the artifact, so a deck does not repaint later.
   expect(stored.data.design).toMatchObject({ accent: ACCENT, font: 'serif' })
-
-  await ribbonTab(page, '파일')
-  const exportButton = page.getByRole('button', { name: '내보내기', exact: true })
+  const exportButton = page.getByRole('button', { name: '내려받기', exact: true })
   const download = page.waitForEvent('download', { timeout: 60_000 })
   await exportButton.click()
   await page.getByRole('menuitem', { name: 'PowerPoint' }).click()
@@ -168,9 +166,8 @@ test('디자인 시스템을 프로젝트에 붙이면 덱과 보고서, 내보�
   expect(report.data.design).toMatchObject({ accent: ACCENT, font: 'serif' })
 
   // `.hwpx`: Hancom parses the XML, so a misplaced colour is a file that will not open.
-  await ribbonTab(page, '파일')
   const hwpxDownload = page.waitForEvent('download', { timeout: 60_000 })
-  await page.getByRole('button', { name: '내보내기', exact: true }).click()
+  await page.getByRole('button', { name: '내려받기', exact: true }).click()
   await page.getByRole('menuitem', { name: '한글 문서' }).click()
   const hwpx = await hwpxDownload
   expect(hwpx.suggestedFilename()).toMatch(/\.hwpx$/)

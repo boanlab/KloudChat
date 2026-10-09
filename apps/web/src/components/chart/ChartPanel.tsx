@@ -9,6 +9,7 @@ import {
   type PanelMode,
 } from '@/components/artifacts/PanelControls'
 import { useT } from '@/lib/useT'
+import { csvSource } from '@/components/artifacts/artifactExport'
 
 /** Model-provided series points with an empty fallback. */
 function pointsOf(one: ChartArtifact['series'][number]) {
@@ -340,17 +341,6 @@ function svgSource(node: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone)
 }
 
-/** The table as CSV; the BOM makes Excel decode Korean as UTF-8. */
-function csvSource(chart: ChartArtifact): string {
-  const escape = (v: string | number) => {
-    const text = String(v)
-    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-  }
-  const lines = [chart.table.columns.map(escape).join(',')]
-  for (const row of chart.table.rows) lines.push(row.map(escape).join(','))
-  return `\ufeff${lines.join('\n')}\n`
-}
-
 export function ChartPanel({
   chart,
   onClose,
@@ -408,7 +398,7 @@ export function ChartPanel({
           trigger={() => (
             <Button size="sm">
               <Download size={14} />
-              {t('내보내기')}
+              {t('내려받기')}
             </Button>
           )}
         >

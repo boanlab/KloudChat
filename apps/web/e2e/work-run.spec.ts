@@ -243,13 +243,8 @@ async function followUp(page: Page, scenario: WorkScenario): Promise<string> {
 
   if (scenario.followUpId === 'export') {
     if (!documentSurface) return ''
-    // 내보내기 lives in the 파일 tab; the format is a menu under it.
-    const fileTab = page.getByRole('tab', { name: '파일' }).first()
-    if (await fileTab.isVisible().catch(() => false)) {
-      await fileTab.click()
-      await page.waitForTimeout(600)
-    }
-    const menu = page.getByRole('button', { name: '내보내기' }).first()
+    // 내려받기 sits in the panel header; the format is a menu under it.
+    const menu = page.getByRole('button', { name: '내려받기' }).first()
     if (!(await menu.isVisible().catch(() => false))) return '내보내기 버튼이 없습니다'
     await menu.click()
     await page.waitForTimeout(900)

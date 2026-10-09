@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { E2E_ADMIN, signIn } from './helpers'
+import { E2E_ADMIN, signIn, ribbonTab } from './helpers'
 
 test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async ({ page }) => {
   test.setTimeout(90_000)
@@ -27,7 +27,7 @@ test('긴 표와 차트를 구조를 보존해 두 장으로 나눈다', async (
     await page.goto('/artifacts')
     await page.getByRole('tab', { name: /^슬라이드/ }).click()
     await page.locator('button.aspect-video').first().click()
-    await page.getByRole('tab', { name: '편집', exact: true }).click()
+    await ribbonTab(page, '편집')
   }
   await open()
   await page.getByRole('button', { name: '이 장을 두 장으로 나누기' }).click()

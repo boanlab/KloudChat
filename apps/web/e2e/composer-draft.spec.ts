@@ -11,18 +11,18 @@ test('서식을 고르면 쓰던 문장은 그대로 두고 칩만 붙는다', a
   const mine = '3월 운영위원회 회의 내용을 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '서식 고르기' }).click()
+  await page.getByRole('button', { name: '양식 고르기' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
   // Searched: the gallery pages.
-  await dialog.getByLabel('서식 검색').fill('회의록')
+  await dialog.getByLabel('양식 검색').fill('회의록')
   const minutes = dialog.locator('div.group', { hasText: '회의록' }).first()
   await expect(minutes).toBeVisible({ timeout: 20_000 })
-  await minutes.getByRole('button', { name: '이 서식으로 시작' }).click()
+  await minutes.getByRole('button', { name: '이 양식으로 시작' }).click()
 
   // The draft stays; the 서식 is a chip.
   await expect(composer).toHaveValue(mine)
-  await expect(page.getByRole('button', { name: '회의록 서식 해제' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '회의록 양식 해제' })).toBeVisible()
 })
 
 /** A draft belongs to the surface it was typed on; a document surface's box starts empty. */

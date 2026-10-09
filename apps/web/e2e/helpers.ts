@@ -353,14 +353,52 @@ export async function artifactIds(page: Page): Promise<string[]> {
 
 /** Waits for an artifact panel (or the gallery's preview dialog) and an idle run. */
 export async function artifactReady(page: Page, timeout = 480_000) {
-  // Both carry the ribbon; only the panel carries `data-panel`.
+  // Both carry the panel header's quick tools; only the panel carries `data-panel`.
   await expect(
-    page.locator('[data-panel="artifact"], [role="dialog"] [role="tablist"]').first(),
+    page.locator('[data-panel="artifact"], [role="dialog"] [aria-label="빠른 도구"]').first(),
   ).toBeVisible({ timeout })
   await expect(page.getByLabel('중지')).toBeHidden({ timeout })
 }
 
-/** Opens one tab of an artifact panel's ribbon by name. */
+/** The report or slide panel's header row (reading mode: title, view, 검토, 내려받기, 편집, ⋯). */
+export function panelHeader(page: Page) {
+  return page.locator('[data-panel="artifact"] header, [role="dialog"] header').first()
+}
+
+/** Turns the panel's 「편집」 on or off; the ribbon shows only while it is on. */
+export async function editMode(page: Page, on = true) {
+  const toggle = panelHeader(page).getByRole('button', { name: '편집', exact: true })
+  if (((await toggle.getAttribute('aria-pressed')) === 'true') !== on) await toggle.click()
+}
+
+/** Opens the header's 「⤓ 내려받기 ▾」 menu (formerly 파일 › 내보내기). */
+export async function downloadMenu(page: Page) {
+  await panelHeader(page).getByRole('button', { name: '내려받기' }).click()
+}
+
+/** Picks an item of the header's ⋯ menu: 목차, 원문 편집, 버전 기록, 이걸로 새로 시작 … */
+export async function moreMenu(page: Page, item: string | RegExp) {
+  await panelHeader(page).getByRole('button', { name: '더보기' }).click()
+  await page.locator('[role="menu"]:visible').getByRole('menuitem', { name: item }).first().click()
+}
+
+/** Where a tab of the old seven-tab ribbon went: the editing tabs, or the reading header. */
+const MOVED: Record<string, string | null> = {
+  // 웹뷰/페이지뷰 sit in the header; 디자인·강조색·양식 under 편집 › 디자인.
+  홈: '디자인',
+  편집: '글자',
+  레이아웃: '디자인',
+  // 목차/장 목록, 발표 and 내려받기 sit in the header: nothing to open.
+  보기: null,
+  '슬라이드 쇼': null,
+  파일: null,
+}
+
+/** Opens one tab of an artifact panel's editing ribbon, switching 「편집」 on first.
+ *  Old tab names map to where their commands went (see MOVED). */
 export async function ribbonTab(page: Page, name: string) {
-  await page.getByRole('tab', { name, exact: true }).click()
+  const tab = name in MOVED ? MOVED[name] : name
+  if (tab === null) return
+  await editMode(page)
+  await page.getByRole('tab', { name: tab, exact: true }).click()
 }
