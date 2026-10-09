@@ -893,6 +893,16 @@ export function ReportPanel({
   const [templateSaving, setTemplateSaving] = useState(false)
   const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
   const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#5b5bd6')
+  // Follow the document's own design when it arrives after mount: the draft learns its look
+  // from the stream's `design` event, and the saved copy may replace the draft in place.
+  const shownStyle = report.design?.visualStyle
+  const shownAccent = report.design?.accent
+  useEffect(() => {
+    if (shownStyle) setVisualStyle(shownStyle)
+  }, [shownStyle])
+  useEffect(() => {
+    if (shownAccent) setDocumentAccent(shownAccent)
+  }, [shownAccent])
 
   // Structural edits: one PATCH of the whole document, checked against the server first.
   const restructureSections = async (next: ReportSection[], summary: string) => {

@@ -65,6 +65,18 @@
   "title": "2026년 10월 컴퓨터공학과 교육과정위원회 회의록"
  },
  {
+  "type": "design",
+  "design": {
+   "accent": "#a21caf",
+   "ink": "#1a1a1a",
+   "muted": "#666666",
+   "font": "gothic",
+   "visualStyle": "poster",
+   "footer": "",
+   "logo": ""
+  }
+ },
+ {
   "type": "sources",
   "sources": []
  },

@@ -64,6 +64,18 @@
   "title": "해솔핀테크 시니어 백엔드 개발자 경력기술서"
  },
  {
+  "type": "design",
+  "design": {
+   "accent": "#1e3a8a",
+   "ink": "#1a1a1a",
+   "muted": "#666666",
+   "font": "serif",
+   "visualStyle": "minimal",
+   "footer": "",
+   "logo": ""
+  }
+ },
+ {
   "type": "sources",
   "sources": []
  },

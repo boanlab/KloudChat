@@ -63,7 +63,7 @@ class ReportSave(Base):
         from app.models.chat import ChatSession, Message, Role
         from app.models.user import User, utcnow
         from app.models.workspace import Artifact, ArtifactKind
-        from app.services import design as design_service
+        from app.pipeline.report_stages import report_design
         from app.services import design_templates, lint, revise
         from app.services import report as report_service
 
@@ -121,29 +121,10 @@ class ReportSave(Base):
                     if kept is not None and kept.title:
                         title = kept.title
                 if written:
-                    artifact_design = design_tokens
-                    if template is not None and template.look:
-                        # The template's look outranks the project default and the request.
-                        artifact_design = design_service.normalise_tokens(
-                            {**(design_tokens or {}), "visualStyle": template.look}
-                        )
-                    elif not artifact_design:
-                        # No template or project look: the request picks the style and the
-                        # subject the colour.
-                        requested_style = str((approved_plan or {}).get("visualStyle") or "")
-                        accent = str((approved_plan or {}).get("accent")
-                                     or host.deck_service.topic_accent(request))
-                        artifact_design = (
-                            design_service.normalise_tokens(
-                                {
-                                    "visualStyle": requested_style,
-                                    "accent": accent,
-                                    "font": design_service.font_for(request, requested_style),
-                                }
-                            )
-                            if requested_style and requested_style != "editorial"
-                            else design_service.report_look_for(request, accent)
-                        )
+                    # The same design `approved-plan` announced to the panel.
+                    artifact_design = report_design(
+                        request, approved_plan, design_tokens, req.template_id
+                    )
                     data = {
                         **({"templateId": template.id} if template else {}),
                         "sections": [

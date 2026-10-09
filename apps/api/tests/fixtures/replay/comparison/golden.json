@@ -65,6 +65,18 @@
   "title": "사내 메신저 도입 대안 비교 및 선정"
  },
  {
+  "type": "design",
+  "design": {
+   "accent": "#1e3a8a",
+   "ink": "#1a1a1a",
+   "muted": "#666666",
+   "font": "gothic",
+   "visualStyle": "editorial",
+   "footer": "",
+   "logo": ""
+  }
+ },
+ {
   "type": "sources",
   "sources": []
  },

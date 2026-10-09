@@ -511,6 +511,38 @@ class Outline(Base):
 # ── the writing pass ─────────────────────────────────────────────────────
 
 
+def report_design(
+    request: str,
+    approved_plan: dict[str, Any] | None,
+    design_tokens: dict[str, str] | None,
+    template_id: str | None,
+) -> dict[str, str] | None:
+    """The design the written report is stored with; `None` when it carries none.
+
+    One decision for both ends of the run: `approved-plan` announces it before a word is
+    written, so the panel draws the document in the look it will keep, and `report-save`
+    stores it. A template's look outranks the project default and the request; with
+    neither, the approved plan (or the request) picks the style and the subject the colour.
+    """
+    template = design_templates.get(template_id) if template_id else None
+    if template is not None and template.look:
+        return design.normalise_tokens({**(design_tokens or {}), "visualStyle": template.look})
+    if design_tokens:
+        return design_tokens
+    requested_style = str((approved_plan or {}).get("visualStyle") or "")
+    accent = str((approved_plan or {}).get("accent") or deck_rules.topic_accent(request))
+    if requested_style and requested_style != "editorial":
+        return design.normalise_tokens(
+            {
+                "visualStyle": requested_style,
+                "accent": accent,
+                "font": design.font_for(request, requested_style),
+            }
+        )
+    return design.report_look_for(request, accent)
+
+
+
 class ApprovedPlan(Base):
     """Takes the approved 목차; the title and the sources it was planned on go out."""
 
@@ -532,6 +564,11 @@ class ApprovedPlan(Base):
         # Emitted only when the model produced one, so the caller keeps its fallback.
         if plan.title:
             yield {"type": "title", "title": hangul.tidy_spacing(plan.title)[:200]}
+        # The look the document is stored with, before the first section: a draft drawn
+        # in the panel's default look would change under the reader when it is saved.
+        req = bundle.request
+        if look := report_design(req.text, approved, req.design_tokens, req.template_id):
+            yield {"type": "design", "design": look}
         # The same sources the outline was planned on.
         yield {"type": "sources", "sources": bundle.material.sources}
         plan.figures = {int(f.get("section", -1)): f for f in (bundle.request.figures_plan or [])

@@ -63,6 +63,18 @@
   "title": "본관 엘리베이터 3호기 우선 교체 및 순차 교체 계획"
  },
  {
+  "type": "design",
+  "design": {
+   "accent": "#1e3a8a",
+   "ink": "#1a1a1a",
+   "muted": "#666666",
+   "font": "serif",
+   "visualStyle": "editorial",
+   "footer": "",
+   "logo": ""
+  }
+ },
+ {
   "type": "sources",
   "sources": []
  },

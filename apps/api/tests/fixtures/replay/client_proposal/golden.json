@@ -68,6 +68,18 @@
   "title": "고객센터 상담 요약 자동화 PoC 제안"
  },
  {
+  "type": "design",
+  "design": {
+   "accent": "#0f766e",
+   "ink": "#1a1a1a",
+   "muted": "#666666",
+   "font": "serif",
+   "visualStyle": "editorial",
+   "footer": "",
+   "logo": ""
+  }
+ },
+ {
   "type": "sources",
   "sources": []
  },
