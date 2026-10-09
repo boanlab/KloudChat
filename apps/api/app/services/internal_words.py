@@ -93,4 +93,71 @@ def scrub(text: str, *, document: bool = True) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-__all__ = ["DOCUMENT_TERMS", "TERMS", "WRITER_NOTE", "found", "scrub"]
+#: A tool's or script's report copied into the answer: 「점검 결과: `block` 0건」, 「calculate:
+#: 171/312*100 = …」, 「스크립트가 형식 오류를 냈지만」 (skills g2–g4). The person reads the
+#: answer, not the run.
+TOOL_REPORT = re.compile(
+    r"`(?:block|check|info|pass|lost|added|risky|format_changed)`"
+    r"|(?<![A-Za-z_])(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}건"
+    r"|(?<![A-Za-z_])(?:calculate|run_code|run_skill_script|use_skill|web_search)\s{0,2}[:(（]"
+    r"|스크립트(?:가|로|를|의|는|에서|로는)?\s{0,3}(?:[^\s.]{1,12}\s{1,2}){0,4}"
+    r"(?:오류|실행|결과|한도|돌려|돌린|확인했|점검했|냈|검증|남긴|계산)"
+    r"|(?:점검|검사|검증|검산)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,200}?"
+    r"\d{1,4}\s{0,2}(?:건|개)"
+    r"|(?:점검|검사|검증)\s{0,2}(?:스크립트\s{0,2})?(?:최종\s{0,2})?결과\s{0,2}[:：][^\n]{0,16}?문제\s{0,2}없"
+    r"|`(?:claims|sources|frame|preserve|proof|scan|timeline|notes|size|check|length|matrix|plan)`"
+    r"|(?<![A-Za-z_])calculate\s{0,2}도구로"
+    r"|(?<![\w/])[a-z_]{2,20}\.py(?![\w])"
+    r"|(?<![A-Za-z])(?:preserve|proof|scan|timeline|sources|claims|frame|notes)\s{0,2}"
+    r"(?:검사|점검|결과|스크립트)"
+)
+#: A raw JSON line: 「{"lost": [], …」, two `"key": value,` pairs in a row, a pretty-printed
+#: `"key": value` line or a bare bracket, or a tool's 「[실행 결과: …]」 header.
+JSON_LINE = re.compile(
+    r'^\s{0,8}[\[{]\s{0,2}"[A-Za-z_]{1,30}"\s{0,2}:'
+    r'|(?:"[A-Za-z_]{1,30}"\s{0,2}:\s{0,2}[^,\n]{1,80},\s{0,2}){2}'
+    r'|^\s{0,16}"[a-z_]{1,30}"\s{0,2}:\s{0,2}(?:["\[{\d]|true|false|null)'
+    r'|^\s{0,16}[\[\]{}],?\s{0,2}$'
+    r'|^\s{0,4}\[실행 결과\s{0,2}[:：][^\]\n]{0,60}\]\s{0,2}$',
+    re.M,
+)
+#: How a table cell says a script fixed a phrase: shown as what it was.
+_SCRIPT_CELL = re.compile(r"스크립트\s{0,2}(?:auto\s{0,2})?(?:자동\s{0,2})?(교체|고침|수정)")
+
+
+def strip_reports(text: str) -> str:
+    """`text` without what a tool or script reported: a raw JSON line goes, a sentence that
+    quotes a run's counts or names a script goes, and a table cell says 「자동 교체」 instead.
+    Fenced blocks and headings are left alone."""
+    if not text or not (TOOL_REPORT.search(text) or JSON_LINE.search(text)
+                        or _SCRIPT_CELL.search(text)):
+        return text
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            continue
+        if fenced or stripped.startswith("#"):
+            out.append(line)
+            continue
+        if stripped.startswith("|"):
+            out.append(_SCRIPT_CELL.sub(lambda m: f"자동 {m.group(1)}", line))
+            continue
+        if JSON_LINE.search(line):
+            continue
+        if not TOOL_REPORT.search(line):
+            out.append(line)
+            continue
+        lead = re.match(r"\s{0,24}(?:(?:[-*+]|\d{1,3}[.)]|[□■○◦ㅇㆍ·∙※])\s{1,4})?", line).group(0)
+        kept = [s for s in units.SENTENCE_BREAK.split(line[len(lead):])
+                if s.strip() and not TOOL_REPORT.search(s)]
+        if kept:
+            out.append(lead + " ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+
+
+__all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_REPORT", "WRITER_NOTE", "found", "scrub",
+           "strip_reports"]

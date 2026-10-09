@@ -61,6 +61,14 @@ from app.services.context import (
 
 log = logging.getLogger("app.services.report")
 
+#: Beside an earlier step's product in a composed run.
+DERIVED_NOTE = (
+    "# 작성 메모(내부)\nThe 「앞 단계 결과」 blocks were written by an earlier step from the same "
+    "files. Use them for what to cover and how to word it, but take every figure from the "
+    "attached files or the 「코드 실행 결과」 blocks; a figure only an earlier step wrote is not "
+    "a source — leave it out or write [수치]."
+)
+
 _CAUGHT = (httpx.HTTPError, KeyError, IndexError, ValueError)
 
 
@@ -96,7 +104,8 @@ def _usage(bundle: Bundle) -> dict[str, Any]:
 
 
 def _material_text(bundle: Bundle) -> str:
-    return "\n".join([bundle.request.text, *bundle.material.document])
+    # What an earlier pipeline step derived is no source for a check.
+    return "\n".join([bundle.request.text, *bundle.material.grounds])
 
 
 # ── before the outline ───────────────────────────────────────────────────
@@ -243,6 +252,13 @@ class Assemble(Base):
         # Material pasted under the instruction is read whole, as a reference block.
         if pasted := pasted_material(req.text):
             mat.parts.append(Part(pasted, "pasted"))
+        # A composed run: what an earlier step's code printed is a source; what an earlier
+        # step wrote is read for its shape, its figures taken from the files and the code.
+        mat.parts += [Part(f"# 코드 실행 결과(앞 단계)\n{text}", "computed", "tool")
+                      for text in req.tool_outputs if text.strip()]
+        if derived := [text for text in req.derived if text.strip()]:
+            mat.parts += [Part(text, "derived") for text in derived]
+            mat.parts.append(Part(DERIVED_NOTE, "note"))
         mat.trusted = [Part(text, "trusted") for text in req.trusted]
         if project_reference_lines:
             mat.trusted.append(Part(
@@ -532,7 +548,7 @@ class Calc(Base):
     writes = ("computed.values", "material.trusted")
 
     def skip(self, bundle: Bundle) -> str:
-        if not calc.needed(bundle.request.text, bundle.material.document):
+        if not calc.needed(bundle.request.text, bundle.material.grounds):
             return "nothing to compute in the request"
         return ""
 
@@ -540,7 +556,7 @@ class Calc(Base):
         report, req = _report(), bundle.request
         yield {"type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"}
         computed, spent, status = await calc.computed_values(
-            req.text, bundle.material.document, complete=report._complete, model=req.model,
+            req.text, bundle.material.grounds, complete=report._complete, model=req.model,
             api_key=req.api_key)
         _count(bundle, spent)
         if computed:
@@ -591,7 +607,10 @@ class Settle(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         report, req = _report(), bundle.request
-        given = "\n\n".join([report._request_material(req.text), *req.untrusted]).strip()
+        # The figures settle from the person's files and the code's output, never from what an
+        # earlier step of a composed run wrote (`req.derived`).
+        given = "\n\n".join([report._request_material(req.text), *req.untrusted,
+                              *req.tool_outputs]).strip()
         bundle.material.given = given
         if not given:
             return

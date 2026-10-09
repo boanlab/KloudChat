@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+post_check: post
+post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 ---
 Check sourcing with code, not by eye. A model reviewing its own research misses unsourced numbers.
 

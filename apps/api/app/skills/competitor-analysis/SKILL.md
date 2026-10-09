@@ -3,9 +3,11 @@ name: 경쟁사 분석
 description: 직접·간접 경쟁사를 고르고 포지셔닝·기능·가격·고객·최근 움직임·강약점을 출처 있는 비교표로 정리한 뒤, 차별화 기회를 근거와 함께 제안합니다. 확인하지 못한 기능·가격·점유율은 「확인 필요」로 두고 지어내지 않습니다.
 when_to_use: 경쟁 구도 파악, 사업계획서·IR 의 경쟁 분석, 포지셔닝·가격 결정 전, 「경쟁사 분석」「경쟁사 비교표」「경쟁 지형」. 영업용 한 장 대응 자료는 「경쟁 대응 카드」. 별칭 competitor-analysis.
 kinds: [chat]
-required_tools: [run_skill_script]
+required_tools: [run_skill_script, web_search, fetch_url]
 version: 0.1.0
 status: draft
+post_check: source-check/post
+post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 ---
 Map the competition for the user's product in Korean, cell by cell from sources. The comparison table is the product; the recommendations follow from it.
 

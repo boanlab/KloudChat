@@ -85,6 +85,8 @@ class StepRecord:
     run_id: str = ""
     #: Whether the run kept a snapshot before this stage (it can be run again from here).
     rerunnable: bool = False
+    #: Tokens the stage spent, by usage key (`inputTokens`, `outlineOutputTokens`, …).
+    tokens: dict[str, int] = field(default_factory=dict)
 
     @property
     def record_id(self) -> str:
@@ -99,6 +101,8 @@ class StepRecord:
             "startedAt": self.started_at, "finishedAt": self.finished_at, "ms": self.ms,
             "attempt": self.attempt, "rerunnable": self.rerunnable,
         }
+        if self.tokens:
+            out["tokens"] = dict(self.tokens)
         if evidence and self.evidence:
             out["evidence"] = self.evidence
         return out
@@ -128,7 +132,7 @@ class StepRecord:
                 "ms": self.ms, "label": self.label, "summary": self.summary,
                 "evidence": dict(self.evidence), "startedAt": self.started_at,
                 "finishedAt": self.finished_at, "attempt": self.attempt, "runId": self.run_id,
-                "rerunnable": self.rerunnable}
+                "rerunnable": self.rerunnable, "tokens": dict(self.tokens)}
 
     @classmethod
     def from_dict(cls, row: dict[str, Any]) -> StepRecord:
@@ -141,7 +145,9 @@ class StepRecord:
                    started_at=str(row.get("startedAt") or ""),
                    finished_at=str(row.get("finishedAt") or ""),
                    attempt=int(row.get("attempt") or 1), run_id=str(row.get("runId") or ""),
-                   rerunnable=bool(row.get("rerunnable")))
+                   rerunnable=bool(row.get("rerunnable")),
+                   tokens={str(k): int(v) for k, v in (row.get("tokens") or {}).items()
+                           if isinstance(v, int)})
 
 
 @dataclass(slots=True)

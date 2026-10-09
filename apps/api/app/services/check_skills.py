@@ -19,7 +19,9 @@ log = logging.getLogger(__name__)
 
 #: Fact sets keyed by agent rather than by format: the chat agents write no `doc_format`.
 _AGENT_FACTS = {"career-docs": "career-docs", "data-analysis": "data-analysis"}
-#: `post` checks run by a stage of their own (`check:copy`), not by `ground`.
+#: `post` checks run by a stage of their own (`check:copy`), not by `ground`. An attached
+#: check that also names `post_check` scripts (generic-language-killer) runs here as its
+#: entry only — the safe rewrites; switched on by the person, `check:skills` runs the rest.
 OWN_STAGE = frozenset({"copy-check"})
 #: The question ids the gap card uses, so answers are told from the file questions.
 GAP_PREFIX = "gap:"

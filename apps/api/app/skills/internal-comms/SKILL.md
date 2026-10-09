@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+post_check: check
+post_judge: "promises of a follow-up notice, procedures, contacts, deadlines and who must do what"
 ---
 Write internal announcements a busy employee understands from the first line and can act on without asking back. Use only what the request and material say.
 

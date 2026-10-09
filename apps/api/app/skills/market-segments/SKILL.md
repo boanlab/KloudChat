@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+post_check: source-check/post
+post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 ---
 Segment a market in Korean so the user can act on it: each segment is defined by criteria someone could check, sized from a source or honestly 「자료 없음」, and described from evidence.
 

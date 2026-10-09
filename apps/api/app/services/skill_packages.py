@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent / "skills"
 RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
-           "stage", "entry")
+           "stage", "entry", "post_check", "post_judge")
 #: A check skill's stage: run by the server before (`pre`) or after (`post`) writing.
 STAGES = ("pre", "post")
 
@@ -54,6 +55,13 @@ class SkillPackage:
     stage: str = ""
     #: The script a check skill's server run imports.
     entry: str = ""
+    #: Scripts the server runs on a chat answer whenever this skill is on the turn
+    #: (`services/post_checks.py`), each `<key>/<script>`; a bare name is this package's.
+    post_checks: tuple[str, ...] = ()
+    #: Whether the post check also asks the judge model for statements the material lacks.
+    post_judge: bool = False
+    #: What the judge looks at in particular for this skill (`post_judge: "<focus>"`).
+    judge_focus: str = ""
 
     @property
     def draft(self) -> bool:
@@ -128,6 +136,7 @@ def load(root: Path) -> SkillPackage:
     stage = str(meta.get("stage") or "").strip()
     if stage and stage not in STAGES:
         raise PackageError(f"{root.name}: stage must be one of {', '.join(STAGES)}")
+    post_checks = _post_checks(root.name, meta.get("post_check"))
     scripts_dir = root / "scripts"
     scripts = {
         path.stem: _summary(path)
@@ -156,7 +165,25 @@ def load(root: Path) -> SkillPackage:
         files=tuple(files),
         stage=stage,
         entry=str(meta.get("entry") or "").strip(),
+        post_checks=post_checks,
+        post_judge=bool(meta.get("post_judge")),
+        judge_focus=(" ".join(str(meta["post_judge"]).split())
+                     if isinstance(meta.get("post_judge"), str) else ""),
     )
+
+
+def _post_checks(key: str, raw) -> tuple[str, ...]:
+    """`post_check: preserve` or a list, each named `<key>/<script>` (own key when bare)."""
+    items = [raw] if isinstance(raw, str) else list(raw or [])
+    out = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        if not re.fullmatch(r"(?:[a-z0-9-]{1,60}/)?[a-z0-9_]{1,40}", text):
+            raise PackageError(f"{key}: post_check {text!r} must be <script> or <key>/<script>")
+        out.append(text if "/" in text else f"{key}/{text}")
+    return tuple(dict.fromkeys(out))
 
 
 @lru_cache(maxsize=1)
@@ -200,6 +227,11 @@ def find(skill: str) -> SkillPackage | None:
     if found is not None and found.draft and not drafts_enabled():
         return None
     return found
+
+
+def post_checked() -> list[SkillPackage]:
+    """Packages that name post-check scripts, for the server's run on a chat answer."""
+    return [package for package in packages().values() if package.post_checks]
 
 
 def checks(stage: str) -> list[SkillPackage]:

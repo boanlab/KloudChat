@@ -165,10 +165,14 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
             continue
         have = (parsed[b] - parsed[a]).days
         if have < need:
+            # A decision for the person, not a date: a proposed date read as settled ends up
+            # in the notice (eol-2).
             findings.append(_finding("block", "gap", f"{_label(a)}→{_label(b)} {have}일 < {need}일",
-                                     f"정한 최소 간격({gap.get('basis') or '사용자 기준'})보다 짧습니다.",
-                                     f"{_label(a)}을 {_show(parsed[b] - dt.timedelta(days=need))}까지로 당기거나 "
-                                     f"{_label(b)}을 늦추세요.", need=need, have=have))
+                                     f"정한 최소 간격({gap.get('basis') or '사용자 기준'})보다 {need - have}일 짧습니다.",
+                                     f"{_label(a)}을 앞당길지 {_label(b)}을 늦출지 정해 주세요. "
+                                     "정하기 전에는 안내문에 새 날짜를 쓰지 않습니다.", need=need, have=have,
+                                     question=f"{_label(a)}과 {_label(b)} 사이가 {need}일에 못 미칩니다. "
+                                              f"{_label(a)}을 앞당길까요, {_label(b)}을 늦출까요?"))
     legal: dict | None = None
     if telecom:
         rule = LEGAL.get(telecom)
@@ -182,8 +186,10 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
                      "report_by": report_by.isoformat(), "report_basis": rule["report_basis"], "have": have}
             if have is not None and have < rule["days"]:
                 findings.append(_finding("block", "legal_gap", f"공지→종료 {have}일 < {rule['days']}일",
-                                         f"{rule['basis']}에 못 미칩니다.",
-                                         f"공지를 {_show(latest)}까지 하거나 종료일을 늦추세요. 해당 여부는 법무 확인 필요."))
+                                         f"{rule['basis']}에 {rule['days'] - have}일 못 미칩니다.",
+                                         "공지를 앞당길지 종료일을 늦출지 정해 주세요(해당 여부는 법무 확인 필요). "
+                                         "정하기 전에는 안내문에 새 날짜를 쓰지 않습니다.",
+                                         question="법정 고지 기간에 못 미칩니다. 공지를 앞당길까요, 종료일을 늦출까요?"))
             findings.append(_finding("info", "legal_report", f"신고 기한 {_show(report_by)}",
                                      rule["report_basis"], "해당 사업자인지와 신고 절차는 법무 확인 필요."))
     today_day = _parse(today)
@@ -223,6 +229,141 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
                 for key, day in sorted(parsed.items(), key=lambda kv: kv[1])]
     return {"timeline": timeline, "gaps": gaps, "legal": legal, "findings": findings, "questions": questions,
             "counts": counts}
+
+
+# ── the server's post check on a chat answer (`post_check: timeline`) ────
+
+#: Which schedule step a line's date is, by the words around it (first match wins).
+_STEP_WORDS = (
+    ("delete", re.compile(r"삭제|파기")),
+    ("export_until", re.compile(r"내보내기|백업|다운로드")),
+    ("billing_stop", re.compile(r"자동\s?결제|정기\s?결제|과금")),
+    ("stop_new", re.compile(r"신규\s?(?:가입|구매|판매|신청|계약)")),
+    ("announce", re.compile(r"공지|안내일|게시")),
+    ("end", re.compile(r"종료|중단|폐지|지원\s?끝")),
+)
+
+
+_MONTH_DAY = (
+    re.compile(r"(?<![\d.])(\d{1,2})\s*월\s*(\d{1,2})\s*일"),
+    re.compile(r"(?<![\d.])(\d{1,2})\.\s?(\d{1,2})\.(?=\s*\(|\s|$)"),
+    re.compile(r"(?<![\d/])(\d{1,2})/(\d{1,2})(?![\d/])"),
+)
+#: A question to the person may name a date it proposes (「11월 30일로 잡을까요?」).
+_ASK_HEAD = "확인이 필요한 날짜(자료에 없어 [날짜]로 두었습니다. 언제로 할지 정해 주세요)"
+#: Where a deadline the law sets (worked out by code) is in place.
+_LEGAL = re.compile(r"신고|법|시행령|제\d{1,3}조|고지\s?기한|통지\s?기한|기한")
+_QUESTION = re.compile(r"\?|까요|할지|정해\s?주세요|\(예\s?[:：]")
+
+
+def _around(line: str) -> str:
+    """The words around a line's first blank, as the question names it."""
+    flat = re.sub(r"[#*|>]+|\s+", " ", line).strip()
+    at = flat.find("[날짜]")
+    return flat[max(0, at - 24): at + 20].strip(" -·,")
+
+
+def _month_end(year: int, month: int) -> dt.date:
+    return dt.date(year + month // 12, month % 12 + 1, 1) - dt.timedelta(days=1)
+
+
+def _relative(material: str, today: dt.date | None) -> set[dt.date]:
+    """Ends the request names relative to today (「다음 달 말」「이번 달 말」「연말」)."""
+    if today is None:
+        return set()
+    out = set()
+    if re.search(r"다음\s?달\s?말|내달\s?말|익월\s?말", material):
+        out.add(_month_end(today.year + (today.month == 12), today.month % 12 + 1))
+    if re.search(r"이번\s?달\s?말|월말", material):
+        out.add(_month_end(today.year, today.month))
+    if "연말" in material:
+        out.add(dt.date(today.year, 12, 31))
+    return out
+
+
+def _known_dates(texts: list[str], hint: int | None) -> set[dt.date]:
+    out: set[dt.date] = set()
+    for text in texts:
+        out |= {item["date"] for item in text_dates(text, hint)}
+    return out
+
+
+def _month_days(texts: list[str]) -> set[tuple[int, int]]:
+    """Month-day pairs the texts give, however written (「12. 10.(목)」「12월 10일」「12/10」)."""
+    out: set[tuple[int, int]] = set()
+    for text in texts:
+        for rx in _MONTH_DAY:
+            out |= {(int(m.group(1)), int(m.group(2))) for m in rx.finditer(text)}
+        for m in _DATE_FULL.finditer(text):
+            out.add((int(m.group(2)), int(m.group(3))))
+    return out
+
+
+def schedule(text: str, hint: int | None) -> dict[str, str]:
+    """The schedule a notice states: each step's first date, read from the words on its line."""
+    out: dict[str, str] = {}
+    lines = text.split("\n")
+    for item in text_dates(text, hint):
+        line = lines[item["line"]]
+        for key, rx in _STEP_WORDS:
+            if key not in out and rx.search(line):
+                out[key] = item["date"].isoformat()
+                break
+    return out
+
+
+def post(text: str, args: dict) -> dict:
+    """A date the material does not give becomes 「[날짜]」 with a question for the person
+    (code), a wrong weekday is corrected, and the schedule the notice states is checked for
+    order (listed)."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    material = "\n".join([str(args.get("material") or ""), str(args.get("request") or "")])
+    computed = [str(c) for c in args.get("computed") or []]
+    today = _parse(args.get("today"))
+    years = [d.year for d in _known_dates([material], today.year if today else None)]
+    hint = max(set(years), key=years.count) if years else (today.year if today else None)
+    known = _known_dates([material], hint) | _relative(material, today)
+    # A date only code worked out (a filing deadline) belongs where the law is discussed; as a
+    # schedule date it is a decision nobody made (eol-2: 「2027. 1. 1.(금): 종료 공지」).
+    worked = _known_dates(computed, hint) - known
+    days = _month_days([material])
+    if not known and not material.strip():
+        return out
+    lines = text.split("\n")
+    for item in sorted(text_dates(text, hint, tuple(known)), key=lambda i: i["line"], reverse=True):
+        line = lines[item["line"]]
+        given = item["date"] in known or (
+            (item["date"].month, item["date"].day) in days and hint is not None
+            and 0 <= item["date"].year - hint <= 1)
+        if given or (item["date"] in worked and _LEGAL.search(line)):
+            real = WEEKDAYS[item["date"].weekday()]
+            if item["weekday"] and item["weekday"] != real:
+                fixed = re.sub(r"\(\s*[월화수목금토일](?:요일)?\s*\)", f"({real})", item["text"], count=1)
+                lines[item["line"]] = line.replace(item["text"], fixed, 1)
+                out["fixed"].append({"kind": "weekday", "text": item["text"], "why": f"{real}요일 → 고침"})
+            continue
+        if _QUESTION.search(line):
+            continue
+        lines[item["line"]] = line.replace(item["text"], "[날짜]", 1)
+        out["fixed"].append({"kind": "date", "text": item["text"], "why": "자료에 없는 날짜 → [날짜]"})
+    text = "\n".join(lines)
+    if _ASK_HEAD not in text:
+        # Every blank the notice holds (this pass's and a rewrite's), asked once at the end.
+        blanks = [_around(line) for line in text.split("\n")
+                  if "[날짜]" in line and not _QUESTION.search(line)]
+        if blanks:
+            text = text.rstrip() + f"\n\n{_ASK_HEAD}:\n" + "\n".join(f"- {w}" for w in blanks)
+    stated = schedule(text, hint)
+    if len(stated) >= 2:
+        for finding in check(stated)["findings"]:
+            if finding["type"] in ("order", "same_day", "no_export_window", "export_before_end"):
+                out["flags"].append({"kind": finding["type"], "text": finding["text"], "why": finding["why"]})
+    for line in text.split("\n"):
+        for match in _RELATIVE.finditer(line):
+            out["flags"].append({"kind": "relative_date", "text": match.group(0),
+                                 "why": "종료 안내의 날짜는 정확한 날짜(요일)로 씁니다."})
+    out["text"] = text
+    return out
 
 
 def main(argv: list[str]) -> int:

@@ -547,6 +547,7 @@ async def _resolve_skills(
     agent: Agent | None,
     activated_skill_ids: list[str] | None,
     available_tool_names: set[str],
+    material_given: bool = False,
 ) -> list[tuple[Skill, dict]]:
     ids = list(activated_skill_ids or [])
     if len(ids) > MAX_ACTIVE_SKILLS:
@@ -587,19 +588,61 @@ async def _resolve_skills(
             raise WorkspaceContextError("skill_not_allowed_by_agent")
         metadata = starter.runtime_metadata(skill)
         missing = sorted(set(metadata["required_tools"]) - available_tool_names)
-        if missing:
+        if missing and set(missing) <= SEARCH_TOOLS:
+            # Search declined for the turn (「웹 검색 없이」, the toggle off) or a material pack
+            # to keep to: the skill works from what the person gave. Only research with nothing
+            # given and no search backend at all is refused.
+            if not material_given and not await _search_configured():
+                raise WorkspaceContextError("skill_search_unavailable")
+            metadata = {**metadata, "material_only": True}
+        elif missing:
             raise WorkspaceContextError(f"skill_tools_unavailable:{','.join(missing)}")
         resolved.append((skill, metadata))
     return resolved
 
 
+#: Tools a research skill reads the web with; without them it keeps to the given material.
+SEARCH_TOOLS = frozenset({"web_search", "fetch_url"})
+
+#: Said beside a research skill whose search is off this turn.
+MATERIAL_ONLY_NOTE = (
+    "Web search is off for this turn (declined, or the person gave the material to keep to): "
+    "work from the material in this conversation only, and do not say you searched. Say in "
+    "one line that the answer uses only the given material (「주신 자료만으로 정리했습니다」); a "
+    "fact the material does not give is written 「출처 미확인」 or left as a bracket blank."
+)
+
+
+async def _search_configured() -> bool:
+    from app.services import settings_store
+
+    try:
+        backends = await settings_store.tools_config()
+    except Exception:  # noqa: BLE001 — unknown counts as unavailable
+        return False
+    return bool(backends.search and backends.fetch)
+
+
+def gives_material(question: str, attachment_ids: list[str] | None) -> bool:
+    """Whether the turn hands over material to work from: files, or a pack pasted under the
+    request."""
+    from app.services.context import pasted_material
+
+    if attachment_ids:
+        return True
+    head, gap, rest = (question or "").partition("\n\n")
+    return bool(pasted_material(question or "")) or (bool(gap) and len(rest.strip()) >= 120)
+
+
 def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
     blocks: list[ContextBlock] = []
-    for skill, _ in resolved:
+    for skill, metadata in resolved:
         head = f"# 활성 스킬 — {skill.name}"
         if skill.when_to_use.strip():
             head += f"\n적용 시점: {skill.when_to_use.strip()}"
         body = skill.body.strip() or skill.description.strip()
+        if metadata.get("material_only"):
+            body = f"{body}\n\n{MATERIAL_ONLY_NOTE}"
         blocks.append(
             ContextBlock(
                 source=f"skill:{skill.id}",
@@ -832,6 +875,7 @@ async def assemble(
         agent,
         activated_skill_ids,
         available_tool_names or set(),
+        material_given=gives_material(question or focus, attachment_ids),
     )
     starting_point = await _resolve_starting_template(db, user, starting_template_id)
 

@@ -1778,7 +1778,7 @@ export type StreamEvent =
       /** True when the model set out to make this rather than the server extracting a long fence; only then does the panel open. */
       deliberate?: boolean
     }
-  | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number }
+  | { type: 'usage'; inputTokens: number; outputTokens: number; credits: number; [counter: string]: number | string }
   | { type: 'error'; message: string; code?: string; reason?: string }
   | ({ type: 'privacy_route' } & PrivacyRouting)
   | { type: 'privacy_route'; action: 'mask_external'; source: 'tool_output'; count: number }

@@ -260,3 +260,15 @@ async def test_knowledge_no_passages_preserves_no_operand_evidence(monkeypatch):
                                 [CALCULATE, read], strict_local=True)
     assert ctx.tool_calls == {"search_knowledge": 1}
     assert "확정할 수 없습니다" in text
+
+
+@pytest.mark.asyncio
+async def test_a_skill_lookup_is_not_a_read_that_can_end_the_turn(monkeypatch):
+    # A market-sizing turn: the model asks for the skill already on and gets 「없습니다」.
+    lookups = []
+    ctx, seen, text, _ = await _run(monkeypatch, [
+        [_call("calculate", {"expression": "7+9"})], "16",
+    ], [CALCULATE, _read(lookups, name="use_skill",
+                         result=ToolResult(content="없습니다", failed=True))])
+    assert seen[0]["tools"] == ["calculate"]
+    assert lookups == [] and text == "16"

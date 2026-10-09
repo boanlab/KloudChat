@@ -77,6 +77,15 @@ def records_default() -> bool:
     return os.environ.get("KLOUDCHAT_PIPELINE_STEPS", "1") != "0"
 
 
+def _spent(bundle: Any) -> dict[str, int]:
+    """The bundle's token counters as they stand (`bundle.usage`), numbers only."""
+    usage = getattr(bundle, "usage", None)
+    if not isinstance(usage, dict):
+        return {}
+    return {k: v for k, v in usage.items() if isinstance(v, int) and not isinstance(v, bool)
+            and k != "credits"}
+
+
 def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -95,6 +104,8 @@ class Runner:
         self.witness: runs.Witness = recorder or runs.Witness()
         #: The attempt each stage's record carries (a rerun counts on from its parent's).
         self.attempts: dict[str, int] = {}
+        #: The bundle's token counters when the running stage began (`StepRecord.tokens`).
+        self._spent_before: dict[str, int] = {}
 
     async def run(self, bundle: Any, ctx: Context | None = None, *,
                   start: str | None = None) -> AsyncIterator[dict[str, Any]]:
@@ -123,6 +134,7 @@ class Runner:
                     yield record.wire()
                 continue
             before = {f: _fingerprint(_get(bundle, f)) for f in fields}
+            self._spent_before = _spent(bundle)
             began = time.monotonic()
             record = self._record(stage, "done")
             record.started_at = _now()
@@ -192,6 +204,10 @@ class Runner:
     def _finish(self, record: StepRecord, began: float, stage: Stage, bundle: Any) -> None:
         record.ms = int((time.monotonic() - began) * 1000)
         record.finished_at = _now()
+        # What this stage spent: the counters' growth while it ran.
+        earlier = getattr(self, "_spent_before", {})
+        record.tokens = {k: v - earlier.get(k, 0) for k, v in _spent(bundle).items()
+                         if v - earlier.get(k, 0) > 0}
         if self.witness is not None:
             try:
                 self.witness.after(stage, record, bundle)

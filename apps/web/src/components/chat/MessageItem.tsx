@@ -42,6 +42,7 @@ import { waitingCardMessageId } from '@/lib/stages'
 import { TurnProgress } from './TurnProgress'
 import { copyText } from '@/lib/clipboard'
 import { useT } from '@/lib/useT'
+import { tokenTotals } from '@/lib/usage'
 
 const artifactIcon: Record<ArtifactKind, typeof FileText> = {
   report: FileText,
@@ -808,8 +809,8 @@ function MessageItemInner({
                     ? t('답변 모델 생성 없음')
                     : model?.label ?? message.model} ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
-                {formatTokens(message.usage.inputTokens)} in ·{' '}
-                {formatTokens(message.usage.outputTokens)} out ·{' '}
+                {formatTokens(tokenTotals(message.usage).input)} in ·{' '}
+                {formatTokens(tokenTotals(message.usage).output)} out ·{' '}
                 {toolAnswer ? (
                   <span className="whitespace-nowrap">
                     {t('답변 {n} 크레딧').replace('{n}', message.usage.credits.toLocaleString())}

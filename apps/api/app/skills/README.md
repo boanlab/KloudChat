@@ -38,5 +38,24 @@ worked out (pre-pass blocks, settled figures, tool output). A check that needs a
 judgment ships its prompt as a file in the package with a fixed JSON reply schema; the server
 runs it with the judge model and passes the parsed reply in `computed`.
 
+## Post checks on a chat answer
+
+A skill that writes a chat answer can name scripts the server runs over that answer whenever
+the skill is on the turn (switched on, picked through `use_skill`, or attached by the agent):
+
+| field        | meaning                                                                  |
+|--------------|--------------------------------------------------------------------------|
+| `post_check` | a script under `scripts/`, `<key>/<script>` for another package's, or a list |
+| `post_judge` | `true`: the judge model also quotes statements the material does not give |
+
+Each script exposes `post(text, args) -> {"text", "fixed", "rewrite", "flags"}`; `args` holds
+`request`, `material`, `attached`, `computed` (tool output), `today`, `skills` and `final`.
+The stage `check:skills` (`services/post_checks.py`) runs every script once (`final: false`):
+what code can fix safely comes back fixed in `text`, what needs the writer in `rewrite`. The
+judge's quotes are confirmed by a second reading that must quote the material's own words;
+the writer then rewrites once with only those problems, the scripts run again with
+`final: true` (now fixing by code what is left), and a judged sentence still there word for
+word is taken out. The step records what was fixed, sent back and left.
+
 Every script also has a CLI: `python scripts/<entry>.py '<JSON>'`, the last line of output
 being the result JSON.

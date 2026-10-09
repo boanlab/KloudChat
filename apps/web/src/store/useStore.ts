@@ -91,6 +91,7 @@ import type {
 } from '@/types'
 import { uid } from '@/lib/utils'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
+import { counters } from '@/lib/usage'
 
 /** Store-side translation (no hooks here); only strings that reach the screen. */
 const tr = (text: string) => translate(currentLang(), text)
@@ -3407,7 +3408,9 @@ async function streamTurn(
           settled = true
           patch((m) => ({
             ...m,
+            // Planner's and reviewers' counters too; the line under the answer adds them up.
             usage: {
+              ...counters(event),
               inputTokens: event.inputTokens,
               outputTokens: event.outputTokens,
               credits: event.credits,

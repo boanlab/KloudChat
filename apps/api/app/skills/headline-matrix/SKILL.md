@@ -52,4 +52,4 @@ Never write character counts yourself; copy them from the script.
 - [ ] No number, name, rank, deadline or claim absent from the material.
 
 ---
-출처: realkimbarrett/advertising-skills `skills/copy-chief/headline-matrix` (README·front matter에 MIT 표기, LICENSE 파일 없음), commit 45f4a4a1dabe24113193369b55b929b1de4ff04a, https://github.com/realkimbarrett/advertising-skills. 7개 각도와 25개 기본값을 따르고, 칸 나누기·길이·중복 검사와 사실 근거 규칙을 더했다.
+출처: realkimbarrett/advertising-skills `skills/copy-chief/headline-matrix` (README·front matter 기준 MIT, LICENSE 파일 없음), commit 45f4a4a1dabe24113193369b55b929b1de4ff04a, https://github.com/realkimbarrett/advertising-skills. 7개 각도와 25개 기본값을 따르고, 칸 나누기·길이·중복 검사와 사실 근거 규칙을 더했다.

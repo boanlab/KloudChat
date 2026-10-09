@@ -3,9 +3,11 @@ name: 경쟁 대응 카드
 description: 영업 담당자가 통화·미팅 중에 바로 보는 경쟁사 한 곳 대응 카드(배틀카드)를 만듭니다. 한 줄 포지셔닝, 출처 있는 비교표, 우리가 이기는 곳·지는 곳, 반론 대응, 물어볼 질문, 수주·실주 패턴. 경쟁사 기능·가격은 출처가 없으면 「확인 필요」로 둡니다.
 when_to_use: 「○○ 대비 배틀카드」「경쟁사 대응 자료」「고객이 ○○가 더 싸다고 할 때 뭐라고 해?」, 영업 교육·제안 준비. 여러 경쟁사 구도 분석은 「경쟁사 분석」. 별칭 competitive-battlecard.
 kinds: [chat]
-required_tools: [run_skill_script]
+required_tools: [run_skill_script, web_search, fetch_url]
 version: 0.1.0
 status: draft
+post_check: source-check/post
+post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 ---
 Make a Korean battlecard against ONE competitor that a 영업 담당자 can read in 30 seconds and defend in front of a customer. A wrong claim in front of a customer costs more than a missing one, so everything is sourced or marked.
 

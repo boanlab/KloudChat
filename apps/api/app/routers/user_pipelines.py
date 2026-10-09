@@ -24,13 +24,14 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi import Request as HttpRequest
 from fastapi.responses import StreamingResponse
 from pydantic import Field
 from sqlmodel import col, select
 
-from app.core.deps import AdminUser, CurrentUser, DbSession
+from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
-from app.models.user import User, utcnow
+from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Agent, UserPipeline, Visibility
 from app.pipeline import compose
 from app.pipeline import runs as pipeline_runs
@@ -98,11 +99,15 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
                   else agent.system_prompt)
         template = design_templates.get(agent.render_template_id) \
             if agent.render_template_id else None
+        # A sealed copy runs with its original's tools too.
+        own = origin if agent.sealed and origin is not None else agent
         out[agent.id] = compose.AgentInfo(
             id=agent.id, name=agent.name, output=_output(agent),
             doc_format=agent.doc_format or "", template_id=agent.render_template_id or "",
             catalog_key=key, system_prompt=prompt or "", pipeline_id=agent.pipeline_id or "",
             enabled=agent.enabled,
+            tools=tuple(own.tools) if isinstance(own.tools, list) else None,
+            temperature=own.temperature if isinstance(own.temperature, (int, float)) else None,
             checks=check_skills.attached(
                 agent_key=key or None,
                 template_checks=template.check_skills if template is not None else ()),
@@ -500,7 +505,7 @@ async def admin_list(admin: AdminUser, db: DbSession, review: str = "pending"):
 
 
 async def _reviewed(db: DbSession, admin: User, pipeline_id: str, *, approve: bool,
-                    note: str = "") -> dict[str, Any]:
+                    request: HttpRequest | None, note: str = "") -> dict[str, Any]:
     row = await db.get(UserPipeline, pipeline_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pipeline_not_found")
@@ -511,22 +516,32 @@ async def _reviewed(db: DbSession, admin: User, pipeline_id: str, *, approve: bo
     row.review_note = note.strip()[:400]
     row.reviewed_by, row.reviewed_at = admin.id, utcnow()
     db.add(row)
+    db.add(AuditEvent(
+        actor_id=admin.id, action="pipeline.approve" if approve else "pipeline.reject",
+        target=row.name[:200], detail=row.review_note,
+        event_metadata={"pipelineId": row.id,
+                        "changes": {"review": ["pending", row.review]}},
+        ip=client_ip(request) if request else "",
+        user_agent=request.headers.get("User-Agent", "")[:400] if request else ""))
     await db.commit()
     await db.refresh(row)
     return _out(row, {})
 
 
 @router.post("/admin/user-pipelines/{pipeline_id}/approve")
-async def approve(pipeline_id: str, admin: AdminUser, db: DbSession):
-    return await _reviewed(db, admin, pipeline_id, approve=True)
+async def approve(pipeline_id: str, admin: AdminUser, db: DbSession,
+                  request: HttpRequest = None):  # type: ignore[assignment]
+    return await _reviewed(db, admin, pipeline_id, approve=True, request=request)
 
 
 @router.post("/admin/user-pipelines/{pipeline_id}/reject")
-async def reject(pipeline_id: str, payload: RejectIn, admin: AdminUser, db: DbSession):
+async def reject(pipeline_id: str, payload: RejectIn, admin: AdminUser, db: DbSession,
+                 request: HttpRequest = None):  # type: ignore[assignment]
     if not payload.note.strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="reason_required")
-    return await _reviewed(db, admin, pipeline_id, approve=False, note=payload.note)
+    return await _reviewed(db, admin, pipeline_id, approve=False, request=request,
+                           note=payload.note)
 
 
 # ── running ─────────────────────────────────────────────────────────────
@@ -735,9 +750,10 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
         elif not saved.get("messageId"):
             yield _sse(sessions._error_event("흐름이 문서나 답을 남기지 못했습니다.",
                                              code="empty_pipeline"))
-        usage = {"inputTokens": work.usage.get("inputTokens", 0),
-                 "outputTokens": work.usage.get("outputTokens", 0)}
-        yield _sse({"type": "usage", **usage, "credits": int(saved.get("credits") or 0)})
+        # Every counter, planner's and reviewer's included: the line under the answer adds
+        # them up (`web/src/lib/usage.ts`).
+        yield _sse({"type": "usage", **compose.usage_counts(work.usage),
+                    "credits": int(saved.get("credits") or 0)})
         yield _sse({"type": "done", **({"messageId": saved["messageId"]}
                                        if saved.get("messageId") and chat else {})})
     finally:
@@ -779,9 +795,7 @@ async def _settle_wait(work: Bundle, recorder: pipeline_runs.Recorder, waiting, 
             session.updated_at = utcnow()
             db.add(session)
             message = Message(session_id=session_id, role=Role.assistant, content=said,
-                              usage={"inputTokens": usage.get("inputTokens", 0),
-                                     "outputTokens": usage.get("outputTokens", 0),
-                                     "credits": credits},
+                              usage={**compose.usage_counts(usage), "credits": credits},
                               model=model["id"],
                               routing={"askedCard": {"ids": [q.get("id") for q in questions],
                                                      "attachments": sorted(
@@ -800,8 +814,7 @@ async def _settle_wait(work: Bundle, recorder: pipeline_runs.Recorder, waiting, 
         yield _sse({"type": "proposal", "plan": plan})
     else:
         yield _sse({"type": "needs", "questions": questions})
-    yield _sse({"type": "usage", "inputTokens": usage.get("inputTokens", 0),
-                "outputTokens": usage.get("outputTokens", 0),
+    yield _sse({"type": "usage", **compose.usage_counts(usage),
                 "credits": int(saved.get("credits") or 0)})
     yield _sse({"type": "done"})
 

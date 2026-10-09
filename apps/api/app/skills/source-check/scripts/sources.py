@@ -10,7 +10,8 @@
 출처로 보는 것: 줄 안의 [n] 인용(아래 출처 목록에 정의돼 있어야 함), URL, 「출처:」「자료:」, 표의 출처·근거 열,
 자료에 있는 숫자. 표시로 보는 것: 「가정」「출처 미확인」「확인 필요」「자료 없음」「[수치]」 같은 빈칸.
 finding 의 kind: unsourced(출처 없는 숫자) · undefined_ref(정의 안 된 [n]) · ref_no_date · ref_no_link ·
-stale(오래된 출처) · generic(근거 없는 일반론: 「경쟁이 치열하다」 등).
+stale(오래된 출처) · generic(근거 없는 일반론: 「경쟁이 치열하다」 등, [n] 인용이 있어도) ·
+cite_mismatch([n]을 단 문장의 수치·핵심어가 자료 속 그 출처의 글에 없음 — material 을 줄 때).
 결과는 목록을 출력하고 마지막 줄에 결과 JSON을 냅니다. 파일은 만들지 않습니다.
 """
 
@@ -49,12 +50,22 @@ GENERIC = re.compile(
     r"|디지털\s?전환이?\s?(?:가속|확산)|주목받고|각광|트렌드(?:가|이다|입니다)|업계\s?선도|선도\s?기업"
     r"|시장\s?(?:지배력|영향력)이\s?(?:크|높|강)|인지도가\s?(?:높|낮)"
 )
+#: Where one clause ends and the next begins (「…성장 중이며 경쟁이 치열하다」); a colon or a
+#: dash introduces the clause's own evidence and does not end it.
+CLAUSE_END = re.compile(r"(?:이며|며|하고|지만|는데|으나|고)\s|[,;]\s|[.!?](?:\s|$)")
+
+
+def _clause(line: str, start: int, end: int) -> str:
+    """The clause of `line` that holds [start, end)."""
+    lo = max((m.end() for m in CLAUSE_END.finditer(line, 0, start)), default=0)
+    after = CLAUSE_END.search(line, end)
+    return line[lo: after.start() if after else len(line)]
 SOURCE_HEADING = re.compile(
     r"^#{1,6}\s*.*(?:출처|참고\s?자료|참고\s?문헌|References|Sources)", re.I
 )
 REF_LINE = re.compile(r"^\s*(?:[-*]\s*)?\[(\d{1,3})\]\s*(.+)$")
 SOURCE_COLUMN = re.compile(r"출처|근거|자료|source", re.I)
-BLOCKING = ("unsourced", "undefined_ref")
+BLOCKING = ("unsourced", "undefined_ref", "cite_mismatch")
 
 
 def _digits(token: str) -> str:
@@ -168,26 +179,32 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                     "placeholder": "「출처 미확인」",
                 }
             )
-        if not tokens and not cited and not marked:
-            generic = GENERIC.search(line)
-            if generic:
-                findings.append(
-                    {
-                        "kind": "generic",
-                        "line": index,
-                        "start": generic.start(),
-                        "end": generic.end(),
-                        "text": generic.group(0),
-                        "excerpt": stripped[:120],
-                        "why": "근거 없는 일반론입니다",
-                        "suggestion": "이 판단을 받치는 수치·사례와 출처를 붙이거나 문장을 지우세요",
-                        "placeholder": "",
-                    }
-                )
+        generic = GENERIC.search(line) if not marked else None
+        # A citation does not make 「경쟁이 치열하다」 a fact; a figure in the same clause does
+        # (「경쟁이 치열하다: 상위 3사 요금이 월 9,900~12,000원」), and the source's own words
+        # are its own.
+        own = bool(generic) and _flat(generic.group(0)) in _flat(material)
+        if generic and not own and not QUANTITY.search(_clause(line, generic.start(), generic.end())):
+            findings.append(
+                {
+                    "kind": "generic",
+                    "line": index,
+                    "start": generic.start(),
+                    "end": generic.end(),
+                    "text": generic.group(0),
+                    "excerpt": stripped[:120],
+                    "why": ("인용이 있어도 수치·사례 없는 일반론입니다" if cited
+                            else "근거 없는 일반론입니다"),
+                    "suggestion": "이 판단을 받치는 수치·사례와 출처를 붙이거나 문장을 지우세요",
+                    "placeholder": "",
+                }
+            )
         for found in re.finditer(r"출처\s*[:：]\s*([^)\]\n|]+)", line):
             years = [int(y) for y in YEAR.findall(found.group(1))]
             if years and today.year - max(years) > max_age:
                 findings.append(_stale(index, found.group(1).strip(), max(years), today, max_age))
+    if material.strip() and options.get("verify_cites", True):
+        findings += cite_mismatches(lines, refs, ref_lines, material)
     for cite in sorted(used, key=int):
         if cite not in refs:
             findings.append(
@@ -246,6 +263,143 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
     return findings
 
 
+def _flat(text: str) -> str:
+    return re.sub(r"\s+", "", text or "")
+
+
+def _bigrams(text: str) -> set[str]:
+    flat = re.sub(r"[^0-9A-Za-z가-힣]", "", text or "").lower()
+    return {flat[i:i + 2] for i in range(len(flat) - 1)}
+
+
+#: A material line that is itself a cited claim (a draft under review), not a source's text.
+_CLAIM_LINE = re.compile(r"\S\s*\[\d{1,3}\]")
+_WORD = re.compile(r"[가-힣]{2,}|[A-Za-z]{3,}")
+#: Words every analysis uses; they say nothing about whether the source holds the claim.
+_COMMON = {"시장", "기업", "고객", "자료", "출처", "기준", "규모", "경우", "있다", "있습", "있으", "없다",
+           "한다", "합니", "된다", "됩니", "이다", "입니", "대한", "통해", "위해", "따라", "the", "and"}
+
+
+def source_text(ref: str, material: str) -> str:
+    """The material lines that are the source `ref` names: those sharing its name's words."""
+    want = _bigrams(re.sub(r"https?://\S+|\d{4}[-.]\d{1,2}(?:[-.]\d{1,2})?", "", ref))
+    if len(want) < 2:
+        return ""
+    picked = []
+    for line in (material or "").split("\n"):
+        if not line.strip() or _CLAIM_LINE.search(line):
+            continue
+        shared = len(want & _bigrams(line))
+        if shared >= 3 or (shared >= 2 and shared >= 0.5 * len(want)):
+            picked.append(line)
+    return "\n".join(picked)
+
+
+_SCALE = {"조": 1e12, "억": 1e8, "천만": 1e7, "백만": 1e6, "만": 1e4, "천": 1e3}
+_AMOUNT = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s?(조|억|천만|백만|만|천)?")
+#: Where the claim a citation closes begins: the last clause break before it.
+_CLAUSE_BREAK = re.compile(r".*(?:[.!?。;:：—–]\s|^\s*[-*•]\s|\|)")
+
+
+def _values(text: str) -> set[float]:
+    """Every amount in `text` as a number, 「1.2만」 and 「12,000」 alike."""
+    out = set()
+    for m in _AMOUNT.finditer(text or ""):
+        try:
+            value = float(m.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        out.add(round(value * _SCALE.get(m.group(2) or "", 1), 6))
+        out.add(round(value, 6))
+    return out
+
+
+def _derived(values: set[float]) -> set[float]:
+    """What simple arithmetic on the source's own values gives: sums, differences, ratios and
+    changes in percent (「171억원은 312억원의 54.8%」 is the source's, worked out)."""
+    base = sorted(v for v in values if v)[:60]
+    out = set(values)
+    for a in base:
+        for b in base:
+            # Sums and differences of small counts would make any small number derivable.
+            if a >= 100 and b >= 100:
+                out.update({round(a + b, 6), round(abs(a - b), 6)})
+            # A price with 10% VAT added or taken off.
+            out.update({round(a * 1.1, 6), round(a / 1.1, 6)})
+            for ratio in (a / b * 100, (a - b) / b * 100):
+                out.update({round(ratio, 1), round(abs(ratio), 1), round(ratio), round(abs(ratio))})
+    return out
+
+
+OWN_LINE = re.compile(r"자사|우리\)|\(우리|내부\s?자료|사용자\s?자료")
+OWN_SOURCE = re.compile(r"^\s*\[(?:자사|내부|우리)[^\]\n]{0,20}\]|\(우리\)|^\s*\[사업\s?계획")
+#: A run of citations closing one claim: 「[1][3]」「[1], [3]」.
+CITE_RUN = re.compile(r"\[\d{1,3}\](?:\s?,?\s?\[\d{1,3}\])*")
+#: The writer's own material named as the source of a claim: 「(자사 자료)」.
+OWN_MARK = re.compile(r"\((?:자사|제공|사용자|내부)\s?자료[^)\n]{0,20}\)")
+CLAIM_MARK = re.compile(r"(?P<own>" + OWN_MARK.pattern + r")|" + CITE_RUN.pattern)
+
+
+def cite_mismatches(lines: list[str], refs: dict, ref_lines: set[int], material: str) -> list[dict]:
+    """Cited claims the cited sources (their text in the material) do not hold: a figure that
+    no arithmetic on the material gives, or a claim none of whose words the sources use
+    (「공장장·경영진·IT 다중 승인 [2]」 against an interview that says none of it). The claim is
+    the clause the citations close."""
+    out = []
+    sources = {n: source_text(ref["text"], material) for n, ref in refs.items()}
+    pool = _values(material)
+    # The writer's own figures (자사 자료) may be set against a cited source's.
+    own = _values("\n".join(line for line in (material or "").split("\n") if OWN_LINE.search(line)))
+    # What the writer's own material says of its own product: its 「[자사 자료]」 lines.
+    own_text = "\n".join(line for line in (material or "").split("\n") if OWN_SOURCE.search(line))
+    for index, line in enumerate(lines):
+        if index in ref_lines or line.strip().startswith("#"):
+            continue
+        for match in CLAIM_MARK.finditer(line):
+            numbers_cited = CITE.findall(match.group(0))
+            # 「(자사 자료)」 is a citation of the writer's own material.
+            source = "\n".join([own_text if match.group("own") else "",
+                                *(sources.get(n) or "" for n in numbers_cited)]).strip()
+            head = line[: match.start()]
+            # 「출처 [1]을 붙였습니다」 talks about the citation; it is not a claim.
+            if not source or re.search(r"출처\s?$", head):
+                continue
+            head = OWN_MARK.sub("", CITE.sub("", head))
+            found = _CLAUSE_BREAK.match(head)
+            claim = (head[found.end():] if found else head).strip()[-120:]
+            # An open item (「연동 지원 여부」「확인 필요」) claims nothing.
+            if not claim or re.search(r"여부|확인\s?필요|미확인|자료\s?없음|\?\s*$", claim):
+                continue
+            have = _derived(_values(source) | own) | pool
+            numbers = [m.group(0).strip() for m in QUANTITY.finditer(claim)]
+            missing = [x for x in numbers if not ({round(v, 1) for v in _values(x)} | _values(x)) & have]
+            words = [w for w in _WORD.findall(claim) if w[:2] not in _COMMON]
+            low = source.lower()
+            hits = sum(1 for w in words if (w[:2] if w[0] >= "가" else w.lower()) in low)
+            if missing or (not numbers and len(words) >= 4 and hits < 0.25 * len(words)):
+                label = match.group(0)
+                out.append({
+                    "kind": "cite_mismatch", "line": index, "start": match.start(),
+                    "end": match.end(), "text": label, "excerpt": claim[:120],
+                    "why": (f"인용한 {label}의 자료에 {', '.join(missing[:3])}이(가) 없습니다" if missing
+                            else f"인용한 {label}의 자료에 이 내용이 없습니다"),
+                    "suggestion": "자료에 있는 대로 고치거나, 인용을 빼고 「출처 미확인」으로 표시하세요",
+                    "placeholder": "「출처 미확인」",
+                })
+    return out
+
+
+def fix_cites(text: str, findings: list[dict]) -> str:
+    """Each mismatched [n] replaced by 「출처 미확인」 on its line."""
+    lines = (text or "").split("\n")
+    for f in sorted((f for f in findings if f["kind"] == "cite_mismatch"),
+                    key=lambda f: (f["line"], f["start"]), reverse=True):
+        line = lines[f["line"]]
+        if line[f["start"]:f["end"]] == f["text"]:
+            lines[f["line"]] = line[:f["start"]] + "「출처 미확인」" + line[f["end"]:]
+    return "\n".join(lines)
+
+
 def _stale(line, text, year, today, max_age, label=None) -> dict:
     return {
         "kind": "stale",
@@ -293,6 +447,7 @@ def summary(findings: list[dict]) -> str:
         "ref_no_link": "찾을 수 없는 출처",
         "stale": "오래된 출처",
         "generic": "근거 없는 일반론",
+        "cite_mismatch": "자료에 없는 인용",
     }
     return "출처 점검: " + " · ".join(f"{names.get(k, k)} {v}" for k, v in counts.items())
 

@@ -13,7 +13,7 @@ design = "문서용 명조"
 tools = []
 skills = []
 # Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check"]
+checks = ["gap-check", "grounding-check", "generic-language-killer"]
 temperature = 0.3
 color = "#0f766e"
 starters = [

@@ -335,6 +335,69 @@ def check(text: str, material: str = "", kind: str = "notice", register: str = "
             "material_checked": bool((material or "").strip())}
 
 
+# ── the server's post check on a chat answer (`post_check: check`) ──────
+
+#: Facts a notice must not make up: blanked by code wherever the material lacks them.
+_BLANKED = ("date", "time", "email", "phone", "url", "version")
+_UNIT_AFTER = re.compile(r"\s?(?:%|명|건|개|곳|원|시간|분|초|일|주|개월|년|회|차|대|GB|MB|억|만|천)")
+
+
+def _blank(text: str, fact: dict, placeholder: str) -> str:
+    lines = text.split("\n")
+    line = lines[fact["line"]]
+    if line[fact["start"]:fact["end"]].strip() != fact["text"]:
+        at = line.find(fact["text"])
+        if at < 0:
+            return text
+        fact = {**fact, "start": at, "end": at + len(fact["text"])}
+    lines[fact["line"]] = line[:fact["start"]] + placeholder + line[fact["end"]:]
+    return "\n".join(lines)
+
+
+def post(text: str, args: dict) -> dict:
+    """A date, time, contact, link or version the material lacks becomes its blank (code),
+    a wrong weekday is corrected; a number the material lacks goes to the writer and, on the
+    final pass, becomes 「[수치]」 when it carries a unit."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    material = str(args.get("material") or "")
+    if not material.strip():
+        return out
+    final = bool(args.get("final"))
+    today = str(args.get("today") or "") or None
+    found = _fact_findings(text, material, today)
+    # Right to left on each line, so earlier offsets stay good.
+    for fact in sorted(found, key=lambda f: (f.get("line") or 0, f.get("start") or 0), reverse=True):
+        kind = fact.get("kind")
+        if fact.get("type") == "weekday":
+            real = re.search(r"은 (.)요일", fact["why"])
+            if real and fact.get("weekday"):
+                fixed_text = re.sub(rf"\(\s*{fact['weekday']}(?:요일)?\s*\)", f"({real.group(1)})",
+                                    fact["text"], count=1)
+                text = _blank(text, fact, fixed_text)
+                out["fixed"].append({"kind": "weekday", "text": fact["text"], "why": fact["why"]})
+            continue
+        if fact.get("type") != "unsupported":
+            if fact.get("type") == "relative_date":
+                out["flags"].append({"kind": "relative", "text": fact["text"], "why": fact["why"]})
+            continue
+        if kind in _BLANKED:
+            text = _blank(text, fact, _PLACE[kind])
+            out["fixed"].append({"kind": kind, "text": fact["text"],
+                                 "why": f"자료에 없는 값 → {_PLACE[kind]}"})
+        elif kind == "number":
+            line = text.split("\n")[fact["line"]]
+            if not _UNIT_AFTER.match(line[fact["end"]:fact["end"] + 4]):
+                continue
+            if final:
+                text = _blank(text, fact, "[수치]")
+                out["fixed"].append({"kind": kind, "text": fact["text"], "why": "자료에 없는 수치 → [수치]"})
+            else:
+                out["rewrite"].append({"kind": kind, "text": fact["text"],
+                                       "why": "자료에 없는 수치입니다. 자료의 값으로 바꾸거나 [수치] 빈칸으로 두세요."})
+    out["text"] = text
+    return out
+
+
 def _line(finding: dict) -> str:
     where = f"{finding['line'] + 1}행 " if isinstance(finding.get("line"), int) else ""
     return f"[{finding['severity']}] {where}{finding.get('text', '')} — {finding['why']} → {finding['fix']}"

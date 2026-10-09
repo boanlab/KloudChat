@@ -617,6 +617,226 @@ def run(args: dict) -> dict:
     }
 
 
+# ── the server's post check on a chat answer (`post_check: size`) ───────
+
+_SCALE_WORDS = "조|천억|백억|십억|억|천만|백만|십만|만|천"
+_UNIT_WORDS = r"원|달러|유로|엔|위안|USD|가구|명|곳|개사|개소|개|社|건|%|퍼센트|배"
+#: A value as an answer writes it: 「260만가구」「36만 원」「10%」「120백만달러」「1,350원/달러」.
+_QTY = re.compile(rf"(?<![\d.,])(\d[\d,]*(?:\.\d+)?)\s?({_SCALE_WORDS})?\s?({_UNIT_WORDS})?(?![\d])")
+_OP = re.compile(r"\s(?:×|x|X|\*|÷|/)\s|×|÷")
+_SENSITIVITY = re.compile(r"민감도")
+
+
+_BIG_HEAD = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s?(조|억)\s?$")
+
+
+def _qty(term: str, first: bool = False) -> tuple[Fraction, str, str, str] | None:
+    """The last value in `term` (the first with `first`): (number, scale word, unit, the text
+    as written); a compound 「40억 3,200만 원」 is one value."""
+    found = None
+    candidates = [m for m in _QTY.finditer(term) if m.group(1).replace(",", "").strip(".")]
+    if first and len(candidates) > 1:
+        # 「3년 내 점유율 2%」「고객 1가구 획득 비용 200만원」: a label's count is not the value.
+        with_unit = [m for m in candidates if m.group(2) or m.group(3)]
+        pool = with_unit or candidates
+        pool = [m for m in pool if m.group(1) != "1"] or pool
+        found = pool[0]
+    elif candidates:
+        found = candidates[0] if first else candidates[-1]
+    if found is None:
+        return None
+    number = Fraction(found.group(1).replace(",", ""))
+    scale = found.group(2) or ""
+    unit = found.group(3) or ""
+    value = number * _KO_SCALES.get(scale, 1)
+    raw = found.group(0)
+    head = _BIG_HEAD.search(term[: found.start()])
+    if head and scale and _KO_SCALES[head.group(2)] > _KO_SCALES.get(scale, 1):
+        value += Fraction(head.group(1).replace(",", "")) * _KO_SCALES[head.group(2)]
+        raw = term[head.start(): found.end()]
+        scale = head.group(2)
+    if unit in ("%", "퍼센트"):
+        value /= 100
+    return value, scale, unit, raw
+
+
+def _evaluate(expression: str) -> Fraction | None:
+    """`a × b ÷ c` over the values it names (labels around each value are ignored); None for
+    anything else (a sum, a power, a bracketed term)."""
+    # Clauses joined by commas are prose around several calculations.
+    if re.search(r",\s", expression):
+        return None
+    expression = re.sub(r"\([^()\d]*\)", "", expression)
+    if re.search(r"[+²³^]|\(\s*\d|\d\s*\)", expression):
+        return None
+    # 「… ÷ 1억」 writes the result in 억; it is a unit, not a step of the calculation.
+    if re.search(rf"(?:÷|/)\s?(?:1\s?(?:{_SCALE_WORDS})|10{{3,}}|1(?:,000){{1,4}})(?![\d.,])", expression):
+        return None
+    parts = re.split(r"(×|÷|\s[xX*/]\s)", expression)
+    total: Fraction | None = None
+    op = "×"
+    for index, part in enumerate(parts):
+        token = part.strip()
+        if token in ("×", "x", "X", "*"):
+            op = "×"
+            continue
+        if token in ("÷", "/"):
+            op = "÷"
+            continue
+        # Each term names one value; a term with several (「평균 7,000원으로 잡고, 평균 50명」)
+        # is prose around a calculation, not a calculation to check.
+        if len([m for m in _QTY.finditer(part) if m.group(1).strip(".,") not in ("1",)]) > 1:
+            return None
+        found = _qty(part, first=index > 0)
+        # A bare number leaves the unit to the reader (「2,426.112 × 2% = 48.52억원」).
+        if found is None or not (found[1] or found[2]):
+            return None
+        value = found[0]
+        if total is None:
+            total = value
+        elif op == "÷":
+            if value == 0:
+                return None
+            total /= value
+        else:
+            total *= value
+    return total
+
+
+def _written(value: Fraction, like: tuple[Fraction, str, str, str]) -> str:
+    """`value` written the way the stated result was: its scale word when the value reaches it,
+    else the next smaller one, and its unit."""
+    _, scale, unit, raw = like
+    number = value * 100 if unit in ("%", "퍼센트") else value
+    order = [w for w in ("조", "억", "만", "") if not scale or _KO_SCALES[w] <= _KO_SCALES.get(scale, 1)]
+    if scale:
+        word = next((w for w in order if abs(number) >= _KO_SCALES[w]), "")
+    else:
+        word = ""
+    if word == "억" and re.search(r"억\s?\d", raw) and number % 10**8:
+        # Written as the stated result was: 「40억 3,200만 원」.
+        rest = (number % 10**8) / 10**4
+        gap = " " if " " in raw else ""
+        return f"{fmt(number // 10**8, 0)}억{gap}{fmt(rest, 0)}만{gap}{unit}"
+    shown = fmt(number / _KO_SCALES.get(word, 1), 1)
+    gap = " " if re.search(r"\d\s(?:" + _SCALE_WORDS + "|" + _UNIT_WORDS + ")", raw) else ""
+    return f"{shown}{gap}{word}{gap if word and unit and ' ' in raw.split(word)[-1][:1] else ''}{unit}"
+
+
+def _slipped(value: Fraction, stated: Fraction) -> bool:
+    """A result a thousandfold or more off is a unit written apart, not a wrong product."""
+    if not value or not stated:
+        return False
+    ratio = abs(value / stated)
+    return any(abs(ratio - Fraction(10) ** k) <= Fraction(10) ** k / 1000 or
+               abs(ratio - Fraction(1, 10 ** k)) <= Fraction(1, 10 ** k) / 1000 for k in range(3, 13))
+
+
+def _swap(line: str, old: str, new: str) -> str:
+    return re.sub(rf"(?<![\d.,]){re.escape(old)}(?![\d])", lambda _m: new, line)
+
+
+def post(text: str, args: dict) -> dict:
+    """Every written calculation in the answer worked again from the values it states — an
+    equation 「A × B = C」 and a table row whose basis says 「3억원 ÷ 200만원」 — and a wrong
+    result replaced, with the value carried to where the answer repeats it (code)."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    lines = (text or "").split("\n")
+    swaps: dict[str, str] = {}
+    done: set[int] = set()
+    sensitivity: set[int] = set()
+    inside = False
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            inside = bool(_SENSITIVITY.search(line))
+        elif inside:
+            sensitivity.add(i)
+
+    def fix(i: int, stated: tuple, value: Fraction, why: str) -> None:
+        new = _written(value, stated)
+        if new == stated[3].strip():
+            return
+        lines[i] = lines[i].replace(stated[3], new, 1)
+        # Only a value written with its unit or scale is carried; a bare 「5」 is anything.
+        if (stated[1] or stated[2]) and len(re.sub(r"\D", "", stated[3])) >= 1:
+            swaps[stated[3].strip()] = new
+        done.add(i)
+        out["fixed"].append({"kind": "calculation", "text": stated[3].strip(), "why": f"{why} → {new}"})
+
+    # A table row whose basis is a calculation: the value cell (the 「값」 column) is what it gives.
+    header: list[str] = []
+    for i, line in enumerate(lines):
+        if not line.lstrip().startswith("|"):
+            header = []
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not header:
+            header = cells
+            continue
+        if i in sensitivity or "=" in line or re.fullmatch(r"[\s|:\-]+", line):
+            continue
+        at = next((k for k, h in enumerate(header) if re.fullmatch(r"값|수치|value|금액", h, re.I)), None)
+        basis = next((c for c in cells if _OP.search(c) and len(_QTY.findall(c)) >= 2), None)
+        if at is None or at >= len(cells) or basis is None or basis == cells[at]:
+            continue
+        value = _evaluate(re.sub(r"\([^)]*\)", "", basis))
+        stated = _qty(cells[at])
+        if value is None or stated is None or stated[0] == 0:
+            continue
+        if abs(value - stated[0]) / abs(stated[0]) > Fraction(1, 100) and not _slipped(value, stated[0]):
+            fix(i, stated, value, f"{basis[:40]} 다시 계산")
+    for i, line in enumerate(lines):
+        if i in sensitivity:
+            continue
+        for old, new in swaps.items():
+            if i not in done:
+                line = _swap(line, old, new)
+        lines[i] = line
+        segments = line.split("=")
+        # Only 「expr = result」 or 「label = expr = result」 from the line's start: a result
+        # further along a chained line is prose that mixes calculations.
+        first = 2 if len(segments) > 2 and not re.search(r"\d", segments[0]) else 1
+        for k in range(first, min(first + 1, len(segments))):
+            expression, result = segments[k - 1], segments[k]
+            if not _OP.search(expression):
+                continue
+            value = _evaluate(expression)
+            stated = _qty(re.split(r"[(（]|,\s|\s[×x÷*/]\s|×|÷", result)[0], first=True)
+            if value is None or stated is None or stated[0] == 0:
+                continue
+            if _slipped(value, stated[0]):
+                out["flags"].append({"kind": "unit", "text": stated[3].strip(),
+                                     "why": f"계산 결과는 {fmt(value, 2)}입니다. 단위를 확인하세요."})
+                continue
+            if abs(value - stated[0]) / abs(stated[0]) > Fraction(1, 100):
+                new = _written(value, stated)
+                if new == stated[3].strip():
+                    continue
+                segments[k] = result.replace(stated[3], new, 1)
+                lines[i] = "=".join(segments)
+                if stated[1] or stated[2]:
+                    swaps[stated[3].strip()] = new
+                done.add(i)
+                out["fixed"].append({"kind": "calculation", "text": stated[3].strip(),
+                                     "why": f"식을 다시 계산 → {new}"})
+    if swaps:
+        for i, line in enumerate(lines):
+            if i in done or i in sensitivity:
+                continue
+            for old, new in swaps.items():
+                line = _swap(line, old, new)
+            lines[i] = line
+        note = "※ 계산을 다시 해 고쳤습니다: " + ", ".join(
+            f"{old} → {new}" for old, new in swaps.items())
+        if sensitivity:
+            note += ". 민감도 표는 고친 값으로 다시 계산해야 합니다."
+            out["flags"].append({"kind": "sensitivity", "text": "민감도", "why": "고친 값으로 다시 계산해야 함"})
+        lines.append("")
+        lines.append(note)
+    out["text"] = "\n".join(lines)
+    return out
+
+
 def main(argv: list[str]) -> int:
     try:
         options = json.loads(argv[1]) if len(argv) > 1 else {}

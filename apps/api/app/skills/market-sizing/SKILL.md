@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+post_check: [size, source-check/post]
+post_judge: "where a figure or rate comes from (an exchange rate, an 「industry norm」, a date it is as of) and what a cited source [n] says"
 ---
 Estimate market size in Korean with every number traceable. Do not compute in your head; the script computes, you copy.
 

@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+post_check: notes
+post_judge: "procedures and screens (where to click, what to set), guarantees (「누락 없이」「추가 설정 없음」), example values, endpoints and compatibility claims"
 ---
 Turn a change list into release notes a user reads in a minute: what they get, what got fixed, and what they must do. Every line comes from an input item; nothing is added.
 

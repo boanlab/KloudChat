@@ -528,7 +528,14 @@ export interface Message {
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
   /** `estimated` on a stopped turn: the server counts tokens itself since the proxy's final chunk never arrives. */
-  usage?: { inputTokens: number; outputTokens: number; credits: number; estimated?: boolean }
+  /** Also `outlineInputTokens`, `model:<id>:inputTokens` … when a planner or reviewer ran (`lib/usage.ts`). */
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    credits: number
+    estimated?: boolean
+    [counter: string]: number | boolean | undefined
+  }
   liked?: 'up' | 'down' | null
   /** The 시작점 this turn began from. */
   startedFrom?: { templateId: string; title: string }

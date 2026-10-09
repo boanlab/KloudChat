@@ -327,6 +327,152 @@ def report(original: str, edited: str, protect: list[str] | None = None, allow: 
             "pass": not kept["lost"] and not kept["added"]}
 
 
+# ── the server's post check (`post_check: preserve`) ────────────────────
+
+#: Headings the edited text stands under; the change log and notes after it are not checked.
+EDITED_HEADINGS = ("수정본", "고친 글", "교정본", "다듬은 글", "윤문본", "수정안", "최종본", "교정 결과",
+                   "수정한 글", "고친 문장", "다듬은 문장")
+_HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s+|\*\*|\[|【)")
+_SECTION_END = re.compile(r"^\s{0,3}(?:#{1,6}\s+|(?:---|\*\*\*)\s*$|\*\*[^*\n]{1,30}\*\*\s*:?\s*$)")
+#: An estimate or a plan the original hedged: 「…때문인 것으로 보여진다」 must not become
+#: 「…때문이다」.
+HEDGES = {
+    "것으로 보인다": re.compile(r"것\s?으로\s?(?:보|판단|예상|추정|생각)|(?:로|으로)\s?보(?:인|여|입|임)"),
+    "예정": re.compile(r"예정"),
+    "추정·가능성": re.compile(r"추정|가능성|듯(?:하|합|싶)|것\s?같"),
+}
+#: Kinds a new value of is a new claim (a re-worded person or quote is the change log's job).
+_CLAIM_KINDS = ("date", "time", "number", "phone", "email", "url", "name", "org")
+
+
+def section(text: str, names: tuple[str, ...] = EDITED_HEADINGS) -> tuple[int, int] | None:
+    """Line range [lo, hi) of the body under the first heading that names one of `names`."""
+    lines = (text or "").split("\n")
+    widest = max(len(n) for n in names) + 12
+    for i, line in enumerate(lines):
+        bare = re.sub(r"[#*\[\]【】:：()\s]", "", line)
+        if not bare or len(bare) > widest:
+            continue
+        if not any(bare.startswith(n.replace(" ", "")) for n in names):
+            continue
+        if not (_HEADING.match(line) or len(line.strip()) <= widest):
+            continue
+        lo = hi = i + 1
+        while hi < len(lines):
+            if hi > lo and _SECTION_END.match(lines[hi]) and any(x.strip() for x in lines[lo:hi]):
+                break
+            hi += 1
+        return lo, hi
+    return None
+
+
+def original_text(args: dict) -> tuple[str, bool]:
+    """The text the person gave to edit, and whether it could be told from the instruction."""
+    attached = str(args.get("attached") or "")
+    if attached.strip():
+        return attached, True
+    request = str(args.get("request") or "")
+    fenced = re.search(r"```[^\n]{0,20}\n([\s\S]{20,}?)\n```", request)
+    if fenced:
+        return fenced.group(1), True
+    blocks = [b for b in re.split(r"\n\s*\n", request.strip()) if b.strip()]
+    if len(blocks) > 1 and len(blocks[0]) < 400:
+        return "\n\n".join(blocks[1:]), True
+    quoted = re.search(r"[「“]([^」”]{40,})[」”]", request)
+    if quoted:
+        return quoted.group(1), True
+    after = re.search(r"[:：]\s*\n?([\s\S]{40,})$", request)
+    if after and len(after.group(1)) > len(request) / 2:
+        return after.group(1), True
+    return request, False
+
+
+def _replace_once(text: str, old: str, new: str) -> str:
+    if old and old in text:
+        return text.replace(old, new, 1)
+    # Line breaks and runs of spaces in the edited text need not match the row's.
+    pattern = r"\s+".join(re.escape(part) for part in old.split())
+    return re.sub(pattern, lambda _m: new, text, count=1) if pattern else text
+
+
+def post(text: str, args: dict) -> dict:
+    """The edited section against the original: a value only re-written goes back to how the
+    original wrote it (code); a new value, a lost one and an added sentence go to the writer;
+    on the final pass a new value still there is taken out with the edit that brought it."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    span = section(text)
+    if span is None:
+        return out
+    lo, hi = span
+    lines = text.split("\n")
+    edited = "\n".join(line for line in lines[lo:hi] if not line.strip().startswith("```"))
+    original, separated = original_text(args)
+    if not edited.strip() or not original.strip():
+        return out
+    final = bool(args.get("final"))
+    kept = compare(original, edited)
+    allowed = {t["key"] for t in protected(original)} | {
+        t["key"] for t in protected(str(args.get("request") or ""))}
+    body = "\n".join(lines[lo:hi])
+    for row in kept["format_changed"]:
+        if row.get("now") and row.get("raw") and row["now"] in body:
+            body = body.replace(row["now"], row["raw"], 1)
+            out["fixed"].append({"kind": "format", "text": row["now"],
+                                 "why": f"원문 표기 「{row['raw']}」로 되돌림"})
+    new = []
+    for token in protected(edited):
+        if token["kind"] in _CLAIM_KINDS and token["key"] not in allowed and token["raw"] not in new:
+            new.append(token["raw"])
+    edits = changes(original, edited)
+    if final:
+        for raw in new:
+            row = next((c for c in edits if raw in c["after"] and c["type"] in ("insert", "edit")), None)
+            if row is not None and row["type"] == "insert":
+                body = _replace_once(body, row["after"], "")
+                how = "보탠 말을 뺌"
+            elif row is not None and row["before"] and body.count(row["after"]) == 1:
+                body = _replace_once(body, row["after"], row["before"])
+                how = f"원문 「{row['before'][:30]}」로 되돌림"
+            else:
+                body = body.replace(raw, "[확인 필요]", 1)
+                how = "빈칸으로 둠"
+            out["fixed"].append({"kind": "added", "text": raw, "why": f"원문에 없는 값 — {how}"})
+        body = re.sub(r"(?<=\S) {2,}", " ", body).replace(" ,", ",").replace(" .", ".")
+        # A reverted row can meet the word the diff kept beside it: 「전분기 대비 대비」.
+        body = re.sub(r"(?<!\S)(\S{1,20}) \1(?!\S)",
+                      lambda m: m.group(0) if m.group(0) in original else m.group(1), body)
+    else:
+        out["rewrite"] += [{"kind": "added", "text": raw,
+                            "why": "원문에 없는 값입니다. 빼고 원문의 표현으로 되돌리세요."} for raw in new]
+    if separated:
+        for row in kept["lost"]:
+            item = {"kind": "lost", "text": row["raw"],
+                    "why": "원문의 값이 수정본에서 사라지거나 바뀌었습니다. 원문대로 되돌리세요."}
+            (out["flags"] if final else out["rewrite"]).append(item)
+    for name, rx in HEDGES.items():
+        if len(rx.findall(edited)) < len(rx.findall(original)):
+            item = {"kind": "hedge", "text": name,
+                    "why": "원문의 추정·계획 표현을 단정으로 바꿨습니다. 원문처럼 두세요."}
+            (out["flags"] if final else out["rewrite"]).append(item)
+    for row in edits:
+        grown = len(row["after"].split()) - len(row["before"].split())
+        # A sentence of its own the original does not have: 「…있습니다. 그 경우 미리 말씀드리겠습니다.」
+        new_sentence = grown >= 3 and len(re.findall(r"[.!?](?:\s|$)", row["after"] + " ")) > \
+            len(re.findall(r"[.!?](?:\s|$)", row["before"] + " ")) and not row["before"].endswith(
+                ("며", "고", "는데", "으나", "지만"))
+        if row["type"] in ("insert", "edit") and (grown >= 6 or new_sentence):
+            item = {"kind": "inserted", "text": row["after"][:160],
+                    "why": "원문에 없는 내용(새 주장)을 보탰습니다. 빼세요."}
+            (out["flags"] if final else out["rewrite"]).append(item)
+        elif set(row["risk"]) & {"negation", "modality", "scope"} and "value" not in row["risk"]:
+            out["flags"].append({"kind": "risky", "text": f"{row['before']}→{row['after']}"[:160],
+                                 "why": "뜻이 바뀔 수 있는 수정(" + "·".join(
+                                     RISK_WORDS[r] for r in row["risk"]) + ")"})
+    lines[lo:hi] = body.split("\n")
+    out["text"] = "\n".join(lines)
+    return out
+
+
 def main(argv: list[str]) -> int:
     try:
         options = json.loads(argv[1]) if len(argv) > 1 else {}

@@ -763,6 +763,8 @@ async def run_turn(
             and tool.name not in {
                 "calculate", "execute_code",
                 "create_artifact", "create_chart", "share_note",
+                # Instructions, not operands: a failed lookup must not end the turn.
+                "use_skill",
             }
             and (not ctx.allowed or tool.name in ctx.allowed)
         }

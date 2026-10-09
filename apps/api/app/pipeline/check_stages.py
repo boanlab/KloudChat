@@ -10,7 +10,9 @@ computed, blanks the rest, and checks again. Here each is a stage a pipeline fil
 - `check:grounding` / `check:grounding-again` — the attached `post` checks over a report's
   sections, before the verify stage and again after its rewrites;
 - `check:answer-grounding` — the same over a chat answer;
-- `check:copy` — a chat answer written with a copy skill, checked as copy (`copy-check`).
+- `check:copy` — a chat answer written with a copy skill, checked as copy (`copy-check`);
+- `check:skills` — the scripts the turn's skills name in `post_check` over a chat answer
+  (`services/post_checks.py`).
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from app.core.config import settings
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context, Wait
-from app.services import check_skills, copy_check, key_figures
+from app.services import check_skills, copy_check, key_figures, post_checks, skill_packages
 
 
 class GapCheck(Base):
@@ -102,10 +104,10 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
     from app.services import report
 
     prepass, settled = bundle.computed.prepass, bundle.computed.settled
-    material = "\n".join([bundle.request.text, bundle.material.given, *bundle.material.document])
+    material = "\n".join([bundle.request.text, bundle.material.given, *bundle.material.grounds])
     computed = [
         *(prepass.blocks if prepass is not None else []), key_figures.block(settled),
-        bundle.computed.values or "",
+        bundle.computed.values or "", *bundle.request.tool_outputs,
         *(report._source_text(row) for row in (bundle.material.sources or [])),
     ]
     options = check_skills.options_for(
@@ -229,6 +231,49 @@ class CopyCheck(Base):
         yield {"type": "step", **step}
 
 
+class SkillChecks(Base):
+    """The scripts the turn's skills name in `post_check`, over the finished answer: fixed by
+    code where safe, the rest rewritten once by the writer, checked again and fixed by code
+    (`services/post_checks.py`)."""
+
+    name = "check:skills"
+    kind = "check"
+    reads = ("request", "material.given", "document.answer")
+    writes = ("document.answer", "document.kept_steps")
+
+    def _keys(self, bundle: Bundle) -> list[str]:
+        req = bundle.request
+        # A check the agent attaches with a `post` entry ran in `check:answer-grounding`.
+        attached = [k for k in req.check_keys or ()
+                    if not ((p := skill_packages.package_for(k)) and p.stage == "post")]
+        return post_checks.on_turn((*req.skill_keys, *attached), req.tool_outputs)
+
+    def skip(self, bundle: Bundle) -> str:
+        return "" if self._keys(bundle) else "no post-checked skill on this turn"
+
+    async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
+        from app.services import report
+
+        req, doc = bundle.request, bundle.document
+        yield {"type": "step", "category": "thinking", "id": "skill_check",
+               "label": "스킬 점검 중", "status": "running"}
+        today = req.today.isoformat() if hasattr(req.today, "isoformat") else str(req.today or "")
+        outcome = await post_checks.run(
+            doc.answer, keys=self._keys(bundle), request=req.text,
+            material="\n".join(x for x in (req.text, bundle.material.given, req.check_material)
+                               if x and x.strip()),
+            attached=req.check_material, computed=list(req.tool_outputs), today=today,
+            complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
+            usage=bundle.usage)
+        doc.answer = outcome.text
+        step = {"category": "thinking", "id": "skill_check", "label": outcome.label,
+                "status": "error" if outcome.left else "done",
+                **({"detail": outcome.detail[:1500]} if outcome.detail else {})}
+        doc.kept_steps = [row for row in doc.kept_steps if row.get("id") != "skill_check"] + [step]
+        yield {"type": "step", **step}
+
+
 for _stage in (GapCheck(), GapCard(), GroundCheck("check:grounding", again=False),
-               GroundCheck("check:grounding-again", again=True), AnswerGrounding(), CopyCheck()):
+               GroundCheck("check:grounding-again", again=True), AnswerGrounding(), CopyCheck(),
+               SkillChecks()):
     registry.register(_stage)

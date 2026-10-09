@@ -441,6 +441,8 @@ const EN: Record<string, string> = {
   '다시 생성': 'Regenerate',
   '이 에이전트는 그 스킬을 허용하지 않습니다. 스킬을 빼고 보내거나 다른 에이전트를 쓰세요.':
     'This agent does not allow that skill. Remove the skill or use another agent.',
+  '이 스킬은 웹 검색으로 조사하는데, 지금은 검색을 쓸 수 없습니다. 조사할 자료를 붙여 넣거나 파일로 올리면 그 자료만으로 정리합니다.':
+    'This skill researches on the web, and search is not available right now. Paste or attach the material to work from and it will use only that.',
   '고른 스킬에 필요한 도구({tool})를 이 모델이나 경로에서 쓸 수 없습니다. 스킬을 빼거나 모델을 바꿔 다시 보내세요.':
     'The selected skill needs a tool ({tool}) this model or route cannot use. Remove the skill or change the model and send again.',
   '내용을 읽지 못함: {error}': 'Could not read the content: {error}',

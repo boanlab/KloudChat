@@ -1261,3 +1261,59 @@ def test_an_installed_copy_passes_the_agents_allowlist():
 
     source = inspect.getsource(workspace_context._resolve_skills)
     assert "origin_id" in source
+
+
+# ── a research skill with search declined keeps to the given material ─────
+
+
+@pytest.mark.asyncio
+async def test_a_search_skill_runs_on_the_material_when_search_is_declined(monkeypatch):
+    from app.services import workspace_context
+
+    research = _skill(catalog_key="company-research",
+                      required_tools=["run_skill_script", "web_search", "fetch_url"])
+    # 「웹 검색 없이」: the turn offers no web_search, fetch is configured.
+    resolved = await _resolve_skills(
+        _SkillDb([research]), _user(), _session(), None, [research.id],
+        {"run_skill_script", "fetch_url"}, material_given=True)
+    assert resolved[0][1]["material_only"] is True
+    block = workspace_context._skill_blocks(resolved)[0].text
+    assert "주신 자료만으로 정리했습니다" in block and "출처 미확인" in block
+
+    async def configured():
+        return True
+
+    monkeypatch.setattr(workspace_context, "_search_configured", configured)
+    # Search configured but switched off, nothing given: still the skill, material-only.
+    again = await _resolve_skills(
+        _SkillDb([research]), _user(), _session(), None, [research.id], {"run_skill_script"})
+    assert again[0][1]["material_only"] is True
+
+
+@pytest.mark.asyncio
+async def test_research_with_no_search_backend_and_no_material_is_refused_plainly(monkeypatch):
+    from app.services import workspace_context
+
+    async def missing():
+        return False
+
+    monkeypatch.setattr(workspace_context, "_search_configured", missing)
+    research = _skill(catalog_key="company-research",
+                      required_tools=["run_skill_script", "web_search", "fetch_url"])
+    with pytest.raises(WorkspaceContextError, match="^skill_search_unavailable$"):
+        await _resolve_skills(
+            _SkillDb([research]), _user(), _session(), None, [research.id],
+            {"run_skill_script"})
+    # Another missing tool is still the old refusal.
+    coder = _skill(catalog_key="x", required_tools=["web_search", "execute_code"])
+    with pytest.raises(WorkspaceContextError, match="skill_tools_unavailable"):
+        await _resolve_skills(_SkillDb([coder]), _user(), _session(), None, [coder.id], set())
+
+
+def test_a_pasted_pack_or_a_file_is_material():
+    from app.services import workspace_context
+
+    assert workspace_context.gives_material("조사해 줘", ["f1"])
+    assert workspace_context.gives_material(
+        "경쟁사 분석해 줘. 웹 검색 없이.\n\n" + "[자료 1] 다글로 요금 9,900원 " * 8, None)
+    assert not workspace_context.gives_material("한빛로지텍 조사해 줘", None)

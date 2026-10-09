@@ -16,15 +16,15 @@ from typing import Any
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
-from app.services import cover_letter, freshness, units
+from app.services import cover_letter, freshness, internal_words, units
 from app.services.chat_format import normalize_raw_payload
 
 log = logging.getLogger("app.routers.sessions")
 
 
 class Normalize(Base):
-    """The notice the answer policy owes, the raw payload unwrapped, and the units and
-    sums a model slips on, mended by code."""
+    """The notice the answer policy owes, the raw payload unwrapped, the units and sums a
+    model slips on mended by code, and — when skills were on — the script reports taken out."""
 
     name = "answer-normalize"
     reads = ("request",)
@@ -42,7 +42,11 @@ class Normalize(Base):
         # An amount the person gave, copied a power of ten off into a calculation.
         normalized = units.fix_magnitude_slips(normalized, first)
         # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
-        bundle.document.answer = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        if req.skill_keys or req.check_keys:
+            # A skill's script ran: its report lines are not the person's answer.
+            normalized = internal_words.strip_reports(normalized)
+        bundle.document.answer = normalized
 
 
 class TextFit(Base):

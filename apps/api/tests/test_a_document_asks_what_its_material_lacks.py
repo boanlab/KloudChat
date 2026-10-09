@@ -180,7 +180,8 @@ def test_the_chat_agents_ask_their_own_facts():
 
 
 def test_the_shipped_agents_and_forms_attach_the_checks():
-    assert check_skills.attached(agent_key="minutes") == ("gap-check", "grounding-check")
+    assert check_skills.attached(agent_key="minutes") == (
+        "gap-check", "grounding-check", "generic-language-killer")
     assert check_skills.attached(agent_key="data-analysis") == ("gap-check", "grounding-check")
     assert "grounding-check" in check_skills.attached(template_checks=("grounding-check",))
     # A key that is not a check skill is not run as one.

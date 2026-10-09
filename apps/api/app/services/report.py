@@ -3139,6 +3139,10 @@ async def write(
     recorder: Any = None,
     #: Receives the work bundle once built, for the caller that stores the run.
     bundle_out: list | None = None,
+    #: A composed run: what earlier steps wrote (read, never a source of figures) and what
+    #: their code printed (a source).
+    derived_context: list[str] | None = None,
+    tool_outputs: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Streams `step`, `section` and one final `usage` event.
 
@@ -3158,6 +3162,7 @@ async def write(
         image_model=image_model, web_search=web_search, project_sources=project_sources,
         template_id=template_id, format_id=format_id, design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
+        derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
     )
     pipe = registry.for_report(bundle.spec.format_id)
     flow = "plan" if approved_plan is None else "write"

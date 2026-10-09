@@ -33,7 +33,8 @@ class Part:
     origin: `attachment` (a file or carried context), `pasted` (under the instruction),
     `project` (project sources' citation list), `research` (search pages), `computed`
     (code-computed values), `settled` (the settled figures block), `conflicts`, `prepass`
-    (a pre-pass block), `note` (a writer's note), `trusted` (the caller's trusted context)."""
+    (a pre-pass block), `note` (a writer's note), `trusted` (the caller's trusted context),
+    `derived` (what an earlier pipeline step wrote: read, never a source of figures)."""
 
     text: str
     origin: str
@@ -73,8 +74,11 @@ class Request:
     check_facts: str = ""
     #: Attached and carried files' text: what the answer's values may come from too.
     check_material: str = ""
-    #: What the turn's tools printed.
+    #: What the turn's tools printed (a composed run: what an earlier step's code printed).
     tool_outputs: list[str] = field(default_factory=list)
+    #: What an earlier step of a composed run wrote: the writer reads it, the checks never
+    #: take a figure from it.
+    derived: list[str] = field(default_factory=list)
     #: Catalogue keys of the skills on the turn (switched on or the agent's).
     skill_keys: tuple[str, ...] = ()
     #: Whether this turn writes the first draft (the `pre` checks ask only then).
@@ -126,6 +130,11 @@ class Material:
     @property
     def document(self) -> list[str]:
         return [p.text for p in self.parts]
+
+    @property
+    def grounds(self) -> list[str]:
+        """What the checks trace values to: every part but what an earlier step derived."""
+        return [p.text for p in self.parts if p.origin != "derived"]
 
     @property
     def trusted_texts(self) -> list[str]:

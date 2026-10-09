@@ -110,6 +110,18 @@ def _need(m: re.Match) -> str:
     return f"{m.group(1)}해야 {'합니다' if m.group(2) == '있습니다' else '한다'}"
 
 
+#: Plans and judgments: 「예정」「검토 중」「가능할 것으로 판단」 (one class per hedge, for `post`).
+PLAN_HEDGES = {
+    "예정": r"예정",
+    "계획": r"계획(?=입니다|이다|이며|이고|임|에\s)",
+    "검토 중": r"검토\s?(?:중|하고\s?있)",
+    "추진 중": r"추진\s?(?:중|하고\s?있)",
+    "협의 중": r"협의\s?(?:중|하고\s?있)",
+    "가능할 것으로": r"가능할\s?것으로|(?:할|될)\s?수\s?있을\s?것으로",
+    "것으로 판단·예상": r"것으로\s?(?:판단|예상|전망|보입|보인|보여|추정|생각)",
+}
+PLAN_HEDGE = "|".join(f"(?:{p})" for p in PLAN_HEDGES.values())
+
 RULES: tuple[Rule, ...] = (
     # ── 채움말 ──
     Rule("filler", rf"(?P<stem>[{_H}A-Za-z0-9]+?)(?P<kind>다고|(?:이)?라고)\s+(?:할|볼)\s+수\s+(?P<end>있습니다|있다)",
@@ -137,10 +149,13 @@ RULES: tuple[Rule, ...] = (
     Rule("filler", rf"{_NB}등등", "replace", "「등등」→「등」, 나머지를 알면 나열한다.", replace="등"),
     Rule("filler", rf"{_NB}우선적으로", "replace", "「우선적으로」→「먼저」.", replace="먼저"),
     # ── 얼버무림 ──
+    # A plan or a judgment the author hedged on purpose: kept, never made definite.
+    Rule("hedge", PLAN_HEDGE, "check",
+         "계획·판단을 나타내는 말이다. 그대로 두고, 확정된 일이나 단정문으로 바꾸지 않는다."),
     Rule("hedge", rf"[{_H}]+\s*것\s+같(?:습니다|아요|다)", "check",
          "근거가 있으면 단정하고, 추측이면 무엇을 근거로 한 추측인지 밝힌다(「[근거]」)."),
     Rule("hedge", r"(?:것으로|으로|로)\s+(?:보입니다|보인다|보여요|보이며|보여집니다|(?:예상|판단|사료|생각)(?:됩니다|된다|되며|되고|되어))", "check",
-         "판단의 근거(자료·수치·출처)를 붙이거나 「~합니다」로 단정한다. 근거가 없으면 「[근거]」.", "[근거]"),
+         "판단의 근거(자료·수치·출처)가 자료에 있으면 붙인다. 판단·예상을 단정문으로 바꾸지 않는다.", "[근거]"),
     Rule("hedge", r"라고\s+(?:생각됩니다|판단됩니다|사료됩니다)", "replace",
          "누가 판단하는지 드러낸다: 「~라고 판단됩니다」→「~라고 판단합니다」.",
          replace=lambda m: m.group(0).replace("됩니다", "합니다")),
@@ -369,6 +384,99 @@ def summary(findings: list[dict]) -> str:
     kinds = " · ".join(f"{word} {n}" for word, n in counts.items())
     shown = ", ".join(dict.fromkeys(f"「{f['text'].strip()[:30]}」" for f in findings))
     return f"상투어 {len(findings)}개 고침 ({kinds}): {shown[:400]}"
+
+
+# ── the server's post check on a chat answer (`post_check: scan`) ───────
+
+EDITED_HEADINGS = ("고친 글", "다듬은 글", "수정본", "바꾼 글", "수정안", "개선안", "최종본", "고쳐 쓴 글",
+                   "다시 쓴 글", "교정본")
+_HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s+|\*\*|\[|【)")
+_SECTION_END = re.compile(r"^\s{0,3}(?:#{1,6}\s+|(?:---|\*\*\*)\s*$|\*\*[^*\n]{1,30}\*\*\s*:?\s*$)")
+_VALUE = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?\s?(?:%|퍼센트|배|명|건|개|곳|원|만\s?원|억\s?원|시간|분|초|일|주|개월|년|회|점|위|km|kg|GB)?")
+
+
+def section(text: str, names: tuple[str, ...] = EDITED_HEADINGS) -> tuple[int, int] | None:
+    """Line range [lo, hi) of the body under the first heading that names one of `names`."""
+    lines = (text or "").split("\n")
+    widest = max(len(n) for n in names) + 12
+    for i, line in enumerate(lines):
+        bare = re.sub(r"[#*\[\]【】:：()\s]", "", line)
+        if not bare or len(bare) > widest or not any(bare.startswith(n.replace(" ", "")) for n in names):
+            continue
+        if not (_HEADING.match(line) or len(line.strip()) <= widest):
+            continue
+        lo = hi = i + 1
+        while hi < len(lines):
+            if hi > lo and _SECTION_END.match(lines[hi]) and any(x.strip() for x in lines[lo:hi]):
+                break
+            hi += 1
+        return lo, hi
+    return None
+
+
+def original_text(args: dict) -> str:
+    """The text the person gave: the attachment, a fenced block, or the request after its
+    first paragraph."""
+    attached = str(args.get("attached") or "")
+    if attached.strip():
+        return attached
+    request = str(args.get("request") or "")
+    fenced = re.search(r"```[^\n]{0,20}\n([\s\S]{20,}?)\n```", request)
+    if fenced:
+        return fenced.group(1)
+    blocks = [b for b in re.split(r"\n\s*\n", request.strip()) if b.strip()]
+    if len(blocks) > 1 and len(blocks[0]) < 400:
+        return "\n\n".join(blocks[1:])
+    return request
+
+
+def _hedges(text: str) -> dict[str, int]:
+    flat = re.sub(r"\s+", " ", text or "")
+    return {name: len(re.findall(rx, flat)) for name, rx in PLAN_HEDGES.items()}
+
+
+def _digits(token: str) -> str:
+    return re.sub(r"[^\d.]", "", token).strip(".")
+
+
+def post(text: str, args: dict) -> dict:
+    """The rewritten text: safe code rewrites only (`auto`); a hedge of the original made
+    definite and a number the original lacks go to the writer, then are listed (hedge) or
+    blanked (number) on the final pass."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    lines = (text or "").split("\n")
+    span = section(text)
+    lo, hi = span if span is not None else (0, len(lines))
+    body = "\n".join(lines[lo:hi])
+    original = original_text(args)
+    if not body.strip():
+        return out
+    final = bool(args.get("final"))
+    found = check(body, original + "\n" + str(args.get("material") or ""))
+    if found:
+        body = fix(body, found)
+        out["fixed"] += [{"kind": f["kind"], "text": f["text"].strip(),
+                          "why": f"→「{f['replace']}」" if f["replace"] else "→ 지움"} for f in found]
+    if span is not None:
+        before, after = _hedges(original), _hedges(body)
+        for name, n in before.items():
+            if after.get(name, 0) < n:
+                item = {"kind": "hedge", "text": name,
+                        "why": "원문의 계획·판단을 확정된 일처럼 바꿨습니다. 원문처럼 계획·판단으로 되돌리세요."}
+                (out["flags"] if final else out["rewrite"]).append(item)
+    known = {_digits(m.group(0)) for m in _VALUE.finditer(original + "\n" + str(args.get("request") or ""))}
+    new = [m.group(0).strip() for m in _VALUE.finditer(body)
+           if _digits(m.group(0)) and _digits(m.group(0)) not in known]
+    for raw in dict.fromkeys(new):
+        if final:
+            body = re.sub(rf"(?<![\w.]){re.escape(raw)}", "[구체적 수치]", body, count=1)
+            out["fixed"].append({"kind": "number", "text": raw, "why": "원문에 없는 수치 — 빈칸으로 둠"})
+        else:
+            out["rewrite"].append({"kind": "number", "text": raw,
+                                   "why": "원문에 없는 수치입니다. 빼거나 「[구체적 수치]」 빈칸으로 두세요."})
+    lines[lo:hi] = body.split("\n")
+    out["text"] = "\n".join(lines)
+    return out
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────

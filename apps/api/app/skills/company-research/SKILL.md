@@ -3,9 +3,11 @@ name: 기업 조사
 description: 특정 회사의 개요(설립·대표·주소·사업)·재무·제품과 가격·고객·최근 동향·리스크를 공시·공식 자료·보도로 조사해 출처·날짜와 함께 한 장으로 정리합니다. 확인하지 못한 매출·직원 수·고객사는 지어내지 않고 「출처 미확인」으로 둡니다.
 when_to_use: 미팅·영업·투자·제휴·입찰 전에 상대 회사를 빠르게 파악할 때, 「○○ 회사 조사해 줘」「기업 개요 정리」. 별칭 company-research.
 kinds: [chat]
-required_tools: [run_skill_script]
+required_tools: [run_skill_script, web_search, fetch_url]
 version: 0.1.0
 status: draft
+post_check: source-check/post
+post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 ---
 Research one company and write a Korean one-pager a 영업·기획 담당자 can use before a meeting. Every fact carries where it came from and when.
 

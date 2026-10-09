@@ -236,6 +236,102 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
     return {"findings": findings, "coverage": coverage, "counts": counts}
 
 
+# ── the server's post check on a chat answer (`post_check: notes`) ──────
+
+_DATE_ANY = re.compile(r"(?<!\d)(20\d{2})\s*(?:[.\-/]|년)\s*(\d{1,2})\s*(?:[.\-/]|월)\s*(\d{1,2})\s*(?:일|\.)?")
+_VALUE = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)*)\s?(%|배|x|×|초|분|시간|일|개월|년|개|건|명|MB|GB|KB|ms|원)(?![\w])", re.I)
+_TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}|[가-힣]{2,}")
+_ITEM_LINE = re.compile(r"^\s*(?:[-*•·]|\d{1,2}[.)])\s+")
+_YEAR = re.compile(r"(?:19|20)\d{2}")
+_FENCE = re.compile(r"```[^\n]{0,20}\n[\s\S]{0,4000}?\n\s{0,8}```")
+_MONTH_DAY = re.compile(r"(?<![\d.])(\d{1,2})\s*월\s*(\d{1,2})\s*일|(?<![\d./])(\d{1,2})/(\d{1,2})(?![\d/])")
+#: The skill's own tally line (「항목 6개: 노트 6 · 뺌 0 · 빠짐 0」), not a claim.
+_TALLY = re.compile(r"항목\s?\d{1,3}\s?개\s?[:：]|뺀\s?항목")
+#: Headings of the note's own sections; items outside them are the writer's remarks.
+_NOTE_HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s*|\*\*)\s*(" + "|".join(SECTIONS) + r"|호환성|breaking)", re.I)
+
+
+def _terms(text: str) -> set[str]:
+    """Words of a line, Korean ones cut to their first two syllables (particles drop off)."""
+    return {w.lower() if w[0].isascii() else w[:2] for w in _TOKEN.findall(text or "")}
+
+
+def post(text: str, args: dict) -> dict:
+    """Dates and versions the change list does not give become blanks (code); a number it
+    does not give goes to the writer, then 「[수치]」; a note item no input item supports
+    goes to the writer and is listed."""
+    out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
+    material = str(args.get("material") or "")
+    if not material.strip():
+        return out
+    final = bool(args.get("final"))
+    dates = {(int(m.group(1)), int(m.group(2)), int(m.group(3))) for m in _DATE_ANY.finditer(material)}
+    # A month and day the list gives without the year (「10월 27일 배포」).
+    days = {(int(m.group(1) or m.group(3)), int(m.group(2) or m.group(4)))
+            for m in _MONTH_DAY.finditer(material)}
+    days |= {(m, d) for _, m, d in dates}
+    versions = {m.group(1) for m in _VERSION.finditer(material)}
+    known = _numbers(material)
+    items = parse(material)
+    lines = text.split("\n")
+    in_notes = False
+    for k, line in enumerate(lines):
+        if re.match(r"^\s{0,3}(?:#{1,6}\s|\*\*[^*\n]{1,30}\*\*\s*:?\s*$|---\s*$)", line):
+            in_notes = bool(_NOTE_HEADING.match(line))
+        if _TALLY.search(line):
+            continue
+
+        def date(m: re.Match, line: str = line) -> str:
+            key = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if key in dates or key[1:] in days:
+                return m.group(0)
+            blank = "[배포일]" if re.search(r"배포|출시|릴리스|^#", line) else "[날짜]"
+            out["fixed"].append({"kind": "date", "text": m.group(0).strip(), "why": f"변경 목록에 없는 날짜 → {blank}"})
+            return blank + (" " if m.group(0).endswith(" ") else "")
+
+        line = _DATE_ANY.sub(date, line)
+
+        def version(m: re.Match) -> str:
+            if m.group(1) in versions or _DATE_ANY.match(m.group(0)):
+                return m.group(0)
+            out["fixed"].append({"kind": "version", "text": m.group(0), "why": "변경 목록에 없는 버전 → [버전]"})
+            return "[버전]"
+
+        line = _VERSION.sub(version, line)
+        for m in _VALUE.finditer(line):
+            if m.group(1).replace(",", "") in known or (m.group(2) == "년" and _YEAR.fullmatch(m.group(1))):
+                continue
+            if final:
+                line = line.replace(m.group(0), "[수치]", 1)
+                out["fixed"].append({"kind": "number", "text": m.group(0), "why": "변경 목록에 없는 수치 → [수치]"})
+            else:
+                out["rewrite"].append({"kind": "number", "text": m.group(0),
+                                       "why": "변경 목록에 없는 수치입니다. 빼거나 [수치]로 두세요."})
+        lines[k] = line
+        if items and in_notes and _ITEM_LINE.match(line):
+            mine = _terms(re.sub(r"\([^)]*\)|`[^`]*`", "", line))
+            best = max((len(mine & _terms(i["text"])) / max(1, len(_terms(i["text"]))) for i in items),
+                       default=0.0)
+            if mine and best < 0.2:
+                item = {"kind": "unsupported_item", "text": _ITEM_LINE.sub("", line).strip()[:160],
+                        "why": "변경 목록의 어느 항목에도 없는 내용입니다. 빼세요."}
+                (out["flags"] if final else out["rewrite"]).append(item)
+    text = "\n".join(lines)
+    # A code sample the change list does not hold (an endpoint, a payload) is made up.
+    if "```" not in material:
+        for block in _FENCE.findall(text):
+            item = {"kind": "code", "text": block.strip()[:160],
+                    "why": "변경 목록에 없는 코드 예시입니다. 빼세요."}
+            if final:
+                text = text.replace(block, "", 1)
+                out["fixed"].append({**item, "why": "변경 목록에 없는 코드 예시 → 뺌"})
+            else:
+                out["rewrite"].append(item)
+        text = re.sub(r"\n{3,}", "\n\n", re.sub(r"\n[ \t]+(?=\n)", "\n", text))
+    out["text"] = text
+    return out
+
+
 def _line(finding: dict) -> str:
     return f"[{finding['severity']}] {finding['type']}: {finding['text']} — {finding['why']} → {finding['fix']}"
 

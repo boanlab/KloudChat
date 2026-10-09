@@ -52,12 +52,15 @@ def test_the_market_skills_ship_as_drafts_with_their_source():
     for key in ALL:
         package = packages[key]
         assert package.draft, key
-        assert package.required_tools == ("run_skill_script",), key
+        # The research skills search when the person did not hand them a material pack.
+        searches = key in ("company-research", "competitor-analysis", "competitive-battlecard")
+        assert package.required_tools == (("run_skill_script", "web_search", "fetch_url")
+                                          if searches else ("run_skill_script",)), key
         assert package.kinds == ("chat",), key
         assert "출처:" in package.body, key
         # Korean front matter, English instructions.
         assert any("가" <= ch <= "힣" for ch in package.name), key
-    assert set(packages["source-check"].scripts) == {"sources", "claims", "frame"}
+    assert set(packages["source-check"].scripts) == {"sources", "claims", "frame", "post"}
     assert set(packages["market-sizing"].scripts) == {"size"}
 
 

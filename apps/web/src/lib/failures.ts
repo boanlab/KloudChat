@@ -10,6 +10,8 @@ type T = (text: string) => string
 const SKILLS = '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.'
 
 const REFUSALS: Record<string, string> = {
+  skill_search_unavailable:
+    '이 스킬은 웹 검색으로 조사하는데, 지금은 검색을 쓸 수 없습니다. 조사할 자료를 붙여 넣거나 파일로 올리면 그 자료만으로 정리합니다.',
   session_busy: '이 대화는 아직 답을 쓰고 있습니다. 답이 끝나거나 중지한 뒤 보내 주세요.',
   agent_disabled:
     '이 대화의 에이전트가 꺼져 있어 보낼 수 없습니다. 에이전트 화면에서 다시 켜거나 다른 대화를 시작하세요.',

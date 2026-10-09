@@ -22,13 +22,15 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
-from app.models.user import User, UserRole
+from app.models.user import AuditEvent, User, UserRole
 from app.models.workspace import Agent, Artifact, ArtifactVersion, UserPipeline
 from app.pipeline import compose, registry
 from app.pipeline.bundle import Bundle, Request
+from app.pipeline.stage import Context
 from app.routers import runs as runs_router
 from app.routers import sessions
 from app.routers import user_pipelines as up
+from app.services import agent as agent_service
 from app.services import report
 
 _MODEL = {"id": "strict-local/writer", "label": "w", "kinds": ["report", "chat"],
@@ -199,7 +201,7 @@ async def engine():
                                  connect_args={"check_same_thread": False})
     tables = [metadata.tables[m.__tablename__] for m in (
         User, ChatSession, Message, Artifact, ArtifactVersion, PipelineRun, Agent,
-        UserPipeline)]
+        UserPipeline, AuditEvent)]
     async with engine.begin() as conn:
         await conn.run_sync(metadata.create_all, tables=tables)
     try:
@@ -403,9 +405,19 @@ def writers(monkeypatch):
             yield {"type": "usage", "inputTokens": 100, "outputTokens": 40}
         return run()
 
+    async def run_turn(model, messages, tools, ctx, **kwargs):
+        # A chat agent step's own tool loop: its code printed the totals it answers with.
+        seen.setdefault("turn", []).append((model, messages, sorted(t.name for t in tools)))
+        ctx.outputs.append("A안 총액 9억 원, B안 총액 7억 원")
+        yield {"type": "step", "id": "t1", "category": "tool", "label": "코드 실행",
+               "status": "done"}
+        yield {"type": "delta", "text": "분석: A안 총액 9억 원, B안 총액 7억 원."}
+        yield {"type": "usage", "inputTokens": 11, "outputTokens": 5}
+
     monkeypatch.setattr(report, "_complete", complete)
     monkeypatch.setattr(compose, "plan_for", plan)
     monkeypatch.setattr(compose, "write_pass", write)
+    monkeypatch.setattr(agent_service, "run_turn", run_turn)
     return seen
 
 
@@ -714,19 +726,128 @@ async def test_a_shared_pipeline_runs_on_the_takers_own_copies(wired):
 async def test_a_chat_step_is_told_nobody_can_answer_a_question(monkeypatch):
     seen: list[list[dict]] = []
 
-    async def complete(model, messages, api_key, max_tokens):
+    async def run_turn(model, messages, tools, ctx, **kwargs):
         seen.append(messages)
-        return "학기 중 월평균 방문자 67,375명.", {"inputTokens": 1, "outputTokens": 1}
+        yield {"type": "delta", "text": "학기 중 월평균 방문자 67,375명."}
+        yield {"type": "usage", "inputTokens": 1, "outputTokens": 1}
 
-    monkeypatch.setattr(report, "_complete", complete)
+    monkeypatch.setattr(agent_service, "run_turn", run_turn)
     bundle = Bundle(request=Request(text="학기와 방학을 비교해 줘", model="m", api_key="k",
                                     untrusted=["월,방문자\n3월,61200"]))
     info = compose.AgentInfo(id="a", name="데이터 분석", output="answer",
                              system_prompt="Ask which split the user wants before computing.")
     step = compose.AgentStep(0, {"kind": "agent", "ref": "a", "settings": {}}, "데이터 분석",
                              output="answer", after_outline=False, final=False)
-    await step._answer(bundle, info)
+    [e async for e in step._answer(bundle, info)]
     system = seen[0][0]["content"]
     assert system.startswith("Ask which split")
     assert "nobody can answer a question" in system and "Do not ask anything" in system
     assert bundle.document.answer == "학기 중 월평균 방문자 67,375명."
+
+
+# ── provenance: an earlier step's product is read, never trusted for figures ──
+
+
+async def test_a_chat_agent_step_runs_its_tools_and_its_finish_flow(monkeypatch):
+    seen: dict = {}
+
+    async def tools(self, bundle, info, model, strict):
+        return [SimpleNamespace(name="run_code"), SimpleNamespace(name="calculate")]
+
+    async def run_turn(model, messages, tools, ctx, **kwargs):
+        seen["tools"] = [t.name for t in tools]
+        seen["definitions"] = kwargs.get("tool_definitions")
+        ctx.outputs.append("방학 월평균 방문자 26300")
+        yield {"type": "step", "id": "c1", "category": "tool", "label": "코드 실행",
+               "status": "done"}
+        yield {"type": "delta", "text": "방학 월평균 26,300명, 학기 월평균 99,999명."}
+        yield {"type": "usage", "inputTokens": 40, "outputTokens": 9}
+
+    monkeypatch.setattr(compose.AgentStep, "_tools", tools)
+    monkeypatch.setattr("app.services.tools.base.to_openai", lambda ts: [{"n": t.name} for t in ts])
+    monkeypatch.setattr(agent_service, "run_turn", run_turn)
+    bundle = Bundle(request=Request(text="학기와 방학 비교", model="m", api_key="k",
+                                    untrusted=["월,방문자\n2025-07,28400\n2025-08,25900"]),
+                    usage={"inputTokens": 0, "outputTokens": 0})
+    info = compose.AgentInfo(id="a", name="데이터 분석", output="answer",
+                             catalog_key="data-analysis", checks=("grounding-check",),
+                             tools=("run_code", "calculate"))
+    step = compose.AgentStep(0, {"kind": "agent", "ref": "a", "settings": {}}, "데이터 분석",
+                             output="answer", after_outline=False, final=True)
+    events = [e async for e in step._answer(bundle, info)]
+    assert seen["tools"] == ["run_code", "calculate"] and seen["definitions"]
+    # The data-analysis finish traced every figure to what the code printed.
+    assert "26,300명" in bundle.document.answer and "99,999" not in bundle.document.answer
+    assert any(e["id"].startswith("compose:1:agent:") for e in events)
+    computed = [p for p in bundle.material.parts if p.origin == "computed"]
+    assert computed and "26300" in computed[0].text
+    assert bundle.usage["inputTokens"] == 40
+
+
+def _product_bundle(answer: str) -> Bundle:
+    from app.pipeline.bundle import Part
+
+    bundle = Bundle(request=Request(text="방학 비교", model="m", api_key="k",
+                                    untrusted=["월,방문자\n2025-07,28400\n2025-08,25900"]))
+    bundle.material.parts = [
+        Part("# 앞 단계 결과: 데이터 분석\n방학 월평균 "
+             "방문자 30,000명", "derived", "handoff:1:agent"),
+        Part("# 코드 실행 결과: 데이터 분석\n방학 월평균 26300", "computed", "tool:1:agent")]
+    bundle.document.answer = answer
+    bundle.wire["product"] = {"stage": "2:agent", "kind": "answer", "title": "정리"}
+    return bundle
+
+
+async def test_a_check_downstream_does_not_take_a_figure_from_an_earlier_step():
+    bundle = _product_bundle("방학 월평균 26,300명. 앞 단계 기준으로는 30,000명.")
+    step = compose.CheckStep(2, {"kind": "check", "ref": "grounding-check", "settings": {}},
+                             "근거 대조")
+    [e async for e in step.run(bundle, Context())]
+    assert "26,300명" in bundle.document.answer
+    assert "30,000" not in bundle.document.answer
+    args = compose._sub_args(bundle, _info("cmp"), "비교 보고서")
+    assert args["derived_context"] == ["# 앞 단계 결과: 데이터 분석\n방학 월평균 방문자 30,000명"]
+    assert args["tool_outputs"] == ["# 코드 실행 결과: 데이터 분석\n방학 월평균 26300"]
+    assert not any("30,000" in t for t in args["untrusted_context"])
+
+
+async def test_the_handoff_is_derived_material():
+    bundle = Bundle(request=Request(text="x", model="m", api_key="k"))
+    bundle.document.answer = "방학 월평균 30,000명"
+    bundle.wire["product"] = {"stage": "1:agent", "kind": "answer", "title": "데이터 분석"}
+    compose._handoff(bundle)
+    assert [(p.origin, p.label) for p in bundle.material.parts] == [("derived", "handoff:1:agent")]
+    assert bundle.material.grounds == [] and len(bundle.material.document) == 1
+
+
+async def test_a_report_settles_figures_from_files_and_code_not_from_an_earlier_step(monkeypatch):
+    from app.pipeline import report_stages
+
+    given: list[str] = []
+
+    async def settle_all(text, complete, model, api_key):
+        given.append(text)
+        return [], [], {}
+
+    monkeypatch.setattr(report_stages.key_figures, "settle_all", settle_all)
+    bundle = report_stages.bundle_for(
+        request="비교 보고서", model="m", api_key="k", untrusted_context=["원자료 28400"],
+        derived=["# 앞 단계 결과\n30,000명"], tool_outputs=["코드 출력 26300"])
+    await registry.stage("settle").apply(bundle, Context())
+    assert "28400" in given[0] and "26300" in given[0] and "30,000" not in given[0]
+
+
+def test_a_chat_agent_step_with_no_check_after_it_is_a_warning():
+    verdict = compose.validate(_steps(("agent", "data"), ("agent", "cmp")), agents=_AGENTS)
+    assert verdict.ok and [(w.step, w.code) for w in verdict.warnings] == [
+        (1, "answer_unchecked")]
+    assert "검사나 검토" in verdict.warnings[0].message
+    checked = compose.validate(_steps(("agent", "data"), ("review", ""), ("agent", "cmp")),
+                               agents=_AGENTS)
+    assert checked.warnings == []
+
+
+def test_usage_counts_keep_the_planner_and_reviewer_counters():
+    assert compose.usage_counts({"inputTokens": 5, "outlineInputTokens": 7,
+                                 "model:j:outputTokens": 2, "credits": 9, "note": "x"}) == {
+        "inputTokens": 5, "outputTokens": 0, "outlineInputTokens": 7, "model:j:outputTokens": 2}

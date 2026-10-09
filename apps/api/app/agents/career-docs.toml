@@ -13,7 +13,7 @@ design = "기본"
 tools = ["run_skill_script", "calculate"]
 skills = ["text-fit"]
 # Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check"]
+checks = ["gap-check", "grounding-check", "generic-language-killer"]
 temperature = 0.5
 color = "#db2777"
 starters = [
