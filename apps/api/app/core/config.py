@@ -251,6 +251,7 @@ class Settings(BaseSettings):
     perf_disk_critical: float = 95
     perf_error_rate_max: float = 5
     perf_gpu_temp_max: float = 85
+    perf_gpu_node_mem_max: float = 99
     perf_sustain_min: int = 10
     perf_api_cpu_sustain_min: int = 15
 

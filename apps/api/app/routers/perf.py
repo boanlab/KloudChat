@@ -35,6 +35,7 @@ def thresholds() -> rules.Thresholds:
         disk_critical=settings.perf_disk_critical,
         error_rate_max=settings.perf_error_rate_max,
         gpu_temp_max=settings.perf_gpu_temp_max,
+        gpu_node_mem_max=settings.perf_gpu_node_mem_max,
         sustain_min=settings.perf_sustain_min,
         api_cpu_sustain_min=settings.perf_api_cpu_sustain_min,
     )
@@ -430,6 +431,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
             "diskCritical": th.disk_critical,
             "errorRateMax": th.error_rate_max,
             "gpuTempMax": th.gpu_temp_max,
+            "gpuNodeMemMax": th.gpu_node_mem_max,
             "sustainMin": th.sustain_min,
             "apiCpuSustainMin": th.api_cpu_sustain_min,
         },

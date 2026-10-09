@@ -2275,6 +2275,7 @@ export interface PerfOverview {
     diskCritical: number
     errorRateMax: number
     gpuTempMax: number
+    gpuNodeMemMax: number
     sustainMin: number
     apiCpuSustainMin: number
   }

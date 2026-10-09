@@ -317,6 +317,16 @@ def test_kv_cache_with_preemption_is_critical_and_a_stalled_collector_is_named()
     assert codes == {"kv_cache_full": "critical", "collector_stalled": "warn"}
 
 
+def test_a_gb10_resting_at_vllms_reservation_is_quiet_but_beyond_it_warns():
+    th = rules.Thresholds()
+    resting = {("gpu", "node_mem_percent", "gpu-2 · gx10-ffb4"): _points([97.2] * 11, 10)}
+    assert rules.evaluate(resting, NOW, th, NOW) == []
+    full = {("gpu", "node_mem_percent", "gpu-2 · gx10-ffb4"): _points([99.4] * 11, 10)}
+    verdicts = rules.evaluate(full, NOW, th, NOW)
+    assert [v.code for v in verdicts] == ["gpu_node_memory"]
+    assert verdicts[0].evidence[0]["threshold"] == 99 and "gx10-ffb4" in verdicts[0].title
+
+
 # ── live counters ───────────────────────────────────────────────────────
 
 

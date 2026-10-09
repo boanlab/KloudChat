@@ -42,6 +42,8 @@ class Thresholds:
     disk_critical: float = 95
     error_rate_max: float = 5
     gpu_temp_max: float = 85
+    # vLLM reserves most of a GB10's unified memory up front, so ~97% is its resting level
+    gpu_node_mem_max: float = 99
     sustain_min: int = 10
     api_cpu_sustain_min: int = 15
 
@@ -335,16 +337,16 @@ def evaluate(
         elif (
             source == "gpu"
             and name == "node_mem_percent"
-            and sustained(points, now, win, th.mem_max)
+            and sustained(points, now, win, th.gpu_node_mem_max)
         ):
             out.append(
                 Verdict(
                     "warn",
                     "gpu_node_memory",
                     f"GPU 노드 메모리 부족 — {subject}",
-                    f"{win}분 동안 {_fmt(th.mem_max, 0)}% 이상입니다 (GB10은 GPU와 메모리를 함께 씁니다).",
-                    "같은 노드에 올린 모델 수나 gpu-memory-utilization을 줄이세요.",
-                    [_evidence(key, points, now, win, th.mem_max)],
+                    f"{win}분 동안 {_fmt(th.gpu_node_mem_max, 0)}% 이상입니다. vLLM이 미리 잡는 몫(평소 97% 안팎)을 넘어 노드 프로세스가 쓸 메모리가 거의 남지 않았습니다.",
+                    "같은 노드에 올린 모델 수나 gpu-memory-utilization을 줄이고, 노드에서 메모리를 쓰는 다른 프로세스를 확인하세요.",
+                    [_evidence(key, points, now, win, th.gpu_node_mem_max)],
                 )
             )
     out.sort(key=lambda v: -LEVELS.get(v.level, 0))

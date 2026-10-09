@@ -93,6 +93,9 @@ const EN: Record<string, string> = {
   '한 복제본이 CPU 한 코어의 {n}% 이상을 {m}분 → 복제본 추가 검토': 'One replica at {n}% of a core or more for {m} min → consider another replica',
   '호스트 {n}% 이상 {m}분 → 과부하, 컨테이너 한도 {n}% 이상 → 주의': 'Host {n}% or more for {m} min → overloaded; a container at {n}% of its limit → warning',
   '{w}% 이상 주의, {c}% 이상 과부하': '{w}% warning, {c}% overloaded',
+  'GPU 노드': 'GPU node',
+  '온도 {t}°C 이상, 노드 메모리 {n}% 이상 {m}분 → 주의 (vLLM이 미리 잡는 몫 때문에 평소 97% 안팎)':
+    'Temperature {t}°C or more, node memory {n}% or more for {m} min → warning (vLLM reserves memory up front, so ~97% is normal)',
   '모델 오류율': 'Model error rate',
   '최근 15분 20건 이상 중 {n}% 이상 실패 → 주의 (3배면 과부하)': '{n}% or more of 20+ calls failing in 15 min → warning (3× → overloaded)',
   '기준값은 api 환경 변수 PERF_* 로 바꿉니다. 짧은 순간의 급증은 판단에 넣지 않습니다(구간 표본의 80% 이상이 넘어야 함).': 'Thresholds are set with the api PERF_* environment variables. Brief spikes do not count: 80% of the samples in the window must be over.',

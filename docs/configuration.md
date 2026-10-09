@@ -250,6 +250,7 @@ above.
 | `PERF_VLLM_WAITING_MAX`, `PERF_KV_CACHE_MAX`, `PERF_TTFT_P95_MAX_SEC` | `2`, `90`, `10` | GPU saturation, KV cache and first-token verdicts, each sustained for `PERF_SUSTAIN_MIN` (10). |
 | `PERF_API_CPU_MAX` | `80` | Percent of one core per api replica, sustained for `PERF_API_CPU_SUSTAIN_MIN` (15): 「api 복제본 추가 검토」. |
 | `PERF_MEM_MAX`, `PERF_DISK_WARN`, `PERF_DISK_CRITICAL`, `PERF_ERROR_RATE_MAX`, `PERF_GPU_TEMP_MAX` | `90`, `85`, `95`, `5`, `85` | |
+| `PERF_GPU_NODE_MEM_MAX` | `99` | GPU 노드(GB10) 메모리 경고 기준. vLLM이 통합 메모리를 미리 잡아 평소 97% 안팎이므로 호스트 기준(`PERF_MEM_MAX`)과 따로 둔다 |
 
 `GET /api/admin/perf/metrics` (an admin's bearer token) returns the latest
 value of every series in the Prometheus text format, for Grafana.

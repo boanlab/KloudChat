@@ -848,6 +848,13 @@ export function AdminPerformancePage() {
                     .replace('{m}', String(th.sustainMin))}
                 </li>
                 <li>
+                  <b className="text-fg">{t('GPU 노드')}</b> ·{' '}
+                  {t('온도 {t}°C 이상, 노드 메모리 {n}% 이상 {m}분 → 주의 (vLLM이 미리 잡는 몫 때문에 평소 97% 안팎)')
+                    .replace('{t}', num(th.gpuTempMax, 0))
+                    .replace('{n}', num(th.gpuNodeMemMax, 0))
+                    .replace('{m}', String(th.sustainMin))}
+                </li>
+                <li>
                   <b className="text-fg">{t('디스크')}</b> ·{' '}
                   {t('{w}% 이상 주의, {c}% 이상 과부하')
                     .replace('{w}', num(th.diskWarn, 0))
