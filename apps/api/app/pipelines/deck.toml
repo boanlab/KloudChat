@@ -8,3 +8,9 @@ revise = [
     "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",
     "revise-save",
 ]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+compute = "구성을 바꿀 때 손대지 않은 슬라이드는 그대로 둡니다"
+write = "구성을 잡아 보여 드린 뒤 슬라이드를 만듭니다"
+check = "고친 뒤 앞뒤 내용이 맞는지 확인합니다"

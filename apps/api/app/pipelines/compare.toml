@@ -1,5 +1,0 @@
-# A model comparison: one question to several models at once, the columns stored as one
-# message with its variants and billed as one turn.
-
-name = "compare"
-make = ["compare-answer", "compare-save"]

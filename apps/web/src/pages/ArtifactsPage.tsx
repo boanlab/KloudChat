@@ -10,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArtifactPreview, CodePanel, MediaPanel } from '@/components/artifacts/ArtifactPanel'
 import {
   PanelControls,
@@ -165,6 +165,20 @@ export function ArtifactsPage() {
   const [previewDirty, setPreviewDirty] = useState(false)
   const [confirmPreviewClose, setConfirmPreviewClose] = useState(false)
   const [confirming, setConfirming] = useState<Artifact | null>(null)
+
+  // `?open=<id>`: search opens a result made outside any conversation here, in the panel.
+  const [params, setParams] = useSearchParams()
+  const openId = params.get('open')
+  useEffect(() => {
+    if (!openId) return
+    setParams({}, { replace: true })
+    setPreviewId(openId)
+  }, [openId, setParams])
+  // A page of the gallery may not hold it; fetched whole, it joins the list.
+  const previewListed = artifacts.some((a) => a.id === previewId)
+  useEffect(() => {
+    if (previewId && !previewListed && !artifactsLoading) void refreshArtifact(previewId)
+  }, [previewId, previewListed, artifactsLoading, refreshArtifact])
 
   const preview = artifacts.find((a) => a.id === previewId) ?? null
   const closePreview = () => {

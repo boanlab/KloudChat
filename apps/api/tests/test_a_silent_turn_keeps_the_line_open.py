@@ -60,9 +60,5 @@ async def test_a_reader_leaving_still_closes_the_turn_beneath(monkeypatch) -> No
 def test_every_streamed_route_beats() -> None:
     """Every streamed route goes through the heartbeat."""
     assert "_heartbeat(" in inspect.getsource(sessions._survive_disconnect)
-    # The comparison route is not detached; it wraps the heartbeat directly.
-    source = inspect.getsource(sessions.compare_models)
-    where = source.find("_run_comparison(")
-    assert source[:where].rstrip().endswith("_heartbeat(")
     # Under the shortest common proxy idle timeout.
     assert sessions.HEARTBEAT_SEC <= 30

@@ -369,22 +369,23 @@ test('agents: pipeline chain and the 워크플로 tab', async ({ page }, testInf
   const shot = shooter(page, testInfo)
   await page.goto(`/customize/agents/${agent.id}`)
   await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기').first()).toBeVisible({ timeout: 15_000 })
+  // 개요 says the steps in plain words; the stages wait behind 「자세히 보기」.
+  const steps = page.getByTestId('workflow-steps').first()
+  expect(await steps.getByTestId('workflow-step').count()).toBeLessThanOrEqual(6)
+  await expect(steps).toContainText('질문 · 빠진 정보가 있으면 먼저 물어봅니다')
+  for (const internal of ['check:gaps', 'gap-check', 'grounding-check', '입출력']) {
+    await expect(page.getByText(internal, { exact: false })).toHaveCount(0)
+  }
   await shot('agent-card')
+  await steps.getByRole('button', { name: /^자세히 보기 \(단계 \d+개\)$/ }).click()
+  await expect(steps.getByTestId('workflow-details').getByText('본문 작성')).toBeVisible()
+  await expect(steps.getByTestId('workflow-details').getByText('check:gaps')).toHaveCount(0)
   await page.getByRole('region', { name: '설정' }).getByText('워크플로 연결', { exact: true }).click()
   // A read-only summary; flows are edited on the 「워크플로」 page (user-pipelines.spec.ts).
   const summary = page.getByTestId('agent-flow-summary')
   await expect(summary.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible()
   await expect(summary.getByRole('link', { name: '워크플로 편집' })).toBeVisible()
   await shot('agent-flow-tab')
-  if (testInfo.project.name !== 'phone') {
-    await page.keyboard.press('Escape')
-    await page.goto('/')
-    await page.getByRole('button', { name: '보고서', exact: true }).first().click()
-    await expect(page.getByLabel('워크플로: 자료 → 질문 → 계산 → 작성 → 검사 → 내보내기')).toBeVisible({ timeout: 15_000 })
-    await page.getByText('에이전트에게 맡기기').scrollIntoViewIfNeeded()
-    await page.waitForTimeout(400)
-    await shot('home-agent-picker')
-  }
   expect(state.problems).toEqual([])
 })
 

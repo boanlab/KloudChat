@@ -113,6 +113,7 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
   const unexpected: string[] = []
   const problems: string[] = []
   const calls: { method: string; path: string; body: Record<string, unknown> }[] = []
+  let made: ReturnType<typeof pipelineRow>[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   let agents = [...(emptyMine ? [] : myAgents), ...storeAgents]
   let skills = emptyMine ? [] : [...mySkills]
@@ -158,13 +159,14 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && path === '/user-pipelines/catalogue') return json({ maxSteps: 12, skills: [], checks: [], human: [
       { ref: 'gaps', name: '확인 질문', description: '' }], exportFormats: ['docx'], reviewModels: [] })
     if (method === 'GET' && /^\/user-pipelines\/[^/]+$/.test(path)) {
-      const row = myPipelines.find((p) => path.endsWith(p.id))
+      const row = [...myPipelines, ...made].find((p) => path.endsWith(p.id))
       return row ? json(row) : json({ detail: 'pipeline_not_found' }, 404)
     }
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return json({ name: 'comparison-report', formats: [], agents: [],
       options: {}, checks: [], flows: { write: [{ name: 'draft', label: '초안', kind: 'model' }] } })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return json([])
     if (method === 'GET' && path === '/sessions') return json(sessions)
+    if (method === 'GET' && path === '/sessions/paged') return json({ items: sessions.slice(0, 50), total: sessions.length, page: 1, size: 50 })
     if (method === 'GET' && path.startsWith('/sessions/')) {
       const row = sessions.find((s) => path.startsWith(`/sessions/${s.id}`))
       if (path.endsWith('/messages') || path.endsWith('/jobs')) return json([])
@@ -188,7 +190,13 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       return json({ sessionId: newSessionId, kind: 'report', pipelineId: path.split('/')[2] }, 201)
     }
     if (method === 'POST' && path === '/user-pipelines') {
-      return json(pipelineRow('p9999999999999999999999999999999', '새 워크플로'), 201)
+      const row = pipelineRow('p9999999999999999999999999999999', '새 워크플로', { description: '', stages: [], version: 1 })
+      made.push(row)
+      return json(row, 201)
+    }
+    if (method === 'DELETE' && /^\/user-pipelines\/[^/]+$/.test(path)) {
+      made = made.filter((p) => !path.endsWith(p.id))
+      return route.fulfill({ status: 204 })
     }
     if (method === 'POST' && /^\/skills\/[^/]+\/install$/.test(path)) {
       const id = path.split('/')[2]

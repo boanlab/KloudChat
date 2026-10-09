@@ -1,7 +1,7 @@
 import { Bot, Copy, Lock, Share2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PipelineChain } from '@/components/agents/PipelineChain'
+import { PipelineSteps } from '@/components/agents/PipelineChain'
 import { Markdown } from '@/components/chat/Markdown'
 import { PageBody } from '@/components/layout/AppShell'
 import { AgentForm } from '@/components/customize/AgentForm'
@@ -155,7 +155,7 @@ export function AgentDetailPage() {
               </div>
             </div>
           )}
-          <PipelineChain agentId={agent.id} />
+          <PipelineSteps agentId={agent.id} details title={t('이렇게 일합니다')} />
           {!agent.description && !agent.guide && agent.starters.length === 0 && (
             <p className="text-base text-faint">{t('설명이 아직 없습니다.')}</p>
           )}

@@ -26,13 +26,13 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await page.getByRole('button', { name: '탐색' }).click()
   await expect(page).toHaveURL(/tab=agents/)
   await expect(page).toHaveURL(/view=explore/)
-  await expect(page.getByTestId('hub-banner')).toContainText(storeAgents[0].name)
-  await expect(page.getByRole('region', { name: '추천', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '가장 많이 추가된 에이전트' })).toBeVisible()
+  await expect(page.getByTestId('hub-banner')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '추천', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: '가장 많이 추가된 에이전트' })).toContainText(storeAgents[0].name)
   await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toBeVisible()
-  await expect(page.getByRole('region', { name: '추천', exact: true }).getByTestId('item-card').first()).toContainText('제작: 공식 · 42회 추가')
+  await expect(page.getByRole('region', { name: '가장 많이 추가된 에이전트' }).getByTestId('item-card').first()).toContainText('제작: 공식 · 42회 추가')
 
-  if (phone) await page.getByRole('button', { name: '검색' }).click()
+  if (phone) await page.getByRole('button', { name: '검색', exact: true }).click()
   await page.getByRole('searchbox', { name: '검색' }).fill('보도')
   await expect(page).toHaveURL(/q=%EB%B3%B4%EB%8F%84/)
   await expect(page.getByTestId('item-card')).toHaveCount(1, { timeout: 15_000 })
@@ -64,7 +64,8 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await page.getByRole('tab', { name: '워크플로' }).click()
   await expect(page).toHaveURL(/tab=workflows/)
   await expect(page.getByTestId('item-card')).toHaveCount(myPipelines.length, { timeout: 15_000 })
-  await expect(page.getByText('기본 워크플로 (잠김)')).toBeVisible()
+  await expect(page.locator('summary', { hasText: '기본 워크플로' })).toBeVisible()
+  await expect(page.getByText('잠김')).toHaveCount(0)
 
   await page.getByRole('tab', { name: '커넥터' }).click()
   await expect(page.getByRole('button', { name: '내 항목' })).toHaveCount(0)
@@ -88,7 +89,7 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
 test('a tab with nothing of the person\'s own opens on 탐색', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, { emptyMine: true })
   await page.goto('/customize?tab=agents')
-  await expect(page.getByTestId('hub-banner')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('region', { name: '새 에이전트', exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('button', { name: '탐색' })).toHaveAttribute('aria-pressed', 'true')
   expect(state.unexpected).toEqual([])
 })
@@ -136,7 +137,7 @@ test('account menu: one 사용자 지정 item, 대화 기록 beside it, 계정 u
   expect(state.problems).toEqual([])
 })
 
-test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; search covers them all', async ({ page }, testInfo) => {
+test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the box opens search', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo, { conversations: 40 })
   const rows = conversationRows(40)
   const old = rows[33]
@@ -150,10 +151,11 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; searc
   await expect(side.getByRole('button', { name: old.title, exact: true })).toHaveCount(0)
   await expect(side.getByRole('link', { name: '모든 대화 보기' })).toHaveAttribute('href', '/history')
 
-  await side.getByRole('textbox', { name: '대화 빠른 검색' }).fill('대화 34')
-  await expect(side.getByText('검색 결과', { exact: true })).toBeVisible()
-  await expect(side.getByRole('button', { name: old.title, exact: true })).toBeVisible()
-  await side.getByRole('textbox', { name: '대화 빠른 검색' }).fill('')
+  // The 검색 box opens the search dialog (search-dialog.spec.ts covers what it finds).
+  await side.getByRole('button', { name: '대화 빠른 검색' }).click()
+  await expect(page.getByRole('dialog', { name: '검색' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: '검색' })).toHaveCount(0)
 
   // An older conversation, once open, stays in view.
   await page.goto(`/s/${old.id}`)
@@ -162,4 +164,18 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; searc
   await side.getByRole('link', { name: '모든 대화 보기' }).click()
   await expect(page).toHaveURL(/\/history$/)
   expect(state.problems).toEqual([])
+})
+
+test('워크플로 만들기 then leaving without an edit deletes the empty flow', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop')
+  const state = await hubFixture(page, testInfo)
+  await page.goto('/customize?tab=workflows&view=mine')
+  await page.getByRole('button', { name: '추가', exact: true }).filter({ visible: true }).first().click()
+  await page.getByRole('menuitem', { name: '워크플로 만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/workflows\/p9999/)
+  await page.getByRole('link', { name: '워크플로 목록' }).click()
+  await expect(page).toHaveURL(/tab=workflows/)
+  await expect.poll(() => state.calls.some((c) => c.method === 'DELETE' && c.path.endsWith('p9999999999999999999999999999999'))).toBe(true)
+  await expect(page.getByText('새 워크플로', { exact: true })).toHaveCount(0)
+  expect(state.unexpected).toEqual([])
 })

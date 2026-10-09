@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { userPipelinesApi } from '@/lib/api'
 import { agentKinds } from '@/lib/kinds'
-import { agentOutput } from '@/lib/userPipelines'
+import { agentOutput, isUntouchedPipeline } from '@/lib/userPipelines'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill, UserPipeline } from '@/types'
 import type { ItemType } from './itemIcons'
@@ -183,7 +183,8 @@ export function usePipelines(enabled: boolean) {
   const [mine, setMine] = useState<UserPipeline[] | null>(null)
   const [store, setStore] = useState<UserPipeline[] | null>(null)
   const reload = useCallback(() => {
-    void userPipelinesApi.list().then(setMine).catch(() => setMine([]))
+    // A flow left empty right after 「워크플로 만들기」 is being deleted; never list it.
+    void userPipelinesApi.list().then((rows) => setMine(rows.filter((p) => !isUntouchedPipeline(p)))).catch(() => setMine([]))
     void userPipelinesApi.store().then(setStore).catch(() => setStore([]))
   }, [])
   useEffect(() => {

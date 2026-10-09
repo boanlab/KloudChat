@@ -25,9 +25,9 @@ from typing import Any
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import func, or_
+from sqlalchemy import and_, exists, func, or_
 from sqlmodel import col, delete, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -43,6 +43,7 @@ from app.models.chat import (
     RoutingMode,
     SessionKind,
     TurnFailure,
+    follow_document_title,
 )
 from app.models.governance import Governance
 from app.models.user import AuditEvent, User, utcnow
@@ -78,8 +79,6 @@ from app.routers.workspace import (
 from app.schemas.auth import Preferences
 from app.schemas.chat import (
     AudioRequest,
-    ChooseVariant,
-    CompareRequest,
     DiagramOut,
     DiagramRequest,
     FigureSuggestion,
@@ -94,6 +93,7 @@ from app.schemas.chat import (
     SessionCreate,
     SessionMade,
     SessionOut,
+    SessionPage,
     SessionPatch,
     made_from_artifacts,
     snippet,
@@ -108,7 +108,6 @@ from app.services import (
     chart_code,
     check_skills,
     conversation_summary,
-    current_evidence,
     design_templates,
     figures,
     file_schema,
@@ -137,7 +136,6 @@ from app.services import models as model_service
 from app.services import page as page_service
 from app.services import report as report_service
 from app.services import research as research_service
-from app.services.chat_format import normalize_raw_payload
 from app.services.context import (
     build_messages,
     declines_web_search,
@@ -1109,7 +1107,7 @@ async def _resolve_privacy(
 
         if chosen == "route_strict_local":
             action = chosen
-            # A comparison collapses to one strict-local call.
+            # The turn goes to the first privacy-safe model.
             effective = [safe[0]]
         elif chosen == "mask_external":
             action = chosen
@@ -1149,7 +1147,6 @@ async def _resolve_privacy(
         "detectorVersion": governance.DETECTOR_VERSION,
         "policyVersion": governance.POLICY_VERSION,
         "findingCounts": [row.wire() for row in rows],
-        "compareCollapsed": len(requested) > 1 and len(effective) == 1,
     }
     return _PrivacyResolution(effective, action, rows, routing, mask_outbound)
 
@@ -1631,6 +1628,47 @@ async def list_sessions(
         )
         for s in rows
     ]
+
+
+#: Conversations per page of 대화 기록.
+HISTORY_PAGE = 50
+
+
+@router.get("/paged", response_model=SessionPage)
+async def page_sessions(
+    user: CurrentUser,
+    db: DbSession,
+    page: int = Query(1, ge=1, le=100_000),
+    size: int = Query(HISTORY_PAGE, ge=1, le=200),
+):
+    """대화 기록 a page at a time: the conversations the sidebar would list, newest first.
+
+    Same rule as `_worth_listing`, in SQL so the count covers every page: a conversation with
+    messages, a result, a pin, or created in the last minute.
+    """
+    fresh = utcnow() - timedelta(minutes=1)
+    listed = and_(
+        ChatSession.user_id == user.id,
+        or_(
+            exists().where(col(Message.session_id) == col(ChatSession.id)),
+            col(ChatSession.artifact_id).is_not(None),
+            col(ChatSession.pinned).is_(True),
+            col(ChatSession.created_at) > fresh,
+        ),
+    )
+    total = int((await db.exec(select(func.count()).select_from(ChatSession).where(listed))).one())
+    last = max(1, -(-total // size))
+    page = min(page, last)
+    rows = (
+        await db.exec(
+            select(ChatSession)
+            .where(listed)
+            .order_by(col(ChatSession.updated_at).desc(), col(ChatSession.id))
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).all()
+    return SessionPage(items=[SessionOut.of(s) for s in rows], total=total, page=page, size=size)
 
 
 async def _previews(db: DbSession, session_ids: list[str]) -> dict[str, tuple[str | None, int]]:
@@ -2142,6 +2180,13 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
             agent_id=session.agent_id,
         )
     moved_project = "project_id" in changes and changes["project_id"] != session.project_id
+    if changes.get("title") is not None:
+        # Theirs from now on: the document's title no longer renames the conversation.
+        # Clearing the name hands it back to the document.
+        changes["title"] = " ".join(changes["title"].split())[:200]
+        changes["title_set_by_user"] = bool(changes["title"])
+    else:
+        changes.pop("title", None)
     for field, value in changes.items():
         setattr(session, field, value)
     session.updated_at = utcnow()
@@ -2846,7 +2891,12 @@ async def _store_document(
     data: dict,
     summary: str,
 ) -> str:
-    """Store same-kind regeneration as a version; create a row for a new kind."""
+    """Store same-kind regeneration as a version; create a row for a new kind.
+
+    A report or slides conversation takes the document's title as its own name, unless the
+    person renamed the conversation.
+    """
+    follow_document_title(session, title)
     existing = await db.get(Artifact, session.artifact_id) if session.artifact_id else None
     if (
         existing is not None
@@ -5331,7 +5381,7 @@ async def _run_turn(
             # Notes are kept from an empty completion but not from a failed turn.
             if ctx.pending_notes and not failed and not skip_completion_work:
                 await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
-            if title:
+            if title and not session.title_set_by_user:
                 session.title = title
             # Own ledger line: a different model may have run it.
             if not skip_completion_work:
@@ -5454,489 +5504,6 @@ async def stop_turn(session_id: str, user: CurrentUser, db: DbSession):
     await stop_signal.broadcast(session_id)
     # The stopped turn's claim goes with it, so the next message is not refused.
     await _release_turn(session_id, token="")
-
-
-@router.post("/{session_id}/compare")
-async def compare_models(
-    session_id: str, payload: CompareRequest, request: Request, user: CurrentUser, db: DbSession
-):
-    """Runs one prompt against two or three models and streams all of them."""
-    # Every column is a real completion on the caller's key, stored on one assistant message.
-    session = await _owned(db, user, session_id)
-    if session.kind is not SessionKind.chat:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="surface_not_implemented"
-        )
-
-    # Policy first; no cached default may authorise a comparison.
-    policy = await _require_egress_policy()
-    content = payload.content
-    if policy.intent_filter and (hit := governance.blocked_by(content, policy.blocked_categories)):
-        await _audit_policy(user, request, "filter.blocked", hit)
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"blocked_category:{hit}"
-        )
-
-    catalogue = await model_service.list_models_for_egress()
-    if len(set(payload.models)) != len(payload.models):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="models_must_be_distinct"
-        )
-    catalogue_models = catalogue["models"]
-    chosen = [model_service.find(catalogue_models, model_id) for model_id in payload.models]
-    if any(model is None or "chat" not in model.get("kinds", []) for model in chosen):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="models_unavailable")
-    allowed_ids = set(user.allowed_models or [])
-    if allowed_ids and any(model_id not in allowed_ids for model_id in payload.models):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="model_not_allowed",
-        )
-    # Request order is part of the decision-token binding.
-    chosen = [model for model in chosen if model is not None]
-
-    history = await _history(db, session.id)
-    attachment_rows, attachment_meta = await _owned_attachments(db, user, payload.attachments)
-    try:
-        workspace = await assemble(
-            db,
-            user,
-            session,
-            attachment_ids=payload.attachments,
-            # The smallest window among the compared models decides how much file goes in.
-            file_budget=min(file_budget(m) for m in chosen),
-            # The conversation's standing skills apply to a comparison too.
-            activated_skill_ids=list(payload.activated_skill_ids) or list(session.skill_ids or []),
-            question=content,
-            # Comparison exposes no tools.
-            available_tool_names=set(),
-        )
-    except WorkspaceContextError as exc:
-        _raise_workspace_error(exc)
-    resolved = await _resolve_privacy(
-        user=user,
-        session=session,
-        policy=policy,
-        catalogue=catalogue_models,
-        requested=chosen,
-        sources=_privacy_sources(content, history, workspace.blocks),
-        explicit_action=payload.privacy_action,
-        decision_token=payload.privacy_decision_token,
-        internal_data=_internal_data_present(
-            session, workspace.blocks, payload.attachments, history
-        ),
-    )
-    if isinstance(resolved, JSONResponse):
-        await _audit_policy(
-            user,
-            request,
-            "privacy.decision_required",
-            governance.DETECTOR_VERSION,
-            metadata={
-                **_decision_audit_metadata(resolved, session.id),
-                "compare": True,
-            },
-        )
-        return resolved
-    chosen = resolved.models
-
-    # Comparison remains tool-free; agreement is not evidence of factual accuracy.
-    # Headroom checked only after a possible collapse to strict-local.
-    if not has_headroom(user, max(chosen, key=lambda m: m["creditCost"])):
-        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="no_credits")
-
-    masker = governance.mask_legacy if policy.pii_masking else governance.mask
-    stored_content = masker(content)[0] if resolved.findings else content
-    protected_values = _protected_values(
-        _privacy_sources(content, history, workspace.blocks), legacy=policy.pii_masking
-    )
-    if resolved.findings and attachment_meta:
-        attachment_meta = [
-            {
-                **item,
-                "name": masker(str(item.get("name") or ""))[0],
-                "error": (
-                    masker(str(item["error"]))[0] if item.get("error") else item.get("error")
-                ),
-            }
-            for item in attachment_meta
-        ]
-    outbound_history = [message.content for message in history]
-    trusted_context = workspace.trusted
-    untrusted_context = workspace.untrusted
-    if resolved.mask_outbound:
-        content = masker(content)[0]
-        outbound_history = _mask_list(outbound_history, legacy=policy.pii_masking)
-        trusted_context = _mask_list(trusted_context, legacy=policy.pii_masking)
-        untrusted_context = _mask_list(untrusted_context, legacy=policy.pii_masking)
-
-    for stored in attachment_rows:
-        stored.session_id = session.id
-        db.add(stored)
-
-    db.add(
-        Message(
-            session_id=session.id,
-            role=Role.user,
-            content=stored_content,
-            attachments=attachment_meta,
-            routing=resolved.routing,
-        )
-    )
-    session.updated_at = utcnow()
-    if not session.title:
-        session.title = chat_service.provisional_title(stored_content)
-    db.add(session)
-    privacy_audit_id: str | None = None
-    if resolved.findings:
-        privacy_audit = AuditEvent(
-            actor_id=user.id,
-            action=f"privacy.{resolved.action}",
-            target=session.id,
-            detail=governance.DETECTOR_VERSION,
-            event_metadata={
-                **governance.finding_metadata(resolved.findings),
-                **resolved.routing,
-            },
-            ip=client_ip(request),
-            severity="warn",
-        )
-        privacy_audit_id = privacy_audit.id
-        db.add(privacy_audit)
-    await db.commit()
-
-    await litellm_service.ensure_key(user)
-    if db.is_modified(user):
-        db.add(user)
-        await db.commit()
-    _, api_key = await litellm_service.credentials_for(user)
-
-    wire = [
-        {"role": message.role.value, "content": body}
-        for message, body in zip(history, outbound_history, strict=True)
-    ]
-    wire.append({"role": "user", "content": content})
-    messages = build_messages(
-        session.kind,
-        wire,
-        with_tools=False,
-        web_search=False,
-        extra=trusted_context,
-        untrusted_context=untrusted_context,
-        remind_standing=session.kind is SessionKind.chat,
-    )
-
-    previous_fact = _freshness_followup_index(history, session.id, content)
-    comparison_current_fact = freshness.current_fact_required(content) or (
-        previous_fact is not None
-        and freshness.current_fact_required(history[previous_fact].content)
-    )
-    return StreamingResponse(
-        _heartbeat(
-            _run_comparison(
-                user_id=user.id,
-                api_key=api_key,
-                session_id=session.id,
-                models=chosen,
-                messages=messages,
-                current_fact_request=content if comparison_current_fact else None,
-                format_request=stored_content,
-                skills_event=workspace.skills_event(),
-                context_steps=_context_steps(workspace),
-                routing=resolved.routing,
-                mask_at_rest=policy.pii_masking or policy.external_data_guard,
-                protected_values=protected_values,
-                legacy_masking=policy.pii_masking,
-                privacy_audit_id=privacy_audit_id,
-            ),
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
-
-async def _run_comparison(
-    *,
-    user_id: str,
-    api_key: str,
-    session_id: str,
-    models: list[dict],
-    messages: list[dict],
-    current_fact_request: str | None = None,
-    format_request: str = "",
-    skills_event: dict | None = None,
-    context_steps: list[dict] | None = None,
-    routing: dict,
-    mask_at_rest: bool = False,
-    legacy_masking: bool = False,
-    protected_values: frozenset[str] = frozenset(),
-    privacy_audit_id: str | None = None,
-) -> AsyncIterator[str]:
-    """Fans out, merges the streams, then settles every column in one transaction.
-
-    Interleaved on one connection: the turn is stored and billed as one thing
-    even when a column fails. The `compare` pipeline's `make` flow: `compare-answer`
-    (the fan-out), `compare-save` (the message and the bill).
-    """
-    yield chat_service.sse({"type": "privacy_route", **routing})
-    work = PipelineBundle(request=PipelineRequest(
-        text="", model="", api_key=api_key, session_id=session_id, turn={
-            "user_id": user_id, "models": models, "messages": messages,
-            "current_fact_request": current_fact_request, "format_request": format_request,
-            "skills_event": skills_event, "context_steps": list(context_steps or []),
-            "routing": routing, "mask_at_rest": mask_at_rest,
-            "legacy_masking": legacy_masking, "protected_values": sorted(protected_values),
-            "privacy_audit_id": privacy_audit_id,
-        }))
-    pipe = pipeline_registry.pipeline("compare")
-    async for event in PipelineRunner(pipe.stages("make"), name="compare.make").run(work):
-        yield chat_service.sse(event)
-    saved = work.document.saved or {}
-    # The stored id; the browser's streaming id is provisional.
-    yield chat_service.sse({"type": "done", "credits": saved.get("credits", 0),
-                            "messageId": saved.get("messageId")})
-
-
-def _turn_args(work: PipelineBundle) -> dict[str, Any]:
-    turn = work.request.turn
-    return {**turn, "api_key": work.request.api_key, "session_id": work.request.session_id,
-            "protected_values": frozenset(turn.get("protected_values") or ())}
-
-
-async def _compare_answer(work: PipelineBundle) -> AsyncIterator[dict]:
-    """Every model's answer at once, streamed as variants; the columns onto the bundle."""
-    args = _turn_args(work)
-    user_id, api_key, models, messages = (args["user_id"], args["api_key"], args["models"],
-                                          args["messages"])
-    current_fact_request, format_request = args.get("current_fact_request"), \
-        str(args.get("format_request") or "")
-    skills_event, context_steps = args.get("skills_event"), args.get("context_steps")
-    routing, mask_at_rest = args["routing"], bool(args.get("mask_at_rest"))
-    queue: asyncio.Queue[dict | None] = asyncio.Queue()
-    routing_holder = {"value": routing}
-    results: dict[str, dict] = {
-        model["id"]: {
-            "model": model["id"],
-            "routedModel": model["id"],
-            "actualModel": None,
-            "dataBoundary": model.get("dataBoundary") or "unknown",
-            "content": "",
-            "usage": None,
-            "error": None,
-        }
-        for model in models
-    }
-
-    async def run(model: dict) -> None:
-        slot = results[model["id"]]
-        try:
-            envelope = freshness.with_answer_policy(
-                messages, model, current_fact=True if current_fact_request else None,
-            )
-            if current_fact_request:
-                envelope[0]["content"] += (
-                    "\n\n" + current_evidence.instruction(current_fact_request)
-                )
-            async for event in chat_service.stream_completion(
-                model["id"],
-                envelope,
-                user_id,
-                api_key,
-                strict_local=_strict_model(model),
-                redact_logging=mask_at_rest,
-            ):
-                if event["type"] == "delta":
-                    slot["content"] += event["text"]
-                    if not current_fact_request:
-                        await queue.put(
-                            {"type": "variant", "model": model["id"], "text": event["text"]}
-                        )
-                elif event["type"] == "retract":
-                    slot["content"] = slot["content"].replace(event["text"], "", 1)
-                    if not current_fact_request:
-                        await queue.put(
-                            {"type": "variant_retract", "model": model["id"], "text": event["text"]}
-                        )
-                elif event["type"] == "usage":
-                    slot["usage"] = {k: v for k, v in event.items() if k != "type"}
-                elif event["type"] == "model_route":
-                    slot["actualModel"] = str(event["actualModel"])
-                    routing_holder["value"] = _with_actual_model(
-                        routing_holder["value"],
-                        model["id"],
-                        slot["actualModel"],
-                    )
-                    await queue.put({"type": "privacy_route", **routing_holder["value"]})
-        except Exception as exc:  # noqa: BLE001 — one dead column must not kill the row
-            log.warning("comparison column failed (%s): %s", model["id"], exc)
-            slot["error"] = "모델 응답을 받지 못했습니다."
-        finally:
-            if current_fact_request:
-                slot["content"] = (
-                    "" if slot["error"]
-                    else current_evidence.render(slot["content"], current_fact_request)
-                )
-                if slot["content"]:
-                    await queue.put({
-                        "type": "variant", "model": model["id"], "text": slot["content"],
-                    })
-            if slot["content"].strip() and not slot["error"]:
-                request_text = next(
-                    (str(m.get("content") or "") for m in reversed(messages)
-                     if m.get("role") == "user"), "",
-                )
-                normalized = freshness.normalize_answer_notice(
-                    slot["content"], request_text, model, slot["actualModel"] or model["id"],
-                )
-                normalized = normalize_raw_payload(normalized, format_request)
-                if normalized != slot["content"]:
-                    await queue.put({
-                        "type": "variant_retract", "model": model["id"], "text": slot["content"],
-                    })
-                    slot["content"] = normalized
-                    await queue.put({"type": "variant", "model": model["id"], "text": normalized})
-            usage = slot["usage"] or {"inputTokens": 0, "outputTokens": 0}
-            credits = (
-                0
-                if not slot["content"]
-                else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-            )
-            slot["credits"] = credits
-            await queue.put(
-                {
-                    "type": "variant_done",
-                    "model": model["id"],
-                    "routedModel": model["id"],
-                    "actualModel": slot["actualModel"] or model["id"],
-                    "credits": credits,
-                    "error": slot["error"],
-                    **usage,
-                }
-            )
-
-    async def drive() -> None:
-        await asyncio.gather(*(run(m) for m in models))
-        await queue.put(None)
-
-    task = asyncio.create_task(drive())
-    try:
-        if skills_event:
-            yield skills_event
-        for step in context_steps or ():
-            yield _step_event(step)
-        while (event := await queue.get()) is not None:
-            yield event
-    finally:
-        await task
-    work.document.data = {"results": results, "routing": routing_holder["value"]}
-
-
-
-async def _compare_save(work: PipelineBundle) -> AsyncIterator[dict]:
-    """The columns stored as one message with its variants, billed as one turn."""
-    args = _turn_args(work)
-    user_id, session_id = args["user_id"], args["session_id"]
-    skills_event, context_steps = args.get("skills_event"), args.get("context_steps")
-    mask_at_rest, legacy_masking = bool(args.get("mask_at_rest")), bool(
-        args.get("legacy_masking"))
-    protected_values, privacy_audit_id = args["protected_values"], args.get("privacy_audit_id")
-    results = work.document.data.get("results") or {}
-    routing_holder = {"value": work.document.data.get("routing") or args["routing"]}
-    masker = governance.mask_legacy if legacy_masking else governance.mask
-
-    def at_rest(value: str) -> tuple[str, int]:
-        return masker(value, scope="answer", protected=set(protected_values))
-
-    variants = [
-        {
-            "model": r["model"],
-            "routedModel": r["routedModel"],
-            "actualModel": r["actualModel"] or r["routedModel"],
-            "dataBoundary": r["dataBoundary"],
-            "content": r["content"],
-            "credits": r.get("credits", 0),
-            "usage": r["usage"],
-            "error": r["error"],
-        }
-        for r in results.values()
-    ]
-    if mask_at_rest:
-        variants = _mask_text_tree(variants, at_rest)
-    stored_routing = (
-        _mask_text_tree(routing_holder["value"], at_rest)
-        if mask_at_rest
-        else routing_holder["value"]
-    )
-    total = sum(v["credits"] for v in variants)
-
-    # First successful column is the default answer; `choose_variant` can change it.
-    chosen = next((v for v in variants if v["content"] and not v["error"]), None)
-    for variant in variants:
-        variant["chosen"] = variant is chosen
-    stored_prelude = _prelude_steps(skills_event, context_steps)
-    if stored_prelude and mask_at_rest:
-        stored_prelude = _mask_text_tree(stored_prelude, at_rest)
-
-    answer = Message(
-        session_id=session_id,
-        role=Role.assistant,
-        content=chosen["content"] if chosen else "",
-        variants=variants,
-        usage={"credits": total},
-        steps=stored_prelude or None,
-        model=chosen["actualModel"] if chosen else None,
-        routing=stored_routing,
-    )
-    async with SessionLocal() as db:
-        db.add(answer)
-        settled = await db.get(User, user_id)
-        if privacy_audit_id:
-            privacy_audit = await db.get(AuditEvent, privacy_audit_id)
-            if privacy_audit is not None:
-                privacy_audit.event_metadata = {
-                    **(privacy_audit.event_metadata or {}),
-                    **stored_routing,
-                }
-                db.add(privacy_audit)
-        if settled is not None and total:
-            # No model: one charge covers several.
-            settle(db, settled, total, reason="chat.compare", session_id=session_id)
-        await db.commit()
-    work.document.saved = {"credits": total, "messageId": answer.id}
-    return
-    yield  # an async generator
-
-
-
-
-@router.post("/{session_id}/messages/{message_id}/variant", response_model=MessageOut)
-async def choose_variant(
-    session_id: str, message_id: str, payload: ChooseVariant, user: CurrentUser, db: DbSession
-):
-    """Marks which comparison answer the conversation continues from."""
-    await _owned(db, user, session_id)
-    message = await db.get(Message, message_id)
-    if message is None or message.session_id != session_id or not message.variants:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="variant_not_found")
-
-    variants = [dict(v) for v in message.variants]
-    if not any(v.get("model") == payload.model for v in variants):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown_model")
-
-    for variant in variants:
-        variant["chosen"] = variant.get("model") == payload.model
-    message.variants = variants
-    message.content = next(v.get("content") or "" for v in variants if v["chosen"])
-    selected = next(v for v in variants if v["chosen"])
-    message.model = selected.get("actualModel") or payload.model
-    db.add(message)
-    await db.commit()
-    await db.refresh(message)
-    return MessageOut.of(message)
 
 
 async def _store_artifacts(

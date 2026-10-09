@@ -6,6 +6,7 @@ import { copyText } from '@/lib/clipboard'
 import { COMPOSER_KEYS, SHORTCUTS, codeBlocks, isMac, shortcutFor, toggleDictation } from '@/lib/shortcuts'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
+import { openSearch } from './SearchDialog'
 
 /** Window event that opens the dialog from anywhere. */
 const OPEN_EVENT = 'kloudchat:shortcuts'
@@ -119,8 +120,7 @@ export function KeyboardShortcuts() {
           return
         case 'search':
           e.preventDefault()
-          if (state.sidebar !== 'full') state.cycleSidebar()
-          requestAnimationFrame(() => focus('[data-session-search]'))
+          openSearch()
           return
         case 'show-shortcuts':
           e.preventDefault()

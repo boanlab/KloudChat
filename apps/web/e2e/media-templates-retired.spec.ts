@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { openTemplates, toolNames } from './composer-tools'
 
 test.use({ serviceWorkers: 'block' })
 // A phone folds ▦ and the option chips behind 「더보기」; the desktop composer is what is checked.
@@ -108,7 +109,7 @@ async function shot(page: Page, name: string) {
 test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상에는 없다', async ({ page }, testInfo) => {
   await fixture(page, testInfo)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '양식 고르기' }).first().click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByText('회의록', { exact: true })).toBeVisible()
   // No media blanks are promised any more.
@@ -121,12 +122,12 @@ test('보고서에는 서식 고르기가 있고, 이미지·오디오/동영상
 
   await page.goto('/new/image')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
+  expect(await toolNames(page)).not.toContain('양식 고르기')
   await shot(page, 'image-composer')
 
   await page.goto('/new/av')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
+  expect(await toolNames(page)).not.toContain('양식 고르기')
 })
 
 test('흐름도 칩은 서버의 도형 그림으로 가고 이미지 모델을 부르지 않는다', async ({ page }, testInfo) => {

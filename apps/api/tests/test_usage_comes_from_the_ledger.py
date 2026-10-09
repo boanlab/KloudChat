@@ -43,7 +43,8 @@ _DDL = (
         id TEXT PRIMARY KEY,
         user_id TEXT,
         kind TEXT,
-        model TEXT DEFAULT ''
+        model TEXT DEFAULT '',
+        title_set_by_user BOOLEAN NOT NULL DEFAULT 0
     )
     """,
     """

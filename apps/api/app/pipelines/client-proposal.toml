@@ -19,3 +19,11 @@ revise = [
 prepass = ["date-calc", "proposal-rfp", "quote-calc", "staffing"]
 checks = ["quote-totals", "proposal-schedule", "lead-dates", "staff-counts", "material-blanks"]
 judged = ["judge-bindings"]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+material = "제안요청서와 올린 자료를 읽습니다"
+question = "기간·인력·단가처럼 빠진 정보가 있으면 먼저 물어봅니다"
+compute = "견적 합계·일정·투입 인력을 계산해 둡니다"
+write = "제안서를 씁니다"
+check = "견적 합계·일정·인원과 쪽수 제한을 확인합니다"

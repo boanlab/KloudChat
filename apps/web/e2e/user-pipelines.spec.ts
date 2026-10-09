@@ -41,9 +41,11 @@ const shipped = {
       { name: 'prepass', label: '사전 계산', kind: 'compute' },
       { name: 'draft', label: '초안', kind: 'model' },
       { name: 'check:grounding', label: '근거 확인', kind: 'check', checks: ['grounding-check'] },
-      { name: 'verify', label: '검증', kind: 'check' },
+      { name: 'verify', label: '검증', kind: 'check', checks: ['lead-dates'] },
     ],
   },
+  summary: { material: '비교할 대안의 자료를 읽습니다', check: '비교표의 빈칸과 점수가 계산과 맞는지 확인합니다' },
+  checkNames: { 'gap-check': '빠진 정보 묻기', 'grounding-check': '근거 대조', 'lead-dates': '날짜 확인' },
 }
 
 const catalogue = {
@@ -299,8 +301,24 @@ test('editor: copy the shipped flow, edit, validate, save, share, bind, start', 
   const shippedCard = page.locator(`[data-agent="${cmpAgent.id}"]`)
   await expect(shippedCard).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('shipped-pipeline')).toHaveCount(3)
+  // A few plain steps, each saying what happens; no stage ids, kinds or check ids until asked.
+  const plain = shippedCard.getByTestId('workflow-step')
+  expect(await plain.count()).toBeLessThanOrEqual(6)
+  await expect(plain.first()).toContainText('자료 · 비교할 대안의 자료를 읽습니다')
+  await expect(shippedCard).toContainText('기본 제공 · 복제해서 고칠 수 있어요')
+  for (const internal of ['check:gaps', 'gap-check', 'prepass', '입출력', '모델', '사전 계산']) {
+    await expect(shippedCard.getByText(internal, { exact: false })).toHaveCount(0)
+  }
   await shot('shipped-locked')
-  await shippedCard.getByRole('button', { name: '복제해서 편집' }).click()
+  await shippedCard.getByRole('button', { name: '자세히 보기 (단계 6개)' }).click()
+  const details = shippedCard.getByTestId('workflow-details')
+  await expect(details.getByText('사전 계산')).toBeVisible()
+  await expect(details.getByText('· 빠진 정보 묻기')).toBeVisible()
+  await expect(details.getByText('· 날짜 확인')).toBeVisible()
+  // Ids only as 기술 정보.
+  await expect(details.getByTestId('workflow-tech')).toContainText('gap-check')
+  await shot('shipped-details')
+  await shippedCard.getByRole('button', { name: '복제해서 고치기' }).click()
 
   await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
   const editor = page.getByTestId('pipeline-editor')

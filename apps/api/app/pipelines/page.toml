@@ -3,3 +3,7 @@
 
 name = "page"
 make = ["page-write", "page-save"]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+write = "페이지를 쓰고 저장합니다"

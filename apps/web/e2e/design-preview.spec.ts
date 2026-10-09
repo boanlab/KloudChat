@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
 /** A saved design system reaches the gallery opened inside a project wearing it. Nothing is generated. */
 
@@ -44,7 +45,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
 
   // The gallery opens on the project's own surface.
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByRole('button').first()).toBeVisible({
     timeout: 20_000,

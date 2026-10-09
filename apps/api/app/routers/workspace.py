@@ -20,7 +20,7 @@ from sqlmodel import col, delete, select, update
 
 from app.core.config import settings
 from app.core.deps import CurrentUser, CurrentViewer, DbSession
-from app.models.chat import ChatSession, Message, Role, SessionKind
+from app.models.chat import ChatSession, Message, Role, SessionKind, follow_document_title
 from app.models.user import User, UserRole, utcnow
 from app.models.workspace import (
     Agent,
@@ -94,6 +94,7 @@ from app.services import (
     report_export,
     richtext,
     settings_store,
+    skill_import,
     starter,
 )
 from app.services import deck as deck_service
@@ -819,9 +820,25 @@ async def patch_artifact(
         setattr(artifact, field, value)
     artifact.updated_at = utcnow()
     db.add(artifact)
+    if "title" in changes:
+        await _name_session_after(db, user, artifact)
     await db.commit()
     await db.refresh(artifact)
     return ArtifactOut.of(artifact)
+
+
+async def _name_session_after(db: DbSession, user: User, artifact: Artifact) -> None:
+    """The report or slides conversation that holds this document takes its new title."""
+    if not artifact.session_id:
+        return
+    session = await db.get(ChatSession, artifact.session_id)
+    if (
+        session is not None
+        and session.user_id == user.id
+        and session.artifact_id == artifact.id
+        and follow_document_title(session, artifact.title)
+    ):
+        db.add(session)
 
 
 @router.post("/artifacts/{artifact_id}/slides/factcheck", response_model=ArtifactOut)
@@ -1709,6 +1726,7 @@ async def restore_artifact(
     # Reports carry their title inside `data`.
     if isinstance(target.data, dict) and str(target.data.get("title") or "").strip():
         artifact.title = str(target.data["title"])[:200]
+        await _name_session_after(db, user, artifact)
     artifact.updated_at = utcnow()
     db.add(artifact)
     await db.commit()
@@ -1888,6 +1906,25 @@ async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
     return SkillOut.of(skill)
 
 
+_SHARED_TEXT = ("visibility", "name", "description", "when_to_use", "body")
+
+
+def _check_skill_share(skill: Skill, changes: dict[str, Any]) -> None:
+    """Sharing spreads a skill to every copy: re-run the import scan on the text it would
+    share and refuse block-level findings (secrets, hidden direction controls)."""
+    shared = changes.get("visibility", skill.visibility) == Visibility.org
+    if not shared or not any(field in changes for field in _SHARED_TEXT):
+        return
+    found = skill_import.blocking_on_share(
+        *(str(changes.get(f, getattr(skill, f)) or "") for f in _SHARED_TEXT[1:])
+    )
+    if found:
+        codes = ",".join(sorted({f.code for f in found}))
+        raise HTTPException(
+            status_code=422, detail=f"skill_share_blocked:{codes}"
+        )
+
+
 @router.patch("/skills/{skill_id}", response_model=SkillOut)
 async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: DbSession):
     skill = await _own(db, Skill, "owner_id", user, skill_id)
@@ -1899,6 +1936,7 @@ async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: Db
             changes["required_tools"],
             grandfathered=set(skill.required_tools or []),
         )
+    _check_skill_share(skill, changes)
     for field, value in changes.items():
         setattr(skill, field, value)
     skill.slug = _slug(skill.name)

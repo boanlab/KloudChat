@@ -78,7 +78,7 @@ export function AdminGovernancePage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-base font-medium">{t('외부 모델 개인정보 보호')}</p>
                       <p className="text-base text-muted">
-                        {t('채팅과 모델 비교의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.')}
+                        {t('채팅의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.')}
                       </p>
                     </div>
                     <Switch

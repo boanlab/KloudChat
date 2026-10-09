@@ -4,7 +4,7 @@ title: Attaching files
 
 # Attaching files
 
-Attach files with 📎 in the composer, and the model answers from their content. You can attach several files at once, and you can drag and drop them or paste them in. The Images and Audio/Video screens do not offer attachments.
+Attach files from **+** → **Attach** in the composer, and the model answers from their content. You can attach several files at once, and you can drag and drop them or paste them in. The Images and Audio/Video screens do not offer attachments.
 
 ![A conversation answered from an attached document](/img/guide/chat-with-file.png)
 

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { openTemplates } from './composer-tools'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -52,7 +53,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
 
 test('a document 서식 previews as pages: the cover alone, the body from page 2', async ({ page }, testInfo) => {
   await fixture(page, testInfo)
-  await page.getByRole('button', { name: '양식 고르기' }).first().click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
 
   // The card shows page 1: the cover.

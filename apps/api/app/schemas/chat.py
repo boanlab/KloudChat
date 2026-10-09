@@ -277,6 +277,16 @@ class SessionOut(Wire):
         return out
 
 
+class SessionPage(Wire):
+    """One page of 대화 기록, newest first, with the count across every page."""
+
+    items: list[SessionOut]
+    total: int
+    #: The page served: the one asked for, or the last one when that was past the end.
+    page: int
+    size: int
+
+
 def snippet(content: str, limit: int = 120) -> str | None:
     """Collapses whitespace and truncates to `limit` characters."""
     text = " ".join((content or "").split())
@@ -309,21 +319,6 @@ class HandoffOut(Wire):
     #: The conversation as one text file, then the files attached in it; send them with
     #: the document request so the writer reads the conversation as material.
     attachments: list[FileOut]
-
-
-class CompareRequest(Wire):
-    content: str = Field(min_length=1)
-    models: list[str] = Field(min_length=2, max_length=3)
-    activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    attachments: list[str] | None = None
-    privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
-        None
-    )
-    privacy_decision_token: str | None = Field(default=None, max_length=4000)
-
-
-class ChooseVariant(Wire):
-    model: str = Field(min_length=1, max_length=200)
 
 
 class SessionPatch(Wire):

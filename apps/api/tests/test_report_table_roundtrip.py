@@ -32,7 +32,8 @@ _DDL = (
     """CREATE TABLE artifacts (
         id TEXT PRIMARY KEY, user_id TEXT, session_id TEXT, project_id TEXT,
         kind TEXT, title TEXT, data TEXT, storage_key TEXT, version INTEGER,
-        created_at DATETIME, updated_at DATETIME
+        created_at DATETIME, updated_at DATETIME,
+        search_text TEXT NOT NULL DEFAULT ''
     )""",
     """CREATE TABLE artifact_versions (
         id TEXT PRIMARY KEY, artifact_id TEXT, version INTEGER, data TEXT,

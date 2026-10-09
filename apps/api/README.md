@@ -41,7 +41,6 @@ All under `/api` except `/llm`.
 | `GET /sessions` · `POST` · `GET/PATCH/DELETE {id}` · `POST /sessions/delete` | Shared by all five surfaces. The list returns titles; the detail returns the conversation; bulk delete |
 | `POST /sessions/{id}/messages` → SSE · `POST /sessions/{id}/stop` | Streaming turn for chat, report and slides; stop keeps the partial answer |
 | `POST /sessions/{id}/messages/{mid}/fork` · `PATCH /messages/{id}/rating` | Branch a conversation before a message; rate an answer |
-| `POST /sessions/{id}/compare` · `POST /sessions/{id}/messages/{mid}/variant` | Model comparison and the chosen variant |
 | `POST /sessions/{id}/figure-suggestion` · `diagrams` · `diagrams/store` | Figure proposals and mermaid figures for a document |
 | `POST /sessions/{id}/images` · `audio` | Image and audio, generated inside the request |
 | `POST /sessions/{id}/jobs` · `POST /jobs/{id}/cancel` | Video — the only asynchronous work |

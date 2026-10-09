@@ -23,7 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, Modal, Select, Switch, Textarea } from '@/components/ui'
-import { PipelineChain } from '@/components/agents/PipelineChain'
+import { PipelineSteps } from '@/components/agents/PipelineChain'
 import { errorMessage, userPipelinesApi } from '@/lib/api'
 import { useLeaveGuard } from '@/lib/useLeaveGuard'
 import { REVIEW_LABEL, REVIEW_TONE, agentOutput } from '@/lib/userPipelines'
@@ -187,10 +187,10 @@ export function AgentFlowSummary({
           {picked ? (
             <Badge tone={REVIEW_TONE[picked.review]}>{t(REVIEW_LABEL[picked.review])}</Badge>
           ) : (
-            <Badge>{t('잠김')}</Badge>
+            <span className="text-sm text-faint">{t('기본 제공 · 복제해서 고칠 수 있어요')}</span>
           )}
         </div>
-        {picked ? <StepChips steps={picked.stages} /> : <PipelineChain agentId={agent.id} />}
+        {picked ? <StepChips steps={picked.stages} /> : <PipelineSteps agentId={agent.id} />}
         {pickedId !== (bound?.id ?? null) && mine !== null && (
           <p className="text-sm text-warn">{t('저장하면 이 워크플로로 바뀝니다.')}</p>
         )}

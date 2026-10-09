@@ -28,3 +28,11 @@ draws = "when-asked"
 # The pre-pass runs (empty) with nothing attached, and never says it was skipped.
 prepass_always = true
 prepass_quiet = true
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+material = "올린 자료를 읽습니다"
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "날짜·견적·인력 수치를 계산해 둡니다"
+write = "정해진 네 부분으로 개조식 보고를 씁니다"
+check = "개조식 문체와 한 쪽 분량을 확인합니다"

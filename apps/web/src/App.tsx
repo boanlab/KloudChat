@@ -30,6 +30,7 @@ const SkillDetailPage = lazy(() =>
   import('@/pages/customize/SkillDetailPage').then((m) => ({ default: m.SkillDetailPage })),
 )
 const SkillCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.SkillCreatePage })))
+const SkillUploadPage = lazy(() => import('@/pages/customize/SkillUploadPage').then((m) => ({ default: m.SkillUploadPage })))
 const WorkflowEditPage = lazy(() =>
   import('@/pages/customize/WorkflowEditPage').then((m) => ({ default: m.WorkflowEditPage })),
 )
@@ -158,6 +159,7 @@ function Authenticated() {
           <Route path="customize/agents/new" element={<AgentCreatePage />} />
           <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
           <Route path="customize/skills/new" element={<SkillCreatePage />} />
+          <Route path="customize/skills/upload" element={<SkillUploadPage />} />
           <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />
           <Route path="customize/workflows/:pipelineId" element={<WorkflowEditPage />} />
           <Route path="designs" element={<ToHub tab="designs" />} />

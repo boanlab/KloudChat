@@ -19,7 +19,7 @@ The file is a scanned image with no text information, or an older Office format 
 The attachment stays available throughout the same Chat conversation. Check whether the processing steps of the answer show "Attachment from an earlier turn". Other conversations and the report and slide screens do not carry earlier attachments over. If the file is long, only the parts related to your question are passed, so describe what you are looking for in detail.
 
 ### The answer does not match the facts
-The model may have generated something it does not know. Set web search to **On** or attach source material. If the answer shows no sources, it did not go through search. [Model limitations](limits#model-limitations)
+The model may have generated something it does not know. Set web search to **Always** or attach source material. If the answer shows no sources, it did not go through search. [Model limitations](limits#model-limitations)
 
 ### The answer is too short
 The product is designed to leave out introductions and repeated explanations. Add conditions to your request, such as "in detail" or "with examples", or describe the length you want under **Answer style** in the settings.

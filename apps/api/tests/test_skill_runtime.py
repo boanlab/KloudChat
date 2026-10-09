@@ -34,7 +34,7 @@ from app.models.workspace import (
 )
 from app.routers import auth as auth_router
 from app.routers import sessions as sessions_router
-from app.schemas.chat import CompareRequest, SendMessage
+from app.schemas.chat import SendMessage
 from app.schemas.workspace import AgentIn, SkillIn
 from app.services import deck as deck_service
 from app.services import report as report_service
@@ -170,7 +170,7 @@ class _RefreshDb:
 
 
 class _RouteDb:
-    """Records durable side effects while serving the real send/compare routes."""
+    """Records durable side effects while serving the real send route."""
 
     def __init__(
         self,
@@ -676,12 +676,6 @@ def test_untrusted_workspace_data_is_not_placed_in_system_prompt():
 def test_wire_contract_rejects_more_than_three_skills():
     with pytest.raises(ValidationError):
         SendMessage(content="hello", activated_skill_ids=["1", "2", "3", "4"])
-    with pytest.raises(ValidationError):
-        CompareRequest(
-            content="hello",
-            models=["a", "b"],
-            activated_skill_ids=["1", "2", "3", "4"],
-        )
 
 
 def test_a_new_agent_inherits_rather_than_denies():
@@ -747,27 +741,14 @@ def _patch_route_services(monkeypatch, upstream: dict[str, int]) -> None:
 
 
 async def _call_turn_route(
-    route: str,
     db: _RouteDb,
     user: User,
     activated_skill_ids: list[str],
 ):
-    if route == "send":
-        return await sessions_router.send_message(
-            db.session.id,
-            SendMessage(content="hello", activated_skill_ids=activated_skill_ids),
-            _request(f"/sessions/{db.session.id}/messages"),
-            user,
-            db,
-        )
-    return await sessions_router.compare_models(
+    return await sessions_router.send_message(
         db.session.id,
-        CompareRequest(
-            content="hello",
-            models=["model-a", "model-b"],
-            activated_skill_ids=activated_skill_ids,
-        ),
-        _request(f"/sessions/{db.session.id}/compare"),
+        SendMessage(content="hello", activated_skill_ids=activated_skill_ids),
+        _request(f"/sessions/{db.session.id}/messages"),
         user,
         db,
     )
@@ -829,7 +810,6 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
     assert db.commits == 2
 
 
-@pytest.mark.parametrize("route", ["send", "compare"])
 @pytest.mark.parametrize(
     ("scenario", "detail"),
     [
@@ -841,9 +821,8 @@ async def test_valid_refresh_leaves_an_ordinary_account_catalog_alone(monkeypatc
     ],
 )
 @pytest.mark.asyncio
-async def test_send_and_compare_reject_workspace_bypass_before_writes_or_upstream(
+async def test_send_rejects_workspace_bypass_before_writes_or_upstream(
     monkeypatch,
-    route: str,
     scenario: str,
     detail: str,
 ):
@@ -879,7 +858,7 @@ async def test_send_and_compare_reject_workspace_bypass_before_writes_or_upstrea
     _patch_route_services(monkeypatch, upstream)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _call_turn_route(route, db, user, skill_ids)
+        await _call_turn_route(db, user, skill_ids)
 
     assert exc_info.value.detail == detail
     assert not any(isinstance(row, (Message, CreditLedger)) for row in db.added)
@@ -900,7 +879,7 @@ async def test_document_routes_reject_tool_skills_before_writes_or_upstream(
     _patch_route_services(monkeypatch, upstream)
 
     with pytest.raises(HTTPException) as exc_info:
-        await _call_turn_route("send", db, user, [skill.id])
+        await _call_turn_route(db, user, [skill.id])
 
     assert exc_info.value.detail == "skill_tools_unavailable:execute_code"
     assert not any(isinstance(row, (Message, CreditLedger)) for row in db.added)
@@ -954,7 +933,7 @@ async def test_document_routes_propagate_separate_context_after_prewrite_validat
     monkeypatch.setattr(sessions_router, "assemble", assemble_context)
     monkeypatch.setattr(sessions_router, runner_name, run_document)
 
-    response = await _call_turn_route("send", db, user, [])
+    response = await _call_turn_route(db, user, [])
     async for _chunk in response.body_iterator:
         pass
 
@@ -1216,17 +1195,9 @@ async def test_deck_upstream_payloads_keep_workspace_context_role_separated(monk
             "/sessions/session-1/messages",
             {"content": "hello", "activatedSkillIds": ["1", "2", "3", "4"]},
         ),
-        (
-            "/sessions/session-1/compare",
-            {
-                "content": "hello",
-                "models": ["model-a", "model-b"],
-                "activatedSkillIds": ["1", "2", "3", "4"],
-            },
-        ),
     ],
 )
-def test_send_and_compare_http_contract_rejects_four_skills_before_route(
+def test_send_http_contract_rejects_four_skills_before_route(
     monkeypatch, path: str, body: dict
 ):
     user = _route_user()

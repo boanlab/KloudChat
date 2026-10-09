@@ -1,5 +1,6 @@
 import {
   Calculator,
+  ChevronDown,
   ChevronRight,
   Download,
   FolderOpen,
@@ -8,12 +9,22 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
-import { Fragment } from 'react'
-import { Badge } from '@/components/ui'
-import { CHAIN_LABEL, FLOW_LABEL, KIND_LABEL, chainStepOf, orderedFlows, pipelineChain, type ChainStep } from '@/lib/stages'
+import { Fragment, useState } from 'react'
+import {
+  CHAIN_LABEL,
+  FLOW_LABEL,
+  chainStepOf,
+  chainSummary,
+  checkName,
+  orderedFlows,
+  pipelineChain,
+  stageLabel,
+  type ChainStep,
+} from '@/lib/stages'
 import { useAgentPipeline } from '@/lib/useAgentPipeline'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
+import type { PipelineDefinition } from '@/types'
 
 const CHAIN_ICON: Record<ChainStep, LucideIcon> = {
   material: FolderOpen,
@@ -57,59 +68,119 @@ export function PipelineChain({ agentId, className, iconsOnly = false }: { agent
   )
 }
 
-/** An agent's shipped pipeline: each flow's stages with their kind and checks. Locked; `AgentFlowTab` copies it to edit. */
-export function PipelineFlowView({ agentId }: { agentId: string }) {
+/**
+ * An agent's workflow as a person reads it: its few chain steps, each with one line of what
+ * happens. With `details`, every stage sits behind one collapsed 「자세히 보기」.
+ */
+export function PipelineSteps({
+  agentId,
+  details = false,
+  title,
+  className,
+}: {
+  agentId: string
+  details?: boolean
+  /** A heading above the steps, shown only when there are steps. */
+  title?: string
+  className?: string
+}) {
   const t = useT()
   const pipeline = useAgentPipeline(agentId)
-  if (pipeline === undefined) return <p className="py-6 text-center text-base text-faint">{t('불러오는 중…')}</p>
+  const [open, setOpen] = useState(false)
+  if (pipeline === undefined) return details ? <p className="text-sm text-faint">{t('불러오는 중…')}</p> : null
   if (pipeline === null) {
-    return <p className="py-6 text-center text-base text-faint">{t('이 에이전트의 워크플로를 불러오지 못했습니다.')}</p>
+    return details ? <p className="text-sm text-faint">{t('이 에이전트의 워크플로를 불러오지 못했습니다.')}</p> : null
   }
+  const chain = pipelineChain(pipeline)
+  if (chain.length === 0) return null
+  const spoken = chain.map((step) => t(CHAIN_LABEL[step])).join(' → ')
+  const total = Object.values(pipeline.flows ?? {}).reduce((n, stages) => n + (stages?.length ?? 0), 0)
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-base font-medium">
-            {t('워크플로')} <span className="font-mono text-sm text-faint">{pipeline.name}</span>
-          </p>
-          <PipelineChain agentId={agentId} className="mt-1" />
+    <div className={cn('space-y-2', className)} data-testid="workflow-steps">
+      {title && <p className="text-sm font-medium text-faint">{title}</p>}
+      <ol className="space-y-1.5" aria-label={t('워크플로: {chain}').replace('{chain}', spoken)}>
+        {chain.map((step) => {
+          const Icon = CHAIN_ICON[step]
+          return (
+            <li key={step} className="flex items-start gap-2 text-sm" data-testid="workflow-step">
+              <span className="mt-px grid size-5 shrink-0 place-items-center rounded-full bg-accent-soft text-accent" aria-hidden>
+                <Icon size={11} />
+              </span>
+              <span className="min-w-0">
+                <span className="font-medium text-fg">{t(CHAIN_LABEL[step])}</span>
+                <span className="text-muted"> · {t(chainSummary(pipeline, step))}</span>
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+      {details && total > 0 && (
+        <div>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="inline-flex items-center gap-1 rounded-control text-sm text-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <ChevronDown size={13} aria-hidden className={cn('transition-transform', open && 'rotate-180')} />
+            {open ? t('간단히 보기') : t('자세히 보기 (단계 {n}개)').replace('{n}', String(total))}
+          </button>
+          {open && (
+            <div className="mt-2 rounded-control border border-line p-3" data-testid="workflow-details">
+              <PipelineFlowView pipeline={pipeline} />
+            </div>
+          )}
         </div>
-      </div>
-      {pipeline.checks && pipeline.checks.length > 0 && (
-        <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
-          {t('붙은 검사')}
-          {pipeline.checks.map((check) => <Badge key={check}>{check}</Badge>)}
-        </p>
       )}
+    </div>
+  )
+}
+
+/** Every stage of a shipped pipeline, grouped by flow: Korean names first, ids only as 기술 정보. */
+export function PipelineFlowView({ pipeline }: { pipeline: PipelineDefinition }) {
+  const t = useT()
+  const attached = pipeline.checks ?? []
+  return (
+    <div className="space-y-3">
       {orderedFlows(pipeline).map((flow) => {
         const stages = pipeline.flows[flow] ?? []
         if (stages.length === 0) return null
         return (
           <section key={flow} aria-label={t(FLOW_LABEL[flow] ?? flow)}>
-            <h3 className="mb-1.5 text-sm font-semibold text-muted">
-              {t(FLOW_LABEL[flow] ?? flow)} <span className="font-mono font-normal text-faint">{flow}</span>
-            </h3>
-            <ol className="divide-y divide-line rounded-card border border-line">
+            <h3 className="mb-1 text-sm font-semibold text-muted">{t(FLOW_LABEL[flow] ?? '그 밖의 단계')}</h3>
+            <ul className="space-y-0.5">
               {stages.map((stage, i) => {
                 const step = chainStepOf(stage)
                 const Icon = step ? CHAIN_ICON[step] : null
+                const checks = stage.checks ?? []
                 return (
-                  <li key={`${stage.name}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-sm">
-                    <span className="w-5 shrink-0 text-right tabular-nums text-faint">{i + 1}</span>
-                    {Icon ? <Icon size={12} className="shrink-0 text-accent" aria-hidden /> : <span className="size-3 shrink-0" />}
-                    <span className="font-medium text-fg">{t(stage.label)}</span>
-                    <span className="font-mono text-xs text-faint max-sm:hidden">{stage.name}</span>
-                    <span className="ml-auto flex flex-wrap items-center gap-1">
-                      <Badge>{t(KIND_LABEL[stage.kind] ?? stage.kind)}</Badge>
-                      {(stage.checks ?? []).map((check) => <Badge key={check} tone="accent">{check}</Badge>)}
+                  <li key={`${stage.name}-${i}`} className="flex items-start gap-2 text-sm" title={stage.name}>
+                    {Icon ? <Icon size={12} className="mt-1 shrink-0 text-accent" aria-hidden /> : <span className="size-3 shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="text-fg">{t(stageLabel(stage))}</span>
+                      {checks.length > 0 && (
+                        <span className="text-faint" title={checks.join(', ')}>
+                          {' '}
+                          · {checks.map((c) => t(checkName(pipeline, c))).join(', ')}
+                        </span>
+                      )}
                     </span>
                   </li>
                 )
               })}
-            </ol>
+            </ul>
           </section>
         )
       })}
+      {attached.length > 0 && (
+        <p className="text-sm text-muted">
+          {t('붙은 검사')}: {attached.map((c) => t(checkName(pipeline, c))).join(', ')}
+        </p>
+      )}
+      <p className="break-all font-mono text-xs text-faint" data-testid="workflow-tech">
+        {t('기술 정보')}: {pipeline.name}
+        {attached.length > 0 && ` · ${attached.join(', ')}`}
+      </p>
     </div>
   )
 }

@@ -25,3 +25,11 @@ judged = ["judge-repeats"]
 
 [options]
 search = false
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+material = "올린 경력 자료만 읽습니다(검색하지 않습니다)"
+question = "빠진 경력 정보가 있으면 먼저 물어봅니다"
+compute = "경력 기간을 날짜로 계산해 둡니다"
+write = "경력기술서·자기소개서를 씁니다"
+check = "자료에 없는 수치, 되풀이된 내용, 글자 수를 확인합니다"

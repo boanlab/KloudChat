@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN, openSidebar, signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
 /** The 서식 chip follows the session row across reloads and conversation changes;
  *  media 서식 leave no chip but name the option values they set. Model requests are stubbed. */
@@ -36,7 +37,7 @@ async function wearing(
 
 /** The gallery card for one 서식, found by search since the gallery pages its grid. */
 async function card(page: Page, name: string) {
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
   const search = dialog.getByLabel('양식 검색')
   if (await search.count()) await search.fill(name)

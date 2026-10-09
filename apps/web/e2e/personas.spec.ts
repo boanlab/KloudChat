@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { gotoSurface, openSidebar, pickToolModel, seedPendingUser, signIn, surfaceOn, ribbonTab, panelHeader } from './helpers'
 import { personas } from './personas'
+import { toolNames } from './composer-tools'
 
 /** Persona coverage: every `test.step` is one `Need` id from `personas.ts`. */
 
@@ -121,17 +122,8 @@ test.describe('페르소나 커버리지', () => {
               case 'hum-upload':
               case 'soc-csv':
                 await gotoSurface(page, 'chat')
-                await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '도구', exact: true }).first()).toBeVisible()
                 await probe(page.locator('input[type="file"]').first()).toBeAttached()
-                break
-
-              /* model comparison */
-              case 'hum-compare':
-              case 'res-compare':
-                await gotoSurface(page, 'chat')
-                await page.getByRole('button', { name: '모델 비교' }).click()
-                await probe(page.getByText('비교 모드')).toBeVisible()
-                await page.keyboard.press('Escape')
                 break
 
               /* slide fact-checking */
@@ -176,7 +168,7 @@ test.describe('페르소나 커버리지', () => {
               case 'off-voice':
                 // A recording arrives as an attached file.
                 await gotoSurface(page, 'report')
-                await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
+                await probe(page.getByRole('button', { name: '도구', exact: true }).first()).toBeVisible()
                 break
 
               /* 서식 */
@@ -188,7 +180,7 @@ test.describe('페르소나 커버리지', () => {
                   page,
                   need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
                 )
-                await probe(page.getByRole('button', { name: '양식 고르기' })).toBeVisible()
+                probe(await toolNames(page)).toContain('양식 고르기')
                 break
 
               /* maths */

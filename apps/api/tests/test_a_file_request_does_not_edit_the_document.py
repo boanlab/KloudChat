@@ -96,14 +96,16 @@ _DDL = (
         render_template_id TEXT, pipeline_id TEXT, index_key TEXT, pending TEXT, summary TEXT,
         skill_ids TEXT,
         running_turn TEXT, running_since DATETIME, pinned BOOLEAN DEFAULT 0,
-        created_at DATETIME, updated_at DATETIME
+        created_at DATETIME, updated_at DATETIME,
+        title_set_by_user BOOLEAN NOT NULL DEFAULT 0
     )
     """,
     """
     CREATE TABLE artifacts (
         id TEXT PRIMARY KEY, user_id TEXT, session_id TEXT, project_id TEXT, kind TEXT,
         title TEXT, data TEXT, storage_key TEXT, version INTEGER DEFAULT 1,
-        created_at DATETIME, updated_at DATETIME
+        created_at DATETIME, updated_at DATETIME,
+        search_text TEXT NOT NULL DEFAULT ''
     )
     """,
     """

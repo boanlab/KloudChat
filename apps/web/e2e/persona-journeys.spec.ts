@@ -3,6 +3,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { answerText, artifactIds, pickToolModel, signIn, storedArtifacts } from './helpers'
+import { openTool } from './composer-tools'
 
 // Retried: these assertions are on what a small model wrote.
 test.describe.configure({ retries: 2 })
@@ -155,8 +156,7 @@ test('영업직 — 만든 에이전트로 대화하면 그 지침이 적용된�
 
   try {
   await page.goto('/new/chat')
-  // Exact: the sidebar's account button label contains an email address.
-  await page.getByRole('button', { name: '@', exact: true }).click()
+  await openTool(page, '에이전트')
   await page.getByRole('menuitem', { name: agentName }).first().click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   // The agent badge proves the session committed with that agent attached.

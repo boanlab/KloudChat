@@ -51,14 +51,12 @@ LABELS: dict[str, str] = {
     "revise-save": "저장",
     # handing over files
     "export": "파일 만들기",
-    # a deck, a page, a comparison, the routing of a turn
+    # a deck, a page, the routing of a turn
     "deck-write": "슬라이드 쓰기",
     "deck-carry": "그대로 둘 슬라이드",
     "deck-save": "저장",
     "page-write": "페이지 쓰기",
     "page-save": "저장",
-    "compare-answer": "모델별 답",
-    "compare-save": "저장",
     "route": "요청 살피기",
 }
 

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { approvePlan, signInAs } from './helpers'
 import { workScenarios, type WorkScenario } from './work-scenario-catalog'
+import { openTool } from './composer-tools'
 
 /** Runs a slice of the work scenario catalogue end to end and reads what came out.
  *  Slice: `WORK_COUNT` rows, chosen by coverage or by `WORK_FROM`/`WORK_STRIDE`; `WORK_SHARD`/`WORK_SHARDS`
@@ -359,10 +360,10 @@ async function runOne(page: Page, scenario: WorkScenario): Promise<Finding> {
     if (!(await composer.count())) return done('ok', '이 워크스페이스에서 꺼진 화면 — 건너뜀')
 
     if (scenario.evidenceId === 'attachment') {
-      const attach = page.getByRole('button', { name: '첨부' })
+      const attach = page.getByRole('button', { name: '도구', exact: true })
       if (await attach.isVisible().catch(() => false)) {
         const chooser = page.waitForEvent('filechooser', { timeout: 10_000 }).catch(() => null)
-        await attach.click()
+        await openTool(page, '파일·사진 첨부')
         const picked = await chooser
         if (picked) await picked.setFiles(evidenceFile())
         await page.waitForTimeout(2_500)

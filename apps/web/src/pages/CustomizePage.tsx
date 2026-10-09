@@ -5,11 +5,12 @@ import {
   ChevronDown,
   FilePlus2,
   FileUp,
-  Lock,
   Pencil,
   Plus,
   Search,
   SlidersHorizontal,
+  Upload,
+  Workflow,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -30,7 +31,7 @@ import {
   type ItemFilter,
   type SortKey,
 } from '@/components/customize/hubItems'
-import { ItemCard, ItemIconTile } from '@/components/customize/ItemCard'
+import { ItemCard } from '@/components/customize/ItemCard'
 import { ShippedWorkflows } from '@/components/customize/ShippedWorkflows'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Button, Dropdown, EmptyState, Input, LoadingState, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
@@ -47,7 +48,7 @@ import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 
 type View = 'mine' | 'explore'
-type Section = 'featured' | 'popular' | 'new'
+type Section = 'popular' | 'new'
 
 const STATUS_KEYS = ['on', 'off', 'draft', 'shared', 'review'] as const
 const SURFACES: SessionKind[] = ['chat', 'report', 'slides']
@@ -71,7 +72,7 @@ function useHubParams() {
     kinds: list(params.get('kind')).filter((k): k is SessionKind => SURFACES.includes(k as SessionKind)),
   }
   const rawAll = params.get('all')
-  const all: Section | null = rawAll === 'featured' || rawAll === 'popular' || rawAll === 'new' ? rawAll : null
+  const all: Section | null = rawAll === 'popular' || rawAll === 'new' ? rawAll : null
   const update = (patch: Record<string, string | null>) =>
     setParams(
       (prev) => {
@@ -159,7 +160,10 @@ function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
     tab === 'agents'
       ? [{ label: '에이전트 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/agents/new') }]
       : tab === 'skills'
-        ? [{ label: '스킬 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/skills/new') }]
+        ? [
+            { label: '스킬 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/skills/new') },
+            { label: '스킬 업로드', icon: <Upload size={14} />, run: () => navigate('/customize/skills/upload') },
+          ]
         : tab === 'workflows'
           ? [{ label: '워크플로 만들기', icon: <Pencil size={14} />, run: () => void createWorkflow() }]
           : tab === 'designs'
@@ -352,7 +356,17 @@ function FilterSheet({
   )
 }
 
-function SearchBox({ value, onChange, phone }: { value: string; onChange: (next: string) => void; phone: boolean }) {
+function SearchBox({
+  value,
+  onChange,
+  phone,
+  className,
+}: {
+  value: string
+  onChange: (next: string) => void
+  phone: boolean
+  className?: string
+}) {
   const t = useT()
   const [open, setOpen] = useState(!!value)
   if (phone && !open) {
@@ -363,7 +377,7 @@ function SearchBox({ value, onChange, phone }: { value: string; onChange: (next:
     )
   }
   return (
-    <div className={cn('relative min-w-0', phone ? 'flex-1' : 'w-72 max-lg:w-56')}>
+    <div className={cn('relative min-w-0', phone ? 'flex-1' : 'w-72 max-lg:w-56', className)}>
       <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
       <Input
         type="search"
@@ -381,58 +395,6 @@ function SearchBox({ value, onChange, phone }: { value: string; onChange: (next:
 
 function Grid({ children }: { children: ReactNode }) {
   return <div className="grid gap-3 lg:grid-cols-2">{children}</div>
-}
-
-/** The one item the 탐색 page leads with. */
-function Banner({ item, onTry, onAdd }: { item: HubItem; onTry: (item: HubItem) => Promise<void>; onAdd: (item: HubItem) => Promise<void> }) {
-  const t = useT()
-  const navigate = useNavigate()
-  const [busy, setBusy] = useState(false)
-  const act = async (fn: (item: HubItem) => Promise<void>) => {
-    setBusy(true)
-    try {
-      await fn(item)
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <section
-      aria-label={t('추천 항목')}
-      data-testid="hub-banner"
-      className="flex items-center gap-6 rounded-panel border border-accent/15 bg-accent-soft px-8 py-7 max-sm:px-5 max-sm:py-5"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm text-muted">{item.official ? t('공식 제공') : `${t('제작')}: ${item.maker}`}</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight">
-          <button type="button" className="text-left hover:underline" onClick={() => item.to && navigate(item.to)}>
-            {t(item.name)}
-          </button>
-        </h2>
-        {item.summary && <p className="mt-1.5 line-clamp-2 text-md text-muted">{t(item.summary)}</p>}
-        <div className="mt-4 flex gap-2">
-          {item.added ? (
-            <Button variant="primary" disabled={busy} onClick={() => void act(onTry)}>
-              {t('체험')}
-            </Button>
-          ) : (
-            <>
-              <Button variant="primary" disabled={busy} onClick={() => void act(onAdd)}>
-                <Plus size={15} />
-                {t('추가')}
-              </Button>
-              <Button disabled={busy} onClick={() => void act(onTry)}>
-                {t('체험')}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-      <span className="max-sm:hidden">
-        <ItemIconTile item={item} size="lg" />
-      </span>
-    </section>
-  )
 }
 
 function SectionHead({ title, onAll }: { title: string; onAll?: () => void }) {
@@ -606,9 +568,10 @@ export function CustomizePage() {
         {tab === 'workflows' && hub.locked.length > 0 && (
           <details className="group rounded-card border border-line" open={!!focus}>
             <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-medium select-none [&::-webkit-details-marker]:hidden">
-              <Lock size={14} aria-hidden className="text-faint" />
-              {t('기본 워크플로 (잠김)')}
+              <Workflow size={14} aria-hidden className="text-faint" />
+              {t('기본 워크플로')}
               <span className="text-faint">{hub.locked.length}</span>
+              <span className="text-sm font-normal text-faint max-sm:hidden">· {t('복제해서 고칠 수 있어요')}</span>
               <ChevronDown size={15} aria-hidden className="ml-auto text-faint transition-transform group-open:rotate-180" />
             </summary>
             <div className="border-t border-line p-4">
@@ -632,7 +595,7 @@ export function CustomizePage() {
       )
     }
     if (anyFilter || all) {
-      const rows = all === 'featured' ? filtered.filter((i) => i.official) : filtered
+      const rows = filtered
       return (
         <div className="space-y-4">
           {all && (
@@ -648,19 +611,10 @@ export function CustomizePage() {
         </div>
       )
     }
-    const official = sortItems(hub.explore.filter((i) => i.official), 'popular')
     const popular = sortItems(hub.explore.filter((i) => i.installs > 0), 'popular')
     const fresh = sortItems(hub.explore, 'recent')
-    const featured = official[0] ?? popular[0] ?? null
     return (
       <div className="space-y-10">
-        {featured && <Banner item={featured} onTry={tryItem} onAdd={onAdd} />}
-        {official.length > 0 && (
-          <section aria-label={t('추천')}>
-            <SectionHead title={t('추천')} onAll={official.length > PER_SECTION ? () => update({ all: 'featured', sort: 'popular' }) : undefined} />
-            <Grid>{official.slice(0, PER_SECTION).map((item) => card(item, 'explore'))}</Grid>
-          </section>
-        )}
         {popular.length > 0 && (
           <section aria-label={t('가장 많이 추가된 {kind}').replace('{kind}', kindWord)}>
             <SectionHead
@@ -717,14 +671,24 @@ export function CustomizePage() {
             )}
           </div>
         ) : (
-          <div className="mb-6 flex flex-wrap items-center gap-3">
-            <TabStrip tab={tab} onChange={setTab} />
-            {hasView && <span aria-hidden className="h-6 w-px bg-line" />}
-            {hasView && <Segment view={view} onChange={(next) => update({ view: next, all: null })} />}
-            <span className="flex-1" />
-            {searchable && <SearchBox value={filter.q} onChange={(q) => update({ q })} phone={false} />}
-            {cardTab && <FilterMenu filter={filter} onStatus={onStatus} onKind={onKind} onClear={clearFilters} />}
-            {cardTab && <SortMenu sort={sort} onSort={(next) => update({ sort: next === 'popular' ? null : next })} />}
+          // Too narrow for one row, the search box takes the second line; filter and sort stay up top.
+          <div className="@container mb-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <TabStrip tab={tab} onChange={setTab} />
+              {hasView && <span aria-hidden className="h-6 w-px bg-line" />}
+              {hasView && <Segment view={view} onChange={(next) => update({ view: next, all: null })} />}
+              <span className="flex-1" />
+              {searchable && (
+                <SearchBox
+                  value={filter.q}
+                  onChange={(q) => update({ q })}
+                  phone={false}
+                  className={cardTab ? '@max-[72rem]:order-last' : undefined}
+                />
+              )}
+              {cardTab && <FilterMenu filter={filter} onStatus={onStatus} onKind={onKind} onClear={clearFilters} />}
+              {cardTab && <SortMenu sort={sort} onSort={(next) => update({ sort: next === 'popular' ? null : next })} />}
+            </div>
           </div>
         )}
 

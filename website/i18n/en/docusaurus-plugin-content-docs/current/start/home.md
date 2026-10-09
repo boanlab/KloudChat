@@ -33,22 +33,22 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 
 | Feature | Description | Applies to |
 |---|---|---|
-| 📎 Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
+| **+** | One menu holding Attach, Pick a template, Skills, Web search, Connectors and Agents. On a phone it opens as a bottom sheet. | — |
+| Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
 | 🎤 Dictate | Turns speech into text. Shown only when the administrator has connected speech transcription. | That input |
-| ▦ Pick a template | Selects the output template for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
-| ✦ Skills | Selects up to three skills to apply to the request. | That request |
-| ⫼ Compare models | Sends the same question to two or three models. Available only in Chat on the desktop. | That conversation. Cleared when you move to another conversation |
-| 🌐 Auto · On · Off | Switches the web search mode. | That request. A new conversation resets it automatically |
-| 🔌 | Turns the connectors you have installed on and off. The number beside it is the count of active ones. | Your whole account |
-| @ | Selects an agent and starts a new conversation with that agent. | — |
+| Pick a template | Selects the output template for reports and slides. Not offered in Chat, Image or Audio/Video. | That conversation |
+| Skills | Selects up to three skills to apply to the request. | That request |
+| Web search: Auto · Always · Off | Chooses the web search mode. **Always** or **Off** shows as a chip in the composer. | That request. A new conversation resets it automatically |
+| Connectors | Turns the connectors you have installed on and off. | Your whole account |
+| Agents | Selects an agent and starts a new conversation with that agent. | — |
 | Model name ▾ | Selects the model to use. | Choosing it on Home makes it your account default, while choosing it during a conversation applies it to that conversation |
 | ↑ · ■ | Sends the request or stops generation. | — |
 
 The items currently in effect appear as chips above the composer: the project, the template, skills, attachments and the Auto state. Press × to remove one.
 
-## Agents
+## Example requests and work in progress
 
-- **Hand off to an agent**: An assistant that comes with instructions, tools and files. Selecting a card starts a conversation with that agent. [Agents and skills](../chat/agents)
+- **Example requests**: Examples suited to the chosen screen (Chat, Report, Slides and so on) are shown. Selecting one fills the composer; it does not send. Pick an agent from **+** → **Agents** in the composer. [Agents and skills](../chat/agents)
 - **In progress**: Shown while a long task such as video generation is running.
 
 ## Buttons at the top right
@@ -57,7 +57,7 @@ There are **Share** (on the conversation screen), **Install app** (installs a sh
 
 ## Mobile screen
 
-The composer shows only attach, dictate and web search. The remaining features sit under **More tools**. Model comparison is not available, and the processing details of an answer are collapsed as "n processing details".
+Press **+** in the composer to open Attach, Pick a template, Skills, Web search, Connectors and Agents in a bottom sheet. The processing details of an answer are collapsed as "n processing details".
 
 ![Mobile home screen](/img/guide/mobile-home.png)
 ![Mobile conversation screen](/img/guide/mobile-chat.png)

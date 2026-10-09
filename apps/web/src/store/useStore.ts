@@ -30,7 +30,6 @@ import {
   sessionsApi,
   setAccessToken,
   skillsApi,
-  streamComparison,
   streamRerun,
   streamSession,
   toolsApi,
@@ -78,7 +77,6 @@ import type {
   ReportArtifact,
   ReportSection,
   SessionKind,
-  Variant,
   Skill,
   Step,
   StoreSkill,
@@ -103,7 +101,7 @@ const earlierAnswers = new Map<string, NonNullable<Message['superseded']>>()
 type Theme = 'light' | 'dark' | 'system'
 type SidebarMode = 'full' | 'rail' | 'hidden'
 
-/** A client refusal is returned before send/compare writes its first Message. */
+/** A client refusal is returned before send writes its first Message. */
 const isClientRefusal = (error: unknown): error is ApiError =>
   error instanceof ApiError && error.status >= 400 && error.status < 500
 
@@ -201,8 +199,7 @@ function same(held: Session, merged: Session): boolean {
       mine.role === theirs.role &&
       mine.content === theirs.content &&
       (mine.steps?.length ?? 0) === (theirs.steps?.length ?? 0) &&
-      (mine.attachments?.length ?? 0) === (theirs.attachments?.length ?? 0) &&
-      Boolean(mine.variants) === Boolean(theirs.variants)
+      (mine.attachments?.length ?? 0) === (theirs.attachments?.length ?? 0)
     )
   })
 }
@@ -435,13 +432,6 @@ interface State {
     rating: 'up' | 'down' | null,
   ) => Promise<void>
 
-  // ── model comparison ──────────────────────────────────────────────────
-  compareMode: boolean
-  compareModels: string[]
-  toggleCompareMode: () => void
-  toggleCompareModel: (id: string) => void
-  /** Keeps one variant's answer and continues the conversation from it. */
-  chooseVariant: (sessionId: string, messageId: string, model: string) => Promise<void>
 
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
@@ -852,16 +842,6 @@ function pickedModel(
   return effectiveModelId(session, kind, s.agents, s.modelByKind) || undefined
 }
 
-function reconcileCompareModels(current: string[], available: ModelInfo[]): string[] {
-  const chatIds = available.filter((model) => model.kinds.includes('chat')).map((model) => model.id)
-  const valid = current.filter((id, index) => chatIds.includes(id) && current.indexOf(id) === index)
-  for (const id of chatIds) {
-    if (valid.length >= 2) break
-    if (!valid.includes(id)) valid.push(id)
-  }
-  return valid.slice(0, 3)
-}
-
 const SIGNED_OUT_KEY = 'kchat-signed-out'
 /** Whether this browser last left the app signed out; storage may be unavailable. */
 function knownSignedOut(): boolean {
@@ -1238,7 +1218,6 @@ export const useStore = create<State>((set, get) => ({
           defaultModelByKind,
           s.user?.preferences.modelByKind,
         ),
-        compareModels: reconcileCompareModels(s.compareModels, live),
       }))
       // An account with no picks of its own adopts this browser's, once; from then
       // on the account copy leads and every browser opens on the same model.
@@ -1345,12 +1324,7 @@ export const useStore = create<State>((set, get) => ({
     const shownInTranscript =
       (session?.kind === 'image' || session?.kind === 'av') && session.messageCount > 0
     const artifactId = shownInTranscript ? null : (session?.artifactId ?? null)
-    set((state) => ({
-      activeSessionId: id,
-      openArtifactId: artifactId,
-      // Comparison mode belongs to the conversation it was turned on in.
-      compareMode: id === state.activeSessionId ? state.compareMode : false,
-    }))
+    set({ activeSessionId: id, openArtifactId: artifactId })
     // The panel needs the whole document, not the listing's card.
     const held = artifactId ? get().artifacts.find((a) => a.id === artifactId) : null
     if (artifactId && (!held || held.partial)) void get().refreshArtifact(artifactId)
@@ -1656,18 +1630,6 @@ export const useStore = create<State>((set, get) => ({
       }
 
       if (get().running[id]) return id
-
-      if (get().compareMode && get().compareModels.length >= 2) {
-        await runComparison(turnSet, get, id, text, {
-          activatedSkillIds: opts.activatedSkillIds,
-          attachments: opts.attachments,
-          attachmentNames: opts.attachmentNames,
-          privacyAction: opts.privacyAction,
-          privacyDecisionToken: opts.privacyDecisionToken,
-          onAccepted: acceptSession,
-        })
-        return id
-      }
 
       await streamTurn(turnSet, get, id, text, model, {
         model: opts.model,
@@ -2034,47 +1996,6 @@ export const useStore = create<State>((set, get) => ({
       }))
     show(next)
     await sessionsApi.rate(messageId, next).catch(() => show(before))
-  },
-
-  compareMode: false,
-  compareModels: [],
-  toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
-  toggleCompareModel: (id) =>
-    set((s) => {
-      const has = s.compareModels.includes(id)
-      if (has && s.compareModels.length <= 2) return s
-      if (!has && s.compareModels.length >= 3) return s
-      return {
-        compareModels: has
-          ? s.compareModels.filter((m) => m !== id)
-          : [...s.compareModels, id],
-      }
-    }),
-  chooseVariant: async (sessionId, messageId, model) => {
-    // Sets this conversation's model only, never the surface default.
-    set((s) => ({
-      sessions: s.sessions.map((c) =>
-        c.id === sessionId
-          ? {
-              ...c,
-              model,
-              messages: c.messages.map((m) =>
-                m.id === messageId
-                  ? {
-                      ...m,
-                      model,
-                      content: m.variants?.find((v) => v.model === model)?.content ?? m.content,
-                      variants: m.variants?.map((v) => ({ ...v, chosen: v.model === model })),
-                    }
-                  : m,
-              ),
-            }
-          : c,
-      ),
-    }))
-    await sessionsApi
-      .chooseVariant(sessionId, messageId, model)
-      .catch(() => get().openSession(sessionId))
   },
 
   imageOptions: { aspect: '16:9', style: '자동', labels: 'auto', count: 1 },
@@ -2897,7 +2818,8 @@ function toMessage(raw: MessageRow): Message {
     id: raw.id,
     persisted: true,
     role: raw.role,
-    content: raw.content,
+    // A turn from the retired model comparison keeps the answer it chose; failing that, its first.
+    content: raw.content || raw.variants?.find((v) => v.content)?.content || '',
     createdAt: raw.createdAt,
     model: raw.model,
     routing: raw.routing ?? undefined,
@@ -2915,18 +2837,6 @@ function toMessage(raw: MessageRow): Message {
     failure: raw.failure ?? undefined,
     liked: raw.rating ?? null,
     superseded: raw.superseded ?? undefined,
-    variants: raw.variants?.map((v) => ({
-      model: v.model,
-      routedModel: v.routedModel,
-      actualModel: v.actualModel,
-      dataBoundary: v.dataBoundary,
-      content: v.content,
-      status: v.error ? ('error' as const) : ('done' as const),
-      chosen: v.chosen ?? false,
-      usage: v.usage
-        ? { ...v.usage, credits: v.credits }
-        : { inputTokens: 0, outputTokens: 0, credits: v.credits },
-    })),
   }
 }
 
@@ -3488,184 +3398,6 @@ async function streamTurn(
     }
     endRun(set, sessionId)
     if (followDetachedTurn) void watchForDetachedAnswer(set, get, sessionId)
-    void get().loadSessions()
-  }
-}
-
-/** One prompt to several models, stored as a single turn; columns arrive interleaved on one stream. */
-async function runComparison(
-  set: Set,
-  get: Get,
-  sessionId: string,
-  text: string,
-  opts: {
-    activatedSkillIds?: string[]
-    attachments?: string[]
-    attachmentNames?: string[]
-    privacyAction?: PrivacyAction
-    privacyDecisionToken?: string
-    onAccepted?: () => void
-  } = {},
-) {
-  const models = get().compareModels
-  let assistantId = uid('m')
-  const variants: Variant[] = models.map((model) => ({ model, content: '', status: 'streaming' }))
-
-  set((s) => ({
-    running: { ...s.running, [sessionId]: noop },
-    sessions: s.sessions.map((c) =>
-      c.id === sessionId
-        ? {
-            ...c,
-            messages: [
-              ...c.messages,
-              {
-                id: assistantId,
-                role: 'assistant' as const,
-                content: '',
-                createdAt: new Date().toISOString(),
-                variants,
-              },
-            ],
-          }
-        : c,
-    ),
-  }))
-
-  const patch = (model: string, next: Partial<Variant>) =>
-    set((s) => ({
-      sessions: s.sessions.map((c) =>
-        c.id === sessionId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === assistantId
-                  ? { ...m, variants: m.variants?.map((v) => (v.model === model ? { ...v, ...next } : v)) }
-                  : m,
-              ),
-            }
-          : c,
-      ),
-    }))
-
-  const controller = new AbortController()
-  beginRun(set, sessionId, () => controller.abort())
-  let accepted = false
-  try {
-    for await (const e of streamComparison(
-      sessionId,
-      {
-        content: text,
-        models,
-        activatedSkillIds: opts.activatedSkillIds,
-        attachments: opts.attachments,
-        privacyAction: opts.privacyAction,
-        privacyDecisionToken: opts.privacyDecisionToken,
-      },
-      controller.signal,
-    )) {
-      if (!accepted) {
-        accepted = true
-        opts.onAccepted?.()
-      }
-      if (e.type === 'privacy_route') {
-        if ('effectiveModels' in e) {
-          if (e.findingCounts?.length) {
-            const { type: _type, ...routing } = e
-            markPrompt(set, sessionId, routing)
-          }
-          set((s) => ({
-            sessions: s.sessions.map((c) =>
-              c.id === sessionId
-                ? {
-                    ...c,
-                    messages: c.messages.map((m) =>
-                      m.id === assistantId
-                        ? {
-                            ...m,
-                            routing: e,
-                            variants: e.effectiveModels.map((model) => {
-                              const existing = m.variants?.find((v) => v.model === model)
-                              const route = e.modelRoutes?.find(
-                                (candidate) => candidate.routedModel === model,
-                              )
-                              return {
-                                model,
-                                content: existing?.content ?? '',
-                                status: existing?.status ?? ('streaming' as const),
-                                usage: existing?.usage,
-                                routedModel: model,
-                                actualModel: route?.actualModel ?? existing?.actualModel,
-                                dataBoundary: route?.dataBoundary ?? existing?.dataBoundary,
-                              }
-                            }),
-                          }
-                        : m,
-                    ),
-                  }
-                : c,
-            ),
-          }))
-        }
-      } else if (e.type === 'variant') {
-        const current = get()
-          .sessions.find((c) => c.id === sessionId)
-          ?.messages.find((m) => m.id === assistantId)
-          ?.variants?.find((v) => v.model === e.model)
-        patch(e.model, { content: (current?.content ?? '') + e.text })
-      } else if (e.type === 'variant_retract') {
-        const current = get()
-          .sessions.find((c) => c.id === sessionId)
-          ?.messages.find((m) => m.id === assistantId)
-          ?.variants?.find((v) => v.model === e.model)
-        patch(e.model, { content: (current?.content ?? '').replace(e.text, '') })
-      } else if (e.type === 'variant_done') {
-        patch(e.model, {
-          routedModel: e.routedModel ?? e.model,
-          actualModel: e.actualModel,
-          status: e.error ? 'error' : 'done',
-          usage: {
-            inputTokens: e.inputTokens,
-            outputTokens: e.outputTokens,
-            credits: e.credits,
-          },
-        })
-      } else if (e.type === 'done') {
-        chargeCredits(set, e.credits ?? 0)
-        if (e.messageId) {
-          adoptServerId(set, sessionId, assistantId, e.messageId)
-          assistantId = e.messageId
-        }
-      } else if (e.type === 'skills_applied') {
-        patchMessage(set, sessionId, assistantId, (message) => ({
-          ...message,
-          steps: upsertStep(message.steps, appliedSkillsStep(e)),
-        }))
-      } else if (e.type === 'step') {
-        patchMessage(set, sessionId, assistantId, (message) => ({
-          ...message,
-          steps: upsertStep(message.steps, toStep(e as unknown as Record<string, unknown>)),
-        }))
-      }
-    }
-  } catch (err) {
-    if (err instanceof PrivacyDecisionError) {
-      set((s) => ({
-        sessions: s.sessions.map((c) =>
-          c.id === sessionId
-            ? { ...c, messages: c.messages.filter((m) => m.id !== assistantId) }
-            : c,
-        ),
-      }))
-      throw err
-    }
-    if (!(err instanceof DOMException && err.name === 'AbortError')) {
-      for (const m of models) patch(m, { status: 'error' })
-      throw err
-    }
-    if (isClientRefusal(err)) throw err
-  } finally {
-    endRun(set, sessionId)
     void get().loadSessions()
   }
 }

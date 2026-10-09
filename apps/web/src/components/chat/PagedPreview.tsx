@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_PAGE_SETTINGS, pagedSheetCss } from '@/components/report/pagedSheet'
 import { A4_HEIGHT_PX, A4_WIDTH_PX } from '@/components/report/usePagination'
 import { useT } from '@/lib/useT'
@@ -40,7 +40,12 @@ function pagedFrame(page: string, polyfill: string, firstOnly: boolean): string 
     : `html, body { background: #e3e6ec !important; overflow: hidden !important; }
       .pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: ${GUTTER}px; padding: ${GUTTER}px 0; }
       .pagedjs_page { flex: none; background: white; box-shadow: 0 2px 12px rgb(0 0 0 / 14%); }`
-  const done = `window.PagedConfig = { auto: true, after: (flow) => parent.postMessage({ kind: 'kc-paged', pages: flow.total, height: document.documentElement.scrollHeight }, '*') }`
+  // The result is kept and sent again when the app asks: a frame that finishes before the
+  // app listens (a cached pager is fast) would otherwise stay hidden for good.
+  const done = `window.__kcPaged = null
+    const report = () => window.__kcPaged && parent.postMessage(window.__kcPaged, '*')
+    addEventListener('message', (e) => { if (e.data && e.data.kind === 'kc-paged-ask') report() })
+    window.PagedConfig = { auto: true, after: (flow) => { window.__kcPaged = { kind: 'kc-paged', pages: flow.total, height: document.documentElement.scrollHeight }; report() } }`
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <style>${pagedSheetCss(css, DEFAULT_PAGE_SETTINGS)}</style>
 <style>${display}</style>
@@ -77,7 +82,7 @@ export function PagedPreview({ id, firstOnly = false }: { id: string; firstOnly?
   const srcDoc = useMemo(() => (html ? pagedFrame(html, PAGED_POLYFILL, firstOnly) : ''), [html, firstOnly])
   const laid = layout && layout.doc === srcDoc ? layout : null
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return
       const data = event.data as { kind?: string; pages?: number; height?: number }
@@ -87,6 +92,19 @@ export function PagedPreview({ id, firstOnly = false }: { id: string; firstOnly?
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [srcDoc])
+
+  // Ask the frame for its result after it loads, and again for a while: covers a message
+  // sent before the listener was there.
+  useEffect(() => {
+    if (!srcDoc || laid) return
+    const ask = () => frame.current?.contentWindow?.postMessage({ kind: 'kc-paged-ask' }, '*')
+    const timer = window.setInterval(ask, 500)
+    const stop = window.setTimeout(() => window.clearInterval(timer), 20_000)
+    return () => {
+      window.clearInterval(timer)
+      window.clearTimeout(stop)
+    }
+  }, [srcDoc, laid])
 
   useEffect(() => {
     const node = box.current

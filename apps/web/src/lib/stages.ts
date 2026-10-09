@@ -137,6 +137,26 @@ export const CHAIN_LABEL: Record<ChainStep, string> = {
   export: '내보내기',
 }
 
+/** What a step does, said for the person, when the pipeline file gives no line of its own. */
+export const CHAIN_SUMMARY: Record<ChainStep, string> = {
+  material: '올린 자료를 읽습니다',
+  question: '빠진 정보가 있으면 먼저 물어봅니다',
+  compute: '날짜·수치를 미리 계산해 둡니다',
+  write: '결과물을 씁니다',
+  check: '다 쓴 뒤 근거를 확인합니다',
+  export: '파일로 내보냅니다',
+}
+
+/** The pipeline's own line for a step, else the general one. */
+export function chainSummary(pipeline: PipelineDefinition, step: ChainStep): string {
+  return pipeline.summary?.[step] || CHAIN_SUMMARY[step]
+}
+
+/** A check's name as the person reads it: the server's, else its id. */
+export function checkName(pipeline: PipelineDefinition, id: string): string {
+  return pipeline.checkNames?.[id] || id
+}
+
 const CHAIN_ORDER: ChainStep[] = ['material', 'question', 'compute', 'write', 'check', 'export']
 
 /** Which chain step a stage belongs to, by its kind and registry name. */

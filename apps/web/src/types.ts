@@ -218,7 +218,6 @@ export interface PrivacyRouting {
   detectorVersion?: string
   policyVersion?: string
   findingCounts?: { category: string; source: string; count: number }[]
-  compareCollapsed?: boolean
   toolOutputMasked?: number
   toolOutputFindings?: { category: string; source: string; count: number }[]
   initialAction?: PrivacyAction | 'strict_local' | 'none'
@@ -421,6 +420,10 @@ export interface PipelineDefinition {
   checks?: string[]
   flows: Record<string, { name: string; label: string; kind: StageKind; checks?: string[] }[]>
   lists?: Record<string, string[]>
+  /** What each step of the drawn chain does, in plain words (keyed by `ChainStep`). */
+  summary?: Record<string, string>
+  /** People's names for the check and pre-pass ids above. */
+  checkNames?: Record<string, string>
 }
 
 /** A unit of visible work inside an assistant turn. */
@@ -467,19 +470,6 @@ export interface Step {
   summarised?: boolean
 }
 
-/** One model's answer inside a comparison turn. */
-export interface Variant {
-  model: string
-  routedModel?: string
-  actualModel?: string
-  dataBoundary?: ModelInfo['dataBoundary']
-  content: string
-  status: 'streaming' | 'done' | 'error'
-  usage?: { inputTokens: number; outputTokens: number; credits: number }
-  /** Set on the variant the user kept; the conversation continues from it. */
-  chosen?: boolean
-}
-
 /** An answer a rerun replaced; kept so the reader can page back to it. */
 export interface EarlierAnswer {
   id: string
@@ -495,8 +485,6 @@ export interface Message {
   persisted?: boolean
   role: Role
   content: string
-  /** Present instead of `content` when the turn was run as a model comparison. */
-  variants?: Variant[]
   /** Earlier answers to the same question, oldest first; the conversation continues from this one. */
   superseded?: EarlierAnswer[]
   createdAt: string

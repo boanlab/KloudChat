@@ -33,7 +33,7 @@ test('여러 대화를 골라 한 번에 지운다', async ({ page }) => {
   await page.goto('/history')
   // Filter first: 전체 선택 covers only what is on screen.
   await page.getByLabel('대화 검색').fill(`기록삭제 A ${stamp}`)
-  await page.getByRole('button', { name: '보이는 항목 전체 선택' }).click()
+  await page.getByRole('button', { name: '이 페이지 전체 선택' }).click()
   await page.getByRole('button', { name: /선택 1개 삭제/ }).click()
   await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click()
   await expect(page.getByText(/1개의 대화를 삭제했습니다/)).toBeVisible({ timeout: 20_000 })

@@ -5,3 +5,9 @@ name = "data-analysis"
 agents = ["data-analysis"]
 pre = ["check:gaps", "gap-card"]
 finish = ["answer-normalize", "check:answer-grounding", "check:copy", "check:skills", "text-fit", "answer-replace"]
+
+# What each step of the drawn chain does, said for the person (display only).
+[summary]
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "답의 표기를 다듬습니다"
+check = "답의 수치가 도구로 계산한 결과에 있는지 확인합니다"

@@ -1,14 +1,16 @@
 import { ArrowRight, Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { ConfirmDialog, Dropdown, Input, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { ConfirmDialog, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
+import { isMac } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Project, Session } from '@/types'
 import { useT } from '@/lib/useT'
 import { AccountMenu, AccountMenuCompact } from './AccountMenu'
 import { Brand } from './Brand'
+import { openSearch } from './SearchDialog'
 
 const rowBase =
   'flex items-center gap-2.5 rounded-control px-2.5 py-1.5 text-base transition-colors'
@@ -20,8 +22,6 @@ const rowState = (active: boolean) =>
 
 /** Unpinned conversations the sidebar keeps in view; the rest are on 대화 기록. */
 const RECENT = 15
-/** Search matches listed before 「모든 결과 보기」 hands over to 대화 기록. */
-const MATCHES = 30
 
 interface NavRow {
   to: string
@@ -171,7 +171,6 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
-  const [query, setQuery] = useState('')
   const {
     sessions,
     projects,
@@ -182,27 +181,24 @@ export function Sidebar() {
     user,
   } = useStore()
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    const list = q ? sessions.filter((s) => s.title.toLowerCase().includes(q)) : sessions
-    return [...list].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt))
-  }, [sessions, query])
+  const filtered = useMemo(
+    () => [...sessions].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)),
+    [sessions],
+  )
 
-  const searching = query.trim() !== ''
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
   // Row awaiting delete confirmation.
   const [confirming, setConfirming] = useState<Session | null>(null)
 
-  // Like other chat apps: the most recent few, then a way to all of them. A search still runs
-  // over every conversation, not just the few shown.
-  const cap = searching ? MATCHES : RECENT
+  // Like other chat apps: the most recent few, then a way to all of them. Search (⌘K) covers
+  // every conversation and result, by title and by what they say.
+  const cap = RECENT
   const recent = unpinned.slice(0, cap)
-  const hidden = unpinned.length - recent.length
   // From the route, not `activeSessionId`, which outlives the conversation screen.
   const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
   // The open conversation stays in view even when it is older than the recent few.
-  const openOlder = !searching ? unpinned.slice(cap).find((s) => s.id === openSessionId) : undefined
+  const openOlder = unpinned.slice(cap).find((s) => s.id === openSessionId)
   const visible = openOlder ? [...recent, openOlder] : recent
 
   const renderRow = (session: Session) => (
@@ -268,17 +264,19 @@ export function Sidebar() {
       </div>
 
       <div className="px-3 pb-2">
-        <div className="relative">
-          <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('검색')}
-            aria-label={t('대화 빠른 검색')}
-            data-session-search=""
-            className="h-8 bg-transparent pl-8 text-base"
-          />
-        </div>
+        {/* Looks like a box, opens the search dialog: one search for conversations and results. */}
+        <button
+          type="button"
+          onClick={openSearch}
+          aria-label={t('대화 빠른 검색')}
+          aria-haspopup="dialog"
+          data-session-search=""
+          className="flex h-8 w-full items-center gap-2 rounded-control border border-line px-2.5 text-left text-base text-faint transition-colors hover:border-line-strong hover:text-muted"
+        >
+          <Search size={14} className="shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1 truncate">{t('검색')}</span>
+          <kbd className="shrink-0 font-sans text-xs text-faint">{isMac() ? '⌘K' : 'Ctrl K'}</kbd>
+        </button>
       </div>
 
       <nav className="space-y-0.5 px-3 pb-2">
@@ -321,25 +319,23 @@ export function Sidebar() {
             // One heading: with this few rows, 오늘 · 어제 · 지난 7일 buckets were mostly one-row headings.
             <section className="mb-2">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                {searching ? t('검색 결과') : t('최근')}
+                {t('최근')}
               </p>
               <div className="space-y-0.5">{visible.map(renderRow)}</div>
             </section>
           )}
-          {(hidden > 0 || (!searching && unpinned.length > 0)) && (
+          {unpinned.length > 0 && (
             <NavLink
-              to={searching ? `/history?q=${encodeURIComponent(query.trim())}` : '/history'}
+              to="/history"
               className="flex min-h-8 items-center gap-1 rounded-control px-2.5 py-1.5 text-sm text-muted transition-colors hover:bg-elevated hover:text-fg"
             >
-              {searching
-                ? t('모든 결과 보기 ({n})').replace('{n}', unpinned.length.toLocaleString())
-                : t('모든 대화 보기')}
+              {t('모든 대화 보기')}
               <ArrowRight size={13} aria-hidden />
             </NavLink>
           )}
           {filtered.length === 0 && (
             <p className="px-2.5 py-6 text-center text-base text-faint">
-              {query.trim() ? t('검색 결과가 없습니다') : t('아직 대화가 없습니다')}
+              {t('아직 대화가 없습니다')}
             </p>
           )}
         </div>

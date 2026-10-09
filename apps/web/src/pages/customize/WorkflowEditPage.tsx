@@ -6,6 +6,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { PipelineEditor } from '@/components/agents/PipelineEditor'
 import { EmptyState, LoadingState } from '@/components/ui'
 import { userPipelinesApi } from '@/lib/api'
+import { isUntouchedPipeline } from '@/lib/userPipelines'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import type { UserPipeline } from '@/types'
@@ -34,6 +35,19 @@ export function WorkflowEditPage() {
       current = false
     }
   }, [pipelineId])
+  // Leaving a flow that was made and never touched deletes it, so 「워크플로 만들기」
+  // followed by 뒤로 leaves no empty 「새 워크플로」 behind.
+  useEffect(
+    () => () => {
+      // Still on this flow's page: a remount (StrictMode), not a leave.
+      if (window.location.pathname.endsWith(`/workflows/${pipelineId}`)) return
+      void userPipelinesApi
+        .get(pipelineId)
+        .then((p) => (isUntouchedPipeline(p) ? userPipelinesApi.remove(pipelineId) : undefined))
+        .catch(() => undefined)
+    },
+    [pipelineId],
+  )
 
   return (
     <>

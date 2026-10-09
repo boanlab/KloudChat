@@ -265,10 +265,6 @@ and record who opened them. Project files and memories are never included.
 **The microphone in the composer** transcribes through the backend's
 speech-to-text. The transcript fills the composer rather than being sent.
 
-Chat has a **model comparison** mode: the same question goes to two or three
-models at once, each column showing its credit cost, and the conversation
-continues from whichever answer you pick.
-
 **A turn outlives the tab it was started in.** Closing the page or losing the
 connection does not throw the answer away — it is still written, charged and
 titled. Stopping is a separate act: 중단 tells the server before it closes the

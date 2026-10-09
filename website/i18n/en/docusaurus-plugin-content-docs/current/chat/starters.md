@@ -8,7 +8,7 @@ These two features have similar names, but each has a different role and scope. 
 
 | Feature | Role | Where to select it | Scope |
 |---|---|---|---|
-| **Template** | The form of the output. The product includes 8 report templates and 7 slide templates. | ▦ Pick a template in the composer, and Customize → Templates tab | That conversation. Clear it with × on the chip |
+| **Template** | The form of the output. The product includes 8 report templates and 7 slide templates. | **+** → Pick a template in the composer, and Customize → Templates tab | That conversation. Clear it with × on the chip |
 | **Design** | A setting that bundles colors, typefaces, and writing style. You link it to a project. | Customize → Designs tab | Every output in that project |
 
 ## Templates

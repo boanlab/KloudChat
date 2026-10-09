@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { adminApi, usageApi, type AuditPage, type AuditQuery, type AuditRow } from '@/lib/api'
 import {
@@ -11,7 +11,8 @@ import {
   targetParts,
   valueWords,
 } from '@/lib/auditLabels'
-import { Badge, Button, Card, Input, Select } from '@/components/ui'
+import { Badge, Card, Input, Select } from '@/components/ui'
+import { Pager } from '@/components/ui/Pager'
 import { browserName, cn, formatDateTime } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
@@ -58,19 +59,6 @@ function useSettled<T>(value: T, ms = 300): T {
     return () => window.clearTimeout(id)
   }, [value, ms])
   return settled
-}
-
-/** Page numbers around `page`, with gaps as null: 1 … 4 5 6 … 12. */
-function pageWindow(page: number, pages: number): (number | null)[] {
-  const keep = new Set([1, pages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= pages))
-  const out: (number | null)[] = []
-  let last = 0
-  for (const p of [...keep].sort((a, b) => a - b)) {
-    if (p - last > 1) out.push(null)
-    out.push(p)
-    last = p
-  }
-  return out
 }
 
 export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
@@ -150,9 +138,6 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
 
   const filtered = Boolean(query || account || group || period !== 'all')
   const total = data?.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / size))
-  const first = total ? (page - 1) * size + 1 : 0
-  const last = Math.min(total, page * size)
 
   return (
     <div className="pt-4">
@@ -303,72 +288,27 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
       )}
 
       {data && total > 0 && (
-        <nav
-          aria-label={t('감사 로그 페이지')}
-          className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+        <Pager
+          page={page}
+          size={size}
+          total={total}
+          onPage={setPage}
+          label={t('감사 로그 페이지')}
+          rangeTestId="audit-range"
         >
-          <div className="flex items-center gap-2 text-sm text-faint">
-            <span className="tabular-nums" data-testid="audit-range">
-              {t('{first}–{last} / 전체 {total}건')
-                .replace('{first}', first.toLocaleString())
-                .replace('{last}', last.toLocaleString())
-                .replace('{total}', total.toLocaleString())}
-            </span>
-            <Select
-              value={String(size)}
-              onChange={(e) => reset(setSize)(Number(e.target.value))}
-              aria-label={t('페이지당 건수')}
-              className="h-8 w-auto pr-8 text-sm"
-            >
-              {SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {t('{n}건씩').replace('{n}', String(n))}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-              aria-label={t('이전 페이지')}
-            >
-              <ChevronLeft size={14} />
-              <span className="hidden sm:inline">{t('이전')}</span>
-            </Button>
-            {pageWindow(page, pages).map((p, i) =>
-              p === null ? (
-                <span key={`gap-${i}`} className="px-1 text-faint">
-                  …
-                </span>
-              ) : (
-                <Button
-                  key={p}
-                  size="sm"
-                  variant={p === page ? 'primary' : 'ghost'}
-                  aria-current={p === page ? 'page' : undefined}
-                  aria-label={t('{n}쪽').replace('{n}', String(p))}
-                  onClick={() => setPage(p)}
-                  className="min-w-8 tabular-nums"
-                >
-                  {p}
-                </Button>
-              ),
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={page >= pages}
-              onClick={() => setPage(page + 1)}
-              aria-label={t('다음 페이지')}
-            >
-              <span className="hidden sm:inline">{t('다음')}</span>
-              <ChevronRight size={14} />
-            </Button>
-          </div>
-        </nav>
+          <Select
+            value={String(size)}
+            onChange={(e) => reset(setSize)(Number(e.target.value))}
+            aria-label={t('페이지당 건수')}
+            className="h-8 w-auto pr-8 text-sm"
+          >
+            {SIZES.map((n) => (
+              <option key={n} value={n}>
+                {t('{n}건씩').replace('{n}', String(n))}
+              </option>
+            ))}
+          </Select>
+        </Pager>
       )}
     </div>
   )

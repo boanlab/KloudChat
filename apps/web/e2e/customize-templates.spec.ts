@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
+import { openTool, toolNames } from './composer-tools'
 
 /**
  * 양식 is a document's structure (the shipped report and slide templates), 디자인 is its look.
@@ -23,14 +24,12 @@ test('the composer picks a 양식, and the gallery says so', async ({ page }, te
   const state = await hubFixture(page, testInfo)
   const phone = testInfo.project.name === 'phone'
   await page.goto('/new/report')
-  // A phone folds ▦ behind 「도구 더보기」.
-  if (phone && !(await page.getByRole('button', { name: '양식 고르기' }).isVisible().catch(() => false))) {
-    await page.getByRole('button', { name: '도구 더보기' }).click()
-  }
-  const pickButton = page.getByRole('button', { name: '양식 고르기' })
-  await expect(pickButton).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(0)
-  await pickButton.click()
+  // ▦ lives in 「+」 (a bottom sheet on a phone).
+  await expect(page.getByRole('button', { name: '도구', exact: true })).toBeVisible({ timeout: 15_000 })
+  const names = await toolNames(page)
+  expect(names).toContain('양식 고르기')
+  expect(names).not.toContain('서식 고르기')
+  await openTool(page, '양식 고르기')
 
   const dialog = page.getByRole('dialog', { name: '양식 고르기' })
   await expect(dialog).toBeVisible({ timeout: 15_000 })
@@ -67,7 +66,7 @@ test('the hub has a 양식 tab with the templates; 디자인 holds designs only'
   await shot(page, 'hub-templates', phone)
 
   // Search narrows the catalogue.
-  if (phone) await page.getByRole('button', { name: '검색' }).click()
+  if (phone) await page.getByRole('button', { name: '검색', exact: true }).click()
   await page.getByRole('searchbox', { name: '검색' }).fill('존재하지 않는 양식')
   await expect(page.getByText('조건에 맞는 양식이 없습니다.')).toBeVisible()
   await page.getByRole('searchbox', { name: '검색' }).fill('')

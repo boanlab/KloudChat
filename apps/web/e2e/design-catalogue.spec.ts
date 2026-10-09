@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
 /** The 양식 catalogue as its own hub tab (`/customize?tab=templates`). Nothing is generated. */
 
@@ -64,7 +65,7 @@ test('양식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 
 
   // The composer's picker offers only the surface's own 서식.
   await page.goto('/new/slides')
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
   const offered = dialog.getByRole('button', { name: '이 양식으로 시작', exact: true })

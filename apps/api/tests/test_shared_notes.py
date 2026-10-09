@@ -77,7 +77,8 @@ _DDL = (
         running_since DATETIME,
         pinned BOOLEAN DEFAULT 0,
         created_at DATETIME,
-        updated_at DATETIME
+        updated_at DATETIME,
+        title_set_by_user BOOLEAN NOT NULL DEFAULT 0
     )
     """,
     """

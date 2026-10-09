@@ -390,13 +390,37 @@ export function Dropdown({
   children,
   align = 'left',
   className,
+  open: controlledOpen,
+  onOpenChange,
+  sheet = false,
+  label,
 }: {
   trigger: (props: { open: boolean }) => ReactNode
   children: ReactNode
   align?: 'left' | 'right'
   className?: string
+  /** Controlled open state; the menu still closes itself and reports it through `onOpenChange`. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Opens as a sheet along the bottom edge instead of beside the trigger (phones). */
+  sheet?: boolean
+  /** Accessible name of the menu. */
+  label?: string
 }) {
-  const [open, setOpen] = useState(false)
+  const [ownOpen, setOwnOpen] = useState(false)
+  const open = controlledOpen ?? ownOpen
+  const openChange = useRef(onOpenChange)
+  const openNow = useRef(open)
+  useLayoutEffect(() => {
+    openChange.current = onOpenChange
+    openNow.current = open
+  })
+  const setOpen = useCallback((next: boolean | ((was: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(openNow.current) : next
+    openNow.current = value
+    setOwnOpen(value)
+    openChange.current?.(value)
+  }, [])
   // Opening direction and height cap, measured against the viewport.
   const [placement, setPlacement] = useState<{ up: boolean; maxHeight: number; left: number; top: number; bottom: number }>({
     up: false,
@@ -526,7 +550,7 @@ export function Dropdown({
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', measure)
     }
-  }, [open, measure])
+  }, [open, measure, setOpen])
 
   return (
     <div ref={ref} className={cn('relative shrink-0', open && 'z-50')}>
@@ -537,18 +561,28 @@ export function Dropdown({
       </div>
       {open && typeof document !== 'undefined' && createPortal(
         <MenuCtx.Provider value={{ close: () => setOpen(false) }}>
+          {sheet && <div className="fixed inset-0 z-[99] bg-black/30" aria-hidden />}
           <div
             ref={menuRef}
             role="menu"
-            style={{
-              position: 'fixed',
-              maxHeight: placement.maxHeight || undefined,
-              left: placement.left,
-              ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
-            }}
+            aria-label={label}
+            style={
+              sheet
+                ? undefined
+                : {
+                    position: 'fixed',
+                    maxHeight: placement.maxHeight || undefined,
+                    left: placement.left,
+                    ...(placement.up ? { bottom: placement.bottom } : { top: placement.top }),
+                  }
+            }
             className={cn(
-              'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
-              className,
+              sheet
+                ? 'animate-fade-up fixed inset-x-0 bottom-0 z-[100] max-h-[80dvh] overflow-y-auto rounded-t-panel border-t border-line bg-panel p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-overlay'
+                : cn(
+                    'animate-fade-up z-[100] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-card border border-line bg-panel p-1 shadow-overlay',
+                    className,
+                  ),
             )}
           >
             {children}

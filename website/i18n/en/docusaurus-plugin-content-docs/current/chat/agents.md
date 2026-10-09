@@ -10,7 +10,7 @@ An agent is an assistant with a role, instructions, tools, and material already 
 
 ## Starting a conversation with an agent
 
-The **Hand it to an agent** card on the home screen, **@** in the composer, and **Run** in the agent list all start a new conversation with that agent.
+**+** → **Agents** in the composer and **Run** in the agent list both start a new conversation with that agent.
 
 - The first screen of the conversation shows the agent's **How to use** text and its **opening prompts**, up to six of them. Select an opening prompt to send it as it is.
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
@@ -42,10 +42,12 @@ The **Workspace store** tab in the agent list shows the agents that other users 
 
 ## Skills
 
-A skill is a working method that applies **to one request only**. Select up to three from ✦ in the composer. They are cleared once you send. Installing a skill alone does not apply it. Available skills include citation formatting, calculation and unit checking, comparison tables, paper structure, and one-page summaries.
+A skill is a working method that applies **to one request only**. Select up to three from **+** → **Skills** in the composer. They are cleared once you send. Installing a skill alone does not apply it. Available skills include citation formatting, calculation and unit checking, comparison tables, paper structure, and one-page summaries.
 
 ![The Skills screen](/img/guide/skills.png)
 
 - Use the account menu → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.
-- A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, you are not running a model comparison, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
+- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Scripts (.py, .sh, .js and the like) are never stored or run; they are left out. The text check is heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.
+- A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.
+- A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
 - When you set **Recommended skills** on a project, they appear first in the composer of that project.

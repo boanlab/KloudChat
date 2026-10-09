@@ -10,6 +10,8 @@ A pipeline file names its stages in order and says when it applies:
     prepass = ["date-calc"]        # the pre-pass steps, in order
     [options]                      # read by stages through `ctx.options`
     search = true
+    [summary]                      # one plain line per step of the drawn chain, for people
+    question = "빠진 정보가 있으면 먼저 물어봅니다"
 
 `report.toml` and `chat.toml` are the defaults: a report whose format no file names is
 written by `report`, a chat turn whose agent no file names is finished by `chat`.
@@ -74,6 +76,9 @@ class Pipeline:
     #: Named stage lists: `plan`, `write`, `finish`, `prepass` …
     flows: dict[str, tuple[str, ...]] = field(default_factory=dict)
     options: dict[str, Any] = field(default_factory=dict)
+    #: What each step of the drawn chain (material, question, compute, write, check, export)
+    #: does, said for the person. Display only: no stage reads it.
+    summary: dict[str, str] = field(default_factory=dict)
 
     def flow(self, name: str) -> tuple[str, ...]:
         return self.flows.get(name, ())
@@ -93,6 +98,7 @@ def _parse(path: Path) -> Pipeline:
         agents=tuple(raw.get("agents") or ()),
         flows={k: tuple(raw[k]) for k in _FLOWS if k in raw},
         options=dict(raw.get("options") or {}),
+        summary={str(k): str(v) for k, v in (raw.get("summary") or {}).items()},
     )
 
 

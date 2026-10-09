@@ -67,6 +67,9 @@ jobs:
       - name: Test phone media-query boundaries
         run: npx playwright test --config playwright.phone.config.ts --workers=1
 
+      - name: Test the composer's + menu and phone layout
+        run: npx playwright test --config playwright.composer.config.ts --workers=1
+
       - name: Test English audit authentication gates
         run: npx playwright test --config playwright.i18n-gates.config.ts --workers=1
 
@@ -90,6 +93,9 @@ jobs:
       - name: Test the audit log screen
         run: npx playwright test --config playwright.audit-log.config.ts --workers=1
 
+      - name: Test settings › 보안 paging
+        run: npx playwright test --config playwright.security.config.ts --workers=1
+
       - name: Test pipeline stages and user flows
         run: npx playwright test --config playwright.pipeline.config.ts --workers=1
 
@@ -101,6 +107,9 @@ jobs:
 
       - name: Test result cards, panel headers and reuse
         run: npx playwright test --config playwright.results.config.ts --workers=1
+
+      - name: Test the search dialog and 대화 기록 search
+        run: npx playwright test --config playwright.search.config.ts --workers=1
 
   api:
     name: API · lint, tests

@@ -7,6 +7,7 @@ import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { KeyboardShortcuts } from './KeyboardShortcuts'
+import { SearchDialog } from './SearchDialog'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { useT } from '@/lib/useT'
@@ -160,6 +161,7 @@ export function AppShell() {
       <NoticeBar />
       <ToastBar />
       <KeyboardShortcuts />
+      <SearchDialog />
       <IssueReportDialog />
     </div>
   )

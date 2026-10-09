@@ -207,6 +207,26 @@ class ActiveSessionOut(Wire):
     current: bool
 
 
+class AccessEventPage(Wire):
+    """One page of the access log, newest first, with the account's total."""
+
+    items: list[AccessEventOut]
+    total: int
+    page: int
+    size: int
+
+
+class ActiveSessionPage(Wire):
+    """One page of live sign-ins; the caller's own leads page 1. `total` counts them all,
+    `others` all but the caller's own (what 「다른 기기 모두 로그아웃」 would end)."""
+
+    items: list[ActiveSessionOut]
+    total: int
+    others: int
+    page: int
+    size: int
+
+
 class SessionRevokeResult(Wire):
     """How many sign-ins the revoke ended."""
 

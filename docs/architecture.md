@@ -783,7 +783,7 @@ artifact has the same per-block rewrite.
 
 ### Pipelines
 
-The report writer, the deck and page writers, a model comparison, a chat answer's finish, a
+The report writer, the deck and page writers, a chat answer's finish, a
 revision and the hand-over of files are pipelines: an ordered list of named **stages** that read and write one typed **work
 bundle**. A fix to one step lives in one stage with its own tests; every stage of every turn
 is recorded, run or not; and which stages a document runs is data, not an if-chain.
@@ -792,12 +792,12 @@ is recorded, run or not; and which stages a document runs is data, not an if-cha
 `stage.py` (the contract), `runner.py`, `registry.py`, and the stages by flow —
 `report_stages.py`, `check_stages.py`, `chat_stages.py`, `revise_stages.py`,
 `export_stages.py`, `save_stages.py` (the `io` stages that load and store a document),
-`make_stages.py` (deck, page, comparison), `route_stages.py`; `runs.py` keeps a run across
+`make_stages.py` (deck, page), `route_stages.py`; `runs.py` keeps a run across
 requests, `marks.py` the spans a document's reader should look at, `labels.py` the stages'
 Korean names. `app/pipelines/*.toml` declares the pipelines, one file per shipped
 agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `career-docs`,
 `data-analysis`) plus the defaults `report` (any format no file claims), `dated`
-(`event_plan`, `result_report`), `chat`, `deck`, `page` and `compare`.
+(`event_plan`, `result_report`), `chat`, `deck` and `page`.
 
 **A pipeline file** names the formats and agents it serves and its flows:
 
@@ -808,7 +808,7 @@ agent (`minutes`, `gaejo-report`, `client-proposal`, `comparison-report`, `caree
 | `write` | the writing pass on the approved outline | `report.write` |
 | `finish` | a chat answer after the agent loop | `sessions._run_turn` |
 | `revise` | a follow-up applied to the document on screen, `revise-load` … `revise-save` | `sessions._revise_document` |
-| `make` | a one-pass writer: deck, page, comparison | `sessions._make_pass`, `_run_comparison` |
+| `make` | a one-pass writer: deck, page | `sessions._make_pass` |
 | `prepass` | the pre-pass steps (`report_checks.PREPASS_STEPS`) | `report_checks.prepare` |
 | `checks` | the format's code checks (`report_checks.CHECK_FAMILIES`) | `report_checks.checks` |
 | `judged` | the format's judged checks (`report_checks.JUDGED_CHECKS`) | `report_checks.model_checks` |
@@ -868,7 +868,7 @@ turn with its run id, and the answer (or 「있는 자료로 진행」, which le
 bracket blank) closes it; the writing pass that follows names it as its parent.
 
 **Persistence and routing are stages.** `report-save`, `revise-load`, `revise-save`,
-`deck-save`, `page-save` and `compare-save` are `io` stages that reach the database and the
+`deck-save` and `page-save` are `io` stages that reach the database and the
 bill through the router module, so tests that replace `sessions.SessionLocal` reach them.
 `send_message` decides where a turn goes with the `route` stage (page, file hand-over,
 revision, report, deck, chat); its record opens the stream. A stored report carries
@@ -1269,7 +1269,7 @@ material a turn was given sits closest to the question, and the standing
 instructions that shape every turn sit furthest from it.
 
 Policy (`governance`) is applied **before anything reaches the model**. For
-chat and model comparison, the privacy guard scans this exact assembled prompt,
+chat, the privacy guard scans this exact assembled prompt,
 the current input and conversation history before it writes a message, issues a
 LiteLLM key, charges credits or starts any completion. Chat also materializes
 the exact OpenAI tool-schema array first and includes it in the same scan and
@@ -1296,7 +1296,7 @@ and can never be selected as a privacy-safe route. Egress decisions bypass the
 if that refresh fails, no cached strict alias is trusted.
 
 Governance authorization likewise bypasses its process-local display cache. If
-the authoritative policy row cannot be read, every chat, comparison and
+the authoritative policy row cannot be read, every chat and
 report/slides send path fails closed with `503 governance_unavailable` before
 model discovery, transcript writes, billing, virtual-key issuance or upstream
 calls. This also blocks a strict-local request: without the row the server does
@@ -1307,7 +1307,7 @@ Their tool registry is built from in-process runners only, rather than building
 remote connectors and filtering them afterwards. Tool output on an external
 turn is inspected before every follow-up completion and masked before it enters
 that prompt. While either the guard or organisation-wide masking is active, every persisted
-model-generated textual field (answer, comparison variants, timeline details,
+model-generated textual field (answer, timeline details,
 artifact payloads and routing metadata) is deterministically masked with the
 `answer` scope described next, even when the inbound envelope was clean. Title
 generation and automatic memory receive only the masked turn text.
@@ -1329,7 +1329,7 @@ found on the web stays readable. Organisation details are never masked and
 never count as findings, so a page that names a switchboard does not trigger
 the privacy dialog.
 
-The selectable guard covers chat and model comparison. Reports, slides, media
+The selectable guard covers chat. Reports, slides, media
 generation and the `/llm` compatibility API always mask and present no
 decision flow.
 

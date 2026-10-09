@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { CostRouting, RoutingMode } from '../src/types'
+import { setWebSearch } from './composer-tools'
 
 const now = '2026-08-18T00:00:00.000Z'
 const sessionId = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -14,9 +15,8 @@ async function captureAutoRouting(page: Page, filename: string) {
 }
 
 async function disableWebSearch(page: Page) {
-  await page.getByRole('button', { name: '웹 검색: 자동', exact: true }).click()
-  await page.getByRole('button', { name: '웹 검색: 켬', exact: true }).click()
-  await expect(page.getByRole('button', { name: '웹 검색: 끔', exact: true })).toBeVisible()
+  await setWebSearch(page, '끔')
+  await expect(page.getByText('웹 검색: 끔', { exact: true })).toBeVisible()
 }
 
 async function openRoutingDetails(page: Page) {
@@ -426,12 +426,13 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await mockApp(page, mode)
       await page.goto(`/s/${sessionId}`)
       await expect(page.getByRole('button', { name: laneName })).toBeVisible()
-      await expect(page.getByRole('button', { name: '웹 검색: 자동', exact: true })).toBeVisible()
+      // 자동 is the default and shows no chip.
+      await expect(page.getByText(/^웹 검색: /)).toHaveCount(0)
       await expect(page.getByText(bypassHint)).toHaveCount(0)
 
-      await page.getByRole('button', { name: '웹 검색: 자동', exact: true }).click()
+      await setWebSearch(page, '항상')
       await expect(page.getByText(bypassHint)).toBeVisible()
-      await page.getByRole('button', { name: '웹 검색: 켬', exact: true }).click()
+      await setWebSearch(page, '끔')
       await expect(page.getByText(bypassHint)).toHaveCount(0)
 
       if ((page.viewportSize()?.width ?? 1440) >= 640) {
@@ -441,10 +442,6 @@ for (const mode of ['auto', 'auto_quality'] as const) {
           buffer: Buffer.from('draft'),
         })
         await expect(page.getByText(bypassHint)).toBeVisible()
-        await page.getByRole('button', { name: '모델 비교' }).click()
-        await page.getByRole('menuitem').filter({ hasText: '비교 모드' }).click()
-        await expect(page.getByText('Auto 일시 중지 · 비교할 모델을 직접 실행')).toBeVisible()
-        await expect(page.getByText(bypassHint)).toHaveCount(0)
       }
     })
 
@@ -699,23 +696,6 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await expect.poll(() => state.messageRequests.length).toBe(1)
       expect(state.patches[0]).toEqual({ routingMode: mode })
       expect(state.sessions[0].routingMode).toBe(mode)
-    })
-
-    test('비교 모드는 Auto를 바꾸지 않고 품질 모델 유지 이유를 표시한다', async ({ page }) => {
-      test.skip(
-        (page.viewportSize()?.width ?? 1440) < 640,
-        '모델 비교 전환 버튼은 데스크톱에서만 제공됨',
-      )
-      const state = await mockApp(page, mode)
-      await page.goto(`/s/${sessionId}`)
-
-      await page.getByRole('button', { name: '모델 비교' }).click()
-      await page.getByRole('menuitem').filter({ hasText: '비교 모드' }).click()
-
-      await expect(page.getByText('Auto 일시 중지 · 비교할 모델을 직접 실행')).toBeVisible()
-      await expect(page.getByRole('button', { name: laneName })).toHaveCount(0)
-      expect(state.patches).toHaveLength(0)
-      await captureAutoRouting(page, `${mode}-compare-paused.png`)
     })
   })
 }

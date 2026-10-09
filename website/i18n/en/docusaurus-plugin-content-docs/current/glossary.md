@@ -12,7 +12,7 @@ title: Glossary
 | Template (양식) | The structure and shape of the result (built in). It stays for the whole conversation |
 | Design (디자인) | A bundle of colors, typefaces, and tone. Attached to a project |
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |
-| Agent (에이전트) | A helper with set instructions, tools, and material. Starts with @ |
+| Agent (에이전트) | A helper with set instructions, tools, and material. Start one from **+** → **Agents** in the composer |
 | Skill (스킬) | A way of working that you turn on for this request only. Up to 3 |
 | Connector (커넥터) | An external tool the model uses (MCP). Turned on and off for the whole account |
 | Memory (메모리) | A fact remembered beyond one conversation |

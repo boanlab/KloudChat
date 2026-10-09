@@ -16,7 +16,6 @@ This page describes the limits the service allows and what to do for each error 
 | Number of slides | Up to 50 slides (5 to 12 if you do not specify a number) |
 | Number of report sections | 3 to 12 sections |
 | Skills | 3 per request |
-| Model comparison | 2 to 3 |
 | Memory | Up to 40 entries passed per request |
 | Opening sentences (agent) | 6 |
 | API keys | 10 per account |
@@ -64,7 +63,7 @@ Search for the message exactly as it appears on the screen.
 - Editing a sent message inside the same conversation. **Edit message** creates a new conversation with the edited message. [Conversation basics](chat/basics#editing-a-sent-message)
 - Several users editing one conversation together. Sharing is read only.
 - Two-factor authentication.
-- Model comparison and keyboard shortcuts on the mobile screen. The tool buttons are inside **More tools**.
+- Keyboard shortcuts on the mobile screen. The tools are in the bottom sheet that opens from the **+** button in the composer.
 
 ## Model limitations
 

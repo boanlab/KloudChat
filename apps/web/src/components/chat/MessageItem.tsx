@@ -30,7 +30,6 @@ import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/pri
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { CostRouting, LengthCheck, Message, ModelInfo } from '@/types'
-import { CompareView } from './CompareView'
 import { Markdown } from './Markdown'
 import { RetryActions } from './RetryActions'
 import { StepTimeline } from './StepTimeline'
@@ -505,8 +504,9 @@ function MessageItemInner({
     : 0
 
   return (
-    <div className="animate-fade-up group flex gap-3">
-      <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-accent text-accent-fg">
+    // A phone gives the answer the full width; the mark beside it would take a quarter.
+    <div className="animate-fade-up group flex gap-3 phone:block">
+      <div className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-control bg-accent text-accent-fg phone:hidden">
         {toolAnswer ? <Calculator size={14} /> : <Sparkles size={14} />}
       </div>
       <div className="min-w-0 flex-1">
@@ -612,13 +612,7 @@ function MessageItemInner({
           />
         )}
 
-        {message.variants ? (
-          <CompareView
-            variants={message.variants}
-            sessionId={sessionId}
-            messageId={message.id}
-          />
-        ) : message.content ? (
+        {message.content ? (
           <>
             {viewing !== null && (
               <Badge className="mb-2">
@@ -699,7 +693,7 @@ function MessageItemInner({
           />
         ))}
 
-        {!streaming && message.content && !message.variants && (
+        {!streaming && message.content && (
           <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}

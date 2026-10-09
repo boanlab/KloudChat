@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Index, String
+from sqlalchemy import Boolean, Column, DateTime, Index, String, false
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -108,6 +108,11 @@ class ChatSession(SQLModel, table=True):
     running_turn: str | None = Field(default=None)
     running_since: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     pinned: bool = Field(default=False)
+    #: The person named this conversation themselves; no automatic title replaces theirs.
+    title_set_by_user: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, default=False,
+                                        server_default=false())
+    )
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
@@ -203,3 +208,24 @@ __all__ = [
     "SessionKind",
     "TurnFailure",
 ]
+
+
+#: Conversations named after the document they made rather than their first words.
+DOCUMENT_SESSION_KINDS = frozenset({SessionKind.report, SessionKind.slides})
+
+
+def follow_document_title(session: ChatSession, title: str) -> bool:
+    """Names a report or slides conversation after its document; True when the title changed.
+
+    A conversation the person renamed keeps their name, and a chat keeps its own title.
+    """
+    title = " ".join((title or "").split())[:200]
+    if (
+        not title
+        or session.kind not in DOCUMENT_SESSION_KINDS
+        or session.title_set_by_user
+        or session.title == title
+    ):
+        return False
+    session.title = title
+    return True

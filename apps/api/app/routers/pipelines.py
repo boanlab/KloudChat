@@ -23,12 +23,40 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.labels import label
 from app.routers import sessions
-from app.services import check_skills
+from app.services import check_skills, skill_packages
 
 router = APIRouter(tags=["pipelines"])
 
 _FLOWS = ("pre", "plan", "write", "finish", "revise", "make")
 _LISTS = ("prepass", "checks", "judged")
+
+#: People's names for the format code checks, judged checks and pre-pass steps a pipeline file
+#: lists; a check skill package says its own name (SKILL.md `name`).
+_CHECK_NAMES = {
+    "quote-totals": "견적 합계 확인",
+    "proposal-schedule": "제안 일정 확인",
+    "gaejo-style": "개조식 문체 확인",
+    "lead-dates": "날짜 확인",
+    "minutes-rows": "할 일의 담당자·기한 확인",
+    "compare-cells": "비교표 빈칸·점수 확인",
+    "career-numbers": "경력 수치 확인",
+    "staff-counts": "투입 인원 확인",
+    "material-blanks": "자료로 채울 빈칸 찾기",
+    "judge-owners": "담당자 확인",
+    "judge-bindings": "수치와 대상 연결 확인",
+    "judge-repeats": "되풀이된 경험 찾기",
+    "proposal-rfp": "제안요청서 조건 읽기",
+    "staffing": "투입 인력 읽기",
+    "compare-cost": "대안별 총비용 계산",
+    "compare-check": "필수 조건·점수 계산",
+    "career-periods": "경력 기간 계산",
+}
+
+
+def check_name(key: str) -> str:
+    """A check's or pre-pass step's name as a person reads it; the id when none is known."""
+    package = skill_packages.package_for(key)
+    return (package.name if package and package.name else "") or _CHECK_NAMES.get(key, key)
 
 
 def _stage_checks(name: str, pipe: registry.Pipeline, attached: tuple[str, ...]) -> list[str]:
@@ -59,10 +87,14 @@ def describe(pipe: registry.Pipeline, attached: tuple[str, ...] = ()) -> dict[st
              "checks": _stage_checks(n, pipe, attached)}
             for n in names
         ]
+    lists = {k: list(pipe.flow(k)) for k in _LISTS if pipe.flow(k)}
+    named = [*attached, *(c for rows in flows.values() for s in rows for c in s["checks"]),
+             *(c for rows in lists.values() for c in rows)]
     return {
         "name": pipe.name, "formats": list(pipe.formats), "agents": list(pipe.agents),
         "options": dict(pipe.options), "checks": list(attached), "flows": flows,
-        "lists": {k: list(pipe.flow(k)) for k in _LISTS if pipe.flow(k)},
+        "lists": lists, "summary": dict(pipe.summary),
+        "checkNames": {k: check_name(k) for k in dict.fromkeys(named)},
     }
 
 

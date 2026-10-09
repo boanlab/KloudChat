@@ -9,12 +9,13 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import Column, DateTime, Index, UniqueConstraint
+from sqlalchemy import Column, DateTime, Index, Text, UniqueConstraint, event, inspect
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.models.user import utcnow
+from app.services.search_text import artifact_text
 
 
 def _uuid() -> str:
@@ -148,8 +149,25 @@ class Artifact(SQLModel, table=True):
     #: Shape depends on `kind`; mirrors the discriminated union in the web client's types.
     data: dict | None = Field(default=None, sa_column=_json(nullable=True))
     storage_key: str | None = Field(default=None)
+    #: What the result says as plain words, for search (`services.search_text`). Kept in step
+    #: with `data` on every ORM write by the listeners below; never sent to a model.
+    search_text: str = Field(
+        default="", sa_column=Column(Text, nullable=False, server_default="", default="")
+    )
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+@event.listens_for(Artifact, "before_insert")
+def _artifact_text_on_insert(_mapper, _connection, target: Artifact) -> None:
+    target.search_text = artifact_text(target.data)
+
+
+@event.listens_for(Artifact, "before_update")
+def _artifact_text_on_update(_mapper, _connection, target: Artifact) -> None:
+    # Only when the body was assigned: a title or project change leaves the text as it was.
+    if inspect(target).attrs.data.history.has_changes():
+        target.search_text = artifact_text(target.data)
 
 
 class JobStatus(StrEnum):

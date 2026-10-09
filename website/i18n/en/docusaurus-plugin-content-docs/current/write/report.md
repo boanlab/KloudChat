@@ -4,7 +4,7 @@ title: Writing reports
 
 # Writing reports
 
-On the home screen, select **Report** and enter the topic of the report you want to write. If you have supporting material, attach it with 📎. When you attach material, KloudChat fills the figures in from that material instead of estimating them. Where a search server is connected, it searches the web before writing and cites the sources.
+On the home screen, select **Report** and enter the topic of the report you want to write. If you have supporting material, attach it from **+** → **Attach** in the composer. When you attach material, KloudChat fills the figures in from that material instead of estimating them. Where a search server is connected, it searches the web before writing and cites the sources.
 
 ## Step 1: Confirming the structure
 
@@ -37,7 +37,7 @@ Two methods are provided.
 |---|---|
 | "In four sections" | Sets the number of sections. The range is 3 to 12. |
 | "Review report", "weekly report", "meeting minutes", "incident report" | Applies a structure that suits the document type. Only documents that call for a judgment include summary and recommendation sections. |
-| Selecting a template from ▦ | Applies the structure rules and typesetting of that template. |
+| Selecting a template from **+** → Pick a template | Applies the structure rules and typesetting of that template. |
 
 ## Export
 

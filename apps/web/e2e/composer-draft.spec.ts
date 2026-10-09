@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
 /** Picking a 서식 or switching surface never overwrites a draft. */
 test('서식을 고르면 쓰던 문장은 그대로 두고 칩만 붙는다', async ({ page }) => {
@@ -11,7 +12,7 @@ test('서식을 고르면 쓰던 문장은 그대로 두고 칩만 붙는다', a
   const mine = '3월 운영위원회 회의 내용을 정리해 줘.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
   // Searched: the gallery pages.

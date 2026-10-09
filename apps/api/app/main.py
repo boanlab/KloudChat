@@ -24,8 +24,10 @@ from app.routers import (
     perf,
     pipelines,
     runs,
+    search,
     sessions,
     shares,
+    skill_files,
     transcriptions,
     usage,
     user_pipelines,
@@ -107,10 +109,12 @@ app.include_router(llm.router)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(models.router, prefix=settings.api_prefix)
 app.include_router(sessions.router, prefix=settings.api_prefix)
+app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(runs.router, prefix=settings.api_prefix)
 app.include_router(pipelines.router, prefix=settings.api_prefix)
 app.include_router(user_pipelines.router, prefix=settings.api_prefix)
 app.include_router(workspace.router, prefix=settings.api_prefix)
+app.include_router(skill_files.router, prefix=settings.api_prefix)
 app.include_router(connectors.router, prefix=settings.api_prefix)
 app.include_router(jobs.router, prefix=settings.api_prefix)
 app.include_router(usage.router, prefix=settings.api_prefix)

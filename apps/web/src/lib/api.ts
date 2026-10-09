@@ -6,6 +6,7 @@
  */
 
 import type {
+  ArtifactKind,
   CostRouting,
   DesignTokens,
   DocMarks,
@@ -553,9 +554,24 @@ export interface ActiveSessionRow {
   current: boolean
 }
 
+/** One page of a settings list, newest first. */
+export interface AccessPage<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+/** The caller's own sign-in leads page 1; `others` counts every sign-in but that one. */
+export interface ActiveSessionPage extends AccessPage<ActiveSessionRow> {
+  others: number
+}
+
 export const accessApi = {
-  mine: () => call<AccessEventRow[]>('/auth/me/access'),
-  sessions: () => call<ActiveSessionRow[]>('/auth/me/sessions'),
+  mine: (page = 1, size = 20) =>
+    call<AccessPage<AccessEventRow>>(`/auth/me/access?page=${page}&size=${size}`),
+  sessions: (page = 1, size = 10) =>
+    call<ActiveSessionPage>(`/auth/me/sessions?page=${page}&size=${size}`),
   endSession: (familyId: string) =>
     call<{ revoked: number }>(`/auth/me/sessions/${familyId}`, { method: 'DELETE' }),
   /** Everywhere but here. */
@@ -812,20 +828,8 @@ export interface MessageRow {
   content: string
   steps: unknown[] | null
   attachments: unknown[] | null
-  /** Present only on comparison turns — one entry per model that answered. */
-  variants:
-    | {
-        model: string
-        routedModel?: string
-        actualModel?: string
-        dataBoundary?: ModelInfo['dataBoundary']
-        content: string
-        credits: number
-        usage: { inputTokens: number; outputTokens: number } | null
-        error: string | null
-        chosen?: boolean
-      }[]
-    | null
+  /** Stored on turns from the retired model comparison; read only for their text. */
+  variants?: { content: string }[] | null
   /** Answers a rerun replaced, oldest first. */
   superseded?: EarlierAnswer[] | null
   usage: Message['usage'] | null
@@ -883,9 +887,6 @@ export const sessionsApi = {
     ),
   /** Asks the running turn to stop. Sent before the fetch is aborted: a closed socket alone looks like a changed tab. */
   stop: (sessionId: string) => call<void>(`/sessions/${sessionId}/stop`, { method: 'POST' }),
-  /** Which of a comparison's answers the conversation continues from. */
-  chooseVariant: (sessionId: string, messageId: string, model: string) =>
-    call<MessageRow>(`/sessions/${sessionId}/messages/${messageId}/variant`, body({ model })),
   list: (params?: { kind?: string; projectId?: string }) =>
     call<SessionRow[]>(
       `/sessions${params ? `?${new URLSearchParams(params as Record<string, string>)}` : ''}`,
@@ -1338,6 +1339,80 @@ export const skillsApi = {
   store: () => call<StoreSkillRow[]>('/skills/store'),
   /** Takes a copy. Idempotent — a second press returns the copy you have. */
   install: (id: string) => call<SkillRow>(`/skills/${id}/install`, { method: 'POST' }),
+  /**
+   * SKILL.md, .zip or .skill files read into skills. `dryRun` only previews (findings
+   * included); otherwise every file must pass and each becomes a personal skill.
+   */
+  importFiles: async (files: File[], opts: { dryRun?: boolean; draft?: boolean } = {}) => {
+    const form = new FormData()
+    for (const file of files) form.append('files', file)
+    const query = new URLSearchParams()
+    if (opts.dryRun) query.set('dryRun', 'true')
+    if (opts.draft) query.set('draft', 'true')
+    const res = await fetch(`${BASE_URL}/skills/import${query.size ? `?${query}` : ''}`, {
+      method: 'POST',
+      credentials: 'include',
+      // No Content-Type — the browser has to set the multipart boundary.
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as SkillImportResult
+  },
+}
+
+export interface SkillImportFinding {
+  /** `block` stops the upload; `warn` is shown and the upload may go on. */
+  severity: 'block' | 'warn'
+  code: string
+  message: string
+  file: string
+  line: number | null
+}
+
+export interface SkillImportPreview {
+  filename: string
+  ok: boolean
+  name: string
+  description: string
+  whenToUse: string
+  kinds: string[]
+  requiredTools: string[]
+  version: string
+  bodyChars: number
+  estimatedTokens: number
+  kept: string[]
+  excluded: { path: string; reason: 'script' | 'binary' | 'unused' | 'too_long' }[]
+  findings: SkillImportFinding[]
+}
+
+export interface SkillImportResult {
+  dryRun: boolean
+  items: SkillImportPreview[]
+  created: SkillRow[]
+}
+
+/** Downloads one of your skills as SKILL.md. */
+export async function downloadSkill(id: string, name: string) {
+  const res = await fetch(`${BASE_URL}/skills/${id}/export`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${name.replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'skill'}-SKILL.md`
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export interface SkillRow {
@@ -1725,19 +1800,6 @@ export type StreamEvent =
   | ({ type: 'model_route' } & CostRouting)
   | ({ type: 'freshness_abstention' } & FreshnessAbstention)
   | ({ type: 'tool_result_answer' } & ToolResultAnswer)
-  /** Model comparison: one column's text, then that column's final bill. */
-  | { type: 'variant'; model: string; text: string; actualModel?: string }
-  | { type: 'variant_retract'; model: string; text: string }
-  | {
-      type: 'variant_done'
-      model: string
-      routedModel?: string
-      actualModel?: string
-      credits: number
-      inputTokens: number
-      outputTokens: number
-      error: string | null
-    }
   /** `messageId` is the stored answer's id — the one every later call must use. */
   | { type: 'done'; credits?: number; messageId?: string }
 
@@ -1773,25 +1835,6 @@ export async function* streamSession(
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   yield* postStream(`/sessions/${sessionId}/messages`, payload, signal)
-}
-
-/**
- * Model comparison. Two or three real completions, interleaved on one
- * connection so the turn is stored and billed as one thing.
- */
-export async function* streamComparison(
-  sessionId: string,
-  payload: {
-    content: string
-    models: string[]
-    activatedSkillIds?: string[]
-    attachments?: string[]
-    privacyAction?: PrivacyAction
-    privacyDecisionToken?: string
-  },
-  signal?: AbortSignal,
-): AsyncGenerator<StreamEvent> {
-  yield* postStream(`/sessions/${sessionId}/compare`, payload, signal)
 }
 
 /**
@@ -2245,4 +2288,81 @@ export interface PerfOverview {
 
 export const perfApi = {
   overview: (range: PerfRange) => call<PerfOverview>(`/admin/perf/overview?range=${range}`),
+}
+
+/* ── search (⌘K, 대화 기록) ───────────────────────────────────────────────
+ * The caller's own conversations and results, by title and by what they say. Answered from
+ * the app's own database; nothing is sent to a model.
+ */
+
+/** A run of a title or excerpt; `hit` marks the query's words. */
+export interface SearchRun {
+  text: string
+  hit: boolean
+}
+
+export interface SessionSearchHit {
+  id: string
+  kind: SessionKind
+  title: string
+  titleParts: SearchRun[]
+  matchedIn: 'title' | 'message'
+  /** A window of the newest message that holds every word; empty for a title match. */
+  snippet: SearchRun[]
+  messageId: string | null
+  role: 'user' | 'assistant' | null
+  projectId: string | null
+  artifactId: string | null
+  updatedAt: string
+}
+
+export interface ArtifactSearchHit {
+  id: string
+  kind: ArtifactKind
+  title: string
+  titleParts: SearchRun[]
+  matchedIn: 'title' | 'text'
+  snippet: SearchRun[]
+  sessionId: string | null
+  projectId: string | null
+  updatedAt: string
+}
+
+export interface SearchResult {
+  query: string
+  terms: string[]
+  sessions: SessionSearchHit[]
+  artifacts: ArtifactSearchHit[]
+  sessionsMore: boolean
+  artifactsMore: boolean
+  /** Conversations matching across every page; only when asked with `count`. */
+  sessionsTotal: number | null
+}
+
+export type SearchScope = 'all' | 'sessions' | 'artifacts'
+
+export const searchApi = {
+  query: (
+    q: string,
+    {
+      scope = 'all', limit = 8, offset = 0, count = false, signal,
+    }: { scope?: SearchScope; limit?: number; offset?: number; count?: boolean; signal?: AbortSignal } = {},
+  ) => {
+    const params = new URLSearchParams({ q: q.slice(0, 200), scope, limit: String(limit), offset: String(offset) })
+    if (count) params.set('count', 'true')
+    return call<SearchResult>(`/search?${params}`, { signal })
+  },
+}
+
+/** One page of 대화 기록, newest first; `page` is the one served (the last when asked past it). */
+export interface SessionPage {
+  items: SessionRow[]
+  total: number
+  page: number
+  size: number
+}
+
+export const historyApi = {
+  page: (page: number, size = 50, signal?: AbortSignal) =>
+    call<SessionPage>(`/sessions/paged?page=${page}&size=${size}`, { signal }),
 }

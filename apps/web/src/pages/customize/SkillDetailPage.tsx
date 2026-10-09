@@ -1,4 +1,4 @@
-import { Copy, FileCode2, Share2, Sparkles, Trash2 } from 'lucide-react'
+import { Copy, Download, FileCode2, Share2, Sparkles, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -9,7 +9,7 @@ import { ShareDialog } from '@/components/customize/ShareDialog'
 import { SkillForm } from '@/components/customize/SkillForm'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Badge, ConfirmDialog, EmptyState, LoadingState, Switch } from '@/components/ui'
-import { errorMessage } from '@/lib/api'
+import { downloadSkill, errorMessage } from '@/lib/api'
 import { useT, useTIn } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 
@@ -80,6 +80,19 @@ export function SkillDetailPage() {
           navigate(`/customize/skills/${copy.id}`)
         } catch (err) {
           setNotice(errorMessage(err, t('복제하지 못했습니다.')))
+        }
+      },
+    })
+  }
+  if (own) {
+    menu.push({
+      label: '내보내기 (SKILL.md)',
+      icon: <Download size={14} />,
+      run: async () => {
+        try {
+          await downloadSkill(own.id, own.name)
+        } catch (err) {
+          setNotice(errorMessage(err, t('내보내지 못했습니다.')))
         }
       },
     })

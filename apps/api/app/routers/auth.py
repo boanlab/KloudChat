@@ -13,10 +13,10 @@ import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, select
+from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.config import settings
@@ -46,7 +46,9 @@ from app.models.user import (
 )
 from app.schemas.auth import (
     AccessEventOut,
+    AccessEventPage,
     ActiveSessionOut,
+    ActiveSessionPage,
     EmailVerify,
     EmailVerifyResponse,
     LoginRequest,
@@ -531,18 +533,28 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-@router.get("/me/access", response_model=list[AccessEventOut])
-async def my_access_log(user: CurrentUser, db: DbSession):
-    """This account's own security events, newest first, failed logins included."""
+@router.get("/me/access", response_model=AccessEventPage)
+async def my_access_log(
+    user: CurrentUser,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+):
+    """This account's own security events, newest first, failed logins included, paged."""
+    conds = (AuditEvent.actor_id == user.id, col(AuditEvent.action).in_(_ACCOUNT_ACTIONS))
+    total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
     rows = (
         await db.exec(
             select(AuditEvent)
-            .where(AuditEvent.actor_id == user.id, col(AuditEvent.action).in_(_ACCOUNT_ACTIONS))
-            .order_by(col(AuditEvent.at).desc())
-            .limit(100)
+            .where(*conds)
+            .order_by(col(AuditEvent.at).desc(), col(AuditEvent.id).desc())
+            .offset((page - 1) * size)
+            .limit(size)
         )
     ).all()
-    return [AccessEventOut.of(e) for e in rows]
+    return AccessEventPage(
+        items=[AccessEventOut.of(e) for e in rows], total=int(total), page=page, size=size
+    )
 
 
 def _current_digest(request: Request) -> str | None:
@@ -551,9 +563,18 @@ def _current_digest(request: Request) -> str | None:
     return hash_refresh_token(raw) if raw else None
 
 
-@router.get("/me/sessions", response_model=list[ActiveSessionOut])
-async def my_sessions(user: CurrentUser, request: Request, db: DbSession):
-    """Live sign-ins, one per refresh-token family, newest first; the caller's own is marked."""
+@router.get("/me/sessions", response_model=ActiveSessionPage)
+async def my_sessions(
+    user: CurrentUser,
+    request: Request,
+    db: DbSession,
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+):
+    """Live sign-ins, one per refresh-token family, a page at a time.
+
+    The caller's own comes first on page 1, then the rest by latest activity.
+    """
     now = utcnow()
     rows = (
         await db.exec(
@@ -573,8 +594,21 @@ async def my_sessions(user: CurrentUser, request: Request, db: DbSession):
     for row in rows:
         by_family.setdefault(row.family_id, []).append(row)
 
+    def last_seen(tokens: list[RefreshToken]) -> datetime:
+        newest = max(tokens, key=lambda t: t.created_at)
+        return newest.last_used_at or newest.created_at
+
+    def is_current(tokens: list[RefreshToken]) -> bool:
+        return any(t.token_hash == current_digest for t in tokens)
+
+    ordered = sorted(
+        by_family.items(),
+        key=lambda kv: (not is_current(kv[1]), -last_seen(kv[1]).timestamp(), kv[0]),
+    )
+    window = ordered[(page - 1) * size : page * size]
+
     out: list[ActiveSessionOut] = []
-    for family_id, tokens in by_family.items():
+    for family_id, tokens in window:
         newest = max(tokens, key=lambda t: t.created_at)
         # Family start comes from the whole chain, revoked ancestors included.
         started = (
@@ -598,17 +632,17 @@ async def my_sessions(user: CurrentUser, request: Request, db: DbSession):
             ActiveSessionOut(
                 family_id=family_id,
                 started_at=started,
-                last_seen_at=newest.last_used_at or newest.created_at,
+                last_seen_at=last_seen(tokens),
                 expires_at=newest.expires_at,
                 ip=described.ip,
                 region=geoip.lookup(described.ip),
                 user_agent=described.user_agent,
-                current=any(t.token_hash == current_digest for t in tokens),
+                current=is_current(tokens),
             )
         )
 
-    out.sort(key=lambda s: s.last_seen_at, reverse=True)
-    return out
+    others = sum(1 for _, tokens in ordered if not is_current(tokens))
+    return ActiveSessionPage(items=out, total=len(ordered), others=others, page=page, size=size)
 
 
 @router.delete("/me/sessions/{family_id}", response_model=SessionRevokeResult)

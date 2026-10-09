@@ -18,7 +18,7 @@ display and feature settings reach the others within the cache TTL. Two values
 that can authorize external data movement deliberately bypass that rule:
 governance is read fresh for every egress decision, and model-boundary metadata
 is refreshed from LiteLLM before strict-local eligibility is trusted. If the
-authoritative governance read fails, chat, comparison and the report/slides
+authoritative governance read fails, the chat and report/slides
 send path return `503 governance_unavailable` before reading the
 model catalogue, creating a message, issuing a key, charging credit or calling
 an upstream model. A cached policy remains useful for display, but never
@@ -407,7 +407,7 @@ available:
 - **PII masking** is the organisation-wide upper bound. When enabled,
   matching content is always masked and raw external delivery cannot be
   enabled.
-- **External data guard** protects chat and model comparison. Administrators
+- **External data guard** protects chat. Administrators
   choose a set of models whose live catalogue metadata explicitly says
   `self_hosted` and `strictLocal`; stale or unknown model IDs are rejected.
   The visible catalogue's top-to-bottom order is the fixed routing priority.

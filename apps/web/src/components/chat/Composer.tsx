@@ -1,24 +1,25 @@
 import {
   ArrowUp,
+  AtSign,
   Boxes,
-  Columns2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
   Gauge,
   Globe,
   LayoutGrid,
   Mic,
-  MoreHorizontal,
   Paperclip,
   Pencil,
   Plug,
   Loader2,
   Plus,
-  ShieldCheck,
   Sparkles,
   Square,
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { FileRow, PrivacyDecision, WebSearchSetting } from '@/lib/api'
 import { ApiError, transcriptionsApi } from '@/lib/api'
 import { startWavRecording, type WavRecorder } from '@/lib/wavRecorder'
@@ -282,8 +283,51 @@ function AvOptions() {
   )
 }
 
-/** The toggle's three positions; `auto` is sent as `'auto'`, the others as booleans. */
+/** The three positions (자동·항상·끔); `auto` is sent as `'auto'`, the others as booleans. */
 type WebSearchMode = 'auto' | 'on' | 'off'
+
+/** What the 「+」 menu shows: its list, or one tool's own choices in its place. */
+type PlusView = 'main' | 'skills' | 'web' | 'connectors' | 'agents'
+
+/** A row of the 「+」 menu; `submenu` rows open their tool's choices in place. */
+function ToolItem({
+  icon,
+  children,
+  hint,
+  label,
+  submenu,
+  back,
+  disabled,
+  onClick,
+}: {
+  icon: ReactNode
+  children: ReactNode
+  hint?: ReactNode
+  label?: string
+  submenu?: boolean
+  /** The 뒤로 row, which focus skips when a submenu opens. */
+  back?: boolean
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      aria-label={label}
+      aria-haspopup={submenu ? 'menu' : undefined}
+      data-back={back ? '' : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-base text-fg transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55 phone:py-2"
+    >
+      <span className="shrink-0 text-muted">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {hint && <span className="max-w-[45%] shrink-0 truncate text-sm text-faint">{hint}</span>}
+      {submenu && <ChevronRight size={14} className="shrink-0 text-faint" />}
+    </button>
+  )
+}
 
 // Composer state carried across the remount that creating a session causes.
 // Read once by the new composer and cleared.
@@ -329,6 +373,13 @@ useStore.subscribe((state, previous) => {
   editBackups.clear()
   draftStore.clear()
 })
+
+const FILL_EVENT = 'kloudchat:fill-composer'
+
+/** Puts `text` in the composer in place of what is there, without sending it. */
+export function fillComposer(text: string) {
+  window.dispatchEvent(new CustomEvent(FILL_EVENT, { detail: text }))
+}
 
 /** Whether a session has unsent text. */
 export function hasUnsentDraft(sessionId: string) {
@@ -400,6 +451,20 @@ export function Composer({
     // effect: the controlled textarea's next commit collapses an earlier selection.
     pendingSelection.current = [kept ? next.length - draft.length : next.length, next.length]
   }, [draft, setDraft])
+  useEffect(() => {
+    const fill = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail
+      if (typeof text !== 'string' || editing) return
+      activeRestoreToken.current = null
+      liveValue.current = text
+      draftStore.set(draftKey, text)
+      setValue(text)
+      ref.current?.focus()
+      pendingSelection.current = [text.length, text.length]
+    }
+    window.addEventListener(FILL_EVENT, fill)
+    return () => window.removeEventListener(FILL_EVENT, fill)
+  }, [draftKey, editing])
   useLayoutEffect(() => {
     const range = pendingSelection.current
     if (!range) return
@@ -423,11 +488,26 @@ export function Composer({
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
-  // A phone shows attach, dictation and web search; the rest sits behind 「더보기」,
-  // and model comparison — answers side by side — is not offered at all.
+  // A phone opens 「+」 as a bottom sheet.
   const phone = useMediaQuery('(pointer: coarse) and (max-width: 64rem), (max-width: 40rem)')
-  const [moreOpen, setMoreOpen] = useState(false)
-  const folded = phone && !moreOpen
+  const [plusOpen, setPlusOpen] = useState(false)
+  const [plusView, setPlusView] = useState<PlusView>('main')
+  const [skillQuery, setSkillQuery] = useState('')
+  const plusViewRef = useRef<HTMLDivElement>(null)
+  // A submenu replaces the list it was opened from; focus moves into it.
+  useEffect(() => {
+    if (!plusOpen) return
+    const frame = requestAnimationFrame(() => {
+      const root = plusViewRef.current
+      const target = plusView === 'skills'
+        ? root?.querySelector<HTMLElement>('input')
+        : root?.querySelector<HTMLElement>('button:not(:disabled):not([data-back])')
+      target?.focus()
+    })
+    return () => cancelAnimationFrame(frame)
+    // Only a change of view moves focus; opening is the menu's own business.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plusView])
   const setSessionTemplate = useStore((s) => s.setSessionTemplate)
   const handOff = useStore((s) => s.handOff)
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)
@@ -584,7 +664,8 @@ export function Composer({
   // overrides per turn.
   const [webSearchMode, setWebSearchMode] = useState<WebSearchMode>('auto')
   const webSearch = webSearchMode !== 'off'
-  const webSearchModeLabel = { auto: t('자동'), on: t('켬'), off: t('끔') }[webSearchMode]
+  const webSearchModeLabels: Record<WebSearchMode, string> = { auto: t('자동'), on: t('항상'), off: t('끔') }
+  const webSearchModeLabel = webSearchModeLabels[webSearchMode]
   const [activatedSkillIds, setActivatedSkillIds] = useState<string[]>([])
   const liveActivatedSkillIds = useRef(activatedSkillIds)
   liveActivatedSkillIds.current = activatedSkillIds
@@ -690,10 +771,6 @@ export function Composer({
     agents,
     connectors,
     toggleConnector,
-    compareMode,
-    compareModels,
-    toggleCompareMode,
-    toggleCompareModel,
     models,
     modelByKind,
     imageOptions,
@@ -730,9 +807,8 @@ export function Composer({
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),
   )
-  // A strict-local model gets no network tool and a comparison sends no flag;
-  // the control follows the turn, not the stored preference.
-  const searchBlocked = (compareMode && kind === 'chat') || Boolean(model?.strictLocal)
+  // A strict-local model gets no network tool; the control follows the turn, not the stored preference.
+  const searchBlocked = Boolean(model?.strictLocal)
   const effectiveWebSearch = webSearch && !searchBlocked
   // What this turn sends: the mode, unless something blocks search altogether.
   const sentWebSearch: WebSearchSetting = !effectiveWebSearch
@@ -740,6 +816,8 @@ export function Composer({
     : webSearchMode === 'auto'
       ? 'auto'
       : true
+  // 자동 is the default and needs no chip; 항상 and 끔 do, and so does a model that blocks search.
+  const webSearchChip = canWebSearch && (searchBlocked ? webSearch : webSearchMode !== 'auto')
   const agentSkillAllowlist = sessionAgent?.skillIds
   const agentToolAllowlist = sessionAgent?.tools
   const recommended = new Set(project?.skillIds ?? [])
@@ -756,7 +834,7 @@ export function Composer({
 
   const skillUnavailableReason = (skill: Skill): string | null => {
     if (skill.requiredTools.length === 0) return null
-    if (kind !== 'chat' || compareMode) {
+    if (kind !== 'chat') {
       return t('이 화면에서는 도구가 필요한 스킬을 실행할 수 없습니다.')
     }
     if (!model?.supportsTools) {
@@ -798,7 +876,6 @@ export function Composer({
     kind === 'chat' && (session?.routingMode === 'auto' || session?.routingMode === 'auto_quality')
   const autoBypassPreview =
     autoActive &&
-    !compareMode &&
     Boolean(
       project ||
         sessionAgent ||
@@ -806,7 +883,6 @@ export function Composer({
         (effectiveWebSearch && webSearchMode === 'on') ||
         activeSkills.length > 0,
     )
-  const autoPausedForCompare = autoActive && compareMode
   // Empty `kinds` means every surface.
   const usableAgents = agents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
@@ -1304,6 +1380,374 @@ export function Composer({
       })
   }
 
+  const toggleSkill = (id: string, selected: boolean) => {
+    activeRestoreToken.current = null
+    const next = selected
+      ? activeSkills.filter((skill) => skill.id !== id).map((skill) => skill.id)
+      : [...activeSkills.map((skill) => skill.id), id]
+    liveActivatedSkillIds.current = next
+    setActivatedSkillIds(next)
+    // In a conversation the change is the conversation's, kept on the server —
+    // except while a message is being edited, where cancel must undo it.
+    if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
+  }
+  // Everything but dictation, the model and send sits behind 「+」 (a bottom sheet on a phone);
+  // what is switched on shows as a chip above the input.
+  const showTemplates = hasTemplates && (started || !sessionId) && !editing
+  const showSkills = !isMedia && usableSkills.length > 0
+  // On a phone the microphone moves into 「+」 unless it is recording.
+  const micInMenu = phone && canRecord && !recording && !transcribing
+  const hasTools =
+    !isMedia || showTemplates || showSkills || canWebSearch || usableConnectors.length > 0 ||
+    usableAgents.length > 0 || micInMenu
+  const closePlus = () => {
+    setPlusOpen(false)
+    setPlusView('main')
+    setSkillQuery('')
+  }
+  const openPlusView = (view: PlusView) => {
+    setPlusView(view)
+    setSkillQuery('')
+  }
+  const shownSkills = skillQuery.trim()
+    ? usableSkills.filter((s) => s.name.toLowerCase().includes(skillQuery.trim().toLowerCase()))
+    : usableSkills
+  const webSearchHelp: Record<WebSearchMode, string> = {
+    auto: t('최신 사실이나 날씨를 물으면 찾아봅니다'),
+    on: t('매번 웹에서 찾아봅니다'),
+    off: t('웹을 찾아보지 않습니다'),
+  }
+  const back = (title: string) => (
+    <>
+      <ToolItem back icon={<ChevronLeft size={15} />} onClick={() => openPlusView('main')}>
+        {t('뒤로')}
+      </ToolItem>
+      <MenuSeparator />
+      <MenuLabel>{title}</MenuLabel>
+    </>
+  )
+  const plusMenu = hasTools && (
+    <Dropdown
+      open={plusOpen}
+      onOpenChange={(open) => (open ? setPlusOpen(true) : closePlus())}
+      sheet={phone}
+      label={t('도구')}
+      className={plusView === 'main' ? 'min-w-64' : 'min-w-72'}
+      trigger={({ open }) => (
+        <button
+          type="button"
+          aria-label={t('도구')}
+          title={t('파일·양식·스킬·웹 검색·커넥터·에이전트')}
+          className={cn(
+            'grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-elevated hover:text-fg',
+            open ? 'bg-elevated text-fg' : 'text-muted',
+          )}
+        >
+          <Plus size={18} />
+        </button>
+      )}
+    >
+      <div ref={plusViewRef} data-plus-view={plusView}>
+        {plusView === 'main' && (
+          <>
+            {!isMedia && (
+              <ToolItem
+                icon={<Paperclip size={15} />}
+                disabled={editPending}
+                onClick={() => {
+                  closePlus()
+                  fileInput.current?.click()
+                }}
+              >
+                {t('파일·사진 첨부')}
+              </ToolItem>
+            )}
+            {showTemplates && (
+              <ToolItem
+                icon={<LayoutGrid size={15} />}
+                label={t('양식 고르기')}
+                hint={shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : undefined}
+                onClick={() => {
+                  closePlus()
+                  setGalleryOpen(true)
+                }}
+              >
+                {t('양식 고르기')}
+              </ToolItem>
+            )}
+            {showSkills && (
+              <ToolItem
+                icon={<Sparkles size={15} />}
+                label={t('스킬')}
+                submenu
+                hint={activeSkills.length ? String(activeSkills.length) : undefined}
+                onClick={() => openPlusView('skills')}
+              >
+                {t('스킬')}
+              </ToolItem>
+            )}
+            {canWebSearch && (
+              <ToolItem
+                icon={<Globe size={15} />}
+                label={`${t('웹 검색')}: ${webSearchModeLabel}`}
+                submenu
+                hint={webSearchModeLabel}
+                onClick={() => openPlusView('web')}
+              >
+                {t('웹 검색')}
+              </ToolItem>
+            )}
+            {usableConnectors.length > 0 && (
+              <ToolItem
+                icon={<Plug size={15} />}
+                label={
+                  activeConnectors.length
+                    ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
+                    : t('커넥터')
+                }
+                submenu
+                hint={activeConnectors.length ? String(activeConnectors.length) : undefined}
+                onClick={() => openPlusView('connectors')}
+              >
+                {t('커넥터')}
+              </ToolItem>
+            )}
+            {usableAgents.length > 0 && (
+              <ToolItem
+                icon={<AtSign size={15} />}
+                label={t('에이전트')}
+                submenu
+                hint={sessionAgent?.name}
+                onClick={() => openPlusView('agents')}
+              >
+                {t('에이전트')}
+              </ToolItem>
+            )}
+            {micInMenu && (
+              <ToolItem
+                icon={<Mic size={15} />}
+                label={t('말로 쓰기')}
+                onClick={() => {
+                  closePlus()
+                  void startRecording()
+                }}
+              >
+                {t('말로 쓰기')}
+              </ToolItem>
+            )}
+          </>
+        )}
+        {plusView === 'skills' && (
+          <>
+            {back(t('이번 요청에 적용할 스킬 (최대 3개)'))}
+            <div className="px-1.5 pb-1">
+              <input
+                value={skillQuery}
+                onChange={(e) => setSkillQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    plusViewRef.current?.querySelector<HTMLButtonElement>('[role="menuitemcheckbox"]:not(:disabled)')?.focus()
+                  }
+                }}
+                placeholder={t('스킬 찾기')}
+                aria-label={t('스킬 찾기')}
+                className="h-8 w-full rounded-control border border-line bg-panel px-2.5 text-sm text-fg outline-none placeholder:text-faint focus:border-accent"
+              />
+            </div>
+            {shownSkills.length === 0 && (
+              <p className="px-2.5 py-1.5 text-sm text-faint">{t('맞는 스킬이 없습니다.')}</p>
+            )}
+            {shownSkills.map((s) => {
+              const selected = activeSkills.some((skill) => skill.id === s.id)
+              const unavailable = skillUnavailableReason(s)
+              const limitReached = !selected && activeSkills.length >= 3
+              return (
+                <MenuItem
+                  key={s.id}
+                  checked={selected}
+                  keepOpen
+                  disabled={!!unavailable || limitReached}
+                  title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
+                  hint={
+                    unavailable
+                      ? unavailable
+                      : recommended.has(s.id)
+                        ? t('프로젝트 추천')
+                        : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
+                  }
+                  onClick={() => toggleSkill(s.id, selected)}
+                >
+                  {s.name}
+                </MenuItem>
+              )
+            })}
+            <MenuSeparator />
+            <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
+              {t('스킬 관리')}
+            </MenuItem>
+          </>
+        )}
+        {plusView === 'web' && (
+          <>
+            {back(t('웹 검색'))}
+            {searchBlocked && (
+              <p className="px-2.5 pb-1.5 text-xs text-warn">
+                {t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')}
+              </p>
+            )}
+            <div role="group" aria-label={t('웹 검색')}>
+              {(['auto', 'on', 'off'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={webSearchMode === mode}
+                  disabled={searchBlocked}
+                  onClick={() => {
+                    setWebSearchMode(mode)
+                    closePlus()
+                  }}
+                  className="flex w-full items-start gap-2.5 rounded-control px-2.5 py-1.5 text-left transition-colors hover:bg-elevated disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <span className="mt-0.5 grid size-4 shrink-0 place-items-center text-accent" aria-hidden>
+                    {webSearchMode === mode && <Check size={14} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base text-fg">{webSearchModeLabels[mode]}</span>
+                    <span className="block text-xs text-faint">{webSearchHelp[mode]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {plusView === 'connectors' && (
+          <>
+            {back(t('커넥터'))}
+            {/* Account-wide, unlike the per-turn controls beside it. */}
+            <p className="px-2.5 pb-1.5 text-xs text-faint">
+              {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
+            </p>
+            {usableConnectors.map((c) => (
+              <MenuItem
+                key={c.id}
+                keepOpen
+                icon={<span className="text-base">{c.icon}</span>}
+                hint={c.status === 'connected' ? (c.enabled ? t('켜짐') : t('꺼짐')) : t('인증 필요')}
+                onClick={() => c.status === 'connected' && toggleConnector(c.id)}
+              >
+                {c.name}
+              </MenuItem>
+            ))}
+            <MenuSeparator />
+            <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=connectors')}>
+              {t('커넥터 관리')}
+            </MenuItem>
+          </>
+        )}
+        {plusView === 'agents' && (
+          <>
+            {back(t('에이전트로 새 대화'))}
+            {usableAgents.map((a) => (
+              <MenuItem
+                key={a.id}
+                hint={a.model ? a.model.split('/').pop() : undefined}
+                onClick={() => {
+                  closePlus()
+                  // An agent belongs to the session, so choosing one starts a conversation.
+                  void newSession(kind, { agentId: a.id, projectId })
+                    .then((id) => navigate(`/s/${id}`))
+                    .catch((err: unknown) => setNotice(startFailure(err, t)))
+                }}
+              >
+                {a.name}
+              </MenuItem>
+            ))}
+          </>
+        )}
+      </div>
+    </Dropdown>
+  )
+  const micButton = canRecord && (!phone || recording || transcribing) && (
+    <button
+      onClick={() => void (recording ? stopRecording() : startRecording())}
+      disabled={transcribing}
+      className={cn(
+        'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
+        recording ? 'text-danger' : 'text-muted',
+      )}
+      aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
+      aria-pressed={recording}
+      title={
+        recording
+          ? t('누르면 녹음을 끝내고 받아씁니다')
+          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
+      }
+    >
+      {transcribing ? (
+        <Loader2 size={16} className="animate-spin" />
+      ) : (
+        <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
+      )}
+    </button>
+  )
+  const modelPicker = (
+    <fieldset disabled={!!editing} className="contents">
+    <ModelPicker
+      key={editing ? 'editing' : 'normal'}
+      kind={kind}
+      sessionId={sessionId ?? reusableSessionId}
+      modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
+      onEnableAuto={async (mode) => {
+        setChatError(null)
+        try {
+          let id = sessionId ?? reusableSessionId
+          if (!id) {
+            id = await newSession(kind, { projectId, routingMode: mode })
+            carriedComposer = heldComposer(id)
+            setReusableSessionId(id)
+            navigate(`/s/${id}`, { replace: true })
+          } else {
+            await setSessionRoutingMode(id, mode)
+          }
+        } catch (error) {
+          setChatError(
+            errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
+          )
+        }
+      }}
+      onBusyChange={setModelSelectionPending}
+    />
+    </fieldset>
+  )
+  const sendButton = (
+    <button
+      onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
+      disabled={(!value.trim() && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
+      className={cn(
+        'grid size-9 shrink-0 place-items-center rounded-full transition-colors',
+        streaming
+          ? 'bg-elevated text-fg'
+          : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
+      )}
+      aria-label={streaming ? t('중지') : editing ? t('수정 후 다시 보내기') : t('전송')}
+      title={
+        streaming
+          ? t('생성을 멈춥니다')
+          : modelSelectionPending
+            ? t('모델 설정 저장 중…')
+          : !value.trim()
+            ? t('보낼 내용을 먼저 입력하세요')
+            : unsupportedVideo
+              ? t('이 모델은 이 조합을 만들지 않습니다')
+              : t('Enter 로도 보낼 수 있습니다')
+      }
+    >
+      {streaming ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
+    </button>
+  )
+
   return (
     <div className="relative mx-auto w-full max-w-3xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" {...dropHandlers}>
       {dragging && (
@@ -1328,13 +1772,12 @@ export function Composer({
         {(project ||
           attachments.length > 0 ||
           uploadFailed.length > 0 ||
-          webSearch ||
+          webSearchChip ||
+          sessionAgent ||
           activeSkills.length > 0 ||
           autoBypassPreview ||
-          autoPausedForCompare ||
           // Same rule as the chip below: the session's own shape survives a reload.
-          shownTemplate ||
-          (compareMode && kind === 'chat')) && (
+          shownTemplate) && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
             {autoBypassPreview && (
               <Badge tone="warn" className="max-w-full whitespace-normal!">
@@ -1344,43 +1787,33 @@ export function Composer({
                   : t('Auto · 이번 요청은 기능 사용으로 품질 모델 유지')}
               </Badge>
             )}
-            {autoPausedForCompare && (
-              <Badge tone="warn" className="max-w-full whitespace-normal!">
-                <Gauge size={11} />
-                {t('Auto 일시 중지 · 비교할 모델을 직접 실행')}
-              </Badge>
-            )}
-            {compareMode && kind === 'chat' && (
-              <Badge tone="accent">
-                <Columns2 size={11} />
-                {compareModels
-                  .map((id) => models.find((m) => m.id === id)?.label ?? id)
-                  .join(' vs ')}
-                <button
-                  type="button"
-                  onClick={toggleCompareMode}
-                  aria-label={t('모델 비교 끄기')}
-                  title={t('모델 비교 끄기')}
-                  className="ml-0.5 text-faint hover:text-fg"
-                >
-                  <X size={10} />
-                </button>
-              </Badge>
-            )}
-            {webSearch &&
+            {webSearchChip &&
               (searchBlocked ? (
                 <Badge tone="warn">
                   <Globe size={11} />
-                  {compareMode && kind === 'chat'
-                    ? t('웹 검색 안 함 · 모델 비교는 검색 없이 실행합니다')
-                    : t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
+                  {t('웹 검색 안 함 · 이 모델은 외부에 연결하지 않습니다')}
                 </Badge>
               ) : (
-                <Badge tone="accent">
+                <Badge tone={webSearchMode === 'on' ? 'accent' : 'neutral'}>
                   <Globe size={11} />
-                  {t('웹 검색')}
+                  {`${t('웹 검색')}: ${webSearchModeLabel}`}
+                  <button
+                    type="button"
+                    onClick={() => setWebSearchMode('auto')}
+                    aria-label={t('웹 검색 자동으로 되돌리기')}
+                    title={t('웹 검색 자동으로 되돌리기')}
+                    className="ml-0.5 text-faint hover:text-fg"
+                  >
+                    <X size={10} />
+                  </button>
                 </Badge>
               ))}
+            {sessionAgent && (
+              <Badge tone="accent" title={t('이 대화의 에이전트')}>
+                <AtSign size={11} />
+                {sessionAgent.name}
+              </Badge>
+            )}
             {project && (
               <Badge tone="accent">
                 <Boxes size={11} />
@@ -1503,425 +1936,96 @@ export function Composer({
           </div>
         )}
 
-        <textarea
-          ref={ref}
-          autoFocus={autoFocus}
-          rows={1}
-          value={value}
-          readOnly={editPending}
-          onCompositionStart={() => { composing.current = true }}
-          onCompositionEnd={() => { composing.current = false }}
-          onChange={(e) => {
-            activeRestoreToken.current = null
-            liveValue.current = e.target.value
-            // Written synchronously: a send navigates before an effect would run.
-            if (!editing) draftStore.set(draftKey, e.target.value)
-            setValue(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              cancelEditing()
-              return
+        {/* A phone is one line — 「+」, the text, send — that grows with the text. */}
+        <div className={cn(phone && 'flex items-end gap-1 px-1.5 py-1.5')}>
+          {phone && plusMenu}
+          <textarea
+            ref={ref}
+            autoFocus={autoFocus}
+            rows={1}
+            value={value}
+            readOnly={editPending}
+            onCompositionStart={() => { composing.current = true }}
+            onCompositionEnd={() => { composing.current = false }}
+            onChange={(e) => {
+              activeRestoreToken.current = null
+              // 「@」 typed into an empty box picks an agent, as the menu's 에이전트 does.
+              if (e.target.value === '@' && !liveValue.current && usableAgents.length > 0 && !editing) {
+                setPlusView('agents')
+                setPlusOpen(true)
+                return
+              }
+              liveValue.current = e.target.value
+              // Written synchronously: a send navigates before an effect would run.
+              if (!editing) draftStore.set(draftKey, e.target.value)
+              setValue(e.target.value)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                cancelEditing()
+                return
+              }
+              if (holdToTalk(e)) return
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            onKeyUp={releaseToTalk}
+            // File pastes only; text pastes are untouched.
+            onPaste={onPasteFiles}
+            placeholder={
+              recording && pushToTalk.current
+                ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
+                : transcribing
+                  ? t('받아쓰는 중…')
+                  : pending
+                    ? pending.stage === 'clarify'
+                      ? t('답을 적거나, 위에서 고르세요')
+                      : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
+                    : t(placeholders[kind])
             }
-            if (holdToTalk(e)) return
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          onKeyUp={releaseToTalk}
-          // File pastes only; text pastes are untouched.
-          onPaste={onPasteFiles}
-          placeholder={
-            recording && pushToTalk.current
-              ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
-              : transcribing
-                ? t('받아쓰는 중…')
-                : pending
-                  ? pending.stage === 'clarify'
-                    ? t('답을 적거나, 위에서 고르세요')
-                    : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                  : t(placeholders[kind])
-          }
-          aria-label={t('프롬프트 입력')}
-          data-composer=""
-          className="block w-full resize-none overflow-y-hidden bg-transparent px-4 pt-3.5 pb-1 text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:min-h-[3.25rem] phone:text-[1rem] phone:leading-[1.6]"
-        />
-
-        <div className="flex flex-wrap items-center gap-1 px-2 pb-2">
-          {/* Media surfaces take no attachments. */}
-          {!isMedia && (
-            <>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                className="hidden"
-                aria-label={t('파일 선택')}
-                onChange={(e) => {
-                  const picked = Array.from(e.target.files ?? [])
-                  // Reset immediately so picking the same file twice still fires.
-                  e.target.value = ''
-                  void addFiles(picked)
-                }}
-              />
-              <button
-                onClick={() => fileInput.current?.click()}
-                className="grid size-9 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-elevated hover:text-fg"
-                aria-label={t('첨부')}
-                title={t('파일을 올려 답변의 근거로 씁니다')}
-              >
-                <Paperclip size={16} />
-              </button>
-            </>
-          )}
-          {canRecord && (
-            <button
-              onClick={() => void (recording ? stopRecording() : startRecording())}
-              disabled={transcribing}
-              className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                recording ? 'text-danger' : 'text-muted',
-              )}
-              aria-label={recording ? t('녹음 끝내기') : t('말로 쓰기')}
-              aria-pressed={recording}
-              title={
-                recording
-                  ? t('누르면 녹음을 끝내고 받아씁니다')
-                  : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
-              }
-            >
-              {transcribing ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Mic size={16} className={recording ? 'animate-pulse' : undefined} />
-              )}
-            </button>
-          )}
-
-          {/* Home, or once the conversation has started; an empty session screen offers the same button. */}
-          {hasTemplates && (started || !sessionId) && !folded && !editing && (
-            <button
-              onClick={() => setGalleryOpen(true)}
-              className={cn(
-                'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                shownTemplate ? 'text-accent' : 'text-muted',
-              )}
-              aria-label={t('양식 고르기')}
-              title={t('결과물의 양식을 고릅니다')}
-            >
-              <LayoutGrid size={16} />
-            </button>
-          )}
-
-          {/* Media models are never handed a skill. */}
-          {!isMedia && usableSkills.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-64"
-              trigger={() => (
-                <button
-                  aria-label={t('스킬')}
-                  title={t('이번 요청에만 적용할 스킬을 고릅니다')}
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    activeSkills.length ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                >
-                  <Sparkles size={15} />
-                  {activeSkills.length > 0 && <span>{activeSkills.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('이번 요청에 적용할 스킬 (최대 3개)')}</MenuLabel>
-              {usableSkills.map((s) => {
-                const selected = activeSkills.some((skill) => skill.id === s.id)
-                const unavailable = skillUnavailableReason(s)
-                const limitReached = !selected && activeSkills.length >= 3
-                return (
-                  <MenuItem
-                    key={s.id}
-                    checked={selected}
-                    keepOpen
-                    disabled={!!unavailable || limitReached}
-                    title={limitReached ? t('최대 3개까지 선택할 수 있습니다.') : undefined}
-                    hint={
-                      unavailable
-                        ? unavailable
-                        : recommended.has(s.id)
-                          ? t('프로젝트 추천')
-                          : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
-                    }
-                    onClick={() => {
-                      activeRestoreToken.current = null
-                      const next = selected
-                        ? activeSkills
-                            .filter((skill) => skill.id !== s.id)
-                            .map((skill) => skill.id)
-                        : [...activeSkills.map((skill) => skill.id), s.id]
-                      liveActivatedSkillIds.current = next
-                      setActivatedSkillIds(next)
-                      // In a conversation the change is the conversation's, kept on the server —
-                      // except while a message is being edited, where cancel must undo it.
-                      if (sessionId && kind === 'chat' && !editing) void setSessionSkills(sessionId, next)
-                    }}
-                  >
-                    {s.name}
-                  </MenuItem>
-                )
-              })}
-              <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
-                {t('스킬 관리')}
-              </MenuItem>
-            </Dropdown>
-          )}
-
-          {kind === 'chat' && !phone && (
-            <Dropdown
-              className="min-w-72"
-              trigger={() => (
-                <button
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    compareMode ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                  aria-label={t('모델 비교')}
-                  title={t('같은 질문을 여러 모델에 동시에 보내고 답변을 나란히 비교합니다')}
-                >
-                  <Columns2 size={15} />
-                  {compareMode && <span>{compareModels.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('모델 비교')}</MenuLabel>
-              <MenuItem
-                icon={<Columns2 size={14} />}
-                hint={compareMode ? t('켜짐') : t('꺼짐')}
-                onClick={toggleCompareMode}
-              >
-                {t('비교 모드')}
-              </MenuItem>
-              <MenuSeparator />
-              <MenuLabel>{t('비교할 모델 (2~3개)')}</MenuLabel>
-              {models
-                .filter((m) => m.kinds.includes('chat'))
-                .map((m) => (
-                  <MenuItem
-                    key={m.id}
-                    checked={compareModels.includes(m.id)}
-                    hint={t('출력 1k당 {n} 크레딧').replace('{n}', m.creditCost.toLocaleString())}
-                    onClick={() => toggleCompareModel(m.id)}
-                    keepOpen
-                  >
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate">{m.label}</span>
-                      {m.strictLocal ? (
-                        <Badge tone="success">
-                          <ShieldCheck size={10} />
-                          strict-local
-                        </Badge>
-                      ) : (
-                        <Badge tone="warn">
-                          {t(
-                            m.dataBoundary === 'hybrid'
-                              ? '외부 전환 가능'
-                              : m.dataBoundary === 'external'
-                                ? '외부 제공'
-                                : m.dataBoundary === 'self_hosted'
-                                  ? 'self-hosted · strict 미확인'
-                                  : '경계 미확인',
-                          )}
-                        </Badge>
-                      )}
-                    </span>
-                  </MenuItem>
-                ))}
-            </Dropdown>
-          )}
-
-          {canWebSearch && (
-            <button
-              onClick={() =>
-                setWebSearchMode((m) => (m === 'auto' ? 'on' : m === 'on' ? 'off' : 'auto'))
-              }
-              aria-pressed={effectiveWebSearch}
-              disabled={searchBlocked}
-              className={cn(
-                'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                !effectiveWebSearch
-                  ? 'text-faint hover:text-muted'
-                  : webSearchMode === 'on'
-                    ? 'text-accent'
-                    : 'text-muted hover:text-fg',
-                searchBlocked && 'opacity-55 hover:bg-transparent hover:text-muted',
-              )}
-              aria-label={`${t('웹 검색')}: ${webSearchModeLabel}`}
-              title={
-                searchBlocked
-                  ? compareMode && kind === 'chat'
-                    ? t('모델 비교는 웹 검색 없이 실행합니다')
-                    : t('이 모델은 외부에 연결하지 않아 웹 검색을 쓸 수 없습니다')
-                  : webSearchMode === 'auto'
-                    ? t('웹 검색 자동: 최신 사실이나 날씨를 물으면 찾아봅니다. 누르면 매번 검색')
-                    : webSearchMode === 'on'
-                      ? t('웹 검색 켬: 매번 검색합니다. 누르면 끔')
-                      : t('웹 검색 끔: 찾아보지 않습니다. 누르면 자동')
-              }
-            >
-              <Globe size={15} />
-              <span className="text-sm">{webSearchModeLabel}</span>
-            </button>
-          )}
-
-          {phone &&
-            ((hasTemplates && started) ||
-              (!isMedia && usableSkills.length > 0) ||
-              usableConnectors.length > 0 ||
-              usableAgents.length > 0) && (
-              <button
-                onClick={() => setMoreOpen((o) => !o)}
-                aria-expanded={moreOpen}
-                className={cn(
-                  'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
-                  moreOpen ? 'bg-elevated text-fg' : 'text-muted',
-                )}
-                aria-label={moreOpen ? t('도구 접기') : t('도구 더보기')}
-                title={t('양식·스킬·커넥터·에이전트')}
-              >
-                <MoreHorizontal size={16} />
-              </button>
+            aria-label={t('프롬프트 입력')}
+            data-composer=""
+            className={cn(
+              'block resize-none overflow-y-hidden bg-transparent text-md leading-relaxed text-fg placeholder:text-faint focus:outline-none phone:text-[1rem] phone:leading-[1.6]',
+              phone ? 'min-w-0 flex-1 self-center px-1.5 py-1' : 'w-full px-4 pt-3.5 pb-1',
             )}
-
-          {usableConnectors.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-72"
-              trigger={() => (
-                <button
-                  className={cn(
-                    'flex h-9 shrink-0 items-center gap-1.5 rounded-control px-2.5 text-base transition-colors hover:bg-elevated',
-                    activeConnectors.length ? 'text-accent' : 'text-muted hover:text-fg',
-                  )}
-                  aria-label={
-                    activeConnectors.length
-                      ? t('커넥터 {n}개').replace('{n}', String(activeConnectors.length))
-                      : t('커넥터')
-                  }
-                >
-                  <Plug size={15} />
-                  {activeConnectors.length > 0 && <span>{activeConnectors.length}</span>}
-                </button>
-              )}
-            >
-              <MenuLabel>{t('커넥터')}</MenuLabel>
-              {/* Account-wide, unlike the per-turn controls beside it. */}
-              <p className="px-2.5 pb-1.5 text-xs text-faint">
-                {t('계정 전체 설정입니다. 여기서 끄면 모든 대화에서 꺼집니다.')}
-              </p>
-              {usableConnectors.map((c) => (
-                <MenuItem
-                  key={c.id}
-                  icon={<span className="text-base">{c.icon}</span>}
-                  hint={c.status === 'connected' ? (c.enabled ? t('켜짐') : t('꺼짐')) : t('인증 필요')}
-                  onClick={() => c.status === 'connected' && toggleConnector(c.id)}
-                >
-                  {c.name}
-                </MenuItem>
-              ))}
-              <MenuSeparator />
-              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=connectors')}>
-                {t('커넥터 관리')}
-              </MenuItem>
-            </Dropdown>
-          )}
-
-          {usableAgents.length > 0 && !folded && (
-            <Dropdown
-              className="min-w-64"
-              trigger={() => (
-                <button
-                  className="flex h-9 min-w-9 shrink-0 items-center justify-center gap-1.5 rounded-control px-2.5 text-base text-muted transition-colors hover:bg-elevated hover:text-fg"
-                  title={t('에이전트를 골라 새 대화를 시작합니다')}
-                >
-                  @
-                </button>
-              )}
-            >
-              <MenuLabel>{t('에이전트로 새 대화')}</MenuLabel>
-              {usableAgents.map((a) => (
-                <MenuItem
-                  key={a.id}
-                  hint={a.model ? a.model.split('/').pop() : undefined}
-                  onClick={() =>
-                    // An agent belongs to the session, so choosing one starts a conversation.
-                    void newSession(kind, { agentId: a.id, projectId })
-                      .then((id) => navigate(`/s/${id}`))
-                      .catch((err: unknown) => setNotice(startFailure(err, t)))
-                  }
-                >
-                  {a.name}
-                </MenuItem>
-              ))}
-            </Dropdown>
-          )}
-
-          <div className="ml-auto flex min-w-0 items-center gap-1">
-            {!(compareMode && kind === 'chat') && (
-              <fieldset disabled={!!editing} className="contents">
-              <ModelPicker
-                key={editing ? 'editing' : 'normal'}
-                kind={kind}
-                sessionId={sessionId ?? reusableSessionId}
-                modality={kind === 'av' ? (avOptions.mode === 'video' ? 'video' : 'audio') : undefined}
-                onEnableAuto={async (mode) => {
-                  setChatError(null)
-                  try {
-                    let id = sessionId ?? reusableSessionId
-                    if (!id) {
-                      id = await newSession(kind, { projectId, routingMode: mode })
-                      carriedComposer = heldComposer(id)
-                      setReusableSessionId(id)
-                      navigate(`/s/${id}`, { replace: true })
-                    } else {
-                      await setSessionRoutingMode(id, mode)
-                    }
-                  } catch (error) {
-                    setChatError(
-                      errorMessage(error, t('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')),
-                    )
-                  }
-                }}
-                onBusyChange={setModelSelectionPending}
-              />
-              </fieldset>
-            )}
-            <button
-              onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-              disabled={(!value.trim() && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
-              className={cn(
-                'grid size-9 place-items-center rounded-full transition-colors',
-                streaming
-                  ? 'bg-elevated text-fg'
-                  : 'bg-accent text-accent-fg hover:bg-accent-hover disabled:bg-elevated disabled:text-faint',
-              )}
-              aria-label={streaming ? t('중지') : editing ? t('수정 후 다시 보내기') : t('전송')}
-              title={
-                streaming
-                  ? t('생성을 멈춥니다')
-                  : modelSelectionPending
-                    ? t('모델 설정 저장 중…')
-                  : !value.trim()
-                    ? t('보낼 내용을 먼저 입력하세요')
-                    : unsupportedVideo
-                      ? t('이 모델은 이 조합을 만들지 않습니다')
-                      : t('Enter 로도 보낼 수 있습니다')
-              }
-            >
-              {streaming ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
-            </button>
-          </div>
+          />
+          {phone && micButton}
+          {phone && sendButton}
         </div>
+
+        {!isMedia && (
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            className="hidden"
+            aria-label={t('파일 선택')}
+            onChange={(e) => {
+              const picked = Array.from(e.target.files ?? [])
+              // Reset immediately so picking the same file twice still fires.
+              e.target.value = ''
+              void addFiles(picked)
+            }}
+          />
+        )}
+
+        {!phone && (
+          <div className="flex items-center gap-1 px-2 pb-2">
+            {plusMenu}
+            {micButton}
+            <div className="ml-auto flex min-w-0 items-center gap-1">
+              {modelPicker}
+              {sendButton}
+            </div>
+          </div>
+        )}
       </div>
+      {/* The phone's line has no room for the model; it sits just under the box. */}
+      {phone && modelPicker && <div className="mt-1 flex justify-end">{modelPicker}</div>}
       {mediaError && (
         <p
           role="status"
@@ -2063,12 +2167,6 @@ export function Composer({
               pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
                 <p className="text-sm text-warn">
                   {t('안전한 로컬 모델은 외부에 연결하지 않습니다. 그 버튼을 고르면 이 요청은 웹 검색 없이 실행됩니다.')}
-                </p>
-              )}
-            {pendingPrivacy.decision.requestedModels.length > 1 &&
-              pendingPrivacy.decision.allowedActions.includes('route_strict_local') && (
-                <p className="text-sm text-muted">
-                  {t('모델 비교는 아직 시작되지 않았습니다. 안전 모델을 선택하면 비교 대신 strict-local 모델 1개로 실행합니다.')}
                 </p>
               )}
             {pendingPrivacy.decision.safeModels.length === 0 && (

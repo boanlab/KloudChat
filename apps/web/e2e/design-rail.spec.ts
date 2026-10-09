@@ -1,12 +1,13 @@
 /** The 서식 picker shows its cards without sideways scrolling, and the whole 서식 list has its own screen. */
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
+import { openTemplates } from './composer-tools'
 
 test('서식 고르기의 카드는 가로로 숨지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })

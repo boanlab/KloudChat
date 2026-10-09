@@ -1,7 +1,7 @@
 import { Globe, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { Button, Modal } from '@/components/ui'
-import { errorMessage } from '@/lib/api'
+import { ApiError, errorMessage } from '@/lib/api'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -36,7 +36,12 @@ export function ShareDialog({
       else if (skill) await upsertSkill({ ...skill, visibility })
       onClose()
     } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
+      setError(
+        // Sharing re-runs the upload scan: a secret or hidden direction marks stop it.
+        err instanceof ApiError && err.detail.startsWith('skill_share_blocked')
+          ? t('공유하기 전에 고칠 곳이 있습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자를 지워 주세요.')
+          : errorMessage(err, t('저장하지 못했습니다.')),
+      )
     } finally {
       setBusy(false)
     }

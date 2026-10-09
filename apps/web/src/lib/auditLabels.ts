@@ -41,6 +41,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'pipeline.reject': '워크플로 거절',
   'issue.update': '문제 신고 처리 변경',
   'issue.snapshot_view': '신고된 대화 열람',
+  'skill.import': '스킬 업로드',
   'storage.reclaim': '저장 공간 자동 정리',
   'storage.reclaim.manual': '저장 공간 정리',
   'filter.blocked': '의도 필터 차단',

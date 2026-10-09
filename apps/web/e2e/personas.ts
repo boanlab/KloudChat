@@ -39,7 +39,6 @@ export const personas: Persona[] = [
       { id: 'hum-sources', task: '보고서 본문의 주장이 어디서 왔는지 확인한다', where: '보고서 패널 출처' },
       { id: 'hum-export-docx', task: '제출용 워드 파일로 내려받는다', where: '보고서 내보내기' },
       { id: 'hum-template', task: '리포트 형식을 처음부터 잡지 않고 시작한다', where: '양식 고르기' },
-      { id: 'hum-compare', task: '같은 질문을 두 모델에 물어 답을 비교한다', where: '입력창 모델 비교' },
     ],
   },
   {
@@ -123,7 +122,6 @@ export const personas: Persona[] = [
       { id: 'res-agent', task: '검토 관점을 고정한 작업자를 만든다', where: '에이전트' },
       { id: 'res-export-pdf', task: '보고서를 PDF로 배포한다', where: '보고서 내보내기' },
       { id: 'res-apikey', task: '분석 스크립트에서 API로 호출한다', where: 'API 키' },
-      { id: 'res-compare', task: '비싼 모델이 이 작업에 값하는지 비교한다', where: '입력창 모델 비교' },
       { id: 'res-agent-share', task: '검토 에이전트를 팀에 공유한다', where: '에이전트 스토어' },
     ],
   },

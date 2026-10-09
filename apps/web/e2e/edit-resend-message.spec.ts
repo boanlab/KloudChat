@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { openTool } from './composer-tools'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -329,9 +330,7 @@ test('cancel restores draft files and selected skills changed during editing', a
     name: 'additional.txt', mimeType: 'text/plain', buffer: Buffer.from('Synthetic draft attachment.'),
   })
   await expect(page.getByRole('button', { name: 'additional.txt 제거', exact: true })).toBeVisible()
-  const moreTools = page.getByRole('button', { name: '도구 더보기', exact: true })
-  if (await moreTools.isVisible()) await moreTools.click()
-  await page.getByRole('button', { name: '스킬', exact: true }).click()
+  await openTool(page, '스킬')
   await page.getByRole('menuitemcheckbox', { name: /초안 검토/ }).click()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '초안 검토 제거', exact: true })).toBeVisible()

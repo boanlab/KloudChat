@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { approvePlan, artifactReady, signIn, surfaceOn } from './helpers'
+import { openTemplates, toolNames } from './composer-tools'
 
 /** Entry names from a zip's central directory; nothing is inflated. */
 function zipNames(buffer: Buffer): string[] {
@@ -39,7 +40,7 @@ async function openGallery(page: Page, ids: string[]) {
       }),
     ),
   )
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   // A second open in one test serves previews from cache, with no response.
   await previews.catch(() => undefined)
   // Settle for the screenshot.
@@ -78,7 +79,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
 
   // One dialogue per surface.
   await page.goto('/new/slides')
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   const gallery = page.getByRole('dialog')
   await expect(gallery).toBeVisible({ timeout: 20_000 })
   await shot(page, '13-work-start')
@@ -103,7 +104,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
 
   // One entry point before the first turn.
   await page.goto('/new/report')
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(1)
+  expect((await toolNames(page)).filter((name) => name === '양식 고르기')).toHaveLength(1)
 
   // 디자인 is the design system's word alone.
   await expect(page.getByRole('button', { name: /디자인/ })).toHaveCount(0)
@@ -197,8 +198,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   await panel.getByRole('button', { name: '닫기' }).click()
   await expect(panel).toBeHidden()
 
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(1)
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  expect((await toolNames(page)).filter((name) => name === '양식 고르기')).toHaveLength(1)
+  await openTemplates(page)
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
 
@@ -274,7 +275,7 @@ test('이미지·영상 표면에는 서식이 없고, 도식 칩은 도형으�
   // Image, audio and video 서식 were retired: no picker on those surfaces.
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
+  expect(await toolNames(page)).not.toContain('양식 고르기')
   await shot(page, '06-image-no-gallery')
 
   // A 구조도 · 흐름도 · 개념도 chip draws through the figure path, never the image model.
@@ -300,7 +301,7 @@ test('이미지·영상 표면에는 서식이 없고, 도식 칩은 도형으�
 
   test.skip(!(await surfaceOn(page, 'av')), 'av 표면이 꺼져 있습니다')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toHaveCount(0)
+  expect(await toolNames(page)).not.toContain('양식 고르기')
 })
 
 test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나온다', async ({ page }) => {
@@ -309,7 +310,7 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
 
   // The built-in path is replaced only when a shape is picked.
   await page.goto('/new/slides')
-  await expect(page.getByRole('button', { name: '양식 고르기' })).toBeVisible()
+  expect(await toolNames(page)).toContain('양식 고르기')
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
@@ -327,7 +328,7 @@ test('쪽을 넘겨도 대화상자 크기가 그대로다', async ({ page }) =>
   // Card heights differ per page; the dialog must not resize under the buttons.
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '양식 고르기' }).click()
+  await openTemplates(page)
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').locator('.grid > *').first()).toBeVisible({
     timeout: 20_000,
