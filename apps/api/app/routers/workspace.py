@@ -791,6 +791,10 @@ async def patch_artifact(
             ),
         )
 
+    if changes.get("project_id"):
+        # Only into a project of the caller's own; someone else's id is a 404.
+        await _own(db, Project, "user_id", user, changes["project_id"])
+
     if "data" in changes and artifact.kind is ArtifactKind.report:
         # Browser-supplied HTML is sanitised here, the only boundary it crosses.
         changes["data"] = _clean_report_data(changes["data"])
