@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 /**
  * Pipeline phase 2 screens against fixture data: the stage list in a report transcript and on the
@@ -233,8 +234,10 @@ async function fixture(page: Page, testInfo: TestInfo) {
     if (method === 'GET' && path === `/agents/${agentId}/pipeline`) return route.fulfill({ json: pipeline })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return route.fulfill({ json: [] })
     if (method === 'GET' && (path.startsWith('/sessions/') && (path.endsWith('/messages') || path.endsWith('/jobs')))) return route.fulfill({ json: [] })
-    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/templates', '/connectors', '/connectors/catalog',
-      '/jobs', '/designs', '/prompt-templates', '/shares', '/design-templates', '/skills/store',
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
+    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
+      '/jobs', '/designs', '/shares', '/design-templates', '/skills/store',
       '/user-pipelines', '/user-pipelines/store'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })

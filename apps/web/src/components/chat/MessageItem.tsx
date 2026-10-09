@@ -10,6 +10,7 @@ import {
   Download,
   FilePenLine,
   FileText,
+  Flag,
   Image as ImageIcon,
   Loader2,
   Paperclip,
@@ -28,6 +29,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import { MediaResult } from '@/components/media/MediaResult'
 import { downloadFile, errorMessage, filesApi, templateText } from '@/lib/api'
+import { useIssues } from '@/lib/issues'
 import { currentLang } from '@/lib/i18n'
 import { FINDING_LABEL, maskingCategories, requestMaskingLabel } from '@/lib/privacy'
 import { cn, fileSize, formatTokens, isMedia } from '@/lib/utils'
@@ -257,6 +259,7 @@ function MessageItemInner({
   const artifacts = useStore((s) => s.artifacts)
   const openArtifact = useStore((s) => s.openArtifact)
   const rateMessage = useStore((s) => s.rateMessage)
+  const openReport = useIssues((s) => s.openReport)
   const retryMediaTurn = useStore((s) => s.retryMediaTurn)
   const models = useStore((s) => s.models)
   const user = useStore((s) => s.user)
@@ -756,6 +759,24 @@ function MessageItemInner({
             >
               <ThumbsDown size={14} />
             </Button>
+            {message.liked === 'down' && (
+              // After a 👎: report it, with this answer (and what it made) pinned.
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => openReport({
+                  sessionId,
+                  messageId: message.id,
+                  messageSnippet: message.content.slice(0, 80),
+                  artifactId: linked[0]?.id,
+                  artifactTitle: linked[0]?.title,
+                })}
+              >
+                <Flag size={13} />
+                {t('신고하기')}
+              </Button>
+            )}
             </span>
             {drafts.length > 0 && (
               <span

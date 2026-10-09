@@ -5,7 +5,6 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, Card, EmptyState } from '@/components/ui'
 import { Composer } from '@/components/chat/Composer'
-import { DesignGallery } from '@/components/chat/DesignGallery'
 import { agentStartKind, kindMeta, kindOrder } from '@/lib/kinds'
 import { PipelineChain } from '@/components/agents/PipelineChain'
 import { cn } from '@/lib/utils'
@@ -93,22 +92,6 @@ export function HomePage({ initialKind }: { initialKind?: SessionKind }) {
         </div>
 
         {/* A phone keeps the greeting, the surface chips and the composer; the rest is desk work. */}
-        <div className="mx-auto mb-4 mt-3 w-full max-w-3xl px-4 phone:hidden">
-          <section className="flex flex-col gap-3 rounded-card border border-line bg-panel p-4 sm:flex-row sm:items-center">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-semibold">{t('자주 하는 일로 시작하기')}</h2>
-              <p className="mt-0.5 text-sm text-muted">
-                {active === 'chat'
-                  ? t('개념 배우기, 논문 읽기, 문제 원인 분석 등 일을 고르면 그 일에 필요한 것만 묻고 요청을 대신 씁니다.')
-                  : active === 'image'
-                    ? t('개념도, 처리 흐름도, 표지 그림 등 그림의 쓰임을 고르면 빈칸 몇 개로 요청이 완성됩니다.')
-                    : t('과제 보고서, 논문 서론, 임원 보고 등 일을 고르면 필요한 것만 묻고 결과물 모양까지 정해 줍니다.')}
-              </p>
-            </div>
-            <DesignGallery key={active} kind={active} />
-          </section>
-        </div>
-
         {usableAgents.length > 0 && (
           <section className="mx-auto mb-8 w-full max-w-3xl px-4 phone:hidden">
             <div className="mb-2 flex items-baseline justify-between">

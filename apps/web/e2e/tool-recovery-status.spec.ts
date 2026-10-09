@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 /** Synthetic read-tool retries through the real chat UI; no backend or model calls. */
 const sessionId = 'tool-recovery-status'
@@ -74,10 +75,12 @@ async function mockChat(
       })
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(route.request().method(), path)
+    if (shell) return route.fulfill(shell)
     if ([
       '/tools', '/skills', '/projects', '/artifacts', '/memory', '/agents',
-      '/connectors', '/connectors/catalog', '/templates', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares',
+      '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares',
       `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${route.request().method()} ${path}`)

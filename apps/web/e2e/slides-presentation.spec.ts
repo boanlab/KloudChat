@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test'
 import deck from './fixtures/presentation-deck.json' with { type: 'json' }
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -60,9 +61,11 @@ async function fixture(page: Page, testInfo: TestInfo, html = false) {
     if (method === 'GET' && path === '/artifacts') return route.fulfill({ json: [artifact] })
     if (method === 'GET' && path === `/artifacts/${artifactId}`) return route.fulfill({ json: artifact })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { [data.kind]: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })

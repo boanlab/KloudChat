@@ -185,6 +185,14 @@ class Settings(BaseSettings):
     #: strict-local models. On in production and on a fresh install; the test
     #: environment turns it off so flows with fake catalogues can be exercised.
     internal_data_strict_local_default: bool = True
+    #: Defaults of the routing and outline settings for a fresh governance row; an
+    #: administrator's saved choices always win. Lists are comma-separated ids.
+    adaptive_routing_default: bool = True
+    adaptive_classifier_model_default: str = "strict-local/qwen3.8-27b"
+    adaptive_economy_models_default: str = "local/qwen3.5-122b"
+    adaptive_quality_default: bool = True
+    adaptive_quality_models_default: str = "deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash"
+    outline_model_default: str = "local/qwen3.5-122b"
     #: The same for external chat models: off sends OpenRouter's `reasoning` switch; a
     #: provider that refuses it is remembered and thinks anyway.
     external_chat_thinking: bool = False
@@ -209,6 +217,42 @@ class Settings(BaseSettings):
     #: (`services/geoip.py`). Never a network service: visitor addresses stay
     #: on this instance.
     geoip_database: str = ""
+
+    # ── performance monitoring (`services/perf`) ───────────────────────
+    #: Off: no samples are collected and the admin page shows none.
+    perf_monitoring: bool = True
+    #: The host's /proc and cgroup v2, mounted read-only; absent, host and container
+    #: figures are left out.
+    perf_host_proc: str = "/host/proc"
+    perf_host_cgroup: str = "/host/cgroup"
+    #: `label=path` pairs whose filesystems are reported (paths inside this container).
+    perf_disks: str = "data=/srv/data/files,docker=/"
+    #: Names this container can resolve that name a container exactly (else the
+    #: process fingerprint names it).
+    perf_dns_names: str = "web,db,print,kloudchat-web,kloudchat-db,kloudchat-print"
+    #: Where the `/metrics/<name>` targets are read. Empty: `<backend address>/metrics`.
+    perf_metrics_url: str = ""
+    #: Gateway `/metrics/<name>` targets: `vllm-*` are vLLM servers, `gpu-*` gpu-exporter.
+    perf_targets: str = "vllm-27b,vllm-122b,vllm-bgem3,vllm-rerank,vllm-whisper,gpu-1,gpu-2"
+    #: Per-model latency and errors from LiteLLM's request log (master key).
+    perf_model_logs: bool = True
+    #: Minute rows kept this long, then folded into 10-minute rows; all gone after
+    #: `perf_retention_days`.
+    perf_raw_hours: int = 48
+    perf_retention_days: int = 30
+    #: Verdict thresholds (`services/perf/rules.py`). Percentages are 0-100.
+    perf_vllm_waiting_max: float = 2
+    perf_kv_cache_max: float = 90
+    perf_ttft_p95_max_sec: float = 10
+    #: Percent of one CPU core per api replica: one process serves on one core.
+    perf_api_cpu_max: float = 80
+    perf_mem_max: float = 90
+    perf_disk_warn: float = 85
+    perf_disk_critical: float = 95
+    perf_error_rate_max: float = 5
+    perf_gpu_temp_max: float = 85
+    perf_sustain_min: int = 10
+    perf_api_cpu_sustain_min: int = 15
 
     @property
     def cookie_samesite(self) -> Literal["lax", "none"]:

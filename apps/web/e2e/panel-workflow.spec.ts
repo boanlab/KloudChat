@@ -482,7 +482,7 @@ test.describe('서식으로 만든 덱', () => {
     const doc = await post(page, {
       kind: 'html',
       title: docTitle,
-      data: { kind: 'html', content: PAGE_DOC, templateId: 'doc-brief', blocks: [] },
+      data: { kind: 'html', content: PAGE_DOC, templateId: 'doc-comparison', blocks: [] },
     })
     docId = (doc as { id: string }).id
     await page.close()

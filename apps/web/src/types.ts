@@ -480,23 +480,19 @@ export interface Variant {
   chosen?: boolean
 }
 
-/** A 시작점 selected for the next turn; the prompt framing is the server's. */
-export interface StartingPoint {
+/** A media 서식's arguments, asked in the composer; the filled sentence becomes the prompt. */
+export interface TemplateBlanks {
+  /** The design template's id. */
   id: string
   title: string
+  /** Blank labels, in order. */
   fills: string[]
-  /** The request as the card's form assembled it, placed in the composer. */
-  text?: string
-  /** One example per blank, in `fills` order. */
+  /** One default per blank, in `fills` order; an empty blank sends it. */
   examples?: string[]
-  /** 'web' | 'file'. */
-  needs?: string[]
-  /** Workspace skills to switch on, by name. */
-  skills?: string[]
   /** Per blank, in `fills` order: options → picker, long → textarea, else a line. */
   blanks?: { name: string; options?: string[]; long?: boolean }[]
-  /** Media 서식 only: the sentence the blanks fill, `{name}` per blank; an empty blank keeps its example. */
-  examplePrompt?: string
+  /** The sentence the blanks fill, `{name}` per blank. */
+  examplePrompt: string
 }
 
 /** An answer a rerun replaced; kept so the reader can page back to it. */
@@ -537,7 +533,7 @@ export interface Message {
     [counter: string]: number | boolean | undefined
   }
   liked?: 'up' | 'down' | null
-  /** The 시작점 this turn began from. */
+  /** Legacy: the retired 시작점 an old turn began from. */
   startedFrom?: { templateId: string; title: string }
   /** Separate from `content`: a turn can fail after writing something. */
   error?: string

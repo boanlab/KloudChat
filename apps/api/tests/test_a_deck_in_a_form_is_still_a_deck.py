@@ -29,7 +29,7 @@ def test_every_deck_form_opens_on_one_of_the_faces_the_stage_draws(template_id: 
 
 
 def test_a_document_form_has_no_face() -> None:
-    doc = design_templates.get("doc-report")
+    doc = design_templates.rendering("_document")
     assert doc is not None and doc.look == ""
 
 

@@ -7,6 +7,13 @@ import os
 # Flows under test use fake catalogues without strict-local twins; the rule that keeps
 # internal material strict-local is exercised by its own tests with the switch set.
 os.environ.setdefault("INTERNAL_DATA_STRICT_LOCAL_DEFAULT", "false")
+# Tests pin routing themselves; a bare policy routes nothing and plans with the writer.
+os.environ.setdefault("ADAPTIVE_ROUTING_DEFAULT", "false")
+os.environ.setdefault("ADAPTIVE_CLASSIFIER_MODEL_DEFAULT", "")
+os.environ.setdefault("ADAPTIVE_ECONOMY_MODELS_DEFAULT", "")
+os.environ.setdefault("ADAPTIVE_QUALITY_DEFAULT", "false")
+os.environ.setdefault("ADAPTIVE_QUALITY_MODELS_DEFAULT", "")
+os.environ.setdefault("OUTLINE_MODEL_DEFAULT", "")
 # Every pipeline stage is held to the bundle fields it declares (`app.pipeline.runner`).
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
 # The stage records are on in production; the suite's recorded streams predate them, so they

@@ -140,9 +140,8 @@ class Message(SQLModel, table=True):
     #: only: artifacts are versioned and deleted on their own.
     artifact_ids: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
-    #: Prompt template this turn began from: `{"templateId": ..., "title": ...}`.
-    #: The title is copied so the transcript names it after the row is gone.
-    #: Never the template's prompt text.
+    #: Legacy: the retired 시작점 an old turn began from, `{"templateId", "title"}`.
+    #: No longer written; kept so old transcripts still name it.
     started_from: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
 
     model: str | None = Field(default=None)

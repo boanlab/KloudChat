@@ -29,10 +29,10 @@ def test_every_document_and_deck_template_has_a_sample(template: str) -> None:
 
 def test_the_preview_is_the_seed_around_the_sample() -> None:
     with _client() as client:
-        page = client.get("/design-templates/doc-notice/preview")
+        page = client.get("/design-templates/doc-internal-draft/preview")
     assert page.status_code == 200
     assert "text/html" in page.headers["content-type"]
-    assert "수신" in page.text
+    assert "결재란" in page.text
     # The shared seed around it, not a fragment.
     assert "<!doctype html>" in page.text.lower() or "<html" in page.text.lower()
 
@@ -42,7 +42,7 @@ def test_previews_actually_differ() -> None:
     with _client() as client:
         pages = {
             tid: client.get(f"/design-templates/{tid}/preview").text
-            for tid in ("doc-notice", "doc-minutes", "doc-brief", "deck-signal")
+            for tid in ("doc-internal-draft", "doc-minutes", "doc-comparison", "deck-signal")
         }
     assert len(set(pages.values())) == len(pages)
 
@@ -50,6 +50,8 @@ def test_previews_actually_differ() -> None:
 def test_a_template_without_a_sample_is_a_404_not_a_blank_card() -> None:
     with _client() as client:
         assert client.get("/design-templates/no-such/preview").status_code == 404
+        # A retired 서식 has no card either; its documents still render (`rendering`).
+        assert client.get("/design-templates/doc-report/preview").status_code == 404
 
 
 _DECKS = [t.id for t in design_templates.all_templates() if t.kind == "deck"]
@@ -83,14 +85,14 @@ def test_the_slide_viewer_gets_one_slide_at_a_time(template: str) -> None:
 
 def test_a_document_has_no_slides_to_page_through() -> None:
     with _client() as client:
-        assert client.get("/design-templates/doc-notice/preview?slide=1").status_code == 404
+        assert client.get("/design-templates/doc-minutes/preview?slide=1").status_code == 404
 
 
 def test_the_catalogue_row_carries_the_slide_count() -> None:
     from app.schemas.workspace import DesignTemplateOut
 
     deck = DesignTemplateOut.of(design_templates.get("deck-briefing")).model_dump(by_alias=True)
-    doc = DesignTemplateOut.of(design_templates.get("doc-notice")).model_dump(by_alias=True)
+    doc = DesignTemplateOut.of(design_templates.get("doc-minutes")).model_dump(by_alias=True)
     assert deck["slideCount"] == len(
         design_templates.sample_slides(design_templates.get("deck-briefing"))
     )

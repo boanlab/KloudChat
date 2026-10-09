@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'masking-source-fixture'
 const now = '2026-09-13T00:00:00.000Z'
@@ -141,10 +142,12 @@ async function mockMasking(page: Page, scenario: Scenario, saved: boolean, live 
       }
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })

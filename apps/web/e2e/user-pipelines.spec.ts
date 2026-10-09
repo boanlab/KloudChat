@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 /**
  * Pipeline phase 3 screens against fixture data. Flows live on their own page (/pipelines): a
@@ -239,8 +240,10 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (method === 'GET' && path.startsWith('/admin/')) return route.fulfill({ json: path === '/admin/users' ? [] : {} })
     if (method === 'GET' && (path.startsWith('/sessions/') && (path.endsWith('/messages') || path.endsWith('/jobs')))) return route.fulfill({ json: [] })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
-    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/templates', '/connectors', '/connectors/catalog',
-      '/jobs', '/designs', '/prompt-templates', '/shares', '/design-templates', '/skills/store', '/artifacts'].includes(path)) return route.fulfill({ json: [] })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
+    if (method === 'GET' && ['/projects', '/skills', '/memory', '/tools', '/connectors', '/connectors/catalog',
+      '/jobs', '/designs', '/shares', '/design-templates', '/skills/store', '/artifacts'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })

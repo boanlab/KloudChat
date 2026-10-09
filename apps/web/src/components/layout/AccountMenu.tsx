@@ -3,6 +3,9 @@ import { Code2,
   Brain,
   ChartColumn,
   ChevronDown,
+  Activity,
+  Flag,
+  Inbox,
   History,
   LogOut,
   Palette,
@@ -16,8 +19,9 @@ import { Code2,
   Terminal as TerminalIcon,
   Workflow,
 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useMatch, useNavigate } from 'react-router-dom'
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
+import { useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
 import { isMac } from '@/lib/shortcuts'
 import { useStore } from '@/store/useStore'
@@ -31,6 +35,10 @@ function AccountItems() {
   const users = useStore((s) => s.users)
   const logout = useStore((s) => s.logout)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const openReport = useIssues((s) => s.openReport)
+  const unreadIssues = useIssues((s) => s.unread)
+  // On a conversation, the form offers to attach it.
+  const sessionId = useMatch('/s/:sessionId')?.params.sessionId
 
   return (
     <>
@@ -70,6 +78,16 @@ function AccountItems() {
       <MenuItem icon={<Settings size={14} />} onClick={() => navigate('/settings')}>
         {t('설정')}
       </MenuItem>
+      <MenuItem icon={<Flag size={14} />} onClick={() => openReport({ sessionId })}>
+        {t('문의·신고')}
+      </MenuItem>
+      <MenuItem
+        icon={<Inbox size={14} />}
+        onClick={() => navigate('/issues')}
+        hint={unreadIssues > 0 ? `${t('새 답변')} ${unreadIssues}` : undefined}
+      >
+        {t('내 신고')}
+      </MenuItem>
       <MenuItem icon={<Keyboard size={14} />} onClick={openShortcuts} hint={`${isMac() ? '⌘' : 'Ctrl'} /`}>
         {t('키보드 단축키')}
       </MenuItem>
@@ -90,8 +108,14 @@ function AccountItems() {
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
             {t('보안 · 감사')}
           </MenuItem>
+          <MenuItem icon={<Flag size={14} />} onClick={() => navigate('/admin/issues')}>
+            {t('문의·신고')}
+          </MenuItem>
           <MenuItem icon={<Server size={14} />} onClick={() => navigate('/admin/system')}>
             {t('시스템')}
+          </MenuItem>
+          <MenuItem icon={<Activity size={14} />} onClick={() => navigate('/admin/performance')}>
+            {t('성능 모니터링')}
           </MenuItem>
         </>
       )}
@@ -109,6 +133,7 @@ export function AccountMenu() {
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const unreadIssues = useIssues((s) => s.unread)
 
   return (
     <Dropdown
@@ -137,6 +162,14 @@ export function AccountMenu() {
               {pendingUsers}
             </span>
           )}
+          {unreadIssues > 0 && (
+            <span
+              aria-label={t('신고 답변 {n}건').replace('{n}', String(unreadIssues))}
+              className="shrink-0 rounded-control bg-accent px-1.5 text-xs font-medium text-white"
+            >
+              {unreadIssues}
+            </span>
+          )}
           <ChevronDown size={14} className="shrink-0 text-faint" />
         </button>
       )}
@@ -152,6 +185,7 @@ export function AccountMenuCompact() {
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const unreadIssues = useIssues((s) => s.unread)
 
   return (
     <Dropdown
@@ -165,8 +199,8 @@ export function AccountMenuCompact() {
           style={{ background: user?.avatarColor }}
         >
           {user?.name?.[0] ?? 'U'}
-          {user?.role === 'admin' && pendingUsers > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-warn ring-2 ring-bg" />
+          {((user?.role === 'admin' && pendingUsers > 0) || unreadIssues > 0) && (
+            <span className={`absolute -top-0.5 -right-0.5 size-2 rounded-full ring-2 ring-bg ${unreadIssues > 0 ? 'bg-accent' : 'bg-warn'}`} />
           )}
         </button>
       )}

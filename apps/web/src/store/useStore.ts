@@ -22,7 +22,6 @@ import {
   connectorsApi,
   designsApi,
   designTemplatesApi,
-  promptTemplatesApi,
   keysApi,
   filesApi,
   memoryApi,
@@ -42,7 +41,6 @@ import type {
   ApiKeyRow,
   AuthSession,
   ArtifactRow,
-  AuditRow,
   GovernancePolicy,
   CatalogEntry,
   ConnectorRow,
@@ -54,7 +52,6 @@ import type {
   MessageRow,
   ModelCatalogue,
   ProjectRow,
-  PromptTemplateRow,
   SessionRow,
   SkillRow,
   StoreSkillRow,
@@ -81,7 +78,7 @@ import type {
   ReportArtifact,
   ReportSection,
   SessionKind,
-  StartingPoint,
+  TemplateBlanks,
   Variant,
   Skill,
   Step,
@@ -232,8 +229,6 @@ type SendOptions = {
   activatedSkillIds?: string[]
   /** Sent with the turn (the session may not exist yet); the server makes it sticky. */
   renderTemplateId?: string
-  /** Only the id goes on the wire; the title names the bubble until the server's copy arrives. */
-  startingTemplate?: StartingPoint
   privacyAction?: PrivacyAction
   privacyDecisionToken?: string
   /** Write the pending outline instead of planning again (이대로 생성). */
@@ -307,8 +302,6 @@ interface State {
   designs: DesignRow[]
   /** Server-shipped, read-only. */
   designTemplates: DesignTemplateRow[]
-  /** Built-in 시작점. */
-  promptTemplates: PromptTemplateRow[]
   availableTools: ToolCatalogEntry[]
   memories: MemoryEntry[]
   agents: Agent[]
@@ -441,9 +434,7 @@ interface State {
   // ── governance (admin) ────────────────────────────────────────────────
   /** Null until fetched. */
   usage: UsageReport | null
-  audit: AuditRow[] | null
   loadUsage: (days?: number) => Promise<void>
-  loadAudit: () => Promise<void>
   /** Null until fetched. */
   apiKeys: ApiKeyRow[] | null
   loadApiKeys: () => Promise<void>
@@ -473,7 +464,6 @@ interface State {
     value: string
     attachments: FileRow[]
     activatedSkillIds: string[]
-    startingTemplate: StartingPoint | null
     error: string
   } | null
   setComposerRestore: (restore: State['composerRestore']) => void
@@ -483,9 +473,9 @@ interface State {
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
   setPendingTemplate: (template: DesignTemplateRow | null) => void
-  /** 시작점 picked in the gallery, handed to the composer. Consumed once. */
-  pendingStartingTemplate: StartingPoint | null
-  setPendingStartingTemplate: (template: StartingPoint | null) => void
+  /** A media 서식's arguments picked in the gallery, handed to the composer. Consumed once. */
+  pendingTemplateBlanks: TemplateBlanks | null
+  setPendingTemplateBlanks: (blanks: TemplateBlanks | null) => void
   /** An empty logo draws the default mark. */
   brand: { name: string; logo: string }
   /** Re-reads `/auth/config` — brand, enabled surfaces and the rest of what
@@ -1015,7 +1005,6 @@ export const useStore = create<State>((set, get) => ({
       skillStore: [],
       designs: [],
       designTemplates: [],
-      promptTemplates: [],
       availableTools: [],
       memories: [],
       agents: [],
@@ -1108,7 +1097,6 @@ export const useStore = create<State>((set, get) => ({
   skillStoreError: false,
   designs: [],
   designTemplates: [],
-  promptTemplates: [],
   availableTools: [],
   memories: [],
   agents: [],
@@ -1124,7 +1112,6 @@ export const useStore = create<State>((set, get) => ({
       skillsApi.list(),
       designsApi.list(),
       designTemplatesApi.list(),
-      promptTemplatesApi.list(),
       memoryApi.list(),
       agentsApi.list(),
       connectorsApi.list(),
@@ -1136,7 +1123,6 @@ export const useStore = create<State>((set, get) => ({
       skills,
       designs,
       designTemplates,
-      promptTemplates,
       memories,
       agents,
       connectors,
@@ -1152,8 +1138,6 @@ export const useStore = create<State>((set, get) => ({
       designs: designs.status === 'fulfilled' ? designs.value : s.designs,
       designTemplates:
         designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
-      promptTemplates:
-        promptTemplates.status === 'fulfilled' ? promptTemplates.value : s.promptTemplates,
       availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
       memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
       agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
@@ -1164,7 +1148,6 @@ export const useStore = create<State>((set, get) => ({
   },
 
   usage: null,
-  audit: null,
   loadUsage: async (days = 7) => {
     const report = await usageApi.report(days).catch(() => null)
     if (report) set({ usage: report })
@@ -1200,10 +1183,6 @@ export const useStore = create<State>((set, get) => ({
     const result = await usageApi.setGovernance(patch)
     await get().loadGovernance()
     return result.clearedMessages
-  },
-  loadAudit: async () => {
-    const rows = await usageApi.audit(200).catch(() => null)
-    if (rows) set({ audit: rows })
   },
 
   loadModels: async () => {
@@ -1552,9 +1531,6 @@ export const useStore = create<State>((set, get) => ({
         size: '',
         type: '',
       })),
-      startedFrom: opts.startingTemplate
-        ? { templateId: opts.startingTemplate.id, title: opts.startingTemplate.title }
-        : undefined,
     }
 
     // A retry replaces what failed under the question; a stale id falls back to appending.
@@ -1568,7 +1544,6 @@ export const useStore = create<State>((set, get) => ({
       attachmentNames: opts.attachmentNames,
       activatedSkillIds: opts.activatedSkillIds,
       renderTemplateId: opts.renderTemplateId,
-      startingTemplate: opts.startingTemplate,
       approve: opts.approve,
       includeFigures: opts.includeFigures,
       plan: opts.plan,
@@ -1618,7 +1593,6 @@ export const useStore = create<State>((set, get) => ({
           text,
           model,
           opts.activatedSkillIds,
-          opts.startingTemplate?.id,
           {
             approve: opts.approve,
             answers: opts.answers,
@@ -1640,7 +1614,6 @@ export const useStore = create<State>((set, get) => ({
           text,
           model,
           opts.activatedSkillIds,
-          opts.startingTemplate?.id,
           {
             approve: opts.approve,
             answers: opts.answers,
@@ -1671,7 +1644,6 @@ export const useStore = create<State>((set, get) => ({
       if (get().compareMode && get().compareModels.length >= 2) {
         await runComparison(turnSet, get, id, text, {
           activatedSkillIds: opts.activatedSkillIds,
-          startingTemplateId: opts.startingTemplate?.id,
           attachments: opts.attachments,
           attachmentNames: opts.attachmentNames,
           privacyAction: opts.privacyAction,
@@ -1689,7 +1661,6 @@ export const useStore = create<State>((set, get) => ({
         attachments: opts.attachments,
         attachmentNames: opts.attachmentNames,
         activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplate?.id,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         onAccepted: acceptSession,
@@ -1741,8 +1712,8 @@ export const useStore = create<State>((set, get) => ({
     if (!session || get().running[sessionId]) return
     const rerun = { runId, fromStage: stage.name, label: stage.label, answers }
     const model = effectiveModelId(session, session.kind, get().agents, get().modelByKind)
-    if (session.kind === 'slides') await streamDeck(set, get, sessionId, '', model, undefined, undefined, { rerun })
-    else await streamReport(set, get, sessionId, '', model, undefined, undefined, { rerun })
+    if (session.kind === 'slides') await streamDeck(set, get, sessionId, '', model, undefined, { rerun })
+    else await streamReport(set, get, sessionId, '', model, undefined, { rerun })
   },
 
   stopStreaming: (sessionId) => {
@@ -2110,8 +2081,8 @@ export const useStore = create<State>((set, get) => ({
   setNotice: (notice) => set({ notice }),
   pendingTemplate: null,
   setPendingTemplate: (pendingTemplate) => set({ pendingTemplate }),
-  pendingStartingTemplate: null,
-  setPendingStartingTemplate: (pendingStartingTemplate) => set({ pendingStartingTemplate }),
+  pendingTemplateBlanks: null,
+  setPendingTemplateBlanks: (pendingTemplateBlanks) => set({ pendingTemplateBlanks }),
   brand: { name: 'KloudChat', logo: '' },
   refreshConfig: async () => {
     const c = await authConfig.get().catch(() => null)
@@ -3182,7 +3153,6 @@ async function streamTurn(
     attachments?: string[]
     attachmentNames?: string[]
     activatedSkillIds?: string[]
-    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     retryOf?: string
@@ -3275,7 +3245,6 @@ async function streamTurn(
         webSearch: opts.webSearch,
         attachments: opts.attachments,
         activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplateId,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
         retryOf: opts.retryOf,
@@ -3513,7 +3482,6 @@ async function runComparison(
   text: string,
   opts: {
     activatedSkillIds?: string[]
-    startingTemplateId?: string
     attachments?: string[]
     attachmentNames?: string[]
     privacyAction?: PrivacyAction
@@ -3572,7 +3540,6 @@ async function runComparison(
         content: text,
         models,
         activatedSkillIds: opts.activatedSkillIds,
-        startingTemplateId: opts.startingTemplateId,
         attachments: opts.attachments,
         privacyAction: opts.privacyAction,
         privacyDecisionToken: opts.privacyDecisionToken,
@@ -3705,7 +3672,6 @@ async function streamReport(
   text: string,
   model: string,
   activatedSkillIds?: string[],
-  startingTemplateId?: string,
   /** `approve` turns a proposal into a document and decides whether a draft artifact is shown at all. */
   gate: {
     approve?: boolean
@@ -3788,7 +3754,6 @@ async function streamReport(
         content: text,
         model,
         activatedSkillIds,
-        startingTemplateId,
         renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,
@@ -3953,7 +3918,6 @@ async function streamDeck(
   text: string,
   model: string,
   activatedSkillIds?: string[],
-  startingTemplateId?: string,
   /** `approve` turns a proposal into a document and decides whether a draft artifact is shown at all. */
   gate: {
     approve?: boolean
@@ -4032,7 +3996,6 @@ async function streamDeck(
         content: text,
         model,
         activatedSkillIds,
-        startingTemplateId,
         renderTemplateId: gate.renderTemplateId,
         approve: gate.approve,
         answers: gate.answers,

@@ -90,7 +90,10 @@ attached to this one route rather than to the default dependency
 `audit_events` carries a sign-in, a failed sign-in, a password change and a key
 issue, each with the client's address and browser. Two screens read it: an
 account's own **접속기록** (`GET /auth/me/access`, the account's rows only) and
-the administrator's audit trail (`GET /admin/audit`, everything).
+the administrator's audit trail (`GET /admin/audit`, everything, a page at a time
+with action, account, period and text filters). A change event keeps
+`metadata.changes = {field: [old, new]}` from `services/audit.py:diff`, secrets masked
+and long values clipped; `audit.ACTIONS` lists every code, and the screen labels each one.
 
 The address is only as good as the proxy in front. `core/deps.py:client_ip`
 reads the first hop of `X-Forwarded-For`, and the web container resolves that
@@ -145,8 +148,8 @@ Migrations live under `alembic/versions/`. The principal tables:
 - `credit_ledger` — the ledger
 - `projects` · `files` · `artifacts` · `artifact_versions` · `skills` ·
   `memories` · `agents` · `connectors`
-- `templates` — starting points a user added, optionally carrying a form file
-  whose text is attached when the template is picked
+- `templates` — legacy: the retired 시작점 (starting points) people added. Nothing
+  reads or writes it; the rows stay until a migration decides their fate
 - `design_systems` — the look a project's output wears. `projects.design_system_id`
   is nullable and null by default, and `ON DELETE SET NULL`: removing a look
   costs the projects their look, not the projects
@@ -476,8 +479,7 @@ rewrite (`revise.notes_only`) changes nothing on the slide but its notes.
 
 ### Design templates
 
-The rendering catalogue: shapes the model writes into, as opposed to the
-prompt templates a person writes for themselves. They ship inside the API image
+The rendering catalogue: shapes the model writes into. They ship inside the API image
 under `app/design_templates/<id>/`: a `template.toml`, a `seed.html` and a
 `sample.html` always, plus the `instructions.md` and `checklist.md` a writing
 turn reads — which the media recipes, having no writing turn, do without.
@@ -575,13 +577,19 @@ of it: raster only, embedded only, never fetched.
 A 서식's typesetting is two files. `seed.html` — shared, named by `seed_from` —
 is correctness: the tokens, the whole closed vocabulary `assemble` can emit, the
 `@page` rule, the print rules, the shadow-root `:host`. `design.css` is
-identity: 안내문·공지 centres its title under a double rule, 한 장 요약 runs two
-columns, 신호 presents white on black. It is spliced in as a second `<style>`
+identity: 회의록 packs a compact grey head, 신호 presents white on black. It is spliced in as a second `<style>`
 last in `<head>`, so it overrides by order rather than by specificity, and
 `stylesheet()` — which concatenates every style block — carries it into the
 document editor's shadow root by the same route. Two of them have no `design.css`
-at all: `_document/seed.html` is 보고 문서's own design and `_deck/seed.html` is
+at all: `_document/seed.html` is the plain document's own design and `_deck/seed.html` is
 editorial's, which is what makes the shared file somebody's rather than nobody's.
+
+Retired document 서식 (`design_templates.RETIRED`) are gone from the catalogue,
+the gallery and every choice (migration 0055 clears them from agents, starting
+points and project defaults), but documents and conversations may still name
+one. `design_templates.rendering` draws those in `_document` alone, with its
+`template.docx`, so they keep opening, taking pictures and exporting; the page
+view of a report with no 서식 asks for the same seed by the id `_document`.
 
 `test_a_template_has_a_face.py` checks that every `var(--x)` a seed uses is
 declared: an undeclared custom property is not an error anywhere, and

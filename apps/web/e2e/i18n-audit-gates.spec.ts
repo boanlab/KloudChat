@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { E2E_ADMIN } from './helpers'
 import { auditEnglishMode } from './i18n-audit'
+import { shellRead } from './shell-mocks'
 
 type Scenario = 'admin' | '401' | 'pending' | 'nonadmin' | 'malformed' | 'refresh-loss'
 
@@ -53,6 +54,9 @@ async function mockAudit(page: Page, scenario: Scenario = 'admin') {
       privacySafeModelIds: [], intentFilter: false, blockedCategories: [], retentionDays: 0,
     } })
     state.protectedRequests += 1
+    if (path === '/api/admin/audit') return route.fulfill({ json: { items: [], total: 0, page: 1, size: 50 } })
+    const shell = shellRead(method, path.slice(4))
+    if (shell) return route.fulfill(shell)
     if (path === '/api/models') return route.fulfill({ json: { models: [], litellmAvailable: false } })
     return route.fulfill({ json: [] })
   })

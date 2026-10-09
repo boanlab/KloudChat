@@ -22,7 +22,7 @@ def test_a_deck_is_not_told_about_the_document_seed() -> None:
     """`seed_from` decides which vocabulary a 서식 is told about."""
     deck = templates.get("deck-briefing")
     assert "한 장에 담는 양" in deck.markup
-    document = templates.get("doc-report")
+    document = templates.rendering("_document")
     assert "한 절에 담는 양" in document.markup
 
 

@@ -23,7 +23,7 @@ async function shot(page: Page, name: string) {
 
 /** Finds a card by searching, since the gallery pages its grid. */
 async function findCard(dialog: Locator, name: string) {
-  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
+  const search = dialog.getByLabel('서식 검색')
   if (await search.count()) await search.fill(name)
   const found = dialog.locator('div.group', { hasText: name })
   await expect(found.first()).toBeVisible({ timeout: 20_000 })
@@ -39,7 +39,7 @@ async function openGallery(page: Page, ids: string[]) {
       }),
     ),
   )
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   // A second open in one test serves previews from cache, with no response.
   await previews.catch(() => undefined)
   // Settle for the screenshot.
@@ -78,7 +78,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
 
   // One dialogue per surface.
   await page.goto('/new/slides')
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   const gallery = page.getByRole('dialog')
   await expect(gallery).toBeVisible({ timeout: 20_000 })
   await shot(page, '13-work-start')
@@ -103,7 +103,7 @@ test('카탈로그는 홈과 작업 중 화면 양쪽에서 닿는다', async ({
 
   // One entry point before the first turn.
   await page.goto('/new/report')
-  await expect(page.getByRole('button', { name: '작업 시작하기' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
 
   // 디자인 is the design system's word alone.
   await expect(page.getByRole('button', { name: /디자인/ })).toHaveCount(0)
@@ -115,15 +115,11 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
 
   await page.goto('/new/slides')
   const gallery = await openGallery(page, ['deck-editorial', 'deck-signal'])
-  // The 서식 is chosen on the starting point's card (`design-catalogue.spec.ts` covers 서식 cards).
-  const job = gallery.locator('div.group').first()
-  await job.getByRole('button', { name: /결과 모양 고르기/ }).click()
-  await page.getByRole('menuitem', { name: '편집형 덱' }).click()
-  await expect(job.getByRole('button', { name: /결과 모양 고르기/ })).toHaveText(/편집형 덱/)
+  const job = await findCard(gallery, '편집형 덱')
 
   await shot(page, '01-deck-gallery')
 
-  await job.getByRole('button', { name: /시작점 선택/ }).click()
+  await job.getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(gallery).toBeHidden()
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
   // Named once, by the chip.
@@ -203,8 +199,8 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
   await panel.getByRole('button', { name: '닫기' }).click()
   await expect(panel).toBeHidden()
 
-  await expect(page.getByRole('button', { name: '작업 시작하기' })).toHaveCount(1)
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toHaveCount(1)
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click()
 
@@ -240,14 +236,12 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   await signIn(page)
 
   await page.goto('/new/report')
-  const gallery = await openGallery(page, ['doc-report', 'doc-brief'])
-  const job = gallery.locator('div.group').first()
-  await job.getByRole('button', { name: /결과 모양 고르기/ }).click()
-  await page.getByRole('menuitem', { name: '한 장 요약' }).click()
+  const gallery = await openGallery(page, ['doc-minutes', 'doc-comparison'])
+  const job = await findCard(gallery, '비교·분석 보고서')
   await shot(page, '04-document-gallery')
-  await job.getByRole('button', { name: /시작점 선택/ }).click()
+  await job.getByRole('button', { name: '이 서식으로 시작' }).click()
 
-  await page.getByLabel('프롬프트 입력').fill('학과 서버를 교체할지 정하는 한 장 요약을 써줘')
+  await page.getByLabel('프롬프트 입력').fill('학과 서버 교체 후보 세 가지를 비교하는 보고서를 써줘')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
   const sessionId = page.url().split('/s/')[1]
@@ -258,7 +252,7 @@ test('문서 서식은 문서 조판으로 나온다', async ({ page }) => {
   await shot(page, '05-document-rendered')
 
   const stored = await artifactOf(page, sessionId)
-  expect(stored.data.templateId).toBe('doc-brief')
+  expect(stored.data.templateId).toBe('doc-comparison')
 
   // A 서식 document is a report whose blocks are `format: "html"` sections; `html` artifacts are decks.
   const sections = stored.data.sections as { content: string; format: string }[]
@@ -290,7 +284,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   await poster.getByRole('button', { name: '이 서식으로 시작' }).click()
 
   // Questions above the box, each blank with its example; usable without typing.
-  const imageQuestions = page.getByRole('group', { name: '포스터 시작점 질문' })
+  const imageQuestions = page.getByRole('group', { name: '포스터 빈칸' })
   await expect(imageQuestions.getByLabel('포스터 · 무엇을')).toHaveAttribute('placeholder', '학과 연구 성과 발표회')
   await imageQuestions.getByLabel('포스터 · 무엇을').fill('연구실 개방 행사')
   await imageQuestions.getByLabel('포스터 · 분위기').selectOption('밝고 활기찬')
@@ -314,7 +308,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   const opener = await findCard(avGallery, '발표 오프닝')
   await expect(opener).toBeVisible({ timeout: 20_000 })
   await opener.getByRole('button', { name: '이 서식으로 시작' }).click()
-  const videoQuestions = page.getByRole('group', { name: '발표 오프닝 시작점 질문' })
+  const videoQuestions = page.getByRole('group', { name: '발표 오프닝 빈칸' })
   await videoQuestions.getByLabel('발표 오프닝 · 움직임').selectOption('가볍게 떠다니는 입자')
   await shot(page, '09-video-blanks')
   await expect(page.getByRole('button', { name: '해상도 1080p' })).toBeVisible()
@@ -323,7 +317,7 @@ test('이미지·영상 템플릿은 빈칸을 채워 문장을 완성하고 옵
   const audioGallery = await openGallery(page, ['audio-narration', 'audio-bed'])
   const bed = await findCard(audioGallery, '배경 음악')
   await bed.getByRole('button', { name: '이 서식으로 시작' }).click()
-  await expect(page.getByRole('group', { name: '배경 음악 시작점 질문' })).toBeVisible()
+  await expect(page.getByRole('group', { name: '배경 음악 빈칸' })).toBeVisible()
   // The template switches the surface's mode.
   await expect(page.getByRole('button', { name: '유형 음악' })).toBeVisible()
   await expect(page.getByRole('button', { name: '종류 오디오' })).toBeVisible()
@@ -345,7 +339,7 @@ test('이미지 서식은 프롬프트를 다듬을 뿐 세션의 템플릿이 �
   await card.getByRole('button', { name: '이 서식으로 시작' }).click()
   // Questions open above the box; nothing lands in it.
   await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-  await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
+  await expect(page.getByRole('group', { name: '포스터 빈칸' })).toBeVisible()
   await expect(page.getByRole('button', { name: '포스터 서식 해제' })).toBeVisible()
 })
 
@@ -355,7 +349,7 @@ test('서식을 고르지 않으면 슬라이드는 그대로 JSON 덱으로 나
 
   // The built-in path is replaced only when a shape is picked.
   await page.goto('/new/slides')
-  await expect(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
@@ -373,7 +367,7 @@ test('쪽을 넘겨도 대화상자 크기가 그대로다', async ({ page }) =>
   // Card heights differ per page; the dialog must not resize under the buttons.
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').locator('.grid > *').first()).toBeVisible({
     timeout: 20_000,

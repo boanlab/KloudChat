@@ -11,8 +11,12 @@ import { SessionPage } from '@/pages/SessionPage'
 import { useStore } from '@/store/useStore'
 
 // Lazy screens: only home, session and login ship in the first bundle.
+const AdminIssuesPage = lazy(() => import('@/pages/AdminIssuesPage').then((m) => ({ default: m.AdminIssuesPage })))
 const AdminGovernancePage = lazy(() => import('@/pages/AdminGovernancePage').then((m) => ({ default: m.AdminGovernancePage })))
 const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })))
+const AdminPerformancePage = lazy(() =>
+  import('@/pages/AdminPerformancePage').then((m) => ({ default: m.AdminPerformancePage })),
+)
 const AdminUsagePage = lazy(() => import('@/pages/AdminUsagePage').then((m) => ({ default: m.AdminUsagePage })))
 const AdminUsersPage = lazy(() => import('@/pages/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })))
 const AgentSetupPage = lazy(() => import('@/pages/AgentSetupPage').then((m) => ({ default: m.AgentSetupPage })))
@@ -22,6 +26,7 @@ const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ 
 const DesignsPage = lazy(() => import('@/pages/DesignsPage').then((m) => ({ default: m.DesignsPage })))
 const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage').then((m) => ({ default: m.ConnectorsPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
+const IssuesPage = lazy(() => import('@/pages/IssuesPage').then((m) => ({ default: m.IssuesPage })))
 const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })))
 const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ default: m.MyUsagePage })))
 const PipelinesPage = lazy(() => import('@/pages/PipelinesPage').then((m) => ({ default: m.PipelinesPage })))
@@ -122,6 +127,7 @@ function Authenticated() {
           <Route path="memory" element={<MemoryPage />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="usage" element={<MyUsagePage />} />
+          <Route path="issues" element={<IssuesPage />} />
           <Route path="connectors" element={<ConnectorsPage />} />
           <Route path="agent-setup" element={<AgentSetupPage />} />
           <Route path="api-setup" element={<ApiSetupPage />} />
@@ -132,8 +138,11 @@ function Authenticated() {
             <Route index element={<Navigate to="/admin/users" replace />} />
             <Route path="users" element={<AdminUsersPage />} />
             <Route path="usage" element={<AdminUsagePage />} />
+            <Route path="performance" element={<AdminPerformancePage />} />
             <Route path="system/*" element={<AdminSystemPage />} />
             <Route path="governance" element={<AdminGovernancePage />} />
+            <Route path="issues" element={<AdminIssuesPage />} />
+            <Route path="issues/:issueId" element={<AdminIssuesPage />} />
             <Route path="*" element={<Navigate to="/admin/users" replace />} />
           </Route>
 

@@ -1,78 +1,22 @@
-import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Globe,
-  LayoutGrid,
-  Paperclip,
-  Pencil,
-  Plus,
-  Search,
-  Sparkles,
-  Trash2,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Button, Dropdown, MenuItem, Modal } from '@/components/ui'
-import {
-  argumentText,
-  templateText,
-  downloadFile,
-  templatesApi,
-  type DesignTemplateRow,
-  type FileRow,
-  type TemplateRow,
-} from '@/lib/api'
+import { Badge, Button, Modal } from '@/components/ui'
+import { argumentText, templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
-import { cn, upsertById } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
-import { TemplateForm } from '@/components/chat/TemplateForm'
 import { DeckSlideViewer, SlideFrame } from '@/components/chat/DeckSlideViewer'
+import { PagedPreview } from '@/components/chat/PagedPreview'
 import { useDesignTemplates, useStartTemplate } from '@/lib/useDesignTemplates'
 import { useT } from '@/lib/useT'
 
 /** Checks printed on a card before the rest folds away. */
 const CHECKS_ON_CARD = 3
 
-/** A starting-point card, from either the built-in list or the person's own. */
-type Sentence = {
-  id: string
-  title: string
-  description: string
-  fills: string[]
-  prompt: string
-  /** Uploaded form this starting point writes into. */
-  form: FileRow | null
-  /** Shared with the organisation rather than written by this person. */
-  shared: boolean
-  /** Whether the caller may edit or remove it; built-ins never are. */
-  own: boolean
-  group: string
-  /** Design template the job renders in, or `''` for none. */
-  renderTemplateId: string
-  /** One example per blank, in `fills` order. */
-  examples: string[]
-  /** Requirements: 'web' | 'file'. */
-  needs: string[]
-  /** Workspace skills to switch on for the turn, by name. */
-  skills: string[]
-}
-
-/** On media surfaces the sentence is the prompt; elsewhere it rides with the turn. */
-const fillsTheComposer = (kind: SessionKind) => kind === 'image' || kind === 'av'
-
 /** Cards per page: a 2x2 block. */
 const PER_PAGE = 4
-
-/** One card in the grid; `words` is what search reads. */
-type Card = {
-  key: string
-  words: string
-  design?: DesignTemplateRow
-  sentence?: Sentence
-}
 
 /** Live preview of a design template scaled to its box; sandboxed with no permissions. */
 function ScaledPreview({
@@ -127,13 +71,13 @@ function Thumbnail({ id, deck, onOpen }: { id: string; deck: boolean; onOpen: ()
       onClick={onOpen}
       className={cn(
         'relative shrink-0 cursor-zoom-in overflow-hidden border-b border-line bg-elevated text-left',
-        deck ? 'aspect-video' : 'h-28',
+        deck ? 'aspect-video' : 'h-36 py-1.5',
       )}
       aria-label={t('전체 미리보기')}
       title={t('전체 미리보기')}
     >
-      {/* A deck shows its cover slide whole. */}
-      {deck ? <SlideFrame id={id} n={1} /> : <ScaledPreview id={id} deck={deck} height={448} />}
+      {/* A deck shows its cover slide whole; a document its first page, as the page view lays it out. */}
+      {deck ? <SlideFrame id={id} n={1} /> : <PagedPreview id={id} firstOnly />}
     </button>
   )
 }
@@ -163,9 +107,9 @@ function FullPreview({
   }
   return (
     <Modal open={open} onClose={onClose} title={text.name} description={text.description} width="max-w-4xl" footer={footer}>
-      <div className="max-h-[75vh] overflow-y-auto rounded-control border border-line bg-elevated">
-        {/* A document shows a whole A4 page (820 × 1160) and scrolls on; a deck shows its 16:9 slide. */}
-        <ScaledPreview id={row.id} deck={deck} height={deck ? 720 : 2320} scrolls />
+      <div data-preview-scroll className="max-h-[75vh] overflow-y-auto rounded-control border border-line bg-elevated">
+        {/* A document shows its pages as the page view lays them out; a deck its 16:9 slide. */}
+        {deck ? <ScaledPreview id={row.id} deck height={720} scrolls /> : <PagedPreview id={row.id} />}
       </div>
     </Modal>
   )
@@ -293,7 +237,7 @@ function Foot({
   )
 }
 
-/** Starting-point picker for one surface; on media surfaces the design templates are the jobs. */
+/** 서식 picker for one surface. */
 export function DesignGalleryModal({
   kind,
   sessionId,
@@ -310,11 +254,9 @@ export function DesignGalleryModal({
   const [category, setCategory] = useState<string | 'all'>('all')
   const rows = useDesignTemplates(open)
   const start = useStartTemplate()
-  const setDraft = useStore((s) => s.setDraft)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const sessions = useStore((s) => s.sessions)
-  const setPendingAttachment = useStore((s) => s.setPendingAttachment)
-  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
+  const setPendingTemplateBlanks = useStore((s) => s.setPendingTemplateBlanks)
 
   const english = currentLang() === 'en'
   const forSurface = useMemo(
@@ -324,114 +266,24 @@ export function DesignGalleryModal({
         .map((r) => ({ row: r, text: templateText(r, english) })),
     [rows, kind, english],
   )
-
-  /** Built-in starting points. */
-  const saved = useStore((s) => s.promptTemplates)
-  /** The person's own starting points, fetched when the gallery opens. */
-  const [mine, setMine] = useState<TemplateRow[]>([])
-  /** The one being edited, or `'new'`. */
-  const [writing, setWriting] = useState<TemplateRow | 'new' | null>(null)
-  useEffect(() => {
-    if (!open) return
-    let live = true
-    void templatesApi
-      .list()
-      .then((rows) => live && setMine(rows))
-      .catch(() => undefined)
-    return () => {
-      live = false
-    }
-  }, [open])
-
-  const sentences = useMemo<Sentence[]>(
-    () => [
-      ...mine
-        .filter((row) => row.kind === kind)
-        .map((row) => ({
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          fills: row.fills,
-          prompt: row.prompt,
-          // Enough of the file for an attachment chip: name, tokens, error.
-          form: row.fileId
-            ? {
-                id: row.fileId,
-                name: row.fileName,
-                size: 0,
-                mime: '',
-                tokens: row.fileTokens,
-                projectId: null,
-                sessionId: null,
-                preview: '',
-                error: row.fileError,
-                createdAt: row.updatedAt,
-              }
-            : null,
-          shared: row.shared,
-          own: row.mine !== false,
-          group: row.group || '내 시작점',
-          renderTemplateId: row.renderTemplateId || '',
-          examples: row.examples ?? [],
-          needs: row.needs ?? [],
-          skills: [],
-        })),
-      ...saved
-        .filter((row) => row.kind === kind)
-        .map((row) => ({
-          id: row.id,
-          title: row.title,
-          description: row.description,
-          fills: row.fills,
-          prompt: row.prompt,
-          form: null,
-          shared: false,
-          own: false,
-          group: row.group || '기본',
-          renderTemplateId: row.renderTemplateId || '',
-          examples: row.examples ?? [],
-          needs: row.needs ?? [],
-          skills: row.skills ?? [],
-        })),
-    ],
-    [mine, saved, kind],
-  )
-  // Surfaces with no starting points (image, a/v) show design templates as the jobs.
-  const formatsAreTheJobs = sentences.length === 0 && forSurface.length > 0
+  const hasBlanks = forSurface.some(({ row }) => row.arguments.length > 0)
 
   const categories = useMemo(
-    () =>
-      formatsAreTheJobs
-        ? [...new Set(forSurface.map((c) => c.text.category))]
-        : [...new Set(sentences.map((row) => row.group))],
-    [formatsAreTheJobs, forSurface, sentences],
+    () => [...new Set(forSurface.map((c) => c.text.category))],
+    [forSurface],
   )
-  const visibleSentences =
-    category === 'all' ? sentences : sentences.filter((row) => row.group === category)
-  const visibleFormats =
+  const visible =
     category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
-
-  const cards: Card[] = useMemo(
-    () =>
-      formatsAreTheJobs
-        ? visibleFormats.map(({ row, text }) => ({
-            key: row.id,
-            design: row,
-            words: `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`,
-          }))
-        : visibleSentences.map((row) => ({
-            key: row.id,
-            sentence: row,
-            words: `${row.title} ${row.description} ${row.group} ${row.fills.join(' ')}`,
-          })),
-    [formatsAreTheJobs, visibleFormats, visibleSentences],
-  )
 
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
   const found = needle
-    ? cards.filter((card) => card.words.toLowerCase().includes(needle))
-    : cards
+    ? visible.filter(({ text }) =>
+        `${text.name} ${text.description} ${text.category} ${text.fills.join(' ')}`
+          .toLowerCase()
+          .includes(needle),
+      )
+    : visible
 
   const [page, setPage] = useState(0)
   const pages = Math.max(1, Math.ceil(found.length / PER_PAGE))
@@ -448,10 +300,10 @@ export function DesignGalleryModal({
   const pick = (row: DesignTemplateRow, prompt: string) => {
     if (row.id === worn) return
     start(row, prompt)
-    // Template arguments are asked in the composer, like a starting point's blanks.
+    // Template arguments are asked in the composer.
     if (row.arguments.length > 0) {
       const text = templateText(row, english)
-      setPendingStartingTemplate({
+      setPendingTemplateBlanks({
         id: row.id,
         title: text.name,
         fills: row.arguments.map((a) => argumentText(a, english).label),
@@ -467,97 +319,17 @@ export function DesignGalleryModal({
     onClose()
   }
 
-  /** Per-card override of the template a starting point renders in. */
-  const [shapeOf, setShapeOf] = useState<Record<string, string>>({})
-
-  // Which card's procedure is unfolded; one at a time.
-  const [openPrompt, setOpenPrompt] = useState<string | null>(null)
-  const pickStartingPoint = (row: Sentence) => {
-    if (fillsTheComposer(kind)) setDraft(row.prompt || row.title)
-    else
-      setPendingStartingTemplate({
-        id: row.id,
-        title: row.title,
-        fills: row.fills,
-        examples: row.examples,
-        needs: row.needs,
-        skills: row.skills,
-      })
-    setPendingAttachment(row.form)
-    // Apply the job's template too; a job with none lets the surface choose.
-    const wanted = shapeOf[row.id] ?? row.renderTemplateId
-    const shape = wanted ? rows.find((one) => one.id === wanted) : undefined
-    if (shape && shape.id !== worn) start(shape, '')
-    onClose()
-  }
-
-  const closeForm = () => setWriting(null)
-
-  // Optimistic; a failure puts the row back.
-  const remove = async (id: string) => {
-    const held = mine
-    setMine((rows) => rows.filter((r) => r.id !== id))
-    try {
-      await templatesApi.remove(id)
-    } catch {
-      setMine(held)
-    }
-  }
-
-  // The form takes over the whole dialog.
-  if (writing) {
-    return (
-      <Modal
-        open={open}
-        onClose={() => {
-          closeForm()
-          onClose()
-        }}
-        title={writing === 'new' ? t('시작점 만들기') : t('시작점 수정')}
-        width="max-w-3xl"
-      >
-        <TemplateForm
-          kind={kind}
-          template={writing === 'new' ? undefined : writing}
-          onCancel={closeForm}
-          onSaved={(row) => {
-            setMine((rows) => upsertById(rows, row))
-            closeForm()
-            // Bring the saved card into view.
-            setCategory('all')
-            setQuery(row.title)
-            setPage(0)
-          }}
-        />
-      </Modal>
-    )
-  }
-
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={t('작업 시작하기')}
-      description={t('일을 고르면 입력창이 그 일에 필요한 것만 묻습니다. 웹 검색이나 파일이 필요한 일은 카드가 미리 말해 줍니다.')}
+      title={t('서식 고르기')}
+      description={t('결과물의 모양을 고릅니다. 빈칸이 있는 서식은 입력창이 그 빈칸만 묻습니다.')}
       width="max-w-3xl"
     >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold">
-              {formatsAreTheJobs ? t('어떤 모양으로 받을까요?') : t('어떤 일을 시작할까요?')}
-            </h3>
-            <p className="text-sm text-muted">
-              {formatsAreTheJobs
-                ? t('빈칸을 채우면 그대로 요청이 됩니다.')
-                : t('고르면 입력창이 그 일에 필요한 것만 묻습니다.')}
-            </p>
-          </div>
-          {!formatsAreTheJobs && (
-            <Button size="sm" onClick={() => setWriting('new')}>
-              <Plus size={13} />
-              {t('내 시작점 만들기')}
-            </Button>
-          )}
+        <div className="mb-3">
+          <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
+          {hasBlanks && <p className="text-sm text-muted">{t('빈칸을 채우면 그대로 요청이 됩니다.')}</p>}
         </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
@@ -586,10 +358,8 @@ export function DesignGalleryModal({
               className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
             />
             <Input
-              aria-label={formatsAreTheJobs ? t('서식 검색') : t('시작점 검색')}
-              placeholder={
-                formatsAreTheJobs ? t('서식 또는 용도 검색') : t('업무 또는 준비물 검색')
-              }
+              aria-label={t('서식 검색')}
+              placeholder={t('서식 또는 용도 검색')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -605,162 +375,18 @@ export function DesignGalleryModal({
             card can grow its row. */}
         <div className="h-[58vh] min-h-80 overflow-y-auto pr-1">
         <div className="grid content-start gap-3 sm:grid-cols-2">
-          {shown.map((card) =>
-            card.design ? (
-              <DesignTemplateCard
-                key={card.key}
-                row={card.design}
-                english={english}
-                onPick={pick}
-                chosen={card.design.id === worn}
-              />
-            ) : (
-              ((row) => (
-              <div key={row.id} className="group relative flex min-h-44 flex-col">
-              <div className="flex w-full flex-1 flex-col rounded-card border border-line p-3 text-left transition-colors hover:border-accent">
-                <p className="flex items-center gap-1.5 text-base font-medium">
-                  {row.title}
-                  {row.shared && <Badge>{t('공용')}</Badge>}
-                </p>
-                {row.description && (
-                  <p className="mt-0.5 text-sm text-muted">{row.description}</p>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-1">
-                  {/* Skip the group badge when it would repeat the 공용 badge. */}
-                  {!(row.shared && row.group === '공용') && <Badge>{row.group}</Badge>}
-                  {(() => {
-                    const wanted = shapeOf[row.id] ?? row.renderTemplateId
-                    const shape = wanted ? rows.find((one) => one.id === wanted) : undefined
-                    return (
-                      <Dropdown
-                        trigger={() => (
-                          <button
-                            type="button"
-                            aria-label={t('{name} 결과 모양 고르기').replace('{name}', row.title)}
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors',
-                              shape
-                                ? 'border-accent/40 bg-accent-soft text-accent hover:border-accent'
-                                : 'border-line text-muted hover:border-line-strong hover:text-fg',
-                            )}
-                          >
-                            {shape ? templateText(shape, english).name : t('모양 고르기')}
-                            <ChevronDown size={11} />
-                          </button>
-                        )}
-                      >
-                        <MenuItem onClick={() => setShapeOf((all) => ({ ...all, [row.id]: '' }))}>
-                          {t('주제에 맞게 새로 만들기')}
-                        </MenuItem>
-                        {forSurface.map(({ row: one, text }) => (
-                          <MenuItem
-                            key={one.id}
-                            onClick={() => setShapeOf((all) => ({ ...all, [row.id]: one.id }))}
-                          >
-                            {text.name}
-                          </MenuItem>
-                        ))}
-                      </Dropdown>
-                    )
-                  })()}
-                </div>
-                {row.fills.length > 0 && (
-                  <div className="mt-2">
-                    <p className="mb-1 text-xs font-medium text-muted">{t('적어 달라고 할 것')}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {row.fills.map((fill) => (
-                        <span
-                          key={fill}
-                          className="rounded-full border border-line px-2 py-0.5 text-xs text-faint"
-                        >
-                          {fill}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(row.needs.length > 0 || row.skills.length > 0) && (
-                  <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                    {row.needs.includes('web') && <span className="inline-flex items-center gap-1"><Globe size={11} />{t('웹 검색으로 찾습니다')}</span>}
-                    {row.needs.includes('file') && <span className="inline-flex items-center gap-1"><Paperclip size={11} />{t('파일을 첨부해야 합니다')}</span>}
-                    {row.skills.length > 0 && <span className="inline-flex items-center gap-1"><Sparkles size={11} />{row.skills.join(' · ')}</span>}
-                  </p>
-                )}
-                {/* Controlled so the open card closes in the same paint the new one opens. */}
-                <details
-                  className="mt-2 rounded-control bg-elevated px-2.5 py-2 text-xs leading-relaxed"
-                  open={openPrompt === row.id}
-                >
-                  <summary
-                    className="cursor-pointer font-medium text-muted"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      const card = e.currentTarget.closest('details')
-                      setOpenPrompt((current) => (current === row.id ? null : row.id))
-                      requestAnimationFrame(() =>
-                        card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
-                      )
-                    }}
-                  >
-                    {t('실제 작업 방식 보기')}
-                  </summary>
-                  <p className="mt-1.5 whitespace-pre-wrap text-faint">{row.prompt}</p>
-                </details>
-                <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
-                  <Button
-                    size="sm"
-                    aria-label={t('{name} 시작점 선택').replace('{name}', row.title)}
-                    onClick={() => pickStartingPoint(row)}
-                  >
-                    {t('이 시작점 선택')}
-                  </Button>
-                  {row.form && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('{name} 양식 내려받기').replace('{name}', row.title)}
-                      onClick={() => void downloadFile(row.form!.id, row.form!.name)}
-                    >
-                      <Download size={13} />
-                      {row.form.name}
-                    </Button>
-                  )}
-                  <span className="text-xs text-faint">{t('고르면 입력창이 묻습니다')}</span>
-                </div>
-              </div>
-                {/* Own cards only; shared ones are edited on the admin screen. */}
-                {row.own && (
-                  <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t('{name} 수정').replace('{name}', row.title)}
-                      onClick={() => {
-                        const held = mine.find((r) => r.id === row.id)
-                        if (held) setWriting(held)
-                      }}
-                    >
-                      <Pencil size={13} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={t('{name} 삭제').replace('{name}', row.title)}
-                      onClick={() => void remove(row.id)}
-                    >
-                      <Trash2 size={13} />
-                    </Button>
-                  </div>
-                )}
-              </div>
-              ))(card.sentence!)
-            ),
-          )}
+          {shown.map(({ row }) => (
+            <DesignTemplateCard
+              key={row.id}
+              row={row}
+              english={english}
+              onPick={pick}
+              chosen={row.id === worn}
+            />
+          ))}
           {shown.length === 0 && (
             <p className="col-span-full py-8 text-center text-sm text-faint">
-              {formatsAreTheJobs
-                ? t('조건에 맞는 서식이 없습니다.')
-                : t('조건에 맞는 시작점이 없습니다.')}
+              {t('조건에 맞는 서식이 없습니다.')}
             </p>
           )}
         </div>
@@ -797,7 +423,7 @@ export function DesignGalleryModal({
 
 /** Whether a surface offers the picker; one gate for the gallery and composer buttons. */
 export function offersTemplates(kind: SessionKind): boolean {
-  return kind === 'chat' || kind === 'report' || kind === 'slides' || kind === 'image' || kind === 'av'
+  return kind === 'report' || kind === 'slides' || kind === 'image' || kind === 'av'
 }
 
 /** Button that opens the gallery, shown where the surface has anything to offer. */
@@ -810,17 +436,13 @@ export function DesignGallery({
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
-  const has = useStore(
-    (s) =>
-      s.designTemplates.some((row) => row.surface === kind) ||
-      s.promptTemplates.some((row) => row.kind === kind),
-  )
+  const has = useStore((s) => s.designTemplates.some((row) => row.surface === kind))
   if (!offersTemplates(kind) || !has) return null
   return (
     <>
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <LayoutGrid size={14} />
-        {t('작업 시작하기')}
+        {t('서식 고르기')}
       </Button>
       <DesignGalleryModal
         kind={kind}

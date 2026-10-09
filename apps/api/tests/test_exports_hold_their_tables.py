@@ -299,7 +299,7 @@ def test_every_serif_stack_names_the_linux_face_too():
         if "'Nanum Myeongjo'" in text:
             assert "'NanumMyeongjo'" in text, css.parent.name
     html = design_templates.render(
-        design_templates.get("doc-report"), title="t", tokens={"font": "serif"}, body=""
+        design_templates.rendering("_document"), title="t", tokens={"font": "serif"}, body=""
     )
     assert "'NanumMyeongjo'" in html
 

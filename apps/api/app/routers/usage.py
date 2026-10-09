@@ -12,7 +12,7 @@ import shutil
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import DateTime, String, case, cast, func, literal, or_, union_all
+from sqlalchemy import DateTime, String, case, cast, false, func, literal, or_, union_all
 from sqlmodel import col, select
 
 from app.core.config import settings
@@ -22,6 +22,7 @@ from app.models.governance import Governance
 from app.models.user import ApiKey, AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.schemas.admin import GovernanceIn
 from app.services import adaptive_routing, geoip, governance, settings_store
+from app.services import audit as audit_service
 from app.services import credits as credits_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
@@ -502,14 +503,73 @@ async def my_usage(user: CurrentUser, db: DbSession, days: int = Query(30, ge=1,
 async def audit_log(
     admin: AdminUser,
     db: DbSession,
-    limit: int = Query(100, ge=1, le=500),
+    page: int = Query(1, ge=1),
+    size: int = Query(50, ge=1, le=200),
     severity: str | None = None,
+    action: str | None = Query(None, max_length=2000),
+    account: str | None = Query(None, max_length=200),
+    q: str | None = Query(None, max_length=200),
+    q_actions: str | None = Query(None, alias="qActions", max_length=2000),
+    since: datetime | None = None,
+    until: datetime | None = None,
 ):
-    """Audit events, newest first."""
-    query = select(AuditEvent).order_by(col(AuditEvent.at).desc()).limit(limit)
+    """Audit events, newest first, a page at a time.
+
+    `action` is a comma list of codes, `x.*` taking a prefix. `account` matches the
+    actor's or the target's address. `q` searches the text columns and the actor;
+    `qActions` adds the codes whose screen label matched it. `until` is exclusive.
+    """
+    conds = []
     if severity:
-        query = query.where(AuditEvent.severity == severity)
-    rows = (await db.exec(query)).all()
+        conds.append(AuditEvent.severity == severity)
+    if action:
+        picks = []
+        for code in (c.strip() for c in action.split(",")):
+            if code.endswith(".*"):
+                picks.append(col(AuditEvent.action).startswith(code[:-1]))
+            elif code:
+                picks.append(AuditEvent.action == code)
+        if picks:
+            conds.append(or_(*picks))
+    if account and account.strip():
+        needle = account.strip()
+        ids = await _actor_ids(db, needle)
+        conds.append(
+            or_(
+                col(AuditEvent.target).ilike(f"%{_like(needle)}%", escape="\\"),
+                col(AuditEvent.actor_id).in_(ids) if ids else false(),
+            )
+        )
+    if q and q.strip():
+        needle = q.strip()
+        pattern = f"%{_like(needle)}%"
+        ids = await _actor_ids(db, needle)
+        coded = [c.strip() for c in (q_actions or "").split(",") if c.strip()]
+        conds.append(
+            or_(
+                col(AuditEvent.action).ilike(pattern, escape="\\"),
+                col(AuditEvent.target).ilike(pattern, escape="\\"),
+                col(AuditEvent.detail).ilike(pattern, escape="\\"),
+                col(AuditEvent.ip).ilike(pattern, escape="\\"),
+                col(AuditEvent.actor_id).in_(ids) if ids else false(),
+                col(AuditEvent.action).in_(coded) if coded else false(),
+            )
+        )
+    if since:
+        conds.append(col(AuditEvent.at) >= since)
+    if until:
+        conds.append(col(AuditEvent.at) < until)
+
+    total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
+    rows = (
+        await db.exec(
+            select(AuditEvent)
+            .where(*conds)
+            .order_by(col(AuditEvent.at).desc(), col(AuditEvent.id).desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).all()
 
     actor_ids = {r.actor_id for r in rows if r.actor_id}
     actors: dict[str, str] = {}
@@ -519,23 +579,47 @@ async def audit_log(
             for u in (await db.exec(select(User).where(col(User.id).in_(actor_ids)))).all()
         }
 
-    return [
-        {
-            "id": r.id,
-            "at": r.at,
-            "actor": actors.get(r.actor_id or "", r.actor_id or "시스템"),
-            "action": r.action,
-            "target": r.target,
-            "detail": r.detail,
-            "metadata": r.event_metadata,
-            "ip": r.ip,
-            # Empty unless a GeoLite2 database is configured.
-            "region": geoip.lookup(r.ip),
-            "userAgent": r.user_agent,
-            "severity": r.severity,
-        }
-        for r in rows
-    ]
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "at": r.at,
+                "actor": actors.get(r.actor_id or "", r.actor_id or "시스템"),
+                "action": r.action,
+                "target": r.target,
+                "detail": r.detail,
+                "metadata": r.event_metadata,
+                "ip": r.ip,
+                # Empty unless a GeoLite2 database is configured.
+                "region": geoip.lookup(r.ip),
+                "userAgent": r.user_agent,
+                "severity": r.severity,
+            }
+            for r in rows
+        ],
+        "total": int(total),
+        "page": page,
+        "size": size,
+    }
+
+
+def _like(text: str) -> str:
+    """`text` with LIKE wildcards escaped."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def _actor_ids(db: DbSession, needle: str) -> list[str]:
+    """Ids of accounts whose address or name contains `needle`."""
+    pattern = f"%{_like(needle)}%"
+    found = await db.exec(
+        select(User.id).where(
+            or_(
+                col(User.email).ilike(pattern, escape="\\"),
+                col(User.name).ilike(pattern, escape="\\"),
+            )
+        )
+    )
+    return list(found.all())
 
 
 @router.get("/governance")
@@ -717,8 +801,10 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
         # Masking admits no raw-delivery exception; persist that so turning
         # masking off later cannot resurrect a stale allowance.
         patch["allow_user_raw_external"] = False
+    before = {field: getattr(policy, field, None) for field in patch}
     for field, value in patch.items():
         setattr(policy, field, value)
+    changes = audit_service.diff(before, patch)
 
     invalidated_raw_preferences = 0
     if ("pii_masking" in patch or "allow_user_raw_external" in patch) and (
@@ -741,20 +827,23 @@ async def put_governance(payload: GovernanceIn, request: Request, admin: AdminUs
     policy.updated_at = utcnow()
     policy.updated_by = admin.id
     db.add(policy)
-    db.add(
-        AuditEvent(
-            actor_id=admin.id,
-            action="governance.update",
-            target="정책",
-            detail=", ".join(sorted(patch)),
-            event_metadata={
-                "rawPreferencesInvalidated": invalidated_raw_preferences,
-                "policyVersion": governance.POLICY_VERSION,
-            },
-            ip=client_ip(request),
-            user_agent=request.headers.get("User-Agent", "")[:400],
+    # A save that moved nothing is not an event.
+    if changes or invalidated_raw_preferences:
+        db.add(
+            AuditEvent(
+                actor_id=admin.id,
+                action="governance.update",
+                target="정책",
+                detail=", ".join(changes),
+                event_metadata={
+                    "changes": changes,
+                    "rawPreferencesInvalidated": invalidated_raw_preferences,
+                    "policyVersion": governance.POLICY_VERSION,
+                },
+                ip=client_ip(request),
+                user_agent=request.headers.get("User-Agent", "")[:400],
+            )
         )
-    )
     await db.commit()
     governance.invalidate()
 

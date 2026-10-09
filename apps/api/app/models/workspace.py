@@ -79,7 +79,7 @@ class DesignSystem(SQLModel, table=True):
     image_style: str = Field(default="")
     #: Keys of `design.CRAFT`.
     craft: list | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Offered to every account. Administrator-only, like `Template.shared`.
+    #: Offered to every account. Administrator-only.
     shared: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -489,8 +489,11 @@ class ConnectorCredential(SQLModel, table=True):
 
 
 class Template(SQLModel, table=True):
-    """A user-authored prompt template, same shape as the frontend's built-ins,
-    optionally carrying a file that is the form to write into."""
+    """Legacy: a user-authored 시작점 (starting point), optionally carrying a form file.
+
+    The feature is retired; nothing reads or writes this table. The model stays so
+    the schema and existing rows are kept until a migration decides their fate.
+    """
 
     __tablename__ = "templates"
 

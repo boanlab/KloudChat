@@ -179,7 +179,7 @@ test.describe('페르소나 커버리지', () => {
                 await probe(page.getByRole('button', { name: '첨부' }).first()).toBeVisible()
                 break
 
-              /* templates and starting points */
+              /* 서식 */
               case 'hum-template':
               case 'off-template':
               case 'sal-template':
@@ -188,7 +188,7 @@ test.describe('페르소나 커버리지', () => {
                   page,
                   need.id === 'hum-template' || need.id === 'off-template' ? 'report' : 'slides',
                 )
-                await probe(page.getByRole('button', { name: '작업 시작하기' })).toBeVisible()
+                await probe(page.getByRole('button', { name: '서식 고르기' })).toBeVisible()
                 break
 
               /* maths */

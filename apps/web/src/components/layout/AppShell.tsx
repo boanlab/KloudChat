@@ -1,6 +1,8 @@
 import { X } from 'lucide-react'
 import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
+import { IssueReportDialog } from '@/components/issues/IssueReportDialog'
+import { useIssueBadge } from '@/lib/issues'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -65,6 +67,7 @@ export function AppShell() {
   const { sidebar, cycleSidebar } = useStore()
   const open = sidebar !== 'hidden'
   const location = useLocation()
+  useIssueBadge()
 
   // On narrow layouts the sidebar overlays the content, so navigation closes it.
   useEffect(() => {
@@ -115,6 +118,7 @@ export function AppShell() {
       <UndoBar />
       <NoticeBar />
       <KeyboardShortcuts />
+      <IssueReportDialog />
     </div>
   )
 }

@@ -36,7 +36,7 @@ import { useNavigate } from 'react-router-dom'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, effectiveModelId, useStore } from '@/store/useStore'
-import type { ModelInfo, PrivacyAction, SessionKind, Skill, StartingPoint } from '@/types'
+import type { ModelInfo, PrivacyAction, SessionKind, Skill, TemplateBlanks } from '@/types'
 import { ASPECTS, servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
@@ -83,7 +83,6 @@ type PendingPrivacy = {
   text: string
   attachments: FileRow[]
   activatedSkillIds: string[]
-  startingTemplate: StartingPoint | null
   webSearch: WebSearchSetting
   restoreToken: number
 }
@@ -315,10 +314,8 @@ type ComposerSnapshot = {
   sessionId: string
   value: string
   attachments: FileRow[]
-  startingTemplate: StartingPoint | null
   activatedSkillIds: string[]
   webSearchMode: WebSearchMode
-  startingValues?: Record<number, string>
 }
 let carriedComposer: ComposerSnapshot | null = null
 // Editing a past question must not replace the ordinary draft of its conversation.
@@ -443,18 +440,15 @@ export function Composer({
   const [chatError, setChatError] = useState<string | null>(null)
   // A form a picked template brought with it; taken once and cleared.
   const pendingAttachment = useStore((s) => s.pendingAttachment)
-  // Held here, not in the store, so a refused turn can be handed back whole.
-  const [startingTemplate, setStartingTemplate] = useState<StartingPoint | null>(null)
-  const liveStartingTemplate = useRef(startingTemplate)
-  liveStartingTemplate.current = startingTemplate
-  const pendingStartingTemplate = useStore((s) => s.pendingStartingTemplate)
-  const setPendingStartingTemplate = useStore((s) => s.setPendingStartingTemplate)
+  // A media 서식's blanks; spent on one turn.
+  const [templateBlanks, setTemplateBlanks] = useState<TemplateBlanks | null>(null)
+  const pendingTemplateBlanks = useStore((s) => s.pendingTemplateBlanks)
+  const setPendingTemplateBlanks = useStore((s) => s.setPendingTemplateBlanks)
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const setPendingTemplate = useStore((s) => s.setPendingTemplate)
   const livePendingTemplate = useRef(pendingTemplate)
   livePendingTemplate.current = pendingTemplate
   const designTemplates = useStore((s) => s.designTemplates)
-  const promptTemplates = useStore((s) => s.promptTemplates)
   const [galleryOpen, setGalleryOpen] = useState(false)
   // A phone shows attach, dictation and web search; the rest sits behind 「더보기」,
   // and model comparison — answers side by side — is not offered at all.
@@ -490,7 +484,7 @@ export function Composer({
     if (composerRestore.error) setChatError(composerRestore.error)
     // Skills are not "newer input": they stay on after a send, so their presence
     // says nothing about whether the person has started typing something else.
-    if (liveValue.current || liveAttachments.current.length > 0 || liveStartingTemplate.current) {
+    if (liveValue.current || liveAttachments.current.length > 0) {
       return
     }
     activeRestoreToken.current = null
@@ -502,39 +496,23 @@ export function Composer({
     liveValue.current = composerRestore.value
     liveAttachments.current = composerRestore.attachments
     liveActivatedSkillIds.current = skills
-    liveStartingTemplate.current = composerRestore.startingTemplate
     setValue(composerRestore.value)
     setAttachments(composerRestore.attachments)
     setActivatedSkillIds(skills)
-    setStartingTemplate(composerRestore.startingTemplate)
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
-  // Values typed into the starting point's blanks, keyed by blank index.
-  const [startingValues, setStartingValues] = useState<Record<number, string>>({})
+  // Values typed into the template's blanks, keyed by blank index.
+  const [blankValues, setBlankValues] = useState<Record<number, string>>({})
 
   useEffect(() => {
-    if (!pendingStartingTemplate) return
+    if (!pendingTemplateBlanks) return
     activeRestoreToken.current = null
-    liveStartingTemplate.current = pendingStartingTemplate
-    setStartingTemplate(pendingStartingTemplate)
-    setStartingValues({})
-    setPendingStartingTemplate(null)
-    if (pendingStartingTemplate.text) setValue(pendingStartingTemplate.text)
-    // A starting point turns on what it declares it needs; both stay switchable.
-    if (pendingStartingTemplate.needs?.includes('web')) setWebSearchMode('on')
-    const wanted = pendingStartingTemplate.skills ?? []
-    if (wanted.length) {
-      const ids = usableSkills
-        .filter((skill) => wanted.includes(skill.name))
-        .map((skill) => skill.id)
-        .slice(0, 3)
-      if (ids.length) setActivatedSkillIds(ids)
-    }
+    setTemplateBlanks(pendingTemplateBlanks)
+    setBlankValues({})
+    setPendingTemplateBlanks(null)
     requestAnimationFrame(() => ref.current?.focus())
-    // usableSkills is stable between a pick and this effect; listing it would re-apply the pick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingStartingTemplate, setPendingStartingTemplate])
+  }, [pendingTemplateBlanks, setPendingTemplateBlanks])
   const [uploading, setUploading] = useState(false)
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
@@ -655,21 +633,16 @@ export function Composer({
     sessionId: id,
     value: liveValue.current,
     attachments: liveAttachments.current,
-    startingTemplate: liveStartingTemplate.current,
     activatedSkillIds: liveActivatedSkillIds.current,
     webSearchMode: liveWebSearchMode.current,
-    startingValues,
   })
   const restoreComposer = (held: ComposerSnapshot) => {
     liveValue.current = held.value
     liveAttachments.current = held.attachments
     liveActivatedSkillIds.current = held.activatedSkillIds
-    liveStartingTemplate.current = held.startingTemplate
     setValue(held.value)
     setAttachments(held.attachments)
     setActivatedSkillIds(held.activatedSkillIds)
-    setStartingTemplate(held.startingTemplate)
-    setStartingValues(held.startingValues ?? {})
     setWebSearchMode(held.webSearchMode)
     draftStore.set(held.sessionId, held.value)
   }
@@ -713,10 +686,6 @@ export function Composer({
         liveAttachments.current = held.attachments
         setAttachments(held.attachments)
       }
-      if (held.startingTemplate) {
-        liveStartingTemplate.current = held.startingTemplate
-        setStartingTemplate(held.startingTemplate)
-      }
       if (held.activatedSkillIds.length) {
         liveActivatedSkillIds.current = held.activatedSkillIds
         setActivatedSkillIds(held.activatedSkillIds)
@@ -731,8 +700,7 @@ export function Composer({
       : []
     liveActivatedSkillIds.current = standing
     setActivatedSkillIds(standing)
-    liveStartingTemplate.current = null
-    setStartingTemplate(null)
+    setTemplateBlanks(null)
     liveAttachments.current = []
     setAttachments([])
     setWebSearchMode('auto')
@@ -796,9 +764,7 @@ export function Composer({
     null
   // Same gate as the gallery button.
   const hasTemplates =
-    offersTemplates(kind) &&
-    (designTemplates.some((row) => row.surface === kind) ||
-      promptTemplates.some((row) => row.kind === kind))
+    offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
   // The empty screen, with its own gallery button, is gone.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
@@ -950,9 +916,8 @@ export function Composer({
     }))
     liveAttachments.current = files
     setAttachments(files)
-    liveStartingTemplate.current = null
-    setStartingTemplate(null)
-    setStartingValues({})
+    setTemplateBlanks(null)
+    setBlankValues({})
     requestAnimationFrame(() => { ref.current?.focus(); ref.current?.scrollIntoView({ block: 'nearest' }) })
     // A message edit is an explicit one-time injection, not an ordinary draft update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -978,7 +943,6 @@ export function Composer({
     files: FileRow[],
     search: WebSearchSetting,
     skillIds: string[],
-    startedFrom: StartingPoint | null,
     action?: PrivacyAction,
     decisionToken?: string,
     restoreToken?: number,
@@ -1010,7 +974,6 @@ export function Composer({
         attachments: files.map((file) => file.id),
         attachmentNames: files.map((file) => file.name),
         activatedSkillIds: skillIds,
-        startingTemplate: startedFrom ?? undefined,
         privacyAction: action,
         privacyDecisionToken: decisionToken,
         reconcileBeforeRetry: Boolean(editScope),
@@ -1051,7 +1014,6 @@ export function Composer({
           text,
           attachments: files,
           activatedSkillIds: skillIds,
-          startingTemplate: startedFrom,
           webSearch: search,
           restoreToken: restoreToken ?? ++restoreSequence.current,
         })
@@ -1068,7 +1030,6 @@ export function Composer({
           value: '',
           attachments: [],
           activatedSkillIds: skillIds,
-          startingTemplate: null,
           error: t(GATEWAY_NOTICE),
         })
         void useStore.getState().openSession(attemptedSessionId)
@@ -1087,7 +1048,6 @@ export function Composer({
         value: text,
         attachments: files,
         activatedSkillIds: skillIds,
-        startingTemplate: startedFrom,
         error: notice,
       })
       throw error
@@ -1103,11 +1063,9 @@ export function Composer({
       liveValue.current = pendingPrivacy.text
       liveAttachments.current = pendingPrivacy.attachments
       liveActivatedSkillIds.current = pendingPrivacy.activatedSkillIds
-      liveStartingTemplate.current = pendingPrivacy.startingTemplate
       setValue(pendingPrivacy.text)
       setAttachments(pendingPrivacy.attachments)
       setActivatedSkillIds(pendingPrivacy.activatedSkillIds)
-      setStartingTemplate(pendingPrivacy.startingTemplate)
     }
     setReusableSessionId(pendingPrivacy.sessionId)
     setPendingPrivacy(null)
@@ -1178,36 +1136,25 @@ export function Composer({
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
 
-  // Prefixes the filled blanks to the request; empty blanks are omitted.
-  const withStartingValues = (typed: string) => {
-    if (!startingTemplate) return typed
-    // A media template fills one sentence; an empty blank keeps its example.
-    if (startingTemplate.examplePrompt && startingTemplate.blanks) {
-      const values = Object.fromEntries(
-        startingTemplate.blanks.map((blank, index) => [
-          blank.name,
-          (startingValues[index] ?? '').trim() || startingTemplate.examples?.[index] || '',
-        ]),
-      )
-      const sentence = startingTemplate.examplePrompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
-        name in values ? values[name] : whole,
-      )
-      return [sentence, typed].filter(Boolean).join('\n')
-    }
-    const lines = startingTemplate.fills
-      .map((fill, index) => [fill, (startingValues[index] ?? '').trim()] as const)
-      .filter(([, filled]) => filled)
-      .map(([fill, filled]) => `${fill}: ${filled}`)
-    if (!lines.length) return typed
-    return [startingTemplate.title, ...lines, typed].filter(Boolean).join('\n')
+  // A media template fills one sentence; an empty blank keeps its default.
+  const withBlankValues = (typed: string) => {
+    if (!templateBlanks?.blanks) return typed
+    const values = Object.fromEntries(
+      templateBlanks.blanks.map((blank, index) => [
+        blank.name,
+        (blankValues[index] ?? '').trim() || templateBlanks.examples?.[index] || '',
+      ]),
+    )
+    const sentence = templateBlanks.examplePrompt.replace(/\{(\w+)\}/g, (whole, name: string) =>
+      name in values ? values[name] : whole,
+    )
+    return [sentence, typed].filter(Boolean).join('\n')
   }
-  // A media template's sentence is whole even with empty blanks.
-  const startingFilled =
-    Object.values(startingValues).some((one) => one.trim()) ||
-    Boolean(startingTemplate?.examplePrompt)
+  // The template's sentence is whole even with empty blanks.
+  const blanksFilled = Boolean(templateBlanks?.blanks)
 
   const submit = (spoken?: string) => {
-    const text = withStartingValues((spoken ?? value).trim())
+    const text = withBlankValues((spoken ?? value).trim())
     if (!text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
@@ -1252,7 +1199,7 @@ export function Composer({
           setValue('')
           setAttachments([])
           setActivatedSkillIds([])
-          await deliverChat(context.forkId, text, files, search, skillIds, null, undefined, undefined, restoreToken)
+          await deliverChat(context.forkId, text, files, search, skillIds, undefined, undefined, restoreToken)
         } catch (error) {
           if (!ownsEdit()) return
           liveValue.current = text
@@ -1280,7 +1227,6 @@ export function Composer({
     const attachmentLabels = attachments.map((f) => f.name)
     const sentAttachments = attachments
     const sentSkillIds = activeSkills.map((skill) => skill.id)
-    const sentStartingTemplate = startingTemplate
     setChatError(null)
     const restoreToken = ++restoreSequence.current
     activeRestoreToken.current = kind === 'chat' ? restoreToken : null
@@ -1289,12 +1235,11 @@ export function Composer({
     liveValue.current = ''
     liveAttachments.current = []
     // Skills stay on: picked once, they apply to the conversation's later turns too.
-    // A starting point is spent on one turn, unlike the template chip.
-    liveStartingTemplate.current = null
+    // The blanks are spent on one turn, unlike the template chip.
     setValue('')
     setAttachments([])
-    setStartingTemplate(null)
-    setStartingValues({})
+    setTemplateBlanks(null)
+    setBlankValues({})
     if (kind === 'av' && avOptions.mode === 'video') {
       // Video is a job; the card tracks it.
       void generateVideo(sessionId, text, {
@@ -1320,10 +1265,10 @@ export function Composer({
       return
     }
     // A document request typed into chat starts a new conversation on the
-    // report or slides surface; starting points keep it here. An agent chat moves
+    // report or slides surface. An agent chat moves
     // only to a surface the agent names, and keeps the agent and the conversation.
     // A conversation that runs a user pipeline answers here: the pipeline is what it is for.
-    const movable = kind === 'chat' && !sentStartingTemplate && !session?.pipelineId && !sessionAgent?.pipelineId
+    const movable = kind === 'chat' && !session?.pipelineId && !sessionAgent?.pipelineId
     const detected = movable ? handoffSurface(text) : null
     const agentHandoff =
       movable && sessionId && sessionAgent
@@ -1340,7 +1285,6 @@ export function Composer({
           value: text,
           attachments: sentAttachments,
           activatedSkillIds: sentSkillIds,
-          startingTemplate: sentStartingTemplate,
           error: errorMessage(error, t('문서로 넘기지 못했습니다. 다시 시도하세요.')),
         })
       })
@@ -1366,7 +1310,6 @@ export function Composer({
           value: text,
           attachments: sentAttachments,
           activatedSkillIds: sentSkillIds,
-          startingTemplate: sentStartingTemplate,
           error: freshnessRefusal ? refusalSentence(errorCode(error), t) ?? '' : '',
         })
       })
@@ -1379,7 +1322,6 @@ export function Composer({
         sentAttachments,
         sentWebSearch,
         sentSkillIds,
-        sentStartingTemplate,
         undefined,
         undefined,
         restoreToken,
@@ -1400,7 +1342,6 @@ export function Composer({
       // Writing surfaces only; an image template is applied by `generateImages`.
       renderTemplateId:
         shownTemplate && shownTemplate.kind !== 'image' ? shownTemplate.id : undefined,
-      startingTemplate: sentStartingTemplate ?? undefined,
       // Sending from /new/:kind creates a session; the URL has to follow it.
       onSession: (id) => {
         landedSessionId = id
@@ -1416,7 +1357,6 @@ export function Composer({
           value: text,
           attachments: sentAttachments,
           activatedSkillIds: sentSkillIds,
-          startingTemplate: sentStartingTemplate,
           error:
             errorCode(error) === 'freshness_verification_unavailable'
               ? refusalSentence(errorCode(error), t) ?? ''
@@ -1456,7 +1396,7 @@ export function Composer({
           activeSkills.length > 0 ||
           autoBypassPreview ||
           autoPausedForCompare ||
-          startingTemplate ||
+          templateBlanks ||
           // Same rule as the chip below: the session's own shape survives a reload.
           shownTemplate ||
           (compareMode && kind === 'chat')) && (
@@ -1521,11 +1461,8 @@ export function Composer({
                   onClick={() => {
                     setPendingTemplate(null)
                     // The template's questions go with it.
-                    if (startingTemplate?.examplePrompt) {
-                      liveStartingTemplate.current = null
-                      setStartingTemplate(null)
-                      setStartingValues({})
-                    }
+                    setTemplateBlanks(null)
+                    setBlankValues({})
                     // Sticky server-side once used, so clear the session row too.
                     if (session?.renderTemplateId) {
                       void setSessionTemplate(session.id, null)
@@ -1542,34 +1479,23 @@ export function Composer({
                 </button>
               </Badge>
             )}
-            {/* Hidden for a media template, whose chip above already names it. */}
-            {startingTemplate && (!startingTemplate.examplePrompt || !pendingTemplate) && (
+            {/* Hidden while the template chip above names it. */}
+            {templateBlanks && !pendingTemplate && (
               <Badge tone="accent">
                 <LayoutTemplate size={11} />
-                {startingTemplate.title}
+                {templateBlanks.title}
                 <button
                   type="button"
                   onClick={() => {
                     activeRestoreToken.current = null
-                    liveStartingTemplate.current = null
-                    setStartingTemplate(null)
+                    setTemplateBlanks(null)
                   }}
-                  aria-label={t('{name} 시작점 해제').replace('{name}', startingTemplate.title)}
+                  aria-label={t('{name} 서식 해제').replace('{name}', templateBlanks.title)}
                   className="ml-0.5 text-faint hover:text-fg"
                 >
                   <X size={10} />
                 </button>
               </Badge>
-            )}
-            {startingTemplate?.needs?.includes('file') && attachments.length === 0 && (
-              <button
-                type="button"
-                onClick={() => fileInput.current?.click()}
-                className="inline-flex h-6 items-center gap-1 rounded-full border border-warn/40 bg-warn/10 px-2 text-xs text-warn hover:bg-warn/20"
-              >
-                <Paperclip size={11} />
-                {t('이 일에는 파일이 필요합니다 — 첨부하기')}
-              </button>
             )}
             {activeSkills.map((skill) => (
               <Badge key={skill.id} tone="accent">
@@ -1663,17 +1589,17 @@ export function Composer({
           </div>
         )}
 
-        {/* Starting-point blanks; filled ones are prefixed to the request. */}
-        {!pending && startingTemplate && startingTemplate.fills.length > 0 && (
+        {/* Template blanks; they fill the template's sentence. */}
+        {!pending && templateBlanks && templateBlanks.fills.length > 0 && (
           <div
             role="group"
-            aria-label={t('{name} 시작점 질문').replace('{name}', startingTemplate.title)}
+            aria-label={t('{name} 빈칸').replace('{name}', templateBlanks.title)}
             className="grid gap-x-3 gap-y-2 border-b border-line px-3 py-2.5 sm:grid-cols-2"
           >
-            {startingTemplate.fills.map((fill, index) => {
-              const blank = startingTemplate.blanks?.[index]
+            {templateBlanks.fills.map((fill, index) => {
+              const blank = templateBlanks.blanks?.[index]
               const set = (next: string) => {
-                setStartingValues((all) => ({ ...all, [index]: next }))
+                setBlankValues((all) => ({ ...all, [index]: next }))
                 // An aspect blank also sets the aspect chip, which is what the request reads.
                 if (blank?.name === 'aspect') {
                   const ratio = /^\s*(\d+:\d+)/.exec(next)?.[1]
@@ -1686,9 +1612,9 @@ export function Composer({
                   {blank?.options?.length ? (
                     <select
                       // Unpicked, the template default shows and is sent.
-                      value={startingValues[index] ?? startingTemplate.examples?.[index] ?? ''}
+                      value={blankValues[index] ?? templateBlanks.examples?.[index] ?? ''}
                       onChange={(e) => set(e.target.value)}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      aria-label={`${templateBlanks.title} · ${fill}`}
                       className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm focus:border-accent focus:outline-none"
                     >
                       {blank.options.map((option) => (
@@ -1697,16 +1623,16 @@ export function Composer({
                     </select>
                   ) : blank?.long ? (
                     <textarea
-                      value={startingValues[index] ?? ''}
+                      value={blankValues[index] ?? ''}
                       onChange={(e) => set(e.target.value)}
                       rows={4}
-                      placeholder={startingTemplate.examples?.[index] || ''}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      placeholder={templateBlanks.examples?.[index] || ''}
+                      aria-label={`${templateBlanks.title} · ${fill}`}
                       className="w-full resize-y rounded-control border border-line bg-panel px-2 py-1.5 text-sm leading-relaxed placeholder:text-faint focus:border-accent focus:outline-none"
                     />
                   ) : (
                     <input
-                      value={startingValues[index] ?? ''}
+                      value={blankValues[index] ?? ''}
                       onChange={(e) => set(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1714,8 +1640,8 @@ export function Composer({
                           submit()
                         }
                       }}
-                      placeholder={startingTemplate.examples?.[index] || ''}
-                      aria-label={`${startingTemplate.title} · ${fill}`}
+                      placeholder={templateBlanks.examples?.[index] || ''}
+                      aria-label={`${templateBlanks.title} · ${fill}`}
                       className="h-8 w-full rounded-control border border-line bg-panel px-2 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
                     />
                   )}
@@ -1735,7 +1661,7 @@ export function Composer({
           onChange={(e) => {
             activeRestoreToken.current = null
             liveValue.current = e.target.value
-            // Written synchronously: picking a starting point navigates before an effect would run.
+            // Written synchronously: a send navigates before an effect would run.
             if (!editing) draftStore.set(draftKey, e.target.value)
             setValue(e.target.value)
           }}
@@ -1763,7 +1689,7 @@ export function Composer({
                   ? pending.stage === 'clarify'
                     ? t('답을 적거나, 위에서 고르세요')
                     : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                  : startingTemplate && startingTemplate.fills.length > 0
+                  : templateBlanks && templateBlanks.fills.length > 0
                     ? t('덧붙일 말이 있으면 여기에 적으세요')
                     : t(placeholders[kind])
           }
@@ -1823,16 +1749,16 @@ export function Composer({
             </button>
           )}
 
-          {/* Only once the conversation has started; the empty screen offers the same button. */}
-          {hasTemplates && started && !folded && !editing && (
+          {/* Home, or once the conversation has started; an empty session screen offers the same button. */}
+          {hasTemplates && (started || !sessionId) && !folded && !editing && (
             <button
               onClick={() => setGalleryOpen(true)}
               className={cn(
                 'grid size-9 shrink-0 place-items-center rounded-control transition-colors hover:bg-elevated hover:text-fg',
                 shownTemplate ? 'text-accent' : 'text-muted',
               )}
-              aria-label={t('작업 시작하기')}
-              title={t('업무 시작점이나 결과 서식을 고릅니다')}
+              aria-label={t('서식 고르기')}
+              title={t('결과물의 서식을 고릅니다')}
             >
               <LayoutGrid size={16} />
             </button>
@@ -2010,7 +1936,7 @@ export function Composer({
                   moreOpen ? 'bg-elevated text-fg' : 'text-muted',
                 )}
                 aria-label={moreOpen ? t('도구 접기') : t('도구 더보기')}
-                title={t('시작점·스킬·커넥터·에이전트')}
+                title={t('서식·스킬·커넥터·에이전트')}
               >
                 <MoreHorizontal size={16} />
               </button>
@@ -2120,7 +2046,7 @@ export function Composer({
             )}
             <button
               onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-              disabled={(!value.trim() && !startingFilled && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
+              disabled={(!value.trim() && !blanksFilled && !streaming) || modelSelectionPending || editPending || uploading || !!pendingPrivacy}
               className={cn(
                 'grid size-9 place-items-center rounded-full transition-colors',
                 streaming
@@ -2133,7 +2059,7 @@ export function Composer({
                   ? t('생성을 멈춥니다')
                   : modelSelectionPending
                     ? t('모델 설정 저장 중…')
-                  : !value.trim() && !startingFilled
+                  : !value.trim() && !blanksFilled
                     ? t('보낼 내용을 먼저 입력하세요')
                     : unsupportedVideo
                       ? t('이 모델은 이 조합을 만들지 않습니다')
@@ -2227,7 +2153,6 @@ export function Composer({
                       pendingPrivacy.attachments,
                       false,
                       pendingPrivacy.activatedSkillIds,
-                      pendingPrivacy.startingTemplate,
                       'route_strict_local',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,
@@ -2249,7 +2174,6 @@ export function Composer({
                     pendingPrivacy.attachments,
                     pendingPrivacy.webSearch,
                     pendingPrivacy.activatedSkillIds,
-                    pendingPrivacy.startingTemplate,
                     'mask_external',
                     pendingPrivacy.decision.decisionToken,
                     pendingPrivacy.restoreToken,
@@ -2272,7 +2196,6 @@ export function Composer({
                       pendingPrivacy.attachments,
                       pendingPrivacy.webSearch,
                       pendingPrivacy.activatedSkillIds,
-                      pendingPrivacy.startingTemplate,
                       'send_raw_external',
                       pendingPrivacy.decision.decisionToken,
                       pendingPrivacy.restoreToken,

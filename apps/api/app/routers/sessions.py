@@ -1233,7 +1233,6 @@ def _raise_workspace_error(exc: WorkspaceContextError) -> None:
         "agent_not_found",
         "project_not_found",
         "attachment_not_found",
-        "starting_template_not_found",
     }
     raise HTTPException(
         status_code=(
@@ -1424,7 +1423,7 @@ def _reads_pasted_material(content: str) -> bool:
     head, gap, rest = (content or "").partition("\n\n")
     lines = [line for line in rest.splitlines() if line.strip()]
     looks_pasted = len(rest.strip()) >= 120 and (
-        len(lines) >= 3 or bool(re.match(r"\s*[\[#|「<]", rest)))
+        len(lines) >= 3 or bool(re.match(r"[\[#|「<]", rest.lstrip())))
     return bool(gap) and len(head) <= 300 and looks_pasted and not freshness.names_the_present(
         head)
 
@@ -3221,9 +3220,6 @@ async def send_message(
                 "activated_skill_ids": turn_options.get(
                     "activatedSkillIds", payload.activated_skill_ids
                 ),
-                "starting_template_id": turn_options.get(
-                    "startingTemplateId", payload.starting_template_id
-                ),
             }
         )
 
@@ -3524,7 +3520,6 @@ async def send_message(
             vision=reads_pictures(requested_model),
             file_budget=file_budget(requested_model),
             activated_skill_ids=active_skill_ids,
-            starting_template_id=payload.starting_template_id,
             # Empty focus takes the head of the file.
             focus=focus or (content if session.kind is not SessionKind.chat else ""),
             question=_asked_about(content, history),
@@ -3715,7 +3710,6 @@ async def send_message(
                 vision=reads_pictures(model),
                 file_budget=file_budget(model),
                 activated_skill_ids=active_skill_ids,
-                starting_template_id=payload.starting_template_id,
                 question=_asked_about(content, history),
                 available_tool_names={tool.name for tool in tools},
             )
@@ -3765,7 +3759,6 @@ async def send_message(
     turn_options = {
         "webSearch": payload.web_search,
         "activatedSkillIds": active_skill_ids,
-        "startingTemplateId": payload.starting_template_id,
     }
     # Stored for a retry to replay; a turn on the defaults stores nothing, so a document
     # turn on the model it asked for still carries no route note.
@@ -3869,7 +3862,6 @@ async def send_message(
             payload.attachments
             or forced_tool
             or active_skill_ids
-            or payload.starting_template_id
             or session.agent_id
             or session.project_id
         )
@@ -3960,7 +3952,6 @@ async def send_message(
             content=typed_content if pending else stored_content,
             attachments=attachment_meta,
             routing=privacy_resolution.routing if privacy_resolution else document_routing,
-            started_from=workspace.started_from,
         )
     if session.kind is SessionKind.chat and not await _claim_turn(db, session):
         # Another replica holds this session's turn. Claimed in the same transaction as
@@ -5486,7 +5477,6 @@ async def compare_models(
             file_budget=min(file_budget(m) for m in chosen),
             # The conversation's standing skills apply to a comparison too.
             activated_skill_ids=list(payload.activated_skill_ids) or list(session.skill_ids or []),
-            starting_template_id=payload.starting_template_id,
             question=content,
             # Comparison exposes no tools.
             available_tool_names=set(),
@@ -5561,7 +5551,6 @@ async def compare_models(
             content=stored_content,
             attachments=attachment_meta,
             routing=resolved.routing,
-            started_from=workspace.started_from,
         )
     )
     session.updated_at = utcnow()

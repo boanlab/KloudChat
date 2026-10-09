@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import zipfile
 
@@ -76,8 +77,8 @@ _HELD_BLOCKS = [
 ]
 
 
-def _held_html(template_id: str = "doc-report") -> str:
-    template = dt.get(template_id)
+def _held_html(template_id: str = dt.GENERIC_ID) -> str:
+    template = dt.rendering(template_id)
     blocks = [{**b, "html": dt.sanitise(b["html"])} for b in _HELD_BLOCKS]
     return dt.render(
         template, title="서버 교체 검토", tokens=_TOKENS, body=dt.assemble(template, blocks)
@@ -90,8 +91,10 @@ def _deck_html(template_id: str = "deck-editorial") -> str:
     return dt.render(template, title="연구실 장비 점검", tokens=_TOKENS, body=body)
 
 
-def _doc_html(template_id: str = "doc-report") -> str:
-    template = dt.get(template_id)
+def _doc_html(template_id: str = dt.GENERIC_ID, *, grouped: bool = False) -> str:
+    template = dt.rendering(template_id)
+    if grouped:
+        template = dataclasses.replace(template, wrap_group='<div class="grid">{blocks}</div>')
     body = dt.assemble(template, _DOC_BLOCKS)
     return dt.render(template, title="서버 교체 검토", tokens=_TOKENS, body=body)
 
@@ -152,7 +155,7 @@ def test_a_document_becomes_sections_the_report_exporters_understand():
 
 def test_the_one_pager_grid_does_not_swallow_its_cards():
     """Sections inside a `div.grid` are still read as sections."""
-    sections = page_export.to_sections(_doc_html("doc-brief"))
+    sections = page_export.to_sections(_doc_html(grouped=True))
     assert [s["heading"] for s in sections] == ["서버 교체 검토", "배경"]
 
 
@@ -298,7 +301,11 @@ def test_every_deck_template_converts(template_id):
     assert deck_export.to_pdf("t", slides, tokens=_TOKENS)[:4] == b"%PDF"
 
 
-@pytest.mark.parametrize("template_id", ["doc-report", "doc-brief", "doc-notice", "doc-minutes"])
+# `doc-report` is retired: a document still naming it exports in the shared seed.
+@pytest.mark.parametrize(
+    "template_id",
+    [dt.GENERIC_ID, "doc-report", "doc-comparison", "doc-internal-draft", "doc-minutes"],
+)
 def test_both_document_templates_reach_every_report_format(template_id):
     sections = page_export.to_sections(_doc_html(template_id))
     assert report_export.to_docx("t", sections, tokens=_TOKENS)[:2] == b"PK"
@@ -316,7 +323,7 @@ def _hwpx_text(blob: bytes) -> str:
         return archive.read("Contents/section0.xml").decode()
 
 
-@pytest.mark.parametrize("template_id", ["doc-report", "doc-lab", "doc-brief"])
+@pytest.mark.parametrize("template_id", [dt.GENERIC_ID, "doc-gaejo-report", "doc-comparison"])
 def test_nothing_a_document_may_hold_is_dropped_on_the_way_to_a_file(template_id):
     """Cover facts, footnotes and code reach the .docx, .hwpx and .pdf."""
     sections = page_export.to_sections(_held_html(template_id))
@@ -345,4 +352,4 @@ def test_a_dark_template_presents_on_a_dark_ground():
 def test_only_the_template_that_says_so_is_dark():
     assert dt.get("deck-signal").dark is True
     assert dt.get("deck-editorial").dark is False
-    assert dt.get("doc-report").dark is False
+    assert dt.rendering("_document").dark is False

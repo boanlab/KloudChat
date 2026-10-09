@@ -575,7 +575,29 @@ export interface AuditRow {
   region: string
   userAgent: string
   severity: string
-  metadata?: Record<string, unknown> | null
+  /** `changes` is `{field: [old, new]}` on events written since the diff; secrets come masked. */
+  metadata?: (Record<string, unknown> & { changes?: Record<string, [unknown, unknown]> }) | null
+}
+
+export interface AuditPage {
+  items: AuditRow[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface AuditQuery {
+  page: number
+  size: number
+  /** Comma list of codes; `x.*` takes a prefix. */
+  action?: string
+  account?: string
+  q?: string
+  /** Codes whose screen label matched `q`, searched with it. */
+  qActions?: string
+  /** ISO instants; `until` is exclusive. */
+  since?: string
+  until?: string
 }
 
 export interface GovernancePolicy {
@@ -760,7 +782,13 @@ export const usageApi = {
       '/admin/storage/reclaim',
       { method: 'POST' },
     ),
-  audit: (limit = 100) => call<AuditRow[]>(`/admin/audit?limit=${limit}`),
+  audit: (query: AuditQuery) => {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    return call<AuditPage>(`/admin/audit?${params}`)
+  },
 }
 
 /* ── sessions ───────────────────────────────────────────────────────────
@@ -794,7 +822,7 @@ export interface MessageRow {
   usage: Message['usage'] | null
   model: string | null
   routing: MessageRouting | null
-  /** The 시작점 this turn began from, with its title as it read then; the template may since be deleted. */
+  /** Legacy: the retired 시작점 an old turn began from, with its title as it read then. */
   startedFrom: { templateId: string; title: string } | null
   /** What the reader thought of this answer. Null until somebody says. */
   rating: 'up' | 'down' | null
@@ -1189,58 +1217,6 @@ interface ArtifactQuery {
   limit?: number
   beforeAt?: string
   beforeId?: string
-}
-
-/** A 시작점 the instance ships with. Server-side, so a template carried by id resolves. */
-export interface PromptTemplateRow {
-  id: string
-  kind: SessionKind
-  group: string
-  title: string
-  /** What you get. One line, no feature list. */
-  description: string
-  /** What you have to bring. The composer asks for these by name. */
-  fills: string[]
-  /** The framing the turn carries. Shown only on the two media surfaces, where the sentence is the prompt. */
-  prompt: string
-  /** The 서식 this job comes out wearing, or `''` when the surface chooses one from the subject. */
-  renderTemplateId: string
-  /** One worked example per blank, in `fills` order. Missing ones are ''. */
-  examples?: string[]
-  /** What the job cannot run without: 'web' | 'file'. */
-  needs?: string[]
-  /** Workspace skills to switch on for the turn, by name. */
-  skills?: string[]
-}
-
-export const promptTemplatesApi = {
-  list: () => call<PromptTemplateRow[]>('/prompt-templates'),
-}
-
-/**
- * A 시작점 somebody added. Same fields as a built-in one so the gallery can
- * concatenate the two lists instead of branching on origin.
- */
-export interface TemplateRow extends PromptTemplateRow {
-  /** An uploaded form this template writes into, when there is one. */
-  fileId: string | null
-  fileName: string
-  fileTokens: number
-  fileError: string | null
-  /** Offered to every account. Administrators only. */
-  shared: boolean
-  /** Whether the caller may edit or remove it. */
-  mine: boolean
-  updatedAt: string
-}
-
-export const templatesApi = {
-  list: () => call<TemplateRow[]>('/templates'),
-  create: (payload: Omit<Partial<TemplateRow>, 'kind'> & { kind: SessionKind; title: string }) =>
-    call<TemplateRow>('/templates', body(payload)),
-  update: (id: string, patch: Partial<TemplateRow>) =>
-    call<TemplateRow>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  remove: (id: string) => call<void>(`/templates/${id}`, { method: 'DELETE' }),
 }
 
 // Re-exported for callers that only import from this module.
@@ -1816,8 +1792,6 @@ export async function* streamSession(
     activatedSkillIds?: string[]
     /** A rendering template. Sticky on the session; `''` clears it. */
     renderTemplateId?: string
-    /** A 시작점 carried by this turn only; never stored on the session. */
-    startingTemplateId?: string
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
     /** Write the outline waiting on this session instead of planning another. */
@@ -1849,7 +1823,6 @@ export async function* streamComparison(
     content: string
     models: string[]
     activatedSkillIds?: string[]
-    startingTemplateId?: string
     attachments?: string[]
     privacyAction?: PrivacyAction
     privacyDecisionToken?: string
@@ -1974,4 +1947,339 @@ async function* postStream(
   } finally {
     signal?.removeEventListener('abort', abort)
   }
+}
+
+/* ── issue reports (「문의·신고」) ───────────────────────────────────────── */
+
+export type IssueKind = 'bug' | 'feature' | 'other'
+export type IssueStatus = 'received' | 'checking' | 'resolved' | 'on_hold'
+
+/** What the snapshot left out to stay under its size cap. */
+export interface IssueCut {
+  code: 'evidence' | 'versions' | 'steps' | 'content' | 'artifacts' | 'messages' | 'bodies'
+  count?: number
+}
+
+export interface IssueRow {
+  id: string
+  kind: IssueKind
+  status: IssueStatus
+  body: string
+  holdReason: string
+  sessionId: string | null
+  messageId: string | null
+  artifactId: string | null
+  sessionShared: boolean
+  hasScreenshot: boolean
+  snapshot: {
+    title: string
+    kind: string
+    messages: number
+    artifacts: number
+    files: number
+    bytes: number
+    truncated: IssueCut[]
+  } | null
+  /** An administrator replied or changed the status since the reporter last looked. */
+  unread: boolean
+  assignee: { id: string; name: string } | null
+  /** Administrator views only. */
+  reporter: { id: string; name: string; email: string } | null
+  replies: number | null
+  createdAt: string
+  updatedAt: string
+  adminUpdatedAt: string | null
+}
+
+export interface IssueReply {
+  id: string
+  authorRole: 'admin' | 'user'
+  authorName: string
+  body: string
+  /** Set when the entry records a status change. */
+  status: IssueStatus | null
+  createdAt: string
+}
+
+/** Recorded with every report; never message text. */
+export interface IssueContext {
+  client?: Record<string, string>
+  apiVersion?: string
+  session?: {
+    id: string
+    kind: string
+    model: string
+    routingMode: string
+    agent: string | null
+    pipeline: string | null
+    renderTemplateId: string | null
+    messageCount: number
+    strictLocal: boolean
+  }
+  models?: string[]
+  failures?: { messageId: string; failure: string }[]
+  runs?: RunRow[]
+  artifacts?: { id: string; kind: string; version: number; versionIds: string[] }[]
+  pinned?: { messageId: string | null; artifactId: string | null }
+}
+
+export interface IssueDetail extends IssueRow {
+  thread: IssueReply[]
+  context?: IssueContext
+  admins?: { id: string; name: string }[]
+  transitions?: IssueStatus[]
+}
+
+export interface IssueSessionInfo {
+  id: string
+  title: string
+  kind: string
+  messageCount: number
+  artifactCount: number
+  fileCount: number
+  runCount: number
+  /** A turn ran on the strict-local (internal data) route: sharing asks once more. */
+  strictLocal: boolean
+  models: string[]
+  agent: string | null
+  pipeline: string | null
+}
+
+/** The read-only copy of a session, as an administrator opens it. */
+export interface IssueSnapshot {
+  session: {
+    id: string
+    title: string
+    kind: string
+    model: string
+    agent: string | null
+    project: string | null
+    pipeline: string | null
+    artifactId: string | null
+    createdAt: string | null
+    updatedAt: string | null
+  }
+  messages: MessageRow[]
+  runs: RunRow[]
+  artifacts: {
+    id: string
+    kind: string
+    title: string
+    version: number
+    data: unknown
+    updatedAt: string | null
+    versions: { id: string; version: number; summary: string; createdAt: string | null; data?: unknown }[]
+    blobCopied: boolean
+  }[]
+  files: { id: string; name: string; mime: string; size: number; createdAt: string | null; copied: boolean }[]
+  pinned: { messageId: string | null; artifactId: string | null }
+  truncated: IssueCut[]
+}
+
+export interface IssueCreate {
+  kind: IssueKind
+  body: string
+  sessionId?: string
+  shareSession: boolean
+  confirmInternal?: boolean
+  messageId?: string
+  artifactId?: string
+  screenshotFileId?: string
+  client: Record<string, string>
+}
+
+export interface AdminIssueFilters {
+  kind?: string
+  status?: string
+  since?: string
+  until?: string
+  user?: string
+  q?: string
+  assignee?: string
+  page?: number
+  size?: number
+}
+
+async function issueBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    credentials: 'include',
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  })
+  if (!res.ok) {
+    const detail = await readDetail(res)
+    if (res.status === 401) throw new UnauthorizedError(detail)
+    throw new ApiError(res.status, detail)
+  }
+  return res.blob()
+}
+
+export const issuesApi = {
+  sessionInfo: (sessionId: string) => call<IssueSessionInfo>(`/issues/session-info/${sessionId}`),
+  create: (payload: IssueCreate) => call<IssueRow>('/issues', body(payload)),
+  list: () => call<IssueRow[]>('/issues'),
+  unread: () => call<{ count: number }>('/issues/unread'),
+  get: (id: string) => call<IssueDetail>(`/issues/${id}`),
+  markRead: (id: string) => call<{ ok: boolean }>(`/issues/${id}/read`, { method: 'POST' }),
+  reply: (id: string, text: string) => call<IssueReply>(`/issues/${id}/replies`, body({ body: text })),
+  screenshot: (id: string) => issueBlob(`/issues/${id}/screenshot`),
+  adminList: (filters: AdminIssueFilters) => {
+    const query = new URLSearchParams()
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') query.set(key, String(value))
+    }
+    return call<{
+      items: IssueRow[]
+      total: number
+      page: number
+      size: number
+      counts: Record<IssueStatus, number>
+      admins: { id: string; name: string }[]
+    }>(`/admin/issues?${query}`)
+  },
+  adminGet: (id: string) => call<IssueDetail>(`/admin/issues/${id}`),
+  adminUpdate: (id: string, patch: { status?: IssueStatus; holdReason?: string; assigneeId?: string }) =>
+    call<IssueDetail>(`/admin/issues/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  adminReply: (id: string, text: string) => call<IssueReply>(`/admin/issues/${id}/replies`, body({ body: text })),
+  /** Each open is written to the audit trail. */
+  adminSnapshot: (id: string) => call<IssueSnapshot>(`/admin/issues/${id}/snapshot`),
+  adminScreenshot: (id: string) => issueBlob(`/admin/issues/${id}/screenshot`),
+  adminFile: (id: string, index: number, artifact = false) =>
+    issueBlob(`/admin/issues/${id}/files/${index}${artifact ? '?artifact=true' : ''}`),
+}
+
+/* ── performance monitoring (admin) ───────────────────────────────────── */
+
+export type PerfRange = '1h' | '24h' | '7d' | '30d'
+export type PerfLevel = 'ok' | 'warn' | 'critical' | 'info'
+/** `[epoch ms, mean, peak]` per bucket. */
+export type PerfPoint = [number, number, number]
+
+export interface PerfEvidence {
+  source: string
+  name: string
+  subject: string
+  windowMin: number
+  threshold: number | null
+  latest: number | null
+  peak: number | null
+  points: [number, number][]
+}
+
+export interface PerfVerdict {
+  level: PerfLevel
+  code: string
+  title: string
+  detail: string
+  action: string
+  evidence: PerfEvidence[]
+}
+
+export interface PerfChart {
+  key: string
+  title: string
+  unit: string
+  series: { name: string; axis: 'left' | 'right'; unit?: string; points: PerfPoint[] }[]
+}
+
+type N = number | null
+
+export interface PerfOverview {
+  generatedAt: string
+  range: PerfRange
+  stepSec: number
+  status: 'ok' | 'warn' | 'critical'
+  verdicts: PerfVerdict[]
+  collector: {
+    enabled: boolean
+    lastSampleAt: string | null
+    hostAvailable: boolean
+    modelLogAt: string | null
+    targets: string[]
+  }
+  host: {
+    cpuPercent: N
+    cpus: N
+    memPercent: N
+    memUsed: N
+    memTotal: N
+    load1: N
+    netRx: N
+    netTx: N
+    cpuPeak: N
+    memPeak: N
+    disks: { label: string; usedPercent: number; free: N }[]
+    devices: { device: string; busyPercent: number; read: N; write: N }[]
+  }
+  components: {
+    name: string
+    cpuPercent: N
+    cpuCores: N
+    cpuLimitPercent: N
+    cpuCoresPeak: N
+    memBytes: N
+    memLimitPercent: N
+    memPeak: N
+    netRx: N
+    netTx: N
+    ioRead: N
+    ioWrite: N
+  }[]
+  models: {
+    model: string
+    calls: number
+    errors: number
+    errorRate: number
+    latencyP50: N
+    latencyP95: N
+    latencyP95Peak: N
+    ttftP50: N
+    outTokens: number
+  }[]
+  vllm: {
+    model: string
+    up: boolean
+    running: N
+    waiting: N
+    kvCache: N
+    ttftP95: N
+    e2eP95: N
+    genTps: N
+    waitingPeak: N
+    runningPeak: N
+    kvPeak: N
+    ttftP95Peak: N
+    preemptions: number
+    requests: number
+  }[]
+  gpus: {
+    node: string
+    up: boolean
+    util: N
+    memPercent: N
+    temp: N
+    power: N
+    nodeMemPercent: N
+    nodeCpuPercent: N
+    utilPeak: N
+  }[]
+  replicas: { name: string; streams: number; turns: N; requests: N; errors: N; httpP95Ms: N; streamsPeak: N }[]
+  pipeline: { stage: string; runs: number; p50: number; p95: number; max: number }[]
+  charts: PerfChart[]
+  thresholds: {
+    waitingMax: number
+    kvCacheMax: number
+    ttftP95MaxSec: number
+    apiCpuMax: number
+    memMax: number
+    diskWarn: number
+    diskCritical: number
+    errorRateMax: number
+    gpuTempMax: number
+    sustainMin: number
+    apiCpuSustainMin: number
+  }
+}
+
+export const perfApi = {
+  overview: (range: PerfRange) => call<PerfOverview>(`/admin/perf/overview?range=${range}`),
 }

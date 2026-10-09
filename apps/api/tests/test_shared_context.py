@@ -14,7 +14,7 @@ from app.routers import shares as shares_router
 from app.services import design_templates
 
 #: A shape that ships in the image.
-_TEMPLATE_ID = "doc-brief"
+_TEMPLATE_ID = "doc-comparison"
 
 
 @pytest.mark.asyncio

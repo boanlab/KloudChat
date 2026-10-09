@@ -4,6 +4,7 @@ import style from './fixtures/report-table-style.json' with { type: 'json' }
 import expectedMerged from './fixtures/report-table-merged.json' with { type: 'json' }
 import expectedSplit from './fixtures/report-table-split.json' with { type: 'json' }
 import expectedFullWidth from './fixtures/report-table-full-width-merged.json' with { type: 'json' }
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -37,7 +38,7 @@ async function fixture(page: Page, testInfo: TestInfo) {
     if (!url.pathname.startsWith('/api/')) return route.continue()
     const path = url.pathname.slice(4)
     const method = request.method()
-    if (method === 'GET' && path === '/design-templates/doc-report/style') return route.fulfill({ json: style })
+    if (method === 'GET' && path === '/design-templates/_document/style') return route.fulfill({ json: style })
     if (method === 'POST' && path === '/auth/refresh') return route.fulfill({ json: { accessToken: 'fixture-only', expiresIn: 3600,
       user: { id: 'fixture-user', name: 'Report fixture', email: 'fixture@example.test', role: 'user',
         status: 'active', monthlyCredits: 1000, creditsUsed: 0, avatarColor: '#168267', allowedModels: [],
@@ -62,9 +63,11 @@ async function fixture(page: Page, testInfo: TestInfo) {
       return route.fulfill({ json: artifact })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { report: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })

@@ -29,7 +29,7 @@ test('디자인 화면은 만드는 것과 제품이 주는 것을 탭으로 나
 
   await expect(decks.getByText('회의록', { exact: true })).toHaveCount(0)
 
-  const catalogueSearch = documents.getByLabel(/서식 검색|시작점 검색/)
+  const catalogueSearch = documents.getByLabel('서식 검색')
   if (await catalogueSearch.count()) await catalogueSearch.fill('회의록')
   const minutes = documents.locator('div.group', { hasText: '회의록' })
   await expect(minutes).toHaveCount(1)
@@ -64,12 +64,12 @@ test('서식 탭은 주소로 바로 열리고, 홈의 줄은 몇 개만 보여 
   const all = await anyCard.count()
   expect(all).toBeGreaterThan(6)
 
-  // 작업 시작하기 offers jobs; each carries its shape.
+  // The composer's picker offers only the surface's own 서식.
   await page.goto('/new/slides')
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
-  const offered = dialog.getByRole('button', { name: /시작점 선택$/ })
+  const offered = dialog.getByRole('button', { name: '이 서식으로 시작', exact: true })
   await expect(offered.first()).toBeVisible({ timeout: 20_000 })
   const shown = await offered.count()
   expect(shown).toBeGreaterThan(0)

@@ -724,7 +724,7 @@ def test_a_file_grounded_price_question_is_read_not_withheld():
 @pytest.mark.asyncio
 async def test_a_skill_picked_once_applies_to_the_next_turn_too(monkeypatch):
     from test_retry_in_place import _capture_chat_turn, _chat, _send, _Transcript
-    from test_starting_points import _skill
+    from turn_fakes import _skill
 
     from app.schemas.chat import SendMessage
 
@@ -799,7 +799,7 @@ async def test_use_skill_hands_back_the_installed_skills_instructions():
 @pytest.mark.asyncio
 async def test_installed_skills_not_switched_on_are_offered_through_use_skill(monkeypatch):
     from test_retry_in_place import _capture_chat_turn, _chat, _send, _Transcript
-    from test_starting_points import _skill
+    from turn_fakes import _skill
 
     from app.schemas.chat import SendMessage
 
@@ -827,7 +827,7 @@ async def test_installed_skills_not_switched_on_are_offered_through_use_skill(mo
 @pytest.mark.asyncio
 async def test_a_standing_skill_that_was_removed_drops_out_instead_of_failing_every_turn():
     from test_retry_in_place import _chat, _Transcript
-    from test_starting_points import _skill
+    from turn_fakes import _skill
 
     from app.models.user import User, UserStatus
     from app.models.workspace import Agent
@@ -853,7 +853,7 @@ async def test_a_standing_skill_that_was_removed_drops_out_instead_of_failing_ev
 @pytest.mark.asyncio
 async def test_the_use_skill_shelf_honours_the_agents_allowlist():
     from test_retry_in_place import _chat, _Transcript
-    from test_starting_points import _skill
+    from turn_fakes import _skill
 
     from app.models.user import User, UserStatus
     from app.models.workspace import Agent

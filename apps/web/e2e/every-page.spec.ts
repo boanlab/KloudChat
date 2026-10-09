@@ -38,7 +38,6 @@ const ADMIN_ONLY = [
   '/admin/system',
   '/admin/system/routing',
   '/admin/system/features',
-  '/admin/system/templates',
   '/admin/system/branding',
   '/admin/system/mail',
   '/admin/governance',

@@ -1,16 +1,16 @@
-/** 작업 시작하기 shows its cards without sideways scrolling, and the whole 서식 list has its own screen. */
+/** The 서식 picker shows its cards without sideways scrolling, and the whole 서식 list has its own screen. */
 import { expect, test } from '@playwright/test'
 import { signIn } from './helpers'
 
-test('작업 시작하기의 카드는 가로로 숨지 않는다', async ({ page }) => {
+test('서식 고르기의 카드는 가로로 숨지 않는다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
   await page.goto('/new/report')
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
 
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
-  await expect(dialog.getByRole('button', { name: /시작점 선택$/ }).first()).toBeVisible({
+  await expect(dialog.getByRole('button', { name: '이 서식으로 시작' }).first()).toBeVisible({
     timeout: 20_000,
   })
 

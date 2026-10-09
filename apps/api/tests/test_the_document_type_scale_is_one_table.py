@@ -50,7 +50,7 @@ def test_the_page_seed_draws_its_type_from_the_variables() -> None:
         assert f"var(--doc-{name})" in seed, f"seed does not read --doc-{name}"
     for css in root.glob("doc-*/design.css"):
         assert "font-size" not in css.read_text(encoding="utf-8"), f"{css.parent.name} sets sizes"
-    template = design_templates.get("doc-report")
+    template = design_templates.rendering("_document")
     assert template is not None
     sheet = design_templates.stylesheet(template, {})
     assert "--doc-body: 10.5pt;" in sheet and "--doc-title: 20pt;" in sheet

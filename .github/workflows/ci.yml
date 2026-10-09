@@ -87,6 +87,15 @@ jobs:
       - name: Test artifact source downloads
         run: npx playwright test --config playwright.artifact-source.config.ts
 
+      - name: Test the audit log screen
+        run: npx playwright test --config playwright.audit-log.config.ts --workers=1
+
+      - name: Test pipeline stages and user flows
+        run: npx playwright test --config playwright.pipeline.config.ts --workers=1
+
+      - name: Test issue reports
+        run: npx playwright test --config playwright.issues.config.ts --workers=1
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest

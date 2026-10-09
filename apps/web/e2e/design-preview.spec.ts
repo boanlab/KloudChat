@@ -44,7 +44,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
 
   // The gallery opens on the project's own surface.
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(page.getByRole('dialog').getByRole('button').first()).toBeVisible({
     timeout: 20_000,

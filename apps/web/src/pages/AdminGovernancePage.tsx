@@ -1,46 +1,23 @@
-import { Search, ShieldCheck, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ShieldCheck, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { browserName, formatDateTime } from '@/lib/utils'
 import { Badge, Button, Card, Input, PageHeader, Switch, Tabs } from '@/components/ui'
+import { AuditLog } from '@/pages/AuditLog'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-const SEVERITY: Record<string, 'neutral' | 'warn' | 'danger'> = {
-  info: 'neutral',
-  warn: 'warn',
-  alert: 'danger',
-}
-
-/** Labels for audit actions written by the auth and admin routes; unlisted actions show their raw name. */
-const ACTION_LABEL: Record<string, string> = {
-  login: '로그인',
-  signup: '회원가입',
-  logout: '로그아웃',
-  'user.approve': '가입 승인',
-  'user.reject': '가입 반려',
-  'user.suspend': '계정 정지',
-  'user.reinstate': '정지 해제',
-  'user.role': '권한 변경',
-  'user.litellm_key': 'LiteLLM 키 재발급',
-  'credits.set': '크레딧 한도 변경',
-  'settings.update': '시스템 설정 변경',
-  'token.reuse': '토큰 재사용 감지',
-}
-
 export function AdminGovernancePage() {
   const t = useT()
-  const { audit, loadAudit, governance, loadGovernance, setGovernance, models } = useStore()
-  const [query, setQuery] = useState('')
+  const { governance, loadGovernance, setGovernance, models } = useStore()
+  const [auditTotal, setAuditTotal] = useState<number>()
   const [tab, setTab] = useState<'policy' | 'log'>('policy')
   const [category, setCategory] = useState('')
   const [swept, setSwept] = useState<number | null>(null)
 
   useEffect(() => {
-    void loadAudit()
     void loadGovernance()
-  }, [loadAudit, loadGovernance])
+  }, [loadGovernance])
 
   const apply = async (patch: Partial<NonNullable<typeof governance>>) => {
     const cleared = await setGovernance(patch)
@@ -48,17 +25,6 @@ export function AdminGovernancePage() {
     if (cleared > 0) setSwept(cleared)
   }
 
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return audit ?? []
-    return (audit ?? []).filter((e) =>
-      // Raw and translated region, so an English reader can search what the row shows.
-      [e.actor, e.action, ACTION_LABEL[e.action] ?? '', e.target, e.detail, e.ip, e.region, t(e.region)]
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    )
-  }, [audit, query, t])
   const strictModels = models.filter(
     (model) =>
       model.dataBoundary === 'self_hosted' && model.strictLocal && model.kinds.includes('chat'),
@@ -78,7 +44,7 @@ export function AdminGovernancePage() {
           onChange={setTab}
           tabs={[
             { id: 'policy', label: t('정책') },
-            { id: 'log', label: t('감사 로그'), count: audit?.length },
+            { id: 'log', label: t('감사 로그'), count: auditTotal },
           ]}
         />
 
@@ -312,75 +278,7 @@ export function AdminGovernancePage() {
             )}
           </div>
         ) : (
-          <>
-            <div className="mb-3 mt-4 flex items-center gap-2">
-          <div className="relative max-w-sm flex-1">
-            <Search size={14} className="absolute top-1/2 left-2.5 -translate-y-1/2 text-faint" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('계정 · 행위 · IP 검색')}
-              className="pl-8"
-            />
-          </div>
-          {audit && (
-            <span className="text-sm text-faint">
-              {t('{shown} / {total}건').replace('{shown}', rows.length.toLocaleString()).replace('{total}', audit.length.toLocaleString())}
-            </span>
-          )}
-        </div>
-
-        {!audit ? (
-          <Card className="p-10 text-center text-base text-muted">{t('기록을 불러오는 중입니다…')}</Card>
-        ) : rows.length === 0 ? (
-          <Card className="p-10 text-center text-base text-muted">
-            {query ? t('검색 결과가 없습니다') : t('아직 기록된 사건이 없습니다')}
-          </Card>
-        ) : (
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-base">
-              <thead className="border-b border-line text-left text-xs tracking-wide text-faint uppercase">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">{t('시각')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('계정')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('행위')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('대상')}</th>
-                  <th className="px-4 py-2.5 font-medium">{t('접속 위치')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {rows.map((e) => (
-                  <tr key={e.id} className="hover:bg-elevated">
-                    <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-muted">
-                      {formatDateTime(e.at)}
-                    </td>
-                    <td className="max-w-[220px] truncate px-4 py-2.5">{t(e.actor)}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge tone={SEVERITY[e.severity] ?? 'neutral'}>
-                        {t(ACTION_LABEL[e.action] ?? e.action)}
-                      </Badge>
-                      {e.detail && <span className="ml-2 text-xs text-faint">{e.detail}</span>}
-                    </td>
-                    <td className="max-w-[240px] truncate px-4 py-2.5 text-muted">{e.target}</td>
-                    <td className="px-4 py-2.5 text-xs whitespace-nowrap text-faint">
-                      <span className="font-mono tabular-nums">{e.ip || '—'}</span>
-                      {e.region && <span className="ml-2">{t(e.region)}</span>}
-                      {browserName(e.userAgent) && (
-                        <span className="ml-2" title={e.userAgent}>
-                          {browserName(e.userAgent)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </Card>
-        )}
-
-        </>
+          <AuditLog onTotal={setAuditTotal} />
         )}
 
         <p className="mt-3 flex items-center gap-1.5 text-sm text-faint">

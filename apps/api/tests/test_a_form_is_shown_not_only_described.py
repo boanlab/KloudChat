@@ -45,7 +45,7 @@ def test_a_template_without_a_form_is_unchanged() -> None:
 
     import dataclasses
 
-    row = templates.get("doc-report")
+    row = templates.get("doc-minutes")
     bare = dataclasses.replace(row, form_file="")
     guide = page._guide(bare)
     assert guide == f"{row.instructions}\n\n{row.markup}"

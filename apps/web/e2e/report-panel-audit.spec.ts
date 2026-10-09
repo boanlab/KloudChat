@@ -1,6 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import audit from './fixtures/report-audit.json' with { type: 'json' }
 import style from './fixtures/report-audit-style.json' with { type: 'json' }
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -34,7 +35,7 @@ async function fixture(page: Page, testInfo: TestInfo, options: Options = {}) {
     if (!url.pathname.startsWith('/api/')) return route.continue()
     const path = url.pathname.slice(4)
     const method = request.method()
-    if (method === 'GET' && /^\/design-templates\/[a-z-]+\/style$/.test(path)) return route.fulfill({ json: style })
+    if (method === 'GET' && /^\/design-templates\/[a-z_-]+\/style$/.test(path)) return route.fulfill({ json: style })
     if (method === 'GET' && path === '/design-templates') return route.fulfill({ json: audit.templates })
     if (method === 'POST' && path === '/auth/refresh') return route.fulfill({ json: { accessToken: 'fixture-only', expiresIn: 3600,
       user: { id: 'fixture-user', name: 'Report fixture', email: 'fixture@example.test', role: 'user',
@@ -64,9 +65,11 @@ async function fixture(page: Page, testInfo: TestInfo, options: Options = {}) {
       return route.fulfill({ json: artifact })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: { report: 1 }, total: 1 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && [`/sessions/${sessionId}/messages`, `/sessions/${sessionId}/jobs`, '/projects',
-      '/skills', '/memory', '/agents', '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/prompt-templates', '/shares'].includes(path)) return route.fulfill({ json: [] })
+      '/skills', '/memory', '/agents', '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/shares'].includes(path)) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
@@ -292,11 +295,12 @@ test('errors: every failure says so in place, aligned, and can be left', async (
   })
   // Template change failure.
   await panel(page).locator('header').getByRole('button', { name: /양식/ }).click()
-  await page.locator('[role="menu"]:visible').getByText('사업 제안서').click()
+  await page.locator('[role="menu"]:visible').getByText('고객 제안서').click()
   await page.waitForTimeout(800)
   await shot('template-failed')
+  // No 서식 on the document: the button keeps its generic label, not the one that failed.
   await check('template failure keeps the old template name', async () =>
-    (await panel(page).locator('header').getByRole('button', { name: /양식/ }).textContent())?.includes('표준 보고서') ?? false)
+    !((await panel(page).locator('header').getByRole('button', { name: /양식/ }).textContent())?.includes('고객 제안서') ?? true))
   // Export failure (the mock answers 404).
   await tab(page, '파일').click()
   await panel(page).locator('header').getByRole('button', { name: /내보내기/ }).click()
@@ -320,7 +324,7 @@ test('errors: every failure says so in place, aligned, and can be left', async (
 
 test('flows: a report with a template opens in page view and still returns to web view', async ({ page }, testInfo) => {
   test.setTimeout(180_000)
-  const state = await fixture(page, testInfo, { data: { templateId: 'doc-proposal' } })
+  const state = await fixture(page, testInfo, { data: { templateId: 'doc-client-proposal' } })
   const { failures, check } = checker()
   const shots = testInfo.outputPath('templated')
   await check('opens in page view', async () => { await expect(pagedView(page)).toBeVisible({ timeout: 30_000 }); return true })

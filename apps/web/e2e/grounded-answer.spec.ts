@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -87,9 +88,11 @@ async function fixture(page: Page, info: TestInfo, domain: Domain, cutoff: Cutof
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && (path.endsWith('/jobs') || [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
-      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/prompt-templates', '/shares',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates', '/shares',
     ].includes(path))) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })

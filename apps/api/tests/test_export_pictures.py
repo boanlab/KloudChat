@@ -41,7 +41,7 @@ _PNG = png()
 
 
 def document(template_id: str, layout: str, *, caption: str = "그림 1. 시험") -> str:
-    template = dt.get(template_id)
+    template = dt.rendering(template_id)
     assert template is not None
     blocks = [
         {"title": "표지", "layout": template.layouts[0], "html": '<p class="lead">한 줄</p>'},
@@ -94,7 +94,7 @@ def test_the_deck_pdf_carries_the_picture():
 
 
 def test_the_docx_carries_the_picture():
-    sections = page_export.to_sections(document("doc-report", "section"))
+    sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_docx("t", sections, tokens=TOKENS)))
     media = [name for name in archive.namelist() if name.startswith("word/media/")]
     assert media, "그림이 .docx 에 들어가지 않았습니다"
@@ -102,7 +102,7 @@ def test_the_docx_carries_the_picture():
 
 
 def test_the_report_pdf_carries_the_picture():
-    sections = page_export.to_sections(document("doc-report", "section"))
+    sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
     with_picture = report_export.to_pdf("t", sections, tokens=TOKENS)
     for section in sections:
         section.pop("images", None)
@@ -116,7 +116,7 @@ def test_hwpx_carries_the_picture_too():
 
     `<hh:binDataList>` belongs to the older HML format and must not appear in header.xml.
     """
-    sections = page_export.to_sections(document("doc-report", "section"))
+    sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
     archive = zipfile.ZipFile(io.BytesIO(report_export.to_hwpx("t", sections, tokens=TOKENS)))
 
     assert "BinData/image1.png" in archive.namelist()
@@ -193,7 +193,7 @@ def test_a_picture_that_is_not_one_does_not_take_the_export_down(broken):
     assert deck_export.to_pptx("t", slides, tokens=TOKENS)[:2] == b"PK"
     assert deck_export.to_pdf("t", slides, tokens=TOKENS)[:4] == b"%PDF"
 
-    sections = page_export.to_sections(document("doc-report", "section"))
+    sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
     sections[1]["images"] = [{"mime": "image/png", "data": broken, "caption": "깨진 그림"}]
     assert report_export.to_docx("t", sections, tokens=TOKENS)[:2] == b"PK"
     assert report_export.to_pdf("t", sections, tokens=TOKENS)[:4] == b"%PDF"
@@ -330,7 +330,7 @@ def test_every_format_sizes_a_picture_the_same_way():
 
 def test_a_figure_is_centred_in_every_format():
     """Picture and caption are centred in .docx and .hwpx."""
-    sections = page_export.to_sections(document("doc-report", "section"))
+    sections = page_export.to_sections(document(dt.GENERIC_ID, "section"))
 
     docx = zipfile.ZipFile(io.BytesIO(report_export.to_docx("t", sections, tokens=TOKENS)))
     body = docx.read("word/document.xml").decode()

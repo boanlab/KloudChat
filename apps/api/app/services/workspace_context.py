@@ -24,16 +24,14 @@ from app.models.workspace import (
     Memory,
     Project,
     Skill,
-    SkillSource,
     StoredFile,
-    Template,
     Visibility,
 )
 from app.schemas.auth import Preferences
 from app.services import design as design_service
 from app.services import files as file_service
 from app.services import knowledge as knowledge_service
-from app.services import pictures, prompt_templates, starter
+from app.services import pictures, starter
 
 log = logging.getLogger(__name__)
 
@@ -93,15 +91,6 @@ class ContextFile:
 
 
 @dataclass(frozen=True, slots=True)
-class StartingPoint:
-    """A resolved 시작점 (built-in or `templates` row): id, title and opening prompt."""
-
-    id: str
-    title: str
-    prompt: str
-
-
-@dataclass(frozen=True, slots=True)
 class AppliedSkill:
     id: str
     name: str
@@ -113,8 +102,6 @@ class AppliedSkill:
 class WorkspaceContext:
     blocks: tuple[ContextBlock, ...]
     applied_skills: tuple[AppliedSkill, ...]
-    #: `{"templateId", "title"}` of the 시작점 this turn began from, or None.
-    started_from: dict[str, str] | None = None
     #: Design tokens (the project's, else the agent's); None (not defaults) when neither has one.
     design_tokens: dict[str, str] | None = None
     #: Names only: memory bodies are private and the timeline is screen-shared.
@@ -653,86 +640,6 @@ def _skill_blocks(resolved: list[tuple[Skill, dict]]) -> list[ContextBlock]:
     return blocks
 
 
-async def _resolve_starting_template(
-    db: AsyncSession, user: User, starting_template_id: str | None
-) -> StartingPoint | None:
-    """The 시작점 attached to this turn; raises rather than drops an unusable id."""
-    template_id = (starting_template_id or "").strip()
-    if not template_id:
-        return None
-    if builtin := prompt_templates.get(template_id):
-        return StartingPoint(builtin.id, builtin.title, builtin.prompt)
-    row = await db.get(Template, template_id)
-    if row is None or (row.owner_id != user.id and not row.shared):
-        raise WorkspaceContextError("starting_template_not_found")
-    return StartingPoint(row.id, row.title, row.prompt)
-
-
-async def _starting_skill_blocks(
-    db: AsyncSession,
-    starting_template_id: str | None,
-    kind: SessionKind,
-    already: set[str],
-    available_tool_names: set[str] | None = None,
-) -> list[ContextBlock]:
-    """The catalogue skills a built-in starting point carries, as blocks.
-
-    A skill whose required tool this turn does not have is left out, as a
-    hand-picked one would be refused: a 「execute_code로 검산하라」 instruction on
-    a model with no tools only produces a claim of having done so.
-    """
-    builtin = prompt_templates.get(starting_template_id)
-    if builtin is None or not builtin.skills:
-        return []
-    rows = (
-        await db.exec(
-            select(Skill).where(
-                col(Skill.catalog_key).in_(list(builtin.skills)),
-                Skill.source == SkillSource.built_in,
-                Skill.visibility == Visibility.org,
-            )
-        )
-    ).all()
-    by_key = {row.catalog_key: row for row in rows}
-    blocks: list[ContextBlock] = []
-    for key in builtin.skills:
-        skill = by_key.get(key)
-        if skill is None or skill.name in already:
-            continue
-        if skill.kinds and kind.value not in skill.kinds:
-            continue
-        if available_tool_names is not None and any(
-            tool not in available_tool_names for tool in (skill.required_tools or [])
-        ):
-            continue
-        head = f"# 시작점 스킬 — {skill.name}"
-        body = skill.body.strip() or skill.description.strip()
-        blocks.append(
-            ContextBlock(
-                source=f"template-skill:{skill.catalog_key}",
-                text=f"{head}\n{body}" if body else head,
-                trusted=True,
-            )
-        )
-    return blocks
-
-
-def _starting_template_block(point: StartingPoint | None) -> ContextBlock | None:
-    """The starting point as a trusted instruction block; None when it has no prompt."""
-    if point is None or not point.prompt.strip():
-        return None
-    head = (
-        f"# 시작점 — {point.title}\n"
-        "사용자가 이번 요청에 이 시작점을 붙였습니다. 아래 문장은 사용자가 한 말로 "
-        "받아들이고, 이어지는 사용자 메시지가 그 나머지입니다."
-    )
-    return ContextBlock(
-        source=f"template:{point.id}",
-        text=f"{head}\n{point.prompt.strip()}",
-        trusted=True,
-    )
-
-
 def _file_report(
     attachments: tuple[ContextFile, ...],
     knowledge: tuple[ContextFile, ...],
@@ -843,7 +750,6 @@ async def assemble(
     attachment_ids: list[str] | None = None,
     vision: bool = False,
     activated_skill_ids: list[str] | None = None,
-    starting_template_id: str | None = None,
     available_tool_names: set[str] | None = None,
     focus: str = "",
     question: str = "",
@@ -877,7 +783,6 @@ async def assemble(
         available_tool_names or set(),
         material_given=gives_material(question or focus, attachment_ids),
     )
-    starting_point = await _resolve_starting_template(db, user, starting_template_id)
 
     blocks: list[ContextBlock] = []
     # Least specific first; later blocks win where they disagree.
@@ -890,18 +795,6 @@ async def assemble(
     if design_block := design_service.prompt_block(design, session.kind):
         blocks.append(ContextBlock("project.design", design_block, True))
     blocks.extend(_skill_blocks(resolved))
-    if starting_block := _starting_template_block(starting_point):
-        blocks.append(starting_block)
-        # Catalogue skills the starting point carries; ones already activated by name are skipped.
-        blocks.extend(
-            await _starting_skill_blocks(
-                db,
-                starting_template_id,
-                session.kind,
-                {skill.name for skill, _ in resolved},
-                available_tool_names,
-            )
-        )
     if memories:
         blocks.append(ContextBlock("memory", memories, False))
 
@@ -1038,11 +931,6 @@ async def assemble(
         doc_format=(
             agent.doc_format if agent is not None and session.kind is SessionKind.report else None
         ),
-        started_from=(
-            {"templateId": starting_point.id, "title": starting_point.title}
-            if starting_point is not None
-            else None
-        ),
         design_tokens=design_service.tokens_of(design) if design is not None else None,
         loaded_memories=memory_names,
         total_memories=memory_total,
@@ -1078,7 +966,6 @@ __all__ = [
     "ContextBlock",
     "ContextFile",
     "MAX_ACTIVE_SKILLS",
-    "StartingPoint",
     "WorkspaceContext",
     "WorkspaceContextError",
     "agent_settings",

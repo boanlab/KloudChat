@@ -74,6 +74,8 @@ extend-ignore = ["B008"]
 # Skill scripts and the code-model prompt: Korean docstrings and prompt text.
 "app/skills/*" = ["E501"]
 "app/services/tools/sandbox_tools.py" = ["E501"]
+# Performance verdicts: Korean findings and recommended actions shown as written.
+"app/services/perf/rules.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -12,6 +13,9 @@ const placeholders: Record<Kind, string> = {
   slides: '발표 주제와 시간을 적으세요',
 }
 const prompt = '점검 결과 보고서를 작성해줘.'
+// An Agent chat that offers the report surface hands a document order there (Composer's
+// agent handoff), so the chat-model checks below ask a plain question instead.
+const chatQuestion = '점검 결과를 한 줄로 알려줘.'
 
 function deferred() {
   let release!: () => void
@@ -103,6 +107,12 @@ async function fixture(page: Page, testInfo: TestInfo, kind: Kind, agent = false
       if (typeof data.routingMode === 'string') row.routingMode = data.routingMode
       return route.fulfill({ json: row })
     }
+    if (method === 'POST' && path === `/sessions/${id}/handoff`) {
+      const data = request.postDataJSON()
+      writes.push({ method, path, data })
+      second = { ...row, id: otherId, title: 'Handed off', kind: data.kind }
+      return route.fulfill({ json: { session: second, attachments: [] } })
+    }
     if (method === 'POST' && path === '/sessions') {
       writes.push({ method, path, data: request.postDataJSON() })
       second = { ...row, id: otherId, kind: request.postDataJSON().kind }
@@ -125,9 +135,11 @@ async function fixture(page: Page, testInfo: TestInfo, kind: Kind, agent = false
       return route.fulfill({ status: 204 })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/memory', '/tools',
-      '/templates', '/connectors', '/connectors/catalog', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', '/artifacts'].includes(path))) return route.fulfill({ json: [] })
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates',
+      '/shares', '/artifacts'].includes(path))) return route.fulfill({ json: [] })
     unexpected.push(`${method} ${path}`)
     return route.abort('blockedbyclient')
   })
@@ -245,6 +257,30 @@ test('a ready non-Agent chat still hands an explicit document request to report'
   }
 })
 
+test('a loaded Agent that offers report hands a document order to its report session', async ({ page }, info) => {
+  const state = await fixture(page, info, 'chat', true)
+  try {
+    // Inherits the Agent's model, so the picker naming it shows the catalogue has loaded.
+    state.setSessionModel('')
+    state.release()
+    await page.goto(`/s/${id}`)
+    const composer = page.getByLabel('프롬프트 입력')
+    await expect(composer).toHaveAttribute('placeholder', placeholders.chat)
+    await expect(page.getByRole('button', { name: 'Agent fixture', exact: true }).first()).toBeVisible()
+    await composer.fill(prompt)
+    await composer.press('Enter')
+    await expect.poll(() => state.writes.filter((write) => write.path.endsWith('/messages')).length).toBe(1)
+    expect(state.writes.filter((write) => write.method === 'POST')).toEqual([
+      { method: 'POST', path: `/sessions/${id}/handoff`, data: { kind: 'report' } },
+      { method: 'POST', path: `/sessions/${otherId}/messages`, data: expect.objectContaining({ content: prompt }) },
+    ])
+    await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
+    expect(state.unexpected).toEqual([])
+  } finally {
+    state.release()
+  }
+})
+
 for (const kind of ['chat', 'report', 'slides'] as const) {
   for (const selection of ['pending inheritance', 'loaded inheritance', 'explicit override'] as const) {
     test(`${kind}: Agent model preserves ${selection}`, async ({ page }, info) => {
@@ -270,7 +306,7 @@ for (const kind of ['chat', 'report', 'slides'] as const) {
           await page.screenshot({ path: info.outputPath('agent-model-menu.png'), animations: 'disabled' })
           await page.keyboard.press('Escape')
         }
-        await composer.fill(prompt)
+        await composer.fill(kind === 'chat' ? chatQuestion : prompt)
         await composer.press('Enter')
         await expect.poll(() => state.writes.length).toBe(1)
         expect(state.writes[0]).toMatchObject({ method: 'POST', path: `/sessions/${id}/messages` })

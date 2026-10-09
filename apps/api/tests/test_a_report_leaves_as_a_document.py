@@ -371,7 +371,7 @@ def test_every_document_template_ships_a_word_template():
 
 
 def test_the_export_comes_out_in_the_template_it_was_written_in():
-    chosen = design_templates.get("doc-report")
+    chosen = design_templates.rendering("_document")
     themed = zipfile.ZipFile(
         io.BytesIO(report_export.to_docx("제목", SECTIONS, template=chosen.docx_template))
     )
@@ -388,7 +388,7 @@ def test_a_template_that_cannot_be_read_still_exports():
 
 
 def test_a_templated_export_still_carries_the_table_and_the_page_size():
-    chosen = design_templates.get("doc-brief")
+    chosen = design_templates.get("doc-comparison")
     body = (
         zipfile.ZipFile(
             io.BytesIO(report_export.to_docx("제목", SECTIONS, template=chosen.docx_template))

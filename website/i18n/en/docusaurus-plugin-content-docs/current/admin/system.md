@@ -21,10 +21,6 @@ The routing settings are described in [Policy and routing](policy#auto-routing).
 
 The safe search level and blocked domains for web search are set on the search server. For details, see the backend (KloudChat-LLM) documentation. By default, safe search is off.
 
-## Shared templates
-
-Register, edit, and delete the **starting points** shown in the **Start working** gallery for every user. A registered item has a screen, name, description, category, input fields, examples, required features, a hidden instruction, and a form file. The formats that define the shape of a result are built into the product, so they are not created on this screen.
-
 ## Branding
 
 The service name, the contact address (used by the mail link on the waiting screen; the first administrator's address if left empty), and the logo (PNG, JPG, WebP, up to 2MB, no SVG, with revert to default). Changing the service name also changes the browser tab icon to the matching initials.

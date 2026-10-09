@@ -29,7 +29,6 @@ async def _routed_turn(
     agent=False,
     allowed=None,
     history=(),
-    starting_template=False,
     extra_tool=None,
     project=False,
     file_context=None,
@@ -55,7 +54,6 @@ async def _routed_turn(
     workspace = WorkspaceContext(
         blocks=tuple(blocks),
         applied_skills=(AppliedSkill("selected", "Selected skill", skill, 20),) if skill else (),
-        started_from={"templateId": "selected", "title": "Selected"} if starting_template else None,
         **(
             {file_context: (ContextFile("question.txt", "included", 20, 20),)}
             if file_context else {}
@@ -137,7 +135,6 @@ async def _routed_turn(
         content=question,
         web_search=False,
         activated_skill_ids=["selected"] if skill else [],
-        starting_template_id="selected" if starting_template else None,
     )
     if expect_unavailable:
         with pytest.raises(HTTPException) as caught:
@@ -165,12 +162,10 @@ async def test_plain_missing_counts_needs_no_calculation_gate(monkeypatch, stric
 
 
 @pytest.mark.parametrize("strict", [False, True])
-@pytest.mark.parametrize("context", ["agent", "unrelated-skill", "template", "user", "project"])
+@pytest.mark.parametrize("context", ["agent", "unrelated-skill", "user", "project"])
 async def test_explicit_contexts_keep_the_calculator(monkeypatch, strict, context):
     if context == "agent":
         options = {"agent": True, "allowed": ["calculate"]}
-    elif context == "template":
-        options = {"starting_template": True}
     elif context in {"user", "project"}:
         options = {"blocks": [ContextBlock(f"{context}.instructions", "Follow my workflow.", True)]}
     else:

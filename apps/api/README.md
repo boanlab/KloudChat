@@ -47,11 +47,11 @@ All under `/api` except `/llm`.
 | `POST /sessions/{id}/jobs` · `POST /jobs/{id}/cancel` | Video — the only asynchronous work |
 | `GET /artifacts` · `GET /artifacts/counts` · `GET/PATCH/DELETE {id}` · `GET {id}/export` · `GET {id}/versions` · `POST {id}/restore` | Outputs as a page of cards, version history and restore, document export |
 | `POST /artifacts/{id}/sections/…` · `slides/…` · `blocks/…` · `critique` | Rewrite, fact-check, picture, diagram and review on a finished document |
-| `GET /projects` · `files` · `skills` · `memory` · `agents` · `templates` · `designs` | Workspace |
+| `GET /projects` · `files` · `skills` · `memory` · `agents` · `designs` | Workspace |
 | `POST /files/{id}/open-as-document` · `POST /designs/extract` | Open an uploaded `.hwpx` as an editable report; draft a design system from a file or URL |
 | `POST /projects/{id}/knowledge/url` · `…/reindex` · `POST /agents/{id}/knowledge` · `…/url` · `…/reindex` | Project and agent knowledge, and backfilling the vector index |
 | `GET /skills/store` · `POST /skills/{id}/install` · `POST /agents/{id}/install` | The shared store and copying from it |
-| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` · `GET /prompt-templates` | The rendering catalogue (preview is unauthenticated) and prompt starters |
+| `GET /design-templates` · `usage` · `{id}/preview` · `{id}/style` · `{id}/form` | The rendering catalogue (preview is unauthenticated) |
 | `GET /connectors` · `/connectors/catalog` · `POST /connectors/install/{slug}` | MCP connectors |
 | `POST /shares` · `GET /shared/{token}` · `GET /shares/{id}/views` | Read-only sharing. Reading a `link`-scoped share needs no authentication |
 | `GET /keys` · `POST` · `DELETE {id}` | API keys users take away with them |
@@ -175,7 +175,6 @@ app/
     ├── slide_patterns.py · doc_formats.py   Slide pattern table; per-purpose document heads and numbering
     ├── design.py · design_templates.py · design_extract.py   Design systems, the catalogue, extraction
     ├── doc_type.py · deck_type.py   Type scale shared by every renderer of a report or a deck
-    ├── prompt_templates.py Prompt starters
     ├── report_export.py · deck_export.py · page_export.py   DOCX/PDF/HWPX, PPTX/PDF, HTML read-back
     ├── printing.py         PDF via the print service; None when it is absent
     ├── pictures.py · figures.py · diagram.py · diagrams.py · diagram_render.py · diagram_shapes.py · charts.py · chart_code.py   Pictures, document figures (mermaid, drawn as native shapes), charts

@@ -24,7 +24,7 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 Choose the screen you want from **Chat · Report · Slides** and type your request. If the administrator has enabled them, you can also choose **Image** and **Audio/Video**. Chat is for questions and answers. Report and Slides confirm the structure first and then write the document.
 
 :::tip When you ask for a document in Chat
-If you ask for a document in Chat, for example "Write a report" or "Make a slide deck", **the request moves automatically to a new conversation for that task.** Agent conversations, requests that use a starting point, and requests about existing content such as "Summarize this" or "Review this" stay in Chat.
+If you ask for a document in Chat, for example "Write a report" or "Make a slide deck", **the request moves automatically to a new conversation for that task.** Agent conversations and requests about existing content such as "Summarize this" or "Review this" stay in Chat.
 :::
 
 ### Composer features and where they apply
@@ -35,7 +35,7 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 |---|---|---|
 | 📎 Attach | Uploads a file. You can drag and drop files or paste them. | The whole conversation |
 | 🎤 Dictate | Turns speech into text. Shown only when the administrator has connected speech transcription. | That input |
-| ▦ Start a task | Selects a starting point or an output format. | A starting point applies to that request, and a format to that conversation |
+| ▦ Pick a format | Selects the output format for reports, slides, images and so on. Not offered in Chat. | That conversation |
 | ✦ Skills | Selects up to three skills to apply to the request. | That request |
 | ⫼ Compare models | Sends the same question to two or three models. Available only in Chat on the desktop. | That conversation. Cleared when you move to another conversation |
 | 🌐 Auto · On · Off | Switches the web search mode. | That request. A new conversation resets it automatically |
@@ -44,11 +44,10 @@ If you ask for a document in Chat, for example "Write a report" or "Make a slide
 | Model name ▾ | Selects the model to use. | Choosing it on Home makes it your account default, while choosing it during a conversation applies it to that conversation |
 | ↑ · ■ | Sends the request or stops generation. | — |
 
-The items currently in effect appear as chips above the composer: the project, the format, the starting point, skills, attachments and the Auto state. Press × to remove one.
+The items currently in effect appear as chips above the composer: the project, the format, skills, attachments and the Auto state. Press × to remove one.
 
-## Starting points and agents
+## Agents
 
-- **Start with something you do often**: Choose a routine task such as explaining a concept, reviewing material or analyzing a cause. The screen asks only for the details it needs and builds the request for you. [Starting points, formats and designs](../chat/starters)
 - **Hand off to an agent**: An assistant that comes with instructions, tools and files. Selecting a card starts a conversation with that agent. [Agents and skills](../chat/agents)
 - **In progress**: Shown while a long task such as video generation is running.
 

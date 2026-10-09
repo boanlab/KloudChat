@@ -26,14 +26,12 @@ from app.models.workspace import (
     Skill,
     SkillSource,
     StoredFile,
-    Template,
     Transport,
     Visibility,
 )
 from app.schemas.auth import Wire
 from app.services import design as design_service
 from app.services import design_templates, geoip, settings_store, skill_packages
-from app.services.prompt_templates import PromptTemplate, skill_names
 
 #: Nullable JSONB list column read as a list.
 JsonList = Annotated[list[str], BeforeValidator(lambda v: v or [])]
@@ -691,122 +689,6 @@ class ApiKeyOut(Wire):
         out = cls.model_validate(k, from_attributes=True)
         out.secret = None
         return out
-
-
-# ── templates ──────────────────────────────────────────────────────────
-class TemplateOut(Wire):
-    """A user-written starting point.
-
-    Same shape as the frontend's built-in `Template` plus the file fields.
-    """
-
-    id: str
-    kind: str
-    group: str
-    title: str
-    description: str
-    fills: JsonList = Field(default_factory=list)
-    #: One example per blank, in `fills` order.
-    examples: JsonList = Field(default_factory=list)
-    needs: JsonList = Field(default_factory=list)
-    prompt: str
-    file_id: str | None = None
-    #: Resolved by the router from `file_id`.
-    file_name: str = ""
-    file_tokens: int = 0
-    file_error: str | None = None
-    #: Empty lets the surface choose a 서식.
-    render_template_id: str = ""
-    #: Offered to every account.
-    shared: bool = False
-    #: Whether the caller may edit or remove it.
-    mine: bool = True
-    updated_at: datetime
-
-    @classmethod
-    def of(
-        cls, t: Template, stored: StoredFile | None = None, *, owner_id: str | None = None
-    ) -> TemplateOut:
-        out = cls.model_validate(t, from_attributes=True)
-        out.fills = list(t.fills or [])
-        out.examples = list(t.examples or [])
-        out.needs = list(t.needs or [])
-        out.mine = owner_id is None or t.owner_id == owner_id
-        if stored is not None:
-            out.file_name = stored.name
-            out.file_tokens = stored.tokens
-            out.file_error = stored.error
-        return out
-
-
-class TemplateIn(Wire):
-    kind: str = Field(min_length=1, max_length=20)
-    group: str = Field(default="내 템플릿", max_length=40)
-    title: str = Field(min_length=1, max_length=120)
-    description: str = Field(default="", max_length=400)
-    fills: list[str] | None = None
-    #: One example per blank, in `fills` order.
-    examples: list[str] | None = None
-    #: `web`, `file`.
-    needs: list[str] | None = None
-    prompt: str = Field(default="", max_length=8000)
-    file_id: str | None = None
-    #: Validated against the rendering catalogue by the router.
-    render_template_id: str = Field(default="", max_length=60)
-    #: Administrator-only; refused otherwise.
-    shared: bool = False
-
-
-class PromptTemplateOut(Wire):
-    """A built-in starting point, in the shape of `TemplateOut`."""
-
-    id: str
-    kind: str
-    #: Same value as `kind`; the card reads `surface` for both catalogues.
-    surface: str
-    group: str
-    title: str
-    description: str
-    fills: JsonList = Field(default_factory=list)
-    prompt: str
-    #: English half; both languages travel and the client picks.
-    title_en: str = ""
-    description_en: str = ""
-    fills_en: JsonList = Field(default_factory=list)
-    prompt_en: str = ""
-    #: Empty lets the surface choose a 서식.
-    render_template_id: str = ""
-    #: One example per blank, in `fills` order.
-    examples: JsonList = Field(default_factory=list)
-    examples_en: JsonList = Field(default_factory=list)
-    #: `web`, `file`.
-    needs: JsonList = Field(default_factory=list)
-    #: Workspace skills to activate for the turn, by name.
-    skills: JsonList = Field(default_factory=list)
-    builtin: bool = True
-
-    @classmethod
-    def of(cls, t: PromptTemplate) -> PromptTemplateOut:
-        return cls(
-            id=t.id,
-            kind=t.kind.value,
-            surface=t.kind.value,
-            group=t.group,
-            title=t.title,
-            description=t.description,
-            fills=list(t.fills),
-            prompt=t.prompt,
-            title_en=t.title_en,
-            description_en=t.description_en,
-            fills_en=list(t.fills_en),
-            prompt_en=t.prompt_en,
-            render_template_id=t.render_template_id,
-            examples=list(t.examples),
-            examples_en=list(t.examples_en),
-            needs=list(t.needs),
-            # Names on the wire, keys in the catalogue.
-            skills=skill_names(t.skills),
-        )
 
 
 class DesignSystemOut(Wire):

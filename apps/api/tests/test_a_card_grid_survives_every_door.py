@@ -70,7 +70,7 @@ def test_the_seed_styles_what_the_editor_writes():
     """Every class the editor writes is styled by the templates."""
     from app.services import design_templates as dt
 
-    seed = dt.get("doc-report").seed
+    seed = dt.rendering("_document").seed
     assert ".cards" in seed and ".callout" in seed
     assert "section" in dt._ALLOWED_TAGS
 

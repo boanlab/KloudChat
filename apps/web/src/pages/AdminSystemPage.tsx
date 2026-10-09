@@ -13,14 +13,12 @@ import { MailSection } from './settings/MailSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
-import { TemplatesSection } from './settings/TemplatesSection'
 import { ToolsSection } from './settings/ToolsSection'
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
   { to: '/admin/system/routing', label: '라우팅', end: false },
   { to: '/admin/system/features', label: '기능', end: false },
-  { to: '/admin/system/templates', label: '공용 템플릿', end: false },
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
@@ -122,17 +120,6 @@ export function AdminSystemPage() {
                   <ToolsSection settings={settings} onSaved={reload} />
                 </Group>
               </div>
-            }
-          />
-          <Route
-            path="templates"
-            element={
-              <Group
-                title={t('공용 템플릿')}
-                description={t('기관 양식처럼 모두가 같은 형식으로 시작해야 하는 것을 한 번만 등록합니다.')}
-              >
-                <TemplatesSection />
-              </Group>
             }
           />
           <Route

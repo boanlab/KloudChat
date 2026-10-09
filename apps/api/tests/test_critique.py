@@ -193,11 +193,11 @@ async def test_nothing_is_spent_reviewing_an_empty_document(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_template_is_read_against_its_own_checklist(monkeypatch):
-    checklist = dt.get("doc-brief").checklist
+    checklist = dt.get("doc-minutes").checklist
     _, posts = await _review(monkeypatch, _GOOD, rubric=checklist)
     prompt = posts[0]["messages"][0]["content"]
 
-    assert "무엇을 결정해야 하는지 첫 줄에서 알 수 있는가" in prompt
+    assert "정해진 것과 논의만 된 것이 구분되는가" in prompt
     # The document itself, not a summary.
     assert "보증이 끝났고" in prompt
 

@@ -34,7 +34,7 @@ class MessageOut(Wire):
     routing: dict | None = None
     #: Artifacts this turn produced, rendered in place of the answer.
     artifact_ids: list | None = None
-    #: The 시작점 this turn began from, as `{templateId, title}`.
+    #: Legacy: the retired 시작점 an old turn began from, as `{templateId, title}`.
     started_from: dict | None = None
     rating: MessageRating | None = None
     #: How the turn ended when it did not end in an answer.
@@ -328,8 +328,6 @@ class CompareRequest(Wire):
     content: str = Field(min_length=1)
     models: list[str] = Field(min_length=2, max_length=3)
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: See `SendMessage.starting_template_id`.
-    starting_template_id: str | None = Field(default=None, max_length=64)
     attachments: list[str] | None = None
     privacy_action: Literal["route_strict_local", "mask_external", "send_raw_external"] | None = (
         None
@@ -370,9 +368,6 @@ class SendMessage(Wire):
     web_search: bool | Literal["auto"] = False
     #: Installed skills selected for this turn; installation alone injects nothing.
     activated_skill_ids: list[str] = Field(default_factory=list, max_length=3)
-    #: A 시작점: a built-in from `/prompt-templates` or a visible `templates` row.
-    #: Applies to this turn only; reaches the model as its own context block.
-    starting_template_id: str | None = Field(default=None, max_length=64)
     #: A rendering template from `/design-templates`. Stored on the session;
     #: `""` clears it.
     render_template_id: str | None = Field(default=None, max_length=60)

@@ -103,7 +103,7 @@ def _written(template_id: str) -> str:
     """A real document assembled through `design_templates`, placeholders resolved."""
     from app.services import design_templates
 
-    template = design_templates.get(template_id)
+    template = design_templates.rendering(template_id)
     assert template is not None, template_id
     body = design_templates.assemble(
         template,
@@ -116,6 +116,7 @@ def _written(template_id: str) -> str:
 
 
 @pytest.mark.anyio
+# `doc-report` is retired: a document still naming it prints in the shared seed.
 @pytest.mark.parametrize("template_id", ["doc-report", "deck-editorial"])
 async def test_the_export_hands_the_printer_the_whole_document(monkeypatch, template_id):
     """Both the deck and the document track hand the printer the whole file."""
@@ -140,6 +141,7 @@ async def test_the_export_hands_the_printer_the_whole_document(monkeypatch, temp
 
 
 @pytest.mark.anyio
+# `doc-report` is retired: a document still naming it prints in the shared seed.
 @pytest.mark.parametrize("template_id", ["doc-report", "deck-editorial"])
 async def test_without_a_printer_a_pdf_still_comes_out(monkeypatch, template_id):
     """Without a printer the structural PDF is returned."""

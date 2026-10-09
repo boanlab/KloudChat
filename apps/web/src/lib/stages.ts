@@ -157,7 +157,7 @@ const REASONS: [RegExp, string][] = [
   [/not the first draft/, '처음 쓰는 글이 아님'],
   [/not a revision/, '고쳐 쓰기 요청이 아님'],
   [/proposal offered/, '구성안을 먼저 보여 드림'],
-  [/^needs:|missing facts/, '먼저 확인할 것이 있음'],
+  [/(?:^needs:)|missing facts/, '먼저 확인할 것이 있음'],
   [/outline/, '구성을 잡지 못함'],
   [/term not found/, '찾는 말이 문서에 없음'],
   [/a deck/, '슬라이드에는 해당 없음'],

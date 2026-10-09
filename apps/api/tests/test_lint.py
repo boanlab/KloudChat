@@ -256,7 +256,7 @@ def test_the_shipped_limits_are_the_ones_the_instructions_state():
     assert template is not None
     assert template.limits == {"max_bullets": 4, "max_bullet_chars": 25}
     assert "25자" in template.instructions
-    assert dt.get("doc-report").limits == {}
+    assert dt.rendering("_document").limits == {}
 
 
 # ── Chinese characters mixed into Korean prose ─────────────────────────

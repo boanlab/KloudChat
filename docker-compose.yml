@@ -142,6 +142,11 @@ services:
       - ./mcp:/srv/mcp:ro
       # uv's cache for PEP 723 script dependencies.
       - ./data/uv-cache:/srv/data/uv-cache
+      # Read-only host views for the admin 「성능 모니터링」 page (services/perf/host.py):
+      # host and per-container CPU, memory, disk and network. No docker socket;
+      # leave both out to run without host figures.
+      - /proc:/host/proc:ro
+      - /sys/fs/cgroup:/host/cgroup:ro
     # Migrations run in `migrate`, above, once for every replica.
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100"]
 

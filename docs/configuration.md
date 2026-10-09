@@ -230,6 +230,30 @@ when added to the `api` service's `environment:`.
 
 ---
 
+### Performance monitoring
+
+The admin 「성능 모니터링」 page (`/admin/performance`) reads `metric_samples`,
+written once a minute: every `api` replica writes its own open streams, running
+turns and request durations, and one replica (holding a Postgres advisory
+lock) also reads the host, the GPU nodes and LiteLLM's request log, folds
+minute rows into 10-minute rows after `PERF_RAW_HOURS` and deletes rows older
+than `PERF_RETENTION_DAYS`. Set these on the `api` service like the variables
+above.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `PERF_MONITORING` | `true` | Off: nothing is collected. |
+| `PERF_HOST_PROC`, `PERF_HOST_CGROUP` | `/host/proc`, `/host/cgroup` | The host's `/proc` and `/sys/fs/cgroup`, mounted read-only in `docker-compose.yml`. Without them the page has no host or container figures. Containers are named from their processes (command line, process names, bind-mount sources) and from `PERF_DNS_NAMES`; there is no docker socket. |
+| `PERF_DISKS` | `data=/srv/data/files,docker=/` | `label=path` pairs whose filesystems are reported. |
+| `PERF_TARGETS` | `vllm-27b,vllm-122b,vllm-bgem3,vllm-rerank,vllm-whisper,gpu-1,gpu-2` | Read from `<backend address>/metrics/<name>` with `X-Tools-Key` (KloudChat-LLM [tools.md](https://github.com/boanlab/kloudchat-llm/blob/main/docs/tools.md)). `PERF_METRICS_URL` overrides the base. |
+| `PERF_MODEL_LOGS` | `true` | Per-model latency and errors from LiteLLM `/spend/logs/v2` (master key; no prompts or responses are read). |
+| `PERF_VLLM_WAITING_MAX`, `PERF_KV_CACHE_MAX`, `PERF_TTFT_P95_MAX_SEC` | `2`, `90`, `10` | GPU saturation, KV cache and first-token verdicts, each sustained for `PERF_SUSTAIN_MIN` (10). |
+| `PERF_API_CPU_MAX` | `80` | Percent of one core per api replica, sustained for `PERF_API_CPU_SUSTAIN_MIN` (15): 「api 복제본 추가 검토」. |
+| `PERF_MEM_MAX`, `PERF_DISK_WARN`, `PERF_DISK_CRITICAL`, `PERF_ERROR_RATE_MAX`, `PERF_GPU_TEMP_MAX` | `90`, `85`, `95`, `5`, `85` | |
+
+`GET /api/admin/perf/metrics` (an admin's bearer token) returns the latest
+value of every series in the Prometheus text format, for Grafana.
+
 ## Behind a reverse proxy
 
 The web container serves the app and proxies `/api/`. When something else

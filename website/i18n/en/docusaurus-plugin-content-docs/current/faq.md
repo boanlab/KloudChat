@@ -10,7 +10,7 @@ This page lists causes and actions by symptom. To look something up by the error
 Your account is waiting for approval. The waiting screen switches over automatically once an administrator approves it. Use **Contact the administrator** on the waiting screen to get in touch.
 
 ### I typed in Chat but it switched to the report screen
-A sentence that asks for a document, such as "Write a report" or "Make a slide deck", switches automatically to a new conversation on that screen. To continue in Chat, phrase the request around existing content, such as "Summarize this", or use a starting point.
+A sentence that asks for a document, such as "Write a report" or "Make a slide deck", switches automatically to a new conversation on that screen. To continue in Chat, phrase the request around existing content, such as "Summarize this".
 
 ### It says the file I attached could not be read
 The file is a scanned image with no text information, or an older Office format (.doc, .ppt, .xls). Attach it again as a PDF, Word, Hangul, Excel, or text file that contains text. [Attaching files](chat/files)
@@ -25,7 +25,7 @@ The model may have generated something it does not know. Set web search to **On*
 The product is designed to leave out introductions and repeated explanations. Add conditions to your request, such as "in detail" or "with examples", or describe the length you want under **Answer style** in the settings.
 
 ### My report table shows (TBD)
-Some starting points, such as experiment records and weekly reports, leave a figure blank rather than generating one that is not in the material. Attach source material and ask again, or type the value directly in the editor.
+A report leaves a figure blank rather than generating one that is not in the material. Attach source material and ask again, or type the value directly in the editor.
 
 ### I asked for more slides but nothing changed
 If you ask "Please make it 20 slides", the product proposes the structure again and writes it after you approve. If that does not take effect, ask again from scratch, such as "Create it again with 20 slides".

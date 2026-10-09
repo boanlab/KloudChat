@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from test_starting_points import _Db, _patch_route_services, _request, _Result, _user
+from turn_fakes import _Db, _patch_route_services, _request, _Result, _user
 
 from app.models.chat import ChatSession, Message, Role, SessionKind, TurnFailure
 from app.routers import sessions as sessions_router
@@ -102,13 +102,12 @@ async def test_a_retry_uses_the_stored_words_not_the_echo(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_retry_after_reload_restores_the_turn_options(monkeypatch):
-    """Search and starting-point choices survive the browser that sent them."""
+    """Search and skill choices survive the browser that sent them."""
     failed_q = _question("q1", "저장된 질문", failure=TurnFailure.no_answer)
     failed_q.routing = {
         "turnOptions": {
             "webSearch": "auto",
             "activatedSkillIds": [],
-            "startingTemplateId": "t_debug",
         }
     }
     db = _Transcript(_chat(), [failed_q])
@@ -120,7 +119,6 @@ async def test_a_retry_after_reload_restores_the_turn_options(monkeypatch):
     assert failed_q.routing["turnOptions"] == {
         "webSearch": "auto",
         "activatedSkillIds": [],
-        "startingTemplateId": "t_debug",
     }
 
 

@@ -16,10 +16,12 @@ from app.routers import (
     auth,
     branding,
     connectors,
+    issues,
     jobs,
     keys,
     llm,
     models,
+    perf,
     pipelines,
     runs,
     sessions,
@@ -30,6 +32,8 @@ from app.routers import (
     workspace,
 )
 from app.services import bootstrap, litellm, settings_store, stop_signal, storage
+from app.services.perf import collector as perf_collector
+from app.services.perf import live as perf_live
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("kchat")
@@ -68,10 +72,14 @@ async def lifespan(app: FastAPI):
         if stop_signal.needed()
         else None
     )
+    # Performance samples for the admin page; one replica also reads the host and GPUs.
+    perf_task = asyncio.create_task(perf_collector.run()) if settings.perf_monitoring else None
     yield
     sweeper.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
+    if perf_task is not None:
+        perf_task.cancel()
 
 
 app = FastAPI(
@@ -89,6 +97,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Open streams and request durations per replica (`services/perf/live.py`).
+app.add_middleware(perf_live.LoadMiddleware)
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(branding.router, prefix=settings.api_prefix)
@@ -108,6 +118,8 @@ app.include_router(usage.me_router, prefix=settings.api_prefix)
 app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
+app.include_router(issues.router, prefix=settings.api_prefix)
+app.include_router(perf.router, prefix=settings.api_prefix)
 
 
 @app.get(f"{settings.api_prefix}/health")

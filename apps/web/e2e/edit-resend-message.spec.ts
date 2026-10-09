@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 test.use({ serviceWorkers: 'block' })
 
@@ -210,9 +211,11 @@ async function fixture(page: Page, info: TestInfo, options: {
       ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') })
     }
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && (path.endsWith('/jobs') || ['/projects', '/skills', '/memory', '/tools',
-      '/templates', '/connectors', '/connectors/catalog', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', '/artifacts', '/agents'].includes(path))) {
+      '/connectors', '/connectors/catalog', '/designs', '/design-templates',
+      '/shares', '/artifacts', '/agents'].includes(path))) {
       return route.fulfill({ json: [] })
     }
     unexpected.push(`${method} ${path}`)

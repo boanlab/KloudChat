@@ -12,6 +12,10 @@ from app.core.config import settings
 from app.models.user import utcnow
 
 
+def _ids(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
 class Governance(SQLModel, table=True):
     __tablename__ = "governance"
 
@@ -36,27 +40,30 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Cost-saving auto routing. Off until an administrator enables it.
+    #: Cost-saving auto routing.
     adaptive_routing_enabled: bool = Field(
-        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
+        default_factory=lambda: settings.adaptive_routing_default,
+        sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
     #: Must resolve to a live, zero-priced strict-local chat model at runtime.
     adaptive_classifier_model_id: str | None = Field(
-        default=None, sa_column=Column(String, nullable=True)
+        default_factory=lambda: settings.adaptive_classifier_model_default or None,
+        sa_column=Column(String, nullable=True),
     )
     #: Ordered economy candidates, revalidated every turn.
     adaptive_economy_model_ids: list = Field(
-        default_factory=list,
+        default_factory=lambda: _ids(settings.adaptive_economy_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
     #: Quality-upgrade auto routing; independent of `adaptive_routing_enabled`.
     adaptive_quality_enabled: bool = Field(
-        default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
+        default_factory=lambda: settings.adaptive_quality_default,
+        sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
     #: Ordered upgrade candidates, revalidated every turn. Administrator-curated,
     #: not a price sort.
     adaptive_quality_model_ids: list = Field(
-        default_factory=list,
+        default_factory=lambda: _ids(settings.adaptive_quality_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
     #: A turn that carries the organisation's own material — an attachment, a project's
@@ -68,7 +75,10 @@ class Governance(SQLModel, table=True):
     )
     #: Model for a document's outline call only; the blocks use the surface's
     #: own model. Empty keeps the surface's model for the outline too.
-    outline_model_id: str | None = Field(default=None, sa_column=Column(String, nullable=True))
+    outline_model_id: str | None = Field(
+        default_factory=lambda: settings.outline_model_default or None,
+        sa_column=Column(String, nullable=True),
+    )
     #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))

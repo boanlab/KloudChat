@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services import diagram, prompt_templates
+from app.services import diagram
 
 
 def test_the_source_and_the_caption_come_apart() -> None:
@@ -35,19 +35,6 @@ def test_colour_the_model_was_told_not_to_write_is_stripped() -> None:
     assert "classDef" not in source
     assert "linkStyle" not in source
     assert "a --> b" in source
-
-
-def test_every_built_in_says_how_to_fill_each_blank() -> None:
-    # 「기간·언어」 alone is a noun. The example beside it is the instruction.
-    for row in prompt_templates.all_templates():
-        assert len(row.examples) == len(row.fills), row.id
-
-
-def test_a_survey_needs_the_web_and_a_reading_needs_the_file() -> None:
-    by_id = {row.id: row for row in prompt_templates.all_templates()}
-    assert "web" in by_id["t_report_literature"].needs
-    assert "file" in by_id["t_paper_read"].needs
-    assert "citation" in by_id["t_report_literature"].skills
 
 
 def test_an_edit_recomputes_the_findings() -> None:

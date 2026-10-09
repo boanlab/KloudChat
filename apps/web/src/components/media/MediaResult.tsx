@@ -157,7 +157,6 @@ export function MediaResult({
                       value: images[0].prompt,
                       attachments: [],
                       activatedSkillIds: [],
-                      startingTemplate: null,
                       error: '',
                     })
                   }

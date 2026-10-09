@@ -58,31 +58,31 @@ async def _started(db: AsyncSession, who, template: str | None, times: int = 1) 
 @pytest.mark.asyncio
 async def test_my_own_habit_and_everybody_elses_are_counted_apart(db):
     await _started(db, MINE, "doc-minutes", 3)
-    await _started(db, MINE, "doc-report", 1)
-    await _started(db, OTHER, "doc-report", 9)
+    await _started(db, MINE, "doc-gaejo-report", 1)
+    await _started(db, OTHER, "doc-gaejo-report", 9)
 
     usage = await design_template_usage(MINE, db)
-    assert usage.mine == {"doc-minutes": 3, "doc-report": 1}
+    assert usage.mine == {"doc-minutes": 3, "doc-gaejo-report": 1}
     # `popular` includes the asker.
-    assert usage.popular == {"doc-minutes": 3, "doc-report": 10}
+    assert usage.popular == {"doc-minutes": 3, "doc-gaejo-report": 10}
 
 
 @pytest.mark.asyncio
 async def test_a_session_started_from_no_template_is_not_counted(db):
     """Sessions with no 서식 are not counted."""
     await _started(db, MINE, None, 20)
-    await _started(db, MINE, "doc-brief", 1)
+    await _started(db, MINE, "doc-comparison", 1)
 
     usage = await design_template_usage(MINE, db)
-    assert usage.mine == {"doc-brief": 1}
+    assert usage.mine == {"doc-comparison": 1}
     assert None not in usage.popular
 
 
 @pytest.mark.asyncio
 async def test_somebodys_first_day_reports_nothing_of_their_own(db):
     """A user with no history gets an empty `mine`, not a missing one."""
-    await _started(db, OTHER, "doc-report", 4)
+    await _started(db, OTHER, "doc-gaejo-report", 4)
 
     usage = await design_template_usage(MINE, db)
     assert usage.mine == {}
-    assert usage.popular == {"doc-report": 4}
+    assert usage.popular == {"doc-gaejo-report": 4}

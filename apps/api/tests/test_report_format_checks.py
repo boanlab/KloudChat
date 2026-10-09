@@ -408,7 +408,7 @@ async def test_an_unrelated_report_writes_as_before(monkeypatch):
     monkeypatch.setattr(report, "_complete", complete)
     events = [e async for e in report.write(
         request="실험 보고서 써 줘", model="m", api_key="k", web_search=False,
-        untrusted_context=["담당 김철수, 9월 10일까지 측정."], template_id="doc-lab",
+        untrusted_context=["담당 김철수, 9월 10일까지 측정."],
         approved_plan={"title": "저항 측정", "sections": ["실험 목적", "결과"]},
     )]
     ids = [e["id"] for e in events if e["type"] == "step"]

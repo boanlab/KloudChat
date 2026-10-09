@@ -87,10 +87,6 @@ test('관리자 시스템이 탭으로 나뉘고 각 탭이 URL을 가진다', a
   await expect(page.getByRole('heading', { name: '사용할 기능' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '기능 연동' })).toBeVisible()
 
-  await page.getByRole('tab', { name: '공용 템플릿' }).click()
-  await expect(page).toHaveURL(/\/admin\/system\/templates$/)
-  await expect(page.getByRole('region', { name: '공용 템플릿' })).toBeVisible()
-
   await page.getByRole('tab', { name: '브랜딩' }).click()
   await expect(page).toHaveURL(/\/admin\/system\/branding$/)
   await expect(page.getByRole('heading', { name: '브랜딩' })).toBeVisible()

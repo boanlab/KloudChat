@@ -1,5 +1,5 @@
 """Owned-resource CRUD: projects, files, artifacts, skills, memories, agents,
-templates, design systems, and message ratings.
+design systems, and message ratings.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from app.models.workspace import (
     Skill,
     SkillSource,
     StoredFile,
-    Template,
     Visibility,
 )
 from app.schemas.chat import MessageOut, MessageRatingIn
@@ -64,7 +63,6 @@ from app.schemas.workspace import (
     ProjectIn,
     ProjectOut,
     ProjectPatch,
-    PromptTemplateOut,
     SectionFactCheck,
     SectionImage,
     SectionRewrite,
@@ -75,8 +73,6 @@ from app.schemas.workspace import (
     SlideImage,
     SlideRewrite,
     StoreSkillOut,
-    TemplateIn,
-    TemplateOut,
     ToolCatalogOut,
 )
 from app.services import (
@@ -94,7 +90,6 @@ from app.services import (
     page_export,
     pictures,
     printing,
-    prompt_templates,
     report_export,
     richtext,
     settings_store,
@@ -265,23 +260,6 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
             )
         chosen[template.surface.value] = template.id
     return chosen
-
-
-def _validated_starting_format(template_id: str, kind: str) -> str:
-    """Render template id for a prompt template, validated against `kind`. Empty is allowed."""
-    if not template_id:
-        return ""
-    template = design_templates.get(template_id)
-    if template is None or template.kind not in design_templates.HTML_KINDS:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
-        )
-    if template.surface.value != kind:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="design_template_surface_mismatch",
-        )
-    return template.id
 
 
 async def _project_out(db: DbSession, project: Project) -> ProjectOut:
@@ -1236,7 +1214,7 @@ async def add_block_image(artifact_id: str, payload: BlockImage, user: CurrentUs
     blocks = [dict(b) for b in (data.get("blocks") or [])]
     if payload.index >= len(blocks):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
@@ -1344,7 +1322,7 @@ async def rewrite_block(artifact_id: str, payload: BlockRewrite, user: CurrentUs
     blocks = [dict(b) for b in (data.get("blocks") or [])]
     if payload.index >= len(blocks):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="block_not_found")
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="design_template_missing"
@@ -2321,7 +2299,7 @@ async def _export_page(artifact: Artifact, format: str) -> Response:
     if format == "html":
         return _attachment(content.encode(), "text/html; charset=utf-8", stem, "html")
 
-    template = design_templates.get(str(data.get("templateId") or ""))
+    template = design_templates.rendering(str(data.get("templateId") or ""))
     tokens = dict(data.get("design") or {})
     # The template's look drives the Office exporters, not only the CSS.
     if template and template.look:
@@ -2417,7 +2395,7 @@ def export_formats(artifact: Artifact) -> tuple[str, ...]:
     if artifact.kind is ArtifactKind.deck:
         return ("pdf", "pptx", "md")
     if artifact.kind is ArtifactKind.html:
-        template = design_templates.get(str(data.get("templateId") or ""))
+        template = design_templates.rendering(str(data.get("templateId") or ""))
         content = str(data.get("content") or "")
         is_deck = template.kind == "deck" if template else 'class="slide' in content
         return ("pdf", "pptx", "md") if is_deck else ("pdf", "docx", "hwpx", "md")
@@ -2457,7 +2435,7 @@ async def _export_document(artifact: Artifact, format: str) -> Response:
     title = artifact.title or "보고서"
     stem = re.sub(r'[\\/:*?"<>|]+', "_", title)[:60] or "report"
 
-    chosen = design_templates.get(str(data.get("templateId") or ""))
+    chosen = design_templates.rendering(str(data.get("templateId") or ""))
     docx_template = chosen.docx_template if chosen else ""
 
     if format == "md":
@@ -2494,44 +2472,6 @@ async def _export_document(artifact: Artifact, format: str) -> Response:
     return _attachment(body, media, stem, suffix)
 
 
-# ══ templates ══════════════════════════════════════════════════════════
-#
-# Built-in prompt templates ship in the image and are read-only; user-written
-# ones live in the `templates` table. Both share one wire shape.
-
-
-@router.get("/prompt-templates", response_model=list[PromptTemplateOut])
-async def list_prompt_templates(user: CurrentUser, surface: str | None = None):
-    """Built-in prompt templates, optionally for one surface."""
-    rows = prompt_templates.all_templates()
-    if surface:
-        rows = [t for t in rows if t.kind.value == surface]
-    return [PromptTemplateOut.of(t) for t in rows]
-
-
-@router.get("/templates", response_model=list[TemplateOut])
-async def list_templates(user: CurrentUser, db: DbSession):
-    """The caller's templates plus every shared one."""
-    rows = (
-        await db.exec(
-            select(Template)
-            .where(or_(Template.owner_id == user.id, col(Template.shared).is_(True)))
-            .order_by(col(Template.shared).desc(), col(Template.created_at).desc())
-        )
-    ).all()
-    ids = {t.file_id for t in rows if t.file_id}
-    found: dict[str, StoredFile] = {}
-    if ids:
-        files = (await db.exec(select(StoredFile).where(col(StoredFile.id).in_(ids)))).all()
-        found = {f.id: f for f in files}
-    return [TemplateOut.of(t, found.get(t.file_id or ""), owner_id=user.id) for t in rows]
-
-
-async def _form_file(db: DbSession, template: Template) -> StoredFile | None:
-    """The template's attached form, or `None`. Ownership was checked on write."""
-    return await db.get(StoredFile, template.file_id) if template.file_id else None
-
-
 async def _shelf_key(db: DbSession, agent: Agent) -> str:
     """The agent's index collection key, minted on first use."""
     if not agent.index_key:
@@ -2542,87 +2482,15 @@ async def _shelf_key(db: DbSession, agent: Agent) -> str:
     return agent.index_key
 
 
-#: Default gallery groups; a shared template defaulting to the private group is refiled.
-_OWN_GROUP = "내 템플릿"
-_SHARED_GROUP = "공용"
-
-
 def _may_share(user: User, requested: bool) -> None:
     """403 when a non-administrator asks for `shared`."""
     if requested and user.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin_required")
 
 
-async def _own_file(db: DbSession, user: User, file_id: str | None) -> str | None:
-    """`file_id` if the caller owns that file; `None` stays `None`; 404 otherwise."""
-    if not file_id:
-        return None
-    stored = await db.get(StoredFile, file_id)
-    if stored is None or stored.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="file_not_found")
-    return stored.id
-
-
-@router.post("/templates", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
-async def create_template(payload: TemplateIn, user: CurrentUser, db: DbSession):
-    data = payload.model_dump()
-    _may_share(user, bool(data.get("shared")))
-    data["file_id"] = await _own_file(db, user, data.get("file_id"))
-    data["render_template_id"] = _validated_starting_format(
-        str(data.get("render_template_id") or ""), str(data.get("kind") or "")
-    )
-    if data.get("shared") and data.get("group") == _OWN_GROUP:
-        data["group"] = _SHARED_GROUP
-    template = Template(owner_id=user.id, **data)
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
-    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
-
-
-async def _own_or_shared(db: DbSession, user: User, template_id: str) -> Template:
-    """A template the caller owns, or any shared one when the caller is an administrator."""
-    row = await db.get(Template, template_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    if row.owner_id != user.id and not (row.shared and user.role is UserRole.admin):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
-    return row
-
-
-@router.patch("/templates/{template_id}", response_model=TemplateOut)
-async def patch_template(template_id: str, payload: TemplateIn, user: CurrentUser, db: DbSession):
-    template = await _own_or_shared(db, user, template_id)
-    fields = payload.model_dump(exclude_unset=True)
-    if "shared" in fields:
-        _may_share(user, bool(fields["shared"]))
-    if "file_id" in fields:
-        fields["file_id"] = await _own_file(db, user, fields["file_id"])
-    if "render_template_id" in fields:
-        # Validated against the kind being saved, which this patch may change.
-        fields["render_template_id"] = _validated_starting_format(
-            str(fields["render_template_id"] or ""),
-            str(fields.get("kind") or template.kind),
-        )
-    for field, value in fields.items():
-        setattr(template, field, value)
-    template.updated_at = utcnow()
-    db.add(template)
-    await db.commit()
-    await db.refresh(template)
-    return TemplateOut.of(template, await _form_file(db, template), owner_id=user.id)
-
-
-@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
-    template = await _own_or_shared(db, user, template_id)
-    await db.delete(template)
-    await db.commit()
-
-
 # ══ design systems ═════════════════════════════════════════════════════
 #
-# Same ownership shape as templates. A project points at one.
+# Owned or shared, like skills. A project points at one.
 
 
 @router.get("/designs", response_model=list[DesignSystemOut])
@@ -2838,7 +2706,7 @@ async def design_template_style(
     font: str | None = None,
 ):
     """The template's stylesheet and section wrappers, for the document editor's shadow root."""
-    template = design_templates.get(template_id)
+    template = design_templates.rendering(template_id)
     if template is None or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"

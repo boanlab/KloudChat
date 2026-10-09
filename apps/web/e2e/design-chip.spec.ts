@@ -36,9 +36,9 @@ async function wearing(
 
 /** The gallery card for one 서식, found by search since the gallery pages its grid. */
 async function card(page: Page, name: string) {
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   const dialog = page.getByRole('dialog')
-  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
+  const search = dialog.getByLabel('서식 검색')
   if (await search.count()) await search.fill(name)
   const found = dialog.locator('div.group', { hasText: name }).first()
   await expect(found).toBeVisible({ timeout: 20_000 })
@@ -85,12 +85,7 @@ test('한 대화에서 고른 서식이 다음 대화의 서식을 덮지 않는
   )
 
   await page.goto('/new/slides')
-  // On slides the 서식 is picked on a starting point card; `card()` is for image/av, where the 서식 is the job.
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
-  const job = page.getByRole('dialog').locator('div.group').first()
-  await job.getByRole('button', { name: /결과 모양 고르기/ }).click()
-  await page.getByRole('menuitem', { name: '편집형 덱' }).click()
-  await job.getByRole('button', { name: /시작점 선택/ }).click()
+  await (await card(page, '편집형 덱')).getByRole('button', { name: '이 서식으로 시작' }).click()
   await expect(page.getByRole('button', { name: '편집형 덱 서식 해제' })).toBeVisible()
 
   await page.getByLabel('프롬프트 입력').fill('사무실 보안 수칙을 알리는 짧은 발표 자료')

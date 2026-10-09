@@ -166,7 +166,7 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     author, _, design = await _people(db)
     mine = DesignSystem(owner_id=author.id, name="문서용 명조", tokens={"accent": "#334155"})
     project = Project(
-        user_id=author.id, name="영업", render_templates={"report": "doc-proposal"}
+        user_id=author.id, name="영업", render_templates={"report": "doc-comparison"}
     )
     db.add_all([mine, project])
     await db.commit()
@@ -186,7 +186,7 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     plain = await sessions_router.create_session(
         SessionCreate(kind=SessionKind.report, project_id=project.id), author, db
     )
-    assert plain.render_template_id == "doc-proposal"
+    assert plain.render_template_id == "doc-comparison"
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, plain.id))
     assert context.design_tokens["accent"] == "#334155"
 

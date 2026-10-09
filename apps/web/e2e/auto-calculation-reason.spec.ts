@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import type { CostRouting } from '../src/types'
+import { shellRead } from './shell-mocks'
 
 const sessionId = 'auto-calculation-reason'
 const now = '2026-09-12T00:00:00.000Z'
@@ -86,10 +87,12 @@ async function mockCalculationRoute(page: Page, saved: boolean) {
       }
     }
     if (path === '/artifacts/counts') return json({ counts: {}, total: 0 })
+    const shell = shellRead(request.method(), path)
+    if (shell) return route.fulfill(shell)
     if (request.method() === 'GET' && [
-      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools', '/templates',
+      '/projects', '/artifacts', '/skills', '/memory', '/agents', '/tools',
       '/connectors', '/connectors/catalog', '/jobs', '/designs', '/design-templates',
-      '/prompt-templates', '/shares', `/sessions/${sessionId}/jobs`,
+      '/shares', `/sessions/${sessionId}/jobs`,
     ].includes(path)) return json([])
     unexpected.push(`${request.method()} ${path}`)
     return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })

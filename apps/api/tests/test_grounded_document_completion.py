@@ -116,7 +116,7 @@ async def _run(monkeypatch, surface, *, outcome="complete", question="근거에 
         "web_search": False,
     }
     if surface.startswith("page_"):
-        kwargs["template"] = design_templates.get("doc-report")
+        kwargs["template"] = design_templates.get("doc-internal-draft")
     events = [
         json.loads(chunk.removeprefix("data: ").strip())
         async for chunk in driver(**kwargs)

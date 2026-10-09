@@ -52,7 +52,7 @@ test('링크를 받은 사람은 무엇이 이 결과를 만들었는지 읽고,
   const { id } = (await session.json()) as { id: string }
   await page.request.patch(`/api/sessions/${id}`, {
     headers,
-    data: { renderTemplateId: 'doc-brief', title: `2분기 감사 요약 ${stamp}` },
+    data: { renderTemplateId: 'doc-comparison', title: `2분기 감사 요약 ${stamp}` },
   })
   const share = await page.request.post('/api/shares', {
     headers,

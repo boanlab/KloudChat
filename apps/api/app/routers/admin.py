@@ -57,6 +57,7 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import UserOut
 from app.schemas.workspace import ApiKeyOut
+from app.services import audit as audit_service
 from app.services import files as file_service
 from app.services import litellm as litellm_service
 from app.services import mail as mail_service
@@ -97,13 +98,28 @@ async def _load(db: DbSession, user_id: str) -> User:
     return user
 
 
-def _audit(db, request: Request, admin: User, action: str, target: str, detail: str = "") -> None:
+def _audit(
+    db,
+    request: Request,
+    admin: User,
+    action: str,
+    target: str,
+    detail: str = "",
+    *,
+    changes: dict[str, list] | None = None,
+    metadata: dict | None = None,
+) -> None:
+    """One admin event; `changes` is `{field: [old, new]}` from `audit_service.diff`."""
+    extra = dict(metadata or {})
+    if changes:
+        extra["changes"] = changes
     db.add(
         AuditEvent(
             actor_id=admin.id,
             action=action,
             target=target,
             detail=detail,
+            event_metadata=extra or None,
             ip=client_ip(request),
             user_agent=request.headers.get("User-Agent", "")[:400],
         )
@@ -111,6 +127,32 @@ def _audit(db, request: Request, admin: User, action: str, target: str, detail: 
 
 
 # ── system settings ────────────────────────────────────────────────────
+
+#: Settings screen section of each audited field, for the audit row's target.
+_SETTING_SECTION: dict[str, str] = {
+    "baseUrl": "proxy",
+    "masterKey": "proxy",
+    "brand_name": "branding",
+    "contact_email": "branding",
+    "enabled_kinds": "features",
+    "backend_base_url": "tools",
+    "tools_search_url": "tools",
+    "tools_fetch_url": "tools",
+    "tools_exec_url": "tools",
+    "tools_research_url": "tools",
+    "tools_stt_url": "tools",
+    "tools_index_url": "tools",
+    "smtp_host": "mail",
+    "smtp_port": "mail",
+    "smtp_security": "mail",
+    "smtp_username": "mail",
+    "smtp_password": "mail",
+    "smtp_from": "mail",
+    "app_base_url": "mail",
+    "signup_mode": "signup",
+    "signup_domains": "signup",
+    "signup_verify_email": "signup",
+}
 
 
 @router.get("/settings")
@@ -199,17 +241,21 @@ async def put_settings(
     payload: SystemSettingsIn, request: Request, admin: AdminUser, db: DbSession
 ):
     """Writes the supplied fields; omitted keeps the stored value, "" clears it."""
-    changed: list[str] = []
+    before_stored = await settings_store.stored(db)
+    before: dict[str, str] = {}
+    after: dict[str, str] = {}
     if payload.base_url is not None:
         await settings_store.put(
             db, settings_store.LITELLM_BASE_URL, payload.base_url.strip(), admin.id
         )
-        changed.append("baseUrl")
+        before["baseUrl"] = before_stored.get(settings_store.LITELLM_BASE_URL, "")
+        after["baseUrl"] = payload.base_url.strip()
     if payload.master_key is not None:
         await settings_store.put(
             db, settings_store.LITELLM_MASTER_KEY, payload.master_key.strip(), admin.id
         )
-        changed.append("masterKey")
+        before["masterKey"] = before_stored.get(settings_store.LITELLM_MASTER_KEY, "")
+        after["masterKey"] = payload.master_key.strip()
 
     for field, key in (
         ("brand_name", settings_store.BRAND_NAME),
@@ -236,9 +282,23 @@ async def put_settings(
         value = getattr(payload, field)
         if value is not None:
             await settings_store.put(db, key, value.strip(), admin.id)
-            changed.append(field)
+            before[field] = before_stored.get(key, "")
+            after[field] = value.strip()
 
-    _audit(db, request, admin, "settings.update", "litellm", ",".join(changed))
+    # Only what actually moved; a screen saves its whole section.
+    changes = audit_service.diff(before, after)
+    if changes:
+        sections = sorted({_SETTING_SECTION.get(f, "other") for f in changes})
+        _audit(
+            db,
+            request,
+            admin,
+            "settings.update",
+            "시스템 설정",
+            ",".join(changes),
+            changes=changes,
+            metadata={"sections": sections},
+        )
     await db.commit()
 
     settings_store.invalidate()
@@ -349,6 +409,7 @@ async def approve(
     user = await _load(db, user_id)
     if user.status is UserStatus.active:
         return UserOut.of(user)
+    old_status, old_credits = user.status.value, user.monthly_credits
 
     allowance = (
         payload.monthly_credits
@@ -363,7 +424,18 @@ async def approve(
     await starter.seed_designs(db, user.id)
     db.add(user)
 
-    _audit(db, request, admin, "user.approve", user.email, f"credits={allowance}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.approve",
+        user.email,
+        f"credits={allowance}",
+        changes=audit_service.diff(
+            {"status": old_status, "monthly_credits": old_credits},
+            {"status": user.status.value, "monthly_credits": allowance},
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -375,6 +447,7 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_suspend_self")
 
+    old_status = user.status.value
     user.status = UserStatus.suspended
     await litellm_service.set_key_blocked(user, True)
     db.add(user)
@@ -393,7 +466,15 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
         token.revoked_reason = RevokeReason.suspended
         db.add(token)
 
-    _audit(db, request, admin, "user.suspend", user.email, f"sessions_revoked={len(tokens)}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.suspend",
+        user.email,
+        f"sessions_revoked={len(tokens)}",
+        changes=audit_service.diff({"status": old_status}, {"status": user.status.value}),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -410,7 +491,9 @@ async def reject(user_id: str, request: Request, admin: AdminUser, db: DbSession
     # A key exists only if signup ran in `open` mode.
     await litellm_service.revoke_key(user)
     db.add(user)
-    _audit(db, request, admin, "user.reject", user.email)
+    _audit(
+        db, request, admin, "user.reject", user.email, changes={"status": ["pending", "suspended"]}
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -429,7 +512,14 @@ async def reinstate(user_id: str, request: Request, admin: AdminUser, db: DbSess
         grant_initial_allowance(db, user, user.monthly_credits or settings.default_monthly_credits)
     await litellm_service.sync_budget(user)
     db.add(user)
-    _audit(db, request, admin, "user.reinstate", user.email)
+    _audit(
+        db,
+        request,
+        admin,
+        "user.reinstate",
+        user.email,
+        changes={"status": ["suspended", "active"]},
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -444,9 +534,18 @@ async def set_role(
     if user.id == admin.id and payload.role is not UserRole.admin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_demote_self")
 
+    old_role = user.role.value
     user.role = payload.role
     db.add(user)
-    _audit(db, request, admin, "user.role", user.email, f"role={payload.role.value}")
+    _audit(
+        db,
+        request,
+        admin,
+        "user.role",
+        user.email,
+        f"role={payload.role.value}",
+        changes=audit_service.diff({"role": old_role}, {"role": payload.role.value}),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -459,6 +558,7 @@ async def update_user(
     """Corrects a name or address. An address already in use is refused."""
     user = await _load(db, user_id)
     changes: list[str] = []
+    before = {"name": user.name, "email": user.email}
     if payload.name is not None and payload.name.strip() != user.name:
         user.name = payload.name.strip()
         changes.append("name")
@@ -472,7 +572,15 @@ async def update_user(
             changes.append("email")
     if changes:
         db.add(user)
-        _audit(db, request, admin, "user.update", user.email, ",".join(changes))
+        _audit(
+            db,
+            request,
+            admin,
+            "user.update",
+            user.email,
+            ",".join(changes),
+            changes=audit_service.diff(before, {"name": user.name, "email": user.email}),
+        )
         await db.commit()
         await db.refresh(user)
     return UserOut.of(user)
@@ -687,6 +795,7 @@ async def set_allowed_models(
     """Restricts an account to a list of models; empty means the whole catalogue."""
     # Pushed to every key the account holds so the proxy enforces it too.
     user = await _load(db, user_id)
+    old_models = list(user.allowed_models or [])
     user.allowed_models = list(payload.models)
     db.add(user)
 
@@ -701,7 +810,17 @@ async def set_allowed_models(
     await litellm_service.sync_allowed_models(user, secrets)
 
     detail = f"{len(payload.models)}개" if payload.models else "전체"
-    _audit(db, request, admin, "user.models", user.email, detail)
+    _audit(
+        db,
+        request,
+        admin,
+        "user.models",
+        user.email,
+        detail,
+        changes=audit_service.diff(
+            {"allowed_models": old_models}, {"allowed_models": list(payload.models)}
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)
@@ -712,10 +831,21 @@ async def set_credits(
     user_id: str, payload: SetCreditsRequest, request: Request, admin: AdminUser, db: DbSession
 ):
     user = await _load(db, user_id)
+    old_allowance = user.monthly_credits
     set_allowance(db, user, payload.monthly_credits)
     # The proxy budget mirrors the allowance.
     await litellm_service.sync_budget(user)
-    _audit(db, request, admin, "credits.set", user.email, f"monthly={payload.monthly_credits}")
+    _audit(
+        db,
+        request,
+        admin,
+        "credits.set",
+        user.email,
+        f"monthly={payload.monthly_credits}",
+        changes=audit_service.diff(
+            {"monthly_credits": old_allowance}, {"monthly_credits": payload.monthly_credits}
+        ),
+    )
     await db.commit()
     await db.refresh(user)
     return UserOut.of(user)

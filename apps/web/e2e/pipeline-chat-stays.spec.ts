@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { shellRead } from './shell-mocks'
 
 /**
  * A conversation that runs a user pipeline (「이 흐름으로 시작」 on a chat flow) answers its
@@ -76,9 +77,11 @@ async function fixture(page: Page, extra: Record<string, unknown>) {
         mime: 'text/plain', size: 5, tokens: 2, preview: 'draft', error: null,
         projectId: null, sessionId: null, createdAt: at } })
     }
+    const shell = shellRead(method, path)
+    if (shell) return route.fulfill(shell)
     if (method === 'GET' && ['/projects', '/artifacts', '/skills', '/memory', '/agents',
-      '/tools', '/templates', '/connectors', '/connectors/catalog', '/jobs',
-      '/designs', '/design-templates', '/prompt-templates'].includes(path)) {
+      '/tools', '/connectors', '/connectors/catalog', '/jobs',
+      '/designs', '/design-templates'].includes(path)) {
       return route.fulfill({ json: [] })
     }
     if (method !== 'GET') writes.push({ path, body: request.postDataJSON() ?? {} })

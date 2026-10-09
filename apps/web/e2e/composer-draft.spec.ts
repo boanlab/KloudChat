@@ -12,12 +12,12 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
   const mine = '골목 어귀에서 손을 흔드는 아이. 늦은 오후 빛으로.'
   await composer.fill(mine)
 
-  await page.getByRole('button', { name: '작업 시작하기' }).click()
+  await page.getByRole('button', { name: '서식 고르기' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
   // Searched: the gallery pages.
   await dialog.getByPlaceholder(/검색/).fill('포스터')
-  const search = dialog.getByLabel(/서식 검색|시작점 검색/)
+  const search = dialog.getByLabel('서식 검색')
   if (await search.count()) await search.fill('포스터')
   const poster = dialog.locator('div.group', { hasText: '포스터' }).first()
   await expect(poster).toBeVisible({ timeout: 20_000 })
@@ -25,7 +25,7 @@ test('서식을 고르면 쓰던 문장 뒤에 붙고, 덮어쓰지 않는다', 
 
   // The draft stays; the 서식's questions open above the box.
   await expect(composer).toHaveValue(mine)
-  await expect(page.getByRole('group', { name: '포스터 시작점 질문' })).toBeVisible()
+  await expect(page.getByRole('group', { name: '포스터 빈칸' })).toBeVisible()
 })
 
 /** A draft belongs to the surface it was typed on; a document surface's box starts empty. */

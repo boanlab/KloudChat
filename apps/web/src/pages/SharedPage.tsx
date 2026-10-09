@@ -172,7 +172,7 @@ function SharedSlide({ slide, design, index, total, title }: { slide: Slide; des
   return <div ref={ref} className="aspect-video w-full overflow-hidden rounded-card bg-white shadow-sm ring-1 ring-black/10"><SlideView slide={slide} scale={scale} writing={false} deckTitle={title} brand={design ?? undefined} index={index} total={total} /></div>
 }
 
-function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
+export function SharedArtifact({ payload, title }: { payload: { data: unknown; title?: string }; title: string }) {
   const data = (payload.data ?? {}) as {
     sections?: { heading: string; content: string; level?: 1 | 2; format?: 'markdown' | 'html' }[]
     titleBlock?: unknown

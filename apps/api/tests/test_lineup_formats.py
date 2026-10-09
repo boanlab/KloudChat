@@ -62,7 +62,7 @@ def test_each_template_fixes_its_format(template_id: str, format_id: str):
 
 def test_an_agents_format_wins_over_the_words_when_the_template_fixes_none():
     assert doc_formats.detect("회의록 정리해 줘", None, "comparison").id == "comparison"
-    assert doc_formats.detect("회의록 정리해 줘", "doc-report", "comparison").id == "comparison"
+    assert doc_formats.detect("회의록 정리해 줘", "_document", "comparison").id == "comparison"
     assert doc_formats.detect("회의록 정리해 줘", None, "not-a-format").id == "minutes"
 
 
