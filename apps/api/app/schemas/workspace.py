@@ -508,6 +508,8 @@ class AgentOut(Wire):
     design_system_id: str | None = None
     #: Name of that design, so a viewer who cannot see the row finds their own of that name.
     design_name: str = ""
+    #: 담당 부서·연락처: said as written when the material does not answer.
+    contact: str = ""
     guide: str = ""
     starters: JsonList = Field(default_factory=list)
     share_mode: Literal["open", "sealed"] = "open"
@@ -553,6 +555,8 @@ class AgentOut(Wire):
     runs: int
     #: The agent has readable knowledge, so `search_knowledge` can be offered.
     has_knowledge: bool = False
+    #: The owner's published bot of this agent (`publications`): `{id, slug, status}`.
+    publication: dict | None = None
     owner_id: str
     owner_name: str = ""
     updated_at: datetime
@@ -570,9 +574,11 @@ class AgentOut(Wire):
         #: Caller id; a sealed original's prompt is withheld from non-owners.
         viewer_id: str | None = None,
         process: dict | None = None,
+        publication: dict | None = None,
     ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
         out.process = process
+        out.publication = publication
         out.check_skills = None if a.check_skills is None else [str(k) for k in a.check_skills]
         out.check_options = dict(a.check_options) if a.check_options else None
         out.gap_questions = None if a.gap_questions is None else [dict(q) for q in a.gap_questions]
@@ -620,6 +626,9 @@ class AgentIn(Wire):
     #: A `doc_formats` id; applies to report sessions whose 서식 fixes no format.
     doc_format: str | None = Field(default=None, max_length=40)
     design_system_id: str | None = Field(default=None, max_length=64)
+    #: 담당 부서·연락처 (「학사지원팀 02-760-1234, haksa@example.ac.kr」), said word for word when
+    #: the material does not answer the question.
+    contact: str = Field(default="", max_length=300)
     guide: str = Field(default="", max_length=2000)
     starters: list[str] = Field(default_factory=list, max_length=6)
     share_mode: Literal["open", "sealed"] = "open"

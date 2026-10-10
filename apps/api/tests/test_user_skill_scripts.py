@@ -58,7 +58,8 @@ def test_the_allowlists_are_what_shipped_skills_use():
     assert "market-sizing/size" in skill_specs.post_check_refs()
     assert skill_specs.entry_refs()["pre"] == ("gap-check/gaps",)
     assert set(skill_specs.entry_refs()["post"]) == {
-        "copy-check/claims", "generic-language-killer/scan", "grounding-check/trace"}
+        "copy-check/claims", "generic-language-killer/scan", "grounding-check/trace",
+        "answer-hold/hold", "contact-note/note", "pii-mask/mask"}
     assert {"claim", "medical", "guarantee"} <= set(skill_specs.copy_kinds())
     catalogue = skill_specs.catalogue()
     assert {r["ref"] for r in catalogue["postChecks"]} == set(skill_specs.post_check_refs())

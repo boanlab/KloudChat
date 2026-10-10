@@ -18,7 +18,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import col, select
 
 from app.core.deps import CurrentUser, DbSession
-from app.models.chat import ChatSession, Message, Role
+from app.models.chat import ChatSession, Message, Role, owned_by
 from app.models.workspace import Artifact
 from app.schemas.auth import Wire
 from app.services import search_text
@@ -177,7 +177,7 @@ async def _sessions(db, user_id: str, dialect: str, words: list[str], anchor: st
     """Conversations named with every word first, then those with a message holding every
     word; each group newest first. `offset` counts across both."""
     in_title = _all(ChatSession.title, words)
-    mine = ChatSession.user_id == user_id
+    mine = owned_by(user_id)
     titled_total = int((await db.exec(select(func.count()).where(mine, in_title))).one())
     rows: list[SimpleNamespace] = []
     if offset < titled_total:
@@ -199,7 +199,7 @@ async def _sessions(db, user_id: str, dialect: str, words: list[str], anchor: st
 async def _sessions_total(db, user_id: str, words: list[str]) -> int:
     """How many conversations match: named with the words, or holding them in a message."""
     in_title = _all(ChatSession.title, words)
-    mine = ChatSession.user_id == user_id
+    mine = owned_by(user_id)
     titled = int((await db.exec(select(func.count()).where(mine, in_title))).one())
     by_message = int((await db.exec(
         select(func.count(func.distinct(Message.session_id)))

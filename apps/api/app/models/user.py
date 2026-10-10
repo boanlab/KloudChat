@@ -167,6 +167,9 @@ class CreditLedger(SQLModel, table=True):
     #: zero-credit models so they still reach the usage screens.
     units: int | None = Field(default=None)
     unit: str | None = Field(default=None)
+    #: A published bot's turn (`publications`): billed to its owner, shown apart on the
+    #: usage screens.
+    publication_id: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 

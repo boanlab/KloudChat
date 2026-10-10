@@ -393,6 +393,9 @@ class Agent(SQLModel, table=True):
     share_mode: str = Field(default="open")
     #: Copy of a sealed original; its prompt is read from `origin_id` at run time.
     sealed: bool = Field(default=False)
+    #: 담당 부서·연락처: who to ask when the material does not answer, said verbatim by the
+    #: agent (and by the 「담당 부서 안내」 check). Empty: 「담당 부서에 문의해 주세요」.
+    contact: str = Field(default="")
     #: Usage notes shown on the empty conversation screen.
     guide: str = Field(default="")
     #: First messages offered as buttons on the empty screen, sent verbatim.
@@ -417,6 +420,9 @@ class Agent(SQLModel, table=True):
     catalog_key: str | None = Field(default=None)
     #: Shared agent this one was copied from; same contract as `Skill.origin_id`.
     origin_id: str | None = Field(default=None, index=True)
+    #: A published version's fixed copy (`publication_versions`) of the agent named here:
+    #: listed nowhere, edited by no one, run only by the bot.
+    snapshot_of: str | None = Field(default=None, index=True)
     runs: int = Field(default=0)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

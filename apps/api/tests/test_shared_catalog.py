@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
+from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList, Grouping
 
 from app.models.user import User, UserRole
 from app.models.workspace import Agent, Skill, SkillSource, StoredFile, Visibility
@@ -23,6 +23,8 @@ def _bound(element):
 def _matches(row, clause) -> bool:
     if clause is None:
         return True
+    if isinstance(clause, Grouping):
+        return _matches(row, clause.element)
     if isinstance(clause, BooleanClauseList):
         results = [_matches(row, part) for part in clause.clauses]
         return all(results) if clause.operator.__name__ == "and_" else any(results)
@@ -37,6 +39,10 @@ def _matches(row, clause) -> bool:
         return actual == expected
     if op == "ne":
         return actual != expected
+    if op == "is_":
+        return actual is None
+    if op == "is_not":
+        return actual is not None
     raise AssertionError(f"unsupported operator: {op}")
 
 
@@ -60,6 +66,7 @@ class _Db:
             "agents": list(agents or []),
             "users": list(users or []),
             "files": list(files or []),
+            "publications": [],
         }
         self.commits = 0
 

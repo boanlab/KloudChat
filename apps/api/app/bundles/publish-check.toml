@@ -1,0 +1,25 @@
+key = "publish-check"
+order = 4
+name = "공개 전 점검"
+description = "자료에서 근거를 찾지 못한 답은 보류하고 담당 부서를 안내하며, 답에 들어간 개인정보를 가립니다."
+
+[[items]]
+id = "hold"
+kind = "check"
+ref = "answer-hold"
+label = "근거 없는 답 보류"
+default = true
+
+[[items]]
+id = "contact"
+kind = "check"
+ref = "contact-note"
+label = "담당 부서 안내"
+default = true
+
+[[items]]
+id = "mask"
+kind = "check"
+ref = "pii-mask"
+label = "개인정보 가리기"
+default = true

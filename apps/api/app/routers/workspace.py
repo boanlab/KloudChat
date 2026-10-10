@@ -135,9 +135,21 @@ async def _claim_slug(
 
 async def _own(db: DbSession, model, owner_field: str, user: User, item_id: str):
     row = await db.get(model, item_id)
-    if row is None or getattr(row, owner_field) != user.id:
+    # A published bot's fixed copy (`Agent.snapshot_of`) and its knowledge are nobody's to
+    # edit, the owner's included: the bot runs them as they were published.
+    if row is None or getattr(row, owner_field) != user.id or await _bot_owned(db, row):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     return row
+
+
+async def _bot_owned(db: DbSession, row) -> bool:
+    """Whether `row` is a published version's agent copy or a file of one."""
+    if isinstance(row, Agent):
+        return bool(row.snapshot_of)
+    if isinstance(row, StoredFile) and row.agent_id:
+        agent = await db.get(Agent, row.agent_id)
+        return agent is not None and bool(agent.snapshot_of)
+    return False
 
 
 async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: list[str]):
@@ -149,7 +161,7 @@ async def _owned_many(db: DbSession, model, owner_field: str, user: User, ids: l
             select(model).where(col(model.id).in_(ids), getattr(model, owner_field) == user.id)
         )
     ).all()
-    return list(rows)
+    return [row for row in rows if not await _bot_owned(db, row)]
 
 
 async def _validate_skill_ids(
@@ -445,7 +457,13 @@ async def delete_projects(payload: BulkDelete, user: CurrentUser, db: DbSession)
 async def list_files(
     user: CurrentUser, db: DbSession, project_id: str | None = None, session_id: str | None = None
 ):
-    query = select(StoredFile).where(StoredFile.user_id == user.id)
+    # A published version's knowledge copies are the bot's, not files of the owner's.
+    copies = select(Agent.id).where(col(Agent.snapshot_of).is_not(None),
+                                    Agent.owner_id == user.id)
+    query = select(StoredFile).where(
+        StoredFile.user_id == user.id,
+        or_(col(StoredFile.agent_id).is_(None), col(StoredFile.agent_id).not_in(copies)),
+    )
     if project_id:
         query = query.where(StoredFile.project_id == project_id)
     if session_id:
@@ -2185,7 +2203,8 @@ async def list_agents(user: CurrentUser, db: DbSession):
     rows = (
         await db.exec(
             select(Agent)
-            .where((Agent.owner_id == user.id) | (Agent.visibility == "org"))
+            .where((Agent.owner_id == user.id) | (Agent.visibility == "org"),
+                   col(Agent.snapshot_of).is_(None))
             .order_by(col(Agent.name))
         )
     ).all()
@@ -2225,6 +2244,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
         else {}
     )
     processes = await _processes(db, rows, viewer_id=user.id)
+    published = await _published(db, user, mine)
     return [
         AgentOut.of(
             agent,
@@ -2235,9 +2255,22 @@ async def list_agents(user: CurrentUser, db: DbSession):
             installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
             viewer_id=user.id,
             process=processes.get(agent.id),
+            publication=published.get(agent.id),
         )
         for agent in rows
     ]
+
+
+async def _published(db: DbSession, user: User, mine: list[Agent]) -> dict[str, dict]:
+    """The owner's bots, by the agent each was published from (`routers/publications`)."""
+    from app.models.publishing import Publication, PublicationStatus
+
+    if not mine:
+        return {}
+    rows = (await db.exec(select(Publication).where(
+        Publication.owner_id == user.id, col(Publication.agent_id).in_([a.id for a in mine]),
+        Publication.status != PublicationStatus.revoked.value))).all()
+    return {p.agent_id: {"id": p.id, "slug": p.slug, "status": p.status} for p in rows}
 
 
 async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dict[str, dict]:
@@ -2358,6 +2391,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         system_prompt="" if sealed else origin.system_prompt,
         sealed=sealed,
         guide=origin.guide,
+        contact=origin.contact,
         starters=list(origin.starters or []),
         tools=None if origin.tools is None else list(origin.tools),
         skill_ids=skill_ids,
@@ -3291,7 +3325,8 @@ async def rate_message(message_id: str, payload: MessageRatingIn, user: CurrentU
     """Sets or clears the rating on one assistant message. Ownership is checked via the session."""
     message = await db.get(Message, message_id)
     session = await db.get(ChatSession, message.session_id) if message else None
-    if message is None or session is None or session.user_id != user.id:
+    if (message is None or session is None or session.user_id != user.id
+            or session.publication_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     if message.role is not Role.assistant:
         raise HTTPException(status_code=422, detail="not_an_answer")

@@ -52,7 +52,7 @@ from app.services import (
 from app.services.tools import catalog
 
 SHOWN_SKILLS = {"grounding-check", "gap-check", "calc-check", "date-calc", "quote-calc",
-                "xlsx-clean", "pdf-table"}
+                "xlsx-clean", "pdf-table", "pii-mask"}
 SHOWN_DOCUMENTS = {"doc-internal-draft", "doc-event-plan", "doc-result-report",
                    "doc-gaejo-report", "doc-comparison", "doc-minutes"}
 HIDDEN_DECKS = {"deck-case", "deck-defense", "deck-editorial", "deck-lecture", "deck-proposal",
@@ -63,14 +63,17 @@ SKILLS_DIR = Path(skill_packages.__file__).resolve().parent.parent / "skills"
 # ── what is shown ──────────────────────────────────────────────────────
 
 
-def test_seven_skills_are_shown_and_the_rest_kept_as_parts():
+def test_eight_skills_are_shown_and_the_rest_kept_as_parts():
     packages = skill_packages.packages()
     assert {k for k, p in packages.items() if p.listed} == SHOWN_SKILLS
     assert not any(packages[k].draft for k in SHOWN_SKILLS)
     hidden = set(packages) - SHOWN_SKILLS
     # Nothing is deleted: the drafts stay drafts, the two published ones stay published.
     assert {"text-fit", "generic-language-killer", "copy-editing", "release-notes"} <= hidden
-    assert {k for k in hidden if not packages[k].draft} == {"text-fit"}
+    # Published but unlisted: text-fit, and the 공개 전 점검 bundle's two parts, which run
+    # where the bundle is ticked and are not picked on their own.
+    assert {k for k in hidden if not packages[k].draft} == {"text-fit", "answer-hold",
+                                                            "contact-note"}
     for key in hidden:
         assert packages[key].body and packages[key].description
 

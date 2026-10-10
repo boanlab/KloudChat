@@ -159,7 +159,7 @@ async def _own_report(db: DbSession, user: User, report_id: str) -> IssueReport:
 
 async def _owned_session(db: DbSession, user: User, session_id: str) -> ChatSession:
     session = await db.get(ChatSession, session_id)
-    if session is None or session.user_id != user.id:
+    if session is None or session.user_id != user.id or session.publication_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session_not_found")
     return session
 

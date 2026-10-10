@@ -82,9 +82,16 @@ _SPEND_MODEL = func.nullif(
     "",
 )
 
+#: The surface a published bot's spend and turns are shown under: billed to its owner, kept
+#: apart from what the owner did themselves.
+BOT_SURFACE = "bot"
+
 #: Surface a ledger row came from; rows without one fall back to the session.
 #: `sessions.kind` is a Postgres enum, so it is cast to match the text column.
-_SPEND_SURFACE = func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String))
+_SPEND_SURFACE = case(
+    (col(CreditLedger.publication_id).is_not(None), literal(BOT_SURFACE)),
+    else_=func.coalesce(col(CreditLedger.surface), cast(col(ChatSession.kind), String)),
+)
 
 
 def _events(since: datetime, user_id: str | None = None):
@@ -97,8 +104,11 @@ def _events(since: datetime, user_id: str | None = None):
                 "day"
             ),
             col(Message.model).label("model"),
-            # Enum cast to text so both halves of the union agree.
-            cast(col(ChatSession.kind), String).label("kind"),
+            # Enum cast to text so both halves of the union agree; a bot's turns apart.
+            case(
+                (col(ChatSession.publication_id).is_not(None), literal(BOT_SURFACE)),
+                else_=cast(col(ChatSession.kind), String),
+            ).label("kind"),
             col(ChatSession.user_id).label("user_id"),
             # Credits come only from the ledger; counting the turn's copy would double it.
             literal(0).label("credits"),

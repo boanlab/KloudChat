@@ -114,7 +114,8 @@ def _output(agent: Agent) -> str:
 async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
     """The agents `user` may run as a step: their own and the organisation's."""
     rows = list((await db.exec(
-        select(Agent).where((Agent.owner_id == user.id) | (Agent.visibility == Visibility.org))
+        select(Agent).where((Agent.owner_id == user.id) | (Agent.visibility == Visibility.org),
+                            col(Agent.snapshot_of).is_(None))
     )).all())
     by_id = {a.id: a for a in rows}
     origins = {a.origin_id for a in rows if a.origin_id and a.origin_id not in by_id}

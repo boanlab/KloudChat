@@ -92,6 +92,11 @@ class Governance(SQLModel, table=True):
     idle_timeout_minutes: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )
+    #: Turns running at once on published bots across the instance (`services.publishing`);
+    #: a turn past it waits in line, then is refused with 429.
+    published_concurrency_max: int = Field(
+        default=16, sa_column=Column(Integer, nullable=False, server_default="16")
+    )
     #: Delete message bodies older than this. 0 keeps everything.
     retention_days: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")

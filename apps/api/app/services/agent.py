@@ -477,6 +477,10 @@ def _urls_in(text: str) -> list[str]:
 
 #: A numbered entry in a tool result: 「[3] 제목」 with the URL on the next line.
 _NUMBERED = re.compile(r"^\[(\d+)\] (.*)$")
+#: A passage of the person's own material (`knowledge.render`): 「[2] 자료: 학칙 · 제12조(휴학)」.
+_MATERIAL = re.compile(r"^\[(\d{1,3})\] 자료: (.{1,300})$")
+#: How a material passage sits in the turn's source list: it has no address to link to.
+MATERIAL_SOURCE = "material:"
 
 
 def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> str:
@@ -484,6 +488,14 @@ def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> s
     the whole turn, registering each URL in `sources`; a page fetched by URL
     gets a number of its own at the top. The model cites these numbers."""
     lines = content.split("\n")
+    if call["name"] == "search_knowledge":
+        # Each passage is numbered by what it is (document · article · page), so the same
+        # article found twice keeps one number across the turn.
+        for i, line in enumerate(lines):
+            if match := _MATERIAL.match(line):
+                label = match.group(2).strip()
+                lines[i] = f"[{_source_number(MATERIAL_SOURCE + label, sources)}] 자료: {label}"
+        return "\n".join(lines)
     for i, line in enumerate(lines[:-1]):
         match = _NUMBERED.match(line)
         if not match:
@@ -534,7 +546,9 @@ def _link_citations(answer: str, sources: list[str]) -> tuple[str, list[int]]:
         for n in wanted:
             if n not in cited:
                 cited.append(n)
-        return "".join(f"[[{n}]]({sources[n - 1]})" for n in wanted)
+        # A passage of the person's own material keeps its plain number: nothing to open.
+        return "".join(f"[{n}]" if sources[n - 1].startswith(MATERIAL_SOURCE)
+                       else f"[[{n}]]({sources[n - 1]})" for n in wanted)
 
     pieces = answer.split("```")
     for i in range(0, len(pieces), 2):
@@ -1474,7 +1488,10 @@ async def run_turn(
         yield {"type": "delta", "text": note}
     if cited:
         appendix = "\n\n### 출처\n" + "\n".join(
-            f"- [{n}] [{_source_label(sources[n - 1])}]({sources[n - 1]})" for n in cited
+            f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
+            if sources[n - 1].startswith(MATERIAL_SOURCE)
+            else f"- [{n}] [{_source_label(sources[n - 1])}]({sources[n - 1]})"
+            for n in cited
         )
         answer_text.append(appendix)
         yield {"type": "delta", "text": appendix}

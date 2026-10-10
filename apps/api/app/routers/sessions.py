@@ -44,6 +44,7 @@ from app.models.chat import (
     SessionKind,
     TurnFailure,
     follow_document_title,
+    owned_by,
 )
 from app.models.governance import Governance
 from app.models.user import AuditEvent, User, UserRole, utcnow
@@ -121,6 +122,7 @@ from app.services import (
     index_client,
     lint,
     message_links,
+    publishing,
     revise,
     settings_store,
     skill_specs,
@@ -1024,11 +1026,13 @@ async def _resolve_privacy(
     explicit_action: str | None,
     decision_token: str | None,
     internal_data: bool = False,
+    force_strict_local: bool = False,
 ) -> _PrivacyResolution | JSONResponse:
     """Makes one egress decision before persistence, billing or upstream.
 
     Only explicit proxy metadata makes a safe candidate; unknown boundaries count as external.
-    A turn with internal material goes strict-local before any finding is weighed.
+    A turn with internal material goes strict-local before any finding is weighed;
+    `force_strict_local` (a published bot's turn) holds it there whatever the policy says.
     """
     rows = (
         governance.findings(sources, legacy=policy.pii_masking)
@@ -1058,7 +1062,8 @@ async def _resolve_privacy(
     all_strict = all(_strict_model(model) for model in requested)
     allow_raw = policy.allow_user_raw_external and not policy.pii_masking
 
-    if internal_data and policy.internal_data_strict_local and not all_strict:
+    if internal_data and (policy.internal_data_strict_local or force_strict_local) \
+            and not all_strict:
         # Internal material never leaves: each chosen model becomes its strict-local
         # twin, or the first privacy-safe model; with neither, the turn is refused.
         moved: list[dict] = []
@@ -1214,8 +1219,28 @@ async def _require_egress_policy():
 
 async def _owned(db: DbSession, user: User, session_id: str) -> ChatSession:
     session = await db.get(ChatSession, session_id)
-    # Same answer for "missing" and "someone else's".
-    if session is None or session.user_id != user.id:
+    # Same answer for "missing" and "someone else's". A published bot's conversation is the
+    # publisher's row but not theirs to open: only the visitor reads it, through
+    # `routers/publications`, and the owner only what `publishing.owner_may_read` allows.
+    if session is None or session.user_id != user.id or session.publication_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session_not_found")
+    return session
+
+
+#: A visitor's turn on a published bot, set by `routers/publications` around its call to
+#: `send_message`: the session is then the bot's conversation, run on the owner's account.
+_PUBLISHED: ContextVar[publishing.PublishedTurn | None] = ContextVar("published_turn",
+                                                                    default=None)
+
+
+async def _visited(db: DbSession, user: User, session_id: str,
+                   turn: publishing.PublishedTurn) -> ChatSession:
+    """The bot conversation a visitor's turn runs on: the publisher's row, this publication's,
+    this visitor's."""
+    session = await db.get(ChatSession, session_id)
+    if (session is None or session.user_id != user.id
+            or session.publication_id != turn.publication_id
+            or session.visitor_id != turn.visitor_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session_not_found")
     return session
 
@@ -1610,7 +1635,7 @@ async def list_sessions(
     kind: SessionKind | None = None,
     project_id: str | None = None,
 ):
-    query = select(ChatSession).where(ChatSession.user_id == user.id)
+    query = select(ChatSession).where(owned_by(user.id))
     if kind is not None:
         query = query.where(ChatSession.kind == kind)
     if project_id is not None:
@@ -1655,7 +1680,7 @@ async def page_sessions(
     """
     fresh = utcnow() - timedelta(minutes=1)
     listed = and_(
-        ChatSession.user_id == user.id,
+        owned_by(user.id),
         or_(
             exists().where(col(Message.session_id) == col(ChatSession.id)),
             col(ChatSession.artifact_id).is_not(None),
@@ -1813,7 +1838,7 @@ async def fork_message(session_id: str, message_id: str, user: CurrentUser, db: 
     source = (
         await db.exec(
             select(ChatSession)
-            .where(ChatSession.id == session_id, ChatSession.user_id == user.id)
+            .where(ChatSession.id == session_id, owned_by(user.id))
             .with_for_update()
         )
     ).first()
@@ -3000,7 +3025,7 @@ async def generate_audio(session_id: str, payload: AudioRequest, user: CurrentUs
 @router.post("/delete")
 async def delete_sessions(payload: SessionBulkDelete, user: CurrentUser, db: DbSession):
     """Deletes many conversations in one request. `all` is separate from an id list."""
-    query = select(ChatSession).where(ChatSession.user_id == user.id)
+    query = select(ChatSession).where(owned_by(user.id))
     if not payload.all:
         if not payload.ids:
             return {"deleted": 0}
@@ -3495,7 +3520,15 @@ def _plans_first(session: ChatSession) -> bool:
 async def send_message(
     session_id: str, payload: SendMessage, request: Request, user: CurrentUser, db: DbSession
 ):
-    session = await _owned(db, user, session_id)
+    # A visitor's turn on a published bot (`routers/publications`): the publisher's account,
+    # the bot's fixed agent copy, a strict-local model, and nothing else of the owner's.
+    published = _PUBLISHED.get()
+    if published is not None:
+        session = await _visited(db, user, session_id, published)
+        # What a visitor may send is a question: no files, model, skills, search or 서식.
+        payload = SendMessage(content=payload.content, retry_of=payload.retry_of)
+    else:
+        session = await _owned(db, user, session_id)
 
     #: The user message being rerun; its stored words and attachments replace the client's.
     retry_of: Message | None = None
@@ -3649,6 +3682,14 @@ async def send_message(
     except WorkspaceContextError as exc:
         _raise_workspace_error(exc)
     model_id = session.model if auto_turn else payload.model or session.model or agent_model
+    if published is not None:
+        # The version's strict-local model, or no answer: never a fallback that may leave.
+        model_id = published.model_id
+        fixed = model_service.find(usable, model_id)
+        if fixed is None or not _strict_model(fixed):
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="published_model_unavailable")
+        agent_tools = [t for t in (agent_tools or []) if t in publishing.PUBLISHABLE_TOOLS]
     model = model_service.find(catalogue_models, model_id) if model_id else None
     if payload.model and (model is None or session.kind.value not in model.get("kinds", [])):
         raise HTTPException(
@@ -3733,7 +3774,9 @@ async def send_message(
     # What the server runs for the turn's skills, and the person's own scripts the sandbox
     # may run through `run_skill_script`.
     specs, own_scripts = await _skill_specs(db, user, agent_row)
-    if not active_skill_ids and session.kind is SessionKind.chat:
+    if published is not None:
+        active_skill_ids = []
+    elif not active_skill_ids and session.kind is SessionKind.chat:
         # The standing set, pruned of skills removed or barred since they were switched on.
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
@@ -3751,9 +3794,13 @@ async def send_message(
         # the turn that started the plan chose it, and the writing pass researches too.
         payload = payload.model_copy(update={"web_search": _planned_web_search(history)})
     effective_web_search, forced_tool = search_plan(payload.web_search, content)
+    if published is not None:
+        # A bot answers from the material it was published with; it has no web to look in.
+        effective_web_search, forced_tool = False, None
     fresh_followup_index = (
         _freshness_followup_index(history, session.id, content)
-        if session.kind is SessionKind.chat and not payload.attachments else None
+        if session.kind is SessionKind.chat and not payload.attachments and published is None
+        else None
     )
     if (
         fresh_followup_index is not None
@@ -3763,10 +3810,10 @@ async def send_message(
     ):
         # Auto is not renewed consent for the same explicitly offline question.
         effective_web_search, forced_tool = False, None
-    fresh_fact = freshness.current_fact_required(content) or (
+    fresh_fact = published is None and (freshness.current_fact_required(content) or (
         fresh_followup_index is not None
         and freshness.current_fact_required(history[fresh_followup_index].content)
-    )
+    ))
     #: Whether the first search below was forced by the current-fact rule alone.
     forced_by_freshness = False
     if fresh_fact and effective_web_search and forced_tool != "weather":
@@ -3781,7 +3828,7 @@ async def send_message(
     if session.agent_id and agent_tools is not None and "web_search" not in agent_tools:
         effective_web_search = False
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
-        skill_shelf = await _skill_shelf(
+        skill_shelf = [] if published is not None else await _skill_shelf(
             db, user, agent=agent_row, exclude=set(active_skill_ids)
         )
         if not requested_is_strict:
@@ -3822,12 +3869,13 @@ async def send_message(
     requested_tools = strict_tools if requested_is_strict else candidate_tools
     # A question about using this app is answered from its guide alone (below): memories and
     # 개인 맞춤 설정 stay out of that turn, or the answer passes them on as advice.
-    how_to = session.kind is SessionKind.chat and app_help.about_app(content)
+    how_to = session.kind is SessionKind.chat and app_help.about_app(content) and published is None
     try:
         workspace = await assemble(
             db,
             user,
             session,
+            published=published is not None,
             attachment_ids=payload.attachments,
             # Chat re-assembles below against the model privacy settles on.
             vision=reads_pictures(requested_model),
@@ -3880,9 +3928,16 @@ async def send_message(
     # A conversation bound to a user pipeline asks through its own steps (`human:gaps`).
     from app.routers import user_pipelines
 
-    user_pipe = await user_pipelines.bound(db, user, session, agent_row)
+    user_pipe = (await user_pipelines.bound(db, user, session, agent_row)
+                 if published is None else None)
     if user_pipe is not None:
         check_keys = ()
+    if published is not None:
+        # A visitor gets the answer; the checks after writing run, a question card does not.
+        check_keys = tuple(check_skills.of_stage(check_keys, "post", specs))
+    if agent_row is not None and agent_row.contact.strip():
+        # 담당 부서·연락처, said verbatim by the checks that point to it.
+        check_options = {**check_options, "contact": agent_row.contact.strip()}
     # 빠진 정보 질문: the 서식's (a report's) and the agent's own, else its base's.
     asking = gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
@@ -3951,9 +4006,10 @@ async def send_message(
             sources=privacy_sources,
             explicit_action=payload.privacy_action,
             decision_token=payload.privacy_decision_token,
-            internal_data=_internal_data_present(
+            internal_data=published is not None or _internal_data_present(
                 session, workspace.blocks, payload.attachments, history
             ),
+            force_strict_local=published is not None,
         )
         if isinstance(resolved, JSONResponse):
             await _audit_policy(
@@ -4035,6 +4091,7 @@ async def send_message(
                 db,
                 user,
                 session,
+                published=published is not None,
                 attachment_ids=payload.attachments,
                 vision=reads_pictures(model),
                 file_budget=file_budget(model),
@@ -4731,7 +4788,9 @@ async def send_message(
             _run_turn(
                 user_id=user.id,
                 api_key=api_key,
-                auto_memory=Preferences.of(user).auto_memory,
+                # A visitor's words are never remembered on the owner's account.
+                auto_memory=Preferences.of(user).auto_memory and published is None,
+                published=published,
                 session_id=session.id,
                 # How far a shared note reaches, and whose byline it carries.
                 project_id=session.project_id or "",
@@ -4791,7 +4850,10 @@ async def send_message(
                 skill_specs=specs,
                 own_scripts=own_scripts,
                 check_options=check_options,
-                check_material="\n".join(workspace.untrusted),
+                # The agent's 담당 부서·연락처 is a value the answer may repeat as written.
+                check_material="\n".join([*workspace.untrusted, *(
+                    [agent_row.contact] if agent_row is not None and agent_row.contact.strip()
+                    else [])]),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
                 calculation_expression=(
@@ -5143,11 +5205,25 @@ def _table_analysis_instruction(files: list[StoredFile]) -> str:
     )
 
 
-async def _run_turn(
+async def _run_turn(*, published: publishing.PublishedTurn | None = None,
+                    **kwargs: Any) -> AsyncIterator[str]:
+    """Drives one assistant turn (`_answer_turn`); a published bot's turn gives its
+    running-turn slot back when it ends, however it ends."""
+    events = _answer_turn(published=published, **kwargs)
+    if published is not None:
+        events = publishing.holding(events, published)
+    async for event in events:
+        yield event
+
+
+async def _answer_turn(
     *,
     user_id: str,
     api_key: str,
     auto_memory: bool,
+    #: A visitor's turn on a published bot: nothing is stored in the owner's account beyond
+    #: the conversation itself, and the spend is marked as the bot's.
+    published: publishing.PublishedTurn | None = None,
     session_id: str,
     project_id: str = "",
     agent_name: str = "",
@@ -5540,7 +5616,7 @@ async def _run_turn(
     # Stored and announced before the title call and the message transaction, so the
     # panel catches up with the closing text.
     new_artifact: str | None = None
-    if stored_content and not failed and not skip_completion_work:
+    if stored_content and not failed and not skip_completion_work and published is None:
         new_artifact = await _store_artifacts(
             user_id=user_id,
             session_id=session_id,
@@ -5623,6 +5699,7 @@ async def _run_turn(
                         reason="chat.completion",
                         session_id=session_id,
                         model=stored_actual_model,
+                        publication_id=published.publication_id if published else None,
                     )
             elif superseded_ids:
                 # A rerun that produced nothing: the answer it was to replace is still
@@ -5644,9 +5721,11 @@ async def _run_turn(
                 ctx.tool_calls.get("web_search", 0),
                 session_id=session_id,
                 surface=session.kind.value,
+                publication_id=published.publication_id if published else None,
             )
             # Notes are kept from an empty completion but not from a failed turn.
-            if ctx.pending_notes and not failed and not skip_completion_work:
+            if ctx.pending_notes and not failed and not skip_completion_work \
+                    and published is None:
                 await _store_notes(db, user_id, session_id, project_id, ctx.pending_notes)
             if title and not session.title_set_by_user:
                 session.title = title
@@ -5659,10 +5738,12 @@ async def _run_turn(
                     reason="chat.title",
                     session_id=session_id,
                     model=title_model,
+                    publication_id=published.publication_id if published else None,
                 )
             if side_credits:
                 # Spent before the model call, whatever became of the turn.
-                settle(db, user, side_credits, reason="chat.summary", session_id=session_id)
+                settle(db, user, side_credits, reason="chat.summary", session_id=session_id,
+                       publication_id=published.publication_id if published else None)
             if privacy_audit_id:
                 privacy_audit = await db.get(AuditEvent, privacy_audit_id)
                 if privacy_audit is not None:
@@ -5721,9 +5802,22 @@ async def _run_turn(
                 )
             await db.commit()
 
+    if published is not None:
+        # The owner's statistics — counts, topics, what it could not answer — in their own
+        # transaction, after the answer is durable.
+        try:
+            async with SessionLocal() as db:
+                await publishing.after_turn(
+                    db, published, question=published.question or first_user_message,
+                    answer=content, usage=usage, failed=bool(failed))
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001 — the answer is kept without its count
+            log.warning("bot statistics for %s not counted: %s",
+                        logs.safe(session_id), logs.safe(exc))
+
     # Own transaction, after the answer is durable: auto-memory needs `answer_id`.
     memory_step: dict | None = None
-    if stored_content and not failed and not skip_completion_work:
+    if stored_content and not failed and not skip_completion_work and published is None:
         memory_step = await _enrich_memory(
             user_id=user_id,
             session_id=session_id,

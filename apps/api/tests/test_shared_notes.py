@@ -76,6 +76,11 @@ _DDL = (
         running_turn TEXT,
         running_since DATETIME,
         pinned BOOLEAN DEFAULT 0,
+        publication_id TEXT,
+        visitor_id TEXT,
+        publication_version_id TEXT,
+        shared_at DATETIME,
+        viewable BOOLEAN NOT NULL DEFAULT 0,
         created_at DATETIME,
         updated_at DATETIME,
         title_set_by_user BOOLEAN NOT NULL DEFAULT 0

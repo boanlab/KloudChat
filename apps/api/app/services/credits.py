@@ -108,6 +108,7 @@ def settle(
     session_id: str | None = None,
     model: str | None = None,
     surface: str | None = None,
+    publication_id: str | None = None,
 ) -> None:
     """Deducts on completion; may overshoot. Caller commits.
 
@@ -133,6 +134,7 @@ def settle(
             session_id=session_id,
             model=model,
             surface=surface,
+            publication_id=publication_id,
         )
     )
 
@@ -165,6 +167,7 @@ def record_units(
     unit: str,
     session_id: str | None = None,
     surface: str | None = None,
+    publication_id: str | None = None,
 ) -> None:
     """A zero-delta ledger row for free work measured in units (seconds, chunks). Caller commits."""
     if units <= 0:
@@ -179,6 +182,7 @@ def record_units(
             surface=surface or surface_for(reason),
             units=units,
             unit=unit,
+            publication_id=publication_id,
         )
     )
 
@@ -190,6 +194,7 @@ def record_searches(
     *,
     session_id: str | None = None,
     surface: str | None = None,
+    publication_id: str | None = None,
 ) -> None:
     """Web searches a turn ran, one ledger row per turn, so the usage screens can
     show search volume against the engines' quotas. Free: no credits move. Caller commits."""
@@ -202,6 +207,7 @@ def record_searches(
         unit="searches",
         session_id=session_id,
         surface=surface,
+        publication_id=publication_id,
     )
 
 

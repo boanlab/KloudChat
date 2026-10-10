@@ -127,7 +127,8 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
         *(report._source_text(row) for row in (bundle.material.sources or [])),
     ]
     options = check_skills.options_for(
-        dt.datetime.now(ZoneInfo(settings.timezone)).date(), bundle.request.check_options)
+        dt.datetime.now(ZoneInfo(settings.timezone)).date(), bundle.request.check_options,
+        surface="report")
     return material, computed, options
 
 
@@ -188,7 +189,7 @@ class AnswerGrounding(Base):
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
                                            if m.get("role") == "assistant")],
-            options=check_skills.options_for(req.today, req.check_options),
+            options=check_skills.options_for(req.today, req.check_options, surface="chat"),
             specs=req.skill_specs,
         )
         if not traced.found:
@@ -196,7 +197,8 @@ class AnswerGrounding(Base):
         bundle.document.answer = traced.text
         ground_step = {
             "category": "thinking", "id": "grounding",
-            "label": f"근거 없는 값 {len(traced.found)}개 → 빈칸",
+            "label": (f"근거 없는 값 {len(traced.found)}개 → 빈칸" if traced.traced_only
+                      else "답 점검: " + traced.summary[:120]),
             "status": "error" if traced.left else "done",
             "detail": traced.summary[:1500],
         }

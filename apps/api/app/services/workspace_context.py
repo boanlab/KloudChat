@@ -253,9 +253,17 @@ def surface_prompt(prompt: str, kind: str) -> str:
 
 
 def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
-    if agent is None or not (prompt := surface_prompt(agent.system_prompt, kind.value)):
+    if agent is None:
         return ""
-    return f"# 역할\n{prompt}"
+    prompt = surface_prompt(agent.system_prompt, kind.value)
+    contact = (getattr(agent, "contact", "") or "").strip()
+    if contact:
+        # 담당 부서·연락처 from the agent form, given to the model to repeat word for word.
+        prompt = (prompt + "\n\n" if prompt else "") + (
+            "# 담당 부서·연락처\n"
+            "When the material does not answer the question, or answers it only in part, "
+            "point the person to this contact, copied exactly as written:\n" + contact)
+    return f"# 역할\n{prompt}" if prompt else ""
 
 
 #: Share of the file budget project knowledge keeps even when attachments took the rest.
@@ -755,6 +763,7 @@ async def assemble(
     question: str = "",
     file_budget: int | None = None,
     how_to: bool = False,
+    published: bool = False,
 ) -> WorkspaceContext:
     """Build one authorised context without auto-activating installed skills.
 
@@ -768,13 +777,16 @@ async def assemble(
     `how_to`: the turn asks how to use this app. Its answer is the user guide's, so the
     person's memories and 개인 맞춤 설정 stay out: a remembered 「회의록은 영어로」 came back
     as advice to write it into an agent's 지시.
+    `published`: a visitor's turn on a published bot, run on its owner's account. The
+    owner's memories, 개인 맞춤 설정 and project stay out; the bot's agent copy and the files
+    of the conversation are all it reads.
     """
     agent = await _load_agent(db, user, session)
-    project = await _load_project(db, user, session)
+    project = None if published else await _load_project(db, user, session)
     design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
     # Memories are chat-only; not loaded elsewhere so the context step reports none.
-    if session.kind is SessionKind.chat and not how_to:
+    if session.kind is SessionKind.chat and not how_to and not published:
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
         memories, memory_names, memory_total = "", (), 0
@@ -790,7 +802,7 @@ async def assemble(
 
     blocks: list[ContextBlock] = []
     # Least specific first; later blocks win where they disagree.
-    if not how_to and (personal := _personal_block(user, session.kind)):
+    if not how_to and not published and (personal := _personal_block(user, session.kind)):
         blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent, session.kind):
         blocks.append(ContextBlock("agent.instructions", text, True))

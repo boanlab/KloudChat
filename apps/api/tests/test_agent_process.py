@@ -62,9 +62,9 @@ from app.services import (
 
 def test_the_shipped_bundles_are_data_in_the_users_shape():
     shipped = bundles.shipped()
-    assert list(shipped) == ["prepare", "review", "finish"]
+    assert list(shipped) == ["prepare", "review", "finish", "publish-check"]
     assert [b.name for b in shipped.values()] == ["쓰기 전에 준비하기", "다 쓴 뒤 검토하기",
-                                                  "마무리하기"]
+                                                  "마무리하기", "공개 전 점검"]
     assert [i.id for i in shipped["review"].items] == ["ground", "numbers", "titles", "format",
                                                        "repair"]
     # Where an item runs follows its kind, on each surface.
@@ -78,6 +78,11 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
     assert [bundles.target(i, "chat") for i in prepare.items] == ["check", "before", "before"]
     finish = shipped["finish"]
     assert [bundles.target(i, "chat") for i in finish.items] == ["check", None]
+    # 공개 전 점검: three checks after writing, attached like any other.
+    publish = shipped["publish-check"]
+    assert [i.ref for i in publish.items] == ["answer-hold", "contact-note", "pii-mask"]
+    assert [bundles.target(i, "chat") for i in publish.items] == ["check", "check", "check"]
+    assert not publish.risky
     assert all(bundles.target(i, "slides") is None for b in shipped.values() for i in b.items)
     # Shipped bundles never wait for review, whatever they hold.
     assert not finish.risky
@@ -456,7 +461,8 @@ async def test_the_bases_endpoint_offers_drafts_to_administrators_only(wired):
         mine = await up.list_bases(me, db)
         assert "document" not in [b["key"] for b in mine["bases"]]
         assert "document" in [b["key"] for b in (await up.list_bases(admin, db))["bases"]]
-        assert [b["ref"] for b in mine["bundles"]] == ["prepare", "review", "finish"]
+        assert [b["ref"] for b in mine["bundles"]] == ["prepare", "review", "finish",
+                                                       "publish-check"]
     assert set(starter.draft_agents()) == {"document", "slides"}
 
 

@@ -13,6 +13,7 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.chat import ChatSession, SessionKind
+from app.models.publishing import Publication
 from app.models.user import User, UserRole
 from app.models.workspace import Agent, DesignSystem, Memory, Skill, StoredFile, Visibility
 from app.routers import workspace as ws
@@ -140,7 +141,8 @@ async def db():
                 metadata.create_all,
                 tables=[
                     metadata.tables[model.__tablename__]
-                    for model in (User, Agent, Skill, DesignSystem, StoredFile, Memory, ChatSession)
+                    for model in (User, Agent, Skill, DesignSystem, StoredFile, Memory, ChatSession,
+                                  Publication)
                 ],
             )
         async with AsyncSession(engine, expire_on_commit=False) as session:

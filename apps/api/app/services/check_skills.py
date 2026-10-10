@@ -156,12 +156,20 @@ def clean_options(raw: dict | None) -> dict[str, bool]:
     return {k: True for k in CHECK_OPTIONS if isinstance(raw, dict) and raw.get(k)}
 
 
-def options_for(today: dt.date | None = None, settings: dict | None = None) -> dict:
+def options_for(today: dt.date | None = None, settings: dict | None = None,
+                surface: str = "") -> dict:
     """How strict the trace is: what the agent asked for (`Agent.check_options`) and its
-    서식 sets (`check_options` in a `template.toml`: a career history traces titles)."""
+    서식 sets (`check_options` in a `template.toml`: a career history traces titles). Also what
+    every check may read: where it runs (`surface`) and the agent's 담당 부서·연락처
+    (`contact`), which the checks that point to it copy as written."""
     options: dict = {"today": today.isoformat() if today else ""}
     for key in clean_options(settings):
         options.update(CHECK_OPTIONS[key])
+    if surface:
+        options["surface"] = surface
+    contact = settings.get("contact") if isinstance(settings, dict) else None
+    if isinstance(contact, str) and contact.strip():
+        options["contact"] = contact.strip()[:500]
     return options
 
 
@@ -172,15 +180,26 @@ class Outcome:
     found: list[dict] = field(default_factory=list)
     #: What the check found again after the fix.
     left: list[dict] = field(default_factory=list)
+    #: The findings by the check that made them, in the order they ran.
+    by_key: dict[str, list[dict]] = field(default_factory=dict)
+
+    @property
+    def traced_only(self) -> bool:
+        """Whether every finding is a value the trace (`grounding-check`) blanked."""
+        return set(self.by_key) <= {"grounding-check"}
 
     @property
     def summary(self) -> str:
         if not self.found:
             return ""
-        try:
-            shown = skill_scripts.entry("grounding-check").summary(self.found)
-        except Exception:  # noqa: BLE001
-            shown = f"근거 없는 값 {len(self.found)}개 → 빈칸"
+        parts = []
+        for key, found in (self.by_key or {"grounding-check": self.found}).items():
+            try:
+                parts.append(skill_scripts.entry(key).summary(found))
+            except Exception:  # noqa: BLE001
+                parts.append(f"근거 없는 값 {len(found)}개 → 빈칸"
+                             if key == "grounding-check" else f"{key} {len(found)}개")
+        shown = " · ".join(p for p in parts if p)
         return shown + (f" · 남은 것 {len(self.left)}개" if self.left else "")
 
 
@@ -198,6 +217,7 @@ def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[st
                 continue
             fixed = module.fix(outcome.text, found)
             outcome.found += found
+            outcome.by_key.setdefault(key, []).extend(found)
             outcome.left += module.check(fixed, material, computed, options)
             outcome.text = fixed
         except Exception:  # noqa: BLE001 — the text stays as written; the step says nothing

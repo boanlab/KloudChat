@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from sqlalchemy import Boolean, Column, DateTime, Index, String, false
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, col
 
 from app.models.user import utcnow
 
@@ -108,6 +108,21 @@ class ChatSession(SQLModel, table=True):
     running_turn: str | None = Field(default=None)
     running_since: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     pinned: bool = Field(default=False)
+    #: A conversation on a published bot (`publications`): owned by the publisher, opened by
+    #: a visitor. Kept out of the owner's own lists, search and transcript routes
+    #: (`owned_by`); only the visitor reads it, and the owner only what the visibility rules
+    #: allow (`services.publishing`).
+    publication_id: str | None = Field(default=None, index=True)
+    #: The visitor (`publication_visitors.id`) and the version the conversation runs on.
+    visitor_id: str | None = Field(default=None, index=True)
+    publication_version_id: str | None = Field(default=None)
+    #: The visitor sent this conversation to the bot's maker (👎 or 「만든 사람에게 보내기」).
+    shared_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
+    #: Started while 「대화 열람」 was on, after the visitor's consent.
+    viewable: bool = Field(
+        default=False, sa_column=Column(Boolean, nullable=False, default=False,
+                                        server_default=false())
+    )
     #: The person named this conversation themselves; no automatic title replaces theirs.
     title_set_by_user: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, default=False,
@@ -115,6 +130,12 @@ class ChatSession(SQLModel, table=True):
     )
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
+
+
+def owned_by(user_id: str):
+    """The person's own conversations: theirs, and not a published bot's (whose rows the
+    publisher owns but never lists)."""
+    return (ChatSession.user_id == user_id) & col(ChatSession.publication_id).is_(None)
 
 
 class Message(SQLModel, table=True):
@@ -200,6 +221,7 @@ class PipelineRun(SQLModel, table=True):
 
 __all__ = [
     "ChatSession",
+    "owned_by",
     "Message",
     "MessageRating",
     "PipelineRun",

@@ -23,6 +23,7 @@ from app.routers import (
     models,
     perf,
     pipelines,
+    publications,
     runs,
     search,
     sessions,
@@ -34,7 +35,15 @@ from app.routers import (
     user_templates,
     workspace,
 )
-from app.services import bootstrap, litellm, settings_store, starter, stop_signal, storage
+from app.services import (
+    bootstrap,
+    litellm,
+    publishing,
+    settings_store,
+    starter,
+    stop_signal,
+    storage,
+)
 from app.services.perf import collector as perf_collector
 from app.services.perf import live as perf_live
 
@@ -73,6 +82,9 @@ async def lifespan(app: FastAPI):
         log.warning("catalogue not synced at startup: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
+    # Published bots: retention of their conversations, and pausing a bot whose owner can no
+    # longer carry it (services/publishing.py).
+    bots = asyncio.create_task(publishing.watch())
     # Cross-process stop-button delivery: only with more than one API replica,
     # so the single-instance default holds no extra Postgres connection open.
     stop_listener = (
@@ -84,6 +96,7 @@ async def lifespan(app: FastAPI):
     perf_task = asyncio.create_task(perf_collector.run()) if settings.perf_monitoring else None
     yield
     sweeper.cancel()
+    bots.cancel()
     if stop_listener is not None:
         stop_listener.cancel()
     if perf_task is not None:
@@ -130,6 +143,7 @@ app.include_router(usage.me_router, prefix=settings.api_prefix)
 app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
+app.include_router(publications.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)
 app.include_router(perf.router, prefix=settings.api_prefix)
 

@@ -73,7 +73,8 @@ async def _owned_target(db: DbSession, user, payload: ShareIn):
         return row, None
     if payload.session_id:
         row = await db.get(ChatSession, payload.session_id)
-        if row is None or row.user_id != user.id:
+        # A published bot's conversation is not the owner's to hand out.
+        if row is None or row.user_id != user.id or row.publication_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
         return None, row
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="nothing_to_share")

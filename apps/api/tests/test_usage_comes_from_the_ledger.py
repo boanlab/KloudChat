@@ -44,6 +44,7 @@ _DDL = (
         user_id TEXT,
         kind TEXT,
         model TEXT DEFAULT '',
+        publication_id TEXT,
         title_set_by_user BOOLEAN NOT NULL DEFAULT 0
     )
     """,
@@ -68,6 +69,7 @@ _DDL = (
         surface TEXT,
         units INTEGER,
         unit TEXT,
+        publication_id TEXT,
         created_at DATETIME
     )
     """,

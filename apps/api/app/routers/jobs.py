@@ -224,7 +224,7 @@ def _now():
 async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession):
     """Starts a video and returns immediately. The row is committed before the poll loop starts."""
     session = await db.get(ChatSession, session_id)
-    if session is None or session.user_id != user.id:
+    if session is None or session.user_id != user.id or session.publication_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
     # The same gate every external call passes: policy first, then the filter, then
