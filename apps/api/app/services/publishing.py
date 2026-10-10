@@ -56,6 +56,7 @@ from app.models.publishing import (
     PublicationStatus,
     PublicationVersion,
     PublicationVisibility,
+    PublicationVisitor,
 )
 from app.models.user import AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.models.workspace import Agent, StoredFile, Visibility
@@ -759,6 +760,12 @@ async def sweep(db: AsyncSession, now: datetime | None = None) -> dict[str, int]
         old = list((await db.exec(select(ChatSession.id).where(
             ChatSession.publication_id == pub.id, col(ChatSession.updated_at) < cutoff))).all())
         out["sessions"] += await delete_sessions(db, old)
+        # A visitor without an account who has not come back within the retention is
+        # forgotten too (their conversations went above); a blocked one is kept.
+        await db.exec(delete(PublicationVisitor).where(
+            PublicationVisitor.publication_id == pub.id, col(PublicationVisitor.user_id).is_(None),
+            col(PublicationVisitor.blocked).is_(False),
+            col(PublicationVisitor.last_seen_at) < cutoff))
         gone = (await db.exec(select(func.count()).select_from(PublicationQuestion).where(
             PublicationQuestion.publication_id == pub.id,
             col(PublicationQuestion.at) < cutoff))).one()

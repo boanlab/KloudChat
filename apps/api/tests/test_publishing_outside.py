@@ -484,3 +484,19 @@ async def test_pending_or_unknown_bots_read_the_same_to_a_visitor_without_an_acc
     unknown = await world.client.get("/b/no-such-bot-1234")
     assert pending.status_code == unknown.status_code == 404
     assert pending.json() == unknown.json()
+
+
+async def test_a_visitor_without_an_account_is_forgotten_with_their_conversations(world):
+    pub = await _open_by_link(world)
+    sid, _ = await _visit(world, pub["slug"])
+    gone = utcnow() - timedelta(days=31)
+    async with world.local() as db:
+        session = await db.get(ChatSession, sid)
+        visitor = await db.get(PublicationVisitor, session.visitor_id)
+        session.updated_at, visitor.last_seen_at = gone, gone
+        db.add_all([session, visitor])
+        await db.commit()
+        await publishing.sweep(db)
+        assert await db.get(ChatSession, sid) is None
+        assert (await db.exec(select(PublicationVisitor).where(
+            PublicationVisitor.publication_id == pub["id"]))).all() == []
