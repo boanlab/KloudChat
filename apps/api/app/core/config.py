@@ -146,11 +146,11 @@ class Settings(BaseSettings):
     #: OpenAI-compatible `/v1/audio/transcriptions`. Empty falls through to
     #: `stt_or_model`; dictation is hidden when neither is set.
     whisper_url: str = ""
-    #: Fallback transcription model when `whisper_url` is unset, sent as
-    #: chat/completions with an audio part. Microphone audio leaves the network;
-    #: "" keeps dictation internal. Must be a LiteLLM model id that accepts
-    #: `input_audio`; the Voxtral id was never in the model list.
-    stt_or_model: str = "google/gemini-3.8-flash"
+    #: Fallback transcription model when `whisper_url` is unset or fails, sent as
+    #: chat/completions with an audio part. Off by default: with it set, recordings
+    #: (meetings included) leave the network whenever local Whisper cannot answer.
+    #: An administrator opts in with a LiteLLM model id that accepts `input_audio`.
+    stt_or_model: str = ""
     code_interpreter_api_key: str = ""
     #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
     #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.

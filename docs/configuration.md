@@ -213,7 +213,7 @@ when added to the `api` service's `environment:`.
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
 | `TITLE_MODEL` | `local/qwen3.8-27b` | Names conversations and extracts memories. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
-| `STT_OR_MODEL` | `google/gemini-3.8-flash` | Fallback transcription model for hosts that cannot run Whisper. Must be a LiteLLM model that accepts `input_audio`. **Microphone audio leaves the network.** Set to `""` to keep dictation internal-only. |
+| `STT_OR_MODEL` | `""` (off) | Opt-in fallback transcription model for hosts that cannot run Whisper, also used when local Whisper fails. Must be a LiteLLM model that accepts `input_audio`. **When set, recordings leave the network.** Leave empty to keep all audio internal. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
 | `GEOIP_DATABASE` | — | Path to a MaxMind GeoLite2 City `.mmdb`. Empty disables region lookup; see [Where an address is](#where-an-address-is). Set through `KCHAT_GEOIP_DATABASE`. |
