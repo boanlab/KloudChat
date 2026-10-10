@@ -97,6 +97,7 @@ from app.services import (
     richtext,
     settings_store,
     skill_import,
+    skill_packages,
     starter,
     user_templates,
 )
@@ -1930,7 +1931,9 @@ async def list_tool_catalog(user: CurrentUser, db: DbSession):
 
 @router.get("/skills/store", response_model=list[StoreSkillOut])
 async def list_skill_store(user: CurrentUser, db: DbSession):
-    """Org-shared skills owned by others; `GET /skills` lists only owned ones."""
+    """Org-shared skills owned by others; `GET /skills` lists only owned ones. A shipped skill
+    kept only as a part (`listed: false`) is left out, except for administrators, who see it
+    marked (`listed`) behind 「숨김 포함」."""
     rows = (
         await db.exec(
             select(Skill)
@@ -1938,6 +1941,8 @@ async def list_skill_store(user: CurrentUser, db: DbSession):
             .order_by(col(Skill.name))
         )
     ).all()
+    if user.role is not UserRole.admin:
+        rows = [row for row in rows if skill_packages.listed(row.catalog_key)]
     owner_ids = {row.owner_id for row in rows}
     names = await _owner_names(db, owner_ids)
     admins = await _admin_ids(db, owner_ids)

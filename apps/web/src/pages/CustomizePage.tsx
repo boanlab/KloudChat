@@ -418,7 +418,23 @@ function Hub() {
     void loadSkillStore()
   }, [loadWorkspace, loadSkillStore])
 
-  const hub = useHubItems(tab)
+  const showHidden = params.get('hidden') === '1'
+  const admin = useStore((s) => s.user?.role === 'admin')
+  const hub = useHubItems(tab, showHidden)
+  // 숨김 포함: administrators, and anyone holding a hidden part, may show what lists leave out.
+  const hiddenToggle = tab === 'skills' && (admin || hub.hiddenMine > 0) ? (
+    <Button
+      size="sm"
+      variant={showHidden ? 'secondary' : 'ghost'}
+      aria-pressed={showHidden}
+      data-testid="show-hidden"
+      title={t('목록에서 숨긴 스킬도 보여 줍니다. 숨긴 스킬도 이름으로 계속 쓸 수 있습니다.')}
+      onClick={() => update({ hidden: showHidden ? null : '1' })}
+    >
+      {showHidden ? <Check size={13} /> : null}
+      {t('숨김 포함')}
+    </Button>
+  ) : null
   const { tryItem, addItem } = useItemActions()
   const cardTab = CARD_TABS.includes(tab)
   const hasView = cardTab
@@ -490,11 +506,12 @@ function Hub() {
               </button>
             )
           })}
+          {hiddenToggle && <span className="ml-auto">{hiddenToggle}</span>}
           {(tab === 'agents' || tab === 'skills') && hub.mine.some((i) => i.deletable) && (
             <Button
               size="sm"
               variant={picking ? 'secondary' : 'ghost'}
-              className="ml-auto"
+              className={hiddenToggle ? undefined : 'ml-auto'}
               aria-pressed={picking}
               onClick={() => {
                 if (picking) pick.clear()
@@ -560,19 +577,24 @@ function Hub() {
 
   const exploreBody = () => {
     if (hub.loading && hub.explore.length === 0) return <LoadingState />
+    const toggleRow = hiddenToggle && <div className="flex justify-end">{hiddenToggle}</div>
     if (hub.explore.length === 0) {
       return (
-        <EmptyState
-          icon={<Search size={18} />}
-          title={t('아직 공유된 {kind} 항목이 없습니다').replace('{kind}', kindWord)}
-          description={t('내 항목을 모두에게 공개하면 여기에 올라옵니다.')}
-        />
+        <>
+          {toggleRow}
+          <EmptyState
+            icon={<Search size={18} />}
+            title={t('아직 공유된 {kind} 항목이 없습니다').replace('{kind}', kindWord)}
+            description={t('내 항목을 모두에게 공개하면 여기에 올라옵니다.')}
+          />
+        </>
       )
     }
     if (anyFilter || all) {
       const rows = filtered
       return (
         <div className="space-y-4">
+          {toggleRow}
           {all && (
             <button type="button" onClick={() => update({ all: null })} className="text-sm text-muted hover:text-fg">
               ← {t('탐색으로 돌아가기')}
@@ -590,6 +612,7 @@ function Hub() {
     const fresh = sortItems(hub.explore, 'recent')
     return (
       <div className="space-y-10">
+        {toggleRow}
         {popular.length > 0 && (
           <section aria-label={t('가장 많이 추가된 {kind}').replace('{kind}', kindWord)}>
             <SectionHead

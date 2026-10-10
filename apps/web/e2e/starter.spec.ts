@@ -24,13 +24,12 @@ test('기본 스킬과 기본 에이전트 여섯 개가 갖춰져 있다', asyn
     }
   }, AS_USER)
 
-  // People's own and shared agents may exist; the catalogue's six stand among them.
+  // People's own and shared agents may exist; the catalogue's four stand among them.
   const official = agents.filter((a: { official?: boolean; catalogKey?: string | null }) =>
     a.official || a.catalogKey,
   )
   const names = new Set(official.map((a: { name: string }) => a.name))
-  for (const name of ['고객 맞춤 제안서', '개조식 보고서', '회의록', '데이터 분석',
-    '자기소개서·경력기술서', '비교·분석 보고서']) {
+  for (const name of ['개조식 보고', '비교·결정', '자료 추출·집계', '회의록']) {
     expect(names.has(name), `${name} 없음`).toBe(true)
   }
 

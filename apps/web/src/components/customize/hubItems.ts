@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { agentKinds } from '@/lib/kinds'
+import { isListed } from '@/lib/listed'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill } from '@/types'
 import type { ItemType } from './itemIcons'
@@ -57,6 +58,8 @@ export interface HubItem {
   /** A store row the person already holds a copy of. */
   added: boolean
   deletable: boolean
+  /** 숨김: a shipped part not offered in lists (`listed: false`), shown only behind 「숨김 포함」. */
+  hidden: boolean
   /** Detail screen; null when the card has none (a shipped flow opens its locked section). */
   to: string | null
   agent?: Agent
@@ -83,6 +86,7 @@ export function agentItem(a: Agent, me: string | undefined): HubItem {
     mine,
     added: a.installed,
     deletable: mine,
+    hidden: false,
     to: `/customize/agents/${a.id}`,
     agent: a,
   }
@@ -109,13 +113,15 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
     mine: !store,
     added: store ? row.installed : true,
     deletable: !store && s.source !== 'built-in',
+    hidden: !isListed(s),
     to: `/customize/skills/${s.id}`,
     skill: s,
   }
 }
 
-/** Every item on one card tab, split into 내 항목 and 탐색. */
-export function useHubItems(tab: HubTab) {
+/** Every item on one card tab, split into 내 항목 and 탐색. Hidden items (`listed: false`) are left
+ *  out unless `showHidden`; `hiddenMine` counts the ones the person holds. */
+export function useHubItems(tab: HubTab, showHidden = false) {
   const agents = useStore((s) => s.agents)
   const skills = useStore((s) => s.skills)
   const skillStore = useStore((s) => s.skillStore)
@@ -139,7 +145,15 @@ export function useHubItems(tab: HubTab) {
     return { mine: [] as HubItem[], explore: [] as HubItem[], locked: [] as HubItem[] }
   }, [tab, agents, skills, skillStore, me])
 
-  return { ...items, loading: false }
+  const shown = (rows: HubItem[]) => (showHidden ? rows : rows.filter((i) => !i.hidden))
+  return {
+    mine: shown(items.mine),
+    explore: shown(items.explore),
+    locked: items.locked,
+    hiddenMine: items.mine.filter((i) => i.hidden).length,
+    hiddenAny: items.mine.some((i) => i.hidden) || items.explore.some((i) => i.hidden),
+    loading: false,
+  }
 }
 
 export type SortKey = 'popular' | 'recent' | 'name'

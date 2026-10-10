@@ -654,6 +654,9 @@ class ConnectorCatalogEntry(SQLModel, table=True):
     tools_key_feature: str = Field(default="", max_length=20)
     kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
     enabled: bool = Field(default=True)
+    #: Shown in the members' catalogue. An unlisted entry is still installable by slug and
+    #: what is installed from it keeps working; administrators see it marked (migration 0063).
+    listed: bool = Field(default=True)
     position: int = Field(default=0)
     updated_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

@@ -53,7 +53,8 @@ def _compile_bundles(spec: dict) -> None:
     from app.services import bundles
 
     surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
-    made = bundles.compile(surface, list(spec.get("bundles") or []), bundles.shipped())
+    made = bundles.compile(surface, list(spec.get("bundles") or []), bundles.shipped(),
+                           doc_format=spec.get("doc_format"))
     spec["bundles"] = bundles.clean(spec.get("bundles"))
     spec["checks"] = list(made.check_skills)
     spec["check_options"] = dict(made.check_options)
@@ -107,6 +108,12 @@ def _questions(spec: dict) -> list[dict] | None:
     return [dict(q) for q in spec["questions"]] if spec.get("questions") else None
 
 
+def design_listed(name: str | None) -> bool:
+    """Whether a theme of this name is shown in the pickers: False for a shipped one marked
+    `listed: False` (each account's seeded copy wears the shipped name)."""
+    return not any(d["name"] == name and d.get("listed") is False for d in _DESIGNS)
+
+
 def agent_checks(key: str | None) -> tuple[str, ...]:
     """The check skills a shipped agent attaches (`checks` in its toml), by catalogue key."""
     return tuple(str(k) for k in (agent_spec(key) or {}).get("checks") or ())
@@ -130,6 +137,8 @@ _DESIGNS: list[dict] = [
     },
     {
         "name": "발표용 청록",
+        # Not in the pickers (2026-10); what already wears it keeps it.
+        "listed": False,
         "description": "슬라이드와 표지 이미지를 같은 청록으로 묶습니다.",
         "tokens": {"accent": "#0f766e", "ink": "#0f172a", "muted": "#64748b", "font": "gothic"},
         "body": "청중이 소리 내어 읽을 문장으로 쓴다. 한 장에 주장 하나.",
@@ -185,7 +194,7 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
     if existing:
         return 0
     for spec in _DESIGNS:
-        db.add(DesignSystem(owner_id=user_id, **spec))
+        db.add(DesignSystem(owner_id=user_id, **{k: v for k, v in spec.items() if k != "listed"}))
     return len(_DESIGNS)
 
 

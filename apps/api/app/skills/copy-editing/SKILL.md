@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 post_check: preserve
 post_judge: "a sentence, reason, condition or promise the original text does not have, and an estimate or plan the original hedges written as settled"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Proofread and line-edit the user's Korean text. The user's text is the only source: you fix how it is written, never what it says.
 

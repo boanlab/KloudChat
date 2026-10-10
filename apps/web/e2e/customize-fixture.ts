@@ -95,21 +95,23 @@ export const shippedBundles = [
   { ref: 'finish', name: '마무리하기', description: '상투적인 표현을 걷어내고, 다 쓰면 파일로 내보냅니다.', shipped: true,
     ownerId: null, visibility: 'org', review: '', risky: false, items: [
       { id: 'plain', kind: 'check', ref: 'generic-language-killer', settings: {}, label: '상투적인 표현 걷어내기', default: true, targets: targets('check', 'check') },
-      { id: 'export', kind: 'export', ref: '', settings: { formats: ['docx'] }, label: '다 쓰면 파일로 내보내기', default: true, targets: targets('after', null) },
+      // A 공문-family document (개조식 included) goes out as HWPX, anything else as DOCX.
+      { id: 'export', kind: 'export', ref: '', settings: { formats: ['docx'], by_format: { internal_draft: 'hwpx', official: 'hwpx', event_plan: 'hwpx', result_report: 'hwpx', gaejo: 'hwpx' } },
+        label: '다 쓰면 파일로 내보내기', default: true, targets: targets('after', null) },
     ] },
 ]
 const officialBundles = [{ bundle: 'prepare', items: {} }, { bundle: 'review', items: {} }, { bundle: 'finish', items: { export: false } }]
 export const bases = [
-  { key: 'gaejo-report', name: '요약·정리', description: '긴 메모를 1쪽 개조식 요약 보고로', surface: 'report', docFormat: 'gaejo',
+  { key: 'gaejo-report', name: '개조식 보고', description: '긴 메모를 1쪽 개조식 요약 보고로', surface: 'report', docFormat: 'gaejo',
     template: 'doc-gaejo-report', steps: ['올린 자료를 읽습니다', '빠진 정보가 있으면 먼저 물어봅니다', '날짜·견적·인력 수치를 계산해 둡니다',
       '정해진 네 부분으로 개조식 보고를 씁니다', '개조식 문체와 한 쪽 분량을 확인합니다'], draft: false, custom: true,
-    bundles: officialBundles, formatChecks: ['개조식 문체 확인', '날짜 확인'], asks: true },
-  { key: 'minutes', name: '기록 정리', description: '회의·인터뷰·강의 기록', surface: 'report', docFormat: 'minutes', template: 'doc-minutes',
+    bundles: officialBundles, formatChecks: ['개조식 문체 확인', '날짜 확인'], asks: true, templateName: '개조식 보고서' },
+  { key: 'minutes', name: '회의록', description: '회의·인터뷰·강의 기록', surface: 'report', docFormat: 'minutes', template: 'doc-minutes',
     steps: ['올린 녹음 기록·메모를 읽습니다', '회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다',
       '「다음 주 금요일」 같은 날짜를 회의일 기준으로 계산해 둡니다', '회의록을 씁니다', '할 일마다 담당자·기한과 근거를 확인합니다'],
     draft: false, custom: true, bundles: officialBundles, formatChecks: ['할 일의 담당자·기한 확인', '날짜 확인'], asks: true,
     templateName: '회의록' },
-  { key: 'data-analysis', name: '데이터 분석', description: '엑셀·CSV 분석', surface: 'chat', docFormat: null, template: null,
+  { key: 'data-analysis', name: '자료 추출·집계', description: '엑셀·CSV에서 열을 뽑아 집계', surface: 'chat', docFormat: null, template: null,
     steps: ['빠진 정보가 있으면 먼저 물어봅니다', '답의 표기를 다듬습니다', '답의 수치가 도구로 계산한 결과에 있는지 확인합니다'],
     draft: false, custom: true, asks: true, formatChecks: [],
     bundles: [{ bundle: 'prepare', items: { dates: false, amounts: false } }, { bundle: 'review', items: { numbers: true } }] },
@@ -156,6 +158,8 @@ export const mySkills = [
   skillRow('k2222222222222222222222222222222', '주간 현황 보고', { visibility: 'org' }),
   skillRow('k3333333333333333333333333333333', '번역 검수', { enabled: false }),
 ]
+/** A shipped skill kept only as a part (`listed: false`): 숨김 포함 shows it. */
+export const hiddenSkillRow = skillRow('k8888888888888888888888888888888', '글자 수 맞춤', { source: 'built-in', catalogKey: 'text-fit', listed: false })
 export const storeSkills = [
   { ...skillRow('k4444444444444444444444444444444', '견적 계산'), ownerId: 'admin', ownerName: '관리자', official: true, installed: false, installs: 31, visibility: 'org' },
   { ...skillRow('k5555555555555555555555555555555', '보도자료 교정'), ownerId: 'u2', ownerName: '김동료', official: false, installed: false, installs: 3, visibility: 'org' },
@@ -215,7 +219,7 @@ export function conversationRows(n: number) {
   }))
 }
 
-export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false } = {}) {
+export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false } = {}) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
   const problems: string[] = []
@@ -223,17 +227,18 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
   let made: ReturnType<typeof pipelineRow>[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   let agents = [...(emptyMine ? [] : myAgents), ...storeAgents]
-  let skills = emptyMine ? [] : [...mySkills]
-  const store = storeSkills.map((s) => ({ ...s }))
+  let skills = emptyMine ? [] : [...mySkills, ...(hiddenSkill ? [hiddenSkillRow] : [])]
+  const store = [...storeSkills, ...(hiddenSkill ? [{ ...hiddenSkillRow, id: 'k9999999999999999999999999999999', ownerId: 'admin', ownerName: '관리자', official: true, installed: true, installs: 3, visibility: 'org' }] : [])]
+    .map((s) => ({ ...s }))
   let sessions: Record<string, unknown>[] = conversationRows(conversations)
   let userTemplates: Record<string, unknown>[] = []
   let catalogRows: Record<string, unknown>[] = [
-    { id: 'e1', slug: 'time', name: '시간', description: "현재 시각과 타임존 변환. '오늘'을 모델이 지어내지 않게 합니다.", category: '기본',
+    { id: 'e1', slug: 'time', name: '시간', description: "현재 시각과 타임존 변환. '오늘'이 며칠인지 서버 시계로 알려 줍니다.", category: '기본',
       transport: 'stdio', endpoint: "uvx --with 'mcp<2' mcp-server-time --local-timezone=Asia/Seoul", env: {}, requiredEnv: [],
-      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, position: 0, updatedAt: at },
+      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, listed: true, position: 0, updatedAt: at },
     { id: 'e2', slug: 'youtube', name: 'YouTube 전사', description: '영상의 자막을 가져오고, 없으면 음성을 전사합니다.', category: '미디어',
       transport: 'stdio', endpoint: 'uv run --script /srv/mcp/youtube.py', env: { WHISPER_URL: '${TOOLS_STT_URL}' }, requiredEnv: [],
-      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, position: 1, updatedAt: at },
+      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, listed: false, position: 1, updatedAt: at },
   ]
 
   await page.context().route('**/*', async (route) => {

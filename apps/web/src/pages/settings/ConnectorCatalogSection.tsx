@@ -7,7 +7,8 @@ import type { CatalogEntryAdmin } from '@/types'
 
 const BLANK: CatalogEntryIn = {
   slug: '', name: '', description: '', category: '', transport: 'http', endpoint: '', env: {},
-  requiredEnv: [], toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat'], enabled: true, position: 0,
+  requiredEnv: [], toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat'], enabled: true, listed: true,
+  position: 0,
 }
 
 const ERRORS: Record<string, string> = {
@@ -152,7 +153,13 @@ function EntryForm({
           <label className="flex items-center gap-1.5 text-base">
             <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={value.enabled}
               onChange={(e) => set('enabled', e.target.checked)} />
-            {t('카탈로그에 보이기')}
+            {t('설치할 수 있게 켜기')}
+          </label>
+          <label className="flex items-center gap-1.5 text-base" title={t('끄면 멤버 카탈로그에 나오지 않지만, 설치된 것은 계속 동작합니다.')}>
+            <input type="checkbox" className="size-4 accent-[var(--accent)]" checked={value.listed}
+              data-testid="catalog-entry-listed"
+              onChange={(e) => set('listed', e.target.checked)} />
+            {t('목록에 보이기')}
           </label>
         </div>
       </div>
@@ -194,7 +201,8 @@ export function ConnectorCatalogSection() {
                 <span className="font-medium">{row.name}</span>
                 <Badge>{row.transport === 'stdio' ? t('명령') : row.transport.toUpperCase()}</Badge>
                 {row.toolsKeyFeature && <Badge>{t('게이트웨이 키')}: {row.toolsKeyFeature}</Badge>}
-                {!row.enabled && <Badge>{t('숨김')}</Badge>}
+                {!row.enabled && <Badge>{t('꺼짐')}</Badge>}
+                {row.enabled && row.listed === false && <Badge>{t('숨김')}</Badge>}
               </span>
               <span className="block truncate text-sm text-muted">{row.description}</span>
               <code className="block truncate text-sm text-faint">{row.endpoint}</code>

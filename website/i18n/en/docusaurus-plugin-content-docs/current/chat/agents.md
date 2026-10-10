@@ -16,7 +16,7 @@ An agent is an assistant with a role, instructions, tools, and material already 
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
 
-The built-in agents are **Summary** (요약·정리), **Records** (기록 정리: meetings, interviews, lectures), **Compare and decide** (비교·결정) and **Data analysis**. **Document writing** (문서 작성) and **Presentation** (발표 자료) are published once they pass evaluation; until then only administrators see them. The cover letter and career history agent and the client proposal agent were retired: they no longer appear in any list or start new conversations, but conversations and results made with them still open and export.
+The built-in agents are **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. **Official letter and draft** (공문·기안 초안) and **Presentation** (발표 자료) are published once they pass evaluation; until then only administrators see them. Copies taken under an earlier name (요약·정리, 기록 정리, 데이터 분석, 문서 작성) take the new name unless you renamed them. The cover letter and career history agent and the client proposal agent were retired: they no longer appear in any list or start new conversations, but conversations and results made with them still open and export.
 
 ## Creating an agent
 
@@ -41,13 +41,13 @@ The enable toggle pauses an agent. Deleting it also deletes its sources, index a
 
 Pick one of three under **How it works** in the create-agent form.
 
-- **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Summary (Bullet-style briefing (개조식))”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (DOCX, or HWPX or PDF when the instructions name that format).
-- **Start from a base process**: pick a built-in agent (Summary, Records, Compare and decide, …) from the **Base process** list and the agent follows the order it works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's questions, document format, template, checks and bundles. A base that writes a document still starts with file export off (see "Get a file" under Bundles).
+- **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Bullet-style briefing (Bullet-style briefing (개조식))”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (HWPX, as a 개조식 document, or DOCX or PDF when the instructions name that format).
+- **Start from a base process**: pick a built-in agent (Bullet-style briefing, Minutes, Compare and decide, …) from the **Base process** list and the agent follows the order it works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's questions, document format, template, checks and bundles. A base that writes a document still starts with file export off (see "Get a file" under Bundles).
 - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
 ## Bundles
 
-A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items, each its own checkbox.
+A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items as checkboxes.
 
 | Bundle | Items |
 |---|---|
@@ -55,9 +55,9 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 | Review after writing | Check everything against the material (accept numbers only from tool output · check job titles and product names too) · Format checks · Fix what is off and check again |
 | Finish | Strip stock phrases · Export a file when done (DOCX, PDF, HWPX or MD) |
 
-- **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the file format beside it. The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
+- **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the format beside it (HWPX for 공문-type documents, else DOCX). The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
 - On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing ("Always done"). The chat screen has no format checks and no export.
-- The built-in agents are made of the same bundles. Records, for example, is Prepare before writing + Review after writing (including each action item's owner and deadline) + Finish (export off).
+- Built-in agents use the same bundles: Minutes is Prepare before writing + Review after writing (including each action item's owner and deadline) + Finish (export off).
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
 
@@ -101,7 +101,7 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Skills
 
-A skill is a working method that applies **to one request only**. Select up to three from **+** → **Skills** in the composer. They are cleared once you send. Installing a skill alone does not apply it. Available skills include citation formatting, calculation and unit checking, comparison tables, paper structure, and one-page summaries.
+A skill is a working method that applies **to one request only**. Select up to three from **+** → **Skills** in the composer. They are cleared once you send. Installing a skill alone does not apply it. The built-in ones are listed under "Built-in skills" below.
 
 ![The Skills screen](/img/guide/skills.png)
 
@@ -110,3 +110,11 @@ A skill is a working method that applies **to one request only**. Select up to t
 - A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.
 - A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
 - When you set **Recommended skills** on a project, they appear first in the composer of that project.
+
+## Built-in skills
+
+The lists show seven: **Grounding check** (근거 대조), **Ask for missing information** (빠진 정보 묻기), **Calculation and unit check** (계산·단위 검증), **Date calculation** (날짜 계산), **Quote calculation** (견적 계산), **Excel cleanup** (엑셀 정리) and **PDF table → Excel** (PDF 표 → 엑셀).
+
+- **Excel cleanup** strips title, blank, total and note rows and records what it changed on a change-log sheet. Rows whose values are all the same are not removed, only marked 「중복 의심」 (suspected duplicate); ask for them to be removed if you want that.
+- **PDF table → Excel** reads only PDFs whose text can be selected (text PDFs). Scanned PDFs (images) cannot be read.
+- The other skills (copy, market research, proofreading, stock-phrase stripping, character-count fitting and so on) are hidden from the lists, the store and the pickers. They are not deleted: they still run in bundles (such as Finish's stock-phrase stripping) and in earlier conversations, and the editors still let you pick them by name. Administrators see them with **Show hidden** (숨김 포함).

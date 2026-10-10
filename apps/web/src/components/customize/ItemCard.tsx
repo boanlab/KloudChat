@@ -127,6 +127,11 @@ export function ItemCard({
         {item.summary && <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(item.summary)}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-faint">
           <span>{itemMeta(item, view, t)}</span>
+          {item.hidden && (
+            <span className="rounded-full border border-line px-1.5 text-xs text-muted" data-testid="item-hidden">
+              {t('숨김')}
+            </span>
+          )}
           {item.shared && view === 'mine' && (
             <span className="inline-flex items-center gap-0.5 text-success">
               <Globe size={11} aria-hidden />

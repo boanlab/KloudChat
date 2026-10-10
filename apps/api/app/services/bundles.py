@@ -201,14 +201,25 @@ def target(item: Item, surface: str) -> str | None:
     return None
 
 
-def _value(bundle: Bundle, item: Item, ticks: dict[str, Any]) -> Any:
+def export_default(item: Item, doc_format: str | None = None) -> str:
+    """The file an export item makes when ticked without a format: the one its `by_format`
+    names for the agent's document format (마무리하기: HWPX for the 공문 family), else its
+    first `formats`."""
+    by_format = item.settings.get("by_format")
+    if isinstance(by_format, dict) and doc_format and by_format.get(doc_format):
+        return str(by_format[doc_format])
+    return str((item.settings.get("formats") or ["docx"])[0])
+
+
+def _value(bundle: Bundle, item: Item, ticks: dict[str, Any],
+           doc_format: str | None = None) -> Any:
     """The item's tick: the person's, else its bundle's default. An export's is its format."""
     raw = ticks.get(item.id, item.default)
     if item.kind == "export":
         from app.pipeline import compose
 
         if raw is True:
-            raw = (item.settings.get("formats") or ["docx"])[0]
+            raw = export_default(item, doc_format)
         return str(raw) if str(raw or "") in compose.EXPORT_FORMATS else ""
     return bool(raw)
 
@@ -243,7 +254,7 @@ class Compiled:
 
 
 def compile(surface: str, selections: list[dict[str, Any]],
-            known: dict[str, Bundle]) -> Compiled:
+            known: dict[str, Bundle], *, doc_format: str | None = None) -> Compiled:
     """The agent the ticked bundles make on this surface. `known`: every bundle the person
     may use, by ref; an unknown one is skipped."""
     from app.pipeline import compose
@@ -260,7 +271,7 @@ def compile(surface: str, selections: list[dict[str, Any]],
         placed_after = False
         for item in bundle.items:
             where = target(item, surface)
-            value = _value(bundle, item, selection["items"])
+            value = _value(bundle, item, selection["items"], doc_format)
             if where is None or not value:
                 continue
             if where == "check":
@@ -293,7 +304,8 @@ def compile(surface: str, selections: list[dict[str, Any]],
 
 
 def settled(surface: str, selections: list[dict[str, Any]],
-            known: dict[str, Bundle]) -> list[dict[str, Any]]:
+            known: dict[str, Bundle], *, doc_format: str | None = None
+            ) -> list[dict[str, Any]]:
     """Selections as stored for an agent on this surface: an item nothing here can run (a
     file export for an agent that answers in chat) is stored off, so the row never says it
     exports what it cannot."""
@@ -304,7 +316,7 @@ def settled(surface: str, selections: list[dict[str, Any]],
         if bundle is not None:
             for item in bundle.items:
                 if item.kind == "export" and target(item, surface) is None \
-                        and _value(bundle, item, items):
+                        and _value(bundle, item, items, doc_format):
                     items[item.id] = False
         out.append({"bundle": row["bundle"], "items": items})
     return out
@@ -312,7 +324,8 @@ def settled(surface: str, selections: list[dict[str, Any]],
 
 def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
          check_skills: list | None = None,
-         check_options: dict | None = None) -> list[dict[str, Any]]:
+         check_options: dict | None = None,
+         doc_format: str | None = None) -> list[dict[str, Any]]:
     """The ticked bundles, every item's tick filled in. An agent made before bundles (none
     stored) shows the shipped ones its checks amount to."""
     rows = clean(selections)
@@ -333,12 +346,12 @@ def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
         if bundle is None:
             continue
         out.append({"bundle": bundle.ref, "items": {
-            i.id: _value(bundle, i, row["items"]) for i in bundle.items}})
+            i.id: _value(bundle, i, row["items"], doc_format) for i in bundle.items}})
     return out
 
 
 def lines(surface: str, selections: list[dict[str, Any]],
-          known: dict[str, Bundle]) -> list[str]:
+          known: dict[str, Bundle], *, doc_format: str | None = None) -> list[str]:
     """What the ticked bundles add, one plain line per item that runs."""
     out = []
     for row in clean(selections):
@@ -346,7 +359,7 @@ def lines(surface: str, selections: list[dict[str, Any]],
         if bundle is None:
             continue
         for item in bundle.items:
-            value = _value(bundle, item, row["items"])
+            value = _value(bundle, item, row["items"], doc_format)
             if not value or target(item, surface) in (None, "self"):
                 continue
             label = item.label or item.ref or item.kind
@@ -357,4 +370,5 @@ def lines(surface: str, selections: list[dict[str, Any]],
 
 
 __all__ = ["MINE", "MINE_SKILL", "Bundle", "Compiled", "Item", "SELF", "USER", "clean", "compile",
-           "lines", "of_row", "own_checks", "settled", "shipped", "target", "view"]
+           "export_default", "lines", "of_row", "own_checks", "settled", "shipped", "target",
+           "view"]

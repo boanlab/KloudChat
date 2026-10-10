@@ -1,7 +1,7 @@
 # 비교·결정 (formerly 비교·분석 보고서) — specs: lineup v1 `comparison-report`.
 
 key = "comparison-report"
-order = 4
+order = 2
 name = "비교·결정"
 # Earlier shipped names: an untouched copy still wearing one is renamed on sync.
 former_names = ["비교·분석 보고서"]

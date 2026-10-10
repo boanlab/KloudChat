@@ -1,6 +1,7 @@
 import { ChevronDown, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Input } from '@/components/ui'
+import { isListed } from '@/lib/listed'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import type { Skill, ToolCatalogEntry } from '@/types'
@@ -310,7 +311,7 @@ export function SkillPicker({
   const t = useT()
   const chosen = value ?? []
   const options: Option[] = skills
-    .filter((s) => s.enabled || chosen.includes(s.id))
+    .filter((s) => (s.enabled && isListed(s)) || chosen.includes(s.id))
     .map((s) => ({
       id: s.id,
       title: s.name,

@@ -20,20 +20,21 @@ from app.services import design_templates, doc_formats, starter, workspace_conte
 from app.services.tools import registry
 
 _SHIPPED = {
-    "gaejo-report": "요약·정리",
-    "document": "문서 작성",
-    "minutes": "기록 정리",
+    "gaejo-report": "개조식 보고",
     "comparison-report": "비교·결정",
-    "data-analysis": "데이터 분석",
+    "data-analysis": "자료 추출·집계",
+    "minutes": "회의록",
+    "document": "공문·기안 초안",
     "slides": "발표 자료",
     "career-docs": "자기소개서·경력기술서",
     "client-proposal": "고객 맞춤 제안서",
 }
-_OFFERED = ["gaejo-report", "document", "minutes", "comparison-report", "data-analysis", "slides"]
+_OFFERED = ["gaejo-report", "comparison-report", "data-analysis", "minutes", "document", "slides"]
 _DRAFTS = {"document", "slides"}
 _RETIRED = {"career-docs", "client-proposal"}
-_FORMER = {"gaejo-report": ["개조식 보고서"], "minutes": ["회의록"],
-           "comparison-report": ["비교·분석 보고서"]}
+_FORMER = {"gaejo-report": ["개조식 보고서", "요약·정리"], "minutes": ["기록 정리"],
+           "comparison-report": ["비교·분석 보고서"], "data-analysis": ["데이터 분석"],
+           "document": ["문서 작성"]}
 _BINDINGS = {
     "client-proposal": ("report", "doc-client-proposal", "client_proposal", "기본"),
     "gaejo-report": ("report", "doc-gaejo-report", "gaejo", "문서용 명조"),
@@ -199,7 +200,7 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
             "render_template_id": agent.render_template_id, "doc_format": agent.doc_format,
             "design_system_id": agent.design_system_id,
         })
-    assert rows["minutes"].slug == "기록-정리" and own.slug == "회의록"
+    assert rows["minutes"].slug == "회의록-2" and own.slug == "회의록"
     # Idempotent.
     assert await starter.seed_catalog(db, admin.id) == 0
 
@@ -346,7 +347,11 @@ async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
     renamed = await ws.install_agent(
         (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one().id,
         user, db)
-    for row_id, old in ((copy.id, "회의록"), (renamed.id, "내 개조식")):
+    data = await ws.install_agent(
+        (await db.exec(select(Agent).where(Agent.catalog_key == "data-analysis"))).one().id,
+        user, db)
+    for row_id, old in ((copy.id, "기록 정리"), (renamed.id, "내 개조식"),
+                        (data.id, "데이터 분석")):
         row = await db.get(Agent, row_id)
         row.name = old
         db.add(row)
@@ -355,5 +360,6 @@ async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
     await db.commit()
     db.expire_all()
     # An untouched earlier name follows the rename; a name of the person's own stays.
-    assert (await db.get(Agent, copy.id)).name == "기록 정리"
+    assert (await db.get(Agent, copy.id)).name == "회의록"
     assert (await db.get(Agent, renamed.id)).name == "내 개조식"
+    assert (await db.get(Agent, data.id)).name == "자료 추출·집계"

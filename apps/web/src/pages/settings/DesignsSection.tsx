@@ -11,6 +11,7 @@ import {
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
 
 /** Craft rules; keys must match `CRAFT` in the API's design service, unknown keys are dropped on save. */
 const CRAFT: { key: string; label: string; hint: string }[] = [
@@ -183,6 +184,10 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   const loadWorkspace = useStore((s) => s.loadWorkspace)
   const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
+  // 숨김 포함: a shipped theme kept for what already wears it (`listed: false`) is folded away.
+  const [showHidden, setShowHidden] = useState(false)
+  const hiddenCount = rows.filter((r) => !isListed(r)).length
+  const shownRows = showHidden ? rows : rows.filter(isListed)
   const deleteMany = useStore((s) => s.deleteMany)
   const pick = useBulkSelect(rows.filter((r) => r.mine))
   // 「+ 추가」 in the hub opens straight into the form or the reader.
@@ -400,8 +405,21 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
           pick.clear()
         }}
       />
+      {hiddenCount > 0 && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant={showHidden ? 'secondary' : 'ghost'}
+            aria-pressed={showHidden}
+            data-testid="themes-show-hidden"
+            onClick={() => setShowHidden(!showHidden)}
+          >
+            {t('숨김 포함')} ({hiddenCount})
+          </Button>
+        </div>
+      )}
       <ul className="space-y-1">
-        {rows.map((row) => (
+        {shownRows.map((row) => (
           <li
             key={row.id}
             className="flex items-center gap-2 rounded-control border border-line bg-panel px-2.5 py-1.5 text-base"
@@ -421,6 +439,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
               style={{ background: row.tokens.accent }}
             />
             <span className="min-w-0 flex-1 truncate">{row.name}</span>
+            {!isListed(row) && <Badge>{t('숨김')}</Badge>}
             {row.shared && <Badge>{t('공용')}</Badge>}
             {row.mine ? (
               <>

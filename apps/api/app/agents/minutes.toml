@@ -1,10 +1,10 @@
-# 기록 정리 (formerly 회의록) — specs: lineup v1 `minutes`.
+# 회의록 (named 기록 정리 for a while) — specs: lineup v1 `minutes`.
 
 key = "minutes"
-order = 3
-name = "기록 정리"
+order = 4
+name = "회의록"
 # Earlier shipped names: an untouched copy still wearing one is renamed on sync.
-former_names = ["회의록"]
+former_names = ["기록 정리"]
 description = "회의·인터뷰·강의의 녹음·자동 전사본·메모(+후속 메일)로 결정·할 일·미결이 남는 기록(회의록)을 만들 때"
 kinds = ["report"]
 surface = "report"

@@ -58,7 +58,7 @@ async def _out(db: DbSession, connector: Connector) -> ConnectorOut:
 @router.get("/catalog")
 async def get_catalog(user: CurrentUser, db: DbSession):
     """Installable servers (the administrators' catalogue), with the ones this user already
-    has marked."""
+    has marked. An unlisted entry is left out unless this user installed it."""
     installed = {
         c.slug
         for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
@@ -86,6 +86,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
             ],
         }
         for entry in await catalog.entries()
+        if entry.get("listed", True) or entry["slug"] in installed
     ]
 
 
@@ -355,6 +356,8 @@ class CatalogEntryIn(Wire):
     tools_key_feature: str = Field(default="", max_length=20)
     kinds: list[str] = Field(default_factory=lambda: ["chat"], max_length=3)
     enabled: bool = True
+    #: Shown in the members' catalogue; False keeps it installable and working, not offered.
+    listed: bool = True
     position: int = Field(default=0, ge=0, le=999)
 
 

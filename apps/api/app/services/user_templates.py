@@ -307,7 +307,7 @@ def catalogue() -> dict[str, Any]:
         "detectors": gap_questions.detector_catalogue(),
         "process": process_settings.catalogue(),
         "starts": [{"id": t.id, "name": t.name, "description": t.description}
-                   for t in design_templates.offered() if t.kind == "document"],
+                   for t in design_templates.listed() if t.kind == "document"],
         "limits": {k: v for k, v in _LIMITS.items()} | {"fills": MAX_FILLS,
                                                          "fields": MAX_FIELDS},
     }

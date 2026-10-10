@@ -7,6 +7,8 @@ required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
 copy_check: true
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Produce many headline candidates that differ by angle (why someone would click), not by synonyms. Every fact in a headline comes from the request/material.
 

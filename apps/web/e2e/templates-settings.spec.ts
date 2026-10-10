@@ -70,6 +70,9 @@ test('an administrator adds a catalogue entry; stored values never come back', a
   const admin = page.getByTestId('connector-catalog-admin')
   await expect(admin.getByTestId('catalog-entry')).toHaveCount(2, { timeout: 15_000 })
   await expect(admin).toContainText('게이트웨이 키: stt')
+  // An unlisted entry stays installable and working; the list says it is hidden.
+  await expect(admin.getByTestId('catalog-entry').filter({ hasText: 'YouTube' })).toContainText('숨김')
+  await expect(admin.getByTestId('catalog-entry').filter({ hasText: '시간' })).not.toContainText('숨김')
   await shot(page, testInfo, 'connector-catalog')
   await admin.getByRole('button', { name: '항목 추가' }).click()
   const dialog = page.getByTestId('catalog-entry-form')
@@ -83,7 +86,7 @@ test('an administrator adds a catalogue entry; stored values never come back', a
   await page.getByRole('button', { name: '저장' }).click()
   await expect(admin.getByTestId('catalog-entry')).toHaveCount(3)
   expect(state.calls.find((c) => c.method === 'POST' && c.path === '/admin/connector-catalog')?.body).toMatchObject({
-    slug: 'wiki', transport: 'http', endpoint: 'https://wiki.example.com/mcp', env: { API_TOKEN: 's3cret' } })
+    slug: 'wiki', transport: 'http', endpoint: 'https://wiki.example.com/mcp', env: { API_TOKEN: 's3cret' }, listed: true })
   // Edited again, the stored value is not shown: only that one is set.
   await admin.getByRole('button', { name: '사내 위키 편집' }).click()
   await expect(page.getByTestId('catalog-entry-form').getByRole('textbox', { name: '값' })).toHaveValue('')

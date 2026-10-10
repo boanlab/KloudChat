@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 post_check: check
 post_judge: "promises of a follow-up notice, procedures, contacts, deadlines and who must do what"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Write internal announcements a busy employee understands from the first line and can act on without asking back. Use only what the request and material say.
 

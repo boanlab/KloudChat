@@ -86,9 +86,9 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
 def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
     everyone = [b.key for b in bases.bases()]
     admins = [b.key for b in bases.bases(drafts=True)]
-    assert everyone == ["gaejo-report", "minutes", "comparison-report", "data-analysis"]
-    assert admins == ["gaejo-report", "document", "minutes", "comparison-report",
-                      "data-analysis", "slides"]
+    assert everyone == ["gaejo-report", "comparison-report", "data-analysis", "minutes"]
+    assert admins == ["gaejo-report", "comparison-report", "data-analysis", "minutes",
+                      "document", "slides"]
     assert bases.get("career-docs") is None and bases.get("client-proposal") is None
     for base in bases.bases(drafts=True):
         assert 1 <= len(base.steps) <= 5
@@ -96,7 +96,7 @@ def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
     assert minutes.steps[1] == ("question", "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다")
     assert (minutes.surface, minutes.doc_format, minutes.template) == (
         "report", "minutes", "doc-minutes")
-    # 기록 정리 = 준비 + 검토 (its 형식 검사 checks owners and deadlines) + 마무리 without export.
+    # 회의록 = 준비 + 검토 (its 형식 검사 checks owners and deadlines) + 마무리 without export.
     assert [b["bundle"] for b in minutes.bundles] == ["prepare", "review", "finish"]
     assert "할 일의 담당자·기한 확인" in minutes.format_checks and minutes.asks
     assert not bases.get("document").asks

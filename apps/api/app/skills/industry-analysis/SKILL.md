@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Analyse an industry's environment in Korean. A framework filled with plausible generalities is worse than an honest half-empty one: each cell is a fact with a source, or 「자료 없음」.
 

@@ -57,6 +57,7 @@ def _entry(row) -> dict[str, Any]:
         "tools_key_for": (row.tools_key_var, row.tools_key_feature)
         if row.tools_key_var and row.tools_key_feature else None,
         "kinds": list(row.kinds or ["chat"]), "enabled": bool(row.enabled),
+        "listed": bool(getattr(row, "listed", True)),
         "position": int(row.position or 0),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
@@ -238,6 +239,7 @@ def clean(payload: dict[str, Any], *, previous_env: dict[str, str] | None = None
         "endpoint": endpoint, "env": env or None, "required_env": required,
         "auth": "none", "tools_key_var": var, "tools_key_feature": feature,
         "kinds": list(dict.fromkeys(kinds)), "enabled": bool(payload.get("enabled", True)),
+        "listed": bool(payload.get("listed", True)),
         "position": max(0, min(int(payload.get("position") or 0), 999)),
     }
 
@@ -256,6 +258,7 @@ def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
         "env": shown, "requiredEnv": list(entry.get("required_env") or []),
         "toolsKeyVar": target[0], "toolsKeyFeature": target[1],
         "kinds": list(entry.get("kinds") or []), "enabled": bool(entry.get("enabled", True)),
+        "listed": bool(entry.get("listed", True)),
         "position": int(entry.get("position") or 0), "updatedAt": entry.get("updated_at"),
     }
 

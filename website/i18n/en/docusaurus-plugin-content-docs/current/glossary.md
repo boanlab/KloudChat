@@ -14,9 +14,10 @@ title: Glossary
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |
 | Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |
 | How it works (진행 과정) | The order an agent works in: Answer directly · Start from a base process · Set it up yourself (advanced) |
-| Base process (기본 과정) | The order a built-in agent (Summary, Records, …) works in. Your own agent can follow it as it is |
+| Base process (기본 과정) | The order a built-in agent (Bullet-style briefing, Minutes, …) works in. Your own agent can follow it as it is |
 | Bundle (묶음) | A group of things an agent does before and after writing. Ticked under Extra work in the agent settings |
 | Skill (스킬) | A way of working that you turn on for this request only. Up to 3 |
+| Hidden (숨김) | A built-in skill, template, theme or connector kept but not shown in the lists, the store or the pickers. It still works in bundles and earlier conversations; administrators see it with Show hidden |
 | Connector (커넥터) | An external tool the model uses (MCP). Turned on and off for the whole account |
 | Memory (메모리) | A fact remembered beyond one conversation. Settings › Memory |
 | strict-local | A mark on a model confirmed not to send anything outside |

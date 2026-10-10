@@ -1245,6 +1245,8 @@ export interface DesignRow {
   shared: boolean
   /** Whether the caller may edit or remove it. */
   mine: boolean
+  /** Shown in the pickers; false for a shipped theme kept for what already wears it. */
+  listed?: boolean
   updatedAt: string
 }
 
@@ -1307,6 +1309,8 @@ export interface DesignTemplateRow {
   /** A person's template (`ut-<id>`): the caller's own when `mine`. */
   user?: boolean
   mine?: boolean
+  /** Shown in the pickers; false for a shipped 서식 still chosen by id but not offered. */
+  listed?: boolean
 }
 
 /** One card's text in the language on screen, falling back rather than blanking. */
@@ -1495,6 +1499,8 @@ export interface SkillRow {
   /** Sharing with scripts: '' · pending · approved · rejected. */
   review?: string
   reviewNote?: string
+  /** Shown in the lists people pick from; false for a shipped skill kept only as a part. */
+  listed?: boolean
 }
 
 export interface StoreSkillRow extends SkillRow {

@@ -1,9 +1,11 @@
-# 데이터 분석 — specs: lineup v1 `data-analysis`.
+# 자료 추출·집계 (formerly 데이터 분석) — specs: lineup v1 `data-analysis`.
 
 key = "data-analysis"
-order = 5
-name = "데이터 분석"
-description = "엑셀·CSV를 올리고 정리·집계·비교한 표와 차트, 자료가 받쳐 주는 만큼의 해석이 필요할 때"
+order = 3
+name = "자료 추출·집계"
+# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+former_names = ["데이터 분석"]
+description = "내부 엑셀·CSV에서 정한 열을 뽑아 모으고 항목별로 집계한 표와, 지우거나 바꾼 행의 변경 내역이 필요할 때"
 kinds = ["chat"]
 surface = "chat"
 design = "기본"
@@ -25,7 +27,7 @@ starters = [
     "두 시트(작년·올해)를 비교해서 처리가 빨라졌는지 보고용으로 정리해 줘. 데이터를 정리했다면 뭘 했는지 적어 줘.",
 ]
 guide = '''
-엑셀·CSV 파일을 올리고 무엇을 비교·집계할지 알려 주세요. 기준(기한 14일, 기간 등)이 있으면 함께.
+엑셀·CSV 파일을 올리고 어떤 열을 뽑아 무엇을 기준으로 집계·비교할지 알려 주세요. 기준(기한 14일, 기간 등)이 있으면 함께.
 파일은 코드로 전 행을 읽어 정리·집계하고, 답의 숫자는 실행 결과에서만 옮깁니다. 지운 행·바꾼 값은 ‘데이터 처리’에 원본 → 정리 후 → 분석 포함 행 수로 남기고, 인과는 단정하지 않습니다.'''
 
 system_prompt = '''

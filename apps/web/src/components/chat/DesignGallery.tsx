@@ -5,6 +5,7 @@ import { Badge, Button, Modal } from '@/components/ui'
 import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
 import { currentLang } from '@/lib/i18n'
+import { isListed } from '@/lib/listed'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
@@ -195,7 +196,10 @@ export function DesignTemplateCard({
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
           <div className="flex items-start justify-between gap-2">
             <p className="text-base font-medium">{text.name}</p>
-            <Badge>{text.category}</Badge>
+            <span className="flex shrink-0 gap-1">
+              {!isListed(row) && <Badge>{t('숨김')}</Badge>}
+              <Badge>{text.category}</Badge>
+            </span>
           </div>
           <p className="line-clamp-2 text-sm text-muted">{text.description}</p>
           <Checks checks={row.checks} />
@@ -261,13 +265,25 @@ export function DesignGalleryModal({
   const pendingTemplate = useStore((s) => s.pendingTemplate)
   const sessions = useStore((s) => s.sessions)
 
+  const admin = useStore((s) => s.user?.role === 'admin')
+  const [showHidden, setShowHidden] = useState(false)
+
+  // The session's template: an unsent pick outranks the server's row.
+  const worn =
+    (pendingTemplate?.surface === kind ? pendingTemplate.id : null) ??
+    sessions.find((row) => row.id === sessionId)?.renderTemplateId ??
+    null
+
   const english = currentLang() === 'en'
+  // A hidden 서식 (`listed: false`) is not offered; the one this conversation wears stays, and an
+  // administrator may show the rest (숨김 포함).
+  const hiddenHere = rows.some((r) => r.surface === kind && !isListed(r))
   const forSurface = useMemo(
     () =>
       rows
-        .filter((r) => r.surface === kind)
+        .filter((r) => r.surface === kind && (showHidden || isListed(r) || r.id === worn))
         .map((r) => ({ row: r, text: templateText(r, english) })),
-    [rows, kind, english],
+    [rows, kind, english, showHidden, worn],
   )
 
   const categories = useMemo(
@@ -298,12 +314,6 @@ export function DesignGalleryModal({
   // Clamped, not reset, when the result count shrinks.
   const at = Math.min(page, pages - 1)
   const shown = found.slice(at * PER_PAGE, at * PER_PAGE + PER_PAGE)
-
-  // The session's template: an unsent pick outranks the server's row.
-  const worn =
-    (pendingTemplate?.surface === kind ? pendingTemplate.id : null) ??
-    sessions.find((row) => row.id === sessionId)?.renderTemplateId ??
-    null
 
   const pick = (row: DesignTemplateRow) => {
     if (row.id === worn) return
@@ -348,6 +358,20 @@ export function DesignGalleryModal({
                 </button>
               ))}
           </div>
+          {admin && hiddenHere && (
+            <Button
+              size="sm"
+              variant={showHidden ? 'secondary' : 'ghost'}
+              aria-pressed={showHidden}
+              data-testid="gallery-show-hidden"
+              onClick={() => {
+                setShowHidden(!showHidden)
+                setPage(0)
+              }}
+            >
+              {t('숨김 포함')}
+            </Button>
+          )}
           <div className="relative shrink-0">
             <Search
               size={13}

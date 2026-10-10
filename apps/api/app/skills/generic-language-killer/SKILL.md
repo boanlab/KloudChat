@@ -10,6 +10,8 @@ stage: post
 entry: scan
 post_check: scan
 post_judge: "a fact, reason, condition, result or experience the original text does not have, and a plan or judgment the original hedges written as settled"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Strip generic, vague and machine-sounding wording from the user's text and put concrete wording in its place — concrete only from the user's text and material. Clear beats clever; a fact beats an adjective.
 

@@ -9,6 +9,8 @@ status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
 tables: true
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Make a Korean battlecard against ONE competitor that a 영업 담당자 can read in 30 seconds and defend in front of a customer. A wrong claim in front of a customer costs more than a missing one, so everything is sourced or marked.
 

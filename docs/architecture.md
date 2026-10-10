@@ -1163,10 +1163,23 @@ rather than a second one with the same name.
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the lineup
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
-they run). Offered: 요약·정리 (`gaejo-report`), 기록 정리 (`minutes`), 비교·결정
-(`comparison-report`), 데이터 분석, and as drafts (`draft = true`, administrators only
-until they pass the lineup evaluation) 문서 작성 (`document`) and 발표 자료 (`slides`).
-`former_names` renames untouched copies on sync. Retired (`retired = true`):
+they run). Offered: 개조식 보고 (`gaejo-report`), 비교·결정 (`comparison-report`), 자료
+추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts (`draft = true`,
+administrators only until they pass the lineup evaluation) 공문·기안 초안 (`document`) and
+발표 자료 (`slides`). `former_names` renames untouched copies on sync.
+
+Hidden is not retired: `listed: false` (a SKILL.md, a `template.toml`, a `_DESIGNS` entry)
+or `connector_catalog.listed` (migration 0063) keeps a shipped part out of the lists people
+pick from — the skill hub and store, the 서식 and theme pickers, the members' connector
+catalogue — while it still runs by name, in 묶음, in the editors that name it, and in the
+conversations and documents that already use it. Unlike `draft`, it does not gate
+`run_skill_script`. The wire carries `listed`; administrators see hidden rows behind 「숨김
+포함」. Shown now: skills 근거 대조·빠진 정보 묻기·계산·단위 검증·날짜 계산·견적 계산·엑셀
+정리·PDF 표 → 엑셀; every document 서식 still offered and the 브리핑 deck; themes 기본 and
+문서용 명조; the time connector (deep-research is disabled, YouTube unlisted). 마무리하기's
+export item names `by_format`: a 공문-family format (`internal_draft`, `official`,
+`event_plan`, `result_report`, `gaejo`) exports HWPX when ticked without a format, anything
+else its first `formats` (`bundles.export_default`). Retired (`retired = true`):
 자기소개서·경력기술서 (`career-docs`) and 고객 맞춤 제안서 (`client-proposal`) with their 서식
 `doc-career-history` and `doc-client-proposal` (`design_templates.RETIRED_KEPT`: still drawn
 and exported, chosen by nothing new) and formats (`doc_formats.RETIRED`). A retired agent is

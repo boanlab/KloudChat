@@ -34,6 +34,7 @@ import { useStore } from '@/store/useStore'
 import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
@@ -394,7 +395,7 @@ export function ProjectDetailPage() {
               className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
             >
               <option value="">{t('사용 안 함 — 기본 모양')}</option>
-              {designs.map((d) => (
+              {designs.filter((d) => isListed(d) || d.id === project.designSystemId).map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
                 </option>
@@ -435,7 +436,7 @@ export function ProjectDetailPage() {
                 >
                   <option value="">{t('사용 안 함 — 기본 모양')}</option>
                   {formats
-                    .filter((row) => row.surface === kind)
+                    .filter((row) => row.surface === kind && (isListed(row) || row.id === project.renderTemplates[kind]))
                     .map((row) => (
                       <option key={row.id} value={row.id}>
                         {templateText(row, english).name}
@@ -684,7 +685,7 @@ export function ProjectDetailPage() {
               >
                 <MenuLabel>{t('입력창에서 먼저 보여 줄 스킬')}</MenuLabel>
                 {skills
-                  .filter((skill) => skill.enabled)
+                  .filter((skill) => skill.enabled && (isListed(skill) || validProjectSkillIds.includes(skill.id)))
                   .map((skill) => {
                     const selected = validProjectSkillIds.includes(skill.id)
                     return (

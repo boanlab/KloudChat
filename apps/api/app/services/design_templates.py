@@ -206,6 +206,9 @@ class DesignTemplate:
     doc_format_def: Any = None
     #: A person's template's form, as text for the writer to read (never an export base).
     form_reference: str = ""
+    #: Shown in the pickers (`listed = false` in `template.toml` hides it there): an unlisted
+    #: 서식 is still chosen by id, drawn and exported — old conversations and agents keep it.
+    listed: bool = True
 
     @property
     def user(self) -> bool:
@@ -360,6 +363,7 @@ def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
         questions=_questions(folder, meta),
         process=_process(folder, meta),
         check_options=_check_options(folder, meta),
+        listed=meta.get("listed", True) is not False,
     )
 
 
@@ -505,8 +509,14 @@ RETIRED_KEPT = frozenset({"doc-career-history", "doc-client-proposal"})
 
 
 def offered() -> list[DesignTemplate]:
-    """The 서식 a person may choose: the catalogue without the retired ones it still draws."""
+    """The 서식 a person may choose: the catalogue without the retired ones it still draws.
+    Unlisted ones are in it (chosen by id); the pickers leave them out (`listed`)."""
     return [t for t in _TEMPLATES.values() if t.id not in RETIRED_KEPT]
+
+
+def listed() -> list[DesignTemplate]:
+    """The 서식 the pickers show: `offered` without the unlisted ones."""
+    return [t for t in offered() if t.listed]
 
 
 def choosable(template_id: str | None) -> DesignTemplate | None:

@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { slugify } from './formModel'
+import { isListed } from '@/lib/listed'
 import { SkillPicker, ToolPicker } from './Pickers'
 
 /** The draft with `kinds`, minus the bindings those kinds no longer offer. */
@@ -241,7 +242,14 @@ export function AgentForm({
   const pickedBase = process.mode === 'base' ? catalogue?.bases.find((b) => b.key === process.base) : undefined
   // A base fixes the surface a conversation opens on: its templates are offered too.
   const templateSurfaces = pickedBase ? [...new Set([pickedBase.surface, ...offered])] : offered
-  const boundTemplates = designTemplates.filter((row) => row.kind !== 'image' && templateSurfaces.includes(row.surface))
+  // A hidden 서식 or theme (`listed: false`) is not offered; the one the agent already has stays.
+  const boundTemplates = designTemplates.filter(
+    (row) =>
+      row.kind !== 'image' &&
+      templateSurfaces.includes(row.surface) &&
+      (isListed(row) || row.id === draft.renderTemplateId),
+  )
+  const pickableDesigns = designs.filter((d) => isListed(d) || d.id === draft.designSystemId)
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
   // A format retired with its agent stays where it is set; nothing new picks it.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
@@ -556,7 +564,7 @@ export function AgentForm({
               <Field label={t('테마')} hint={t('프로젝트의 테마보다 먼저 씁니다.')}>
                 <Select value={draft.designSystemId ?? ''} onChange={(e) => edit({ ...draft, designSystemId: e.target.value || null })}>
                   <option value="">{t('정하지 않음')}</option>
-                  {designs.map((d) => (
+                  {pickableDesigns.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>

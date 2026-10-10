@@ -37,11 +37,11 @@ The SMTP host, port, security, account, and sender address, the service address 
 
 ## Connector catalogue
 
-The MCP servers people can install from **Customize** › **Connectors**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command can only be added here.
+The MCP servers people can install from **Customize** › **Connectors**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command can only be added here. Turn off **Show in the list** (목록에 보이기) and the entry leaves the members' list but can still be installed, and what is installed keeps working (the admin list marks it Hidden). Turn off **Enabled** and nobody can install it anew.
 
 ## Management items outside the System tab
 
 - The **Usage** screen: charts by period, by model, by screen, and by user, CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).
 - **Theme**: An administrator can **provide a theme to every user** (shared, read only).
-- **Store**: Agents and skills published by an administrator account carry an **Official** badge.
+- **Store**: Agents and skills published by an administrator account carry an **Official** badge. Built-in skills hidden from the lists (kept only as parts) show to administrators only with **Show hidden** (숨김 포함).
 - The trusted proxy range, the file size limit, and similar settings are configured through environment variables rather than the screen. See `docs/configuration.md` in the repository.

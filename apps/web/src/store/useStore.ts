@@ -2989,6 +2989,7 @@ function toSkill(s: SkillRow): Skill {
     scriptFiles: s.scriptFiles ?? [],
     review: s.review ?? '',
     reviewNote: s.reviewNote ?? '',
+    listed: s.listed !== false,
   }
 }
 

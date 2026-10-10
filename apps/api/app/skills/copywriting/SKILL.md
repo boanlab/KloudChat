@@ -7,6 +7,8 @@ required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
 copy_check: true
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Write persuasive page copy in Korean from the user's request and material only. Clarity beats cleverness; a fact beats an adjective.
 

@@ -136,12 +136,13 @@ def needs_review(base: Base | None, steps: list[dict[str, Any]]) -> bool:
 
 
 def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
-          check_skills: list | None) -> list[str]:
+          check_skills: list | None, *, doc_format: str | None = None) -> list[str]:
     """What the agent does, a line each: its base's steps (no question line when it asks
     nothing) and what its 묶음 add as steps of their own."""
     asking = "gap-check" in (check_skills or [])
     if base is None:
-        return ["바로 답합니다", *bundle_service.lines(surface, selections, known)]
+        return ["바로 답합니다", *bundle_service.lines(surface, selections, known,
+                                                         doc_format=doc_format)]
     lines = [line for key, line in base.steps if key != "question" or asking]
     extra = []
     for row in bundle_service.clean(selections):
@@ -150,9 +151,9 @@ def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
             continue
         for item in bundle.items:
             where = bundle_service.target(item, surface)
-            if where in ("before", "after") and bundle_service._value(bundle, item, row["items"]):
+            value = bundle_service._value(bundle, item, row["items"], doc_format)
+            if where in ("before", "after") and value:
                 label = item.label or item.ref
-                value = bundle_service._value(bundle, item, row["items"])
                 extra.append(f"{label} ({str(value).upper()})" if item.kind == "export"
                              else label)
     return [*lines, *dict.fromkeys(extra)]
@@ -168,14 +169,18 @@ def process_of(agent, row, *, owner: bool, known: dict[str, bundle_service.Bundl
     surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
     own = row is not None and getattr(row, "agent_id", None) == agent.id
     stored = getattr(agent, "bundles", None)
+    doc_format = getattr(agent, "doc_format", None) or (base.doc_format if base else None)
     if row is None or (own and stored is not None):
         selections = bundle_service.view(stored or [], known, check_skills=agent.check_skills,
-                                         check_options=agent.check_options) \
+                                         check_options=agent.check_options,
+                                         doc_format=doc_format) \
             if stored is not None or agent.check_skills else []
-        unapproved = bundle_service.compile(surface, selections, known).unapproved
+        unapproved = bundle_service.compile(surface, selections, known,
+                                            doc_format=doc_format).unapproved
         return {"mode": "base" if base else DIRECT, "base": base.key if base else None,
                 "bundles": selections,
-                "chain": chain(base, surface, selections, known, agent.check_skills),
+                "chain": chain(base, surface, selections, known, agent.check_skills,
+                               doc_format=doc_format),
                 "review": row.review if row is not None else "",
                 "needsReview": bool(unapproved),
                 **({"pipelineId": row.id} if owner and row is not None else {})}

@@ -23,13 +23,18 @@ RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
            "stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
-           "own_stage", "uses")
+           "own_stage", "uses", "listed")
 #: A check skill's stage: run by the server before (`pre`) or after (`post`) writing.
 STAGES = ("pre", "post")
 
 #: `draft` packages are kept out of the catalogue and `run_skill_script` unless
 #: `settings.skill_drafts` is on, and then seeded private to the administrator.
 _STATUSES = ("published", "draft")
+
+#: `listed: false` keeps a package out of the lists people pick from (the skill hub, the store,
+#: pickers) without taking anything away: it still runs by name, in bundles, in the editors that
+#: name it and in the conversations that used it. Unlike `draft`, it does not gate
+#: `run_skill_script`. Administrators see unlisted skills behind 「숨김 포함」.
 
 
 class PackageError(ValueError):
@@ -72,6 +77,8 @@ class SkillPackage:
     own_stage: bool = False
     #: What the judge looks at in particular for this skill (`post_judge: "<focus>"`).
     judge_focus: str = ""
+    #: Shown in the lists people pick from; `listed: false` hides it there only.
+    listed: bool = True
 
     @property
     def draft(self) -> bool:
@@ -81,6 +88,7 @@ class SkillPackage:
         """The catalogue entry `starter._SKILLS` expects."""
         return {
             "draft": self.draft,
+            "listed": self.listed,
             "key": self.key,
             "name": self.name,
             "description": self.description,
@@ -183,6 +191,7 @@ def load(root: Path) -> SkillPackage:
         own_stage=bool(meta.get("own_stage")),
         judge_focus=(" ".join(str(meta["post_judge"]).split())
                      if isinstance(meta.get("post_judge"), str) else ""),
+        listed=meta.get("listed", True) is not False,
     )
 
 
@@ -218,6 +227,13 @@ def package_for(key: str | None) -> SkillPackage | None:
         return None
     key = key.strip()
     return packages().get(RENAMED.get(key, key))
+
+
+def listed(key: str | None) -> bool:
+    """Whether a catalogue key's package is shown in the lists people pick from; True for a
+    key with no package (a person's own skill)."""
+    package = package_for(key)
+    return package.listed if package is not None else True
 
 
 def drafts_enabled() -> bool:

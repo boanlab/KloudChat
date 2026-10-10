@@ -27,11 +27,17 @@ const FORMAT_LABEL: Record<string, string> = { docx: 'DOCX', pdf: 'PDF', hwpx: '
 const targetOn = (item: BundleItem, surface: SessionKind) =>
   surface === 'report' || surface === 'chat' ? item.targets[surface] : null
 
+/** The file an export item makes when ticked without a format, as the server decides it: the one
+ *  its `by_format` names for the agent's document format (HWPX for the 공문 family), else its first. */
+function exportDefault(item: BundleItem, docFormat: string | null | undefined): string {
+  return (docFormat && item.settings.by_format?.[docFormat]) || item.settings.formats?.[0] || 'docx'
+}
+
 /** An item's tick: the person's, else the bundle's default. An export's tick is its format. */
-function tickOf(item: BundleItem, sel: BundleSelection | undefined): boolean | string {
+function tickOf(item: BundleItem, sel: BundleSelection | undefined, docFormat?: string | null): boolean | string {
   const raw = sel && item.id in sel.items ? sel.items[item.id] : item.default
   if (item.kind === 'export') {
-    if (raw === true) return item.settings.formats?.[0] ?? 'docx'
+    if (raw === true) return exportDefault(item, docFormat)
     return typeof raw === 'string' ? raw : ''
   }
   return !!raw
@@ -56,6 +62,7 @@ function BundleRow({
   surface,
   selection,
   formats,
+  docFormat,
   onChange,
   onDocumentBase,
 }: {
@@ -63,6 +70,8 @@ function BundleRow({
   surface: SessionKind
   selection: BundleSelection | undefined
   formats: string[]
+  /** The agent's document format: what an export ticked without a format makes. */
+  docFormat?: string | null
   onChange: (next: BundleSelection | undefined) => void
   /** Switches the agent to a base that writes a document, where a file export runs. */
   onDocumentBase?: () => void
@@ -139,17 +148,17 @@ function BundleRow({
           <input
             type="checkbox"
             id={`bundle-${bundle.ref}-${exportItem.id}-shown`}
-            checked={!!tickOf(exportItem, selection)}
-            onChange={() => set(exportItem, tickOf(exportItem, selection) ? '' : (exportItem.settings.formats?.[0] ?? 'docx'))}
+            checked={!!tickOf(exportItem, selection, docFormat)}
+            onChange={() => set(exportItem, tickOf(exportItem, selection, docFormat) ? '' : exportDefault(exportItem, docFormat))}
             className="size-4 accent-[var(--accent)]"
           />
           <label htmlFor={`bundle-${bundle.ref}-${exportItem.id}-shown`} className="text-base">
             {t(exportItem.label)}
           </label>
-          {!!tickOf(exportItem, selection) && (
+          {!!tickOf(exportItem, selection, docFormat) && (
             <Select
               aria-label={t('파일 형식')}
-              value={String(tickOf(exportItem, selection))}
+              value={String(tickOf(exportItem, selection, docFormat))}
               onChange={(e) => set(exportItem, e.target.value)}
               className="h-8 w-auto py-0"
             >
@@ -166,7 +175,7 @@ function BundleRow({
         <ul className="space-y-1.5 border-t border-line px-3 py-2.5 pl-10" aria-label={t(bundle.name)}>
           {items.filter((item) => item.kind !== 'export').map((item) => {
             const always = targetOn(item, surface) === 'flow'
-            const value = tickOf(item, selection)
+            const value = tickOf(item, selection, docFormat)
             const id = `bundle-${bundle.ref}-${item.id}`
             return (
               <li key={item.id} className="flex flex-wrap items-center gap-2" data-testid="bundle-item">
@@ -175,7 +184,7 @@ function BundleRow({
                   id={id}
                   checked={always || (on && !!value)}
                   disabled={always || !on}
-                  onChange={() => set(item, item.kind === 'export' ? (value ? '' : (item.settings.formats?.[0] ?? 'docx')) : !value)}
+                  onChange={() => set(item, item.kind === 'export' ? (value ? '' : exportDefault(item, docFormat)) : !value)}
                   className="size-4 accent-[var(--accent)]"
                 />
                 <label htmlFor={id} className={cn('text-base', (!on || always) && 'text-muted')}>
@@ -301,7 +310,8 @@ export function ProcessSection({
   const documentBase = cat?.bases.find((b) => b.surface === 'report' && !b.draft) ?? null
   const wantsFile = WANTS_FILE.test(`${agent.name}\n${agent.description}\n${agent.systemPrompt}`)
   const baseLabel = (name: string, made: string | undefined) =>
-    // 「기록 정리 (회의록)」: the base's name with what it makes, as other screens call it.
+    // 「개조식 보고 (개조식 보고서)」: the base's name with what it makes, as other screens call
+    // it; once when they are the same (「회의록」).
     made && made !== name ? `${t(name)} (${t(made)})` : t(name)
   const bundles = useMemo(() => cat?.bundles ?? [], [cat])
 
@@ -524,6 +534,7 @@ export function ProcessSection({
               surface={on}
               selection={value.bundles.find((s) => s.bundle === b.ref)}
               formats={cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md']}
+              docFormat={agent.docFormat ?? base?.docFormat}
               onChange={(next) => setBundle(b.ref, next)}
               onDocumentBase={toDocumentBase}
             />

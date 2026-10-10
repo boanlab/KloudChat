@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { conversationRows, hubFixture, myAgents, storeAgents } from './customize-fixture'
+import { conversationRows, hubFixture, myAgents, mySkills, storeAgents } from './customize-fixture'
 
 /**
  * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
@@ -91,6 +91,26 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
 
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
+})
+
+test('a skill kept only as a part is hidden until 숨김 포함, and then marked', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { admin: true, hiddenSkill: true })
+  await page.goto('/customize?tab=skills&view=mine')
+  await expect(page.getByTestId('item-card')).toHaveCount(mySkills.length, { timeout: 15_000 })
+  await expect(page.getByTestId('item-card').filter({ hasText: '글자 수 맞춤' })).toHaveCount(0)
+  const toggle = page.getByTestId('show-hidden')
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  await toggle.click()
+  await expect(page).toHaveURL(/hidden=1/)
+  const hidden = page.getByTestId('item-card').filter({ hasText: '글자 수 맞춤' })
+  await expect(hidden).toHaveCount(1)
+  await expect(hidden.getByTestId('item-hidden')).toHaveText('숨김')
+  // The choice holds on 탐색; turned off, 탐색 leaves it out too.
+  await page.getByRole('button', { name: '탐색' }).click()
+  await expect(page.getByTestId('item-card').filter({ hasText: '글자 수 맞춤' }).first()).toBeVisible()
+  await page.getByTestId('show-hidden').click()
+  await expect(page.getByTestId('item-card').filter({ hasText: '글자 수 맞춤' })).toHaveCount(0)
+  expect(state.problems).toEqual([])
 })
 
 test('a tab with nothing of the person\'s own opens on 탐색', async ({ page }, testInfo) => {

@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 post_check: [size, source-check/post]
 post_judge: "where a figure or rate comes from (an exchange rate, an 「industry norm」, a date it is as of) and what a cited source [n] says"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Estimate market size in Korean with every number traceable. Do not compute in your head; the script computes, you copy.
 

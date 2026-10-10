@@ -295,7 +295,8 @@ def test_xlsx_clean_script_normalises_a_messy_sheet(tmp_path):
     (tmp_path / "지점실적.xlsx").write_bytes(make_xlsx({"Sheet1": MESSY_ROWS}))
     summary = _run_script(
         SKILLS / "xlsx-clean" / "scripts" / "clean.py",
-        {"file": "지점실적.xlsx", "add_totals": True, "recalc": False},
+        # Removing identical rows is asked for; by default they are only marked.
+        {"file": "지점실적.xlsx", "add_totals": True, "recalc": False, "dedupe": True},
         tmp_path,
     )
     sheet = summary["sheets"][0]

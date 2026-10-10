@@ -10,6 +10,8 @@ stage: post
 entry: claims
 copy_check: true
 own_stage: true
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Check copy with code, not by eye. Character counts and claim scans written by the model are wrong too often.
 

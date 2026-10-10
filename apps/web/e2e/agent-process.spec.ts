@@ -149,7 +149,8 @@ test('B-3: 바로 답하기 with 마무리하기 says it cannot export; a docume
   const exportRow = finish.getByTestId('bundle-export')
   await expect(exportRow).toBeVisible()
   await exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' }).check()
-  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('docx')
+  // The first base writes 개조식, a 공문-family format: its file is HWPX unless the person picks.
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('hwpx')
   await expect(finish.getByTestId('bundle-cannot')).toHaveCount(0)
   expect(state.problems).toEqual([])
 })
@@ -159,7 +160,9 @@ test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
   const form = await openForm(page)
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
   const select = page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })
-  await expect(select.locator('option', { hasText: '기록 정리 (회의록)' })).toHaveCount(1)
+  await expect(select.locator('option', { hasText: '개조식 보고 (개조식 보고서)' })).toHaveCount(1)
+  // A base named for what it makes says it once.
+  await expect(select.locator('option', { hasText: /^회의록$/ })).toHaveCount(1)
 })
 
 test('B-5: a new agent\'s 직접 구성 is judged as the agent it will be, and says what it makes', async ({ page }, testInfo) => {
@@ -206,7 +209,7 @@ test('N3: 바로 답하기 says it answers in the chat, and a file asked for in 
   const suggestion = page.getByTestId('file-suggestion')
   await expect(suggestion).toContainText('바로 답하기는 대화로만 답하고 파일을 만들지 않습니다')
   await shot(page, 'n3-file-suggestion', page.getByTestId('agent-process'))
-  await suggestion.getByRole('button', { name: /요약·정리.*과정으로 바꾸기/ }).click()
+  await suggestion.getByRole('button', { name: /개조식 보고.*과정으로 바꾸기/ }).click()
   await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeChecked()
   await expect(page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })).toHaveValue('gaejo-report')
   await expect(suggestion).toHaveCount(0)

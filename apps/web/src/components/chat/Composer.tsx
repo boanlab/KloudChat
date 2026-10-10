@@ -42,6 +42,7 @@ import { servedAspect, servedAspects } from '@/lib/aspects'
 import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
+import { isListed } from '@/lib/listed'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -827,6 +828,8 @@ export function Composer({
     .filter(
       (skill) =>
         skill.enabled &&
+        // A hidden part (`listed: false`) is not offered; one already on the turn stays.
+        (isListed(skill) || activatedSkillIds.includes(skill.id)) &&
         (skill.kinds.length === 0 || skill.kinds.includes(kind)) &&
         (agentSkillAllowlist === undefined ||
           agentSkillAllowlist === null ||

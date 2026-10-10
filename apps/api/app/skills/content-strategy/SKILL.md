@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 copy_check: true
 copy_kinds: [claim, medical, guarantee]
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Plan content as a product: pillars, prioritised topics, and a dated calendar, built from the user's business and customer evidence.
 

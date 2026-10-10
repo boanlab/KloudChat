@@ -352,6 +352,8 @@ export interface PipelineStep {
     repair?: boolean
     focus?: string
     formats?: string[]
+    /** An export item's file per document format (마무리하기: HWPX for the 공문 family). */
+    by_format?: Record<string, string>
   }
   /** Korean name, from the server. */
   title?: string
@@ -969,6 +971,9 @@ export interface Skill {
   /** Sharing with scripts: '' · pending · approved · rejected. */
   review?: string
   reviewNote?: string
+  /** Shown in the lists people pick from; false for a shipped skill kept only as a part. It
+   *  still runs by name, in bundles and in old conversations. Absent means shown. */
+  listed?: boolean
 }
 
 /* ── MCP connectors ─────────────────────────────────────────────────── */
@@ -1343,6 +1348,8 @@ export interface CatalogEntryAdmin {
   toolsKeyFeature: string
   kinds: string[]
   enabled: boolean
+  /** Shown in the members' catalogue; false keeps it installable and working, not offered. */
+  listed: boolean
   position: number
   updatedAt: string | null
 }

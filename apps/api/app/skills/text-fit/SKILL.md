@@ -5,6 +5,8 @@ when_to_use: 자기소개서·지원서 문항에 「공백 포함 700자」「1
 kinds: [chat]
 required_tools: [run_skill_script]
 version: 1.0.0
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Do not count characters and bytes yourself; measure them with the script. Counts made by the model are wrong.
 

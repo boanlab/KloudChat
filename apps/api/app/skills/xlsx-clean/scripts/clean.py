@@ -1,7 +1,7 @@
 """어지러운 엑셀·CSV 시트를 분석용 표로 정리합니다.
 
 인자(JSON 하나): {"file": "입력.xlsx", "sheet": "시트 이름(생략 시 전부)", "header_row": 머리글 행 번호(1부터, 생략 시 자동),
-"dedupe": true, "drop_totals": true, "add_totals": false, "recalc": true, "output": "출력 파일 이름(생략 가능)"}
+"dedupe": false, "drop_totals": true, "add_totals": false, "recalc": true, "output": "출력 파일 이름(생략 가능)"}
 
 결과: outputs/<이름>_정리.xlsx (정리한 시트 + 변경내역 시트). 마지막 줄에 요약 JSON을 출력합니다.
 sandbox 밖에서도 `python clean.py '{"file": "a.xlsx"}'` 로 돌릴 수 있습니다(openpyxl 필요).
@@ -385,19 +385,25 @@ def clean_sheet(sheet: str, rows: list[list], options: dict, log: list) -> dict:
         body.append(list(row))
         origin.append(index + 1)
     info = convert_columns(names, body, log, sheet)
-    if options.get("dedupe", True):
-        seen: set = set()
-        kept, kept_origin = [], []
-        for row, at in zip(body, origin, strict=True):
-            key = tuple(text(v) for v in row)
-            if key in seen:
+    # Fully identical rows are only marked unless removal was asked for (`dedupe: true`): two
+    # records may share every value the sheet shows (the same amount on the same day).
+    dedupe = bool(options.get("dedupe", False))
+    suspected = 0
+    seen: set = set()
+    kept, kept_origin = [], []
+    for row, at in zip(body, origin, strict=True):
+        key = tuple(text(v) for v in row)
+        if key in seen:
+            if dedupe:
                 removed["duplicate"] += 1
                 log.append((sheet, "삭제: 중복 행", at, ", ".join(key)[:120]))
                 continue
-            seen.add(key)
-            kept.append(row)
-            kept_origin.append(at)
-        body = kept
+            suspected += 1
+            log.append((sheet, "표시: 중복 의심 행(남김)", at, ", ".join(key)[:120]))
+        seen.add(key)
+        kept.append(row)
+        kept_origin.append(at)
+    body = kept
     unit_pattern = re.compile(r"단위\s{0,3}[:：]\s{0,3}[^,)]{1,10}")
     unit_note = next((m.group(0) for t in titles if (m := unit_pattern.search(t))), "")
     return {
@@ -407,6 +413,7 @@ def clean_sheet(sheet: str, rows: list[list], options: dict, log: list) -> dict:
         "rows_in": len(rows) - header_at - 1,
         "rows_out": len(body),
         "removed": {k: v for k, v in removed.items() if v},
+        **({"suspected_duplicates": suspected} if suspected else {}),
         "numeric_columns": info["numeric"],
         "date_columns": info["date"],
         "percent_columns": info["percent"],

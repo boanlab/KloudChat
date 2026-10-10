@@ -8,6 +8,8 @@ version: 0.1.0
 status: draft
 post_check: timeline
 post_judge: "billing and automatic payments, refunds, settlement, data conversion or deletion steps, menu paths, and any promise tied to a date (「…까지 안내합니다」)"
+# Kept for bundles, old conversations and editors that name it; not shown in lists.
+listed: false
 ---
 Write an end-of-life notice that tells every affected user, without a second read: what ends, when, what happens to their data and money, what to use instead, and whom to ask. Facts only from the request and material; a notice with a wrong date or a promised refund nobody approved does real harm.
 

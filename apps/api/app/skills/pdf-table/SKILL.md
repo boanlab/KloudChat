@@ -1,6 +1,6 @@
 ---
 name: PDF 표 → 엑셀
-description: PDF에 들어 있는 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다.
+description: 글자를 고를 수 있는 PDF(텍스트 PDF)의 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다. 스캔한 PDF(이미지)는 읽지 못합니다.
 when_to_use: 첨부한 PDF의 표(거래내역, 단가표, 명세서 등)를 엑셀로 옮기거나 표의 숫자로 계산해야 할 때.
 kinds: [chat, report]
 required_tools: [run_skill_script]

@@ -743,9 +743,11 @@ async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: 
         else:
             # A base picked without ticks brings the official agent's own.
             selections = list(base.bundles) if base is not None else []
-        made = bundle_service.compile(surface, selections, known)
+        # 마무리하기 exports a 공문-family document as HWPX unless the person picked a format.
+        made = bundle_service.compile(surface, selections, known, doc_format=agent.doc_format)
         # What cannot run on this surface is stored off (no export for a chat agent).
-        agent.bundles = bundle_service.settled(surface, selections, known)
+        agent.bundles = bundle_service.settled(surface, selections, known,
+                                               doc_format=agent.doc_format)
         agent.check_skills = list(made.check_skills)
         agent.check_options = dict(made.check_options) or None
         steps = made.steps

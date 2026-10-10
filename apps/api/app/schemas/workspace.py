@@ -380,6 +380,9 @@ class SkillOut(Wire):
     #: Sharing with scripts: "" · pending · approved · rejected.
     review: str = ""
     review_note: str = ""
+    #: Shown in the lists people pick from; False for a shipped skill kept only as a part
+    #: (`listed: false` in its SKILL.md), its copies included. It still runs by name.
+    listed: bool = True
 
     @classmethod
     def of(cls, s: Skill, *, owner: bool = True) -> SkillOut:
@@ -401,6 +404,7 @@ class SkillOut(Wire):
         out.kinds = list(s.kinds or [])
         out.required_tools = list(s.required_tools or [])
         out.scripts = skill_packages.script_names(s.catalog_key)
+        out.listed = skill_packages.listed(s.catalog_key)
         return out
 
 
@@ -841,6 +845,8 @@ class DesignSystemOut(Wire):
     shared: bool = False
     #: Whether the caller may edit or remove it.
     mine: bool = True
+    #: Shown in the pickers; False for a shipped theme kept for what already wears it.
+    listed: bool = True
     updated_at: datetime
 
     @classmethod
@@ -849,6 +855,9 @@ class DesignSystemOut(Wire):
         out.tokens = design_service.tokens_of(d)
         out.craft = design_service.craft_keys(d.craft)
         out.mine = owner_id is None or d.owner_id == owner_id
+        from app.services import starter
+
+        out.listed = starter.design_listed(d.name)
         return out
 
 
@@ -909,6 +918,8 @@ class DesignTemplateOut(Wire):
     #: A person's template (`ut-<id>`): the caller's own (`mine`) or one shared with them.
     user: bool = False
     mine: bool = False
+    #: Shown in the pickers; False for a shipped 서식 still chosen by id but not offered.
+    listed: bool = True
 
     @classmethod
     def of(cls, t: object, viewer_id: str = "") -> DesignTemplateOut:
@@ -936,6 +947,7 @@ class DesignTemplateOut(Wire):
             ),
             user=bool(getattr(t, "owner_id", "")),
             mine=bool(viewer_id) and getattr(t, "owner_id", "") == viewer_id,
+            listed=bool(getattr(t, "listed", True)),
         )
 
 

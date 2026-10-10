@@ -292,6 +292,22 @@ const EN: Record<string, string> = {
   '상투적인 표현을 걷어내고, 다 쓰면 파일로 내보냅니다.': 'Strips stock phrases and exports a file when done.',
   '상투적인 표현 걷어내기': 'Strip stock phrases',
   '다 쓰면 파일로 내보내기': 'Export a file when done',
+  '개조식 보고': 'Bullet-style briefing',
+  '자료 추출·집계': 'Extract and tally',
+  '공문·기안 초안': 'Official letter and draft',
+  '내부 엑셀·CSV에서 정한 열을 뽑아 모으고 항목별로 집계한 표와, 지우거나 바꾼 행의 변경 내역이 필요할 때':
+    'When you need chosen columns pulled from internal Excel or CSV files, tallied by item, with a log of the rows removed or changed',
+  '메모와 요청으로 기안문·추진 계획·결과 보고처럼 기관에서 올리는 문서의 초안이 필요할 때':
+    'When you need a first draft of an institutional document — an internal draft, an action plan, a result report — from notes and a request',
+  '엑셀·CSV 파일을 올리고 어떤 열을 뽑아 무엇을 기준으로 집계·비교할지 알려 주세요.':
+    'Upload the Excel or CSV files and say which columns to pull and what to tally or compare them by.',
+  '숨김 포함': 'Show hidden',
+  '목록에서 숨긴 스킬도 보여 줍니다. 숨긴 스킬도 이름으로 계속 쓸 수 있습니다.':
+    'Also shows skills hidden from the lists. Hidden skills still work by name.',
+  '목록에 보이기': 'Show in the list',
+  '설치할 수 있게 켜기': 'Enabled for installing',
+  '끄면 멤버 카탈로그에 나오지 않지만, 설치된 것은 계속 동작합니다.':
+    'When off, members no longer see it in the catalogue; what is already installed keeps working.',
   '요약·정리': 'Summary',
   '문서 작성': 'Document writing',
   '기록 정리': 'Records',
@@ -2761,7 +2777,11 @@ const EN: Record<string, string> = {
     'Turns an Excel or CSV sheet cluttered with titles, blank rows, totals and notes into one header row and data, and records each change on a change-log sheet.',
   '첨부한 엑셀·CSV를 정리·변환하거나 분석하기 전에 표 모양을 바로잡아야 할 때. "1,234" 같은 글자 숫자, 천원·백만원 단위, 여러 형식의 날짜, 합계·소계 행이 섞여 있을 때.':
     'When an attached Excel or CSV file needs tidying before conversion or analysis: numbers stored as text like "1,234", 천원/백만원 units, mixed date formats, total and subtotal rows.',
+  '제목·빈 행·합계·주석이 섞인 엑셀이나 CSV를 머리글 한 줄과 데이터만 남은 표로 정리하고, 바꾼 내용을 변경내역 시트로 남깁니다. 중복으로 보이는 행은 지우지 않고 변경내역에 표시만 합니다.':
+    'Turns an Excel or CSV sheet cluttered with titles, blank rows, totals and notes into one header row and data, and records each change on a change-log sheet. Rows that look duplicated are kept and only marked in the change log.',
   'PDF 표 → 엑셀': 'PDF table → Excel',
+  '글자를 고를 수 있는 PDF(텍스트 PDF)의 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다. 스캔한 PDF(이미지)는 읽지 못합니다.':
+    'Moves the tables in a text PDF (one whose text can be selected) into Excel sheets, joining tables that continue across pages and dropping repeated headers. Scanned PDFs (images) cannot be read.',
   'PDF에 들어 있는 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다.':
     'Moves the tables in a PDF into Excel sheets, joining tables that continue across pages and dropping repeated headers.',
   '첨부한 PDF의 표(거래내역, 단가표, 명세서 등)를 엑셀로 옮기거나 표의 숫자로 계산해야 할 때.':
@@ -2821,6 +2841,8 @@ const EN: Record<string, string> = {
   '동작·경계조건·실패 처리 순으로 봅니다. 취향은 마지막에.':
     'Looks at behaviour, then edge cases, then failure handling. Taste comes last.',
   '시간': 'Time',
+  '현재 시각과 타임존 변환. \'오늘\'이 며칠인지 서버 시계로 알려 줍니다.':
+    'Current time and timezone conversion; tells what "today" is from the server clock.',
   '현재 시각과 타임존 변환. \'오늘\'을 모델이 지어내지 않게 합니다.':
     'Current time and timezone conversion, so the model stops inventing what "today" is.',
   'YouTube 전사': 'YouTube transcript',
