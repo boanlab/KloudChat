@@ -136,7 +136,7 @@ export function SkillServerFields({
     <div className="space-y-4" data-testid="skill-server">
       <Block
         label={t('답 점검 스크립트')}
-        hint={t('이 스킬로 쓴 채팅 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.')}
+        hint={t('이 스킬로 쓴 챗 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.')}
       >
         <RefList refs={catalogue.postChecks} value={value.postCheck} onChange={(postCheck) => set({ postCheck })} testId="skill-post-check" />
       </Block>

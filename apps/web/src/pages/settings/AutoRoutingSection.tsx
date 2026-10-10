@@ -112,7 +112,7 @@ export function AutoRoutingSection() {
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('Auto 비용 절약 라우팅')}</p>
           <p className="text-sm text-muted">
-            {t('간단한 일반 채팅만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.')}
+            {t('간단한 일반 대화만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.')}
           </p>
         </div>
         <Switch

@@ -509,7 +509,7 @@ export function ProjectDetailPage() {
                     }
                   >
                     <Plus size={16} />
-                    {t('새 채팅 시작')}
+                    {t('새 대화')}
                   </Button>
                 </div>
               ) : (

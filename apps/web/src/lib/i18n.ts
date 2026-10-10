@@ -313,7 +313,7 @@ const EN: Record<string, string> = {
   // 스킬의 서버 점검·스크립트 · 빠진 정보 질문
   '직접 올린 스크립트': 'Your own scripts',
   '답 점검 스크립트': 'Answer check scripts',
-  '이 스킬로 쓴 채팅 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.': 'The server checks chat answers written with this skill using built-in scripts, and fixes what code can fix.',
+  '이 스킬로 쓴 챗 답을 서버가 기본 제공 스크립트로 점검하고, 코드로 고칠 수 있는 것은 고칩니다.': 'The server checks chat answers written with this skill using the built-in scripts and fixes what code can fix.',
   '자료에 없는 문장도 모델이 찾기': 'Have a model find statements the material lacks',
   '특히 볼 것': 'Look in particular at',
   '비워 두면 모든 사실 문장을 봅니다.': 'Leave blank to check every statement of fact.',
@@ -863,7 +863,6 @@ const EN: Record<string, string> = {
   '요청에 덧붙여 이 에이전트에게만 전합니다.': 'Added to the request, for this agent only.',
   '위로': 'Move up',
   '이 단계에서 할 일': 'What this step does',
-  '이 워크플로로 시작': 'Start with this workflow',
   '저장하지 못했습니다. 단계를 확인해 주세요.': 'Could not save. Check the steps.',
   '저장한 문서를 파일로 건넵니다.': 'Hands the saved document over as files.',
   '지적만': 'Findings only',
@@ -884,8 +883,6 @@ const EN: Record<string, string> = {
   // pipelines page
   '잠김': 'Locked',
   '나가기': 'Leave',
-  '새 워크플로': 'New workflow',
-  '내 워크플로': 'My workflows',
   '문서': 'Document',
   '스토어': 'Store',
   // ── common ──────────────────────────────────────────────────────────
@@ -938,7 +935,6 @@ const EN: Record<string, string> = {
   '대화 기록': 'History',
   '워크스페이스': 'Workspace',
   '사이드바 토글': 'Toggle sidebar',
-  '새 채팅 시작': 'Start a chat',
   '화면 밝기: 시스템 설정 따름': 'Brightness: follow system',
   '화면 밝기: 밝게': 'Brightness: light',
   '화면 밝기: 어둡게': 'Brightness: dark',
@@ -997,8 +993,7 @@ const EN: Record<string, string> = {
   '모델 자동 라우팅': 'Automatic model routing',
   '질문 난이도에 맞는 모델을 사용해 불필요한 고비용 모델 호출을 줄입니다.':
     'Match the model to the question and avoid unnecessary premium-model calls.',
-  '간단한 일반 채팅만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.':
-    'Route only simple, ordinary chats through the configured economy models. Complex or unsupported requests keep the model chosen by the user.',
+  '간단한 일반 대화만 순서대로 지정한 절약 모델로 보내고, 복잡하거나 지원하지 않는 요청은 사용자가 선택한 품질 모델을 유지합니다.': 'Sends only simple everyday chat to the economy models in the order set, and keeps the quality model the user chose for complex or unsupported requests.',
   '난이도 분류 모델': 'Complexity classifier',
   '외부 전환이 없는 무료 strict-local 모델만 사용할 수 있습니다.':
     'Only free strict-local models with no external failover can be used.',
@@ -1897,7 +1892,6 @@ const EN: Record<string, string> = {
   '내용이 비어 있습니다. 저장하지 않았습니다.': 'Nothing to save — the content is empty.',
   '다시 쓰기 지시': 'Rewrite instructions',
   '다시 쓰지 못했습니다.': 'Could not rewrite it.',
-  '이 양식으로 시작': 'Start with this',
   '전체 미리보기': 'Full preview',
   '이전 슬라이드': 'Previous slide',
   '다음 슬라이드': 'Next slide',
@@ -2051,7 +2045,6 @@ const EN: Record<string, string> = {
   '내용 편집': 'Edit content',
   '페이지': 'Page',
   '페이지 설정': 'Page setup',
-  '보고서 디자인': 'Report design',
   '매거진형': 'Magazine',
   '근거': 'Evidence',
   '출처 {sources} · 확인 {count}': '{sources} source(s) · {count} to check',
@@ -2195,19 +2188,16 @@ const EN: Record<string, string> = {
   '잘림 위험: {list}번 장': 'May be cut off: slide {list}',
   '잘림 위험 장으로 이동': 'Go to a slide that may be cut off',
   '잘림 위험 {n}장': '{n} slide(s) may be cut off',
-  '슬라이드 디자인': 'Slide design',
   '포스터형': 'Poster',
   '편집형': 'Editorial',
   '다크': 'Dark',
   '분할형': 'Split',
   '따뜻한': 'Warm',
   '흑백': 'Mono',
-  '문서 디자인 고르기': 'Choose the document design',
   '제목, 절 번호, 표 머리 선, 핵심 수치에 쓰는 색': 'Used for the title, section numbers, table head rules and key figures',
   '제목 밑줄과 번호 붙은 절, 선명한 절 구분': 'A rule under the title, numbered sections, clear breaks',
   '색면 표지 띠와 강조색 절 제목': 'A colour band on the cover and accent section titles',
   '먹색 제목과 회색 절 제목, 넓은 여백': 'Ink title, grey section titles, wide margins',
-  '슬라이드 디자인 고르기': 'Choose the slide design',
   '강조색 고르기': 'Choose the accent colour',
   '제목 밑줄, 표 머리, 번호, 표지에 쓰는 색': 'Used for title rules, table heads, numbers and the cover',
   '직접 고른 색': 'Custom colour',
@@ -2404,7 +2394,6 @@ const EN: Record<string, string> = {
   '하려는 일을 고르면 필요한 자료와 결과물의 모양까지 함께 준비됩니다.':
     'Pick the job and the material it needs — and the shape it comes in — are set with it.',
   '어떤 모양으로 받을까요?': 'What shape should it come in?',
-  '양식 고르기': 'Pick a template',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
   '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
   '모델 목록 새로고침': 'Refresh model list',
@@ -2625,8 +2614,7 @@ const EN: Record<string, string> = {
     'A self-hosted route that may switch to an external model',
   '저장했습니다.': 'Saved.',
   '전체 선택': 'Select all',
-  '채팅의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.':
-    'Inspects everything a chat would send, and where personal data is found asks whether to switch model, mask, or edit.',
+  '대화의 전체 전송 맥락을 검사하고, 개인정보가 있으면 모델 전환·마스킹·편집 중 하나를 선택하게 합니다.': 'Checks everything a conversation sends and, when it holds personal data, asks to switch model, mask or edit.',
   '크게 보기': 'View larger',
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
@@ -2651,8 +2639,6 @@ const EN: Record<string, string> = {
   '결과물을 만든 대화는 그대로 남습니다.': 'The conversations that made them stay.',
   '붙여 둔 자료와 검색 색인도 함께 지워집니다.': 'Their knowledge files and search index go too.',
   '저장해 둔 인증 정보도 함께 지워집니다.': 'Their stored credentials go too.',
-  '이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.':
-    'Projects wearing them fall back to the default look.',
   '삭제하지 못했습니다.': 'Could not delete.',
 
 
@@ -2920,7 +2906,6 @@ const EN: Record<string, string> = {
     'Before distributing a report, proposal or presentation to decision-makers.',
   '공문 작성': 'Official correspondence',
   '공문-작성': 'official-correspondence',
-  '대내외 공문과 결재 문서를 양식에 맞춰 씁니다.': 'Writes internal and external correspondence to the expected form.',
   '발표 노트 작성': 'Speaker notes',
   '장마다 실제로 말할 문장을 씁니다. 화면 글자를 반복하지 않습니다.':
     'Writes what you will actually say on each slide, rather than repeating what is on it.',
@@ -3135,7 +3120,6 @@ const EN: Record<string, string> = {
   '이 모델을 절약 목록에서 뺍니다': 'Take this model off the economy list',
 
   // ── 서식 갤러리 ─────────────────────────────────────────────────
-  '양식 검색': 'Search templates',
   '이전 쪽': 'Previous page',
   '다음 쪽': 'Next page',
 
@@ -3147,15 +3131,9 @@ const EN: Record<string, string> = {
 
   // ── 서식이 채워 둔 옵션 ─────────────────────────────────────────
 
-  // ── 디자인 시스템이 실제로 닿는 곳 ──────────────────────────────
+  // ── 테마가 실제로 닿는 곳 ──────────────────────────────
   '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
     'The voice reaches chat, reports and slides; colour and type reach slides and report covers; style reaches pictures. Audio and video are untouched.',
-  '이 대화의 말투를 이 디자인에 맞춥니다': 'this conversation takes its voice from the design',
-  '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다':
-    'the report takes its voice, colour and type from the design',
-  '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다':
-    'the slides take their voice, colour and type from the design',
-  '그림의 색과 스타일을 이 디자인에 맞춥니다': 'pictures take their colour and style from the design',
 
   // ── 이 턴에 들어간 것 ───────────────────────────────────────────
   '외 {n}건': 'and {n} more',
@@ -3215,7 +3193,6 @@ const EN: Record<string, string> = {
   '이 대화가 가지고 시작하는 것': 'What this conversation starts with',
   '이 에이전트가 답합니다': 'answers here',
   '이 프로젝트의 지침과 자료를 함께 씁니다': 'its instructions and files come along',
-  '결과물이 이 양식으로 나옵니다': 'the result comes out in this template',
   '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
   '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
 
@@ -3244,24 +3221,20 @@ const EN: Record<string, string> = {
   '도식을 그리지 못했습니다.': 'The figure could not be drawn.',
   '덱 색 고르기': 'Choose deck colour',
   '색': 'Colour',
-  '양식': 'Template',
   '인상': 'Impression',
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
   '제품이 갖고 있는 결과물의 모양입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
     'The shapes a result can come out in. Pick one and its screen opens with the example sentence in the composer.',
-  '슬라이드나 보고서를 켜면 그 화면에서 쓸 수 있는 양식이 여기에 나옵니다.':
-    'Turn on slides or reports and the templates those screens can use will appear here.',
 
   // ── 프로젝트의 기본 서식 ────────────────────────────────────────
   '이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
     'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
-  '{kind} 양식': '{kind} template',
 
   // ── 버전 기록 ───────────────────────────────────────────────────
   '되돌리지 못했습니다.': 'Could not restore.',
 
-  // ── 디자인 현관 ─────────────────────────────────────────────────
+  // ── 테마 현관 ─────────────────────────────────────────────────
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다. 지난 공문이나 보고서에서 읽어 올 수도 있습니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type. One can also be read out of an earlier letter or report.',
 
@@ -3332,21 +3305,16 @@ const EN: Record<string, string> = {
   '고칠 곳 {n}': '{n} to fix',
   '볼 곳 {n}': '{n} to look at',
 
-  // ── 디자인 템플릿 ───────────────────────────────────────────────
+  // ── 템플릿 ───────────────────────────────────────────────
   '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
     'Picking one puts its example into the composer. The sentence is yours to change.',
   '원본 HTML': 'Original HTML',
   '텍스트': 'Text',
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
-  // ── 디자인 시스템 ───────────────────────────────────────────────
-  '디자인': 'Design',
-  '내 디자인': 'My designs',
-  '디자인 추가': 'Add a design',
+  // ── 테마 ───────────────────────────────────────────────
   '사용 안 함 — 기본 모양': 'None — the default look',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type.',
-  '아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.':
-    'No designs yet. Make one and you can pick it on a project.',
   '한 줄 설명': 'One-line description',
   '예: 학과 공식 문서': 'e.g. Department standard document',
   '강조색': 'Accent',
@@ -3413,8 +3381,6 @@ const EN: Record<string, string> = {
   '정하지 않음': 'None',
   '문서 형식': 'Document format',
   '요청에 따라': 'From the request',
-  '프로젝트의 디자인보다 먼저 씁니다. 다른 사람의 디자인이면 내 디자인 중 같은 이름의 것을 씁니다.':
-    "Wins over the project's design. When it is someone else's, your own design of the same name is used.",
   '시작할 화면': 'Start on',
   '{name} 만들기': 'Make {name}',
   '{kind}로 시작': 'Start in {kind}',
@@ -3500,7 +3466,6 @@ const EN: Record<string, string> = {
   '검증': 'Verify',
   '「{stage}」부터 다시 만든 판': 'Version redone from “{stage}”',
   '다시 만드는 중입니다. 끝나면 새 판이 열립니다.': 'Redoing. The new version opens when it is done.',
-  '워크플로': 'Workflow',
   '붙은 검사': 'Checks attached',
   '이렇게 일합니다': 'How it works',
   '올린 자료를 읽습니다': 'Reads the files you upload',
@@ -3812,7 +3777,6 @@ const EN: Record<string, string> = {
   '공유하기 전에 고칠 곳이 있습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자를 지워 주세요.': 'Fix this before sharing: remove key- or token-like strings and invisible direction-control characters.',
   '내보내기 (SKILL.md)': 'Export (SKILL.md)',
   '내보내지 못했습니다.': 'Could not export.',
-  '워크플로 만들기': 'Create workflow',
   '필터': 'Filter',
   '필터 지우기': 'Clear filters',
   '정렬': 'Sort',
@@ -4094,8 +4058,6 @@ export function translate(lang: Lang, text: string): string {
 const EN_IN: Record<string, string> = {
   'hub|탐색': 'Explore',
   'hub|개요': 'Overview',
-  'hub|양식': 'Templates',
-  'hub|디자인': 'Designs',
 }
 
 export function translateIn(lang: Lang, context: string, text: string): string {

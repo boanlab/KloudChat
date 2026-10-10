@@ -30,7 +30,7 @@ interface NavRow {
   icon: typeof Bot
 }
 
-// Agents, skills, workflows, connectors, memory and designs live in 「사용자 지정」.
+// Agents, skills and connectors live in 「사용자 지정」; memory and themes in 설정.
 // 「챗봇」: bots members published, for anyone who only wants to ask.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
