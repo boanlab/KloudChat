@@ -246,6 +246,8 @@ async def test_the_preflight_names_the_model_what_is_left_out_and_personal_detai
 async def test_a_version_is_a_hidden_fixed_copy_and_rollback_brings_one_back(world):
     pub = await _publish(world, note="첫판")
     assert pub["status"] == "approved" and pub["visibility"] == "internal"
+    # An address that copies as written: no Korean to percent-encode.
+    assert pub["slug"].startswith("bot-") and pub["slug"].isascii()
     (v1,) = pub["versions"]
     async with world.local() as db:
         version = await db.get(PublicationVersion, v1["id"])

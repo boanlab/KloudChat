@@ -463,9 +463,10 @@ async def delete_sessions(db: AsyncSession, session_ids: list[str]) -> int:
 
 
 def new_slug(title: str) -> str:
-    """An address that says what the bot is and cannot be guessed from another's."""
-    base = re.sub(r"[^0-9a-z가-힣]+", "-", (title or "").strip().lower()).strip("-")[:30]
-    return f"{base}-{secrets.token_hex(3)}" if base else secrets.token_hex(5)
+    """An address that cannot be guessed from another's: the title's Latin letters when it
+    has any (a Korean title would be percent-encoded in every copied link), else `bot-`."""
+    base = re.sub(r"[^0-9a-z]+", "-", (title or "").strip().lower()).strip("-")[:30]
+    return f"{base or 'bot'}-{secrets.token_hex(4)}"
 
 
 # ── pausing ────────────────────────────────────────────────────────────
