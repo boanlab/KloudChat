@@ -247,7 +247,7 @@ export function ProjectDetailPage() {
               trigger={() => (
                 <Button variant="primary" size="sm">
                   <Plus size={14} />
-                  {t('이 프로젝트에서 새로 만들기')}
+                  {t('새로 시작')}
                 </Button>
               )}
             >
@@ -658,12 +658,12 @@ export function ProjectDetailPage() {
                     <p className="text-sm text-muted">{s.description}</p>
                   </div>
                   <Badge tone={s.enabled ? 'success' : 'neutral'}>
-                    {s.enabled ? t('추천') : t('사용 중지')}
+                    {s.enabled ? t('사용 중') : t('사용 중지')}
                   </Badge>
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={t('{name} 추천 해제').replace('{name}', s.name)}
+                    aria-label={t('{name} 빼기').replace('{name}', s.name)}
                     onClick={() =>
                       void updateProject(project.id, {
                         skillIds: validProjectSkillIds.filter((id) => id !== s.id),
@@ -679,7 +679,7 @@ export function ProjectDetailPage() {
                 trigger={() => (
                   <Button size="sm">
                     <Plus size={14} />
-                    {t('추천 스킬 설정')}
+                    {t('스킬 고르기')}
                   </Button>
                 )}
               >

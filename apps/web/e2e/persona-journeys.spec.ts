@@ -59,7 +59,7 @@ test('대학원생 — 프로젝트 지식을 올리고 그 안에서만 아는 
   })
   await expect(page.getByText('results.csv')).toBeVisible({ timeout: 30_000 })
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '챗' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 20_000 })

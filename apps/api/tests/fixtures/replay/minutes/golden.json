@@ -337,7 +337,7 @@
  {
   "type": "step",
   "id": "format_checks",
-  "label": "양식 검사 1건 → 수리 후 0건",
+  "label": "템플릿 검사 1건 → 수리 후 0건",
   "status": "done",
   "detail": "실행 항목 출처·비고 열 없음 1 → 0"
  },

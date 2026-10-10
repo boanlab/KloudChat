@@ -82,7 +82,7 @@ const SAVE_ERRORS: Record<string, string> = {
   process_outline: '고정 목차를 쓰려면 목차를 적으세요.',
   process_table: '필수 표마다 열 이름을 두 개 이상 적으세요.',
   template_form_type: 'DOCX 또는 HWPX 파일만 올릴 수 있습니다.',
-  template_form_unreadable: '양식 파일을 읽지 못했습니다.',
+  template_form_unreadable: '예시 문서를 읽지 못했습니다.',
 }
 
 /**
@@ -311,30 +311,30 @@ export function TemplateEditPage() {
                 onChange={(next) => set('process', next)} />
             </Group>
 
-            <Group title={t('양식 파일')} hint={row?.hasForm ? row.formName : t('DOCX·HWPX 양식을 참고 글로')} testId="template-form-file">
+            <Group title={t('예시 문서')} hint={row?.hasForm ? row.formName : t('DOCX·HWPX 문서를 참고 글로')} testId="template-form-file">
               <p className="text-sm text-muted">
-                {t('올린 양식의 글(제목·칸 이름)을 쓰는 모델이 참고합니다. 내보내는 파일의 모양은 테마가 정합니다.')}
+                {t('올린 문서의 글(제목·칸 이름)을 쓰는 모델이 참고합니다. 내보내는 파일의 모양은 테마가 정합니다.')}
               </p>
               {row ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <input ref={file} type="file" accept=".docx,.hwpx" className="hidden" aria-label={t('양식 파일')}
+                  <input ref={file} type="file" accept=".docx,.hwpx" className="hidden" aria-label={t('예시 문서')}
                     onChange={async (e) => {
                       const picked = e.target.files?.[0]
                       if (!picked) return
                       try {
                         setRow(await userTemplatesApi.uploadForm(row.id, picked))
                       } catch (err) {
-                        failed(err, '양식 파일을 올리지 못했습니다.')
+                        failed(err, '예시 문서를 올리지 못했습니다.')
                       }
                     }} />
                   <Button type="button" size="sm" disabled={!mine} onClick={() => file.current?.click()}>
                     <FileUp size={13} />
-                    {row.hasForm ? t('다른 파일로 바꾸기') : t('양식 파일 올리기')}
+                    {row.hasForm ? t('다른 파일로 바꾸기') : t('예시 문서 올리기')}
                   </Button>
                   {row.hasForm && (
                     <Button type="button" size="sm" variant="ghost" disabled={!mine}
                       onClick={async () => setRow(await userTemplatesApi.removeForm(row.id))}>
-                      {t('양식 빼기')}
+                      {t('예시 문서 빼기')}
                     </Button>
                   )}
                 </div>

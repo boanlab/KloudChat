@@ -282,7 +282,7 @@ def clean(raw: Any) -> dict[str, Any]:
             raise ProcessError("process_date_base", "날짜 기준은 자료의 날짜나 회의 날짜입니다.")
         out["date_base"] = base
     if "stages" in data:
-        names = _names(data["stages"], STAGES, "process_stage", "서식 보정")
+        names = _names(data["stages"], STAGES, "process_stage", "값 맞추기")
         out["stages"] = tuple(n for n in STAGES if n in names)
     if "checks" in data:
         names = _names(data["checks"], CHECKS, "process_check", "계산 확인")

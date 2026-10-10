@@ -125,7 +125,7 @@ test('프로젝트 안에서 새 작업을 시작하면 그 프로젝트에 속�
 
   const projectId = await createProject(page, `작업 프로젝트 ${stamp()}`)
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '챗' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
@@ -160,7 +160,7 @@ test('프로젝트에 서식을 정하면 그 안에서 시작한 작업이 그 
   await expect(page.getByLabel('보고서 양식')).toHaveValue('doc-minutes', { timeout: 20_000 })
   await expect(page.getByLabel('슬라이드 양식')).toHaveValue('')
 
-  await page.getByRole('button', { name: /이 프로젝트에서 새로 만들기/ }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '보고서' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
   const sessionId = page.url().split('/').pop() as string

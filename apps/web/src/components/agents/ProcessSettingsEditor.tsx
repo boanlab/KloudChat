@@ -239,7 +239,7 @@ export function ProcessSettingsEditor({
           onChange={(next) => set('judged', next)} />
       </Part>
 
-      <Part title="서식 보정" hint="기본 제공 단계입니다. 계산한 값으로 표·기간·쪽수를 맞춥니다.">
+      <Part title="값 맞추기" hint="기본 제공 단계입니다. 계산한 값으로 표·기간·쪽수를 맞춥니다.">
         <Names names={catalogue.stages} value={value.stages} labels={prepassLabels} testId="settings-stages"
           onChange={(next) => set('stages', next)} />
       </Part>

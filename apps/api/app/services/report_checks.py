@@ -3935,12 +3935,12 @@ def _section_order(sections_wanted: tuple[str, ...]) -> Check:
                 found.append(Finding(
                     max(len(doc.sections) - 1, 0), str(doc.sections[-1].get("heading") or "")
                     if doc.sections else "", "section_missing",
-                    f"서식의 절 「{want}」이 없다. 확인 필요.", rank=4, auto=False))
+                    f"템플릿의 절 「{want}」이 없다. 확인 필요.", rank=4, auto=False))
                 continue
             if at < last:
                 found.append(Finding(
                     at, str(doc.sections[at].get("heading") or ""), "section_order",
-                    f"서식이 정한 순서와 다르게 「{want}」이 앞에 있다. 확인 필요.", rank=4,
+                    f"템플릿이 정한 순서와 다르게 「{want}」이 앞에 있다. 확인 필요.", rank=4,
                     auto=False))
             last = max(last, at)
         return found, {}
@@ -3967,7 +3967,7 @@ def _required_table(table: dict) -> Check:
                      max(len(doc.sections) - 1, 0))
         sentence = str(doc.sections[index].get("heading") or "") if doc.sections else ""
         return [Finding(index, sentence, "table_missing",
-                        f"서식이 정한 표(열: {' · '.join(columns)})가 없다. 확인 필요.", rank=4,
+                        f"템플릿이 정한 표(열: {' · '.join(columns)})가 없다. 확인 필요.", rank=4,
                         auto=False)], {}
 
     return required_table
@@ -4046,9 +4046,9 @@ MODEL_LABELS = {
     "number_binding": "다른 대상에 붙은 숫자 후보(확인 필요)",
     "experience_repeat": "같은 경험 반복 후보(확인 필요)",
     "rule_broken": "검토 규칙 위반 후보(확인 필요)",
-    "section_missing": "서식의 절 없음(확인 필요)",
-    "section_order": "서식과 다른 절 순서(확인 필요)",
-    "table_missing": "서식이 정한 표 없음(확인 필요)",
+    "section_missing": "템플릿의 절 없음(확인 필요)",
+    "section_order": "템플릿과 다른 절 순서(확인 필요)",
+    "table_missing": "템플릿이 정한 표 없음(확인 필요)",
 }
 
 

@@ -1586,7 +1586,7 @@ export function Composer({
                     unavailable
                       ? unavailable
                       : recommended.has(s.id)
-                        ? t('프로젝트 추천')
+                        ? t('이 프로젝트 스킬')
                         : t('약 {n} 토큰').replace('{n}', s.estimatedTokens.toLocaleString())
                   }
                   onClick={() => toggleSkill(s.id, selected)}

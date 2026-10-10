@@ -533,7 +533,7 @@ _GENERIC = _template(
     _ROOT / GENERIC_ID,
     {
         "kind": "document",
-        "name": "기본 양식",
+        "name": "기본 템플릿",
         "name_en": "Standard",
         "category": "업무",
         "category_en": "Work",

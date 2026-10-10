@@ -78,10 +78,10 @@ An agent that writes reports can turn on **Set for this agent** under **Detailed
 - **How it writes**: no web search, figures only when asked, a fixed outline.
 - **Structure rules**: sections in order, required tables (columns), summary lines at the top, bullet style, page limit. Checked by code.
 - **Review rules**: rules in your own words. After writing, a judge model shows the sentences that break them; nothing is rewritten.
-- **Calculation checks**, **Judged checks**, **Format repairs**, **Fill in what is missing**: built-in checks and repair steps attached by name.
+- **Calculation checks**, **Judged checks**, **Value fixes**, **Fill in what is missing**: built-in checks and repair steps attached by name.
 - **When the material disagrees**: left empty, the writing says which value it used and why.
 
-Make your own document template with **New template** under **Output shape** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
+Make your own document template with **New template** under **Output shape** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
 ## Save as agent
 
@@ -109,7 +109,7 @@ A skill is a working method that applies **to one request only**. Select up to t
 - **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Scripts (.py, .sh, .js and the like) are never stored or run; they are left out. The text check is heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.
 - A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.
 - A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
-- When you set **Recommended skills** on a project, they appear first in the composer of that project.
+- Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer.
 
 ## Built-in skills
 

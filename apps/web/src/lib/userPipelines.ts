@@ -15,12 +15,3 @@ export function agentOutput(agent: Agent): '' | 'document' | 'answer' {
   return surface === 'report' ? 'document' : surface === 'chat' ? 'answer' : ''
 }
 
-/** A flow made with 「워크플로 만들기」 and left without a single edit: nothing worth keeping. */
-export const isUntouchedPipeline = (p: UserPipeline): boolean =>
-  p.version === 1 &&
-  p.stages.length === 0 &&
-  !p.base &&
-  !p.originId &&
-  !p.review &&
-  !p.description &&
-  p.boundAgents.length === 0

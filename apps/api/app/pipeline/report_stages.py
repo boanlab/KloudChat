@@ -727,7 +727,7 @@ class Prepass(Base):
             }
         elif prepass is not None and given and not quiet:
             yield {"type": "step", "id": "prepass", "label": "사전 계산 해당 없음", "status": "done",
-                   "detail": "자료에서 이 양식이 계산할 값을 찾지 못함"}
+                   "detail": "자료에서 이 템플릿이 계산할 값을 찾지 못함"}
 
 
 class WriterNotes(Base):
@@ -1690,8 +1690,8 @@ class FormatStep(Base):
             record = " · ".join(x for x in (traced.summary, record) if x)
         yield {
             "type": "step", "id": "format_checks",
-            "label": "양식 검사: 문제 없음" if not before and not f.added_before
-            else f"양식 검사 {len(before) + len(f.added_before)}건 → 수리 후 "
+            "label": "템플릿 검사: 문제 없음" if not before and not f.added_before
+            else f"템플릿 검사 {len(before) + len(f.added_before)}건 → 수리 후 "
                  f"{len(after) + len(f.added_after)}건",
             "status": "error" if after or f.added_after else "done",
             "detail": " · ".join(x for x in (record, f.pages_note) if x)[:1500],

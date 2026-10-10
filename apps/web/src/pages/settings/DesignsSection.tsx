@@ -126,7 +126,7 @@ function ExtractForm({
   return (
     <section aria-label={t('문서에서 가져오기')} className="space-y-3">
       <p className="text-sm text-muted">
-        {t('공문 양식이나 지난 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.')}
+        {t('지난 공문이나 보고서를 올리면 색·서체·문체를 읽어 초안을 만듭니다. 저장은 확인한 뒤에 합니다.')}
       </p>
 
       <Field label={t('문서 올리기')} hint={t('hwpx · docx · pdf · 텍스트')}>

@@ -40,7 +40,7 @@ test('디자인 편집 화면과 갤러리 카드가 그 디자인을 그대로 
   await page.getByLabel('디자인', { exact: true }).selectOption({ label: name })
   await saved
 
-  await page.getByRole('button', { name: '이 프로젝트에서 새로 만들기' }).click()
+  await page.getByRole('button', { name: '새로 시작', exact: true }).click()
   await page.getByRole('menuitem', { name: '슬라이드' }).click()
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 60_000 })
 

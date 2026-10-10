@@ -44,7 +44,7 @@ export const AGENT_SAVE_ERRORS: Record<string, { message: string; place?: AgentE
   process_pages: { message: '세부 설정: 쪽수 제한은 1~30 사이로 적으세요.', place: 'settings' },
   process_prepass: { message: '세부 설정: 쓰기 전 계산은 다섯 개까지, 목록에 있는 것만 고를 수 있습니다.', place: 'settings' },
   process_date_base: { message: '세부 설정: 날짜 기준은 자료의 날짜나 회의 날짜입니다.', place: 'settings' },
-  process_stage: { message: '세부 설정: 서식 보정에 모르는 항목이 있습니다. 다시 고르세요.', place: 'settings' },
+  process_stage: { message: '세부 설정: 값 맞추기에 모르는 항목이 있습니다. 다시 고르세요.', place: 'settings' },
   process_check: { message: '세부 설정: 계산 확인에 모르는 항목이 있습니다. 다시 고르세요.', place: 'settings' },
   process_judged: { message: '세부 설정: 판정 검사에 모르는 항목이 있습니다. 다시 고르세요.', place: 'settings' },
   process_amend: { message: '세부 설정: 빠진 것 채우기에 모르는 항목이 있습니다. 다시 고르세요.', place: 'settings' },
