@@ -353,7 +353,7 @@ test('직접 구성: start from the agent itself, keep the contracts, save it wi
 test('직접 구성 can start from an order made before', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const { editor } = await openCustom(page)
-  await editor.getByRole('combobox', { name: '예전에 만든 순서 가져오기' }).selectOption({ label: '예전에 만든 분석 → 비교' })
+  await editor.getByRole('combobox', { name: '저장한 순서 가져오기' }).selectOption({ label: '예전에 만든 분석 → 비교' })
   await expect(editor.getByTestId('pipeline-step')).toHaveText([/데이터 분석/, /비교 보고서/])
   expect(state.problems).toEqual([])
 })
@@ -365,7 +365,7 @@ test('admin: 진행 과정 검토 approves or rejects what asks to be shared', a
   await expect(page.getByRole('heading', { name: '진행 과정 검토' })).toBeVisible({ timeout: 15_000 })
   const card = page.getByTestId('pipeline-approval').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
-  await expect(card).toContainText('예전에 만든 순서')
+  await expect(card).toContainText('저장한 순서')
   await card.scrollIntoViewIfNeeded()
   await shot('approvals')
   await card.getByRole('button', { name: '반려' }).click()

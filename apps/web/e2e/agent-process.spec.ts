@@ -178,11 +178,11 @@ test('B-5: a new agent\'s 직접 구성 is judged as the agent it will be, and s
     .toMatchObject({ selfSurface: 'report', selfName: '새 보고 도우미' })
 })
 
-test('B-6, B-9: 메모리 has a pointer where it used to be; the brightness toggle is not called 테마', async ({ page }, testInfo) => {
+test('B-6, B-9: 사용자 지정 does not narrate where things moved; the brightness toggle is not called 테마', async ({ page }, testInfo) => {
   await hubFixture(page, testInfo)
   await page.goto('/customize')
-  await expect(page.getByTestId('memory-moved')).toContainText('메모리는 설정 › 메모리로 옮겼습니다.', { timeout: 15_000 })
-  await expect(page.getByTestId('memory-moved').getByRole('link', { name: '메모리 열기' })).toHaveAttribute('href', '/settings/memory')
+  await expect(page.getByRole('tabpanel')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(/옮겼습니다/)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /^테마: / })).toHaveCount(0)
 })
 

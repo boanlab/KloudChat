@@ -41,7 +41,7 @@ See and edit what is remembered across conversations. See [Memory](memory.md) fo
 
 ## Themes
 
-A theme is a document's or deck's colours, typeface and writing rules (formerly "design"). Make and edit them under **My themes**; **Import from a document** reads a draft from an existing hwpx, docx or pdf. **Shared themes** lists the ones others shared. You pick a theme under **Output** › **Theme** in the agent settings (**Manage themes** beside it opens this tab) and in the report or slides panel's **Edit › Theme**. [Templates and themes](../chat/starters.md)
+A theme is a document's or deck's colours, typeface and writing rules. Make and edit them under **My themes**; **Import from a document** reads a draft from an existing hwpx, docx or pdf. **Shared themes** lists the ones others shared. You pick a theme under **Output** › **Theme** in the agent settings (**Manage themes** beside it opens this tab) and in the report or slides panel's **Edit › Theme**. [Templates and themes](../chat/starters.md)
 
 ## API keys
 

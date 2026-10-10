@@ -529,7 +529,7 @@ export function ProcessSection({
               <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />
               {(imports ?? []).length > 0 && (
                 <Select
-                  aria-label={t('예전에 만든 순서 가져오기')}
+                  aria-label={t('저장한 순서 가져오기')}
                   value=""
                   onChange={(e) => {
                     const row = imports?.find((p) => p.id === e.target.value)
@@ -537,7 +537,7 @@ export function ProcessSection({
                   }}
                   className="h-8 w-auto py-0"
                 >
-                  <option value="">{t('예전에 만든 순서 가져오기')}</option>
+                  <option value="">{t('저장한 순서 가져오기')}</option>
                   {(imports ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}

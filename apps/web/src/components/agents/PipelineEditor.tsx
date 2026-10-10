@@ -457,7 +457,7 @@ function StepPicker({
 function reviewKind(p: UserPipeline): string {
   if (p.kind === 'bundle') return '묶음'
   if (p.agentId) return '에이전트의 직접 구성'
-  return '예전에 만든 순서'
+  return '저장한 순서'
 }
 
 /** 「진행 과정 검토」: the administrator's queue of 직접 구성 and 묶음 asking to be shared. */
