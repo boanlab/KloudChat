@@ -33,7 +33,7 @@ _SHIPPED = {
 }
 _OFFERED = ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis", "minutes",
             "document", "slides"]
-_DRAFTS = {"document", "slides", "regulation-guide"}
+_DRAFTS = {"document", "slides"}
 _RETIRED = {"career-docs", "client-proposal"}
 _FORMER = {"gaejo-report": ["개조식 보고서", "요약·정리"], "minutes": ["기록 정리"],
            "comparison-report": ["비교·분석 보고서"], "data-analysis": ["데이터 분석"],

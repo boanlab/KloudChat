@@ -91,7 +91,8 @@ def test_the_shipped_bundles_are_data_in_the_users_shape():
 def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
     everyone = [b.key for b in bases.bases()]
     admins = [b.key for b in bases.bases(drafts=True)]
-    assert everyone == ["gaejo-report", "comparison-report", "data-analysis", "minutes"]
+    assert everyone == ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis",
+                        "minutes"]
     assert admins == ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis",
                       "minutes", "document", "slides"]
     assert bases.get("career-docs") is None and bases.get("client-proposal") is None
@@ -463,7 +464,7 @@ async def test_the_bases_endpoint_offers_drafts_to_administrators_only(wired):
         assert "document" in [b["key"] for b in (await up.list_bases(admin, db))["bases"]]
         assert [b["ref"] for b in mine["bundles"]] == ["prepare", "review", "finish",
                                                        "publish-check"]
-    assert set(starter.draft_agents()) == {"document", "slides", "regulation-guide"}
+    assert set(starter.draft_agents()) == {"document", "slides"}
 
 
 @pytest.mark.parametrize("key", [b.key for b in bases.bases(drafts=True)])

@@ -460,6 +460,9 @@ const EN: Record<string, string> = {
   '상투적인 표현을 걷어내고, 다 쓰면 파일로 내보냅니다.': 'Strips stock phrases and exports a file when done.',
   '상투적인 표현 걷어내기': 'Strip stock phrases',
   '다 쓰면 파일로 내보내기': 'Export a file when done',
+  '규정·업무 안내': 'Regulations and procedures',
+  '학칙·규정·업무 지침을 자료로 올려 두면, 질문에 근거 조항을 [n]으로 달아 답하고 자료에 없는 내용은 담당 부서로 안내할 때(공개 챗봇의 시작점)':
+    'When you upload rules, regulations and work guidelines and want questions answered with the article cited as [n], and anything not in them pointed to the responsible department (a starting point for a published chatbot)',
   '개조식 보고': 'Bullet-style briefing',
   '자료 추출·집계': 'Extract and tally',
   '공문·기안 초안': 'Official letter and draft',

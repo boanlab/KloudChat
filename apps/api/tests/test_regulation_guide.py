@@ -246,7 +246,7 @@ def test_the_contact_reaches_the_model_word_for_word():
 
 def test_the_official_agent_is_a_chat_agent_on_its_material_with_the_publishing_checks():
     spec = starter.agent_spec("regulation-guide")
-    assert spec["draft"] is True and "regulation-guide" in starter.draft_agents()
+    assert not spec.get("draft") and "regulation-guide" not in starter.draft_agents()
     assert spec["tools"] == ["search_knowledge", "calculate"] and spec["skills"] == []
     assert spec["checks"] == ["grounding-check", "answer-hold", "contact-note", "pii-mask"]
     assert [b["bundle"] for b in spec["bundles"]] == ["review", "publish-check"]

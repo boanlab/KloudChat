@@ -1163,7 +1163,7 @@ rather than a second one with the same name.
 The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the lineup
 agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
 bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
-they run). Offered: 개조식 보고 (`gaejo-report`), 비교·결정 (`comparison-report`), 자료
+they run). Offered: 규정·업무 안내 (`regulation-guide`), 개조식 보고 (`gaejo-report`), 비교·결정 (`comparison-report`), 자료
 추출·집계 (`data-analysis`), 회의록 (`minutes`), and as drafts (`draft = true`,
 administrators only until they pass the lineup evaluation) 공문·기안 초안 (`document`) and
 발표 자료 (`slides`). `former_names` renames untouched copies on sync.
