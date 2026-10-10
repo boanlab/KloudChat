@@ -57,6 +57,8 @@ function agent(id: string, name: string) {
 
 export const skillNames = ['초안 검토', '데이터 분석', '번역 검수']
 export const agentNames = ['논문 리뷰어', '예산 검토']
+/** An agent that writes reports only: not offered on the chat screen's 「@」. */
+const reportAgent = { ...agent('a9'.padEnd(33, '9'), '회의록 정리'), kinds: ['report'], surface: 'report' }
 
 const templates = [
   { id: 'tpl-report', kind: 'document', surface: 'report', name: '비교 보고서', nameEn: 'Comparison report',
@@ -138,7 +140,7 @@ export async function composerFixture(
     if (method === 'GET' && path === '/skills') return json(skills
       ? skillNames.map((name, i) => skill(`k${String(i + 1).repeat(32)}`, name)) : [])
     if (method === 'GET' && path === '/agents') return json(agents
-      ? agentNames.map((name, i) => agent(`a${String(i + 1).repeat(32)}`, name)) : [])
+      ? [...agentNames.map((name, i) => agent(`a${String(i + 1).repeat(32)}`, name)), reportAgent] : [])
     if (method === 'GET' && path === '/connectors') return json(connectors ? [connector] : [])
     if (method === 'GET' && path === '/design-templates') return json(templates)
     if (method === 'GET' && path === '/sessions') return json([...rows.values()])

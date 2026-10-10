@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { Button, Field, Input, Select } from '@/components/ui'
 import { useT } from '@/lib/useT'
+import { gapFieldId, type GapProblem } from '@/lib/gapQuestions'
 import type { GapDetector, GapQuestion } from '@/types'
 
 const MAX_QUESTIONS = 12
@@ -72,12 +73,28 @@ export function GapQuestionsEditor({
   value,
   onChange,
   detectors,
+  problems = {},
 }: {
   value: GapQuestion[]
   onChange: (next: GapQuestion[]) => void
   detectors: { name: string; label: string }[]
+  /** Fields a save stopped on, by question id (`gapProblems`). */
+  problems?: Record<string, GapProblem>
 }) {
   const t = useT()
+  const problemOf = (id: string, field: GapProblem['field']) => (problems[id]?.field === field ? problems[id] : undefined)
+  const said = (id: string, field: GapProblem['field']) => {
+    const p = problemOf(id, field)
+    return p ? (
+      <p role="alert" className="text-sm text-danger" id={`${gapFieldId(id, field)}-error`}>
+        {t(p.message)}
+      </p>
+    ) : null
+  }
+  const invalid = (id: string, field: GapProblem['field']) =>
+    problemOf(id, field)
+      ? { 'aria-invalid': true as const, 'aria-describedby': `${gapFieldId(id, field)}-error` }
+      : {}
   const set = (i: number, patch: Partial<GapQuestion>) => onChange(value.map((q, j) => (j === i ? { ...q, ...patch } : q)))
   const setDetector = (i: number, patch: Partial<GapDetector>) => set(i, { detector: { ...value[i].detector, ...patch } })
   const move = (i: number, by: number) => {
@@ -88,9 +105,13 @@ export function GapQuestionsEditor({
   }
   return (
     <div className="space-y-3" data-testid="gap-questions">
+      {value.length > 0 && (
+        <p className="text-sm text-faint">
+          <span aria-hidden className="text-danger">*</span> {t('표시는 꼭 채울 칸입니다.')}
+        </p>
+      )}
       {value.map((q, i) => {
         const d = q.detector
-        const base = `gap-${q.id}`
         return (
           <fieldset key={q.id} aria-label={t('질문 {n}').replace('{n}', String(i + 1))} className="space-y-3 rounded-card border border-line p-3" data-testid="gap-question">
             <div className="flex items-center gap-2">
@@ -111,15 +132,18 @@ export function GapQuestionsEditor({
                 <Trash2 size={14} />
               </Button>
             </div>
-            <Field label={t('물어볼 것')}>
+            <Field label={t('물어볼 것')} required>
               <Input
-                id={`${base}-question`}
+                id={gapFieldId(q.id, 'question')}
                 value={q.question}
                 maxLength={300}
+                aria-required
+                {...invalid(q.id, 'question')}
                 onChange={(e) => set(i, { question: e.target.value })}
                 placeholder={t('예: 행사 장소는 어디인가요?')}
               />
             </Field>
+            {said(q.id, 'question')}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t('짧은 이름')} hint={t('답을 자료에 붙일 때 앞에 씁니다.')}>
                 <Input value={q.label} maxLength={40} onChange={(e) => set(i, { label: e.target.value })} placeholder={t('예: 장소')} />
@@ -158,8 +182,14 @@ export function GapQuestionsEditor({
                 </Select>
               </Field>
               {d.type === 'builtin' && (
-                <Field label={t('찾는 것')}>
-                  <Select value={d.name ?? ''} onChange={(e) => setDetector(i, { name: e.target.value })}>
+                <Field label={t('찾는 것')} required>
+                  <Select
+                    id={gapFieldId(q.id, 'name')}
+                    value={d.name ?? ''}
+                    aria-required
+                    {...invalid(q.id, 'name')}
+                    onChange={(e) => setDetector(i, { name: e.target.value })}
+                  >
                     {detectors.map((row) => (
                       <option key={row.name} value={row.name}>
                         {t(row.label)}
@@ -169,18 +199,36 @@ export function GapQuestionsEditor({
                 </Field>
               )}
               {d.type === 'keyword' && (
-                <Field label={t('이 낱말이 있으면 답한 것')} hint={t('쉼표로 나눕니다.')}>
-                  <Input
-                    defaultValue={(d.words ?? []).join(', ')}
-                    onBlur={(e) => setDetector(i, { words: words(e.target.value) })}
-                    placeholder={t('예: 장소, 강당, 회의실')}
-                  />
-                </Field>
+                <div className="space-y-1">
+                  <Field label={t('이 낱말이 있으면 답한 것')} hint={t('쉼표로 나눕니다.')} required>
+                    <Input
+                      id={gapFieldId(q.id, 'words')}
+                      defaultValue={(d.words ?? []).join(', ')}
+                      aria-required
+                      {...invalid(q.id, 'words')}
+                      // Kept as typed: a save right after typing reads the words too.
+                      onChange={(e) => setDetector(i, { words: words(e.target.value) })}
+                      placeholder={t('예: 장소, 강당, 회의실')}
+                    />
+                  </Field>
+                  {said(q.id, 'words')}
+                </div>
               )}
               {d.type === 'regex' && (
-                <Field label={t('패턴')} hint={t('반복은 {0,10}처럼 횟수를 정해 씁니다. * 와 + 는 쓸 수 없습니다.')}>
-                  <Input className="font-mono" value={d.pattern ?? ''} maxLength={300} onChange={(e) => setDetector(i, { pattern: e.target.value })} />
-                </Field>
+                <div className="space-y-1">
+                  <Field label={t('패턴')} hint={t('반복은 {0,10}처럼 횟수를 정해 씁니다. * 와 + 는 쓸 수 없습니다.')} required>
+                    <Input
+                      id={gapFieldId(q.id, 'pattern')}
+                      className="font-mono"
+                      value={d.pattern ?? ''}
+                      maxLength={300}
+                      aria-required
+                      {...invalid(q.id, 'pattern')}
+                      onChange={(e) => setDetector(i, { pattern: e.target.value })}
+                    />
+                  </Field>
+                  {said(q.id, 'pattern')}
+                </div>
               )}
               {d.type === 'judge' && (
                 <p className="self-end text-sm text-faint sm:col-span-1">

@@ -124,14 +124,24 @@ export function Field({
   label,
   hint,
   children,
+  required = false,
 }: {
   label: string
   hint?: string
   children: ReactNode
+  /** Marks the field as one that must be filled (a red *, left out of the name read aloud). */
+  required?: boolean
 }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-base font-medium text-fg">{label}</span>
+      <span className="text-base font-medium text-fg">
+        {label}
+        {required && (
+          <span aria-hidden className="ml-0.5 text-danger">
+            *
+          </span>
+        )}
+      </span>
       {children}
       {hint && <span className="block text-sm text-faint">{hint}</span>}
     </label>

@@ -26,7 +26,7 @@ The built-in agents are **Summary** (요약·정리), **Records** (기록 정리
 
 1. Write the **name**, the **one-line description** and the **instructions** (the role and rules the agent always follows). Instructions for one surface only go under a line `[채팅에서]` (chat), `[보고서에서]` (report) or `[슬라이드에서]` (slides); what comes before the first such line applies everywhere.
 2. Choose **How it works** (진행 과정):
-   - **Answer directly**: takes the request and answers right away.
+   - **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose a **Start from a base process** that writes a document. When the description or instructions mention a file or DOCX, the form offers a button to switch.
    - **Start from a base process**: follows the order a built-in agent (Summary, Records, …) works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's question card, document format, template and checks.
    - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Presentation has no custom order.
 3. Tick **bundles** under **Extra work** (below). A base process comes with the bundles its built-in agent uses already ticked; left as they are, the agent works exactly like the built-in one.
@@ -51,9 +51,9 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. Your bundles appear as checkboxes under Extra work in all your agents. Edit and share them from the **Bundles** row on the Agents tab (Manage bundles).
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review, or calls another agent reaches others only after an administrator approves it under **Process review**. An agent that uses only a base process and the built-in bundles is shared at once.
 
-## Process settings and your own templates
+## Detailed settings and your own templates
 
-An agent that writes reports can turn on **Set for this agent** under **More settings** › **Process settings** and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
+An agent that writes reports can turn on **Set for this agent** under **Detailed settings** (calculations, checks, outline) below the process and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
 
 - **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).
 - **How it writes**: no web search, figures only when asked, a fixed outline.
@@ -61,7 +61,7 @@ An agent that writes reports can turn on **Set for this agent** under **More set
 - **Review rules**: rules in your own words. After writing, a judge model shows the sentences that break them; nothing is rewritten.
 - **Calculation checks**, **Judged checks**, **Format repairs**, **Fill in what is missing**: built-in checks and repair steps attached by name.
 
-Make your own document template with **New template** under **Output look** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and process settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
+Make your own document template with **New template** under **Output look** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
 ## Save as agent
 

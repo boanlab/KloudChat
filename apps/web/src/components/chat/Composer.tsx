@@ -33,6 +33,7 @@ import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
+import { agentStartKind, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, effectiveModelId, useStore } from '@/store/useStore'
@@ -887,6 +888,12 @@ export function Composer({
   const usableAgents = agents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
+  // 「+」 › 에이전트 lists every agent the person can start: those of this screen first, then
+  // the rest, each opening on its own screen.
+  // A picture or sound screen keeps to its own.
+  const menuAgents = isMedia
+    ? usableAgents
+    : [...usableAgents, ...agents.filter((a) => a.enabled && !usableAgents.includes(a))]
   const usableConnectors = connectors.filter(
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
@@ -1399,7 +1406,7 @@ export function Composer({
   const micInMenu = phone && canRecord && !recording && !transcribing
   const hasTools =
     !isMedia || showTemplates || showSkills || canWebSearch || usableConnectors.length > 0 ||
-    usableAgents.length > 0 || micInMenu
+    menuAgents.length > 0 || micInMenu
   const closePlus = () => {
     setPlusOpen(false)
     setPlusView('main')
@@ -1512,7 +1519,7 @@ export function Composer({
                 {t('커넥터')}
               </ToolItem>
             )}
-            {usableAgents.length > 0 && (
+            {(menuAgents.length > 0 || !isMedia) && (
               <ToolItem
                 icon={<AtSign size={15} />}
                 label={t('에이전트')}
@@ -1649,21 +1656,35 @@ export function Composer({
         {plusView === 'agents' && (
           <>
             {back(t('에이전트로 새 대화'))}
-            {usableAgents.map((a) => (
-              <MenuItem
-                key={a.id}
-                hint={a.model ? a.model.split('/').pop() : undefined}
-                onClick={() => {
-                  closePlus()
-                  // An agent belongs to the session, so choosing one starts a conversation.
-                  void newSession(kind, { agentId: a.id, projectId })
-                    .then((id) => navigate(`/s/${id}`))
-                    .catch((err: unknown) => setNotice(startFailure(err, t)))
-                }}
-              >
-                {a.name}
-              </MenuItem>
-            ))}
+            {menuAgents.map((a) => {
+              // An agent this screen does not offer opens on its own screen, which the row says.
+              const startOn = usableAgents.includes(a) ? kind : agentStartKind(a, kind)
+              return (
+                <MenuItem
+                  key={a.id}
+                  hint={startOn !== kind ? t(kindMeta[startOn].label) : a.model ? a.model.split('/').pop() : undefined}
+                  onClick={() => {
+                    closePlus()
+                    // An agent belongs to the session, so choosing one starts a conversation.
+                    void newSession(startOn, { agentId: a.id, projectId })
+                      .then((id) => navigate(`/s/${id}`))
+                      .catch((err: unknown) => setNotice(startFailure(err, t)))
+                  }}
+                >
+                  {a.name}
+                </MenuItem>
+              )
+            })}
+            {menuAgents.length > 0 && <MenuSeparator />}
+            <MenuItem
+              icon={<Plus size={14} />}
+              onClick={() => {
+                closePlus()
+                navigate('/customize/agents/new')
+              }}
+            >
+              {t('에이전트 만들기')}
+            </MenuItem>
           </>
         )}
       </div>

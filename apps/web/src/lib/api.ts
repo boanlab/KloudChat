@@ -149,6 +149,9 @@ async function readDetail(res: Response): Promise<string> {
     // errors for validation failures.
     if (typeof body?.detail === 'string') return body.detail
     if (Array.isArray(body?.detail)) return body.detail[0]?.msg ?? 'invalid_request'
+    // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
+    const problem = body?.detail?.problems?.[0]?.message
+    if (typeof problem === 'string' && problem) return problem
   } catch {
     /* non-JSON error body */
   }
@@ -1793,8 +1796,18 @@ export const userPipelinesApi = {
   update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
     call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
-  validate: (stages: PipelineStep[], id?: string, agentId?: string, self?: { surface: string; name: string }) =>
-    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id, agentId, selfSurface: self?.surface, selfName: self?.name })),
+  validate: (
+    stages: PipelineStep[],
+    id?: string,
+    agentId?: string,
+    self?: { surface: string; name: string },
+    /** The form's 빠진 정보 질문 as they stand: a 확인 질문 step is judged with them. */
+    questions?: GapQuestion[],
+  ) =>
+    call<PipelineVerdict>(
+      '/user-pipelines/validate',
+      body({ stages, id, agentId, selfSurface: self?.surface, selfName: self?.name, questions }),
+    ),
   submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
   withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
   bind: (agentId: string, pipelineId: string | null) =>

@@ -220,3 +220,33 @@ test('phone: one line, tools in a bottom sheet, answers full width, no sideways 
   }
   expect(unexpected).toEqual([])
 })
+
+test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, and offers 에이전트 만들기', async ({ page }, info) => {
+  const { unexpected, created } = await composerFixture(page, info)
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  const menu = page.getByRole('menu', { name: '도구' })
+  for (const name of ['논문 리뷰어', '예산 검토', '회의록 정리', '에이전트 만들기']) {
+    await expect(menu.getByRole('menuitem', { name: new RegExp(name) })).toBeVisible()
+  }
+  // Not this screen's: it says where it opens.
+  await expect(menu.getByRole('menuitem', { name: /회의록 정리/ })).toContainText('보고서')
+  if (info.project.name === 'desktop') await page.screenshot({ path: shotPath('composer-agents-desktop') })
+  else await page.screenshot({ path: shotPath('composer-agents-phone') })
+  // A report agent opens a report conversation, not a chat one.
+  await menu.getByRole('menuitem', { name: /회의록 정리/ }).click()
+  await expect(page).toHaveURL(/\/s\/c0+\d+$/)
+  expect(created).toEqual([expect.objectContaining({ kind: 'report', agentId: expect.stringMatching(/^a9+$/) })])
+
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  await page.getByRole('menuitem', { name: '에이전트 만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/agents\/new$/)
+  // The 「@」 list stays this screen's.
+  expect(unexpected.filter((u) => !u.startsWith('GET '))).toEqual([])
+})
+
+const shotPath = (name: string) =>
+  `${process.env.SHOT_DIR ?? 'test-results/shots'}/${name}.png`

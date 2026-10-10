@@ -125,10 +125,21 @@ _DATED = re.compile(
     r"|\d{1,4}\s{0,2}(?:년|월|일|주차?)|\([월화수목금토일]\)|(?<![가-힣])[1-4]분기")
 
 
+#: A line that says nothing was settled (「없음」 「(해당 없음)」 「정한 것 없음」), or the header
+#: echoed back: no rule.
+_NOTHING = re.compile(
+    r"^[\s()\[\]「」.·:-]{0,6}(?:(?:해당\s{0,2}(?:사항\s{0,2})?)?없음|없습니다|정한\s{0,2}것\s{0,2}없음"
+    r"|이\s{0,2}대화에서\s{0,2}정한\s{0,2}것|none|n/?a)[\s()\[\]「」.·:-]{0,6}$", re.I)
+#: At least two letters (Hangul or Latin) or digits: not just punctuation.
+_WORDY = re.compile(r"[가-힣A-Za-z0-9]{2}")
+
+
 def keep(line: str) -> bool:
     """Whether a distilled line is a rule for next time, not about this conversation's
-    material."""
-    return not _THIS_ONE.search(line or "")
+    material, nor an empty or 「없음」 line."""
+    text = (line or "").strip()
+    return bool(_WORDY.search(text)) and not _NOTHING.match(text) \
+        and not _THIS_ONE.search(text)
 
 
 def name_for(title: str, template_name: str = "") -> str:
@@ -142,7 +153,7 @@ def name_for(title: str, template_name: str = "") -> str:
 
 def prompt_from(lines: list[str]) -> str:
     """The 지시 section a draft starts with."""
-    lines = [line for line in lines if keep(line)]
+    lines = [line.strip() for line in lines if keep(line)]
     if not lines:
         return ""
     return "이 대화에서 정한 것:\n" + "\n".join(f"- {line}" for line in lines)

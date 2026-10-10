@@ -292,7 +292,23 @@ async def _validate_agent_bindings(
             raise HTTPException(status_code=422, detail="doc_format_needs_report")
     if check_design:
         await _validate_design_system_id(db, user, out["design_system_id"])
-    return out
+    return _format_of_template(out)
+
+
+def _format_of_template(bindings: dict[str, Any]) -> dict[str, Any]:
+    """The invariant between an agent's template and its format: the stored format never
+    contradicts a template that fixes one (`doc_format` in its `template.toml`). A 기록 정리
+    agent switched to 결과 보고서 stores `result_report`, not `minutes`, whatever the form sent
+    (`user_pipelines._apply_base` holds the same rule when a base is picked). None stays None —
+    the template's format applies at run time — and a template that fixes none leaves the
+    format as chosen: it is what such a template writes in."""
+    template_id = bindings.get("render_template_id")
+    chosen = design_templates.choosable(template_id) if template_id else None
+    fixed = chosen.doc_format if chosen is not None else ""
+    if fixed and bindings.get("doc_format") not in (None, fixed):
+        bindings["doc_format"] = fixed if fixed in doc_formats.BY_ID \
+            and fixed not in doc_formats.RETIRED else None
+    return bindings
 
 
 def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | None:

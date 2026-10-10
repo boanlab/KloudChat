@@ -256,3 +256,20 @@ def test_the_model_reads_rules_in_english_and_writes_korean():
     assert text.startswith("You read only the messages a person sent")
     assert "Korean" in text and "「" in text
 
+
+
+async def test_a_draft_with_nothing_settled_has_no_empty_header(db, monkeypatch, calls):
+    """N7: the lines the model returns that say nothing (「없음」, the header echoed, a dash)
+    leave the 지시 empty, never a bare 「이 대화에서 정한 것:」."""
+
+    async def nothing(model, messages, api_key, *, strict_local, masker=None):
+        return ["없음", "(해당 없음)", "이 대화에서 정한 것:", "…", "이 메모로 회의록을 만든다."], {
+            "inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(agent_draft, "distill", nothing)
+    me, _ = await _people(db)
+    session = await _talk(db, me)
+    draft = await sessions.agent_draft(session.id, me, db)
+    assert draft["systemPrompt"] == "" and draft["decided"] == []
+    assert "정한 것" not in agent_draft.prompt_from(["없음", "  ", "N/A"])
+    assert agent_draft.keep("없음 표시는 빈칸으로 둔다.")

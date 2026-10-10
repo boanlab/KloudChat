@@ -78,6 +78,9 @@ class ValidateIn(Wire):
     #: document, `chat` answers) and its name, so the order is judged as it will run.
     self_surface: str | None = Field(default=None, max_length=10)
     self_name: str = Field(default="", max_length=120)
+    #: The form's 빠진 정보 질문 as they stand, not saved yet: a 확인 질문 step before
+    #: `@self` is judged with them (None: the saved agent's).
+    questions: list[dict[str, Any]] | None = Field(default=None, max_length=12)
 
 
 class RejectIn(Wire):
@@ -375,6 +378,15 @@ async def validate_draft(payload: ValidateIn, user: CurrentUser, db: DbSession):
             id=compose.SELF, name=payload.self_name.strip() or "이 에이전트",
             output="document" if payload.self_surface == "report" else "answer",
             self_of="new", shared=True, mine=True)}
+    if payload.questions is not None and (me := agents.get(compose.SELF)) is not None:
+        # The questions on the form, over what the agent's template or base asks.
+        drafted = [dict(q) for q in payload.questions
+                   if isinstance(q, dict) and str(q.get("question") or "").strip()]
+        asked = gap_questions.resolve(
+            own=drafted, base_key=me.catalog_key or None,
+            template_id=me.template_id if me.output == "document" else None,
+            doc_format=me.doc_format or None) if me.self_of != "new" else drafted
+        agents = {**agents, compose.SELF: dataclasses.replace(me, questions=tuple(asked))}
     verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents)
     return {**verdict.wire(), "titles": [compose.step_title(s, agents) for s in steps]}
 

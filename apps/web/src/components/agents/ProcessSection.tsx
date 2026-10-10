@@ -1,5 +1,5 @@
 import { ChevronRight, Info, Layers } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Field, Input, Modal, Select } from '@/components/ui'
 import { StepList } from '@/components/agents/PipelineEditor'
@@ -7,7 +7,18 @@ import { bundlesApi, errorMessage, userPipelinesApi } from '@/lib/api'
 import { bareSteps, useProcessCatalogue, useStepVerdict, type ProcessDraft } from '@/lib/process'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
-import type { Agent, Bundle, BundleItem, BundleSelection, PipelineStep, ProcessMode, SessionKind, UserPipeline } from '@/types'
+import type {
+  Agent,
+  Bundle,
+  BundleItem,
+  BundleSelection,
+  GapQuestion,
+  PipelineProblem,
+  PipelineStep,
+  ProcessMode,
+  SessionKind,
+  UserPipeline,
+} from '@/types'
 
 const FORMAT_LABEL: Record<string, string> = { docx: 'DOCX', pdf: 'PDF', hwpx: 'HWPX', md: 'MD' }
 
@@ -25,6 +36,13 @@ function tickOf(item: BundleItem, sel: BundleSelection | undefined): boolean | s
   return !!raw
 }
 
+/**
+ * Words in an agent's name, description or 지시 that ask for a file back (「워드 파일로」 「DOCX」
+ * 「PDF로 내보내」), not ones about files given to it (「첨부한 파일을」): a 바로 답하기 agent
+ * answers in the chat and makes none.
+ */
+const WANTS_FILE = /docx|hwpx|\bpdf\b|워드|한글\s{0,2}(?:문서|파일)|파일\s{0,2}(?:로|형식)|내보내|\bword\b/i
+
 /** One 묶음: a checkbox, and behind 「자세히」 its items, each its own checkbox. */
 function BundleRow({
   bundle,
@@ -32,12 +50,15 @@ function BundleRow({
   selection,
   formats,
   onChange,
+  onDocumentBase,
 }: {
   bundle: Bundle
   surface: SessionKind
   selection: BundleSelection | undefined
   formats: string[]
   onChange: (next: BundleSelection | undefined) => void
+  /** Switches the agent to a base that writes a document, where a file export runs. */
+  onDocumentBase?: () => void
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -53,7 +74,11 @@ function BundleRow({
     .map((i) => t(i.label))
     .join(' · ')
   // The note says what ticking it does here: its items, never a promise of what it cannot do.
-  const note = summary || (cannot.length > 0 ? items.map((i) => t(i.label)).join(' · ') : t(bundle.description))
+  // A file export it holds is always named, with where it runs, so a person who needs a file
+  // sees before ticking that this agent will not make one.
+  const exportElsewhere = cannot.some((i) => i.kind === 'export')
+  const listed = summary || (cannot.length > 0 ? items.map((i) => t(i.label)).join(' · ') : t(bundle.description))
+  const note = exportElsewhere ? `${listed} · ${t('파일로 내보내기(문서 과정에서)')}` : listed
   const exportItem = items.find((i) => i.kind === 'export')
   return (
     <div className="rounded-control border border-line" data-testid="bundle-row">
@@ -75,6 +100,11 @@ function BundleRow({
             {on && cannot.some((i) => i.kind === 'export') && (
               <span className="block text-warn" data-testid="bundle-cannot">
                 {t('파일 내보내기는 문서를 쓰는 과정에서만 됩니다 — 진행 과정에서 기본 과정(보고서)을 고르세요.')}
+                {onDocumentBase && (
+                  <button type="button" className="ml-1 text-accent underline-offset-2 hover:underline" onClick={onDocumentBase}>
+                    {t('기본 과정(보고서)으로 바꾸기')}
+                  </button>
+                )}
               </span>
             )}
             {on && cannot.some((i) => i.kind !== 'export') && (
@@ -232,6 +262,8 @@ export function ProcessSection({
   onChange,
   surface,
   onSurface,
+  questions,
+  onAskQuestions,
 }: {
   agent: Agent
   value: ProcessDraft
@@ -240,6 +272,10 @@ export function ProcessSection({
   surface: SessionKind
   /** 직접 구성: what the agent's own step makes (its 사용할 화면), set beside the steps. */
   onSurface?: (next: SessionKind) => void
+  /** The form's 빠진 정보 질문 as they stand: a 확인 질문 step is judged with them. */
+  questions?: GapQuestion[]
+  /** Opens the form's 빠진 정보 질문 with a new question to fill. */
+  onAskQuestions?: () => void
 }) {
   const t = useT()
   const [reloaded, setReloaded] = useState(0)
@@ -250,7 +286,11 @@ export function ProcessSection({
   const on: SessionKind = base?.surface ?? surface
   const customOffered = (base ? base.custom : on === 'report' || on === 'chat')
   const selfName = agent.name.trim() || t('이 에이전트')
-  const verdict = useStepVerdict(value.steps, agent.id || null, value.mode === 'custom', { surface: on, name: selfName })
+  const verdict = useStepVerdict(value.steps, agent.id || null, value.mode === 'custom', { surface: on, name: selfName }, questions)
+  const surfaceRef = useRef<HTMLSelectElement>(null)
+  // The first base that writes a document: where a 바로 답하기 agent that needs a file goes.
+  const documentBase = cat?.bases.find((b) => b.surface === 'report' && !b.draft) ?? null
+  const wantsFile = WANTS_FILE.test(`${agent.name}\n${agent.description}\n${agent.systemPrompt}`)
   const baseLabel = (name: string, made: string | undefined) =>
     // 「기록 정리 (회의록)」: the base's name with what it makes, as other screens call it.
     made && made !== name ? `${t(name)} (${t(made)})` : t(name)
@@ -279,6 +319,35 @@ export function ProcessSection({
       return onChange({ ...value, mode, steps })
     }
     onChange({ ...value, mode, base: mode === 'direct' ? null : value.base })
+  }
+  const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key) : undefined
+  /** Under a step's problem: the control that fixes it, one click away. */
+  const actionFor = (p: PipelineProblem, step: PipelineStep | null) => {
+    const exportProblem =
+      p.code === 'export_needs_document' || (step?.kind === 'export' && p.code === 'needs_product')
+    if (exportProblem && onSurface && !base) {
+      return (
+        <button
+          type="button"
+          className="ml-7 text-sm text-accent hover:underline"
+          data-testid="export-fix"
+          onClick={() => {
+            surfaceRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+            surfaceRef.current?.focus()
+          }}
+        >
+          {t('「이 에이전트가 만드는 것」에서 보고서(문서)를 고르세요')}
+        </button>
+      )
+    }
+    if (p.code === 'nothing_to_ask' && onAskQuestions) {
+      return (
+        <button type="button" className="ml-7 text-sm text-accent hover:underline" data-testid="ask-fix" onClick={onAskQuestions}>
+          {t('빠진 정보 질문에서 추가')}
+        </button>
+      )
+    }
+    return null
   }
   const setBundle = (ref: string, next: BundleSelection | undefined) => {
     const rest = value.bundles.filter((b) => b.bundle !== ref)
@@ -316,7 +385,26 @@ export function ProcessSection({
     <div className="space-y-5" data-testid="agent-process">
       <fieldset className="space-y-2">
         <legend className="mb-1.5 text-base font-medium text-fg">{t('진행 과정')}</legend>
-        {radio('direct', '바로 답하기', '요청을 받아 곧바로 답합니다.', fixed)}
+        {radio(
+          'direct',
+          '바로 답하기',
+          on === 'chat' ? '요청을 받아 대화로 답합니다 (파일로 받으려면 기본 과정을 고르세요).' : '요청을 받아 곧바로 답합니다.',
+          fixed,
+        )}
+        {value.mode === 'direct' && on === 'chat' && wantsFile && toDocumentBase && documentBase && (
+          <div
+            className="ml-7 flex flex-wrap items-center gap-2 rounded-control border border-warn/40 bg-warn/5 px-3 py-2 text-sm text-fg"
+            data-testid="file-suggestion"
+          >
+            <Info size={14} className="shrink-0 text-warn" aria-hidden />
+            <span className="min-w-0 flex-1 basis-56">
+              {t('설명이나 지시에 파일 이야기가 있습니다. 바로 답하기는 대화로만 답하고 파일을 만들지 않습니다. DOCX·HWPX·PDF로 받으려면 문서를 쓰는 기본 과정으로 바꾸세요.')}
+            </span>
+            <Button type="button" size="sm" onClick={toDocumentBase}>
+              {t('「{name}」 과정으로 바꾸기').replace('{name}', baseLabel(documentBase.name, documentBase.templateName))}
+            </Button>
+          </div>
+        )}
         {radio('base', '기본 과정에서 시작', cat ? '기본 에이전트가 일하는 순서를 그대로 따릅니다.' : '기본 과정을 불러오는 중…', !cat)}
         {value.mode === 'base' && (
           <div className="ml-7 space-y-2" data-testid="process-base">
@@ -350,13 +438,19 @@ export function ProcessSection({
           <div className="ml-7 space-y-3" data-testid="process-custom">
             {onSurface && !base && (
               <Field label={t('이 에이전트가 만드는 것')} hint={t('문서를 만들어야 내보내기 단계를 쓸 수 있습니다.')}>
-                <Select value={on} onChange={(e) => onSurface(e.target.value as SessionKind)} className="w-auto">
+                <Select ref={surfaceRef} value={on} onChange={(e) => onSurface(e.target.value as SessionKind)} className="w-auto">
                   <option value="report">{t('보고서(문서)')}</option>
                   <option value="chat">{t('대화(답)')}</option>
                 </Select>
               </Field>
             )}
-            <StepList steps={value.steps} onChange={(steps) => onChange({ ...value, steps })} verdict={verdict} selfName={selfName} />
+            <StepList
+              steps={value.steps}
+              onChange={(steps) => onChange({ ...value, steps })}
+              verdict={verdict}
+              selfName={selfName}
+              actionFor={actionFor}
+            />
             <div className="flex flex-wrap items-center gap-2">
               <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />
               {(imports ?? []).length > 0 && (
@@ -398,6 +492,7 @@ export function ProcessSection({
               selection={value.bundles.find((s) => s.bundle === b.ref)}
               formats={cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md']}
               onChange={(next) => setBundle(b.ref, next)}
+              onDocumentBase={toDocumentBase}
             />
           ))}
           {base && base.formatChecks.length > 0 && (

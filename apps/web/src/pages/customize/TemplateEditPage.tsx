@@ -306,7 +306,7 @@ export function TemplateEditPage() {
               </ul>
             </Group>
 
-            <Group title={t('진행 과정 설정')} hint={t('계산·검사·검토 규칙·구조')} testId="template-settings">
+            <Group title={t('세부 설정')} hint={t('계산·검사·검토 규칙·구조')} testId="template-settings">
               <ProcessSettingsEditor value={settings} catalogue={catalogue.process}
                 onChange={(next) => set('process', next)} />
             </Group>

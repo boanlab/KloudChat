@@ -13,7 +13,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Switch, Textarea } from '@/components/ui'
 import { errorMessage, userPipelinesApi } from '@/lib/api'
 import { agentOutput } from '@/lib/userPipelines'
@@ -121,12 +121,15 @@ export function StepList({
   onChange,
   verdict,
   selfName,
+  actionFor,
 }: {
   steps: PipelineStep[]
   onChange: (next: PipelineStep[]) => void
   /** The server's verdict on this order; none for a bundle, which is checked on save. */
   verdict?: PipelineVerdict | null
   selfName?: string
+  /** What to offer under a problem: a way to the control that fixes it. */
+  actionFor?: (problem: PipelineProblem, step: PipelineStep | null) => ReactNode
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
@@ -190,7 +193,10 @@ export function StepList({
               </div>
               <StepSummary step={step} cat={cat} />
               {[...problems, ...warnings].map((p) => (
-                <ProblemLine key={`${p.code}-${p.message}`} problem={p} warn={!problems.includes(p)} />
+                <Fragment key={`${p.code}-${p.message}`}>
+                  <ProblemLine problem={p} warn={!problems.includes(p)} />
+                  {actionFor?.(p, step)}
+                </Fragment>
               ))}
               {isOpen && <StepSettings step={step} cat={cat} onChange={(s) => patch(step.id, s)} />}
             </li>
@@ -198,7 +204,10 @@ export function StepList({
         })}
       </ol>
       {overall.map((p) => (
-        <ProblemLine key={p.code} problem={p} />
+        <Fragment key={p.code}>
+          <ProblemLine problem={p} />
+          {actionFor?.(p, null)}
+        </Fragment>
       ))}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" onClick={() => setPicking(true)} disabled={steps.length >= max}>

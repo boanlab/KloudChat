@@ -3,11 +3,13 @@ import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
+import { gapFieldId, gapProblems, type GapProblem } from '@/lib/gapQuestions'
 import { ProcessSection } from '@/components/agents/ProcessSection'
 import { fullSettings, ProcessSettingsEditor } from '@/components/agents/ProcessSettingsEditor'
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, Select, Textarea } from '@/components/ui'
-import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
+import { agentSaveError, type AgentErrorPlace } from '@/lib/agentErrors'
+import { agentsApi, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
@@ -170,16 +172,15 @@ const COLORS = ['#5b53e8', '#2563eb', '#0f766e', '#334155', '#ea580c', '#db2777'
  * scratch, or prefilled by 「에이전트로 저장」) and edits one in its detail screen's 「설정」.
  * Nothing is saved before 저장.
  */
-/** What each refusal of `POST/PUT /agents` says to the person, so the form names the field. */
-const SAVE_ERRORS: Record<string, string> = {
-  slug_taken: '이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.',
-  design_system_not_found: '테마를 찾을 수 없습니다 — 결과물 모양에서 테마를 다시 고르세요.',
-  design_template_not_found: '템플릿을 찾을 수 없습니다 — 템플릿을 다시 고르세요.',
-  design_template_surface_mismatch: '템플릿이 고른 화면과 맞지 않습니다 — 템플릿이나 사용할 화면을 바꾸세요.',
-  agent_surface_not_in_kinds: '처음 여는 화면이 사용할 화면에 없습니다 — 고급 › 사용할 화면을 확인하세요.',
-  doc_format_unknown: '문서 형식을 찾을 수 없습니다 — 다시 고르세요.',
-  doc_format_needs_report: '문서 형식은 보고서 화면에서만 씁니다 — 사용할 화면에 보고서를 켜세요.',
-  check_skill_unknown: '검사 스킬을 찾을 수 없습니다 — 진행 과정의 검사를 확인하세요.',
+/** The folded group (or block) of the form each kind of refusal points to. */
+const PLACE_TESTID: Record<AgentErrorPlace, string> = {
+  name: 'agent-form',
+  gap: 'agent-gap-group',
+  settings: 'agent-settings-group',
+  output: 'agent-output-group',
+  tools: 'agent-tools-group',
+  advanced: 'agent-more-group',
+  process: 'agent-process',
 }
 
 export function AgentForm({
@@ -221,6 +222,9 @@ export function AgentForm({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
+  // 빠진 정보 질문 fields a save stopped on, by question id.
+  const [gapErrors, setGapErrors] = useState<Record<string, GapProblem>>({})
+  const formRef = useRef<HTMLFormElement>(null)
   const [baseline, setBaseline] = useState<ProcessDraft>(() => initialProcess ?? processOf(initial))
   const [process, setProcess] = useState<ProcessDraft>(baseline)
   const [processSaved, setProcessSaved] = useState(!creating)
@@ -246,10 +250,36 @@ export function AgentForm({
     setDraft(next)
   }
 
+  /** Opens the part of the form a refusal points to, and brings it into view. */
+  const reveal = useCallback((place: AgentErrorPlace | undefined, focusId?: string) => {
+    if (!place) return
+    if (place === 'name') {
+      nameRef.current?.focus()
+      return
+    }
+    const box = formRef.current?.querySelector<HTMLElement>(`[data-testid="${PLACE_TESTID[place]}"]`)
+    if (box instanceof HTMLDetailsElement) box.open = true
+    // After the group opens, so the field can take focus.
+    window.requestAnimationFrame(() => {
+      const field = focusId ? document.getElementById(focusId) : null
+      ;(field ?? box)?.scrollIntoView({ block: 'center' })
+      field?.focus()
+    })
+  }, [])
+
   const persist = useCallback(async (): Promise<Agent | null> => {
     if (!draft.name.trim()) {
       setNameError(t('이름을 입력하세요.'))
       nameRef.current?.focus()
+      return null
+    }
+    // The questions are checked here first, each field said beside it, never as a code.
+    const gaps = gapProblems(draft.gapQuestions ?? [])
+    setGapErrors(gaps)
+    const firstGap = (draft.gapQuestions ?? []).find((q) => gaps[q.id])
+    if (firstGap) {
+      setError(t('빠진 정보 질문에 채우지 않은 칸이 있습니다. * 표시한 칸을 채워 주세요.'))
+      reveal('gap', gapFieldId(firstGap.id, gaps[firstGap.id].field))
       return null
     }
     setSaving(true)
@@ -267,13 +297,14 @@ export function AgentForm({
       setSavedId(saved.id)
       return saved
     } catch (err) {
-      const said = SAVE_ERRORS[errorCode(err) ?? '']
-      setError(said ? t(said) : errorMessage(err, `${t('저장하지 못했습니다.')} (${errorCode(err) ?? '?'})`))
+      const said = agentSaveError(err, t('저장하지 못했습니다. 입력한 내용을 확인해 주세요.'))
+      setError(t(said.message))
+      reveal(said.place)
       return null
     } finally {
       setSaving(false)
     }
-  }, [draft, draftSlug, upsertAgent, t])
+  }, [draft, draftSlug, upsertAgent, t, reveal])
 
   const save = async () => {
     const saved = await persist()
@@ -287,7 +318,9 @@ export function AgentForm({
           setProcessSaved(true)
           if (out.warnings?.length) setError(out.warnings.map((w) => t(w.message)).join(' '))
         } catch (err) {
-          setError(errorMessage(err, t('진행 과정을 저장하지 못했습니다. 단계를 확인해 주세요.')))
+          const said = agentSaveError(err, t('진행 과정을 저장하지 못했습니다. 단계를 확인해 주세요.'))
+          setError(t(said.message))
+          reveal(said.place ?? 'process')
           return
         }
       }
@@ -321,6 +354,7 @@ export function AgentForm({
 
   return (
     <form
+      ref={formRef}
       className="space-y-5"
       data-testid="agent-form"
       onSubmit={(e) => {
@@ -409,7 +443,54 @@ export function AgentForm({
           setDone(false)
           setProcess(next)
         }}
+        questions={draft.gapQuestions ?? undefined}
+        onAskQuestions={() => {
+          const rows = draft.gapQuestions ?? draft.baseQuestions ?? []
+          const taken = new Set(rows.map((r) => r.id))
+          let n = rows.length + 1
+          while (taken.has(`q${n}`)) n += 1
+          const fresh = { id: `q${n}`, label: '', question: '', why: '', placeholder: '', detector: { type: 'keyword' as const, words: [] } }
+          edit({ ...draft, gapQuestions: [...rows, fresh] })
+          reveal('gap', gapFieldId(fresh.id, 'question'))
+        }}
       />
+
+      {templateCatalogue && (offered.includes('report') || pickedBase?.surface === 'report') && (
+        <Group
+          title={t('세부 설정')}
+          hint={`${t('진행 과정의 계산·검사·목차')} · ${draft.processSettings ? t('이 에이전트에서 따로 정함') : t('템플릿 설정을 따름')}`}
+          testId="agent-settings-group"
+        >
+          <label className="flex items-start gap-2 text-base">
+            <input
+              type="checkbox"
+              className="mt-1 size-4 accent-[var(--accent)]"
+              checked={!!draft.processSettings}
+              onChange={(e) =>
+                edit({
+                  ...draft,
+                  processSettings: e.target.checked
+                    ? fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, null)
+                    : null,
+                })
+              }
+            />
+            <span>
+              {t('이 에이전트에서 따로 정하기')}
+              <span className="block text-sm text-muted">
+                {t('끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
+              </span>
+            </span>
+          </label>
+          {draft.processSettings && (
+            <ProcessSettingsEditor
+              value={fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, draft.processSettings)}
+              catalogue={templateCatalogue.process}
+              onChange={(next) => edit({ ...draft, processSettings: next })}
+            />
+          )}
+        </Group>
+      )}
 
       <Group
         title={t('빠진 정보 질문')}
@@ -421,49 +502,20 @@ export function AgentForm({
         <GapQuestionsEditor
           value={draft.gapQuestions ?? draft.baseQuestions ?? []}
           detectors={catalogue?.gapDetectors ?? []}
-          onChange={(next) => edit({ ...draft, gapQuestions: next })}
+          problems={gapErrors}
+          onChange={(next) => {
+            // A field said to be missing stops being said once it is filled.
+            if (Object.keys(gapErrors).length > 0) {
+              const still = gapProblems(next)
+              setGapErrors(Object.fromEntries(Object.entries(still).filter(([id]) => id in gapErrors)))
+            }
+            edit({ ...draft, gapQuestions: next })
+          }}
         />
       </Group>
 
       <div className="space-y-2" data-testid="agent-advanced">
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
-
-        {templateCatalogue && (offered.includes('report') || pickedBase?.surface === 'report') && (
-          <Group
-            title={t('진행 과정 설정')}
-            hint={draft.processSettings ? t('이 에이전트에서 따로 정함') : t('템플릿 설정을 따름')}
-            testId="agent-settings-group"
-          >
-            <label className="flex items-start gap-2 text-base">
-              <input
-                type="checkbox"
-                className="mt-1 size-4 accent-[var(--accent)]"
-                checked={!!draft.processSettings}
-                onChange={(e) =>
-                  edit({
-                    ...draft,
-                    processSettings: e.target.checked
-                      ? fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, null)
-                      : null,
-                  })
-                }
-              />
-              <span>
-                {t('이 에이전트에서 따로 정하기')}
-                <span className="block text-sm text-muted">
-                  {t('끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
-                </span>
-              </span>
-            </label>
-            {draft.processSettings && (
-              <ProcessSettingsEditor
-                value={fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, draft.processSettings)}
-                catalogue={templateCatalogue.process}
-                onChange={(next) => edit({ ...draft, processSettings: next })}
-              />
-            )}
-          </Group>
-        )}
 
         <Group
           title={t('결과물 모양')}

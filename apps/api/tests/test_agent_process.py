@@ -47,7 +47,15 @@ from app.routers import user_pipelines as up
 from app.routers import workspace as ws
 from app.routers.pipelines import describe, pipeline_for_agent
 from app.schemas.workspace import AgentIn
-from app.services import bases, bundles, check_skills, process_settings, starter
+from app.services import (
+    bases,
+    bundles,
+    check_skills,
+    design_templates,
+    doc_formats,
+    process_settings,
+    starter,
+)
 
 # ── the shipped bundles and bases ──────────────────────────────────────
 
@@ -656,3 +664,66 @@ async def test_a_new_agents_own_steps_are_judged_as_they_will_run(wired):
         chat = await up.validate_draft(up.ValidateIn(
             stages=steps, self_surface="chat", self_name="새 에이전트"), me, db)
         assert any("문서" in p["message"] for p in chat["problems"])
+
+
+@pytest.mark.parametrize("template_id", sorted(
+    t.id for t in design_templates.all_templates()
+    if t.doc_format and t.surface.value == "report" and design_templates.choosable(t.id)))
+async def test_the_stored_format_is_always_the_templates(wired, template_id):
+    """B-11 invariant: whatever the form sends, an agent whose template fixes a document format
+    never stores another — on create, and on a save that changes only the template. (None stays
+    None: the template's format applies at run time.)"""
+    fixed = design_templates.get(template_id).doc_format
+    want = fixed if fixed in doc_formats.BY_ID and fixed not in doc_formats.RETIRED else None
+    other = "minutes" if fixed != "minutes" else "gaejo"
+    me, _, _ = await _people(wired.local)
+    async with wired.local() as db:
+        made = await ws.create_agent(_agent(kinds=["report"], render_template_id=template_id,
+                                            doc_format=other), me, db)
+        assert (await db.get(Agent, made.id)).doc_format == want
+        # A 기록 정리 agent switched to this template by the form alone (no 진행 과정 change).
+        base = await ws.create_agent(_agent(name="기록", kinds=["report"]), me, db)
+        await up.put_process(base.id, up.ProcessIn(mode="base", base="minutes"), me, db)
+        assert (await db.get(Agent, base.id)).doc_format == "minutes"
+        await ws.patch_agent(base.id, AgentIn(name="기록", kinds=["report"], surface="report",
+                                              render_template_id=template_id,
+                                              doc_format="minutes"), me, db)
+        row = await db.get(Agent, base.id)
+        assert (row.render_template_id, row.doc_format) == (template_id, want)
+
+
+async def test_a_template_without_a_format_keeps_the_chosen_one(wired):
+    """B-11: the 문서 형식 field is what a template that fixes none writes in; it stays. With
+    a template that fixes one and no format sent, none is stored."""
+    me, _, _ = await _people(wired.local)
+    async with wired.local() as db:
+        made = await ws.create_agent(_agent(kinds=["report"], doc_format="minutes"), me, db)
+        assert (await db.get(Agent, made.id)).doc_format == "minutes"
+        bare = await ws.create_agent(_agent(name="결과", kinds=["report"],
+                                            render_template_id="doc-result-report"), me, db)
+        assert (await db.get(Agent, bare.id)).doc_format is None
+
+
+async def test_a_confirm_step_is_judged_with_the_questions_on_the_form(wired):
+    """N2: 「확인 질문 … 건너뜁니다」 goes once the form has a 빠진 정보 질문, saved or not."""
+    me, _, _ = await _people(wired.local)
+    steps = [{"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": "@self"}]
+    question = {"id": "q1", "question": "결정할 사항이 무엇인가요?",
+                "detector": {"type": "keyword", "words": []}}
+    async with wired.local() as db:
+        new = dict(stages=steps, self_surface="report", self_name="새 에이전트")
+        bare = await up.validate_draft(up.ValidateIn(**new), me, db)
+        assert [w["code"] for w in bare["warnings"]] == ["nothing_to_ask"]
+        asked = await up.validate_draft(up.ValidateIn(**new, questions=[question]), me, db)
+        assert asked["warnings"] == []
+        # A question with nothing to ask yet does not count.
+        blank = await up.validate_draft(up.ValidateIn(
+            **new, questions=[{**question, "question": " "}]), me, db)
+        assert [w["code"] for w in blank["warnings"]] == ["nothing_to_ask"]
+
+        made = await ws.create_agent(_agent(kinds=["report"]), me, db)
+        saved = await up.validate_draft(up.ValidateIn(stages=steps, agent_id=made.id), me, db)
+        assert [w["code"] for w in saved["warnings"]] == ["nothing_to_ask"]
+        drafted = await up.validate_draft(up.ValidateIn(
+            stages=steps, agent_id=made.id, questions=[question]), me, db)
+        assert drafted["warnings"] == []

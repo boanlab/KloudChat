@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { processApi, userPipelinesApi } from '@/lib/api'
-import type { Agent, BundleSelection, PipelineStep, PipelineVerdict, ProcessCatalogue, ProcessMode } from '@/types'
+import type { Agent, BundleSelection, GapQuestion, PipelineStep, PipelineVerdict, ProcessCatalogue, ProcessMode } from '@/types'
 
 /** The agent's own step in its 직접 구성 or a 묶음: it runs that agent's own flow. */
 export const SELF = '@self'
@@ -54,16 +54,26 @@ export function useStepVerdict(
   enabled = true,
   /** A new agent (no id yet): what its own step makes, so `@self` is judged as it will run. */
   self?: { surface: string; name: string },
+  /** The form's 빠진 정보 질문 (undefined: the saved agent's): 확인 질문 is judged with them. */
+  questions?: GapQuestion[],
 ) {
   const [verdict, setVerdict] = useState<PipelineVerdict | null>(null)
   const selfSurface = self?.surface
   const selfName = self?.name
+  // Only the questions that ask something; a string, so an equal list does not ask again.
+  const askedKey = questions === undefined ? '' : JSON.stringify(questions.filter((q) => q.question.trim()))
   useEffect(() => {
     if (!enabled) return
     let current = true
     const timer = window.setTimeout(() => {
       void userPipelinesApi
-        .validate(steps, undefined, agentId ?? undefined, agentId ? undefined : { surface: selfSurface ?? 'chat', name: selfName ?? '' })
+        .validate(
+          steps,
+          undefined,
+          agentId ?? undefined,
+          agentId ? undefined : { surface: selfSurface ?? 'chat', name: selfName ?? '' },
+          askedKey ? (JSON.parse(askedKey) as GapQuestion[]) : undefined,
+        )
         .then((v) => current && setVerdict(v))
         .catch(() => undefined)
     }, 250)
@@ -71,7 +81,7 @@ export function useStepVerdict(
       current = false
       window.clearTimeout(timer)
     }
-  }, [steps, agentId, enabled, selfSurface, selfName])
+  }, [steps, agentId, enabled, selfSurface, selfName, askedKey])
   return verdict
 }
 
