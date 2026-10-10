@@ -273,3 +273,81 @@ async def test_a_draft_with_nothing_settled_has_no_empty_header(db, monkeypatch,
     assert draft["systemPrompt"] == "" and draft["decided"] == []
     assert "정한 것" not in agent_draft.prompt_from(["없음", "  ", "N/A"])
     assert agent_draft.keep("없음 표시는 빈칸으로 둔다.")
+
+
+async def test_a_distillation_that_fails_says_so_instead_of_an_empty_field(
+        db, monkeypatch, calls):
+    """N1: a distillation that timed out is 「failed」, never an empty 지시 that reads as
+    「filled in」; nothing settled is 「empty」; the form can ask for the rest first."""
+    me, _ = await _people(db)
+    session = await _talk(db, me)
+    draft = await sessions.agent_draft(session.id, me, db)
+    assert draft["distilled"] == "ok"
+
+    quick = await sessions.agent_draft(session.id, me, db, distill=False)
+    assert quick["distilled"] == "pending" and quick["systemPrompt"] == ""
+    assert len(calls) == 1  # the quick draft never calls the model
+
+    decided = await sessions.agent_draft_decided(session.id, me, db)
+    assert decided == {
+        "decided": ["보고 대상은 팀장. 결론을 맨 앞에 둔다.", "한 쪽을 넘기지 않는다."],
+        "prompt": "이 대화에서 정한 것:\n- 보고 대상은 팀장. 결론을 맨 앞에 둔다.\n"
+                  "- 한 쪽을 넘기지 않는다.",
+        "distilled": "ok"}
+
+    async def timed_out(model, messages, api_key, *, strict_local, masker=None):
+        raise agent_draft.DistillFailed("ReadTimeout")
+
+    monkeypatch.setattr(agent_draft, "distill", timed_out)
+    draft = await sessions.agent_draft(session.id, me, db)
+    assert draft["distilled"] == "failed" and draft["systemPrompt"] == ""
+    assert (await sessions.agent_draft_decided(session.id, me, db))["distilled"] == "failed"
+
+    async def nothing(model, messages, api_key, *, strict_local, masker=None):
+        return [], {"inputTokens": 1, "outputTokens": 0}
+
+    monkeypatch.setattr(agent_draft, "distill", nothing)
+    assert (await sessions.agent_draft(session.id, me, db))["distilled"] == "empty"
+
+
+async def test_the_distillation_has_its_own_timeout_and_one_retry(monkeypatch):
+    """N1: the call waits `agent_draft_timeout_sec` (not the title's), retries a timeout once,
+    keeps strict-local's no-fallback rule, and raises when both tries fail."""
+    import httpx
+
+    from app.core.config import settings
+
+    async def config():
+        return "http://litellm", "k"
+
+    monkeypatch.setattr(agent_draft.settings_store, "litellm_config", config)
+    monkeypatch.setattr(settings, "agent_draft_timeout_sec", 45.0)
+    seen: list[dict] = []
+    replies = [httpx.ReadTimeout("slow"), {"choices": [{"message": {"content": "- 결론 먼저"}}],
+                                           "usage": {"prompt_tokens": 3,
+                                                     "completion_tokens": 2}}]
+    real = httpx.AsyncClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        import json as _json
+        seen.append(_json.loads(request.content))
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return httpx.Response(200, json=reply)
+
+    def client(**kwargs):
+        seen.append({"timeout": kwargs["timeout"]})
+        return real(transport=httpx.MockTransport(handler), **kwargs)
+
+    monkeypatch.setattr(agent_draft.httpx, "AsyncClient", client)
+    lines, spent = await agent_draft.distill("local/strict", ["팀장께 1쪽"], "k",
+                                             strict_local=True)
+    assert lines == ["결론 먼저"] and spent == {"inputTokens": 3, "outputTokens": 2}
+    assert [x["timeout"] for x in seen if "timeout" in x] == [45.0, 45.0]
+    assert all(x.get("disable_fallbacks") is True for x in seen if "model" in x)
+
+    replies[:] = [httpx.ReadTimeout("slow"), httpx.ReadTimeout("slow")]
+    with pytest.raises(agent_draft.DistillFailed):
+        await agent_draft.distill("cloud/big", ["팀장께 1쪽"], "k", strict_local=False)
+    assert replies == []

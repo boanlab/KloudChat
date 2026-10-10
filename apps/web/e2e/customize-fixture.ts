@@ -219,11 +219,14 @@ export function conversationRows(n: number) {
   }))
 }
 
-export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false } = {}) {
+export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false, decided = undefined as { distilled: string; prompt: string; decided: string[]; delayMs?: number }[] | undefined } = {}) {
+  // 「에이전트로 저장」's distillation replies, in order; by default the draft's own 지시.
+  const decidedReplies = decided ? [...decided] : [{ distilled: 'ok', prompt: String(draft.systemPrompt ?? ''), decided: (draft.decided ?? []) as string[] }]
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
   const problems: string[] = []
   const calls: { method: string; path: string; body: Record<string, unknown> }[] = []
+  const reads: string[] = []
   let made: ReturnType<typeof pipelineRow>[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
   let agents = [...(emptyMine ? [] : myAgents), ...storeAgents]
@@ -256,6 +259,7 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       }
     })()
     if (method !== 'GET' && path !== '/auth/refresh') calls.push({ method, path, body })
+    if (method === 'GET') reads.push(path)
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value })
 
     if (method === 'POST' && path === '/auth/refresh') return json({ accessToken: 'fixture-only', expiresIn: 3600,
@@ -327,7 +331,14 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       agents = agents.map((a) => (a.id === id ? { ...a, process, baseKey: body.base ?? null } : a))
       return json({ ...process, agent: {} })
     }
-    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft$/.test(path)) return json(draft)
+    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft$/.test(path))
+      return json(url.searchParams.get('distill') === 'false' ? { ...draft, systemPrompt: '', decided: [], distilled: 'pending' } : draft)
+    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft\/decided$/.test(path)) {
+      const reply = decidedReplies.length > 1 ? decidedReplies.shift()! : decidedReplies[0]
+      if (reply.delayMs) await new Promise((resolve) => setTimeout(resolve, reply.delayMs))
+      const { delayMs: _delay, ...rest } = reply
+      return json(rest)
+    }
     if (method === 'POST' && /^\/agents\/[^/]+\/knowledge\/from-files$/.test(path)) return json([], 201)
     if (method === 'GET' && path === '/sessions') return json(sessions)
     if (method === 'GET' && path === '/sessions/paged') return json({ items: sessions.slice(0, 50), total: sessions.length, page: 1, size: 50 })
@@ -415,5 +426,5 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'not_found' }, 404)
   })
-  return { unexpected, problems, calls }
+  return { unexpected, problems, calls, reads }
 }

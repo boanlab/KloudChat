@@ -134,10 +134,39 @@ def test_a_deck_in_a_hidden_template_still_exports(template_id):
 def test_the_presentation_theme_is_hidden_and_kept():
     assert [d["name"] for d in starter._DESIGNS if d.get("listed") is not False] == [
         "기본", "문서용 명조"]
-    row = DesignSystem(owner_id="u", name="발표용 청록", tokens={"accent": "#0f766e"})
-    assert DesignSystemOut.of(row, owner_id="u").listed is False
-    assert DesignSystemOut.of(DesignSystem(owner_id="u", name="기본", tokens={}),
-                             owner_id="u").listed
+    row = DesignSystem(owner_id="admin", name="발표용 청록", tokens={"accent": "#0f766e"})
+    assert DesignSystemOut.of(row, owner_id="admin", catalog_owner="admin").listed is False
+    assert DesignSystemOut.of(DesignSystem(owner_id="admin", name="기본", tokens={}),
+                             owner_id="admin", catalog_owner="admin").listed
+    # R4: a person's own theme of that name is theirs, not the catalogue's: it stays listed.
+    mine = DesignSystem(owner_id="u", name="발표용 청록", tokens={"accent": "#0f766e"})
+    assert DesignSystemOut.of(mine, owner_id="u", catalog_owner="admin").listed is True
+
+
+@pytest.mark.asyncio
+async def test_a_persons_own_copy_of_the_hidden_theme_stays_listed(db):
+    """R4: only the catalogue owner's row is unlisted; a member's own seeded copy shows in
+    their list, and a new account is no longer given one."""
+    owner = User(email="owner@example.com", name="Owner", password_hash="x", role=UserRole.admin)
+    db.add(owner)
+    await db.commit()
+    await starter.seed_designs(db, owner.id)
+    old = User(email="old@example.com", name="Old", password_hash="x")
+    db.add(old)
+    await db.commit()
+    # An account seeded before the theme was hidden.
+    db.add(DesignSystem(owner_id=old.id, name="발표용 청록", tokens={"accent": "#0f766e"}))
+    await db.commit()
+    listed = {row.name: row.listed for row in await ws.list_designs(old, db)}
+    assert listed == {"발표용 청록": True}
+    owned = {row.name: row.listed for row in await ws.list_designs(owner, db)}
+    assert owned == {"기본": True, "문서용 명조": True, "발표용 청록": False}
+    new = User(email="new@example.com", name="New", password_hash="x")
+    db.add(new)
+    await db.commit()
+    await starter.seed_designs(db, new.id)
+    await db.commit()
+    assert {row.name for row in await ws.list_designs(new, db)} == {"기본", "문서용 명조"}
 
 
 # ── skills: the store and a person's own list ──────────────────────────
@@ -325,3 +354,68 @@ def test_xlsx_clean_removes_identical_rows_only_when_asked(tmp_path):
 def test_an_unknown_id_is_still_refused():
     with pytest.raises(HTTPException):
         sessions_router._resolved_template_id("deck-nope", SessionKind.slides)
+
+
+# ── R1: the catalogue syncs at startup, not only at the owner's sign-in ──
+
+
+@pytest.mark.asyncio
+async def test_the_startup_sync_applies_renames_and_retirements_without_a_login(db):
+    from contextlib import asynccontextmanager
+
+    owner = User(email="owner@example.com", name="Owner", password_hash="x", role=UserRole.admin)
+    member = User(email="member@example.com", name="Member", password_hash="x")
+    db.add_all([owner, member])
+    await db.commit()
+    await starter.seed_designs(db, owner.id)
+    await starter.seed_catalog(db, owner.id)
+    await db.commit()
+    # The state an earlier release left: old names, a retired agent still offered.
+    gaejo = (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report",
+                                               Agent.owner_id == owner.id))).one()
+    gaejo.name = "개조식 보고서"
+    copy = Agent(owner_id=member.id, name="개조식 보고서", slug="gaejo-copy",
+                 system_prompt="내 지시", kinds=["report"], origin_id=gaejo.id)
+    spec = starter.agent_spec("client-proposal")
+    stale = Agent(owner_id=owner.id, name=spec["name"], slug="client-proposal-x",
+                  system_prompt=spec["system_prompt"], kinds=spec["kinds"],
+                  catalog_key="client-proposal", retired=False)
+    db.add_all([gaejo, copy, stale])
+    await db.commit()
+
+    @asynccontextmanager
+    async def sessions_():
+        async with AsyncSession(db.bind, expire_on_commit=False) as fresh:
+            yield fresh
+
+    await starter.sync_catalog_at_startup(sessions_)
+    for row in (gaejo, copy, stale):
+        await db.refresh(row)
+    assert gaejo.name == "개조식 보고" and copy.name == "개조식 보고"
+    assert stale.retired is True
+    # Idempotent: a second replica's run changes nothing and makes nothing.
+    assert await starter.sync_catalog_at_startup(sessions_) == 0
+    await db.refresh(gaejo)
+    assert gaejo.name == "개조식 보고"
+
+
+@pytest.mark.asyncio
+async def test_the_startup_sync_does_nothing_before_there_is_an_owner(db):
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def sessions_():
+        async with AsyncSession(db.bind, expire_on_commit=False) as fresh:
+            yield fresh
+
+    assert await starter.sync_catalog_at_startup(sessions_) == 0
+    assert (await db.exec(select(Agent))).all() == []
+
+
+def test_the_api_syncs_the_catalogue_as_it_starts():
+    import inspect
+
+    from app import main
+
+    source = inspect.getsource(main.lifespan)
+    assert "sync_catalog_at_startup(SessionLocal)" in source

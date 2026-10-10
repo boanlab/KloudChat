@@ -25,11 +25,12 @@ const EXAMPLES: Record<SessionKind, string[]> = {
     '두 가지 안을 기준별로 비교하는 의사결정 보고서',
     '첨부한 자료로 연구 과제 중간 보고서 초안을 써 줘',
   ],
+  // Only what the shown deck template (사내 브리핑) makes: no lecture, proposal or seminar decks.
   slides: [
-    '신입 사원 교육용 회사 소개 10분 발표',
+    '다음 주 회의 전에 돌릴 사내 브리핑 5장',
     '프로젝트 결과 보고 15분 발표',
-    '고객사에 보낼 제안 발표 10장',
-    '생성형 AI 활용 사례 세미나 20분 발표',
+    '새 제도 시행을 팀에 알리는 사내 브리핑',
+    '이번 분기 진행 현황과 결정할 것을 정리한 발표',
   ],
   image: [
     '봄 행사 포스터에 쓸 밝은 파스텔 톤 일러스트',

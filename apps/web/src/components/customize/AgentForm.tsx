@@ -1,5 +1,5 @@
 import { ChevronRight, Globe, Lock } from 'lucide-react'
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
@@ -192,6 +192,7 @@ export function AgentForm({
   aboveBottomBar = false,
   initialProcess,
   draftFiles = [],
+  addedPrompt = '',
 }: {
   initial: Agent
   creating: boolean
@@ -203,6 +204,8 @@ export function AgentForm({
   initialProcess?: ProcessDraft
   /** 「에이전트로 저장」: the conversation's files, offered for the agent's shelf. */
   draftFiles?: { id: string; name: string; size: number }[]
+  /** 「에이전트로 저장」: the 지시 section distilled after the form opened, added once. */
+  addedPrompt?: string
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
@@ -257,6 +260,18 @@ export function AgentForm({
     setDone(false)
     setDraft(next)
   }
+
+  // The distillation arrives after the form is usable: added below whatever is written by then.
+  const added = useRef('')
+  useEffect(() => {
+    if (!addedPrompt || added.current === addedPrompt) return
+    added.current = addedPrompt
+    setDraft((d) =>
+      d.systemPrompt.includes(addedPrompt)
+        ? d
+        : { ...d, systemPrompt: d.systemPrompt.trim() ? `${d.systemPrompt.trimEnd()}\n\n${addedPrompt}` : addedPrompt },
+    )
+  }, [addedPrompt])
 
   /** Opens the part of the form a refusal points to, and brings it into view. */
   const reveal = useCallback((place: AgentErrorPlace | undefined, focusId?: string) => {

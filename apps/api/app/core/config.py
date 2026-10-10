@@ -110,6 +110,11 @@ class Settings(BaseSettings):
     # A tool-using turn on a large local model runs for minutes.
     chat_timeout_sec: float = 900.0
     title_timeout_sec: float = 20.0
+    #: 「에이전트로 저장」: one distillation call of the person's words (retried once). Its own
+    #: ceiling, not the title's: a slow model must not leave the 지시 silently empty.
+    agent_draft_timeout_sec: float = 45.0
+    #: The published user guide (website/), linked from a how-to answer; empty links none.
+    guide_base_url: str = "https://boanlab.github.io/KloudChat"
     #: Ceiling for the strict-local complexity classifier call; times out to quality.
     auto_routing_classifier_timeout_sec: float = 8.0
     # Per-tool ceiling; `max_tool_hops` bounds the turn.

@@ -33,6 +33,12 @@ function exportDefault(item: BundleItem, docFormat: string | null | undefined): 
   return (docFormat && item.settings.by_format?.[docFormat]) || item.settings.formats?.[0] || 'docx'
 }
 
+/** The format a person's tick sets: the one the agent's own words name (「워드」 「HWPX」 「PDF」),
+ *  else the server's default for its document format. */
+function exportTick(item: BundleItem, docFormat: string | null | undefined, asked: string | null | undefined): string {
+  return asked || exportDefault(item, docFormat)
+}
+
 /** An item's tick: the person's, else the bundle's default. An export's tick is its format. */
 function tickOf(item: BundleItem, sel: BundleSelection | undefined, docFormat?: string | null): boolean | string {
   const raw = sel && item.id in sel.items ? sel.items[item.id] : item.default
@@ -50,10 +56,32 @@ function tickOf(item: BundleItem, sel: BundleSelection | undefined, docFormat?: 
  */
 const WANTS_FILE = /docx|hwpx|\bpdf\b|워드|한글\s{0,2}(?:문서|파일)|파일\s{0,2}(?:로|형식)|내보내|\bword\b/i
 
+/** The format the words name outright (「HWPX」 「한글 파일」 「PDF」 「워드」 「DOCX」), else null. */
+function namedFormat(text: string, formats: string[]): string | null {
+  const want = /hwpx|한글\s{0,2}(?:문서|파일)/i.test(text)
+    ? 'hwpx'
+    : /\bpdf\b/i.test(text)
+      ? 'pdf'
+      : /docx|워드|\bword\b/i.test(text)
+        ? 'docx'
+        : null
+  return want && formats.includes(want) ? want : null
+}
+
 /** The file format those words name: HWPX or PDF when said, else DOCX (「워드」 「파일로」). */
 function askedFormat(text: string, formats: string[]): string {
-  const want = /hwpx|한글\s{0,2}(?:문서|파일)/i.test(text) ? 'hwpx' : /\bpdf\b/i.test(text) ? 'pdf' : 'docx'
+  const want = namedFormat(text, formats) ?? 'docx'
   return formats.includes(want) ? want : (formats[0] ?? 'docx')
+}
+
+/** A base's name with what it makes, as other screens call it (「자료 추출·집계 (표)」); the part
+ *  in brackets only when it adds words: never 「개조식 보고 (개조식 보고서)」 or 「회의록 (회의록)」. */
+function baseLabelOf(name: string, made: string | undefined): { name: string; made: string | null } {
+  const flat = (s: string) => s.replace(/\s+/g, '')
+  if (!made) return { name, made: null }
+  const a = flat(name)
+  const b = flat(made)
+  return a.includes(b) || b.includes(a) ? { name, made: null } : { name, made }
 }
 
 /** One 묶음: a checkbox, and behind 「자세히」 its items, each its own checkbox. */
@@ -63,6 +91,7 @@ function BundleRow({
   selection,
   formats,
   docFormat,
+  asked,
   onChange,
   onDocumentBase,
 }: {
@@ -72,6 +101,8 @@ function BundleRow({
   formats: string[]
   /** The agent's document format: what an export ticked without a format makes. */
   docFormat?: string | null
+  /** The format the agent's name, description or 지시 names: what a tick picks first. */
+  asked?: string | null
   onChange: (next: BundleSelection | undefined) => void
   /** Switches the agent to a base that writes a document, where a file export runs. */
   onDocumentBase?: () => void
@@ -149,7 +180,7 @@ function BundleRow({
             type="checkbox"
             id={`bundle-${bundle.ref}-${exportItem.id}-shown`}
             checked={!!tickOf(exportItem, selection, docFormat)}
-            onChange={() => set(exportItem, tickOf(exportItem, selection, docFormat) ? '' : exportDefault(exportItem, docFormat))}
+            onChange={() => set(exportItem, tickOf(exportItem, selection, docFormat) ? '' : exportTick(exportItem, docFormat, asked))}
             className="size-4 accent-[var(--accent)]"
           />
           <label htmlFor={`bundle-${bundle.ref}-${exportItem.id}-shown`} className="text-base">
@@ -184,7 +215,7 @@ function BundleRow({
                   id={id}
                   checked={always || (on && !!value)}
                   disabled={always || !on}
-                  onChange={() => set(item, item.kind === 'export' ? (value ? '' : exportDefault(item, docFormat)) : !value)}
+                  onChange={() => set(item, item.kind === 'export' ? (value ? '' : exportTick(item, docFormat, asked)) : !value)}
                   className="size-4 accent-[var(--accent)]"
                 />
                 <label htmlFor={id} className={cn('text-base', (!on || always) && 'text-muted')}>
@@ -309,10 +340,10 @@ export function ProcessSection({
   // The first base that writes a document: where a 바로 답하기 agent that needs a file goes.
   const documentBase = cat?.bases.find((b) => b.surface === 'report' && !b.draft) ?? null
   const wantsFile = WANTS_FILE.test(`${agent.name}\n${agent.description}\n${agent.systemPrompt}`)
-  const baseLabel = (name: string, made: string | undefined) =>
-    // 「개조식 보고 (개조식 보고서)」: the base's name with what it makes, as other screens call
-    // it; once when they are the same (「회의록」).
-    made && made !== name ? `${t(name)} (${t(made)})` : t(name)
+  const baseLabel = (name: string, made: string | undefined) => {
+    const label = baseLabelOf(name, made)
+    return label.made ? `${t(label.name)} (${t(label.made)})` : t(label.name)
+  }
   const bundles = useMemo(() => cat?.bundles ?? [], [cat])
 
   useEffect(() => {
@@ -351,10 +382,10 @@ export function ProcessSection({
     }
     onChange({ ...value, mode, base: mode === 'direct' ? null : value.base })
   }
-  const exportAs = askedFormat(
-    `${agent.name}\n${agent.description}\n${agent.systemPrompt}`,
-    cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'],
-  )
+  const ownWords = `${agent.name}\n${agent.description}\n${agent.systemPrompt}`
+  const exportAs = askedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
+  // R2: ticking the export by hand picks the format the words name too, as the switch does.
+  const namedAs = namedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
   // Every way here starts from a person who wants a file: the export comes ticked with it.
   const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key, exportAs) : undefined
   /** Under a step's problem: the control that fixes it, one click away. */
@@ -535,6 +566,7 @@ export function ProcessSection({
               selection={value.bundles.find((s) => s.bundle === b.ref)}
               formats={cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md']}
               docFormat={agent.docFormat ?? base?.docFormat}
+              asked={namedAs}
               onChange={(next) => setBundle(b.ref, next)}
               onDocumentBase={toDocumentBase}
             />

@@ -11,6 +11,7 @@ import tomllib
 from math import ceil
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlmodel import col, func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -108,10 +109,16 @@ def _questions(spec: dict) -> list[dict] | None:
     return [dict(q) for q in spec["questions"]] if spec.get("questions") else None
 
 
-def design_listed(name: str | None) -> bool:
-    """Whether a theme of this name is shown in the pickers: False for a shipped one marked
-    `listed: False` (each account's seeded copy wears the shipped name)."""
-    return not any(d["name"] == name and d.get("listed") is False for d in _DESIGNS)
+def _hidden_design(name: str | None) -> bool:
+    return any(d["name"] == name and d.get("listed") is False for d in _DESIGNS)
+
+
+def design_listed(name: str | None, owner_id: str | None = None,
+                  catalog_owner: str | None = None) -> bool:
+    """Whether a theme is shown in the pickers: False only for the catalogue owner's row of a
+    shipped theme marked `listed: False`. A person's own copy of that name is theirs and stays
+    listed; new accounts are no longer given one (`seed_designs`)."""
+    return not (_hidden_design(name) and owner_id is not None and owner_id == catalog_owner)
 
 
 def agent_checks(key: str | None) -> tuple[str, ...]:
@@ -193,9 +200,14 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
     ).one()
     if existing:
         return 0
-    for spec in _DESIGNS:
+    # A theme taken off the pickers goes only to the catalogue owner, whose official agents
+    # still wear it; another account starting now is not given it.
+    owner = await catalog_owner_id(db)
+    specs = [spec for spec in _DESIGNS
+             if spec.get("listed") is not False or owner is None or owner == user_id]
+    for spec in specs:
         db.add(DesignSystem(owner_id=user_id, **{k: v for k, v in spec.items() if k != "listed"}))
-    return len(_DESIGNS)
+    return len(specs)
 
 
 async def catalog_owner_id(db: AsyncSession) -> str | None:
@@ -417,13 +429,42 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     return made
 
 
+#: pg_advisory_xact_lock key for a catalogue sync: "kccat" in ASCII.
+CATALOG_LOCK_KEY = 0x6B_6363_6174
+
+
+async def _catalog_lock(db: AsyncSession) -> None:
+    """Serialises catalogue syncs across replicas (startup, sign-ins) until the caller's
+    transaction ends; nothing on SQLite (one process: tests, local runs)."""
+    conn = await db.connection()
+    if conn.dialect.name == "postgresql":
+        await conn.execute(text("SELECT pg_advisory_xact_lock(:key)"),
+                           {"key": CATALOG_LOCK_KEY})
+
+
 async def sync_catalog(db: AsyncSession, user: User) -> int:
     """Syncs the catalogue on sign-in, only for the account that holds it."""
     if user.role is not UserRole.admin:
         return 0
     if await catalog_owner_id(db) != user.id:
         return 0
+    await _catalog_lock(db)
     return await seed_catalog(db, user.id)
+
+
+async def sync_catalog_at_startup(session_factory) -> int:
+    """Syncs the catalogue once as the API starts, so renames and hidden flags reach everyone
+    without waiting for the owner to sign in. Replicas take turns under the advisory lock; the
+    sync is idempotent, so the second one finds nothing to do. Nothing without an owner yet."""
+    async with session_factory() as db:
+        await _catalog_lock(db)
+        owner = await catalog_owner_id(db)
+        if owner is None:
+            await db.rollback()
+            return 0
+        made = await seed_catalog(db, owner)
+        await db.commit()
+        return made
 
 
 def runtime_metadata(skill: Skill) -> dict:
@@ -448,4 +489,5 @@ __all__ = [
     "seed_designs",
     "skill_name",
     "sync_catalog",
+    "sync_catalog_at_startup",
 ]

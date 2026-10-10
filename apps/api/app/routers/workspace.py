@@ -2778,7 +2778,8 @@ async def list_designs(user: CurrentUser, db: DbSession):
             .order_by(col(DesignSystem.shared).desc(), col(DesignSystem.created_at))
         )
     ).all()
-    return [DesignSystemOut.of(d, owner_id=user.id) for d in rows]
+    owner = await starter.catalog_owner_id(db)
+    return [DesignSystemOut.of(d, owner_id=user.id, catalog_owner=owner) for d in rows]
 
 
 @router.post("/designs/extract", response_model=DesignExtractOut)
@@ -2862,7 +2863,8 @@ async def create_design(payload: DesignSystemIn, user: CurrentUser, db: DbSessio
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id)
+    return DesignSystemOut.of(row, owner_id=user.id,
+                              catalog_owner=await starter.catalog_owner_id(db))
 
 
 @router.patch("/designs/{design_id}", response_model=DesignSystemOut)
@@ -2881,7 +2883,8 @@ async def patch_design(design_id: str, payload: DesignSystemIn, user: CurrentUse
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return DesignSystemOut.of(row, owner_id=user.id)
+    return DesignSystemOut.of(row, owner_id=user.id,
+                              catalog_owner=await starter.catalog_owner_id(db))
 
 
 @router.delete("/designs/{design_id}", status_code=status.HTTP_204_NO_CONTENT)

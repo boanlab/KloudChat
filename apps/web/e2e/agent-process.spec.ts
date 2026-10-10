@@ -160,7 +160,9 @@ test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
   const form = await openForm(page)
   await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
   const select = page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })
-  await expect(select.locator('option', { hasText: '개조식 보고 (개조식 보고서)' })).toHaveCount(1)
+  // R3: what it makes is in brackets only when it adds words: 「개조식 보고서」 adds none.
+  await expect(select.locator('option', { hasText: /^개조식 보고$/ })).toHaveCount(1)
+  await expect(select.locator('option', { hasText: '(개조식 보고서)' })).toHaveCount(0)
   // A base named for what it makes says it once.
   await expect(select.locator('option', { hasText: /^회의록$/ })).toHaveCount(1)
 })
@@ -404,4 +406,23 @@ test('B-10: after choosing a base, the new agent\'s template list holds every te
   await expect(select.locator('option')).toHaveText(['기본 과정의 템플릿', ...report.map((r) => `보고서 · ${r.name}`)])
   await select.selectOption('doc-result-report')
   await expect(select).toHaveValue('doc-result-report')
+})
+
+test('R2: ticking the export by hand after choosing a base picks the format the 지시 names', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const form = await openForm(page)
+  await form.getByRole('textbox', { name: '지시' }).fill('과장님께 올릴 1쪽 요약을 쓴다. 다 쓰면 워드 파일로 준다.')
+  // The base radio, not the switch button.
+  await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
+  await expect(page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })).toHaveValue('gaejo-report')
+  const finish = page.getByTestId('agent-bundles').getByTestId('bundle-row').filter({ hasText: '마무리하기' })
+  const exportRow = finish.getByTestId('bundle-export')
+  await exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' }).check()
+  // 개조식's own default is HWPX; the 지시 says 워드, so DOCX.
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('docx')
+  await exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' }).uncheck()
+  await form.getByRole('textbox', { name: '지시' }).fill('주간 결과를 정리한다. PDF로 준다.')
+  await exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' }).check()
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('pdf')
+  expect(state.problems).toEqual([])
 })

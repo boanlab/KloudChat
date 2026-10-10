@@ -2194,16 +2194,15 @@ async def _usable_design(db: DbSession, user: User, design_id: str | None) -> st
     return own.id if own is not None else None
 
 
-@router.get("/{session_id}/agent-draft")
-async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
-    """「에이전트로 저장」: this conversation as a draft agent to prefill the form. Nothing is
-    saved. What it settled is distilled from the person's own messages by the model the
-    conversation ran on (a strict-local one when any turn ran strict-local); a sealed agent's
-    prompt is never copied."""
+async def _draft_decided(db: AsyncSession, user: User, session: ChatSession, *,
+                         distill: bool = True) -> tuple[list[str], str, bool]:
+    """`(lines, status, strict)`: what the conversation settled, distilled from the person's
+    own messages by the model the conversation ran on (a strict-local one when any turn ran
+    strict-local). `status` is 「ok」 (lines), 「empty」 (read, nothing settled), 「failed」
+    (the model could not be read: no headroom, timed out after its retry) or 「pending」
+    (not asked: `distill=False`)."""
     from app.services import agent_draft as drafts
-    from app.services import bases, doc_formats
 
-    session = await _owned(db, user, session_id)
     rows = (await db.exec(select(Message).where(Message.session_id == session.id)
                           .order_by(col(Message.created_at)))).all()
     said = [m.content for m in rows if m.role is Role.user and (m.content or "").strip()]
@@ -2215,19 +2214,51 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
     model = (strict_rows[-1] if strict_rows else used[-1] if used
              else model_service.find(catalogue, session.model or ""))
     strict = bool(strict_rows) or (model is not None and _strict_model(model))
-    lines: list[str] = []
-    if model is not None and said and has_headroom(user, model):
-        _, api_key = await litellm_service.credentials_for(user)
-        # What leaves the instance is masked unless it stays on the strict-local model.
+    if not distill:
+        return [], "pending", strict
+    if not said:
+        return [], "empty", strict
+    if model is None or not has_headroom(user, model):
+        return [], "failed", strict
+    _, api_key = await litellm_service.credentials_for(user)
+    # What leaves the instance is masked unless it stays on the strict-local model.
+    try:
         lines, spent = await drafts.distill(
             model["id"], said, api_key, strict_local=strict,
             masker=None if strict else governance.mask)
-        if cost := charge_for_tokens(model, spent["inputTokens"], spent["outputTokens"]):
-            settle(db, user, cost, reason="agent.draft", session_id=session.id,
-                   model=model["id"])
-            await db.commit()
-
+    except drafts.DistillFailed:
+        return [], "failed", strict
+    if cost := charge_for_tokens(model, spent["inputTokens"], spent["outputTokens"]):
+        settle(db, user, cost, reason="agent.draft", session_id=session.id,
+               model=model["id"])
+        await db.commit()
     lines = [line for line in lines if drafts.keep(line)]
+    return lines, "ok" if lines else "empty", strict
+
+
+@router.get("/{session_id}/agent-draft/decided")
+async def agent_draft_decided(session_id: str, user: CurrentUser, db: DbSession):
+    """「에이전트로 저장」's 지시 alone: the distillation the form asks for after the rest of the
+    draft, and again on 「다시 시도」. `prompt` is the 지시 section to add."""
+    from app.services import agent_draft as drafts
+
+    session = await _owned(db, user, session_id)
+    lines, state, _ = await _draft_decided(db, user, session)
+    return {"decided": lines, "prompt": drafts.prompt_from(lines), "distilled": state}
+
+
+@router.get("/{session_id}/agent-draft")
+async def agent_draft(session_id: str, user: CurrentUser, db: DbSession, distill: bool = True):
+    """「에이전트로 저장」: this conversation as a draft agent to prefill the form. Nothing is
+    saved. What it settled is distilled from the person's own messages by the model the
+    conversation ran on (a strict-local one when any turn ran strict-local); a sealed agent's
+    prompt is never copied. `distill=false` answers at once without the 지시 (`distilled`
+    「pending」); the form then asks `…/agent-draft/decided`."""
+    from app.services import agent_draft as drafts
+    from app.services import bases, doc_formats
+
+    session = await _owned(db, user, session_id)
+    lines, distilled, strict = await _draft_decided(db, user, session, distill=distill)
     agent = await db.get(WorkspaceAgent, session.agent_id) if session.agent_id else None
     readable = agent is not None and not agent.sealed and (
         agent.owner_id == user.id or (agent.visibility == AgentVisibility.org
@@ -2283,6 +2314,7 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
         "files": [{"id": f.id, "name": f.name, "size": f.size} for f in files],
         "fromAgentId": agent.id if agent is not None else None,
         "strictLocal": strict,
+        "distilled": distilled,
     }
 
 

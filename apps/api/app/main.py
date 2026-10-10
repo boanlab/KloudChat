@@ -34,7 +34,7 @@ from app.routers import (
     user_templates,
     workspace,
 )
-from app.services import bootstrap, litellm, settings_store, stop_signal, storage
+from app.services import bootstrap, litellm, settings_store, starter, stop_signal, storage
 from app.services.perf import collector as perf_collector
 from app.services.perf import live as perf_live
 
@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI):
                 log.info("stored secrets re-sealed under SECRET_KEY")
         except Exception as exc:  # noqa: BLE001 — old rows still open with the old key
             log.warning("stored secrets were not re-sealed: %s", exc)
+    # Catalogue renames and hidden flags apply at deploy, not at the owner's next sign-in.
+    try:
+        await starter.sync_catalog_at_startup(SessionLocal)
+    except Exception as exc:  # noqa: BLE001 — the owner's sign-in syncs it as before
+        log.warning("catalogue not synced at startup: %s", exc)
     # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
     # Cross-process stop-button delivery: only with more than one API replica,

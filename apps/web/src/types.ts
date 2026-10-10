@@ -1218,6 +1218,18 @@ export interface AgentDraft {
   files: { id: string; name: string; size: number }[]
   fromAgentId: string | null
   strictLocal: boolean
+  /** Whether 「이 대화에서 정한 것」 was read: `pending` when the draft was asked without it. */
+  distilled?: DistillState
+}
+
+/** 「ok」 lines found, 「empty」 read but nothing settled, 「failed」 the model could not be read. */
+export type DistillState = 'pending' | 'ok' | 'empty' | 'failed'
+
+/** `GET /sessions/{id}/agent-draft/decided`: the 지시 section a draft adds when it arrives. */
+export interface AgentDraftDecided {
+  decided: string[]
+  prompt: string
+  distilled: DistillState
 }
 
 /** A store row: somebody else's skill, kept out of the composer's own list. */

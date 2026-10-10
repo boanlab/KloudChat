@@ -159,7 +159,9 @@ test('home: example requests per surface fill the box and send nothing', async (
   await expect(input).toBeFocused()
 
   await page.getByRole('group', { name: '만들 것' }).getByRole('button', { name: '슬라이드' }).click()
-  await expect(examples.first()).toHaveText('신입 사원 교육용 회사 소개 10분 발표')
+  await expect(examples.first()).toHaveText('다음 주 회의 전에 돌릴 사내 브리핑 5장')
+  // R4: only what the one shown deck template (사내 브리핑) makes; no hidden deck's talk.
+  for (const text of await examples.allTextContents()) expect(text).not.toMatch(/세미나|제안|강의|교육|디펜스|심사/)
   await examples.nth(1).click()
   await expect(input).toHaveValue('프로젝트 결과 보고 15분 발표')
   expect(sends).toEqual([])

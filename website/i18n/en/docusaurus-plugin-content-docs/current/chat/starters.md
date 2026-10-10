@@ -28,4 +28,4 @@ Manage them in **Settings** → **Themes** (also opened by **Manage themes** in 
 - The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
 - Theme settings are copied into an output when it is generated. Changing the theme later does not change outputs that already exist.
 - An administrator can distribute a read-only shared theme with **Provide to all users**.
-- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조). **Presentation teal** (발표용 청록) is hidden from them; agents and outputs that already wear it keep it.
+- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조). **Presentation teal** (발표용 청록) is no longer given to new accounts. Those who already have it keep it as their own theme, and agents and outputs that wear it keep it.

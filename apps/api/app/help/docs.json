@@ -221,7 +221,7 @@
 "path": "chat/agents",
 "title": "에이전트와 스킬",
 "heading": "에이전트로 저장",
-"text": "잘된 대화를 에이전트로 남깁니다. 결과물 카드의 **⋯** 또는 보고서·슬라이드 패널의 **⋯**에서 **에이전트로 저장**을 누르면 에이전트 만들기 화면이 채워진 채로 열립니다. **저장**하기 전에는 아무것도 만들어지지 않습니다.\n\n- **지시**에는 「이 대화에서 정한 것」(보고 대상, 분량, 꼭 넣을 것 등)이 들어갑니다. 내가 보낸 메시지만 읽어서, 그 대화가 쓰던 모델로 정리합니다. strict-local 대화는 strict-local 모델로만 정리하고 밖으로 보내지 않습니다.\n- 대화의 템플릿·테마·스킬, 기본 과정과 묶음이 그대로 채워지고, 대화에 올린 파일은 **자료**에 함께 저장할지 고릅니다.\n- 비공개로 공유된 에이전트의 지시는 옮겨지지 않습니다."
+"text": "잘된 대화를 에이전트로 남깁니다. 결과물 카드의 **⋯** 또는 보고서·슬라이드 패널의 **⋯**에서 **에이전트로 저장**을 누르면 에이전트 만들기 화면이 채워진 채로 열립니다. **저장**하기 전에는 아무것도 만들어지지 않습니다.\n\n- **지시**에는 「이 대화에서 정한 것」(보고 대상, 분량, 꼭 넣을 것 등)이 들어갑니다. 내가 보낸 메시지만 읽어서, 그 대화가 쓰던 모델로 정리합니다. strict-local 대화는 strict-local 모델로만 정리하고 밖으로 보내지 않습니다. 나머지 칸이 먼저 채워지고 지시는 정리가 끝나면 더해집니다. 정리하지 못하면 화면 위에 그렇게 알리고 **다시 시도** 버튼을 보입니다.\n- 대화의 템플릿·테마·스킬, 기본 과정과 묶음이 그대로 채워지고, 대화에 올린 파일은 **자료**에 함께 저장할지 고릅니다.\n- 비공개로 공유된 에이전트의 지시는 옮겨지지 않습니다."
 },
 {
 "lang": "ko",
@@ -417,7 +417,7 @@
 "path": "chat/starters",
 "title": "템플릿·테마",
 "heading": "테마",
-"text": "**설정** → **테마**에서 관리합니다(에이전트 설정의 **테마 관리**로도 열립니다). 다른 사람이 공유한 테마는 같은 탭의 **공유된 테마**에 나옵니다.\n\n- 이름, 강조색·본문색·보조색, 서체(고딕 또는 명조), 문체 규율, 이미지 스타일, 함께 적용할 규칙을 설정합니다.\n- **문서에서 가져오기**를 사용하면 기존 hwpx, docx, pdf 파일이나 웹 주소에서 초안을 추출합니다. 모델을 한 번 호출하며, 저장 전에 내용을 확인할 수 있습니다.\n- 문체는 대화·보고서·슬라이드에, 색상과 서체는 슬라이드와 보고서 표지에, 이미지 스타일은 이미지에 적용됩니다. 오디오와 동영상에는 적용되지 않습니다.\n- 테마 설정은 생성 시점에 결과물에 복사됩니다. 이후 테마를 변경해도 이미 생성된 결과물은 바뀌지 않습니다.\n- 관리자는 **모든 사용자에게 제공**으로 읽기 전용 공용 테마를 배포할 수 있습니다.\n- 기본 테마 중 고르는 곳에 보이는 것은 **기본**과 **문서용 명조**입니다. **발표용 청록**은 고르기 목록에서 숨겼고, 이미 그 테마를 쓰는 에이전트와 결과물은 그대로 씁니다."
+"text": "**설정** → **테마**에서 관리합니다(에이전트 설정의 **테마 관리**로도 열립니다). 다른 사람이 공유한 테마는 같은 탭의 **공유된 테마**에 나옵니다.\n\n- 이름, 강조색·본문색·보조색, 서체(고딕 또는 명조), 문체 규율, 이미지 스타일, 함께 적용할 규칙을 설정합니다.\n- **문서에서 가져오기**를 사용하면 기존 hwpx, docx, pdf 파일이나 웹 주소에서 초안을 추출합니다. 모델을 한 번 호출하며, 저장 전에 내용을 확인할 수 있습니다.\n- 문체는 대화·보고서·슬라이드에, 색상과 서체는 슬라이드와 보고서 표지에, 이미지 스타일은 이미지에 적용됩니다. 오디오와 동영상에는 적용되지 않습니다.\n- 테마 설정은 생성 시점에 결과물에 복사됩니다. 이후 테마를 변경해도 이미 생성된 결과물은 바뀌지 않습니다.\n- 관리자는 **모든 사용자에게 제공**으로 읽기 전용 공용 테마를 배포할 수 있습니다.\n- 기본 테마 중 고르는 곳에 보이는 것은 **기본**과 **문서용 명조**입니다. **발표용 청록**은 새 계정에 만들어 주지 않습니다. 이미 받은 사람은 자기 테마로 그대로 쓰고, 그 테마를 쓰는 에이전트와 결과물도 그대로입니다."
 },
 {
 "lang": "ko",
@@ -1278,7 +1278,7 @@
 "path": "chat/agents",
 "title": "Agents and skills",
 "heading": "Save as agent",
-"text": "Keep a conversation that went well as an agent. **Save as agent** in the **⋯** menu of a result card, or of the report or slides panel, opens the create-agent screen filled in. Nothing is made until you press **Save**.\n\n- The **instructions** start with \"Settled in this conversation\" (the reader, the length, what to always include …). Only your own messages are read, by the model the conversation used. A strict-local conversation is summarised only by its strict-local model and nothing leaves.\n- The conversation's template, theme, skills, base process and bundles are filled in, and you choose whether to save the conversation's files as sources.\n- A privately shared agent's instructions are never copied."
+"text": "Keep a conversation that went well as an agent. **Save as agent** in the **⋯** menu of a result card, or of the report or slides panel, opens the create-agent screen filled in. Nothing is made until you press **Save**.\n\n- The **instructions** start with \"Settled in this conversation\" (the reader, the length, what to always include …). Only your own messages are read, by the model the conversation used. A strict-local conversation is summarised only by its strict-local model and nothing leaves. The other fields fill in first; the instructions are added when the summary is done. If it cannot be made, the banner says so and offers **Retry**.\n- The conversation's template, theme, skills, base process and bundles are filled in, and you choose whether to save the conversation's files as sources.\n- A privately shared agent's instructions are never copied."
 },
 {
 "lang": "en",
@@ -1474,7 +1474,7 @@
 "path": "chat/starters",
 "title": "Templates and themes",
 "heading": "Themes",
-"text": "Manage them in **Settings** → **Themes** (also opened by **Manage themes** in the agent settings). Themes other people shared appear under **Shared themes** on the same tab.\n\n- Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.\n- **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.\n- The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.\n- Theme settings are copied into an output when it is generated. Changing the theme later does not change outputs that already exist.\n- An administrator can distribute a read-only shared theme with **Provide to all users**.\n- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조). **Presentation teal** (발표용 청록) is hidden from them; agents and outputs that already wear it keep it."
+"text": "Manage them in **Settings** → **Themes** (also opened by **Manage themes** in the agent settings). Themes other people shared appear under **Shared themes** on the same tab.\n\n- Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.\n- **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.\n- The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.\n- Theme settings are copied into an output when it is generated. Changing the theme later does not change outputs that already exist.\n- An administrator can distribute a read-only shared theme with **Provide to all users**.\n- Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조). **Presentation teal** (발표용 청록) is no longer given to new accounts. Those who already have it keep it as their own theme, and agents and outputs that wear it keep it."
 },
 {
 "lang": "en",

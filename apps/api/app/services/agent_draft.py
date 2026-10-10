@@ -70,10 +70,28 @@ def lines_of(reply: str) -> list[str]:
     return out[:_MAX_LINES]
 
 
+class DistillFailed(Exception):
+    """The model did not answer (timed out, refused, broke) even after the one retry: the
+    draft's 지시 is not 「nothing settled」 but 「not read」, and the form says so."""
+
+
+#: Tries per distillation: the first, and one retry on a timeout, a dropped connection or a
+#: 5xx (never on a 4xx: the same request would be refused again).
+_TRIES = 2
+
+
+def _retryable(exc: Exception) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
 async def distill(model: str, messages: list[str], api_key: str, *, strict_local: bool,
                   masker: Callable[[str], tuple[str, int]] | None = None
                   ) -> tuple[list[str], dict[str, int]]:
-    """`(lines, usage)`: what the person settled; no lines on any failure."""
+    """`(lines, usage)`: what the person settled; no lines when nothing was. Raises
+    `DistillFailed` when the model could not be read (its own `agent_draft_timeout_sec`, one
+    retry): never an empty answer that looks like 「nothing settled」."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     body = _transcript(messages)
     if not body:
@@ -83,27 +101,32 @@ async def distill(model: str, messages: list[str], api_key: str, *, strict_local
     if masker is not None:
         text, hits = masker(text)
         redact = bool(hits)
-    try:
-        base, _ = await settings_store.litellm_config()
-        async with httpx.AsyncClient(
-            base_url=base.rstrip("/"),
-            headers={"Authorization": f"Bearer {api_key}",
-                     **({"x-litellm-enable-message-redaction": "true"} if redact else {})},
-            timeout=settings.title_timeout_sec * 2,
-        ) as client:
-            response = await client.post("/v1/chat/completions", json={
-                "model": model,
-                "messages": [{"role": "user", "content": text}],
-                "temperature": 0,
-                "max_tokens": _MAX_TOKENS,
-                # A strict-local conversation's words go to its own model or nowhere.
-                **({"disable_fallbacks": True} if strict_local else {}),
-            })
-            response.raise_for_status()
-            data = response.json()
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
-        log.info("agent draft not distilled: %s", type(exc).__name__)
-        return [], spent
+    data: dict = {}
+    for attempt in range(_TRIES):
+        try:
+            base, _ = await settings_store.litellm_config()
+            async with httpx.AsyncClient(
+                base_url=base.rstrip("/"),
+                headers={"Authorization": f"Bearer {api_key}",
+                         **({"x-litellm-enable-message-redaction": "true"} if redact else {})},
+                timeout=settings.agent_draft_timeout_sec,
+            ) as client:
+                response = await client.post("/v1/chat/completions", json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": text}],
+                    "temperature": 0,
+                    "max_tokens": _MAX_TOKENS,
+                    # A strict-local conversation's words go to its own model or nowhere.
+                    **({"disable_fallbacks": True} if strict_local else {}),
+                })
+                response.raise_for_status()
+                data = response.json()
+            break
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            log.info("agent draft not distilled (try %d): %s", attempt + 1,
+                     type(exc).__name__)
+            if attempt + 1 >= _TRIES or not _retryable(exc):
+                raise DistillFailed(type(exc).__name__) from exc
     raw = data.get("usage") or {}
     spent["inputTokens"] = int(raw.get("prompt_tokens") or 0)
     spent["outputTokens"] = int(raw.get("completion_tokens") or 0)
@@ -159,4 +182,4 @@ def prompt_from(lines: list[str]) -> str:
     return "이 대화에서 정한 것:\n" + "\n".join(f"- {line}" for line in lines)
 
 
-__all__ = ["distill", "keep", "lines_of", "name_for", "prompt_from"]
+__all__ = ["DistillFailed", "distill", "keep", "lines_of", "name_for", "prompt_from"]

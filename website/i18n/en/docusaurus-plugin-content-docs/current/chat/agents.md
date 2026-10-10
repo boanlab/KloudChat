@@ -87,7 +87,7 @@ Make your own document template with **New template** under **Output shape** ›
 
 Keep a conversation that went well as an agent. **Save as agent** in the **⋯** menu of a result card, or of the report or slides panel, opens the create-agent screen filled in. Nothing is made until you press **Save**.
 
-- The **instructions** start with "Settled in this conversation" (the reader, the length, what to always include …). Only your own messages are read, by the model the conversation used. A strict-local conversation is summarised only by its strict-local model and nothing leaves.
+- The **instructions** start with "Settled in this conversation" (the reader, the length, what to always include …). Only your own messages are read, by the model the conversation used. A strict-local conversation is summarised only by its strict-local model and nothing leaves. The other fields fill in first; the instructions are added when the summary is done. If it cannot be made, the banner says so and offers **Retry**.
 - The conversation's template, theme, skills, base process and bundles are filled in, and you choose whether to save the conversation's files as sources.
 - A privately shared agent's instructions are never copied.
 

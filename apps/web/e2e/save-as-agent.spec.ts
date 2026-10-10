@@ -67,3 +67,44 @@ test('a refused save says which field to fix', async ({ page }, testInfo) => {
   await expect(page.getByTestId('agent-output-group')).toHaveAttribute('open', '')
   await expect(page.getByText('design_system_not_found')).toHaveCount(0)
 })
+
+/** N1: a distillation that timed out says so, with 다시 시도; it never claims a filled 지시. */
+test('a failed distillation says so and 다시 시도 fills the 지시', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, {
+    decided: [
+      { distilled: 'failed', prompt: '', decided: [], delayMs: 600 },
+      { distilled: 'ok', prompt: agentDraft.systemPrompt, decided: agentDraft.decided },
+    ],
+  })
+  await page.goto('/customize/agents/new?from=session:c0000000000000000000000000000000')
+  const form = page.getByTestId('agent-form')
+  const notice = page.getByTestId('draft-notice')
+  // The rest of the form is usable while the 지시 is being read.
+  await expect(form.getByRole('textbox', { name: '이름' })).toHaveValue(agentDraft.name, { timeout: 15_000 })
+  await expect(notice).toHaveAttribute('data-state', 'pending')
+  await expect(notice).not.toContainText('채워 두었습니다. 고친 뒤')
+  await expect(notice).toHaveAttribute('data-state', 'failed')
+  await expect(notice).toContainText('정리하지 못했습니다')
+  await expect(form.getByRole('textbox', { name: '지시' })).toHaveValue('')
+  await form.getByRole('textbox', { name: '지시' }).fill('표로 정리한다.')
+  const drafts = state.reads.filter((p) => p.endsWith('/agent-draft')).length
+  const asked = state.reads.filter((p) => p.endsWith('/agent-draft/decided')).length
+  await notice.getByRole('button', { name: '다시 시도' }).click()
+  await expect(notice).toHaveAttribute('data-state', 'ok')
+  await expect(notice).toContainText('이 대화에서 정한 것을 채워 두었습니다')
+  // What was typed meanwhile stays; the distilled section is added below it.
+  await expect(form.getByRole('textbox', { name: '지시' })).toHaveValue(`표로 정리한다.\n\n${agentDraft.systemPrompt}`)
+  // Only the distillation was asked again (dev StrictMode may double the first requests).
+  expect(state.reads.filter((p) => p.endsWith('/agent-draft')).length).toBe(drafts)
+  expect(state.reads.filter((p) => p.endsWith('/agent-draft/decided')).length).toBe(asked + 1)
+  expect(state.problems).toEqual([])
+})
+
+test('nothing settled says so instead of 「채워 두었습니다」', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo, { decided: [{ distilled: 'empty', prompt: '', decided: [] }] })
+  await page.goto('/customize/agents/new?from=session:c0000000000000000000000000000000')
+  const notice = page.getByTestId('draft-notice')
+  await expect(notice).toHaveAttribute('data-state', 'empty', { timeout: 15_000 })
+  await expect(notice).toContainText('따로 정한 규칙은 찾지 못했습니다')
+  await expect(page.getByTestId('agent-form').getByRole('textbox', { name: '지시' })).toHaveValue('')
+})

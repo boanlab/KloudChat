@@ -142,3 +142,23 @@ def test_every_agent_page_section_fits_whole():
     for lang in ("ko", "en"):
         for heading, text in _agents_page(lang).items():
             assert len(text) < module._MAX, (lang, heading)
+
+
+@pytest.mark.parametrize("question,lang", [(_PERSONA, "ko"), ("How do I create an agent?", "en")])
+def test_a_how_to_answer_is_asked_to_be_brief_and_link_the_guide(question, lang, monkeypatch):
+    """R5: a correct how-to answer ran to ~1.1k tokens. The block asks for the starting path,
+    at most 6 steps and ~250 words, and a link to the guide page for the rest."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "guide_base_url", "https://guide.example/KloudChat/")
+    block = app_help.block(question, lang=lang)
+    assert "at most 6 numbered steps" in block and "About 250 words" in block
+    # The rule is English; the style example is Korean.
+    assert "Style example (Korean" in block and "자세히: 사용 안내 › 에이전트" in block
+    prefix = "https://guide.example/KloudChat/" + ("en/" if lang == "en" else "")
+    assert f"Guide page: {prefix}docs/chat/agents" in block
+    # The brevity rule comes before the sections, so a long section cannot push it out.
+    assert block.index("How to answer:") < block.index("## ")
+    assert app_help.page_link("admin/index") == "https://guide.example/KloudChat/docs/admin"
+    monkeypatch.setattr(settings, "guide_base_url", "")
+    assert "Guide page:" not in app_help.block(question, lang=lang)

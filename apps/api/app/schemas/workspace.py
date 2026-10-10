@@ -850,14 +850,15 @@ class DesignSystemOut(Wire):
     updated_at: datetime
 
     @classmethod
-    def of(cls, d: DesignSystem, *, owner_id: str | None = None) -> DesignSystemOut:
+    def of(cls, d: DesignSystem, *, owner_id: str | None = None,
+           catalog_owner: str | None = None) -> DesignSystemOut:
         out = cls.model_validate(d, from_attributes=True)
         out.tokens = design_service.tokens_of(d)
         out.craft = design_service.craft_keys(d.craft)
         out.mine = owner_id is None or d.owner_id == owner_id
         from app.services import starter
 
-        out.listed = starter.design_listed(d.name)
+        out.listed = starter.design_listed(d.name, d.owner_id, catalog_owner)
         return out
 
 

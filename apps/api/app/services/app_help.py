@@ -18,6 +18,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from app.core.config import settings
+
 _DOCS = Path(__file__).resolve().parent.parent / "help" / "docs.json"
 _TOP = 3
 _BLOCK_CHARS = 4500
@@ -117,6 +119,35 @@ _GROUNDING = (
     "writing), ignore this block and do the task.\n"
 )
 
+#: How long a how-to answer is: a busy person wants the path, not the page (persona A/B 4th run:
+#: a correct answer ran to about 1.1k tokens).
+_BRIEF = (
+    "How to answer:\n"
+    "- Brief. First line: where to start (screen › menu › button). Then at most 6 numbered "
+    "steps, one short line each. About 250 words in all (Korean: about 600 characters) at "
+    "most, unless the person asks for every detail.\n"
+    "- No background, no restating the question, no list of every option, no repeated "
+    "caveats; one caveat at most, only when it changes what the person does.\n"
+    "- For more, end with one line naming the guide page (title › heading), with its link "
+    "when one is given below.\n"
+    "- Style example (Korean, follow the shape, not the content):\n"
+    "  「사용자 지정 › 에이전트 › 새 에이전트에서 만듭니다.\n"
+    "  1. 이름과 지시를 적습니다.\n"
+    "  2. 진행 과정에서 기본 과정(개조식 보고)을 고릅니다.\n"
+    "  3. 파일로 받으려면 「다 쓰면 파일로 내보내기」를 체크하고 형식을 고릅니다.\n"
+    "  4. 만들기를 누릅니다.\n"
+    "  자세히: 사용 안내 › 에이전트 (링크)」\n"
+)
+
+
+def page_link(path: str, *, lang: str = "ko") -> str:
+    """The guide page's address on the published site, or "" when none is configured."""
+    base = (settings.guide_base_url or "").rstrip("/")
+    if not base or not path:
+        return ""
+    page = path[: -len("/index")] if path.endswith("/index") else path
+    return f"{base}/{'en/' if lang == 'en' else ''}docs/{page}"
+
 #: The pages the guide has, by name, for a question none of its sections answers.
 _PAGES = {
     "ko": "사용자 지정 › 에이전트 · 스킬 · 커넥터 / 설정 › 메모리 · 테마 / 프로젝트 / 결과물",
@@ -131,7 +162,8 @@ def block(query: str, *, lang: str = "ko") -> str:
     invents a feature."""
     found = search(query, lang=lang)
     head = "# KloudChat 사용 안내 (이 앱의 도움말)\n" \
-        "The person is asking how to do something in this app, KloudChat.\n" + _GROUNDING
+        "The person is asking how to do something in this app, KloudChat.\n" + _GROUNDING \
+        + _BRIEF
     if not found:
         return (head + "\nThe user guide has no section on this question. Say that the "
                 "guide does not cover it and name where in the app to look: "
@@ -139,10 +171,11 @@ def block(query: str, *, lang: str = "ko") -> str:
     parts = []
     for row in found:
         where = " › ".join(x for x in (row["title"], row["heading"]) if x)
-        parts.append(f"## {where}\n{row['text']}")
+        link = page_link(row.get("path", ""), lang=lang)
+        parts.append(f"## {where}\n" + (f"Guide page: {link}\n" if link else "") + row["text"])
     body = "\n\n".join(parts)[:_BLOCK_CHARS]
     return head + "Answer from these sections of its user guide, naming its own screens, " \
         "menus and buttons as written here, in order.\n\n" + body
 
 
-__all__ = ["about_app", "block", "search"]
+__all__ = ["about_app", "block", "page_link", "search"]

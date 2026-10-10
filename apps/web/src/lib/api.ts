@@ -7,6 +7,7 @@
 
 import type {
   AgentDraft,
+  AgentDraftDecided,
   CatalogEntryAdmin,
   ProcessSettings,
   TemplateCatalogue,
@@ -893,7 +894,11 @@ export interface SessionRow {
 
 export const sessionsApi = {
   /** 「에이전트로 저장」: this conversation as a draft agent. Nothing is saved. */
-  agentDraft: (sessionId: string) => call<AgentDraft>(`/sessions/${sessionId}/agent-draft`),
+  agentDraft: (sessionId: string, distill = true) =>
+    call<AgentDraft>(`/sessions/${sessionId}/agent-draft${distill ? '' : '?distill=false'}`),
+  /** 「에이전트로 저장」's 지시 alone: what the conversation settled, asked after the rest. */
+  agentDraftDecided: (sessionId: string) =>
+    call<AgentDraftDecided>(`/sessions/${sessionId}/agent-draft/decided`),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
   handoff: (sessionId: string, kind: 'report' | 'slides') =>
     call<{ session: SessionRow; attachments: FileRow[] }>(
