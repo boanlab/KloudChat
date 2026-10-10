@@ -1,6 +1,7 @@
 """File work in the code sandbox: fixed skill scripts and model-written code.
 
-`run_skill_script` runs a shipped package script against the chat's files.
+`run_skill_script` runs a shipped package script against the chat's files, or one of the
+person's own skill scripts (`Skill.script_files`) — those only ever run here, in the sandbox.
 `run_code` has the code model write Python for a task, runs it, repairs it once
 from the error, then gives the fallback model one try. Both store what the run
 wrote under `outputs/` as the user's files and list them on the step.
@@ -233,7 +234,77 @@ def _exit_status(stdout: str) -> tuple[str, int | None]:
     return stdout, None
 
 
+def _own(skill: str, ctx: ToolContext | None) -> tuple[str, dict[str, Any]] | None:
+    """The person's own skill `skill` names (its key or its name), with scripts."""
+    own = getattr(ctx, "own_scripts", None) or {}
+    text = skill.strip().strip("「」\"'")
+    if text in own:
+        return text, own[text]
+    return next(((k, v) for k, v in own.items() if v.get("name") == text), None)
+
+
+async def _run_own(key: str, own: dict[str, Any], args: dict[str, Any],
+                   ctx: ToolContext) -> ToolResult:
+    """A person's own script, run in the sandbox exactly as a shipped one is: mounted
+    read-only, given the chat's files, its outputs stored as the person's files."""
+    files: dict[str, str] = dict(own.get("files") or {})
+    name = str(own.get("name") or "스킬")
+    script = str(args.get("script") or "").strip().removesuffix(".py") or next(iter(files), "")
+    if script not in files:
+        return ToolResult(content=f"오류: 「{name}」에 {script} 스크립트가 없습니다. "
+                                  f"있는 것: {', '.join(files)}", failed=True)
+    script_args = args.get("args") or {}
+    if isinstance(script_args, str):
+        try:
+            script_args = json.loads(script_args)
+        except ValueError:
+            script_args = {"file": script_args}
+    if not isinstance(script_args, dict):
+        return ToolResult(content="오류: args 는 객체여야 합니다.", failed=True)
+    client = await sandbox.client()
+    if client is None:
+        return ToolResult(content="오류: 코드 실행이 설정되지 않았습니다.", failed=True)
+    available = await sandbox.session_files(ctx.user_id, ctx.session_id)
+    wanted = _names(script_args.get("file") or script_args.get("files"))
+    inputs, missing = sandbox.pick_inputs(available, wanted or None)
+    if missing:
+        return _missing(missing, available)
+    folder = "own-" + re.sub(r"[^a-z0-9]", "", key.removeprefix("skill:").lower())[:24]
+    path = f"skills/{folder}/scripts/{script}.py"
+    try:
+        refs = await sandbox.input_refs(client, ctx.sandbox, inputs)
+        own_refs = await sandbox.own_refs(client, ctx.sandbox, folder, files)
+        command = _skill_command(path, script_args)
+        result = await sandbox.run(client, ctx.sandbox, command, lang="bash",
+                                   refs=refs + own_refs)
+        outputs, notes = await sandbox.collect_outputs(
+            client, result, user_id=ctx.user_id, session_id=ctx.session_id, state=ctx.sandbox)
+    except sandbox.SandboxError as exc:
+        return ToolResult(content=f"오류: {exc}", failed=True)
+    stdout, status = _exit_status(result.stdout)
+    summary = sandbox.last_json(stdout)
+    failed = (result.crashed or (status not in (None, 0))
+              or (summary is not None and summary.get("ok") is False))
+    head = (f"스킬 「{name}」의 {script} 스크립트가 실패했습니다." if failed
+            else f"스킬 「{name}」의 {script} 스크립트를 실행했습니다.")
+    if failed and summary and summary.get("error"):
+        head += f" 이유: {summary['error']}"
+    body_lines = [ln for ln in stdout.strip().splitlines() if ln.strip()]
+    if summary is not None and body_lines:
+        body_lines = body_lines[:-1]
+    return ToolResult(
+        content=sandbox.report(result, outputs, notes, summary=summary,
+                               stdout="\n".join(body_lines), head=head),
+        detail=(f"「{name}」" + (f" · {_outputs_detail(outputs)}" if outputs else "")),
+        failed=failed,
+        outputs=[{k: row[k] for k in ("id", "name", "size")} for row in outputs] or None,
+        trace=_trace(command, stdout, result.stderr, ctx),
+    )
+
+
 async def run_skill_script(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
+    if (own := _own(str(args.get("skill") or ""), ctx)) is not None:
+        return await _run_own(own[0], own[1], args, ctx)
     package = skill_packages.find(str(args.get("skill") or ""))
     if package is None or not package.scripts:
         offered = ", ".join(p.key for p in skill_packages.scripted())
@@ -303,13 +374,16 @@ async def run_skill_script(args: dict[str, Any], ctx: ToolContext) -> ToolResult
     )
 
 
-def _skill_tool_description() -> str:
+def _skill_tool_description(own: dict[str, dict[str, Any]] | None = None) -> str:
     lines = []
     for package in skill_packages.scripted():
         scripts = ", ".join(
             f"{name}({summary})" if summary else name for name, summary in package.scripts.items()
         )
         lines.append(f"{package.key} 「{package.name}」: {scripts}")
+    for key, row in (own or {}).items():
+        lines.append(f"{key} 「{row.get('name')}」(직접 올린 스킬): "
+                     + ", ".join(sorted(row.get("files") or {})))
     return (
         "고정된 스킬 스크립트를 샌드박스에서 이 대화의 첨부 파일에 대해 실행합니다. 엑셀·CSV 정리, "
         "PDF 표 추출, 여러 수치 검산처럼 아래 스크립트가 하는 일은 코드를 쓰지 말고 이 도구를 "
@@ -517,11 +591,11 @@ RUN_CODE = Tool(
 )
 
 
-def run_skill_script_tool() -> Tool:
-    keys = [package.key for package in skill_packages.scripted()]
+def run_skill_script_tool(own: dict[str, dict[str, Any]] | None = None) -> Tool:
+    keys = [package.key for package in skill_packages.scripted()] + sorted(own or {})
     return Tool(
         name="run_skill_script",
-        description=_skill_tool_description(),
+        description=_skill_tool_description(own),
         parameters={
             "type": "object",
             "properties": {
@@ -543,3 +617,12 @@ def run_skill_script_tool() -> Tool:
 
 
 RUN_SKILL_SCRIPT = run_skill_script_tool()
+
+
+def with_own_scripts(tools: list[Tool], own: dict[str, dict[str, Any]]) -> list[Tool]:
+    """The turn's tools with `run_skill_script` offering the person's own scripts too; a
+    turn without the tool (not allowed, no sandbox) gains nothing."""
+    if not own:
+        return tools
+    return [run_skill_script_tool(own) if tool.name == RUN_SKILL_SCRIPT.name else tool
+            for tool in tools]

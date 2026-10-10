@@ -11,41 +11,72 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import ModuleType
 
-from app.services import grounding, report_checks, skill_packages, skill_scripts, starter
+from app.services import (
+    gap_questions,
+    grounding,
+    skill_packages,
+    skill_scripts,
+    skill_specs,
+    starter,
+)
 
 log = logging.getLogger(__name__)
 
-#: Fact sets keyed by agent rather than by format: the chat agents write no `doc_format`.
+#: Strictness keyed by agent rather than by format: the chat agents write no `doc_format`.
 _AGENT_FACTS = {"career-docs": "career-docs", "data-analysis": "data-analysis"}
-#: `post` checks run by a stage of their own (`check:copy`), not by `ground`. An attached
-#: check that also names `post_check` scripts (generic-language-killer) runs here as its
-#: entry only — the safe rewrites; switched on by the person, `check:skills` runs the rest.
-OWN_STAGE = frozenset(k for k, p in skill_packages.packages().items() if p.own_stage)
+#: `post` checks run by a stage of their own (`check:copy`), not by `ground` (`own_stage`
+#: in the skill's fields). An attached check that also names `post_check` scripts
+#: (generic-language-killer) runs here as its entry only — the safe rewrites; switched on by
+#: the person, `check:skills` runs the rest.
 #: The question ids the gap card uses, so answers are told from the file questions.
 GAP_PREFIX = "gap:"
 
 
+Specs = Mapping[str, skill_specs.Spec] | None
+
+
 def attached(*, agent_checks: list | tuple | None = None, agent_key: str | None = None,
-             template_checks: tuple[str, ...] = ()) -> tuple[str, ...]:
+             template_checks: tuple[str, ...] = (), specs: Specs = None) -> tuple[str, ...]:
     """The check skills an agent and a 서식 attach, agent first, each once.
 
     `agent_checks` is the agent row's own list (`Agent.check_skills`), what every agent —
     catalogue or a person's — runs with; `agent_key` reads a shipped spec instead, for a
-    replay or a test that has no row."""
+    replay or a test that has no row. A person's check skill (`skill:<id>`) counts when
+    `specs` holds it."""
     own = list(agent_checks or ()) if agent_checks is not None else list(
         starter.agent_checks(agent_key))
     keys = [*own, *template_checks]
-    return tuple(k for k in dict.fromkeys(keys) if (p := skill_packages.package_for(k)) and p.stage)
+    return tuple(k for k in dict.fromkeys(keys)
+                 if (p := skill_specs.resolve(k, specs)) is not None and p.stage)
 
 
-def of_stage(keys: tuple[str, ...], stage: str) -> list[str]:
-    return [k for k in keys if (p := skill_packages.package_for(k)) and p.stage == stage]
+def of_stage(keys: tuple[str, ...], stage: str, specs: Specs = None) -> list[str]:
+    return [k for k in keys if (p := skill_specs.resolve(k, specs)) is not None
+            and p.stage == stage]
+
+
+def entry(key: str, specs: Specs = None) -> ModuleType:
+    """The shipped script a check skill runs, whoever's skill names it (never a person's
+    own file: `skill_specs.validate` lets an entry name shipped checks only)."""
+    spec = skill_specs.resolve(key, specs)
+    ref = spec.entry_ref() if spec is not None and spec.stage else None
+    if ref is None or ref[1] not in skill_packages.script_names(ref[0]):
+        raise LookupError(f"{key} is not a check skill")
+    return skill_scripts.module(*ref)
+
+
+def own_stage(key: str, specs: Specs = None) -> bool:
+    spec = skill_specs.resolve(key, specs)
+    return bool(spec and spec.own_stage)
 
 
 def fact_set(doc_format: str | None, agent_key: str | None) -> str:
-    """Which declared fact list applies: the report's format, else the chat agent's own."""
+    """The format (else the chat agent) whose strictness the trace follows (`options_for`);
+    what to ask before writing is `gap_questions.resolve`."""
     if doc_format:
         return doc_format
     return _AGENT_FACTS.get(agent_key or "", "")
@@ -54,39 +85,21 @@ def fact_set(doc_format: str | None, agent_key: str | None) -> str:
 # ── before writing ───────────────────────────────────────────────────────
 
 
-def readings(facts: str, request: str, material: str, today: dt.date | None) -> dict:
-    """What the server's extractors already read, so the script trusts them over its regexes."""
-    out: dict = {}
-    if facts == "minutes":
-        base, _ = report_checks.meeting_base(request, material, today)
-        out["meeting_date"] = base.isoformat() if base else ""
-    elif facts == "client_proposal":
-        terms = report_checks.rfp_terms(material, request) or {}
-        if terms.get("clients"):
-            out["clients"] = terms["clients"]
-        out["period"] = bool(terms.get("end") or terms.get("months"))
-        out["staff"] = bool(report_checks.staffing(material))
-        out["priced"] = any(report_checks.price_line(line)
-                            for line in f"{request}\n{material}".splitlines())
-        out["vat"] = report_checks.price_basis(material)
-    elif facts == "career_history":
-        periods = report_checks.career_periods(material or request, request, today)
-        if periods:
-            out["periods"] = True
-    return out
-
-
-def gaps(keys: tuple[str, ...], *, facts: str, request: str, material: str,
-         today: dt.date | None = None) -> list[dict]:
-    """The attached `pre` checks' findings: facts the request and material do not hold."""
-    if not facts:
+def gaps(keys: tuple[str, ...], *, questions: list[dict], request: str, material: str,
+         today: dt.date | None = None, specs: Specs = None,
+         judged: dict[str, bool] | None = None) -> list[dict]:
+    """The attached `pre` checks' findings: the 빠진 정보 질문 (`services/gap_questions.py`)
+    the request and material do not answer. `judged` holds the judge model's reading of the
+    questions it decides."""
+    if not questions:
         return []
+    computed = {**gap_questions.readings(questions, request, material, today),
+                **({"judged": dict(judged)} if judged else {})}
     found: list[dict] = []
-    for key in of_stage(keys, "pre"):
+    for key in of_stage(keys, "pre", specs):
         try:
-            module = skill_scripts.entry(key)
-            found += module.check(request, material, readings(facts, request, material, today),
-                                  {"facts": facts})
+            module = entry(key, specs)
+            found += module.check(request, material, computed, {"questions": list(questions)})
         except Exception:  # noqa: BLE001 — a broken check asks nothing; the turn goes on
             log.exception("check skill %s failed before writing", key)
     return found
@@ -100,11 +113,11 @@ def questions(found: list[dict]) -> list[grounding.Question]:
     ]
 
 
-def rule(keys: tuple[str, ...], found: list[dict]) -> str:
+def rule(keys: tuple[str, ...], found: list[dict], specs: Specs = None) -> str:
     """The writer's line when the person went on without the facts: each one a blank."""
-    for key in of_stage(keys, "pre"):
+    for key in of_stage(keys, "pre", specs):
         try:
-            if text := skill_scripts.entry(key).rule(found):
+            if text := entry(key, specs).rule(found):
                 return text
         except Exception:  # noqa: BLE001
             log.exception("check skill %s rule failed", key)
@@ -123,16 +136,8 @@ def labelled(answers: dict[str, str], asked: list[dict]) -> dict[str, str]:
 
 
 def _label(question: dict) -> str:
-    fact = str(question.get("id") or "").removeprefix(GAP_PREFIX)
-    for module_key in of_stage(tuple(skill_packages.packages()), "pre"):
-        try:
-            for facts in skill_scripts.entry(module_key).FACTS.values():
-                for row in facts:
-                    if row.id == fact:
-                        return row.label
-        except Exception:  # noqa: BLE001
-            continue
-    return ""
+    """The asked question's label, as the card carried it."""
+    return str(question.get("label") or "")
 
 
 #: A reply that only says to go on: 「더 있는 정보는 없어. 자료대로 진행해 줘.」 — not an answer.
@@ -193,14 +198,14 @@ class Outcome:
 
 
 def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[str],
-           options: dict) -> Outcome:
+           options: dict, specs: Specs = None) -> Outcome:
     """The attached `post` checks over `text`: check, fix once, check again."""
     outcome = Outcome(text)
-    for key in of_stage(keys, "post"):
-        if key in OWN_STAGE:
+    for key in of_stage(keys, "post", specs):
+        if own_stage(key, specs):
             continue
         try:
-            module = skill_scripts.entry(key)
+            module = entry(key, specs)
             found = module.check(outcome.text, material, computed, options)
             if not found:
                 continue
@@ -217,7 +222,8 @@ _REFERENCES = re.compile(r"참고\s{0,2}문헌|references|출처\s{0,2}목록", 
 
 
 def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: str,
-                    computed: list[str], options: dict) -> tuple[list[dict], Outcome]:
+                    computed: list[str], options: dict,
+                    specs: Specs = None) -> tuple[list[dict], Outcome]:
     """Each section's content traced; a reference list is the sources themselves."""
     total = Outcome("")
     out = []
@@ -226,7 +232,8 @@ def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: st
         if not content or _REFERENCES.search(str(row.get("heading") or "")):
             out.append(row)
             continue
-        one = ground(keys, content, material=material, computed=computed, options=options)
+        one = ground(keys, content, material=material, computed=computed, options=options,
+                     specs=specs)
         total.found += one.found
         total.left += one.left
         out.append({**row, "content": one.text} if one.text != content else row)
@@ -234,7 +241,8 @@ def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: st
 
 
 __all__ = [
-    "CHECK_OPTIONS", "GAP_PREFIX", "Outcome", "attached", "clean_options", "fact_set", "gaps",
+    "CHECK_OPTIONS", "GAP_PREFIX", "Outcome", "attached", "clean_options", "entry", "fact_set",
+    "gaps", "own_stage",
     "goes_on", "ground", "ground_sections", "labelled", "of_stage", "options_for", "questions",
-    "readings", "rule",
+    "rule",
 ]

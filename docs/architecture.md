@@ -264,7 +264,25 @@ code-computed schema of each file (`services/file_schema.py`) to the code model
 (`CODE_MODEL`, default `local/qwen3.8-27b`), runs the result, sends the error back once,
 then gives `CODE_FALLBACK_MODEL` one try. What a run writes under `outputs/` is stored
 as the user's files in the chat and listed on the step as `outputs` (download chips).
-One sandbox session serves a turn, kept on `ToolContext.sandbox`. The sandbox sits in
+One sandbox session serves a turn, kept on `ToolContext.sandbox`.
+
+**A person's skill opts in the same way.** What the server runs for a skill —
+`stage`/`entry`, `post_check`, `post_judge`, `copy_check`/`copy_kinds`, `tables`,
+`own_stage`, `uses` — is stored on its row (`skills.server_fields`) and read through
+`services/skill_specs.py` for shipped and personal skills alike; each field may name
+shipped scripts only (allowlists in that module), set in the skill form or an uploaded
+SKILL.md. A person's own Python scripts (`skills.script_files`, kept from `scripts/*.py` in
+an upload and scanned) run only through `run_skill_script` in the sandbox, mounted
+read-only under `skills/own-<id>/`; the server never imports them. Sharing a skill with
+scripts waits for an administrator (`/admin/skills`, 「스킬 검토」). A person's check skill
+(`stage`) is attached through the 「내 검사 스킬」 bundle as `skill:<id>`.
+
+**빠진 정보 질문** are data (`services/gap_questions.py`): a 서식 lists the questions its
+format needs (`[[questions]]` in `template.toml`), an agent adds its own
+(`agents.gap_questions`, the agent form; a shipped agent's come from its file). Each names
+a detector — a built-in one from `gap-check/scripts/gaps.py`, keywords, a bounded pattern,
+or the judge model, which must quote the answer from the material. A 서식's document format
+(`doc_format`) and genre rule (`genre.md`) are carried by the 서식 too. The sandbox sits in
 the self-hosted stack with networking off, so with `SANDBOX_IN_BOUNDARY` (on) both tools
 are offered to strict-local turns, and `run_code` then writes on the `strict-local/`
 twin of the code model.

@@ -11,7 +11,11 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from app.services import check_skills, doc_formats, placeholders
+from app.services import check_skills, doc_formats, gap_questions, placeholders
+
+#: 빠진 정보 질문 as the 서식 and the agent files carry them.
+_MINUTES_Q = gap_questions.for_format("minutes")
+
 
 _MEMO = """축제 준비 회의 때 휴대폰에 막 적은 거야. 회의록으로 만들어 줘.
 
@@ -55,7 +59,7 @@ def test_the_gap_card_does_not_ask_who_attended_a_memo_that_names_them():
     gaps = _gaps()
     assert gaps.named_people(_MEMO) == doc_formats.named_people(_MEMO)
     assert gaps._attendees(_MEMO, "", {}) == (True, "")
-    found = check_skills.gaps(("gap-check",), facts="minutes", request=_MEMO, material="")
+    found = check_skills.gaps(("gap-check",), questions=_MINUTES_Q, request=_MEMO, material="")
     asked = [f["fact"] for f in found]
     assert "attendees" not in asked and "meeting_date" in asked
     # One owner is not a list of attendees: still asked.

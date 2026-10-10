@@ -24,7 +24,9 @@ The web mirror is ``apps/web/src/components/report/docFormats.ts``; a test keeps
 from __future__ import annotations
 
 import re
+import tomllib
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from app.services import placeholders
@@ -180,13 +182,22 @@ _FALLBACKS = [(BY_ID["plan"], re.compile(r"계획서")), (BY_ID["proposal"], re.
 #: The 결재란 columns of a `draft` head, in signing order; each field holds 직위와 성명.
 APPROVERS = ("기안자", "검토자", "결재권자")
 
-#: Render templates that already fix the purpose.
-TEMPLATE_FORMATS = {
-    "doc-minutes": "minutes", "doc-gaejo-report": "gaejo", "doc-internal-draft": "internal_draft",
-    "doc-event-plan": "event_plan", "doc-result-report": "result_report",
-    "doc-client-proposal": "client_proposal", "doc-comparison": "comparison",
-    "doc-career-history": "career_history",
-}
+def _template_formats() -> dict[str, str]:
+    """Render templates that fix the purpose: each declares `doc_format` in its own
+    `template.toml` (read here directly: `design_templates` builds on this module)."""
+    root = Path(__file__).resolve().parent.parent / "design_templates"
+    out: dict[str, str] = {}
+    for manifest in sorted(root.glob("*/template.toml")):
+        fmt = str(tomllib.loads(manifest.read_text(encoding="utf-8")).get("doc_format") or "")
+        if fmt:
+            if fmt not in BY_ID:
+                raise ValueError(f"{manifest.parent.name}: unknown doc_format {fmt!r}")
+            out[manifest.parent.name] = fmt
+    return out
+
+
+#: Render templates that already fix the purpose, by template id.
+TEMPLATE_FORMATS = _template_formats()
 
 
 def detect(

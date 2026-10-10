@@ -1,17 +1,23 @@
 """Uploaded skills: a SKILL.md, or a .zip/.skill package around one, read into a skill row.
 
 Nothing here touches the file system. An archive is read in memory, entry by entry and
-within fixed limits; only text the person can read in the skill page is kept. Scripts
-are dropped, never stored and never run: imported skills live in the database only,
-while `skill_packages`/`skill_scripts` and the sandbox's `run_skill_script` read
-`app/skills` alone.
+within fixed limits; only text the person can read in the skill page is kept.
+
+- The server fields (`stage`, `entry`, `post_check`, `post_judge`, `copy_check`,
+  `copy_kinds`, `tables`, `own_stage`, `uses`) are kept when they name shipped scripts
+  (`services/skill_specs.py`); anything else is a finding and is dropped.
+- Python scripts under `scripts/` are kept in the row (`Skill.script_files`), shown in the
+  preview with their own scan, and run only in the code sandbox through `run_skill_script`
+  — never imported by the server, never written to `app/skills`. Other script types are
+  dropped as before. Sharing a skill with scripts waits for an administrator.
 
 Every problem is a `Finding`: `block` stops the upload (structure or safety), `warn`
-is shown and the upload may go on. The text scan is a heuristic, not a guarantee.
+is shown and the upload may go on. The scans are heuristics, not a guarantee.
 """
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import stat
@@ -25,7 +31,7 @@ import yaml
 
 from app.models.chat import SessionKind
 from app.schemas.workspace import SkillIn
-from app.services import skill_packages
+from app.services import skill_packages, skill_specs
 
 #: One uploaded file, raw.
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
@@ -72,9 +78,17 @@ NESTED_SUFFIXES = frozenset(
 #: Archive noise that is skipped without a word.
 _JUNK = ("__MACOSX/", ".DS_Store", "Thumbs.db")
 
-#: Front matter a person may set; the rest of `skill_packages._FIELDS` is server-only.
-ACCEPTED = ("name", "description", "when_to_use", "kinds", "required_tools", "version")
+#: Front matter a person may set: the catalogue fields, and the server fields naming shipped
+#: scripts (`skill_specs.FIELDS`, checked against its allowlists). `status` is the
+#: catalogue's alone.
+ACCEPTED = ("name", "description", "when_to_use", "kinds", "required_tools", "version",
+            *skill_specs.FIELDS)
 SERVER_ONLY = tuple(f for f in skill_packages._FIELDS if f not in ACCEPTED)
+#: A person's own scripts: Python only (the sandbox runs `python3`), under `scripts/`.
+KEPT_SCRIPT_SUFFIX = ".py"
+MAX_SCRIPTS = 8
+MAX_SCRIPT_BYTES = 64 * 1024
+_SCRIPT_NAME = re.compile(r"[a-z0-9_]{1,40}")
 
 BODY_MAX = next(
     m.max_length for m in SkillIn.model_fields["body"].metadata if getattr(m, "max_length", None)
@@ -111,6 +125,21 @@ class Excluded:
 
 
 @dataclass(slots=True)
+class Script:
+    name: str
+    source: str
+    summary: str = ""
+
+    @property
+    def size(self) -> int:
+        return len(self.source.encode("utf-8"))
+
+    def stored(self) -> dict:
+        return {"name": self.name, "source": self.source, "summary": self.summary,
+                "size": self.size}
+
+
+@dataclass(slots=True)
 class Preview:
     filename: str
     name: str = ""
@@ -123,6 +152,10 @@ class Preview:
     kept: list[str] = field(default_factory=list)
     excluded: list[Excluded] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
+    #: What the server runs for it, as `Skill.server_fields` stores it; None for nothing.
+    server: dict | None = None
+    #: Its own Python scripts, kept for the sandbox.
+    scripts: list[Script] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -160,6 +193,98 @@ def inspect(filename: str, data: bytes, known_tools: set[str] | None = None) -> 
         _check_tools(preview, known_tools)
         preview.findings.extend(scan_text(_scannable(preview), file=name))
     return preview
+
+
+def scan_script(source: str, *, file: str) -> list[Finding]:
+    """A person's script read without running it: what it reaches outside the sandbox's
+    working folder (network, other processes, files elsewhere, code built at run time) is a
+    warning; a secret or a hidden direction control blocks, as on sharing."""
+    out = [f for f in scan_text(source, file=file, sharing=True)
+           if f.code in ("secret_like", "hidden_characters", "encoded_blob")]
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [*out, Finding("block", "script_syntax",
+                              "파이썬 문법 오류가 있어 실행할 수 없습니다.", file, exc.lineno)]
+    seen: set[str] = set()
+
+    def flag(code: str, message: str, line: int | None) -> None:
+        if code not in seen:
+            seen.add(code)
+            out.append(Finding("warn", code, message, file, line))
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [
+                node.module or ""]
+            for name in names:
+                root = name.split(".")[0]
+                if root in _NETWORK_MODULES:
+                    flag("script_network", f"네트워크에 접속하는 모듈({root})을 씁니다. "
+                         "샌드박스에서는 외부로 나가지 못할 수 있습니다.", node.lineno)
+                elif root in _PROCESS_MODULES:
+                    flag("script_process", f"다른 프로그램을 실행하는 모듈({root})을 씁니다.",
+                         node.lineno)
+        elif isinstance(node, ast.Call):
+            called = _called(node.func)
+            if called in _PROCESS_CALLS:
+                flag("script_process", f"다른 프로그램을 실행합니다({called}).", node.lineno)
+            elif called in _DYNAMIC_CALLS:
+                flag("script_dynamic_code", f"실행 중에 만든 코드를 돌립니다({called}).",
+                     node.lineno)
+            elif _writes_outside(node, called):
+                flag("script_file_write", "작업 폴더 밖의 경로에 쓰거나 지웁니다.", node.lineno)
+    return out
+
+
+_NETWORK_MODULES = frozenset({"socket", "urllib", "urllib2", "urllib3", "http", "requests",
+                              "httpx", "aiohttp", "ftplib", "smtplib", "telnetlib", "websocket",
+                              "websockets", "paramiko", "ssl", "xmlrpc", "poplib", "imaplib"})
+_PROCESS_MODULES = frozenset({"subprocess", "pty", "multiprocessing", "ctypes", "signal"})
+_PROCESS_CALLS = frozenset({"os.system", "os.popen", "os.execv", "os.execve", "os.execl",
+                            "os.execlp", "os.execvp", "os.spawnl", "os.spawnv", "os.fork",
+                            "os.kill", "system", "popen"})
+_DYNAMIC_CALLS = frozenset({"eval", "exec", "compile", "__import__", "importlib.import_module"})
+_WRITE_CALLS = frozenset({"os.remove", "os.unlink", "os.rmdir", "os.removedirs", "os.rename",
+                          "os.replace", "os.chmod", "os.chown", "shutil.rmtree", "shutil.move",
+                          "shutil.copy", "shutil.copyfile", "shutil.copytree"})
+
+
+def _called(func: ast.expr) -> str:
+    if isinstance(func, ast.Name):
+        return func.id
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        return f"{func.value.id}.{func.attr}"
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return ""
+
+
+def _outside(node: ast.expr | None) -> bool:
+    """A literal path that leaves the working folder: absolute, home or `..`."""
+    if isinstance(node, ast.Call) and _called(node.func) in ("Path", "pathlib.Path") \
+            and node.args:
+        node = node.args[0]
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        return False
+    path = node.value.strip()
+    return path.startswith(("/", "~", "\\")) or ".." in path.replace("\\", "/").split("/") \
+        or bool(re.match(r"^[A-Za-z]:", path))
+
+
+def _writes_outside(node: ast.Call, called: str) -> bool:
+    if called == "open" and node.args:
+        mode = node.args[1] if len(node.args) > 1 else next(
+            (k.value for k in node.keywords if k.arg == "mode"), None)
+        writing = isinstance(mode, ast.Constant) and isinstance(mode.value, str) \
+            and any(c in mode.value for c in "wax+")
+        return writing and _outside(node.args[0])
+    if called in _WRITE_CALLS:
+        return any(_outside(arg) for arg in node.args)
+    if isinstance(node.func, ast.Attribute) and node.func.attr in (
+            "write_text", "write_bytes", "unlink", "rmdir", "mkdir", "touch"):
+        return _outside(node.func.value)
+    return False
 
 
 def scan_text(text: str, *, file: str = "", sharing: bool = False) -> list[Finding]:
@@ -226,6 +351,7 @@ def to_skill_md(
     required_tools: list[str] | None,
     version: str,
     body: str,
+    server: dict | None = None,
 ) -> str:
     """A skill row as a SKILL.md that `inspect` reads back to the same fields."""
     meta = {
@@ -236,6 +362,10 @@ def to_skill_md(
         "required_tools": list(required_tools or []),
         "version": version or "1.0.0",
     }
+    # Only the server fields that ask for something, in SKILL.md's own order.
+    for key, value in skill_specs.normalize(server).items():
+        if value:
+            meta[key] = value
     head = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False, width=10_000).strip()
     return f"---\n{head}\n---\n{body.strip()}\n"
 
@@ -267,6 +397,7 @@ def _read_skill_md(preview: Preview, text: str, file: str) -> None:
     if missing:
         preview.block("missing_fields", f"YAML 머리에 {', '.join(missing)} 가 없습니다.", file)
         return
+    _read_server_fields(preview, meta, file)
     ignored = [key for key in meta if key in SERVER_ONLY]
     if ignored:
         preview.warn(
@@ -313,11 +444,26 @@ def _read_skill_md(preview: Preview, text: str, file: str) -> None:
     preview.body = body
 
 
+def _read_server_fields(preview: Preview, meta: dict, file: str) -> None:
+    """The server fields, kept where they name shipped scripts; each refusal a warning."""
+    raw = {key: meta[key] for key in skill_specs.FIELDS if key in meta}
+    if not raw:
+        return
+    fields, errors = skill_specs.validate(raw, own_scripts=tuple(s.name for s in preview.scripts))
+    for error in errors:
+        preview.warn(error.code, f"{error} 이 항목은 뺐어요.", file)
+    preview.server = None if skill_specs.empty(fields) else fields
+
+
 def _check_tools(preview: Preview, known: set[str] | None) -> None:
     keep: list[str] = []
     dropped: list[str] = []
+    runs_scripts = bool(preview.scripts or (preview.server or {}).get("uses"))
     for tool in preview.required_tools:
-        if tool == "run_skill_script":
+        if tool == "run_skill_script" and runs_scripts:
+            # It runs its own scripts (in the sandbox) or shipped ones it names.
+            keep.append(tool)
+        elif tool == "run_skill_script":
             preview.warn(
                 "script_tool_dropped",
                 "올린 스킬의 스크립트는 실행하지 않아 run_skill_script 를 뺐어요.",
@@ -452,6 +598,10 @@ def _read_archive(preview: Preview, data: bytes) -> None:
                 skill_text = _decode(raw)
                 continue
             suffix = PurePosixPath(rel).suffix.lower()
+            if _own_script(rel) and not raw.startswith((b"\x7fELF", b"MZ")):
+                if not _keep_script(preview, rel, raw):
+                    return
+                continue
             if suffix in SCRIPT_SUFFIXES or raw.startswith((b"#!", b"\x7fELF", b"MZ")):
                 preview.excluded.append(Excluded(rel, "script"))
                 continue
@@ -462,16 +612,56 @@ def _read_archive(preview: Preview, data: bytes) -> None:
             texts[rel] = text
 
         if any(e.reason == "script" for e in preview.excluded):
-            preview.warn("scripts_excluded", "스크립트는 실행하지 않아 제외했어요.", file)
+            preview.warn("scripts_excluded",
+                         "파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.", file)
 
     if skill_text is None:
         preview.block("not_utf8", "SKILL.md 가 UTF-8 텍스트가 아닙니다.", file)
         return
+    preview.scripts.sort(key=lambda x: x.name)
     preview.kept.append(skill_rel)
     _read_skill_md(preview, skill_text, file)
     if not preview.ok:
         return
     _append_resources(preview, texts)
+
+
+def _own_script(rel: str) -> bool:
+    path = PurePosixPath(rel)
+    return len(path.parts) == 2 and path.parts[0] == "scripts" \
+        and path.suffix.lower() == KEPT_SCRIPT_SUFFIX
+
+
+def _keep_script(preview: Preview, rel: str, raw: bytes) -> bool:
+    """Keeps one `scripts/<name>.py` with its scan; False when it blocks the upload."""
+    file = preview.filename
+    stem = PurePosixPath(rel).stem
+    if stem.startswith("_"):
+        preview.excluded.append(Excluded(rel, "unused"))
+        return True
+    if not _SCRIPT_NAME.fullmatch(stem):
+        preview.block("script_name", "스크립트 이름은 영문 소문자·숫자·_ 로 40자까지입니다.", rel)
+        return False
+    if len(preview.scripts) >= MAX_SCRIPTS:
+        preview.block("too_many_scripts", f"스크립트는 {MAX_SCRIPTS}개까지 올릴 수 있습니다.", file)
+        return False
+    if len(raw) > MAX_SCRIPT_BYTES:
+        preview.block("script_too_large",
+                      f"스크립트 하나는 {MAX_SCRIPT_BYTES // 1024}KB까지입니다.", rel)
+        return False
+    source = _decode(raw)
+    if source is None:
+        preview.block("not_utf8", "스크립트가 UTF-8 텍스트가 아닙니다.", rel)
+        return False
+    findings = scan_script(source, file=rel)
+    preview.findings.extend(findings)
+    summary = ""
+    if not any(f.code == "script_syntax" for f in findings):
+        doc = ast.get_docstring(ast.parse(source)) or ""
+        summary = doc.strip().splitlines()[0][:200] if doc.strip() else ""
+    preview.scripts.append(Script(name=stem, source=source, summary=summary))
+    preview.kept.append(rel)
+    return True
 
 
 def _append_resources(preview: Preview, texts: dict[str, str]) -> None:

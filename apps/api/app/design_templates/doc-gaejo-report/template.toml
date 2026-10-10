@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "gaejo"
 cover_page = false
 # 본문 서체는 디자인의 서체(명조·고딕)를 따른다. 제목은 고딕 그대로.
 body_face = "design"
@@ -28,3 +31,22 @@ example_prompt_en = "Turn this into a Korean bullet-style (개조식) briefing f
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "addressee"
+label = "보고 대상"
+question = "누구에게 올리는 보고인가요? (예: 시설과장님)"
+why = "보고 대상이 없으면 머리의 보고 대상과 결정 요청의 높이를 정할 수 없습니다."
+placeholder = "[보고 대상]"
+detector = { type = "regex", pattern = '[가-힣]{1,10}(?:님|장|처장|과장|팀장|부장|원장|총장|이사|대표)\s{0,2}(?:께|에게|한테)|보고\s{0,2}대상|결재\s{0,2}(?:권자|라인|선)' }
+
+[[questions]]
+id = "reporter"
+label = "보고자"
+question = "보고자(부서·이름)는 누구인가요?"
+why = "머리의 보고자(부서) 칸에 들어갑니다."
+placeholder = "[보고자·부서]"
+detector = { type = "regex", pattern = '보고자|작성자|기안자|보고\s{0,2}부서|작성\s{0,2}부서|[가-힣]{2,10}(?:팀|과|실|처|센터|부)\s{0,2}[가-힣]{2,4}\s{0,2}(?:주무관|주임|대리|과장|팀장|연구원|사원|선생님)' }

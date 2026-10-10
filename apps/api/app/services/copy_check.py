@@ -18,14 +18,15 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import skill_packages, skill_scripts
+from app.services import skill_packages, skill_scripts, skill_specs
 
 log = logging.getLogger(__name__)
 
-#: The skills whose answers are copy: those whose SKILL.md says `copy_check: true`.
+#: The shipped skills whose answers are copy: those whose SKILL.md says `copy_check: true`.
+#: A turn's skills are read through their specs (`services/skill_specs.py`), a person's too.
 COPY_SKILLS = frozenset(k for k, p in skill_packages.packages().items() if p.copy_check)
 KEY = "copy-check"
 
@@ -34,26 +35,37 @@ Complete = Callable[[str, list[dict], str, int], Awaitable[tuple[str, dict]]]
 _THINK = re.compile(r"<think>[\s\S]{0,60000}?</think>", re.I)
 _MATERIAL_CHARS = 12000
 
+Specs = Mapping[str, skill_specs.Spec] | None
 
-def used_skills(outputs: list[str]) -> set[str]:
+
+def _copy(key: str, specs: Specs) -> skill_specs.Spec | None:
+    spec = skill_specs.resolve(key, specs)
+    return spec if spec is not None and spec.copy_check else None
+
+
+def used_skills(outputs: list[str], specs: Specs = None) -> set[str]:
     """Copy skills a `use_skill` call returned this turn: the output carries the body."""
     found = set()
-    for key in COPY_SKILLS:
-        package = skill_packages.package_for(key)
-        head = package.body.strip()[:160] if package else ""
+    candidates = {k: skill_specs.resolve(k, specs) for k in COPY_SKILLS}
+    candidates.update({k: s for k, s in (specs or {}).items() if s.copy_check})
+    for key, spec in candidates.items():
+        head = spec.body.strip()[:160] if spec is not None and spec.copy_check else ""
         if head and any(head in (out or "") for out in outputs):
             found.add(key)
     return found
 
 
-def on_turn(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None) -> set[str]:
+def on_turn(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None,
+            specs: Specs = None) -> set[str]:
     """The copy skills the turn wrote with: switched on, attached, or picked by `use_skill`."""
-    return (COPY_SKILLS & set(keys or ())) | used_skills(list(outputs or []))
+    return ({k for k in keys or () if _copy(k, specs)}
+            | used_skills(list(outputs or []), specs))
 
 
-def active(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None) -> bool:
+def active(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None,
+           specs: Specs = None) -> bool:
     """Whether the turn wrote with a copy skill."""
-    return bool(on_turn(keys, outputs))
+    return bool(on_turn(keys, outputs, specs))
 
 
 @dataclass(slots=True)
@@ -201,15 +213,16 @@ NARROWED = {k: p.copy_kinds for k, p in skill_packages.packages().items() if p.c
 
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
               judge: str, api_key: str, usage: dict | None = None,
-              skills: frozenset[str] | set[str] = frozenset()) -> Outcome:
+              skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None) -> Outcome:
     """Check, fix by code, rewrite once with what code cannot fix, check again."""
     claims, length = _claims(), _length()
     material = "\n".join(x for x in (request, material) if x and x.strip())
     rows = length.targets(request)
     options: dict = {"category": claims.category_of(material)}
-    on = set(skills) & COPY_SKILLS - {KEY}
-    if on and on <= set(NARROWED):
-        options["kinds"] = list(dict.fromkeys(k for key in sorted(on) for k in NARROWED[key]))
+    on = {k: spec for k in set(skills) - {KEY} if (spec := _copy(k, specs)) is not None}
+    if on and all(spec.copy_kinds for spec in on.values()):
+        options["kinds"] = list(dict.fromkeys(
+            kind for key in sorted(on) for kind in on[key].copy_kinds))
     outcome = Outcome(answer)
 
     reply = await _judged(answer, material, rows, complete=complete, judge=judge or model,

@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "client_proposal"
 
 # 규칙은 서식 지침과 에이전트 지침에 둔다. 견적·요구 ID 검사는 뒤에 서버 훅으로 붙는다.
 skills = []
@@ -24,3 +27,38 @@ example_prompt_en = "Write a client proposal from the RFP and meeting notes belo
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "client"
+label = "고객사"
+question = "제안서를 받을 고객사는 어디인가요?"
+why = "자료에서 고객사 이름을 찾지 못했습니다. 표지와 본문 수신처에 들어갑니다."
+placeholder = "[고객사]"
+detector = { type = "builtin", name = "client" }
+
+[[questions]]
+id = "period"
+label = "사업 기간"
+question = "사업(과업) 기간은 얼마인가요?"
+why = "기간이 없으면 일정과 투입 MM, 견적을 맞출 수 없습니다."
+placeholder = "[사업 기간]"
+detector = { type = "builtin", name = "period" }
+
+[[questions]]
+id = "staffing"
+label = "투입 인력·MM·단가"
+question = "투입 인력(역할·인원·MM)과 단가를 알려 주세요."
+why = "견적을 코드로 계산하려면 인력·MM·단가(또는 총액)가 필요합니다. 없으면 금액을 빈칸으로 둡니다."
+placeholder = "[투입 인력·단가]"
+detector = { type = "builtin", name = "staffing" }
+
+[[questions]]
+id = "vat"
+label = "부가세 기준"
+question = "금액은 부가세 포함인가요, 별도인가요?"
+why = "부가세 기준이 없으면 예산과 견적을 같은 기준으로 비교할 수 없습니다."
+placeholder = "[부가세 기준]"
+detector = { type = "builtin", name = "vat" }

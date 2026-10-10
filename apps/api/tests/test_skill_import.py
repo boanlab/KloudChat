@@ -1,7 +1,8 @@
 """Uploading a skill: SKILL.md or a .zip/.skill around one, read safely and scanned.
 
-Archives are read in memory within fixed limits; scripts are dropped and never stored or
-run; the text scan warns (and blocks on sharing); a dry run writes nothing.
+Archives are read in memory within fixed limits; Python scripts under `scripts/` are kept in
+the row for the sandbox (scanned, never written to disk or imported), other scripts are
+dropped; the text scan warns (and blocks on sharing); a dry run writes nothing.
 """
 
 from __future__ import annotations
@@ -77,7 +78,9 @@ def test_server_only_fields_are_ignored_with_a_warning():
     )
     preview = skill_import.inspect("x.md", text.encode(), {"web_search"})
     assert preview.ok
-    assert "server_field_ignored" in _codes(preview, "warn")
+    # `status` is the catalogue's; an entry that names no shipped check is dropped.
+    assert {"server_field_ignored", "skill_entry_unknown"} <= _codes(preview, "warn")
+    assert preview.server is None
 
 
 @pytest.mark.parametrize(
@@ -116,13 +119,17 @@ def test_a_zip_with_one_top_folder_is_read_and_resources_appended():
     )
     preview = skill_import.inspect("meeting.skill", data, {"web_search"})
     assert preview.ok, preview.findings
-    assert preview.kept == ["SKILL.md", "resources/guide.md"]
+    assert preview.kept == ["scripts/run.py", "SKILL.md", "resources/guide.md"]
     assert skill_import.RESOURCES_HEADING in preview.body and "결정은 굵게" in preview.body
     excluded = {e.path: e.reason for e in preview.excluded}
-    assert excluded["scripts/run.py"] == "script" and excluded["tool.sh"] == "script"
+    # The Python script is kept for the sandbox, with its scan; a shell script is not.
+    assert "scripts/run.py" not in excluded and excluded["tool.sh"] == "script"
+    assert [x.name for x in preview.scripts] == ["run"]
     assert excluded["logo.png"] == "binary" and excluded["resources/table.csv"] == "unused"
     script = next(f for f in preview.findings if f.code == "scripts_excluded")
-    assert script.severity == "warn" and script.message == "스크립트는 실행하지 않아 제외했어요."
+    assert script.severity == "warn"
+    process = next(f for f in preview.findings if f.code == "script_process")
+    assert process.severity == "warn" and process.file == "scripts/run.py" and process.line == 2
     # Nothing of the script reaches the skill text.
     assert "rm -rf" not in preview.body
 
@@ -327,7 +334,9 @@ async def test_imported_scripts_never_reach_the_package_loader_or_the_sandbox(db
     data = _zip({"evil-pack/SKILL.md": text, "evil-pack/scripts/evil.py": "raise SystemExit"})
     out = await _import(db, me, [_upload("evil.skill", data)])
     row = await db.get(Skill, out.created[0].id)
-    assert row.required_tools == [] and "SystemExit" not in row.body
+    # Kept in the row for the sandbox, never in the text, on disk or among the packages.
+    assert row.required_tools == ["run_skill_script"] and "SystemExit" not in row.body
+    assert [f["name"] for f in row.script_files] == ["evil"]
     assert out.created[0].scripts == []
 
     skill_packages.packages.cache_clear()

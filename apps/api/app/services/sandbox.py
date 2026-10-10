@@ -304,6 +304,19 @@ async def skill_refs(sandbox: Client, package: SkillPackage, *, fresh: bool = Fa
     return refs
 
 
+async def own_refs(sandbox: Client, state: dict[str, Any], folder: str,
+                   files: dict[str, str]) -> list[dict]:
+    """A person's own skill scripts mounted read-only under `skills/<folder>/scripts/`, once
+    per turn. They run here only, at `run_code`'s trust; the server never imports them."""
+    cache = state.setdefault("own_refs", {})
+    if folder not in cache:
+        cache[folder] = await sandbox.upload(
+            [(f"skills/{folder}/scripts/{name}.py", source.encode("utf-8"))
+             for name, source in sorted(files.items())],
+            kind="skill", read_only=True)
+    return cache[folder]
+
+
 async def run(
     sandbox: Client,
     state: dict[str, Any],

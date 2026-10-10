@@ -68,6 +68,11 @@ def _agent_specs() -> list[dict]:
         for name in ("guide", "system_prompt"):
             spec[name] = str(spec.get(name) or "").strip()
         _compile_bundles(spec)
+        if "questions" in spec:
+            # 빠진 정보 질문, checked the way the agent form checks a person's.
+            from app.services import gap_questions
+
+            spec["questions"] = gap_questions.clean(spec["questions"])
         specs.append(spec)
     return sorted(specs, key=lambda spec: (spec.get("order", 99), spec["key"]))
 
@@ -94,6 +99,12 @@ def offered_agents(*, drafts: bool = False) -> list[dict]:
 
 def agent_spec(key: str | None) -> dict | None:
     return next((s for s in _AGENTS if s["key"] == key), None) if key else None
+
+
+def _questions(spec: dict) -> list[dict] | None:
+    """A shipped agent's own 빠진 정보 질문 as its row stores them; None when it declares none
+    (its 서식's are asked)."""
+    return [dict(q) for q in spec["questions"]] if spec.get("questions") else None
 
 
 def agent_checks(key: str | None) -> tuple[str, ...]:
@@ -126,6 +137,18 @@ _DESIGNS: list[dict] = [
         "craft": ["restraint"],
     },
 ]
+
+
+def _server_fields(key: str) -> dict | None:
+    """A shipped package's server fields as its row stores them; None when it asks for
+    nothing."""
+    from app.services import skill_specs
+
+    package = skill_packages.package_for(key)
+    if package is None:
+        return None
+    fields = skill_specs.package_fields(package)
+    return None if skill_specs.empty(fields) else fields
 
 
 def skill_name(key: str) -> str:
@@ -244,6 +267,8 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 skill.estimated_tokens = estimate_tokens(
                     skill.when_to_use, skill.body, skill.description
                 )
+            # What the server runs for it follows the package, on the row like a person's.
+            skill.server_fields = _server_fields(key)
             db.add(skill)
             ids[key] = skill.id
             continue
@@ -261,6 +286,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             version=spec.get("version", "1.0.0"),
             source=SkillSource.built_in,
             visibility=Visibility.private if spec.get("draft") else Visibility.org,
+            server_fields=_server_fields(key),
         )
         db.add(skill)
         ids[key] = skill.id
@@ -324,6 +350,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.check_skills = list(spec.get("checks") or [])
             agent.check_options = dict(spec.get("check_options") or {}) or None
             agent.bundles = list(spec.get("bundles") or [])
+            agent.gap_questions = _questions(spec)
             agent.temperature = spec.get("temperature", 0.5)
             agent.color = spec.get("color", "#5b53e8")
             agent.retired = False
@@ -357,6 +384,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 check_skills=list(spec.get("checks") or []),
                 check_options=dict(spec.get("check_options") or {}) or None,
                 bundles=list(spec.get("bundles") or []),
+                gap_questions=_questions(spec),
                 # Never inherit: missing or `[]` denies every tool, a list is a hard allowlist.
                 tools=list(spec.get("tools", [])),
                 temperature=spec.get("temperature", 0.5),

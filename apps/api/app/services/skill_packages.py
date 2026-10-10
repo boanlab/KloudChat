@@ -23,7 +23,7 @@ RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
            "stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
-           "own_stage")
+           "own_stage", "uses")
 #: A check skill's stage: run by the server before (`pre`) or after (`post`) writing.
 STAGES = ("pre", "post")
 

@@ -917,6 +917,28 @@ export interface ProjectFile {
   error?: string | null
 }
 
+/** A skill's server fields (`services/skill_specs.py`): each names shipped scripts only. */
+export interface SkillServer {
+  stage: '' | 'pre' | 'post'
+  entry: string
+  postCheck: string[]
+  /** True, or what the judge looks at in particular. */
+  postJudge: boolean | string
+  copyCheck: boolean
+  copyKinds: string[]
+  tables: boolean
+  ownStage: boolean
+  uses: string[]
+}
+
+/** One of a person's own skill scripts: run only in the code sandbox. */
+export interface SkillScript {
+  name: string
+  summary: string
+  size: number
+  source: string
+}
+
 export interface Skill {
   id: string
   name: string
@@ -940,6 +962,13 @@ export interface Skill {
   updatedAt: string
   /** Fixed scripts its package ships; empty for a plain skill. */
   scripts?: string[]
+  /** What the server runs for it (shipped scripts only); a shipped copy shows its package's. */
+  server?: SkillServer
+  /** Its own scripts, run only in the sandbox. */
+  scriptFiles?: SkillScript[]
+  /** Sharing with scripts: '' · pending · approved · rejected. */
+  review?: string
+  reviewNote?: string
 }
 
 /* ── MCP connectors ─────────────────────────────────────────────────── */
@@ -1051,6 +1080,43 @@ export interface Agent {
   bundles?: BundleSelection[] | null
   /** 진행 과정 as the server reads it. */
   process?: AgentProcess | null
+  /** 빠진 정보 질문 of its own; null asks what its base asks. */
+  gapQuestions?: GapQuestion[] | null
+  /** What its 템플릿 asks — read only in the form, asked alongside its own. */
+  inheritedQuestions?: GapQuestion[]
+  /** With none of its own, what its base asks: the form's own list starts from these. */
+  baseQuestions?: GapQuestion[]
+}
+
+/** How a 빠진 정보 질문 decides that the material already answers it. */
+export interface GapDetector {
+  type: 'builtin' | 'keyword' | 'regex' | 'judge'
+  /** builtin: one of the shipped detectors. */
+  name?: string
+  /** keyword: any of these present answers it. */
+  words?: string[]
+  /** keyword: ask only when the request has one of these words; regex: a pattern. */
+  when?: string[] | string
+  /** regex: a bounded pattern. */
+  pattern?: string
+}
+
+/** The bases, the 묶음 a person may tick, and the built-in 빠진 정보 detectors. */
+export interface ProcessCatalogue {
+  bases: AgentBase[]
+  bundles: Bundle[]
+  exportFormats: string[]
+  gapDetectors?: { name: string; label: string }[]
+}
+
+/** One 빠진 정보 질문 (`services/gap_questions.py`). */
+export interface GapQuestion {
+  id: string
+  label: string
+  question: string
+  why: string
+  placeholder: string
+  detector: GapDetector
 }
 
 /** One ticked 묶음 and its items' ticks (an export's tick is its format, "" for off). */

@@ -3,6 +3,7 @@ import { useRef, useState, type DragEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { BackLink, HubTopBar } from '@/components/customize/DetailLayout'
+import { ScriptRow } from '@/components/customize/SkillServerFields'
 import { Badge, Button, LoadingState } from '@/components/ui'
 import { errorMessage, skillsApi, type SkillImportFinding, type SkillImportPreview } from '@/lib/api'
 import { useT } from '@/lib/useT'
@@ -33,12 +34,27 @@ const FINDING_TEXT: Record<string, string> = {
   no_skill_md: '압축 안에 SKILL.md 가 없습니다.',
   multiple_skill_md: '압축 안에 SKILL.md 가 여러 개입니다. 하나만 넣어 주세요.',
   skill_md_not_at_root: 'SKILL.md 는 압축 맨 위나 폴더 하나 바로 안에 있어야 합니다.',
-  server_field_ignored: '서버 전용 항목(stage, entry 등)은 무시했어요.',
+  server_field_ignored: '카탈로그 전용 항목(status)은 무시했어요.',
   unknown_field: '모르는 YAML 항목은 무시했어요.',
   unknown_kind: '모르는 kinds 값은 뺐어요.',
-  script_tool_dropped: '올린 스킬의 스크립트는 실행하지 않아 run_skill_script 를 뺐어요.',
+  script_tool_dropped: '실행할 스크립트가 없어 run_skill_script 를 뺐어요.',
   unknown_tools: '모르는 도구는 뺐어요.',
-  scripts_excluded: '스크립트는 실행하지 않아 제외했어요.',
+  scripts_excluded: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.',
+  script_network: '네트워크에 접속하는 모듈을 씁니다. 샌드박스에서는 외부로 나가지 못할 수 있습니다.',
+  script_process: '다른 프로그램을 실행합니다.',
+  script_file_write: '작업 폴더 밖의 경로에 쓰거나 지웁니다.',
+  script_dynamic_code: '실행 중에 만든 코드를 돌립니다.',
+  script_syntax: '파이썬 문법 오류가 있어 실행할 수 없습니다.',
+  script_name: '스크립트 이름은 영문 소문자·숫자·_ 로 40자까지입니다.',
+  too_many_scripts: '스크립트는 8개까지 올릴 수 있습니다.',
+  script_too_large: '스크립트 하나는 64KB까지입니다.',
+  skill_stage_unknown: 'stage 는 pre 또는 post 만 쓸 수 있어 뺐어요.',
+  skill_entry_unknown: '기본 제공 검사가 아닌 entry 는 뺐어요.',
+  skill_entry_without_stage: 'stage 없는 entry 는 뺐어요.',
+  skill_post_check_unknown: '기본 제공 스크립트가 아닌 post_check 는 뺐어요.',
+  skill_post_check_own_script: '직접 올린 스크립트는 post_check 로 쓸 수 없어 뺐어요. run_skill_script 로 샌드박스에서만 실행됩니다.',
+  skill_script_unknown: '모르는 스크립트 이름은 uses 에서 뺐어요.',
+  skill_copy_kind_unknown: '모르는 copy_kinds 값은 뺐어요.',
   resources_skipped: '본문 한도를 넘어 일부 참고 자료는 넣지 못했어요.',
   instruction_override: '이전 지시를 무시하라는 식의 문장이 있습니다.',
   data_exfiltration: '자료를 외부 주소나 메일로 보내라는 지시가 있습니다.',
@@ -48,7 +64,7 @@ const FINDING_TEXT: Record<string, string> = {
 }
 
 const EXCLUDED_TEXT: Record<string, string> = {
-  script: '스크립트 · 실행하지 않음',
+  script: '파이썬이 아닌 스크립트 · 제외',
   binary: '텍스트가 아님',
   unused: '쓰지 않는 파일',
   too_long: '본문 한도 초과',
@@ -190,7 +206,7 @@ export function SkillUploadPage() {
                 <span className="text-sm font-normal text-muted">{t('업로드할 때 실행')}</span>
               </p>
               <p className="mt-0.5 text-sm text-muted">
-                {t('경로·크기·압축 폭탄을 검사하고, 지시 무시·외부 전송·숨은 문자·키처럼 보이는 문자열을 찾습니다. 스크립트는 저장하거나 실행하지 않습니다. 문장 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다.')}
+                {t('경로·크기·압축 폭탄을 검사하고, 지시 무시·외부 전송·숨은 문자·키처럼 보이는 문자열을 찾습니다. scripts/ 의 파이썬 스크립트는 네트워크·다른 프로그램 실행·밖의 파일 쓰기를 따로 살피고, 코드 실행 샌드박스에서만 돌립니다. 검사는 휴리스틱이라 모든 위험을 찾지는 못합니다.')}
               </p>
             </div>
           </div>
@@ -298,6 +314,22 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
         </ul>
       )}
 
+      {preview?.server && <ServerSummary server={preview.server} />}
+
+      {preview && (preview.scripts?.length ?? 0) > 0 && (
+        <div className="mt-3 space-y-1.5" data-testid="skill-preview-scripts">
+          <p className="text-sm font-medium text-muted">
+            {t('스크립트 {n}개 · 코드 실행 샌드박스에서만 실행').replace('{n}', String(preview.scripts?.length ?? 0))}
+          </p>
+          <ul className="space-y-1.5">
+            {preview.scripts?.map((script) => (
+              <ScriptRow key={script.name} script={script} />
+            ))}
+          </ul>
+          <p className="text-sm text-faint">{t('스크립트가 있는 스킬은 관리자가 승인한 뒤에 다른 사람에게 공유됩니다.')}</p>
+        </div>
+      )}
+
       {preview && archive && (preview.kept.length > 0 || preview.excluded.length > 0) && (
         <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
           <div className="min-w-0">
@@ -329,6 +361,31 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
   )
 }
 
+/** What the server would run for the skill, as its SKILL.md asked and the allowlists kept. */
+function ServerSummary({ server }: { server: NonNullable<SkillImportPreview['server']> }) {
+  const t = useT()
+  const rows: [string, string][] = []
+  if (server.postCheck.length) rows.push([t('답 점검 스크립트'), server.postCheck.join(', ')])
+  if (server.postJudge) rows.push([t('자료에 없는 문장도 모델이 찾기'), typeof server.postJudge === 'string' ? server.postJudge : t('켜짐')])
+  if (server.copyCheck) rows.push([t('카피로 점검하기'), server.copyKinds.join(', ') || t('모두')])
+  if (server.tables) rows.push([t('비교표 칸마다 출처 확인'), t('켜짐')])
+  if (server.stage) rows.push([t('검사 스킬로 쓰기'), `${server.stage} · ${server.entry}`])
+  if (server.uses.length) rows.push([t('스킬이 실행할 스크립트'), server.uses.join(', ')])
+  return (
+    <div className="mt-3 rounded-control border border-line px-3 py-2 text-sm" data-testid="skill-preview-server">
+      <p className="mb-1 font-medium text-muted">{t('서버가 돌리는 점검')}</p>
+      <dl className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[auto_1fr]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-faint">{label}</dt>
+            <dd className="min-w-0 break-words font-mono text-fg">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 function FindingRow({ finding }: { finding: SkillImportFinding }) {
   const t = useT()
   const block = finding.severity === 'block'
@@ -346,6 +403,7 @@ function FindingRow({ finding }: { finding: SkillImportFinding }) {
         <span className="font-medium">{block ? t('막음') : t('주의')}</span>
         {' · '}
         {known ? t(known) : finding.message}
+        {finding.file && finding.file.includes('/') ? <span className="font-mono text-faint"> · {finding.file}</span> : null}
         {finding.line ? <span className="text-faint"> · {t('{n}번째 줄').replace('{n}', String(finding.line))}</span> : null}
       </span>
     </li>

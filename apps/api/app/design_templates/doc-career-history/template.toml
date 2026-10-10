@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "career_history"
 cover_page = false
 
 # 규칙은 서식 지침과 에이전트 지침에 둔다. 기간 계산·금지어 검사는 뒤에 서버 훅으로 붙는다.
@@ -25,3 +28,30 @@ example_prompt_en = "Write a Korean career history (경력기술서) from the no
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "company_role"
+label = "지원 회사·직무"
+question = "어느 회사의 어떤 직무에 지원하나요?"
+why = "회사와 직무를 모르면 지원 동기와 경험 연결을 쓸 수 없습니다."
+placeholder = "[지원 회사·직무]"
+detector = { type = "regex", pattern = '지원\s{0,2}(?:회사|기업|직무|분야|부문)?\s{0,2}[:：]|채용\s{0,2}공고|공고|모집|지원(?:할|하려|하는|합니다|해)|입사\s{0,2}(?:지원|하려)|\(주\)|㈜|주식회사' }
+
+[[questions]]
+id = "periods"
+label = "경력별 기간"
+question = "회사별 재직 기간(시작·끝 연월)을 알려 주세요."
+why = "총 경력은 기간으로 계산합니다. 기간이 없으면 계산하지 않고 빈칸으로 둡니다."
+placeholder = "[기간]"
+detector = { type = "builtin", name = "career_periods" }
+
+[[questions]]
+id = "metrics"
+label = "성과 수치"
+question = "경험별 성과를 보여 줄 수치가 있으면 알려 주세요(없으면 수치 없이 씁니다)."
+why = "자료에 수치가 하나도 없습니다. 수치를 지어 넣지 않으므로, 있으면 알려 주셔야 들어갑니다."
+placeholder = "[구체적 성과 수치]"
+detector = { type = "builtin", name = "career_metrics" }

@@ -56,3 +56,38 @@ system_prompt = '''
 6. Structure: 경력 요약 (total experience, core competencies in 3 lines) → per company (기간·소속·직급·역할) → per project (기간·역할·기술·성과). Within a company, put projects relevant to the target job first, but do not change chronology or affiliation. Domain experience (e.g. 결제) counts only the time actually in that domain.
 7. Do not attach a character-count table. Include personal details only if they are in the material; leave blanks as the item name in brackets, like ‘[연락처]’.
 '''
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "question"
+label = "자기소개서 문항"
+question = "어떤 문항에 답하나요? (문항 원문)"
+why = "문항이 없으면 무엇에 답할지 정할 수 없습니다."
+placeholder = ""
+detector = { type = "regex", pattern = '문항|질문|^\s{0,4}\d\s{0,2}[.)]\s|쓰세요|쓰시오|기술하시오|서술|경험을\s{0,2}(?:쓰|적)' }
+
+[[questions]]
+id = "company_role"
+label = "지원 회사·직무"
+question = "어느 회사의 어떤 직무에 지원하나요?"
+why = "문항이 지원 동기·입사 후 계획을 묻는데 회사와 직무가 자료에 없습니다."
+placeholder = "[지원 회사·직무]"
+detector = { type = "builtin", name = "letter_company" }
+
+[[questions]]
+id = "length_rule"
+label = "글자 수 규칙"
+question = "문항별 글자 수 제한과 세는 법(공백 포함·바이트)을 알려 주세요."
+why = "글자 수 기준이 없으면 분량을 맞출 수 없습니다."
+placeholder = ""
+detector = { type = "builtin", name = "length_rule" }
+
+[[questions]]
+id = "metrics"
+label = "성과 수치"
+question = "경험별 성과를 보여 줄 수치가 있으면 알려 주세요(없으면 수치 없이 씁니다)."
+why = "자료에 수치가 하나도 없습니다. 수치를 지어 넣지 않으므로, 있으면 알려 주셔야 들어갑니다."
+placeholder = "[구체적 성과 수치]"
+detector = { type = "builtin", name = "career_metrics" }

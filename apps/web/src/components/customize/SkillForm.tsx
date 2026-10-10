@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Skill } from '@/types'
 import { Block, Group } from './AgentForm'
-import { blankSkill, type SkillDraft } from './formModel'
+import { blankServer, blankSkill, type SkillDraft } from './formModel'
 import { ToolPicker } from './Pickers'
+import { SkillServerFields } from './SkillServerFields'
 
 /** A monospace editor with line numbers; the numbers scroll with the text. */
 export function LineNumberedEditor({
@@ -88,6 +89,10 @@ export function SkillForm({
         }
       : blankSkill(),
   )
+  // What the server runs for it; sent only once changed, so a shipped copy keeps following
+  // its package.
+  const [server, setServer] = useState(() => current?.server ?? blankServer())
+  const [serverDirty, setServerDirty] = useState(false)
   // 사용 시점 follows the description until someone writes it.
   const [ownWhen, setOwnWhen] = useState(!!current && current.whenToUse !== current.description)
   const [saving, setSaving] = useState(false)
@@ -117,7 +122,9 @@ export function SkillForm({
         updatedAt: new Date().toISOString(),
         ...draft,
         whenToUse: ownWhen ? draft.whenToUse : draft.description,
+        ...(serverDirty ? { server } : {}),
       })
+      setServerDirty(false)
       setDone(true)
       onSaved(saved)
     } catch (err) {
@@ -187,6 +194,33 @@ export function SkillForm({
             />
           </Block>
         )}
+      </Group>
+
+      <Group
+        title={t('서버가 돌리는 점검')}
+        hint={t('기본 제공 스크립트로 답을 점검하거나, 검사 스킬로 쓰거나, 스크립트를 실행합니다.')}
+        testId="skill-server-group"
+        open={serverDirty || !!current?.scriptFiles?.length || undefined}
+      >
+        {current?.review === 'pending' && (
+          <p role="status" className="rounded-control border border-warn/30 bg-warn/10 px-3 py-2 text-sm text-warn">
+            {t('스크립트가 있어 관리자가 승인한 뒤에 다른 사람에게 공유됩니다.')}
+          </p>
+        )}
+        {current?.review === 'rejected' && (
+          <p role="status" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {t('공유가 반려됐습니다.')} {current.reviewNote}
+          </p>
+        )}
+        <SkillServerFields
+          value={server}
+          scripts={current?.scriptFiles ?? []}
+          onChange={(next) => {
+            setDone(false)
+            setServer(next)
+            setServerDirty(true)
+          }}
+        />
       </Group>
 
       <div className={cn('sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-line bg-bg/95 px-4 py-3 sm:-mx-6 sm:px-6', aboveBottomBar && 'max-sm:bottom-[4.25rem]')}>

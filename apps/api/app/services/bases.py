@@ -50,7 +50,8 @@ class Base:
     bundles: tuple[dict, ...] = ()
     #: The format checks its flow runs (what 형식 검사 means for it), by name.
     format_checks: tuple[str, ...] = ()
-    #: Whether its flow has a fact list to ask from (빠진 정보 먼저 묻기 can ask anything).
+    #: Whether it ships 빠진 정보 질문 (its 서식's or its own); a person's agent on it may add
+    #: its own, so 빠진 정보 먼저 묻기 is offered either way.
     asks: bool = False
     draft: bool = False
 
@@ -80,7 +81,7 @@ def _pipeline_for(spec: dict):
 
 def _base(spec: dict) -> Base:
     from app.routers.pipelines import check_name
-    from app.services import check_skills
+    from app.services import gap_questions
 
     surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
     pipe = _pipeline_for(spec)
@@ -91,7 +92,9 @@ def _base(spec: dict) -> Base:
         surface=surface, doc_format=spec.get("doc_format") or None,
         template=spec.get("template") or None, steps=steps,
         bundles=tuple(spec.get("bundles") or ()), format_checks=checks,
-        asks=bool(check_skills.fact_set(spec.get("doc_format"), spec["key"])),
+        asks=bool(gap_questions.resolve(own=None, base_key=spec["key"],
+                                        template_id=spec.get("template"),
+                                        doc_format=spec.get("doc_format"))),
         draft=bool(spec.get("draft")),
     )
 

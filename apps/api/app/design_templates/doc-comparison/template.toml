@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "comparison"
 cover_page = false
 
 # 규칙은 서식 지침과 에이전트 지침에 둔다. 점수 재계산·빈칸 검사는 뒤에 서버 훅으로 붙는다.
@@ -25,3 +28,22 @@ example_prompt_en = "Turn the options below into a comparison report. Apply the 
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "prices"
+label = "대안별 가격"
+question = "대안별 가격(요금·견적)을 알려 주세요."
+why = "비용으로 고르라고 하셨는데 자료에 금액이 없습니다. 가격을 지어 넣지 않습니다."
+placeholder = "[가격]"
+detector = { type = "builtin", name = "prices" }
+
+[[questions]]
+id = "musts"
+label = "필수 조건"
+question = "꼭 맞아야 하는 조건은 무엇인가요?"
+why = "필수 조건으로 거르라고 하셨는데 어떤 조건인지 자료에 없습니다."
+placeholder = "[필수 조건]"
+detector = { type = "builtin", name = "musts" }

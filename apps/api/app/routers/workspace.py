@@ -199,19 +199,39 @@ async def _validate_tool_names(
 # ══ projects ═══════════════════════════════════════════════════════════
 
 
-def _validated_checks(values: dict[str, Any]) -> dict[str, Any]:
-    """`check_skills` as check skill keys the server can run, each once; `check_options`
-    as the known switches that are on."""
-    from app.services import check_skills, skill_packages
+async def _validated_checks(db: DbSession, user: User,
+                            values: dict[str, Any]) -> dict[str, Any]:
+    """`check_skills` as check skill keys the server can run, each once — a shipped check by
+    its key, or the caller's own check skill as `skill:<id>`; `check_options` as the known
+    switches that are on."""
+    from app.services import check_skills, skill_packages, skill_specs
 
     out: dict[str, Any] = {}
     if "check_skills" in values and values["check_skills"] is not None:
         keys = [str(k) for k in values["check_skills"]]
-        if any(not ((p := skill_packages.package_for(k)) and p.stage) for k in keys):
+        own = [k.removeprefix(skill_specs.USER) for k in keys if k.startswith(skill_specs.USER)]
+        mine = {row.id: row for row in (await db.exec(select(Skill).where(
+            col(Skill.id).in_(own), Skill.owner_id == user.id))).all()} if own else {}
+
+        def runnable(key: str) -> bool:
+            if key.startswith(skill_specs.USER):
+                row = mine.get(key.removeprefix(skill_specs.USER))
+                return row is not None and bool(skill_specs.of_row(row).stage)
+            return bool((p := skill_packages.package_for(key)) and p.stage)
+
+        if not all(runnable(k) for k in keys):
             raise HTTPException(status_code=422, detail="check_skill_unknown")
         out["check_skills"] = list(dict.fromkeys(keys))
     if "check_options" in values:
         out["check_options"] = check_skills.clean_options(values["check_options"]) or None
+    if "gap_questions" in values:
+        from app.services import gap_questions
+
+        raw = values["gap_questions"]
+        try:
+            out["gap_questions"] = None if raw is None else gap_questions.clean(raw)
+        except gap_questions.QuestionError as exc:
+            raise HTTPException(status_code=422, detail=exc.code) from exc
     return out
 
 
@@ -1851,6 +1871,12 @@ async def _install_skill(db: DbSession, user: User, origin: Skill) -> Skill:
         enabled=True,
         visibility=Visibility.private,
         origin_id=origin.id,
+        # What the server runs and the scripts the sandbox runs travel with the copy; a
+        # shared skill with scripts was approved before anyone could take it. A shipped
+        # skill's copy stores none: it follows its package as the catalogue row does.
+        server_fields=dict(origin.server_fields)
+        if origin.server_fields is not None and not origin.catalog_key else None,
+        script_files=[dict(f) for f in origin.script_files or []] or None,
     )
     db.add(copy)
     origin.installs += 1
@@ -1908,10 +1934,32 @@ async def install_skill(skill_id: str, user: CurrentUser, db: DbSession):
     return SkillOut.of(copy)
 
 
+def _server_fields(raw: Any, *, own_scripts: tuple[str, ...] = ()) -> dict[str, Any] | None:
+    """A person's `server` fields checked against the shipped allowlists; 422 on the first
+    refusal. None when they ask the server for nothing."""
+    from app.services import skill_specs
+
+    data = raw.model_dump() if hasattr(raw, "model_dump") else raw
+    fields, errors = skill_specs.validate(data, own_scripts=own_scripts)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors[0].code)
+    return None if skill_specs.empty(fields) else fields
+
+
+@router.get("/skills/server-catalogue")
+async def skill_server_catalogue(user: CurrentUser):
+    """What a skill's server fields may name: the shipped post checks, check entries by stage,
+    scripts and copy kinds, each with the shipped skill that uses it."""
+    from app.services import skill_specs
+
+    return skill_specs.catalogue()
+
+
 @router.post("/skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
 async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
     await _validate_tool_names(db, user, payload.required_tools)
-    values = payload.model_dump()
+    values = payload.model_dump(exclude={"server"})
+    values["server_fields"] = _server_fields(payload.server) if payload.server else None
     skill = Skill(
         owner_id=user.id,
         slug=_slug(payload.name),
@@ -1927,6 +1975,11 @@ async def create_skill(payload: SkillIn, user: CurrentUser, db: DbSession):
 
 
 _SHARED_TEXT = ("visibility", "name", "description", "when_to_use", "body")
+
+
+def _script_names(skill: Skill) -> tuple[str, ...]:
+    return tuple(str(f.get("name") or "") for f in skill.script_files or []
+                 if isinstance(f, dict))
 
 
 def _check_skill_share(skill: Skill, changes: dict[str, Any]) -> None:
@@ -1957,6 +2010,17 @@ async def patch_skill(skill_id: str, payload: SkillIn, user: CurrentUser, db: Db
             grandfathered=set(skill.required_tools or []),
         )
     _check_skill_share(skill, changes)
+    if "server" in changes:
+        changes.pop("server")
+        skill.server_fields = _server_fields(
+            payload.server or {}, own_scripts=_script_names(skill))
+    if changes.get("visibility") == Visibility.org and skill.script_files \
+            and skill.review != "approved":
+        # A skill with scripts reaches others only once an administrator approved it.
+        changes["visibility"] = Visibility.private
+        skill.review, skill.review_note = "pending", ""
+    elif changes.get("visibility") == Visibility.private and skill.review == "pending":
+        skill.review = ""
     for field, value in changes.items():
         setattr(skill, field, value)
     skill.slug = _slug(skill.name)
@@ -2153,7 +2217,7 @@ async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dic
         ).all()
     } if ids else {}
     named = {a.id: compose.AgentInfo(id=a.id, name=a.name, output=_output(a)) for a in rows}
-    known = await bundles_named(db, [s for a in rows for s in (a.bundles or [])])
+    known = await bundles_named(db, [s for a in rows for s in (a.bundles or [])], viewer_id)
     out = {}
     for agent in rows:
         row = pipes.get(agent.pipeline_id or "")
@@ -2179,7 +2243,7 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_tool_names(db, user, payload.tools)
     bindings = await _validate_agent_bindings(db, user, payload.model_dump())
-    checks = _validated_checks(payload.model_dump())
+    checks = await _validated_checks(db, user, payload.model_dump())
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
     agent = Agent(
         owner_id=user.id,
@@ -2269,6 +2333,8 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         color=origin.color,
         check_skills=list(origin.check_skills) if origin.check_skills is not None else None,
         check_options=dict(origin.check_options) if origin.check_options else None,
+        gap_questions=[dict(q) for q in origin.gap_questions]
+        if origin.gap_questions is not None else None,
         enabled=True,
         visibility=Visibility.private,
         catalog_key=origin.catalog_key,
@@ -2317,7 +2383,7 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
             await _validate_agent_bindings(db, user, final, check_design=not keeps_design,
                                            keep_format=agent.doc_format)
         )
-    changes.update(_validated_checks(changes))
+    changes.update(await _validated_checks(db, user, changes))
     wanted = changes.pop("slug", None)
     if agent.sealed:
         # A sealed copy has no prompt of its own and cannot be unsealed.

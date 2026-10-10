@@ -112,6 +112,7 @@ from app.services import (
     figures,
     file_schema,
     freshness,
+    gap_questions,
     governance,
     grounding,
     imagegen,
@@ -120,6 +121,7 @@ from app.services import (
     message_links,
     revise,
     settings_store,
+    skill_specs,
     starter,
     stop_signal,
 )
@@ -154,6 +156,7 @@ from app.services.context import (
     with_pictures,
 )
 from app.services.credits import charge_for_tokens, has_headroom, record_searches, settle
+from app.services.tools import sandbox_tools
 from app.services.tools.base import Tool, ToolContext, openai_snapshot
 from app.services.tools.registry import build_tools
 from app.services.workspace_context import (
@@ -3182,10 +3185,65 @@ async def _agent_catalog_key(db: DbSession, agent: WorkspaceAgent | None) -> str
     return origin.catalog_key or origin.base_key
 
 
+async def _skill_specs(
+    db: DbSession, user: User, agent: WorkspaceAgent | None,
+) -> tuple[dict[str, skill_specs.Spec], dict[str, dict[str, Any]]]:
+    """What the server runs for the turn's skills, read from their rows: the person's enabled
+    skills whose fields ask for something (a shipped copy that stores none reads its
+    package), and the person's check skills the agent attaches (`skill:<id>`), the agent
+    owner's rows. Every field names shipped scripts only.
+
+    Also the person's own scripts by skill key (`{name, files}`), which only the sandbox
+    runs (`run_skill_script`)."""
+    rows = list((await db.exec(select(Skill).where(
+        Skill.owner_id == user.id, Skill.enabled == True,  # noqa: E712
+        col(Skill.server_fields).is_not(None) | col(Skill.script_files).is_not(None)))).all())
+    scripts = {
+        f"{skill_specs.USER}{row.id}": {"name": row.name, "files": {
+            str(f.get("name")): str(f.get("source") or "")
+            for f in row.script_files if isinstance(f, dict) and f.get("name")}}
+        for row in rows if row.script_files}
+    attached = [str(k).removeprefix(skill_specs.USER) for k in (agent.check_skills or [])
+                if str(k).startswith(skill_specs.USER)] if agent is not None else []
+    known = {row.id for row in rows}
+    if wanted := [i for i in attached if i not in known]:
+        rows += list((await db.exec(select(Skill).where(
+            col(Skill.id).in_(wanted), Skill.owner_id == agent.owner_id))).all())
+    out: dict[str, skill_specs.Spec] = {}
+    for row in rows:
+        spec = skill_specs.of_row(row)
+        if row.server_fields is not None or spec.user:
+            out[spec.key] = spec
+    return out, scripts
+
+
+def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
+    """The turn's skills by the key the checks read: a shipped copy's catalogue key, a
+    person's `skill:<id>` when its fields ask the server for something."""
+    out = []
+    for skill in applied:
+        if skill.catalog_key:
+            out.append(skill.catalog_key)
+        elif (key := f"{skill_specs.USER}{skill.id}") in specs:
+            out.append(key)
+    return tuple(out)
+
+
 def render_template_checks(session: ChatSession) -> tuple[str, ...]:
     """The check skills the session's 서식 attaches."""
     template = design_templates.get(session.render_template_id)
     return template.check_skills if template is not None else ()
+
+
+def _gap_judge_model(user: User, catalogue_models: list[dict],
+                     requested: dict | None) -> str:
+    """The model that judges 빠진 정보 질문 of the judge type: the turn's own when it is
+    strict-local, else the first strict-local chat model the person may use; "" for none."""
+    if requested and requested.get("strictLocal"):
+        return str(requested["id"])
+    usable = _allowed_models(user, catalogue_models, kind="chat")
+    return next((str(m["id"]) for m in sorted(usable, key=model_service.fallback_order)
+                 if m.get("strictLocal")), "")
 
 
 def _today() -> dt.date:
@@ -3303,16 +3361,18 @@ async def _close_waiting_run(run_id: str, *, answers: dict[str, str], as_is: boo
         log.exception("waiting run %s not closed", run_id)
 
 
-async def _gaps(keys: tuple[str, ...], *, facts: str, request: str, material: str,
+async def _gaps(keys: tuple[str, ...], *, questions: list[dict], request: str, material: str,
                 first_draft: bool, doc_format: str | None, agent_key: str | None,
-                card: dict | None = None) -> PipelineBundle:
+                card: dict | None = None, specs: dict | None = None,
+                judge: tuple[str, str] = ("", "")) -> PipelineBundle:
     """The `pre` flow of the turn's pipeline: what the format needs and the material does
     not give (`check:gaps`), and the card it puts up (`gap-card`, which waits). The bundle
     comes back with `findings.gaps`, `findings.questions` and the stage records."""
     bundle = PipelineBundle(request=PipelineRequest(
-        text=request, model="", api_key="", check_keys=tuple(keys), check_facts=facts,
+        text=request, model=judge[0], api_key=judge[1], check_keys=tuple(keys),
+        gap_questions=list(questions),
         check_material=material, today=_today(), first_draft=first_draft,
-        turn={"card": card} if card is not None else {}))
+        turn={"card": card} if card is not None else {}, skill_specs=dict(specs or {})))
     pipe = (pipeline_registry.for_report(doc_format) if doc_format
             else pipeline_registry.for_chat(agent_key))
     runner = PipelineRunner(pipe.stages("pre"), name=f"{pipe.name}.pre", emit_records=False)
@@ -3608,6 +3668,9 @@ async def send_message(
     shelf_key = ""
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
+    # What the server runs for the turn's skills, and the person's own scripts the sandbox
+    # may run through `run_skill_script`.
+    specs, own_scripts = await _skill_specs(db, user, agent_row)
     if not active_skill_ids and session.kind is SessionKind.chat:
         # The standing set, pruned of skills removed or barred since they were switched on.
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
@@ -3689,6 +3752,10 @@ async def send_message(
                 ),
                 key=lambda tool: (tool.name, tool.source),
             )
+        if own_scripts:
+            # The person's own scripts join the shipped ones in `run_skill_script`'s choices.
+            candidate_tools = sandbox_tools.with_own_scripts(candidate_tools, own_scripts)
+            strict_tools = sandbox_tools.with_own_scripts(strict_tools, own_scripts)
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
     try:
@@ -3741,7 +3808,7 @@ async def send_message(
     # The agent's own checks and strictness, as its row holds them (catalogue or not).
     check_keys = check_skills.attached(
         agent_checks=(agent_row.check_skills or []) if agent_row is not None else [],
-        template_checks=render_template_checks(session))
+        template_checks=render_template_checks(session), specs=specs)
     check_options = check_skills.clean_options(
         agent_row.check_options if agent_row is not None else None)
     # A conversation bound to a user pipeline asks through its own steps (`human:gaps`).
@@ -3751,6 +3818,17 @@ async def send_message(
     if user_pipe is not None:
         check_keys = ()
     facts = check_skills.fact_set(workspace.doc_format, agent_key)
+    # 빠진 정보 질문: the 서식's (a report's) and the agent's own, else its base's.
+    asking = gap_questions.resolve(
+        own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
+        template_id=session.render_template_id if session.kind is SessionKind.report else None,
+        doc_format=workspace.doc_format) if check_skills.of_stage(check_keys, "pre", specs) else []
+    judge_model, judge_key = "", ""
+    if gap_questions.needs_judge(asking):
+        # The judge reads the material before the privacy route is settled: a model that keeps
+        # it in the boundary, or nothing is asked on a guess.
+        judge_model = _gap_judge_model(user, catalogue_models, requested_model)
+        judge_key = (await litellm_service.credentials_for(user))[1] if judge_model else ""
     first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
     # The card's file questions: what did not arrive, or the attachment the request names.
@@ -3758,9 +3836,10 @@ async def send_message(
     if not file_questions and (
             gap := grounding.missing_attachment(content, workspace.attachments)):
         file_questions = [gap]
-    pre = await _gaps(check_keys, facts=facts, request=content,
+    pre = await _gaps(check_keys, questions=asking, judge=(judge_model, judge_key),
+                      request=content,
                       material="\n".join(workspace.untrusted), first_draft=first_draft,
-                      doc_format=workspace.doc_format, agent_key=agent_key, card={
+                      doc_format=workspace.doc_format, agent_key=agent_key, specs=specs, card={
                           "plans_first": _plans_first(session),
                           "may_ask": not pending or reply_brings_files,
                           "files": [q.wire() for q in file_questions],
@@ -3778,7 +3857,7 @@ async def send_message(
             questions=pre.findings.questions,
             pre=pre,
         )
-    if missing and (blanks := check_skills.rule(check_keys, missing)):
+    if missing and (blanks := check_skills.rule(check_keys, missing, specs)):
         # Going on without the facts the card asked for: each stays a bracket blank.
         content = _with_condition(content, blanks)
     if skipped := [f.name for f in short if f.state == "unreadable"]:
@@ -4398,6 +4477,7 @@ async def send_message(
                     format_id=workspace.doc_format,
                     check_keys=check_keys,
                     check_options=check_options,
+                    skill_specs=specs,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -4635,8 +4715,10 @@ async def send_message(
                     else None
                 ),
                 preflight_tool=preflight_tool,
-                check_keys=tuple(check_skills.of_stage(check_keys, "post")),
-                skill_keys=tuple(s.catalog_key for s in workspace.applied_skills if s.catalog_key),
+                check_keys=tuple(check_skills.of_stage(check_keys, "post", specs)),
+                skill_keys=_skill_keys(workspace.applied_skills, specs),
+                skill_specs=specs,
+                own_scripts=own_scripts,
                 check_facts=facts,
                 check_options=check_options,
                 check_material="\n".join(workspace.untrusted),
@@ -5046,6 +5128,10 @@ async def _run_turn(
     check_keys: tuple[str, ...] = (),
     #: Catalogue keys of the skills on the turn; a copy skill brings the copy check.
     skill_keys: tuple[str, ...] = (),
+    #: What the server runs for those keys (`_skill_specs`).
+    skill_specs: dict | None = None,
+    #: The person's own scripts by skill key, for `run_skill_script` in the sandbox.
+    own_scripts: dict | None = None,
     #: The agent's fact set, which sets how strict the trace is.
     check_facts: str = "",
     #: The agent's `check_options`: how strict the trace is.
@@ -5105,6 +5191,7 @@ async def _run_turn(
         api_key=api_key,
         project_id=project_id,
         agent_name=agent_name,
+        own_scripts=dict(own_scripts or {}),
         # The latest user message, not the conversation's opening line.
         request=next(
             (
@@ -5302,6 +5389,7 @@ async def _run_turn(
             material=_material_text(messages), check_keys=check_keys, check_facts=check_facts,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
+            skill_specs=skill_specs,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")
@@ -6680,6 +6768,8 @@ async def _run_report(
     check_keys: tuple[str, ...] | None = None,
     #: The agent's `check_options`: how strict the trace is.
     check_options: dict | None = None,
+    #: What the server runs for a person's check skill among `check_keys`.
+    skill_specs: dict | None = None,
     #: The run this pass follows (the card that waited before it).
     parent_run_id: str | None = None,
 ) -> AsyncIterator[str]:
@@ -6731,6 +6821,7 @@ async def _run_report(
             design_tokens=design_tokens,
             check_keys=check_keys,
             check_options=check_options,
+            skill_specs=skill_specs,
             session_id=session_id,
             turn=turn,
             recorder=recorder,

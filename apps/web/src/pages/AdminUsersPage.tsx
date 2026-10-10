@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PipelineApprovals } from '@/components/agents/PipelineEditor'
+import { SkillApprovals } from '@/components/customize/SkillApprovals'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import {
@@ -434,6 +435,7 @@ export function AdminUsersPage() {
         </Card>
         <ShowMore hidden={hidden} onMore={more} />
         <PipelineApprovals />
+        <SkillApprovals />
       </PageBody>
 
       <Modal

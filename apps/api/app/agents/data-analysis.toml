@@ -40,3 +40,30 @@ You analyze attached data with code. Every number comes from execution results. 
 8. If a tool failed, do not write that you computed it.
 9. Ask once, only when blocked and unable to proceed. With no file: 「분석할 엑셀이나 CSV 파일을 올려 주세요.」; when the request and the file state different bases that change the key numbers: 「기준이 둘입니다(요청: …, 파일 메모: …). 어느 쪽으로 볼까요? 둘 다 보여 드릴 수도 있습니다.」 Follow the cleaning rules (2) without asking. If any other basis that changes the numbers (period split, deadline days, denominator) is not in the request or material, ask instead of inventing one. If the user said to proceed with the material as is, leave that basis as a bracketed blank like ‘[기간 기준]’ and do not give the numbers that depend on it.
 '''
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "deadline_basis"
+label = "기한 기준"
+question = "며칠을 넘으면 기한을 넘긴 것으로 볼까요? (예: 접수일부터 14일)"
+why = "기한 기준이 요청과 자료에 없습니다. 기준에 따라 지연 건수와 비율이 달라집니다."
+placeholder = "[기한 기준]"
+detector = { type = "builtin", name = "deadline_basis" }
+
+[[questions]]
+id = "period_split"
+label = "기간 구분"
+question = "비교할 기간을 어느 달로 나눌까요?"
+why = "기간을 나누는 기준이 자료에 없습니다."
+placeholder = "[기간 기준]"
+detector = { type = "builtin", name = "period_split" }
+
+[[questions]]
+id = "denominator"
+label = "분모 기준"
+question = "비율의 분모에 무응답·빈칸을 넣을까요, 뺄까요?"
+why = "자료에 무응답·빈칸이 있어 분모에 따라 비율이 달라집니다."
+placeholder = "[분모 기준]"
+detector = { type = "builtin", name = "denominator" }

@@ -6,7 +6,6 @@
  */
 
 import type {
-  AgentBase,
   AgentDraft,
   AgentProcess,
   ArtifactKind,
@@ -38,6 +37,10 @@ import type {
   Session,
   SessionKind,
   SessionMade,
+  GapQuestion,
+  ProcessCatalogue,
+  SkillScript,
+  SkillServer,
   Slide,
   Source,
   Step,
@@ -1347,6 +1350,8 @@ export const skillsApi = {
   store: () => call<StoreSkillRow[]>('/skills/store'),
   /** Takes a copy. Idempotent — a second press returns the copy you have. */
   install: (id: string) => call<SkillRow>(`/skills/${id}/install`, { method: 'POST' }),
+  /** The shipped scripts and checks a skill's server fields may name. */
+  serverCatalogue: () => call<SkillServerCatalogue>('/skills/server-catalogue'),
   /**
    * SKILL.md, .zip or .skill files read into skills. `dryRun` only previews (findings
    * included); otherwise every file must pass and each becomes a personal skill.
@@ -1396,6 +1401,36 @@ export interface SkillImportPreview {
   kept: string[]
   excluded: { path: string; reason: 'script' | 'binary' | 'unused' | 'too_long' }[]
   findings: SkillImportFinding[]
+  /** What the server would run for it; null when nothing. */
+  server?: SkillServer | null
+  /** Its own Python scripts, kept for the sandbox. */
+  scripts?: SkillScript[]
+}
+
+/** One shipped script a skill may name, with the shipped skill that uses it. */
+export interface ServerRef {
+  ref: string
+  skill: string
+  summary: string
+}
+
+export interface SkillServerCatalogue {
+  postChecks: ServerRef[]
+  entries: Record<'pre' | 'post', ServerRef[]>
+  scripts: ServerRef[]
+  copyKinds: { kind: string; label: string }[]
+}
+
+export interface SkillReview {
+  skill: SkillRow
+  ownerName: string
+}
+
+/** The administrators' queue of skills with scripts asking to be shared. */
+export const adminSkillsApi = {
+  list: (review = 'pending') => call<SkillReview[]>(`/admin/skills?review=${review}`),
+  approve: (id: string) => call<SkillReview>(`/admin/skills/${id}/approve`, { method: 'POST' }),
+  reject: (id: string, note: string) => call<SkillReview>(`/admin/skills/${id}/reject`, body({ note })),
 }
 
 export interface SkillImportResult {
@@ -1443,6 +1478,13 @@ export interface SkillRow {
   updatedAt: string
   /** Fixed scripts its package ships, run by `run_skill_script`. */
   scripts?: string[]
+  /** What the server runs for it, naming shipped scripts only. */
+  server?: SkillServer
+  /** Its own scripts, run only in the sandbox; `source` for the owner. */
+  scriptFiles?: SkillScript[]
+  /** Sharing with scripts: '' · pending · approved · rejected. */
+  review?: string
+  reviewNote?: string
 }
 
 export interface StoreSkillRow extends SkillRow {
@@ -1577,6 +1619,9 @@ export interface AgentRow {
   retired?: boolean
   checkSkills?: string[] | null
   checkOptions?: Record<string, boolean> | null
+  gapQuestions?: GapQuestion[] | null
+  inheritedQuestions?: GapQuestion[]
+  baseQuestions?: GapQuestion[]
   bundles?: BundleSelection[] | null
   process?: AgentProcess | null
 }
@@ -1756,7 +1801,7 @@ export const userPipelinesApi = {
 
 /** An agent's 진행 과정 and the 묶음 it ticks. */
 export const processApi = {
-  bases: () => call<{ bases: AgentBase[]; bundles: Bundle[]; exportFormats: string[] }>('/agent-bases'),
+  bases: () => call<ProcessCatalogue>('/agent-bases'),
   put: (
     agentId: string,
     payload: { mode: ProcessMode; base?: string | null; bundles?: BundleSelection[]; stages?: PipelineStep[]; importId?: string },

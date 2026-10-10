@@ -2342,6 +2342,8 @@ export const useStore = create<State>((set, get) => ({
       requiredTools: skill.requiredTools,
       enabled: skill.enabled,
       visibility: skill.visibility,
+      // Only what the form changed: a shipped copy's package fields stay unstored.
+      ...(skill.server ? { server: skill.server } : {}),
     }
     const exists = get().skills.some((s) => s.id === skill.id)
     const row = exists ? await skillsApi.update(skill.id, payload) : await skillsApi.create(payload)
@@ -2470,6 +2472,8 @@ export const useStore = create<State>((set, get) => ({
       color: a.color,
       enabled: a.enabled,
       visibility: a.visibility,
+      // Only once the form holds a list: null keeps asking what the base asks.
+      ...(a.gapQuestions !== undefined ? { gapQuestions: a.gapQuestions } : {}),
     }
     const exists = get().agents.some((x) => x.id === a.id)
     const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
@@ -2973,6 +2977,10 @@ function toSkill(s: SkillRow): Skill {
     version: s.version,
     updatedAt: s.updatedAt,
     scripts: s.scripts ?? [],
+    server: s.server,
+    scriptFiles: s.scriptFiles ?? [],
+    review: s.review ?? '',
+    reviewNote: s.reviewNote ?? '',
   }
 }
 
@@ -3039,6 +3047,9 @@ function toAgent(a: AgentRow): Agent {
     checkSkills: a.checkSkills ?? null,
     checkOptions: a.checkOptions ?? null,
     bundles: a.bundles ?? null,
+    gapQuestions: a.gapQuestions ?? null,
+    inheritedQuestions: a.inheritedQuestions ?? [],
+    baseQuestions: a.baseQuestions ?? [],
     process: a.process ?? null,
   }
 }

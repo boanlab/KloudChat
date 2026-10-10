@@ -118,6 +118,30 @@ def shipped() -> dict[str, Bundle]:
 
 
 USER = "user:"
+#: The bundle of a person's own check skills (`skill_specs`: a skill with a `stage`).
+MINE = "mine:checks"
+MINE_SKILL = "skill:"
+
+
+def own_checks(rows) -> Bundle | None:
+    """「내 검사 스킬」: a person's skills that declare a stage, one item each, so an agent
+    attaches them the way it ticks a shipped check (`Agent.check_skills` gets `skill:<id>`)."""
+    from app.services import skill_specs
+
+    items = []
+    for row in rows:
+        spec = skill_specs.of_row(row)
+        if not spec.user or not spec.stage:
+            continue
+        items.append(Item(id=row.id[:40], kind="check", ref=spec.key,
+                          settings={"stage": spec.stage, "own_stage": spec.own_stage},
+                          label=row.name, default=True))
+    if not items:
+        return None
+    return Bundle(ref=MINE, name="내 검사 스킬",
+                  description="직접 만든 스킬 중 쓰기 전·후에 서버가 돌리는 검사입니다.",
+                  items=tuple(items), shipped=False, owner_id=rows[0].owner_id if rows else "",
+                  visibility="private", review="approved", order=50)
 
 
 def of_row(row) -> Bundle:
@@ -142,6 +166,14 @@ def target(item: Item, surface: str) -> str | None:
         return None
     kind, ref = item.kind, item.ref
     if kind == "check":
+        if ref.startswith(MINE_SKILL):
+            # A person's check skill (`skill:<id>`): its stage rides in the item, read off
+            # its row when the bundle was built (`own_checks`). It runs as an attached check;
+            # one that runs in a stage of its own has no step to run it.
+            stage = str(item.settings.get("stage") or "")
+            if stage not in skill_packages.STAGES or item.settings.get("own_stage"):
+                return None
+            return "check"
         package = skill_packages.package_for(ref)
         if package is None or not package.stage:
             return None
@@ -306,5 +338,5 @@ def lines(surface: str, selections: list[dict[str, Any]],
     return list(dict.fromkeys(out))
 
 
-__all__ = ["Bundle", "Compiled", "Item", "SELF", "USER", "clean", "compile", "lines",
-           "of_row", "shipped", "target", "view"]
+__all__ = ["MINE", "MINE_SKILL", "Bundle", "Compiled", "Item", "SELF", "USER", "clean", "compile",
+           "lines", "of_row", "own_checks", "shipped", "target", "view"]

@@ -18,8 +18,14 @@ from app.models.chat import ChatSession, Message, Role, SessionKind
 from app.models.user import User
 from app.routers import sessions
 from app.schemas.chat import SendMessage
-from app.services import check_skills, report_checks
+from app.services import check_skills, gap_questions, report_checks
 from app.services.workspace_context import WorkspaceContext
+
+#: 빠진 정보 질문 as the 서식 and the agent files carry them.
+_MINUTES_Q = gap_questions.for_format("minutes")
+_LETTER = gap_questions.resolve(own=None, base_key="career-docs")
+_ANALYSIS = gap_questions.resolve(own=None, base_key="data-analysis")
+
 
 _MINUTES = """축제 준비 회의 때 휴대폰에 막 적은 거야. 회의록으로 만들어 줘.
 
@@ -42,11 +48,14 @@ class _Reached(Exception):
 
 
 def _card(request: str, *ids: str) -> dict:
-    found = check_skills.gaps(("gap-check",), facts="minutes", request=request, material="")
+    found = check_skills.gaps(("gap-check",), questions=_MINUTES_Q, request=request, material="")
     found = [f for f in found if f["fact"] in ids]
     return {
         "stage": "clarify", "request": request, "attachments": [],
-        "questions": [q.wire() for q in check_skills.questions(found)], "answers": {},
+        # As the card stores them (`check_stages.card_questions`): each with its label.
+        "questions": [{**q.wire(), "label": f["label"]}
+                      for q, f in zip(check_skills.questions(found), found, strict=True)],
+        "answers": {},
     }
 
 
@@ -167,14 +176,14 @@ async def test_a_complete_material_puts_no_card_up(monkeypatch):
 
 
 def test_the_chat_agents_ask_their_own_facts():
-    letter = check_skills.gaps(("gap-check",), facts="career-docs", request="자소서 좀 써 줘.",
+    letter = check_skills.gaps(("gap-check",), questions=_LETTER, request="자소서 좀 써 줘.",
                                material="[메모] 축제 자원봉사단 조장(12명), 민원 23건 → 9건")
     assert [f["fact"] for f in letter] == ["question", "length_rule"]
-    analysis = check_skills.gaps(("gap-check",), facts="data-analysis",
+    analysis = check_skills.gaps(("gap-check",), questions=_ANALYSIS,
                                  request="월별 이용 통계야. 학기 중과 방학을 비교해 줘.",
                                  material="월,방문자수\n2025-03,61200")
     assert [f["fact"] for f in analysis] == ["period_split"]
-    told = check_skills.gaps(("gap-check",), facts="data-analysis",
+    told = check_skills.gaps(("gap-check",), questions=_ANALYSIS,
                              request="학기 중(3~6월, 9~12월)과 방학을 비교해 줘.", material="")
     assert told == []
 

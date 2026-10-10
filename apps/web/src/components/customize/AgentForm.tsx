@@ -2,12 +2,13 @@ import { ChevronRight, Globe, Lock } from 'lucide-react'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
+import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
 import { ProcessSection } from '@/components/agents/ProcessSection'
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, Select, Textarea } from '@/components/ui'
 import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
-import { processOf, processPayload, type ProcessDraft } from '@/lib/process'
+import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
@@ -211,6 +212,8 @@ export function AgentForm({
   const [processSaved, setProcessSaved] = useState(!creating)
   const processDirty = !processSaved || JSON.stringify(process) !== JSON.stringify(baseline)
   const [keepFiles, setKeepFiles] = useState<string[]>(() => draftFiles.map((f) => f.id))
+  const catalogue = useProcessCatalogue()
+  const detectorLabels = Object.fromEntries((catalogue?.gapDetectors ?? []).map((d) => [d.name, d.label]))
   const nameRef = useRef<HTMLInputElement>(null)
 
   const draftSlug = slugify(draft.slug || draft.name)
@@ -391,6 +394,20 @@ export function AgentForm({
           setProcess(next)
         }}
       />
+
+      <Group
+        title={t('빠진 정보 질문')}
+        hint={t('쓰기 전에 자료에 없으면 물어볼 것. 「빠진 정보 먼저 묻기」가 켜져 있을 때 한 번에 네 개까지 묻습니다.')}
+        testId="agent-gap-group"
+        open={(draft.gapQuestions?.length ?? 0) > 0 || undefined}
+      >
+        <InheritedQuestions rows={draft.inheritedQuestions ?? []} labels={detectorLabels} />
+        <GapQuestionsEditor
+          value={draft.gapQuestions ?? draft.baseQuestions ?? []}
+          detectors={catalogue?.gapDetectors ?? []}
+          onChange={(next) => edit({ ...draft, gapQuestions: next })}
+        />
+      </Group>
 
       <div className="space-y-2" data-testid="agent-advanced">
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>

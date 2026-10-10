@@ -251,6 +251,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
       return route.fulfill({ json: { agentId, pipelineId } })
     }
     if (method === 'GET' && path === '/admin/user-pipelines') return route.fulfill({ json: pending })
+    if (method === 'GET' && path === '/admin/skills') return route.fulfill({ json: [] })
     if (method === 'POST' && /^\/admin\/user-pipelines\/[^/]+\/(approve|reject)$/.test(path)) {
       const id = path.split('/')[3]
       pending = pending.filter((p) => p.id !== id)

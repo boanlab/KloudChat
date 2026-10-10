@@ -47,6 +47,8 @@ ACTIONS: frozenset[str] = frozenset(
         "issue.snapshot_view",
         # skills
         "skill.import",
+        "skill.approve",
+        "skill.reject",
         # storage
         "storage.reclaim",
         "storage.reclaim.manual",

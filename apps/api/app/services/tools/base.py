@@ -90,6 +90,9 @@ class ToolContext:
     #: What this turn's tools returned (run_code output, calculate results), in call order:
     #: the computed values an answer's numbers may come from (`check_skills`).
     outputs: list[str] = field(default_factory=list)
+    #: The person's own skill scripts by skill key (`skill:<id>` → `{name, files}`): run only
+    #: in the sandbox by `run_skill_script`, at `run_code`'s trust.
+    own_scripts: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def to_openai(tools: list[Tool]) -> list[dict[str, Any]]:

@@ -185,6 +185,14 @@ class DesignTemplate:
     #: `body_face = "design"`: the body face follows the design's `font` token in every
     #: export (its `design.css` reads `--font-body`); otherwise the 서식 fixes its faces.
     body_face_from_design: bool = False
+    #: The document format it fixes (`doc_format` in `template.toml`), "" for none.
+    doc_format: str = ""
+    #: The writer's genre rule for that format (`genre.md`), given to the outline and the
+    #: draft; "" for none.
+    genre: str = ""
+    #: 빠진 정보 질문 its format needs (`[[questions]]`, `services/gap_questions.py`), checked
+    #: the way a person's agent's are.
+    questions: tuple[dict, ...] = ()
 
     @property
     def surface(self) -> SessionKind:
@@ -328,7 +336,19 @@ def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
         check_skills=tuple(str(k) for k in (meta.get("check_skills") or [])),
         body_face_from_design=meta.get("body_face") == "design",
         sample=_read(folder, "sample.html"),
+        doc_format=str(meta.get("doc_format") or ""),
+        genre=_read(folder, "genre.md").strip(),
+        questions=_questions(folder, meta),
     )
+
+
+def _questions(folder: Path, meta: dict[str, Any]) -> tuple[dict, ...]:
+    from app.services import gap_questions
+
+    try:
+        return tuple(gap_questions.clean(meta.get("questions") or []))
+    except gap_questions.QuestionError as exc:
+        raise ValueError(f"{folder.name}: {exc}") from exc
 
 
 def _load() -> dict[str, DesignTemplate]:
@@ -353,6 +373,11 @@ _TEMPLATES = _load()
 
 def all_templates() -> list[DesignTemplate]:
     return list(_TEMPLATES.values())
+
+
+def format_genres() -> dict[str, str]:
+    """Each bound format's genre rule, as its 서식 carries it (`genre.md`)."""
+    return {t.doc_format: t.genre for t in _TEMPLATES.values() if t.doc_format and t.genre}
 
 
 def for_surface(kind: SessionKind) -> list[DesignTemplate]:
@@ -628,7 +653,7 @@ def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body
 def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
     """The gallery card's page: the seed around `sample.html`, drawn as a finished document.
 
-    A 서식 bound to a document format (`doc_formats.TEMPLATE_FORMATS`) gets that format's
+    A 서식 bound to a document format (`doc_format` in its `template.toml`) gets that format's
     rules as the web draws them — the head block, heading numbers, 개조식 — so the sample's
     `header.tb` reads as it will in a real document."""
     if template.kind == "deck":
@@ -638,7 +663,7 @@ def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
         return _HEAD_END.sub(lambda _m: style + "</head>", page, count=1)
     if template.kind != "document":
         return render(template, title=template.name, tokens=tokens, body=template.sample)
-    fmt = doc_formats.BY_ID.get(doc_formats.TEMPLATE_FORMATS.get(template.id, ""))
+    fmt = doc_formats.BY_ID.get(template.doc_format)
     if fmt is None:
         # No format: a title and the sections, its blanks still marked as the page view does.
         css = f"{format_css.PLACEHOLDER_CSS}\n{format_css.PAGED_CSS}"

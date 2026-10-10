@@ -41,14 +41,14 @@ from sqlmodel import col, select
 from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.models.chat import ChatSession, Message, PipelineRun, Role, SessionKind
 from app.models.user import AuditEvent, User, utcnow
-from app.models.workspace import Agent, UserPipeline, Visibility
+from app.models.workspace import Agent, Skill, UserPipeline, Visibility
 from app.pipeline import compose
 from app.pipeline import runs as pipeline_runs
 from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
-from app.services import bases, check_skills, design_templates
+from app.services import bases, check_skills, design_templates, gap_questions
 from app.services import bundles as bundle_service
 from app.services import chat as chat_service
 from app.services import models as model_service
@@ -138,6 +138,10 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
                 agent_checks=own.check_skills or [],
                 template_checks=template.check_skills if template is not None else ()),
             check_options=check_skills.clean_options(own.check_options),
+            questions=tuple(gap_questions.resolve(
+                own=own.gap_questions, base_key=key or None,
+                template_id=agent.render_template_id if _output(agent) == "document" else None,
+                doc_format=agent.doc_format)),
             shared=bool(key) or agent.visibility is Visibility.org,
             mine=agent.owner_id == user.id)
     return out
@@ -544,13 +548,25 @@ async def bundle_catalogue(db: DbSession, user: User) -> dict[str, bundle_servic
         if _usable(row, user):
             bundle = bundle_service.of_row(row)
             out[bundle.ref] = bundle
+    if mine := await _own_checks(db, user.id):
+        out[mine.ref] = mine
     return out
 
 
-async def bundles_named(db: DbSession, selections: list | None
+async def _own_checks(db: DbSession, owner_id: str) -> bundle_service.Bundle | None:
+    """The person's own check skills as one bundle (`bundles.own_checks`)."""
+    rows = (await db.exec(select(Skill).where(
+        Skill.owner_id == owner_id, col(Skill.server_fields).is_not(None))
+        .order_by(col(Skill.name)))).all()
+    return bundle_service.own_checks(list(rows))
+
+
+async def bundles_named(db: DbSession, selections: list | None, owner_id: str = ""
                         ) -> dict[str, bundle_service.Bundle]:
-    """The shipped bundles and the people's bundles these selections name, whoever owns them."""
-    ids = [str(r["bundle"])[len(bundle_service.USER):] for r in bundle_service.clean(selections)
+    """The shipped bundles and the people's bundles these selections name, whoever owns them;
+    「내 검사 스킬」 is the agent owner's."""
+    cleaned = bundle_service.clean(selections)
+    ids = [str(r["bundle"])[len(bundle_service.USER):] for r in cleaned
            if str(r["bundle"]).startswith(bundle_service.USER)]
     out = dict(bundle_service.shipped())
     if ids:
@@ -558,6 +574,9 @@ async def bundles_named(db: DbSession, selections: list | None
                 col(UserPipeline.id).in_(ids), UserPipeline.kind == "bundle"))).all():
             bundle = bundle_service.of_row(row)
             out[bundle.ref] = bundle
+    if owner_id and any(r["bundle"] == bundle_service.MINE for r in cleaned) \
+            and (mine := await _own_checks(db, owner_id)):
+        out[mine.ref] = mine
     return out
 
 
@@ -569,7 +588,8 @@ async def list_bases(user: CurrentUser, db: DbSession):
     known = await bundle_catalogue(db, user)
     return {"bases": [b.wire() for b in bases.bases(drafts=user.role is UserRole.admin)],
             "bundles": [b.wire() for b in known.values()],
-            "exportFormats": list(compose.EXPORT_FORMATS)}
+            "exportFormats": list(compose.EXPORT_FORMATS),
+            "gapDetectors": gap_questions.detector_catalogue()}
 
 
 def titles_of(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> dict[str, str]:
@@ -587,7 +607,7 @@ async def process_out(db: DbSession, user: User, agent: Agent) -> dict[str, Any]
         agents = with_self(await agents_for(db, user), agent.id)
         titles = titles_of(compose.normalize(row.stages), agents)
     out = bases.process_of(agent, row, owner=owner, titles=titles,
-                           known=await bundles_named(db, agent.bundles))
+                           known=await bundles_named(db, agent.bundles, agent.owner_id))
     if owner and out.get("steps"):
         out["steps"] = [{**s, "title": (titles or {}).get(s["id"], "")} for s in out["steps"]]
     return out
@@ -761,7 +781,7 @@ async def runs_for_others(db: DbSession, agent: Agent, row: UserPipeline) -> boo
         return False
     if agent.bundles is not None:
         surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
-        known = await bundles_named(db, agent.bundles)
+        known = await bundles_named(db, agent.bundles, agent.owner_id)
         return not bundle_service.compile(surface, agent.bundles, known).unapproved
     return row.review == "approved" or not bases.needs_review(
         bases.get(agent.catalog_key or agent.base_key), compose.normalize(row.stages))

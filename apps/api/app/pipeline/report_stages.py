@@ -1406,7 +1406,8 @@ class ChecksPlan(Base):
         if keys is None:
             template = design_templates.get(req.template_id)
             keys = check_skills.attached(
-                template_checks=template.check_skills if template else ())
+                template_checks=template.check_skills if template else (),
+                specs=req.skill_specs)
         found.check_keys = tuple(keys)
         found.traced = check_skills.Outcome("")
 

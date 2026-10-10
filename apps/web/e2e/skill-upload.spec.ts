@@ -16,12 +16,17 @@ const made = mySkills[1]
 const good = {
   filename: 'meeting.skill', ok: true, name: '회의록 정리', description: '회의 메모를 결정·할 일·미정으로 나눕니다.',
   whenToUse: '회의 메모를 결정·할 일·미정으로 나눕니다.', kinds: ['chat'], requiredTools: ['web_search'], version: '1.2.0',
-  bodyChars: 420, estimatedTokens: 180, kept: ['SKILL.md', 'resources/guide.md'],
-  excluded: [{ path: 'scripts/run.py', reason: 'script' }, { path: 'logo.png', reason: 'binary' }],
+  bodyChars: 420, estimatedTokens: 180, kept: ['scripts/tidy.py', 'SKILL.md', 'resources/guide.md'],
+  excluded: [{ path: 'tool.sh', reason: 'script' }, { path: 'logo.png', reason: 'binary' }],
   findings: [
-    { severity: 'warn', code: 'scripts_excluded', message: '스크립트는 실행하지 않아 제외했어요.', file: 'meeting.skill', line: null },
+    { severity: 'warn', code: 'scripts_excluded', message: '파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.', file: 'meeting.skill', line: null },
+    { severity: 'warn', code: 'script_process', message: '다른 프로그램을 실행합니다(subprocess.run).', file: 'scripts/tidy.py', line: 4 },
     { severity: 'warn', code: 'instruction_override', message: '이전 지시를 무시하라는 식의 문장이 있습니다.', file: 'meeting.skill', line: 7 },
   ],
+  server: { stage: '', entry: '', postCheck: ['source-check/post'], postJudge: '결정 사항과 담당자', copyCheck: false, copyKinds: [],
+    tables: false, ownStage: false, uses: ['tidy'] },
+  scripts: [{ name: 'tidy', summary: '회의 메모의 빈 줄과 중복 항목을 정리한다.', size: 1830,
+    source: '"""회의 메모의 빈 줄과 중복 항목을 정리한다."""\nimport json\nimport subprocess\nsubprocess.run(["pdftotext", "-layout", "memo.pdf"])\nprint(json.dumps({"ok": True}))\n' }],
 }
 const bad = {
   filename: 'notes.zip', ok: false, name: '', description: '', whenToUse: '', kinds: ['chat'], requiredTools: [], version: '1.0.0',
@@ -77,11 +82,18 @@ test('upload: menu, dry-run findings, a blocked file holds the upload, commit op
   await drop(page, 'meeting.skill')
   const card = page.getByTestId('skill-preview').first()
   await expect(card.getByText('회의록 정리')).toBeVisible()
-  await expect(card.getByText('스크립트는 실행하지 않아 제외했어요.')).toBeVisible()
+  await expect(card.getByText('파이썬이 아닌 스크립트와 scripts/ 밖의 스크립트는 제외했어요.')).toBeVisible()
   await expect(card.getByText('7번째 줄')).toBeVisible()
-  await expect(card.locator('[data-severity="warn"]')).toHaveCount(2)
-  await expect(card.getByText('scripts/run.py')).toBeVisible()
-  await expect(card.getByText('스크립트 · 실행하지 않음')).toBeVisible()
+  await expect(card.locator('[data-severity="warn"]')).toHaveCount(3)
+  // A kept script: its scan names the file and line, its code opens behind 「코드 보기」.
+  await expect(card.locator('[data-severity="warn"]').filter({ hasText: '다른 프로그램을 실행합니다.' })).toContainText('scripts/tidy.py')
+  const scripts = card.getByTestId('skill-preview-scripts')
+  await expect(scripts).toContainText('스크립트 1개 · 코드 실행 샌드박스에서만 실행')
+  await scripts.getByRole('button', { name: '코드 보기' }).click()
+  await expect(scripts.locator('pre')).toContainText('subprocess.run')
+  await expect(card.getByTestId('skill-preview-server')).toContainText('source-check/post')
+  await expect(card.getByText('tool.sh')).toBeVisible()
+  await expect(card.getByText('파이썬이 아닌 스크립트 · 제외')).toBeVisible()
   await expect(upload).toBeEnabled()
   expect(posts[0].url.searchParams.get('dryRun')).toBe('true')
 

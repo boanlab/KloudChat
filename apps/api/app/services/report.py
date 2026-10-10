@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import deck as deck_rules
 from app.services import (
+    design_templates,
     diagram_render,
     diagrams,
     doc_formats,
@@ -383,118 +384,11 @@ _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 #: Marks a 개조식 genre: `_shaped` drops the prose writer's paragraph rules for it.
 _GAEJO_STYLE = "Style: 개조식."
 
-#: 개조식 body and 공문서 notation, shared by the four 공문서 genres below.
-_GAEJO_RULE = (
-    _GAEJO_STYLE
-    + " No prose paragraphs. Write the content as Markdown lists and show the hierarchy by "
-    "depth — level one `- `, level two indented two spaces `  - `, level three `    - `, "
-    "level four `      - `. Do not write the □·○·-·ㆍ symbols yourself; typesetting draws them. "
-    "End items in the noun form (개조식 명사형 종결: 「…함」 「…임」 「…예정」 「…필요」) — never "
-    "in 「~합니다」. One or two lines per item; put units on numbers (「320명」 「1,250만 원」). "
-    "A supplementary note goes on the line after its item as one line starting with 「※ 」. "
-    "Notation: dates 「2026. 10. 7.」 (full stops instead of 연·월·일, no leading zeros), "
-    "times 「14:00」 (24-hour clock), an amount for approval 「금113,560원(금일십일만삼천오백육십원)」. "
-    "Attachments go at the end of the last section as one line 「붙임  1. ○○○ 1부.」, and from "
-    "the next line 「2. ○○○ 1부.」 if there are more — with one attachment, no number: "
-    "「붙임  ○○○ 1부.」. Do not write 「끝.」 (typesetting adds it). Do not invent dates and "
-    "times, places, head counts, amounts or names the material does not give; leave the "
-    "place's name in brackets (「[일시]」 「[장소]」 「[금액]」)."
-)
-
-#: Genre rules of the formats a 서식 can fix (`doc_formats.TEMPLATE_FORMATS`), by format id.
-_FORMAT_GENRES: dict[str, str] = {
-    "gaejo": (
-        "Genre: 개조식 보고서(검토·현황·업무 보고). At the very start of the first section put "
-        "the two key lines in a callout block, opened by the line 「```callout」 (not a bare 「```」) — "
-        "first line 「핵심」 alone, then the conclusion and "
-        "the decision needed (or the next action) on one line each — plain lines inside the block, "
-        "not list items (the list rule below is for the body). Sections in this order: "
-        "현황 → 문제점 및 검토 → 향후 조치 및 결정 요청 → 붙임. Keep detailed tables, "
-        "alternative comparisons and calculation grounds out of the body; put them in the "
-        "「붙임」 section. " + _GAEJO_RULE
-    ),
-    "internal_draft": (
-        "Genre: 간이기안문(내부결재, 행정업무운영 시행규칙 별지 제2호서식). Typesetting draws the "
-        "production registration number, registration date, approval date, disclosure class and "
-        "the approval box (기안자·검토자·결재권자), so do not write them in the body. The body is "
-        "the one matter for approval — 관련 근거 → 목적·필요성 → 주요 내용(무엇을, 언제, 얼마에) → "
-        "행정 사항 → 붙임. An amount for approval carries its calculation grounds. Two or three "
-        "sections are enough. "
-        + _GAEJO_RULE
-    ),
-    "event_plan": (
-        "Genre: 추진 계획(안)(행사·사업·교육). Sections in this order: 추진 배경 및 목적 → 추진 "
-        "개요 → 세부 추진 내용 → 소요 예산 → 추진 일정 → 기대 효과. 추진 개요 is a table "
-        "(구분 | 내용) with 일시·장소·대상·인원·주관 one row each. 소요 예산 is a table "
-        "(항목 | 산출 근거 | 금액); 산출 근거 is 「단가 × 수량」 and the last row is the total — "
-        "the total must equal the sum of the item amounts. 추진 일정 is a table "
-        "(일정 | 내용 | 담당). 기대 효과 without guessed figures. Attachments, if any, go at the "
-        "end of the 기대 효과 section. " + _GAEJO_RULE
-    ),
-    "result_report": (
-        "Genre: 결과 보고서(행사·사업·교육·출장). Sections in this order: 개요 → 추진 경과 → "
-        "주요 결과·실적 → 성과 및 문제점 → 향후 계획(개선 사항). 개요 is a table (구분 | 내용) "
-        "with 일시·장소·참석·주관 one row each. 주요 결과 in figures (attendance, satisfaction, "
-        "amount spent and spending rate) — against the plan, if there is one, as a table "
-        "(항목 | 계획 | 실적 | 비율). Pair each problem with its improvement. Do not invent "
-        "results or satisfaction the material does not give. " + _GAEJO_RULE
-    ),
-    "client_proposal": (
-        "Genre: 고객 제안서. If the client gave a 목차 in an RFP or 제안요청서, follow that 목차 "
-        "and its order exactly. Otherwise: 제안 요약 → 고객 과제 이해 → 제안 내용 → 요구사항 "
-        "대응표 → 추진 일정 → 수행 조직·투입 인력 → 견적 → 전제·제외 범위·위험 → 요청 사항. "
-        "Write facts about the client (situation, task, budget, schedule, requirements) only as "
-        "the RFP and material state them, and open 고객 과제 이해 by quoting at least one of the "
-        "client's own words (RFP wording, meeting remarks). 요구사항 대응표 is a table "
-        "(요구 ID | 요구 내용 | 대응 방안 | 제안서 위치) that leaves out none of the requirement "
-        "IDs in the material. 견적 is a table (항목 | 수량 | 단위 | 단가 | 금액 | 비고) with "
-        "공급가액·부가세·합계 rows below it — 금액 = 수량 × 단가, 합계 = 공급가액 + 부가세. "
-        "State above the table whether VAT is included or excluded (부가세 포함·별도), and compare "
-        "with the budget only on the same basis. If it exceeds the budget, say so; do not change "
-        "unit prices — offer a separate scope or period adjustment. Write track record, "
-        "certifications, awards and reference clients only as the proposer's material gives "
-        "them and never invent them — if there are none, leave 「[수행 실적]」 「[인증]」. Make "
-        "no promises like 「보장」 「100%」. Where the materials disagree (period, amount), say "
-        "which one you assumed and leave it as a question under 요청 사항. A schedule date the "
-        "material does not give is 「협의」. End the last section with one line stating the "
-        "decision asked of the client."
-    ),
-    "comparison": (
-        "Genre: 비교·분석 보고서. Sections in this order: 검토 목적과 판단 기준 → 대안 개요 → "
-        "비교표 → 출처별 차이 → 조건 미확인 사항 → 권고와 조건; the first line of the first "
-        "section states the chosen alternative and its condition in one sentence. The criteria "
-        "section gives the must-have conditions, the weights (summing to 100) and the scoring "
-        "formula (e.g. 비용 점수 = 최저 비용 ÷ 해당 안 비용 × 100) — if the request gives no "
-        "weights, state one decision rule such as 「필수 조건을 지키는 안 중 최저 비용」. Mark "
-        "an alternative that fails a must-have 「탈락(사유)」, the actual reason in the parentheses "
-        "(「탈락(화상회의 50명 < 60명)」), however good its values, and do "
-        "not recommend it; an alternative whose condition is unconfirmed is 「조건 미확인」, kept "
-        "apart from 탈락. The comparison table: columns = alternatives, rows = criteria, units "
-        "in the header row, no empty cells — a value or 「자료 없음」, a source number in every "
-        "cell, and a weighted-total last row when there are weights. Never fill a missing value "
-        "by estimate or quietly score it 0. When sources give different values for the same "
-        "item, set both side by side in the 출처별 차이 section as a table "
-        "(항목 | 출처와 날짜 | 값 | 채택과 이유) — if the measurement conditions differ, do not "
-        "adopt the newer figure just because it is newer. Money that comes back, like a deposit "
-        "(보증금), is not a cost; list it separately. Write the recommendation with its condition "
-        "(「○○이 확인되면 A, 아니면 B」), and if there are scenarios, show in numbers where the "
-        "conclusion flips. Never end on 「상황에 따라 다르다」."
-    ),
-    "career_history": (
-        "Genre: 경력기술서. Sections in this order: 경력 요약 → 경력 사항 → 주요 프로젝트 → 보유 "
-        "기술 → 자격·교육. Name, contact and the company applied to are in the head; do not "
-        "repeat them in the body. 경력 요약 is total experience and three lines of core "
-        "strengths. 경력 사항 is one table row per company (회사 | 기간 | 소속·직급 | 담당 업무); "
-        "주요 프로젝트 is grouped by company, giving each project's 기간·역할·수행 내용·성과. "
-        "Periods are 「YYYY.MM–YYYY.MM」 (「YYYY.MM–현재」 if still employed), counted including "
-        "both the start and end months, and overlapping periods count once toward total "
-        "experience. Titles, ranks, employment types, achievements and figures only as the "
-        "material gives them, never inflated — with no figures, write what was done without "
-        "figures. A merger or rename is one career as 「현 이름(구 이름)」. Do not stretch "
-        "periods to hide a gap. If the hiring is blind (블라인드 채용), leave out school name, "
-        "age, birth year, gender, family, hometown and photo. No table inside a table."
-    ),
-}
+#: Genre rules of the formats a 서식 fixes, by format id: each bound 서식 carries its own
+#: (`genre.md` beside its `instructions.md`, `doc_format` in its `template.toml`). The four
+#: 공문서 genres (개조식 보고서, 간이기안문, 추진 계획, 결과 보고서) open their 개조식 part with
+#: `_GAEJO_STYLE`.
+_FORMAT_GENRES: dict[str, str] = design_templates.format_genres()
 #: The same request words `doc_formats` reads, so the head and the body rules agree.
 _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
     key: re.compile(doc_formats.BY_ID[key].match, re.I) for key in _FORMAT_GENRES
@@ -3128,6 +3022,8 @@ async def write(
     check_keys: tuple[str, ...] | None = None,
     #: The agent's `check_options`: how strict the trace is.
     check_options: dict[str, Any] | None = None,
+    #: What the server runs for a person's check skill among `check_keys` (`skill_specs`).
+    skill_specs: dict[str, Any] | None = None,
     #: Receives one record per stage (`StepRecord.as_dict`), run or not.
     trace: list[dict[str, Any]] | None = None,
     #: The router's settlement of the turn (`Request.turn`): given, `report-save` stores the
@@ -3162,7 +3058,7 @@ async def write(
         template_id=template_id, format_id=format_id, design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
         derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
-        check_options=dict(check_options or {}),
+        check_options=dict(check_options or {}), skill_specs=dict(skill_specs or {}),
     )
     pipe = registry.for_report(bundle.spec.format_id)
     flow = "plan" if approved_plan is None else "write"

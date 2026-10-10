@@ -16,7 +16,7 @@ from app.core.db import get_session
 from app.core.deps import current_user
 from app.models.chat import ChatSession, Message, Role
 from app.models.user import AuditEvent, User, utcnow
-from app.models.workspace import Agent, Artifact, Job, StoredFile
+from app.models.workspace import Agent, Artifact, Job, Skill, StoredFile
 from app.routers import sessions
 from app.services import files
 
@@ -45,6 +45,7 @@ async def scenario(monkeypatch, tmp_path):
                     Artifact,
                     Job,
                     AuditEvent,
+                    Skill,
                 )
             ],
         )

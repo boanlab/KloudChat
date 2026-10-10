@@ -21,10 +21,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-from app.services import skill_packages, skill_scripts, units
+from app.services import skill_packages, skill_scripts, skill_specs, units
 
 log = logging.getLogger(__name__)
 
@@ -94,32 +94,39 @@ _REWRITE = (
 )
 
 
-def entries(key: str) -> list[tuple[str, str]]:
-    """`(package key, script)` pairs a skill's `post_check` names, in order."""
-    package = skill_packages.package_for(key)
-    if package is None:
+Specs = Mapping[str, skill_specs.Spec] | None
+
+
+def entries(key: str, specs: Specs = None) -> list[tuple[str, str]]:
+    """`(package key, script)` pairs a skill's `post_check` names, in order: shipped
+    scripts only, whoever's skill names them."""
+    spec = skill_specs.resolve(key, specs)
+    if spec is None:
         return []
     out = []
-    for item in package.post_checks:
+    for item in spec.post_checks:
         owner, _, script = item.partition("/")
         if (found := skill_packages.package_for(owner)) and script in found.scripts:
             out.append((found.key, script))
     return out
 
 
-def picked(outputs: list[str]) -> set[str]:
+def picked(outputs: list[str], specs: Specs = None) -> set[str]:
     """Post-checked skills a `use_skill` call returned this turn: the output carries the body."""
     found = set()
-    for package in skill_packages.post_checked():
-        head = package.body.strip()[:160]
+    candidates = {p.key: skill_specs.of_package(p) for p in skill_packages.post_checked()}
+    candidates.update({k: s for k, s in (specs or {}).items() if s.post_checks})
+    for key, spec in candidates.items():
+        head = spec.body.strip()[:160] if spec is not None and spec.post_checks else ""
         if head and any(head in (out or "") for out in outputs):
-            found.add(package.key)
+            found.add(key)
     return found
 
 
-def on_turn(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None) -> list[str]:
+def on_turn(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None,
+            specs: Specs = None) -> list[str]:
     """The skills on the turn that name post checks, in a stable order."""
-    named = {k for k in keys or () if entries(k)} | picked(list(outputs or []))
+    named = {k for k in keys or () if entries(k, specs)} | picked(list(outputs or []), specs)
     return sorted(named)
 
 
@@ -379,16 +386,16 @@ def _problems(rows: list[dict]) -> str:
 
 async def run(answer: str, *, keys: list[str], request: str, material: str, attached: str,
               computed: list[str], today: str, complete: Complete, model: str, judge: str,
-              api_key: str, usage: dict | None = None) -> Outcome:
+              api_key: str, usage: dict | None = None, specs: Specs = None) -> Outcome:
     """Check, fix by code, rewrite once with the rest, check again and fix by code."""
     outcome = Outcome(answer, skills=list(keys))
-    scripts = list(dict.fromkeys(e for key in keys for e in entries(key)))
-    judged_on = any((p := skill_packages.package_for(k)) and p.post_judge for k in keys)
+    scripts = list(dict.fromkeys(e for key in keys for e in entries(key, specs)))
+    on = [p for k in keys if (p := skill_specs.resolve(k, specs)) is not None]
+    judged_on = any(p.post_judge for p in on)
     # What the judge and the writer may read as a source: the material, what code printed,
     # and the facts the skills ship (a legal article a skill cites with its source).
     printed = "\n".join(c for c in computed if c and c.strip())[:_MATERIAL_CHARS // 2]
-    shipped = "\n\n".join(p.body[:_SKILL_CHARS] for k in keys
-                           if (p := skill_packages.package_for(k)) is not None)
+    shipped = "\n\n".join(p.body[:_SKILL_CHARS] for p in on)
     # The judge reads the material and the output; the skill's text (mostly instructions)
     # would read as material to it. The confirming reading may quote the skill's facts too.
     sources = "\n\n".join(x for x in (
@@ -398,7 +405,7 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     args = {"request": request, "material": material, "attached": attached,
             "computed": list(computed), "today": today, "skills": list(keys),
             # A skill whose answers are comparison tables (`tables: true` in its SKILL.md).
-            "tables": any((p := skill_packages.package_for(k)) and p.tables for k in keys)}
+            "tables": any(p.tables for p in on)}
     text = answer
 
     def one_pass(text: str, final: bool) -> tuple[str, list[dict], list[dict], list[dict]]:
@@ -420,8 +427,7 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     outcome.fixed += fixed
     judged = []
     if judged_on and (judge or model):
-        focus = "; ".join(p.judge_focus for k in keys
-                          if (p := skill_packages.package_for(k)) is not None and p.judge_focus)
+        focus = "; ".join(p.judge_focus for p in on if p.judge_focus)
         judged = await _judge(text, sources, complete=complete, judge=judge or model,
                               api_key=api_key, usage=usage, focus=focus, today=today)
         judged = await _confirm(judged, reference, complete=complete, judge=judge or model,

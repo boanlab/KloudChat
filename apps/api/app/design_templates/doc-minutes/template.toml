@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "minutes"
 cover_page = false
 
 # 규칙은 서식 지침과 에이전트 지침에 둔다. 검사는 서버 훅이 맡는다.
@@ -25,3 +28,30 @@ example_prompt_en = "Write these minutes up. Separate what was decided from what
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "meeting_date"
+label = "회의 일시"
+question = "회의를 언제 했나요? (연도 포함)"
+why = "자료에 회의 날짜가 없습니다. ‘다음 주 금요일’ 같은 기한을 날짜로 풀고 머리의 일시를 채우려면 필요합니다."
+placeholder = "[회의 일자]"
+detector = { type = "builtin", name = "meeting_date" }
+
+[[questions]]
+id = "attendees"
+label = "참석자"
+question = "참석자는 누구였나요?"
+why = "자료에 참석자 목록이 없습니다. 회의록의 참석·불참 칸에 들어갑니다."
+placeholder = "[참석자]"
+detector = { type = "builtin", name = "attendees" }
+
+[[questions]]
+id = "action_dues"
+label = "실행 항목 기한"
+question = "실행 항목의 기한을 정했나요?"
+why = "담당은 정했는데 기한이 없는 항목이 있습니다."
+placeholder = "[기한]"
+detector = { type = "builtin", name = "action_dues" }

@@ -282,6 +282,20 @@ class Skill(SQLModel, table=True):
     estimated_tokens: int = Field(default=0)
     version: str = Field(default="1.0.0")
     enabled: bool = Field(default=True)
+    #: What the server runs for it (`services/skill_specs.py`): `stage`, `entry`, `post_check`,
+    #: `post_judge`, `copy_check`, `copy_kinds`, `tables`, `own_stage`, `uses` — each naming
+    #: shipped scripts only. Null: none stored (a shipped copy then reads its package).
+    server_fields: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The person's own scripts, `[{name, source, summary, size}]`: run only in the code
+    #: sandbox through `run_skill_script`, never imported by the server.
+    script_files: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Sharing a skill with scripts waits for an administrator, as a 직접 구성 does:
+    #: "" · pending · approved · rejected (with `review_note`). An edit to its scripts sends
+    #: an approved skill back to private.
+    review: str = Field(default="", max_length=20)
+    review_note: str = Field(default="")
+    reviewed_by: str | None = Field(default=None)
+    reviewed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -364,6 +378,10 @@ class Agent(SQLModel, table=True):
     #: (`services/bundles.py`); `check_skills`, `check_options` and the agent's own pipeline
     #: are compiled from them. Null: none stored (an agent from before bundles).
     bundles: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: 빠진 정보 질문 (`services/gap_questions.py`): what it asks before writing when the
+    #: material does not answer it, on top of its 서식's. Null: none stored (a copy or an agent
+    #: on a base asks what the official agent asks).
+    gap_questions: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: Taken out of the catalogue: listed nowhere and no new conversation starts with it. The
     #: row stays so conversations and documents made with it still open and export.
     retired: bool = Field(default=False)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { processApi, userPipelinesApi } from '@/lib/api'
-import type { Agent, AgentBase, Bundle, BundleSelection, PipelineStep, PipelineVerdict, ProcessMode } from '@/types'
+import type { Agent, BundleSelection, PipelineStep, PipelineVerdict, ProcessCatalogue, ProcessMode } from '@/types'
 
 /** The agent's own step in its 직접 구성 or a 묶음: it runs that agent's own flow. */
 export const SELF = '@self'
@@ -26,12 +26,12 @@ export function processOf(agent: Agent): ProcessDraft {
 }
 
 /** The bases and the 묶음 a person may tick, fetched once per page. */
-let catalogue: Promise<{ bases: AgentBase[]; bundles: Bundle[]; exportFormats: string[] } | null> | null = null
+let catalogue: Promise<ProcessCatalogue | null> | null = null
 export function reloadProcessCatalogue() {
   catalogue = null
 }
 export function useProcessCatalogue(version = 0) {
-  const [value, setValue] = useState<{ bases: AgentBase[]; bundles: Bundle[]; exportFormats: string[] } | null>(null)
+  const [value, setValue] = useState<ProcessCatalogue | null>(null)
   useEffect(() => {
     let current = true
     if (version > 0) catalogue = null

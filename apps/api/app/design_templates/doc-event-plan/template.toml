@@ -1,4 +1,7 @@
 kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "event_plan"
 cover_page = false
 
 # 이 서식이 데려오는 절차 — 카탈로그 스킬의 catalog_key.

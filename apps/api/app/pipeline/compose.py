@@ -104,6 +104,8 @@ class AgentInfo:
     self_of: str = ""
     #: Its `check_options`: how strict its trace is, kept when a check runs as a step.
     check_options: dict = field(default_factory=dict)
+    #: 빠진 정보 질문 its gap card asks (`gap_questions.resolve`): its 서식's and its own.
+    questions: tuple[dict, ...] = ()
 
     def wire(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name, "output": self.output,
@@ -113,7 +115,8 @@ class AgentInfo:
                 "tools": list(self.tools) if self.tools is not None else None,
                 "temperature": self.temperature,
                 **({"selfOf": self.self_of} if self.self_of else {}),
-                **({"checkOptions": dict(self.check_options)} if self.check_options else {})}
+                **({"checkOptions": dict(self.check_options)} if self.check_options else {}),
+                **({"questions": [dict(q) for q in self.questions]} if self.questions else {})}
 
     @classmethod
     def of_wire(cls, row: dict[str, Any]) -> AgentInfo:
@@ -128,7 +131,8 @@ class AgentInfo:
                    temperature=(float(row["temperature"])
                                 if isinstance(row.get("temperature"), (int, float)) else None),
                    self_of=str(row.get("selfOf") or ""),
-                   check_options=dict(row.get("checkOptions") or {}))
+                   check_options=dict(row.get("checkOptions") or {}),
+                   questions=tuple(q for q in row.get("questions") or () if isinstance(q, dict)))
 
 
 def _clean_settings(kind: str, raw: Any) -> dict[str, Any]:
@@ -380,11 +384,9 @@ def validate(steps: list[dict[str, Any]], *, agents: dict[str, AgentInfo],
     return verdict
 
 
-def gap_facts(info: AgentInfo) -> str:
-    """The fact set the gap card asks for before this agent writes ("" when it has none)."""
-    from app.services import check_skills
-
-    return check_skills.fact_set(info.doc_format or None, info.catalog_key or None)
+def gap_facts(info: AgentInfo) -> list[dict[str, Any]]:
+    """The 빠진 정보 질문 the gap card asks before this agent writes (empty: none)."""
+    return [dict(q) for q in info.questions]
 
 
 def from_shipped(info: AgentInfo, pipeline_name: str) -> list[dict[str, Any]]:
@@ -992,12 +994,13 @@ class GapsStep(Step):
     reads = ("request", "material", "answers")
     writes = ("findings.gaps", "findings.questions", "material.parts")
 
-    def __init__(self, index: int, spec: dict[str, Any], title: str, *, facts: str) -> None:
+    def __init__(self, index: int, spec: dict[str, Any], title: str, *,
+                 questions: list[dict[str, Any]]) -> None:
         super().__init__(index, spec, title)
-        self.facts = facts
+        self.questions = questions
 
     def skip(self, bundle: Bundle) -> str:
-        return "" if self.facts else "the next agent declares no facts to ask"
+        return "" if self.questions else "the next agent declares no questions to ask"
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         from app.pipeline.check_stages import card_questions
@@ -1005,12 +1008,13 @@ class GapsStep(Step):
 
         req = bundle.request
         keys = ("gap-check",)
+        # A judge-type question is not judged here: nothing is asked on a guess.
         bundle.findings.gaps = check_skills.gaps(
-            keys, facts=self.facts, request=req.text, material="\n".join(_material(bundle)),
-            today=req.today)
+            keys, questions=self.questions, request=req.text,
+            material="\n".join(_material(bundle)), today=req.today)
         if req.turn.get("resume") == self.name:
-            asked = [{"id": f"{check_skills.GAP_PREFIX}{g.get('fact')}"}
-                     for g in bundle.findings.gaps]
+            asked = [{"id": f"{check_skills.GAP_PREFIX}{g.get('fact')}",
+                      "label": str(g.get("label") or "")} for g in bundle.findings.gaps]
             shown = check_skills.labelled(bundle.answers, asked)
             lines = [f"- {v.strip()}" for v in shown.values() if str(v or "").strip()]
             parts = list(bundle.material.parts)
@@ -1255,7 +1259,7 @@ def compile_steps(steps: list[dict[str, Any]], agents: dict[str, AgentInfo]) -> 
         elif kind == "review":
             out.append(ReviewStep(i, spec, title))
         elif kind == "human" and spec["ref"] == "gaps":
-            out.append(GapsStep(i, spec, title, facts=gap_facts(nxt) if nxt else ""))
+            out.append(GapsStep(i, spec, title, questions=gap_facts(nxt) if nxt else []))
         elif kind == "human":
             writer = steps[i + 1]
             out.append(OutlineStep(i, spec, title, writer=writer["ref"],

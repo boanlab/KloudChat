@@ -1,13 +1,18 @@
-"""문서를 쓰기 전에, 그 서식에 꼭 필요한 사실 중 요청·자료에 없거나 모호한 것을 찾아 물을 질문으로 냅니다.
+"""문서를 쓰기 전에, 물어볼 질문 목록 중 요청·자료에 없거나 모호한 것을 찾아 물을 질문으로 냅니다.
+
+질문 목록은 데이터다: 템플릿(template.toml 의 [[questions]])과 에이전트(에이전트 양식의 「빠진 정보 질문」,
+기본 제공 에이전트는 agents/*.toml 의 [[questions]])가 들고 있고, 서버가 합쳐서 넘긴다.
+질문마다 detector 가 「자료가 이미 답했나」를 정한다:
+  {"type": "builtin", "name": "meeting_date"}  — 아래 DETECTORS 의 이름(서버 추출기 값을 믿는 것 포함)
+  {"type": "keyword", "words": ["참석"], "when": ["회의"]}  — 낱말 하나라도 있으면 답한 것(when: 요청에 있을 때만 묻기)
+  {"type": "regex", "pattern": "...", "when": "..."}  — 요청+자료에서 찾음(대소문자 무시, 줄 단위)
+  {"type": "judge"}  — 서버가 판단 모델에 물은 결과(computed["judged"][id])
 
 인자(JSON 하나):
-  {"op": "check", "facts": "minutes", "request": "<요청과 사용자 답>", "material": "<첨부·붙여 넣은 자료>",
-   "computed": {"meeting_date": "2026-10-14", "clients": ["한빛물류(주)"], ...}}
+  {"op": "check", "questions": [...], "request": "<요청과 사용자 답>", "material": "<자료>",
+   "computed": {"meeting_date": "2026-10-14", "clients": [...], "judged": {"q1": true}, ...}}
   {"op": "rule", "findings": [<check 결과>]}  → 「자료대로 진행」 때 작성자에게 줄 빈칸 규칙 한 줄
-facts 는 서식(doc_format)이나 에이전트 키: minutes·client_proposal·gaejo·comparison·career_history·
-career-docs·data-analysis. computed 는 서버의 추출기가 이미 읽은 값(있으면 그것을 믿고, 없으면 글에서 찾음).
-찾은 것: {"kind": "gap", "fact", "label", "question", "why", "placeholder", "rule"} — 문서를 바로잡는 데
-꼭 필요한 사실만, 최대 4개. 자료가 이미 답한 것은 묻지 않는다. 표준 라이브러리만 쓴다.
+찾은 것: {"kind": "gap", "fact", "label", "question", "why", "placeholder"} — 최대 4개. 표준 라이브러리만 쓴다.
 """
 
 from __future__ import annotations
@@ -16,7 +21,6 @@ import json
 import re
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
 
 MAX_QUESTIONS = 4
 
@@ -28,18 +32,6 @@ _UNDECIDED = re.compile(r"누가\s{0,2}\?|담당\s{0,2}(?:미정|없음)|미정|
 _ACTION = re.compile(
     r"(?P<task>[^\n→:]{2,30}?)\s{0,2}(?:→|->|=>)\s{0,2}(?P<who>[가-힣]{2,4}|[가-힣]○○)"
     r"(?=\s{0,2}(?:[,(]|$)|(?:이|가|님|씨)?\s{0,2}(?:담당|맡))")
-
-
-@dataclass(frozen=True, slots=True)
-class Fact:
-    id: str
-    label: str
-    question: str
-    why: str
-    placeholder: str
-    #: Whether the request and material hold it: `(present, detail)`; the detail, when given,
-    #: replaces `why` (what exactly is missing).
-    present: Callable[[str, str, dict], tuple[bool, str]]
 
 
 def _has(pattern: str) -> Callable[[str, str, dict], tuple[bool, str]]:
@@ -143,13 +135,6 @@ def _vat(request: str, material: str, computed: dict) -> tuple[bool, str]:
     return _has(r"VAT|부가세|부가가치세")(request, material, computed)
 
 
-# ── reports to a superior ────────────────────────────────────────────────
-
-_ADDRESSEE = r"[가-힣]{1,10}(?:님|장|처장|과장|팀장|부장|원장|총장|이사|대표)\s{0,2}(?:께|에게|한테)|보고\s{0,2}대상|결재\s{0,2}(?:권자|라인|선)"
-_REPORTER = (r"보고자|작성자|기안자|보고\s{0,2}부서|작성\s{0,2}부서|"
-             r"[가-힣]{2,10}(?:팀|과|실|처|센터|부)\s{0,2}[가-힣]{2,4}\s{0,2}(?:주무관|주임|대리|과장|팀장|연구원|사원|선생님)")
-
-
 # ── comparisons ──────────────────────────────────────────────────────────
 
 
@@ -234,97 +219,93 @@ def _company_role(request: str, material: str, computed: dict) -> tuple[bool, st
                 r"입사\s{0,2}(?:지원|하려)|\(주\)|㈜|주식회사")(request, material, computed)
 
 
-FACTS: dict[str, tuple[Fact, ...]] = {}
+#: The built-in detectors a question may name (`{"type": "builtin", "name": …}`): each reads
+#: the request and material, and trusts what the server's extractors already read.
+DETECTORS: dict[str, Callable[[str, str, dict], tuple[bool, str]]] = {
+    "meeting_date": _meeting_date,
+    "attendees": _attendees,
+    "action_dues": _action_dues,
+    "client": _client,
+    "period": _period,
+    "staffing": _staffing,
+    "vat": _vat,
+    "prices": _prices,
+    "musts": _musts,
+    "career_periods": _career_periods,
+    "career_metrics": _career_metrics,
+    "length_rule": _length_rule,
+    "deadline_basis": _deadline_basis,
+    "period_split": _period_split,
+    "denominator": _denominator,
+    "letter_company": _letter_company,
+}
+DETECTOR_TYPES = ("builtin", "keyword", "regex", "judge")
 
 
-def _facts(*rows: Fact) -> tuple[Fact, ...]:
-    return rows
+def _words(raw) -> list[str]:
+    items = [raw] if isinstance(raw, str) else list(raw or []) if isinstance(raw, list) else []
+    return [str(w).strip().lower() for w in items if str(w or "").strip()]
 
 
-_LETTER_COMPANY = Fact("company_role", "지원 회사·직무", "어느 회사의 어떤 직무에 지원하나요?",
-                       "문항이 지원 동기·입사 후 계획을 묻는데 회사와 직무가 자료에 없습니다.", "[지원 회사·직무]",
-                       _letter_company)
-_QUESTION = Fact("question", "자기소개서 문항", "어떤 문항에 답하나요? (문항 원문)",
-                 "문항이 없으면 무엇에 답할지 정할 수 없습니다.", "",
-                 _has(r"문항|질문|^\s{0,4}\d\s{0,2}[.)]\s|쓰세요|쓰시오|기술하시오|서술|경험을\s{0,2}(?:쓰|적)"))
-_COMPANY = Fact("company_role", "지원 회사·직무", "어느 회사의 어떤 직무에 지원하나요?",
-                "회사와 직무를 모르면 지원 동기와 경험 연결을 쓸 수 없습니다.", "[지원 회사·직무]", _company_role)
-_METRICS = Fact("metrics", "성과 수치", "경험별 성과를 보여 줄 수치가 있으면 알려 주세요(없으면 수치 없이 씁니다).",
-                "자료에 수치가 하나도 없습니다. 수치를 지어 넣지 않으므로, 있으면 알려 주셔야 들어갑니다.",
-                "[구체적 성과 수치]", _career_metrics)
+def _found(pattern: str, text: str) -> bool:
+    # Patterns are checked bounded when saved (`gap_questions.regex_ok`); never user text here.
+    return bool(_compiled(pattern).search(text))
 
-FACTS.update({
-    "minutes": _facts(
-        Fact("meeting_date", "회의 일시", "회의를 언제 했나요? (연도 포함)",
-             "자료에 회의 날짜가 없습니다. ‘다음 주 금요일’ 같은 기한을 날짜로 풀고 머리의 일시를 채우려면 필요합니다.",
-             "[회의 일자]", _meeting_date),
-        Fact("attendees", "참석자", "참석자는 누구였나요?",
-             "자료에 참석자 목록이 없습니다. 회의록의 참석·불참 칸에 들어갑니다.", "[참석자]", _attendees),
-        Fact("action_dues", "실행 항목 기한", "실행 항목의 기한을 정했나요?",
-             "담당은 정했는데 기한이 없는 항목이 있습니다.", "[기한]", _action_dues),
-    ),
-    "client_proposal": _facts(
-        Fact("client", "고객사", "제안서를 받을 고객사는 어디인가요?",
-             "자료에서 고객사 이름을 찾지 못했습니다. 표지와 본문 수신처에 들어갑니다.", "[고객사]", _client),
-        Fact("period", "사업 기간", "사업(과업) 기간은 얼마인가요?",
-             "기간이 없으면 일정과 투입 MM, 견적을 맞출 수 없습니다.", "[사업 기간]", _period),
-        Fact("staffing", "투입 인력·MM·단가", "투입 인력(역할·인원·MM)과 단가를 알려 주세요.",
-             "견적을 코드로 계산하려면 인력·MM·단가(또는 총액)가 필요합니다. 없으면 금액을 빈칸으로 둡니다.",
-             "[투입 인력·단가]", _staffing),
-        Fact("vat", "부가세 기준", "금액은 부가세 포함인가요, 별도인가요?",
-             "부가세 기준이 없으면 예산과 견적을 같은 기준으로 비교할 수 없습니다.", "[부가세 기준]", _vat),
-    ),
-    "gaejo": _facts(
-        Fact("addressee", "보고 대상", "누구에게 올리는 보고인가요? (예: 시설과장님)",
-             "보고 대상이 없으면 머리의 보고 대상과 결정 요청의 높이를 정할 수 없습니다.", "[보고 대상]",
-             _has(_ADDRESSEE)),
-        Fact("reporter", "보고자", "보고자(부서·이름)는 누구인가요?",
-             "머리의 보고자(부서) 칸에 들어갑니다.", "[보고자·부서]", _has(_REPORTER)),
-    ),
-    "comparison": _facts(
-        Fact("prices", "대안별 가격", "대안별 가격(요금·견적)을 알려 주세요.",
-             "비용으로 고르라고 하셨는데 자료에 금액이 없습니다. 가격을 지어 넣지 않습니다.", "[가격]", _prices),
-        Fact("musts", "필수 조건", "꼭 맞아야 하는 조건은 무엇인가요?",
-             "필수 조건으로 거르라고 하셨는데 어떤 조건인지 자료에 없습니다.", "[필수 조건]", _musts),
-    ),
-    "career_history": _facts(
-        _COMPANY,
-        Fact("periods", "경력별 기간", "회사별 재직 기간(시작·끝 연월)을 알려 주세요.",
-             "총 경력은 기간으로 계산합니다. 기간이 없으면 계산하지 않고 빈칸으로 둡니다.", "[기간]",
-             _career_periods),
-        _METRICS,
-    ),
-    "career-docs": _facts(
-        _QUESTION,
-        _LETTER_COMPANY,
-        Fact("length_rule", "글자 수 규칙", "문항별 글자 수 제한과 세는 법(공백 포함·바이트)을 알려 주세요.",
-             "글자 수 기준이 없으면 분량을 맞출 수 없습니다.", "", _length_rule),
-        _METRICS,
-    ),
-    "data-analysis": _facts(
-        Fact("deadline_basis", "기한 기준", "며칠을 넘으면 기한을 넘긴 것으로 볼까요? (예: 접수일부터 14일)",
-             "기한 기준이 요청과 자료에 없습니다. 기준에 따라 지연 건수와 비율이 달라집니다.", "[기한 기준]",
-             _deadline_basis),
-        Fact("period_split", "기간 구분", "비교할 기간을 어느 달로 나눌까요?",
-             "기간을 나누는 기준이 자료에 없습니다.", "[기간 기준]", _period_split),
-        Fact("denominator", "분모 기준", "비율의 분모에 무응답·빈칸을 넣을까요, 뺄까요?",
-             "자료에 무응답·빈칸이 있어 분모에 따라 비율이 달라집니다.", "[분모 기준]", _denominator),
-    ),
-})
+
+_PATTERNS: dict[str, re.Pattern[str]] = {}
+
+
+def _compiled(pattern: str) -> re.Pattern[str]:
+    if pattern not in _PATTERNS:
+        if len(_PATTERNS) > 256:
+            _PATTERNS.clear()
+        _PATTERNS[pattern] = re.compile(pattern, re.I | re.M)
+    return _PATTERNS[pattern]
+
+
+def present(question: dict, request: str, material: str, computed: dict) -> tuple[bool, str]:
+    """Whether the request and material answer the question, by its detector; the detail,
+    when given, replaces its `why`. A detector this script cannot run asks nothing."""
+    detector = question.get("detector") if isinstance(question.get("detector"), dict) else {}
+    kind = str(detector.get("type") or "")
+    text = f"{request}\n{material}"
+    if kind == "builtin":
+        found = DETECTORS.get(str(detector.get("name") or ""))
+        return found(request, material, computed) if found else (True, "")
+    if kind == "keyword":
+        when = _words(detector.get("when"))
+        if when and not any(w in request.lower() for w in when):
+            return True, ""
+        words = _words(detector.get("words"))
+        return (not words or any(w in text.lower() for w in words)), ""
+    if kind == "regex":
+        when = str(detector.get("when") or "")
+        if when and not _found(when, request):
+            return True, ""
+        pattern = str(detector.get("pattern") or "")
+        return (not pattern or _found(pattern, text)), ""
+    if kind == "judge":
+        # The server asked the judge model; unasked (no model), it asks nothing.
+        return bool((computed.get("judged") or {}).get(str(question.get("id") or ""), True)), ""
+    return True, ""
 
 
 def check(request: str, material: str, computed: dict | None = None, options: dict | None = None) -> list[dict]:
-    """The format's facts the request and material do not hold, at most `MAX_QUESTIONS`."""
+    """The questions the request and material do not answer, at most `MAX_QUESTIONS`."""
     options = options or {}
     computed = computed or {}
     out = []
-    for fact in FACTS.get(str(options.get("facts") or ""), ()):
-        present, detail = fact.present(request or "", material or "", computed)
-        if present:
+    for question in options.get("questions") or ():
+        if not isinstance(question, dict) or not question.get("id"):
+            continue
+        answered, detail = present(question, request or "", material or "", computed)
+        if answered:
             continue
         out.append({
-            "kind": "gap", "fact": fact.id, "label": fact.label, "question": fact.question,
-            "why": detail or fact.why, "placeholder": fact.placeholder,
+            "kind": "gap", "fact": str(question["id"]), "label": str(question.get("label") or ""),
+            "question": str(question.get("question") or ""),
+            "why": detail or str(question.get("why") or ""),
+            "placeholder": str(question.get("placeholder") or ""),
         })
     return out[:MAX_QUESTIONS]
 
@@ -347,7 +328,8 @@ def run(options: dict) -> dict:
         return {"ok": True, "op": op, "rule": rule(list(options.get("findings") or []))}
     if op == "check":
         found = check(str(options.get("request") or ""), str(options.get("material") or ""),
-                      dict(options.get("computed") or {}), {"facts": options.get("facts")})
+                      dict(options.get("computed") or {}),
+                      {"questions": list(options.get("questions") or [])})
         return {"ok": True, "op": op, "findings": found, "rule": rule(found)}
     raise ValueError(f"모르는 op: {op}")
 

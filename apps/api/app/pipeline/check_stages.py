@@ -25,7 +25,14 @@ from app.core.config import settings
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context, Wait
-from app.services import check_skills, copy_check, key_figures, post_checks, skill_packages
+from app.services import (
+    check_skills,
+    copy_check,
+    gap_questions,
+    key_figures,
+    post_checks,
+    skill_specs,
+)
 
 
 class GapCheck(Base):
@@ -45,9 +52,18 @@ class GapCheck(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         req = bundle.request
+        judged = None
+        if gap_questions.needs_judge(req.gap_questions) \
+                and check_skills.of_stage(tuple(req.check_keys or ()), "pre", req.skill_specs):
+            from app.services import report
+
+            judged = await gap_questions.judged(
+                req.gap_questions, request=req.text, material=req.check_material,
+                complete=report._complete, model=req.judge, api_key=req.api_key,
+                usage=bundle.usage)
         bundle.findings.gaps = check_skills.gaps(
-            tuple(req.check_keys or ()), facts=req.check_facts, request=req.text,
-            material=req.check_material, today=req.today)
+            tuple(req.check_keys or ()), questions=req.gap_questions, request=req.text,
+            material=req.check_material, today=req.today, specs=req.skill_specs, judged=judged)
 
 
 #: Questions on one card, at most.
@@ -143,7 +159,7 @@ class GroundCheck(Base):
         material, computed, options = _trace(bundle)
         bundle.document.sections, outcome = check_skills.ground_sections(
             found.check_keys, bundle.document.sections, material=material, computed=computed,
-            options=options)
+            options=options, specs=bundle.request.skill_specs)
         found.before += ["ungrounded_value"] * len(outcome.found)
         if not self.again:
             found.traced = outcome
@@ -174,6 +190,7 @@ class AnswerGrounding(Base):
             computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
                                            if m.get("role") == "assistant")],
             options=check_skills.options_for(req.check_facts, req.today, req.check_options),
+            specs=req.skill_specs,
         )
         if not traced.found:
             return
@@ -202,7 +219,8 @@ class CopyCheck(Base):
 
     def skip(self, bundle: Bundle) -> str:
         req = bundle.request
-        if not copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs):
+        if not copy_check.active((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
+                                 req.skill_specs):
             return "no copy skill on this turn"
         return ""
 
@@ -217,7 +235,9 @@ class CopyCheck(Base):
             material=f"{bundle.material.given}\n{req.check_material}",
             complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
             usage=bundle.usage,
-            skills=copy_check.on_turn((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs))
+            skills=copy_check.on_turn((*req.skill_keys, *(req.check_keys or ())), req.tool_outputs,
+                                      req.skill_specs),
+            specs=req.skill_specs)
         doc.answer = outcome.text
         still = [r for r in outcome.rows if r.get("hard") and (r["over"] or r["under"])]
         step = {
@@ -246,8 +266,9 @@ class SkillChecks(Base):
         req = bundle.request
         # A check the agent attaches with a `post` entry ran in `check:answer-grounding`.
         attached = [k for k in req.check_keys or ()
-                    if not ((p := skill_packages.package_for(k)) and p.stage == "post")]
-        return post_checks.on_turn((*req.skill_keys, *attached), req.tool_outputs)
+                    if not ((p := skill_specs.resolve(k, req.skill_specs)) and p.stage == "post")]
+        return post_checks.on_turn((*req.skill_keys, *attached), req.tool_outputs,
+                                   req.skill_specs)
 
     def skip(self, bundle: Bundle) -> str:
         return "" if self._keys(bundle) else "no post-checked skill on this turn"
@@ -265,7 +286,7 @@ class SkillChecks(Base):
                                if x and x.strip()),
             attached=req.check_material, computed=list(req.tool_outputs), today=today,
             complete=report._complete, model=req.model, judge=req.judge, api_key=req.api_key,
-            usage=bundle.usage)
+            usage=bundle.usage, specs=req.skill_specs)
         doc.answer = outcome.text
         step = {"category": "thinking", "id": "skill_check", "label": outcome.label,
                 "status": "error" if outcome.left else "done",

@@ -39,6 +39,34 @@ function pipelineRow(id: string, name: string, extra: Record<string, unknown> = 
   }
 }
 
+/** What a skill's server fields may name, as `GET /skills/server-catalogue` sends it. */
+export const serverCatalogue = {
+  postChecks: [
+    { ref: 'source-check/post', skill: '출처 점검', summary: '답의 수치·인용이 자료에 있는지 확인합니다.' },
+    { ref: 'copy-editing/preserve', skill: '교정·윤문', summary: '원문의 값과 문장이 바뀌지 않았는지 봅니다.' },
+    { ref: 'release-notes/notes', skill: '릴리스 노트', summary: '' },
+  ],
+  entries: {
+    pre: [{ ref: 'gap-check/gaps', skill: '빠진 정보 묻기', summary: '' }],
+    post: [
+      { ref: 'grounding-check/trace', skill: '근거 확인', summary: '' },
+      { ref: 'generic-language-killer/scan', skill: '상투어 걷어내기', summary: '' },
+    ],
+  },
+  scripts: [
+    { ref: 'date-calc/dates', skill: '날짜 계산', summary: '상대 날짜를 기준일로 풉니다.' },
+    { ref: 'xlsx-clean/clean', skill: '엑셀 정리', summary: '빈 행과 합계 행을 정리합니다.' },
+  ],
+  copyKinds: [{ kind: 'claim', label: '자료에 없는 사실' }, { kind: 'medical', label: '효능' }, { kind: 'guarantee', label: '보장' }],
+}
+
+/** The built-in 빠진 정보 detectors (`gap_questions.detector_catalogue`). */
+export const gapDetectors = [
+  { name: 'meeting_date', label: '회의 날짜(연도까지)' },
+  { name: 'attendees', label: '참석자' },
+  { name: 'prices', label: '비용으로 고를 때 대안별 금액' },
+]
+
 /** The shipped 묶음, as `GET /agent-bases` sends them (`app/bundles/*.toml`). */
 const targets = (report: string | null, chat: string | null) => ({ report, chat })
 export const shippedBundles = [
@@ -230,7 +258,8 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       options: {}, checks: [], flows: { write: [{ name: 'draft', label: '초안', kind: 'model' }] } })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return json([])
     if (method === 'GET' && path === '/agent-bases') return json({ bases, bundles: [...shippedBundles, ...(emptyMine ? [] : [myBundle])],
-      exportFormats: ['docx', 'pdf', 'hwpx', 'md'] })
+      exportFormats: ['docx', 'pdf', 'hwpx', 'md'], gapDetectors })
+    if (method === 'GET' && path === '/skills/server-catalogue') return json(serverCatalogue)
     if (method === 'GET' && path === '/bundles') return json({ shipped: shippedBundles, mine: emptyMine ? [] : [myBundle], shared: [] })
     if (method === 'POST' && path === '/bundles') return json({ ...myBundle, ref: 'user:b2', id: 'b2', name: String(body.name) }, 201)
     if (method === 'POST' && /^\/bundles\/[^/]+\/share$/.test(path)) return json({ ...myBundle, review: 'pending' })

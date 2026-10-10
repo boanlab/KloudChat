@@ -31,7 +31,7 @@ from app.routers import runs as runs_router
 from app.routers import sessions
 from app.routers import user_pipelines as up
 from app.services import agent as agent_service
-from app.services import report
+from app.services import gap_questions, report
 
 _MODEL = {"id": "strict-local/writer", "label": "w", "kinds": ["report", "chat"],
           "creditCost": 1, "dataBoundary": "self_hosted"}
@@ -40,6 +40,9 @@ _JUDGE = {"id": "strict-local/judge", "label": "j", "kinds": ["chat"], "creditCo
 
 
 def _info(id_: str, output: str = "document", **kw) -> compose.AgentInfo:
+    # The questions its card asks, resolved as `user_pipelines.agents_for` does.
+    kw.setdefault("questions", tuple(gap_questions.resolve(
+        own=None, base_key=kw.get("catalog_key") or None, doc_format=kw.get("doc_format"))))
     return compose.AgentInfo(id=id_, name=kw.pop("name", id_.upper()), output=output, **kw)
 
 

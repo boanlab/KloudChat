@@ -324,6 +324,34 @@ class SlideRewrite(Wire):
 
 
 # ── skills ─────────────────────────────────────────────────────────────
+class SkillServer(Wire):
+    """What the server runs for a skill (`services/skill_specs.py`), each naming shipped
+    scripts only (`GET /skills/server-catalogue` lists them)."""
+
+    #: `pre`/`post`: a check an agent can attach; `entry` is the shipped check it runs.
+    stage: str = ""
+    entry: str = ""
+    #: Shipped scripts run over the skill's chat answers, `<key>/<script>`.
+    post_check: list[str] = Field(default_factory=list, max_length=8)
+    #: True, or what the judge looks at in particular.
+    post_judge: bool | str = False
+    copy_check: bool = False
+    copy_kinds: list[str] = Field(default_factory=list, max_length=12)
+    tables: bool = False
+    own_stage: bool = False
+    #: Scripts its instructions run through `run_skill_script`: shipped `<key>/<script>` or
+    #: the skill's own script names (sandbox only).
+    uses: list[str] = Field(default_factory=list, max_length=12)
+
+
+class SkillScriptOut(Wire):
+    name: str
+    summary: str = ""
+    size: int = 0
+    #: The text itself, for its owner; empty for anyone else.
+    source: str = ""
+
+
 class SkillOut(Wire):
     id: str
     name: str
@@ -345,14 +373,42 @@ class SkillOut(Wire):
     updated_at: datetime
     #: Fixed scripts its package ships (`run_skill_script`); empty for a plain skill.
     scripts: list[str] = Field(default_factory=list)
+    #: What the server runs for it; a shipped copy that stores none shows its package's.
+    server: SkillServer = Field(default_factory=SkillServer)
+    #: Its own scripts (sandbox only); `source` only for the owner.
+    script_files: list[SkillScriptOut] = Field(default_factory=list)
+    #: Sharing with scripts: "" · pending · approved · rejected.
+    review: str = ""
+    review_note: str = ""
 
     @classmethod
-    def of(cls, s: Skill) -> SkillOut:
-        out = cls.model_validate(s, from_attributes=True)
+    def of(cls, s: Skill, *, owner: bool = True) -> SkillOut:
+        out = cls._base(s)
+        out.server = _server_of(s)
+        out.script_files = [SkillScriptOut(
+            name=str(f.get("name") or ""), summary=str(f.get("summary") or ""),
+            size=int(f.get("size") or 0), source=str(f.get("source") or "") if owner else "")
+            for f in s.script_files or [] if isinstance(f, dict)]
+        return out
+
+    @classmethod
+    def _base(cls, s: Skill):
+        names = ("id", "name", "slug", "description", "when_to_use", "body", "catalog_key",
+                 "source", "kinds", "required_tools", "estimated_tokens", "version", "enabled",
+                 "visibility", "installs", "origin_id", "updated_at", "review", "review_note",
+                 "owner_id")
+        out = cls.model_validate({k: getattr(s, k) for k in names if k in cls.model_fields})
         out.kinds = list(s.kinds or [])
         out.required_tools = list(s.required_tools or [])
         out.scripts = skill_packages.script_names(s.catalog_key)
         return out
+
+
+def _server_of(s: Skill) -> SkillServer:
+    from app.services import skill_specs
+
+    fields = skill_specs.of_row(s).fields()
+    return SkillServer.model_validate(fields)
 
 
 class StoreSkillOut(SkillOut):
@@ -374,10 +430,13 @@ class StoreSkillOut(SkillOut):
         official: bool = False,
         installed: bool = False,
     ) -> StoreSkillOut:
-        out = cls.model_validate(s, from_attributes=True)
-        out.kinds = list(s.kinds or [])
-        out.required_tools = list(s.required_tools or [])
-        out.scripts = skill_packages.script_names(s.catalog_key)
+        out = cls._base(s)
+        out.server = _server_of(s)
+        # The store shows what a copy would run, not the code: a copy shows it to its owner.
+        out.script_files = [SkillScriptOut(name=str(f.get("name") or ""),
+                                           summary=str(f.get("summary") or ""),
+                                           size=int(f.get("size") or 0))
+                            for f in s.script_files or [] if isinstance(f, dict)]
         out.owner_name = owner_name
         out.official = official
         out.installed = installed
@@ -394,6 +453,8 @@ class SkillIn(Wire):
     required_tools: list[str] = Field(default_factory=list)
     enabled: bool = True
     visibility: Visibility = Visibility.private
+    #: What the server runs for it; validated against the shipped allowlists.
+    server: SkillServer | None = None
 
 
 # ── memories ───────────────────────────────────────────────────────────
@@ -466,6 +527,14 @@ class AgentOut(Wire):
     check_options: dict | None = None
     #: The 묶음 ticked (`Agent.bundles`).
     bundles: list | None = None
+    #: 빠진 정보 질문 of its own (`Agent.gap_questions`); null asks what its base asks.
+    gap_questions: list | None = None
+    #: The questions its 서식 (or the 서식 of its format) asks — shown in the form, asked
+    #: alongside its own.
+    inherited_questions: list = Field(default_factory=list)
+    #: With none of its own stored, what its base asks instead: the form starts its own list
+    #: from these.
+    base_questions: list = Field(default_factory=list)
     #: 진행 과정: `{mode, base, extras, chain, review, needsReview, steps?}`
     #: (`bases.process_of`); `steps` for the owner only.
     process: dict | None = None
@@ -498,6 +567,9 @@ class AgentOut(Wire):
         out.process = process
         out.check_skills = None if a.check_skills is None else [str(k) for k in a.check_skills]
         out.check_options = dict(a.check_options) if a.check_options else None
+        out.gap_questions = None if a.gap_questions is None else [dict(q) for q in a.gap_questions]
+        out.inherited_questions = _inherited_questions(a)
+        out.base_questions = _base_questions(a)
         out.owner_name = owner_name
         out.design_name = design_name
         out.has_knowledge = has_knowledge
@@ -549,6 +621,27 @@ class AgentIn(Wire):
     check_skills: list[str] | None = Field(default=None, max_length=12)
     #: `{tool_numbers, titles}`: how strict `grounding-check` is.
     check_options: dict[str, bool] | None = None
+    #: 빠진 정보 질문 (`services/gap_questions.py`), checked on save; null keeps none stored.
+    gap_questions: list[dict[str, Any]] | None = Field(default=None, max_length=12)
+
+
+def _inherited_questions(a: Agent) -> list[dict]:
+    """What its 서식 asks (or the 서식 bound to its format)."""
+    from app.services import gap_questions
+
+    return gap_questions.resolve(own=[], template_id=a.render_template_id,
+                                 doc_format=a.doc_format)
+
+
+def _base_questions(a: Agent) -> list[dict]:
+    """With none of its own stored, what the official agent it runs as asks."""
+    from app.services import gap_questions
+
+    if a.gap_questions is not None:
+        return []
+    shown = {q["id"] for q in _inherited_questions(a)}
+    return [q for q in gap_questions.resolve(own=None, base_key=a.catalog_key or a.base_key)
+            if q["id"] not in shown]
 
 
 class ToolCatalogOut(Wire):

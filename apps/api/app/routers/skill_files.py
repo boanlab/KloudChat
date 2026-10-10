@@ -1,8 +1,10 @@
 """Skills in and out as files: `POST /skills/import` reads SKILL.md, .zip or .skill
-uploads (a dry run shows what would be made), `GET /skills/{id}/export` writes one back.
+uploads (a dry run shows what would be made), `GET /skills/{id}/export` writes one back;
+`/admin/skills` is the administrators' queue of skills with scripts asking to be shared.
 
-Imported skills are rows like any other personal skill. Their files are never stored and
-their scripts never run; see `services/skill_import.py`.
+Imported skills are rows like any other personal skill. Nothing is written to disk: their
+Python scripts are kept in the row and run only in the code sandbox; see
+`services/skill_import.py`.
 """
 
 from __future__ import annotations
@@ -14,10 +16,11 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import Field
+from sqlmodel import col, select
 
-from app.core.deps import CurrentUser, DbSession, client_ip
+from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
 from app.core.logs import safe
-from app.models.user import AuditEvent
+from app.models.user import AuditEvent, User, utcnow
 from app.models.workspace import Skill, SkillSource, Visibility
 from app.routers.workspace import _own, _slug
 from app.schemas.auth import Wire
@@ -50,6 +53,13 @@ class ExcludedOut(Wire):
     reason: str
 
 
+class ScriptPreviewOut(Wire):
+    name: str
+    summary: str = ""
+    size: int = 0
+    source: str = ""
+
+
 class ImportPreviewOut(Wire):
     filename: str
     ok: bool
@@ -64,6 +74,10 @@ class ImportPreviewOut(Wire):
     kept: list[str] = Field(default_factory=list)
     excluded: list[ExcludedOut] = Field(default_factory=list)
     findings: list[FindingOut] = Field(default_factory=list)
+    #: What the server would run for it (`SkillServer` fields), when anything.
+    server: dict | None = None
+    #: Its own scripts: kept, run only in the sandbox.
+    scripts: list[ScriptPreviewOut] = Field(default_factory=list)
 
     @classmethod
     def of(cls, p: skill_import.Preview) -> ImportPreviewOut:
@@ -88,7 +102,18 @@ class ImportPreviewOut(Wire):
                 )
                 for f in p.findings
             ],
+            server=_server_wire(p.server),
+            scripts=[ScriptPreviewOut(name=x.name, summary=x.summary, size=x.size,
+                                      source=x.source) for x in p.scripts],
         )
+
+
+def _server_wire(fields: dict | None) -> dict | None:
+    if not fields:
+        return None
+    from app.schemas.workspace import SkillServer
+
+    return SkillServer.model_validate(fields).model_dump(by_alias=True)
 
 
 class ImportOut(Wire):
@@ -163,6 +188,8 @@ async def import_skills(
             required_tools=list(preview.required_tools),
             version=preview.version,
             enabled=not draft,
+            server_fields=preview.server,
+            script_files=[x.stored() for x in preview.scripts] or None,
             estimated_tokens=starter.estimate_tokens(
                 preview.when_to_use, preview.body, preview.description
             ),
@@ -180,6 +207,7 @@ async def import_skills(
                     "excluded": len(preview.excluded),
                     "warnings": sorted({f.code for f in preview.findings}),
                     "draft": draft,
+                    "scripts": len(preview.scripts),
                 },
                 ip=client_ip(request),
                 user_agent=request.headers.get("User-Agent", "")[:400],
@@ -204,6 +232,7 @@ async def export_skill(skill_id: str, user: CurrentUser, db: DbSession):
         required_tools=list(skill.required_tools or []),
         version=skill.version,
         body=skill.body,
+        server=skill.server_fields,
     )
     filename = quote(f"{skill.slug or 'skill'}-SKILL.md")
     return Response(
@@ -214,3 +243,74 @@ async def export_skill(skill_id: str, user: CurrentUser, db: DbSession):
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+# ── sharing a skill with scripts ────────────────────────────────────────
+
+
+class SkillReviewOut(Wire):
+    skill: SkillOut
+    owner_name: str = ""
+
+
+class SkillRejectIn(Wire):
+    note: str = Field(default="", max_length=400)
+
+
+_REVIEWS = ("pending", "approved", "rejected")
+
+
+@router.get("/admin/skills", response_model=list[SkillReviewOut])
+async def admin_skills(admin: AdminUser, db: DbSession, review: str = "pending"):
+    """Skills with scripts asking to be shared (or already decided), newest first. The
+    administrator reads the scripts here before anyone else can take a copy."""
+    query = select(Skill).where(col(Skill.script_files).is_not(None)).order_by(
+        col(Skill.updated_at).desc())
+    if review in _REVIEWS:
+        query = query.where(Skill.review == review)
+    rows = (await db.exec(query)).all()
+    owners = {r.owner_id for r in rows}
+    names = dict((await db.exec(select(User.id, User.name).where(col(User.id).in_(owners))))
+                 .all()) if owners else {}
+    return [SkillReviewOut(skill=SkillOut.of(r), owner_name=names.get(r.owner_id, ""))
+            for r in rows]
+
+
+async def _decide(db: DbSession, admin: User, skill_id: str, *, approve: bool,
+                  request: Request | None, note: str = "") -> SkillReviewOut:
+    row = await db.get(Skill, skill_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if row.review != "pending":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="not_pending")
+    row.review = "approved" if approve else "rejected"
+    row.visibility = Visibility.org if approve else Visibility.private
+    row.review_note = note.strip()[:400]
+    row.reviewed_by, row.reviewed_at = admin.id, utcnow()
+    db.add(row)
+    db.add(AuditEvent(
+        actor_id=admin.id, action="skill.approve" if approve else "skill.reject",
+        target=row.name[:200], detail=row.review_note,
+        event_metadata={"skillId": row.id, "scripts": len(row.script_files or []),
+                        "changes": {"review": ["pending", row.review]}},
+        ip=client_ip(request) if request else "",
+        user_agent=request.headers.get("User-Agent", "")[:400] if request else ""))
+    await db.commit()
+    await db.refresh(row)
+    log.info("skill %s %s by %s", safe(row.id), row.review, safe(admin.id))
+    return SkillReviewOut(skill=SkillOut.of(row))
+
+
+@router.post("/admin/skills/{skill_id}/approve", response_model=SkillReviewOut)
+async def approve_skill(skill_id: str, admin: AdminUser, db: DbSession,
+                        request: Request = None):  # type: ignore[assignment]
+    return await _decide(db, admin, skill_id, approve=True, request=request)
+
+
+@router.post("/admin/skills/{skill_id}/reject", response_model=SkillReviewOut)
+async def reject_skill(skill_id: str, payload: SkillRejectIn, admin: AdminUser, db: DbSession,
+                       request: Request = None):  # type: ignore[assignment]
+    if not payload.note.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="reason_required")
+    return await _decide(db, admin, skill_id, approve=False, request=request, note=payload.note)

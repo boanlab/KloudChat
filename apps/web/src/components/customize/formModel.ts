@@ -1,5 +1,5 @@
 import { uid } from '@/lib/utils'
-import type { Agent, Skill } from '@/types'
+import type { Agent, Skill, SkillServer } from '@/types'
 
 /** A blank agent on the cheapest chat model, the rule the surface defaults use. */
 export function emptyAgent(model: string): Agent {
@@ -66,4 +66,17 @@ export const blankSkill = (): SkillDraft => ({
   requiredTools: [],
   visibility: 'private',
   enabled: true,
+})
+
+/** A skill that asks the server for nothing. */
+export const blankServer = (): SkillServer => ({
+  stage: '',
+  entry: '',
+  postCheck: [],
+  postJudge: false,
+  copyCheck: false,
+  copyKinds: [],
+  tables: false,
+  ownStage: false,
+  uses: [],
 })

@@ -81,8 +81,14 @@ class Request:
     #: What an earlier step of a composed run wrote: the writer reads it, the checks never
     #: take a figure from it.
     derived: list[str] = field(default_factory=list)
-    #: Catalogue keys of the skills on the turn (switched on or the agent's).
+    #: Keys of the skills on the turn (switched on or the agent's): a catalogue key, or
+    #: `skill:<id>` for a person's skill whose fields ask the server for something.
     skill_keys: tuple[str, ...] = ()
+    #: What the server runs for each key above and each attached `skill:<id>` check, read
+    #: from their rows (`services/skill_specs.py`); a shipped key not here reads its package.
+    skill_specs: dict[str, Any] = field(default_factory=dict)
+    #: 빠진 정보 질문 the `pre` checks ask from (`services/gap_questions.py`).
+    gap_questions: list[dict] = field(default_factory=list)
     #: Whether this turn writes the first draft (the `pre` checks ask only then).
     first_draft: bool = False
     # A revision reads these.
