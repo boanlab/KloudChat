@@ -10,6 +10,7 @@ unchanged and LiteLLM validates it. The master key is never attached.
 from __future__ import annotations
 
 import logging
+import re
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -26,6 +27,15 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 _DROP_REQUEST = {"host", "content-length", "connection", "accept-encoding"}
 _DROP_RESPONSE = {"content-length", "content-encoding", "transfer-encoding", "connection"}
 
+#: The model endpoints external tools use, and nothing else: LiteLLM's admin UI, key/user
+#: management, spend and pass-through routes are never reachable from outside.
+_ALLOWED = re.compile(
+    r"(?:v1/)?(?:chat/completions|completions|responses(?:/[A-Za-z0-9_-]{1,80}){0,2}"
+    r"|messages(?:/count_tokens)?|embeddings|rerank|audio/transcriptions"
+    r"|models(?:/[A-Za-z0-9._:/-]{1,120})?)"
+)
+_ALLOWED_METHODS = {"GET", "POST", "DELETE"}
+
 #: Same as the chat timeout: a coding agent's turn is long.
 _TIMEOUT = httpx.Timeout(settings.chat_timeout_sec, connect=10.0)
 
@@ -39,6 +49,14 @@ def _one_line(value: str) -> str:
     "/{path:path}", methods=["GET", "POST", "DELETE", "PATCH", "PUT"], include_in_schema=False
 )
 async def proxy(path: str, request: Request) -> Response:
+    clean = path.strip("/")
+    if (
+        request.method not in _ALLOWED_METHODS
+        or ".." in clean
+        or "//" in clean
+        or not _ALLOWED.fullmatch(clean)
+    ):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
     base, _ = await settings_store.litellm_config()
     if not base:
         raise HTTPException(
