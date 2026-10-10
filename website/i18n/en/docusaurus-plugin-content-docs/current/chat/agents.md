@@ -20,25 +20,34 @@ The built-in agents are **Summary** (요약·정리), **Records** (기록 정리
 
 ## Creating an agent
 
-**Customize** → **Agents** → **Add** → **Create an agent**.
+**Customize** → **Agents** → **Add** → **Create an agent**. **Create agent** at the end of the composer's **+** → **Agents** list opens it too.
 
 ![The agent list](/img/guide/agents.png)
 
-1. Write the **name**, the **one-line description** and the **instructions** (the role and rules the agent always follows). Instructions for one surface only go under a line `[채팅에서]` (chat), `[보고서에서]` (report) or `[슬라이드에서]` (slides); what comes before the first such line applies everywhere.
-2. Choose **How it works** (진행 과정):
-   - **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose a **Start from a base process** that writes a document. When the description or instructions mention a file or DOCX, the form offers a button to switch.
-   - **Start from a base process**: follows the order a built-in agent (Summary, Records, …) works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's question card, document format, template and checks.
-   - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Presentation has no custom order.
-3. Tick **bundles** under **Extra work** (below). A base process comes with the bundles its built-in agent uses already ticked; left as they are, the agent works exactly like the built-in one.
-4. Under **Output look**, pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **Manage themes** opens Settings › Themes. An agent that writes reports can also fix a **document format**.
-5. Enter **How to use** and up to six **opening prompts** under **Conversation start**, and files or web addresses under **Sources**. A web address stores the page as it was when registered.
-6. Set **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Sharing**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
+The form runs from top to bottom like this:
 
-The enable toggle pauses an agent. Deleting it also deletes its sources, its index and its custom order; past conversations stay. The agent's overview says how it works in one line ("How it works: …"), with the ticked bundles behind **Show details**.
+1. The **name**, the **one-line description** and the **instructions** (the role and rules the agent always follows). Instructions for one surface only go under a line `[채팅에서]` (chat), `[보고서에서]` (report) or `[슬라이드에서]` (slides); what comes before the first such line applies everywhere.
+2. **How it works** (진행 과정): Answer directly · Start from a base process · Set it up yourself (advanced) (see "How it works" below).
+3. **Extra work**: the bundle checkboxes (see "Bundles"). Set it up yourself has none; you build steps instead.
+4. **Detailed settings — The process's calculations, checks and outline**: shown only for an agent that writes reports (see "Detailed settings and your own templates").
+5. **Missing-information questions**: what to ask before writing when the material lacks it; up to four at a time while "Ask for missing information first" is on. A * marks a field you must fill.
+6. Under **More settings**: **Output shape**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Output shape and sources").
+
+A new agent is saved only when you press **Create**. The instructions go with every conversation of that agent, so write only the role and rules it should always follow. An agent works when you open a conversation and ask; it never runs by itself on a schedule such as weekly, nor re-summarises its sources.
+
+The enable toggle pauses an agent. Deleting it also deletes its sources, index and custom order; past conversations stay. The overview says how it works in one line, with the ticked bundles behind **Show details**.
+
+## How it works
+
+Pick one of three under **How it works** in the create-agent form.
+
+- **Answer directly**: answers in the chat. It makes no file (DOCX, HWPX, PDF); to get a file, choose **Start from a base process** with a base that writes a document. When the name, description or instructions mention Word, DOCX or a file, a **Switch to “Summary (Bullet-style briefing (개조식))”** button appears. It switches to that base process and also ticks **Export a file when done** under **Finish** (DOCX, or HWPX or PDF when the instructions name that format).
+- **Start from a base process**: pick a built-in agent (Summary, Records, Compare and decide, …) from the **Base process** list and the agent follows the order it works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's questions, document format, template, checks and bundles. A base that writes a document still starts with file export off (see "Get a file" under Bundles).
+- **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Choose **Report (document)** or **Chat (answer)** under **What this agent makes**; an export step works only with Report (document). With Chat (answer) and an export step, the button under the warning switches that field to Report (document), and **Undo** on the notice switches it back. Presentation has no custom order.
 
 ## Bundles
 
-A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the agent settings; **Details** opens its items, each its own checkbox.
+A bundle groups a few things an agent does before and after writing. Each bundle is one checkbox under **Extra work** in the create-agent form; **Details** opens its items, each its own checkbox.
 
 | Bundle | Items |
 |---|---|
@@ -46,22 +55,33 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 | Review after writing | Check everything against the material (accept numbers only from tool output · check job titles and product names too) · Format checks · Fix what is off and check again |
 | Finish | Strip stock phrases · Export a file when done (DOCX, PDF, HWPX or MD) |
 
-- On the report screen, date and amount calculations, format checks and fix-and-check-again always happen inside report writing, so they show as "Always done". The chat screen has no format checks and no export.
+- **Get a file**: with **Finish** ticked, a separate **Export a file when done** checkbox shows under it; tick it and pick the file format beside it. The base processes come with Finish ticked and export off. Export works only in a process that writes a document.
+- On the report screen, date and amount calculations, format checks and fix-and-check-again always happen in report writing ("Always done"). The chat screen has no format checks and no export.
 - The built-in agents are made of the same bundles. Records, for example, is Prepare before writing + Review after writing (including each action item's owner and deadline) + Finish (export off).
-- **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. Your bundles appear as checkboxes under Extra work in all your agents. Edit and share them from the **Bundles** row on the Agents tab (Manage bundles).
-- Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review, or calls another agent reaches others only after an administrator approves it under **Process review**. An agent that uses only a base process and the built-in bundles is shared at once.
+- **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
+- Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
+
+## Output shape and sources
+
+These sit under **More settings** in the create-agent form.
+
+- **Output shape**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
+- **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
+- **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
+- **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
 
 ## Detailed settings and your own templates
 
-An agent that writes reports can turn on **Set for this agent** under **Detailed settings** (calculations, checks, outline) below the process and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
+An agent that writes reports can turn on **Set for this agent** under **Detailed settings — The process's calculations, checks and outline** below the process and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
 
 - **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).
 - **How it writes**: no web search, figures only when asked, a fixed outline.
 - **Structure rules**: sections in order, required tables (columns), summary lines at the top, bullet style, page limit. Checked by code.
 - **Review rules**: rules in your own words. After writing, a judge model shows the sentences that break them; nothing is rewritten.
 - **Calculation checks**, **Judged checks**, **Format repairs**, **Fill in what is missing**: built-in checks and repair steps attached by name.
+- **When the material disagrees**: left empty, the writing says which value it used and why.
 
-Make your own document template with **New template** under **Output look** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
+Make your own document template with **New template** under **Output shape** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
 ## Save as agent
 

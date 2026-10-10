@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { chatId, composerFixture } from './composer-fixture'
+import { chatId, composerFixture, fixtureAgent } from './composer-fixture'
 import { openTool, setWebSearch, toolNames } from './composer-tools'
 
 /**
@@ -245,6 +245,53 @@ test('N6: 「+」 › 에이전트 lists every agent, each on its own screen, an
   await page.getByRole('menuitem', { name: '에이전트 만들기' }).click()
   await expect(page).toHaveURL(/\/customize\/agents\/new$/)
   // The 「@」 list stays this screen's.
+  expect(unexpected.filter((u) => !u.startsWith('GET '))).toEqual([])
+})
+
+test('M1: an agent row shows its own name once, the other screen as a badge, and one row per agent', async ({ page }, info) => {
+  // The person's copy of 개조식 보고서 and the catalogue original it came from, both report-only.
+  const report = { kinds: ['report'], surface: 'report' }
+  const { unexpected, created } = await composerFixture(page, info, {
+    extraAgents: [
+      fixtureAgent('b1'.padEnd(33, '1'), '개조식 보고서', {
+        ...report, ownerId: 'admin', ownerName: '관리자', catalogKey: 'gaejo-report', official: true,
+      }),
+      // As the eval instance holds it: the copy keeps the catalogue key, not the official mark.
+      fixtureAgent('b2'.padEnd(33, '2'), '개조식 보고서', {
+        ...report, catalogKey: 'gaejo-report', originId: 'b1'.padEnd(33, '1'),
+      }),
+      // Two agents the person wrote under one name stay two.
+      fixtureAgent('b3'.padEnd(33, '3'), '주간 보고', report),
+      fixtureAgent('b4'.padEnd(33, '4'), '주간 보고', report),
+    ],
+  })
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  const menu = page.getByRole('menu', { name: '도구' })
+  const rows = menu.getByRole('menuitem', { name: /개조식 보고서/ })
+  await expect(rows).toHaveCount(1)
+  await expect(menu.getByRole('menuitem', { name: /주간 보고/ })).toHaveCount(2)
+  // The person's own copy is the one kept.
+  await rows.click()
+  await expect(page).toHaveURL(/\/s\/c0+\d+$/)
+  expect(created.at(-1)).toEqual(expect.objectContaining({ kind: 'report', agentId: 'b2'.padEnd(33, '2') }))
+  await page.goto('/new/chat')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  const row = menu.getByRole('menuitem', { name: /개조식 보고서/ })
+  // The name is never followed by the screen: the badge is apart from it and hidden from the name.
+  await expect(row).toHaveAccessibleName('개조식 보고서 — 보고서 화면에서 열림')
+  await expect(row.locator('span.truncate')).toHaveText('개조식 보고서')
+  await expect(row.getByTestId('agent-surface-badge')).toHaveText('보고서')
+  // An agent of this screen carries no badge.
+  await expect(menu.getByRole('menuitem', { name: '논문 리뷰어' }).getByTestId('agent-surface-badge')).toHaveCount(0)
+  // On the report screen the report agents carry none either.
+  await page.goto('/new/report')
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  await openTool(page, '에이전트')
+  await expect(menu.getByRole('menuitem', { name: '개조식 보고서', exact: true })).toBeVisible()
+  await expect(menu.getByTestId('agent-surface-badge')).toHaveCount(0)
   expect(unexpected.filter((u) => !u.startsWith('GET '))).toEqual([])
 })
 

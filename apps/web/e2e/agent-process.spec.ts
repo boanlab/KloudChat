@@ -210,8 +210,29 @@ test('N3: 바로 답하기 says it answers in the chat, and a file asked for in 
   await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeChecked()
   await expect(page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })).toHaveValue('gaejo-report')
   await expect(suggestion).toHaveCount(0)
+  // M3: the person asked for a file, so the export comes ticked, as DOCX.
   const exportRow = finish.getByTestId('bundle-export')
-  await expect(exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' })).toBeVisible()
+  await expect(exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' })).toBeChecked()
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('docx')
+  expect(state.problems).toEqual([])
+})
+
+test('M3: the switch a file asked for ticks the export in the format the 지시 names', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const form = await openForm(page)
+  await form.getByRole('textbox', { name: '이름' }).fill('주간 결과 보고')
+  await form.getByRole('textbox', { name: '지시' }).fill('주간 결과를 정리한다. 한글 파일(HWPX)로 준다.')
+  await page.getByTestId('file-suggestion').getByRole('button', { name: /과정으로 바꾸기/ }).click()
+  const finish = page.getByTestId('agent-bundles').getByTestId('bundle-row').filter({ hasText: '마무리하기' })
+  const exportRow = finish.getByTestId('bundle-export')
+  await expect(exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' })).toBeChecked()
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('hwpx')
+  await form.getByRole('button', { name: '만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/agents\/a9999/)
+  const body = state.calls.find((c) => c.method === 'PUT' && /^\/agents\/[^/]+\/process$/.test(c.path))?.body as {
+    bundles?: { bundle: string; items: Record<string, unknown> }[]
+  }
+  expect(body.bundles?.find((b) => b.bundle === 'finish')?.items.export).toBe('hwpx')
   expect(state.problems).toEqual([])
 })
 
@@ -222,7 +243,7 @@ test('N3: the 마무리하기 warning switches to a document base in one click',
   await page.getByTestId('agent-bundles').getByRole('checkbox', { name: '마무리하기' }).check()
   await finish.getByTestId('bundle-cannot').getByRole('button', { name: '기본 과정(보고서)으로 바꾸기' }).click()
   await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeChecked()
-  await expect(finish.getByTestId('bundle-export')).toBeVisible()
+  await expect(finish.getByTestId('bundle-export').getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' })).toBeChecked()
   expect(state.problems).toEqual([])
 })
 
@@ -267,10 +288,20 @@ test('B-5, N2, N1: 직접 구성 points at what fixes each problem, and a questi
   // B-5 / N8: the export problem leads to 「이 에이전트가 만드는 것」.
   await expect(custom).toContainText('앞 단계에서 만든 문서가 있어야 합니다')
   await shot(page, 'b5-export-fix', custom)
-  await custom.getByTestId('export-fix').click()
   const makes = custom.getByRole('combobox', { name: '이 에이전트가 만드는 것' })
+  await expect(makes).toHaveValue('chat')
+  // M3: the button sets it, and the notice can put it back.
+  await custom.getByTestId('export-fix').click()
+  await expect(makes).toHaveValue('report')
   await expect(makes).toBeFocused()
-  await makes.selectOption('report')
+  await expect(custom).not.toContainText('앞 단계에서 만든 문서가 있어야 합니다')
+  const toast = page.getByTestId('toast')
+  await expect(toast).toContainText('「이 에이전트가 만드는 것」을 보고서(문서)로 바꿨습니다.')
+  await toast.getByRole('button', { name: '실행 취소' }).click()
+  await expect(makes).toHaveValue('chat')
+  await expect(custom).toContainText('앞 단계에서 만든 문서가 있어야 합니다')
+  await custom.getByTestId('export-fix').click()
+  await expect(makes).toHaveValue('report')
   await expect(custom).not.toContainText('앞 단계에서 만든 문서가 있어야 합니다')
 
   // N2: the 확인 질문 warning follows the questions on the form.

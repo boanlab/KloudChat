@@ -3788,6 +3788,9 @@ async def send_message(
             strict_tools = sandbox_tools.with_own_scripts(strict_tools, own_scripts)
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
+    # A question about using this app is answered from its guide alone (below): memories and
+    # 개인 맞춤 설정 stay out of that turn, or the answer passes them on as advice.
+    how_to = session.kind is SessionKind.chat and app_help.about_app(content)
     try:
         workspace = await assemble(
             db,
@@ -3801,6 +3804,7 @@ async def send_message(
             # Empty focus takes the head of the file.
             focus=focus or (content if session.kind is not SessionKind.chat else ""),
             question=_asked_about(content, history),
+            how_to=how_to,
             # Report and deck writers do not run the chat tool loop.
             available_tool_names=(
                 {tool.name for tool in requested_tools}
@@ -4005,6 +4009,7 @@ async def send_message(
                 activated_skill_ids=active_skill_ids,
                 question=_asked_about(content, history),
                 available_tool_names={tool.name for tool in tools},
+                how_to=how_to,
             )
         except WorkspaceContextError as exc:
             _raise_workspace_error(exc)
@@ -4035,7 +4040,7 @@ async def send_message(
     )
     if template_blocks:
         trusted_context = list(trusted_context) + template_blocks
-    if session.kind is SessionKind.chat and app_help.about_app(content):
+    if how_to:
         # A question about this app itself reads its own user guide (in process, local).
         if guide := app_help.block(content, lang="en" if _english(content) else "ko"):
             trusted_context = [*trusted_context, guide]

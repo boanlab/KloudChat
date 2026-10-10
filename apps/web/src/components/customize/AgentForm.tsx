@@ -438,7 +438,21 @@ export function AgentForm({
         agent={{ ...draft, id: savedId ?? '' }}
         value={process}
         surface={surface}
-        onSurface={(next) => edit({ ...withinKinds(draft, draft.kinds.includes(next) ? draft.kinds : [...draft.kinds, next]), surface: next })}
+        onSurface={(next) => {
+          const before = draft
+          edit({ ...withinKinds(draft, draft.kinds.includes(next) ? draft.kinds : [...draft.kinds, next]), surface: next })
+          // What the switch may have changed, as it was.
+          return () => {
+            setDone(false)
+            setDraft((d) => ({
+              ...d,
+              kinds: before.kinds,
+              surface: before.surface,
+              renderTemplateId: before.renderTemplateId,
+              docFormat: before.docFormat,
+            }))
+          }
+        }}
         onChange={(next) => {
           setDone(false)
           setProcess(next)

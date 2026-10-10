@@ -614,6 +614,7 @@ export function MenuItem({
   checked,
   keepOpen,
   title,
+  label,
 }: {
   children: ReactNode
   onClick?: () => void
@@ -626,12 +627,15 @@ export function MenuItem({
   /** Leaves the menu open after the click (multi-select). */
   keepOpen?: boolean
   title?: string
+  /** Accessible name when the visible row says more than the name (a badge, a hint). */
+  label?: string
 }) {
   const { close } = useContext(MenuCtx)
   return (
     <button
       role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
       aria-checked={checked}
+      aria-label={label}
       disabled={disabled}
       title={title}
       onClick={() => {

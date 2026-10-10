@@ -94,3 +94,51 @@ def test_a_question_the_guide_does_not_cover_says_so_and_points_somewhere(monkey
     block = app_help.block("여기서 우주선 어떻게 띄워?")
     assert block.startswith("# KloudChat 사용 안내")
     assert "has no section on this question" in block and "사용자 지정 › 에이전트" in block
+
+
+def _agents_page(lang: str) -> dict[str, str]:
+    rows = json.loads((_API / "app" / "help" / "docs.json").read_text(encoding="utf-8"))
+    return {
+        r["heading"]: r["text"]
+        for r in rows
+        if r["lang"] == lang and r["path"] == "chat/agents"
+    }
+
+
+def test_the_guide_says_export_is_its_own_tick_not_part_of_finish():
+    """Persona A/B 3rd run (P3): the answer said ticking 마무리하기 adds export; in the form
+    「다 쓰면 파일로 내보내기」 is a checkbox of its own, off in every base process."""
+    ko, en = _agents_page("ko"), _agents_page("en")
+    assert "**다 쓰면 파일로 내보내기** 체크 상자가 따로" in ko["묶음"]
+    assert "마무리하기가 체크된 채 내보내기는 꺼져" in ko["묶음"]
+    assert "a separate **Export a file when done** checkbox" in en["Bundles"]
+    # What a question about getting a file back reads holds that line.
+    asked = "회의록을 워드 파일로 받고 싶은데 여기서 할 수 있어?"
+    assert "다 쓰면 파일로 내보내기" in app_help.block(asked)
+
+
+def test_the_guide_puts_document_format_where_the_form_shows_it():
+    """「결과물 모양에서 문서 형식도 고릅니다」 was wrong for an agent on a base process: the
+    field shows only on 바로 답하기 or 직접 구성; a base's template sets the format."""
+    ko = _agents_page("ko")
+    shape = ko["결과물 모양과 자료"]
+    assert "**문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만" in shape
+    assert "문서 형식도 고를 수 있습니다" not in "\n".join(ko.values())
+
+
+def test_the_guide_says_sources_are_not_resummarised_on_a_schedule():
+    ko, en = _agents_page("ko"), _agents_page("en")
+    assert "자료를 주기적으로 다시 읽거나 요약하지 않으며" in ko["결과물 모양과 자료"]
+    assert "never runs by itself on a schedule" in en["Creating an agent"]
+    # The persona's 「매주」 question reads that line among its sections.
+    assert "정해진 때에 저절로 실행되거나" in app_help.block(_PERSONA)
+
+
+def test_every_agent_page_section_fits_whole():
+    """A section longer than the builder's cut loses its end in the help block."""
+    spec = importlib.util.spec_from_file_location("build_help", _SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for lang in ("ko", "en"):
+        for heading, text in _agents_page(lang).items():
+            assert len(text) < module._MAX, (lang, heading)

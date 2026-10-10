@@ -55,6 +55,11 @@ function agent(id: string, name: string) {
   }
 }
 
+/** An agent as `/agents` lists it, for a test that needs more than the fixture's own. */
+export function fixtureAgent(id: string, name: string, extra: Record<string, unknown> = {}) {
+  return { ...agent(id, name), ...extra }
+}
+
 export const skillNames = ['초안 검토', '데이터 분석', '번역 검수']
 export const agentNames = ['논문 리뷰어', '예산 검토']
 /** An agent that writes reports only: not offered on the chat screen's 「@」. */
@@ -89,7 +94,12 @@ export type SentTurn = { path: string; body: Record<string, unknown> }
 export async function composerFixture(
   page: Page,
   testInfo: TestInfo,
-  { skills = true, agents = true, connectors = true }: { skills?: boolean; agents?: boolean; connectors?: boolean } = {},
+  {
+    skills = true,
+    agents = true,
+    connectors = true,
+    extraAgents = [],
+  }: { skills?: boolean; agents?: boolean; connectors?: boolean; extraAgents?: Record<string, unknown>[] } = {},
 ) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
@@ -140,7 +150,8 @@ export async function composerFixture(
     if (method === 'GET' && path === '/skills') return json(skills
       ? skillNames.map((name, i) => skill(`k${String(i + 1).repeat(32)}`, name)) : [])
     if (method === 'GET' && path === '/agents') return json(agents
-      ? [...agentNames.map((name, i) => agent(`a${String(i + 1).repeat(32)}`, name)), reportAgent] : [])
+      ? [...agentNames.map((name, i) => agent(`a${String(i + 1).repeat(32)}`, name)), reportAgent, ...extraAgents]
+      : [])
     if (method === 'GET' && path === '/connectors') return json(connectors ? [connector] : [])
     if (method === 'GET' && path === '/design-templates') return json(templates)
     if (method === 'GET' && path === '/sessions') return json([...rows.values()])

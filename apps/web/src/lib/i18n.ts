@@ -3669,6 +3669,8 @@ const EN: Record<string, string> = {
   '최신': 'Newest',
   '내 항목': 'My items',
   '에이전트 만들기': 'Create agent',
+  '「이 에이전트가 만드는 것」을 보고서(문서)로 바꿨습니다.': 'Set “What this agent makes” to Report (document).',
+  '{name} — {kind} 화면에서 열림': '{name} — opens on {kind}',
   '스킬 만들기': 'Create skill',
   // skill upload
   '파일을 확인하지 못했습니다.': 'Could not check the files.',

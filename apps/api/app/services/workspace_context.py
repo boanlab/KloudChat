@@ -754,6 +754,7 @@ async def assemble(
     focus: str = "",
     question: str = "",
     file_budget: int | None = None,
+    how_to: bool = False,
 ) -> WorkspaceContext:
     """Build one authorised context without auto-activating installed skills.
 
@@ -764,13 +765,16 @@ async def assemble(
     keeps `focus`, since 「요약해줘」 is not a thing to search a fresh file for.
     `file_budget`: characters of attached text to carry (`file_budget(model)`); the
     configured floor when not given.
+    `how_to`: the turn asks how to use this app. Its answer is the user guide's, so the
+    person's memories and 개인 맞춤 설정 stay out: a remembered 「회의록은 영어로」 came back
+    as advice to write it into an agent's 지시.
     """
     agent = await _load_agent(db, user, session)
     project = await _load_project(db, user, session)
     design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
     # Memories are chat-only; not loaded elsewhere so the context step reports none.
-    if session.kind is SessionKind.chat:
+    if session.kind is SessionKind.chat and not how_to:
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
         memories, memory_names, memory_total = "", (), 0
@@ -786,7 +790,7 @@ async def assemble(
 
     blocks: list[ContextBlock] = []
     # Least specific first; later blocks win where they disagree.
-    if personal := _personal_block(user, session.kind):
+    if not how_to and (personal := _personal_block(user, session.kind)):
         blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent, session.kind):
         blocks.append(ContextBlock("agent.instructions", text, True))

@@ -7,6 +7,7 @@ import { bundlesApi, errorMessage, userPipelinesApi } from '@/lib/api'
 import { bareSteps, useProcessCatalogue, useStepVerdict, type ProcessDraft } from '@/lib/process'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
 import type {
   Agent,
   Bundle,
@@ -42,6 +43,12 @@ function tickOf(item: BundleItem, sel: BundleSelection | undefined): boolean | s
  * answers in the chat and makes none.
  */
 const WANTS_FILE = /docx|hwpx|\bpdf\b|워드|한글\s{0,2}(?:문서|파일)|파일\s{0,2}(?:로|형식)|내보내|\bword\b/i
+
+/** The file format those words name: HWPX or PDF when said, else DOCX (「워드」 「파일로」). */
+function askedFormat(text: string, formats: string[]): string {
+  const want = /hwpx|한글\s{0,2}(?:문서|파일)/i.test(text) ? 'hwpx' : /\bpdf\b/i.test(text) ? 'pdf' : 'docx'
+  return formats.includes(want) ? want : (formats[0] ?? 'docx')
+}
 
 /** One 묶음: a checkbox, and behind 「자세히」 its items, each its own checkbox. */
 function BundleRow({
@@ -270,14 +277,16 @@ export function ProcessSection({
   onChange: (next: ProcessDraft) => void
   /** What a new conversation opens on, when no base fixes it. */
   surface: SessionKind
-  /** 직접 구성: what the agent's own step makes (its 사용할 화면), set beside the steps. */
-  onSurface?: (next: SessionKind) => void
+  /** 직접 구성: what the agent's own step makes (its 사용할 화면), set beside the steps.
+   * Returns what puts the form back as it was, for the undo a one-click fix offers. */
+  onSurface?: (next: SessionKind) => (() => void) | void
   /** The form's 빠진 정보 질문 as they stand: a 확인 질문 step is judged with them. */
   questions?: GapQuestion[]
   /** Opens the form's 빠진 정보 질문 with a new question to fill. */
   onAskQuestions?: () => void
 }) {
   const t = useT()
+  const setToast = useStore((s) => s.setToast)
   const [reloaded, setReloaded] = useState(0)
   const cat = useProcessCatalogue(reloaded)
   const [imports, setImports] = useState<UserPipeline[] | null>(null)
@@ -301,9 +310,21 @@ export function ProcessSection({
     void userPipelinesApi.list().then(setImports).catch(() => setImports([]))
   }, [value.mode, imports])
 
-  const pickBase = (key: string) => {
+  const pickBase = (key: string, exportAs?: string) => {
     const next = cat?.bases.find((b) => b.key === key)
-    onChange({ ...value, mode: 'base', base: key || null, bundles: next ? next.bundles.map((b) => ({ ...b, items: { ...b.items } })) : value.bundles })
+    let bundles = next ? next.bundles.map((b) => ({ ...b, items: { ...b.items } })) : value.bundles
+    if (exportAs) {
+      // Switched because the person asked for a file: its 「다 쓰면 파일로 내보내기」 is ticked too.
+      const finish = (cat?.bundles ?? []).find((b) => b.items.some((i) => i.kind === 'export'))
+      const item = finish?.items.find((i) => i.kind === 'export')
+      if (finish && item) {
+        const held = bundles.find((b) => b.bundle === finish.ref)
+        bundles = held
+          ? bundles.map((b) => (b === held ? { ...b, items: { ...b.items, [item.id]: exportAs } } : b))
+          : [...bundles, { bundle: finish.ref, items: { [item.id]: exportAs } }]
+      }
+    }
+    onChange({ ...value, mode: 'base', base: key || null, bundles })
   }
   const setMode = (mode: ProcessMode) => {
     if (mode === 'base') {
@@ -320,7 +341,12 @@ export function ProcessSection({
     }
     onChange({ ...value, mode, base: mode === 'direct' ? null : value.base })
   }
-  const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key) : undefined
+  const exportAs = askedFormat(
+    `${agent.name}\n${agent.description}\n${agent.systemPrompt}`,
+    cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'],
+  )
+  // Every way here starts from a person who wants a file: the export comes ticked with it.
+  const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key, exportAs) : undefined
   /** Under a step's problem: the control that fixes it, one click away. */
   const actionFor = (p: PipelineProblem, step: PipelineStep | null) => {
     const exportProblem =
@@ -332,6 +358,13 @@ export function ProcessSection({
           className="ml-7 text-sm text-accent hover:underline"
           data-testid="export-fix"
           onClick={() => {
+            // Sets it, not only points at it; the notice puts it back.
+            const before = on
+            const undo = onSurface('report')
+            setToast({
+              text: t('「이 에이전트가 만드는 것」을 보고서(문서)로 바꿨습니다.'),
+              action: { label: t('실행 취소'), run: () => (undo ? undo() : onSurface(before)) },
+            })
             surfaceRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
             surfaceRef.current?.focus()
           }}

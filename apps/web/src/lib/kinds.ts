@@ -68,5 +68,28 @@ export function agentStartKind(agent: Pick<Agent, 'kinds' | 'surface'>, current?
   return offered[0] ?? 'chat'
 }
 
+/**
+ * Pickers show a person's own copy and the catalogue original it came from as one row, the
+ * person's own kept. Agents the person wrote themselves are never folded together, whatever
+ * their names.
+ */
+export function distinctAgents<T extends Pick<Agent, 'name' | 'ownerId' | 'catalogKey' | 'official'>>(
+  agents: T[],
+  me?: string | null,
+): T[] {
+  const authored = (a: T) => !!me && a.ownerId === me && !a.catalogKey && !a.official
+  const rank = (a: T) => (me && a.ownerId === me ? 2 : 0) + (a.catalogKey || a.official ? 0 : 1)
+  const key = (a: T) => a.name.trim().toLowerCase()
+  const best = new Map<string, T>()
+  for (const a of agents) {
+    const held = best.get(key(a))
+    if (!held || rank(a) > rank(held)) best.set(key(a), a)
+  }
+  return agents.filter((a) => {
+    const kept = best.get(key(a))
+    return kept === a || (authored(a) && kept !== undefined && authored(kept))
+  })
+}
+
 /** Icons a project can wear. Shared so the create and edit forms agree. */
 export const PROJECT_EMOJIS = ['🧪', '📚', '🛠️', '📊', '🚀', '🧠', '🗂️', '🔬'] as const

@@ -33,7 +33,7 @@ import { readStoredDraft, writeStoredDraft } from '@/lib/drafts'
 import { FINDING_LABEL } from '@/lib/privacy'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useNavigate } from 'react-router-dom'
-import { agentStartKind, kindMeta } from '@/lib/kinds'
+import { agentStartKind, distinctAgents, kindMeta } from '@/lib/kinds'
 import { Badge, Button, Dropdown, MenuItem, MenuLabel, MenuSeparator, Modal } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { ChatSendRecoveryError, FIGURE_STYLES, effectiveModelId, useStore } from '@/store/useStore'
@@ -786,6 +786,7 @@ export function Composer({
     avOptions,
     mediaError,
     clearMediaError,
+    user,
   } = useStore()
 
   const project = projects.find((p) => p.id === projectId)
@@ -885,7 +886,9 @@ export function Composer({
         activeSkills.length > 0,
     )
   // Empty `kinds` means every surface.
-  const usableAgents = agents.filter(
+  // A person's own copy and the catalogue original it came from show once (of those switched on).
+  const pickableAgents = distinctAgents(agents.filter((a) => a.enabled), user?.id)
+  const usableAgents = pickableAgents.filter(
     (a) => a.enabled && (a.kinds.length === 0 || a.kinds.includes(kind)),
   )
   // 「+」 › 에이전트 lists every agent the person can start: those of this screen first, then
@@ -893,7 +896,7 @@ export function Composer({
   // A picture or sound screen keeps to its own.
   const menuAgents = isMedia
     ? usableAgents
-    : [...usableAgents, ...agents.filter((a) => a.enabled && !usableAgents.includes(a))]
+    : [...usableAgents, ...pickableAgents.filter((a) => a.enabled && !usableAgents.includes(a))]
   const usableConnectors = connectors.filter(
     (c) => c.installed && (c.kinds.length === 0 || c.kinds.includes(kind)),
   )
@@ -1659,10 +1662,26 @@ export function Composer({
             {menuAgents.map((a) => {
               // An agent this screen does not offer opens on its own screen, which the row says.
               const startOn = usableAgents.includes(a) ? kind : agentStartKind(a, kind)
+              const elsewhere = startOn !== kind
               return (
                 <MenuItem
                   key={a.id}
-                  hint={startOn !== kind ? t(kindMeta[startOn].label) : a.model ? a.model.split('/').pop() : undefined}
+                  // The name is the agent's own: the screen it opens on is a badge beside it, never
+                  // read as part of the name (「개조식 보고서」 is not 「개조식 보고서 보고서」).
+                  label={elsewhere ? t('{name} — {kind} 화면에서 열림').replace('{name}', a.name).replace('{kind}', t(kindMeta[startOn].label)) : a.name}
+                  hint={
+                    elsewhere ? (
+                      <span
+                        aria-hidden
+                        data-testid="agent-surface-badge"
+                        className="rounded-full border border-line px-1.5 py-px text-xs text-faint"
+                      >
+                        {t(kindMeta[startOn].label)}
+                      </span>
+                    ) : a.model ? (
+                      a.model.split('/').pop()
+                    ) : undefined
+                  }
                   onClick={() => {
                     closePlus()
                     // An agent belongs to the session, so choosing one starts a conversation.
