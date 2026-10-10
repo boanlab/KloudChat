@@ -153,6 +153,8 @@ async function readDetail(res: Response): Promise<string> {
     // A refused order of steps (`invalid_pipeline`): its first problem, already a sentence.
     const problem = body?.detail?.problems?.[0]?.message
     if (typeof problem === 'string' && problem) return problem
+    // A refusal with its own shape (`{code, ...}`): its machine code.
+    if (typeof body?.detail?.code === 'string') return body.detail.code
   } catch {
     /* non-JSON error body */
   }
@@ -530,7 +532,7 @@ export interface UsageReport {
   }[]
   /** `'other'` beside the five surfaces: spend charged against no session,
    *  which is how the bars keep adding up to the total. */
-  bySurface: { kind: SessionKind | 'other'; credits: number; requests: number }[]
+  bySurface: { kind: SessionKind | 'other' | 'bot'; credits: number; requests: number }[]
   /** Every account with activity in the window, most spent first. */
   topUsers: {
     id: string
@@ -1617,6 +1619,10 @@ export interface AgentRow {
   designName?: string
   /** How to use it, shown on the empty screen. */
   guide: string
+  /** 담당 부서·연락처, said as written when the material does not answer. */
+  contact?: string
+  /** The owner's published bot of this agent. */
+  publication?: { id: string; slug: string; status: string } | null
   /** First messages offered as buttons there. */
   starters: string[]
   /** How a shared original may be taken. */
@@ -2072,6 +2078,217 @@ async function* postStream(
   } finally {
     signal?.removeEventListener('abort', abort)
   }
+}
+
+/* ── published agents (공개 챗봇) ──────────────────────────────────────── */
+
+export type PublicationStatus = 'draft' | 'pending' | 'approved' | 'paused' | 'rejected' | 'revoked'
+export type ShowProcess = 'none' | 'summary' | 'full'
+
+export interface BotBranding {
+  greeting: string
+  suggestedPrompts: string[]
+  placeholder: string
+}
+
+/** What a bot runs under; the owner may lower each, never raise it. */
+export interface BotLimits {
+  perVisitorPerMinute: number
+  perBotPerMinute: number
+  turnsPerDay: number
+  tokensPerDay: number
+  maxInputChars: number
+  turnsPerConversation: number
+  concurrency: number
+}
+
+export interface PublicationVersion {
+  id: string
+  number: number
+  model: string
+  note: string
+  summary: { agentName?: string; knowledge?: { name: string; chars: number }[]; tools?: string[]; checks?: string[]; contact?: boolean }
+  active: boolean
+  createdAt: string
+}
+
+export interface Publication {
+  id: string
+  slug: string
+  title: string
+  description: string
+  agentId: string
+  agentName: string
+  ownerName: string
+  visibility: 'internal' | 'link' | 'external'
+  status: PublicationStatus
+  /** Why it is paused: `owner`, `admin`, `credits`, `account`, `model`. */
+  pauseReason: string
+  activeVersionId: string | null
+  branding: BotBranding
+  showProcess: ShowProcess
+  showSources: boolean
+  retentionDays: number
+  conversationView: 'off' | 'on'
+  consentVersion: number
+  limits: BotLimits
+  defaults: BotLimits
+  createdAt: string
+  updatedAt: string
+  publishedAt: string | null
+  versions?: PublicationVersion[]
+  turnsToday?: number
+}
+
+export interface PublishPreflight {
+  ok: boolean
+  /** `no_local_model`, `not_chat`, `sealed`, `own_process`, `credits`, `account`, `retired`, `not_owner`. */
+  problems: string[]
+  model: { id: string; label: string } | null
+  tools: string[]
+  checks: string[]
+  /** What a bot leaves out: `memory`, `personal`, `files`, `connectors`, `web`, `documents`, `tools`, `skills`, `questions`, `own_checks`. */
+  disabled: string[]
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[] }[]
+  creditsRemaining: number
+  existingId: string | null
+  defaults: BotLimits
+}
+
+export interface PublicationSettings {
+  title?: string
+  description?: string
+  branding?: BotBranding
+  limits?: Partial<BotLimits>
+  showProcess?: ShowProcess
+  showSources?: boolean
+  retentionDays?: number
+  conversationView?: 'off' | 'on'
+}
+
+export interface PublicationStats {
+  days: number
+  daily: { date: string; turns: number; answers: number; conversations: number; visitors: number; tokens: number; unanswered: number; up: number; down: number; shared: number; failed: number }[]
+  totals: { turns: number; answers: number; conversations: number; visitors: number; tokens: number; unanswered: number; up: number; down: number; shared: number; failed: number; visitorsAll: number }
+  topics: { word: string; count: number }[]
+  unanswered: { text: string; at: string }[]
+}
+
+export interface BotConversationRow {
+  id: string
+  title: string
+  sharedAt: string | null
+  viewable?: boolean
+  updatedAt: string
+  createdAt?: string
+  turns?: number
+}
+
+export interface BotTranscriptMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  rating: 'up' | 'down' | null
+  createdAt: string
+  steps?: Step[] | null
+  failure?: string | null
+  model?: string | null
+}
+
+export interface BotListItem {
+  slug: string
+  title: string
+  description: string
+  ownerName: string
+  mine: boolean
+  /** The owner's own bot: the dashboard's id. */
+  id: string | null
+  status: PublicationStatus
+  color: string
+  publishedAt: string | null
+}
+
+export interface BotPage {
+  slug: string
+  title: string
+  description: string
+  ownerName: string
+  mine: boolean
+  status: PublicationStatus
+  pauseReason: string
+  branding: BotBranding
+  showSources: boolean
+  showProcess: ShowProcess
+  conversationView: 'off' | 'on'
+  retentionDays: number
+  consentVersion: number
+  consented: boolean
+  color: string
+  maxInputChars: number
+}
+
+/** What a visitor's turn streams: the answer and, as the owner chose, its working. */
+export type BotStreamEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'retract'; text: string }
+  | { type: 'step'; id?: string; label?: string; status?: string; category?: string; detail?: string }
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
+  | { type: 'model'; models: string[] }
+  | { type: 'title'; title: string }
+  | { type: 'error'; code?: string; message?: string }
+  | { type: 'done'; messageId?: string }
+
+export const publicationsApi = {
+  list: () => call<Publication[]>('/publications'),
+  preflight: (agentId: string) => call<PublishPreflight>('/publications/preflight', body({ agentId })),
+  publish: (agentId: string, settings: PublicationSettings & { note?: string }) =>
+    call<Publication>('/publications', body({ agentId, visibility: 'internal', ...settings })),
+  get: (id: string) => call<Publication>(`/publications/${id}`),
+  update: (id: string, patch: PublicationSettings & { status?: 'approved' | 'paused' }) =>
+    call<Publication>(`/publications/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => call<void>(`/publications/${id}`, { method: 'DELETE' }),
+  newVersion: (id: string, note: string) => call<Publication>(`/publications/${id}/versions`, body({ note })),
+  activate: (id: string, versionId: string) =>
+    call<Publication>(`/publications/${id}/versions/${versionId}/activate`, { method: 'POST' }),
+  stats: (id: string, days = 30) => call<PublicationStats>(`/publications/${id}/stats?days=${days}`),
+  conversations: (id: string) => call<BotConversationRow[]>(`/publications/${id}/conversations`),
+  conversation: (id: string, sessionId: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/publications/${id}/conversations/${sessionId}`),
+}
+
+export const botsApi = {
+  list: () => call<BotListItem[]>('/bots'),
+  page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),
+  consent: (slug: string, version: number) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/consent`, body({ version })),
+  conversations: (slug: string) => call<BotConversationRow[]>(`/b/${encodeURIComponent(slug)}/conversations`),
+  start: (slug: string) => call<BotConversationRow>(`/b/${encodeURIComponent(slug)}/conversations`, { method: 'POST' }),
+  conversation: (slug: string, id: string) =>
+    call<BotConversationRow & { messages: BotTranscriptMessage[] }>(`/b/${encodeURIComponent(slug)}/conversations/${id}`),
+  remove: (slug: string, id: string) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/conversations/${id}`, { method: 'DELETE' }),
+  stop: (slug: string, id: string) =>
+    call<void>(`/b/${encodeURIComponent(slug)}/conversations/${id}/stop`, { method: 'POST' }),
+  rate: (slug: string, messageId: string, rating: 'up' | 'down' | null) =>
+    call<{ id: string; rating: string | null }>(`/b/${encodeURIComponent(slug)}/messages/${messageId}/rating`, {
+      method: 'PATCH',
+      body: JSON.stringify({ rating }),
+    }),
+  share: (slug: string, id: string) =>
+    call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'POST' }),
+  unshare: (slug: string, id: string) =>
+    call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'DELETE' }),
+}
+
+/** A visitor's question, streamed as the bot answers. */
+export async function* streamBot(
+  slug: string,
+  conversationId: string,
+  content: string,
+  signal?: AbortSignal,
+): AsyncGenerator<BotStreamEvent> {
+  const events = postStream(`/b/${encodeURIComponent(slug)}/conversations/${conversationId}/messages`, { content }, signal)
+  for await (const event of events) yield event as unknown as BotStreamEvent
 }
 
 /* ── issue reports (「문의·신고」) ───────────────────────────────────────── */

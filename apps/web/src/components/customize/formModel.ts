@@ -11,6 +11,7 @@ export function emptyAgent(model: string): Agent {
     model,
     systemPrompt: '',
     guide: '',
+    contact: '',
     starters: [],
     shareMode: 'open',
     sealed: false,

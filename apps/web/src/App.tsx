@@ -42,6 +42,11 @@ const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
+const BotPage = lazy(() => import('@/pages/BotPage').then((m) => ({ default: m.BotPage })))
+const BotsPage = lazy(() => import('@/pages/BotsPage').then((m) => ({ default: m.BotsPage })))
+const PublicationPage = lazy(() =>
+  import('@/pages/customize/PublicationPage').then((m) => ({ default: m.PublicationPage })),
+)
 
 /**
  * The old addresses of the screens the 사용자 지정 hub took in. Each lands on its tab, keeping
@@ -112,6 +117,21 @@ function useLandingAfterSignIn(authenticated: boolean, role: string | undefined)
   }, [authenticated, role, navigate])
 }
 
+/** A published bot's page: its own screen, no app shell; members sign in first (phase 1). */
+function BotRoute() {
+  const authenticated = useStore((s) => s.authenticated)
+  const authLoading = useStore((s) => s.authLoading)
+  const status = useStore((s) => s.user?.status)
+  if (authLoading) return <Spinner />
+  if (!authenticated) return <LoginPage />
+  if (status !== 'active') return <PendingApprovalPage />
+  return (
+    <Suspense fallback={<Spinner />}>
+      <BotPage />
+    </Suspense>
+  )
+}
+
 function Authenticated() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
@@ -152,6 +172,8 @@ function Authenticated() {
           <Route path="customize/skills/upload" element={<SkillUploadPage />} />
           <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />
           <Route path="customize/bundles" element={<BundlesPage />} />
+          <Route path="customize/publications/:publicationId" element={<PublicationPage />} />
+          <Route path="bots" element={<BotsPage />} />
           <Route path="customize/workflows/:pipelineId" element={<ToHub tab="agents" />} />
           <Route path="designs" element={<Navigate to="/settings/themes" replace />} />
           <Route path="agents" element={<ToHub tab="agents" />} />
@@ -201,6 +223,7 @@ export default function App() {
         <Routes>
           {/* Share links need no account, so this sits outside the auth gate. */}
           <Route path="/share/:token" element={<SharedPage />} />
+          <Route path="/b/:slug" element={<BotRoute />} />
           <Route path="*" element={<Authenticated />} />
         </Routes>
       </Suspense>

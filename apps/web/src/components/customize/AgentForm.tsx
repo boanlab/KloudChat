@@ -608,7 +608,7 @@ export function AgentForm({
           </div>
         </Group>
 
-        <Group title={t('대화 시작')} hint={t('사용법, 시작 문장')}>
+        <Group title={t('대화 시작')} hint={t('사용법, 시작 문장, 담당 부서·연락처')}>
           <Field label={t('사용법')} hint={t('대화를 열면 첫 화면에 보입니다. 무엇을 가져와야 하는지, 한 턴에 무슨 일이 일어나는지.')}>
             <Textarea
               rows={3}
@@ -623,6 +623,17 @@ export function AgentForm({
               value={draft.starters.join('\n')}
               onChange={(e) => edit({ ...draft, starters: e.target.value.split('\n').slice(0, 6) })}
               placeholder={t('첨부한 논문을 리뷰어 관점에서 검토해 줘')}
+            />
+          </Field>
+          <Field
+            label={t('담당 부서·연락처')}
+            hint={t('자료로 답할 수 없는 질문에 이 내용을 적힌 그대로 안내합니다. 비워 두면 「담당 부서에 문의해 주세요」라고 답합니다.')}
+          >
+            <Input
+              value={draft.contact ?? ''}
+              maxLength={300}
+              onChange={(e) => edit({ ...draft, contact: e.target.value.slice(0, 300) })}
+              placeholder={t('예: 학사지원팀 02-760-1234, haksa@example.ac.kr')}
             />
           </Field>
         </Group>

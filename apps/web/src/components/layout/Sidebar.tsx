@@ -30,9 +30,11 @@ interface NavRow {
 }
 
 // Agents, skills, workflows, connectors, memory and designs live in 「사용자 지정」.
+// 「챗봇」: bots members published, for anyone who only wants to ask.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '결과물', icon: Layers },
+  { to: '/bots', label: '챗봇', icon: Bot },
   { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
 

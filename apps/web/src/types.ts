@@ -1050,6 +1050,10 @@ export interface Agent {
   model: string
   systemPrompt: string
   guide: string
+  /** 담당 부서·연락처: said as written when the material does not answer the question. */
+  contact?: string
+  /** The owner's published bot of this agent (공개 챗봇): its dashboard id, address and state. */
+  publication?: { id: string; slug: string; status: string } | null
   starters: string[]
   /** `sealed`: copies run the author's prompt without being able to read it. */
   shareMode: 'open' | 'sealed'

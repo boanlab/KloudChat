@@ -113,6 +113,9 @@ jobs:
       - name: Test the search dialog and 대화 기록 search
         run: npx playwright test --config playwright.search.config.ts --workers=1
 
+      - name: Test 공개 챗봇 (publish dialog, bot page, dashboard, members' list)
+        run: npx playwright test --config playwright.publishing.config.ts --workers=1
+
   api:
     name: API · lint, tests
     runs-on: ubuntu-latest
