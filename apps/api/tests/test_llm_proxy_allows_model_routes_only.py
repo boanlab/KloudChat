@@ -38,6 +38,7 @@ def client(monkeypatch):
         ("GET", "/llm/health/readiness"),
         ("PATCH", "/llm/v1/chat/completions"),
         ("GET", "/llm/v1/models/../key/list"),
+        ("POST", "/llm/v1/audio/transcriptions"),
     ],
 )
 def test_admin_and_pass_through_routes_are_not_found(client, method, path):
@@ -56,7 +57,6 @@ def test_admin_and_pass_through_routes_are_not_found(client, method, path):
         "v1/embeddings",
         "v1/rerank",
         "rerank",
-        "v1/audio/transcriptions",
         "v1/models",
         "v1/models/local/qwen3.8-27b",
     ],
@@ -80,3 +80,17 @@ def test_dot_segments_never_pass(client, path):
     with pytest.raises(llm.HTTPException) as caught:
         asyncio.run(llm.proxy(path, Request(scope)))
     assert caught.value.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"model":"m","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"x","format":"wav"}}]}]}',
+        b'{"model":"m","input":[{"role":"user","content":[{"type": "audio","data":"x"}]}]}',
+        b'{"model":"m","messages":[{"role":"user","content":[{"type":"audio_url","audio_url":{"url":"x"}}]}]}',
+    ],
+)
+def test_audio_never_goes_through_the_model_door(client, body):
+    response = client.post("/llm/v1/chat/completions", content=body)
+    assert response.status_code == 400
+    assert "음성" in response.json()["detail"]

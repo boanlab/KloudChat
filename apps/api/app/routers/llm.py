@@ -31,10 +31,16 @@ _DROP_RESPONSE = {"content-length", "content-encoding", "transfer-encoding", "co
 #: management, spend and pass-through routes are never reachable from outside.
 _ALLOWED = re.compile(
     r"(?:v1/)?(?:chat/completions|completions|responses(?:/[A-Za-z0-9_-]{1,80}){0,2}"
-    r"|messages(?:/count_tokens)?|embeddings|rerank|audio/transcriptions"
+    r"|messages(?:/count_tokens)?|embeddings|rerank"
     r"|models(?:/[A-Za-z0-9._:/-]{1,120})?)"
 )
 _ALLOWED_METHODS = {"GET", "POST", "DELETE"}
+
+#: Audio is transcribed only by the internal Whisper; no audio part goes to a model
+#: through this door (a model behind LiteLLM may be external). Checked on the raw body
+#: so no JSON shape (chat, responses, messages) slips past.
+_AUDIO_PARTS = (b'"input_audio"', b'"audio_url"', b'"type":"audio"', b'"type": "audio"')
+_MAX_BODY = 32 * 1024 * 1024
 
 #: Same as the chat timeout: a coding agent's turn is long.
 _TIMEOUT = httpx.Timeout(settings.chat_timeout_sec, connect=10.0)
@@ -67,6 +73,15 @@ async def proxy(path: str, request: Request) -> Response:
     url = f"{base.rstrip('/')}/{path.lstrip('/')}"
     headers = {k: v for k, v in request.headers.items() if k.lower() not in _DROP_REQUEST}
     body = await request.body()
+    if len(body) > _MAX_BODY:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="too_large"
+        )
+    if any(part in body for part in _AUDIO_PARTS):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="음성은 내부 음성 인식으로만 처리합니다. 이 경로로는 보낼 수 없습니다.",
+        )
 
     client = httpx.AsyncClient(timeout=_TIMEOUT)
     try:
