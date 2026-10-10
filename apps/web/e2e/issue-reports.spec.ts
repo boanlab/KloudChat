@@ -126,6 +126,8 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     }
     if (method === 'GET' && path === '/issues') return route.fulfill({ json: mine })
     if (method === 'GET' && path === '/issues/unread') return route.fulfill({ json: { count: mine.filter((r) => r.unread).length } })
+    // The shell's bot badges (`useBotAttentionBadge`).
+    if (method === 'GET' && path === '/publications/attention') return route.fulfill({ json: { bots: 0, reviews: 0 } })
     if (method === 'GET' && /^\/issues\/[^/]+$/.test(path)) {
       const row = mine.find((r) => path === `/issues/${r.id}`)
       return route.fulfill({ json: { ...row, thread } })
