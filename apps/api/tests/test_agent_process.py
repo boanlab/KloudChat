@@ -92,8 +92,8 @@ def test_the_bases_are_the_offered_agents_with_their_steps_and_bundles():
     everyone = [b.key for b in bases.bases()]
     admins = [b.key for b in bases.bases(drafts=True)]
     assert everyone == ["gaejo-report", "comparison-report", "data-analysis", "minutes"]
-    assert admins == ["gaejo-report", "comparison-report", "data-analysis", "minutes",
-                      "document", "slides"]
+    assert admins == ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis",
+                      "minutes", "document", "slides"]
     assert bases.get("career-docs") is None and bases.get("client-proposal") is None
     for base in bases.bases(drafts=True):
         assert 1 <= len(base.steps) <= 5
@@ -463,7 +463,7 @@ async def test_the_bases_endpoint_offers_drafts_to_administrators_only(wired):
         assert "document" in [b["key"] for b in (await up.list_bases(admin, db))["bases"]]
         assert [b["ref"] for b in mine["bundles"]] == ["prepare", "review", "finish",
                                                        "publish-check"]
-    assert set(starter.draft_agents()) == {"document", "slides"}
+    assert set(starter.draft_agents()) == {"document", "slides", "regulation-guide"}
 
 
 @pytest.mark.parametrize("key", [b.key for b in bases.bases(drafts=True)])
@@ -577,7 +577,8 @@ def test_the_migration_retires_backfills_and_clears_on_sqlite():
     assert (migration.revision, migration.down_revision) == ("0060", "0059")
     assert set(migration.RETIRED_AGENTS) == set(starter.retired_agents())
     assert migration.BASE_FOR_FORMAT == bases.BY_FORMAT
-    for spec in starter._AGENTS:
+    # The agents shipped when 0060 ran; one added since brings its checks from its own file.
+    for spec in [s for s in starter._AGENTS if s["key"] in migration.CHECKS]:
         assert migration.CHECKS[spec["key"]] == list(spec.get("checks") or []), spec["key"]
         assert migration.OPTIONS.get(spec["key"]) == (spec["check_options"] or None)
     from app.services import design_templates

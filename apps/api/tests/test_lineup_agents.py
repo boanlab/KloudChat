@@ -21,6 +21,7 @@ from app.services import design_templates, doc_formats, starter, workspace_conte
 from app.services.tools import registry
 
 _SHIPPED = {
+    "regulation-guide": "규정·업무 안내",
     "gaejo-report": "개조식 보고",
     "comparison-report": "비교·결정",
     "data-analysis": "자료 추출·집계",
@@ -30,13 +31,15 @@ _SHIPPED = {
     "career-docs": "자기소개서·경력기술서",
     "client-proposal": "고객 맞춤 제안서",
 }
-_OFFERED = ["gaejo-report", "comparison-report", "data-analysis", "minutes", "document", "slides"]
-_DRAFTS = {"document", "slides"}
+_OFFERED = ["regulation-guide", "gaejo-report", "comparison-report", "data-analysis", "minutes",
+            "document", "slides"]
+_DRAFTS = {"document", "slides", "regulation-guide"}
 _RETIRED = {"career-docs", "client-proposal"}
 _FORMER = {"gaejo-report": ["개조식 보고서", "요약·정리"], "minutes": ["기록 정리"],
            "comparison-report": ["비교·분석 보고서"], "data-analysis": ["데이터 분석"],
            "document": ["문서 작성"]}
 _BINDINGS = {
+    "regulation-guide": ("chat", None, None, "기본"),
     "client-proposal": ("report", "doc-client-proposal", "client_proposal", "기본"),
     "gaejo-report": ("report", "doc-gaejo-report", "gaejo", "문서용 명조"),
     "document": ("report", None, None, "기본"),
@@ -47,6 +50,7 @@ _BINDINGS = {
     "comparison-report": ("report", "doc-comparison", "comparison", "기본"),
 }
 _TOOLS = {
+    "regulation-guide": ["search_knowledge", "calculate"],
     "data-analysis": ["run_code", "create_chart", "calculate"],
     "career-docs": ["run_skill_script", "calculate"],
 }
@@ -78,7 +82,7 @@ def test_each_agent_names_its_tools_and_they_exist(key):
         for tool in (
             registry.CALCULATE, registry.RUN_CODE, registry.RUN_SKILL_SCRIPT, registry.CREATE_CHART
         )
-    }
+    } | {"search_knowledge"}
     assert set(spec["tools"]) <= known
 
 
