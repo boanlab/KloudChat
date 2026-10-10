@@ -323,3 +323,18 @@ async def test_an_agent_made_in_the_form_is_the_official_one(local):
         compiled = bundles.compile("chat", mine.bundles, bundles.shipped())
         assert compiled.check_skills == official.check_skills and compiled.steps is None
         assert ChatSession(user_id=admin.id).kind is SessionKind.chat
+
+
+def test_an_amount_worked_from_a_share_the_regulation_states_is_grounded():
+    """「등록금의 3분의 2」 of the 420만 원 the person paid is the material's own arithmetic; an
+    amount neither states nor implies is still blanked."""
+    trace = skill_scripts.entry("grounding-check")
+    passage = ("[1] 자료: 학칙 · 제30조(등록금의 반환)\n"
+               "2. 30일이 지난 날부터 60일까지: 등록금의 3분의 2")
+    answer = ("45일째 자퇴하면 420만 원 중 280만 원을 돌려받습니다 [1].\n"
+              "계산: 4,200,000원 × 3분의 2 = 2,800,000원\n위약금은 30만 원입니다.")
+    found = trace.check(answer, "등록금 420만 원을 냈는데 45일째 자퇴하면", [passage], {})
+    assert [f["text"] for f in found] == ["30만 원"]
+    # A percent works the same way: 「수업료의 50퍼센트」 of 300만 원.
+    assert trace.check("수업료 300만 원의 절반인 150만 원을 받습니다.", "수업료 300만 원",
+                       ["② 지급액은 해당 학기 수업료의 50퍼센트로 한다."], {}) == []

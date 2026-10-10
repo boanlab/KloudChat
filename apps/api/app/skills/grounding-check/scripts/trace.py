@@ -540,6 +540,10 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     # and so are sums, differences and shares of the big figures anywhere (a total and its
     # change); a value already grounded elsewhere in the text may be repeated. A difference
     # of two totals needs a second round.
+    # A share the material states (「등록금의 3분의 2」, 「수업료의 50퍼센트」) applied to a grounded
+    # amount is arithmetic on the material's own figures too.
+    shares = _shares("\n".join([material or "", *([computed] if isinstance(computed, str)
+                                                     else list(computed or []))]))
     for _ in range(3):
         accepted = [n for n in numbers if n["ok"]]
         written = [(abs(a["value"]), _decimals(a["match"].group("num")), _family(a["unit"])) for a in accepted]
@@ -567,6 +571,9 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                     for x in ((a + b, b - a) if family not in ("%", "%p")
                               else (a / b * 100, (b - a) / a * 100, (b - a) / b * 100))]
             pool = pools[key]
+            if shares and family in ("원", "달러", ""):
+                grounded = {v for v, _ in big} | {abs(a["value"]) for a in accepted}
+                pool = pool + [v * f for v in grounded for f in shares]
             if any(near(n["value"], d, places) for d in pool):
                 n["ok"] = changed = True
                 n["known"] = None
@@ -580,6 +587,25 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
     found.extend(_claims(lines, skip, sources))
     return sorted(found, key=lambda f: (f["line"], f["start"]))
+
+
+#: 「3분의 2」, 「50퍼센트」, 「50%」 — a share of something.
+_SHARE = re.compile(r"(\d{1,3})\s{0,2}분의\s{0,2}(\d{1,3})|(\d{1,3}(?:\.\d{1,2})?)\s{0,1}(?:%|퍼센트)")
+
+
+def _shares(text: str) -> list[float]:
+    """The fractions a text states, as numbers between 0 and 1."""
+    out: set[float] = set()
+    for m in _SHARE.finditer(text or ""):
+        if m.group(1):
+            whole, part = int(m.group(1)), int(m.group(2))
+            if 0 < part < whole:
+                out.add(part / whole)
+        else:
+            value = float(m.group(3))
+            if 0 < value < 100:
+                out.add(value / 100)
+    return sorted(out)[:24]
 
 
 def _finding(kind: str, line: str, k: int, start: int, end: int) -> dict:

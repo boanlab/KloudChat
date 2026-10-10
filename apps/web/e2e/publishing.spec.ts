@@ -273,7 +273,10 @@ test('the dashboard shows statistics, sent conversations and versions, and rolls
   await page.getByRole('switch', { name: '대화 열람' }).click()
   await expect(page.getByText('저장하면 방문자가 다음 질문 전에 바뀐 안내를 다시 확인합니다.')).toBeVisible()
   await shot(page, 'dashboard-settings', testInfo.project.name)
-  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await Promise.all([
+    page.waitForRequest((r) => r.method() === 'PATCH' && r.url().endsWith(`/publications/${PUB}`)),
+    page.getByRole('button', { name: '저장', exact: true }).click(),
+  ])
   expect(writes.find((w) => w.method === 'PATCH')?.body).toMatchObject({ conversationView: 'on' })
   expect(writes.some((w) => w.path.endsWith('/versions/v1/activate'))).toBe(true)
   expect(state.unexpected).toEqual([])
