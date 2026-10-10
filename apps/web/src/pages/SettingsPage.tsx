@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react'
-import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Button, PageHeader } from '@/components/ui'
@@ -28,6 +29,12 @@ export function SettingsPage() {
   const t = useT()
   const { logout } = useStore()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const strip = useRef<HTMLDivElement>(null)
+  // On a phone the tabs scroll: keep the open one in view.
+  useEffect(() => {
+    strip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [pathname])
 
   return (
     <>
@@ -49,7 +56,7 @@ export function SettingsPage() {
           }
         />
 
-        <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        <div ref={strip} role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}

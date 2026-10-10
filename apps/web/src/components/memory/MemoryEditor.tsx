@@ -5,6 +5,7 @@ import { NAME_LIMIT } from '@/lib/limits'
 import { cn, uid } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { MemoryEntry, MemoryType } from '@/types'
+import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { useT } from '@/lib/useT'
 
 export const memoryTypeTone: Record<MemoryType, 'accent' | 'success' | 'warn' | 'neutral'> = {
@@ -127,7 +128,7 @@ export function MemoryEditor({
                       : 'border-line hover:bg-elevated',
                   )}
                 >
-                  {kind}
+                  {t(memoryTypeLabel[kind])}
                 </button>
               ))}
             </div>

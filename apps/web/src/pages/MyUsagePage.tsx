@@ -73,8 +73,8 @@ export function MyUsagePage() {
 
       {cycle && (
         <Card className="mt-5 p-4">
-          <div className="flex items-baseline justify-between">
-            <p className="text-base font-medium">{t('이번 달')}</p>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <p className="shrink-0 text-base font-medium">{t('이번 달')}</p>
             <p className="text-base text-muted">
               <span className="tabular-nums text-fg">{cycle.remaining.toLocaleString()}</span>{' '}
               {t('남음')}

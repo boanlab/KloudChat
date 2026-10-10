@@ -13,6 +13,7 @@ import {
   Tabs,
 } from '@/components/ui'
 import { MemoryEditor, emptyMemory, memoryTypeTone } from '@/components/memory/MemoryEditor'
+import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { cn, relativeTime } from '@/lib/utils'
 import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
@@ -55,10 +56,10 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
           onChange={setFilter}
           tabs={[
             { id: 'all', label: t('전체'), count: memories.length },
-            { id: 'user', label: t('사용자') },
-            { id: 'feedback', label: t('피드백') },
-            { id: 'project', label: t('프로젝트') },
-            { id: 'reference', label: t('참조') },
+            { id: 'user', label: t(memoryTypeLabel.user) },
+            { id: 'feedback', label: t(memoryTypeLabel.feedback) },
+            { id: 'project', label: t(memoryTypeLabel.project) },
+            { id: 'reference', label: t(memoryTypeLabel.reference) },
           ]}
         />
 
@@ -93,7 +94,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
                       >
                         {m.name}
                       </button>
-                      <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
+                      <Badge tone={memoryTypeTone[m.type]}>{t(memoryTypeLabel[m.type])}</Badge>
                       {project && <Badge>{project.emoji} {project.name}</Badge>}
                       {m.pinned && (
                         <Badge tone="accent">

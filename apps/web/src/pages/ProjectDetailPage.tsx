@@ -23,6 +23,7 @@ import {
 import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
+import { memoryTypeLabel } from '@/lib/memoryTypes'
 import { formatTokens, relativeTime } from '@/lib/utils'
 import {
   MemoryEditor,
@@ -737,7 +738,7 @@ export function ProjectDetailPage() {
                         <span className="min-w-0 truncate font-mono text-sm text-accent">
                           {m.name}
                         </span>
-                        <Badge tone={memoryTypeTone[m.type]}>{m.type}</Badge>
+                        <Badge tone={memoryTypeTone[m.type]}>{t(memoryTypeLabel[m.type])}</Badge>
                         <span className="ml-auto flex shrink-0 items-center gap-0.5">
                           <Button
                             variant="ghost"

@@ -422,14 +422,14 @@ export function AgentForm({
               className="font-mono"
             />
           </Field>
-        ) : (
+        ) : draft.name.trim() || draft.slug ? (
           <p className="flex items-center gap-2 text-sm text-faint">
             <span className="font-mono">@{draftSlug}</span>
             <button type="button" className="text-accent hover:underline" onClick={() => setEditingSlug(true)}>
               {t('바꾸기')}
             </button>
           </p>
-        )}
+        ) : null}
         {slugTaken && (
           <p role="alert" className="text-sm text-danger">
             {t('이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.')}

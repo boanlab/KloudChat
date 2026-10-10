@@ -44,7 +44,8 @@ export function AgentSetupPage() {
 
         <Card className="mt-6 flex flex-wrap items-center gap-3 p-4">
           <KeyRound size={18} className="text-muted" />
-          <div className="min-w-0 flex-1">
+          {/* Wide enough to read; on a phone the button goes under it. */}
+          <div className="min-w-0 flex-1 basis-56">
             <p className="text-base font-medium">{t('먼저 키를 발급하세요')}</p>
             <p className="text-base text-muted">
               {t('발급 직후 한 번만 보이고 다시 확인할 수 없습니다.')}

@@ -33,6 +33,7 @@ import { ShowMore, usePaged } from '@/components/ui/ShowMore'
 import { useStore } from '@/store/useStore'
 import type { User, UserStatus } from '@/types'
 import { useT } from '@/lib/useT'
+import { USER_STATUS_LABEL } from '@/lib/userStatus'
 
 const statusTone = {
   active: 'success',
@@ -40,11 +41,7 @@ const statusTone = {
   suspended: 'danger',
 } as const
 
-const statusLabel: Record<UserStatus, string> = {
-  active: '활성',
-  pending: '승인 대기',
-  suspended: '정지',
-}
+const statusLabel = USER_STATUS_LABEL
 
 /** Preset allowances; 1 credit = $0.00001. */
 const PLANS = [
@@ -196,7 +193,7 @@ export function AdminUsersPage() {
           </p>
         )}
 
-        <div className="mb-5 grid gap-3 sm:grid-cols-4">
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: t('전체 사용자'), value: String(users.length) },
             { label: t('승인 대기'), value: String(pendingCount) },
@@ -208,7 +205,7 @@ export function AdminUsersPage() {
           ].map((s) => (
             <Card key={s.label} className="px-4 py-3">
               <p className="text-xs tracking-wide text-faint uppercase">{s.label}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{s.value}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums sm:text-xl">{s.value}</p>
             </Card>
           ))}
         </div>

@@ -132,7 +132,7 @@ export function SkillDetailPage() {
         }
       >
         <DetailSection title={tHub('개요')}>
-          {skill.description && <p className="text-base text-fg">{t(skill.description)}</p>}
+          {/* The description is the header's line; it is not said twice. */}
           {skill.whenToUse && skill.whenToUse !== skill.description && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">
               <p className="mb-1 text-sm font-medium text-faint">{t('사용 시점')}</p>

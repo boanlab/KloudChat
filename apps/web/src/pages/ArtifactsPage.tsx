@@ -215,7 +215,7 @@ export function ArtifactsPage() {
         <Tabs<Filter>
           value={filter}
           onChange={setFilter}
-          tabs={[
+          tabs={([
             { id: 'all', label: t('전체'), count: total },
             { id: 'code', label: t('코드'), count: count('code') },
             { id: 'html', label: 'HTML', count: count('html') },
@@ -225,7 +225,8 @@ export function ArtifactsPage() {
             { id: 'image', label: t('이미지'), count: count('image') },
             { id: 'audio', label: t('오디오'), count: count('audio') },
             { id: 'video', label: t('동영상'), count: count('video') },
-          ]}
+            // A kind with nothing in it is left out, unless it is the one open.
+          ] as { id: Filter; label: string; count?: number }[]).filter((tab) => tab.id === 'all' || tab.id === filter || tab.count !== 0)}
         />
 
         {artifactsFailed && <ReloadNotice onRetry={() => void loadArtifacts()} />}
@@ -288,7 +289,6 @@ export function ArtifactsPage() {
                         />
                         <Icon size={14} className="shrink-0 text-accent" />
                         <p className="min-w-0 flex-1 truncate text-base font-medium">{a.title}</p>
-                        <Badge>v{a.version}</Badge>
                         {reusable(a) && (
                           <Dropdown
                             align="right"
@@ -313,6 +313,7 @@ export function ArtifactsPage() {
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
                         <Badge>{label}</Badge>
+                        <Badge>v{a.version}</Badge>
                         {project && (
                           <span>
                             {project.emoji} {project.name}

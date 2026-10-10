@@ -2,6 +2,7 @@ import { Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
 import { ApiError } from '@/lib/api'
+import { USER_STATUS_LABEL } from '@/lib/userStatus'
 import { formatDate } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
@@ -149,7 +150,7 @@ export function ProfileTab() {
                 {t('관리자')}
               </Badge>
             )}
-            <Badge tone={user?.status === 'active' ? 'success' : 'warn'}>{user?.status}</Badge>
+            <Badge tone={user?.status === 'active' ? 'success' : 'warn'}>{user && t(USER_STATUS_LABEL[user.status])}</Badge>
             <Badge>{t('가입')} {user && formatDate(user.createdAt)}</Badge>
           </div>
         </div>

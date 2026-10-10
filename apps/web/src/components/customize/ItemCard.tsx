@@ -127,6 +127,12 @@ export function ItemCard({
         {item.summary && <p className="mt-0.5 line-clamp-2 text-base text-muted">{t(item.summary)}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-faint">
           <span>{itemMeta(item, view, t)}</span>
+          {/* On a phone the status sits here, so the name keeps the width. */}
+          {view === 'mine' && (
+            <span className={cn('rounded-full border px-1.5 text-xs sm:hidden', pillTone[item.status])}>
+              {t(STATUS_LABEL[item.status])}
+            </span>
+          )}
           {item.hidden && (
             <span className="rounded-full border border-line px-1.5 text-xs text-muted" data-testid="item-hidden">
               {t('숨김')}
@@ -188,7 +194,7 @@ export function ItemCard({
             </button>
           )
         ) : (
-          view === 'mine' && <StatusPill item={item} />
+          view === 'mine' && <span className="max-sm:hidden"><StatusPill item={item} /></span>
         )}
       </div>
     </div>

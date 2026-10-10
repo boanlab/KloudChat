@@ -140,7 +140,7 @@ export function AgentDetailPage() {
         }
       >
         <DetailSection title={tHub('개요')}>
-          {agent.description && <p className="text-base text-fg">{t(agent.description)}</p>}
+          {/* The description is the header's line; it is not said twice. */}
           {agent.guide && (
             <div className="rounded-card border border-line bg-panel px-4 py-3">
               <p className="mb-1 text-sm font-medium text-faint">{t('사용법')}</p>
