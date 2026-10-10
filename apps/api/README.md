@@ -184,7 +184,7 @@ app/
     ├── artifact_extract.py Hoisting substantial code out of a transcript — after the turn
     ├── auto_memory.py      Durable facts written from a finished conversation
     ├── thinking.py         Reasoning-model answer starvation
-    ├── transcribe.py       Composer microphone → Whisper, chat-model fallback
+    ├── transcribe.py       Composer microphone → internal Whisper only
     ├── files.py · storage.py   Upload storage, text extraction, reclaim of deleted accounts' files
     ├── knowledge.py · index_client.py   Agent shelves: lexical retrieval and the vector index
     ├── fonts.py            The Korean face every reportlab PDF embeds

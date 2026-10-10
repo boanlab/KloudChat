@@ -143,14 +143,10 @@ class Settings(BaseSettings):
     #: Vector index for agent knowledge. Empty: retrieval uses only the lexical
     #: scorer in `services/knowledge.py`.
     index_url: str = ""
-    #: OpenAI-compatible `/v1/audio/transcriptions`. Empty falls through to
-    #: `stt_or_model`; dictation is hidden when neither is set.
+    #: OpenAI-compatible `/v1/audio/transcriptions`, the only place audio is sent.
+    #: Empty: transcription is unavailable and dictation hidden. There is no
+    #: outside-model fallback; a leftover `STT_OR_MODEL` env is ignored.
     whisper_url: str = ""
-    #: Fallback transcription model when `whisper_url` is unset or fails, sent as
-    #: chat/completions with an audio part. Off by default: with it set, recordings
-    #: (meetings included) leave the network whenever local Whisper cannot answer.
-    #: An administrator opts in with a LiteLLM model id that accepts `input_audio`.
-    stt_or_model: str = ""
     code_interpreter_api_key: str = ""
     #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
     #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.

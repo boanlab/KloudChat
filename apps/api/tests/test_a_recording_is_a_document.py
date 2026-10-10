@@ -81,56 +81,9 @@ class _Tools:
         self.stt = stt
 
 
-@pytest.fixture
-def local_and_remote(monkeypatch):
-    """A deployment with both a local Whisper address and a remote STT model."""
-    from app.services import transcribe as t
-
-    async def tools_config():
-        return _Tools("http://whisper.local")
-
-    monkeypatch.setattr(t.settings_store, "tools_config", tools_config)
-    monkeypatch.setattr(t.settings, "stt_or_model", "openrouter/voxtral")
-    return t
-
-
 @pytest.mark.anyio
-async def test_a_local_whisper_that_cannot_answer_falls_through(local_and_remote, monkeypatch):
-    """A configured local Whisper that fails falls through to the remote model."""
-    t = local_and_remote
-
-    async def local(*_args, **_kwargs) -> str:
-        raise t.TranscribeError("받아쓰지 못했습니다.")
-
-    async def remote(data: bytes, filename: str, language: str | None = None) -> str:
-        return "원격이 받아썼습니다."
-
-    monkeypatch.setattr(t, "_transcribe_locally", local)
-    monkeypatch.setattr(t, "_transcribe_via_openrouter", remote)
-
-    assert await t.transcribe(b"\x00" * 64, "회의.wav") == "원격이 받아썼습니다."
-
-
-@pytest.mark.anyio
-async def test_a_local_whisper_that_answers_is_the_one_used(local_and_remote, monkeypatch):
-    """A local Whisper that answers is used; the audio never leaves the cluster."""
-    t = local_and_remote
-
-    async def local(*_args, **_kwargs) -> str:
-        return "로컬이 받아썼습니다."
-
-    async def remote(data: bytes, filename: str) -> str:  # pragma: no cover
-        raise AssertionError("로컬이 답했으면 밖으로 내보내지 않는다")
-
-    monkeypatch.setattr(t, "_transcribe_locally", local)
-    monkeypatch.setattr(t, "_transcribe_via_openrouter", remote)
-
-    assert await t.transcribe(b"\x00" * 64, "회의.wav") == "로컬이 받아썼습니다."
-
-
-@pytest.mark.anyio
-async def test_without_the_operator_s_leave_the_audio_stays_put(monkeypatch):
-    """An empty `stt_or_model` means no fall-through: audio never leaves without leave."""
+async def test_a_local_whisper_that_cannot_answer_is_reported_not_rerouted(monkeypatch):
+    """A Whisper failure surfaces as is; there is no other place to send the audio."""
     from app.services import transcribe as t
 
     async def tools_config():
@@ -139,102 +92,27 @@ async def test_without_the_operator_s_leave_the_audio_stays_put(monkeypatch):
     async def local(*_args, **_kwargs) -> str:
         raise t.TranscribeError("받아쓰지 못했습니다.")
 
-    async def remote(data: bytes, filename: str) -> str:  # pragma: no cover
-        raise AssertionError("허락 없이 음성이 나가서는 안 된다")
-
     monkeypatch.setattr(t.settings_store, "tools_config", tools_config)
-    monkeypatch.setattr(t.settings, "stt_or_model", "")
     monkeypatch.setattr(t, "_transcribe_locally", local)
-    monkeypatch.setattr(t, "_transcribe_via_openrouter", remote)
 
     with pytest.raises(t.TranscribeError, match="받아쓰지 못했습니다"):
         await t.transcribe(b"\x00" * 64, "회의.wav")
 
 
 @pytest.mark.anyio
-async def test_the_remote_path_resolves_its_address_like_everything_else(monkeypatch):
-    """The remote path takes its address and key from `settings_store.litellm_config`."""
+async def test_a_local_whisper_that_answers_is_the_one_used(monkeypatch):
     from app.services import transcribe as t
 
-    seen: dict[str, object] = {}
+    async def tools_config():
+        return _Tools("http://whisper.local")
 
-    async def litellm_config() -> tuple[str, str]:
-        return "https://llm.example/litellm", "sk-master"
+    async def local(*_args, **_kwargs) -> str:
+        return "로컬이 받아썼습니다."
 
-    class _Response:
-        status_code = 200
+    monkeypatch.setattr(t.settings_store, "tools_config", tools_config)
+    monkeypatch.setattr(t, "_transcribe_locally", local)
 
-        @staticmethod
-        def json() -> dict:
-            return {"choices": [{"message": {"content": "옮겨 적었습니다."}}]}
-
-    class _Client:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_exc):
-            return False
-
-        async def post(self, url, json=None, headers=None):
-            seen["url"] = url
-            seen["auth"] = (headers or {}).get("Authorization")
-            return _Response()
-
-    monkeypatch.setattr(t.settings_store, "litellm_config", litellm_config)
-    monkeypatch.setattr(t.settings, "stt_or_model", "openrouter/voxtral")
-    monkeypatch.setattr(t.httpx, "AsyncClient", lambda **_kw: _Client())
-
-    assert await t._transcribe_via_openrouter(b"\x00" * 16, "회의.wav") == "옮겨 적었습니다."
-    assert seen["url"] == "https://llm.example/litellm/v1/chat/completions"
-    assert seen["auth"] == "Bearer sk-master"
-
-
-@pytest.mark.anyio
-async def test_with_no_address_at_all_it_says_which_setting_is_missing(monkeypatch):
-    from app.services import transcribe as t
-
-    async def litellm_config() -> tuple[str, str]:
-        return "", ""
-
-    monkeypatch.setattr(t.settings_store, "litellm_config", litellm_config)
-    monkeypatch.setattr(t.settings, "stt_or_model", "openrouter/voxtral")
-    with pytest.raises(t.TranscribeError, match="모델 주소"):
-        await t._transcribe_via_openrouter(b"\x00" * 16, "회의.wav")
-
-
-@pytest.mark.anyio
-async def test_a_fallback_model_missing_from_litellm_says_so(monkeypatch):
-    """LiteLLM's 「Invalid model name」 names the setting instead of a bare failure."""
-    from app.services import transcribe as t
-
-    async def litellm_config() -> tuple[str, str]:
-        return "https://llm.example/litellm", "sk"
-
-    class _Response:
-        status_code = 400
-        text = '{"error":{"message":"Invalid model name passed in model=mistralai/voxtral"}}'
-
-    class _Client:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_exc):
-            return False
-
-        async def post(self, url, json=None, headers=None):
-            return _Response()
-
-    monkeypatch.setattr(t.settings_store, "litellm_config", litellm_config)
-    monkeypatch.setattr(t.settings, "stt_or_model", "mistralai/voxtral")
-    monkeypatch.setattr(t.httpx, "AsyncClient", lambda **_kw: _Client())
-    with pytest.raises(t.TranscribeError, match="STT_OR_MODEL"):
-        await t._transcribe_via_openrouter(b"\x00" * 16, "회의.wav")
-
-
-def test_the_default_fallback_is_not_the_missing_voxtral_id():
-    from app.core.config import Settings
-
-    assert "voxtral" not in Settings.model_fields["stt_or_model"].default
+    assert await t.transcribe(b"\x00" * 64, "회의.wav") == "로컬이 받아썼습니다."
 
 
 @pytest.mark.anyio

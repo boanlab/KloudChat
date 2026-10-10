@@ -1243,9 +1243,10 @@ carry script, and that file loads for every visitor.
 
 Both are contained within this instance.
 
-**Transcription** records in the browser and sends the audio to Whisper (or,
-without one, to the `STT_OR_MODEL` chat model, which takes the audio off the
-network).
+**Transcription** records in the browser and sends the audio to the internal
+Whisper, and nowhere else: there is no outside-model fallback, so without a
+Whisper address dictation and audio files are unavailable, and a Whisper failure
+is reported rather than retried elsewhere.
 `webkitSpeechRecognition` needs no backend but streams the microphone to a third
 party, so it is not used. Recordings are not stored, and the transcript fills
 the composer rather than being sent.
@@ -1627,8 +1628,8 @@ passes identically before and after a change is guarding nothing.
   four claims per slide or section.
 - **The first-signup bootstrap test** needs an empty database and is skipped by
   default.
-- **Speech-to-text needs a Whisper backend or `STT_OR_MODEL`.** With neither
-  the composer's microphone is not rendered. The `youtube` connector handles
+- **Speech-to-text needs the internal Whisper backend.** Without it the
+  composer's microphone is not rendered and audio files are not read. The `youtube` connector handles
   only videos that have captions.
 - **Runtime settings are cached per replica** for 15 seconds, so with several
   API replicas a change reaches the others within that window. See
