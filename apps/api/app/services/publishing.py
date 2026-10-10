@@ -258,7 +258,9 @@ def strict_chat_models(catalogue: list[dict], owner: User) -> list[dict]:
     return [
         m for m in catalogue
         if m.get("dataBoundary") == "self_hosted" and m.get("strictLocal") is True
-        and "chat" in (m.get("kinds") or []) and m.get("privacyOnly") is not True
+        and "chat" in (m.get("kinds") or [])
+        # A privacy-only entry is the strict-local route privacy decisions move turns to:
+        # kept out of the picker, and exactly what a bot answers with.
         and (not allowed or m.get("id") in allowed)
     ]
 

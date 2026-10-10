@@ -43,9 +43,10 @@ from app.routers import workspace as ws
 from app.services import agent as agent_service
 from app.services import publishing, settings_store
 
+# As the catalogue lists a strict-local route: privacy-only, out of the picker.
 _STRICT = {"id": "strict-local/m", "label": "내부 모델", "dataBoundary": "self_hosted",
-           "strictLocal": True, "kinds": ["chat"], "creditCost": 0, "inputCreditCost": 0,
-           "supportsTools": True, "contextWindow": 64000}
+           "strictLocal": True, "privacyOnly": True, "kinds": ["chat"], "creditCost": 0,
+           "inputCreditCost": 0, "supportsTools": True, "contextWindow": 64000}
 _LOCAL = {"id": "local/m", "label": "로컬 모델", "dataBoundary": "hybrid",
           "strictLocal": False, "kinds": ["chat"], "creditCost": 0, "inputCreditCost": 0,
           "supportsTools": True, "contextWindow": 64000}
