@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
+import { useBotAttention } from '@/lib/publishing'
 import { isMac } from '@/lib/shortcuts'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -173,6 +174,8 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
+  // My bots with something new: a pause, an administrator's decision.
+  const botNews = useBotAttention((s) => s.bots)
   const {
     sessions,
     projects,
@@ -302,6 +305,14 @@ export function Sidebar() {
           >
             <Icon size={15} />
             {t(label)}
+            {to === '/bots' && botNews > 0 && (
+              <span
+                aria-label={t('확인할 챗봇 {n}개').replace('{n}', String(botNews))}
+                className="ml-auto rounded-control bg-accent px-1.5 text-xs font-medium text-white"
+              >
+                {botNews}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

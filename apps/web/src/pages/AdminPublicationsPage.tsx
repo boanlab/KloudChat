@@ -1,0 +1,365 @@
+import { AlertTriangle, ArrowLeft, Bot, CheckCircle2, ExternalLink, PauseCircle, PlayCircle, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { PageBody } from '@/components/layout/AppShell'
+import { TopBar } from '@/components/layout/TopBar'
+import { Badge, Button, Card, EmptyState, Field, LoadingState, Modal, PageHeader, ReloadNotice, Tabs, Textarea } from '@/components/ui'
+import { adminPublicationsApi, errorMessage, type AdminPublication, type PublicationReview } from '@/lib/api'
+import { FINDING_LABEL, PAUSE_LABEL, STATUS_LABEL, useBotAttention, VISIBILITY_HINT, VISIBILITY_LABEL } from '@/lib/publishing'
+import { useT } from '@/lib/useT'
+import { formatDateTime } from '@/lib/utils'
+
+type View = 'pending' | 'all'
+
+const ACTION_LABEL: Record<string, string> = {
+  'publication.published': '공개',
+  'publication.requested': '승인 요청',
+  'publication.reviewed': '검토',
+  'publication.withdrawn': '외부 공개 닫음',
+  'publication.narrowed': '범위 좁힘',
+  'publication.version': '새 판',
+  'publication.request_withdrawn': '요청 취소',
+  'publication.admin_status': '관리자 상태 변경',
+}
+
+/** What the reason box is for: each needs words the owner (and the audit log) will read. */
+type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'revoked'
+
+const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
+  approve: { title: '승인', hint: '만든 사람에게 보일 메모(선택)', required: false },
+  reject: { title: '반려', hint: '만든 사람에게 보일 반려 사유', required: true, danger: true },
+  withdraw: { title: '외부 공개 닫기', hint: '구성원에게만 열린 상태로 돌립니다. 만든 사람에게 보일 사유', required: true, danger: true },
+  paused: { title: '일시 중지', hint: '만든 사람에게 보일 사유', required: true },
+  approved: { title: '다시 열기', hint: '감사 기록에 남길 사유', required: true },
+  revoked: { title: '챗봇 닫기', hint: '누구도 쓸 수 없게 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
+}
+
+/** /admin/publications — bots the members published: the review queue first, then all of them. */
+export function AdminPublicationsPage() {
+  const { publicationId } = useParams()
+  return publicationId ? <ReviewView id={publicationId} /> : <PublicationList />
+}
+
+function scopeBadge(row: { visibility: AdminPublication['visibility'] }, t: (s: string) => string) {
+  return <Badge tone={row.visibility === 'internal' ? 'neutral' : 'accent'}>{t(VISIBILITY_LABEL[row.visibility])}</Badge>
+}
+
+function PublicationList() {
+  const t = useT()
+  const navigate = useNavigate()
+  const [view, setView] = useState<View>('pending')
+  const [rows, setRows] = useState<AdminPublication[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const load = useCallback(() => {
+    adminPublicationsApi.list(view === 'pending').then(
+      (found) => {
+        setRows(found)
+        setFailed(false)
+      },
+      () => setFailed(true),
+    )
+  }, [view])
+  useEffect(load, [load])
+
+  return (
+    <>
+      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <PageBody>
+        <PageHeader
+          title={t('공개 챗봇')}
+          description={t('구성원이 공개한 챗봇입니다. 로그인하지 않은 사람에게 여는 링크 공개·외부 공개는 여기서 승인해야 열립니다.')}
+        />
+        <div className="mb-4">
+          <Tabs
+            tabs={[
+              { id: 'pending', label: t('승인 대기') },
+              { id: 'all', label: t('모든 챗봇') },
+            ]}
+            value={view}
+            onChange={(next) => setView(next as View)}
+          />
+        </div>
+        {failed && <ReloadNotice onRetry={load} />}
+        {rows === null && !failed ? (
+          <LoadingState />
+        ) : rows && rows.length === 0 ? (
+          <EmptyState icon={<Bot size={18} />} title={view === 'pending' ? t('승인을 기다리는 요청이 없습니다') : t('공개된 챗봇이 없습니다')} />
+        ) : (
+          <ul className="divide-y divide-line rounded-card border border-line bg-panel" data-testid="admin-publications">
+            {rows?.map((row) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admin/publications/${row.id}`)}
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 text-left hover:bg-elevated/50"
+                >
+                  <span className="min-w-0 flex-1 basis-60">
+                    <span className="block truncate text-base font-medium">{row.title}</span>
+                    <span className="block truncate text-xs text-faint">
+                      {row.ownerName} · {row.ownerEmail} · {t('대화 {n}개').replace('{n}', String(row.conversations))}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    {scopeBadge(row, t)}
+                    <Badge tone={row.status === 'approved' ? 'success' : 'warn'}>{t(STATUS_LABEL[row.status])}</Badge>
+                    {row.reviewState === 'pending' && (
+                      <Badge tone="accent">
+                        {row.requestedVisibility
+                          ? t('{scope} 요청').replace('{scope}', t(VISIBILITY_LABEL[row.requestedVisibility]))
+                          : t('새 판 확인')}
+                      </Badge>
+                    )}
+                    {row.reviewState === 'rejected' && <Badge tone="danger">{t('반려')}</Badge>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PageBody>
+    </>
+  )
+}
+
+function ReviewView({ id }: { id: string }) {
+  const t = useT()
+  const refreshBadge = useBotAttention((s) => s.refresh)
+  const [data, setData] = useState<PublicationReview | null>(null)
+  const [failed, setFailed] = useState(false)
+  const [deciding, setDeciding] = useState<Decision | null>(null)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    adminPublicationsApi.review(id).then(
+      (found) => {
+        setData(found)
+        setFailed(false)
+      },
+      () => setFailed(true),
+    )
+  }, [id])
+  useEffect(load, [load])
+
+  const decide = async () => {
+    if (!deciding) return
+    setBusy(true)
+    setError(null)
+    try {
+      if (deciding === 'approve' || deciding === 'reject') await adminPublicationsApi.decide(id, deciding, reason.trim())
+      else if (deciding === 'withdraw') await adminPublicationsApi.withdraw(id, reason.trim())
+      else await adminPublicationsApi.setStatus(id, deciding, reason.trim())
+      setDeciding(null)
+      setReason('')
+      load()
+      void refreshBadge()
+    } catch (err) {
+      setError(errorMessage(err, t('처리하지 못했습니다.')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const back = (
+    <Link to="/admin/publications" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg">
+      <ArrowLeft size={14} aria-hidden />
+      {t('공개 챗봇')}
+    </Link>
+  )
+  if (failed) {
+    return (
+      <PageBody>
+        {back}
+        <ReloadNotice onRetry={load} />
+      </PageBody>
+    )
+  }
+  if (!data) {
+    return (
+      <PageBody>
+        <LoadingState />
+      </PageBody>
+    )
+  }
+  const pub = data.publication
+  const pending = pub.reviewState === 'pending'
+  const outside = pub.visibility !== 'internal'
+  const spec = deciding ? DECISION[deciding] : null
+  const short = !!spec?.required && reason.trim().length < 4
+
+  return (
+    <>
+      <TopBar left={<span className="text-base font-medium">{t('공개 챗봇')}</span>} />
+      <PageBody>
+        <div className="mb-4">{back}</div>
+        <header className="flex flex-wrap items-start gap-3 border-b border-line pb-5">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight break-words">{pub.title}</h1>
+              {scopeBadge(pub, t)}
+              <Badge tone={pub.status === 'approved' ? 'success' : 'warn'}>{t(STATUS_LABEL[pub.status])}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-faint">
+              {data.owner.name} · {data.owner.email}
+            </p>
+          </div>
+          <a href={`/b/${pub.slug}`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-control border border-line px-3 text-base hover:bg-elevated">
+            <ExternalLink size={14} aria-hidden />
+            {t('열기')}
+          </a>
+        </header>
+
+        {pending && (
+          <Card className="mt-4 space-y-3 border-accent/40 p-4" data-testid="admin-review-request">
+            <p className="text-base font-medium">
+              {pub.requestedVisibility
+                ? t('{scope} 요청').replace('{scope}', t(VISIBILITY_LABEL[pub.requestedVisibility]))
+                : t('새 판 확인 요청')}
+              {data.version && ` · ${t('{n}판').replace('{n}', String(data.version.number))}`}
+            </p>
+            {pub.requestedVisibility && <p className="text-sm text-muted">{t(VISIBILITY_HINT[pub.requestedVisibility])}</p>}
+            <p className="text-sm text-muted">
+              {t('승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.').replace(
+                '{n}',
+                (pub.limits.creditsPerDay ?? 0).toLocaleString(),
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={() => setDeciding('approve')}>
+                <CheckCircle2 size={14} />
+                {t('승인')}
+              </Button>
+              <Button variant="danger" onClick={() => setDeciding('reject')}>
+                <XCircle size={14} />
+                {t('반려')}
+              </Button>
+            </div>
+          </Card>
+        )}
+        {pub.reviewState === 'rejected' && pub.reviewNote && (
+          <p className="mt-4 rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-base text-danger">
+            {t('반려 사유: {reason}').replace('{reason}', pub.reviewNote)}
+          </p>
+        )}
+        {pub.status === 'paused' && (
+          <p className="mt-4 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn">
+            {t(PAUSE_LABEL[pub.pauseReason] ?? '일시 중지되었습니다.')}
+          </p>
+        )}
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+          <div className="min-w-0 space-y-4">
+            {data.agent && (
+              <Card className="space-y-3 p-4" data-testid="admin-review-agent">
+                <p className="text-sm text-faint">{t('지시')}</p>
+                <pre className="max-h-80 overflow-auto rounded-control bg-elevated px-3 py-2 text-sm whitespace-pre-wrap">{data.agent.instructions || '—'}</pre>
+                {data.agent.contact && (
+                  <p className="text-sm">
+                    <span className="text-faint">{t('담당 부서·연락처')}: </span>
+                    {data.agent.contact}
+                  </p>
+                )}
+                {data.agent.guide && (
+                  <p className="text-sm">
+                    <span className="text-faint">{t('첫 인사')}: </span>
+                    {pub.branding.greeting || data.agent.guide}
+                  </p>
+                )}
+                <p className="text-sm text-muted">
+                  {t('답하는 모델: {model}').replace('{model}', data.agent.model)} · {t('도구')}: {data.agent.tools.join(', ') || '—'} · {t('검사')}:{' '}
+                  {data.agent.checks.join(', ') || '—'}
+                </p>
+              </Card>
+            )}
+            <Card className="space-y-2 p-4" data-testid="admin-review-knowledge">
+              <p className="text-sm text-faint">{t('자료')}</p>
+              {data.knowledge.length === 0 ? (
+                <p className="text-sm text-faint">{t('자료가 없습니다.')}</p>
+              ) : (
+                <ul className="space-y-1">
+                  {data.knowledge.map((file) => (
+                    <li key={file.name} className="text-sm">
+                      {file.name} <span className="text-faint">· {t('{n}자').replace('{n}', file.chars.toLocaleString())}</span>
+                      {file.findings.length > 0 && (
+                        <span className="ml-2 inline-flex items-center gap-1 text-warn">
+                          <AlertTriangle size={13} aria-hidden />
+                          {file.findings.map((f) => `${t(FINDING_LABEL[f.category] ?? f.category)} ${f.count}`).join(', ')}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
+          <div className="space-y-4">
+            <Card className="space-y-2 p-4">
+              <p className="text-sm text-faint">{t('관리')}</p>
+              <div className="flex flex-wrap gap-2">
+                {outside && (
+                  <Button onClick={() => setDeciding('withdraw')}>
+                    {t('외부 공개 닫기')}
+                  </Button>
+                )}
+                {pub.status === 'approved' && (
+                  <Button onClick={() => setDeciding('paused')}>
+                    <PauseCircle size={14} />
+                    {t('일시 중지')}
+                  </Button>
+                )}
+                {pub.status === 'paused' && (
+                  <Button onClick={() => setDeciding('approved')}>
+                    <PlayCircle size={14} />
+                    {t('다시 열기')}
+                  </Button>
+                )}
+                {pub.status !== 'revoked' && (
+                  <Button variant="danger" onClick={() => setDeciding('revoked')}>
+                    {t('챗봇 닫기')}
+                  </Button>
+                )}
+              </div>
+            </Card>
+            <Card className="space-y-2 p-4">
+              <p className="text-sm text-faint">{t('기록')}</p>
+              <ul className="space-y-1.5 text-sm" data-testid="admin-review-history">
+                {data.history.map((e, i) => (
+                  <li key={i}>
+                    <span>{t(ACTION_LABEL[e.action] ?? e.action)}</span>
+                    {typeof e.metadata.decision === 'string' && ` · ${e.metadata.decision === 'approve' ? t('승인') : t('반려')}`}
+                    {typeof e.metadata.visibility === 'string' && e.metadata.visibility && ` · ${t(VISIBILITY_LABEL[e.metadata.visibility as AdminPublication['visibility']] ?? '')}`}
+                    <span className="block text-xs text-faint">{formatDateTime(e.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </div>
+        </div>
+      </PageBody>
+      <Modal
+        open={!!deciding}
+        onClose={() => setDeciding(null)}
+        title={spec ? t(spec.title) : ''}
+        footer={
+          <>
+            <Button onClick={() => setDeciding(null)}>{t('취소')}</Button>
+            <Button variant={spec?.danger ? 'danger' : 'primary'} disabled={busy || short} onClick={() => void decide()}>
+              {spec ? t(spec.title) : ''}
+            </Button>
+          </>
+        }
+      >
+        {error && (
+          <p role="alert" className="text-base text-danger">
+            {error}
+          </p>
+        )}
+        <Field label={spec ? t(spec.hint) : ''}>
+          <Textarea rows={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} data-testid="admin-review-reason" />
+        </Field>
+      </Modal>
+    </>
+  )
+}

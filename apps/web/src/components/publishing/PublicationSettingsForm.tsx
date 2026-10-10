@@ -6,8 +6,11 @@ import { RETENTION_DAYS, SHOW_PROCESS_LABEL, type SettingsDraft } from '@/lib/pu
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
-const LIMIT_FIELDS: { key: keyof BotLimits; label: string }[] = [
+const LIMIT_FIELDS: { key: Exclude<keyof BotLimits, 'creditsPerDay'>; label: string }[] = [
   { key: 'perVisitorPerMinute', label: '한 사람이 1분에 보낼 수 있는 질문' },
+  { key: 'perVisitorPerDay', label: '한 사람이 하루에 보낼 수 있는 질문' },
+  { key: 'perIpPerMinute', label: '로그인하지 않은 방문자: 같은 주소에서 1분에 보내는 질문' },
+  { key: 'perIpPerDay', label: '로그인하지 않은 방문자: 같은 주소에서 하루에 보내는 질문' },
   { key: 'perBotPerMinute', label: '이 챗봇이 1분에 받는 질문' },
   { key: 'turnsPerDay', label: '하루에 받는 질문' },
   { key: 'maxInputChars', label: '질문 하나의 글자 수' },

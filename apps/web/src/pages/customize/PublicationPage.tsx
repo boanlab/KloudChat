@@ -1,21 +1,38 @@
-import { Copy, ExternalLink, Loader2, PauseCircle, PlayCircle, RotateCcw, Trash2, Upload } from 'lucide-react'
+import { Ban, Clock, Copy, ExternalLink, Loader2, PauseCircle, PlayCircle, RotateCcw, Trash2, Upload, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
 import { PublicationSettingsForm } from '@/components/publishing/PublicationSettingsForm'
+import { ScopePicker } from '@/components/publishing/ScopePicker'
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, Select, Tabs } from '@/components/ui'
 import {
+  ApiError,
   errorMessage,
   publicationsApi,
   type BotConversationRow,
   type BotTranscriptMessage,
+  type BotVisibility,
+  type BotVisitor,
   type Publication,
   type PublicationStats,
 } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
-import { botUrl, PAUSE_LABEL, SHOW_PROCESS_LABEL, STATUS_LABEL, toSettings, type SettingsDraft } from '@/lib/publishing'
+import {
+  botUrl,
+  creditsCap,
+  PAUSE_LABEL,
+  reviewLine,
+  SCOPE_ERROR,
+  SHOW_PROCESS_LABEL,
+  STATUS_LABEL,
+  toSettings,
+  useBotAttention,
+  VISIBILITIES,
+  VISIBILITY_LABEL,
+  type SettingsDraft,
+} from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
@@ -60,14 +77,17 @@ export function PublicationPage() {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const refreshBadge = useBotAttention((s) => s.refresh)
 
   const load = useCallback(async () => {
     try {
       setPub(await publicationsApi.get(publicationId))
+      // Opening the page is seeing what changed: the badge follows.
+      void refreshBadge()
     } catch {
       setMissing(true)
     }
-  }, [publicationId])
+  }, [publicationId, refreshBadge])
   useEffect(() => {
     void load()
   }, [load])
@@ -79,7 +99,8 @@ export function PublicationPage() {
       const next = await work()
       if (next) setPub(next)
     } catch (err) {
-      setError(errorMessage(err, t('저장하지 못했습니다.')))
+      const code = err instanceof ApiError ? err.detail : ''
+      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다.')))
     } finally {
       setBusy(false)
     }
@@ -108,6 +129,7 @@ export function PublicationPage() {
 
   const paused = pub.status === 'paused'
   const active = pub.versions?.find((v) => v.active)
+  const review = reviewLine(pub, t)
 
   return (
     <>
@@ -118,9 +140,10 @@ export function PublicationPage() {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight break-words">{pub.title}</h1>
               <Badge tone={pub.status === 'approved' ? 'success' : 'warn'} >{t(STATUS_LABEL[pub.status])}</Badge>
+              {pub.reviewState === 'pending' && <Badge tone="accent">{t('승인 대기')}</Badge>}
             </div>
             <p className="mt-1 text-sm text-faint">
-              {t('챗봇')} · {t('이 기관 구성원(로그인한 사람)')}
+              {t('챗봇')} · {t(VISIBILITY_LABEL[pub.visibility])}
               {pub.agentName && (
                 <>
                   {' · '}
@@ -159,6 +182,28 @@ export function PublicationPage() {
         {paused && (
           <p role="status" className="mt-4 rounded-control border border-warn/30 bg-warn/5 px-3 py-2 text-base text-warn" data-testid="publication-paused">
             {t('일시 중지되어 방문자가 질문할 수 없습니다.')} {t(PAUSE_LABEL[pub.pauseReason] ?? '')}
+            {pub.pauseReason === 'admin' && pub.reviewNote && ` ${t('사유: {reason}').replace('{reason}', pub.reviewNote)}`}
+          </p>
+        )}
+        {review && (
+          <div
+            role="status"
+            data-testid="publication-review"
+            className={cn(
+              'mt-4 flex flex-wrap items-center gap-2 rounded-control border px-3 py-2 text-base',
+              pub.reviewState === 'rejected' ? 'border-danger/30 bg-danger/5 text-danger' : 'border-accent/30 bg-accent-soft text-fg',
+            )}
+          >
+            {pub.reviewState === 'rejected' ? <XCircle size={15} aria-hidden /> : <Clock size={15} aria-hidden />}
+            <span className="min-w-0 flex-1">{review}</span>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(() => publicationsApi.withdrawRequest(pub.id))}>
+              {pub.reviewState === 'rejected' ? t('닫기') : t('요청 취소')}
+            </Button>
+          </div>
+        )}
+        {!review && pub.reviewNote && !(paused && pub.pauseReason === 'admin') && (
+          <p role="status" className="mt-4 rounded-control border border-line bg-elevated px-3 py-2 text-base text-muted" data-testid="publication-note">
+            {t('관리자 메모: {reason}').replace('{reason}', pub.reviewNote)}
           </p>
         )}
 
@@ -173,6 +218,7 @@ export function PublicationPage() {
         <div className="pt-5">
           {tab === 'overview' && (
             <div className="space-y-4">
+              <ScopeCard key={pub.updatedAt} pub={pub} busy={busy} onSave={(visibility, credits) => run(() => publicationsApi.setScope(pub.id, visibility, credits))} />
               <Card className="space-y-2 p-4">
                 <p className="text-sm text-faint">{t('주소')}</p>
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -244,6 +290,45 @@ export function PublicationPage() {
         description={t('챗봇과 그 대화·통계·판이 모두 지워집니다. 에이전트는 그대로 남습니다.')}
       />
     </>
+  )
+}
+
+/** Who the bot is open to: narrowing applies at once, widening is asked of an administrator. */
+function ScopeCard({
+  pub,
+  busy,
+  onSave,
+}: {
+  pub: Publication
+  busy: boolean
+  onSave: (visibility: BotVisibility, credits?: number) => Promise<void>
+}) {
+  const t = useT()
+  const [value, setValue] = useState<BotVisibility>(pub.requestedVisibility || pub.visibility)
+  const [credits, setCredits] = useState(pub.limits.creditsPerDay ? String(pub.limits.creditsPerDay) : '')
+  const rank = (v: BotVisibility) => VISIBILITIES.indexOf(v)
+  const wider = rank(value) > rank(pub.visibility)
+  const cap = creditsCap(credits)
+  const changed = value !== pub.visibility || (value !== 'internal' && cap !== pub.limits.creditsPerDay)
+  const asked = pub.reviewState === 'pending' && pub.requestedVisibility === value
+  return (
+    <Card className="space-y-3 p-4" data-testid="publication-scope">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-base font-medium">{t('공개 범위')}</p>
+        <p className="text-sm text-faint">{t('지금: {scope}').replace('{scope}', t(VISIBILITY_LABEL[pub.visibility]))}</p>
+      </div>
+      <ScopePicker value={value} onChange={setValue} credits={credits} onCredits={setCredits} current={pub.visibility} />
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {wider && <p className="min-w-0 flex-1 text-sm text-muted">{t('관리자가 승인할 때까지 지금 범위로 답합니다.')}</p>}
+        <Button
+          variant="primary"
+          disabled={busy || !changed || asked || (value !== 'internal' && cap === undefined)}
+          onClick={() => void onSave(value, value !== 'internal' ? cap : undefined)}
+        >
+          {wider ? t('승인 요청') : t('범위 바꾸기')}
+        </Button>
+      </div>
+    </Card>
   )
 }
 
@@ -372,6 +457,15 @@ function ConversationsTab({ pub }: { pub: Publication }) {
           <Card className="min-w-0 p-4">
             {open ? (
               <div className="space-y-4" data-testid="publication-transcript">
+                {open.visitor && (
+                  <VisitorBar
+                    visitor={open.visitor}
+                    onBlock={async () => {
+                      const visitor = await publicationsApi.block(pub.id, open.id)
+                      setOpen({ ...open, visitor })
+                    }}
+                  />
+                )}
                 {open.messages.map((m) => (
                   <div key={m.id} className={cn(m.role === 'user' && 'rounded-card bg-elevated px-3 py-2')}>
                     <p className="mb-1 text-xs font-medium text-faint">
@@ -393,6 +487,70 @@ function ConversationsTab({ pub }: { pub: Publication }) {
   )
 }
 
+function visitorName(visitor: BotVisitor, t: (s: string) => string): string {
+  return `${t('방문자 {label}').replace('{label}', visitor.label)} · ${visitor.member ? t('구성원') : t('로그인하지 않음')}`
+}
+
+/** Who sent the conversation, as far as the owner may know, and blocking them. */
+function VisitorBar({ visitor, onBlock }: { visitor: BotVisitor; onBlock: () => Promise<void> }) {
+  const t = useT()
+  const [asking, setAsking] = useState(false)
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-line pb-3 text-sm" data-testid="publication-visitor">
+      <span className="min-w-0 flex-1 text-muted">{visitorName(visitor, t)}</span>
+      {visitor.blocked ? (
+        <Badge tone="danger">{t('차단됨')}</Badge>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setAsking(true)}>
+          <Ban size={13} />
+          {t('이 방문자 차단')}
+        </Button>
+      )}
+      <ConfirmDialog
+        open={asking}
+        onClose={() => setAsking(false)}
+        onConfirm={() => void onBlock().finally(() => setAsking(false))}
+        title={t('이 방문자 차단')}
+        confirmLabel={t('이 방문자 차단')}
+        description={t('이 방문자는 더 이상 이 챗봇에 질문할 수 없습니다. 설정에서 언제든 풀 수 있습니다.')}
+      />
+    </div>
+  )
+}
+
+/** The visitors the owner blocked, and unblocking them. */
+function BlockedVisitors({ pub }: { pub: Publication }) {
+  const t = useT()
+  const [rows, setRows] = useState<BotVisitor[] | null>(null)
+  useEffect(() => {
+    publicationsApi.blocked(pub.id).then(setRows).catch(() => setRows([]))
+  }, [pub.id])
+  return (
+    <Card className="space-y-2 p-4" data-testid="publication-blocked">
+      <p className="text-base font-medium">{t('차단한 방문자')}</p>
+      {rows === null ? null : rows.length === 0 ? (
+        <p className="text-sm text-faint">{t('차단한 방문자가 없습니다. 보낸 대화에서 방문자를 차단할 수 있습니다.')}</p>
+      ) : (
+        <ul className="divide-y divide-line">
+          {rows.map((v) => (
+            <li key={v.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+              <span className="min-w-0 flex-1">{visitorName(v, t)}</span>
+              <span className="text-faint">{day(v.blockedAt)}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => void publicationsApi.unblock(pub.id, v.id).then(() => setRows(rows.filter((x) => x.id !== v.id)))}
+              >
+                {t('차단 풀기')}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 function VersionsTab({
   pub,
   busy,
@@ -406,11 +564,15 @@ function VersionsTab({
 }) {
   const t = useT()
   const [note, setNote] = useState('')
+  const outside = pub.visibility !== 'internal'
   return (
     <div className="space-y-4">
       <Card className="space-y-3 p-4">
         <p className="text-base font-medium">{t('지금 에이전트로 새 판 공개')}</p>
         <p className="text-sm text-muted">{t('에이전트의 지시·자료·검사를 지금 상태로 고정해 새 판으로 엽니다. 문제가 있으면 아래에서 이전 판으로 되돌릴 수 있습니다.')}</p>
+        {outside && (
+          <p className="text-sm text-warn">{t('로그인하지 않은 사람에게도 열린 챗봇이라 새 판은 관리자가 확인한 뒤 답합니다. 그동안 승인된 판이 답합니다.')}</p>
+        )}
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-0 flex-1">
             <Field label={t('바꾼 점 메모')}>
@@ -430,13 +592,15 @@ function VersionsTab({
               <p className="flex items-center gap-2 text-base font-medium">
                 {t('{n}판').replace('{n}', String(v.number))}
                 {v.active && <Badge tone="success">{t('지금 판')}</Badge>}
+                {v.pending && <Badge tone="accent">{t('승인 대기')}</Badge>}
+                {outside && v.approvedAt && !v.pending && <Badge>{t('승인됨')}</Badge>}
               </p>
               <p className="text-sm text-faint">
                 {day(v.createdAt)} · {t('자료 {n}개').replace('{n}', String(v.summary.knowledge?.length ?? 0))} · {v.model}
                 {v.note && ` · ${v.note}`}
               </p>
             </div>
-            {!v.active && (
+            {!v.active && !v.pending && (
               <Button size="sm" disabled={busy} onClick={() => void onActivate(v.id)}>
                 <RotateCcw size={13} />
                 {t('이 판으로 되돌리기')}
@@ -471,6 +635,7 @@ function SettingsTab({
           {t('저장')}
         </Button>
       </div>
+      <BlockedVisitors pub={pub} />
       <Card className="flex flex-wrap items-center gap-3 border-danger/30 p-4">
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('챗봇 지우기')}</p>

@@ -2091,16 +2091,27 @@ export interface BotBranding {
   placeholder: string
 }
 
-/** What a bot runs under; the owner may lower each, never raise it. */
+/** What a bot runs under; the owner may lower each, never raise it. The per-address ones
+ *  count visitors without an account only. */
 export interface BotLimits {
   perVisitorPerMinute: number
+  perVisitorPerDay: number
   perBotPerMinute: number
+  perIpPerMinute: number
+  perIpPerDay: number
   turnsPerDay: number
   tokensPerDay: number
   maxInputChars: number
   turnsPerConversation: number
   concurrency: number
+  /** The owner's own daily credit cap; required before the bot opens outside. */
+  creditsPerDay?: number
 }
+
+/** Who reaches a bot: members (`internal`), whoever holds the link, or everyone (listed). */
+export type BotVisibility = 'internal' | 'link' | 'external'
+/** A request for a wider audience, or for a new version on one: '' when none. */
+export type ReviewState = '' | 'pending' | 'rejected'
 
 export interface PublicationVersion {
   id: string
@@ -2109,7 +2120,19 @@ export interface PublicationVersion {
   note: string
   summary: { agentName?: string; knowledge?: { name: string; chars: number }[]; tools?: string[]; checks?: string[]; contact?: boolean }
   active: boolean
+  /** Waiting for an administrator before it answers people without an account. */
+  pending?: boolean
+  approvedAt?: string | null
   createdAt: string
+}
+
+/** A visitor as the owner may know them: never who they are. */
+export interface BotVisitor {
+  id: string
+  label: string
+  member: boolean
+  blocked: boolean
+  blockedAt: string | null
 }
 
 export interface Publication {
@@ -2120,8 +2143,16 @@ export interface Publication {
   agentId: string
   agentName: string
   ownerName: string
-  visibility: 'internal' | 'link' | 'external'
+  visibility: BotVisibility
   status: PublicationStatus
+  requestedVisibility: '' | BotVisibility
+  reviewState: ReviewState
+  /** The administrator's words on the last decision; a refusal's reason. */
+  reviewNote: string
+  reviewedAt: string | null
+  pendingVersionId: string | null
+  /** Something happened since the owner last opened this page. */
+  needsLook: boolean
   /** Why it is paused: `owner`, `admin`, `credits`, `account`, `model`. */
   pauseReason: string
   activeVersionId: string | null
@@ -2182,6 +2213,8 @@ export interface BotConversationRow {
   updatedAt: string
   createdAt?: string
   turns?: number
+  /** The owner's view only. */
+  visitor?: BotVisitor | null
 }
 
 export interface BotTranscriptMessage {
@@ -2204,6 +2237,17 @@ export interface BotListItem {
   /** The owner's own bot: the dashboard's id. */
   id: string | null
   status: PublicationStatus
+  visibility: BotVisibility
+  needsLook?: boolean
+  color: string
+  publishedAt: string | null
+}
+
+/** A bot open to everyone, as the public list shows it: no owner names. */
+export interface PublicBotItem {
+  slug: string
+  title: string
+  description: string
   color: string
   publishedAt: string | null
 }
@@ -2212,8 +2256,13 @@ export interface BotPage {
   slug: string
   title: string
   description: string
+  /** Empty for a visitor without an account. */
   ownerName: string
   mine: boolean
+  signedIn: boolean
+  visibility: BotVisibility
+  /** The owner blocked this visitor. */
+  blocked: boolean
   status: PublicationStatus
   pauseReason: string
   branding: BotBranding
@@ -2241,8 +2290,18 @@ export type BotStreamEvent =
 export const publicationsApi = {
   list: () => call<Publication[]>('/publications'),
   preflight: (agentId: string) => call<PublishPreflight>('/publications/preflight', body({ agentId })),
-  publish: (agentId: string, settings: PublicationSettings & { note?: string }) =>
+  publish: (agentId: string, settings: PublicationSettings & { note?: string; visibility?: BotVisibility }) =>
     call<Publication>('/publications', body({ agentId, visibility: 'internal', ...settings })),
+  /** Widening is asked of an administrator; narrowing applies at once. */
+  setScope: (id: string, visibility: BotVisibility, creditsPerDay?: number) =>
+    call<Publication>(`/publications/${id}/scope`, body({ visibility, creditsPerDay })),
+  withdrawRequest: (id: string) => call<Publication>(`/publications/${id}/review`, { method: 'DELETE' }),
+  attention: () => call<{ bots: number; reviews: number }>('/publications/attention'),
+  block: (id: string, sessionId: string) =>
+    call<BotVisitor>(`/publications/${id}/conversations/${sessionId}/block`, { method: 'POST' }),
+  blocked: (id: string) => call<BotVisitor[]>(`/publications/${id}/visitors`),
+  unblock: (id: string, visitorId: string) =>
+    call<BotVisitor>(`/publications/${id}/visitors/${visitorId}/block`, { method: 'DELETE' }),
   get: (id: string) => call<Publication>(`/publications/${id}`),
   update: (id: string, patch: PublicationSettings & { status?: 'approved' | 'paused' }) =>
     call<Publication>(`/publications/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -2258,6 +2317,8 @@ export const publicationsApi = {
 
 export const botsApi = {
   list: () => call<BotListItem[]>('/bots'),
+  /** Bots open to everyone; needs no account. */
+  publicList: () => call<PublicBotItem[]>('/public/bots'),
   page: (slug: string) => call<BotPage>(`/b/${encodeURIComponent(slug)}`),
   consent: (slug: string, version: number) =>
     call<void>(`/b/${encodeURIComponent(slug)}/consent`, body({ version })),
@@ -2278,6 +2339,42 @@ export const botsApi = {
     call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'POST' }),
   unshare: (slug: string, id: string) =>
     call<{ id: string; sharedAt: string | null }>(`/b/${encodeURIComponent(slug)}/conversations/${id}/share`, { method: 'DELETE' }),
+}
+
+/** An administrator's row: a bot with its owner and how many conversations it holds. */
+export interface AdminPublication extends Publication {
+  ownerEmail: string
+  conversations: number
+}
+
+/** What an administrator decides on before a bot answers people without an account. */
+export interface PublicationReview {
+  publication: Publication
+  owner: { name: string; email: string }
+  version: PublicationVersion | null
+  agent: {
+    name: string
+    description: string
+    instructions: string
+    contact: string
+    guide: string
+    starters: string[]
+    tools: string[]
+    checks: string[]
+    model: string
+  } | null
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[] }[]
+  history: { action: string; at: string; actorId: string | null; metadata: Record<string, unknown> }[]
+}
+
+export const adminPublicationsApi = {
+  list: (pendingOnly = false) => call<AdminPublication[]>(`/admin/publications${pendingOnly ? '?review=pending' : ''}`),
+  review: (id: string) => call<PublicationReview>(`/admin/publications/${id}/review`),
+  decide: (id: string, decision: 'approve' | 'reject', reason: string) =>
+    call<Publication>(`/admin/publications/${id}/review`, body({ decision, reason })),
+  withdraw: (id: string, reason: string) => call<Publication>(`/admin/publications/${id}/withdraw`, body({ reason })),
+  setStatus: (id: string, status: 'approved' | 'paused' | 'revoked', reason: string) =>
+    call<Publication>(`/admin/publications/${id}/status`, body({ status, reason })),
 }
 
 /** A visitor's question, streamed as the bot answers. */

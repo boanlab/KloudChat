@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowUp,
+  Ban,
   Bot,
   Loader2,
   Menu,
@@ -12,6 +13,7 @@ import {
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  LogIn,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -28,6 +30,7 @@ import {
 import { botErrorMessage, noticeLines, PAUSE_LABEL } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
+import { useStore } from '@/store/useStore'
 import type { Step } from '@/types'
 
 interface Turn extends BotTranscriptMessage {
@@ -36,10 +39,24 @@ interface Turn extends BotTranscriptMessage {
   error?: string
 }
 
-/** A chat bot a member opened: the notice first, then questions to the bot's fixed version. */
-export function BotPage() {
+/** Keeps search engines off a bot that is not listed for everyone (a member's or a link's). */
+function useNoIndex(on: boolean) {
+  useEffect(() => {
+    if (!on) return
+    const meta = document.createElement('meta')
+    meta.name = 'robots'
+    meta.content = 'noindex, nofollow'
+    document.head.appendChild(meta)
+    return () => meta.remove()
+  }, [on])
+}
+
+/** A chat bot someone opened — a member, or anyone once an administrator opened it outside:
+ *  the notice first, then questions to the bot's fixed version. */
+export function BotPage({ onSignIn }: { onSignIn?: () => void }) {
   const t = useT()
   const { slug = '' } = useParams()
+  const authenticated = useStore((s) => s.authenticated)
   const [bot, setBot] = useState<BotPageData | null>(null)
   const [missing, setMissing] = useState(false)
   const [rows, setRows] = useState<BotConversationRow[]>([])
@@ -67,13 +84,20 @@ export function BotPage() {
     let live = true
     botsApi
       .page(slug)
-      .then((page) => live && setBot(page))
+      .then((page) => {
+        if (!live) return
+        setBot(page)
+        setMissing(false)
+      })
       .catch((err) => live && (err instanceof ApiError && err.status === 404 ? setMissing(true) : setError(t('챗봇을 불러오지 못했습니다.'))))
     void loadList()
     return () => {
       live = false
     }
-  }, [slug, loadList, t])
+    // Signing in on this page reopens it as a member.
+  }, [slug, loadList, t, authenticated])
+
+  useNoIndex(bot?.visibility !== 'external')
 
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: 'end' })
@@ -167,6 +191,7 @@ export function BotPage() {
         setError(botErrorMessage(err, t, bot.maxInputChars))
         if (err instanceof ApiError && err.detail === 'consent_required') setBot({ ...bot, consented: false })
         if (err instanceof ApiError && err.detail === 'bot_paused') setBot({ ...bot, status: 'paused' })
+        if (err instanceof ApiError && err.detail === 'visitor_blocked') setBot({ ...bot, blocked: true })
         // The question did not go through: it goes back in the box.
         setTurns((all) => all.filter((turn) => turn.id !== answerId && turn.id !== questionId))
         setText(question)
@@ -237,10 +262,26 @@ export function BotPage() {
       <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
         <Bot size={22} className="mx-auto mb-3 text-faint" aria-hidden />
         <h1 className="text-lg font-semibold">{t('열 수 없는 챗봇입니다')}</h1>
-        <p className="mt-1.5 text-base text-muted">{t('닫혔거나 주소가 올바르지 않습니다.')}</p>
-        <Link to="/bots" className="mt-4 text-base text-accent hover:underline">
-          {t('챗봇 목록으로')}
-        </Link>
+        <p className="mt-1.5 text-base text-muted">
+          {authenticated ? t('닫혔거나 주소가 올바르지 않습니다.') : t('닫혔거나 주소가 올바르지 않습니다. 구성원에게만 열린 챗봇이면 로그인해야 합니다.')}
+        </p>
+        {authenticated ? (
+          <Link to="/bots" className="mt-4 text-base text-accent hover:underline">
+            {t('챗봇 목록으로')}
+          </Link>
+        ) : (
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            {onSignIn && (
+              <Button variant="primary" onClick={onSignIn}>
+                <LogIn size={14} />
+                {t('로그인')}
+              </Button>
+            )}
+            <Link to="/b" className="inline-flex h-9 items-center text-base text-accent hover:underline">
+              {t('공개 챗봇 목록')}
+            </Link>
+          </div>
+        )}
       </div>
     )
   }
@@ -254,6 +295,10 @@ export function BotPage() {
   }
 
   const paused = bot.status !== 'approved'
+  const closed = paused || bot.blocked
+  // A member goes back to the members' list; a visitor without an account to the public one
+  // when the bot is listed there, and nowhere when it is reached by link only.
+  const backTo = bot.signedIn ? '/bots' : bot.visibility === 'external' ? '/b' : null
   const prompts = bot.branding.suggestedPrompts
   const list = (
     <nav aria-label={t('내 대화')} className="flex h-full flex-col gap-2">
@@ -292,17 +337,19 @@ export function BotPage() {
         className="flex items-center gap-3 border-b border-line px-4 py-3"
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
       >
-        <Link to="/bots" className="grid size-9 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" aria-label={t('챗봇 목록으로')}>
-          <ArrowLeft size={17} />
-        </Link>
+        {backTo && (
+          <Link to={backTo} className="grid size-9 place-items-center rounded-control text-muted hover:bg-elevated hover:text-fg" aria-label={t('챗봇 목록으로')}>
+            <ArrowLeft size={17} />
+          </Link>
+        )}
         <span className="grid size-9 shrink-0 place-items-center rounded-control text-white" style={{ backgroundColor: bot.color }} aria-hidden>
           <Bot size={17} />
         </span>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-md font-semibold">{bot.title}</h1>
           <p className="truncate text-sm text-faint">
-            {t('만든 사람: {name}').replace('{name}', bot.ownerName)}
-            {bot.description && <span className="max-sm:hidden"> · {bot.description}</span>}
+            {bot.ownerName ? t('만든 사람: {name}').replace('{name}', bot.ownerName) : bot.description}
+            {bot.ownerName && bot.description && <span className="max-sm:hidden"> · {bot.description}</span>}
           </p>
         </div>
         <Button variant="ghost" size="icon" className="sm:hidden" onClick={() => setListOpen((v) => !v)} aria-label={t('내 대화')} aria-expanded={listOpen}>
@@ -344,7 +391,13 @@ export function BotPage() {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto max-w-3xl space-y-6">
-              {paused && (
+              {bot.blocked && (
+                <p role="status" className="flex items-start gap-2 rounded-card border border-danger/30 bg-danger/5 px-4 py-3 text-base text-danger" data-testid="bot-blocked">
+                  <Ban size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  {t('이 챗봇을 쓸 수 없습니다.')}
+                </p>
+              )}
+              {paused && !bot.blocked && (
                 <p role="status" className="flex items-start gap-2 rounded-card border border-warn/30 bg-warn/5 px-4 py-3 text-base text-warn" data-testid="bot-paused">
                   <PauseCircle size={16} className="mt-0.5 shrink-0" aria-hidden />
                   <span>
@@ -360,7 +413,7 @@ export function BotPage() {
                     {t('이용 안내')}
                   </p>
                   <ul className="list-disc space-y-1 pl-5 text-base text-muted">
-                    {noticeLines(bot.conversationView, bot.retentionDays, t).map((line) => (
+                    {noticeLines(bot.conversationView, bot.retentionDays, t, bot.signedIn).map((line) => (
                       <li key={line}>{line}</li>
                     ))}
                   </ul>
@@ -372,7 +425,7 @@ export function BotPage() {
                 <section className="space-y-4 pt-6 text-center">
                   <p className="text-lg font-semibold">{bot.title}</p>
                   {bot.branding.greeting && <p className="mx-auto max-w-xl whitespace-pre-wrap text-base text-muted">{bot.branding.greeting}</p>}
-                  {prompts.length > 0 && !paused && (
+                  {prompts.length > 0 && !closed && (
                     <div className="flex flex-wrap justify-center gap-2" data-testid="bot-prompts">
                       {prompts.map((line) => (
                         <button
@@ -468,7 +521,7 @@ export function BotPage() {
                 <Textarea
                   rows={2}
                   value={text}
-                  disabled={!bot.consented || paused}
+                  disabled={!bot.consented || closed}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={onKey}
                   aria-label={t('질문 입력')}
@@ -484,7 +537,7 @@ export function BotPage() {
                     variant="primary"
                     size="icon"
                     className="size-11"
-                    disabled={!bot.consented || paused || !text.trim()}
+                    disabled={!bot.consented || closed || !text.trim()}
                     onClick={() => void ask(text)}
                     aria-label={t('보내기')}
                   >

@@ -5,7 +5,7 @@ import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
 import { Badge, Card, EmptyState, LoadingState, PageHeader, ReloadNotice } from '@/components/ui'
 import { botsApi, type BotListItem } from '@/lib/api'
-import { STATUS_LABEL } from '@/lib/publishing'
+import { STATUS_LABEL, VISIBILITY_LABEL } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 
 /**
@@ -84,7 +84,9 @@ export function BotsPage() {
                     <div key={bot.slug} className="flex flex-wrap items-center gap-3 px-4 py-3">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-medium">{bot.title}</span>
+                        <span className="block truncate text-sm text-faint">{t(VISIBILITY_LABEL[bot.visibility])}</span>
                       </span>
+                      {bot.needsLook && <Badge tone="accent">{t('확인할 일')}</Badge>}
                       <Badge tone={bot.status === 'approved' ? 'success' : 'warn'}>{t(STATUS_LABEL[bot.status])}</Badge>
                       <Link to={`/b/${bot.slug}`} className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg">
                         <ExternalLink size={13} aria-hidden />

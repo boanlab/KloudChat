@@ -1,4 +1,5 @@
 import { Code2,
+  Bot,
   ChartColumn,
   ChevronDown,
   Activity,
@@ -16,6 +17,7 @@ import { Code2,
 import { useMatch, useNavigate } from 'react-router-dom'
 import { Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { useIssues } from '@/lib/issues'
+import { useBotAttention } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { isMac } from '@/lib/shortcuts'
 import { useStore } from '@/store/useStore'
@@ -30,6 +32,7 @@ function AccountItems() {
   const logout = useStore((s) => s.logout)
   const pendingUsers = users.filter((u) => u.status === 'pending').length
   const unreadIssues = useIssues((s) => s.unread)
+  const reviews = useBotAttention((s) => s.reviews)
   // On a conversation, carried to 「문의·신고」 so a report started there can attach it.
   const sessionId = useMatch('/s/:sessionId')?.params.sessionId
 
@@ -80,6 +83,13 @@ function AccountItems() {
           <MenuItem icon={<ChartColumn size={14} />} onClick={() => navigate('/admin/usage')}>
             {t('사용량')}
           </MenuItem>
+          <MenuItem
+            icon={<Bot size={14} />}
+            onClick={() => navigate('/admin/publications')}
+            hint={reviews > 0 ? `${t('승인')} ${reviews}` : undefined}
+          >
+            {t('공개 챗봇')}
+          </MenuItem>
           <MenuItem icon={<ShieldCheck size={14} />} onClick={() => navigate('/admin/governance')}>
             {t('보안 · 감사')}
           </MenuItem>
@@ -107,7 +117,7 @@ export function AccountMenu() {
   const t = useT()
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
   const unreadIssues = useIssues((s) => s.unread)
 
   return (
@@ -159,7 +169,7 @@ export function AccountMenuCompact() {
   const t = useT()
   const user = useStore((s) => s.user)
   const users = useStore((s) => s.users)
-  const pendingUsers = users.filter((u) => u.status === 'pending').length
+  const pendingUsers = users.filter((u) => u.status === 'pending').length + useBotAttention((s) => s.reviews)
   const unreadIssues = useIssues((s) => s.unread)
 
   return (

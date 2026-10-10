@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { IssueReportDialog } from '@/components/issues/IssueReportDialog'
 import { useIssueBadge } from '@/lib/issues'
+import { useBotAttentionBadge } from '@/lib/publishing'
 import { useNarrowLayout } from '@/lib/useMediaQuery'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -110,6 +111,7 @@ export function AppShell() {
   const open = sidebar !== 'hidden'
   const location = useLocation()
   useIssueBadge()
+  useBotAttentionBadge()
 
   // On narrow layouts the sidebar overlays the content, so navigation closes it.
   useEffect(() => {

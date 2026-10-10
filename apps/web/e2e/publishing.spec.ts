@@ -2,9 +2,12 @@ import { expect, test, type Page, type Route } from '@playwright/test'
 import { hubFixture, myAgents } from './customize-fixture'
 
 /**
- * 공개 챗봇, phase 1 (members only), against fixture data: the publish dialog, the bot's page
- * (notice, streaming, 👍👎, 만든 사람에게 보내기, paused), the owner's dashboard, the members'
- * list, and the same screens in English. Screenshots go to PUBLISHING_SHOTS when it is set.
+ * 공개 챗봇 against fixture data: the publish dialog with its audience (members at once; a link
+ * or the public listing asked of an administrator), the bot's page for a member and for a
+ * visitor without an account (notice, streaming, 👍👎, 만든 사람에게 보내기, paused, blocked),
+ * the owner's dashboard (audience, review, blocking), the members' and the public list, the
+ * administrator's review, and the same screens in English. Screenshots go to PUBLISHING_SHOTS
+ * when it is set.
  */
 
 const shots = process.env.PUBLISHING_SHOTS ?? ''
@@ -14,8 +17,8 @@ const PUB = 'p1111111111111111111111111111111'
 const SLUG = 'haksa-1a2b3c'
 const SID = 's1111111111111111111111111111111'
 
-const limits = { perVisitorPerMinute: 10, perBotPerMinute: 60, turnsPerDay: 2000, tokensPerDay: 4000000,
-  maxInputChars: 8000, turnsPerConversation: 100, concurrency: 4 }
+const limits = { perVisitorPerMinute: 10, perVisitorPerDay: 200, perBotPerMinute: 60, perIpPerMinute: 20, perIpPerDay: 400,
+  turnsPerDay: 2000, tokensPerDay: 4000000, maxInputChars: 8000, turnsPerConversation: 100, concurrency: 4 }
 
 function publication(extra: Record<string, unknown> = {}) {
   return {
@@ -24,6 +27,7 @@ function publication(extra: Record<string, unknown> = {}) {
     branding: { greeting: '학칙을 찾아 근거 조항과 함께 답합니다.', suggestedPrompts: ['휴학은 언제까지 신청하나요?'], placeholder: '' },
     showProcess: 'summary', showSources: true, retentionDays: 30, conversationView: 'off', consentVersion: 1,
     limits, defaults: limits, createdAt: at, updatedAt: at, publishedAt: at,
+    requestedVisibility: '', reviewState: '', reviewNote: '', reviewedAt: null, pendingVersionId: null, needsLook: false,
     versions: [
       { id: 'v2', number: 2, model: 'strict-local/qwen', note: '2026학년도 학칙', active: true, createdAt: at,
         summary: { knowledge: [{ name: '학칙.pdf', chars: 12000 }] } },
@@ -44,7 +48,7 @@ const preflight = (extra: Record<string, unknown> = {}) => ({
 function page_(extra: Record<string, unknown> = {}) {
   return {
     slug: SLUG, title: '학사 안내', description: '학칙과 학사 일정을 안내합니다.', ownerName: '학사지원팀 김담당', mine: false,
-    status: 'approved', pauseReason: '', branding: publication().branding, showSources: true, showProcess: 'summary',
+    signedIn: true, visibility: 'internal', blocked: false, status: 'approved', pauseReason: '', branding: publication().branding, showSources: true, showProcess: 'summary',
     conversationView: 'off', retentionDays: 30, consentVersion: 1, consented: false, color: '#0f766e', maxInputChars: 8000,
     ...extra,
   }
@@ -53,15 +57,18 @@ function page_(extra: Record<string, unknown> = {}) {
 const ANSWER = '휴학은 학기 개시일 전까지 신청합니다 [1].\n\n### 출처\n- [1] 학칙.pdf · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.'
 
 /** The bot's routes on top of the hub fixture; every write is recorded. */
-async function botRoutes(page: Page, options: { paused?: boolean; english?: boolean } = {}) {
+async function botRoutes(page: Page, options: { paused?: boolean; english?: boolean; anonymous?: boolean; blocked?: boolean } = {}) {
   const writes: { method: string; path: string; body: unknown }[] = []
   let consented = false
   let shared: string | null = null
   let rating: string | null = null
   let asked = false
+  let blocked = false
+  let pub = publication()
   const english = options.english
   const bot = () => page_({
-    consented, status: options.paused ? 'paused' : 'approved',
+    consented, status: options.paused ? 'paused' : 'approved', blocked: options.blocked ?? false,
+    ...(options.anonymous ? { signedIn: false, ownerName: '', visibility: 'link' } : {}),
     ...(english ? { title: 'Campus Help', description: 'Answers from the campus rules.', ownerName: 'Jane',
       branding: { greeting: 'Ask about the rules.', suggestedPrompts: ['When is the leave deadline?'], placeholder: '' } } : {}),
   })
@@ -87,9 +94,9 @@ async function botRoutes(page: Page, options: { paused?: boolean; english?: bool
     if (method === 'GET' && path === '/bots') {
       return json([
         { slug: SLUG, title: english ? 'Campus Help' : '학사 안내', description: english ? 'Answers from the campus rules.' : '학칙과 학사 일정을 안내합니다.',
-          ownerName: english ? 'Jane' : '학사지원팀 김담당', mine: false, id: null, status: 'approved', color: '#0f766e', publishedAt: at },
+          ownerName: english ? 'Jane' : '학사지원팀 김담당', mine: false, id: null, status: 'approved', visibility: 'internal', color: '#0f766e', publishedAt: at },
         { slug: 'mine-9z', title: english ? 'My Help Desk' : '내 안내 챗봇', description: '', ownerName: 'Fixture', mine: true, id: PUB,
-          status: 'paused', color: '#5b53e8', publishedAt: at },
+          status: 'paused', visibility: 'link', needsLook: true, color: '#5b53e8', publishedAt: at },
       ])
     }
     if (path === `/b/${SLUG}` && method === 'GET') return json(bot())
@@ -128,10 +135,56 @@ async function botRoutes(page: Page, options: { paused?: boolean; english?: bool
       shared = null
       return json({ id: SID, sharedAt: null })
     }
+    if (path === '/admin/publications' && method === 'GET') {
+      return json([{ ...publication({ reviewState: 'pending', requestedVisibility: 'link', limits: { ...limits, creditsPerDay: 3000 } }),
+        ownerEmail: 'owner@example.test', conversations: 4 }])
+    }
+    if (path === `/admin/publications/${PUB}/review` && method === 'GET') {
+      return json({
+        publication: publication({ reviewState: 'pending', requestedVisibility: 'link', limits: { ...limits, creditsPerDay: 3000 } }),
+        owner: { name: '학사지원팀 김담당', email: 'owner@example.test' },
+        version: { ...publication().versions[0], pending: false, approvedAt: null },
+        agent: { name: '학사 안내', description: '', instructions: '학칙에서 찾아 근거 조항과 함께 답한다.', contact: '학사지원팀 02-760-1234',
+          guide: '', starters: [], tools: ['calculate', 'search_knowledge'], checks: ['answer-hold'], model: 'strict-local/qwen' },
+        knowledge: [{ name: '학칙.pdf', chars: 12000, findings: [{ category: 'phone', count: 1 }] }],
+        history: [{ action: 'publication.requested', at, actorId: 'owner', metadata: { visibility: 'link' } }],
+      })
+    }
+    if (path === `/admin/publications/${PUB}/review` && method === 'POST') return json(publication({ reviewState: 'rejected' }))
+    if (path === '/public/bots' && method === 'GET') {
+      return json([{ slug: SLUG, title: english ? 'Campus Help' : '학사 안내', description: english ? 'Answers from the campus rules.' : '학칙과 학사 일정을 안내합니다.',
+        color: '#0f766e', publishedAt: at }])
+    }
     if (path === '/publications/preflight' && method === 'POST') return json(preflight())
-    if (path === '/publications' && method === 'POST') return json(publication({ versions: [publication().versions[1]] }), 201)
+    if (path === '/publications' && method === 'POST') {
+      const sent = body as { visibility?: string }
+      const asking = sent.visibility && sent.visibility !== 'internal'
+      return json(publication({ versions: [publication().versions[1]],
+        ...(asking ? { reviewState: 'pending', requestedVisibility: sent.visibility } : {}) }), 201)
+    }
     if (path === `/publications/${PUB}` && method === 'GET') {
-      return json(english ? publication({ title: 'Campus Help', agentName: 'Reviewer', versions: publication().versions.map((v) => ({ ...v, note: '' })) }) : publication())
+      return json(english ? publication({ title: 'Campus Help', agentName: 'Reviewer', versions: publication().versions.map((v) => ({ ...v, note: '' })) }) : pub)
+    }
+    if (path === `/publications/${PUB}/scope` && method === 'POST') {
+      const sent = body as { visibility: string; creditsPerDay?: number }
+      pub = publication({ reviewState: 'pending', requestedVisibility: sent.visibility, updatedAt: '2026-10-10T07:01:00.000Z',
+        limits: { ...limits, creditsPerDay: sent.creditsPerDay } })
+      return json(pub)
+    }
+    if (path === `/publications/${PUB}/review` && method === 'DELETE') {
+      pub = publication({ updatedAt: '2026-10-10T07:02:00.000Z' })
+      return json(pub)
+    }
+    if (path === `/publications/${PUB}/conversations/${SID}/block` && method === 'POST') {
+      blocked = true
+      return json({ id: 'vis1', label: 'VIS1AB', member: false, blocked: true, blockedAt: at })
+    }
+    if (path === `/publications/${PUB}/visitors` && method === 'GET') {
+      return json(blocked ? [{ id: 'vis1', label: 'VIS1AB', member: false, blocked: true, blockedAt: at }] : [])
+    }
+    if (path === `/publications/${PUB}/visitors/vis1/block` && method === 'DELETE') {
+      blocked = false
+      return json({ id: 'vis1', label: 'VIS1AB', member: false, blocked: false, blockedAt: null })
     }
     if (path === `/publications/${PUB}` && method === 'PATCH') return json(publication({ ...(body as object), consentVersion: 2 }))
     if (path === `/publications/${PUB}/stats`) {
@@ -144,7 +197,8 @@ async function botRoutes(page: Page, options: { paused?: boolean; english?: bool
       return json([{ id: SID, title: english ? 'Leave deadline' : '휴학 신청 기한', sharedAt: at, viewable: false, updatedAt: at, turns: 1 }])
     }
     if (path === `/publications/${PUB}/conversations/${SID}`) {
-      return json({ id: SID, title: '휴학 신청 기한', sharedAt: at, updatedAt: at, turns: 1, messages: [
+      return json({ id: SID, title: '휴학 신청 기한', sharedAt: at, updatedAt: at, turns: 1,
+        visitor: { id: 'vis1', label: 'VIS1AB', member: false, blocked, blockedAt: blocked ? at : null }, messages: [
         { id: 'm1', role: 'user', content: english ? 'Deadline? I am at [전화번호]' : '휴학 기한이요? 제 번호는 [전화번호]', rating: null, createdAt: at },
         { id: 'm2', role: 'assistant', content: english ? 'Before term starts [1].' : ANSWER, rating: 'down', createdAt: at },
       ] })
@@ -179,13 +233,12 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await page.getByRole('menuitem', { name: '챗봇으로 공개' }).click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await expect(dialog.getByTestId('publish-model')).toContainText('내부 Qwen')
-  await expect(dialog).toContainText('공개 범위: 이 기관 구성원(로그인한 사람)')
+  // Members by default, at once; nothing asks for a credit cap.
+  await expect(dialog.getByRole('radio', { name: /구성원 공개/ })).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByTestId('scope-credits')).toHaveCount(0)
   await expect(dialog.getByTestId('publish-disabled')).toContainText('내 메모리')
   await expect(dialog.getByTestId('publish-disabled')).toContainText('웹 검색')
   await expect(dialog.getByTestId('publish-finding')).toContainText('휴대전화 번호 1')
-  // Phase 1 is members only: no link or outside option is offered at all.
-  await expect(dialog).not.toContainText('링크')
-  await expect(dialog).not.toContainText('외부')
   await shot(page, 'publish-dialog', testInfo.project.name)
   await dialog.getByRole('button', { name: '공개하기' }).click()
   await expect(dialog.getByTestId('publish-done')).toBeVisible()
@@ -193,6 +246,164 @@ test('the owner publishes a chat agent to members and gets its address', async (
   await shot(page, 'publish-done', testInfo.project.name)
   const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
   expect(sent).toMatchObject({ agentId: AGENT, visibility: 'internal', showProcess: 'summary', conversationView: 'off' })
+  expect(state.unexpected).toEqual([])
+})
+
+test('opening a bot by link asks an administrator and needs a daily credit cap', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const { writes } = await botRoutes(page)
+  await page.goto(`/customize/agents/${AGENT}`)
+  await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '더 보기' }).first().click()
+  await page.getByRole('menuitem', { name: '챗봇으로 공개' }).click()
+  const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
+  await dialog.getByRole('radio', { name: /링크 공개/ }).click()
+  await expect(dialog.getByTestId('scope-picker')).toContainText('관리자가 승인하면 열립니다')
+  await expect(dialog.getByRole('button', { name: '공개하기' })).toBeDisabled()
+  await dialog.getByTestId('scope-credits').fill('3000')
+  await shot(page, 'publish-dialog-link', testInfo.project.name)
+  await dialog.getByRole('button', { name: '공개하기' }).click()
+  await expect(dialog.getByTestId('publish-requested')).toContainText('링크 공개는 관리자가 승인하면 열립니다')
+  const sent = writes.find((w) => w.method === 'POST' && w.path === '/publications')?.body as Record<string, unknown>
+  expect(sent).toMatchObject({ visibility: 'link', limits: { creditsPerDay: 3000 } })
+  expect(state.unexpected).toEqual([])
+})
+
+test('the owner widens the audience from the dashboard and can take the request back', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const { writes } = await botRoutes(page)
+  await page.goto(`/customize/publications/${PUB}`)
+  const scope = page.getByTestId('publication-scope')
+  await expect(scope).toBeVisible({ timeout: 15_000 })
+  await scope.getByRole('radio', { name: /외부 공개/ }).click()
+  await expect(scope.getByRole('button', { name: '승인 요청' })).toBeDisabled()
+  await scope.getByTestId('scope-credits').fill('5000')
+  await scope.getByRole('button', { name: '승인 요청' }).click()
+  await expect(page.getByTestId('publication-review')).toContainText('외부 공개를 관리자가 확인하고 있습니다')
+  await shot(page, 'dashboard-requested', testInfo.project.name)
+  expect(writes.find((w) => w.path === `/publications/${PUB}/scope`)?.body).toEqual({ visibility: 'external', creditsPerDay: 5000 })
+  await page.getByTestId('publication-review').getByRole('button', { name: '요청 취소' }).click()
+  await expect(page.getByTestId('publication-review')).toHaveCount(0)
+  expect(state.unexpected).toEqual([])
+})
+
+test('the owner blocks the visitor of a sent conversation and unblocks them in settings', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const { writes } = await botRoutes(page)
+  await page.goto(`/customize/publications/${PUB}?tab=conversations`)
+  await page.getByTestId('publication-conversations').getByRole('button').first().click({ timeout: 15_000 })
+  const visitor = page.getByTestId('publication-visitor')
+  await expect(visitor).toContainText('방문자 VIS1AB · 로그인하지 않음')
+  await visitor.getByRole('button', { name: '이 방문자 차단' }).click()
+  await page.getByRole('dialog', { name: '이 방문자 차단' }).getByRole('button', { name: '이 방문자 차단' }).click()
+  await expect(visitor).toContainText('차단됨')
+  await page.getByRole('tab', { name: '설정' }).click()
+  const blocked = page.getByTestId('publication-blocked')
+  await expect(blocked).toContainText('방문자 VIS1AB')
+  await shot(page, 'dashboard-blocked', testInfo.project.name)
+  await blocked.getByRole('button', { name: '차단 풀기' }).click()
+  await expect(blocked).toContainText('차단한 방문자가 없습니다')
+  expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(expect.arrayContaining([
+    `POST /publications/${PUB}/conversations/${SID}/block`, `DELETE /publications/${PUB}/visitors/vis1/block`,
+  ]))
+  expect(state.unexpected).toEqual([])
+})
+
+/** A browser without an account: the refresh cookie is refused; anything not mocked is unexpected. */
+async function noAccount(page: Page, testInfo: { project: { use: { baseURL?: string } } }) {
+  const origin = new URL(String(testInfo.project.use.baseURL)).origin
+  const unexpected: string[] = []
+  await page.context().route('**/*', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.origin !== origin) return route.abort('blockedbyclient')
+    if (!url.pathname.startsWith('/api/')) return route.continue()
+    const path = url.pathname.slice(4)
+    const method = route.request().method()
+    if (method === 'POST' && path === '/auth/refresh') return route.fulfill({ status: 401, json: { detail: 'unauthorized' } })
+    if (method === 'GET' && path === '/auth/config') return route.fulfill({ json: { brand: { name: 'KloudChat', logo: '' },
+      enabledKinds: ['chat'], privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false } })
+    unexpected.push(`${method} ${path}`)
+    return route.fulfill({ status: 501, json: { detail: 'Unmocked fixture request' } })
+  })
+  return { unexpected }
+}
+
+test('a visitor without an account opens a link, reads the notice and asks', async ({ page }, testInfo) => {
+  const state = await noAccount(page, testInfo)
+  const { writes } = await botRoutes(page, { anonymous: true })
+  await page.goto(`/b/${SLUG}`)
+  const notice = page.getByTestId('bot-notice')
+  await expect(notice).toContainText('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다', { timeout: 15_000 })
+  await expect(notice).toContainText('30일이 지나면 지워집니다')
+  // No app around it, no way back into the app, no name of the person behind it.
+  await expect(page.getByRole('link', { name: '챗봇 목록으로' })).toHaveCount(0)
+  await expect(page.getByText('만든 사람:')).toHaveCount(0)
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/)
+  await shot(page, 'anon-notice', testInfo.project.name)
+  await notice.getByRole('button', { name: '확인하고 시작' }).click()
+  await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
+  await page.getByRole('button', { name: '보내기', exact: true }).click()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
+  await shot(page, 'anon-answer', testInfo.project.name)
+  expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(expect.arrayContaining([
+    `POST /b/${SLUG}/consent`, `POST /b/${SLUG}/conversations`, `POST /b/${SLUG}/conversations/${SID}/messages`,
+  ]))
+  expect(state.unexpected).toEqual([])
+})
+
+test('an address that does not open without an account offers to sign in', async ({ page }, testInfo) => {
+  const state = await noAccount(page, testInfo)
+  await page.route(`**/api/b/members-only-1`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
+  await page.route(`**/api/b/members-only-1/conversations`, (route) => route.fulfill({ status: 404, json: { detail: 'bot_not_found' } }))
+  await page.goto('/b/members-only-1')
+  await expect(page.getByText('구성원에게만 열린 챗봇이면 로그인해야 합니다')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: '로그인' }).click()
+  await expect(page.getByLabel('이메일')).toBeVisible()
+  expect(state.unexpected).toEqual([])
+})
+
+test('a blocked visitor is told and cannot ask', async ({ page }, testInfo) => {
+  await noAccount(page, testInfo)
+  await botRoutes(page, { anonymous: true, blocked: true })
+  await page.goto(`/b/${SLUG}`)
+  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
+  await expect(page.getByTestId('bot-blocked')).toContainText('이 챗봇을 쓸 수 없습니다.')
+  await expect(page.getByLabel('질문 입력')).toBeDisabled()
+  await expect(page.getByTestId('bot-paused')).toHaveCount(0)
+})
+
+test('anyone finds the bots opened to everyone on the public list', async ({ page }, testInfo) => {
+  const state = await noAccount(page, testInfo)
+  await botRoutes(page, { anonymous: true })
+  await page.goto('/b')
+  await expect(page.getByRole('heading', { level: 1, name: '공개 챗봇' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('public-bot-list')).toContainText('학사 안내')
+  await expect(page.getByTestId('public-bot-list')).not.toContainText('김담당')
+  await shot(page, 'public-list', testInfo.project.name)
+  await page.getByTestId('public-bot-list').getByRole('link').first().click()
+  await expect(page).toHaveURL(new RegExp(`/b/${SLUG}$`))
+  expect(state.unexpected).toEqual([])
+})
+
+test('an administrator reviews a request and refuses it with a reason', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { admin: true })
+  const { writes } = await botRoutes(page)
+  await page.goto('/admin/publications')
+  const list = page.getByTestId('admin-publications')
+  await expect(list).toContainText('링크 공개 요청', { timeout: 15_000 })
+  await shot(page, 'admin-queue', testInfo.project.name)
+  await list.getByRole('button').first().click()
+  await expect(page.getByTestId('admin-review-agent')).toContainText('학칙에서 찾아 근거 조항과 함께 답한다.')
+  await expect(page.getByTestId('admin-review-knowledge')).toContainText('휴대전화 번호 1')
+  await expect(page.getByTestId('admin-review-request')).toContainText('하루 최대 3,000크레딧')
+  await shot(page, 'admin-review', testInfo.project.name)
+  await page.getByTestId('admin-review-request').getByRole('button', { name: '반려' }).click()
+  const modal = page.getByRole('dialog', { name: '반려' })
+  await expect(modal.getByRole('button', { name: '반려' })).toBeDisabled()
+  await modal.getByTestId('admin-review-reason').fill('자료에 개인 연락처가 있습니다')
+  await modal.getByRole('button', { name: '반려' }).click()
+  await expect(modal).toHaveCount(0)
+  expect(writes.find((w) => w.path === `/admin/publications/${PUB}/review`)?.body).toEqual({ decision: 'reject', reason: '자료에 개인 연락처가 있습니다' })
   expect(state.unexpected).toEqual([])
 })
 
@@ -347,6 +558,8 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
 
   await page.goto(`/customize/publications/${PUB}`)
   await expect(page.getByRole('heading', { level: 1, name: 'Campus Help' })).toBeVisible({ timeout: 15_000 })
+  await settle(page)
+  expect(untranslated(await page.getByRole('main').innerText()), 'Overview').toEqual([])
   for (const tab of ['Statistics', 'Sent conversations', 'Versions', 'Settings']) {
     await page.getByRole('tab', { name: tab }).click()
     await settle(page)
@@ -359,5 +572,33 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
   await page.getByRole('menuitem', { name: 'Publish as a chatbot' }).click()
   const dialog = page.getByRole('dialog', { name: 'Publish as a chatbot' })
   await expect(dialog.getByTestId('publish-model')).toBeVisible()
+  await dialog.getByRole('radio', { name: /Anyone with the link/ }).click()
   expect(untranslated(await dialog.innerText())).toEqual([])
+})
+
+test('the screens without an account and the review read in English', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
+  await page.addInitScript(() => localStorage.setItem('kchat-lang', 'en'))
+  await noAccount(page, testInfo)
+  await botRoutes(page, { english: true, anonymous: true })
+  const data = ['[전화번호]', '학칙', '휴학']
+  await page.goto(`/b/${SLUG}`)
+  await expect(page.getByTestId('bot-notice')).toBeVisible({ timeout: 15_000 })
+  expect(await korean(page, data)).toEqual([])
+  await page.goto('/b')
+  await expect(page.getByRole('heading', { level: 1, name: 'Published chatbots' })).toBeVisible({ timeout: 15_000 })
+  expect(await korean(page, data)).toEqual([])
+})
+
+test('the administrator review reads in English', async ({ page }, testInfo) => {
+  test.setTimeout(90_000)
+  await page.addInitScript(() => localStorage.setItem('kchat-lang', 'en'))
+  await hubFixture(page, testInfo, { admin: true })
+  await botRoutes(page, { english: true })
+  const data = ['[전화번호]', '학칙', '휴학', '학사', '김담당']
+  const untranslated = (text: string) =>
+    text.split('\n').filter((line) => /[가-힣]/.test(line) && line.trim() !== '한' && !data.some((d) => line.includes(d)))
+  await page.goto(`/admin/publications/${PUB}`)
+  await expect(page.getByTestId('admin-review-agent')).toBeVisible({ timeout: 15_000 })
+  expect(untranslated(await page.getByRole('main').innerText())).toEqual([])
 })

@@ -1,10 +1,14 @@
 /**
  * Words for published bots (공개 챗봇): what the publish check found, what a bot leaves out,
- * why it is paused, and the notice a visitor reads before the first question.
+ * who it is open to and how its review stands, why it is paused, and the notice a visitor
+ * reads before the first question. Also the owner's and the administrator's badge.
  */
 
-import { ApiError } from '@/lib/api'
-import type { BotLimits, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
+import { useEffect } from 'react'
+import { create } from 'zustand'
+import { ApiError, publicationsApi } from '@/lib/api'
+import type { BotLimits, BotVisibility, Publication, PublicationSettings, PublicationStatus, ShowProcess } from '@/lib/api'
+import { useStore } from '@/store/useStore'
 
 /** Why an agent cannot be published as it stands. */
 export const PROBLEM_LABEL: Record<string, string> = {
@@ -65,19 +69,52 @@ export const SHOW_PROCESS_LABEL: Record<ShowProcess, string> = {
 
 export const RETENTION_DAYS = [7, 14, 30, 90, 180]
 
-/** The notice before the first question; with 「대화 열람」 on it asks for consent. */
-export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => string): string[] {
-  if (view === 'on') {
-    return [
-      t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다.'),
-      t('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 지워집니다.').replace('{n}', String(days)),
-      t('개인정보를 입력하지 마세요.'),
-    ]
+/** Who a bot is open to, narrowest first. */
+export const VISIBILITIES: BotVisibility[] = ['internal', 'link', 'external']
+
+export const VISIBILITY_LABEL: Record<BotVisibility, string> = {
+  internal: '구성원 공개',
+  link: '링크 공개',
+  external: '외부 공개',
+}
+
+export const VISIBILITY_HINT: Record<BotVisibility, string> = {
+  internal: '이 기관 구성원이 로그인해서 씁니다. 챗봇 목록에 보입니다. 바로 열립니다.',
+  link: '주소를 아는 사람은 누구나 로그인 없이 씁니다. 어떤 목록에도 나오지 않습니다. 관리자가 승인하면 열립니다.',
+  external: '누구나 로그인 없이 씁니다. 공개 챗봇 목록에 나오고 검색에도 잡힐 수 있습니다. 관리자가 승인하면 열립니다.',
+}
+
+/** The owner's view of a request: what is waiting, or why it was refused. */
+export function reviewLine(pub: Publication, t: (s: string) => string): string {
+  const asked = pub.requestedVisibility ? t(VISIBILITY_LABEL[pub.requestedVisibility]) : ''
+  if (pub.reviewState === 'pending') {
+    if (asked && pub.pendingVersionId) return t('{scope}와 새 판을 관리자가 확인하고 있습니다.').replace('{scope}', asked)
+    if (asked) return t('{scope}를 관리자가 확인하고 있습니다. 그동안 지금 범위로 답합니다.').replace('{scope}', asked)
+    return t('새 판을 관리자가 확인하고 있습니다. 그동안 승인된 판이 답합니다.')
   }
-  return [
-    t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).'),
-    t('개인정보를 입력하지 마세요.'),
-  ]
+  if (pub.reviewState === 'rejected') {
+    const what = asked ? t('{scope} 요청이 반려되었습니다.').replace('{scope}', asked) : t('새 판이 반려되었습니다.')
+    return pub.reviewNote ? `${what} ${t('사유: {reason}').replace('{reason}', pub.reviewNote)}` : what
+  }
+  return ''
+}
+
+/** The notice before the first question; with 「대화 열람」 on it asks for consent. A visitor
+ *  without an account also learns the conversation lives in this browser only. */
+export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => string, signedIn = true): string[] {
+  const lines =
+    view === 'on'
+      ? [
+          t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다.'),
+          t('이 챗봇을 만든 사람이 대화 내용을 볼 수 있습니다. {n}일 뒤 지워집니다.').replace('{n}', String(days)),
+        ]
+      : [t('입력 내용은 이 챗봇을 만든 사람 계정으로 처리·기록됩니다(개선을 위해 개인정보를 가린 통계로만 보입니다).')]
+  if (!signedIn) {
+    if (view !== 'on') lines.push(t('대화는 마지막 질문 뒤 {n}일이 지나면 지워집니다.').replace('{n}', String(days)))
+    lines.push(t('로그인하지 않으면 이 브라우저에서만 대화를 이어 볼 수 있습니다. 쿠키를 지우면 대화를 다시 열 수 없습니다.'))
+  }
+  lines.push(t('개인정보를 입력하지 마세요.'))
+  return lines
 }
 
 /** A refused question, in words a visitor can act on. */
@@ -86,6 +123,12 @@ export function botErrorMessage(err: unknown, t: (s: string) => string, maxChars
   switch (code) {
     case 'visitor_rate_limited':
       return t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
+    case 'visitor_daily_limit':
+      return t('오늘 보낼 수 있는 질문을 다 보냈습니다. 내일 다시 이용해 주세요.')
+    case 'daily_credits_reached':
+      return t('오늘 이 챗봇이 쓸 수 있는 양을 다 썼습니다. 내일 다시 이용해 주세요.')
+    case 'visitor_cookie_required':
+      return t('브라우저가 쿠키를 막고 있어 대화를 시작할 수 없습니다. 쿠키를 허용한 뒤 다시 열어 주세요.')
     case 'bot_rate_limited':
     case 'bot_busy':
       return t('지금 이 챗봇에 질문이 몰려 있습니다. 잠시 뒤 다시 보내 주세요.')
@@ -114,6 +157,44 @@ export function botUrl(slug: string): string {
   return `${window.location.origin}/b/${slug}`
 }
 
+/** The owner's refusals on the audience, in words. */
+export const SCOPE_ERROR: Record<string, string> = {
+  credits_cap_required: '구성원 밖으로 공개하려면 하루 최대 크레딧을 정해야 합니다.',
+  revoked: '닫힌 챗봇입니다.',
+}
+
+interface BotAttention {
+  /** The caller's bots with something new to look at. */
+  bots: number
+  /** For an administrator: requests waiting for review. */
+  reviews: number
+  refresh: () => Promise<void>
+}
+
+export const useBotAttention = create<BotAttention>((set) => ({
+  bots: 0,
+  reviews: 0,
+  refresh: async () => {
+    try {
+      set(await publicationsApi.attention())
+    } catch {
+      /* the badge is a convenience; a failed read leaves it as it was */
+    }
+  },
+}))
+
+/** Reads the bot badges on sign-in and every few minutes after. Mounted once, in the shell. */
+export function useBotAttentionBadge() {
+  const refresh = useBotAttention((s) => s.refresh)
+  const userId = useStore((s) => s.user?.id)
+  useEffect(() => {
+    if (!userId) return
+    void refresh()
+    const timer = setInterval(() => void refresh(), 5 * 60_000)
+    return () => clearInterval(timer)
+  }, [userId, refresh])
+}
+
 /** The settings a bot's owner chooses, in the publish dialog and on the dashboard. */
 export interface SettingsDraft {
   title: string
@@ -126,6 +207,12 @@ export interface SettingsDraft {
   retentionDays: number
   conversationView: 'off' | 'on'
   limits: BotLimits
+}
+
+/** A daily credit cap as typed: a whole number from 1, or undefined. */
+export function creditsCap(raw: string | number | undefined): number | undefined {
+  const value = Math.floor(Number(raw))
+  return Number.isFinite(value) && value >= 1 ? value : undefined
 }
 
 export function toSettings(draft: SettingsDraft): PublicationSettings {

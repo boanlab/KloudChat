@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { Suspense, lazy, useEffect, useRef } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
@@ -11,6 +11,7 @@ import { SessionPage } from '@/pages/SessionPage'
 import { useStore } from '@/store/useStore'
 
 // Lazy screens: only home, session and login ship in the first bundle.
+const AdminPublicationsPage = lazy(() => import('@/pages/AdminPublicationsPage').then((m) => ({ default: m.AdminPublicationsPage })))
 const AdminIssuesPage = lazy(() => import('@/pages/AdminIssuesPage').then((m) => ({ default: m.AdminIssuesPage })))
 const AdminGovernancePage = lazy(() => import('@/pages/AdminGovernancePage').then((m) => ({ default: m.AdminGovernancePage })))
 const AdminSystemPage = lazy(() => import('@/pages/AdminSystemPage').then((m) => ({ default: m.AdminSystemPage })))
@@ -41,6 +42,7 @@ const MyUsagePage = lazy(() => import('@/pages/MyUsagePage').then((m) => ({ defa
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage').then((m) => ({ default: m.ProjectDetailPage })))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })))
+const PublicBotsPage = lazy(() => import('@/pages/PublicBotsPage').then((m) => ({ default: m.PublicBotsPage })))
 const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ default: m.SharedPage })))
 const BotPage = lazy(() => import('@/pages/BotPage').then((m) => ({ default: m.BotPage })))
 const BotsPage = lazy(() => import('@/pages/BotsPage').then((m) => ({ default: m.BotsPage })))
@@ -117,17 +119,18 @@ function useLandingAfterSignIn(authenticated: boolean, role: string | undefined)
   }, [authenticated, role, navigate])
 }
 
-/** A published bot's page: its own screen, no app shell; members sign in first (phase 1). */
+/** A published bot's page: its own screen, no app shell. Members open any bot they may see;
+ *  a bot an administrator opened outside needs no account. Signing in is offered when the
+ *  address does not open without one. */
 function BotRoute() {
   const authenticated = useStore((s) => s.authenticated)
   const authLoading = useStore((s) => s.authLoading)
-  const status = useStore((s) => s.user?.status)
+  const [signingIn, setSigningIn] = useState(false)
   if (authLoading) return <Spinner />
-  if (!authenticated) return <LoginPage />
-  if (status !== 'active') return <PendingApprovalPage />
+  if (signingIn && !authenticated) return <LoginPage />
   return (
     <Suspense fallback={<Spinner />}>
-      <BotPage />
+      <BotPage onSignIn={() => setSigningIn(true)} />
     </Suspense>
   )
 }
@@ -199,6 +202,8 @@ function Authenticated() {
             <Route path="governance" element={<AdminGovernancePage />} />
             <Route path="issues" element={<AdminIssuesPage />} />
             <Route path="issues/:issueId" element={<AdminIssuesPage />} />
+            <Route path="publications" element={<AdminPublicationsPage />} />
+            <Route path="publications/:publicationId" element={<AdminPublicationsPage />} />
             <Route path="*" element={<Navigate to="/admin/users" replace />} />
           </Route>
 
@@ -221,8 +226,9 @@ export default function App() {
     <Router>
       <Suspense fallback={<Spinner />}>
         <Routes>
-          {/* Share links need no account, so this sits outside the auth gate. */}
+          {/* Share links and bots opened outside need no account, so these sit outside the auth gate. */}
           <Route path="/share/:token" element={<SharedPage />} />
+          <Route path="/b" element={<PublicBotsPage />} />
           <Route path="/b/:slug" element={<BotRoute />} />
           <Route path="*" element={<Authenticated />} />
         </Routes>

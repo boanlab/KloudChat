@@ -1,18 +1,30 @@
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Loader2, Users, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Copy, ExternalLink, Loader2, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Modal } from '@/components/ui'
-import { errorMessage, publicationsApi, type Publication, type PublishPreflight } from '@/lib/api'
+import { ApiError, errorMessage, publicationsApi, type BotVisibility, type Publication, type PublishPreflight } from '@/lib/api'
 import { copyText } from '@/lib/clipboard'
-import { botUrl, DISABLED_LABEL, FINDING_LABEL, PROBLEM_LABEL, toSettings, type SettingsDraft } from '@/lib/publishing'
+import {
+  botUrl,
+  creditsCap,
+  DISABLED_LABEL,
+  FINDING_LABEL,
+  PROBLEM_LABEL,
+  SCOPE_ERROR,
+  toSettings,
+  VISIBILITY_LABEL,
+  type SettingsDraft,
+} from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import type { Agent } from '@/types'
 import { PublicationSettingsForm } from './PublicationSettingsForm'
+import { ScopePicker } from './ScopePicker'
 
 /**
  * 「챗봇으로 공개」: the publish check (the internal model it will answer with, what a bot
- * leaves out, personal details in its material), the bot's settings, and its address once
- * it is published. Members of this instance only.
+ * leaves out, personal details in its material), who it is open to, the bot's settings, and
+ * its address once it is published. Members get it at once; a link or an open listing is
+ * asked of an administrator at the same time.
  */
 export function PublishDialog({
   agent,
@@ -32,6 +44,9 @@ export function PublishDialog({
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<Publication | null>(null)
   const [copied, setCopied] = useState(false)
+  const [scope, setScope] = useState<BotVisibility>('internal')
+  const [credits, setCredits] = useState('')
+  const capMissing = scope !== 'internal' && creditsCap(credits) === undefined
 
   useEffect(() => {
     if (!open) return
@@ -65,13 +80,19 @@ export function PublishDialog({
     setBusy(true)
     setError(null)
     try {
+      const settings = toSettings(draft)
       const made = check.existingId
         ? await publicationsApi.newVersion(check.existingId, '')
-        : await publicationsApi.publish(agent.id, toSettings(draft))
+        : await publicationsApi.publish(agent.id, {
+            ...settings,
+            visibility: scope,
+            limits: { ...settings.limits, ...(scope !== 'internal' ? { creditsPerDay: creditsCap(credits) } : {}) },
+          })
       setDone(made)
       onPublished?.(made)
     } catch (err) {
-      setError(errorMessage(err, t('공개하지 못했습니다.')))
+      const code = err instanceof ApiError ? err.detail : ''
+      setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('공개하지 못했습니다.')))
     } finally {
       setBusy(false)
     }
@@ -93,7 +114,7 @@ export function PublishDialog({
   ) : (
     <>
       <Button onClick={onClose}>{t('취소')}</Button>
-      <Button variant="primary" disabled={busy || !check?.ok || !draft} onClick={() => void publish()}>
+      <Button variant="primary" disabled={busy || !check?.ok || !draft || (!check?.existingId && capMissing)} onClick={() => void publish()}>
         {busy && <Loader2 size={14} className="animate-spin" />}
         {check?.existingId ? t('새 판으로 공개') : t('공개하기')}
       </Button>
@@ -114,6 +135,15 @@ export function PublishDialog({
             {t('챗봇을 공개했습니다.')}
           </p>
           <p className="text-base text-muted">{t('이 기관 구성원이 로그인해서 아래 주소로 물어볼 수 있습니다. 챗봇 목록에도 보입니다.')}</p>
+          {done.reviewState === 'pending' && done.requestedVisibility && (
+            <p className="flex items-start gap-2 text-base text-warn" data-testid="publish-requested">
+              <Clock size={15} className="mt-0.5 shrink-0" aria-hidden />
+              {t('{scope}는 관리자가 승인하면 열립니다. 결과는 관리 화면에서 볼 수 있습니다.').replace(
+                '{scope}',
+                t(VISIBILITY_LABEL[done.requestedVisibility]),
+              )}
+            </p>
+          )}
           <div className="flex min-w-0 items-center gap-2 rounded-control border border-line bg-elevated px-3 py-2">
             <code className="min-w-0 flex-1 truncate text-sm" data-testid="bot-url">
               {botUrl(done.slug)}
@@ -137,11 +167,19 @@ export function PublishDialog({
         )
       ) : (
         <>
+          {!check.existingId && (
+            <section aria-label={t('공개 범위')} className="space-y-2">
+              <p className="text-base font-medium">{t('공개 범위')}</p>
+              <ScopePicker
+                value={scope}
+                onChange={setScope}
+                credits={credits}
+                onCredits={setCredits}
+                creditsRemaining={check.creditsRemaining}
+              />
+            </section>
+          )}
           <section aria-label={t('공개 전 확인')} className="space-y-2 rounded-card border border-line bg-elevated/50 px-3.5 py-3">
-            <p className="flex items-center gap-2 text-base">
-              <Users size={15} className="shrink-0 text-muted" aria-hidden />
-              {t('공개 범위: 이 기관 구성원(로그인한 사람)')}
-            </p>
             {check.model ? (
               <p className="flex items-center gap-2 text-base" data-testid="publish-model">
                 <CheckCircle2 size={15} className="shrink-0 text-success" aria-hidden />
