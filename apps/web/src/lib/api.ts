@@ -7,6 +7,10 @@
 
 import type {
   AgentDraft,
+  CatalogEntryAdmin,
+  ProcessSettings,
+  TemplateCatalogue,
+  UserTemplate,
   AgentProcess,
   ArtifactKind,
   Bundle,
@@ -1297,6 +1301,9 @@ export interface DesignTemplateRow {
   hasPreview: boolean
   /** Slides in a deck's sample, each at `/preview?slide=N`; 0 for any other kind. */
   slideCount: number
+  /** A person's template (`ut-<id>`): the caller's own when `mine`. */
+  user?: boolean
+  mine?: boolean
 }
 
 /** One card's text in the language on screen, falling back rather than blanking. */
@@ -1515,7 +1522,8 @@ export const memoryApi = {
   update: (id: string, patch: Partial<MemoryRow>) =>
     call<MemoryRow>(`/memory/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   pin: (id: string) => call<MemoryRow>(`/memory/${id}/pin`, { method: 'POST' }),
-  remove: (id: string) => call<void>(`/memory/${id}`, { method: 'DELETE' }),
+  // `keepalive`: a delete flushed as the page closes still reaches the server.
+  remove: (id: string) => call<void>(`/memory/${id}`, { method: 'DELETE', keepalive: true }),
 }
 
 export interface MemoryRow {
@@ -1624,6 +1632,8 @@ export interface AgentRow {
   baseQuestions?: GapQuestion[]
   bundles?: BundleSelection[] | null
   process?: AgentProcess | null
+  processSettings?: Partial<ProcessSettings> | null
+  inheritedSettings?: ProcessSettings
 }
 
 /* ── connectors (MCP) ───────────────────────────────────────────────────
@@ -1783,8 +1793,8 @@ export const userPipelinesApi = {
   update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
     call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
-  validate: (stages: PipelineStep[], id?: string, agentId?: string) =>
-    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id, agentId })),
+  validate: (stages: PipelineStep[], id?: string, agentId?: string, self?: { surface: string; name: string }) =>
+    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id, agentId, selfSurface: self?.surface, selfName: self?.name })),
   submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
   withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
   bind: (agentId: string, pipelineId: string | null) =>
@@ -2451,4 +2461,56 @@ export interface SessionPage {
 export const historyApi = {
   page: (page: number, size = 50, signal?: AbortSignal) =>
     call<SessionPage>(`/sessions/paged?page=${page}&size=${size}`, { signal }),
+}
+
+/** The editor's payload for a person's template. */
+export type UserTemplateIn = Omit<UserTemplate, 'id' | 'formName' | 'hasForm' | 'mine' | 'ownerName' | 'updatedAt'>
+
+const templateBody = (t: UserTemplateIn) => JSON.stringify({ ...t, process: t.process as Partial<ProcessSettings> })
+
+/** A person's own templates (`/user-templates`). */
+export const userTemplatesApi = {
+  list: () => call<{ mine: UserTemplate[]; shared: UserTemplate[] }>('/user-templates'),
+  catalogue: () => call<TemplateCatalogue>('/user-templates/catalogue'),
+  /** A shipped document template as the editor's fields (snake_case, as the server stores). */
+  start: (templateId: string) => call<Record<string, unknown>>(`/user-templates/start/${encodeURIComponent(templateId)}`),
+  get: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`),
+  create: (t: UserTemplateIn) => call<UserTemplate>('/user-templates', { method: 'POST', body: templateBody(t) }),
+  update: (id: string, t: UserTemplateIn) =>
+    call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}`, { method: 'PUT', body: templateBody(t) }),
+  remove: (id: string) => call<void>(`/user-templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadForm: async (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${BASE_URL}/user-templates/${encodeURIComponent(id)}/form`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      body: form,
+    })
+    if (!res.ok) {
+      const detail = await readDetail(res)
+      if (res.status === 401) throw new UnauthorizedError(detail)
+      throw new ApiError(res.status, detail)
+    }
+    return (await res.json()) as UserTemplate
+  },
+  removeForm: (id: string) => call<UserTemplate>(`/user-templates/${encodeURIComponent(id)}/form`, { method: 'DELETE' }),
+}
+
+/** The connector catalogue administrators keep (관리 › 커넥터 카탈로그). */
+export type CatalogEntryIn = Omit<CatalogEntryAdmin, 'id' | 'updatedAt'>
+export interface CatalogAdmin {
+  entries: CatalogEntryAdmin[]
+  kinds: string[]
+  transports: string[]
+  features: string[]
+  placeholders: string[]
+}
+export const connectorCatalogApi = {
+  list: () => call<CatalogAdmin>('/admin/connector-catalog'),
+  add: (entry: CatalogEntryIn) => call<{ entries: CatalogEntryAdmin[] }>('/admin/connector-catalog', body(entry)),
+  edit: (id: string, entry: CatalogEntryIn) =>
+    call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(entry) }),
+  remove: (id: string) => call<{ entries: CatalogEntryAdmin[] }>(`/admin/connector-catalog/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

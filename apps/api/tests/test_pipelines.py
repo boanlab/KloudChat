@@ -16,7 +16,7 @@ from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import ContractError, Runner
 from app.pipeline.stage import Base, Context, Stop
-from app.services import doc_formats, report_checks
+from app.services import doc_formats, process_settings, report_checks
 
 AGENTS = Path(__file__).resolve().parents[1] / "app" / "agents"
 
@@ -70,25 +70,60 @@ def _old_judged(f: str) -> list[str]:
 
 FORMAT_IDS = sorted([*doc_formats.BY_ID, "event_plan", "result_report", ""])
 
+#: How each kind of document treated two values for one thing (`key_figures._ADOPT`).
+_OLD_ADOPT = {
+    "comparison": (
+        "In the 「자료와 충돌」 section, write the two values side by side with their source, time "
+        "and measurement conditions, and state in one line which value you followed and why "
+        "(같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave "
+        "「조건 다름」."
+    ),
+    "minutes": (
+        "The value of the later decision or later mail is final. Write the final value and leave "
+        "「○○에서 변경」 in 비고."
+    ),
+    "gaejo": "Use the latest value only for the same item the material explicitly changed, and "
+             "record the change in one line.",
+    "client_proposal": (
+        "State which value you took as the premise, and leave what must be checked in "
+        "「전제·제외 범위·위험」 or the question list."
+    ),
+}
+#: What `report_checks.amendments` added by format.
+_OLD_AMEND = {"client_proposal": ["requirement-ids", "quote-validity"],
+              "comparison": ["option-status", "conflict-values", "unverified-options"]}
+OPTIONAL = {"prepass", "page-limit", "minutes-repair", "minutes-reground", "career-periods-tidy"}
+
 
 @pytest.mark.parametrize("fmt", FORMAT_IDS)
 def test_each_format_runs_what_the_if_chains_ran(fmt):
-    pipe = registry.for_report(fmt)
-    write = pipe.flow("write")
-    assert list(registry.prepass_for(fmt)) == (_old_prepass(fmt) if fmt else [])
-    assert list(registry.checks_for(fmt)) == _old_checks(fmt)
-    assert list(registry.judged_for(fmt)) == _old_judged(fmt)
-    assert ("prepass" in write) == (fmt in PREPASS)
-    assert ("page-limit" in write) == (fmt in PAGES)
-    assert ("minutes-repair" in write) == ("minutes-reground" in write) == (fmt == "minutes")
-    assert ("career-periods-tidy" in write) == (fmt == "career_history")
-    assert (pipe.options.get("search", True) is False) == (fmt == "career_history")
+    """The settings its 서식 declares give each format what the if-chains (and then the
+    per-format pipeline files) ran."""
+    settings = process_settings.for_format(fmt)
+    assert list(settings.prepass) == (_old_prepass(fmt) if fmt else [])
+    assert list(settings.code_checks) == _old_checks(fmt)
+    assert list(settings.judged) == _old_judged(fmt)
+    assert settings.runs_prepass == (fmt in PREPASS)
+    assert settings.has_stage("page-limit") == (fmt in PAGES)
+    assert settings.has_stage("minutes-repair") == settings.has_stage("minutes-reground") \
+        == (fmt == "minutes")
+    assert settings.has_stage("career-periods-tidy") == (fmt == "career_history")
+    assert (settings.search is False) == (fmt == "career_history")
     gaejo = fmt == "gaejo"
-    assert (pipe.options.get("fixed_outline") == "gaejo") == gaejo
+    assert list(settings.outline) == (list(doc_formats.GAEJO_OUTLINE) if gaejo else [])
     # A one-page 개조식 memo and a 회의록 draw no figures unless asked.
-    assert (pipe.options.get("draws") == "when-asked") == (fmt in ("gaejo", "minutes"))
-    assert bool(pipe.options.get("prepass_always")) == bool(pipe.options.get("prepass_quiet")) \
-        == gaejo
+    assert (settings.draws == "when-asked") == (fmt in ("gaejo", "minutes"))
+    assert settings.prepass_always == settings.prepass_quiet == gaejo
+    assert settings.date_base == ("meeting" if fmt == "minutes" else "text")
+    assert list(settings.amend) == _OLD_AMEND.get(fmt, [])
+    assert settings.structure.summary_lines == (2 if gaejo else 0)
+    assert settings.structure.page_limit == (1 if gaejo else 0)
+    assert settings.structure.page_limit_rfp == (fmt == "client_proposal")
+    assert list(settings.head) == {"minutes": ["meeting-date"],
+                                   "client_proposal": ["rfp-client"]}.get(fmt, [])
+    assert settings.conflict_rule == _OLD_ADOPT.get(fmt, "")
+    # Every document is written by one flow that holds every optional stage.
+    assert OPTIONAL <= set(registry.for_report(fmt).flow("write"))
 
 
 def test_every_named_stage_step_and_check_exists():
@@ -97,12 +132,13 @@ def test_every_named_stage_step_and_check_exists():
         for flow in ("pre", "plan", "write", "finish", "revise"):
             missing = [n for n in pipe.flow(flow) if n not in names]
             assert not missing, (pipe.name, flow, missing)
-        assert set(pipe.flow("prepass")) <= set(report_checks.PREPASS_STEPS), pipe.name
-        assert set(pipe.flow("checks")) <= set(report_checks.CHECK_FAMILIES), pipe.name
-        assert set(pipe.flow("judged")) <= set(report_checks.JUDGED_CHECKS), pipe.name
         # A pipeline that writes also plans and asks first.
         if pipe.flow("write"):
             assert pipe.flow("plan") and pipe.flow("pre")
+    assert set(process_settings.PREPASS) == set(report_checks.PREPASS_STEPS)
+    assert set(process_settings.CHECKS) == set(report_checks.CHECK_FAMILIES)
+    assert set(process_settings.JUDGED) == set(report_checks.JUDGED_CHECKS)
+    assert set(process_settings.STAGES) <= names
 
 
 def test_a_format_or_an_agent_is_claimed_once():
@@ -114,27 +150,29 @@ def test_a_format_or_an_agent_is_claimed_once():
 @pytest.mark.parametrize("path", sorted(AGENTS.glob("*.toml")), ids=lambda p: p.stem)
 def test_each_shipped_agent_has_its_pipeline(path):
     agent = tomllib.loads(path.read_text())
-    pipe = next(p for p in registry.pipelines().values() if agent["key"] in p.agents)
-    if agent.get("doc_format"):
-        assert registry.for_report(agent["doc_format"]) is pipe
+    if agent.get("surface") == "report":
+        assert registry.for_report(agent.get("doc_format")).name == "report"
     if "chat" in agent.get("kinds", []):
-        assert registry.for_chat(agent["key"]) is pipe
+        assert registry.for_chat(agent["key"]).name == "chat"
+    # The steps a person reads for it are its own file's.
+    assert set(agent.get("summary") or {}) <= {"material", "question", "compute", "write",
+                                               "check"}
     assert registry.for_chat("no-such-agent").name == "chat"
     assert registry.for_report("no-such-format").name == "report"
 
 
-def test_the_report_flows_are_the_same_but_for_the_format_stages():
-    generic = {"prepass", "page-limit", "minutes-repair", "minutes-reground",
-               "career-periods-tidy"}
-    base = registry.pipeline("report").flow("write")
+def test_one_report_flow_and_the_old_names_still_open_their_runs():
+    report = registry.pipeline("report")
+    assert OPTIONAL <= set(report.flow("write"))
     for pipe in registry.pipelines().values():
-        if pipe.flow("write"):
-            assert [s for s in pipe.flow("write") if s not in generic] == list(base), pipe.name
-            assert pipe.flow("plan") == registry.pipeline("report").flow("plan")
         if pipe.flow("finish"):
             assert pipe.flow("finish") == registry.pipeline("chat").flow("finish")
         if pipe.flow("write"):
             assert pipe.flow("revise") == registry.pipeline("deck").flow("revise")
+    for name in registry.LEGACY:
+        old = registry.pipeline(name)
+        assert old.flow("write") == report.flow("write")
+        assert old.flow("finish") == registry.pipeline("chat").flow("finish")
 
 
 # ── the runner ──────────────────────────────────────────────────────────

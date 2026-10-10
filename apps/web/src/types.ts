@@ -1086,6 +1086,10 @@ export interface Agent {
   inheritedQuestions?: GapQuestion[]
   /** With none of its own, what its base asks: the form's own list starts from these. */
   baseQuestions?: GapQuestion[]
+  /** 진행 과정 설정 of its own; null follows its template's. */
+  processSettings?: Partial<ProcessSettings> | null
+  /** What its template sets: the form's defaults. */
+  inheritedSettings?: ProcessSettings
 }
 
 /** How a 빠진 정보 질문 decides that the material already answers it. */
@@ -1188,6 +1192,8 @@ export interface AgentBase {
   bundles: BundleSelection[]
   formatChecks: string[]
   asks: boolean
+  /** What it makes, as the template list calls it (「회의록」). */
+  templateName?: string
 }
 
 /** 「에이전트로 저장」: a conversation as a form to review; nothing is saved yet. */
@@ -1227,4 +1233,116 @@ export interface ToolCatalogEntry {
   title?: string
   /** One line on what it does. */
   description?: string
+}
+
+/** 진행 과정 설정 (`services/process_settings.py`): what writing a document does besides
+ * writing. Every key is optional on the wire; an agent's own (null: its template's). */
+export interface ProcessStructure {
+  sections: string[]
+  tables: { columns: string[]; heading?: string }[]
+  summary_lines: number
+  style: '' | 'gaejo'
+  page_limit: number
+  page_limit_rfp: boolean
+}
+export interface ProcessSettings {
+  prepass: string[]
+  date_base: 'text' | 'meeting'
+  stages: string[]
+  checks: string[]
+  judged: string[]
+  amend: string[]
+  head: string[]
+  rules: string[]
+  structure: ProcessStructure
+  search: boolean
+  fixed_outline: boolean
+  draws: 'auto' | 'when-asked'
+  prepass_always: boolean
+  prepass_quiet: boolean
+  conflict_rule: string
+}
+/** A built-in name the settings may pick, with what it reads first. */
+export interface ProcessName {
+  name: string
+  label: string
+  needs: string
+}
+export interface ProcessCatalogue {
+  prepass: ProcessName[]
+  stages: ProcessName[]
+  checks: ProcessName[]
+  judged: ProcessName[]
+  amend: ProcessName[]
+  head: ProcessName[]
+  limits: { prepass: number; rules: number; sections: number; tables: number; columns: number; pages: number; rule: number; summary: number }
+  defaults: ProcessSettings
+}
+
+/** 문서 형식 a person's template sets (the exporters' own choices). */
+export interface TemplateFormat {
+  label: string
+  fields: string[]
+  numbering: 'decimal' | 'roman' | 'korean' | 'official' | 'none'
+  head: 'cover' | 'header' | 'memo' | 'press' | 'paper' | 'draft'
+  lists: '' | 'gaejo'
+  closing: boolean
+  subtitle: boolean
+}
+
+/** A person's template (`ut-<id>`), as the editor reads and writes it. */
+export interface UserTemplate {
+  id: string
+  name: string
+  description: string
+  category: string
+  fills: string[]
+  examplePrompt: string
+  instructions: string
+  checklist: string
+  genre: string
+  docFormat: TemplateFormat
+  coverPage: boolean
+  bodyFace: '' | 'design'
+  checkSkills: string[]
+  checkOptions: string[]
+  questions: GapQuestion[]
+  process: Partial<ProcessSettings>
+  formName: string
+  hasForm: boolean
+  visibility: 'private' | 'org'
+  mine: boolean
+  ownerName: string
+  updatedAt: string | null
+}
+
+export interface TemplateCatalogue {
+  numberings: TemplateFormat['numbering'][]
+  heads: TemplateFormat['head'][]
+  lists: string[]
+  checkSkills: { key: string; name: string; stage: string }[]
+  checkOptions: string[]
+  detectors: { name: string; label: string }[]
+  process: ProcessCatalogue
+  starts: { id: string; name: string; description: string }[]
+}
+
+/** An entry of the connector catalogue administrators keep. `env` values come back only as
+ * placeholders; anything else is `null` (set, never shown). */
+export interface CatalogEntryAdmin {
+  id: string
+  slug: string
+  name: string
+  description: string
+  category: string
+  transport: 'stdio' | 'http' | 'sse'
+  endpoint: string
+  env: Record<string, string | null>
+  requiredEnv: { key: string; label: string; hint: string; secret: boolean }[]
+  toolsKeyVar: string
+  toolsKeyFeature: string
+  kinds: string[]
+  enabled: boolean
+  position: number
+  updatedAt: string | null
 }

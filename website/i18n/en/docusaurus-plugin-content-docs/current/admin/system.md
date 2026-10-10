@@ -35,6 +35,10 @@ The SMTP host, port, security, account, and sender address, the service address 
 - **Email domains allowed to sign up**: Several, separated by commas. Subdomains have to be listed separately.
 - **Email verification**: Not effective without a mail server.
 
+## Connector catalogue
+
+The MCP servers people can install from **Customize** › **Connectors**. **Add entry** takes a name, slug, transport (run a command over stdio, HTTP or SSE), the command or address, environment variables and surfaces. Write tool addresses as placeholders such as `${TOOLS_STT_URL}`. Pick a **variable that gets the gateway key** and `TOOLS_GATEWAY_KEY` is added only while that variable is the chosen tool's address (this is how YouTube transcription calls speech-to-text). Stored values are never shown again; type one only to replace it. Servers that run as a command can only be added here.
+
 ## Management items outside the System tab
 
 - The **Usage** screen: charts by period, by model, by screen, and by user, CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).

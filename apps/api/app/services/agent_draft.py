@@ -114,11 +114,38 @@ async def distill(model: str, messages: list[str], api_key: str, *, strict_local
     return lines_of(reply), spent
 
 
+#: A line about this conversation's own material (「아래 회의 메모로 만든다」): not a rule for
+#: next time.
+_THIS_ONE = re.compile(
+    r"(?:아래|위|이번|이|첨부(?:한|된)?|붙인|올린|보낸)\s{0,2}(?:의\s{0,2})?"
+    r"(?:회의\s{0,2})?(?:메모|자료|파일|대화|메일|내용|녹음|전사본?|문서|표|데이터)")
+#: Dates and day stamps in a title: 「10/8」 「2026-10-08」 「10월 8일」 「2026년」 「(월)」.
+_DATED = re.compile(
+    r"\d{2,4}\s{0,2}[./-]\s{0,2}\d{1,2}(?:\s{0,2}[./-]\s{0,2}\d{1,2})?\.?"
+    r"|\d{1,4}\s{0,2}(?:년|월|일|주차?)|\([월화수목금토일]\)|(?<![가-힣])[1-4]분기")
+
+
+def keep(line: str) -> bool:
+    """Whether a distilled line is a rule for next time, not about this conversation's
+    material."""
+    return not _THIS_ONE.search(line or "")
+
+
+def name_for(title: str, template_name: str = "") -> str:
+    """The draft's name: what the conversation made (its 템플릿's name, 「회의록 에이전트」),
+    else its title without dates; never a day stamp."""
+    if template_name:
+        return f"{template_name} 에이전트"
+    stem = " ".join(_DATED.sub(" ", title or "").split()).strip(" -·:,")
+    return f"{stem[:30]} 에이전트" if len(stem) >= 2 else "새 에이전트"
+
+
 def prompt_from(lines: list[str]) -> str:
     """The 지시 section a draft starts with."""
+    lines = [line for line in lines if keep(line)]
     if not lines:
         return ""
     return "이 대화에서 정한 것:\n" + "\n".join(f"- {line}" for line in lines)
 
 
-__all__ = ["distill", "lines_of", "prompt_from"]
+__all__ = ["distill", "keep", "lines_of", "name_for", "prompt_from"]

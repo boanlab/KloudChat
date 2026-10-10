@@ -151,6 +151,58 @@ async def test_a_sealed_prompt_is_never_copied_and_the_base_comes_along(db, call
     assert from_mine["base"] == "gaejo-report" and from_mine["bundles"] == mine.bundles
 
 
+async def test_a_conversation_with_an_official_agent_saves_as_a_draft_post_agents_accepts(
+        db, calls, monkeypatch):
+    """B-1/B-2: the official agent's theme is the administrator's; the draft names the
+    person's own theme of that name (or none), carries no official instructions, no line about
+    this conversation's material and no date in its name — and saving it succeeds."""
+    me, admin = await _people(db)
+    theirs = DesignSystem(owner_id=admin.id, name="문서용 명조", tokens={})
+    mine = DesignSystem(owner_id=me.id, name="문서용 명조", tokens={})
+    official = Agent(owner_id=admin.id, name="기록 정리", slug="minutes",
+                     system_prompt="You write meeting minutes. (official)",
+                     visibility=Visibility.org, kinds=["report"], surface="report",
+                     catalog_key="minutes", doc_format="minutes",
+                     render_template_id="doc-minutes", design_system_id=theirs.id)
+    db.add_all([theirs, mine, official])
+    await db.commit()
+
+    async def distill(model, messages, api_key, *, strict_local, masker=None):
+        return ["결정과 할 일을 표로 둔다.", "아래 회의 메모로 회의록을 만든다."], {
+            "inputTokens": 1, "outputTokens": 1}
+
+    monkeypatch.setattr(agent_draft, "distill", distill)
+    session = await _talk(db, me, agent=official, kind=SessionKind.report)
+    session.title, session.render_template_id = "10/8 학사운영팀 주간회의록", "doc-minutes"
+    db.add(session)
+    await db.commit()
+    draft = await sessions.agent_draft(session.id, me, db)
+    assert draft["designSystemId"] == mine.id
+    assert "official" not in draft["systemPrompt"]
+    assert draft["systemPrompt"] == "이 대화에서 정한 것:\n- 결정과 할 일을 표로 둔다."
+    assert draft["name"] == "회의록 에이전트" and draft["base"] == "minutes"
+    from app.schemas.workspace import AgentIn
+
+    made = await ws.create_agent(AgentIn(
+        name=draft["name"], system_prompt=draft["systemPrompt"], kinds=draft["kinds"],
+        surface=draft["surface"], render_template_id=draft["renderTemplateId"],
+        design_system_id=draft["designSystemId"], skill_ids=draft["skillIds"]), me, db)
+    assert made.design_system_id == mine.id
+    # Without a theme of that name, none.
+    await db.delete(mine)
+    await db.commit()
+    assert (await sessions.agent_draft(session.id, me, db))["designSystemId"] is None
+
+
+def test_a_draft_name_never_carries_a_date():
+    assert agent_draft.name_for("10/8 학사운영팀 주간회의록") == "학사운영팀 주간회의록 에이전트"
+    assert agent_draft.name_for("2026년 10월 8일 (화) 보고") == "보고 에이전트"
+    assert agent_draft.name_for("10/8") == "새 에이전트"
+    assert agent_draft.name_for("아무 제목", "회의록") == "회의록 에이전트"
+    assert not agent_draft.keep("이 자료로 비교표를 만든다.")
+    assert agent_draft.keep("결론을 맨 앞에 둔다.")
+
+
 async def test_a_report_conversation_infers_its_base_from_its_template(db, calls):
     me, _ = await _people(db)
     session = await _talk(db, me, kind=SessionKind.report)

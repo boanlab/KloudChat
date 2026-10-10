@@ -61,6 +61,8 @@ class Request:
     check_keys: tuple[str, ...] | None = None
     #: The agent's `check_options` (how strict the trace is), `check_skills.options_for`.
     check_options: dict[str, Any] = field(default_factory=dict)
+    #: The agent's own 진행 과정 설정 (`Agent.process`), over its 서식's; None: the 서식's.
+    process: dict[str, Any] | None = None
     agent_key: str | None = None
     session_id: str = ""
     #: The day the turn runs on, where a check needs it.
@@ -72,7 +74,7 @@ class Request:
     #: The catalogue entry of the writer, and the model that actually answered.
     model_info: dict | None = None
     actual_model: str | None = None
-    #: The fact set that sets how strict the trace is (`check_skills.fact_set`).
+    #: Unused: kept so runs stored before the strictness became data still restore.
     check_facts: str = ""
     #: Attached and carried files' text: what the answer's values may come from too.
     check_material: str = ""
@@ -116,6 +118,15 @@ class Spec:
     format: Any = None
     format_id: str = ""
     genre: str = ""
+    #: `process_settings.Process`: what the writing does besides writing (its 서식's settings,
+    #: then the agent's own). None: the defaults (a bundle made before it was settled).
+    process: Any = None
+
+    @property
+    def settings(self):
+        from app.services import process_settings
+
+        return self.process if self.process is not None else process_settings.DEFAULT
 
 
 @dataclass(slots=True)

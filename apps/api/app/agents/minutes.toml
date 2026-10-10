@@ -45,3 +45,12 @@ You write meeting minutes from meeting material. The reader is someone who, two 
 7. List attendance and absence separately. Leave out talk unrelated to the meeting (lunch, parking). Early departures go in the attendance column's remarks.
 8. Do not estimate amounts, quantities or specifications not in the material. Carry over only amounts the material itself called estimates, as ‘추정(근거)’, and do not present them as settled costs.
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "올린 녹음 기록·메모를 읽습니다"
+question = "회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다"
+compute = "「다음 주 금요일」 같은 날짜를 회의일 기준으로 계산해 둡니다"
+write = "회의록을 씁니다"
+check = "할 일마다 담당자·기한과 근거를 확인합니다"

@@ -5,8 +5,9 @@ asks, computes and emits; it now reads and writes the bundle instead of the func
 locals. Helpers stay in `app.services.report` and are looked up there at call time, so a
 test that replaces one (`report._complete`, `report._long_form`) reaches the stage.
 
-Which stages a report runs, and the format's options (`search`, `fixed_outline`, `draws`,
-`prepass`), come from its pipeline file (`app/pipelines/*.toml`).
+Which stages a report runs is `app/pipelines/report.toml`; what each optional one does, and
+the options (`search`, `fixed_outline`, `draws`, the pre-pass), are the 서식's and the agent's
+진행 과정 설정 on the bundle (`bundle.spec.settings`, `services/process_settings.py`).
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from app.services import (
     internal_words,
     key_figures,
     placeholders,
+    process_settings,
     quality_gate,
     report_checks,
     research,
@@ -125,7 +127,7 @@ class Research(Base):
         findings = research.Findings()
         web_search = req.web_search
         # A document on the person's own material is not searched; a 경력기술서 never is.
-        if web_search and (report._own_material(req.text) or not ctx.options.get("search", True)):
+        if web_search and (report._own_material(req.text) or not bundle.spec.settings.search):
             web_search = False
         if web_search and await research.available():
             yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
@@ -378,8 +380,7 @@ class Outline(Base):
         # 「아래 개요로 써 줘」 with the outline pasted: the person's sections, not new ones.
         # 개조식 keeps its fixed shape: a planner's seven sections never fit one page.
         fixed = report.given_outline(request) or (
-            list(doc_formats.GAEJO_OUTLINE)
-            if ctx.options.get("fixed_outline") == "gaejo" and not wanted else []
+            list(bundle.spec.settings.outline) if not wanted else []
         )
         if fixed:
             headings = fixed
@@ -673,10 +674,13 @@ class Prepass(Base):
     reads = ("request", "spec.format_id", "material.given", "computed.values")
     writes = ("computed.prepass", "computed.settled", "material.parts", "material.trusted")
 
+    def skip(self, bundle: Bundle) -> str:
+        return "" if bundle.spec.settings.runs_prepass else "no pre-pass calculations set"
+
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         format_id, given = bundle.spec.format_id, bundle.material.given
-        quiet = bool(ctx.options.get("prepass_quiet"))
+        quiet = bundle.spec.settings.prepass_quiet
         prepass: report_checks.Prepass | None = None
         if given:
             prepass_usage: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
@@ -686,6 +690,7 @@ class Prepass(Base):
                     model=req.judge, api_key=req.api_key, usage=prepass_usage,
                     today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
                     tiebreak_model=report._tiebreak_model(req.judge),
+                    process=bundle.spec.settings,
                 )
             except Exception as exc:  # noqa: BLE001 — written without it; the step says so
                 log.exception("report pre-pass failed")
@@ -696,9 +701,10 @@ class Prepass(Base):
             # A pre-pass that does not run says why.
             yield {"type": "step", "id": "prepass", "label": "사전 계산 해당 없음", "status": "done",
                    "detail": "요청과 첨부에 계산할 자료가 없음"}
-        if ctx.options.get("prepass_always") and prepass is None:
+        if bundle.spec.settings.prepass_always and prepass is None:
             # 개조식 is checked for its shape and pages even with nothing attached.
-            prepass = report_checks.Prepass(format_id=format_id)
+            prepass = report_checks.Prepass(format_id=format_id,
+                                            process=bundle.spec.settings)
         bundle.computed.prepass = prepass
         computed = bundle.computed.values
         if prepass is not None and prepass.costs_withheld and computed:
@@ -741,7 +747,8 @@ class WriterNotes(Base):
             log.info("settled figures: %s", [(f.name, f.value) for f in com.settled])
         if com.conflicts:
             # Both values, with where and when: the writer shows them, nothing merges them.
-            mat.parts = [Part(key_figures.conflict_block(com.conflicts, bundle.spec.format_id),
+            mat.parts = [Part(key_figures.conflict_block(com.conflicts,
+                                                              bundle.spec.settings.conflict_rule),
                               "conflicts"), *mat.parts]
 
 
@@ -1119,7 +1126,7 @@ class Figures(Base):
         # paper; it draws nothing of its own. A one-page 개조식 memo has no room for
         # pictures it was not asked for either, and a 회의록 records the meeting, not figures.
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
-            ctx.options.get("draws") == "when-asked"
+            bundle.spec.settings.draws == "when-asked"
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
@@ -1331,7 +1338,7 @@ class TitleBlock(Base):
             bundle.spec.format, req.text, bundle.plan.title, req.judge, req.api_key, given)
         bundle.usage["inputTokens"] += spent.get("inputTokens", 0)
         bundle.usage["outputTokens"] += spent.get("outputTokens", 0)
-        if prepass is not None and prepass.rfp:
+        if prepass is not None and prepass.rfp and "rfp-client" in prepass.settings.head:
             # The cover names the client the RFP names, not a guess or the proposer.
             head_fixed, client_problem = report_checks.client_head(
                 block, prepass.rfp, f"{req.text}\n{given}")
@@ -1369,6 +1376,12 @@ def checks_of(bundle: Bundle) -> tuple[list, list]:
     # rewritten.
     run_checks.extend(report_checks.model_checks(
         prepass, complete=report._complete, judge=judge, api_key=req.api_key))
+    if prepass is None and bundle.spec.settings.rules and judge:
+        # 검토 규칙 are judged with or without a pre-pass.
+        run_checks.append(report_checks.judge_rules(bundle.spec.settings.rules,
+                                                    report._complete, judge, req.api_key))
+    # The 서식's structure rules (its sections, its tables): shown, never rewritten.
+    run_checks.extend(report_checks.structure_checks(bundle.spec.settings))
     return run_checks, format_checks
 
 
@@ -1421,6 +1434,8 @@ class MinutesRepair(Base):
     writes = ("document.sections", "findings.before")
 
     def skip(self, bundle: Bundle) -> str:
+        if not bundle.spec.settings.has_stage(self.name):
+            return "not set for this document"
         return "" if bundle.computed.prepass is not None else "no pre-pass"
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -1509,6 +1524,8 @@ class MinutesReground(Base):
     writes = ("document.sections", "findings.after")
 
     def skip(self, bundle: Bundle) -> str:
+        if not bundle.spec.settings.has_stage(self.name):
+            return "not set for this document"
         return "" if bundle.computed.prepass is not None else "no pre-pass"
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
@@ -1576,6 +1593,9 @@ class CareerPeriods(Base):
     reads = ("document.sections",)
     writes = ("document.sections",)
 
+    def skip(self, bundle: Bundle) -> str:
+        return "" if bundle.spec.settings.has_stage(self.name) else "not set for this document"
+
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         bundle.document.sections, tidied = report_checks.tidy_periods(bundle.document.sections)
         if tidied:
@@ -1593,18 +1613,22 @@ class PageLimit(Base):
     writes = ("document.sections", "findings.added_before", "findings.added_after",
               "findings.pages_note")
 
+    def skip(self, bundle: Bundle) -> str:
+        return "" if bundle.spec.settings.has_stage(self.name) else "not set for this document"
+
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         report, req, found = _report(), bundle.request, bundle.findings
-        format_id, doc_format = bundle.spec.format_id, bundle.spec.format
-        limit = (report_checks.page_limit(format_id, req.text, bundle.material.given)
-                 if bundle.computed.prepass is not None else None)
-        if not (limit and format_id in report_checks.PAGE_FORMATS):
+        doc_format, process = bundle.spec.format, bundle.spec.settings
+        limit = (report_checks.page_limit(process, req.text, bundle.material.given)
+                 if bundle.computed.prepass is not None or process.structure.page_limit
+                 else None)
+        if not limit:
             return
         title, sections = bundle.plan.title, bundle.document.sections
         shown_block, design_tokens = bundle.document.head_block, req.design_tokens
         # 개조식 is judged on both files people get, laid out as exported: the body through
         # the 붙임 list and its 「끝.」; the longer of the two counts.
-        by_hwpx = format_id in report_checks.PAGE_LIMITS
+        by_hwpx = bool(process.structure.page_limit)
 
         async def counted(rows: list[dict]) -> tuple[int | None, str]:
             body = report.gaejo_body(rows, doc_format)
@@ -1747,8 +1771,18 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
                   untrusted=list(kwargs.pop("untrusted_context", None) or []), **kwargs)
     # The explicit 서식 wins, then the agent's bound format, then the words of the instruction.
     doc_format = doc_formats.detect(instruction_part(request), req.template_id, req.format_id)
-    spec = Spec(format=doc_format, format_id=doc_format.id if doc_format is not None else "",
-                genre=report._genre_rule(request, doc_format))
+    format_id = doc_format.id if doc_format is not None else ""
+    # What the writing does besides writing: the 서식's settings, then the agent's own.
+    process = process_settings.resolve(template_id=req.template_id, format_id=format_id,
+                                       own=req.process)
+    governing = process_settings.governing_template(req.template_id, format_id)
+    if governing is not None and governing.check_options:
+        # The 서식's strictness joins the agent's (a career history traces titles too).
+        req.check_options = {**{k: True for k in governing.check_options},
+                             **dict(req.check_options or {})}
+    spec = Spec(format=doc_format, format_id=format_id,
+                genre=report._genre_rule(request, doc_format, req.template_id),
+                process=process)
     # Outline tokens are counted apart: planning may run on another model.
     usage = {"inputTokens": 0, "outputTokens": 0, "outlineInputTokens": 0,
              "outlineOutputTokens": 0}

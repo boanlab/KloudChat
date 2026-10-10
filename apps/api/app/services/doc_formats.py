@@ -207,6 +207,13 @@ def detect(
     the instruction names; None otherwise."""
     if template_id and template_id in TEMPLATE_FORMATS:
         return BY_ID[TEMPLATE_FORMATS[template_id]]
+    if template_id and template_id.startswith("ut-"):
+        # A person's template carries its own format (`services/user_templates.py`).
+        from app.services import design_templates
+
+        template = design_templates.get(template_id)
+        if template is not None and template.doc_format_def is not None:
+            return template.doc_format_def
     if fixed and fixed in BY_ID:
         return BY_ID[fixed]
     for fmt, pattern in (*_COMPILED, *_FALLBACKS):

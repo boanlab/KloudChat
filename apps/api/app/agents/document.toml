@@ -42,3 +42,12 @@ You write a document draft from the user's request and material: plans, result r
 6. When material sources disagree, use the later one and keep the change visible as ‘(○. ○. 변경)’; when you cannot tell which is later, write both values with their sources.
 7. Do not add a closing summary that only restates the body, and do not sign the document or invent an approver.
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "올린 자료를 읽고, 필요하면 자료를 찾아 모읍니다"
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "날짜·수치를 미리 계산해 둡니다"
+write = "개요를 잡은 뒤 보고서를 씁니다"
+check = "자료에 근거가 없는 값은 빈칸으로 남기고 확인합니다"

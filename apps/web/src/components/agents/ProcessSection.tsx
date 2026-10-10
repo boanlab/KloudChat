@@ -42,14 +42,19 @@ function BundleRow({
   const t = useT()
   const [open, setOpen] = useState(false)
   const items = bundle.items.filter((i) => targetOn(i, surface) !== null && targetOn(i, surface) !== 'self')
+  // What this bundle holds that nothing here can do (a file export for an agent that answers).
+  const cannot = bundle.items.filter((i) => targetOn(i, surface) === null)
   if (items.length === 0) return null
   const on = !!selection
   const set = (item: BundleItem, value: boolean | string) =>
     onChange({ bundle: bundle.ref, items: { ...(selection?.items ?? {}), [item.id]: value } })
   const summary = items
-    .filter((i) => targetOn(i, surface) === 'flow' || (on && tickOf(i, selection)))
+    .filter((i) => i.kind !== 'export' && (targetOn(i, surface) === 'flow' || (on && tickOf(i, selection))))
     .map((i) => t(i.label))
     .join(' · ')
+  // The note says what ticking it does here: its items, never a promise of what it cannot do.
+  const note = summary || (cannot.length > 0 ? items.map((i) => t(i.label)).join(' · ') : t(bundle.description))
+  const exportItem = items.find((i) => i.kind === 'export')
   return (
     <div className="rounded-control border border-line" data-testid="bundle-row">
       <div className="flex items-start gap-3 px-3 py-2.5">
@@ -66,7 +71,17 @@ function BundleRow({
             {t(bundle.name)}
           </label>
           <p id={`bundle-${bundle.ref}-note`} className="text-sm text-muted">
-            {summary || t(bundle.description)}
+            {note}
+            {on && cannot.some((i) => i.kind === 'export') && (
+              <span className="block text-warn" data-testid="bundle-cannot">
+                {t('파일 내보내기는 문서를 쓰는 과정에서만 됩니다 — 진행 과정에서 기본 과정(보고서)을 고르세요.')}
+              </span>
+            )}
+            {on && cannot.some((i) => i.kind !== 'export') && (
+              <span className="block text-warn">
+                {t('이 과정에서는 하지 않는 일')}: {cannot.filter((i) => i.kind !== 'export').map((i) => t(i.label)).join(' · ')}
+              </span>
+            )}
             {bundle.risky && bundle.review !== 'approved' && (
               <span className="block text-warn">{t('공유하면 관리자가 승인한 뒤 다른 사람에게도 적용됩니다.')}</span>
             )}
@@ -82,9 +97,37 @@ function BundleRow({
           {t('자세히')}
         </button>
       </div>
+      {on && exportItem && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 pl-10" data-testid="bundle-export">
+          <input
+            type="checkbox"
+            id={`bundle-${bundle.ref}-${exportItem.id}-shown`}
+            checked={!!tickOf(exportItem, selection)}
+            onChange={() => set(exportItem, tickOf(exportItem, selection) ? '' : (exportItem.settings.formats?.[0] ?? 'docx'))}
+            className="size-4 accent-[var(--accent)]"
+          />
+          <label htmlFor={`bundle-${bundle.ref}-${exportItem.id}-shown`} className="text-base">
+            {t(exportItem.label)}
+          </label>
+          {!!tickOf(exportItem, selection) && (
+            <Select
+              aria-label={t('파일 형식')}
+              value={String(tickOf(exportItem, selection))}
+              onChange={(e) => set(exportItem, e.target.value)}
+              className="h-8 w-auto py-0"
+            >
+              {formats.map((f) => (
+                <option key={f} value={f}>
+                  {FORMAT_LABEL[f] ?? f}
+                </option>
+              ))}
+            </Select>
+          )}
+        </div>
+      )}
       {open && (
         <ul className="space-y-1.5 border-t border-line px-3 py-2.5 pl-10" aria-label={t(bundle.name)}>
-          {items.map((item) => {
+          {items.filter((item) => item.kind !== 'export').map((item) => {
             const always = targetOn(item, surface) === 'flow'
             const value = tickOf(item, selection)
             const id = `bundle-${bundle.ref}-${item.id}`
@@ -188,12 +231,15 @@ export function ProcessSection({
   value,
   onChange,
   surface,
+  onSurface,
 }: {
   agent: Agent
   value: ProcessDraft
   onChange: (next: ProcessDraft) => void
   /** What a new conversation opens on, when no base fixes it. */
   surface: SessionKind
+  /** 직접 구성: what the agent's own step makes (its 사용할 화면), set beside the steps. */
+  onSurface?: (next: SessionKind) => void
 }) {
   const t = useT()
   const [reloaded, setReloaded] = useState(0)
@@ -203,8 +249,11 @@ export function ProcessSection({
   const base = cat?.bases.find((b) => b.key === value.base) ?? null
   const on: SessionKind = base?.surface ?? surface
   const customOffered = (base ? base.custom : on === 'report' || on === 'chat')
-  const verdict = useStepVerdict(value.steps, agent.id || null, value.mode === 'custom')
   const selfName = agent.name.trim() || t('이 에이전트')
+  const verdict = useStepVerdict(value.steps, agent.id || null, value.mode === 'custom', { surface: on, name: selfName })
+  const baseLabel = (name: string, made: string | undefined) =>
+    // 「기록 정리 (회의록)」: the base's name with what it makes, as other screens call it.
+    made && made !== name ? `${t(name)} (${t(made)})` : t(name)
   const bundles = useMemo(() => cat?.bundles ?? [], [cat])
 
   useEffect(() => {
@@ -268,7 +317,7 @@ export function ProcessSection({
       <fieldset className="space-y-2">
         <legend className="mb-1.5 text-base font-medium text-fg">{t('진행 과정')}</legend>
         {radio('direct', '바로 답하기', '요청을 받아 곧바로 답합니다.', fixed)}
-        {radio('base', '기본 과정에서 시작', '기본 에이전트가 일하는 순서를 그대로 따릅니다.')}
+        {radio('base', '기본 과정에서 시작', cat ? '기본 에이전트가 일하는 순서를 그대로 따릅니다.' : '기본 과정을 불러오는 중…', !cat)}
         {value.mode === 'base' && (
           <div className="ml-7 space-y-2" data-testid="process-base">
             <Select
@@ -279,7 +328,7 @@ export function ProcessSection({
             >
               {(cat?.bases ?? []).map((b) => (
                 <option key={b.key} value={b.key}>
-                  {t(b.name)}
+                  {baseLabel(b.name, b.templateName)}
                   {b.draft ? ` · ${t('평가 중')}` : ''}
                 </option>
               ))}
@@ -299,6 +348,14 @@ export function ProcessSection({
         {customOffered && radio('custom', '직접 구성 (고급)', '단계를 하나씩 골라 순서를 짭니다.')}
         {value.mode === 'custom' && (
           <div className="ml-7 space-y-3" data-testid="process-custom">
+            {onSurface && !base && (
+              <Field label={t('이 에이전트가 만드는 것')} hint={t('문서를 만들어야 내보내기 단계를 쓸 수 있습니다.')}>
+                <Select value={on} onChange={(e) => onSurface(e.target.value as SessionKind)} className="w-auto">
+                  <option value="report">{t('보고서(문서)')}</option>
+                  <option value="chat">{t('대화(답)')}</option>
+                </Select>
+              </Field>
+            )}
             <StepList steps={value.steps} onChange={(steps) => onChange({ ...value, steps })} verdict={verdict} selfName={selfName} />
             <div className="flex flex-wrap items-center gap-2">
               <SaveAsBundle steps={value.steps} onSaved={() => setReloaded((n) => n + 1)} />

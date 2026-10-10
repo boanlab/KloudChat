@@ -1,5 +1,13 @@
 import type { Page, TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
+import { readFileSync } from 'node:fs'
+
+/** What `/user-templates/catalogue` and `/user-templates/start/doc-minutes` send, made by the API
+ * itself (`user_templates.catalogue`, `draft_of`). */
+const templateFixture = JSON.parse(readFileSync(new URL('./template-fixture.json', import.meta.url), 'utf8')) as {
+  catalogue: Record<string, unknown>
+  startMinutes: Record<string, unknown>
+}
 
 /**
  * The 「사용자 지정」 hub against fixture data only: one account with its own agents, skills and
@@ -99,7 +107,8 @@ export const bases = [
   { key: 'minutes', name: '기록 정리', description: '회의·인터뷰·강의 기록', surface: 'report', docFormat: 'minutes', template: 'doc-minutes',
     steps: ['올린 녹음 기록·메모를 읽습니다', '회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다',
       '「다음 주 금요일」 같은 날짜를 회의일 기준으로 계산해 둡니다', '회의록을 씁니다', '할 일마다 담당자·기한과 근거를 확인합니다'],
-    draft: false, custom: true, bundles: officialBundles, formatChecks: ['할 일의 담당자·기한 확인', '날짜 확인'], asks: true },
+    draft: false, custom: true, bundles: officialBundles, formatChecks: ['할 일의 담당자·기한 확인', '날짜 확인'], asks: true,
+    templateName: '회의록' },
   { key: 'data-analysis', name: '데이터 분석', description: '엑셀·CSV 분석', surface: 'chat', docFormat: null, template: null,
     steps: ['빠진 정보가 있으면 먼저 물어봅니다', '답의 표기를 다듬습니다', '답의 수치가 도구로 계산한 결과에 있는지 확인합니다'],
     draft: false, custom: true, asks: true, formatChecks: [],
@@ -174,6 +183,13 @@ const templates = [
     description: '사업을 10장으로 소개합니다.', descriptionEn: 'Ten slides.', fills: [], fillsEn: [], checks: [], hasPreview: false, slideCount: 0 },
 ]
 
+/** A person's template as `/design-templates` lists it beside the shipped ones. */
+function asDesignTemplate(row: Record<string, unknown>) {
+  return { id: row.id, kind: 'document', surface: 'report', name: row.name, nameEn: '', category: row.category || '내 템플릿',
+    categoryEn: '', description: row.description ?? '', descriptionEn: '', fills: row.fills ?? [], fillsEn: [], checks: [],
+    examplePrompt: '', examplePromptEn: '', formFormat: '', hasPreview: false, slideCount: 0, user: true, mine: true }
+}
+
 const designs = [
   { id: 'd1', name: '학과 공식 문서', description: '남색 강조', tokens: { accent: '#1f3a8a', ink: '#111111', muted: '#666666', font: 'serif' },
     body: '', imageStyle: '', craft: [], shared: false, mine: true, updatedAt: at },
@@ -199,7 +215,7 @@ export function conversationRows(n: number) {
   }))
 }
 
-export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0 } = {}) {
+export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false } = {}) {
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
   const unexpected: string[] = []
   const problems: string[] = []
@@ -210,6 +226,15 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
   let skills = emptyMine ? [] : [...mySkills]
   const store = storeSkills.map((s) => ({ ...s }))
   let sessions: Record<string, unknown>[] = conversationRows(conversations)
+  let userTemplates: Record<string, unknown>[] = []
+  let catalogRows: Record<string, unknown>[] = [
+    { id: 'e1', slug: 'time', name: '시간', description: "현재 시각과 타임존 변환. '오늘'을 모델이 지어내지 않게 합니다.", category: '기본',
+      transport: 'stdio', endpoint: "uvx --with 'mcp<2' mcp-server-time --local-timezone=Asia/Seoul", env: {}, requiredEnv: [],
+      toolsKeyVar: '', toolsKeyFeature: '', kinds: ['chat', 'report', 'slides'], enabled: true, position: 0, updatedAt: at },
+    { id: 'e2', slug: 'youtube', name: 'YouTube 전사', description: '영상의 자막을 가져오고, 없으면 음성을 전사합니다.', category: '미디어',
+      transport: 'stdio', endpoint: 'uv run --script /srv/mcp/youtube.py', env: { WHISPER_URL: '${TOOLS_STT_URL}' }, requiredEnv: [],
+      toolsKeyVar: 'WHISPER_URL', toolsKeyFeature: 'stt', kinds: ['chat', 'report'], enabled: true, position: 1, updatedAt: at },
+  ]
 
   await page.context().route('**/*', async (route) => {
     const request = route.request()
@@ -229,7 +254,7 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value })
 
     if (method === 'POST' && path === '/auth/refresh') return json({ accessToken: 'fixture-only', expiresIn: 3600,
-      user: { id: ME, name: 'Fixture', email: 'fixture@example.test', role: 'user', status: 'active', monthlyCredits: 1000,
+      user: { id: ME, name: 'Fixture', email: 'fixture@example.test', role: admin ? 'admin' : 'user', status: 'active', monthlyCredits: 1000,
         creditsUsed: 0, avatarColor: '#168267', allowedModels: [], createdAt: at,
         preferences: { autoMemory: false, showUsage: false, streamResponses: true } } })
     if (method === 'GET' && path === '/auth/config') return json({ brand: { name: 'KloudChat', logo: '' },
@@ -244,7 +269,33 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && path === '/skills/store') return json(store)
     if (method === 'GET' && path === '/tools') return json(tools)
     if (method === 'GET' && path === '/designs') return json(designs)
-    if (method === 'GET' && path === '/design-templates') return json(templates)
+    if (method === 'GET' && path === '/design-templates') return json([...templates, ...userTemplates.map(asDesignTemplate)])
+    // A person's templates (`/user-templates`): the editor's catalogue as the server makes it.
+    if (method === 'GET' && path === '/user-templates/catalogue') return json(templateFixture.catalogue)
+    if (method === 'GET' && path === '/user-templates') return json({ mine: userTemplates, shared: [] })
+    if (method === 'GET' && path.startsWith('/user-templates/start/')) return json(templateFixture.startMinutes)
+    if (method === 'POST' && path === '/user-templates') {
+      const row = { ...body, id: 'ut-00000000-0000-0000-0000-000000000001', formName: '', hasForm: false, mine: true, ownerName: '', updatedAt: at }
+      userTemplates = [row as Record<string, unknown>]
+      return json(row, 201)
+    }
+    if (method === 'GET' && /^\/user-templates\/[^/]+$/.test(path)) {
+      const row = userTemplates.find((r) => path.endsWith(String(r.id)))
+      return row ? json(row) : json({ detail: 'template_not_found' }, 404)
+    }
+    if (method === 'PUT' && /^\/user-templates\/[^/]+$/.test(path)) {
+      userTemplates = userTemplates.map((r) => (path.endsWith(String(r.id)) ? { ...r, ...body } : r))
+      return json(userTemplates.find((r) => path.endsWith(String(r.id))))
+    }
+    if (method === 'GET' && path === '/admin/connector-catalog') return json({ entries: catalogRows, kinds: ['chat', 'report', 'slides'],
+      transports: ['stdio', 'http', 'sse'], features: ['search', 'fetch', 'exec', 'research', 'stt', 'index'],
+      placeholders: ['${TOOLS_RESEARCH_URL}', '${TOOLS_STT_URL}', '${TOOLS_SEARCH_URL}', '${TOOLS_FETCH_URL}', '${TOOLS_EXEC_URL}'] })
+    if (method === 'POST' && path === '/admin/connector-catalog') {
+      catalogRows = [...catalogRows, { ...(body as Record<string, unknown>), id: `e${catalogRows.length + 1}`, updatedAt: at,
+        env: Object.fromEntries(Object.entries((body.env ?? {}) as Record<string, string>).map(([k, v]) => [k, v && v.startsWith('${') ? v : null])) }]
+      return json({ entries: catalogRows }, 201)
+    }
+    if (method === 'GET' && path === '/admin/settings') return json(null, 404)
     if (method === 'GET' && path === '/user-pipelines') return json(emptyMine ? [] : myPipelines)
     if (method === 'GET' && path === '/user-pipelines/store') return json(storePipelines)
     if (method === 'GET' && path === '/user-pipelines/catalogue') return json({ maxSteps: 12, skills: [], checks: [], human: [
@@ -271,7 +322,7 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       agents = agents.map((a) => (a.id === id ? { ...a, process, baseKey: body.base ?? null } : a))
       return json({ ...process, agent: {} })
     }
-    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft$/.test(path)) return json(agentDraft)
+    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft$/.test(path)) return json(draft)
     if (method === 'POST' && /^\/agents\/[^/]+\/knowledge\/from-files$/.test(path)) return json([], 201)
     if (method === 'GET' && path === '/sessions') return json(sessions)
     if (method === 'GET' && path === '/sessions/paged') return json({ items: sessions.slice(0, 50), total: sessions.length, page: 1, size: 50 })
@@ -337,6 +388,10 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       return json(skills.find((s) => s.id === id))
     }
     if (method === 'POST' && path === '/agents') {
+      // As the API checks it: a theme the person can neither own nor see is refused.
+      if (body.designSystemId && !designs.some((d) => d.id === body.designSystemId)) {
+        return json({ detail: 'design_system_not_found' }, 404)
+      }
       const made = agentRow('a9999999999999999999999999999999', String(body.name), { ...body })
       agents = [made, ...agents]
       return json(made, 201)

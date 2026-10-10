@@ -131,3 +131,52 @@ test('설정 › 메모리 holds what the hub\'s 메모리 tab held', async ({ p
   await expect(tabs.getByRole('tab', { name: '테마' })).toBeVisible()
   expect(state.problems).toEqual([])
 })
+
+// ── persona A/B fixes ───────────────────────────────────────────────────
+
+test('B-3: 바로 답하기 with 마무리하기 says it cannot export; a document base shows the export choice', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const form = await openForm(page)
+  const bundles = page.getByTestId('agent-bundles')
+  const finish = bundles.getByTestId('bundle-row').filter({ hasText: '마무리하기' })
+  // Before ticking, the note promises only what this agent can do.
+  await expect(finish).not.toContainText('파일로 내보냅니다')
+  await bundles.getByRole('checkbox', { name: '마무리하기' }).check()
+  await expect(finish.getByTestId('bundle-cannot')).toContainText('파일 내보내기는 문서를 쓰는 과정에서만 됩니다')
+
+  await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
+  // The export is its own choice on the row, not behind 자세히.
+  const exportRow = finish.getByTestId('bundle-export')
+  await expect(exportRow).toBeVisible()
+  await exportRow.getByRole('checkbox', { name: '다 쓰면 파일로 내보내기' }).check()
+  await expect(exportRow.getByRole('combobox', { name: '파일 형식' })).toHaveValue('docx')
+  await expect(finish.getByTestId('bundle-cannot')).toHaveCount(0)
+  expect(state.problems).toEqual([])
+})
+
+test('B-7: a base is named with what it makes', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  const form = await openForm(page)
+  await form.getByRole('radio', { name: /기본 과정에서 시작/ }).check()
+  const select = page.getByTestId('process-base').getByRole('combobox', { name: '기본 과정' })
+  await expect(select.locator('option', { hasText: '기록 정리 (회의록)' })).toHaveCount(1)
+})
+
+test('B-5: a new agent\'s 직접 구성 is judged as the agent it will be, and says what it makes', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const form = await openForm(page)
+  await form.getByRole('textbox', { name: '이름' }).fill('새 보고 도우미')
+  await form.getByRole('radio', { name: /직접 구성/ }).check()
+  const custom = page.getByTestId('process-custom')
+  await custom.getByRole('combobox', { name: '이 에이전트가 만드는 것' }).selectOption('report')
+  await expect.poll(() => state.calls.filter((c) => c.path === '/user-pipelines/validate').at(-1)?.body)
+    .toMatchObject({ selfSurface: 'report', selfName: '새 보고 도우미' })
+})
+
+test('B-6, B-9: 메모리 has a pointer where it used to be; the brightness toggle is not called 테마', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo)
+  await page.goto('/customize')
+  await expect(page.getByTestId('memory-moved')).toContainText('메모리는 설정 › 메모리로 옮겼습니다.', { timeout: 15_000 })
+  await expect(page.getByTestId('memory-moved').getByRole('link', { name: '메모리 열기' })).toHaveAttribute('href', '/settings/memory')
+  await expect(page.getByRole('button', { name: /^테마: / })).toHaveCount(0)
+})

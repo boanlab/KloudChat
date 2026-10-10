@@ -382,6 +382,9 @@ class Agent(SQLModel, table=True):
     #: material does not answer it, on top of its 서식's. Null: none stored (a copy or an agent
     #: on a base asks what the official agent asks).
     gap_questions: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: 진행 과정 설정 of its own (`services/process_settings.py`): calculations, 서식 보정
+    #: stages, checks, 검토 규칙, structure and options over its 서식's. Null: its 서식's.
+    process_settings: dict | None = Field(default=None, sa_column=_json(nullable=True))
     #: Taken out of the catalogue: listed nowhere and no new conversation starts with it. The
     #: row stays so conversations and documents made with it still open and export.
     retired: bool = Field(default=False)
@@ -575,6 +578,84 @@ class Template(SQLModel, table=True):
     render_template_id: str = Field(default="", max_length=60)
     #: Offered to every account. Administrator-only.
     shared: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+# ── a person's templates ───────────────────────────────────────────────
+
+
+class UserTemplate(SQLModel, table=True):
+    """A document 템플릿 a person made in the editor (`services/user_templates.py`).
+
+    It holds every field a shipped 서식 sets (`app/design_templates/<id>/template.toml` and its
+    files): what to bring, the instructions and checklist, the genre rule, the document format
+    (head fields, numbering, head layout, 개조식 lists, 「끝.」), the 빠진 정보 질문, the 진행
+    과정 설정 (calculations, checks, 검토 규칙, structure) and the check skills. It is drawn in the
+    shared document seed (`_document`) with the design's tokens: no HTML or CSS of its own.
+    A form file it was made from is kept as reference text only. Sessions and agents name it
+    `ut-<id>`."""
+
+    __tablename__ = "user_templates"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    owner_id: str = Field(foreign_key="users.id", index=True)
+    name: str = Field(max_length=60)
+    description: str = Field(default="", max_length=200)
+    category: str = Field(default="", max_length=20)
+    fills: list | None = Field(default=None, sa_column=_json(nullable=True))
+    example_prompt: str = Field(default="")
+    instructions: str = Field(default="")
+    checklist: str = Field(default="")
+    genre: str = Field(default="")
+    #: The document format: `{label, fields, numbering, head, lists, closing, subtitle}`.
+    doc_format: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    cover_page: bool = Field(default=False)
+    #: `design`: the body face follows the design's font token, as 개조식 보고서 does.
+    body_face: str = Field(default="", max_length=10)
+    check_skills: list | None = Field(default=None, sa_column=_json(nullable=True))
+    check_options: list | None = Field(default=None, sa_column=_json(nullable=True))
+    questions: list | None = Field(default=None, sa_column=_json(nullable=True))
+    process: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The form it was made from: its name and extracted text, given to the writer as
+    #: reference only (never the export base).
+    form_name: str = Field(default="", max_length=200)
+    form_text: str = Field(default="")
+    #: `private` or `org` (others pick it; only the owner edits it).
+    visibility: str = Field(default="private", max_length=10)
+    created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+
+
+# ── the connector catalogue ────────────────────────────────────────────
+
+
+class ConnectorCatalogEntry(SQLModel, table=True):
+    """An installable MCP server, kept by administrators in 관리 › 커넥터 카탈로그
+    (`services/tools/catalog.py`). Members install from it; a stdio entry is a command only an
+    administrator may put here. `env` values are stored encrypted and never sent back; the
+    tools gateway key goes in only when `tools_key_var` resolves to the address of the tool
+    `tools_key_feature` names."""
+
+    __tablename__ = "connector_catalog"
+
+    id: str = Field(default_factory=_uuid, primary_key=True)
+    slug: str = Field(max_length=60, unique=True, index=True)
+    name: str = Field(max_length=80)
+    description: str = Field(default="", max_length=300)
+    category: str = Field(default="", max_length=30)
+    transport: str = Field(default="http", max_length=10)
+    endpoint: str = Field(default="", max_length=500)
+    env: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Credentials the install dialog collects: `[{key, label, hint, secret}]`.
+    required_env: list | None = Field(default=None, sa_column=_json(nullable=True))
+    auth: str = Field(default="none", max_length=20)
+    tools_key_var: str = Field(default="", max_length=60)
+    tools_key_feature: str = Field(default="", max_length=20)
+    kinds: list | None = Field(default=None, sa_column=_json(nullable=True))
+    enabled: bool = Field(default=True)
+    position: int = Field(default=0)
+    updated_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 

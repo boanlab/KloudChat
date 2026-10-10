@@ -46,3 +46,12 @@ You write a report that compares alternatives on the same criteria and recommend
 9. If the cheapest option cannot be carried out (budget structure, schedule), write ‘지금 실행 가능한 안’ and ‘장기 최저 비용 안’ separately.
 10. Do not end with ‘상황에 따라 다르다’. If the material is insufficient, state what would settle the conclusion once it arrives.
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "비교할 대안의 자료를 읽습니다"
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "대안별 총비용과 가중 점수를 계산해 둡니다"
+write = "비교·분석 보고서를 씁니다"
+check = "비교표의 빈칸과 점수가 계산과 맞는지 확인합니다"

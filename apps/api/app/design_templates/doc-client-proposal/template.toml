@@ -62,3 +62,18 @@ question = "금액은 부가세 포함인가요, 별도인가요?"
 why = "부가세 기준이 없으면 예산과 견적을 같은 기준으로 비교할 수 없습니다."
 placeholder = "[부가세 기준]"
 detector = { type = "builtin", name = "vat" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc", "proposal-rfp", "quote-calc", "staffing"]
+stages = ["page-limit"]
+checks = ["quote-totals", "proposal-schedule", "lead-dates", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]
+amend = ["requirement-ids", "quote-validity"]
+head = ["rfp-client"]
+conflict_rule = "State which value you took as the premise, and leave what must be checked in 「전제·제외 범위·위험」 or the question list."
+
+[process.structure]
+# The RFP's body page limit, counted and said (not cut).
+page_limit_rfp = true

@@ -26,6 +26,8 @@ const AgentDetailPage = lazy(() =>
   import('@/pages/customize/AgentDetailPage').then((m) => ({ default: m.AgentDetailPage })),
 )
 const AgentCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.AgentCreatePage })))
+const TemplateEditPage = lazy(() => import('@/pages/customize/TemplateEditPage').then((m) => ({ default: m.TemplateEditPage })))
+const TemplatesPage = lazy(() => import('@/pages/customize/TemplateEditPage').then((m) => ({ default: m.TemplatesPage })))
 const SkillDetailPage = lazy(() =>
   import('@/pages/customize/SkillDetailPage').then((m) => ({ default: m.SkillDetailPage })),
 )
@@ -142,6 +144,9 @@ function Authenticated() {
           <Route path="artifacts" element={<ArtifactsPage />} />
           <Route path="customize" element={<CustomizePage />} />
           <Route path="customize/agents/new" element={<AgentCreatePage />} />
+          <Route path="customize/templates" element={<TemplatesPage />} />
+          <Route path="customize/templates/new" element={<TemplateEditPage />} />
+          <Route path="customize/templates/:templateId" element={<TemplateEditPage />} />
           <Route path="customize/agents/:agentId" element={<AgentDetailPage />} />
           <Route path="customize/skills/new" element={<SkillCreatePage />} />
           <Route path="customize/skills/upload" element={<SkillUploadPage />} />

@@ -6,7 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from app.services import checks, key_figures, report, report_checks, verify
+from app.services import checks, key_figures, process_settings, report, report_checks, verify
 
 MINUTES_1 = (
     "[메모 — 컴퓨터공학과 교육과정위원회, 2026-10-12(월) 15:00~16:10, 공학관 302호]\n"
@@ -134,7 +134,8 @@ def test_the_model_s_conflict_list_is_kept_with_where_and_when():
     first = conflicts[0].values
     assert [v["value"] for v in first] == ["2시간", "4.5시간"]
     assert "소개서" in first[0]["line"] and first[1]["when"] == "2026-09"
-    block = key_figures.conflict_block(conflicts, "comparison")
+    block = key_figures.conflict_block(
+        conflicts, process_settings.for_format("comparison").conflict_rule)
     assert "자료와 충돌" in block and "2시간(제품 소개서)" in block and "4.5시간" in block
 
 
@@ -356,9 +357,10 @@ def test_periods_are_written_one_way():
 
 
 def test_page_limits():
-    assert report_checks.page_limit("gaejo", "개조식으로 정리해 줘") == 1
-    assert report_checks.page_limit("gaejo", "두 쪽 이내로") == 2
-    assert report_checks.page_limit("lab", "실험 보고서") is None
+    gaejo = process_settings.for_format("gaejo")
+    assert report_checks.page_limit(gaejo, "개조식으로 정리해 줘") == 1
+    assert report_checks.page_limit(gaejo, "두 쪽 이내로") == 2
+    assert report_checks.page_limit(process_settings.for_format("lab"), "실험 보고서") is None
 
 
 async def test_a_long_gaejo_body_is_counted_and_condensed_once():
@@ -391,7 +393,7 @@ async def test_the_gaejo_page_count_also_reads_the_hwpx_through_the_attachment_l
 
 
 def test_unrelated_formats_have_no_pre_pass_or_checks():
-    assert not {"lab", "term"} & report_checks.PREPASS_FORMATS
+    assert not any(process_settings.for_format(f).prepass for f in ("lab", "term"))
     assert report_checks.checks(None) == []
     assert report_checks.checks(report_checks.Prepass(format_id="lab")) == []
     assert report_checks.amendments(None, [{"heading": "a", "content": "b"}], "", "", []) == []

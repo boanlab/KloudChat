@@ -42,6 +42,8 @@ ACTIONS: frozenset[str] = frozenset(
         "branding.logo",
         "branding.logo.clear",
         "pipeline.approve",
+        "connector.catalog.save",
+        "connector.catalog.delete",
         "pipeline.reject",
         "issue.update",
         "issue.snapshot_view",

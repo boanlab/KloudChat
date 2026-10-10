@@ -46,3 +46,12 @@ You write a proposal tailored to the client. The readers are the client's evalua
 8. Put the client's own tasks (providing data, issuing accounts, acceptance testing) in the schedule; dates not in the material stay ‘협의’.
 9. End with one line stating the decision you ask the client to make (when following the RFP's table of contents, at the end of the last section).
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "제안요청서와 올린 자료를 읽습니다"
+question = "기간·인력·단가처럼 빠진 정보가 있으면 먼저 물어봅니다"
+compute = "견적 합계·일정·투입 인력을 계산해 둡니다"
+write = "제안서를 씁니다"
+check = "견적 합계·일정·인원과 쪽수 제한을 확인합니다"

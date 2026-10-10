@@ -66,7 +66,11 @@ def encode(value: Any) -> Any:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         cls = type(value)
         if cls.__module__ == "app.services.doc_formats" and cls.__name__ == "DocFormat":
-            return {"__fmt": value.id}
+            from app.services import doc_formats
+
+            # A shipped format by its id; a person's template's own, by its fields.
+            if doc_formats.BY_ID.get(value.id) is value:
+                return {"__fmt": value.id}
         if cls.__module__.startswith("app."):
             return {"__dc": f"{cls.__module__}:{cls.__qualname__}",
                     "f": {f.name: encode(getattr(value, f.name))

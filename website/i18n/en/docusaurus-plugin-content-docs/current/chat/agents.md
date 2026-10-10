@@ -30,7 +30,7 @@ The built-in agents are **Summary** (요약·정리), **Records** (기록 정리
    - **Start from a base process**: follows the order a built-in agent (Summary, Records, …) works in. Its steps appear as up to five plain lines, and the agent gets that built-in agent's question card, document format, template and checks.
    - **Set it up yourself (advanced)**: pick questions, calculations, checks, reviews, other agents and exports one step at a time. It starts with one "This agent" step. Presentation has no custom order.
 3. Tick **bundles** under **Extra work** (below). A base process comes with the bundles its built-in agent uses already ticked; left as they are, the agent works exactly like the built-in one.
-4. Under **Output**, pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **Manage themes** opens Settings › Themes. An agent that writes reports can also fix a **document format**.
+4. Under **Output look**, pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **Manage themes** opens Settings › Themes. An agent that writes reports can also fix a **document format**.
 5. Enter **How to use** and up to six **opening prompts** under **Conversation start**, and files or web addresses under **Sources**. A web address stores the page as it was when registered.
 6. Set **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Sharing**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
 
@@ -50,6 +50,18 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 - The built-in agents are made of the same bundles. Records, for example, is Prepare before writing + Review after writing (including each action item's owner and deadline) + Finish (export off).
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. Your bundles appear as checkboxes under Extra work in all your agents. Edit and share them from the **Bundles** row on the Agents tab (Manage bundles).
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review, or calls another agent reaches others only after an administrator approves it under **Process review**. An agent that uses only a base process and the built-in bundles is shared at once.
+
+## Process settings and your own templates
+
+An agent that writes reports can turn on **Set for this agent** under **More settings** › **Process settings** and change what its template sets, starting from the template's values. Turned off, the template's (or document format's) settings apply as they are.
+
+- **Calculate before writing**: built-in calculations such as dates, quote totals, staffing, total cost per option, must-haves and weighted scores, career periods; and the **date basis** (the material's date or the meeting day).
+- **How it writes**: no web search, figures only when asked, a fixed outline.
+- **Structure rules**: sections in order, required tables (columns), summary lines at the top, bullet style, page limit. Checked by code.
+- **Review rules**: rules in your own words. After writing, a judge model shows the sentences that break them; nothing is rewritten.
+- **Calculation checks**, **Judged checks**, **Format repairs**, **Fill in what is missing**: built-in checks and repair steps attached by name.
+
+Make your own document template with **New template** under **Output look** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and process settings. An uploaded DOCX/HWPX form is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
 ## Save as agent
 

@@ -8,8 +8,8 @@ An agent's 진행 과정 is one of three:
 - `custom` — 직접 구성 (고급): the agent's own steps in the step editor.
 
 A base is an offered catalogue agent (`app/agents/*.toml`, not retired; drafts for
-administrators). Its steps, as a person reads them, are the `[summary]` lines of the pipeline
-it runs (`app/pipelines/*.toml`), at most five. Its 묶음 are the ones its file names, with
+administrators). Its steps, as a person reads them, are the `[summary]` lines of its file (else
+of the pipeline it runs), at most five. Its 묶음 are the ones its file names, with
 their items' ticks (`services/bundles.py`): picking the base ticks them, and compiling them
 gives the row exactly the check skills and strictness the official agent holds.
 
@@ -67,7 +67,16 @@ class Base:
             "steps": [line for _, line in self.steps], "draft": self.draft,
             "custom": self.custom, "bundles": [dict(b) for b in self.bundles],
             "formatChecks": list(self.format_checks), "asks": self.asks,
+            "templateName": self.template_name,
         }
+
+    @property
+    def template_name(self) -> str:
+        """What it makes, as the template list calls it (「회의록」), shown beside its name."""
+        from app.services import design_templates
+
+        found = design_templates.get(self.template) if self.template else None
+        return found.name if found is not None else ""
 
 
 def _pipeline_for(spec: dict):
@@ -81,12 +90,15 @@ def _pipeline_for(spec: dict):
 
 def _base(spec: dict) -> Base:
     from app.routers.pipelines import check_name
-    from app.services import gap_questions
+    from app.services import gap_questions, process_settings
 
     surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
-    pipe = _pipeline_for(spec)
-    steps = tuple((k, pipe.summary[k]) for k in _SUMMARY_ORDER if pipe.summary.get(k))[:5]
-    checks = tuple(check_name(k) for k in pipe.flow("checks")) if surface == "report" else ()
+    # The steps as a person reads them: the agent file's `[summary]`, else its pipeline's.
+    summary = dict(spec.get("summary") or {}) or _pipeline_for(spec).summary
+    steps = tuple((k, summary[k]) for k in _SUMMARY_ORDER if summary.get(k))[:5]
+    process = process_settings.resolve(template_id=spec.get("template"),
+                                       format_id=spec.get("doc_format"))
+    checks = tuple(check_name(k) for k in process.code_checks) if surface == "report" else ()
     return Base(
         key=spec["key"], name=spec["name"], description=spec.get("description", ""),
         surface=surface, doc_format=spec.get("doc_format") or None,

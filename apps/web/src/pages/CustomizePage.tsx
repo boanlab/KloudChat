@@ -667,6 +667,14 @@ function Hub() {
           </div>
         )}
 
+        {/* Memory used to live here; people still look for it here first. */}
+        <p className="mb-4 text-sm text-muted" data-testid="memory-moved">
+          {t('메모리는 설정 › 메모리로 옮겼습니다.')}{' '}
+          <Link to="/settings/memory" className="text-accent hover:underline">
+            {t('메모리 열기')}
+          </Link>
+        </p>
+
         <div role="tabpanel" aria-label={t(TAB_LABEL[tab])}>
           {tab === 'connectors' && <ConnectorsPage embedded />}
           {cardTab && (view === 'mine' ? mineBody() : exploreBody())}

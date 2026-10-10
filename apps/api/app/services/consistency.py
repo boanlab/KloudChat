@@ -274,11 +274,12 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
                        model: str, api_key: str) -> report_checks.Prepass | None:
     """The format's pre-pass run again with the follow-up read as part of the request, so a
     changed weight, start month or budget reaches the rewrite as settled values."""
-    from app.pipeline import registry
-    from app.services import report  # imported late: report is heavy and imports this tree
+    # Imported late: report is heavy and imports this tree.
+    from app.services import process_settings, report
 
-    # Only a format whose pipeline names pre-pass steps has one to run again.
-    if not registry.prepass_for(format_id):
+    # Only a document whose 서식 names pre-pass steps has one to run again.
+    process = process_settings.for_format(format_id)
+    if not process.prepass:
         return None
     # Options listed in the request itself (comparison-report-4) are its material.
     material = material if (material or "").strip() else request
@@ -287,7 +288,7 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
             format_id, f"{request}\n\n추가 요청: {instruction}", material,
             complete=report._complete, model=model, api_key=api_key,
             today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
-            tiebreak_model=report._tiebreak_model(model),
+            tiebreak_model=report._tiebreak_model(model), process=process,
         )
     except Exception:  # noqa: BLE001 — the rewrite goes ahead without settled values
         log.exception("revision pre-pass failed")

@@ -106,6 +106,16 @@ class AgentInfo:
     check_options: dict = field(default_factory=dict)
     #: 빠진 정보 질문 its gap card asks (`gap_questions.resolve`): its 서식's and its own.
     questions: tuple[dict, ...] = ()
+    #: Its own 진행 과정 설정 (`Agent.process_settings`), over its 서식's.
+    process: dict = field(default_factory=dict)
+    #: What the server runs for its `skill:<id>` check skills, read from the owner's rows
+    #: (`skill_specs.wire`), so a step runs them as a turn with the agent would.
+    specs: dict = field(default_factory=dict)
+
+    def skill_specs(self) -> dict:
+        from app.services import skill_specs
+
+        return {k: skill_specs.of_wire(v) for k, v in self.specs.items() if isinstance(v, dict)}
 
     def wire(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name, "output": self.output,
@@ -116,7 +126,9 @@ class AgentInfo:
                 "temperature": self.temperature,
                 **({"selfOf": self.self_of} if self.self_of else {}),
                 **({"checkOptions": dict(self.check_options)} if self.check_options else {}),
-                **({"questions": [dict(q) for q in self.questions]} if self.questions else {})}
+                **({"questions": [dict(q) for q in self.questions]} if self.questions else {}),
+                **({"process": dict(self.process)} if self.process else {}),
+                **({"specs": dict(self.specs)} if self.specs else {})}
 
     @classmethod
     def of_wire(cls, row: dict[str, Any]) -> AgentInfo:
@@ -132,7 +144,9 @@ class AgentInfo:
                                 if isinstance(row.get("temperature"), (int, float)) else None),
                    self_of=str(row.get("selfOf") or ""),
                    check_options=dict(row.get("checkOptions") or {}),
-                   questions=tuple(q for q in row.get("questions") or () if isinstance(q, dict)))
+                   questions=tuple(q for q in row.get("questions") or () if isinstance(q, dict)),
+                   process=dict(row.get("process") or {}),
+                   specs=dict(row.get("specs") or {}))
 
 
 def _clean_settings(kind: str, raw: Any) -> dict[str, Any]:
@@ -607,6 +621,18 @@ class AgentStep(Step):
         yield {"type": "step", "id": f"compose:{self.name}", "label": f"절 {len(written)}개 작성",
                "status": "done", **({"detail": " · ".join(stages)[:1500]} if stages else {})}
 
+    async def _own_scripts(self, bundle: Bundle) -> dict:
+        """The running person's own skill scripts, which only the sandbox runs
+        (`run_skill_script`), as a chat turn of theirs offers them."""
+        from app.services import skill_specs
+
+        user_id = str(bundle.request.turn.get("user_id") or bundle.request.user_id or "")
+        if not user_id:
+            return {}
+        async with _host().SessionLocal() as db:
+            _specs, scripts = await skill_specs.for_turn(db, user_id)
+        return scripts
+
     async def _tools(self, bundle: Bundle, info: AgentInfo, model: dict, strict: bool) -> list:
         """The agent's own tools, as a chat turn with it would have them. A step of another
         agent runs unattended (no web search, no connectors); the agent's own `@self` step keeps
@@ -646,9 +672,16 @@ class AgentStep(Step):
                   or "You are a careful assistant. Answer in Korean.") + _STEP_NOTE
         user = request + (f"\n\n# 자료\n{material[:60_000]}" if material else "")
         tools = await self._tools(bundle, info, model, strict)
+        from app.services.tools import sandbox_tools
+
+        offers_scripts = any(t.name == sandbox_tools.RUN_SKILL_SCRIPT.name for t in tools)
+        own_scripts = await self._own_scripts(bundle) if offers_scripts else {}
+        if own_scripts:
+            # The person's own scripts join the shipped ones in `run_skill_script`'s choices.
+            tools = sandbox_tools.with_own_scripts(tools, own_scripts)
         ctx = ToolContext(user_id=str(req.turn.get("user_id") or req.user_id or ""),
                           session_id=req.session_id, api_key=req.api_key, agent_name=info.name,
-                          request=request, strict_local=strict)
+                          request=request, strict_local=strict, own_scripts=own_scripts)
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         parts: list[str] = []
         spent: dict[str, int] = {"inputTokens": 0, "outputTokens": 0}
@@ -675,9 +708,9 @@ class AgentStep(Step):
             api_key=req.api_key, session_id=req.session_id, today=req.today,
             first_message=request, messages=messages,
             material="\n".join([request, *_sources(bundle)]),
-            check_keys=tuple(check_skills.of_stage(tuple(info.checks), "post")),
-            check_facts=check_skills.fact_set(None, info.catalog_key or None),
-            check_options=info.check_options,
+            check_keys=tuple(check_skills.of_stage(tuple(info.checks), "post",
+                                                   info.skill_specs())),
+            check_options=info.check_options, skill_specs=info.skill_specs(),
             check_material="\n".join(req.untrusted),
             tool_outputs=[*ctx.outputs, *_computed(bundle)], judge=req.judge, kept_steps=[],
             usage=spent)
@@ -725,7 +758,8 @@ def _sub_args(bundle: Bundle, info: AgentInfo, request: str) -> dict[str, Any]:
         web_search=bool(req.turn.get("web_search", req.web_search)),
         template_id=info.template_id or None, format_id=info.doc_format or None,
         design_tokens=req.design_tokens, check_keys=tuple(info.checks) or None,
-        check_options=dict(info.check_options),
+        check_options=dict(info.check_options), skill_specs=info.skill_specs(),
+        process=dict(info.process) or None,
         session_id=req.session_id, image_model=None,
     )
 
@@ -772,7 +806,10 @@ class SkillStep(Step):
 
         req, ref = bundle.request, self.spec["ref"]
         material = "\n\n".join(t for t in [*_material(bundle), _product_text(bundle)] if t.strip())
-        pre = report_checks.Prepass(format_id=self.format_id)
+        from app.services import process_settings
+
+        pre = report_checks.Prepass(format_id=self.format_id,
+                                    process=process_settings.for_format(self.format_id))
         job = report_checks.PrepassJob(self.format_id, req.text, material, report._complete,
                                        req.model, req.api_key, req.today, "", bundle.usage)
         await report_checks.PREPASS_STEPS[ref](pre, job)
@@ -807,8 +844,7 @@ class CheckStep(Step):
             p.text for p in parts if p.origin not in ("prepass", "computed", "derived"))])
         computed = _computed(bundle)
         # The strictness of the agent whose product this is, as its own run would trace it.
-        options = check_skills.options_for(bundle.spec.format_id or "", req.today,
-                                           _product(bundle).get("checkOptions"))
+        options = check_skills.options_for(req.today, _product(bundle).get("checkOptions"))
         keys = (ref,)
         if kind == "document":
             bundle.document.sections, outcome = check_skills.ground_sections(
@@ -1004,15 +1040,31 @@ class GapsStep(Step):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         from app.pipeline.check_stages import card_questions
-        from app.services import check_skills
+        from app.services import check_skills, gap_questions, report
 
         req = bundle.request
         keys = ("gap-check",)
-        # A judge-type question is not judged here: nothing is asked on a guess.
+        material = "\n".join(_material(bundle))
+        resuming = req.turn.get("resume") == self.name
+        judged: dict[str, bool] = {}
+        if gap_questions.needs_judge(self.questions):
+            if resuming:
+                # The card was put up on the judge's reading; a judge-type question counts as
+                # missing now only when the card asked it and it was answered.
+                judged = {str(q["id"]): f"{check_skills.GAP_PREFIX}{q['id']}" not in bundle.answers
+                          for q in self.questions
+                          if (q.get("detector") or {}).get("type") == "judge"}
+            else:
+                # The judge reads the material once and must quote the words that answer each;
+                # nothing is asked on a guess.
+                judged = await gap_questions.judged(
+                    self.questions, request=req.text, material=material,
+                    complete=report._complete, model=req.judge, api_key=req.api_key,
+                    usage=bundle.usage)
         bundle.findings.gaps = check_skills.gaps(
-            keys, questions=self.questions, request=req.text,
-            material="\n".join(_material(bundle)), today=req.today)
-        if req.turn.get("resume") == self.name:
+            keys, questions=self.questions, request=req.text, material=material,
+            today=req.today, judged=judged)
+        if resuming:
             asked = [{"id": f"{check_skills.GAP_PREFIX}{g.get('fact')}",
                       "label": str(g.get("label") or "")} for g in bundle.findings.gaps]
             shown = check_skills.labelled(bundle.answers, asked)

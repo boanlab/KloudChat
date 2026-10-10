@@ -1,0 +1,461 @@
+{
+ "catalogue": {
+  "numberings": [
+   "decimal",
+   "roman",
+   "korean",
+   "official",
+   "none"
+  ],
+  "heads": [
+   "cover",
+   "header",
+   "memo",
+   "press",
+   "paper",
+   "draft"
+  ],
+  "lists": [
+   "",
+   "gaejo"
+  ],
+  "checkSkills": [
+   {
+    "key": "gap-check",
+    "name": "빠진 정보 묻기",
+    "stage": "pre"
+   },
+   {
+    "key": "generic-language-killer",
+    "name": "상투어 걷어내기",
+    "stage": "post"
+   },
+   {
+    "key": "grounding-check",
+    "name": "근거 대조",
+    "stage": "post"
+   }
+  ],
+  "checkOptions": [
+   "tool_numbers",
+   "titles"
+  ],
+  "detectors": [
+   {
+    "name": "meeting_date",
+    "label": "회의 날짜(연도까지)"
+   },
+   {
+    "name": "attendees",
+    "label": "참석자"
+   },
+   {
+    "name": "action_dues",
+    "label": "실행 항목마다 기한"
+   },
+   {
+    "name": "client",
+    "label": "고객사 이름"
+   },
+   {
+    "name": "period",
+    "label": "사업 기간"
+   },
+   {
+    "name": "staffing",
+    "label": "투입 인력·단가·총액"
+   },
+   {
+    "name": "vat",
+    "label": "부가세 포함·별도"
+   },
+   {
+    "name": "prices",
+    "label": "비용으로 고를 때 대안별 금액"
+   },
+   {
+    "name": "musts",
+    "label": "필수 조건이라 했을 때 그 조건"
+   },
+   {
+    "name": "career_periods",
+    "label": "경력 기간(연월)"
+   },
+   {
+    "name": "career_metrics",
+    "label": "성과 수치"
+   },
+   {
+    "name": "length_rule",
+    "label": "자기소개서 글자 수 규칙"
+   },
+   {
+    "name": "deadline_basis",
+    "label": "기한 기준(며칠 이내)"
+   },
+   {
+    "name": "period_split",
+    "label": "비교할 기간의 구분"
+   },
+   {
+    "name": "denominator",
+    "label": "비율의 분모(무응답 포함 여부)"
+   },
+   {
+    "name": "letter_company",
+    "label": "지원 동기를 물을 때 지원 회사·직무"
+   }
+  ],
+  "process": {
+   "prepass": [
+    {
+     "name": "date-calc",
+     "label": "날짜 계산(상대 날짜·납기)",
+     "needs": ""
+    },
+    {
+     "name": "proposal-rfp",
+     "label": "제안요청서 조건 읽기(고객사·기간·쪽수)",
+     "needs": ""
+    },
+    {
+     "name": "quote-calc",
+     "label": "견적 합계 계산(두 번 읽어 맞춰 봄)",
+     "needs": ""
+    },
+    {
+     "name": "staffing",
+     "label": "투입 인력·MM 읽기",
+     "needs": ""
+    },
+    {
+     "name": "compare-cost",
+     "label": "대안별 총비용 계산",
+     "needs": ""
+    },
+    {
+     "name": "compare-check",
+     "label": "필수 조건·가중 점수 계산",
+     "needs": ""
+    },
+    {
+     "name": "career-periods",
+     "label": "경력 기간 계산",
+     "needs": ""
+    }
+   ],
+   "stages": [
+    {
+     "name": "minutes-repair",
+     "label": "실행 항목 칸 보정(출처·비고 열, 풀린 기한, 자료에 없는 담당·수량)",
+     "needs": "date-calc"
+    },
+    {
+     "name": "minutes-reground",
+     "label": "고친 뒤 담당·수량 다시 확인",
+     "needs": ""
+    },
+    {
+     "name": "career-periods-tidy",
+     "label": "경력 기간 표기 통일",
+     "needs": "career-periods"
+    },
+    {
+     "name": "page-limit",
+     "label": "쪽수 제한 맞추기",
+     "needs": ""
+    }
+   ],
+   "checks": [
+    {
+     "name": "quote-totals",
+     "label": "견적 합계 확인",
+     "needs": "quote-calc"
+    },
+    {
+     "name": "proposal-schedule",
+     "label": "제안 일정 확인",
+     "needs": "proposal-rfp"
+    },
+    {
+     "name": "gaejo-style",
+     "label": "개조식 문체 확인",
+     "needs": ""
+    },
+    {
+     "name": "lead-dates",
+     "label": "날짜 확인",
+     "needs": "date-calc"
+    },
+    {
+     "name": "minutes-rows",
+     "label": "할 일의 담당자·기한 확인",
+     "needs": "date-calc"
+    },
+    {
+     "name": "compare-cells",
+     "label": "비교표 빈칸·점수 확인",
+     "needs": "compare-check"
+    },
+    {
+     "name": "career-numbers",
+     "label": "경력 수치 확인",
+     "needs": "career-periods"
+    },
+    {
+     "name": "staff-counts",
+     "label": "투입 인원 확인",
+     "needs": "staffing"
+    },
+    {
+     "name": "material-blanks",
+     "label": "자료로 채울 빈칸 찾기",
+     "needs": ""
+    }
+   ],
+   "judged": [
+    {
+     "name": "judge-owners",
+     "label": "담당자 확인",
+     "needs": ""
+    },
+    {
+     "name": "judge-bindings",
+     "label": "수치와 대상 연결 확인",
+     "needs": ""
+    },
+    {
+     "name": "judge-repeats",
+     "label": "되풀이된 경험 찾기",
+     "needs": ""
+    }
+   ],
+   "amend": [
+    {
+     "name": "requirement-ids",
+     "label": "요구사항 ID 빠짐 채우기",
+     "needs": ""
+    },
+    {
+     "name": "quote-validity",
+     "label": "견적 유효기간 적기",
+     "needs": ""
+    },
+    {
+     "name": "option-status",
+     "label": "탈락·조건 미확인 표시",
+     "needs": "compare-check"
+    },
+    {
+     "name": "conflict-values",
+     "label": "자료끼리 다른 값 나란히 적기",
+     "needs": ""
+    },
+    {
+     "name": "unverified-options",
+     "label": "조건 미확인 대안과 확인할 것 적기",
+     "needs": "compare-check"
+    }
+   ],
+   "head": [
+    {
+     "name": "meeting-date",
+     "label": "머리 일시를 회의 날짜로(날짜 계산)",
+     "needs": "date-calc"
+    },
+    {
+     "name": "rfp-client",
+     "label": "표지 고객사를 제안요청서대로(제안요청서 조건 읽기)",
+     "needs": "proposal-rfp"
+    }
+   ],
+   "dateBases": [
+    "text",
+    "meeting"
+   ],
+   "draws": [
+    "auto",
+    "when-asked"
+   ],
+   "limits": {
+    "prepass": 5,
+    "rules": 8,
+    "sections": 12,
+    "tables": 3,
+    "columns": 8,
+    "pages": 30,
+    "rule": 300,
+    "summary": 4
+   },
+   "defaults": {
+    "prepass": [],
+    "date_base": "text",
+    "stages": [],
+    "checks": [
+     "lead-dates"
+    ],
+    "judged": [],
+    "amend": [],
+    "head": [],
+    "rules": [],
+    "structure": {
+     "sections": [],
+     "tables": [],
+     "summary_lines": 0,
+     "style": "",
+     "page_limit": 0,
+     "page_limit_rfp": false
+    },
+    "search": true,
+    "fixed_outline": false,
+    "draws": "auto",
+    "prepass_always": false,
+    "prepass_quiet": false,
+    "conflict_rule": ""
+   }
+  },
+  "starts": [
+   {
+    "id": "doc-comparison",
+    "name": "비교·분석 보고서",
+    "description": "대안을 같은 기준으로 견주고 조건과 함께 권고 · 가중치·점수식이 보이는 비교표"
+   },
+   {
+    "id": "doc-event-plan",
+    "name": "추진 계획(안)",
+    "description": "행사·사업·교육 추진 계획 · 개요 표, 산출 근거가 붙은 예산 표, 일정 표"
+   },
+   {
+    "id": "doc-gaejo-report",
+    "name": "개조식 보고서",
+    "description": "검토·현황 보고를 □ ○ - ㆍ 개조식으로 · 맨 위 핵심 두 줄, 끝에 붙임"
+   },
+   {
+    "id": "doc-internal-draft",
+    "name": "간이기안문",
+    "description": "내부결재용 간이기안문(별지 제2호서식) · 결재란, 개조식 본문, 붙임과 끝."
+   },
+   {
+    "id": "doc-minutes",
+    "name": "회의록",
+    "description": "결정·할 일·담당·기한을 남기는 회의록 · 촘촘한 회색 머리"
+   },
+   {
+    "id": "doc-result-report",
+    "name": "결과 보고서",
+    "description": "행사·사업·교육·출장 결과 보고 · 개요 표, 수치로 적는 결과, 문제점과 개선 사항"
+   }
+  ],
+  "limits": {
+   "name": 60,
+   "description": 200,
+   "category": 20,
+   "example_prompt": 1000,
+   "instructions": 8000,
+   "checklist": 4000,
+   "genre": 4000,
+   "form_text": 20000,
+   "form_name": 200,
+   "label": 30,
+   "field": 20,
+   "fill": 30,
+   "fills": 6,
+   "fields": 10
+  }
+ },
+ "startMinutes": {
+  "name": "회의록",
+  "description": "결정·할 일·담당·기한을 남기는 회의록 · 촘촘한 회색 머리",
+  "category": "업무",
+  "fills": [
+   "회의 이름",
+   "일시와 참석자",
+   "다룬 안건"
+  ],
+  "example_prompt": "회의록을 정리해 줘. 정해진 것과 아직 정해지지 않은 것을 나누고, 실행 항목에는 담당자와 기한을 적어 줘.\n\n회의와 참석자: ",
+  "instructions": "Build this document with the **회의록** template. The title block and the layout are already\nset; write only the content.\n\nEach section is one `layout` plus that section's body HTML fragment.\n\n- `cover` — the title block. In one `<p class=\"lead\">` line, state what the meeting was\n  gathered to decide, then inside `<ul class=\"meta\">` write 일시·장소·참석·기록 one per line,\n  like `<li><strong>일시</strong> 2026-08-18 (화) 10:00~11:05</li>`.\n  This list stands vertically in the narrow column on the right of the document, so keep each line under 20 characters.\n- `section` — one agenda item, or a group of 결정 사항 or 실행 항목. Agenda numbers are added\n  automatically, so do not write \"1.\" in the title yourself.\n\n## 오른쪽 눈금자\n\nThe backbone of this format is one column fixed vertically on the right of the document. In\nthe title block the date and place, and in the body every owner and deadline, are pinned\nright-aligned in that column. All this format is for is that two months later, skimming just\nthe right edge shows each person their own name and date.\n\nThat is why 결정 사항 and 실행 항목 are written as `<ul class=\"rows\">`, not paragraphs.\nOne item looks like this.\n\n    <li><strong>정해진 것 한 줄</strong> 왜 그렇게 정했는지 한두 문장. <small>정해원 · 8월 28일</small></li>\n\n- `<strong>` is the decision or the task itself in one line. It need not end with punctuation.\n- The sentences after it are grounds or conditions. If there are none, leave them out.\n- `<small>` is the value that hangs on the ruler, one per `<li>`. In the form `담당 · 기한`,\n  under 15 characters — short, like `정해원 · 8월 28일`, `이견 없음`, `전결 규정 §12`.\n  A sentence there overflows the column into two or three lines.\n- If the owner or deadline was not decided in the meeting, write only 「미정」 in the value\n  cell, like `<small>미정 · 미정</small>`, and put why it was not decided and when and who will\n  decide it (e.g. 9월 7일까지 담당 지정) in the sentence before. If it is not in the material\n  at all, leave it as brackets like `<small>[담당자] · [기한]</small>`. Write a deadline only\n  as one of 날짜(요일)·「미정」·「[기한]」, and keep original wording such as\n  「다음 주 금요일까지」 in the sentence before. A line without `<small>` is later read by no one\n  as their own.\n\nTables use the same ruler. With three or more columns, keep the last column for short values\nsuch as owner or deadline, and put long explanations in the earlier columns.\n\n## 쓸 수 있는 것\n\nThe only allowed tags are `p, h3, ul, ol, li, strong, em, code, blockquote, table, thead,\ntbody, tr, th, td, small`. Do not use `<h2>` — section titles are added separately.\nUse only the three `class` values `lead`, `meta`, `rows` above; any other tag, `style`,\nlinks and images are discarded.\n\nWrap anything whose meaning survives only when copied **character for character** —\ncommands, paths, identifiers, exception names — in `<code>`. `<code>` is a single\nfragment — this format has no multi-line code blocks, so if it is long, copy only the\nmost important line and describe the rest in words.\n\n- Do not mix what was said with what was decided. Write discussion as paragraphs and decisions as `rows`.\n- Every action item must carry an owner and a deadline. If the meeting did not decide them,\n  write \"미정\" to record that they were not decided; if they are not in the material, leave \"[담당자]\" \"[기한]\".\n- Do not write an agenda item with no conclusion as if it were concluded; state who decides\n  it next and when.\n- Do not invent background that did not come up in the meeting. Leave unknown names and dates as brackets, like 「[담당자]」 「[일자]」.\n- Do not transcribe remarks verbatim; reduce them to what was argued. Use `<blockquote>`\n  only when the wording itself must be kept.\n\n## 표·강조 수치·절차\n\nThe layout draws these three separately. The format controls size and color, so do not\nuse `style`.\n\n- **강조 수치** — if two or three numbers are the conclusion of a section, write them\n  inside `<div class=\"kpi\">`, one `<div><strong>값</strong><span>이름</span></div>` per cell.\n  At most 4. Keep values short, like `32%`, `1.4초`. Do not copy figures from a table — a\n  table is for comparing, this block is for **making one thing remembered**.\n- **절차** — write steps done in order as `<ol class=\"steps\">` with `<li><strong>이름\n  </strong> <span>설명</span></li>`. The layout adds the numbers, so do not write them.\n  A branching flow is not a procedure.\n- **표** — write comparisons, figures and schedules as `<table>`. 3–5 rows is right.\n\n## 그래프\n\nIf the **shape** of the numbers is the point, write `<figure class=\"chart\" data-source=\"…\">`.\nPut the numbers in `data-source`; the layout draws it.\n\n    <figure class=\"chart\" data-source=\"bar | 건\n    분기 | 처리 건수 | 반려 건수\n    1분기 | 120 | 8\n    2분기 | 210 | 11\"></figure>\n\n- The first line is `종류 | 단위`. `bar` compares items, `line` shows a trend over time.\n  The second line is `가로축 이름 | 계열 이름들`. The rest are values.\n- At most 8 x-axis items and at most 2 series. **Every line must have as many values as\n  there are series** — if even one is missing, that whole line is dropped.\n- **Do not write invented figures.** A chart reads as more factual than numbers. Without\n  grounds, write a sentence instead of a chart.\n\n## 절 이름\n\n- **참석** — who came and who could not.\n- **논의** — what was discussed. Do not mix it with what was decided.\n- **결정 사항** — what was decided and why.\n- **남은 쟁점** — what was not concluded. State who decides it next and when.\n- **실행 항목** — who does what by when.\n",
+  "checklist": "- 일시·장소·참석자가 적혀 있는가. 오지 못한 사람이 이 문서만 읽고 따라올 수 있는가.\n- 정해진 것과 논의만 된 것이 구분되는가. 섞여 있으면 나중에 둘 다 지켜지지 않는다.\n- 결정마다 왜 그렇게 정했는지가 한 줄이라도 남아 있는가.\n- 실행 항목에 사람 이름과 날짜가 있는가. \"추후\" 나 \"관련 부서\" 는 담당자가 아니다.\n- 결정과 실행 항목의 오른쪽 칸이 한 줄도 비어 있지 않은가. 회의에서 미뤘다면 \"미정\"과 사유가, 자료에 없다면 \"[담당자]\" \"[기한]\"이 적혀 있는가.\n- 오른쪽 칸에 문장이 아니라 이름과 날짜만 있는가. 길어지면 눈금이 흐트러진다.\n- 결론이 나지 않은 안건에 대해, 다음에 누가 언제 정하는지 적혀 있는가.\n- 반대나 유보 의견이 있었다면 그것도 남아 있는가.\n- 회의에서 나오지 않은 내용이 끼어 있지 않은가.\n",
+  "genre": "",
+  "doc_format": {
+   "label": "회의록",
+   "fields": [
+    "회의명",
+    "일시",
+    "장소",
+    "참석자",
+    "작성자"
+   ],
+   "numbering": "none",
+   "head": "memo",
+   "lists": "",
+   "closing": false,
+   "subtitle": false
+  },
+  "cover_page": false,
+  "body_face": "",
+  "check_skills": [
+   "gap-check",
+   "grounding-check"
+  ],
+  "check_options": [],
+  "questions": [
+   {
+    "id": "meeting_date",
+    "label": "회의 일시",
+    "question": "회의를 언제 했나요? (연도 포함)",
+    "why": "자료에 회의 날짜가 없습니다. ‘다음 주 금요일’ 같은 기한을 날짜로 풀고 머리의 일시를 채우려면 필요합니다.",
+    "placeholder": "[회의 일자]",
+    "detector": {
+     "type": "builtin",
+     "name": "meeting_date"
+    }
+   },
+   {
+    "id": "attendees",
+    "label": "참석자",
+    "question": "참석자는 누구였나요?",
+    "why": "자료에 참석자 목록이 없습니다. 회의록의 참석·불참 칸에 들어갑니다.",
+    "placeholder": "[참석자]",
+    "detector": {
+     "type": "builtin",
+     "name": "attendees"
+    }
+   },
+   {
+    "id": "action_dues",
+    "label": "실행 항목 기한",
+    "question": "실행 항목의 기한을 정했나요?",
+    "why": "담당은 정했는데 기한이 없는 항목이 있습니다.",
+    "placeholder": "[기한]",
+    "detector": {
+     "type": "builtin",
+     "name": "action_dues"
+    }
+   }
+  ],
+  "process": {
+   "prepass": [
+    "date-calc"
+   ],
+   "date_base": "meeting",
+   "stages": [
+    "minutes-repair",
+    "minutes-reground"
+   ],
+   "checks": [
+    "lead-dates",
+    "minutes-rows",
+    "material-blanks"
+   ],
+   "judged": [
+    "judge-owners"
+   ],
+   "head": [
+    "meeting-date"
+   ],
+   "draws": "when-asked",
+   "conflict_rule": "The value of the later decision or later mail is final. Write the final value and leave 「○○에서 변경」 in 비고."
+  },
+  "visibility": "private"
+ }
+}

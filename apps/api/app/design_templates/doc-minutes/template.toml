@@ -55,3 +55,18 @@ question = "실행 항목의 기한을 정했나요?"
 why = "담당은 정했는데 기한이 없는 항목이 있습니다."
 placeholder = "[기한]"
 detector = { type = "builtin", name = "action_dues" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc"]
+# Relative dates count from the meeting day; with none, nothing is dated.
+date_base = "meeting"
+# Action rows repaired by code before the verify stage and again after it.
+stages = ["minutes-repair", "minutes-reground"]
+checks = ["lead-dates", "minutes-rows", "material-blanks"]
+judged = ["judge-owners"]
+head = ["meeting-date"]
+# Diagrams only when the instruction asks for them: a 회의록 draws none by itself.
+draws = "when-asked"
+conflict_rule = "The value of the later decision or later mail is final. Write the final value and leave 「○○에서 변경」 in 비고."

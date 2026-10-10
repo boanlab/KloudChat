@@ -37,3 +37,30 @@ test('the form is prefilled from the conversation and nothing is saved before �
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
+
+/** B-1: a conversation made with an official agent; the draft names the person's own theme. */
+const officialDraft = {
+  ...agentDraft, name: '회의록 에이전트', base: 'minutes', designSystemId: 'd1', renderTemplateId: null,
+  systemPrompt: '이 대화에서 정한 것:\n- 결정과 할 일을 표로 둔다.', decided: ['결정과 할 일을 표로 둔다.'], files: [],
+}
+
+test('a conversation with an official agent saves as an agent', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { draft: officialDraft })
+  await page.goto('/customize/agents/new?from=session:c0000000000000000000000000000000')
+  const form = page.getByTestId('agent-form')
+  await expect(form.getByRole('textbox', { name: '이름' })).toHaveValue('회의록 에이전트', { timeout: 15_000 })
+  await expect(form.getByRole('textbox', { name: '지시' })).toHaveValue(/^이 대화에서 정한 것:/)
+  await form.getByRole('button', { name: '만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
+  expect(state.calls.find((c) => c.method === 'POST' && c.path === '/agents')?.body).toMatchObject({ designSystemId: 'd1' })
+  expect(state.problems).toEqual([])
+})
+
+test('a refused save says which field to fix', async ({ page }, testInfo) => {
+  await hubFixture(page, testInfo, { draft: { ...officialDraft, designSystemId: 'not-mine' } })
+  await page.goto('/customize/agents/new?from=session:c0000000000000000000000000000000')
+  const form = page.getByTestId('agent-form')
+  await expect(form.getByRole('textbox', { name: '이름' })).toHaveValue('회의록 에이전트', { timeout: 15_000 })
+  await form.getByRole('button', { name: '만들기' }).click()
+  await expect(page.getByText('테마를 찾을 수 없습니다 — 결과물 모양에서 테마를 다시 고르세요.')).toBeVisible()
+})

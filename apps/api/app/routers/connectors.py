@@ -1,15 +1,25 @@
-"""MCP connectors: install from a catalogue, sync tools from the server, toggle per tool."""
+"""MCP connectors: install from the catalogue administrators keep, sync tools from the
+server, toggle per tool. `admin_router`: the catalogue itself (관리 › 커넥터 카탈로그)."""
 
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import Field
 from sqlmodel import col, delete, select
 
-from app.core.deps import CurrentUser, DbSession
-from app.models.user import User, UserRole, utcnow
-from app.models.workspace import Connector, ConnectorStatus, ConnectorTool, Transport
+from app.core.deps import AdminUser, CurrentUser, DbSession, client_ip
+from app.models.user import AuditEvent, User, UserRole, utcnow
+from app.models.workspace import (
+    Connector,
+    ConnectorCatalogEntry,
+    ConnectorStatus,
+    ConnectorTool,
+    Transport,
+)
+from app.schemas.auth import Wire
 from app.schemas.workspace import (
     BulkDelete,
     ConnectorIn,
@@ -20,7 +30,6 @@ from app.schemas.workspace import (
 )
 from app.services import mcp, settings_store
 from app.services.tools import catalog
-from app.services.tools.catalog import CATALOG, catalog_entry
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -48,7 +57,8 @@ async def _out(db: DbSession, connector: Connector) -> ConnectorOut:
 
 @router.get("/catalog")
 async def get_catalog(user: CurrentUser, db: DbSession):
-    """Installable servers, with the ones this user already has marked."""
+    """Installable servers (the administrators' catalogue), with the ones this user already
+    has marked."""
     installed = {
         c.slug
         for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
@@ -75,7 +85,7 @@ async def get_catalog(user: CurrentUser, db: DbSession):
                 for field in entry.get("required_env", [])
             ],
         }
-        for entry in CATALOG
+        for entry in await catalog.entries()
     ]
 
 
@@ -96,8 +106,8 @@ async def install(
     db: DbSession,
     payload: InstallRequest | None = None,
 ):
-    entry = catalog_entry(slug)
-    if entry is None:
+    entry = await catalog.entry(slug)
+    if entry is None or not entry.get("enabled", True):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_connector")
 
     supplied = (payload.env if payload else None) or {}
@@ -129,7 +139,9 @@ async def install(
         transport=Transport(entry["transport"]),
         endpoint=entry["endpoint"],
         # A supplied credential wins over a catalogue placeholder of the same name.
-        env=settings_store.encrypt_env({**(entry.get("env") or {}), **supplied}),
+        # The entry's values are stored sealed; opened, then sealed again with the person's.
+        env=settings_store.encrypt_env({**settings_store.decrypt_env(entry.get("env")),
+                                        **supplied}),
         auth_type=entry.get("auth", "none"),
         kinds=entry.get("kinds", ["chat"]),
         official=True,
@@ -322,3 +334,100 @@ async def uninstall(connector_id: str, user: CurrentUser, db: DbSession):
     await db.exec(delete(ConnectorTool).where(ConnectorTool.connector_id == connector.id))
     await db.delete(connector)
     await db.commit()
+
+
+# ── the catalogue, kept by administrators ─────────────────────────────────
+
+admin_router = APIRouter(prefix="/admin/connector-catalog", tags=["connectors"])
+
+
+class CatalogEntryIn(Wire):
+    slug: str = Field(min_length=1, max_length=60)
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=300)
+    category: str = Field(default="", max_length=30)
+    transport: str = Field(max_length=10)
+    endpoint: str = Field(min_length=1, max_length=500)
+    #: A value of `null` keeps the stored one (the form never sees stored values).
+    env: dict[str, str | None] = Field(default_factory=dict)
+    required_env: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
+    tools_key_var: str = Field(default="", max_length=60)
+    tools_key_feature: str = Field(default="", max_length=20)
+    kinds: list[str] = Field(default_factory=lambda: ["chat"], max_length=3)
+    enabled: bool = True
+    position: int = Field(default=0, ge=0, le=999)
+
+
+def _audit(db: DbSession, request: Request, admin: User, action: str, slug: str) -> None:
+    db.add(AuditEvent(actor_id=admin.id, action=action, target=f"connector:{slug[:60]}",
+                      ip=client_ip(request),
+                      user_agent=request.headers.get("User-Agent", "")[:400]))
+
+
+def _fields(payload: CatalogEntryIn, previous: dict[str, str] | None = None) -> dict[str, Any]:
+    try:
+        return catalog.clean(payload.model_dump(), previous_env=previous)
+    except catalog.EntryError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=exc.code) from exc
+
+
+async def _admin_list(db: DbSession) -> list[dict[str, Any]]:
+    await catalog.refresh(db)
+    return [catalog.admin_wire(e) for e in await catalog.entries(enabled_only=False)]
+
+
+@admin_router.get("")
+async def admin_catalog(admin: AdminUser, db: DbSession):
+    """Every entry, disabled ones too; env values only as their keys (placeholders shown)."""
+    return {"entries": await _admin_list(db), "kinds": list(catalog.KINDS),
+            "transports": list(catalog.TRANSPORTS),
+            "features": list(catalog.tools_gateway.FEATURES),
+            "placeholders": [f"${{{name}}}" for name in catalog._URL_VARS]}
+
+
+@admin_router.post("", status_code=status.HTTP_201_CREATED)
+async def admin_add_entry(payload: CatalogEntryIn, admin: AdminUser, db: DbSession,
+                          request: Request):
+    fields = _fields(payload)
+    taken = (await db.exec(select(ConnectorCatalogEntry).where(
+        ConnectorCatalogEntry.slug == fields["slug"]))).first()
+    if taken is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="catalog_slug_taken")
+    db.add(ConnectorCatalogEntry(**fields, updated_by=admin.id))
+    _audit(db, request, admin, "connector.catalog.save", fields["slug"])
+    await db.commit()
+    return {"entries": await _admin_list(db)}
+
+
+@admin_router.put("/{entry_id}")
+async def admin_edit_entry(entry_id: str, payload: CatalogEntryIn, admin: AdminUser,
+                           db: DbSession, request: Request):
+    row = await db.get(ConnectorCatalogEntry, entry_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")
+    fields = _fields(payload, previous=dict(row.env or {}))
+    if fields["slug"] != row.slug:
+        # Installed connectors find their entry by slug: it stays.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="catalog_slug_fixed")
+    for key, value in fields.items():
+        setattr(row, key, value)
+    row.updated_by, row.updated_at = admin.id, utcnow()
+    db.add(row)
+    _audit(db, request, admin, "connector.catalog.save", row.slug)
+    await db.commit()
+    return {"entries": await _admin_list(db)}
+
+
+@admin_router.delete("/{entry_id}")
+async def admin_remove_entry(entry_id: str, admin: AdminUser, db: DbSession, request: Request):
+    """Out of the catalogue: nobody installs it again; installed copies keep their own row's
+    address and lose the gateway key."""
+    row = await db.get(ConnectorCatalogEntry, entry_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")
+    _audit(db, request, admin, "connector.catalog.delete", row.slug)
+    await db.delete(row)
+    await db.commit()
+    return {"entries": await _admin_list(db)}

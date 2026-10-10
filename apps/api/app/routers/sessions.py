@@ -53,6 +53,7 @@ from app.models.workspace import (
     Artifact,
     ArtifactKind,
     ArtifactVersion,
+    DesignSystem,
     Job,
     Memory,
     MemoryType,
@@ -102,6 +103,7 @@ from app.schemas.workspace import ArtifactOut, FileOut
 from app.services import (
     adaptive_routing,
     answer_plan,
+    app_help,
     artifact_extract,
     audiogen,
     calculation_policy,
@@ -124,6 +126,7 @@ from app.services import (
     skill_specs,
     starter,
     stop_signal,
+    user_templates,
 )
 from app.services import agent as agent_service
 from app.services import auto_memory as auto_memory_service
@@ -1777,7 +1780,7 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         agent_id=payload.agent_id,
         model=payload.model or "",
         routing_mode=payload.routing_mode,
-        render_template_id=agent_template(agent, payload.kind)
+        render_template_id=(await _agent_template_loaded(db, user, agent, payload.kind))
         or await _project_render_template(db, payload.project_id, payload.kind),
     )
     db.add(session)
@@ -2021,7 +2024,7 @@ async def handoff_session(
         project_id=source.project_id,
         agent_id=source.agent_id,
         routing_mode=RoutingMode.manual,
-        render_template_id=agent_template(agent, kind)
+        render_template_id=(await _agent_template_loaded(db, user, agent, kind))
         or await _project_render_template(db, source.project_id, kind),
     )
     files: list[StoredFile] = []
@@ -2125,6 +2128,15 @@ async def _project_render_template(
     return design_templates.default_for(project.render_templates, kind) if project else None
 
 
+async def _agent_template_loaded(db: DbSession, user: User, agent: WorkspaceAgent | None,
+                                 kind: SessionKind) -> str | None:
+    """`agent_template` with a person's template loaded first, when the caller may use it."""
+    if agent is not None and agent.render_template_id and not await user_templates.usable(
+            db, user.id, agent.render_template_id):
+        return None
+    return agent_template(agent, kind)
+
+
 def agent_template(agent: WorkspaceAgent | None, kind: SessionKind) -> str | None:
     """The agent's bound 서식 when it belongs to this surface, else `None`.
 
@@ -2161,6 +2173,27 @@ def _resolved_template_id(requested: str | None, kind: SessionKind,
     return chosen.id
 
 
+def _english(text: str) -> bool:
+    """Whether a message is written in English (more Latin letters than Hangul)."""
+    latin = len(re.findall(r"[A-Za-z]", text or ""))
+    return latin > 3 * len(re.findall(r"[가-힣]", text or ""))
+
+
+async def _usable_design(db: DbSession, user: User, design_id: str | None) -> str | None:
+    """A design the person may bind an agent to: the one named when theirs or shared, else
+    their own design of the same name, else None."""
+    if not design_id:
+        return None
+    row = await db.get(DesignSystem, design_id)
+    if row is None:
+        return None
+    if row.owner_id == user.id or row.shared:
+        return row.id
+    own = (await db.exec(select(DesignSystem).where(
+        DesignSystem.owner_id == user.id, DesignSystem.name == row.name))).first()
+    return own.id if own is not None else None
+
+
 @router.get("/{session_id}/agent-draft")
 async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
     """「에이전트로 저장」: this conversation as a draft agent to prefill the form. Nothing is
@@ -2194,15 +2227,20 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
                    model=model["id"])
             await db.commit()
 
+    lines = [line for line in lines if drafts.keep(line)]
     agent = await db.get(WorkspaceAgent, session.agent_id) if session.agent_id else None
     readable = agent is not None and not agent.sealed and (
         agent.owner_id == user.id or (agent.visibility == AgentVisibility.org
                                       and agent.share_mode != "sealed"))
-    prompt = "\n\n".join(x for x in (
-        agent.system_prompt.strip() if readable and agent is not None else "",
-        drafts.prompt_from(lines)) if x)
     is_admin = user.role is UserRole.admin
     key = await _agent_catalog_key(db, agent) if agent is not None else None
+    # An official agent (or a copy of one) carries its instructions through the base: the 지시
+    # starts from what this conversation settled only. A person's own agent's prompt is theirs
+    # to keep.
+    prompt = "\n\n".join(x for x in (
+        agent.system_prompt.strip()
+        if readable and agent is not None and not agent.catalog_key else "",
+        drafts.prompt_from(lines)) if x)
     base = bases.get(key, drafts=is_admin) if key else None
     if base is None and agent is None:
         # Inferred from what the conversation made.
@@ -2210,19 +2248,25 @@ async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
         guess = {"report": bases.BY_FORMAT.get(fmt or "", "document"),
                  "slides": "slides"}.get(session.kind.value)
         base = bases.get(guess, drafts=is_admin) if guess else None
+    await user_templates.load(db, user.id, [session.render_template_id])
     template = design_templates.choosable(session.render_template_id)
     design_id = agent.design_system_id if agent is not None else None
     if design_id is None and session.project_id:
         project = await db.get(Project, session.project_id)
         design_id = project.design_system_id if project is not None else None
+    # Every field as `POST /agents` checks it: a theme the person cannot use (an official
+    # agent's, an administrator's) becomes their own of the same name, else none.
+    design_id = await _usable_design(db, user, design_id)
     own_skills = set((await db.exec(select(Skill.id).where(Skill.owner_id == user.id))).all())
     files = (await db.exec(select(StoredFile).where(
         StoredFile.session_id == session.id, StoredFile.user_id == user.id,
         col(StoredFile.agent_id).is_(None), col(StoredFile.text) != "")
         .order_by(col(StoredFile.created_at)))).all()
     title = (session.title or "").strip()
+    shown_template = template if template is not None and template.surface is session.kind \
+        else None
     return {
-        "name": (f"{title[:40]} 에이전트" if title else "새 에이전트"),
+        "name": drafts.name_for(title, shown_template.name if shown_template else ""),
         "description": "",
         "systemPrompt": prompt,
         "decided": lines,
@@ -2263,6 +2307,9 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
     if changes.get("routing_mode", session.routing_mode) in _AUTO_MODES:
         await _require_auto_quality_model(user, changes.get("model", session.model))
     if "render_template_id" in changes:
+        if not await user_templates.usable(db, user.id, changes["render_template_id"]):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="design_template_not_found")
         changes["render_template_id"] = _resolved_template_id(
             changes["render_template_id"], session.kind, keep=session.render_template_id
         )
@@ -3188,33 +3235,11 @@ async def _agent_catalog_key(db: DbSession, agent: WorkspaceAgent | None) -> str
 async def _skill_specs(
     db: DbSession, user: User, agent: WorkspaceAgent | None,
 ) -> tuple[dict[str, skill_specs.Spec], dict[str, dict[str, Any]]]:
-    """What the server runs for the turn's skills, read from their rows: the person's enabled
-    skills whose fields ask for something (a shipped copy that stores none reads its
-    package), and the person's check skills the agent attaches (`skill:<id>`), the agent
-    owner's rows. Every field names shipped scripts only.
-
-    Also the person's own scripts by skill key (`{name, files}`), which only the sandbox
-    runs (`run_skill_script`)."""
-    rows = list((await db.exec(select(Skill).where(
-        Skill.owner_id == user.id, Skill.enabled == True,  # noqa: E712
-        col(Skill.server_fields).is_not(None) | col(Skill.script_files).is_not(None)))).all())
-    scripts = {
-        f"{skill_specs.USER}{row.id}": {"name": row.name, "files": {
-            str(f.get("name")): str(f.get("source") or "")
-            for f in row.script_files if isinstance(f, dict) and f.get("name")}}
-        for row in rows if row.script_files}
-    attached = [str(k).removeprefix(skill_specs.USER) for k in (agent.check_skills or [])
-                if str(k).startswith(skill_specs.USER)] if agent is not None else []
-    known = {row.id for row in rows}
-    if wanted := [i for i in attached if i not in known]:
-        rows += list((await db.exec(select(Skill).where(
-            col(Skill.id).in_(wanted), Skill.owner_id == agent.owner_id))).all())
-    out: dict[str, skill_specs.Spec] = {}
-    for row in rows:
-        spec = skill_specs.of_row(row)
-        if row.server_fields is not None or spec.user:
-            out[spec.key] = spec
-    return out, scripts
+    """What the server runs for the turn's skills and the person's own scripts
+    (`skill_specs.for_turn`)."""
+    return await skill_specs.for_turn(
+        db, user.id, agent_checks=agent.check_skills if agent is not None else None,
+        agent_owner=agent.owner_id if agent is not None else "")
 
 
 def _skill_keys(applied, specs: dict[str, skill_specs.Spec]) -> tuple[str, ...]:
@@ -3554,8 +3579,13 @@ async def send_message(
 
     # Refused before any write, never silently dropped.
     if payload.render_template_id is not None:
+        if not await user_templates.usable(db, user.id, payload.render_template_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="design_template_not_found")
         session.render_template_id = _resolved_template_id(
             payload.render_template_id, session.kind, keep=session.render_template_id)
+    # The conversation's own template (a person's), loaded in this process for the turn.
+    await user_templates.load(db, user.id, [session.render_template_id])
 
     # One answer at a time: a second message while this process is still
     # writing one (and nobody pressed stop) would be stored before the first
@@ -3817,7 +3847,6 @@ async def send_message(
     user_pipe = await user_pipelines.bound(db, user, session, agent_row)
     if user_pipe is not None:
         check_keys = ()
-    facts = check_skills.fact_set(workspace.doc_format, agent_key)
     # 빠진 정보 질문: the 서식's (a report's) and the agent's own, else its base's.
     asking = gap_questions.resolve(
         own=agent_row.gap_questions if agent_row is not None else None, base_key=agent_key,
@@ -4006,6 +4035,10 @@ async def send_message(
     )
     if template_blocks:
         trusted_context = list(trusted_context) + template_blocks
+    if session.kind is SessionKind.chat and app_help.about_app(content):
+        # A question about this app itself reads its own user guide (in process, local).
+        if guide := app_help.block(content, lang="en" if _english(content) else "ko"):
+            trusted_context = [*trusted_context, guide]
     context_steps = _context_steps(workspace)
     if policy.pii_masking:
         # Skill names are user-controlled, like filenames.
@@ -4478,6 +4511,7 @@ async def send_message(
                     check_keys=check_keys,
                     check_options=check_options,
                     skill_specs=specs,
+                    process=agent_row.process_settings if agent_row is not None else None,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -4719,7 +4753,6 @@ async def send_message(
                 skill_keys=_skill_keys(workspace.applied_skills, specs),
                 skill_specs=specs,
                 own_scripts=own_scripts,
-                check_facts=facts,
                 check_options=check_options,
                 check_material="\n".join(workspace.untrusted),
                 agent_key=agent_key or "",
@@ -5133,7 +5166,6 @@ async def _run_turn(
     #: The person's own scripts by skill key, for `run_skill_script` in the sandbox.
     own_scripts: dict | None = None,
     #: The agent's fact set, which sets how strict the trace is.
-    check_facts: str = "",
     #: The agent's `check_options`: how strict the trace is.
     check_options: dict | None = None,
     #: Attached and carried files' text: what the answer's values may come from too.
@@ -5386,7 +5418,7 @@ async def _run_turn(
             answer=content, request=ctx.request, model=model, actual_model=actual_model,
             api_key=api_key, session_id=session_id, today=_today(),
             first_message=first_user_message, messages=messages,
-            material=_material_text(messages), check_keys=check_keys, check_facts=check_facts,
+            material=_material_text(messages), check_keys=check_keys,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
             kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
             skill_specs=skill_specs,
@@ -6770,6 +6802,8 @@ async def _run_report(
     check_options: dict | None = None,
     #: What the server runs for a person's check skill among `check_keys`.
     skill_specs: dict | None = None,
+    #: The agent's own 진행 과정 설정 (`Agent.process_settings`), over its 서식's.
+    process: dict | None = None,
     #: The run this pass follows (the card that waited before it).
     parent_run_id: str | None = None,
 ) -> AsyncIterator[str]:
@@ -6822,6 +6856,7 @@ async def _run_report(
             check_keys=check_keys,
             check_options=check_options,
             skill_specs=skill_specs,
+            process=process,
             session_id=session_id,
             turn=turn,
             recorder=recorder,

@@ -98,6 +98,7 @@ from app.services import (
     settings_store,
     skill_import,
     starter,
+    user_templates,
 )
 from app.services import deck as deck_service
 from app.services import design as design_service
@@ -232,6 +233,17 @@ async def _validated_checks(db: DbSession, user: User,
             out["gap_questions"] = None if raw is None else gap_questions.clean(raw)
         except gap_questions.QuestionError as exc:
             raise HTTPException(status_code=422, detail=exc.code) from exc
+    if "process_settings" in values:
+        from app.services import process_settings
+
+        raw = values["process_settings"]
+        try:
+            out["process_settings"] = (process_settings.clean(raw) or None) if raw is not None \
+                else None
+        except process_settings.ProcessError as exc:
+            raise HTTPException(status_code=422, detail=exc.code) from exc
+        if out["process_settings"] is not None:
+            out["process_settings"] = process_settings.stored_form(out["process_settings"])
     return out
 
 
@@ -264,6 +276,9 @@ async def _validate_agent_bindings(
         if surface not in allowed:
             raise HTTPException(status_code=422, detail="agent_surface_not_in_kinds")
     if (template_id := out["render_template_id"]) is not None:
+        # A person's template counts when they may use it (theirs or shared).
+        if not await user_templates.usable(db, user.id, template_id):
+            raise HTTPException(status_code=404, detail="design_template_not_found")
         chosen = design_templates.choosable(template_id)
         if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
             raise HTTPException(status_code=404, detail="design_template_not_found")
@@ -2335,6 +2350,8 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         check_options=dict(origin.check_options) if origin.check_options else None,
         gap_questions=[dict(q) for q in origin.gap_questions]
         if origin.gap_questions is not None else None,
+        process_settings=dict(origin.process_settings)
+        if origin.process_settings is not None else None,
         enabled=True,
         visibility=Visibility.private,
         catalog_key=origin.catalog_key,
@@ -2884,12 +2901,22 @@ async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
 
 
 @router.get("/design-templates", response_model=list[DesignTemplateOut])
-async def list_design_templates(user: CurrentUser, surface: str | None = None):
-    """Every rendering template a person may choose, or those for one surface."""
-    rows = design_templates.offered()
+async def list_design_templates(user: CurrentUser, db: DbSession = None,
+                                surface: str | None = None):
+    """Every rendering template a person may choose, or those for one surface: the shipped
+    ones, then their own templates and those shared with them (`user: true`)."""
+    from app.models.workspace import UserTemplate
+
+    own = (await db.exec(select(UserTemplate).where(
+        (UserTemplate.owner_id == user.id) | (UserTemplate.visibility == "org"))
+        .order_by(col(UserTemplate.updated_at).desc()))).all() \
+        if db is not None and user is not None else []
+    await user_templates.ensure(db, [user_templates.template_id(r) for r in own])
+    people = [t for r in own if (t := design_templates.get(user_templates.template_id(r)))]
+    rows = [*design_templates.offered(), *people]
     if surface:
         rows = [t for t in rows if t.surface.value == surface]
-    return [DesignTemplateOut.of(t) for t in rows]
+    return [DesignTemplateOut.of(t, user.id if user is not None else "") for t in rows]
 
 
 @router.get("/design-templates/usage", response_model=DesignTemplateUsageOut)
@@ -2915,8 +2942,9 @@ async def design_template_preview(template_id: str, slide: int | None = None):
 
     `slide` (1-based) renders that one slide of a deck sample alone, for the slide viewer.
     """
-    # Unauthenticated: an iframe `src` cannot carry a header, and all of this ships in the image.
-    template = design_templates.get(template_id)
+    # Unauthenticated: an iframe `src` cannot carry a header, and all of this ships in the image
+    # — a person's template never comes from here.
+    template = None if user_templates.is_user(template_id) else design_templates.get(template_id)
     if template is None or not template.sample or not template.seed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"

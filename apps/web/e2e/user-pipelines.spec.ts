@@ -185,6 +185,8 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (method === 'GET' && path === '/agents') return route.fulfill({ json: agents })
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return route.fulfill({ json: shipped })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return route.fulfill({ json: [] })
+    // The 진행 과정 설정 editor's names; this spec does not open it.
+    if (method === 'GET' && path === '/user-templates/catalogue') return route.fulfill({ status: 503, json: { detail: 'not_in_this_fixture' } })
     if (method === 'GET' && path === '/agent-bases') return route.fulfill({ json: { bases: [
       { key: 'comparison-report', name: '비교·결정', description: '', surface: 'report', docFormat: 'comparison',
         template: null, steps: ['비교할 대안의 자료를 읽습니다'], draft: false, custom: true, bundles: [], formatChecks: [], asks: true },

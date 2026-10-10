@@ -31,7 +31,7 @@ from app.pipeline.stage import Base, Context, StepRecord, Wait
 from app.routers import pipelines as pipelines_router
 from app.routers import runs as runs_router
 from app.routers import sessions
-from app.services import doc_formats, key_figures, revise
+from app.services import doc_formats, key_figures, process_settings, revise
 
 # ── encoding and restoring the bundle ──────────────────────────────────
 
@@ -207,8 +207,9 @@ def test_marks_name_blanks_replaced_values_and_what_the_check_left():
 
 
 def test_a_pipeline_reads_with_its_stages_labels_and_checks():
-    got = pipelines_router.describe(registry.pipeline("minutes"), ("gap-check",
-                                                                    "grounding-check"))
+    got = pipelines_router.describe(registry.pipeline("report"), ("gap-check",
+                                                                   "grounding-check"),
+                                    process_settings.for_format("minutes"))
     write = {row["name"]: row for row in got["flows"]["write"]}
     assert write["verify"]["label"] == "검증" and write["verify"]["kind"] == "check"
     assert write["verify"]["checks"] == ["lead-dates", "minutes-rows", "material-blanks",
@@ -221,8 +222,10 @@ def test_a_pipeline_reads_with_its_stages_labels_and_checks():
 
 
 def test_an_agent_reads_the_pipeline_its_turns_run():
-    assert pipelines_router.pipeline_for_agent("minutes", None, None).name == "minutes"
-    assert pipelines_router.pipeline_for_agent(None, "gaejo", "report").name == "gaejo-report"
+    # Every document is written by `report`; what differs is its 진행 과정 설정.
+    assert pipelines_router.pipeline_for_agent("minutes", None, None).name == "report"
+    assert pipelines_router.pipeline_for_agent(None, "gaejo", "report").name == "report"
+    assert pipelines_router.pipeline_for_agent("data-analysis", None, None).name == "chat"
     assert pipelines_router.pipeline_for_agent(None, None, "report").name == "report"
     assert pipelines_router.pipeline_for_agent(None, None, "chat").name == "chat"
 

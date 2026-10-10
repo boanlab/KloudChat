@@ -374,7 +374,6 @@ def chat_case(name: str, spec: dict, run: Path, data: Path) -> dict:
             "tool_outputs": [material] if material else [],
             "steps": steps,
             "check_keys": list(check_skills.of_stage(keys, "post")),
-            "check_facts": check_skills.fact_set(None, spec["agent"]),
             "check_options": check_skills.clean_options(
                 _agent_toml(spec["agent"]).get("check_options")),
             "check_material": material,

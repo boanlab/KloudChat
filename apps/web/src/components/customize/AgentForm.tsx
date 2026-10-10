@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
 import { GapQuestionsEditor, InheritedQuestions } from '@/components/agents/GapQuestionsEditor'
 import { ProcessSection } from '@/components/agents/ProcessSection'
+import { fullSettings, ProcessSettingsEditor } from '@/components/agents/ProcessSettingsEditor'
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, Select, Textarea } from '@/components/ui'
 import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
@@ -11,6 +12,7 @@ import { currentLang } from '@/lib/i18n'
 import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
+import { useTemplateCatalogue } from '@/lib/templates'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -168,6 +170,18 @@ const COLORS = ['#5b53e8', '#2563eb', '#0f766e', '#334155', '#ea580c', '#db2777'
  * scratch, or prefilled by 「에이전트로 저장」) and edits one in its detail screen's 「설정」.
  * Nothing is saved before 저장.
  */
+/** What each refusal of `POST/PUT /agents` says to the person, so the form names the field. */
+const SAVE_ERRORS: Record<string, string> = {
+  slug_taken: '이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.',
+  design_system_not_found: '테마를 찾을 수 없습니다 — 결과물 모양에서 테마를 다시 고르세요.',
+  design_template_not_found: '템플릿을 찾을 수 없습니다 — 템플릿을 다시 고르세요.',
+  design_template_surface_mismatch: '템플릿이 고른 화면과 맞지 않습니다 — 템플릿이나 사용할 화면을 바꾸세요.',
+  agent_surface_not_in_kinds: '처음 여는 화면이 사용할 화면에 없습니다 — 고급 › 사용할 화면을 확인하세요.',
+  doc_format_unknown: '문서 형식을 찾을 수 없습니다 — 다시 고르세요.',
+  doc_format_needs_report: '문서 형식은 보고서 화면에서만 씁니다 — 사용할 화면에 보고서를 켜세요.',
+  check_skill_unknown: '검사 스킬을 찾을 수 없습니다 — 진행 과정의 검사를 확인하세요.',
+}
+
 export function AgentForm({
   initial,
   creating,
@@ -213,13 +227,17 @@ export function AgentForm({
   const processDirty = !processSaved || JSON.stringify(process) !== JSON.stringify(baseline)
   const [keepFiles, setKeepFiles] = useState<string[]>(() => draftFiles.map((f) => f.id))
   const catalogue = useProcessCatalogue()
+  const templateCatalogue = useTemplateCatalogue()
   const detectorLabels = Object.fromEntries((catalogue?.gapDetectors ?? []).map((d) => [d.name, d.label]))
   const nameRef = useRef<HTMLInputElement>(null)
 
   const draftSlug = slugify(draft.slug || draft.name)
   const slugTaken = agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const offered = agentKinds(draft)
-  const boundTemplates = designTemplates.filter((row) => row.kind !== 'image' && offered.includes(row.surface))
+  const pickedBase = process.mode === 'base' ? catalogue?.bases.find((b) => b.key === process.base) : undefined
+  // A base fixes the surface a conversation opens on: its templates are offered too.
+  const templateSurfaces = pickedBase ? [...new Set([pickedBase.surface, ...offered])] : offered
+  const boundTemplates = designTemplates.filter((row) => row.kind !== 'image' && templateSurfaces.includes(row.surface))
   const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
   // A format retired with its agent stays where it is set; nothing new picks it.
   const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
@@ -249,11 +267,8 @@ export function AgentForm({
       setSavedId(saved.id)
       return saved
     } catch (err) {
-      setError(
-        errorCode(err) === 'slug_taken'
-          ? t('이미 쓰는 핸들입니다. 다른 핸들을 붙이세요.')
-          : errorMessage(err, t('저장하지 못했습니다.')),
-      )
+      const said = SAVE_ERRORS[errorCode(err) ?? '']
+      setError(said ? t(said) : errorMessage(err, `${t('저장하지 못했습니다.')} (${errorCode(err) ?? '?'})`))
       return null
     } finally {
       setSaving(false)
@@ -389,6 +404,7 @@ export function AgentForm({
         agent={{ ...draft, id: savedId ?? '' }}
         value={process}
         surface={surface}
+        onSurface={(next) => edit({ ...withinKinds(draft, draft.kinds.includes(next) ? draft.kinds : [...draft.kinds, next]), surface: next })}
         onChange={(next) => {
           setDone(false)
           setProcess(next)
@@ -412,8 +428,50 @@ export function AgentForm({
       <div className="space-y-2" data-testid="agent-advanced">
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
-        <Group title={t('결과물')} hint={t('템플릿, 테마, 문서 형식')} testId="agent-output-group">
+        {templateCatalogue && (offered.includes('report') || pickedBase?.surface === 'report') && (
+          <Group
+            title={t('진행 과정 설정')}
+            hint={draft.processSettings ? t('이 에이전트에서 따로 정함') : t('템플릿 설정을 따름')}
+            testId="agent-settings-group"
+          >
+            <label className="flex items-start gap-2 text-base">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 accent-[var(--accent)]"
+                checked={!!draft.processSettings}
+                onChange={(e) =>
+                  edit({
+                    ...draft,
+                    processSettings: e.target.checked
+                      ? fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, null)
+                      : null,
+                  })
+                }
+              />
+              <span>
+                {t('이 에이전트에서 따로 정하기')}
+                <span className="block text-sm text-muted">
+                  {t('끄면 템플릿(또는 문서 형식)이 정한 계산·검사·구조를 그대로 씁니다. 켜면 그 값에서 시작해 바꿉니다.')}
+                </span>
+              </span>
+            </label>
+            {draft.processSettings && (
+              <ProcessSettingsEditor
+                value={fullSettings(draft.inheritedSettings ?? templateCatalogue.process.defaults, draft.processSettings)}
+                catalogue={templateCatalogue.process}
+                onChange={(next) => edit({ ...draft, processSettings: next })}
+              />
+            )}
+          </Group>
+        )}
+
+        <Group
+          title={t('결과물 모양')}
+          hint={offered.includes('report') && process.mode !== 'base' ? t('템플릿, 테마, 문서 형식') : t('템플릿, 테마')}
+          testId="agent-output-group"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
             <Field label={t('템플릿')} hint={t('보고서·슬라이드 대화가 이 템플릿으로 시작합니다.')}>
               <Select value={draft.renderTemplateId ?? ''} onChange={(e) => edit({ ...draft, renderTemplateId: e.target.value || null })}>
                 <option value="">{process.mode === 'base' ? t('기본 과정의 템플릿') : t('정하지 않음')}</option>
@@ -424,6 +482,10 @@ export function AgentForm({
                 ))}
               </Select>
             </Field>
+              <Link to="/customize/templates/new" className="inline-block text-sm text-accent hover:underline" data-testid="new-template-link">
+                {t('새 템플릿')}
+              </Link>
+            </div>
             <div className="space-y-1.5">
               <Field label={t('테마')} hint={t('프로젝트의 테마보다 먼저 씁니다.')}>
                 <Select value={draft.designSystemId ?? ''} onChange={(e) => edit({ ...draft, designSystemId: e.target.value || null })}>

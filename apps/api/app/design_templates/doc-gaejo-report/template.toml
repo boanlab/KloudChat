@@ -50,3 +50,27 @@ question = "보고자(부서·이름)는 누구인가요?"
 why = "머리의 보고자(부서) 칸에 들어갑니다."
 placeholder = "[보고자·부서]"
 detector = { type = "regex", pattern = '보고자|작성자|기안자|보고\s{0,2}부서|작성\s{0,2}부서|[가-힣]{2,10}(?:팀|과|실|처|센터|부)\s{0,2}[가-힣]{2,4}\s{0,2}(?:주무관|주임|대리|과장|팀장|연구원|사원|선생님)' }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc", "quote-calc", "staffing"]
+# 개조식 문체 확인 comes with `structure.style`.
+checks = ["lead-dates", "staff-counts", "material-blanks"]
+stages = ["page-limit"]
+# The planner's outline is replaced by these sections unless a size is asked.
+fixed_outline = true
+# Diagrams only when the instruction asks for them.
+draws = "when-asked"
+# The pre-pass runs (empty) with nothing attached, and never says it was skipped.
+prepass_always = true
+prepass_quiet = true
+conflict_rule = "Use the latest value only for the same item the material explicitly changed, and record the change in one line."
+
+[process.structure]
+sections = ["현황", "문제점 및 검토", "향후 조치 및 결정 요청", "붙임"]
+style = "gaejo"
+# 핵심 두 줄 at the top of the first section.
+summary_lines = 2
+# One page, condensed to fit, unless the request asks another count.
+page_limit = 1

@@ -125,6 +125,52 @@ def _as_dict(spec: Spec) -> dict[str, Any]:
     return {f.name: getattr(spec, f.name) for f in dataclasses.fields(spec)}
 
 
+def wire(spec: Spec) -> dict[str, Any]:
+    """A spec as JSON carries it (a composed run's agent, its stored request)."""
+    return {k: list(v) if isinstance(v, tuple) else v for k, v in _as_dict(spec).items()}
+
+
+def of_wire(raw: dict[str, Any]) -> Spec:
+    known = {f.name: f for f in dataclasses.fields(Spec)}
+    values = {k: (tuple(v) if isinstance(v, list) else v) for k, v in raw.items() if k in known}
+    return Spec(**values)
+
+
+async def for_turn(db, user_id: str, *, agent_checks: list | None = None,
+                   agent_owner: str = "") -> tuple[dict[str, Spec], dict[str, dict[str, Any]]]:
+    """What the server runs for a turn's skills, read from their rows: the person's enabled
+    skills whose fields ask for something (a shipped copy that stores none reads its
+    package), and the check skills the agent attaches (`skill:<id>`), the agent owner's rows.
+    Every field names shipped scripts only.
+
+    Also the person's own scripts by skill key (`{name, files}`), which only the sandbox
+    runs (`run_skill_script`)."""
+    from sqlmodel import col, select
+
+    from app.models.workspace import Skill
+
+    rows = list((await db.exec(select(Skill).where(
+        Skill.owner_id == user_id, Skill.enabled == True,  # noqa: E712
+        col(Skill.server_fields).is_not(None) | col(Skill.script_files).is_not(None)))).all())
+    scripts = {
+        f"{USER}{row.id}": {"name": row.name, "files": {
+            str(f.get("name")): str(f.get("source") or "")
+            for f in row.script_files if isinstance(f, dict) and f.get("name")}}
+        for row in rows if row.script_files}
+    attached = [str(k).removeprefix(USER) for k in (agent_checks or [])
+                if str(k).startswith(USER)]
+    known = {row.id for row in rows}
+    if (wanted := [i for i in attached if i not in known]) and agent_owner:
+        rows += list((await db.exec(select(Skill).where(
+            col(Skill.id).in_(wanted), Skill.owner_id == agent_owner))).all())
+    out: dict[str, Spec] = {}
+    for row in rows:
+        spec = of_row(row)
+        if row.server_fields is not None or spec.user:
+            out[spec.key] = spec
+    return out, scripts
+
+
 def resolve(key: str, specs: Mapping[str, Spec] | None = None) -> Spec | None:
     """The spec a turn holds for `key`, else the shipped package's."""
     if specs and key in specs:
@@ -302,4 +348,5 @@ def empty(fields: dict[str, Any] | None) -> bool:
 
 __all__ = ["FIELDS", "USER", "FieldError", "Spec", "catalogue", "copy_kinds", "empty",
            "entry_refs", "key_of", "normalize", "of_package", "of_row", "package_fields",
-           "post_check_refs", "resolve", "script_refs", "validate"]
+           "for_turn", "of_wire", "post_check_refs", "resolve", "script_refs", "validate",
+           "wire"]

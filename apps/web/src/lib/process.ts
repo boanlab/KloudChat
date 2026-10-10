@@ -48,14 +48,22 @@ export function useProcessCatalogue(version = 0) {
 }
 
 /** The server's verdict on an agent's own steps, refreshed as they change. */
-export function useStepVerdict(steps: PipelineStep[], agentId: string | null, enabled = true) {
+export function useStepVerdict(
+  steps: PipelineStep[],
+  agentId: string | null,
+  enabled = true,
+  /** A new agent (no id yet): what its own step makes, so `@self` is judged as it will run. */
+  self?: { surface: string; name: string },
+) {
   const [verdict, setVerdict] = useState<PipelineVerdict | null>(null)
+  const selfSurface = self?.surface
+  const selfName = self?.name
   useEffect(() => {
     if (!enabled) return
     let current = true
     const timer = window.setTimeout(() => {
       void userPipelinesApi
-        .validate(steps, undefined, agentId ?? undefined)
+        .validate(steps, undefined, agentId ?? undefined, agentId ? undefined : { surface: selfSurface ?? 'chat', name: selfName ?? '' })
         .then((v) => current && setVerdict(v))
         .catch(() => undefined)
     }, 250)
@@ -63,7 +71,7 @@ export function useStepVerdict(steps: PipelineStep[], agentId: string | null, en
       current = false
       window.clearTimeout(timer)
     }
-  }, [steps, agentId, enabled])
+  }, [steps, agentId, enabled, selfSurface, selfName])
   return verdict
 }
 

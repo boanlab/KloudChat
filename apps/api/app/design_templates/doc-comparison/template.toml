@@ -47,3 +47,12 @@ question = "꼭 맞아야 하는 조건은 무엇인가요?"
 why = "필수 조건으로 거르라고 하셨는데 어떤 조건인지 자료에 없습니다."
 placeholder = "[필수 조건]"
 detector = { type = "builtin", name = "musts" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["quote-calc", "staffing", "compare-cost", "compare-check"]
+checks = ["lead-dates", "compare-cells", "staff-counts", "material-blanks"]
+judged = ["judge-bindings"]
+amend = ["option-status", "conflict-values", "unverified-options"]
+conflict_rule = "In the 「자료와 충돌」 section, write the two values side by side with their source, time and measurement conditions, and state in one line which value you followed and why (같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave 「조건 다름」."

@@ -2474,6 +2474,8 @@ export const useStore = create<State>((set, get) => ({
       visibility: a.visibility,
       // Only once the form holds a list: null keeps asking what the base asks.
       ...(a.gapQuestions !== undefined ? { gapQuestions: a.gapQuestions } : {}),
+      // Its own 진행 과정 설정, or null to follow its template's.
+      ...(a.processSettings !== undefined ? { processSettings: a.processSettings } : {}),
     }
     const exists = get().agents.some((x) => x.id === a.id)
     const row = exists ? await agentsApi.update(a.id, payload) : await agentsApi.create(payload)
@@ -2622,11 +2624,17 @@ function adoptServerId(set: Set, sessionId: string, localId: string, serverId: s
 /** Deletes whose requests have not been sent yet, so the page can flush them. */
 const pendingDeletes = new Set<() => void>()
 
+/** Sends every held delete now: the page is going away (closed, reloaded, or put away on a
+ * phone, where `beforeunload` may never fire but `pagehide` does). The requests go out with
+ * `keepalive`. */
+export function flushHeldDeletes() {
+  for (const flush of [...pendingDeletes]) flush()
+  pendingDeletes.clear()
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    for (const flush of pendingDeletes) flush()
-    pendingDeletes.clear()
-  })
+  window.addEventListener('beforeunload', flushHeldDeletes)
+  window.addEventListener('pagehide', flushHeldDeletes)
 }
 
 /** Whatever the row calls itself: artifacts have titles, the rest have names. */
@@ -3049,6 +3057,8 @@ function toAgent(a: AgentRow): Agent {
     bundles: a.bundles ?? null,
     gapQuestions: a.gapQuestions ?? null,
     inheritedQuestions: a.inheritedQuestions ?? [],
+    processSettings: a.processSettings ?? null,
+    inheritedSettings: a.inheritedSettings,
     baseQuestions: a.baseQuestions ?? [],
     process: a.process ?? null,
   }

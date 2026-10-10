@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+import catalog_seed
 import httpx
 import pytest
 
@@ -36,6 +37,12 @@ BACKENDS = settings_store.ToolBackends(
     stt=f"{GATEWAY}/tools/stt",
     index=f"{GATEWAY}/tools/index",
 )
+
+
+@pytest.fixture(autouse=True)
+def _seeded_catalogue():
+    """The catalogue as migration 0062 seeds it."""
+    catalog.use(catalog_seed.entries())
 
 
 def _answer(request: httpx.Request) -> httpx.Response:

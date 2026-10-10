@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { AutoRoutingSection } from './settings/AutoRoutingSection'
 import { BrandingSection } from './settings/BrandingSection'
+import { ConnectorCatalogSection } from './settings/ConnectorCatalogSection'
 import { FeaturesSection } from './settings/FeaturesSection'
 import { MailSection } from './settings/MailSection'
 import { OutlineModelSection } from './settings/OutlineModelSection'
@@ -22,6 +23,7 @@ const tabs = [
   { to: '/admin/system/branding', label: '브랜딩', end: false },
   { to: '/admin/system/mail', label: '메일', end: false },
   { to: '/admin/system/signup', label: '회원 가입', end: false },
+  { to: '/admin/system/connectors', label: '커넥터 카탈로그', end: false },
 ]
 
 /** Titled section with a one-line description. */
@@ -142,6 +144,17 @@ export function AdminSystemPage() {
                 description={t('누가, 어떤 주소로 가입할 수 있는지, 주소를 메일로 확인할지 정합니다.')}
               >
                 <SignupSection settings={settings} onSaved={reload} />
+              </Group>
+            }
+          />
+          <Route
+            path="connectors"
+            element={
+              <Group
+                title={t('커넥터 카탈로그')}
+                description={t('사용자가 사용자 지정 › 커넥터에서 설치할 수 있는 MCP 서버입니다. 명령으로 실행하는 서버(stdio)는 여기서만 추가할 수 있습니다.')}
+              >
+                <ConnectorCatalogSection />
               </Group>
             }
           />

@@ -538,6 +538,10 @@ class AgentOut(Wire):
     #: 진행 과정: `{mode, base, extras, chain, review, needsReview, steps?}`
     #: (`bases.process_of`); `steps` for the owner only.
     process: dict | None = None
+    #: 진행 과정 설정 of its own (`Agent.process_settings`); null follows its 서식's.
+    process_settings: dict | None = None
+    #: What its 서식 (or the 서식 of its format) sets: the form shows these as the defaults.
+    inherited_settings: dict = Field(default_factory=dict)
     #: Published by an administrator. Store-only.
     official: bool = False
     #: The caller already holds a copy. Store-only.
@@ -569,6 +573,8 @@ class AgentOut(Wire):
         out.check_options = dict(a.check_options) if a.check_options else None
         out.gap_questions = None if a.gap_questions is None else [dict(q) for q in a.gap_questions]
         out.inherited_questions = _inherited_questions(a)
+        out.process_settings = None if a.process_settings is None else dict(a.process_settings)
+        out.inherited_settings = _inherited_settings(a)
         out.base_questions = _base_questions(a)
         out.owner_name = owner_name
         out.design_name = design_name
@@ -623,6 +629,17 @@ class AgentIn(Wire):
     check_options: dict[str, bool] | None = None
     #: 빠진 정보 질문 (`services/gap_questions.py`), checked on save; null keeps none stored.
     gap_questions: list[dict[str, Any]] | None = Field(default=None, max_length=12)
+    #: 진행 과정 설정 (`services/process_settings.py`), checked on save; null: its 서식's.
+    process_settings: dict[str, Any] | None = None
+
+
+def _inherited_settings(a: Agent) -> dict:
+    """What its 서식 sets (the shipped one bound to its format, or a person's template it
+    names), as the form shows the defaults."""
+    from app.services import process_settings
+
+    return process_settings.resolve(template_id=a.render_template_id,
+                                    format_id=a.doc_format).wire()
 
 
 def _inherited_questions(a: Agent) -> list[dict]:
@@ -889,9 +906,12 @@ class DesignTemplateOut(Wire):
     has_preview: bool = False
     #: Slides in a deck's sample, each its own `/preview?slide=N`; 0 for any other kind.
     slide_count: int = 0
+    #: A person's template (`ut-<id>`): the caller's own (`mine`) or one shared with them.
+    user: bool = False
+    mine: bool = False
 
     @classmethod
-    def of(cls, t: object) -> DesignTemplateOut:
+    def of(cls, t: object, viewer_id: str = "") -> DesignTemplateOut:
         return cls(
             id=t.id,
             kind=t.kind,
@@ -914,6 +934,8 @@ class DesignTemplateOut(Wire):
                 if t.kind == "deck" and getattr(t, "sample", "")
                 else 0
             ),
+            user=bool(getattr(t, "owner_id", "")),
+            mine=bool(viewer_id) and getattr(t, "owner_id", "") == viewer_id,
         )
 
 

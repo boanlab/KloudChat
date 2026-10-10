@@ -252,29 +252,15 @@ def parse(text: str, material: str) -> list[Figure]:
     return parse_all(text, material)[0]
 
 
-#: How each kind of document treats two values for one thing.
-_ADOPT = {
-    "comparison": (
-        "In the 「자료와 충돌」 section, write the two values side by side with their source, time "
-        "and measurement conditions, and state in one line which value you followed and why "
-        "(같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave "
-        "「조건 다름」."
-    ),
-    "minutes": (
-        "The value of the later decision or later mail is final. Write the final value and leave "
-        "「○○에서 변경」 in 비고."
-    ),
-    "gaejo": "Use the latest value only for the same item the material explicitly changed, and "
-             "record the change in one line.",
-    "client_proposal": (
-        "State which value you took as the premise, and leave what must be checked in "
-        "「전제·제외 범위·위험」 or the question list."
-    ),
-}
+#: How a document treats two values for one thing when its 서식 says nothing
+#: (`conflict_rule` in its 진행 과정 설정, `services/process_settings.py`).
+DEFAULT_RULE = ("State in the sentence which value you used and why. Do not drop the other "
+                "value or merge them into one.")
 
 
-def conflict_block(conflicts: list[Conflict], doc_format: str | None = None) -> str:
-    """The values the material disagrees on, as the writer is shown them."""
+def conflict_block(conflicts: list[Conflict], rule: str = "") -> str:
+    """The values the material disagrees on, as the writer is shown them, with the 서식's rule
+    for them (`conflict_rule`)."""
     if not conflicts:
         return ""
     lines = []
@@ -286,11 +272,7 @@ def conflict_block(conflicts: list[Conflict], doc_format: str | None = None) -> 
             for v in c.values
         )
         lines.append(f"- {c.name}: {shown}")
-    rule = _ADOPT.get(
-        doc_format or "",
-        "State in the sentence which value you used and why. Do not drop the other value or "
-        "merge them into one.",
-    )
+    rule = rule or DEFAULT_RULE
     return (
         "# 자료끼리 다른 값\nThe material gives these things different values. They are not "
         "settled figures (확정 수치). "

@@ -7,6 +7,8 @@ cover_page = false
 # 규칙은 서식 지침과 에이전트 지침에 둔다. 기간 계산·금지어 검사는 뒤에 서버 훅으로 붙는다.
 skills = []
 # Run by the server before and after writing (app/skills/README.md).
+# Job titles and product names are traced to the material too.
+check_options = ["titles"]
 check_skills = ["gap-check", "grounding-check"]
 name = "경력기술서"
 description = "회사별 → 프로젝트별 경력 · 기간 YYYY.MM–YYYY.MM, 자료에 있는 성과만"
@@ -55,3 +57,13 @@ question = "경험별 성과를 보여 줄 수치가 있으면 알려 주세요(
 why = "자료에 수치가 하나도 없습니다. 수치를 지어 넣지 않으므로, 있으면 알려 주셔야 들어갑니다."
 placeholder = "[구체적 성과 수치]"
 detector = { type = "builtin", name = "career_metrics" }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+# Written from the person's own material, never searched.
+search = false
+prepass = ["career-periods"]
+stages = ["career-periods-tidy"]
+checks = ["lead-dates", "career-numbers", "material-blanks"]
+judged = ["judge-repeats"]

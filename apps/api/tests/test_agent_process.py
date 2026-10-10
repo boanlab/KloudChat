@@ -47,7 +47,7 @@ from app.routers import user_pipelines as up
 from app.routers import workspace as ws
 from app.routers.pipelines import describe, pipeline_for_agent
 from app.schemas.workspace import AgentIn
-from app.services import bases, bundles, check_skills, starter
+from app.services import bases, bundles, check_skills, process_settings, starter
 
 # ── the shipped bundles and bases ──────────────────────────────────────
 
@@ -128,10 +128,10 @@ def test_steps_only_where_an_item_is_a_step():
 
 
 def test_strictness_comes_from_the_agent_not_its_name():
-    assert check_skills.options_for("data-analysis") == {"today": ""}
-    assert check_skills.options_for("", None, {"tool_numbers": True}) == {
+    assert check_skills.options_for() == {"today": ""}
+    assert check_skills.options_for(None, {"tool_numbers": True}) == {
         "today": "", "bare": True, "numbers": "computed"}
-    assert check_skills.options_for("", None, {"titles": True, "evil": True}) == {
+    assert check_skills.options_for(None, {"titles": True, "evil": True}) == {
         "today": "", "titles": True, "products": True}
 
 
@@ -483,8 +483,10 @@ async def test_a_user_agent_on_a_base_with_its_bundles_is_the_official_agent(wir
         pipes = [describe(pipeline_for_agent(k, a.doc_format, a.surface), checks)
                  for k, a, checks in zip(keys, (mine, official), attached, strict=True)]
         assert pipes[0] == pipes[1]
-        assert check_skills.fact_set(mine.doc_format, keys[0]) == check_skills.fact_set(
-            official.doc_format, keys[1])
+        settings = [process_settings.resolve(template_id=a.render_template_id,
+                                             format_id=a.doc_format, own=a.process_settings)
+                    for a in (mine, official)]
+        assert settings[0] == settings[1]
         # Without ticks the base brings its own.
         again = await ws.create_agent(_agent(name="둘째", kinds=[spec["surface"]]), admin, db)
         await up.put_process(again.id, up.ProcessIn(mode="base", base=key), admin, db)
@@ -612,3 +614,45 @@ def test_the_migration_retires_backfills_and_clears_on_sqlite():
             migration.downgrade()
         columns = {c["name"] for c in sa.inspect(conn).get_columns("agents")}
         assert not {"retired", "base_key"} & columns
+
+
+# ── persona A/B fixes ───────────────────────────────────────────────────
+
+
+async def test_the_format_follows_the_template_the_agent_writes_in(wired):
+    """B-11: a 기록 정리 base writing in 결과 보고서 stores that format, not 회의록."""
+    me, _, _ = await _people(wired.local)
+    async with wired.local() as db:
+        made = await ws.create_agent(_agent(kinds=["report"],
+                                            render_template_id="doc-result-report"), me, db)
+        await up.put_process(made.id, up.ProcessIn(mode="base", base="minutes"), me, db)
+        row = await db.get(Agent, made.id)
+        assert (row.render_template_id, row.doc_format) == ("doc-result-report", "result_report")
+
+
+async def test_a_chat_agent_stores_no_export_it_cannot_make(wired):
+    """B-11: 바로 답하기 with 마무리하기 ticked keeps no export setting it never runs."""
+    me, _, _ = await _people(wired.local)
+    async with wired.local() as db:
+        made = await ws.create_agent(_agent(kinds=["chat"]), me, db)
+        out = await up.put_process(made.id, up.ProcessIn(
+            mode="direct", bundles=[{"bundle": "finish", "items": {"export": "docx"}}]), me, db)
+        row = await db.get(Agent, made.id)
+        assert row.bundles == [{"bundle": "finish", "items": {"export": False}}]
+        assert not any("DOCX" in line for line in out["chain"])
+
+
+async def test_a_new_agents_own_steps_are_judged_as_they_will_run(wired):
+    """B-5: before the agent is saved, `@self` is the agent the form makes."""
+    me, _, _ = await _people(wired.local)
+    steps = [{"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": "@self"},
+             {"kind": "export", "settings": {"formats": ["docx"]}}]
+    async with wired.local() as db:
+        unsaved = await up.validate_draft(up.ValidateIn(stages=steps), me, db)
+        assert not unsaved["ok"]
+        verdict = await up.validate_draft(up.ValidateIn(
+            stages=steps, self_surface="report", self_name="새 에이전트"), me, db)
+        assert verdict["ok"], verdict["problems"]
+        chat = await up.validate_draft(up.ValidateIn(
+            stages=steps, self_surface="chat", self_name="새 에이전트"), me, db)
+        assert any("문서" in p["message"] for p in chat["problems"])

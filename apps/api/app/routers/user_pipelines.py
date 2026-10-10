@@ -48,7 +48,7 @@ from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
-from app.services import bases, check_skills, design_templates, gap_questions
+from app.services import bases, check_skills, design_templates, gap_questions, skill_specs
 from app.services import bundles as bundle_service
 from app.services import chat as chat_service
 from app.services import models as model_service
@@ -74,6 +74,10 @@ class ValidateIn(Wire):
     id: str | None = Field(default=None, max_length=64)
     #: The agent whose own 진행 과정 this is: its `@self` steps run it.
     agent_id: str | None = Field(default=None, max_length=64)
+    #: A new agent's, not saved yet: what its `@self` step makes (`report` writes a
+    #: document, `chat` answers) and its name, so the order is judged as it will run.
+    self_surface: str | None = Field(default=None, max_length=10)
+    self_name: str = Field(default="", max_length=120)
 
 
 class RejectIn(Wire):
@@ -114,6 +118,21 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
     if origins:
         for row in (await db.exec(select(Agent).where(col(Agent.id).in_(origins)))).all():
             by_id.setdefault(row.id, row)
+    # A person's check skills the agents attach (`skill:<id>`), read from each owner's rows.
+    wanted: dict[str, set[str]] = {}
+    for agent in rows:
+        origin = by_id.get(agent.origin_id or "")
+        own = origin if agent.sealed and origin is not None else agent
+        for key in own.check_skills or []:
+            if str(key).startswith(skill_specs.USER):
+                wanted.setdefault(own.owner_id, set()).add(str(key).removeprefix(skill_specs.USER))
+    specs: dict[str, skill_specs.Spec] = {}
+    for owner_id, ids in wanted.items():
+        for row in (await db.exec(select(Skill).where(
+                col(Skill.id).in_(sorted(ids)), Skill.owner_id == owner_id))).all():
+            spec = skill_specs.of_row(row)
+            if spec.stage:
+                specs[spec.key] = spec
     out: dict[str, compose.AgentInfo] = {}
     for agent in rows:
         origin = by_id.get(agent.origin_id or "")
@@ -134,10 +153,15 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
             enabled=agent.enabled,
             tools=tuple(own.tools) if isinstance(own.tools, list) else None,
             temperature=own.temperature if isinstance(own.temperature, (int, float)) else None,
-            checks=check_skills.attached(
+            checks=(checks := check_skills.attached(
                 agent_checks=own.check_skills or [],
-                template_checks=template.check_skills if template is not None else ()),
-            check_options=check_skills.clean_options(own.check_options),
+                template_checks=template.check_skills if template is not None else (),
+                specs=specs)),
+            # Its strictness with its 서식's (a career history traces titles too).
+            check_options={**{k: True for k in (template.check_options if template else ())},
+                           **check_skills.clean_options(own.check_options)},
+            process=dict(own.process_settings or {}),
+            specs={k: skill_specs.wire(specs[k]) for k in checks if k in specs},
             questions=tuple(gap_questions.resolve(
                 own=own.gap_questions, base_key=key or None,
                 template_id=agent.render_template_id if _output(agent) == "document" else None,
@@ -345,6 +369,12 @@ async def validate_draft(payload: ValidateIn, user: CurrentUser, db: DbSession):
     agents = await agents_for(db, user)
     if payload.agent_id and (mine := agents.get(payload.agent_id)) is not None and mine.mine:
         agents = with_self(agents, payload.agent_id)
+    elif not payload.agent_id and payload.self_surface in ("report", "chat"):
+        # A new agent's own steps: `@self` is the agent the form is making.
+        agents = {**agents, compose.SELF: compose.AgentInfo(
+            id=compose.SELF, name=payload.self_name.strip() or "이 에이전트",
+            output="document" if payload.self_surface == "report" else "answer",
+            self_of="new", shared=True, mine=True)}
     verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents)
     return {**verdict.wire(), "titles": [compose.step_title(s, agents) for s in steps]}
 
@@ -623,10 +653,17 @@ def _apply_base(agent: Agent, base: bases.Base) -> None:
     if kinds and base.surface not in kinds:
         kinds.append(base.surface)
     agent.kinds = kinds or [base.surface]
-    agent.doc_format = base.doc_format
     chosen = design_templates.choosable(agent.render_template_id)
     if chosen is None or chosen.surface.value != base.surface:
         agent.render_template_id = base.template
+        chosen = design_templates.choosable(base.template)
+    # The format follows the template it writes in: a 기록 정리 agent writing 결과 보고서 stores
+    # that format, not the base's. A template that fixes none keeps the base's.
+    fixed = chosen.doc_format if chosen is not None else ""
+    from app.services import doc_formats
+
+    agent.doc_format = fixed if fixed in doc_formats.BY_ID else (
+        None if fixed else base.doc_format)
 
 
 def _process_refused(code: str, message: str) -> HTTPException:
@@ -695,7 +732,8 @@ async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: 
             # A base picked without ticks brings the official agent's own.
             selections = list(base.bundles) if base is not None else []
         made = bundle_service.compile(surface, selections, known)
-        agent.bundles = selections
+        # What cannot run on this surface is stored off (no export for a chat agent).
+        agent.bundles = bundle_service.settled(surface, selections, known)
         agent.check_skills = list(made.check_skills)
         agent.check_options = dict(made.check_options) or None
         steps = made.steps

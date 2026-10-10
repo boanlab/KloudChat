@@ -67,3 +67,10 @@ question = "비율의 분모에 무응답·빈칸을 넣을까요, 뺄까요?"
 why = "자료에 무응답·빈칸이 있어 분모에 따라 비율이 달라집니다."
 placeholder = "[분모 기준]"
 detector = { type = "builtin", name = "denominator" }
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "답의 표기를 다듬습니다"
+check = "답의 수치가 도구로 계산한 결과에 있는지 확인합니다"

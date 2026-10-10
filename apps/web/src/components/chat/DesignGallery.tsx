@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge, Button, Modal } from '@/components/ui'
 import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
@@ -237,6 +238,9 @@ function Foot({
   )
 }
 
+/** The 「내 템플릿」 chip's key; no category a template writes can equal it. */
+const MINE = '\u0000mine'
+
 /** 양식 picker for one surface. */
 export function DesignGalleryModal({
   kind,
@@ -267,11 +271,17 @@ export function DesignGalleryModal({
   )
 
   const categories = useMemo(
-    () => [...new Set(forSurface.map((c) => c.text.category))],
+    () => [...new Set(forSurface.filter((c) => !c.row.user).map((c) => c.text.category))],
     [forSurface],
   )
+  // 「내 템플릿」: the person's own and the ones shared with them, apart from the shipped ones.
+  const hasOwn = forSurface.some((c) => c.row.user)
   const visible =
-    category === 'all' ? forSurface : forSurface.filter((c) => c.text.category === category)
+    category === 'all'
+      ? forSurface
+      : category === MINE
+        ? forSurface.filter((c) => c.row.user)
+        : forSurface.filter((c) => c.text.category === category && !c.row.user)
 
   const [query, setQuery] = useState('')
   const needle = query.trim().toLowerCase()
@@ -311,11 +321,16 @@ export function DesignGalleryModal({
     >
         <div className="mb-3 flex items-baseline justify-between gap-2">
           <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
+          {kind === 'report' && (
+            <Link to="/customize/templates/new" onClick={onClose} className="text-sm text-accent hover:underline" data-testid="gallery-new-template">
+              {t('새 템플릿')}
+            </Link>
+          )}
         </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
-            {categories.length > 1 &&
-              (['all', ...categories] as const).map((c) => (
+            {(categories.length > 1 || hasOwn) &&
+              (['all', ...(hasOwn ? [MINE] : []), ...categories] as const).map((c) => (
                 <button
                   key={c}
                   onClick={() => {
@@ -329,7 +344,7 @@ export function DesignGalleryModal({
                       : 'border-line text-muted hover:text-fg',
                   )}
                 >
-                  {c === 'all' ? t('전체') : c}
+                  {c === 'all' ? t('전체') : c === MINE ? t('내 템플릿') : c}
                 </button>
               ))}
           </div>

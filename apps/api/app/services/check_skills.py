@@ -26,8 +26,6 @@ from app.services import (
 
 log = logging.getLogger(__name__)
 
-#: Strictness keyed by agent rather than by format: the chat agents write no `doc_format`.
-_AGENT_FACTS = {"career-docs": "career-docs", "data-analysis": "data-analysis"}
 #: `post` checks run by a stage of their own (`check:copy`), not by `ground` (`own_stage`
 #: in the skill's fields). An attached check that also names `post_check` scripts
 #: (generic-language-killer) runs here as its entry only — the safe rewrites; switched on by
@@ -72,14 +70,6 @@ def entry(key: str, specs: Specs = None) -> ModuleType:
 def own_stage(key: str, specs: Specs = None) -> bool:
     spec = skill_specs.resolve(key, specs)
     return bool(spec and spec.own_stage)
-
-
-def fact_set(doc_format: str | None, agent_key: str | None) -> str:
-    """The format (else the chat agent) whose strictness the trace follows (`options_for`);
-    what to ask before writing is `gap_questions.resolve`."""
-    if doc_format:
-        return doc_format
-    return _AGENT_FACTS.get(agent_key or "", "")
 
 
 # ── before writing ───────────────────────────────────────────────────────
@@ -166,15 +156,12 @@ def clean_options(raw: dict | None) -> dict[str, bool]:
     return {k: True for k in CHECK_OPTIONS if isinstance(raw, dict) and raw.get(k)}
 
 
-def options_for(facts: str, today: dt.date | None = None,
-                settings: dict | None = None) -> dict:
-    """How strict the trace is: what the agent asked for (`Agent.check_options`), and a
-    career document's titles and tools by its format."""
+def options_for(today: dt.date | None = None, settings: dict | None = None) -> dict:
+    """How strict the trace is: what the agent asked for (`Agent.check_options`) and its
+    서식 sets (`check_options` in a `template.toml`: a career history traces titles)."""
     options: dict = {"today": today.isoformat() if today else ""}
     for key in clean_options(settings):
         options.update(CHECK_OPTIONS[key])
-    if facts == "career_history":
-        options.update(CHECK_OPTIONS["titles"])
     return options
 
 
@@ -241,7 +228,7 @@ def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: st
 
 
 __all__ = [
-    "CHECK_OPTIONS", "GAP_PREFIX", "Outcome", "attached", "clean_options", "entry", "fact_set",
+    "CHECK_OPTIONS", "GAP_PREFIX", "Outcome", "attached", "clean_options", "entry",
     "gaps", "own_stage",
     "goes_on", "ground", "ground_sections", "labelled", "of_stage", "options_for", "questions",
     "rule",

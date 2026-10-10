@@ -22,7 +22,7 @@ import json
 import re
 import tomllib
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,8 @@ from app.services import (
 )
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
+#: A person's template id (`UserTemplate.id` behind it), so a session names it like a shipped one.
+USER_PREFIX = "ut-"
 
 #: Surface each template kind is offered on.
 SURFACE: dict[str, SessionKind] = {
@@ -193,6 +195,21 @@ class DesignTemplate:
     #: 빠진 정보 질문 its format needs (`[[questions]]`, `services/gap_questions.py`), checked
     #: the way a person's agent's are.
     questions: tuple[dict, ...] = ()
+    #: 진행 과정 설정 its format runs with (`[process]`, `services/process_settings.py`).
+    process: dict[str, Any] = field(default_factory=dict)
+    #: How strict the trace is in this 서식 (`check_skills.CHECK_OPTIONS` names).
+    check_options: tuple[str, ...] = ()
+    #: A person's template (`UserTemplate`): its row id, owner and sharing; "" for shipped.
+    owner_id: str = ""
+    visibility: str = ""
+    #: A person's template's own document format (`doc_formats.DocFormat`); None for shipped.
+    doc_format_def: Any = None
+    #: A person's template's form, as text for the writer to read (never an export base).
+    form_reference: str = ""
+
+    @property
+    def user(self) -> bool:
+        return self.id.startswith(USER_PREFIX)
 
     @property
     def surface(self) -> SessionKind:
@@ -214,6 +231,8 @@ _FORM_TEXT: dict[tuple[str, float], str] = {}
 
 def form_text(template: DesignTemplate) -> str:
     """The blank form's text (headings, column names), for the model to write into."""
+    if template.form_reference:
+        return template.form_reference
     if not template.form_file:
         return ""
     path = Path(template.form_file)
@@ -339,7 +358,27 @@ def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
         doc_format=str(meta.get("doc_format") or ""),
         genre=_read(folder, "genre.md").strip(),
         questions=_questions(folder, meta),
+        process=_process(folder, meta),
+        check_options=_check_options(folder, meta),
     )
+
+
+def _process(folder: Path, meta: dict[str, Any]) -> dict[str, Any]:
+    from app.services import process_settings
+
+    try:
+        return process_settings.clean(meta.get("process") or {})
+    except process_settings.ProcessError as exc:
+        raise ValueError(f"{folder.name}: {exc}") from exc
+
+
+def _check_options(folder: Path, meta: dict[str, Any]) -> tuple[str, ...]:
+    from app.services import check_skills
+
+    names = tuple(str(k) for k in meta.get("check_options") or [])
+    if unknown := [n for n in names if n not in check_skills.CHECK_OPTIONS]:
+        raise ValueError(f"{folder.name}: unknown check option {unknown[0]!r}")
+    return names
 
 
 def _questions(folder: Path, meta: dict[str, Any]) -> tuple[dict, ...]:
@@ -375,6 +414,13 @@ def all_templates() -> list[DesignTemplate]:
     return list(_TEMPLATES.values())
 
 
+def for_format(format_id: str | None) -> DesignTemplate | None:
+    """The shipped 서식 bound to a format: its settings and questions are the format's."""
+    if not format_id:
+        return None
+    return next((t for t in _TEMPLATES.values() if t.doc_format == format_id), None)
+
+
 def format_genres() -> dict[str, str]:
     """Each bound format's genre rule, as its 서식 carries it (`genre.md`)."""
     return {t.doc_format: t.genre for t in _TEMPLATES.values() if t.doc_format and t.genre}
@@ -384,8 +430,23 @@ def for_surface(kind: SessionKind) -> list[DesignTemplate]:
     return [t for t in _TEMPLATES.values() if t.surface is kind]
 
 
+#: People's templates this process has loaded (`services/user_templates.ensure`), by id.
+_USER: dict[str, DesignTemplate] = {}
+
+
 def get(template_id: str | None) -> DesignTemplate | None:
-    return _TEMPLATES.get(template_id or "")
+    key = template_id or ""
+    return _USER.get(key) if key.startswith(USER_PREFIX) else _TEMPLATES.get(key)
+
+
+def remember(template: DesignTemplate) -> None:
+    """Hold a person's template (built by `user_templates.build`) for `get`."""
+    if template.id.startswith(USER_PREFIX):
+        _USER[template.id] = template
+
+
+def forget(template_id: str) -> None:
+    _USER.pop(template_id, None)
 
 
 #: The shared seed as a 서식 of its own, outside the catalogue.
@@ -476,12 +537,20 @@ _GENERIC = _template(
 )
 
 
+def generic_with(meta: dict[str, Any]) -> DesignTemplate:
+    """A 서식 on the shared document seed with `meta` as its `template.toml` (a person's)."""
+    return _template(_ROOT / GENERIC_ID, meta)
+
+
 def rendering(template_id: str | None) -> DesignTemplate | None:
     """The 서식 a stored document is drawn and exported in: its own, or the shared seed when
     it names a retired one (or the seed itself). None for any other unknown id."""
     if found := get(template_id):
         return found
     if template_id in RETIRED or template_id == GENERIC_ID:
+        return _GENERIC
+    if (template_id or "").startswith(USER_PREFIX):
+        # A person's template not loaded here (or deleted): it is drawn on this seed anyway.
         return _GENERIC
     return None
 

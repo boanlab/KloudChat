@@ -45,3 +45,12 @@ You turn prose material into a 개조식 report. The reader is a superior who mu
 8. Fit the body (first page through the 「붙임」 list) into the requested page count (default 1 page). Keep in this order: ① 결론·결정 요청 ② 법정 의무·안전 사항 ③ 예산·금액 ④ 현황 수치 ⑤ 경위. If it overflows, trim or move to 붙임 in the order ⑤→④; never drop ①–③.
 9. Write 붙임 as a list only, in the form 「붙임  1. ○○ 1부.」. Do not invent the contents of an attachment the user gave only a title for. Times, amounts and names not in the material stay in brackets like ‘[일시]’ ‘[금액]’.
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+material = "올린 자료를 읽습니다"
+question = "빠진 정보가 있으면 먼저 물어봅니다"
+compute = "날짜·견적·인력 수치를 계산해 둡니다"
+write = "정해진 네 부분으로 개조식 보고를 씁니다"
+check = "개조식 문체와 한 쪽 분량을 확인합니다"

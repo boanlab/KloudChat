@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from app.services import cover_letter, report_checks, verify
+from app.services import cover_letter, process_settings, report_checks, verify
 
 # ── 개조식 ───────────────────────────────────────────────────────────────
 
@@ -93,9 +93,10 @@ def test_the_rfp_terms_are_read_by_code():
     gaon = report_checks.rfp_terms(GAON, "")
     assert gaon["clients"] == ["가온구청 문화체육과"] and gaon["end"] == "2027-06-30"
     assert gaon["pages"] == 50
-    assert report_checks.page_limit("client_proposal", "초안 써 줘", KAFI) == 30
-    assert report_checks.page_limit("client_proposal", "10쪽 이내로", KAFI) == 10
-    assert report_checks.page_limit("client_proposal", "초안 써 줘", "") is None
+    proposal = process_settings.for_format("client_proposal")
+    assert report_checks.page_limit(proposal, "초안 써 줘", KAFI) == 30
+    assert report_checks.page_limit(proposal, "10쪽 이내로", KAFI) == 10
+    assert report_checks.page_limit(proposal, "초안 써 줘", "") is None
 
 
 def test_the_cover_names_the_rfp_client():

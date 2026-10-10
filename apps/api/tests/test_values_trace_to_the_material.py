@@ -28,11 +28,14 @@ def _texts(run: dict) -> list[str]:
 
 
 def _options(run: dict) -> dict:
-    # The strictness an agent's row holds (`check_options`), seeded from its file.
-    from app.services import starter
+    # The strictness an agent's row holds (`check_options`), seeded from its file, and the
+    # one its format's 서식 sets (a career history traces titles too).
+    from app.services import design_templates, starter
 
-    settings = (starter.agent_spec(run["facts"]) or {}).get("check_options")
-    return check_skills.options_for(run["facts"], None, settings) | {"today": _TODAY}
+    settings = dict((starter.agent_spec(run["facts"]) or {}).get("check_options") or {})
+    template = design_templates.for_format(run["facts"])
+    settings |= {k: True for k in (template.check_options if template else ())}
+    return check_skills.options_for(None, settings) | {"today": _TODAY}
 
 
 def _found(run: dict) -> list[dict]:

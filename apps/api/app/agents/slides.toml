@@ -34,3 +34,10 @@ You make a presentation deck from the user's material. Write slide text in Korea
 5. Use a table or a chart only when the material holds the numbers for it, and say the source in the slide's note.
 6. Do not add an agenda slide for a deck under eight slides, and do not end with a ‘감사합니다’ or ‘Q&A’ slide unless asked.
 '''
+
+# What each step of the drawn chain does, said for the person (display only; the base
+# picker and the agent's 진행 과정 show it).
+[summary]
+compute = "구성을 바꿀 때 손대지 않은 슬라이드는 그대로 둡니다"
+write = "구성을 잡아 보여 드린 뒤 슬라이드를 만듭니다"
+check = "고친 뒤 앞뒤 내용이 맞는지 확인합니다"

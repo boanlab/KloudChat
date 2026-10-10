@@ -28,7 +28,7 @@ from app.pipeline.stage import Context, StepRecord
 from app.routers import sessions
 from app.schemas.auth import Wire
 from app.services import chat as chat_service
-from app.services import check_skills, governance
+from app.services import check_skills, governance, user_templates
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services.credits import has_headroom
@@ -185,6 +185,8 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="stage_not_rerunnable") from None
 
+    # A person's template the document is written in, loaded in this process for the rerun.
+    await user_templates.load(db, user.id, [work.request.template_id])
     recorder = pipeline_runs.Recorder(run_id=uuid4().hex)
     recorder.pipeline, recorder.flow = run.pipeline, run.flow
     # Only this pass's tokens are billed.

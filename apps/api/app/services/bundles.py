@@ -292,6 +292,24 @@ def compile(surface: str, selections: list[dict[str, Any]],
     return out
 
 
+def settled(surface: str, selections: list[dict[str, Any]],
+            known: dict[str, Bundle]) -> list[dict[str, Any]]:
+    """Selections as stored for an agent on this surface: an item nothing here can run (a
+    file export for an agent that answers in chat) is stored off, so the row never says it
+    exports what it cannot."""
+    out = []
+    for row in clean(selections):
+        bundle = known.get(row["bundle"])
+        items = dict(row["items"])
+        if bundle is not None:
+            for item in bundle.items:
+                if item.kind == "export" and target(item, surface) is None \
+                        and _value(bundle, item, items):
+                    items[item.id] = False
+        out.append({"bundle": row["bundle"], "items": items})
+    return out
+
+
 def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
          check_skills: list | None = None,
          check_options: dict | None = None) -> list[dict[str, Any]]:
@@ -339,4 +357,4 @@ def lines(surface: str, selections: list[dict[str, Any]],
 
 
 __all__ = ["MINE", "MINE_SKILL", "Bundle", "Compiled", "Item", "SELF", "USER", "clean", "compile",
-           "lines", "of_row", "own_checks", "shipped", "target", "view"]
+           "lines", "of_row", "own_checks", "settled", "shipped", "target", "view"]

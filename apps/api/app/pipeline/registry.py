@@ -2,19 +2,18 @@
 
 A pipeline file names its stages in order and says when it applies:
 
-    name = "minutes"
-    formats = ["minutes"]          # report formats it serves (`doc_formats` ids)
-    agents = ["minutes"]           # catalogue agents whose turns it serves
+    name = "report"
+    agents = ["document"]          # catalogue agents whose turns it serves
     plan = ["research", "material", "outline"]
     write = ["research", "material", "approved-plan", …]
-    prepass = ["date-calc"]        # the pre-pass steps, in order
-    [options]                      # read by stages through `ctx.options`
-    search = true
     [summary]                      # one plain line per step of the drawn chain, for people
     question = "빠진 정보가 있으면 먼저 물어봅니다"
 
-`report.toml` and `chat.toml` are the defaults: a report whose format no file names is
-written by `report`, a chat turn whose agent no file names is finished by `chat`.
+Every report is written by `report` and every chat answer finished by `chat`: what a document
+does besides writing (its pre-pass, its 서식 보정 stages, its checks and options) is the 서식's
+and the agent's 진행 과정 설정 (`services/process_settings.py`), not a file of its own. The
+names of the per-format files that were once here still open the runs stored under them
+(`LEGACY`).
 """
 
 from __future__ import annotations
@@ -111,16 +110,33 @@ def pipelines() -> dict[str, Pipeline]:
     return out
 
 
+#: Pipelines folded into `report` (their stages and options are 진행 과정 설정 now) and
+#: `chat`: a run stored under one of these names reruns on what it became.
+LEGACY = ("gaejo-report", "minutes", "comparison-report", "dated", "career-docs",
+          "client-proposal", "data-analysis")
+
+
+@cache
+def _legacy(name: str) -> Pipeline:
+    report, chat = pipelines()["report"], pipelines()["chat"]
+    return Pipeline(name=name, flows={**report.flows, "finish": chat.flow("finish")},
+                    summary=dict(report.summary))
+
+
 def pipeline(name: str) -> Pipeline:
-    return pipelines()[name]
+    found = pipelines().get(name)
+    if found is None and name in LEGACY:
+        return _legacy(name)
+    if found is None:
+        raise KeyError(name)
+    return found
 
 
-def for_report(format_id: str | None) -> Pipeline:
-    """The pipeline that writes a report of this format; `report` when none names it."""
-    if format_id:
-        for pipe in pipelines().values():
-            if format_id in pipe.formats:
-                return pipe
+def for_report(format_id: str | None = None) -> Pipeline:
+    """The pipeline that writes a report: `report`, whatever the format."""
+    for pipe in pipelines().values():
+        if format_id and format_id in pipe.formats:
+            return pipe
     return pipeline("report")
 
 
@@ -133,20 +149,5 @@ def for_chat(agent_key: str | None) -> Pipeline:
     return pipeline("chat")
 
 
-def prepass_for(format_id: str | None) -> tuple[str, ...]:
-    """The pre-pass steps a format runs before writing, in order."""
-    return for_report(format_id).flow("prepass") if format_id else ()
-
-
-def checks_for(format_id: str | None) -> tuple[str, ...]:
-    """The format code checks (`report_checks.CHECK_FAMILIES`) a format runs, in order."""
-    return for_report(format_id).flow("checks")
-
-
-def judged_for(format_id: str | None) -> tuple[str, ...]:
-    """The judged checks (`report_checks.JUDGED_CHECKS`) a format runs."""
-    return for_report(format_id).flow("judged")
-
-
-__all__ = ["PIPELINES", "Pipeline", "checks_for", "for_chat", "for_report", "judged_for",
-           "pipeline", "pipelines", "prepass_for", "register", "stage", "stages"]
+__all__ = ["LEGACY", "PIPELINES", "Pipeline", "for_chat", "for_report", "pipeline", "pipelines",
+           "register", "stage", "stages"]

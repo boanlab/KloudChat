@@ -287,7 +287,7 @@ async def run_chat(case: dict, patch: Patch) -> dict:
         user_id=user.id, api_key="k", auto_memory=False, session_id=session.id, model=model,
         messages=turn["messages"], tools=[], first_user_message=turn["first_user_message"],
         is_first_turn=False, check_keys=tuple(turn.get("check_keys") or ()),
-        check_facts=turn.get("check_facts") or "", check_material=turn.get("check_material") or "",
+        check_material=turn.get("check_material") or "",
         check_options=turn.get("check_options") or {},
         judge_model=turn.get("judge_model") or "", agent_key=turn.get("agent_key") or "",
     )]

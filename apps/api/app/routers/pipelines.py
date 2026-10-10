@@ -23,28 +23,16 @@ from app.pipeline import marks as doc_marks
 from app.pipeline import registry
 from app.pipeline.labels import label
 from app.routers import sessions
-from app.services import check_skills, skill_packages
+from app.services import check_skills, process_settings, skill_packages
 
 router = APIRouter(tags=["pipelines"])
 
 _FLOWS = ("pre", "plan", "write", "finish", "revise", "make")
-_LISTS = ("prepass", "checks", "judged")
 
-#: People's names for the format code checks, judged checks and pre-pass steps a pipeline file
-#: lists; a check skill package says its own name (SKILL.md `name`).
+#: People's names for the built-in checks, judged checks and pre-pass steps a 진행 과정 설정
+#: names; a check skill package says its own name (SKILL.md `name`).
 _CHECK_NAMES = {
-    "quote-totals": "견적 합계 확인",
-    "proposal-schedule": "제안 일정 확인",
-    "gaejo-style": "개조식 문체 확인",
-    "lead-dates": "날짜 확인",
-    "minutes-rows": "할 일의 담당자·기한 확인",
-    "compare-cells": "비교표 빈칸·점수 확인",
-    "career-numbers": "경력 수치 확인",
-    "staff-counts": "투입 인원 확인",
-    "material-blanks": "자료로 채울 빈칸 찾기",
-    "judge-owners": "담당자 확인",
-    "judge-bindings": "수치와 대상 연결 확인",
-    "judge-repeats": "되풀이된 경험 찾기",
+    **process_settings.CHECKS, **process_settings.JUDGED,
     "proposal-rfp": "제안요청서 조건 읽기",
     "staffing": "투입 인력 읽기",
     "compare-cost": "대안별 총비용 계산",
@@ -59,40 +47,60 @@ def check_name(key: str) -> str:
     return (package.name if package and package.name else "") or _CHECK_NAMES.get(key, key)
 
 
-def _stage_checks(name: str, pipe: registry.Pipeline, attached: tuple[str, ...]) -> list[str]:
-    """The checks a stage runs: check skills for the `check:` stages, the format's code and
+def _stage_checks(name: str, process: process_settings.Process,
+                  attached: tuple[str, ...]) -> list[str]:
+    """The checks a stage runs: check skills for the `check:` stages, the document's code and
     judged checks for the stages that run them."""
     if name == "check:gaps":
         return check_skills.of_stage(attached, "pre")
     if name.startswith("check:"):
         return check_skills.of_stage(attached, "post")
     if name in ("format-find", "format-amend"):
-        return list(pipe.flow("checks"))
+        return list(process.code_checks)
     if name == "verify":
-        return [*pipe.flow("checks"), *pipe.flow("judged")]
+        return [*process.code_checks, *process.judged]
     if name == "prepass":
-        return list(pipe.flow("prepass"))
+        return list(process.prepass)
     return []
 
 
-def describe(pipe: registry.Pipeline, attached: tuple[str, ...] = ()) -> dict[str, Any]:
+def _runs(name: str, stage: Any, process: process_settings.Process | None) -> bool:
+    """Whether an optional report stage runs for this document."""
+    if process is None or name not in (*process_settings.STAGES, "prepass"):
+        return True
+    return process.runs_prepass if name == "prepass" else process.has_stage(name)
+
+
+def describe(pipe: registry.Pipeline, attached: tuple[str, ...] = (),
+             process: process_settings.Process | None = None) -> dict[str, Any]:
+    """A pipeline's flows; with `process`, a document's: the optional stages it does not run
+    left out, and its calculations and checks by name."""
     stages = registry.stages()
+    shown = process or process_settings.DEFAULT
     flows = {}
     for flow in _FLOWS:
-        names = pipe.flow(flow)
+        names = [n for n in pipe.flow(flow) if flow != "write"
+                 or _runs(n, stages.get(n), process)]
         if not names:
             continue
         flows[flow] = [
             {"name": n, "label": label(n), "kind": getattr(stages.get(n), "kind", ""),
-             "checks": _stage_checks(n, pipe, attached)}
+             "checks": _stage_checks(n, shown, attached)}
             for n in names
         ]
-    lists = {k: list(pipe.flow(k)) for k in _LISTS if pipe.flow(k)}
+    lists = ({k: list(v) for k, v in (("prepass", shown.prepass),
+                                      ("checks", shown.code_checks),
+                                      ("judged", shown.judged)) if v}
+             if pipe.flow("write") else {})
     named = [*attached, *(c for rows in flows.values() for s in rows for c in s["checks"]),
              *(c for rows in lists.values() for c in rows)]
     return {
         "name": pipe.name, "formats": list(pipe.formats), "agents": list(pipe.agents),
-        "options": dict(pipe.options), "checks": list(attached), "flows": flows,
+        "options": {k: v for k, v in shown.wire().items()
+                    if k in ("search", "fixed_outline", "draws", "prepass_always",
+                             "prepass_quiet")} if pipe.flow("write") else {},
+        "process": shown.wire() if pipe.flow("write") else None,
+        "checks": list(attached), "flows": flows,
         "lists": lists, "summary": dict(pipe.summary),
         "checkNames": {k: check_name(k) for k in dict.fromkeys(named)},
     }
@@ -125,6 +133,9 @@ def pipeline_for_agent(key: str | None, doc_format: str | None, surface: str | N
         named = [p for p in registry.pipelines().values() if key in p.agents]
         if named:
             return next((p for p in named if p.flow("write")), named[0])
+        from app.services import starter
+
+        surface = surface or str((starter.agent_spec(key) or {}).get("surface") or "")
     return registry.pipeline("report" if surface == "report" else "chat")
 
 
@@ -137,7 +148,10 @@ async def get_agent_pipeline(agent_id: str, user: CurrentUser, db: DbSession):
     pipe = pipeline_for_agent(key, getattr(agent, "doc_format", None),
                               getattr(agent, "surface", None))
     checks = check_skills.attached(agent_checks=agent.check_skills or [])
-    return {**describe(pipe, checks), "agentId": agent.id,
+    process = process_settings.resolve(
+        template_id=agent.render_template_id, format_id=agent.doc_format,
+        own=getattr(agent, "process", None)) if pipe.flow("write") else None
+    return {**describe(pipe, checks, process), "agentId": agent.id,
             "agentKey": key}
 
 

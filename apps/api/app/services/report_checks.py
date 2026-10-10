@@ -25,15 +25,8 @@ from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
 
-#: Formats whose relative dates are resolved before writing.
-DATE_FORMATS = frozenset({"minutes", "event_plan", "client_proposal", "gaejo", "result_report"})
-#: Formats whose price lines are summed before writing.
-QUOTE_FORMATS = frozenset({"client_proposal", "comparison", "gaejo"})
-#: Formats with a page limit checked after writing; 개조식 is one page unless asked otherwise.
-PAGE_LIMITS = {"gaejo": 1}
-#: Formats whose body pages are counted after writing; only 개조식 is condensed to fit.
-PAGE_FORMATS = frozenset({"gaejo", "client_proposal"})
-PREPASS_FORMATS = DATE_FORMATS | QUOTE_FORMATS | {"comparison", "career_history"}
+#: Which steps run, checks apply and amendments are made is the document's 진행 과정 설정
+#: (`services/process_settings.py`), carried on the pre-pass (`Prepass.process`).
 
 _PRICE_LINE = re.compile(
     r"(?:단가|MM|M/M|견적|월\s{0,2}단가|×|x\s{0,2}\d|\d\s{0,2}(?:명|대|개|식|회|개월|부|권)\s{0,4}[×x*])"
@@ -121,6 +114,8 @@ def _words(text: str) -> set[str]:
 @dataclass(slots=True)
 class Prepass:
     format_id: str = ""
+    #: `process_settings.Process` the document is written with; None: the defaults.
+    process: Any = None
     base_date: str = ""
     #: Where `base_date` came from: 「text」, 「file」 (the attachment's name), 「said:오늘」
     #: (the person said the meeting was today or yesterday), or "" when nothing gives it.
@@ -150,9 +145,23 @@ class Prepass:
     runs: list[dict] = field(default_factory=list)
 
     @property
+    def settings(self):
+        """Its 진행 과정 설정; one made without them (an older run) reads its format's."""
+        from app.services import process_settings
+
+        if self.process is not None:
+            return self.process
+        return process_settings.for_format(self.format_id)
+
+    @property
+    def counts_from_meeting(self) -> bool:
+        """Relative dates count from the meeting day (`date_base = "meeting"`, 회의록)."""
+        return self.settings.date_base == "meeting"
+
+    @property
     def undated(self) -> bool:
         """Minutes whose meeting date nothing gives: it stays 「[회의 일자]」."""
-        return self.format_id == "minutes" and not self.base_source
+        return self.counts_from_meeting and not self.base_source
 
     @property
     def bound_dates(self) -> list[dict]:
@@ -1184,22 +1193,23 @@ class PrepassJob:
 async def prepare(
     format_id: str | None, request: str, material: str, *, complete: Complete, model: str,
     api_key: str, usage: dict | None = None, today: dt.date | None = None,
-    tiebreak_model: str = "",
+    tiebreak_model: str = "", process: Any = None,
 ) -> Prepass:
-    """The format's pre-pass: what code settles before a word is written.
+    """The document's pre-pass: what code settles before a word is written.
 
-    The steps and their order are the format's pipeline file's `prepass` list
-    (`app/pipelines/*.toml`); each records its run — done, skipped or failed — in
-    `Prepass.runs`."""
-    from app.pipeline import registry
+    The steps and their order are its 진행 과정 설정's `prepass` (`process`; None: the
+    format's 서식's); each records its run — done, skipped or failed — in `Prepass.runs`."""
     from app.pipeline.runner import CURRENT_STAGE
+    from app.services import process_settings
 
-    pre = Prepass(format_id=format_id or "")
-    if not format_id or not (material or "").strip():
+    if process is None:
+        process = process_settings.for_format(format_id)
+    pre = Prepass(format_id=format_id or "", process=process)
+    if not (material or "").strip():
         return pre
-    job = PrepassJob(format_id, request, material, complete, model, api_key, today,
+    job = PrepassJob(format_id or "", request, material, complete, model, api_key, today,
                      tiebreak_model, usage if usage is not None else {})
-    for name in registry.prepass_for(format_id):
+    for name in process.prepass:
         token = CURRENT_STAGE.set(f"prepass:{name}")
         try:
             await PREPASS_STEPS[name](pre, job)
@@ -1211,12 +1221,13 @@ async def prepare(
 async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     """Relative dates resolved against the meeting's (or the memo's) date; lead times
     counted from the material's own anchor date."""
-    format_id, request, material, today = job.format_id, job.request, job.material, job.today
+    request, material, today = job.request, job.material, job.today
+    meeting = pre.counts_from_meeting
     # Only minutes are about a day the material itself was made on; an RFP's or a
     # memo's relative dates are not read from today.
-    base, source = (meeting_base(request, material, today) if format_id == "minutes"
+    base, source = (meeting_base(request, material, today) if meeting
                     else (meeting_date(request, material), "text"))
-    if base is None and format_id == "minutes":
+    if base is None and meeting:
         # The meeting's date is 「[회의 일자]」; relative deadlines stay words.
         probe = today or dt.date.today()
         rows = _undated(skill_scripts.dates().scan(material, probe), probe)
@@ -1228,7 +1239,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
                  base.isoformat() if base else "")
     pre.base_date = first
     pre.base_source = source if base else ""
-    undated = format_id == "minutes" and base is None
+    undated = meeting and base is None
     if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
         pre.blocks.append(block)
     # 「발주 후 8주」 counts from the material's own absolute date, meeting date or not.
@@ -1274,7 +1285,8 @@ async def _proposal_rfp(pre: Prepass, job: PrepassJob) -> None:
 
 async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
     """The quote's lines read twice (a third reading settles a split) and summed by code."""
-    format_id, material, api_key = job.format_id, job.material, job.api_key
+    material, api_key = job.material, job.api_key
+    settings = pre.settings
     complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
     if _PRICE_LINE.search(material):
         async def read_quote(override: str) -> tuple[Any, Any]:
@@ -1304,7 +1316,8 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
                 pre.staff = staffing(material, data)
                 left_out = excluded_items(data)
                 pre.blocks.append(_quote_block(result, left_out, bool(data.get("basis_assumed"))))
-                if format_id == "client_proposal":
+                if "quote-totals" in settings.code_checks:
+                    # A document whose totals are checked holds them as settled figures.
                     pre.figures.extend(_quote_figures(result))
                 counted = [line for line in result.get("lines") or [] if not line.get("excluded")]
                 summary = (f"견적 {len(counted)}항목 → 공급가액(VAT 별도) {result['supply']:,}원, "
@@ -1322,9 +1335,10 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "quote-calc", "error": True, "summary":
                                  f"견적 계산 못 함 (자료에 없는 값이라 뺀 것: {', '.join(dropped[:4])})"})
             else:
-                # A comparison's prices are totalled by compare-cost; only a proposal's is a miss.
-                pre.runs.append({"skill": "quote-calc", "error": format_id != "comparison",
-                                 "skipped": format_id == "comparison",
+                # Prices totalled per option by compare-cost are no miss here.
+                by_option = "compare-cost" in settings.prepass
+                pre.runs.append({"skill": "quote-calc", "error": not by_option,
+                                 "skipped": by_option,
                                  "summary": "견적 계산 못 함 (응답에서 견적 항목을 읽지 못함)"})
         except Exception as exc:  # noqa: BLE001 — written without the block; said in the step
             log.info("quote pre-pass failed: %s", logs.safe(repr(exc)))
@@ -2170,13 +2184,11 @@ CHECK_FAMILIES: dict[str, Callable[[Prepass], Check | None]] = {
 
 
 def checks(pre: Prepass | None) -> list[Check]:
-    """The format's code checks, as its pipeline file's `checks` list names them; they run
-    before and after the repair."""
-    from app.pipeline import registry
-
+    """The document's code checks, as its 진행 과정 설정 names them (what its structure
+    implies first: 개조식 문체); they run before and after the repair."""
     if pre is None:
         return []
-    built = (CHECK_FAMILIES[name](pre) for name in registry.checks_for(pre.format_id))
+    built = [CHECK_FAMILIES[name](pre) for name in pre.settings.code_checks]
     return [check for check in built if check is not None]
 
 
@@ -2400,15 +2412,31 @@ def _section_for(sections: list[dict], pattern: str, fallback: int = -1) -> int:
     return fallback if fallback >= 0 else len(sections) - 1
 
 
+def _summary_instruction(lines: int) -> str:
+    """What the summary callout amendment asks for: 「핵심」 then `lines` lines (two: the
+    conclusion and the decision needed, as a 개조식 report opens)."""
+    if lines == 2:
+        return ("Add a callout block, opened by the line 「```callout」, at the very start of this section. Its "
+                "first line is 「핵심」, the "
+                "second one line of conclusion, the third one line of the decision needed (the next action "
+                "if none) — plain lines, not list items. End both lines in the noun form (명사형), and use only "
+                "content and numbers in the document.")
+    return ("Add a callout block, opened by the line 「```callout」, at the very start of this section. Its "
+            f"first line is 「핵심」, then exactly {lines} plain lines (not list items) that sum up the "
+            "conclusion and what must be decided or done next. Use only content and numbers in the "
+            "document.")
+
+
 def amendments(pre: Prepass | None, sections: list[dict], material: str, request: str,
                conflicts: list[key_figures.Conflict], title_block: dict | None = None) -> list[Amendment]:
-    """What the format must carry and the document does not."""
+    """What the document must carry and does not: its 진행 과정 설정's `amend` names and its
+    structure's summary callout."""
     if pre is None or not sections:
         return []
     out: list[Amendment] = []
     whole = _whole(sections)
-    fmt = pre.format_id
-    if fmt == "client_proposal":
+    amend, structure = pre.settings.amend, pre.settings.structure
+    if "requirement-ids" in amend:
         wanted = list(dict.fromkeys(_REQ_ID.findall(material)))
         if len(wanted) >= 2:
             missing = [i for i in wanted if i not in whole]
@@ -2424,6 +2452,7 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
                     "otherwise leave 「[대응 방안]」:\n" + "\n".join(
                         f"- {i}: {lines[i]}" for i in missing[:20]),
                     lambda secs, ids=missing: any(i not in _whole(secs) for i in ids)))
+    if "quote-validity" in amend:
         stated = next((m.group(1).strip() for m in _VALIDITY.finditer(f"{request}\n{material}")), "")
         values = " ".join(str(v) for _, v in (title_block or {}).get("fields") or [])
         if stated and "유효" not in whole and stated not in values:
@@ -2440,24 +2469,19 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
         out.append(Amendment(
             index, "lead_date_missing", "", lambda secs, lead=pre.lead: bool(lead_dates_missing(secs, lead)),
             append=f"- 납기 날짜({starts} 기준): {said}"))
-    if fmt == "gaejo":
+    if want := structure.summary_lines:
         lines = summary_lines(sections)
         first = next((i for i, s in enumerate(sections)
                       if not _ATTACHMENT.match(str(s.get("heading") or ""))), 0)
         if lines is None:
             out.append(Amendment(
-                first, "summary_missing",
-                "Add a callout block, opened by the line 「```callout」, at the very start of this section. Its "
-                "first line is 「핵심」, the "
-                "second one line of conclusion, the third one line of the decision needed (the next action "
-                "if none) — plain lines, not list items. End both lines in the noun form (명사형), and use only "
-                "content and numbers in the document.",
+                first, "summary_missing", _summary_instruction(want),
                 lambda secs: summary_lines(secs) is None))
-        elif lines != 2:
+        elif lines != want:
             out.append(Amendment(
-                first, "summary_lines", "", lambda secs: summary_lines(secs) not in (None, 2),
-                report_only=True))
-    if fmt == "comparison" and pre.musts:
+                first, "summary_lines", "",
+                lambda secs, n=want: summary_lines(secs) not in (None, n), report_only=True))
+    if "option-status" in amend and pre.musts:
         index = _section_for(sections, r"필수|조건|상태|판정|비교")
         for option, row in pre.musts["options"].items():
             if row["status"] == "충족":
@@ -2473,7 +2497,7 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
                 lambda secs, rx=marked, o=option, w=word: not rx.search(_whole(secs))
                 and not _status_cell(secs, o, w),
                 append=f"- {option}: {word} — {reason}"))
-    if fmt == "comparison":
+    if "conflict-values" in amend:
         for conflict in conflicts:
             absent = [v for v in conflict.values if not _shown(v["value"], whole)]
             if not absent:
@@ -2489,6 +2513,7 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
                 f"side with their source and time, and state in one line which value you followed (in a "
                 f"table, append a row):\n{listed}",
                 lambda secs, c=conflict: any(not _shown(v["value"], _whole(secs)) for v in c.values)))
+    if "unverified-options" in amend:
         unverified = _unverified_options(sections, list((pre.scores or {}).get("options") or {}))
         if unverified:
             index = _section_for(sections, r"확인|위험|리스크")
@@ -2549,16 +2574,17 @@ _PAGES_ASKED = re.compile(
 )
 
 
-def page_limit(format_id: str | None, request: str, material: str = "") -> int | None:
-    """The body's page limit: what the person asks, else the RFP's (a proposal), else the
-    format's own (개조식: one page)."""
+def page_limit(process: Any, request: str, material: str = "") -> int | None:
+    """The body's page limit: what the person asks, else the RFP's (`page_limit_rfp`, a
+    proposal), else the 서식's own (`page_limit`, 개조식: one page)."""
+    structure = process.structure
     m = _PAGES_ASKED.search(request or "")
     if m:
         word = m.group(1)
         return int(word) if word.isdigit() else {"한": 1, "두": 2, "세": 3}[word]
-    if format_id == "client_proposal" and (rfp := _BODY_PAGES.search(f"{request}\n{material}")):
+    if structure.page_limit_rfp and (rfp := _BODY_PAGES.search(f"{request}\n{material}")):
         return int(rfp.group(1))
-    return PAGE_LIMITS.get(format_id or "")
+    return structure.page_limit or None
 
 
 def body_sections(sections: list[dict]) -> list[dict]:
@@ -2928,7 +2954,7 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
 def minutes_head(block: dict | None, pre: Prepass | None) -> dict | None:
     """The minutes' 일시 left blank: the meeting date code read (the file's name, 「오늘 회의」),
     else 「[회의 일자]」 — never a day guessed from today."""
-    if not block or pre is None or pre.format_id != "minutes":
+    if not block or pre is None or "meeting-date" not in pre.settings.head:
         return None
     fields = [list(f) for f in block.get("fields") or []]
     at = next((i for i, f in enumerate(fields) if f and str(f[0]) in ("일시", "회의 일시", "일자")), None)
@@ -3840,6 +3866,125 @@ def judge_repeats(complete: Complete, judge: str, api_key: str) -> Check:
     return experience_repeat
 
 
+_RULES_PROMPT = """Below is a document and the review rules its writer must follow. Pick only the sentences that break \
+a rule. Copy each sentence exactly as written in the document. Do not pick a sentence the rules do not cover, and do \
+not suggest rewrites.
+
+Rules (numbered):
+{rules}
+
+Document:
+{text}
+
+Answer with one JSON object only: {{"items": [{{"sentence": "문장을 그대로", "rule": 1, "why": "어긋나는 이유 한 줄"}}]}}"""
+
+
+def judge_rules(rules: tuple[str, ...] | list[str], complete: Complete, judge: str,
+                api_key: str) -> Check:
+    """A person's 검토 규칙, in words: one judge call quotes the sentences that break them.
+    Shown to the person with the rule they break; never rewritten on the judge's word."""
+    listed = list(rules)
+
+    @model_check
+    async def rule_review(doc: Doc):
+        text = "\n\n".join(f"## {s.get('heading') or ''}\n{s.get('content') or ''}"
+                            for s in doc.sections)
+        if not listed or len(text.strip()) < 20:
+            return [], {}
+        items, spent = await judge_json(complete, judge, api_key, _RULES_PROMPT.format(
+            rules="\n".join(f"{n}. {r}" for n, r in enumerate(listed, 1)), text=text[:12000]))
+        found = []
+        for item in items:
+            where = _place(doc.sections, str(item.get("sentence") or ""))
+            try:
+                number = int(item.get("rule") or 0)
+            except (TypeError, ValueError):
+                number = 0
+            if not where or not 1 <= number <= len(listed):
+                continue
+            found.append(Finding(
+                where[0], where[1], "rule_broken",
+                f"검토 규칙 {number}「{listed[number - 1][:80]}」에 어긋날 수 있다"
+                f"({str(item.get('why') or '')[:160]}). 확인 필요.", rank=3, auto=False))
+        return found, spent
+
+    return rule_review
+
+
+# ── structure rules: the shape a 서식 declares, checked by code ──────────────
+
+_SPACE = re.compile(r"\s+")
+
+
+def _squeezed(text: str) -> str:
+    return _SPACE.sub("", str(text or "")).strip("*# ").lower()
+
+
+def _section_order(sections_wanted: tuple[str, ...]) -> Check:
+    """Every section the 서식 lists is there, in its order (shown, not rewritten)."""
+
+    async def section_order(doc: Doc) -> tuple[list[Finding], dict]:
+        headings = [_squeezed(s.get("heading")) for s in doc.sections]
+        found: list[Finding] = []
+        last = -1
+        for want in sections_wanted:
+            key = _squeezed(want)
+            at = next((i for i, h in enumerate(headings) if key and (key in h or h in key) and h),
+                      None)
+            if at is None:
+                found.append(Finding(
+                    max(len(doc.sections) - 1, 0), str(doc.sections[-1].get("heading") or "")
+                    if doc.sections else "", "section_missing",
+                    f"서식의 절 「{want}」이 없다. 확인 필요.", rank=4, auto=False))
+                continue
+            if at < last:
+                found.append(Finding(
+                    at, str(doc.sections[at].get("heading") or ""), "section_order",
+                    f"서식이 정한 순서와 다르게 「{want}」이 앞에 있다. 확인 필요.", rank=4,
+                    auto=False))
+            last = max(last, at)
+        return found, {}
+
+    return section_order
+
+
+def _required_table(table: dict) -> Check:
+    """A table with the columns the 서식 requires (under a heading with its words, when
+    given): shown when none has them all."""
+    columns = [str(c) for c in table.get("columns") or []]
+    heading = _squeezed(table.get("heading"))
+
+    async def required_table(doc: Doc) -> tuple[list[Finding], dict]:
+        wanted = [_squeezed(c) for c in columns]
+        for t in tables(doc.sections):
+            if heading and heading not in _squeezed(doc.sections[t.section].get("heading")):
+                continue
+            header = [_squeezed(h) for h in t.header]
+            if all(any(w and w in h for h in header) for w in wanted):
+                return [], {}
+        index = next((i for i, s in enumerate(doc.sections)
+                      if heading and heading in _squeezed(s.get("heading"))),
+                     max(len(doc.sections) - 1, 0))
+        sentence = str(doc.sections[index].get("heading") or "") if doc.sections else ""
+        return [Finding(index, sentence, "table_missing",
+                        f"서식이 정한 표(열: {' · '.join(columns)})가 없다. 확인 필요.", rank=4,
+                        auto=False)], {}
+
+    return required_table
+
+
+def structure_checks(process: Any) -> list[Check]:
+    """The 서식's structure rules checked by code: its sections in order (not when the
+    outline is fixed: code set them) and its required tables. The 개조식 style, the summary
+    callout and the page limit run as their own check, amendment and stage."""
+    structure = process.structure
+    out: list[Check] = []
+    if structure.sections and not process.fixed_outline:
+        out.append(_section_order(tuple(structure.sections)))
+    out += [_required_table(t) for t in structure.tables]
+    return out
+
+
 #: The judged checks a pipeline file's `judged` list names.
 JUDGED_CHECKS: dict[str, Callable[[Complete, str, str], Check]] = {
     "judge-owners": lambda complete, judge, api_key: judge_owners(complete, judge, api_key),
@@ -3850,15 +3995,15 @@ JUDGED_CHECKS: dict[str, Callable[[Complete, str, str], Check]] = {
 
 def model_checks(pre: Prepass | None, *, complete: Complete | None, judge: str,
                  api_key: str) -> list[Check]:
-    """The format's judged checks (E5), as its pipeline file's `judged` list names them: one
-    judge call each per document, findings shown to the reader and never rewritten on the
-    judge's word."""
-    from app.pipeline import registry
-
+    """The document's judged checks (E5), as its 진행 과정 설정 names them, then its 검토
+    규칙: one judge call each per document, findings shown to the reader and never rewritten
+    on the judge's word."""
     if pre is None or complete is None or not judge:
         return []
-    return [JUDGED_CHECKS[name](complete, judge, api_key)
-            for name in registry.judged_for(pre.format_id)]
+    out = [JUDGED_CHECKS[name](complete, judge, api_key) for name in pre.settings.judged]
+    if pre.settings.rules:
+        out.append(judge_rules(pre.settings.rules, complete, judge, api_key))
+    return out
 
 
 # ── the record ──────────────────────────────────────────────────────────
@@ -3900,6 +4045,10 @@ MODEL_LABELS = {
     "owner_change": "담당 변경 미반영 후보(확인 필요)",
     "number_binding": "다른 대상에 붙은 숫자 후보(확인 필요)",
     "experience_repeat": "같은 경험 반복 후보(확인 필요)",
+    "rule_broken": "검토 규칙 위반 후보(확인 필요)",
+    "section_missing": "서식의 절 없음(확인 필요)",
+    "section_order": "서식과 다른 절 순서(확인 필요)",
+    "table_missing": "서식이 정한 표 없음(확인 필요)",
 }
 
 
