@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parent.parent / "skills"
 RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
-           "stage", "entry", "post_check", "post_judge")
+           "stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
+           "own_stage")
 #: A check skill's stage: run by the server before (`pre`) or after (`post`) writing.
 STAGES = ("pre", "post")
 
@@ -60,6 +61,15 @@ class SkillPackage:
     post_checks: tuple[str, ...] = ()
     #: Whether the post check also asks the judge model for statements the material lacks.
     post_judge: bool = False
+    #: `copy_check: true` — its answers are copy: the copy check (`services/copy_check.py`)
+    #: runs over them; `copy_kinds` narrows what it checks (a content plan: only claims,
+    #: health claims and guarantees).
+    copy_check: bool = False
+    copy_kinds: tuple[str, ...] = ()
+    #: `tables: true` — its answers are comparison tables: `source-check/post` checks cells.
+    tables: bool = False
+    #: `own_stage: true` — a `post` check that runs in a stage of its own, not in `ground`.
+    own_stage: bool = False
     #: What the judge looks at in particular for this skill (`post_judge: "<focus>"`).
     judge_focus: str = ""
 
@@ -167,6 +177,10 @@ def load(root: Path) -> SkillPackage:
         entry=str(meta.get("entry") or "").strip(),
         post_checks=post_checks,
         post_judge=bool(meta.get("post_judge")),
+        copy_check=bool(meta.get("copy_check")),
+        copy_kinds=tuple(str(k) for k in meta.get("copy_kinds") or ()),
+        tables=bool(meta.get("tables")),
+        own_stage=bool(meta.get("own_stage")),
         judge_focus=(" ".join(str(meta["post_judge"]).split())
                      if isinstance(meta.get("post_judge"), str) else ""),
     )

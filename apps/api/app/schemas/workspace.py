@@ -455,8 +455,20 @@ class AgentOut(Wire):
     installs: int
     catalog_key: str | None = None
     origin_id: str | None = None
-    #: The owner's user pipeline this agent's turns run (`PUT /agents/{id}/user-pipeline`).
+    #: The owner's user pipeline this agent's turns run (`PUT /agents/{id}/process`).
     pipeline_id: str | None = None
+    #: The official process a person's own agent starts from (`services/bases.py`).
+    base_key: str | None = None
+    #: Taken out of the catalogue; never listed, kept for the conversations made with it.
+    retired: bool = False
+    #: Check skills run around its writing, and how strict the trace is (`Agent.check_skills`).
+    check_skills: list[str] | None = None
+    check_options: dict | None = None
+    #: The 묶음 ticked (`Agent.bundles`).
+    bundles: list | None = None
+    #: 진행 과정: `{mode, base, extras, chain, review, needsReview, steps?}`
+    #: (`bases.process_of`); `steps` for the owner only.
+    process: dict | None = None
     #: Published by an administrator. Store-only.
     official: bool = False
     #: The caller already holds a copy. Store-only.
@@ -480,8 +492,12 @@ class AgentOut(Wire):
         design_name: str = "",
         #: Caller id; a sealed original's prompt is withheld from non-owners.
         viewer_id: str | None = None,
+        process: dict | None = None,
     ) -> AgentOut:
         out = cls.model_validate(a, from_attributes=True)
+        out.process = process
+        out.check_skills = None if a.check_skills is None else [str(k) for k in a.check_skills]
+        out.check_options = dict(a.check_options) if a.check_options else None
         out.owner_name = owner_name
         out.design_name = design_name
         out.has_knowledge = has_knowledge
@@ -526,9 +542,13 @@ class AgentIn(Wire):
     starters: list[str] = Field(default_factory=list, max_length=6)
     share_mode: Literal["open", "sealed"] = "open"
     temperature: float = Field(default=0.7, ge=0, le=2)
-    color: str = "#5b53e8"
+    color: str = Field(default="#5b53e8", pattern=r"^#[0-9a-fA-F]{6}$")
     enabled: bool = True
     visibility: AgentVisibility = AgentVisibility.private
+    #: Check skills (`app/skills`, those with a `stage`) the server runs around its writing.
+    check_skills: list[str] | None = Field(default=None, max_length=12)
+    #: `{tool_numbers, titles}`: how strict `grounding-check` is.
+    check_options: dict[str, bool] | None = None
 
 
 class ToolCatalogOut(Wire):

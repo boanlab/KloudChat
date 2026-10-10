@@ -104,6 +104,8 @@ jobs:
 
       - name: Test the 사용자 지정 hub
         run: npx playwright test --config playwright.customize.config.ts --workers=1
+      - name: Test an agent's 진행 과정, 묶음 and 에이전트로 저장
+        run: npx playwright test --config playwright.agents.config.ts --workers=1
 
       - name: Test result cards, panel headers and reuse
         run: npx playwright test --config playwright.results.config.ts --workers=1

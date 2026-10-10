@@ -348,6 +348,25 @@ class Agent(SQLModel, table=True):
     design_system_id: str | None = Field(default=None)
     #: A user pipeline (`UserPipeline`) the agent's turns run instead of its shipped flow.
     pipeline_id: str | None = Field(default=None)
+    #: The official agent (catalogue key) whose process a person's own agent runs: its checks,
+    #: its question card and its pipeline (`services/bases.py`). Null: plain chat, or the
+    #: shipped flow of `catalog_key` / the original's for a catalogue agent and its copies.
+    base_key: str | None = Field(default=None, max_length=60)
+    #: Check skills the server runs around this agent's writing (`app/skills/README.md`):
+    #: `gap-check` asks before writing, `grounding-check` and `generic-language-killer` fix
+    #: after. A catalogue agent's come from its toml `checks`; a person's own are ticked in
+    #: the form (추가로 할 일). Null: none.
+    check_skills: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: How strict `grounding-check` is: `tool_numbers` (a number counts only when a tool
+    #: printed it), `titles` (job titles and product names are traced too).
+    check_options: dict | None = Field(default=None, sa_column=_json(nullable=True))
+    #: The 묶음 ticked in the form, `[{"bundle": ref, "items": {id: tick}}]`
+    #: (`services/bundles.py`); `check_skills`, `check_options` and the agent's own pipeline
+    #: are compiled from them. Null: none stored (an agent from before bundles).
+    bundles: list | None = Field(default=None, sa_column=_json(nullable=True))
+    #: Taken out of the catalogue: listed nowhere and no new conversation starts with it. The
+    #: row stays so conversations and documents made with it still open and export.
+    retired: bool = Field(default=False)
     #: `open`: a copy carries the prompt. `sealed`: a copy runs on the
     #: original's prompt without holding it.
     share_mode: str = Field(default="open")
@@ -561,6 +580,12 @@ class UserPipeline(SQLModel, table=True):
     #: The shipped pipeline (`app/pipelines/*.toml`) or the shared one it was copied from.
     base: str | None = Field(default=None)
     origin_id: str | None = Field(default=None, index=True)
+    #: The agent whose own 진행 과정 this is (`PUT /agents/{id}/process`); its `@self` steps run
+    #: that agent. Null for a pipeline composed on its own (the earlier 워크플로).
+    agent_id: str | None = Field(default=None, index=True)
+    #: "" for a pipeline; `bundle` for a person's own 묶음 (`services/bundles.py`), whose
+    #: stages are the items an agent form ticks.
+    kind: str = Field(default="", max_length=20)
     #: `[{id, kind, ref, settings}]`, validated by `compose.validate` on every write.
     stages: list | None = Field(default=None, sa_column=_json(nullable=True))
     #: `private` or `org`; org only through approval.

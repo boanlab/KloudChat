@@ -1,8 +1,10 @@
-# 비교·분석 보고서 — specs: lineup v1 `comparison-report`.
+# 비교·결정 (formerly 비교·분석 보고서) — specs: lineup v1 `comparison-report`.
 
 key = "comparison-report"
-order = 6
-name = "비교·분석 보고서"
+order = 4
+name = "비교·결정"
+# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+former_names = ["비교·분석 보고서"]
 description = "대안 2~5개를 같은 기준으로 견주고 하나를 골라야 하는 보고서가 필요할 때(제품·업체·입지·운영 방식)"
 kinds = ["report"]
 surface = "report"
@@ -12,8 +14,14 @@ design = "기본"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check", "generic-language-killer"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
 temperature = 0.3
 color = "#ea580c"
 starters = [

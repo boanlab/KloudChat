@@ -23,7 +23,7 @@ Outputs generated in a conversation, such as reports, slides, charts, code, web 
 | Slides | PowerPoint (PPTX), PDF, text (with notes) |
 | A document with a template applied | PDF, DOCX/PPTX, HWPX, HTML, text |
 
-PDF reproduces the design as it is, and DOCX and PPTX put an editable structure first, so some visual elements of the template may differ.
+PDF reproduces the theme as it is, and DOCX and PPTX put an editable structure first, so some visual elements of the template may differ.
 
 ## Gallery
 

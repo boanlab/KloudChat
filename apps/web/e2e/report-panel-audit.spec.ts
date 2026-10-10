@@ -81,7 +81,7 @@ async function fixture(page: Page, testInfo: TestInfo, options: Options = {}) {
 const panel = (page: Page) => page.locator('[data-panel="artifact"]')
 const tab = (page: Page, name: string) => panel(page).getByRole('tab', { name, exact: true })
 /** The editing tabs; reading has none. */
-const TABS = ['글자', '삽입', '디자인', '검토']
+const TABS = ['글자', '삽입', '테마', '검토']
 const editToggle = (page: Page) => panel(page).locator('header').getByRole('button', { name: '편집', exact: true })
 async function editMode(page: Page, on = true) {
   const pressed = (await editToggle(page).getAttribute('aria-pressed')) === 'true'
@@ -193,7 +193,7 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   await shot('back-to-web-2')
 
   await editMode(page)
-  await tab(page, '디자인').click()
+  await tab(page, '테마').click()
   await homeButton(page, '페이지 설정').click()
   await page.waitForTimeout(500)
   await homeButton(page, '웹뷰').click()
@@ -203,23 +203,23 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   // A panel opened from a tab closes when another tab is chosen.
   const settingsField = panel(page).getByText('머리말', { exact: true })
   await editMode(page)
-  await tab(page, '디자인').click()
+  await tab(page, '테마').click()
   await homeButton(page, '페이지 설정').click()
   for (const other of ['글자', '삽입', '검토']) {
     await tab(page, other).click()
     await page.waitForTimeout(300)
     await check(`page settings hidden on ${other}`, async () => !(await settingsField.isVisible()))
   }
-  await tab(page, '디자인').click()
+  await tab(page, '테마').click()
   await page.waitForTimeout(300)
-  await check('page settings closed when coming back to 디자인', async () => !(await settingsField.isVisible()))
+  await check('page settings closed when coming back to 테마', async () => !(await settingsField.isVisible()))
 
   await tab(page, '검토').click()
   await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
   await page.waitForTimeout(400)
   const sourcesPane = panel(page).getByRole('heading', { name: '참고문헌' })
   await check('sources pane opens from 검토', async () => sourcesPane.isVisible())
-  for (const other of ['글자', '삽입', '디자인']) {
+  for (const other of ['글자', '삽입', '테마']) {
     await tab(page, '검토').click()
     if (!(await sourcesPane.isVisible())) await panel(page).locator('header').getByRole('button', { name: /출처 \d/ }).click()
     await tab(page, other).click()
@@ -259,7 +259,7 @@ test('flows: views round-trip and every panel belongs to its tab', async ({ page
   await check('table of contents closed on 편집', async () => !(await toc.isVisible()))
   await shot('toc-after-edit')
   // Menus close when their tab is left.
-  await tab(page, '디자인').click()
+  await tab(page, '테마').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
   await tab(page, '검토').click()
   await page.waitForTimeout(300)
@@ -302,7 +302,7 @@ test('errors: every failure says so in place, aligned, and can be left', async (
   })
   // Save failure: change the accent while writes fail.
   await editMode(page)
-  await tab(page, '디자인').click()
+  await tab(page, '테마').click()
   await panel(page).locator('header').getByRole('button', { name: /강조색/ }).click()
   await page.locator('[role="menu"]:visible').getByText('파랑', { exact: true }).click()
   const saveError = panel(page).locator('[role="alert"] p').first()
@@ -318,13 +318,13 @@ test('errors: every failure says so in place, aligned, and can be left', async (
     return Math.abs(box.top - box.bottom) <= 3
   })
   // Template change failure.
-  await panel(page).locator('header').getByRole('button', { name: '문서 양식 고르기' }).click()
+  await panel(page).locator('header').getByRole('button', { name: '문서 템플릿 고르기' }).click()
   await page.locator('[role="menu"]:visible').getByText('고객 제안서').click()
   await page.waitForTimeout(800)
   await shot('template-failed')
   // No 서식 on the document: the button keeps its generic label, not the one that failed.
   await check('template failure keeps the old template name', async () =>
-    !((await panel(page).locator('header').getByRole('button', { name: '문서 양식 고르기' }).textContent())?.includes('고객 제안서') ?? true))
+    !((await panel(page).locator('header').getByRole('button', { name: '문서 템플릿 고르기' }).textContent())?.includes('고객 제안서') ?? true))
   // Export failure (the mock answers 404), from the header's 내려받기.
   await panel(page).locator('header').getByRole('button', { name: '내려받기' }).click()
   await page.locator('[role="menu"]:visible').getByText('Word 문서').click()
@@ -332,7 +332,7 @@ test('errors: every failure says so in place, aligned, and can be left', async (
   await shot('export-failed')
   await check('export failure is shown, not an earlier message', async () => {
     const text = await panel(page).locator('[role="alert"]').first().textContent()
-    return Boolean(text && !text.includes('양식을 바꾸지'))
+    return Boolean(text && !text.includes('템플릿을 바꾸지'))
   })
   await check('error banner can be dismissed', async () => {
     await panel(page).locator('[role="alert"]').getByRole('button', { name: '닫기' }).click()

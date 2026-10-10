@@ -386,7 +386,7 @@ function IssueDetailView({ id }: { id: string }) {
                     </dd>
                     <dt className="text-faint">{t('모델')}</dt>
                     <dd className="[overflow-wrap:anywhere]">{context.models?.join(', ') || session.model || '—'}</dd>
-                    <dt className="text-faint">{t('에이전트·워크플로')}</dt>
+                    <dt className="text-faint">{t('에이전트·진행 과정')}</dt>
                     <dd>{[session.agent, session.pipeline].filter(Boolean).join(' · ') || '—'}</dd>
                     <dt className="text-faint">{t('메시지')}</dt>
                     <dd>{session.messageCount}</dd>

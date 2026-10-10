@@ -1,7 +1,7 @@
 # 데이터 분석 — specs: lineup v1 `data-analysis`.
 
 key = "data-analysis"
-order = 4
+order = 5
 name = "데이터 분석"
 description = "엑셀·CSV를 올리고 정리·집계·비교한 표와 차트, 자료가 받쳐 주는 만큼의 해석이 필요할 때"
 kinds = ["chat"]
@@ -10,8 +10,13 @@ design = "기본"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = ["run_code", "create_chart", "calculate"]
 skills = []
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare", items = { dates = false, amounts = false } },
+    { bundle = "review", items = { numbers = true } },
+]
 temperature = 0.3
 color = "#7c3aed"
 starters = [

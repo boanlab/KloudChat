@@ -1,5 +1,6 @@
-import { ChevronDown, Download, FilePlus2, Loader2, Paperclip, TriangleAlert } from 'lucide-react'
+import { Bot, ChevronDown, Download, FilePlus2, Loader2, Paperclip, TriangleAlert } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Dropdown, MenuItem, MenuLabel } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { reusable, useReuseArtifact } from '@/lib/reuse'
@@ -121,6 +122,7 @@ export function DownloadMenu({
 /** 「이걸로 새로 시작」 and 「새 대화에 첨부」 as menu items, for any ⋯ menu that holds an artifact. */
 export function ReuseItems({ artifact }: { artifact: Artifact }) {
   const t = useT()
+  const navigate = useNavigate()
   const reuse = useReuseArtifact()
   if (!reusable(artifact)) return null
   return (
@@ -131,6 +133,12 @@ export function ReuseItems({ artifact }: { artifact: Artifact }) {
       <MenuItem icon={<Paperclip size={14} />} onClick={() => void reuse(artifact, 'attach')}>
         {t('새 대화에 첨부')}
       </MenuItem>
+      {artifact.sessionId && (
+        // The conversation that made it, as an agent's form to review; nothing is saved yet.
+        <MenuItem icon={<Bot size={14} />} onClick={() => navigate(`/customize/agents/new?from=session:${artifact.sessionId}`)}>
+          {t('에이전트로 저장')}
+        </MenuItem>
+      )}
     </>
   )
 }

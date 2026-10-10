@@ -18,8 +18,6 @@ import sys
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-#: Skills whose answers are comparison tables and battle cards (the cell check applies).
-TABLE_SKILLS = {"competitor-analysis", "competitive-battlecard", "source-check"}
 
 
 def _sibling(name: str):
@@ -133,7 +131,9 @@ def post(text: str, args: dict) -> dict:
                 {**_row(f), "why": f"{f['why']} — 수치·사례와 출처로 바꾸거나 지우세요"})
         elif f["kind"] in ("undefined_ref", "stale", "ref_no_date"):
             out["flags"].append(_row(f))
-    if set(args.get("skills") or ()) & TABLE_SKILLS:
+    # The server says whether a skill on the turn answers in comparison tables
+    # (`tables: true` in its SKILL.md).
+    if args.get("tables"):
         cells = [f for f in claims.check(text, material, {})
                  if f["kind"] in ("unsourced_cell", "empty_cell", "verdict_without_evidence",
                                   "unsourced_bullet") and not _judgement(f)]

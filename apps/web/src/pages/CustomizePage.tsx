@@ -3,24 +3,22 @@ import {
   ArrowUpDown,
   Check,
   ChevronDown,
-  FilePlus2,
-  FileUp,
+  Layers,
   Pencil,
   Plus,
   Search,
   SlidersHorizontal,
   Upload,
-  Workflow,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { SharedDesigns, TemplateCatalogue } from '@/components/customize/DesignsTab'
 import {
   CARD_TABS,
   HUB_TABS,
+  MOVED_TABS,
   STATUS_LABEL,
   TAB_LABEL,
   filterItems,
@@ -32,18 +30,14 @@ import {
   type SortKey,
 } from '@/components/customize/hubItems'
 import { ItemCard } from '@/components/customize/ItemCard'
-import { ShippedWorkflows } from '@/components/customize/ShippedWorkflows'
 import { useItemActions } from '@/components/customize/tryItem'
 import { Button, Dropdown, EmptyState, Input, LoadingState, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { BulkBar, useBulkSelect } from '@/components/ui/BulkSelect'
-import { errorMessage, userPipelinesApi } from '@/lib/api'
 import { kindMeta } from '@/lib/kinds'
 import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useT, useTIn } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { ConnectorsPage } from '@/pages/ConnectorsPage'
-import { MemoryPage } from '@/pages/MemoryPage'
-import { DesignsSection } from '@/pages/settings/DesignsSection'
 import { useStore } from '@/store/useStore'
 import type { SessionKind } from '@/types'
 
@@ -94,7 +88,7 @@ function TabStrip({ tab, onChange }: { tab: HubTab; onChange: (next: HubTab) => 
   const t = useT()
   const tHub = useTIn('hub')
   const strip = useRef<HTMLDivElement>(null)
-  // On a phone the strip scrolls: keep the open tab (e.g. 양식, near the end) in view.
+  // On a phone the strip scrolls: keep the open tab in view.
   useEffect(() => {
     const on = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]')
     on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -147,31 +141,18 @@ function Segment({ view, onChange }: { view: View; onChange: (next: View) => voi
 function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
   const t = useT()
   const navigate = useNavigate()
-  const setNotice = useStore((s) => s.setNotice)
-  const createWorkflow = async () => {
-    try {
-      const made = await userPipelinesApi.create({ name: t('새 워크플로') })
-      navigate(`/customize/workflows/${made.id}`)
-    } catch (err) {
-      setNotice(errorMessage(err, t('워크플로를 만들지 못했습니다.')))
-    }
-  }
   const items: { label: string; icon: ReactNode; run: () => void }[] =
     tab === 'agents'
-      ? [{ label: '에이전트 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/agents/new') }]
+      ? [
+          { label: '에이전트 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/agents/new') },
+          { label: '묶음 만들기', icon: <Layers size={14} />, run: () => navigate('/customize/bundles?new=1') },
+        ]
       : tab === 'skills'
         ? [
             { label: '스킬 만들기', icon: <Pencil size={14} />, run: () => navigate('/customize/skills/new') },
             { label: '스킬 업로드', icon: <Upload size={14} />, run: () => navigate('/customize/skills/upload') },
           ]
-        : tab === 'workflows'
-          ? [{ label: '워크플로 만들기', icon: <Pencil size={14} />, run: () => void createWorkflow() }]
-          : tab === 'designs'
-            ? [
-                { label: '디자인 만들기', icon: <FilePlus2 size={14} />, run: () => navigate('/customize?tab=designs&view=mine&add=new') },
-                { label: '파일에서 읽어 오기', icon: <FileUp size={14} />, run: () => navigate('/customize?tab=designs&view=mine&add=extract') },
-              ]
-            : []
+        : []
   if (items.length === 0) return null
   return (
     <Dropdown
@@ -412,8 +393,15 @@ function SectionHead({ title, onAll }: { title: string; onAll?: () => void }) {
   )
 }
 
-/** /customize — 사용자 지정: agents, skills, workflows, connectors, memory, templates (양식) and designs in one place. */
+/** /customize — 사용자 지정: agents (with the 묶음 they tick), skills and connectors. */
 export function CustomizePage() {
+  const [params] = useSearchParams()
+  const moved = MOVED_TABS[params.get('tab') ?? '']
+  if (moved) return <Navigate to={moved} replace />
+  return <Hub />
+}
+
+function Hub() {
   const t = useT()
   const navigate = useNavigate()
   const phone = useMediaQuery('(max-width: 40rem)')
@@ -421,7 +409,6 @@ export function CustomizePage() {
   const loadWorkspace = useStore((s) => s.loadWorkspace)
   const loadSkillStore = useStore((s) => s.loadSkillStore)
   const workspaceLoading = useStore((s) => s.workspaceLoading)
-  const designs = useStore((s) => s.designs)
   const deleteMany = useStore((s) => s.deleteMany)
   const [picking, setPicking] = useState(false)
   const [sheet, setSheet] = useState(false)
@@ -432,21 +419,12 @@ export function CustomizePage() {
   }, [loadWorkspace, loadSkillStore])
 
   const hub = useHubItems(tab)
-  const { tryItem, addItem } = useItemActions(hub.reloadPipelines)
+  const { tryItem, addItem } = useItemActions()
   const cardTab = CARD_TABS.includes(tab)
-  const hasView = cardTab || tab === 'designs'
+  const hasView = cardTab
   const rawView = params.get('view')
-  const fallback: View =
-    tab === 'designs'
-      ? designs.some((d) => d.mine)
-        ? 'mine'
-        : 'explore'
-      : hub.mine.length > 0 || hub.loading || workspaceLoading
-        ? 'mine'
-        : 'explore'
+  const fallback: View = hub.mine.length > 0 || hub.loading || workspaceLoading ? 'mine' : 'explore'
   const view: View = rawView === 'mine' || rawView === 'explore' ? rawView : fallback
-  const focus = params.get('focus')
-  const add = params.get('add')
 
   const kindWord = t(TAB_LABEL[tab])
   const filtered = useMemo(
@@ -468,11 +446,8 @@ export function CustomizePage() {
   }
 
   const onAdd = async (item: HubItem) => {
-    const to = await addItem(item)
-    // A shipped flow is copied to be edited: open the copy.
-    if (to && item.shippedAgent) navigate(to)
+    await addItem(item)
   }
-  const openShipped = (item: HubItem) => update({ view: 'mine', focus: item.id, all: null })
   const card = (item: HubItem, v: View) => (
     <ItemCard
       key={item.key}
@@ -480,7 +455,6 @@ export function CustomizePage() {
       view={v}
       onTry={tryItem}
       onAdd={onAdd}
-      onOpen={item.shippedAgent ? openShipped : undefined}
       picking={picking}
       picked={pick.picked.has(item.id)}
       onPick={(i) => pick.toggle(i.id)}
@@ -565,19 +539,20 @@ export function CustomizePage() {
         ) : (
           <Grid>{filtered.map((item) => card(item, 'mine'))}</Grid>
         )}
-        {tab === 'workflows' && hub.locked.length > 0 && (
-          <details className="group rounded-card border border-line" open={!!focus}>
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-base font-medium select-none [&::-webkit-details-marker]:hidden">
-              <Workflow size={14} aria-hidden className="text-faint" />
-              {t('기본 워크플로')}
-              <span className="text-faint">{hub.locked.length}</span>
-              <span className="text-sm font-normal text-faint max-sm:hidden">· {t('복제해서 고칠 수 있어요')}</span>
-              <ChevronDown size={15} aria-hidden className="ml-auto text-faint transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-line p-4">
-              <ShippedWorkflows agents={hub.locked.map((i) => i.shippedAgent!)} focus={focus} />
-            </div>
-          </details>
+        {tab === 'agents' && (
+          // 묶음 live with the agents that tick them, not in a tab of their own.
+          <Link
+            to="/customize/bundles"
+            className="flex items-center gap-2 rounded-card border border-line px-4 py-3 text-base hover:bg-elevated focus-visible:outline-2 focus-visible:outline-accent"
+            data-testid="bundles-link"
+          >
+            <Layers size={14} aria-hidden className="text-faint" />
+            <span className="font-medium">{t('묶음')}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-faint">
+              {t('에이전트 설정의 「추가로 할 일」에서 체크하는 할 일 묶음')}
+            </span>
+            <ArrowRight size={14} aria-hidden className="text-faint" />
+          </Link>
         )}
       </div>
     )
@@ -632,14 +607,14 @@ export function CustomizePage() {
     )
   }
 
-  const searchable = cardTab || tab === 'templates' || (tab === 'designs' && view === 'explore')
+  const searchable = cardTab
   const filterCount = filter.status.length + filter.kinds.length
 
   return (
     <>
       <TopBar
         left={<span className="text-base font-medium">{t('사용자 지정')}</span>}
-        right={phone && (cardTab || tab === 'designs') ? <AddMenu tab={tab} compact /> : undefined}
+        right={phone && cardTab ? <AddMenu tab={tab} compact /> : undefined}
       />
       <PageBody>
         <div className="mb-5 flex items-center justify-between gap-3 max-sm:mb-3">
@@ -694,14 +669,6 @@ export function CustomizePage() {
 
         <div role="tabpanel" aria-label={t(TAB_LABEL[tab])}>
           {tab === 'connectors' && <ConnectorsPage embedded />}
-          {tab === 'memory' && <MemoryPage embedded />}
-          {tab === 'designs' &&
-            (view === 'mine' ? (
-              <DesignsSection key={add ?? 'list'} initialMode={add === 'new' || add === 'extract' ? add : undefined} />
-            ) : (
-              <SharedDesigns query={filter.q} />
-            ))}
-          {tab === 'templates' && <TemplateCatalogue query={filter.q} />}
           {cardTab && (view === 'mine' ? mineBody() : exploreBody())}
         </div>
       </PageBody>

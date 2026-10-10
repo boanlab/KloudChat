@@ -124,8 +124,8 @@ def _proposal_agent(design_id: str | None = None, **overrides) -> AgentIn:
         "system_prompt": "너는 고객 맞춤 제안서를 쓴다.",
         "kinds": ["report"],
         "surface": "report",
-        "render_template_id": "doc-client-proposal",
-        "doc_format": "client_proposal",
+        "render_template_id": "doc-comparison",
+        "doc_format": "comparison",
         "design_system_id": design_id,
         "tools": [],
     }
@@ -142,22 +142,22 @@ async def test_a_session_started_from_an_agent_takes_its_bindings(db):
     out = await ws.create_agent(_proposal_agent(design.id), author, db)
     assert (out.surface, out.render_template_id, out.doc_format, out.design_system_id) == (
         "report",
-        "doc-client-proposal",
-        "client_proposal",
+        "doc-comparison",
+        "comparison",
         design.id,
     )
 
     # No kind named: the agent's surface and 서식.
     session = await sessions_router.create_session(SessionCreate(agent_id=out.id), author, db)
     assert session.kind is SessionKind.report
-    assert session.render_template_id == "doc-client-proposal"
+    assert session.render_template_id == "doc-comparison"
 
     row = await db.get(ChatSession, session.id)
     context = await workspace_context.assemble(db, author, row)
-    assert context.doc_format == "client_proposal"
+    assert context.doc_format == "comparison"
     assert context.design_tokens is not None and context.design_tokens["accent"] == "#1f3a5f"
     assert doc_formats.detect("아무 문서", row.render_template_id, context.doc_format).id == (
-        "client_proposal"
+        "comparison"
     )
 
 
@@ -166,7 +166,7 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     author, _, design = await _people(db)
     mine = DesignSystem(owner_id=author.id, name="문서용 명조", tokens={"accent": "#334155"})
     project = Project(
-        user_id=author.id, name="영업", render_templates={"report": "doc-comparison"}
+        user_id=author.id, name="영업", render_templates={"report": "doc-minutes"}
     )
     db.add_all([mine, project])
     await db.commit()
@@ -178,7 +178,7 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     session = await sessions_router.create_session(
         SessionCreate(agent_id=agent.id, project_id=project.id), author, db
     )
-    assert session.render_template_id == "doc-client-proposal"
+    assert session.render_template_id == "doc-comparison"
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, session.id))
     assert context.design_tokens["accent"] == "#1f3a5f"
 
@@ -186,7 +186,7 @@ async def test_the_agents_template_and_design_beat_the_projects(db):
     plain = await sessions_router.create_session(
         SessionCreate(kind=SessionKind.report, project_id=project.id), author, db
     )
-    assert plain.render_template_id == "doc-comparison"
+    assert plain.render_template_id == "doc-minutes"
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, plain.id))
     assert context.design_tokens["accent"] == "#334155"
 
@@ -207,7 +207,7 @@ async def test_a_kind_the_caller_names_wins_and_a_template_of_another_surface_is
             name="자기소개서·경력기술서",
             kinds=["chat", "report"],
             surface="chat",
-            render_template_id="doc-career-history",
+            render_template_id="doc-gaejo-report",
             doc_format=None,
             tools=["run_skill_script", "calculate"],
         ),
@@ -220,11 +220,11 @@ async def test_a_kind_the_caller_names_wins_and_a_template_of_another_surface_is
         SessionCreate(agent_id=agent.id, kind=SessionKind.report), author, db
     )
     assert report.kind is SessionKind.report
-    assert report.render_template_id == "doc-career-history"
+    assert report.render_template_id == "doc-gaejo-report"
     context = await workspace_context.assemble(db, author, await db.get(ChatSession, report.id))
     # The 서식 fixes the format; the agent named none.
     assert context.doc_format is None
-    assert doc_formats.detect("", report.render_template_id).id == "career_history"
+    assert doc_formats.detect("", report.render_template_id).id == "gaejo"
 
 
 @pytest.mark.parametrize(
@@ -247,6 +247,46 @@ async def test_bindings_that_contradict_the_surfaces_are_refused(db, overrides, 
     with pytest.raises(HTTPException) as caught:
         await ws.create_agent(_proposal_agent(**overrides), author, db)
     assert caught.value.detail == detail
+
+
+@pytest.mark.parametrize("retired", ["doc-career-history", "doc-client-proposal"])
+@pytest.mark.asyncio
+async def test_a_retired_template_is_chosen_by_nothing_new(db, retired):
+    author, _, _ = await _people(db)
+    with pytest.raises(HTTPException) as caught:
+        await ws.create_agent(_proposal_agent(render_template_id=retired, doc_format=None),
+                              author, db)
+    assert caught.value.detail == "design_template_not_found"
+    listed = {t.id for t in await ws.list_design_templates(author)}
+    assert retired not in listed and "doc-comparison" in listed
+    # A conversation that already has it keeps it; another cannot take it up.
+    kept = ChatSession(user_id=author.id, kind=SessionKind.report, render_template_id=retired)
+    other = ChatSession(user_id=author.id, kind=SessionKind.report)
+    db.add_all([kept, other])
+    await db.commit()
+    assert sessions_router._resolved_template_id(retired, SessionKind.report, keep=retired) \
+        == retired
+    with pytest.raises(HTTPException):
+        sessions_router._resolved_template_id(retired, SessionKind.report, keep=None)
+
+
+
+@pytest.mark.parametrize("retired", ["client_proposal", "career_history"])
+@pytest.mark.asyncio
+async def test_a_retired_format_is_kept_where_it_is_but_chosen_by_nothing_new(db, retired):
+    author, _, _ = await _people(db)
+    with pytest.raises(HTTPException) as caught:
+        await ws.create_agent(_proposal_agent(render_template_id=None, doc_format=retired),
+                              author, db)
+    assert caught.value.detail == "doc_format_unknown"
+    old = Agent(owner_id=author.id, name="예전", slug="old", kinds=["report"],
+                surface="report", doc_format=retired)
+    db.add(old)
+    await db.commit()
+    kept = await ws.patch_agent(old.id, AgentIn(name="예전 이름 바꿈", kinds=["report"],
+                                                surface="report", doc_format=retired),
+                                author, db)
+    assert kept.doc_format == retired
 
 
 @pytest.mark.asyncio
@@ -284,13 +324,13 @@ async def test_a_copy_keeps_the_binding(db):
     assert copy.id != original.id
     assert (copy.surface, copy.render_template_id, copy.doc_format, copy.design_system_id) == (
         "report",
-        "doc-client-proposal",
-        "client_proposal",
+        "doc-comparison",
+        "comparison",
         design.id,
     )
     session = await sessions_router.create_session(SessionCreate(agent_id=copy.id), taker, db)
     assert session.kind is SessionKind.report
-    assert session.render_template_id == "doc-client-proposal"
+    assert session.render_template_id == "doc-comparison"
     context = await workspace_context.assemble(db, taker, await db.get(ChatSession, session.id))
     assert context.design_tokens["accent"] == "#1f3a5f"
 
@@ -326,7 +366,7 @@ async def _career_chat(db, author):
             name="자기소개서·경력기술서",
             kinds=["chat", "report"],
             surface="chat",
-            render_template_id="doc-career-history",
+            render_template_id="doc-gaejo-report",
             doc_format=None,
             tools=["run_skill_script", "calculate"],
         ),
@@ -361,7 +401,7 @@ async def test_an_agent_chat_hands_off_to_its_report_keeping_the_agent_and_the_t
     out = await sessions_router.handoff_session(chat.id, HandoffIn(kind="report"), author, db)
     assert out.session.kind is SessionKind.report
     assert out.session.agent_id == agent.id
-    assert out.session.render_template_id == "doc-career-history"
+    assert out.session.render_template_id == "doc-gaejo-report"
     transcript, carried = out.attachments
     assert transcript.name == "대화 기록.txt"
     stored = await db.get(StoredFile, transcript.id)

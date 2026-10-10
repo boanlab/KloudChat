@@ -111,7 +111,8 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
         *(report._source_text(row) for row in (bundle.material.sources or [])),
     ]
     options = check_skills.options_for(
-        bundle.spec.format_id, dt.datetime.now(ZoneInfo(settings.timezone)).date())
+        bundle.spec.format_id, dt.datetime.now(ZoneInfo(settings.timezone)).date(),
+        bundle.request.check_options)
     return material, computed, options
 
 
@@ -172,7 +173,7 @@ class AnswerGrounding(Base):
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
                                            if m.get("role") == "assistant")],
-            options=check_skills.options_for(req.check_facts, req.today),
+            options=check_skills.options_for(req.check_facts, req.today, req.check_options),
         )
         if not traced.found:
             return

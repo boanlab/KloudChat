@@ -6,6 +6,7 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+copy_check: true
 ---
 Write B2B first-touch emails a Korean decision-maker would actually answer: short, about their situation, one low-friction ask. Only facts from the request/material.
 

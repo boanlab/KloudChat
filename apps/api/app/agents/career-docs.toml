@@ -1,7 +1,10 @@
 # 자기소개서·경력기술서 — specs: lineup v1 `career-docs`.
 
 key = "career-docs"
-order = 5
+# Retired (2026-10): offered nowhere and installed by nobody; the rows stay so the
+# conversations and documents made with it still open and export.
+retired = true
+order = 90
 name = "자기소개서·경력기술서"
 description = "채용공고와 내 경험 자료로 글자 수 제한에 맞는 자기소개서 문항 답(채팅)이나 경력기술서(보고서)가 필요할 때"
 kinds = ["chat", "report"]
@@ -12,8 +15,14 @@ design = "기본"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = ["run_skill_script", "calculate"]
 skills = ["text-fit"]
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check", "generic-language-killer"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare", items = { dates = false, amounts = false } },
+    { bundle = "review", items = { titles = true } },
+    { bundle = "finish", items = { export = false } },
+]
 temperature = 0.5
 color = "#db2777"
 starters = [

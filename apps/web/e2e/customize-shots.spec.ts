@@ -22,25 +22,23 @@ test('screens', async ({ page }, testInfo) => {
     await page.screenshot({ path: `${dir}/${tag}-${name}.png`, fullPage: full })
   }
 
-  for (const tab of ['agents', 'skills', 'workflows', 'designs']) {
+  for (const tab of ['agents', 'skills']) {
     await page.goto(`/customize?tab=${tab}&view=explore`)
     await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
     await shot(`explore-${tab}`)
   }
-  for (const tab of ['connectors', 'memory']) {
-    await page.goto(`/customize?tab=${tab}`)
-    await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
-    await shot(`tab-${tab}`)
-  }
+  await page.goto('/customize?tab=connectors')
+  await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })
+  await shot('tab-connectors')
   await page.goto('/customize?tab=agents&view=mine')
   await expect(page.getByTestId('item-card').first()).toBeVisible({ timeout: 15_000 })
   await shot('mine-agents')
   await page.goto('/customize?tab=skills&view=mine')
   await expect(page.getByTestId('item-card').first()).toBeVisible({ timeout: 15_000 })
   await shot('mine-skills')
-  await page.goto('/customize?tab=workflows&view=mine')
-  await expect(page.getByTestId('item-card').first()).toBeVisible({ timeout: 15_000 })
-  await shot('mine-workflows')
+  await page.goto('/customize/bundles')
+  await expect(page.getByTestId('bundle-card').first()).toBeVisible({ timeout: 15_000 })
+  await shot('bundles')
 
   await page.goto('/customize?tab=skills&view=explore')
   await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible({ timeout: 15_000 })

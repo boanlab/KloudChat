@@ -8,6 +8,8 @@ version: 0.2.0
 status: draft
 stage: post
 entry: claims
+copy_check: true
+own_stage: true
 ---
 Check copy with code, not by eye. Character counts and claim scans written by the model are wrong too often.
 

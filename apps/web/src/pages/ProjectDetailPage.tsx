@@ -372,7 +372,7 @@ export function ProjectDetailPage() {
 
         <Card className="space-y-3 p-4">
           <div>
-            <p className="text-base font-medium">{t('디자인')}</p>
+            <p className="text-base font-medium">{t('테마')}</p>
             <p className="text-sm text-muted">
               {t('말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.')}
             </p>
@@ -386,7 +386,7 @@ export function ProjectDetailPage() {
               />
             )}
             <select
-              aria-label={t('디자인')}
+              aria-label={t('테마')}
               value={project.designSystemId ?? ''}
               onChange={(e) =>
                 void updateProject(project.id, { designSystemId: e.target.value || null })
@@ -409,7 +409,7 @@ export function ProjectDetailPage() {
         {formatSurfaces.length > 0 && (
           <Card className="space-y-3 p-4">
             <div>
-              <p className="text-base font-medium">{t('기본 양식')}</p>
+              <p className="text-base font-medium">{t('기본 템플릿')}</p>
               <p className="text-sm text-muted">
                 {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
               </p>
@@ -420,7 +420,7 @@ export function ProjectDetailPage() {
                   {t(kindMeta[kind].label)}
                 </span>
                 <select
-                  aria-label={t('{kind} 양식').replace('{kind}', t(kindMeta[kind].label))}
+                  aria-label={t('{kind} 템플릿').replace('{kind}', t(kindMeta[kind].label))}
                   value={project.renderTemplates[kind] ?? ''}
                   onChange={(e) =>
                     void updateProject(project.id, {

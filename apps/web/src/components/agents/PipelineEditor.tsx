@@ -1,32 +1,22 @@
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   Bot,
   Calculator,
-  Copy,
   Download,
   ListTree,
   MessageCircleQuestion,
-  Play,
   Plus,
   ScanSearch,
-  Send,
   Settings2,
   ShieldCheck,
-  Trash2,
-  Undo2,
-  Workflow,
   X,
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, Field, Input, LoadingState, Modal, Select, Switch, Textarea } from '@/components/ui'
-import { PipelineSteps } from '@/components/agents/PipelineChain'
+import { Badge, Button, Card, EmptyState, Field, Input, Modal, Select, Switch, Textarea } from '@/components/ui'
 import { errorMessage, userPipelinesApi } from '@/lib/api'
-import { useLeaveGuard } from '@/lib/useLeaveGuard'
-import { REVIEW_LABEL, REVIEW_TONE, agentOutput } from '@/lib/userPipelines'
+import { agentOutput } from '@/lib/userPipelines'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -39,6 +29,7 @@ import type {
   PipelineVerdict,
   UserPipeline,
 } from '@/types'
+import { SELF } from '@/lib/process'
 
 const KIND_ICON: Record<PipelineStepKind, LucideIcon> = {
   agent: Bot,
@@ -90,10 +81,6 @@ function stepTitle(step: PipelineStep, agents: Agent[], cat: PipelineCatalogue |
   return step.kind === 'review' ? '검토' : '내보내기'
 }
 
-/** The stored shape of a step, without the server's display fields. */
-function bare(steps: PipelineStep[]): PipelineStep[] {
-  return steps.map(({ title: _title, output: _output, ...step }) => step)
-}
 
 function newId(steps: PipelineStep[]) {
   let n = steps.length + 1
@@ -126,218 +113,53 @@ export function StepChips({ steps, className }: { steps: PipelineStep[]; classNa
 }
 
 /**
- * The agent editor's 「워크플로」 tab: which flow the agent runs, read-only. The choice is applied with
- * the agent's own 「저장」; editing happens on the 「워크플로」 page.
+ * The steps of an agent's 직접 구성 or of a 묶음, in order, each with its settings. Controlled:
+ * the caller saves. `selfName` offers the agent's own step (`@self`) in 「+ 단계 추가」.
  */
-export function AgentFlowSummary({
-  agent,
-  choice,
-  onChoose,
+export function StepList({
+  steps,
+  onChange,
+  verdict,
+  selfName,
 }: {
-  agent: Agent
-  /** The flow picked here and not yet saved; `undefined` keeps the bound one. */
-  choice: string | null | undefined
-  onChoose: (pipelineId: string | null) => void
+  steps: PipelineStep[]
+  onChange: (next: PipelineStep[]) => void
+  /** The server's verdict on this order; none for a bundle, which is checked on save. */
+  verdict?: PipelineVerdict | null
+  selfName?: string
 }) {
   const t = useT()
-  const user = useStore((s) => s.user)
-  const [mine, setMine] = useState<UserPipeline[] | null>(null)
-  const owned = agent.ownerId === user?.id
-  const output = agentOutput(agent)
-
-  useEffect(() => {
-    let current = true
-    void userPipelinesApi
-      .list()
-      .then((rows) => current && setMine(rows))
-      .catch(() => current && setMine([]))
-    return () => {
-      current = false
-    }
-  }, [agent.id])
-
-  const bound = mine?.find((p) => p.boundAgents.some((a) => a.id === agent.id)) ?? null
-  const pickedId = choice === undefined ? bound?.id ?? null : choice
-  const picked = (pickedId && mine?.find((p) => p.id === pickedId)) || null
-  const fits = (mine ?? []).filter((p) => !p.surface || p.surface === (output === 'document' ? 'report' : 'chat'))
-  const editTo = picked ? `/customize/workflows/${picked.id}` : `/customize?tab=workflows&view=mine&focus=${agent.id}`
-
-  return (
-    <div className="space-y-4" data-testid="agent-flow-summary">
-      {owned && output && (
-        <Field label={t('연결할 워크플로')} hint={t('에이전트를 저장하면 이 워크플로로 일합니다.')}>
-          <Select
-            aria-label={t('연결할 워크플로')}
-            value={pickedId ?? ''}
-            disabled={mine === null}
-            onChange={(e) => onChoose(e.target.value || null)}
-          >
-            <option value="">{t('기본 워크플로')}</option>
-            {fits.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      )}
-      <div className="space-y-2 rounded-card border border-line p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-base font-medium">{picked ? picked.name : t('기본 워크플로')}</p>
-          {picked ? (
-            <Badge tone={REVIEW_TONE[picked.review]}>{t(REVIEW_LABEL[picked.review])}</Badge>
-          ) : (
-            <span className="text-sm text-faint">{t('기본 제공 · 복제해서 고칠 수 있어요')}</span>
-          )}
-        </div>
-        {picked ? <StepChips steps={picked.stages} /> : <PipelineSteps agentId={agent.id} />}
-        {pickedId !== (bound?.id ?? null) && mine !== null && (
-          <p className="text-sm text-warn">{t('저장하면 이 워크플로로 바뀝니다.')}</p>
-        )}
-      </div>
-      <Link
-        to={editTo}
-        className="inline-flex items-center gap-1 text-base font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
-      >
-        {t('워크플로 편집')}
-        <ArrowRight size={14} aria-hidden />
-      </Link>
-    </div>
-  )
-}
-
-/** A list-based editor for one of the person's pipelines: steps in order, each with its settings. */
-export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; onSaved?: (row: UserPipeline) => void }) {
-  const t = useT()
-  const navigate = useNavigate()
   const agents = useStore((s) => s.agents)
-  const loadSessions = useStore((s) => s.loadSessions)
   const cat = useCatalogue()
-  const [saved, setSaved] = useState(pipeline)
-  const [name, setName] = useState(pipeline.name)
-  const [steps, setSteps] = useState<PipelineStep[]>(() => bare(pipeline.stages))
-  const [verdict, setVerdict] = useState<PipelineVerdict | null>(
-    pipeline.problems ? { ok: pipeline.problems.length === 0, surface: pipeline.surface ?? '', problems: pipeline.problems, warnings: pipeline.warnings ?? [] } : null,
-  )
   const [openStep, setOpenStep] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const dirty = name !== saved.name || JSON.stringify(steps) !== JSON.stringify(bare(saved.stages))
-  const guard = useLeaveGuard(dirty)
-
-  // Live validation: the server holds every step to its contract.
-  useEffect(() => {
-    let current = true
-    const timer = window.setTimeout(() => {
-      void userPipelinesApi
-        .validate(steps, saved.id)
-        .then((v) => current && setVerdict(v))
-        .catch(() => undefined)
-    }, 250)
-    return () => {
-      current = false
-      window.clearTimeout(timer)
-    }
-  }, [steps, saved.id])
-
   const problemsAt = (n: number) => (verdict?.problems ?? []).filter((p) => p.step === n)
   const warningsAt = (n: number) => (verdict?.warnings ?? []).filter((p) => p.step === n)
   const overall = (verdict?.problems ?? []).filter((p) => p.step === 0)
   const max = cat?.maxSteps ?? 12
 
-  const move = (i: number, by: number) =>
-    setSteps((rows) => {
-      const next = [...rows]
-      const [row] = next.splice(i, 1)
-      next.splice(i + by, 0, row)
-      return next
-    })
+  const move = (i: number, by: number) => {
+    const next = [...steps]
+    const [row] = next.splice(i, 1)
+    next.splice(i + by, 0, row)
+    onChange(next)
+  }
   const patch = (id: string, settings: PipelineStep['settings']) =>
-    setSteps((rows) => rows.map((s) => (s.id === id ? { ...s, settings: { ...s.settings, ...settings } } : s)))
+    onChange(steps.map((s) => (s.id === id ? { ...s, settings: { ...s.settings, ...settings } } : s)))
   const add = (step: Omit<PipelineStep, 'id'>) => {
-    setSteps((rows) => [...rows, { ...step, id: newId(rows) }])
+    onChange([...steps, { ...step, id: newId(steps) }])
     setPicking(false)
   }
 
-  const run = async (work: () => Promise<UserPipeline | void>, fallback: string) => {
-    setBusy(true)
-    setError(null)
-    try {
-      const out = await work()
-      if (out) {
-        setSaved(out)
-        setName(out.name)
-        setSteps(bare(out.stages))
-        onSaved?.(out)
-      }
-    } catch (err) {
-      setError(errorMessage(err, t(fallback)))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const save = () => run(() => userPipelinesApi.update(saved.id, { name, description: saved.description, stages: steps }), '저장하지 못했습니다. 단계를 확인해 주세요.')
-
-  const remove = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      await userPipelinesApi.remove(saved.id)
-      guard.release()
-      navigate('/customize?tab=workflows&view=mine')
-    } catch (err) {
-      setError(errorMessage(err, t('삭제하지 못했습니다.')))
-      setBusy(false)
-    }
-  }
-
-  const start = async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const made = await userPipelinesApi.start(saved.id)
-      await loadSessions()
-      navigate(`/s/${made.sessionId}`)
-    } catch (err) {
-      setError(errorMessage(err, t('이 워크플로로 시작하지 못했습니다.')))
-      setBusy(false)
-    }
-  }
-
   return (
-    <div className="space-y-3" data-testid="pipeline-editor">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-0 flex-1 basis-64">
-          <Field label={t('워크플로 이름')}>
-            <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
-          </Field>
-        </div>
-        <Badge tone={REVIEW_TONE[saved.review]}>{t(REVIEW_LABEL[saved.review])}</Badge>
-        {verdict?.surface && (
-          <Badge>{verdict.surface === 'report' ? t('문서를 만듭니다') : t('답을 만듭니다')}</Badge>
-        )}
-      </div>
-      {saved.boundAgents.length > 0 && (
-        <p className="text-sm text-muted">
-          {t('연결된 에이전트')}: {saved.boundAgents.map((a) => t(a.name)).join(', ')}
-        </p>
-      )}
-      {saved.review === 'rejected' && saved.reviewNote && (
-        <p className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-          {t('반려 사유')}: {saved.reviewNote}
-        </p>
-      )}
-
+    <div className="space-y-3" data-testid="step-list">
       <ol className="divide-y divide-line rounded-card border border-line" aria-label={t('단계')}>
         {steps.length === 0 && <li className="px-3 py-4 text-center text-sm text-faint">{t('단계가 없습니다.')}</li>}
         {steps.map((step, i) => {
           const Icon = KIND_ICON[step.kind] ?? Settings2
           const problems = problemsAt(i + 1)
           const warnings = warningsAt(i + 1)
-          const title = t(stepTitle(step, agents, cat))
+          const title = step.kind === 'agent' && step.ref === SELF ? selfName || t('이 에이전트') : t(stepTitle(step, agents, cat))
           const isOpen = openStep === step.id
           return (
             <li
@@ -363,11 +185,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
                     onClick={() => setOpenStep(isOpen ? null : step.id)}
                     icon={Settings2}
                   />
-                  <IconButton
-                    label={t('빼기')}
-                    onClick={() => setSteps((rows) => rows.filter((s) => s.id !== step.id))}
-                    icon={X}
-                  />
+                  <IconButton label={t('빼기')} onClick={() => onChange(steps.filter((s) => s.id !== step.id))} icon={X} />
                 </span>
               </div>
               <StepSummary step={step} cat={cat} />
@@ -383,7 +201,7 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
         <ProblemLine key={p.code} problem={p} />
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setPicking(true)} disabled={steps.length >= max}>
+        <Button type="button" size="sm" onClick={() => setPicking(true)} disabled={steps.length >= max}>
           <Plus size={13} />
           {t('단계 추가')}
         </Button>
@@ -391,79 +209,11 @@ export function PipelineEditor({ pipeline, onSaved }: { pipeline: UserPipeline; 
           {t('{n} / {max}단계').replace('{n}', String(steps.length)).replace('{max}', String(max))}
         </span>
       </div>
-
-      {error && (
-        <p role="alert" className="rounded-control border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
-          {error}
-        </p>
-      )}
-      {saved.review === 'approved' && (
-        <p className="text-sm text-faint">{t('고쳐서 저장하면 공유가 풀리고 다시 승인을 받아야 합니다.')}</p>
-      )}
-
-      {/* One set of actions for the flow, pinned to the bottom of the page. */}
-      <div
-        className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-line bg-bg/95 px-4 pt-3 max-sm:gap-1 max-sm:px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-6 sm:px-6"
-        role="toolbar"
-        aria-label={t('워크플로 작업')}
-        data-testid="pipeline-actions"
-      >
-        <Button variant="primary" size="sm" disabled={busy || !dirty || !verdict?.ok} onClick={() => void save()}>
-          {t('저장')}
-        </Button>
-        {(saved.review === '' || saved.review === 'rejected') && (
-          <Button
-            size="sm"
-            disabled={busy || dirty || !verdict?.ok}
-            title={dirty ? t('먼저 저장해 주세요.') : undefined}
-            onClick={() => void run(() => userPipelinesApi.submit(saved.id), '공유를 요청하지 못했습니다.')}
-          >
-            <Send size={13} className="max-sm:hidden" />
-            {t('공유 요청')}
-          </Button>
-        )}
-        {(saved.review === 'pending' || saved.review === 'approved') && (
-          <Button size="sm" disabled={busy} onClick={() => void run(() => userPipelinesApi.withdraw(saved.id), '공유를 거두지 못했습니다.')}>
-            <Undo2 size={13} className="max-sm:hidden" />
-            {saved.review === 'pending' ? t('요청 취소') : t('공유 그만두기')}
-          </Button>
-        )}
-        <Button
-          size="sm"
-          disabled={busy || dirty || !verdict?.ok}
-          title={dirty ? t('먼저 저장해 주세요.') : undefined}
-          onClick={() => void start()}
-        >
-          <Play size={13} className="max-sm:hidden" />
-          {t('이 워크플로로 시작')}
-        </Button>
-        {dirty && <span className="text-sm text-warn max-sm:hidden">{t('저장하지 않은 변경이 있습니다.')}</span>}
-        <Button size="sm" variant="danger" className="ml-auto" disabled={busy} onClick={() => setConfirmDelete(true)}>
-          <Trash2 size={13} />
-          {/* Icon alone on a phone, so the bar stays one row. */}
-          <span className="max-sm:sr-only">{t('삭제')}</span>
-        </Button>
-      </div>
-
-      <StepPicker open={picking} onClose={() => setPicking(false)} cat={cat} onPick={add} />
-      <ConfirmDialog
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={() => void remove()}
-        title={t('{name} 삭제').replace('{name}', saved.name)}
-        description={t('이 워크플로를 쓰던 에이전트는 기본 워크플로로 돌아갑니다.')}
-      />
-      <ConfirmDialog
-        open={guard.pending}
-        onClose={guard.stay}
-        onConfirm={guard.leave}
-        title={t('저장하지 않고 나갈까요?')}
-        description={t('고친 단계와 이름이 사라집니다.')}
-        confirmLabel={t('나가기')}
-      />
+      <StepPicker open={picking} onClose={() => setPicking(false)} cat={cat} onPick={add} selfName={selfName} />
     </div>
   )
 }
+
 
 function IconButton({
   label,
@@ -603,11 +353,13 @@ function StepPicker({
   onClose,
   cat,
   onPick,
+  selfName,
 }: {
   open: boolean
   onClose: () => void
   cat: PipelineCatalogue | null
   onPick: (step: Omit<PipelineStep, 'id'>) => void
+  selfName?: string
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
@@ -620,12 +372,17 @@ function StepPicker({
     {
       label: '에이전트',
       icon: Bot,
-      items: runnable.map((a) => ({
+      items: [
+        ...(selfName !== undefined
+          ? [{ key: SELF, name: selfName || '이 에이전트', note: '이 에이전트가 기본 과정대로 씁니다', step: { kind: 'agent' as const, ref: SELF, settings: {} } }]
+          : []),
+        ...runnable.map((a) => ({
         key: a.id,
         name: a.name,
         note: agentOutput(a) === 'document' ? '문서를 씁니다' : '답을 합니다',
-        step: { kind: 'agent', ref: a.id, settings: {} },
+        step: { kind: 'agent' as const, ref: a.id, settings: {} },
       })),
+      ],
     },
     {
       label: '스킬',
@@ -687,84 +444,14 @@ function StepPicker({
   )
 }
 
-/** The store's shared pipelines: bring one into your own, or start a conversation with it. */
-export function PipelineStore({ onImported }: { onImported?: () => void } = {}) {
-  const t = useT()
-  const navigate = useNavigate()
-  const loadSessions = useStore((s) => s.loadSessions)
-  const setNotice = useStore((s) => s.setNotice)
-  const [rows, setRows] = useState<UserPipeline[] | null>(null)
-  const reload = useCallback(() => userPipelinesApi.store().then(setRows).catch(() => setRows([])), [])
-  useEffect(() => {
-    void reload()
-  }, [reload])
-  if (rows === null) return <LoadingState />
-  if (rows.length === 0) {
-    return (
-      <EmptyState
-        icon={<Workflow size={18} />}
-        title={t('공유된 워크플로가 없습니다')}
-        description={t('내 워크플로를 조직에 공유 요청하면 관리자 승인 뒤 여기에 올라옵니다.')}
-      />
-    )
-  }
-  return (
-    <div className="grid gap-3 sm:grid-cols-2" aria-label={t('공유된 워크플로')}>
-      {rows.map((p) => (
-        <Card key={p.id} className="space-y-2 p-4" data-testid="shared-pipeline">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="truncate text-base font-semibold">{p.name}</p>
-              <p className="text-sm text-faint">
-                {p.ownerName} · {t('{n}번 가져감').replace('{n}', String(p.installs))}
-              </p>
-            </div>
-            {p.installed && <Badge tone="success">{t('가져옴')}</Badge>}
-          </div>
-          {p.description && <p className="text-sm text-muted">{p.description}</p>}
-          <StepChips steps={p.stages} />
-          <div className="flex flex-wrap gap-2">
-            {!p.mine && (
-              <Button
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await userPipelinesApi.create({ fromId: p.id })
-                    setNotice(t('내 워크플로로 가져왔습니다.'))
-                    void reload()
-                    onImported?.()
-                  } catch (err) {
-                    setNotice(errorMessage(err, t('워크플로를 가져오지 못했습니다.')))
-                  }
-                }}
-              >
-                <Copy size={13} />
-                {t('가져오기')}
-              </Button>
-            )}
-            <Button
-              size="sm"
-              onClick={async () => {
-                try {
-                  const made = await userPipelinesApi.start(p.id)
-                  await loadSessions()
-                  navigate(`/s/${made.sessionId}`)
-                } catch (err) {
-                  setNotice(errorMessage(err, t('이 워크플로로 시작하지 못했습니다.')))
-                }
-              }}
-            >
-              <Play size={13} />
-              {t('이 워크플로로 시작')}
-            </Button>
-          </div>
-        </Card>
-      ))}
-    </div>
-  )
+/** What a review request is: a person's 묶음, an agent's 직접 구성, or an order made before. */
+function reviewKind(p: UserPipeline): string {
+  if (p.kind === 'bundle') return '묶음'
+  if (p.agentId) return '에이전트의 직접 구성'
+  return '예전에 만든 순서'
 }
 
-/** The administrator's queue of pipelines asking to be shared. */
+/** 「진행 과정 검토」: the administrator's queue of 직접 구성 and 묶음 asking to be shared. */
 export function PipelineApprovals() {
   const t = useT()
   const [rows, setRows] = useState<UserPipeline[] | null>(null)
@@ -776,27 +463,34 @@ export function PipelineApprovals() {
     void reload()
   }, [reload])
   return (
-    <section className="space-y-2 pt-8" aria-label={t('워크플로 공유 승인')}>
-      <h2 className="text-lg font-semibold">{t('워크플로 공유 승인')}</h2>
+    <section className="space-y-2 pt-8" aria-label={t('진행 과정 검토')}>
+      <h2 className="text-lg font-semibold">{t('진행 과정 검토')}</h2>
+      <p className="text-sm text-muted">
+        {t('파일로 내보내거나, 다른 모델이 검토하거나, 다른 에이전트를 부르는 직접 구성과 묶음은 승인한 뒤에야 다른 사람이 씁니다.')}
+      </p>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       {rows !== null && rows.length === 0 ? (
-        <EmptyState icon={<ListTree size={18} />} title={t('승인을 기다리는 워크플로가 없습니다')} />
+        <EmptyState icon={<ListTree size={18} />} title={t('검토를 기다리는 진행 과정이 없습니다')} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {(rows ?? []).map((p) => (
             <Card key={p.id} className="space-y-2 p-4" data-testid="pipeline-approval">
-              <p className="text-base font-semibold">{p.name}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="min-w-0 text-base font-semibold">{t(p.name)}</p>
+                <Badge>{t(reviewKind(p))}</Badge>
+              </div>
               <p className="text-sm text-faint">{p.ownerName}</p>
               <ol className="list-decimal space-y-0.5 pl-5 text-sm text-muted">
                 {p.stages.map((s) => (
                   <li key={s.id}>
-                    {t(STEP_KIND_LABEL[s.kind])} · {t(s.title ?? s.ref)}
+                    {t(STEP_KIND_LABEL[s.kind])} · {s.kind === 'agent' && s.ref === SELF ? t('이 에이전트') : t(s.title ?? s.ref)}
                     {s.kind === 'review' && s.settings.model ? ` (${s.settings.model})` : ''}
+                    {s.kind === 'export' && s.settings.formats?.length ? ` (${s.settings.formats.join(', ')})` : ''}
                   </li>
                 ))}
               </ol>
               <div className="flex flex-wrap gap-2">
-                <Button
+                <Button type="button"
                   size="sm"
                   variant="primary"
                   onClick={async () => {
@@ -810,7 +504,7 @@ export function PipelineApprovals() {
                 >
                   {t('승인')}
                 </Button>
-                <Button
+                <Button type="button"
                   size="sm"
                   onClick={() => {
                     setNote('')
@@ -830,8 +524,8 @@ export function PipelineApprovals() {
         title={t('반려 사유')}
         footer={
           <>
-            <Button onClick={() => setRejecting(null)}>{t('취소')}</Button>
-            <Button
+            <Button type="button" onClick={() => setRejecting(null)}>{t('취소')}</Button>
+            <Button type="button"
               variant="primary"
               disabled={!note.trim()}
               onClick={async () => {

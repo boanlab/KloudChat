@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { errorMessage, userPipelinesApi } from '@/lib/api'
+import { errorMessage } from '@/lib/api'
 import { startFailure } from '@/lib/failures'
 import { agentStartKind } from '@/lib/kinds'
 import { useT } from '@/lib/useT'
@@ -18,15 +18,8 @@ export function useItemActions(onChanged?: () => void) {
   const installSkill = useStore((s) => s.installSkill)
   const installAgent = useStore((s) => s.installAgent)
   const deleteSkill = useStore((s) => s.deleteSkill)
-  const loadSessions = useStore((s) => s.loadSessions)
   const setNotice = useStore((s) => s.setNotice)
   const setToast = useStore((s) => s.setToast)
-
-  const startPipeline = async (id: string) => {
-    const made = await userPipelinesApi.start(id)
-    await loadSessions()
-    navigate(`/s/${made.sessionId}`)
-  }
 
   const chatWithSkill = async (skillId: string) => {
     const id = await newSession('chat')
@@ -39,15 +32,6 @@ export function useItemActions(onChanged?: () => void) {
       if (item.agent) {
         const id = await newSession(agentStartKind(item.agent), { agentId: item.agent.id })
         navigate(`/s/${id}`)
-        return
-      }
-      if (item.shippedAgent) {
-        const id = await newSession(agentStartKind(item.shippedAgent), { agentId: item.shippedAgent.id })
-        navigate(`/s/${id}`)
-        return
-      }
-      if (item.pipeline) {
-        await startPipeline(item.pipeline.id)
         return
       }
       if (item.skill) {
@@ -71,7 +55,7 @@ export function useItemActions(onChanged?: () => void) {
         await chatWithSkill(copy.id)
       }
     } catch (err) {
-      setNotice(item.agent || item.shippedAgent ? startFailure(err, t) : errorMessage(err, t('시작하지 못했습니다.')))
+      setNotice(item.agent ? startFailure(err, t) : errorMessage(err, t('시작하지 못했습니다.')))
     }
   }
 
@@ -89,17 +73,6 @@ export function useItemActions(onChanged?: () => void) {
         const copy = useStore.getState().skills.find((s) => s.originId === item.skill?.id)
         onChanged?.()
         return copy ? `/customize/skills/${copy.id}` : null
-      }
-      if (item.shippedAgent) {
-        const made = await userPipelinesApi.create({ fromAgentId: item.shippedAgent.id })
-        onChanged?.()
-        return `/customize/workflows/${made.id}`
-      }
-      if (item.pipeline) {
-        const made = await userPipelinesApi.create({ fromId: item.pipeline.id })
-        setToast({ text: t('내 워크플로로 가져왔습니다.') })
-        onChanged?.()
-        return `/customize/workflows/${made.id}`
       }
     } catch (err) {
       setNotice(errorMessage(err, t('가져오지 못했습니다.')))

@@ -46,7 +46,7 @@ from app.models.chat import (
     follow_document_title,
 )
 from app.models.governance import Governance
-from app.models.user import AuditEvent, User, utcnow
+from app.models.user import AuditEvent, User, UserRole, utcnow
 from app.models.workspace import Agent as WorkspaceAgent
 from app.models.workspace import (
     AgentVisibility,
@@ -120,6 +120,7 @@ from app.services import (
     message_links,
     revise,
     settings_store,
+    starter,
     stop_signal,
 )
 from app.services import agent as agent_service
@@ -1747,6 +1748,13 @@ async def create_session(payload: SessionCreate, user: CurrentUser, db: DbSessio
         project_id=payload.project_id,
         agent_id=payload.agent_id,
     )
+    if agent is not None and agent.retired:
+        # Taken out of the catalogue: its conversations still open, no new one starts.
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
+    if agent is not None and user.role is not UserRole.admin and (
+            agent.catalog_key or "") in starter.draft_agents():
+        # Still in evaluation: administrators alone use it.
+        raise HTTPException(status_code=404, detail="agent_not_found")
     if payload.routing_mode in _AUTO_MODES and payload.kind not in _AUTO_KINDS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -2121,20 +2129,23 @@ def agent_template(agent: WorkspaceAgent | None, kind: SessionKind) -> str | Non
     picked later in the composer is stored on the session and wins over both."""
     if agent is None or not agent.render_template_id:
         return None
-    chosen = design_templates.get(agent.render_template_id)
+    chosen = design_templates.choosable(agent.render_template_id)
     if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
         return None
     return chosen.id if chosen.surface is kind else None
 
 
-def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | None:
+def _resolved_template_id(requested: str | None, kind: SessionKind,
+                          keep: str | None = None) -> str | None:
     """A rendering template id usable on this surface, or `None`.
 
-    Unknown ids are refused, not dropped.
+    Unknown ids are refused, not dropped; so is a retired 서식, unless it is the one the
+    conversation already has (`keep`): an old conversation goes on in it.
     """
     if not requested:
         return None
-    chosen = design_templates.get(requested)
+    chosen = (design_templates.get(requested) if requested == keep
+              else design_templates.choosable(requested))
     if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -2145,6 +2156,87 @@ def _resolved_template_id(requested: str | None, kind: SessionKind) -> str | Non
             detail="design_template_surface_mismatch",
         )
     return chosen.id
+
+
+@router.get("/{session_id}/agent-draft")
+async def agent_draft(session_id: str, user: CurrentUser, db: DbSession):
+    """「에이전트로 저장」: this conversation as a draft agent to prefill the form. Nothing is
+    saved. What it settled is distilled from the person's own messages by the model the
+    conversation ran on (a strict-local one when any turn ran strict-local); a sealed agent's
+    prompt is never copied."""
+    from app.services import agent_draft as drafts
+    from app.services import bases, doc_formats
+
+    session = await _owned(db, user, session_id)
+    rows = (await db.exec(select(Message).where(Message.session_id == session.id)
+                          .order_by(col(Message.created_at)))).all()
+    said = [m.content for m in rows if m.role is Role.user and (m.content or "").strip()]
+    catalogue = (await model_service.list_models_for_egress())["models"]
+    used = [model_service.find(catalogue, m.model or "") for m in rows
+            if m.role is Role.assistant and m.model]
+    used = [m for m in used if m is not None]
+    strict_rows = [m for m in used if _strict_model(m)]
+    model = (strict_rows[-1] if strict_rows else used[-1] if used
+             else model_service.find(catalogue, session.model or ""))
+    strict = bool(strict_rows) or (model is not None and _strict_model(model))
+    lines: list[str] = []
+    if model is not None and said and has_headroom(user, model):
+        _, api_key = await litellm_service.credentials_for(user)
+        # What leaves the instance is masked unless it stays on the strict-local model.
+        lines, spent = await drafts.distill(
+            model["id"], said, api_key, strict_local=strict,
+            masker=None if strict else governance.mask)
+        if cost := charge_for_tokens(model, spent["inputTokens"], spent["outputTokens"]):
+            settle(db, user, cost, reason="agent.draft", session_id=session.id,
+                   model=model["id"])
+            await db.commit()
+
+    agent = await db.get(WorkspaceAgent, session.agent_id) if session.agent_id else None
+    readable = agent is not None and not agent.sealed and (
+        agent.owner_id == user.id or (agent.visibility == AgentVisibility.org
+                                      and agent.share_mode != "sealed"))
+    prompt = "\n\n".join(x for x in (
+        agent.system_prompt.strip() if readable and agent is not None else "",
+        drafts.prompt_from(lines)) if x)
+    is_admin = user.role is UserRole.admin
+    key = await _agent_catalog_key(db, agent) if agent is not None else None
+    base = bases.get(key, drafts=is_admin) if key else None
+    if base is None and agent is None:
+        # Inferred from what the conversation made.
+        fmt = doc_formats.TEMPLATE_FORMATS.get(session.render_template_id or "")
+        guess = {"report": bases.BY_FORMAT.get(fmt or "", "document"),
+                 "slides": "slides"}.get(session.kind.value)
+        base = bases.get(guess, drafts=is_admin) if guess else None
+    template = design_templates.choosable(session.render_template_id)
+    design_id = agent.design_system_id if agent is not None else None
+    if design_id is None and session.project_id:
+        project = await db.get(Project, session.project_id)
+        design_id = project.design_system_id if project is not None else None
+    own_skills = set((await db.exec(select(Skill.id).where(Skill.owner_id == user.id))).all())
+    files = (await db.exec(select(StoredFile).where(
+        StoredFile.session_id == session.id, StoredFile.user_id == user.id,
+        col(StoredFile.agent_id).is_(None), col(StoredFile.text) != "")
+        .order_by(col(StoredFile.created_at)))).all()
+    title = (session.title or "").strip()
+    return {
+        "name": (f"{title[:40]} 에이전트" if title else "새 에이전트"),
+        "description": "",
+        "systemPrompt": prompt,
+        "decided": lines,
+        "kinds": [session.kind.value],
+        "surface": session.kind.value,
+        "renderTemplateId": template.id if template is not None and
+        template.surface is session.kind else None,
+        "designSystemId": design_id,
+        "skillIds": [s for s in (session.skill_ids or []) if s in own_skills],
+        "mode": "base" if base is not None else "direct",
+        "base": base.key if base is not None else None,
+        "bundles": (list(agent.bundles) if agent is not None and agent.bundles is not None
+                    else list(base.bundles) if base is not None else []),
+        "files": [{"id": f.id, "name": f.name, "size": f.size} for f in files],
+        "fromAgentId": agent.id if agent is not None else None,
+        "strictLocal": strict,
+    }
 
 
 @router.patch("/{session_id}", response_model=SessionOut)
@@ -2169,7 +2261,7 @@ async def patch_session(session_id: str, payload: SessionPatch, user: CurrentUse
         await _require_auto_quality_model(user, changes.get("model", session.model))
     if "render_template_id" in changes:
         changes["render_template_id"] = _resolved_template_id(
-            changes["render_template_id"], session.kind
+            changes["render_template_id"], session.kind, keep=session.render_template_id
         )
     if "project_id" in changes:
         await _validate_session_links(
@@ -3073,13 +3165,21 @@ def _with_condition(request: str, line: str) -> str:
 
 
 async def _agent_catalog_key(db: DbSession, agent: WorkspaceAgent | None) -> str | None:
-    """The shipped agent behind `agent` (itself or the one it was copied from), for its checks."""
+    """The shipped agent whose process `agent` runs, for its checks, question card and
+    pipeline: itself, the official base a person's own agent starts from (`base_key`), or
+    the one it was copied from."""
     if agent is None:
         return None
-    if agent.catalog_key or not agent.origin_id:
+    if agent.catalog_key:
         return agent.catalog_key
+    if agent.base_key:
+        return agent.base_key
+    if not agent.origin_id:
+        return None
     origin = await db.get(WorkspaceAgent, agent.origin_id)
-    return origin.catalog_key if origin is not None else None
+    if origin is None:
+        return None
+    return origin.catalog_key or origin.base_key
 
 
 def render_template_checks(session: ChatSession) -> tuple[str, ...]:
@@ -3394,7 +3494,8 @@ async def send_message(
 
     # Refused before any write, never silently dropped.
     if payload.render_template_id is not None:
-        session.render_template_id = _resolved_template_id(payload.render_template_id, session.kind)
+        session.render_template_id = _resolved_template_id(
+            payload.render_template_id, session.kind, keep=session.render_template_id)
 
     # One answer at a time: a second message while this process is still
     # writing one (and nobody pressed stop) would be stored before the first
@@ -3637,8 +3738,12 @@ async def send_message(
     # What the format needs and the material does not give (the attached gap check): asked on
     # the same card, once, before the first draft — never on a revision or a follow-up chat turn.
     agent_key = await _agent_catalog_key(db, agent_row)
+    # The agent's own checks and strictness, as its row holds them (catalogue or not).
     check_keys = check_skills.attached(
-        agent_key=agent_key, template_checks=render_template_checks(session))
+        agent_checks=(agent_row.check_skills or []) if agent_row is not None else [],
+        template_checks=render_template_checks(session))
+    check_options = check_skills.clean_options(
+        agent_row.check_options if agent_row is not None else None)
     # A conversation bound to a user pipeline asks through its own steps (`human:gaps`).
     from app.routers import user_pipelines
 
@@ -4277,6 +4382,7 @@ async def send_message(
             design_tokens=workspace.design_tokens, skills_event=skills_event,
             context_steps=context_steps, web_search=effective_web_search and not strict_local,
             attachments=list(payload.attachments or []), catalogue=catalogue_models,
+            agent=agent_row,
         )
 
     if session.kind is SessionKind.report:
@@ -4291,6 +4397,7 @@ async def send_message(
                     template=render_template,
                     format_id=workspace.doc_format,
                     check_keys=check_keys,
+                    check_options=check_options,
                     user_id=user.id,
                     api_key=api_key,
                     session_id=session.id,
@@ -4531,6 +4638,7 @@ async def send_message(
                 check_keys=tuple(check_skills.of_stage(check_keys, "post")),
                 skill_keys=tuple(s.catalog_key for s in workspace.applied_skills if s.catalog_key),
                 check_facts=facts,
+                check_options=check_options,
                 check_material="\n".join(workspace.untrusted),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
@@ -4940,6 +5048,8 @@ async def _run_turn(
     skill_keys: tuple[str, ...] = (),
     #: The agent's fact set, which sets how strict the trace is.
     check_facts: str = "",
+    #: The agent's `check_options`: how strict the trace is.
+    check_options: dict | None = None,
     #: Attached and carried files' text: what the answer's values may come from too.
     check_material: str = "",
     #: The catalogue agent's key: which pipeline finishes the answer.
@@ -5191,7 +5301,7 @@ async def _run_turn(
             first_message=first_user_message, messages=messages,
             material=_material_text(messages), check_keys=check_keys, check_facts=check_facts,
             check_material=check_material, tool_outputs=list(ctx.outputs), judge=judge_model,
-            kept_steps=steps, usage=usage, skill_keys=skill_keys,
+            kept_steps=steps, usage=usage, skill_keys=skill_keys, check_options=check_options,
         )
         pipe = pipeline_registry.for_chat(agent_key)
         runner = PipelineRunner(pipe.stages("finish"), name=f"{pipe.name}.finish")
@@ -6568,6 +6678,8 @@ async def _run_report(
     carry_note: str = "",
     #: Check skills the agent and the 서식 attach; None leaves it to the 서식.
     check_keys: tuple[str, ...] | None = None,
+    #: The agent's `check_options`: how strict the trace is.
+    check_options: dict | None = None,
     #: The run this pass follows (the card that waited before it).
     parent_run_id: str | None = None,
 ) -> AsyncIterator[str]:
@@ -6618,6 +6730,7 @@ async def _run_report(
             format_id=format_id,
             design_tokens=design_tokens,
             check_keys=check_keys,
+            check_options=check_options,
             session_id=session_id,
             turn=turn,
             recorder=recorder,

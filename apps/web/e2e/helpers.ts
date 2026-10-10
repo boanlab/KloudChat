@@ -384,10 +384,11 @@ export async function moreMenu(page: Page, item: string | RegExp) {
 
 /** Where a tab of the old seven-tab ribbon went: the editing tabs, or the reading header. */
 const MOVED: Record<string, string | null> = {
-  // 웹뷰/페이지뷰 sit in the header; 디자인·강조색·양식 under 편집 › 디자인.
-  홈: '디자인',
+  // 웹뷰/페이지뷰 sit in the header; 테마·강조색·템플릿 under 편집 › 테마 (formerly 디자인).
+  홈: '테마',
+  디자인: '테마',
   편집: '글자',
-  레이아웃: '디자인',
+  레이아웃: '테마',
   // 목차/장 목록, 발표 and 내려받기 sit in the header: nothing to open.
   보기: null,
   '슬라이드 쇼': null,

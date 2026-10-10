@@ -40,7 +40,7 @@ test('skill form: exactly 이름, 설명 and the editor; 초안 keeps it out of 
   expect(state.unexpected).toEqual([])
 })
 
-test('agent form: four essentials, folded groups, tools by name with raw names under 기술 정보', async ({ page }, testInfo) => {
+test('agent form: essentials and 진행 과정 in view, folded groups, tools by name with raw names under 기술 정보', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/customize/agents/new')
   const form = page.getByTestId('agent-form')
@@ -49,12 +49,17 @@ test('agent form: four essentials, folded groups, tools by name with raw names u
   await expect(form.getByRole('textbox', { name: '이름' })).toBeVisible()
   await expect(form.getByRole('textbox', { name: '한 줄 설명' })).toBeVisible()
   await expect(form.getByRole('textbox', { name: '지시' })).toBeVisible()
-  await expect(form.getByRole('button', { name: '챗', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  // 진행 과정 starts at 바로 답하기; the words 워크플로 and 작동 단계 are nowhere.
+  await expect(form.getByRole('radio', { name: /바로 답하기/ })).toBeChecked()
+  await expect(form.getByRole('radio', { name: /기본 과정에서 시작/ })).toBeVisible()
+  await expect(form.getByRole('radio', { name: /직접 구성/ })).toBeVisible()
+  await expect(form.getByText(/워크플로|작동 단계/)).toHaveCount(0)
   const visibleFields = form.locator('input:not([type="radio"]):not([type="checkbox"]):not([type="range"]):not([type="file"]), textarea, select').filter({ visible: true })
   await expect(visibleFields).toHaveCount(3)
   // Every group starts closed.
   const groups = page.getByTestId('agent-advanced').locator('details')
-  await expect(groups).toHaveCount(7)
+  await expect(page.getByTestId('agent-advanced').locator('summary')).toHaveText([
+    /결과물/, /대화 시작/, /자료/, /스킬과 도구/, /고급/, /공유/])
   for (const group of await groups.all()) await expect(group).not.toHaveAttribute('open', '')
   await expect(page.getByText(/mcp__/)).toHaveCount(0)
 
@@ -64,7 +69,7 @@ test('agent form: four essentials, folded groups, tools by name with raw names u
   await expect(form.getByRole('textbox', { name: '핸들' })).toBeVisible()
   await form.getByRole('textbox', { name: '지시' }).fill('열린 이슈를 우선순위로 정리한다.')
 
-  await page.getByText('도구와 스킬', { exact: true }).click()
+  await page.getByText('스킬과 도구', { exact: true }).click()
   const picker = page.getByTestId('tool-picker')
   await expect(picker.getByRole('button', { name: '기본값 따르기' })).toHaveAttribute('aria-pressed', 'true')
   await picker.getByRole('button', { name: '직접 고르기' }).click()
@@ -85,6 +90,8 @@ test('agent form: four essentials, folded groups, tools by name with raw names u
   await expect(page).toHaveURL(/\/customize\/agents\/a9999999999999999999999999999999$/)
   const created = state.calls.find((c) => c.method === 'POST' && c.path === '/agents')
   expect(created?.body).toMatchObject({ name: '이슈 정리 도우미', tools: ['mcp__github__list_open_issues'], skillIds: null, kinds: ['chat'] })
+  // A new agent's 진행 과정 is saved with it.
+  expect(state.calls.find((c) => c.method === 'PUT' && c.path.endsWith('/process'))?.body).toMatchObject({ mode: 'direct', bundles: [] })
   // The detail screen shows what it does and, for its owner, its settings.
   await expect(page.getByRole('heading', { level: 1, name: '이슈 정리 도우미' })).toBeVisible()
   await expect(page.getByRole('region', { name: '설정' })).toBeVisible()

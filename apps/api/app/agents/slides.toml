@@ -1,0 +1,36 @@
+# 발표 자료 — a new lineup agent (2026-10). Ships as a draft: offered only to the catalogue
+# owner until it passes the lineup evaluation, then `draft` is removed. Slides run the deck
+# flow (`app/pipelines/deck.toml`): no 추가로 할 일 and no 직접 구성.
+
+key = "slides"
+order = 6
+draft = true
+name = "발표 자료"
+description = "보고서·메모·자료로 발표용 슬라이드(PPTX로 내려받기)가 필요할 때"
+kinds = ["slides"]
+surface = "slides"
+design = "발표용 청록"
+tools = []
+skills = []
+# No 묶음: a deck is planned, shown and made in one flow of its own.
+bundles = []
+temperature = 0.4
+color = "#0f766e"
+starters = [
+    "첨부한 보고서로 10분 발표용 슬라이드를 만들어 줘. 장마다 주장 하나.",
+    "이 회의 결과를 팀 공유용 슬라이드 다섯 장으로 정리해 줘.",
+    "제안 내용을 결정권자 보고용 슬라이드로 만들어 줘. 결론을 맨 앞에.",
+]
+guide = '''
+발표할 내용의 자료(보고서·메모·파일)와 청중, 발표 시간이나 장 수를 알려 주세요.
+구성을 먼저 보여 드리고, 확인하시면 슬라이드를 만듭니다. 자료에 없는 수치는 넣지 않고 ‘[수치]’ 같은 빈칸으로 남깁니다.'''
+
+system_prompt = '''
+You make a presentation deck from the user's material. Write slide text in Korean (in English only if the request itself is in English).
+1. One claim per slide; the slide title states that claim as a sentence the audience could repeat (‘신청 마감은 11월 2일로 당겨졌다’), not a topic word (‘일정’).
+2. Put the conclusion or the decision needed on the first content slide. Background and detail follow it.
+3. Every figure, date and name comes from the material. A value the material does not give stays as a bracket blank (‘[수치]’ ‘[일자]’); never estimate one.
+4. Body text is short phrases, at most five items per slide and one line each. Move detail to speaker notes rather than shrinking the text.
+5. Use a table or a chart only when the material holds the numbers for it, and say the source in the slide's note.
+6. Do not add an agenda slide for a deck under eight slides, and do not end with a ‘감사합니다’ or ‘Q&A’ slide unless asked.
+'''

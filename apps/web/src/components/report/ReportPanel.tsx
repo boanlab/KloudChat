@@ -981,14 +981,14 @@ export function ReportPanel({
       const latest = await artifactsApi.get(report.id).catch(() => null)
       const row = await artifactsApi.update(report.id, {
         data: documentBody({ ...report, templateId: id }),
-        summary: t('양식 바꾸기'),
+        summary: t('템플릿 바꾸기'),
         expectedVersion: latest?.version ?? report.version,
       })
       report.templateId = id
       report.version = row.version
     } catch (err) {
       setTemplateId(was)
-      setSaveError(errorMessage(err, t('양식을 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('템플릿을 바꾸지 못했습니다.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1008,7 +1008,7 @@ export function ReportPanel({
         ...(current?.logo ? { logo: current.logo } : {}), visualStyle: next,
       }
       const row = await artifactsApi.update(report.id, {
-        data: documentBody({ ...report, design }), summary: t('문서 디자인 변경'), expectedVersion: latest.version,
+        data: documentBody({ ...report, design }), summary: t('문서 테마 변경'), expectedVersion: latest.version,
       })
       report.design = design
       report.version = row.version
@@ -1016,7 +1016,7 @@ export function ReportPanel({
       setView('page')
       setTick((value) => value + 1)
     } catch (err) {
-      setSaveError(errorMessage(err, t('디자인을 바꾸지 못했습니다.')))
+      setSaveError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
     } finally {
       setTemplateSaving(false)
     }
@@ -1567,7 +1567,7 @@ export function ReportPanel({
                   type="button"
                   aria-label={t('페이지뷰')}
                   aria-pressed={view === 'page'}
-                  title={t('양식이 적용된 A4 문서로 봅니다')}
+                  title={t('템플릿이 적용된 A4 문서로 봅니다')}
                   onClick={showPage}
                   className={cn('flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-medium', view === 'page' ? 'bg-elevated text-fg' : 'text-muted hover:text-fg')}
                 >
@@ -1685,7 +1685,7 @@ export function ReportPanel({
             label={t('보고서 메뉴')}
             tabs={[
               { id: 'text', label: t('글자') }, { id: 'insert', label: t('삽입') },
-              { id: 'design', label: t('디자인') }, { id: 'review', label: t('검토') },
+              { id: 'design', label: t('테마') }, { id: 'review', label: t('검토') },
             ] as const}
             active={ribbon}
             onChange={(tab) => {
@@ -1709,12 +1709,12 @@ export function ReportPanel({
           )}
           {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}
           {ribbon === 'design' && (
-            <RibbonGroup label={t('디자인')}>
+            <RibbonGroup label={t('테마')}>
             <Dropdown
               trigger={() => (
-                <Button size="sm" disabled={templateSaving} aria-label={t('문서 디자인 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
+                <Button size="sm" disabled={templateSaving} aria-label={t('문서 테마 고르기')} title={t(DOC_LOOKS.find((c) => c.id === visualStyle)?.why ?? '')}>
                   <DocLookSwatch look={visualStyle} accent={documentAccent} />
-                  <RibbonCaption>{t('디자인')}</RibbonCaption>
+                  <RibbonCaption>{t('테마')}</RibbonCaption>
                   {t(DOC_LOOKS.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
@@ -1757,18 +1757,18 @@ export function ReportPanel({
             </Dropdown></RibbonGroup>
           )}
           {ribbon === 'design' && (
-            <RibbonGroup label={t('양식')}>
+            <RibbonGroup label={t('템플릿')}>
             <Dropdown
               trigger={() => (
-                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('문서 양식 고르기')}>
+                <Button size="sm" variant="secondary" disabled={templateSaving} aria-label={t('문서 템플릿 고르기')}>
                   {templateSaving && <Loader2 size={13} className="animate-spin" />}
-                  <RibbonCaption>{t('양식')}</RibbonCaption>
+                  <RibbonCaption>{t('템플릿')}</RibbonCaption>
                   {documentTemplates.find((row) => row.id === templateId)?.name ?? t('기본')}
                   <ChevronDown size={13} className="text-muted" />
                 </Button>
               )}
             >
-              <MenuLabel>{t('내보내면 이 양식으로 나갑니다')}</MenuLabel>
+              <MenuLabel>{t('내보내면 이 템플릿으로 나갑니다')}</MenuLabel>
               {documentTemplates.map((row) => (
                 <MenuItem
                   key={row.id}

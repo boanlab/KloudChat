@@ -885,7 +885,7 @@ export function DocumentEditor({
       .style(templateId, tokens)
       .then((row) => live && setStyle(row))
       // Stored untranslated; `t` is a new function per render.
-      .catch((err) => live && setError(errorMessage(err, '양식을 불러오지 못했습니다.')))
+      .catch((err) => live && setError(errorMessage(err, '템플릿을 불러오지 못했습니다.')))
     return () => {
       live = false
     }

@@ -28,7 +28,11 @@ def _texts(run: dict) -> list[str]:
 
 
 def _options(run: dict) -> dict:
-    return check_skills.options_for(run["facts"]) | {"today": _TODAY}
+    # The strictness an agent's row holds (`check_options`), seeded from its file.
+    from app.services import starter
+
+    settings = (starter.agent_spec(run["facts"]) or {}).get("check_options")
+    return check_skills.options_for(run["facts"], None, settings) | {"today": _TODAY}
 
 
 def _found(run: dict) -> list[dict]:

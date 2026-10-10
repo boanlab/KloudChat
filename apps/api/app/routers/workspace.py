@@ -33,8 +33,10 @@ from app.models.workspace import (
     Skill,
     SkillSource,
     StoredFile,
+    UserPipeline,
     Visibility,
 )
+from app.pipeline import compose
 from app.schemas.chat import MessageOut, MessageRatingIn
 from app.schemas.workspace import (
     AgentIn,
@@ -197,6 +199,22 @@ async def _validate_tool_names(
 # ══ projects ═══════════════════════════════════════════════════════════
 
 
+def _validated_checks(values: dict[str, Any]) -> dict[str, Any]:
+    """`check_skills` as check skill keys the server can run, each once; `check_options`
+    as the known switches that are on."""
+    from app.services import check_skills, skill_packages
+
+    out: dict[str, Any] = {}
+    if "check_skills" in values and values["check_skills"] is not None:
+        keys = [str(k) for k in values["check_skills"]]
+        if any(not ((p := skill_packages.package_for(k)) and p.stage) for k in keys):
+            raise HTTPException(status_code=422, detail="check_skill_unknown")
+        out["check_skills"] = list(dict.fromkeys(keys))
+    if "check_options" in values:
+        out["check_options"] = check_skills.clean_options(values["check_options"]) or None
+    return out
+
+
 async def _validate_design_system_id(db: DbSession, user: User, design_id: str | None) -> None:
     """Design system must be owned by the caller or shared."""
     if design_id is None:
@@ -211,7 +229,8 @@ _AGENT_BINDINGS = ("surface", "render_template_id", "doc_format", "design_system
 
 
 async def _validate_agent_bindings(
-    db: DbSession, user: User, values: dict[str, Any], *, check_design: bool = True
+    db: DbSession, user: User, values: dict[str, Any], *, check_design: bool = True,
+    keep_format: str | None = None,
 ) -> dict[str, Any]:
     """The bindings with blanks as `None`, checked against each other and `kinds`.
 
@@ -225,13 +244,14 @@ async def _validate_agent_bindings(
         if surface not in allowed:
             raise HTTPException(status_code=422, detail="agent_surface_not_in_kinds")
     if (template_id := out["render_template_id"]) is not None:
-        chosen = design_templates.get(template_id)
+        chosen = design_templates.choosable(template_id)
         if chosen is None or chosen.kind not in design_templates.HTML_KINDS:
             raise HTTPException(status_code=404, detail="design_template_not_found")
         if chosen.surface.value not in allowed:
             raise HTTPException(status_code=422, detail="design_template_surface_mismatch")
     if (format_id := out["doc_format"]) is not None:
-        if format_id not in doc_formats.BY_ID:
+        if format_id not in doc_formats.BY_ID or (
+                format_id in doc_formats.RETIRED and format_id != keep_format):
             raise HTTPException(status_code=422, detail="doc_format_unknown")
         if SessionKind.report.value not in allowed:
             raise HTTPException(status_code=422, detail="doc_format_needs_report")
@@ -250,7 +270,7 @@ def _validated_render_templates(raw: dict[str, str] | None) -> dict[str, str] | 
     for surface, template_id in raw.items():
         if not template_id:
             continue
-        template = design_templates.get(template_id)
+        template = design_templates.choosable(template_id)
         if template is None or template.kind not in design_templates.HTML_KINDS:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="design_template_not_found"
@@ -2070,6 +2090,9 @@ async def list_agents(user: CurrentUser, db: DbSession):
         )
     ).all()
     rows = _without_legacy_copies(rows, user_id=user.id)
+    # Retired agents (and every copy) are listed nowhere; drafts are for administrators.
+    drafts = starter.draft_agents() if user.role is not UserRole.admin else frozenset()
+    rows = [a for a in rows if not a.retired and (a.catalog_key or "") not in drafts]
 
     owner_ids = {a.owner_id for a in rows}
     names = await _owner_names(db, owner_ids)
@@ -2101,6 +2124,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
         if design_ids
         else {}
     )
+    processes = await _processes(db, rows, viewer_id=user.id)
     return [
         AgentOut.of(
             agent,
@@ -2110,9 +2134,44 @@ async def list_agents(user: CurrentUser, db: DbSession):
             official=agent.owner_id in admins,
             installed=(agent.owner_id != user.id and _copy_of(mine, agent) is not None),
             viewer_id=user.id,
+            process=processes.get(agent.id),
         )
         for agent in rows
     ]
+
+
+async def _processes(db: DbSession, rows: list[Agent], *, viewer_id: str) -> dict[str, dict]:
+    """Each agent's 진행 과정 (`bases.process_of`), its pipeline read in one query."""
+    from app.routers.user_pipelines import _output, bundles_named
+    from app.services import bases
+
+    ids = {a.pipeline_id for a in rows if a.pipeline_id}
+    pipes = {
+        p.id: p
+        for p in (
+            await db.exec(select(UserPipeline).where(col(UserPipeline.id).in_(ids)))
+        ).all()
+    } if ids else {}
+    named = {a.id: compose.AgentInfo(id=a.id, name=a.name, output=_output(a)) for a in rows}
+    known = await bundles_named(db, [s for a in rows for s in (a.bundles or [])])
+    out = {}
+    for agent in rows:
+        row = pipes.get(agent.pipeline_id or "")
+        if row is not None and row.owner_id != agent.owner_id:
+            row = None
+        titles = None
+        if row is not None:
+            agents = {**named, compose.SELF: compose.AgentInfo(
+                id=compose.SELF, name=agent.name, output=_output(agent))}
+            titles = {s["id"]: compose.step_title(s, agents)
+                      for s in compose.normalize(row.stages)}
+        process = bases.process_of(agent, row, owner=agent.owner_id == viewer_id,
+                                   titles=titles, known=known)
+        if process.get("steps"):
+            process["steps"] = [{**s, "title": (titles or {}).get(s["id"], "")}
+                                for s in process["steps"]]
+        out[agent.id] = process
+    return out
 
 
 @router.post("/agents", response_model=AgentOut, status_code=status.HTTP_201_CREATED)
@@ -2120,11 +2179,12 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     await _validate_skill_ids(db, user, payload.skill_ids)
     await _validate_tool_names(db, user, payload.tools)
     bindings = await _validate_agent_bindings(db, user, payload.model_dump())
+    checks = _validated_checks(payload.model_dump())
     slug = await _claim_slug(db, user.id, payload.slug or payload.name)
     agent = Agent(
         owner_id=user.id,
         slug=slug,
-        **{**payload.model_dump(exclude={"slug"}), **bindings},
+        **{**payload.model_dump(exclude={"slug"}), **bindings, **checks},
     )
     db.add(agent)
     await db.commit()
@@ -2132,6 +2192,7 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     return AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+        process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
 
 
@@ -2141,8 +2202,16 @@ async def create_agent(payload: AgentIn, user: CurrentUser, db: DbSession):
     status_code=status.HTTP_201_CREATED,
 )
 async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
-    """Copies a shared agent and its shared skills into this account, without knowledge files."""
+    """Copies a shared agent and its shared skills into this account, without knowledge files.
+
+    The copy takes the original's 진행 과정 (`user_pipelines.clone_process`)."""
+    from app.routers import user_pipelines
+
     origin = await _shared(db, Agent, user, agent_id)
+    if origin.retired:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
+    if (origin.catalog_key or "") in starter.draft_agents() and user.role is not UserRole.admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     mine = list((await db.exec(select(Agent).where(Agent.owner_id == user.id))).all())
     if (existing := _copy_of(mine, origin)) is not None:
         return AgentOut.of(
@@ -2198,12 +2267,16 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
         **{name: getattr(origin, name) for name in _AGENT_BINDINGS},
         temperature=origin.temperature,
         color=origin.color,
+        check_skills=list(origin.check_skills) if origin.check_skills is not None else None,
+        check_options=dict(origin.check_options) if origin.check_options else None,
         enabled=True,
         visibility=Visibility.private,
         catalog_key=origin.catalog_key,
         origin_id=origin.id,
     )
     db.add(copy)
+    await db.flush()
+    await user_pipelines.clone_process(db, origin, copy, user)
     origin.installs += 1
     db.add(origin)
     await db.commit()
@@ -2211,6 +2284,7 @@ async def install_agent(agent_id: str, user: CurrentUser, db: DbSession):
     return AgentOut.of(
         copy,
         has_knowledge=await _agent_has_knowledge(db, user.id, copy.id),
+        process=(await _processes(db, [copy], viewer_id=user.id)).get(copy.id),
     )
 
 
@@ -2240,32 +2314,45 @@ async def patch_agent(agent_id: str, payload: AgentIn, user: CurrentUser, db: Db
         # A design kept from before (an installed copy's) is not re-checked.
         keeps_design = final["design_system_id"] == agent.design_system_id
         changes.update(
-            await _validate_agent_bindings(db, user, final, check_design=not keeps_design)
+            await _validate_agent_bindings(db, user, final, check_design=not keeps_design,
+                                           keep_format=agent.doc_format)
         )
+    changes.update(_validated_checks(changes))
     wanted = changes.pop("slug", None)
     if agent.sealed:
         # A sealed copy has no prompt of its own and cannot be unsealed.
         changes.pop("system_prompt", None)
         changes.pop("share_mode", None)
+    shared_now = (changes.get("visibility") == Visibility.org
+                  and agent.visibility is not Visibility.org)
     for field, value in changes.items():
         setattr(agent, field, value)
     # Explicit slug wins; blank re-derives it from the name.
     agent.slug = await _claim_slug(db, user.id, wanted or agent.name, except_id=agent.id)
     agent.updated_at = utcnow()
     db.add(agent)
+    if shared_now:
+        # Shared: a 직접 구성 that needs an administrator's review goes to them.
+        from app.routers import user_pipelines
+
+        await user_pipelines.submit_shared_process(db, user, agent)
     await db.commit()
     await db.refresh(agent)
     return AgentOut.of(
         agent,
         has_knowledge=await _agent_has_knowledge(db, user.id, agent.id),
+        process=(await _processes(db, [agent], viewer_id=user.id)).get(agent.id),
     )
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
+    from app.routers import user_pipelines
+
     agent = await _own(db, Agent, "owner_id", user, agent_id)
     # The index collection must go too, or its documents stay searchable.
     key = agent.index_key
+    await user_pipelines.drop_processes(db, [agent.id])
     await db.delete(agent)
     await db.commit()
     if key:
@@ -2275,8 +2362,11 @@ async def delete_agent(agent_id: str, user: CurrentUser, db: DbSession):
 @router.post("/agents/delete")
 async def delete_agents(payload: BulkDelete, user: CurrentUser, db: DbSession):
     """Bulk delete; index collections are dropped after the commit."""
+    from app.routers import user_pipelines
+
     rows = await _owned_many(db, Agent, "owner_id", user, payload.ids)
     keys = [row.index_key for row in rows if row.index_key]
+    await user_pipelines.drop_processes(db, [row.id for row in rows])
     for row in rows:
         await db.delete(row)
     await db.commit()
@@ -2729,8 +2819,8 @@ async def delete_designs(payload: BulkDelete, user: CurrentUser, db: DbSession):
 
 @router.get("/design-templates", response_model=list[DesignTemplateOut])
 async def list_design_templates(user: CurrentUser, surface: str | None = None):
-    """Every rendering template, or those for one surface."""
-    rows = design_templates.all_templates()
+    """Every rendering template a person may choose, or those for one surface."""
+    rows = design_templates.offered()
     if surface:
         rows = [t for t in rows if t.surface.value == surface]
     return [DesignTemplateOut.of(t) for t in rows]
@@ -2885,6 +2975,42 @@ async def add_agent_file(
     await db.refresh(stored)
     await _index(db, agent, stored)
     return FileOut.of(stored)
+
+
+class KnowledgeFromFiles(BulkDelete):
+    """Files of the caller's own (a conversation's uploads) to shelve as the agent's knowledge."""
+
+
+@router.post("/agents/{agent_id}/knowledge/from-files", response_model=list[FileOut],
+             status_code=status.HTTP_201_CREATED)
+async def add_agent_files_from(agent_id: str, payload: KnowledgeFromFiles, user: CurrentUser,
+                               db: DbSession):
+    """「에이전트로 저장」: the conversation's files, copied onto the agent's shelf. Only the
+    caller's own files; each is a copy, so deleting one leaves the other."""
+    agent = await _own(db, Agent, "owner_id", user, agent_id)
+    ids = list(dict.fromkeys(payload.ids))[:20]
+    rows = (await db.exec(select(StoredFile).where(
+        col(StoredFile.id).in_(ids), StoredFile.user_id == user.id))).all() if ids else []
+    made: list[StoredFile] = []
+    for source in rows:
+        if not source.storage_key:
+            continue
+        copy = StoredFile(user_id=user.id, agent_id=agent.id, name=source.name,
+                          size=source.size, mime=source.mime, text=source.text,
+                          tokens=source.tokens, error=source.error)
+        try:
+            copy.storage_key = file_service.copy_blob(user.id, copy.id, copy.name,
+                                                      source.storage_key)
+        except OSError:
+            log.info("file %s not copied to an agent: its blob is gone", source.id)
+            continue
+        db.add(copy)
+        made.append(copy)
+    await db.commit()
+    for copy in made:
+        await db.refresh(copy)
+        await _index(db, agent, copy)
+    return [FileOut.of(f) for f in made]
 
 
 @router.post(

@@ -27,10 +27,10 @@ const AWAY_GAP_PX = 320
 
 /** What a design system changes on each surface; audio and video are unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
-  chat: '이 대화의 말투를 이 디자인에 맞춥니다',
-  report: '보고서의 말투와 색, 서체를 이 디자인에 맞춥니다',
-  slides: '슬라이드의 말투와 색, 서체를 이 디자인에 맞춥니다',
-  image: '그림의 색과 스타일을 이 디자인에 맞춥니다',
+  chat: '이 대화의 말투를 이 테마에 맞춥니다',
+  report: '보고서의 말투와 색, 서체를 이 테마에 맞춥니다',
+  slides: '슬라이드의 말투와 색, 서체를 이 테마에 맞춥니다',
+  image: '그림의 색과 스타일을 이 테마에 맞춥니다',
 }
 
 /** Agent, project and design this empty session carries; the 서식 chip lives in the composer instead. */

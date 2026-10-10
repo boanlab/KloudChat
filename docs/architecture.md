@@ -947,6 +947,54 @@ step** raises `Wait`: what the run spent is billed, the card (`needs`) or the ou
 (`proposal`) is the session's pending turn with `pending.compose = {runId, stage}`, and the
 next message resumes the run from that step with the answers or the approved outline.
 
+**An agent's 진행 과정** (`app/services/bases.py`, `app/services/bundles.py`,
+`PUT /agents/{id}/process`, migration 0060). Pipelines stopped being a thing people make on
+their own: the agent form offers 「진행 과정」 — 바로 답하기 (no base), 기본 과정에서 시작 (a
+**base**: an offered catalogue agent, `agents.base_key`) or 직접 구성 (고급, the step editor
+above, not offered for 발표 자료) — and 「추가로 할 일」, one checkbox per **묶음** (bundle).
+
+- A **base** is any non-retired agent file (`starter.offered_agents`; drafts for
+  administrators only). Its plain steps are its pipeline's `[summary]` lines (at most five);
+  `sessions._agent_catalog_key` resolves `catalog_key`, then `base_key`, then the original's,
+  so a person's agent with a base runs that base's question card, format, template and
+  pipeline. Picking a base sets `surface`, `doc_format` and (when the agent has none that
+  fits) `render_template_id`.
+- A **bundle** is data: `app/bundles/{prepare,review,finish}.toml` ship 쓰기 전에 준비하기 ·
+  다 쓴 뒤 검토하기 · 마무리하기; a person's own is a `user_pipelines` row with `kind = "bundle"`
+  in the same item shape (`{id, kind, ref, settings, label, default}`; `GET/POST/PUT/DELETE
+  /bundles`, `POST /bundles/{id}/share`). Where an item runs is decided by its kind alone
+  (`bundles.target`): a check skill with a stage is an `Agent.check_skills` entry, run inside
+  the agent's own flow (the report flow's find → repair → find again); `option` is
+  `Agent.check_options` (`tool_numbers`, `titles`, read by `check_skills.options_for`);
+  `flow` items (format checks, repair) are what the report flow always does; `skill` items
+  are the report flow's own pre-pass but steps before the agent on chat; `human:outline`,
+  `review`, `export`, other agents and `copy-check` are steps around the agent. Agent files
+  name their bundles (`bundles = [...]`) and the seeder compiles them with the same
+  `bundles.compile` the form's save uses, so a person who picks a base and ticks the same
+  bundles gets the same agent (`tests/test_agent_process.py` holds this for every base).
+- `agents.bundles` keeps the ticks; `check_skills`, `check_options` and, only when an item is a
+  step, the agent's **own pipeline** (`user_pipelines.agent_id`) are compiled from them. Its
+  `@self` agent step (`compose.SELF`) runs the agent's own shipped flow with the turn's web
+  search and connectors (none under strict-local); `compose.validate`'s recursion guard does not
+  apply to it. With no step needed there is no pipeline and the shipped flow runs as is.
+- **Review on share.** A shipped bundle never needs review. A person's bundle that exports,
+  reviews or runs another agent, and a 직접 구성 with any of those, reach others only after an
+  administrator approves them (「진행 과정 검토」 on the admin users page, the same queue as
+  below); until then others run the agent on its base (`user_pipelines.runs_for_others`).
+  Installing a copy carries `base_key`, `bundles`, `check_skills`, `check_options` and, when
+  it runs for others, a clone of the pipeline; deleting an agent deletes its own pipeline.
+- `GET /user-pipelines` lists only the pipelines made before on their own (unbound, no
+  `agent_id`, not bundles), for 「예전에 만든 순서 가져오기」 in 직접 구성.
+
+**「에이전트로 저장」** (`GET /sessions/{id}/agent-draft`, `services/agent_draft.py`): the result
+card's and the panel's ⋯ open `/customize/agents/new?from=session:<id>` prefilled; nothing is
+saved until 저장. 「이 대화에서 정한 것」 is distilled from the person's own messages only, by the
+model the conversation ran on — its strict-local model (no fallbacks, nothing masked away) when
+any turn ran strict-local, otherwise masked by `governance.mask`. A sealed agent's prompt is
+never copied. The base is the conversation's agent's, else inferred from its template; the
+conversation's files go onto the new agent's shelf as copies
+(`POST /agents/{id}/knowledge/from-files`, the caller's own files only).
+
 **Sharing.** Private by default. `POST /user-pipelines/{id}/submit` (every agent step must be
 one others can run: a catalogue agent or one shared with the organisation) sets `review`
 `pending`; an administrator approves (`visibility` org, listed in `GET /user-pipelines/store`)
@@ -1094,14 +1142,24 @@ workspace, and taken from `/agents` and `/skills/store` a copy at a time.
 both are idempotent: pressing 가져오기 twice returns the row you already have
 rather than a second one with the same name.
 
-The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the six
-lineup agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
-bindings, an explicit tool list — `[]` denies every tool — and skill keys). A
+The shipped catalogue is `starter._SKILLS` plus `starter._AGENTS`, the lineup
+agents read from `app/agents/<key>.toml` (prompt, guide, starters, kinds,
+bindings, an explicit tool list — `[]` denies every tool — skill keys and the 묶음
+they run). Offered: 요약·정리 (`gaejo-report`), 기록 정리 (`minutes`), 비교·결정
+(`comparison-report`), 데이터 분석, and as drafts (`draft = true`, administrators only
+until they pass the lineup evaluation) 문서 작성 (`document`) and 발표 자료 (`slides`).
+`former_names` renames untouched copies on sync. Retired (`retired = true`):
+자기소개서·경력기술서 (`career-docs`) and 고객 맞춤 제안서 (`client-proposal`) with their 서식
+`doc-career-history` and `doc-client-proposal` (`design_templates.RETIRED_KEPT`: still drawn
+and exported, chosen by nothing new) and formats (`doc_formats.RETIRED`). A retired agent is
+never seeded afresh; its rows and every copy get `agents.retired`, are listed nowhere, refuse
+install and new conversations (410 `agent_retired`), and keep their conversations and
+documents. A
 prompt's `[채팅에서]` / `[보고서에서]` / `[슬라이드에서]` lines open parts read
 on that surface only (`workspace_context.surface_prompt`).
 `seed_catalog` syncs the catalogue on the owner's sign-in and deletes the
-owner's rows whose `catalog_key` is no longer shipped; copies people installed
-are theirs and stay. Sharing is set on the first run only. That run is told
+owner's rows whose `catalog_key` is no longer shipped at all (a key still in a file with
+`retired = true` is kept, hidden); copies people installed are theirs and stay. Sharing is set on the first run only. That run is told
 apart by a catalogue agent, or a shipped skill that is shared or has been
 installed — skills seeded per account before the store carry keys too but were
 private and never installed — so a skill the administrator made private stays

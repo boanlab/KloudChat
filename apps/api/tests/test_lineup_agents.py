@@ -1,4 +1,7 @@
-"""The six shipped agents (lineup v1): their specs hold together and the seeder makes them."""
+"""The shipped agents (lineup): their specs hold together and the seeder makes them.
+
+Six are offered (two of them drafts until they pass the lineup evaluation); two are retired
+and kept only so the conversations made with them still open."""
 
 from __future__ import annotations
 
@@ -17,18 +20,27 @@ from app.services import design_templates, doc_formats, starter, workspace_conte
 from app.services.tools import registry
 
 _SHIPPED = {
-    "client-proposal": "고객 맞춤 제안서",
-    "gaejo-report": "개조식 보고서",
-    "minutes": "회의록",
+    "gaejo-report": "요약·정리",
+    "document": "문서 작성",
+    "minutes": "기록 정리",
+    "comparison-report": "비교·결정",
     "data-analysis": "데이터 분석",
+    "slides": "발표 자료",
     "career-docs": "자기소개서·경력기술서",
-    "comparison-report": "비교·분석 보고서",
+    "client-proposal": "고객 맞춤 제안서",
 }
+_OFFERED = ["gaejo-report", "document", "minutes", "comparison-report", "data-analysis", "slides"]
+_DRAFTS = {"document", "slides"}
+_RETIRED = {"career-docs", "client-proposal"}
+_FORMER = {"gaejo-report": ["개조식 보고서"], "minutes": ["회의록"],
+           "comparison-report": ["비교·분석 보고서"]}
 _BINDINGS = {
     "client-proposal": ("report", "doc-client-proposal", "client_proposal", "기본"),
     "gaejo-report": ("report", "doc-gaejo-report", "gaejo", "문서용 명조"),
+    "document": ("report", None, None, "기본"),
     "minutes": ("report", "doc-minutes", "minutes", "문서용 명조"),
     "data-analysis": ("chat", None, None, "기본"),
+    "slides": ("slides", None, None, "발표용 청록"),
     "career-docs": ("chat", "doc-career-history", "career_history", "기본"),
     "comparison-report": ("report", "doc-comparison", "comparison", "기본"),
 }
@@ -39,9 +51,15 @@ _TOOLS = {
 _BY_KEY = {spec["key"]: spec for spec in starter._AGENTS}
 
 
-def test_the_catalogue_ships_the_six_lineup_agents_in_order():
+def test_the_catalogue_ships_the_lineup_agents_in_order():
     assert [spec["key"] for spec in starter._AGENTS] == list(_SHIPPED)
     assert {key: spec["name"] for key, spec in _BY_KEY.items()} == _SHIPPED
+    assert [s["key"] for s in starter.offered_agents(drafts=True)] == _OFFERED
+    assert [s["key"] for s in starter.offered_agents()] == [
+        k for k in _OFFERED if k not in _DRAFTS]
+    assert starter.draft_agents() == _DRAFTS and starter.retired_agents() == _RETIRED
+    assert {k: s.get("former_names") for k, s in _BY_KEY.items() if s.get("former_names")} \
+        == _FORMER
     for spec in starter._AGENTS:
         assert spec["description"] and spec["guide"] and spec["starters"]
         assert len(spec["system_prompt"]) > 400
@@ -154,13 +172,15 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
         row.catalog_key: row
         for row in (await db.exec(select(Agent).where(Agent.catalog_key.is_not(None)))).all()
     }
-    assert set(rows) == set(_SHIPPED)
+    # A retired agent is never seeded afresh.
+    assert set(rows) == set(_OFFERED)
     designs = {
         row.id: row.name
         for row in (await db.exec(select(DesignSystem))).all()
     }
     skills = {row.id: row.catalog_key for row in (await db.exec(select(Skill))).all()}
     for key, agent in rows.items():
+        assert not agent.retired
         spec = _BY_KEY[key]
         surface, template_id, format_id, design = _BINDINGS[key]
         assert agent.owner_id == admin.id
@@ -179,17 +199,22 @@ async def test_the_seeder_makes_the_six_agents_for_the_catalogue_owner(db):
             "render_template_id": agent.render_template_id, "doc_format": agent.doc_format,
             "design_system_id": agent.design_system_id,
         })
-    assert rows["minutes"].slug == "회의록-2" and own.slug == "회의록"
+    assert rows["minutes"].slug == "기록-정리" and own.slug == "회의록"
     # Idempotent.
     assert await starter.seed_catalog(db, admin.id) == 0
 
 
 @pytest.mark.asyncio
 async def test_a_career_docs_report_session_gets_the_report_part_of_the_prompt(db):
+    """Retired, the agent's old conversations still run on its prompt parts."""
     admin = await _admin(db)
+    spec = _BY_KEY["career-docs"]
+    agent = Agent(owner_id=admin.id, name=spec["name"], slug="career", catalog_key="career-docs",
+                  system_prompt=spec["system_prompt"], kinds=spec["kinds"], retired=True)
+    db.add(agent)
+    await db.commit()
     await starter.sync_catalog(db, admin)
     await db.commit()
-    agent = (await db.exec(select(Agent).where(Agent.catalog_key == "career-docs"))).one()
     for kind, present, absent in (
         (SessionKind.chat, "text-fit", "‘병행 활동’"),
         (SessionKind.report, "‘병행 활동’", "text-fit"),
@@ -238,3 +263,97 @@ async def test_a_user_running_a_seeded_agent_wears_their_own_design_of_that_name
     db.add(session)
     await db.commit()
     assert await workspace_context.design_for(db, bare, session) is None
+
+
+@pytest.mark.asyncio
+async def test_retiring_hides_the_agent_and_its_copies_without_deleting_them(db):
+    admin = await _admin(db)
+    user = User(email="lineup-taker@example.com", name="Taker", password_hash="x")
+    db.add(user)
+    await db.commit()
+    # The catalogue as it was before the retirement: the agent offered and taken.
+    spec = {**_BY_KEY["client-proposal"], "retired": False}
+    import app.services.starter as module
+
+    real = list(module._AGENTS)
+    module._AGENTS[:] = [s if s["key"] != "client-proposal" else spec for s in real]
+    try:
+        await starter.sync_catalog(db, admin)
+        await db.commit()
+        original = (await db.exec(
+            select(Agent).where(Agent.catalog_key == "client-proposal"))).one()
+        original_id = original.id
+        copy = await ws.install_agent(original_id, user, db)
+        session = ChatSession(user_id=user.id, agent_id=copy.id, kind=SessionKind.report)
+        db.add(session)
+        await db.commit()
+        session_id = session.id
+    finally:
+        module._AGENTS[:] = real
+    await starter.sync_catalog(db, admin)
+    await db.commit()
+    db.expire_all()
+    for person in (admin, user):
+        await db.refresh(person)
+    kept = await db.get(Agent, copy.id)
+    assert kept is not None and kept.retired
+    assert (await db.get(Agent, original_id)).retired
+    # Listed nowhere, installed by nobody, starting nothing new; the old conversation stays.
+    assert copy.id not in {a.id for a in await ws.list_agents(user, db)}
+    assert original_id not in {a.id for a in await ws.list_agents(admin, db)}
+    from fastapi import HTTPException
+
+    from app.routers import sessions as sessions_router
+    from app.schemas.chat import SessionCreate
+
+    with pytest.raises(HTTPException) as caught:
+        await sessions_router.create_session(SessionCreate(agent_id=copy.id), user, db)
+    assert caught.value.status_code == 410
+    other = User(email="lineup-other@example.com", name="Other", password_hash="x")
+    db.add(other)
+    await db.commit()
+    original_row = await db.get(Agent, original_id)
+    original_row.visibility = Visibility.org
+    db.add(original_row)
+    await db.commit()
+    with pytest.raises(HTTPException) as caught:
+        await ws.install_agent(original_id, other, db)
+    assert caught.value.status_code == 410
+    assert await db.get(ChatSession, session_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_drafts_are_for_administrators_and_renamed_copies_follow(db):
+    admin = await _admin(db)
+    user = User(email="lineup-reader@example.com", name="Reader", password_hash="x")
+    db.add(user)
+    await db.commit()
+    await starter.sync_catalog(db, admin)
+    await db.commit()
+    seen = {a.catalog_key for a in await ws.list_agents(user, db) if a.catalog_key}
+    assert seen == set(_OFFERED) - _DRAFTS
+    assert {a.catalog_key for a in await ws.list_agents(admin, db) if a.catalog_key} \
+        == set(_OFFERED)
+    draft = (await db.exec(select(Agent).where(Agent.catalog_key == "document"))).one()
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as caught:
+        await ws.install_agent(draft.id, user, db)
+    assert caught.value.status_code == 404
+
+    minutes = (await db.exec(select(Agent).where(Agent.catalog_key == "minutes"))).one()
+    copy = await ws.install_agent(minutes.id, user, db)
+    renamed = await ws.install_agent(
+        (await db.exec(select(Agent).where(Agent.catalog_key == "gaejo-report"))).one().id,
+        user, db)
+    for row_id, old in ((copy.id, "회의록"), (renamed.id, "내 개조식")):
+        row = await db.get(Agent, row_id)
+        row.name = old
+        db.add(row)
+    await db.commit()
+    await starter.sync_catalog(db, admin)
+    await db.commit()
+    db.expire_all()
+    # An untouched earlier name follows the rename; a name of the person's own stays.
+    assert (await db.get(Agent, copy.id)).name == "기록 정리"
+    assert (await db.get(Agent, renamed.id)).name == "내 개조식"

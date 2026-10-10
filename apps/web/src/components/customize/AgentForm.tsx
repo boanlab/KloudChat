@@ -1,11 +1,13 @@
 import { ChevronRight, Globe, Lock } from 'lucide-react'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { AgentKnowledge } from '@/components/agents/AgentKnowledge'
-import { AgentFlowSummary } from '@/components/agents/PipelineEditor'
-import { DOC_FORMATS } from '@/components/report/docFormats'
+import { ProcessSection } from '@/components/agents/ProcessSection'
+import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, Select, Textarea } from '@/components/ui'
-import { errorCode, errorMessage, templateText, userPipelinesApi } from '@/lib/api'
+import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
+import { processOf, processPayload, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
@@ -30,9 +32,21 @@ function withinKinds(draft: Agent, kinds: SessionKind[]): Agent {
 }
 
 /** One folded group of the longer settings. Closed until opened. */
-export function Group({ title, hint, children, testId }: { title: string; hint?: string; children: ReactNode; testId?: string }) {
+export function Group({
+  title,
+  hint,
+  children,
+  testId,
+  open,
+}: {
+  title: string
+  hint?: string
+  children: ReactNode
+  testId?: string
+  open?: boolean
+}) {
   return (
-    <details className="group rounded-card border border-line bg-panel" data-testid={testId}>
+    <details className="group rounded-card border border-line bg-panel" data-testid={testId} open={open}>
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 select-none [&::-webkit-details-marker]:hidden">
         <ChevronRight size={15} aria-hidden className="shrink-0 text-faint transition-transform group-open:rotate-90" />
         <span className="min-w-0 flex-1">
@@ -144,9 +158,14 @@ export function AgentSharing({ draft, onChange }: { draft: Agent; onChange: (nex
   )
 }
 
+/** A swatch row for the agent's colour on cards and its avatar. */
+const COLORS = ['#5b53e8', '#2563eb', '#0f766e', '#334155', '#ea580c', '#db2777', '#7c3aed', '#0369a1']
+
 /**
- * The agent form: four essentials in view, everything else in folded groups. The same form
- * creates an agent and edits one in its detail screen's 「설정」.
+ * The agent form: name, instructions, 진행 과정 and 추가로 할 일 in view, the rest in folded
+ * groups (결과물, 대화 시작, 자료, 스킬과 도구, 고급, 공유). The same form creates an agent (from
+ * scratch, or prefilled by 「에이전트로 저장」) and edits one in its detail screen's 「설정」.
+ * Nothing is saved before 저장.
  */
 export function AgentForm({
   initial,
@@ -154,6 +173,8 @@ export function AgentForm({
   onSaved,
   onCancel,
   aboveBottomBar = false,
+  initialProcess,
+  draftFiles = [],
 }: {
   initial: Agent
   creating: boolean
@@ -161,6 +182,10 @@ export function AgentForm({
   onCancel?: () => void
   /** A detail screen's phone action bar sits below; the save bar stops above it. */
   aboveBottomBar?: boolean
+  /** 「에이전트로 저장」: the 진행 과정 the conversation suggests. */
+  initialProcess?: ProcessDraft
+  /** 「에이전트로 저장」: the conversation's files, offered for the agent's shelf. */
+  draftFiles?: { id: string; name: string; size: number }[]
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
@@ -181,13 +206,20 @@ export function AgentForm({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
-  const [flowPick, setFlowPick] = useState<string | null | undefined>(undefined)
+  const [baseline, setBaseline] = useState<ProcessDraft>(() => initialProcess ?? processOf(initial))
+  const [process, setProcess] = useState<ProcessDraft>(baseline)
+  const [processSaved, setProcessSaved] = useState(!creating)
+  const processDirty = !processSaved || JSON.stringify(process) !== JSON.stringify(baseline)
+  const [keepFiles, setKeepFiles] = useState<string[]>(() => draftFiles.map((f) => f.id))
   const nameRef = useRef<HTMLInputElement>(null)
 
   const draftSlug = slugify(draft.slug || draft.name)
   const slugTaken = agents.some((a) => a.id !== draft.id && a.slug === draftSlug)
   const offered = agentKinds(draft)
   const boundTemplates = designTemplates.filter((row) => row.kind !== 'image' && offered.includes(row.surface))
+  const surface: SessionKind = draft.surface ?? offered[0] ?? 'chat'
+  // A format retired with its agent stays where it is set; nothing new picks it.
+  const formats = DOC_FORMATS.filter((f) => !RETIRED_FORMATS.includes(f.id) || f.id === initial.docFormat)
   const edit = (next: Agent) => {
     setDone(false)
     setDraft(next)
@@ -228,17 +260,33 @@ export function AgentForm({
   const save = async () => {
     const saved = await persist()
     if (!saved) return
-    if (flowPick !== undefined) {
-      try {
-        await userPipelinesApi.bind(saved.id, flowPick)
-        setFlowPick(undefined)
-      } catch (err) {
-        setError(errorMessage(err, t('이 워크플로를 묶지 못했습니다. 워크플로의 단계를 확인해 주세요.')))
-        return
+    setSaving(true)
+    try {
+      if (processDirty) {
+        try {
+          const out = await processApi.put(saved.id, processPayload(process))
+          setBaseline(process)
+          setProcessSaved(true)
+          if (out.warnings?.length) setError(out.warnings.map((w) => t(w.message)).join(' '))
+        } catch (err) {
+          setError(errorMessage(err, t('진행 과정을 저장하지 못했습니다. 단계를 확인해 주세요.')))
+          return
+        }
       }
+      if (keepFiles.length > 0) {
+        try {
+          await agentsApi.knowledge.fromFiles(saved.id, keepFiles)
+          setKeepFiles([])
+        } catch (err) {
+          setError(errorMessage(err, t('대화의 파일을 자료로 옮기지 못했습니다.')))
+        }
+      }
+      await loadWorkspace()
+    } finally {
+      setSaving(false)
     }
     setDone(true)
-    onSaved(saved)
+    onSaved(useStore.getState().agents.find((a) => a.id === saved.id) ?? saved)
   }
 
   // Stable: the knowledge list reloads whenever this callback changes.
@@ -252,8 +300,6 @@ export function AgentForm({
   )
 
   const needAgent = useCallback(async () => (await persist())?.id ?? null, [persist])
-
-  const savedAgent = savedId ? agents.find((a) => a.id === savedId) ?? null : null
 
   return (
     <form
@@ -324,7 +370,10 @@ export function AgentForm({
         />
       </Field>
 
-      <Field label={t('지시')} hint={t('이 에이전트가 늘 따를 역할과 규칙입니다.')}>
+      <Field
+        label={t('지시')}
+        hint={t('이 에이전트가 늘 따를 역할과 규칙입니다. [채팅에서] [보고서에서] 줄 아래에 쓴 것은 그 화면에서만 씁니다.')}
+      >
         <Textarea
           rows={7}
           value={draft.systemPrompt}
@@ -333,41 +382,24 @@ export function AgentForm({
         />
       </Field>
 
-      <Block label={t('사용할 화면')} hint={t('여기서 고른 화면의 @ 버튼에만 나타납니다.')}>
-        <div className="flex flex-wrap gap-1.5">
-          {kindOrder.map((k) => {
-            const on = draft.kinds.includes(k)
-            return (
-              <Chip
-                key={k}
-                on={on}
-                onClick={() => edit(withinKinds(draft, on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k]))}
-              >
-                {t(kindMeta[k].label)}
-              </Chip>
-            )
-          })}
-        </div>
-      </Block>
+      <ProcessSection
+        agent={{ ...draft, id: savedId ?? '' }}
+        value={process}
+        surface={surface}
+        onChange={(next) => {
+          setDone(false)
+          setProcess(next)
+        }}
+      />
 
       <div className="space-y-2" data-testid="agent-advanced">
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
-        <Group title={t('결과물 모양')} hint={t('처음 여는 화면, 양식, 문서 형식, 디자인')}>
+        <Group title={t('결과물')} hint={t('템플릿, 테마, 문서 형식')} testId="agent-output-group">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('처음 여는 화면')} hint={t('이 에이전트로 새 대화를 열 때의 화면입니다.')}>
-              <Select value={draft.surface ?? ''} onChange={(e) => edit({ ...draft, surface: (e.target.value || null) as SessionKind | null })}>
-                <option value="">{t('첫 번째 화면')}</option>
-                {offered.map((k) => (
-                  <option key={k} value={k}>
-                    {t(kindMeta[k].label)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t('양식')} hint={t('보고서·슬라이드 대화가 이 양식으로 시작합니다.')}>
+            <Field label={t('템플릿')} hint={t('보고서·슬라이드 대화가 이 템플릿으로 시작합니다.')}>
               <Select value={draft.renderTemplateId ?? ''} onChange={(e) => edit({ ...draft, renderTemplateId: e.target.value || null })}>
-                <option value="">{t('정하지 않음')}</option>
+                <option value="">{process.mode === 'base' ? t('기본 과정의 템플릿') : t('정하지 않음')}</option>
                 {boundTemplates.map((row) => (
                   <option key={row.id} value={row.id}>
                     {`${t(kindMeta[row.surface].label)} · ${templateText(row, english).name}`}
@@ -375,11 +407,29 @@ export function AgentForm({
                 ))}
               </Select>
             </Field>
-            {offered.includes('report') && (
-              <Field label={t('문서 형식')} hint={t('양식이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}>
+            <div className="space-y-1.5">
+              <Field label={t('테마')} hint={t('프로젝트의 테마보다 먼저 씁니다.')}>
+                <Select value={draft.designSystemId ?? ''} onChange={(e) => edit({ ...draft, designSystemId: e.target.value || null })}>
+                  <option value="">{t('정하지 않음')}</option>
+                  {designs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                  {draft.designSystemId && !designs.some((d) => d.id === draft.designSystemId) && (
+                    <option value={draft.designSystemId}>{t('다른 사람의 테마')}</option>
+                  )}
+                </Select>
+              </Field>
+              <Link to="/settings/themes" className="inline-block text-sm text-accent hover:underline">
+                {t('테마 관리')}
+              </Link>
+            </div>
+            {offered.includes('report') && process.mode !== 'base' && (
+              <Field label={t('문서 형식')} hint={t('템플릿이 형식을 정하지 않을 때 보고서의 머리 항목과 절 규칙을 이것으로 고정합니다.')}>
                 <Select value={draft.docFormat ?? ''} onChange={(e) => edit({ ...draft, docFormat: e.target.value || null })}>
                   <option value="">{t('요청에 따라')}</option>
-                  {DOC_FORMATS.map((f) => (
+                  {formats.map((f) => (
                     <option key={f.id} value={f.id}>
                       {t(f.label)}
                     </option>
@@ -387,19 +437,6 @@ export function AgentForm({
                 </Select>
               </Field>
             )}
-            <Field label={t('디자인')} hint={t('프로젝트의 디자인보다 먼저 씁니다.')}>
-              <Select value={draft.designSystemId ?? ''} onChange={(e) => edit({ ...draft, designSystemId: e.target.value || null })}>
-                <option value="">{t('정하지 않음')}</option>
-                {designs.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-                {draft.designSystemId && !designs.some((d) => d.id === draft.designSystemId) && (
-                  <option value={draft.designSystemId}>{t('다른 사람의 디자인')}</option>
-                )}
-              </Select>
-            </Field>
           </div>
         </Group>
 
@@ -422,15 +459,37 @@ export function AgentForm({
           </Field>
         </Group>
 
-        <Group title={t('자료')} hint={t('이 에이전트가 찾아 답할 파일과 웹 페이지')}>
-          <AgentKnowledge
-            agentId={savedId}
-            onNeedAgent={needAgent}
-            onKnowledgeChange={knowledgeChanged}
-          />
+        <Group
+          title={t('자료')}
+          hint={t('이 에이전트가 찾아 답할 파일과 웹 페이지')}
+          open={draftFiles.length > 0 || undefined}
+          testId="agent-knowledge-group"
+        >
+          {draftFiles.length > 0 && (
+            <fieldset className="space-y-1.5" data-testid="draft-files">
+              <legend className="mb-1 text-base font-medium">{t('이 대화의 파일을 자료로 함께 저장')}</legend>
+              {draftFiles.map((f) => (
+                <label key={f.id} className="flex items-center gap-2 text-base">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-[var(--accent)]"
+                    checked={keepFiles.includes(f.id)}
+                    onChange={() =>
+                      setKeepFiles((ids) => (ids.includes(f.id) ? ids.filter((x) => x !== f.id) : [...ids, f.id]))
+                    }
+                  />
+                  <span className="min-w-0 truncate">{f.name}</span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <AgentKnowledge agentId={savedId} onNeedAgent={needAgent} onKnowledgeChange={knowledgeChanged} />
         </Group>
 
-        <Group title={t('도구와 스킬')} hint={t('쓸 수 있는 도구와 스킬을 좁힙니다')} testId="agent-tools-group">
+        <Group title={t('스킬과 도구')} hint={t('쓸 수 있는 스킬과 도구를 좁힙니다')} testId="agent-tools-group">
+          <Block label={t('스킬')}>
+            <SkillPicker value={draft.skillIds} onChange={(skillIds) => edit({ ...draft, skillIds })} skills={skills} />
+          </Block>
           <Block label={t('도구')}>
             <ToolPicker
               value={draft.tools}
@@ -439,13 +498,36 @@ export function AgentForm({
               hasKnowledge={draft.hasKnowledge}
             />
           </Block>
-          <Block label={t('스킬')}>
-            <SkillPicker value={draft.skillIds} onChange={(skillIds) => edit({ ...draft, skillIds })} skills={skills} />
-          </Block>
         </Group>
 
-        <Group title={t('모델')} hint={t('모델과 답의 다양성')}>
+        <Group title={t('고급')} hint={t('사용할 화면, 모델, 다양성, 색')} testId="agent-more-group">
+          <Block label={t('사용할 화면')} hint={t('여기서 고른 화면의 @ 버튼에만 나타납니다.')}>
+            <div className="flex flex-wrap gap-1.5">
+              {kindOrder.map((k) => {
+                const on = draft.kinds.includes(k)
+                return (
+                  <Chip
+                    key={k}
+                    on={on}
+                    onClick={() => edit(withinKinds(draft, on ? draft.kinds.filter((x) => x !== k) : [...draft.kinds, k]))}
+                  >
+                    {t(kindMeta[k].label)}
+                  </Chip>
+                )
+              })}
+            </div>
+          </Block>
           <div className="grid gap-4 sm:grid-cols-2">
+            <Field label={t('처음 여는 화면')} hint={t('이 에이전트로 새 대화를 열 때의 화면입니다.')}>
+              <Select value={draft.surface ?? ''} onChange={(e) => edit({ ...draft, surface: (e.target.value || null) as SessionKind | null })}>
+                <option value="">{t('첫 번째 화면')}</option>
+                {offered.map((k) => (
+                  <option key={k} value={k}>
+                    {t(kindMeta[k].label)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label={t('모델')}>
               <Select value={draft.model} onChange={(e) => edit({ ...draft, model: e.target.value })}>
                 <option value="">{t('화면 기본 모델')}</option>
@@ -470,15 +552,23 @@ export function AgentForm({
                 className="h-9 w-full accent-[var(--accent)]"
               />
             </Field>
+            <Block label={t('색')} hint={t('카드와 목록에서 이 에이전트를 알아보는 색입니다.')}>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('색')}>
+                {COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.color === c}
+                    aria-label={c}
+                    onClick={() => edit({ ...draft, color: c })}
+                    className={cn('size-7 rounded-full border-2', draft.color === c ? 'border-fg' : 'border-transparent')}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </Block>
           </div>
-        </Group>
-
-        <Group title={t('워크플로 연결')} hint={t('이 에이전트가 일하는 순서')}>
-          {savedAgent ? (
-            <AgentFlowSummary agent={savedAgent} choice={flowPick} onChoose={setFlowPick} />
-          ) : (
-            <p className="text-sm text-faint">{t('에이전트를 만든 뒤 워크플로를 연결할 수 있습니다.')}</p>
-          )}
         </Group>
 
         <Group title={t('공유')} hint={draft.visibility === 'org' ? t('모두에게 공개') : t('나만 쓰기')}>

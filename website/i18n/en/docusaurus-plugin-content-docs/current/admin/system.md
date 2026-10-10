@@ -38,6 +38,6 @@ The SMTP host, port, security, account, and sender address, the service address 
 ## Management items outside the System tab
 
 - The **Usage** screen: charts by period, by model, by screen, and by user, CSV export, and storage space (disk usage, orphan file cleanup, and automatic cleanup from the oldest when it fills up).
-- **Design**: An administrator can **provide a design to every user** (shared, read only).
+- **Theme**: An administrator can **provide a theme to every user** (shared, read only).
 - **Store**: Agents and skills published by an administrator account carry an **Official** badge.
 - The trusted proxy range, the file size limit, and similar settings are configured through environment variables rather than the screen. See `docs/configuration.md` in the repository.

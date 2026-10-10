@@ -276,7 +276,7 @@ async def test_a_pipeline_is_cloned_edited_shared_and_approved(wired):
     p = await _people(wired.local)
     async with wired.local() as db:
         made = await up.create(up.PipelineIn(from_agent_id=p.cmp.id), p.me, db)
-        assert made["name"] == "비교 보고서 워크플로" and made["base"] == "comparison-report"
+        assert made["name"] == "비교 보고서 진행 과정" and made["base"] == "comparison-report"
         assert [(s["kind"], s["title"]) for s in made["stages"]] == [
             ("human", "확인 질문"), ("agent", "비교 보고서")]
         assert made["surface"] == "report" and made["problems"] == []
@@ -614,7 +614,8 @@ def test_the_migration_adds_and_drops_user_pipelines_on_sqlite():
         with Operations.context(MigrationContext.configure(conn)):
             migration.upgrade()
         columns = {c["name"] for c in sa.inspect(conn).get_columns("user_pipelines")}
-        assert {c.name for c in UserPipeline.__table__.columns} == columns
+        # `agent_id` and `kind` came later (0060).
+        assert {c.name for c in UserPipeline.__table__.columns} - {"agent_id", "kind"} == columns
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("agents")}
         assert "pipeline_id" in {c["name"] for c in sa.inspect(conn).get_columns("sessions")}
         with Operations.context(MigrationContext.configure(conn)):
@@ -640,9 +641,10 @@ async def test_binding_refuses_a_cycle_through_another_pipeline(wired):
         problem = caught.value.detail["problems"][0]
         assert problem["code"] == "bind_cycle"
         assert "「비교까지」" in problem["message"]
-        mine = {r["id"]: r for r in await up.list_mine(p.me, db)}
-        assert mine[runs_cmp["id"]]["problems"] == []
-        assert mine[runs_mins["id"]]["problems"] == []
+        for made in (runs_cmp, runs_mins):
+            assert (await up.get_one(made["id"], p.me, db))["problems"] == []
+        # A pipeline bound to an agent is that agent's 진행 과정 now, not one to start from.
+        assert [r["id"] for r in await up.list_mine(p.me, db)] == [runs_mins["id"]]
 
 
 def test_product_messages_take_the_right_particle():

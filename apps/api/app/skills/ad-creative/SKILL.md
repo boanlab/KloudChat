@@ -6,6 +6,7 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+copy_check: true
 ---
 Write ad copy sets that fit each platform's fields and limits, built only from the request/material.
 

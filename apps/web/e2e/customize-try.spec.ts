@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { hubFixture, myAgents, myPipelines, mySkills, newSessionId, storeSkills } from './customize-fixture'
+import { hubFixture, myAgents, mySkills, newSessionId, storeSkills } from './customize-fixture'
 
 /** 「체험」 opens a conversation with the item in it, whatever kind of item it is. */
 
@@ -43,26 +43,11 @@ test('store skill: taken as a copy first, said so, with 빼기', async ({ page }
   expect(state.problems).toEqual([])
 })
 
-test('workflow: started as its own run; a shipped flow starts with its agent', async ({ page }, testInfo) => {
+test('a shipped agent from 탐색 starts a conversation with it', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
-  await page.goto('/customize?tab=workflows&view=mine')
-  await tryCard(page, myPipelines[0].name)
-  await expect(page).toHaveURL(new RegExp(`/s/${newSessionId}$`))
-  expect(state.calls.map((c) => `${c.method} ${c.path}`)).toContain(`POST /user-pipelines/${myPipelines[0].id}/start`)
-
-  await page.goto('/customize?tab=workflows&view=explore')
+  await page.goto('/customize?tab=agents&view=explore')
   await tryCard(page, '비교 보고서')
   await expect(page).toHaveURL(new RegExp(`/s/${newSessionId}$`))
   expect(state.calls.filter((c) => c.path === '/sessions').at(-1)?.body).toMatchObject({ agentId: 'a3333333333333333333333333333333', kind: 'report' })
-  expect(state.problems).toEqual([])
-})
-
-test('양식: 이 양식으로 시작 opens its surface', async ({ page }, testInfo) => {
-  const state = await hubFixture(page, testInfo)
-  await page.goto('/customize?tab=templates')
-  const region = page.getByRole('region', { name: '양식 · 보고서' })
-  await expect(region).toBeVisible({ timeout: 15_000 })
-  await region.getByRole('button', { name: '이 양식으로 시작' }).click()
-  await expect(page).toHaveURL(/\/new\/report$/)
   expect(state.problems).toEqual([])
 })

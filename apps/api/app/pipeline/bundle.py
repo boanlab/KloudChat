@@ -59,6 +59,8 @@ class Request:
     format_id: str | None = None
     design_tokens: dict[str, str] | None = None
     check_keys: tuple[str, ...] | None = None
+    #: The agent's `check_options` (how strict the trace is), `check_skills.options_for`.
+    check_options: dict[str, Any] = field(default_factory=dict)
     agent_key: str | None = None
     session_id: str = ""
     #: The day the turn runs on, where a check needs it.

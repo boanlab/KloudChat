@@ -169,6 +169,9 @@ FORMATS: tuple[DocFormat, ...] = (
 )
 
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
+#: Formats retired with their agents (고객 맞춤 제안서, 자기소개서·경력기술서): an agent that
+#: has one keeps it, nothing new chooses it. Documents that name one are still written in it.
+RETIRED = frozenset({"client_proposal", "career_history"})
 _COMPILED = [(f, re.compile(f.match, re.I)) for f in FORMATS]
 #: Tried after every format: a bare 「계획서」 is a study plan unless an event plan matched,
 #: and a bare 「제안서」 with no client named keeps the capstone form.

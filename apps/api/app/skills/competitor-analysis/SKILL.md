@@ -8,6 +8,7 @@ version: 0.1.0
 status: draft
 post_check: source-check/post
 post_judge: "claims about the company, competitors, market or customers, what an interview or survey found, what a cited source [n] says, and capabilities the material does not give"
+tables: true
 ---
 Map the competition for the user's product in Korean, cell by cell from sources. The comparison table is the product; the recommendations follow from it.
 

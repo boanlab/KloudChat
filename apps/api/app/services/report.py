@@ -3126,6 +3126,8 @@ async def write(
     #: Check skills the agent and the 서식 attach (`check_skills.attached`); None reads the
     #: 서식's own.
     check_keys: tuple[str, ...] | None = None,
+    #: The agent's `check_options`: how strict the trace is.
+    check_options: dict[str, Any] | None = None,
     #: Receives one record per stage (`StepRecord.as_dict`), run or not.
     trace: list[dict[str, Any]] | None = None,
     #: The router's settlement of the turn (`Request.turn`): given, `report-save` stores the
@@ -3160,6 +3162,7 @@ async def write(
         template_id=template_id, format_id=format_id, design_tokens=design_tokens,
         check_keys=check_keys, turn=dict(turn or {}), session_id=session_id,
         derived=list(derived_context or []), tool_outputs=list(tool_outputs or []),
+        check_options=dict(check_options or {}),
     )
     pipe = registry.for_report(bundle.spec.format_id)
     flow = "plan" if approved_plan is None else "write"

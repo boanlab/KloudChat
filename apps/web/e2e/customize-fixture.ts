@@ -3,8 +3,8 @@ import { shellRead } from './shell-mocks'
 
 /**
  * The 「사용자 지정」 hub against fixture data only: one account with its own agents, skills and
- * workflows, a store of shared ones, and a tool catalogue with one connector. Every write is
- * recorded in `calls`; anything unmocked lands in `unexpected`.
+ * 묶음, a store of shared ones, the bases an agent starts from, and a tool catalogue with one
+ * connector. Every write is recorded in `calls`; anything unmocked lands in `unexpected`.
  */
 
 export const at = '2026-10-08T07:00:00.000Z'
@@ -39,10 +39,65 @@ function pipelineRow(id: string, name: string, extra: Record<string, unknown> = 
   }
 }
 
+/** The shipped 묶음, as `GET /agent-bases` sends them (`app/bundles/*.toml`). */
+const targets = (report: string | null, chat: string | null) => ({ report, chat })
+export const shippedBundles = [
+  { ref: 'prepare', name: '쓰기 전에 준비하기', description: '빠진 정보를 먼저 묻고, 날짜·금액을 미리 계산해 둡니다.', shipped: true,
+    ownerId: null, visibility: 'org', review: '', risky: false, items: [
+      { id: 'ask', kind: 'check', ref: 'gap-check', settings: {}, label: '빠진 정보 먼저 묻기', default: true, targets: targets('check', 'check') },
+      { id: 'dates', kind: 'skill', ref: 'date-calc', settings: {}, label: '날짜 미리 계산하기', default: true, targets: targets('flow', 'before') },
+      { id: 'amounts', kind: 'skill', ref: 'quote-calc', settings: {}, label: '금액·합계 미리 계산하기', default: true, targets: targets('flow', 'before') },
+    ] },
+  { ref: 'review', name: '다 쓴 뒤 검토하기', description: '자료에 없는 값과 형식에 어긋난 곳을 찾아 고치고 다시 확인합니다.', shipped: true,
+    ownerId: null, visibility: 'org', review: '', risky: false, items: [
+      { id: 'ground', kind: 'check', ref: 'grounding-check', settings: {}, label: '자료에 없는 내용이 없는지 근거 확인하기', default: true, targets: targets('check', 'check') },
+      { id: 'numbers', kind: 'option', ref: 'tool_numbers', settings: {}, label: '수치는 도구로 계산한 결과에서만 인정', default: false, targets: targets('option', 'option') },
+      { id: 'titles', kind: 'option', ref: 'titles', settings: {}, label: '직함·제품명까지 근거 확인', default: false, targets: targets('option', 'option') },
+      { id: 'format', kind: 'flow', ref: 'format-checks', settings: {}, label: '형식 검사', default: true, targets: targets('flow', null) },
+      { id: 'repair', kind: 'flow', ref: 'repair', settings: {}, label: '어긋난 곳 고치고 다시 확인하기', default: true, targets: targets('flow', 'flow') },
+    ] },
+  { ref: 'finish', name: '마무리하기', description: '상투적인 표현을 걷어내고, 다 쓰면 파일로 내보냅니다.', shipped: true,
+    ownerId: null, visibility: 'org', review: '', risky: false, items: [
+      { id: 'plain', kind: 'check', ref: 'generic-language-killer', settings: {}, label: '상투적인 표현 걷어내기', default: true, targets: targets('check', 'check') },
+      { id: 'export', kind: 'export', ref: '', settings: { formats: ['docx'] }, label: '다 쓰면 파일로 내보내기', default: true, targets: targets('after', null) },
+    ] },
+]
+const officialBundles = [{ bundle: 'prepare', items: {} }, { bundle: 'review', items: {} }, { bundle: 'finish', items: { export: false } }]
+export const bases = [
+  { key: 'gaejo-report', name: '요약·정리', description: '긴 메모를 1쪽 개조식 요약 보고로', surface: 'report', docFormat: 'gaejo',
+    template: 'doc-gaejo-report', steps: ['올린 자료를 읽습니다', '빠진 정보가 있으면 먼저 물어봅니다', '날짜·견적·인력 수치를 계산해 둡니다',
+      '정해진 네 부분으로 개조식 보고를 씁니다', '개조식 문체와 한 쪽 분량을 확인합니다'], draft: false, custom: true,
+    bundles: officialBundles, formatChecks: ['개조식 문체 확인', '날짜 확인'], asks: true },
+  { key: 'minutes', name: '기록 정리', description: '회의·인터뷰·강의 기록', surface: 'report', docFormat: 'minutes', template: 'doc-minutes',
+    steps: ['올린 녹음 기록·메모를 읽습니다', '회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다',
+      '「다음 주 금요일」 같은 날짜를 회의일 기준으로 계산해 둡니다', '회의록을 씁니다', '할 일마다 담당자·기한과 근거를 확인합니다'],
+    draft: false, custom: true, bundles: officialBundles, formatChecks: ['할 일의 담당자·기한 확인', '날짜 확인'], asks: true },
+  { key: 'data-analysis', name: '데이터 분석', description: '엑셀·CSV 분석', surface: 'chat', docFormat: null, template: null,
+    steps: ['빠진 정보가 있으면 먼저 물어봅니다', '답의 표기를 다듬습니다', '답의 수치가 도구로 계산한 결과에 있는지 확인합니다'],
+    draft: false, custom: true, asks: true, formatChecks: [],
+    bundles: [{ bundle: 'prepare', items: { dates: false, amounts: false } }, { bundle: 'review', items: { numbers: true } }] },
+]
+export const myBundle = { ref: 'user:b1111111111111111111111111111111', id: 'b1111111111111111111111111111111', name: '두 번 검토하고 PDF로',
+  description: '', shipped: false, ownerId: ME, visibility: 'private', review: '', risky: true, mine: true, reviewNote: '',
+  stages: [{ id: 's1', kind: 'agent', ref: '@self', settings: {} }, { id: 's2', kind: 'export', ref: '', settings: { formats: ['pdf'] } }],
+  items: [{ id: 's1', kind: 'agent', ref: '@self', settings: {}, label: '이 에이전트', default: true, targets: targets('self', 'self') },
+    { id: 's2', kind: 'export', ref: '', settings: { formats: ['pdf'] }, label: '내보내기', default: true, targets: targets('after', null) }] }
+
+/** The agent-draft `GET /sessions/{id}/agent-draft` sends for a conversation. */
+export const agentDraft = {
+  name: '주간 보고 에이전트', description: '', decided: ['보고 대상은 팀장. 결론을 맨 앞에 둔다.', '한 쪽을 넘기지 않는다.'],
+  systemPrompt: '이 대화에서 정한 것:\n- 보고 대상은 팀장. 결론을 맨 앞에 둔다.\n- 한 쪽을 넘기지 않는다.',
+  kinds: ['report'], surface: 'report', renderTemplateId: null, designSystemId: null, skillIds: [], mode: 'base', base: 'gaejo-report',
+  bundles: officialBundles, files: [{ id: 'f1111111111111111111111111111111', name: '주간 메모.txt', size: 1200 }],
+  fromAgentId: null, strictLocal: false,
+}
+
 export const myAgents = [
   agentRow('a1111111111111111111111111111111', '논문 리뷰어', {
     guide: '논문 PDF 를 첨부하고 학회 이름을 알려 주세요.', starters: ['첨부한 논문을 리뷰어 관점에서 검토해 줘'],
-    kinds: ['chat', 'report'], runs: 12, visibility: 'org',
+    kinds: ['chat', 'report'], runs: 12, visibility: 'org', baseKey: 'gaejo-report', bundles: officialBundles,
+    process: { mode: 'base', base: 'gaejo-report', bundles: officialBundles, review: '', needsReview: false,
+      chain: ['올린 자료를 읽습니다', '빠진 정보가 있으면 먼저 물어봅니다', '정해진 네 부분으로 개조식 보고를 씁니다'] },
   }),
   agentRow('a2222222222222222222222222222222', '회의록 정리', { enabled: false, runs: 0 }),
 ]
@@ -96,6 +151,14 @@ const designs = [
     body: '', imageStyle: '', craft: [], shared: false, mine: true, updatedAt: at },
   { id: 'd2', name: '기관 공용', description: '공용 디자인', tokens: { accent: '#0e8a5f', ink: '#111111', muted: '#666666', font: 'gothic' },
     body: '', imageStyle: '', craft: [], shared: true, mine: false, updatedAt: at },
+]
+
+/** Two catalogue servers of different categories; the list shows them flat, official first. */
+export const connectorCatalog = [
+  { slug: 'youtube', name: 'YouTube', description: '영상 자막과 정보를 읽습니다.', category: '미디어', transport: 'stdio', auth: 'none',
+    kinds: ['chat', 'report', 'slides'], official: true, installed: false, requiredEnv: [] },
+  { slug: 'arxiv', name: 'arXiv', description: '논문을 찾습니다.', category: '연구', transport: 'http', auth: 'none',
+    kinds: ['chat'], official: false, installed: false, requiredEnv: [] },
 ]
 
 /** `n` conversations, newest first, a minute apart; the first is pinned. */
@@ -157,7 +220,8 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && path === '/user-pipelines') return json(emptyMine ? [] : myPipelines)
     if (method === 'GET' && path === '/user-pipelines/store') return json(storePipelines)
     if (method === 'GET' && path === '/user-pipelines/catalogue') return json({ maxSteps: 12, skills: [], checks: [], human: [
-      { ref: 'gaps', name: '확인 질문', description: '' }], exportFormats: ['docx'], reviewModels: [] })
+      { ref: 'gaps', name: '확인 질문', description: '' }, { ref: 'outline', name: '개요 확인', description: '' }],
+      exportFormats: ['docx', 'pdf', 'hwpx', 'md'], reviewModels: [] })
     if (method === 'GET' && /^\/user-pipelines\/[^/]+$/.test(path)) {
       const row = [...myPipelines, ...made].find((p) => path.endsWith(p.id))
       return row ? json(row) : json({ detail: 'pipeline_not_found' }, 404)
@@ -165,6 +229,21 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return json({ name: 'comparison-report', formats: [], agents: [],
       options: {}, checks: [], flows: { write: [{ name: 'draft', label: '초안', kind: 'model' }] } })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return json([])
+    if (method === 'GET' && path === '/agent-bases') return json({ bases, bundles: [...shippedBundles, ...(emptyMine ? [] : [myBundle])],
+      exportFormats: ['docx', 'pdf', 'hwpx', 'md'] })
+    if (method === 'GET' && path === '/bundles') return json({ shipped: shippedBundles, mine: emptyMine ? [] : [myBundle], shared: [] })
+    if (method === 'POST' && path === '/bundles') return json({ ...myBundle, ref: 'user:b2', id: 'b2', name: String(body.name) }, 201)
+    if (method === 'POST' && /^\/bundles\/[^/]+\/share$/.test(path)) return json({ ...myBundle, review: 'pending' })
+    if (method === 'POST' && path === '/user-pipelines/validate') return json({ ok: true, surface: 'report', problems: [], warnings: [], titles: [] })
+    if (method === 'PUT' && /^\/agents\/[^/]+\/process$/.test(path)) {
+      const id = path.split('/')[2]
+      const process = { mode: body.mode, base: body.base ?? null, bundles: body.bundles ?? [], chain: ['바로 답합니다'], review: '',
+        needsReview: false, warnings: [] }
+      agents = agents.map((a) => (a.id === id ? { ...a, process, baseKey: body.base ?? null } : a))
+      return json({ ...process, agent: {} })
+    }
+    if (method === 'GET' && /^\/sessions\/[^/]+\/agent-draft$/.test(path)) return json(agentDraft)
+    if (method === 'POST' && /^\/agents\/[^/]+\/knowledge\/from-files$/.test(path)) return json([], 201)
     if (method === 'GET' && path === '/sessions') return json(sessions)
     if (method === 'GET' && path === '/sessions/paged') return json({ items: sessions.slice(0, 50), total: sessions.length, page: 1, size: 50 })
     if (method === 'GET' && path.startsWith('/sessions/')) {
@@ -241,7 +320,8 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
     if (method === 'GET' && path === '/artifacts/counts') return json({ counts: {}, total: 0 })
     const shell = shellRead(method, path)
     if (shell) return route.fulfill(shell)
-    if (method === 'GET' && ['/projects', '/memory', '/connectors', '/connectors/catalog', '/jobs', '/shares', '/artifacts',
+    if (method === 'GET' && path === '/connectors/catalog') return json(connectorCatalog)
+    if (method === 'GET' && ['/projects', '/memory', '/connectors', '/jobs', '/shares', '/artifacts',
       '/history'].includes(path)) return json([])
     unexpected.push(`${method} ${path}`)
     return json({ detail: 'not_found' }, 404)

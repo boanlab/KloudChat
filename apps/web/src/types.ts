@@ -377,6 +377,10 @@ export interface PipelineVerdict {
 /** A pipeline a person composed; shared through approval. */
 export interface UserPipeline {
   id: string
+  /** `pipeline`, or `bundle` for a person's 묶음. */
+  kind?: 'pipeline' | 'bundle'
+  /** The agent whose own 직접 구성 this is. */
+  agentId?: string | null
   name: string
   description: string
   base: string | null
@@ -1038,6 +1042,105 @@ export interface Agent {
   runs: number
   hasKnowledge: boolean
   updatedAt: string
+  /** The official agent whose process a person's own agent runs (기본 과정). */
+  baseKey?: string | null
+  /** Check skills run around its writing, and how strict the trace is. */
+  checkSkills?: string[] | null
+  checkOptions?: Record<string, boolean> | null
+  /** The 묶음 ticked in the form. */
+  bundles?: BundleSelection[] | null
+  /** 진행 과정 as the server reads it. */
+  process?: AgentProcess | null
+}
+
+/** One ticked 묶음 and its items' ticks (an export's tick is its format, "" for off). */
+export interface BundleSelection {
+  bundle: string
+  items: Record<string, boolean | string>
+}
+
+export type ProcessMode = 'direct' | 'base' | 'custom'
+
+/** An agent's 진행 과정: 바로 답하기, a base with 묶음, or a 직접 구성. */
+export interface AgentProcess {
+  mode: ProcessMode
+  base: string | null
+  bundles: BundleSelection[]
+  /** What it does, one plain line each. */
+  chain: string[]
+  review: '' | 'pending' | 'approved' | 'rejected'
+  needsReview: boolean
+  /** Owner only: a 직접 구성's steps. */
+  steps?: PipelineStep[]
+  pipelineId?: string
+  warnings?: PipelineProblem[]
+}
+
+/** Where a bundle item runs on a surface (`services/bundles.py`); null: nothing there runs it. */
+export type BundleTarget = 'check' | 'option' | 'flow' | 'before' | 'after' | 'self' | null
+
+export interface BundleItem {
+  id: string
+  kind: string
+  ref: string
+  settings: PipelineStep['settings']
+  label: string
+  default: boolean | string
+  targets: { report: BundleTarget; chat: BundleTarget }
+}
+
+/** A 묶음: shipped (data) or a person's own. */
+export interface Bundle {
+  ref: string
+  name: string
+  description: string
+  items: BundleItem[]
+  shipped: boolean
+  ownerId: string | null
+  visibility: 'private' | 'org'
+  review: '' | 'pending' | 'approved' | 'rejected'
+  risky: boolean
+  /** A person's own bundle row. */
+  id?: string
+  mine?: boolean
+  stages?: PipelineStep[]
+  reviewNote?: string
+}
+
+/** An official process an agent can start from. */
+export interface AgentBase {
+  key: string
+  name: string
+  description: string
+  surface: SessionKind
+  docFormat: string | null
+  template: string | null
+  steps: string[]
+  draft: boolean
+  /** Whether 직접 구성 may start from it. */
+  custom: boolean
+  bundles: BundleSelection[]
+  formatChecks: string[]
+  asks: boolean
+}
+
+/** 「에이전트로 저장」: a conversation as a form to review; nothing is saved yet. */
+export interface AgentDraft {
+  name: string
+  description: string
+  systemPrompt: string
+  decided: string[]
+  kinds: SessionKind[]
+  surface: SessionKind
+  renderTemplateId: string | null
+  designSystemId: string | null
+  skillIds: string[]
+  mode: ProcessMode
+  base: string | null
+  bundles: BundleSelection[]
+  files: { id: string; name: string; size: number }[]
+  fromAgentId: string | null
+  strictLocal: boolean
 }
 
 /** A store row: somebody else's skill, kept out of the composer's own list. */

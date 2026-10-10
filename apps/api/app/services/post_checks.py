@@ -396,7 +396,9 @@ async def run(answer: str, *, keys: list[str], request: str, material: str, atta
     reference = "\n\n".join(x for x in (sources, f"# 스킬 참고\n{shipped}" if shipped else "")
                              if x)
     args = {"request": request, "material": material, "attached": attached,
-            "computed": list(computed), "today": today, "skills": list(keys)}
+            "computed": list(computed), "today": today, "skills": list(keys),
+            # A skill whose answers are comparison tables (`tables: true` in its SKILL.md).
+            "tables": any((p := skill_packages.package_for(k)) and p.tables for k in keys)}
     text = answer
 
     def one_pass(text: str, final: bool) -> tuple[str, list[dict], list[dict], list[dict]]:

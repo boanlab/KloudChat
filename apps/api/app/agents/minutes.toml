@@ -1,9 +1,11 @@
-# 회의록 — specs: lineup v1 `minutes`.
+# 기록 정리 (formerly 회의록) — specs: lineup v1 `minutes`.
 
 key = "minutes"
 order = 3
-name = "회의록"
-description = "회의 녹음·자동 전사본·메모(+후속 메일)로 결정·할 일·미결이 남는 회의록을 만들 때"
+name = "기록 정리"
+# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+former_names = ["회의록"]
+description = "회의·인터뷰·강의의 녹음·자동 전사본·메모(+후속 메일)로 결정·할 일·미결이 남는 기록(회의록)을 만들 때"
 kinds = ["report"]
 surface = "report"
 template = "doc-minutes"
@@ -12,8 +14,15 @@ design = "문서용 명조"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check", "generic-language-killer"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    # Its 형식 검사 checks each action item's owner and deadline (`minutes-rows`).
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
 temperature = 0.3
 color = "#0f766e"
 starters = [
@@ -22,7 +31,7 @@ starters = [
     "회의 메모로 회의록을 만들어 줘. 지난 회의 실행 항목이 어떻게 됐는지도 표로 넣어 줘.",
 ]
 guide = '''
-회의 녹음·자동 전사본·메모와, 회의 뒤에 온 메일이 있으면 함께 붙여 주세요. 회의 날짜(연도 포함)가 자료에 없으면 알려 주세요.
+회의·인터뷰·강의의 녹음·자동 전사본·메모와, 그 뒤에 온 메일이 있으면 함께 붙여 주세요. 회의 날짜(연도 포함)가 자료에 없으면 알려 주세요.
 ‘다음 주 금요일’ 같은 기한은 회의일·메일 발신일 기준으로 서버가 날짜를 풀고, 실행 항목은 할 일·담당·기한·출처·비고 다섯 칸으로 남깁니다. 회의에서 미룬 것은 ‘미정’과 그 사유, 자료에 없거나 들리지 않은 것은 ‘[담당자]’ ‘[기한]’ 같은 대괄호 빈칸.'''
 
 system_prompt = '''

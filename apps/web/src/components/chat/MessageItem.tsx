@@ -373,7 +373,7 @@ function MessageItemInner({
           {startedFrom && (
             <p className="text-right text-xs text-faint">
               {shape
-                ? t('시작점 {name} · 양식 {title}')
+                ? t('시작점 {name} · 템플릿 {title}')
                     .replace('{name}', startedFrom.title)
                     .replace('{title}', templateText(shape, currentLang() === 'en').name)
                 : t('시작점 {name}').replace('{name}', startedFrom.title)}

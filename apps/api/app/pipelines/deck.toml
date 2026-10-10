@@ -3,6 +3,8 @@
 # it: routed, its slides rewritten.
 
 name = "deck"
+# Catalogue agents whose slides it makes.
+agents = ["slides"]
 make = ["deck-write", "deck-carry", "deck-save"]
 revise = [
     "revise-load", "revise-route", "revise-widen", "revise-rewrite", "consistency",

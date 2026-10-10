@@ -1,26 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { userPipelinesApi } from '@/lib/api'
+import { useMemo } from 'react'
 import { agentKinds } from '@/lib/kinds'
-import { agentOutput, isUntouchedPipeline } from '@/lib/userPipelines'
 import { useStore } from '@/store/useStore'
-import type { Agent, SessionKind, Skill, StoreSkill, UserPipeline } from '@/types'
+import type { Agent, SessionKind, Skill, StoreSkill } from '@/types'
 import type { ItemType } from './itemIcons'
 
-/** The hub's tabs, in order. 커넥터 and 메모리 show their own screens, without 탐색; 양식 is one catalogue. */
-export const HUB_TABS = ['agents', 'skills', 'workflows', 'connectors', 'memory', 'templates', 'designs'] as const
+/** The hub's tabs, in order. 커넥터 shows its own screen, without 탐색. Templates are picked in
+ *  the agent form and the composer; themes and memory live in 설정. */
+export const HUB_TABS = ['agents', 'skills', 'connectors'] as const
 export type HubTab = (typeof HUB_TABS)[number]
 
 /** Tabs that list items as cards, with 내 항목 / 탐색, search, filter and sort. */
-export const CARD_TABS: HubTab[] = ['agents', 'skills', 'workflows']
+export const CARD_TABS: HubTab[] = ['agents', 'skills']
 
 export const TAB_LABEL: Record<HubTab, string> = {
   agents: '에이전트',
   skills: '스킬',
-  workflows: '워크플로',
   connectors: '커넥터',
-  memory: '메모리',
-  templates: '양식',
-  designs: '디자인',
+}
+
+/** Where a tab that left the hub went: an old link (`?tab=memory`) lands there. */
+export const MOVED_TABS: Record<string, string> = {
+  workflows: '/customize?tab=agents',
+  templates: '/customize?tab=agents',
+  designs: '/settings/themes',
+  memory: '/settings/memory',
 }
 
 export type ItemStatus = 'on' | 'off' | 'draft' | 'review'
@@ -58,13 +61,7 @@ export interface HubItem {
   to: string | null
   agent?: Agent
   skill?: Skill | StoreSkill
-  pipeline?: UserPipeline
-  /** A shipped flow: the agent it ships with. */
-  shippedAgent?: Agent
 }
-
-const pipelineSurfaces = (p: UserPipeline): SessionKind[] =>
-  p.surface === 'report' ? ['report'] : p.surface === 'chat' ? ['chat'] : []
 
 export function agentItem(a: Agent, me: string | undefined): HubItem {
   const mine = a.ownerId === me
@@ -117,89 +114,12 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
   }
 }
 
-export function pipelineItem(p: UserPipeline, store: boolean): HubItem {
-  return {
-    key: `workflow:${p.id}`,
-    type: 'workflow',
-    id: p.id,
-    name: p.name,
-    summary: p.description,
-    surfaces: pipelineSurfaces(p),
-    color: null,
-    maker: p.ownerName,
-    official: false,
-    installs: p.installs,
-    runs: null,
-    updatedAt: p.updatedAt ?? p.createdAt ?? '',
-    status: p.review === 'pending' ? 'review' : (p.problems?.length ?? 0) > 0 ? 'draft' : 'on',
-    shared: p.review === 'approved',
-    mine: !store || !!p.mine,
-    added: !!p.installed,
-    deletable: false,
-    to: store && !p.mine ? null : `/customize/workflows/${p.id}`,
-    pipeline: p,
-  }
-}
-
-/** A flow an agent ships with: locked, copied to edit. */
-export function shippedItem(a: Agent): HubItem {
-  return {
-    key: `shipped:${a.id}`,
-    type: 'workflow',
-    id: a.id,
-    name: a.name,
-    summary: a.description,
-    surfaces: agentKinds(a).filter((k) => k === 'report' || k === 'chat'),
-    color: a.color,
-    maker: '공식',
-    official: true,
-    installs: a.installs,
-    runs: null,
-    updatedAt: a.updatedAt,
-    status: 'on',
-    shared: false,
-    mine: false,
-    added: false,
-    deletable: false,
-    to: null,
-    shippedAgent: a,
-  }
-}
-
-/** The agents whose shipped flows 기본 워크플로 lists, one per catalogue key, own copy first. */
-export function shippedAgents(agents: Agent[], me: string | undefined): Agent[] {
-  const byKey = new Map<string, Agent>()
-  for (const a of agents) {
-    if (!a.catalogKey || !agentOutput(a)) continue
-    if (a.ownerId !== me && a.visibility !== 'org') continue
-    const held = byKey.get(a.catalogKey)
-    if (!held || (held.ownerId !== me && a.ownerId === me)) byKey.set(a.catalogKey, a)
-  }
-  return [...byKey.values()]
-}
-
-/** The person's own pipelines and the shared ones, fetched once per hub visit. */
-export function usePipelines(enabled: boolean) {
-  const [mine, setMine] = useState<UserPipeline[] | null>(null)
-  const [store, setStore] = useState<UserPipeline[] | null>(null)
-  const reload = useCallback(() => {
-    // A flow left empty right after 「워크플로 만들기」 is being deleted; never list it.
-    void userPipelinesApi.list().then((rows) => setMine(rows.filter((p) => !isUntouchedPipeline(p)))).catch(() => setMine([]))
-    void userPipelinesApi.store().then(setStore).catch(() => setStore([]))
-  }, [])
-  useEffect(() => {
-    if (enabled) reload()
-  }, [enabled, reload])
-  return { mine, store, reload }
-}
-
 /** Every item on one card tab, split into 내 항목 and 탐색. */
 export function useHubItems(tab: HubTab) {
   const agents = useStore((s) => s.agents)
   const skills = useStore((s) => s.skills)
   const skillStore = useStore((s) => s.skillStore)
   const me = useStore((s) => s.user?.id)
-  const pipelines = usePipelines(tab === 'workflows')
 
   const items = useMemo(() => {
     if (tab === 'agents') {
@@ -216,19 +136,10 @@ export function useHubItems(tab: HubTab) {
         locked: [] as HubItem[],
       }
     }
-    if (tab === 'workflows') {
-      const shipped = shippedAgents(agents, me).map(shippedItem)
-      return {
-        mine: (pipelines.mine ?? []).map((p) => pipelineItem(p, false)),
-        explore: [...shipped, ...(pipelines.store ?? []).filter((p) => !p.mine).map((p) => pipelineItem(p, true))],
-        locked: shipped,
-      }
-    }
     return { mine: [] as HubItem[], explore: [] as HubItem[], locked: [] as HubItem[] }
-  }, [tab, agents, skills, skillStore, me, pipelines.mine, pipelines.store])
+  }, [tab, agents, skills, skillStore, me])
 
-  const loading = tab === 'workflows' && (pipelines.mine === null || pipelines.store === null)
-  return { ...items, loading, reloadPipelines: pipelines.reload }
+  return { ...items, loading: false }
 }
 
 export type SortKey = 'popular' | 'recent' | 'name'

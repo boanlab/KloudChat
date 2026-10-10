@@ -12,7 +12,7 @@ The ribbon consists of **Home · Edit · Insert · Layout · Review · View · F
 
 ### Home
 
-Switch between **Web view** and **Page view** (actual A4 pages), and change the document design (editorial, magazine, minimal), the accent color, and the **Template**. In web view, **Source** lets you edit the whole Markdown.
+Switch between **Web view** and **Page view** (actual A4 pages), and change the document theme (editorial, magazine, minimal), the accent color, and the **Template**. In web view, **Source** lets you edit the whole Markdown.
 
 ### Edit
 
@@ -43,7 +43,7 @@ The ribbon consists of **Home · Edit · Insert · Review · View · Slide show 
 
 ### Home
 
-Choose the slide design from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Redo this slide**.
+Choose the slide theme from editorial, minimal, poster, split, dark, steel, warm, pastel, forest, academic, and monochrome, change the accent color, and run **Redo this slide**.
 
 ### Edit
 

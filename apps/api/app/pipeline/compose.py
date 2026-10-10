@@ -47,6 +47,10 @@ MAX_STEPS = 12
 PREFIX = "user:"
 FLOW = "compose"
 
+#: An agent step naming the agent whose own process the pipeline is (`services/bases.py`): it runs
+#: that agent's shipped flow, with the turn's web search and connectors.
+SELF = "@self"
+
 KIND_WORDS = {"agent": "에이전트", "skill": "스킬", "check": "검사", "review": "검토",
               "human": "사람 확인", "export": "내보내기"}
 
@@ -59,6 +63,7 @@ SKILLS: dict[str, str] = {
 CHECKS: dict[str, tuple[str, ...]] = {
     "grounding-check": ("document", "answer"),
     "copy-check": ("answer",),
+    "generic-language-killer": ("document", "answer"),
 }
 HUMAN = {"gaps": "확인 질문", "outline": "개요 확인"}
 EXPORT_FORMATS = ("docx", "pdf", "hwpx", "md")
@@ -95,6 +100,10 @@ class AgentInfo:
     #: Its tool allowlist (None inherits the person's tools, [] denies all) and temperature.
     tools: tuple[str, ...] | None = None
     temperature: float | None = None
+    #: The id of the agent an `@self` step stands for ("" for any other step's agent).
+    self_of: str = ""
+    #: Its `check_options`: how strict its trace is, kept when a check runs as a step.
+    check_options: dict = field(default_factory=dict)
 
     def wire(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name, "output": self.output,
@@ -102,7 +111,9 @@ class AgentInfo:
                 "catalogKey": self.catalog_key, "systemPrompt": self.system_prompt,
                 "checks": list(self.checks),
                 "tools": list(self.tools) if self.tools is not None else None,
-                "temperature": self.temperature}
+                "temperature": self.temperature,
+                **({"selfOf": self.self_of} if self.self_of else {}),
+                **({"checkOptions": dict(self.check_options)} if self.check_options else {})}
 
     @classmethod
     def of_wire(cls, row: dict[str, Any]) -> AgentInfo:
@@ -115,7 +126,9 @@ class AgentInfo:
                    checks=tuple(row.get("checks") or ()),
                    tools=tuple(row["tools"]) if isinstance(row.get("tools"), list) else None,
                    temperature=(float(row["temperature"])
-                                if isinstance(row.get("temperature"), (int, float)) else None))
+                                if isinstance(row.get("temperature"), (int, float)) else None),
+                   self_of=str(row.get("selfOf") or ""),
+                   check_options=dict(row.get("checkOptions") or {}))
 
 
 def _clean_settings(kind: str, raw: Any) -> dict[str, Any]:
@@ -160,6 +173,8 @@ def step_title(step: dict[str, Any], agents: dict[str, AgentInfo]) -> str:
     kind, ref = step.get("kind"), str(step.get("ref") or "")
     if kind == "agent":
         info = agents.get(ref)
+        if ref == SELF:
+            return info.name if info else "이 에이전트"
         return info.name if info else "에이전트"
     if kind in ("skill", "check"):
         from app.services import skill_packages
@@ -230,16 +245,16 @@ MESSAGES = {
     "agent_missing": "{n}번 에이전트를 찾을 수 없거나 쓸 수 없습니다.",
     "agent_surface": "{at}: 문서나 대화 에이전트만 넣을 수 있습니다.",
     "agent_disabled": "{at}: 꺼져 있는 에이전트입니다.",
-    "recursion": ("{at}: 이 워크플로에 묶인 에이전트라 넣을 수 없습니다. "
+    "recursion": ("{at}: 이 진행 과정을 쓰는 에이전트라 넣을 수 없습니다. "
                   "자기 자신을 다시 부르게 됩니다."),
-    "bind_recursion": ("이 에이전트가 단계로 들어 있는 워크플로라 묶을 수 없습니다. "
+    "bind_recursion": ("이 에이전트가 단계로 들어 있는 진행 과정이라 쓸 수 없습니다. "
                        "자기 자신을 다시 부르게 됩니다."),
-    "bind_cycle": ("묶으면 「{name}」 워크플로를 거쳐 이 에이전트를 다시 부르게 되어 "
-                   "묶을 수 없습니다. 그 워크플로에서 이 에이전트를 빼거나 "
-                   "다른 워크플로를 골라 주세요."),
+    "bind_cycle": ("그러면 「{name}」 진행 과정을 거쳐 이 에이전트를 다시 부르게 되어 "
+                   "쓸 수 없습니다. 그 진행 과정에서 이 에이전트를 빼거나 "
+                   "다른 순서를 골라 주세요."),
     "agent_private": "{at}: 공유하려면 이 에이전트도 조직에 공유되어 있어야 합니다.",
-    "skill_unknown": "{n}번 스킬({ref})은 워크플로에 넣을 수 없는 스킬입니다.",
-    "check_unknown": "{n}번 검사({ref})는 워크플로에 넣을 수 없는 검사입니다.",
+    "skill_unknown": "{n}번 스킬({ref})은 진행 과정에 넣을 수 없는 스킬입니다.",
+    "check_unknown": "{n}번 검사({ref})는 진행 과정에 넣을 수 없는 검사입니다.",
     "needs_product": "{at}: 앞 단계에서 만든 {word} 있어야 합니다.",
     "model_not_allowed": "{at}: 검토 모델 {model}은 쓸 수 없는 모델입니다.",
     "human_unknown": "{n}번 사람 확인의 종류를 알 수 없습니다.",
@@ -248,7 +263,7 @@ MESSAGES = {
                        "이 단계는 건너뜁니다."),
     "outline_needs_writer": "{at}: 바로 뒤에 문서를 쓰는 에이전트가 와야 합니다.",
     "no_formats": "{at}: 파일 형식을 하나 이상 골라 주세요.",
-    "no_agent": "워크플로에 에이전트 단계가 하나는 있어야 합니다.",
+    "no_agent": "진행 과정에 에이전트 단계가 하나는 있어야 합니다.",
     "export_needs_document": ("{n}번 내보내기: 마지막 에이전트가 문서를 써야 "
                               "파일로 내보낼 수 있습니다."),
     "answer_unchecked": ("{at}: 뒤에 검사나 검토 단계가 없습니다. 답의 수치를 다음 단계가 그대로 "
@@ -556,7 +571,8 @@ class AgentStep(Step):
             said = f"답 {len(bundle.document.answer)}자"
             yield {"type": "step", "id": f"compose:{self.name}", "label": said,
                    "status": "done"}
-        bundle.wire["product"] = {"stage": self.name, "kind": self.output, "title": info.name}
+        bundle.wire["product"] = {"stage": self.name, "kind": self.output, "title": info.name,
+                                  "checkOptions": dict(info.check_options)}
 
     async def _document(self, bundle: Bundle, info: AgentInfo) -> AsyncIterator[dict]:
         approved = dict(bundle.plan.proposal) if (
@@ -590,8 +606,9 @@ class AgentStep(Step):
                "status": "done", **({"detail": " · ".join(stages)[:1500]} if stages else {})}
 
     async def _tools(self, bundle: Bundle, info: AgentInfo, model: dict, strict: bool) -> list:
-        """The agent's own tools, as a chat turn with it would have them (no web search, no
-        connectors: a step runs unattended)."""
+        """The agent's own tools, as a chat turn with it would have them. A step of another
+        agent runs unattended (no web search, no connectors); the agent's own `@self` step keeps
+        the turn's web search and the person's connectors, as its chat turn would."""
         from app.models.user import User
         from app.services.tools.registry import build_tools
 
@@ -602,9 +619,12 @@ class AgentStep(Step):
             person = await db.get(User, user_id)
             if person is None:
                 return []
-            return await build_tools(db, person, web_search=False,
-                                     allowed=list(info.tools) if info.tools is not None else None,
-                                     include_connectors=False, strict_local=strict)
+            own = bool(info.self_of)
+            return await build_tools(
+                db, person,
+                web_search=own and bool(bundle.request.turn.get("web_search")) and not strict,
+                allowed=list(info.tools) if info.tools is not None else None,
+                include_connectors=own and not strict, strict_local=strict)
 
     async def _answer(self, bundle: Bundle, info: AgentInfo) -> AsyncIterator[dict]:
         """The chat agent's turn: the normal tool loop with its tools (code runs on the run's
@@ -655,6 +675,7 @@ class AgentStep(Step):
             material="\n".join([request, *_sources(bundle)]),
             check_keys=tuple(check_skills.of_stage(tuple(info.checks), "post")),
             check_facts=check_skills.fact_set(None, info.catalog_key or None),
+            check_options=info.check_options,
             check_material="\n".join(req.untrusted),
             tool_outputs=[*ctx.outputs, *_computed(bundle)], judge=req.judge, kept_steps=[],
             usage=spent)
@@ -702,6 +723,7 @@ def _sub_args(bundle: Bundle, info: AgentInfo, request: str) -> dict[str, Any]:
         web_search=bool(req.turn.get("web_search", req.web_search)),
         template_id=info.template_id or None, format_id=info.doc_format or None,
         design_tokens=req.design_tokens, check_keys=tuple(info.checks) or None,
+        check_options=dict(info.check_options),
         session_id=req.session_id, image_model=None,
     )
 
@@ -775,14 +797,17 @@ class CheckStep(Step):
             return
         from app.services import check_skills
 
+        ref = self.spec["ref"]
         req, kind = bundle.request, _product(bundle).get("kind")
         parts = bundle.material.parts
         # An earlier step's product is no source: values trace to the files and the code.
         material = "\n".join([req.text, *req.untrusted, *(
             p.text for p in parts if p.origin not in ("prepass", "computed", "derived"))])
         computed = _computed(bundle)
-        options = check_skills.options_for(bundle.spec.format_id or "", req.today)
-        keys = ("grounding-check",)
+        # The strictness of the agent whose product this is, as its own run would trace it.
+        options = check_skills.options_for(bundle.spec.format_id or "", req.today,
+                                           _product(bundle).get("checkOptions"))
+        keys = (ref,)
         if kind == "document":
             bundle.document.sections, outcome = check_skills.ground_sections(
                 keys, bundle.document.sections, material=material, computed=computed,
@@ -791,12 +816,13 @@ class CheckStep(Step):
             outcome = check_skills.ground(keys, bundle.document.answer, material=material,
                                           computed=computed, options=options)
             bundle.document.answer = outcome.text
-        bundle.findings.before = [*bundle.findings.before,
-                                  *["ungrounded_value"] * len(outcome.found)]
-        bundle.findings.after = [*bundle.findings.after, *["ungrounded_value"] * len(outcome.left)]
+        code = "generic_wording" if ref == "generic-language-killer" else "ungrounded_value"
+        bundle.findings.before = [*bundle.findings.before, *[code] * len(outcome.found)]
+        bundle.findings.after = [*bundle.findings.after, *[code] * len(outcome.left)]
+        said = (f"상투적인 표현 {len(outcome.found)}개 고침" if ref == "generic-language-killer"
+                else f"근거 없는 값 {len(outcome.found)}개 → 빈칸")
         yield {"type": "step", "id": f"compose:{self.name}",
-               "label": (f"근거 없는 값 {len(outcome.found)}개 → 빈칸" if outcome.found
-                         else "고칠 것 없음"),
+               "label": said if outcome.found else "고칠 것 없음",
                "status": "error" if outcome.left else "done",
                **({"detail": outcome.summary[:1500]} if outcome.summary else {})}
 
@@ -1242,6 +1268,6 @@ def compile_steps(steps: list[dict[str, Any]], agents: dict[str, AgentInfo]) -> 
     return out
 
 
-__all__ = ["CHECKS", "EXPORT_FORMATS", "FLOW", "HUMAN", "KIND_WORDS", "MAX_STEPS", "PREFIX",
+__all__ = ["CHECKS", "EXPORT_FORMATS", "FLOW", "HUMAN", "KIND_WORDS", "MAX_STEPS", "PREFIX", "SELF",
            "SKILLS", "STEP_KINDS", "AgentInfo", "AgentStep", "Problem", "Verdict", "catalogue",
            "compile_steps", "from_shipped", "gap_facts", "normalize", "step_title", "validate"]

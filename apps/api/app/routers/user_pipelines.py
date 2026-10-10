@@ -10,7 +10,15 @@
 - `POST /user-pipelines/{id}/submit` — asks for organisation sharing; an administrator
   approves or rejects it (`/admin/user-pipelines…`); an edit takes an approved one back;
 - `PUT /agents/{id}/user-pipeline` — an agent's turns run the pipeline instead of its own flow;
-- `POST /user-pipelines/{id}/start` — a new conversation that runs it (「이 워크플로로 시작」).
+- `POST /user-pipelines/{id}/start` — a new conversation that runs it (「이 워크플로로 시작」);
+- `GET /agent-bases` — the official processes an agent can start from (`services/bases.py`);
+- `PUT /agents/{id}/process` — an agent's 진행 과정 (바로 답하기 · 기본 과정에서 시작 with its
+  추가로 할 일 · 직접 구성): its base, and the pipeline of its own (`agent_id`, `@self` steps)
+  made, changed or removed and bound in one transaction.
+
+Pipelines stopped being a thing people make on their own: the screens show an agent's 진행
+과정 instead. `GET /user-pipelines` still lists the ones made before, unbound, so a 직접 구성 can
+start from one.
 
 A turn of a conversation bound to one (`sessions.send_message` → `turn_response`) is a run of
 flow `compose` (pipeline `user:<id>`): kept, rerunnable from any step, waiting at a human step
@@ -19,6 +27,7 @@ until the answer or the approved outline comes back as the next message.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from typing import Any
 from uuid import uuid4
@@ -39,8 +48,9 @@ from app.pipeline.bundle import Bundle, Request
 from app.pipeline.runner import Runner
 from app.pipeline.stage import Context
 from app.schemas.auth import Wire
+from app.services import bases, check_skills, design_templates
+from app.services import bundles as bundle_service
 from app.services import chat as chat_service
-from app.services import check_skills, design_templates
 from app.services import models as model_service
 
 log = logging.getLogger(__name__)
@@ -62,6 +72,8 @@ class PipelineIn(Wire):
 class ValidateIn(Wire):
     stages: list[dict[str, Any]] = Field(default_factory=list)
     id: str | None = Field(default=None, max_length=64)
+    #: The agent whose own 진행 과정 this is: its `@self` steps run it.
+    agent_id: str | None = Field(default=None, max_length=64)
 
 
 class RejectIn(Wire):
@@ -70,6 +82,18 @@ class RejectIn(Wire):
 
 class BindIn(Wire):
     pipeline_id: str | None = Field(default=None, max_length=64)
+
+
+class ProcessIn(Wire):
+    """An agent's 진행 과정 as the form sends it."""
+
+    mode: str = Field(default="direct", max_length=10)
+    base: str | None = Field(default=None, max_length=60)
+    #: The 묶음 ticked, `[{bundle, items}]`; None with a base: the base's own.
+    bundles: list[dict[str, Any]] | None = Field(default=None, max_length=12)
+    #: 직접 구성: the steps; or `import_id`, a pipeline made before to start from.
+    stages: list[dict[str, Any]] | None = None
+    import_id: str | None = Field(default=None, max_length=64)
 
 
 # ── what a person may put in a step ─────────────────────────────────────
@@ -93,7 +117,9 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
     out: dict[str, compose.AgentInfo] = {}
     for agent in rows:
         origin = by_id.get(agent.origin_id or "")
-        key = agent.catalog_key or (origin.catalog_key if origin is not None else None) or ""
+        # The process it runs: its catalogue key, the base it starts from, or its original's.
+        key = (agent.catalog_key or agent.base_key
+               or (origin.catalog_key or origin.base_key if origin is not None else None) or "")
         # A sealed copy runs on its original's prompt.
         prompt = (origin.system_prompt if agent.sealed and origin is not None
                   else agent.system_prompt)
@@ -109,11 +135,30 @@ async def agents_for(db: DbSession, user: User) -> dict[str, compose.AgentInfo]:
             tools=tuple(own.tools) if isinstance(own.tools, list) else None,
             temperature=own.temperature if isinstance(own.temperature, (int, float)) else None,
             checks=check_skills.attached(
-                agent_key=key or None,
+                agent_checks=own.check_skills or [],
                 template_checks=template.check_skills if template is not None else ()),
+            check_options=check_skills.clean_options(own.check_options),
             shared=bool(key) or agent.visibility is Visibility.org,
             mine=agent.owner_id == user.id)
     return out
+
+
+def with_self(agents: dict[str, compose.AgentInfo],
+              agent_id: str | None) -> dict[str, compose.AgentInfo]:
+    """`agents` with `@self` standing for `agent_id` (when the person may run it): its own
+    shipped flow, never the pipeline it is bound to."""
+    info = agents.get(agent_id or "")
+    if info is None:
+        return agents
+    me = dataclasses.replace(info, pipeline_id="", self_of=info.id, shared=True)
+    return {**agents, compose.SELF: me}
+
+
+def _self_of(row: UserPipeline | None, agent: Agent | None) -> str | None:
+    """The agent `@self` stands for in this pipeline: its own agent, else the one running it."""
+    if row is not None and row.agent_id:
+        return row.agent_id
+    return agent.id if agent is not None else None
 
 
 async def review_models(user: User) -> list[dict]:
@@ -191,6 +236,7 @@ def _out(row: UserPipeline, agents: dict[str, compose.AgentInfo], *,
     steps = steps if steps is not None else compose.normalize(row.stages)
     return {
         "id": row.id, "name": row.name, "description": row.description, "base": row.base,
+        "kind": row.kind or "pipeline", "agentId": row.agent_id,
         "originId": row.origin_id,
         "stages": [{**s, "title": compose.step_title(s, agents),
                     **({"output": agents[s["ref"]].output}
@@ -235,8 +281,14 @@ def _invalid(verdict: compose.Verdict) -> HTTPException:
 
 @router.get("/user-pipelines")
 async def list_mine(user: CurrentUser, db: DbSession):
-    rows = (await db.exec(select(UserPipeline).where(UserPipeline.owner_id == user.id)
-                          .order_by(col(UserPipeline.updated_at).desc()))).all()
+    """The pipelines made before on their own (no agent's 진행 과정, bound to no agent): what a
+    직접 구성 can start from."""
+    bound_ids = set((await db.exec(select(Agent.pipeline_id).where(
+        Agent.owner_id == user.id, col(Agent.pipeline_id).is_not(None)))).all())
+    rows = [r for r in (await db.exec(select(UserPipeline).where(
+        UserPipeline.owner_id == user.id, col(UserPipeline.agent_id).is_(None),
+        UserPipeline.kind != "bundle")
+        .order_by(col(UserPipeline.updated_at).desc()))).all() if r.id not in bound_ids]
     agents = await agents_for(db, user)
     out = []
     for row in rows:
@@ -250,7 +302,8 @@ async def list_mine(user: CurrentUser, db: DbSession):
 async def list_store(user: CurrentUser, db: DbSession):
     """Approved pipelines shared with the organisation, others' first."""
     rows = (await db.exec(select(UserPipeline).where(UserPipeline.visibility == "org",
-                                                     UserPipeline.review == "approved")
+                                                     UserPipeline.review == "approved",
+                                                     UserPipeline.kind != "bundle")
                           .order_by(col(UserPipeline.installs).desc()))).all()
     agents = await agents_for(db, user)
     owners = {r.owner_id for r in rows}
@@ -286,6 +339,8 @@ async def get_one(pipeline_id: str, user: CurrentUser, db: DbSession):
 async def validate_draft(payload: ValidateIn, user: CurrentUser, db: DbSession):
     steps = compose.normalize(payload.stages)
     agents = await agents_for(db, user)
+    if payload.agent_id and (mine := agents.get(payload.agent_id)) is not None and mine.mine:
+        agents = with_self(agents, payload.agent_id)
     verdict = await _verdict(db, user, steps, self_id=payload.id, agents=agents)
     return {**verdict.wire(), "titles": [compose.step_title(s, agents) for s in steps]}
 
@@ -309,7 +364,7 @@ async def create(payload: PipelineIn, user: CurrentUser, db: DbSession):
                                   "report" if info.output == "document" else "chat")
         base = pipe.name
         steps = compose.from_shipped(info, pipe.name)
-        name = name or f"{info.name} 워크플로"
+        name = name or f"{info.name} 진행 과정"
     elif payload.from_id:
         origin = await db.get(UserPipeline, payload.from_id)
         if not _visible(origin, user):
@@ -361,7 +416,7 @@ async def update(pipeline_id: str, payload: PipelineIn, user: CurrentUser, db: D
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
                 "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
                 "problems": [{"step": 0, "code": "bound_surface",
-                              "message": ("이 워크플로에 묶인 에이전트가 만드는 것과 "
+                              "message": ("이 진행 과정을 쓰는 에이전트가 만드는 것과 "
                                           "마지막 에이전트가 만드는 것이 다릅니다. "
                                           "묶음을 먼저 풀어 주세요.")}],
                 "warnings": []})
@@ -451,9 +506,9 @@ async def bind_agent(agent_id: str, payload: BindIn, user: CurrentUser, db: DbSe
         want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
         if want and _output(agent) != want:
             problems.append(compose.Problem(0, "bound_surface", (
-                "문서를 만드는 워크플로라 보고서 에이전트에만 묶을 수 있습니다."
+                "문서를 만드는 진행 과정이라 보고서 에이전트에만 쓸 수 있습니다."
                 if want == "document"
-                else "답을 만드는 워크플로라 대화 에이전트에만 묶을 수 있습니다.")))
+                else "답을 만드는 진행 과정이라 대화 에이전트에만 쓸 수 있습니다.")))
         if problems:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
                 "code": "invalid_pipeline", "ok": False, "surface": verdict.surface,
@@ -463,6 +518,452 @@ async def bind_agent(agent_id: str, payload: BindIn, user: CurrentUser, db: DbSe
     db.add(agent)
     await db.commit()
     return {"agentId": agent.id, "pipelineId": agent.pipeline_id}
+
+
+# ── an agent's 진행 과정 and the 묶음 it ticks ──────────────────────────────
+
+
+def _usable(row: UserPipeline, user: User) -> bool:
+    """A person's bundle `user` may tick: their own, or one shared with everyone (approved
+    first when it exports, reviews or runs another agent)."""
+    if row.owner_id == user.id:
+        return True
+    if row.visibility != "org":
+        return False
+    return row.review == "approved" or not bundle_service.of_row(row).risky
+
+
+async def bundle_catalogue(db: DbSession, user: User) -> dict[str, bundle_service.Bundle]:
+    """Every bundle `user` may tick: the shipped ones, then theirs and the shared ones."""
+    rows = (await db.exec(select(UserPipeline).where(
+        UserPipeline.kind == "bundle",
+        (UserPipeline.owner_id == user.id) | (UserPipeline.visibility == "org"))
+        .order_by(col(UserPipeline.name)))).all()
+    out = dict(bundle_service.shipped())
+    for row in rows:
+        if _usable(row, user):
+            bundle = bundle_service.of_row(row)
+            out[bundle.ref] = bundle
+    return out
+
+
+async def bundles_named(db: DbSession, selections: list | None
+                        ) -> dict[str, bundle_service.Bundle]:
+    """The shipped bundles and the people's bundles these selections name, whoever owns them."""
+    ids = [str(r["bundle"])[len(bundle_service.USER):] for r in bundle_service.clean(selections)
+           if str(r["bundle"]).startswith(bundle_service.USER)]
+    out = dict(bundle_service.shipped())
+    if ids:
+        for row in (await db.exec(select(UserPipeline).where(
+                col(UserPipeline.id).in_(ids), UserPipeline.kind == "bundle"))).all():
+            bundle = bundle_service.of_row(row)
+            out[bundle.ref] = bundle
+    return out
+
+
+@router.get("/agent-bases")
+async def list_bases(user: CurrentUser, db: DbSession):
+    """The official processes an agent can start from, and the 묶음 it can tick."""
+    from app.models.user import UserRole
+
+    known = await bundle_catalogue(db, user)
+    return {"bases": [b.wire() for b in bases.bases(drafts=user.role is UserRole.admin)],
+            "bundles": [b.wire() for b in known.values()],
+            "exportFormats": list(compose.EXPORT_FORMATS)}
+
+
+def titles_of(steps: list[dict], agents: dict[str, compose.AgentInfo]) -> dict[str, str]:
+    return {s["id"]: compose.step_title(s, agents) for s in steps}
+
+
+async def process_out(db: DbSession, user: User, agent: Agent) -> dict[str, Any]:
+    """`bases.process_of` for one agent, its pipeline read and its steps titled."""
+    row = await db.get(UserPipeline, agent.pipeline_id) if agent.pipeline_id else None
+    owner = agent.owner_id == user.id
+    if row is not None and row.owner_id != agent.owner_id:
+        row = None
+    titles = None
+    if row is not None:
+        agents = with_self(await agents_for(db, user), agent.id)
+        titles = titles_of(compose.normalize(row.stages), agents)
+    out = bases.process_of(agent, row, owner=owner, titles=titles,
+                           known=await bundles_named(db, agent.bundles))
+    if owner and out.get("steps"):
+        out["steps"] = [{**s, "title": (titles or {}).get(s["id"], "")} for s in out["steps"]]
+    return out
+
+
+def _apply_base(agent: Agent, base: bases.Base) -> None:
+    """The bindings a base fixes: what a new conversation opens on, its format, and its 서식
+    when the agent chose none that fits."""
+    from app.services import design_templates
+
+    agent.surface = base.surface
+    kinds = [str(k) for k in agent.kinds or []]
+    if kinds and base.surface not in kinds:
+        kinds.append(base.surface)
+    agent.kinds = kinds or [base.surface]
+    agent.doc_format = base.doc_format
+    chosen = design_templates.choosable(agent.render_template_id)
+    if chosen is None or chosen.surface.value != base.surface:
+        agent.render_template_id = base.template
+
+
+def _process_refused(code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
+        "code": "invalid_pipeline", "ok": False, "surface": "",
+        "problems": [{"step": 0, "code": code, "message": message}], "warnings": []})
+
+
+async def _drop(db: DbSession, row: UserPipeline) -> None:
+    for session in (await db.exec(select(ChatSession).where(
+            ChatSession.pipeline_id == row.id))).all():
+        session.pipeline_id = None
+        db.add(session)
+    await db.delete(row)
+
+
+@router.put("/agents/{agent_id}/process")
+async def put_process(agent_id: str, payload: ProcessIn, user: CurrentUser, db: DbSession):
+    """Sets an agent's 진행 과정 in one transaction: its base, the 묶음 it ticks compiled into
+    its checks, strictness and (when an item is a step) its own pipeline; or its 직접 구성."""
+    from app.models.user import UserRole
+
+    agent = await db.get(Agent, agent_id)
+    if agent is None or agent.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
+    if agent.retired:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="agent_retired")
+    if payload.mode not in bases.MODES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="process_mode_unknown")
+    drafts = user.role is UserRole.admin
+    current = await db.get(UserPipeline, agent.pipeline_id) if agent.pipeline_id else None
+    own = current if current is not None and current.agent_id == agent.id else None
+    # A catalogue agent and its copies run their own entry's process; only the 묶음 change.
+    fixed = agent.catalog_key
+    base: bases.Base | None = None
+    steps: list[dict] | None = None
+    custom = payload.mode == "custom"
+    if payload.mode == "direct":
+        if fixed:
+            raise _process_refused("base_fixed",
+                                   "기본으로 제공되는 에이전트는 기본 과정을 바꿀 수 없습니다.")
+        agent.base_key = None
+    else:
+        key = fixed or payload.base or (agent.base_key if custom else None)
+        base = bases.get(key, drafts=drafts) if key else None
+        if key and base is None:
+            raise _process_refused("base_unknown", "고를 수 없는 기본 과정입니다.")
+        if base is None and not custom:
+            raise _process_refused("base_required", "기본 과정을 골라 주세요.")
+        if base is not None and custom and not base.custom:
+            raise _process_refused(
+                "custom_not_offered",
+                f"「{base.name}」은 직접 구성할 수 없습니다. 기본 과정 그대로 씁니다.")
+        if not fixed:
+            agent.base_key = base.key if base else None
+        if base is not None:
+            _apply_base(agent, base)
+    surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
+    if not custom:
+        known = await bundle_catalogue(db, user)
+        if payload.bundles is not None:
+            selections = [r for r in bundle_service.clean(payload.bundles)
+                          if r["bundle"] in known]
+        else:
+            # A base picked without ticks brings the official agent's own.
+            selections = list(base.bundles) if base is not None else []
+        made = bundle_service.compile(surface, selections, known)
+        agent.bundles = selections
+        agent.check_skills = list(made.check_skills)
+        agent.check_options = dict(made.check_options) or None
+        steps = made.steps
+    agents = with_self(await agents_for(db, user), agent.id)
+    if compose.SELF in agents:
+        # The `@self` step runs with the bindings and checks just set.
+        agents[compose.SELF] = dataclasses.replace(
+            agents[compose.SELF], output=_output(agent), doc_format=agent.doc_format or "",
+            template_id=agent.render_template_id or "",
+            catalog_key=fixed or agent.base_key or agents[compose.SELF].catalog_key,
+            checks=check_skills.attached(agent_checks=agent.check_skills or []),
+            check_options=check_skills.clean_options(agent.check_options))
+    if custom:
+        agent.bundles = None
+        if payload.import_id:
+            source = await db.get(UserPipeline, payload.import_id)
+            if not _visible(source, user):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                    detail="pipeline_not_found")
+            steps = _remap(compose.normalize(source.stages), agents)
+        else:
+            steps = compose.normalize(payload.stages or [])
+    warnings: list[dict] = []
+    if steps is not None:
+        verdict = await _verdict(db, user, steps, self_id=own.id if own else None,
+                                 agents=agents)
+        if not verdict.ok:
+            raise _invalid(verdict)
+        want = {"report": "document", "chat": "answer"}.get(verdict.surface, "")
+        if want and _output(agent) != want:
+            raise _process_refused("bound_surface", (
+                "마지막 단계가 문서를 쓰니 보고서 에이전트에만 쓸 수 있습니다."
+                if want == "document" else
+                "마지막 단계가 답을 하니 대화 에이전트에만 쓸 수 있습니다."))
+    if steps is None:
+        if own is not None:
+            await _drop(db, own)
+        agent.pipeline_id = None
+    else:
+        stored = _with_keys(steps, agents)
+        if own is None:
+            own = UserPipeline(owner_id=user.id, name=f"{agent.name} 진행 과정"[:80],
+                               agent_id=agent.id, base=base.key if base else None,
+                               stages=stored)
+        else:
+            if compose.normalize(own.stages) != compose.normalize(stored):
+                own.version += 1
+                # What was approved is not what is there now.
+                own.review, own.visibility, own.review_note = "", "private", ""
+            own.stages, own.base = stored, base.key if base else None
+            own.updated_at = utcnow()
+        if custom and bases.needs_review(base, steps):
+            if agent.visibility is Visibility.org and own.review in ("", "rejected"):
+                verdict = await _verdict(db, user, steps, self_id=own.id, agents=agents,
+                                         sharing=True)
+                if verdict.ok:
+                    own.review, own.review_note = "pending", ""
+                else:
+                    warnings = [p.wire() for p in verdict.problems]
+        elif not custom:
+            # Made from 묶음: what they need approved is the bundle's, not this.
+            own.review, own.visibility, own.review_note = "", "private", ""
+        db.add(own)
+        await db.flush()
+        agent.pipeline_id = own.id
+    agent.updated_at = utcnow()
+    db.add(agent)
+    await db.commit()
+    await db.refresh(agent)
+    return {**await process_out(db, user, agent), "warnings": warnings,
+            "agent": {"surface": agent.surface, "kinds": list(agent.kinds or []),
+                      "docFormat": agent.doc_format, "renderTemplateId": agent.render_template_id,
+                      "baseKey": agent.base_key, "pipelineId": agent.pipeline_id,
+                      "checkSkills": list(agent.check_skills or []),
+                      "checkOptions": dict(agent.check_options or {}),
+                      "bundles": agent.bundles}}
+
+
+async def runs_for_others(db: DbSession, agent: Agent, row: UserPipeline) -> bool:
+    """Whether the agent's own pipeline runs for everyone the agent is shared with: made from
+    묶음 none of which awaits approval, or a 직접 구성 that needs none (or has it)."""
+    if row.agent_id != agent.id:
+        return False
+    if agent.bundles is not None:
+        surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"
+        known = await bundles_named(db, agent.bundles)
+        return not bundle_service.compile(surface, agent.bundles, known).unapproved
+    return row.review == "approved" or not bases.needs_review(
+        bases.get(agent.catalog_key or agent.base_key), compose.normalize(row.stages))
+
+
+async def submit_shared_process(db: DbSession, user: User, agent: Agent) -> None:
+    """An agent shared just now whose 직접 구성 needs review: sent to the administrators.
+    Uncommitted."""
+    if not agent.pipeline_id or agent.bundles is not None:
+        return
+    row = await db.get(UserPipeline, agent.pipeline_id)
+    if row is None or row.agent_id != agent.id or row.review not in ("", "rejected"):
+        return
+    steps = compose.normalize(row.stages)
+    if not bases.needs_review(bases.get(agent.catalog_key or agent.base_key), steps):
+        return
+    agents = with_self(await agents_for(db, user), agent.id)
+    if (await _verdict(db, user, steps, self_id=row.id, agents=agents, sharing=True)).ok:
+        row.review, row.review_note, row.updated_at = "pending", "", utcnow()
+        db.add(row)
+
+
+async def clone_process(db: DbSession, origin: Agent, copy: Agent, user: User) -> None:
+    """An installed copy takes its original's 진행 과정: its base and 묶음, and its own pipeline
+    when that runs for others. A 직접 구성 or a bundle not approved stays with its author: the
+    copy runs the base. Uncommitted."""
+    copy.base_key = origin.base_key
+    copy.bundles = list(origin.bundles) if origin.bundles is not None else None
+    if not origin.pipeline_id:
+        return
+    row = await db.get(UserPipeline, origin.pipeline_id)
+    if row is None or not await runs_for_others(db, origin, row):
+        return
+    steps = compose.normalize(row.stages)
+    agents = with_self(await agents_for(db, user), copy.id)
+    clone = UserPipeline(owner_id=user.id, name=f"{copy.name} 진행 과정"[:80],
+                         agent_id=copy.id, base=row.base, origin_id=row.id,
+                         stages=_with_keys(_remap(steps, agents), agents))
+    db.add(clone)
+    await db.flush()
+    copy.pipeline_id = clone.id
+    row.installs += 1
+    db.add(row)
+
+
+async def drop_processes(db: DbSession, agent_ids: list[str]) -> None:
+    """Deleting agents deletes their own pipelines. Uncommitted."""
+    if not agent_ids:
+        return
+    for row in (await db.exec(select(UserPipeline).where(
+            col(UserPipeline.agent_id).in_(agent_ids)))).all():
+        await _drop(db, row)
+
+
+# ── a person's own 묶음 ─────────────────────────────────────────────────
+
+
+class BundleIn(Wire):
+    name: str = Field(default="", max_length=80)
+    description: str = Field(default="", max_length=400)
+    stages: list[dict[str, Any]] | None = None
+
+
+class ShareIn(Wire):
+    visibility: str = Field(default="org", max_length=10)
+
+
+def _bundle_problems(steps: list[dict], agents: dict[str, compose.AgentInfo],
+                     allowed: set[str]) -> list[dict]:
+    """What a bundle cannot hold: each item must be a step its kind knows, on its own."""
+    from app.services import skill_packages
+
+    problems: list[dict] = []
+
+    def say(n: int, message: str) -> None:
+        problems.append({"step": n, "code": "bundle_item", "message": message})
+
+    if not steps:
+        say(0, "묶음에 넣을 일을 하나 이상 골라 주세요.")
+    if len(steps) > compose.MAX_STEPS:
+        say(0, f"묶음에는 {compose.MAX_STEPS}개까지 넣을 수 있습니다.")
+    for n, step in enumerate(steps, 1):
+        kind, ref = step["kind"], step["ref"]
+        package = skill_packages.package_for(ref) if kind == "check" else None
+        if kind == "check" and not (ref in compose.CHECKS or (package and package.stage)):
+            say(n, f"{n}번: 넣을 수 없는 검사입니다.")
+        elif kind == "skill" and ref not in compose.SKILLS:
+            say(n, f"{n}번: 넣을 수 없는 계산입니다.")
+        elif kind == "human" and ref not in compose.HUMAN:
+            say(n, f"{n}번: 알 수 없는 확인입니다.")
+        elif kind == "export" and not step["settings"].get("formats"):
+            say(n, f"{n}번: 파일 형식을 하나 이상 골라 주세요.")
+        elif kind == "agent" and ref != compose.SELF and ref not in agents:
+            say(n, f"{n}번: 쓸 수 없는 에이전트입니다.")
+        elif kind == "review" and (m := step["settings"].get("model")) and m not in allowed:
+            say(n, f"{n}번: 쓸 수 없는 검토 모델입니다.")
+        elif kind not in compose.STEP_KINDS:
+            say(n, f"{n}번: 묶음에 넣을 수 없는 종류입니다.")
+    return problems
+
+
+def _bundle_out(row: UserPipeline, user: User) -> dict[str, Any]:
+    bundle = bundle_service.of_row(row)
+    return {**bundle.wire(), "id": row.id, "mine": row.owner_id == user.id,
+            "stages": compose.normalize(row.stages), "reviewNote": row.review_note,
+            "updatedAt": row.updated_at.isoformat() if row.updated_at else None}
+
+
+async def _own_bundle(db: DbSession, user: User, bundle_id: str) -> UserPipeline:
+    row = await db.get(UserPipeline, bundle_id)
+    if row is None or row.kind != "bundle" or row.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="bundle_not_found")
+    return row
+
+
+async def _checked_bundle(db: DbSession, user: User, payload: BundleIn) -> list[dict]:
+    steps = compose.normalize(payload.stages or [])
+    agents = await agents_for(db, user)
+    allowed = {m["id"] for m in await review_models(user)}
+    if problems := _bundle_problems(steps, agents, allowed):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
+            "code": "invalid_bundle", "ok": False, "problems": problems, "warnings": []})
+    return _with_keys(steps, agents)
+
+
+@router.get("/bundles")
+async def list_bundles(user: CurrentUser, db: DbSession):
+    """The shipped 묶음, mine, and the ones others shared that I may tick."""
+    rows = (await db.exec(select(UserPipeline).where(
+        UserPipeline.kind == "bundle",
+        (UserPipeline.owner_id == user.id) | (UserPipeline.visibility == "org"))
+        .order_by(col(UserPipeline.updated_at).desc()))).all()
+    return {"shipped": [b.wire() for b in bundle_service.shipped().values()],
+            "mine": [_bundle_out(r, user) for r in rows if r.owner_id == user.id],
+            "shared": [_bundle_out(r, user) for r in rows
+                       if r.owner_id != user.id and _usable(r, user)]}
+
+
+@router.post("/bundles", status_code=status.HTTP_201_CREATED)
+async def create_bundle(payload: BundleIn, user: CurrentUser, db: DbSession):
+    """A 묶음 of my own: from the bundle editor, or 「이 순서를 묶음으로 저장」 in 직접 구성."""
+    if not payload.name.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="name_required")
+    stages = await _checked_bundle(db, user, payload)
+    row = UserPipeline(owner_id=user.id, kind="bundle", name=payload.name.strip()[:80],
+                       description=payload.description.strip(), stages=stages)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _bundle_out(row, user)
+
+
+@router.put("/bundles/{bundle_id}")
+async def update_bundle(bundle_id: str, payload: BundleIn, user: CurrentUser, db: DbSession):
+    row = await _own_bundle(db, user, bundle_id)
+    stages = await _checked_bundle(db, user, payload)
+    if payload.name.strip():
+        row.name = payload.name.strip()[:80]
+    row.description = payload.description.strip()
+    changed = compose.normalize(row.stages) != compose.normalize(stages)
+    row.stages = stages
+    if changed:
+        row.version += 1
+        shared = row.visibility == "org" or row.review in ("pending", "approved")
+        row.review, row.review_note = "", ""
+        if shared and bundle_service.of_row(row).risky:
+            # What was approved is not what is there now: back to the administrators.
+            row.visibility, row.review = "private", "pending"
+    row.updated_at = utcnow()
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _bundle_out(row, user)
+
+
+@router.post("/bundles/{bundle_id}/share")
+async def share_bundle(bundle_id: str, payload: ShareIn, user: CurrentUser, db: DbSession):
+    """모두에게 공개 or 나만 쓰기. A bundle that exports, reviews or runs another agent waits
+    for an administrator (「진행 과정 검토」) before others can tick it."""
+    row = await _own_bundle(db, user, bundle_id)
+    if payload.visibility == "org":
+        if bundle_service.of_row(row).risky:
+            if row.review != "approved":
+                row.review, row.review_note = "pending", ""
+        else:
+            row.visibility = "org"
+    else:
+        row.visibility, row.review, row.review_note = "private", "", ""
+    row.updated_at = utcnow()
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _bundle_out(row, user)
+
+
+@router.delete("/bundles/{bundle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bundle(bundle_id: str, user: CurrentUser, db: DbSession):
+    """Agents that ticked it keep what it compiled into until their 진행 과정 is saved again."""
+    row = await _own_bundle(db, user, bundle_id)
+    await db.delete(row)
+    await db.commit()
 
 
 @router.post("/user-pipelines/{pipeline_id}/start", status_code=status.HTTP_201_CREATED)
@@ -557,7 +1058,14 @@ async def bound(db: DbSession, user: User, session: ChatSession,
     if not pid:
         return None
     row = await db.get(UserPipeline, pid)
-    return row if _visible(row, user) else None
+    if _visible(row, user):
+        return row
+    # An agent's own process runs for everyone the agent is shared with, once nothing in it
+    # awaits an administrator.
+    if row is not None and agent is not None and agent.visibility is Visibility.org and \
+            await runs_for_others(db, agent, row):
+        return row
+    return None
 
 
 def _sse(event: dict) -> str:
@@ -594,14 +1102,14 @@ async def turn_response(
     outline_model: dict | None, api_key: str, routing: dict | None, trusted: list[str],
     untrusted: list[str], design_tokens: dict | None, skills_event: dict | None,
     context_steps: list[dict] | None, web_search: bool, attachments: list[str],
-    catalogue: list[dict],
+    catalogue: list[dict], agent: Agent | None = None,
 ) -> StreamingResponse:
     """A turn of a conversation bound to a user pipeline: a fresh run, or the waiting one
     resumed with the card's answers or the approved outline."""
     from app.routers import sessions
 
     chat = session.kind is SessionKind.chat
-    agents = await agents_for(db, user)
+    agents = with_self(await agents_for(db, user), _self_of(row, agent))
     resume = pending.get("compose") if isinstance(pending.get("compose"), dict) else None
     parent: PipelineRun | None = None
     if resume:
@@ -617,11 +1125,11 @@ async def turn_response(
         steps = definition["stages"]
     verdict = compose.validate(steps, agents=agents, self_id=row.id)
     if not verdict.ok:
-        said = f"워크플로 「{row.name}」을 돌릴 수 없습니다: {verdict.problems[0].message}"
+        said = f"진행 과정 「{row.name}」을 돌릴 수 없습니다: {verdict.problems[0].message}"
         return _stream(_refused(said,
                                 "pipeline_invalid", session_id=session.id, chat=chat))
     if verdict.surface != session.kind.value:
-        said = f"워크플로 「{row.name}」이 만드는 것을 이 화면에서 보여 줄 수 없습니다."
+        said = f"진행 과정 「{row.name}」이 만드는 것을 이 화면에서 보여 줄 수 없습니다."
         return _stream(_refused(said,
                                 "pipeline_surface", session_id=session.id, chat=chat))
     used = {s["ref"] for s in steps if s["kind"] == "agent"}
@@ -734,7 +1242,7 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
                 yield _sse(event)
         except Exception as exc:  # noqa: BLE001 — the turn must still settle
             log.exception("pipeline %s crashed for session %s", pipeline, session_id)
-            yield _sse(sessions._error_event("워크플로를 끝까지 돌리지 못했습니다.", exc))
+            yield _sse(sessions._error_event("진행 과정을 끝까지 돌리지 못했습니다.", exc))
         finally:
             if parent is not None:
                 sessions._carry_records(work, parent, start)
@@ -750,7 +1258,7 @@ async def compose_pass(work: Bundle, steps: list[dict], agents: dict[str, compos
         if saved.get("artifactId"):
             yield _sse({"type": "artifact", "artifactId": saved["artifactId"]})
         elif not saved.get("messageId"):
-            yield _sse(sessions._error_event("워크플로가 문서나 답을 남기지 못했습니다.",
+            yield _sse(sessions._error_event("진행 과정이 문서나 답을 남기지 못했습니다.",
                                              code="empty_pipeline"))
         # Every counter, planner's and reviewer's included: the line under the answer adds
         # them up (`web/src/lib/usage.ts`).
@@ -828,7 +1336,8 @@ async def rerun(session: ChatSession, run: PipelineRun, *, start: str,
     stored = pipeline_runs.decode((run.params["request"].get("f") or {}).get("turn")) or {}
     definition = dict(stored.get("compose") or {})
     steps = compose.normalize(definition.get("stages"))
-    agents = await agents_for(db, user)
+    me = (stored.get("agents") or {}).get(compose.SELF) or {}
+    agents = with_self(await agents_for(db, user), str(me.get("selfOf") or "") or None)
     if any(s["kind"] == "agent" and s["ref"] not in agents for s in steps) or \
             not compose.validate(steps, agents=agents).ok:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="run_not_rerunnable")
@@ -859,6 +1368,7 @@ async def rerun(session: ChatSession, run: PipelineRun, *, start: str,
                         attempts={n: earlier.get(n, 1) for n in names}, parent=run)
 
 
-__all__ = ["agents_for", "bound", "compose_pass", "rerun", "review_models", "router",
-           "turn_response"]
+__all__ = ["agents_for", "bound", "clone_process", "compose_pass", "drop_processes",
+           "process_out", "rerun", "review_models", "router", "submit_shared_process",
+           "turn_response", "with_self"]
 

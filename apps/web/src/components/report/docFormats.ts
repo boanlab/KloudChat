@@ -47,6 +47,10 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "term", "label": "대학 과제 리포트", "fields": ["과목", "담당교수", "학과", "학번", "이름", "제출일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false}
 ] /* wire:end */
 
+/** Formats retired with their agents (고객 맞춤 제안서, 자기소개서·경력기술서): an agent that has one
+ *  keeps it, nothing new picks it. Kept in step with `doc_formats.RETIRED`. */
+export const RETIRED_FORMATS: readonly string[] = ['client_proposal', 'career_history']
+
 /** Shown where a head field is still blank: its own name in brackets (「[작성자]」), never an invented value. */
 export { blankFor }
 

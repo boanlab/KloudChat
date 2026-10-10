@@ -13,13 +13,13 @@ export async function setWebSearch(page: Page, mode: '자동' | '항상' | '끔'
 }
 
 /**
- * Opens the 양식 gallery: the empty conversation's own 「양식 고르기」 button when it is
- * on screen, else 「+」 › 양식 고르기.
+ * Opens the 템플릿 gallery: the empty conversation's own 「템플릿 고르기」 button when it is
+ * on screen, else 「+」 › 템플릿 고르기.
  */
 export async function openTemplates(page: Page) {
-  const direct = page.getByRole('button', { name: '양식 고르기' }).first()
+  const direct = page.getByRole('button', { name: '템플릿 고르기' }).first()
   if (await direct.isVisible().catch(() => false)) return direct.click()
-  await openTool(page, '양식 고르기')
+  await openTool(page, '템플릿 고르기')
 }
 
 /** The rows the composer's 「+」 menu offers (by accessible name); the menu is closed again. */

@@ -115,7 +115,7 @@ function ExtractForm({
         draft.source,
       )
     } catch (e) {
-      const said = errorMessage(e, t('문서에서 디자인을 읽어내지 못했습니다.'))
+      const said = errorMessage(e, t('문서에서 테마를 읽어내지 못했습니다.'))
       setError(REFUSAL[said] ? t(REFUSAL[said]) : said)
     } finally {
       setBusy(false)
@@ -230,8 +230,8 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   const wearing = (row: DesignRow | null) => {
     const n = row ? projects.filter((p) => p.designSystemId === row.id).length : 0
     return n === 0
-      ? t('되돌릴 수 없습니다. 이 디자인을 쓰는 프로젝트는 없습니다.')
-      : t('되돌릴 수 없습니다. 이 디자인을 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.').replace(
+      ? t('되돌릴 수 없습니다. 이 테마를 쓰는 프로젝트는 없습니다.')
+      : t('되돌릴 수 없습니다. 이 테마를 쓰던 프로젝트 {n}개가 기본 모양으로 돌아갑니다.').replace(
           '{n}',
           String(n),
         )
@@ -262,7 +262,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
 
   if (draft) {
     return (
-      <section aria-label={t('내 디자인')} className="space-y-4">
+      <section aria-label={t('내 테마')} className="space-y-4">
         {readFrom && (
           <p className="rounded-control border border-line bg-elevated px-2.5 py-1.5 text-sm text-muted">
             {t('“{name}” 에서 읽었습니다. 확인하고 고친 뒤 저장하세요.').replace(
@@ -386,14 +386,14 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   }
 
   return (
-    <section aria-label={t('내 디자인')} className="space-y-3">
+    <section aria-label={t('내 테마')} className="space-y-3">
       <BulkBar
         count={pick.count}
         allPicked={pick.allPicked}
         onToggleAll={pick.toggleAll}
         onClear={pick.clear}
-        title={t('디자인')}
-        note={t('이 디자인을 쓰던 프로젝트는 기본 모양으로 돌아갑니다.')}
+        title={t('테마')}
+        note={t('이 테마를 쓰던 프로젝트는 기본 모양으로 돌아갑니다.')}
         onDelete={async () => {
           await deleteMany('designs', pick.ids)
           setRows((r) => r.filter((x) => !pick.ids.includes(x.id)))
@@ -431,7 +431,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
                   variant="ghost"
                   size="icon"
                   aria-label={t('{name} 삭제').replace('{name}', row.name)}
-                  title={t('이 디자인을 삭제합니다')}
+                  title={t('이 테마를 삭제합니다')}
                   onClick={() => setConfirming(row)}
                 >
                   <Trash2 size={14} />
@@ -446,7 +446,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
       {rows.length === 0 && (
         <p className="flex items-center gap-1.5 text-base text-faint">
           <Palette size={13} />
-          {t('아직 디자인이 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.')}
+          {t('아직 테마가 없습니다. 하나 만들면 프로젝트에서 고를 수 있습니다.')}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -457,7 +457,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
           }}
         >
           <Plus size={14} />
-          {t('디자인 추가')}
+          {t('테마 추가')}
         </Button>
         <Button onClick={() => setExtracting(true)}>
           <FileUp size={14} />

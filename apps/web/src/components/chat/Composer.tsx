@@ -1437,7 +1437,7 @@ export function Composer({
         <button
           type="button"
           aria-label={t('도구')}
-          title={t('파일·양식·스킬·웹 검색·커넥터·에이전트')}
+          title={t('파일·템플릿·스킬·웹 검색·커넥터·에이전트')}
           className={cn(
             'grid size-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-elevated hover:text-fg',
             open ? 'bg-elevated text-fg' : 'text-muted',
@@ -1465,14 +1465,14 @@ export function Composer({
             {showTemplates && (
               <ToolItem
                 icon={<LayoutGrid size={15} />}
-                label={t('양식 고르기')}
+                label={t('템플릿 고르기')}
                 hint={shownTemplate ? templateText(shownTemplate, currentLang() === 'en').name : undefined}
                 onClick={() => {
                   closePlus()
                   setGalleryOpen(true)
                 }}
               >
-                {t('양식 고르기')}
+                {t('템플릿 고르기')}
               </ToolItem>
             )}
             {showSkills && (
@@ -1834,7 +1834,7 @@ export function Composer({
                     }
                   }}
                   disabled={!!editing}
-                  aria-label={t('{name} 양식 해제').replace(
+                  aria-label={t('{name} 템플릿 해제').replace(
                     '{name}',
                     templateText(shownTemplate, currentLang() === 'en').name,
                   )}

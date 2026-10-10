@@ -6,6 +6,8 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+copy_check: true
+copy_kinds: [claim, medical, guarantee]
 ---
 Plan content as a product: pillars, prioritised topics, and a dated calendar, built from the user's business and customer evidence.
 

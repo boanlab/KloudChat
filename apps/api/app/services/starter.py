@@ -47,6 +47,19 @@ _LEGACY_CATALOG_BODIES = {
 _AGENT_ROOT = Path(__file__).resolve().parent.parent / "agents"
 
 
+def _compile_bundles(spec: dict) -> None:
+    """The check skills and strictness an agent's 묶음 amount to, as `PUT /agents/{id}/process`
+    compiles a person's (`services/bundles.py`): `checks`, `check_options`, `steps`."""
+    from app.services import bundles
+
+    surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
+    made = bundles.compile(surface, list(spec.get("bundles") or []), bundles.shipped())
+    spec["bundles"] = bundles.clean(spec.get("bundles"))
+    spec["checks"] = list(made.check_skills)
+    spec["check_options"] = dict(made.check_options)
+    spec["steps"] = made.steps
+
+
 def _agent_specs() -> list[dict]:
     specs = []
     for path in sorted(_AGENT_ROOT.glob("*.toml")):
@@ -54,6 +67,7 @@ def _agent_specs() -> list[dict]:
             spec = tomllib.load(fh)
         for name in ("guide", "system_prompt"):
             spec[name] = str(spec.get(name) or "").strip()
+        _compile_bundles(spec)
         specs.append(spec)
     return sorted(specs, key=lambda spec: (spec.get("order", 99), spec["key"]))
 
@@ -61,10 +75,30 @@ def _agent_specs() -> list[dict]:
 _AGENTS: list[dict] = _agent_specs()
 
 
+def retired_agents() -> frozenset[str]:
+    """Catalogue keys taken out (`retired = true`): their rows stay, hidden and unstartable."""
+    return frozenset(spec["key"] for spec in _AGENTS if spec.get("retired"))
+
+
+def draft_agents() -> frozenset[str]:
+    """Catalogue keys still in evaluation (`draft = true`): administrators alone see them,
+    until they pass the lineup evaluation and the flag is dropped."""
+    return frozenset(spec["key"] for spec in _AGENTS if spec.get("draft"))
+
+
+def offered_agents(*, drafts: bool = False) -> list[dict]:
+    """The shipped agents a person may pick, in catalogue order; drafts only when asked."""
+    return [spec for spec in _AGENTS
+            if not spec.get("retired") and (drafts or not spec.get("draft"))]
+
+
+def agent_spec(key: str | None) -> dict | None:
+    return next((s for s in _AGENTS if s["key"] == key), None) if key else None
+
+
 def agent_checks(key: str | None) -> tuple[str, ...]:
     """The check skills a shipped agent attaches (`checks` in its toml), by catalogue key."""
-    spec = next((s for s in _AGENTS if s["key"] == key), None) if key else None
-    return tuple(str(k) for k in (spec or {}).get("checks") or ())
+    return tuple(str(k) for k in (agent_spec(key) or {}).get("checks") or ())
 
 _DESIGNS: list[dict] = [
     {
@@ -241,7 +275,28 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     for spec in _AGENTS:
         key = spec["key"]
         agent = agents_by_catalog.get(key)
+        if spec.get("retired"):
+            # Taken out: the row and every copy stay (their conversations still open) but are
+            # hidden and start nothing new. A retired agent is never seeded afresh.
+            if agent is not None:
+                agent.retired = True
+                agent.visibility = Visibility.private
+                db.add(agent)
+                copies = await db.exec(select(Agent).where(
+                    (col(Agent.origin_id) == agent.id) | (col(Agent.catalog_key) == key),
+                    col(Agent.retired).is_(False)))
+                for copy in copies.all():
+                    copy.retired = True
+                    db.add(copy)
+            continue
         if agent is not None:
+            # A renamed agent: copies that still wear an earlier shipped name take the new one.
+            if former := [str(n) for n in spec.get("former_names") or ()]:
+                renamed = await db.exec(select(Agent).where(
+                    col(Agent.origin_id) == agent.id, col(Agent.name).in_(former)))
+                for copy in renamed.all():
+                    copy.name = spec["name"]
+                    db.add(copy)
             # Agents always follow the shipped prompt. Copies whose prompt still
             # equals the original are refreshed too; edited copies are left alone.
             if agent.system_prompt != spec["system_prompt"]:
@@ -266,8 +321,12 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.guide = spec.get("guide", "")
             agent.starters = list(spec.get("starters", []))
             agent.skill_ids = [ids[k] for k in spec.get("skills", []) if k in ids]
+            agent.check_skills = list(spec.get("checks") or [])
+            agent.check_options = dict(spec.get("check_options") or {}) or None
+            agent.bundles = list(spec.get("bundles") or [])
             agent.temperature = spec.get("temperature", 0.5)
             agent.color = spec.get("color", "#5b53e8")
+            agent.retired = False
             # A design the owner picked since is kept.
             if agent.design_system_id is None:
                 agent.design_system_id = designs.get(spec.get("design", ""))
@@ -294,11 +353,17 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 guide=spec.get("guide", ""),
                 starters=list(spec.get("starters", [])),
                 skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],
+                # The checks and their strictness live on the row, as a person's own do.
+                check_skills=list(spec.get("checks") or []),
+                check_options=dict(spec.get("check_options") or {}) or None,
+                bundles=list(spec.get("bundles") or []),
                 # Never inherit: missing or `[]` denies every tool, a list is a hard allowlist.
                 tools=list(spec.get("tools", [])),
                 temperature=spec.get("temperature", 0.5),
                 color=spec.get("color", "#5b53e8"),
                 catalog_key=key,
+                # A draft is shared like the rest but shown to administrators only
+                # (`draft_agents`); dropping the flag publishes it.
                 visibility=Visibility.org,
             )
         )
@@ -335,8 +400,12 @@ def runtime_metadata(skill: Skill) -> dict:
 
 
 __all__ = [
+    "agent_spec",
     "catalog_owner_id",
+    "draft_agents",
     "estimate_tokens",
+    "offered_agents",
+    "retired_agents",
     "runtime_metadata",
     "seed_catalog",
     "seed_designs",

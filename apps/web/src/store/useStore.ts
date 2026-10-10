@@ -3035,6 +3035,11 @@ function toAgent(a: AgentRow): Agent {
     runs: a.runs,
     hasKnowledge: a.hasKnowledge,
     updatedAt: a.updatedAt,
+    baseKey: a.baseKey ?? null,
+    checkSkills: a.checkSkills ?? null,
+    checkOptions: a.checkOptions ?? null,
+    bundles: a.bundles ?? null,
+    process: a.process ?? null,
   }
 }
 

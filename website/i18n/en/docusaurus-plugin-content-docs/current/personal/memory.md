@@ -11,7 +11,7 @@ Memory holds information to be used across conversations, not just one. It store
 ## How to save
 
 - **Automatic saving**: Turn on **Save memory automatically** under Settings → Preferences. Each time an answer ends, the system selects and saves content that stays valid. The default is off, and content already saved is not saved twice. When something is saved, "n memories saved" appears at the bottom of the answer.
-- **Adding directly**: Enter it in the account menu → **Memory** → New memory.
+- **Adding directly**: Enter it in **Settings** → **Memory** → New memory. Memory lives in Settings, not in Customize (the old `/memory` address lands there too).
 - **Project memory**: Manage it in the Memory tab of the project detail screen. Conclusions that an agent leaves through Share note are also saved there.
 
 ## Fields

@@ -51,7 +51,7 @@ function useTiles(): Tile[] {
       description: (
         <Translate id="home.f2.desc">
           자료와 지침을 프로젝트로 묶고, 매번 알려야 할 내용은 메모리에 저장합니다. 역할이 정해진
-          에이전트와 워크플로를 쓰면 요청문을 다시 쓰지 않아도 됩니다.
+          에이전트에 진행 과정과 묶음을 정해 두면 요청문을 다시 쓰지 않아도 됩니다.
         </Translate>
       ),
       icon: <Sliders size={30} weight="duotone" aria-hidden="true" />,

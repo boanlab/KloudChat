@@ -21,7 +21,7 @@ The result card provides enlarged view, download, **Generate again**, **Fix the 
 
 **Structure, flow and concept diagrams** do not use the image model. The text model writes the description as a flowchart, and the server draws it with the same shapes as the diagrams in reports and slides and keeps it as a picture. If there are too many steps or the content cannot be put as a flowchart, the message "This figure cannot be drawn. Try again with fewer steps." appears and no picture is made.
 
-Images, audio and video have no templates. **+** → Pick a template in the composer is offered only for reports and slides. The colors and the image style of the project design are applied to the request as well.
+Images, audio and video have no templates. **+** → Pick a template in the composer is offered only for reports and slides. The colors and the image style of the project theme are applied to the request as well.
 
 ## Audio
 
@@ -29,4 +29,4 @@ Generates narration (with a voice choice) or music at 15, 30, 60, or 120 seconds
 
 ## Video
 
-Set the ratio, the resolution (720p or 1080p), whether there is sound, and the length (4 to 10 seconds). Video generation takes a long time, so the card shows the progress. You can still see the finished result after refreshing the screen or connecting from another device. You can cancel a generation. Credits are deducted only when it completes. If you choose a combination that the model does not price, a message saying "This model does not produce this combination" appears and sending is blocked. The design system does not apply to audio and video.
+Set the ratio, the resolution (720p or 1080p), whether there is sound, and the length (4 to 10 seconds). Video generation takes a long time, so the card shows the progress. You can still see the finished result after refreshing the screen or connecting from another device. You can cancel a generation. Credits are deducted only when it completes. If you choose a combination that the model does not price, a message saying "This model does not produce this combination" appears and sending is blocked. The theme does not apply to audio and video.

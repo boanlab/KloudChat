@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { conversationRows, hubFixture, myAgents, myPipelines, storeAgents } from './customize-fixture'
+import { conversationRows, hubFixture, myAgents, storeAgents } from './customize-fixture'
 
 /**
- * 「사용자 지정」: one hub for agents, skills, workflows, connectors, memory and designs. Its tab,
- * view, search, filter and sort live in the address; every old screen's address lands on its tab.
+ * 「사용자 지정」: one hub for agents (and the 묶음 they tick), skills and connectors. Its tab,
+ * view, search, filter and sort live in the address; every old screen's address lands where that
+ * screen went (themes and memory in 설정, workflows in the agents' 진행 과정).
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -61,26 +62,32 @@ test('tabs, 내 항목 / 탐색, search, filter and sort are kept in the address
   await page.reload()
   await expect(page.getByTestId('item-card')).toHaveCount(2, { timeout: 15_000 })
 
-  await page.getByRole('tab', { name: '워크플로' }).click()
-  await expect(page).toHaveURL(/tab=workflows/)
-  await expect(page.getByTestId('item-card')).toHaveCount(myPipelines.length, { timeout: 15_000 })
-  await expect(page.locator('summary', { hasText: '기본 워크플로' })).toBeVisible()
-  await expect(page.getByText('잠김')).toHaveCount(0)
+  // Three tabs, like an assistant's own settings: no 워크플로, 메모리, 양식 or 디자인 tab.
+  const strip = page.getByRole('tablist', { name: '사용자 지정' })
+  await expect(strip.getByRole('tab')).toHaveText(['에이전트', '스킬', '커넥터'])
+  await expect(page.getByText(/워크플로|작동 단계/)).toHaveCount(0)
+
+  // 묶음 live with the agents that tick them.
+  await page.getByRole('button', { name: '내 항목' }).click()
+  await page.getByTestId('bundles-link').click()
+  await expect(page).toHaveURL(/\/customize\/bundles$/)
+  await expect(page.getByRole('region', { name: '기본 제공 묶음' }).getByTestId('bundle-card')).toHaveText([
+    /쓰기 전에 준비하기/, /다 쓴 뒤 검토하기/, /마무리하기/])
+  await expect(page.getByRole('region', { name: '내 묶음' })).toContainText('두 번 검토하고 PDF로')
+  await page.goBack()
 
   await page.getByRole('tab', { name: '커넥터' }).click()
   await expect(page.getByRole('button', { name: '내 항목' })).toHaveCount(0)
   await expect(page.getByRole('tab', { name: /내 커넥터/ })).toBeVisible()
-  await page.getByRole('tab', { name: '메모리' }).click()
-  await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
-  await page.getByRole('tab', { name: '디자인' }).click()
-  await expect(page.getByText('학과 공식 문서')).toBeVisible()
-  await page.getByRole('button', { name: '탐색' }).click()
-  await expect(page.getByRole('region', { name: '공유된 디자인' })).toContainText('기관 공용')
-  // The templates have their own tab now; 디자인 keeps only looks.
-  await expect(page.getByRole('region', { name: '양식 · 보고서' })).toHaveCount(0)
-  await page.getByRole('tab', { name: '양식' }).click()
-  await expect(page).toHaveURL(/tab=templates/)
-  await expect(page.getByRole('region', { name: '양식 · 보고서' })).toBeVisible()
+  // The catalogue is one flat list, official first: no category headings, no category chips.
+  await page.getByRole('tab', { name: /카탈로그/ }).click()
+  const catalog = page.getByTestId('connector-catalog')
+  await expect(catalog).toBeVisible()
+  await expect(catalog).toContainText('YouTube')
+  expect((await catalog.textContent())!.indexOf('YouTube')).toBeLessThan((await catalog.textContent())!.indexOf('arXiv'))
+  await expect(page.getByRole('heading', { name: /^(미디어|연구|기본)$/ })).toHaveCount(0)
+  await expect(catalog.getByText('미디어', { exact: true })).toHaveCount(0)
+  await expect(catalog.getByText('stdio', { exact: true })).toHaveCount(0)
 
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
@@ -97,25 +104,34 @@ test('a tab with nothing of the person\'s own opens on 탐색', async ({ page },
 const redirects: [string, RegExp][] = [
   ['/agents', /\/customize\?tab=agents$/],
   ['/skills', /\/customize\?tab=skills$/],
-  ['/pipelines', /\/customize\?tab=workflows$/],
-  ['/pipelines?tab=shipped&agent=a3333333333333333333333333333333', /\/customize\?tab=workflows&view=mine&focus=a3333333333333333333333333333333$/],
-  ['/pipelines?tab=store', /\/customize\?tab=workflows&view=explore$/],
-  [`/pipelines/${myPipelines[0].id}`, new RegExp(`/customize/workflows/${myPipelines[0].id}$`)],
-  ['/designs', /\/customize\?tab=designs$/],
-  ['/designs?tab=template', /\/customize\?tab=templates$/],
   ['/connectors', /\/customize\?tab=connectors$/],
-  ['/memory', /\/customize\?tab=memory$/],
+  // Workflows became each agent's 진행 과정.
+  ['/pipelines', /\/customize\?tab=agents$/],
+  ['/pipelines?tab=shipped&agent=a3333333333333333333333333333333', /\/customize\?tab=agents$/],
+  ['/pipelines/p1111111111111111111111111111111', /\/customize\?tab=agents$/],
+  ['/customize/workflows/p1111111111111111111111111111111', /\/customize\?tab=agents$/],
+  ['/customize?tab=workflows', /\/customize\?tab=agents$/],
+  // Templates are picked in the agent form and the composer.
+  ['/customize?tab=templates', /\/customize\?tab=agents$/],
+  // Themes and memory live in 설정.
+  ['/designs', /\/settings\/themes$/],
+  ['/customize?tab=designs', /\/settings\/themes$/],
+  ['/memory', /\/settings\/memory$/],
+  ['/customize?tab=memory', /\/settings\/memory$/],
 ]
 
-test('every old address lands on its tab', async ({ page }, testInfo) => {
+test('every old address lands where its screen went', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   for (const [from, to] of redirects) {
     await page.goto(from)
     await expect(page, from).toHaveURL(to, { timeout: 15_000 })
   }
-  // The shipped flow named in the old address is opened and picked out.
-  await page.goto('/pipelines?tab=shipped&agent=a3333333333333333333333333333333')
-  await expect(page.locator('[data-agent="a3333333333333333333333333333333"]')).toBeVisible({ timeout: 15_000 })
+  await page.goto('/memory')
+  await expect(page.getByRole('tab', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
+  await page.goto('/designs')
+  await expect(page.getByTestId('settings-themes')).toBeVisible()
+  await expect(page.getByText('학과 공식 문서')).toBeVisible()
   expect(state.problems).toEqual([])
 })
 
@@ -166,16 +182,21 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
   expect(state.problems).toEqual([])
 })
 
-test('워크플로 만들기 then leaving without an edit deletes the empty flow', async ({ page }, testInfo) => {
+test('묶음 만들기 opens the bundle editor, its items from the same steps 직접 구성 offers', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop')
   const state = await hubFixture(page, testInfo)
-  await page.goto('/customize?tab=workflows&view=mine')
+  await page.goto('/customize?tab=agents&view=mine')
   await page.getByRole('button', { name: '추가', exact: true }).filter({ visible: true }).first().click()
-  await page.getByRole('menuitem', { name: '워크플로 만들기' }).click()
-  await expect(page).toHaveURL(/\/customize\/workflows\/p9999/)
-  await page.getByRole('link', { name: '워크플로 목록' }).click()
-  await expect(page).toHaveURL(/tab=workflows/)
-  await expect.poll(() => state.calls.some((c) => c.method === 'DELETE' && c.path.endsWith('p9999999999999999999999999999999'))).toBe(true)
-  await expect(page.getByText('새 워크플로', { exact: true })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: '묶음 만들기' }).click()
+  await expect(page).toHaveURL(/\/customize\/bundles\?new=1$/)
+  const editor = page.getByTestId('bundle-editor')
+  await expect(editor).toBeVisible()
+  await editor.getByLabel('묶음 이름').fill('검토 두 번')
+  await editor.getByRole('button', { name: '단계 추가' }).click()
+  await page.getByRole('dialog', { name: '단계 추가' }).getByRole('button', { name: /이 에이전트/ }).click()
+  await page.getByRole('button', { name: '저장', exact: true }).click()
+  await expect.poll(() => state.calls.find((c) => c.method === 'POST' && c.path === '/bundles')?.body).toMatchObject({
+    name: '검토 두 번', stages: [{ kind: 'agent', ref: '@self' }],
+  })
   expect(state.unexpected).toEqual([])
 })

@@ -1,9 +1,11 @@
-# 개조식 보고서 — specs: lineup v1 `gaejo-report`.
+# 요약·정리 (formerly 개조식 보고서) — specs: lineup v1 `gaejo-report`.
 
 key = "gaejo-report"
-order = 2
-name = "개조식 보고서"
-description = "긴 메모·메일·회의 내용을 윗사람이 한 장에서 판단할 개조식 보고(□ ○ - ㆍ)로 바꿀 때"
+order = 1
+name = "요약·정리"
+# Earlier shipped names: an untouched copy still wearing one is renamed on sync.
+former_names = ["개조식 보고서"]
+description = "긴 메모·메일·회의 내용을 윗사람이 한 장에서 판단할 개조식 요약 보고(□ ○ - ㆍ)로 정리할 때"
 kinds = ["report"]
 surface = "report"
 template = "doc-gaejo-report"
@@ -12,8 +14,14 @@ design = "문서용 명조"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check", "generic-language-killer"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
 temperature = 0.3
 color = "#334155"
 starters = [

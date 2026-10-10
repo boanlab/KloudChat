@@ -1,6 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { Suspense, lazy, useEffect, useRef } from 'react'
-import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, Route, BrowserRouter as Router, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { RoleRoute } from '@/components/auth/RoleRoute'
 import { AppShell } from '@/components/layout/AppShell'
 import { kindOrder } from '@/lib/kinds'
@@ -31,9 +31,7 @@ const SkillDetailPage = lazy(() =>
 )
 const SkillCreatePage = lazy(() => import('@/pages/customize/CreatePages').then((m) => ({ default: m.SkillCreatePage })))
 const SkillUploadPage = lazy(() => import('@/pages/customize/SkillUploadPage').then((m) => ({ default: m.SkillUploadPage })))
-const WorkflowEditPage = lazy(() =>
-  import('@/pages/customize/WorkflowEditPage').then((m) => ({ default: m.WorkflowEditPage })),
-)
+const BundlesPage = lazy(() => import('@/pages/customize/BundlesPage').then((m) => ({ default: m.BundlesPage })))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage').then((m) => ({ default: m.ArtifactsPage })))
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((m) => ({ default: m.HistoryPage })))
 const IssuesPage = lazy(() => import('@/pages/IssuesPage').then((m) => ({ default: m.IssuesPage })))
@@ -45,32 +43,19 @@ const SharedPage = lazy(() => import('@/pages/SharedPage').then((m) => ({ defaul
 
 /**
  * The old addresses of the screens the 사용자 지정 hub took in. Each lands on its tab, keeping
- * the query it carried; the old tab names map onto 내 항목 / 탐색.
+ * the query it carried. Workflows became an agent's 진행 과정 and its 묶음 (the 에이전트 tab);
+ * themes and memory moved to 설정.
  */
 function ToHub({ tab }: { tab: string }) {
   const { search } = useLocation()
   const from = new URLSearchParams(search)
-  const to = new URLSearchParams({ tab })
-  const old = from.get('tab')
   from.delete('tab')
-  if (tab === 'workflows') {
-    if (old === 'shipped') {
-      to.set('view', 'mine')
-      const agent = from.get('agent')
-      from.delete('agent')
-      if (agent) to.set('focus', agent)
-    } else if (old === 'store') to.set('view', 'explore')
+  const to = new URLSearchParams({ tab })
+  if (tab === 'agents') {
+    for (const key of ['agent', 'focus']) from.delete(key)
   }
-  // The template catalogue (`/designs?tab=template`) is the 양식 tab now.
-  if (tab === 'designs' && old === 'template') to.set('tab', 'templates')
   for (const [key, value] of from) to.set(key, value)
   return <Navigate to={`/customize?${to.toString()}`} replace />
-}
-
-function ToWorkflow() {
-  const { pipelineId = '' } = useParams()
-  const { search } = useLocation()
-  return <Navigate to={`/customize/workflows/${pipelineId}${search}`} replace />
 }
 
 function Spinner() {
@@ -161,13 +146,14 @@ function Authenticated() {
           <Route path="customize/skills/new" element={<SkillCreatePage />} />
           <Route path="customize/skills/upload" element={<SkillUploadPage />} />
           <Route path="customize/skills/:skillId" element={<SkillDetailPage />} />
-          <Route path="customize/workflows/:pipelineId" element={<WorkflowEditPage />} />
-          <Route path="designs" element={<ToHub tab="designs" />} />
+          <Route path="customize/bundles" element={<BundlesPage />} />
+          <Route path="customize/workflows/:pipelineId" element={<ToHub tab="agents" />} />
+          <Route path="designs" element={<Navigate to="/settings/themes" replace />} />
           <Route path="agents" element={<ToHub tab="agents" />} />
           <Route path="skills" element={<ToHub tab="skills" />} />
-          <Route path="pipelines" element={<ToHub tab="workflows" />} />
-          <Route path="pipelines/:pipelineId" element={<ToWorkflow />} />
-          <Route path="memory" element={<ToHub tab="memory" />} />
+          <Route path="pipelines" element={<ToHub tab="agents" />} />
+          <Route path="pipelines/:pipelineId" element={<ToHub tab="agents" />} />
+          <Route path="memory" element={<Navigate to="/settings/memory" replace />} />
           <Route path="history" element={<HistoryPage />} />
           <Route path="usage" element={<MyUsagePage />} />
           <Route path="issues" element={<IssuesPage />} />

@@ -4,7 +4,7 @@ title: Settings
 
 # Settings
 
-**Settings**, in the account menu, has five tabs.
+**Settings**, in the account menu, has seven tabs: Profile, Preferences, Personalization, Memory, Themes, API keys and Security.
 
 ## Profile
 
@@ -34,6 +34,14 @@ The theme and the language are switched with the buttons at the top right of the
 - **Answer style**: Describe the length, the tone, and the format. It applies to both conversations and documents. Write entries such as "no introduction", "always include an example", or "give English terms alongside".
 
 The settings apply from the next conversation onward. If an agent or a project has instructions, those take precedence. You can open the tab directly with `Ctrl+Shift+I`, and when it is applied the processing steps of the answer show **Personalization applied**.
+
+## Memory
+
+See and edit what is remembered across conversations. See [Memory](memory.md) for details.
+
+## Themes
+
+A theme is a document's or deck's colours, typeface and writing rules (formerly "design"). Make and edit them under **My themes**; **Import from a document** reads a draft from an existing hwpx, docx or pdf. **Shared themes** lists the ones others shared. You pick a theme under **Output** › **Theme** in the agent settings (**Manage themes** beside it opens this tab) and in the report or slides panel's **Edit › Theme**. [Templates and themes](../chat/starters.md)
 
 ## API keys
 

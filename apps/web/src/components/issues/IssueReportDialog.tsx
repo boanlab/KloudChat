@@ -327,7 +327,7 @@ function IssueForm() {
         </summary>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-muted">
           <li>{t('앱 빌드, 브라우저, 화면 크기, 언어')}</li>
-          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·워크플로, 단계 상태와 실패 사유, 결과물 판 번호')}</li>}
+          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·진행 과정, 단계 상태와 실패 사유, 결과물 판 번호')}</li>}
         </ul>
       </details>
 

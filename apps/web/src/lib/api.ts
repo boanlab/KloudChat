@@ -6,7 +6,13 @@
  */
 
 import type {
+  AgentBase,
+  AgentDraft,
+  AgentProcess,
   ArtifactKind,
+  Bundle,
+  BundleSelection,
+  ProcessMode,
   CostRouting,
   DesignTokens,
   DocMarks,
@@ -876,6 +882,8 @@ export interface SessionRow {
 }
 
 export const sessionsApi = {
+  /** 「에이전트로 저장」: this conversation as a draft agent. Nothing is saved. */
+  agentDraft: (sessionId: string) => call<AgentDraft>(`/sessions/${sessionId}/agent-draft`),
   /** A report or slides session continuing this chat with its agent; the files carry the conversation. */
   handoff: (sessionId: string, kind: 'report' | 'slides') =>
     call<{ session: SessionRow; attachments: FileRow[] }>(
@@ -1510,6 +1518,9 @@ export const agentsApi = {
     },
     addUrl: (agentId: string, url: string) =>
       call<FileRow>(`/agents/${agentId}/knowledge/url`, body({ url })),
+    /** A conversation's own files, copied onto the agent's shelf (「에이전트로 저장」). */
+    fromFiles: (agentId: string, ids: string[]) =>
+      call<FileRow[]>(`/agents/${agentId}/knowledge/from-files`, body({ ids })),
     remove: (agentId: string, fileId: string) =>
       call<void>(`/agents/${agentId}/knowledge/${fileId}`, { method: 'DELETE' }),
     /** `force` re-sends everything — what an embedding-model change needs. */
@@ -1562,6 +1573,12 @@ export interface AgentRow {
   /** True only when this caller has readable documents on this agent's shelf. */
   hasKnowledge: boolean
   updatedAt: string
+  baseKey?: string | null
+  retired?: boolean
+  checkSkills?: string[] | null
+  checkOptions?: Record<string, boolean> | null
+  bundles?: BundleSelection[] | null
+  process?: AgentProcess | null
 }
 
 /* ── connectors (MCP) ───────────────────────────────────────────────────
@@ -1721,8 +1738,8 @@ export const userPipelinesApi = {
   update: (id: string, payload: { name?: string; description?: string; stages: PipelineStep[] }) =>
     call<UserPipeline>(`/user-pipelines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (id: string) => call<void>(`/user-pipelines/${id}`, { method: 'DELETE' }),
-  validate: (stages: PipelineStep[], id?: string) =>
-    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id })),
+  validate: (stages: PipelineStep[], id?: string, agentId?: string) =>
+    call<PipelineVerdict>('/user-pipelines/validate', body({ stages, id, agentId })),
   submit: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/submit`, { method: 'POST' }),
   withdraw: (id: string) => call<UserPipeline>(`/user-pipelines/${id}/withdraw`, { method: 'POST' }),
   bind: (agentId: string, pipelineId: string | null) =>
@@ -1735,6 +1752,30 @@ export const userPipelinesApi = {
   adminList: (review = 'pending') => call<UserPipeline[]>(`/admin/user-pipelines?review=${review}`),
   approve: (id: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/approve`, { method: 'POST' }),
   reject: (id: string, note: string) => call<UserPipeline>(`/admin/user-pipelines/${id}/reject`, body({ note })),
+}
+
+/** An agent's 진행 과정 and the 묶음 it ticks. */
+export const processApi = {
+  bases: () => call<{ bases: AgentBase[]; bundles: Bundle[]; exportFormats: string[] }>('/agent-bases'),
+  put: (
+    agentId: string,
+    payload: { mode: ProcessMode; base?: string | null; bundles?: BundleSelection[]; stages?: PipelineStep[]; importId?: string },
+  ) =>
+    call<AgentProcess & { agent: Partial<AgentRow> }>(`/agents/${agentId}/process`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+}
+
+/** A person's own 묶음. */
+export const bundlesApi = {
+  list: () => call<{ shipped: Bundle[]; mine: Bundle[]; shared: Bundle[] }>('/bundles'),
+  create: (payload: { name: string; description?: string; stages: PipelineStep[] }) =>
+    call<Bundle>('/bundles', body(payload)),
+  update: (id: string, payload: { name: string; description?: string; stages: PipelineStep[] }) =>
+    call<Bundle>(`/bundles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  remove: (id: string) => call<void>(`/bundles/${id}`, { method: 'DELETE' }),
+  share: (id: string, visibility: 'org' | 'private') => call<Bundle>(`/bundles/${id}/share`, body({ visibility })),
 }
 
 export const pipelinesApi = {

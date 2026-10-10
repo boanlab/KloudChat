@@ -5,6 +5,8 @@
 # docs/architecture.md § Pipelines.
 
 name = "report"
+# Catalogue agents of no fixed format whose report turns it writes.
+agents = ["document"]
 pre = ["check:gaps", "gap-card"]
 plan = ["research", "material", "outline"]
 write = [

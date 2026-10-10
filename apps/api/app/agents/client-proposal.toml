@@ -1,7 +1,10 @@
 # 고객 맞춤 제안서 — specs: lineup v1 `client-proposal`.
 
 key = "client-proposal"
-order = 1
+# Retired (2026-10): offered nowhere and installed by nobody; the rows stay so the
+# conversations and documents made with it still open and export.
+retired = true
+order = 91
 name = "고객 맞춤 제안서"
 description = "고객사의 RFP·미팅 메모·메일로 그 고객에게 낼 제안서(견적 포함) 초안이 필요할 때"
 kinds = ["report"]
@@ -12,8 +15,14 @@ design = "기본"
 # An empty list denies every tool (report surfaces run the server hooks instead).
 tools = []
 skills = []
-# Check skills the server runs before and after writing (app/skills/README.md).
-checks = ["gap-check", "grounding-check", "generic-language-killer"]
+# 묶음 (`app/bundles/*.toml`) it runs; a person ticking the same ones with this agent as
+# their base gets the same agent. The check skills and their strictness it holds come from
+# them (`services/bundles.py`).
+bundles = [
+    { bundle = "prepare" },
+    { bundle = "review" },
+    { bundle = "finish", items = { export = false } },
+]
 temperature = 0.3
 color = "#2563eb"
 starters = [

@@ -102,7 +102,7 @@
     "message": "Settings that cut repetitive work"
   },
   "home.f2.desc": {
-    "message": "Group the reference material and instructions you reuse into a project, and store in memory what you would otherwise explain every time. With an agent that already has a role, and with workflows, you stop rewriting the same request."
+    "message": "Group the reference material and instructions you reuse into a project, and store in memory what you would otherwise explain every time. Give an agent its role, how it works and the bundles it ticks, and you stop rewriting the same request."
   },
   "home.f3.title": {
     "message": "You can see how far your data goes"

@@ -2690,14 +2690,14 @@ export function DeckPanel({
       }
       const row = await artifactsApi.update(deck.id, {
         data: { ...latestData, kind: 'deck', theme: deck.theme, slides: latestData.slides ?? deck.slides, design },
-        summary: t('덱 디자인 변경'),
+        summary: t('덱 테마 변경'),
         expectedVersion: latest.version,
       })
       deck.design = design
       deck.version = row.version
       setVisualStyle(nextStyle)
     } catch (err) {
-      setError(errorMessage(err, t('디자인을 바꾸지 못했습니다.')))
+      setError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
     } finally {
       savingLock.current = false
       setSaving(false)
@@ -3334,7 +3334,7 @@ export function DeckPanel({
           label={t('슬라이드 메뉴')}
           tabs={[
             { id: 'text', label: t('글자') }, { id: 'insert', label: t('삽입') },
-            { id: 'design', label: t('디자인') }, { id: 'review', label: t('검토') },
+            { id: 'design', label: t('테마') }, { id: 'review', label: t('검토') },
           ] as Array<{ id: 'text' | 'insert' | 'design' | 'review'; label: string }>}
           active={ribbon}
           onChange={(tab) => {
@@ -3379,10 +3379,10 @@ export function DeckPanel({
         {ribbon === 'insert' && editing && <RibbonGroup label={t('콘텐츠')}>
           <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 그림을 넣을 수 있습니다')}</p>
         </RibbonGroup>}
-        {ribbon === 'design' && !editing && <RibbonGroup label={t('디자인')}><Dropdown
+        {ribbon === 'design' && !editing && <RibbonGroup label={t('테마')}><Dropdown
           align="left"
           trigger={() => (
-            <Button size="sm" disabled={saving} aria-label={t('슬라이드 디자인 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
+            <Button size="sm" disabled={saving} aria-label={t('슬라이드 테마 고르기')} title={t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.why ?? '')}>
               <LookSwatch look={LOOKS[visualStyle]} accent={bulkAccent} />
               {t(LOOK_CHOICES.find((c) => c.id === visualStyle)?.label ?? visualStyle)}
               <ChevronDown size={13} className="text-muted" />
@@ -3423,8 +3423,8 @@ export function DeckPanel({
             {t('직접 고르기')}
           </label>
         </Dropdown></RibbonGroup>}
-        {ribbon === 'design' && editing && <RibbonGroup label={t('디자인')}>
-          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 디자인을 바꿀 수 있습니다')}</p>
+        {ribbon === 'design' && editing && <RibbonGroup label={t('테마')}>
+          <p className="px-2 text-xs text-muted">{t('저장하거나 취소한 뒤 테마를 바꿀 수 있습니다')}</p>
         </RibbonGroup>}
         {ribbon === 'review' && <RibbonGroup label={t('검토')}>{reviewTools}</RibbonGroup>}
         </ArtifactRibbon>}

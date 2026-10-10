@@ -1,6 +1,5 @@
-import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LayoutGrid, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Badge, Button, Modal } from '@/components/ui'
 import { templateText, type DesignTemplateRow } from '@/lib/api'
 import { Input } from '@/components/ui'
@@ -129,7 +128,7 @@ function Checks({ checks }: { checks: string[] }) {
   return (
     <details className="rounded-control bg-elevated p-2 text-xs leading-relaxed">
       <summary className="cursor-pointer font-medium text-muted transition-colors hover:text-fg">
-        {t('이 양식이 확인하는 것 {n}개').replace('{n}', String(checks.length))}
+        {t('이 템플릿이 확인하는 것 {n}개').replace('{n}', String(checks.length))}
       </summary>
       <ul lang="ko" className="mt-1 space-y-0.5 text-faint">
         {checks.slice(0, CHECKS_ON_CARD).map(line)}
@@ -168,7 +167,7 @@ export function DesignTemplateCard({
         onPick(row)
       }}
     >
-      {chosen ? t('고른 양식') : t('이 양식으로 시작')}
+      {chosen ? t('고른 템플릿') : t('이 템플릿으로 시작')}
     </Button>
   )
   return (
@@ -233,7 +232,7 @@ function Foot({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {children}
-      {chosen && <span className="text-xs text-faint">{t('이미 고른 양식입니다')}</span>}
+      {chosen && <span className="text-xs text-faint">{t('이미 고른 템플릿입니다')}</span>}
     </div>
   )
 }
@@ -306,20 +305,12 @@ export function DesignGalleryModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={t('양식 고르기')}
+      title={t('템플릿 고르기')}
       description={t('결과물의 모양을 고릅니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3 flex items-baseline justify-between gap-2">
           <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
-          <Link
-            to="/customize?tab=templates"
-            onClick={onClose}
-            className="inline-flex shrink-0 items-center gap-1 text-sm text-muted hover:text-fg"
-          >
-            {t('모두 보기')}
-            <ArrowRight size={13} aria-hidden />
-          </Link>
         </div>
         <div className="mb-3 flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
@@ -348,8 +339,8 @@ export function DesignGalleryModal({
               className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
             />
             <Input
-              aria-label={t('양식 검색')}
-              placeholder={t('양식 또는 용도 검색')}
+              aria-label={t('템플릿 검색')}
+              placeholder={t('템플릿 또는 용도 검색')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -376,7 +367,7 @@ export function DesignGalleryModal({
           ))}
           {shown.length === 0 && (
             <p className="col-span-full py-8 text-center text-sm text-faint">
-              {t('조건에 맞는 양식이 없습니다.')}
+              {t('조건에 맞는 템플릿이 없습니다.')}
             </p>
           )}
         </div>
@@ -433,7 +424,7 @@ export function DesignGallery({
     <>
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <LayoutGrid size={14} />
-        {t('양식 고르기')}
+        {t('템플릿 고르기')}
       </Button>
       <DesignGalleryModal
         kind={kind}

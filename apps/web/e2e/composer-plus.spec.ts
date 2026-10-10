@@ -22,7 +22,7 @@ test('「+」 holds the tools; nothing else sits beside the input', async ({ pag
 
   expect(await toolNames(page)).toEqual(['파일·사진 첨부', '스킬', '웹 검색: 자동', '커넥터 1개', '에이전트'])
   // The old toolbar buttons are gone, and model comparison with them.
-  for (const gone of ['양식 고르기', '스킬', '모델 비교', '도구 더보기', '첨부', '@']) {
+  for (const gone of ['템플릿 고르기', '스킬', '모델 비교', '도구 더보기', '첨부', '@']) {
     await expect(page.getByRole('button', { name: gone, exact: true })).toHaveCount(0)
   }
   await expect(page.getByRole('button', { name: /^웹 검색/ })).toHaveCount(0)
@@ -34,20 +34,20 @@ test('「+」 holds the tools; nothing else sits beside the input', async ({ pag
   expect(unexpected).toEqual([])
 })
 
-test('양식 고르기 is offered on report and slides only', async ({ page }, info) => {
+test('템플릿 고르기 is offered on report and slides only', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
   for (const [kind, offered] of [['chat', false], ['report', true], ['slides', true], ['image', false]] as const) {
     await page.goto(`/new/${kind}`)
     await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
-    expect((await toolNames(page)).includes('양식 고르기'), kind).toBe(offered)
+    expect((await toolNames(page)).includes('템플릿 고르기'), kind).toBe(offered)
   }
   await page.goto('/new/report')
-  await openTool(page, '양식 고르기')
-  const dialog = page.getByRole('dialog', { name: '양식 고르기' })
+  await openTool(page, '템플릿 고르기')
+  const dialog = page.getByRole('dialog', { name: '템플릿 고르기' })
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: '이 양식으로 시작' }).first().click()
+  await dialog.getByRole('button', { name: '이 템플릿으로 시작' }).first().click()
   // The pick shows as a chip with its own ×.
-  const remove = page.getByRole('button', { name: '비교 보고서 양식 해제' })
+  const remove = page.getByRole('button', { name: '비교 보고서 템플릿 해제' })
   await expect(remove).toBeVisible()
   await remove.click()
   await expect(remove).toHaveCount(0)

@@ -136,7 +136,8 @@ async def get_agent_pipeline(agent_id: str, user: CurrentUser, db: DbSession):
     key = await sessions._agent_catalog_key(db, agent)
     pipe = pipeline_for_agent(key, getattr(agent, "doc_format", None),
                               getattr(agent, "surface", None))
-    return {**describe(pipe, check_skills.attached(agent_key=key)), "agentId": agent.id,
+    checks = check_skills.attached(agent_checks=agent.check_skills or [])
+    return {**describe(pipe, checks), "agentId": agent.id,
             "agentKey": key}
 
 

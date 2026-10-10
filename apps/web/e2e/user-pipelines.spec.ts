@@ -2,11 +2,10 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * Pipeline phase 3 screens against fixture data. Flows live on their own page (/pipelines): a
- * shipped flow copied into the person's own and edited as a list (add, reorder, settings, live
- * contract messages) with one action bar, saved, submitted for sharing, guarded against leaving
- * unsaved, bound to an agent from the agent editor's read-only 「워크플로」 summary and started; the
- * store's shared flows; the administrator's approval queue; a composed run's stages.
+ * An agent's 직접 구성 (고급) against fixture data: in the agent's own settings, the steps start from
+ * the agent itself and are edited as a list (add, reorder, settings, live contract messages), then
+ * saved with the agent; an order made before can be brought in; the administrator's 「진행 과정
+ * 검토」 queue; a composed run's stages. Workflows are no longer a thing of their own.
  */
 
 test.use({ serviceWorkers: 'block' })
@@ -65,6 +64,7 @@ type Step = { id: string; kind: string; ref: string; settings: Record<string, un
 const KIND = { agent: '에이전트', skill: '스킬', check: '검사', review: '검토', human: '사람 확인', export: '내보내기' } as Record<string, string>
 
 function title(step: Step) {
+  if (step.kind === 'agent' && step.ref === '@self') return cmpAgent.name
   if (step.kind === 'agent') return agents.find((a) => a.id === step.ref)?.name ?? '에이전트'
   if (step.kind === 'check') return catalogue.checks.find((c) => c.ref === step.ref)?.name ?? step.ref
   if (step.kind === 'skill') return catalogue.skills.find((c) => c.ref === step.ref)?.name ?? step.ref
@@ -78,7 +78,10 @@ function verdict(steps: Step[]) {
   let product = ''
   steps.forEach((step, i) => {
     const at = `${i + 1}번 ${KIND[step.kind]}(${title(step)})`
-    if (step.kind === 'agent') product = agents.find((a) => a.id === step.ref)?.surface === 'report' ? 'document' : 'answer'
+    if (step.kind === 'agent') {
+      const surface = step.ref === '@self' ? 'report' : agents.find((a) => a.id === step.ref)?.surface
+      product = surface === 'report' ? 'document' : 'answer'
+    }
     if ((step.kind === 'check' || step.kind === 'review') && !product) {
       problems.push({ step: i + 1, code: 'needs_product', message: `${at}: 앞 단계에서 만든 문서나 답이 있어야 합니다.` })
     }
@@ -123,7 +126,6 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
   const problems: string[] = []
   const calls: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
-  let mine: ReturnType<typeof pipelineRow>[] = []
   let pending = [pipelineRow('p9', '회의록 → 개조식 1쪽', [
     { id: 's1', kind: 'human', ref: 'gaps', settings: {} },
     { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: {} },
@@ -150,6 +152,11 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     ],
   }
   let started = false
+  const processes: Record<string, unknown>[] = []
+  let mine: ReturnType<typeof pipelineRow>[] = [pipelineRow('p5', '예전에 만든 분석 → 비교', [
+    { id: 's1', kind: 'agent', ref: dataAgent.id, settings: {} },
+    { id: 's2', kind: 'agent', ref: cmpAgent.id, settings: {} },
+  ])]
 
   await page.context().routeWebSocket(/^(?!wss?:\/\/[^/]+\/\?token=).*$/, (socket) => { unexpected.push(`WebSocket ${socket.url()}`); socket.close() })
   await page.context().route('**/*', async (route) => {
@@ -178,6 +185,16 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     if (method === 'GET' && path === '/agents') return route.fulfill({ json: agents })
     if (method === 'GET' && /^\/agents\/[^/]+\/pipeline$/.test(path)) return route.fulfill({ json: shipped })
     if (method === 'GET' && /^\/agents\/[^/]+\/knowledge/.test(path)) return route.fulfill({ json: [] })
+    if (method === 'GET' && path === '/agent-bases') return route.fulfill({ json: { bases: [
+      { key: 'comparison-report', name: '비교·결정', description: '', surface: 'report', docFormat: 'comparison',
+        template: null, steps: ['비교할 대안의 자료를 읽습니다'], draft: false, custom: true, bundles: [], formatChecks: [], asks: true },
+    ], bundles: [], exportFormats: ['docx', 'pdf', 'hwpx', 'md'] } })
+    if (method === 'PUT' && /^\/agents\/[^/]+\/process$/.test(path)) {
+      const body = json()
+      processes.push(body)
+      return route.fulfill({ json: { mode: body.mode, base: body.base ?? null, bundles: [], chain: [], review: '',
+        needsReview: true, warnings: [], agent: {} } })
+    }
     // user pipelines
     if (method === 'GET' && path === '/user-pipelines') return route.fulfill({ json: mine })
     if (method === 'GET' && path === '/user-pipelines/store') return route.fulfill({ json: store })
@@ -249,7 +266,7 @@ async function fixture(page: Page, testInfo: TestInfo, { admin = false } = {}) {
     unexpected.push(`${method} ${path}`)
     return route.fulfill({ status: 404, json: { detail: 'not_found' } })
   })
-  return { unexpected, problems, calls, mine: () => mine }
+  return { unexpected, problems, calls, processes }
 }
 
 function shooter(page: Page, testInfo: TestInfo) {
@@ -268,180 +285,84 @@ async function addStep(page: Page, group: string, name: string) {
   await expect(picker).toBeHidden()
 }
 
-async function openAgentFlow(page: Page, name: string) {
-  const agent = agents.find((a) => a.name === name)!
-  await page.goto(`/customize/agents/${agent.id}`)
-  // The agent's settings sit on its own screen; the flow is one folded group of them.
+async function openCustom(page: Page) {
+  await page.goto(`/customize/agents/${cmpAgent.id}`)
   const settings = page.getByRole('region', { name: '설정' })
   await expect(settings).toBeVisible({ timeout: 15_000 })
-  await settings.getByText('워크플로 연결', { exact: true }).click()
-  await expect(settings.getByTestId('agent-flow-summary')).toBeVisible()
-  return settings
+  await settings.getByRole('radio', { name: /직접 구성/ }).check()
+  const editor = settings.getByTestId('process-custom')
+  await expect(editor).toBeVisible()
+  return { settings, editor }
 }
 
-test('editor: copy the shipped flow, edit, validate, save, share, bind, start', async ({ page }, testInfo) => {
+test('직접 구성: start from the agent itself, keep the contracts, save it with the agent', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
   const shot = shooter(page, testInfo)
-
-  // The agent editor shows the flow read-only, with only the agent's own actions.
-  let dialog = await openAgentFlow(page, '비교 보고서')
-  const summary = dialog.getByTestId('agent-flow-summary')
-  await expect(summary.locator('p', { hasText: /^기본 워크플로$/ })).toBeVisible()
-  await expect(summary.getByLabel(/워크플로:/)).toBeVisible()
-  await expect(dialog.getByTestId('pipeline-editor')).toHaveCount(0)
-  for (const gone of ['워크플로 저장', '공유 요청', '이 워크플로로 시작', '워크플로 삭제']) {
-    await expect(dialog.getByRole('button', { name: gone })).toHaveCount(0)
-  }
-  await expect(dialog.getByRole('button', { name: '저장', exact: true })).toBeVisible()
-  await shot('agent-summary-default')
-  await summary.getByRole('link', { name: '워크플로 편집' }).click()
-
-  // 「워크플로 편집 →」 lands on the shipped flows, this agent's card picked out.
-  await expect(page).toHaveURL(new RegExp(`/customize\\?tab=workflows&view=mine&focus=${cmpAgent.id}`))
-  const shippedCard = page.locator(`[data-agent="${cmpAgent.id}"]`)
-  await expect(shippedCard).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId('shipped-pipeline')).toHaveCount(3)
-  // A few plain steps, each saying what happens; no stage ids, kinds or check ids until asked.
-  const plain = shippedCard.getByTestId('workflow-step')
-  expect(await plain.count()).toBeLessThanOrEqual(6)
-  await expect(plain.first()).toContainText('자료 · 비교할 대안의 자료를 읽습니다')
-  await expect(shippedCard).toContainText('기본 제공 · 복제해서 고칠 수 있어요')
-  for (const internal of ['check:gaps', 'gap-check', 'prepass', '입출력', '모델', '사전 계산']) {
-    await expect(shippedCard.getByText(internal, { exact: false })).toHaveCount(0)
-  }
-  await shot('shipped-locked')
-  await shippedCard.getByRole('button', { name: '자세히 보기 (단계 6개)' }).click()
-  const details = shippedCard.getByTestId('workflow-details')
-  await expect(details.getByText('사전 계산')).toBeVisible()
-  await expect(details.getByText('· 빠진 정보 묻기')).toBeVisible()
-  await expect(details.getByText('· 날짜 확인')).toBeVisible()
-  // Ids only as 기술 정보.
-  await expect(details.getByTestId('workflow-tech')).toContainText('gap-check')
-  await shot('shipped-details')
-  await shippedCard.getByRole('button', { name: '복제해서 고치기' }).click()
-
-  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
-  const editor = page.getByTestId('pipeline-editor')
-  const actions = page.getByTestId('pipeline-actions')
-  await expect(editor).toBeVisible()
-  await expect(editor.getByTestId('pipeline-step')).toHaveCount(2)
-  await shot('copied')
+  const { settings, editor } = await openCustom(page)
+  // It starts from the agent's own step, its outline offered first as the report flow does.
+  const steps = editor.getByTestId('pipeline-step')
+  await expect(steps).toHaveText([/개요 확인/, /비교 보고서/])
+  await expect(settings.getByText(/워크플로|작동 단계/)).toHaveCount(0)
+  await shot('custom-start')
 
   // A check put first breaks its contract; the message names the step.
   await addStep(page, '검사', '근거 대조')
-  const steps = editor.getByTestId('pipeline-step')
   await steps.nth(2).getByRole('button', { name: '위로' }).click()
   await steps.nth(1).getByRole('button', { name: '위로' }).click()
   await expect(editor.getByText('1번 검사(근거 대조): 앞 단계에서 만든 문서나 답이 있어야 합니다.')).toBeVisible()
-  await expect(actions.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
   await shot('contract-message')
   await steps.nth(0).getByRole('button', { name: '아래로' }).click()
   await steps.nth(1).getByRole('button', { name: '아래로' }).click()
   await expect(editor.getByText('앞 단계에서 만든 문서나 답이 있어야 합니다.', { exact: false })).toHaveCount(0)
 
-  // 데이터 분석 first, 개조식 1쪽 요약 after, a review on another model, a file.
+  // 데이터 분석 first, a review on another model, a file at the end.
   await addStep(page, '에이전트', '데이터 분석')
   await steps.nth(3).getByRole('button', { name: '위로' }).click()
   await steps.nth(2).getByRole('button', { name: '위로' }).click()
   await steps.nth(1).getByRole('button', { name: '위로' }).click()
-  await addStep(page, '에이전트', '개조식 보고')
-  await steps.nth(4).getByRole('button', { name: '설정' }).click()
-  await steps.nth(4).getByRole('textbox').fill('1쪽 개조식으로 요약')
   await addStep(page, '검토', '검토')
-  await steps.nth(5).getByRole('button', { name: '설정' }).click()
-  const review = steps.nth(5).getByTestId('step-settings')
+  await steps.nth(4).getByRole('button', { name: '설정' }).click()
+  const review = steps.nth(4).getByTestId('step-settings')
   await review.getByRole('combobox').selectOption('fixture/judge')
   await review.getByRole('switch', { name: '지적한 곳을 한 번 고치기' }).click()
   await addStep(page, '내보내기', '내보내기')
-  await expect(steps).toHaveCount(7)
-  await editor.getByRole('textbox', { name: '워크플로 이름' }).fill('분석 → 비교 → 개조식 요약')
-  await steps.nth(5).scrollIntoViewIfNeeded()
-  // One action bar, pinned to the bottom while the steps scroll.
-  await expect(actions).toBeInViewport()
-  await expect(page.getByRole('button', { name: '저장', exact: true })).toHaveCount(1)
-  await expect(page.getByRole('button', { name: '삭제', exact: true })).toHaveCount(1)
+  await expect(steps).toHaveCount(6)
   await shot('edited')
 
-  // Leaving with unsaved edits asks first; staying keeps them.
-  await page.getByRole('link', { name: '워크플로 목록' }).click()
-  const leave = page.getByRole('dialog', { name: '저장하지 않고 나갈까요?' })
-  await expect(leave).toBeVisible()
-  await shot('leave-guard')
-  await leave.getByRole('button', { name: '취소' }).click()
-  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
-  await expect(steps).toHaveCount(7)
+  await settings.getByRole('button', { name: '저장', exact: true }).click()
+  await expect(settings.getByText('저장했습니다.')).toBeVisible()
+  const saved = state.processes.at(-1) as { mode: string; stages: Step[] }
+  expect(saved.mode).toBe('custom')
+  expect(saved.stages.map((s) => `${s.kind}:${s.ref}`)).toEqual([
+    'agent:c1111111111111111111111111111111', 'human:outline', 'agent:@self', 'check:grounding-check', 'review:', 'export:'])
+  expect(saved.stages[4].settings).toMatchObject({ model: 'fixture/judge', repair: true })
 
-  await actions.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(actions.getByRole('button', { name: '저장', exact: true })).toBeDisabled()
-  // The top bar names the flow as saved, not as it was opened.
-  await expect(page.locator('header').getByText('분석 → 비교 → 개조식 요약', { exact: true })).toBeVisible()
-  const saved = state.mine()[0]
-  expect(saved.stages.map((s) => s.kind)).toEqual(['agent', 'human', 'agent', 'check', 'agent', 'review', 'export'])
-  expect(saved.stages[5].settings).toMatchObject({ model: 'fixture/judge', repair: true })
-  expect(saved.stages[4].settings).toMatchObject({ instruction: '1쪽 개조식으로 요약' })
-
-  await actions.getByRole('button', { name: '공유 요청' }).click()
-  await expect(editor.getByText('승인 대기')).toBeVisible()
-  await shot('submitted')
-
-  // Saved, so the list link leaves without asking.
-  await page.getByRole('link', { name: '워크플로 목록' }).click()
-  await expect(page).toHaveURL(/\/customize\?tab=workflows&view=mine$/)
-  await expect(page.getByTestId('item-card')).toHaveCount(1)
-  await shot('my-flows')
-
-  // Bind it from the agent editor; the agent's own 「저장」 applies it.
-  dialog = await openAgentFlow(page, '비교 보고서')
-  await dialog.getByRole('combobox', { name: '연결할 워크플로' }).selectOption({ label: '분석 → 비교 → 개조식 요약' })
-  await expect(dialog.getByText('저장하면 이 워크플로로 바뀝니다.')).toBeVisible()
-  await expect(dialog.getByTestId('step-chips')).toContainText('개조식 보고')
-  await shot('agent-summary-picked')
-  expect(state.calls).not.toContain(`PUT /agents/${cmpAgent.id}/user-pipeline`)
-  await dialog.getByRole('button', { name: '저장', exact: true }).click()
-  await expect(dialog.getByText('저장했습니다.')).toBeVisible()
-  expect(state.calls).toContain(`PUT /agents/${cmpAgent.id}/user-pipeline`)
-  dialog = await openAgentFlow(page, '비교 보고서')
-  await expect(dialog.getByRole('combobox', { name: '연결할 워크플로' })).toHaveValue('p1')
-  await dialog.getByRole('link', { name: '워크플로 편집' }).click()
-  await expect(page).toHaveURL(/\/customize\/workflows\/p1$/)
-  await expect(page.getByText('연결된 에이전트: 비교 보고서')).toBeVisible()
-
-  await page.getByTestId('pipeline-actions').getByRole('button', { name: '이 워크플로로 시작' }).click()
-  await expect(page).toHaveURL(new RegExp(`/s/${composedSession}`))
+  // A composed run keeps showing its stages.
+  await page.goto(`/s/${composedSession}`)
   await expect(page.getByText('4개 섹션으로 보고서를 작성했습니다.')).toBeVisible({ timeout: 10_000 })
   await page.getByRole('button', { name: /보고서를 썼습니다/ }).first().click()
   await expect(page.getByTestId('stage-list').first()).toBeVisible()
   await shot('composed-run')
-  expect(state.calls).toEqual(expect.arrayContaining(['POST /user-pipelines', 'PUT /user-pipelines/p1',
-    'POST /user-pipelines/p1/submit', `PUT /agents/${cmpAgent.id}/user-pipeline`, 'POST /user-pipelines/p1/start']))
   expect(state.problems).toEqual([])
   expect(state.unexpected).toEqual([])
 })
 
-test('store: shared flows to import or start', async ({ page }, testInfo) => {
+test('직접 구성 can start from an order made before', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo)
-  const shot = shooter(page, testInfo)
-  // Nothing of the person's own yet: the workflows tab opens on 탐색.
-  await page.goto('/pipelines?tab=store')
-  await expect(page).toHaveURL(/\/customize\?tab=workflows&view=explore/)
-  const card = page.getByTestId('item-card').filter({ hasText: '분석 → 비교 → 개조식 요약' }).first()
-  await expect(card).toBeVisible({ timeout: 15_000 })
-  await shot('store')
-  await card.getByRole('button', { name: '분석 → 비교 → 개조식 요약 추가' }).click()
-  await expect.poll(() => state.mine().map((p) => p.originId)).toEqual(['p7'])
-  // 내 항목 shows the imported flow without a reload.
-  await page.getByRole('button', { name: '내 항목' }).click()
-  await expect(page.getByTestId('item-card')).toHaveCount(1)
+  const { editor } = await openCustom(page)
+  await editor.getByRole('combobox', { name: '예전에 만든 순서 가져오기' }).selectOption({ label: '예전에 만든 분석 → 비교' })
+  await expect(editor.getByTestId('pipeline-step')).toHaveText([/데이터 분석/, /비교 보고서/])
   expect(state.problems).toEqual([])
-  expect(state.unexpected).toEqual([])
 })
 
-test('admin: approve or reject a pipeline asking to be shared', async ({ page }, testInfo) => {
+test('admin: 진행 과정 검토 approves or rejects what asks to be shared', async ({ page }, testInfo) => {
   const state = await fixture(page, testInfo, { admin: true })
   const shot = shooter(page, testInfo)
   await page.goto('/admin/users')
+  await expect(page.getByRole('heading', { name: '진행 과정 검토' })).toBeVisible({ timeout: 15_000 })
   const card = page.getByTestId('pipeline-approval').first()
   await expect(card).toBeVisible({ timeout: 15_000 })
+  await expect(card).toContainText('예전에 만든 순서')
   await card.scrollIntoViewIfNeeded()
   await shot('approvals')
   await card.getByRole('button', { name: '반려' }).click()
@@ -450,7 +371,7 @@ test('admin: approve or reject a pipeline asking to be shared', async ({ page },
   await dialog.getByRole('textbox').fill('검토 모델 비용이 커서 기본 모델로 바꿔 주세요.')
   await shot('reject-reason')
   await dialog.getByRole('button', { name: '반려' }).click()
-  await expect(page.getByText('승인을 기다리는 워크플로가 없습니다')).toBeVisible()
+  await expect(page.getByText('검토를 기다리는 진행 과정이 없습니다')).toBeVisible()
   expect(state.calls).toContain('POST /admin/user-pipelines/p9/reject')
   expect(state.problems).toEqual([])
 })

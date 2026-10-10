@@ -411,6 +411,23 @@ RETIRED_MEDIA = frozenset(
 )
 
 
+#: Document 서식 taken out of the catalogue but kept in the image: nothing new chooses them,
+#: and the documents and conversations that name one are still drawn and exported in it.
+#: Retired with their agents (자기소개서·경력기술서, 고객 맞춤 제안서); migration 0060 clears
+#: the saved choices.
+RETIRED_KEPT = frozenset({"doc-career-history", "doc-client-proposal"})
+
+
+def offered() -> list[DesignTemplate]:
+    """The 서식 a person may choose: the catalogue without the retired ones it still draws."""
+    return [t for t in _TEMPLATES.values() if t.id not in RETIRED_KEPT]
+
+
+def choosable(template_id: str | None) -> DesignTemplate | None:
+    """The 서식 when a person may pick it now; None for an unknown or retired id."""
+    return None if (template_id or "") in RETIRED_KEPT else get(template_id)
+
+
 def is_retired_media(template_id: str | None) -> bool:
     """Whether the id names a retired image, audio or video 서식."""
     return (template_id or "") in RETIRED_MEDIA
@@ -450,7 +467,7 @@ def default_for(defaults: Any, kind: SessionKind) -> str | None:
     """
     if not isinstance(defaults, dict):
         return None
-    chosen = get(defaults.get(kind.value))
+    chosen = choosable(defaults.get(kind.value))
     if chosen is None or chosen.kind not in HTML_KINDS or chosen.surface is not kind:
         return None
     return chosen.id
@@ -726,6 +743,7 @@ def escape(text: str) -> str:
 __all__ = [
     "GENERIC_ID",
     "RETIRED",
+    "RETIRED_KEPT",
     "RETIRED_MEDIA",
     "is_retired_media",
     "form_text",
@@ -733,6 +751,7 @@ __all__ = [
     "SURFACE",
     "DesignTemplate",
     "all_templates",
+    "choosable",
     "assemble",
     "default_for",
     "escape",
@@ -740,6 +759,7 @@ __all__ = [
     "pictures_in",
     "preview",
     "for_surface",
+    "offered",
     "get",
     "render",
     "rendering",

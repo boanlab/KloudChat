@@ -167,7 +167,7 @@ for (const width of [390, 360]) {
     try {
       const page = await context.newPage()
       const unexpected = await mockChat(page)
-      for (const tab of ['agents', 'skills', 'workflows', 'connectors', 'memory', 'designs']) {
+      for (const tab of ['agents', 'skills', 'connectors']) {
         await page.goto(`/customize?tab=${tab}`)
         await expect(page.getByRole('heading', { level: 1, name: '사용자 지정' })).toBeVisible()
         await expect(page.getByRole('tab', { name: /./ }).first()).toBeVisible()

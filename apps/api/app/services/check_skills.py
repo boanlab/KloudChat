@@ -22,15 +22,21 @@ _AGENT_FACTS = {"career-docs": "career-docs", "data-analysis": "data-analysis"}
 #: `post` checks run by a stage of their own (`check:copy`), not by `ground`. An attached
 #: check that also names `post_check` scripts (generic-language-killer) runs here as its
 #: entry only — the safe rewrites; switched on by the person, `check:skills` runs the rest.
-OWN_STAGE = frozenset({"copy-check"})
+OWN_STAGE = frozenset(k for k, p in skill_packages.packages().items() if p.own_stage)
 #: The question ids the gap card uses, so answers are told from the file questions.
 GAP_PREFIX = "gap:"
 
 
-def attached(*, agent_key: str | None = None,
+def attached(*, agent_checks: list | tuple | None = None, agent_key: str | None = None,
              template_checks: tuple[str, ...] = ()) -> tuple[str, ...]:
-    """The check skills an agent and a 서식 attach, agent first, each once."""
-    keys = [*starter.agent_checks(agent_key), *template_checks]
+    """The check skills an agent and a 서식 attach, agent first, each once.
+
+    `agent_checks` is the agent row's own list (`Agent.check_skills`), what every agent —
+    catalogue or a person's — runs with; `agent_key` reads a shipped spec instead, for a
+    replay or a test that has no row."""
+    own = list(agent_checks or ()) if agent_checks is not None else list(
+        starter.agent_checks(agent_key))
+    keys = [*own, *template_checks]
     return tuple(k for k in dict.fromkeys(keys) if (p := skill_packages.package_for(k)) and p.stage)
 
 
@@ -142,14 +148,28 @@ def goes_on(text: str) -> bool:
 # ── after writing ────────────────────────────────────────────────────────
 
 
-def options_for(facts: str, today: dt.date | None = None) -> dict:
-    """How strict the trace is for the format: an analysis's numbers come from its tool output
-    only; a career document's titles and tools are checked too."""
+#: An agent's `check_options` the form offers (G3), with what each sets on the trace.
+CHECK_OPTIONS = {
+    #: 수치는 도구 계산 결과에서만 인정: a number counts only when a tool printed it.
+    "tool_numbers": {"bare": True, "numbers": "computed"},
+    #: 직함·제품명까지 근거 확인: titles and product names are traced too.
+    "titles": {"titles": True, "products": True},
+}
+
+
+def clean_options(raw: dict | None) -> dict[str, bool]:
+    return {k: True for k in CHECK_OPTIONS if isinstance(raw, dict) and raw.get(k)}
+
+
+def options_for(facts: str, today: dt.date | None = None,
+                settings: dict | None = None) -> dict:
+    """How strict the trace is: what the agent asked for (`Agent.check_options`), and a
+    career document's titles and tools by its format."""
     options: dict = {"today": today.isoformat() if today else ""}
-    if facts == "data-analysis":
-        options.update(bare=True, numbers="computed")
-    if facts in ("career-docs", "career_history"):
-        options.update(titles=True, products=True)
+    for key in clean_options(settings):
+        options.update(CHECK_OPTIONS[key])
+    if facts == "career_history":
+        options.update(CHECK_OPTIONS["titles"])
     return options
 
 
@@ -214,6 +234,7 @@ def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: st
 
 
 __all__ = [
-    "GAP_PREFIX", "Outcome", "attached", "fact_set", "gaps", "goes_on", "ground", "ground_sections",
-    "labelled", "of_stage", "options_for", "questions", "readings", "rule",
+    "CHECK_OPTIONS", "GAP_PREFIX", "Outcome", "attached", "clean_options", "fact_set", "gaps",
+    "goes_on", "ground", "ground_sections", "labelled", "of_stage", "options_for", "questions",
+    "readings", "rule",
 ]

@@ -6,6 +6,7 @@ kinds: [chat]
 required_tools: [run_skill_script]
 version: 0.1.0
 status: draft
+copy_check: true
 ---
 Write persuasive page copy in Korean from the user's request and material only. Clarity beats cleverness; a fact beats an adjective.
 

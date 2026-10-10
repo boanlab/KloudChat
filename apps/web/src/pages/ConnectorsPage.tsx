@@ -43,6 +43,11 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
 }
 
 /** An installed connector; catalogue entries are a separate shape with no id. */
+/** Whether a connector's surfaces narrow where it is offered: all of chat, report and slides
+ *  (or none named) say nothing worth a chip. */
+const narrowed = (kinds: readonly string[]) =>
+  kinds.length > 0 && !['chat', 'report', 'slides'].every((k) => kinds.includes(k))
+
 function ConnectorCard({
   connector,
   onOpen,
@@ -110,7 +115,6 @@ function ConnectorCard({
       )}
 
       <div className="mb-3 mt-3 flex flex-wrap gap-1.5">
-        <Badge>{t(connector.category)}</Badge>
         <Badge>{t('도구 {n}').replace('{n}', String(connector.tools.length))}</Badge>
         {writeTools > 0 && (
           <Badge tone="warn">
@@ -118,9 +122,9 @@ function ConnectorCard({
             {t('쓰기 {n}').replace('{n}', String(writeTools))}
           </Badge>
         )}
-        {connector.kinds.map((k) => (
-          <Badge key={k}>{t(kindMeta[k].label)}</Badge>
-        ))}
+        {/* Surfaces only when they narrow it; every surface says nothing. */}
+        {narrowed(connector.kinds) &&
+          connector.kinds.map((k) => <Badge key={k}>{t(kindMeta[k].label)}</Badge>)}
       </div>
 
       {/* `mt-auto` keeps the foot aligned across a row of cards. */}
@@ -203,13 +207,13 @@ function CatalogCard({ entry, onNeedsCredentials }: {
         </p>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge>{t(entry.category)}</Badge>
-        <Badge>{entry.transport}</Badge>
-        {entry.kinds.map((k) => (
-          <Badge key={k}>{t(kindMeta[k as keyof typeof kindMeta]?.label ?? k)}</Badge>
-        ))}
-      </div>
+      {narrowed(entry.kinds) && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {entry.kinds.map((k) => (
+            <Badge key={k}>{t(kindMeta[k as keyof typeof kindMeta]?.label ?? k)}</Badge>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-end border-t border-line pt-3">
         <Button
@@ -440,13 +444,11 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
 
-  const groupBy = <T extends { category: string }>(items: T[]) =>
-    items.reduce<Record<string, T[]>>((acc, item) => {
-      ;(acc[item.category] ??= []).push(item)
-      return acc
-    }, {})
-  const installedByCategory = groupBy(installed)
-  const catalogByCategory = groupBy(catalog)
+  // One flat list each: official first, then by name.
+  const ordered = <T extends { name: string; official?: boolean }>(items: T[]) =>
+    [...items].sort((a, b) => Number(!!b.official) - Number(!!a.official) || t(a.name).localeCompare(t(b.name), 'ko'))
+  const installedList = ordered(installed)
+  const catalogList = ordered(catalog)
   const empty = tab === 'installed' ? installed.length === 0 : catalog.length === 0
 
   return (
@@ -498,13 +500,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                 pick.clear()
               }}
             />
-            {Object.entries(installedByCategory).map(([category, items]) => (
-              <section key={category}>
-                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {t(category)}
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {items.map((c) => (
+            <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-list">
+                  {installedList.map((c) => (
                     <ConnectorCard
                       key={c.id}
                       connector={c}
@@ -519,23 +516,14 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                       onEditCredentials={() => setReCredential(c)}
                     />
                   ))}
-                </div>
-              </section>
-            ))}
+            </div>
             </>
           ) : (
-            Object.entries(catalogByCategory).map(([category, items]) => (
-              <section key={category}>
-                <h2 className="mb-2.5 text-xs font-semibold tracking-wide text-faint uppercase">
-                  {t(category)}
-                </h2>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {items.map((e) => (
-                    <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
-                  ))}
-                </div>
-              </section>
-            ))
+            <div className="grid gap-3 sm:grid-cols-2" data-testid="connector-catalog">
+              {catalogList.map((e) => (
+                <CatalogCard key={e.slug} entry={e} onNeedsCredentials={setCredentialsFor} />
+              ))}
+            </div>
           )}
         </div>
       </PageFrame>

@@ -17,7 +17,7 @@ Signing in opens the home screen. Use the sidebar on the left to find past conve
 | Projects · Artifacts | Goes to the workspace that holds your grouped files and to the gallery of generated outputs. |
 | Conversation list | Shown in the order **Pinned**, **conversation list** (recent conversations) and **Earlier conversations … Show more**. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |
 | Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |
-| Account menu | Workspace (agents, skills, connectors, memory, designs, conversation history), account (integration guide, usage, settings, shortcuts), administrator menu, sign out. |
+| Account menu | Customize (agents and bundles, skills, connectors), conversation history, account (integration guide, usage, settings including memory and themes, shortcuts), administrator menu, sign out. |
 
 ## Choosing a screen and using the composer
 

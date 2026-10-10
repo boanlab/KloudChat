@@ -1,0 +1,39 @@
+key = "review"
+order = 2
+name = "다 쓴 뒤 검토하기"
+description = "자료에 없는 값과 형식에 어긋난 곳을 찾아 고치고 다시 확인합니다."
+
+[[items]]
+id = "ground"
+kind = "check"
+ref = "grounding-check"
+label = "자료에 없는 내용이 없는지 근거 확인하기"
+default = true
+
+[[items]]
+id = "numbers"
+kind = "option"
+ref = "tool_numbers"
+label = "수치는 도구로 계산한 결과에서만 인정"
+default = false
+
+[[items]]
+id = "titles"
+kind = "option"
+ref = "titles"
+label = "직함·제품명까지 근거 확인"
+default = false
+
+[[items]]
+id = "format"
+kind = "flow"
+ref = "format-checks"
+label = "형식 검사"
+default = true
+
+[[items]]
+id = "repair"
+kind = "flow"
+ref = "repair"
+label = "어긋난 곳 고치고 다시 확인하기"
+default = true

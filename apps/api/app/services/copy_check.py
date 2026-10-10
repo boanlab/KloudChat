@@ -25,11 +25,8 @@ from app.services import skill_packages, skill_scripts
 
 log = logging.getLogger(__name__)
 
-#: The catalogue skills whose answers are copy.
-COPY_SKILLS = frozenset({
-    "copywriting", "ad-creative", "headline-matrix", "social-content", "content-strategy",
-    "cold-email", "copy-check",
-})
+#: The skills whose answers are copy: those whose SKILL.md says `copy_check: true`.
+COPY_SKILLS = frozenset(k for k, p in skill_packages.packages().items() if p.copy_check)
 KEY = "copy-check"
 
 Complete = Callable[[str, list[dict], str, int], Awaitable[tuple[str, dict]]]
@@ -196,10 +193,10 @@ def _cleaned(reply: str) -> str:
     return text
 
 
-#: A content plan's numbers, dates, scores and ranks are its decisions: only statements of
-#: fact, health claims and guarantees are checked when the plan skill is the only one on.
-PLAN_SKILLS = frozenset({"content-strategy"})
-PLAN_KINDS = ("claim", "medical", "guarantee")
+#: Skills that narrow what the copy check looks at (`copy_kinds` in SKILL.md): a content
+#: plan's numbers, dates, scores and ranks are its decisions, so only statements of fact,
+#: health claims and guarantees are checked when such skills are the only ones on.
+NARROWED = {k: p.copy_kinds for k, p in skill_packages.packages().items() if p.copy_kinds}
 
 
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
@@ -211,8 +208,8 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
     rows = length.targets(request)
     options: dict = {"category": claims.category_of(material)}
     on = set(skills) & COPY_SKILLS - {KEY}
-    if on and on <= PLAN_SKILLS:
-        options["kinds"] = list(PLAN_KINDS)
+    if on and on <= set(NARROWED):
+        options["kinds"] = list(dict.fromkeys(k for key in sorted(on) for k in NARROWED[key]))
     outcome = Outcome(answer)
 
     reply = await _judged(answer, material, rows, complete=complete, judge=judge or model,
