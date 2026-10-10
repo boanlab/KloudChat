@@ -32,11 +32,34 @@ class PublicationSettings(Wire):
     conversation_view: Literal["off", "on"] | None = None
 
 
+Visibility = Literal["internal", "link", "external"]
+
+
 class PublishIn(PublicationSettings):
     agent_id: str = Field(min_length=1, max_length=64)
-    #: Phase 1 opens bots to members only.
-    visibility: Literal["internal"] = "internal"
+    #: Members get the bot at once; `link` and `external` are asked of an administrator.
+    visibility: Visibility = "internal"
     note: str = Field(default="", max_length=300)
+
+
+class ScopeIn(Wire):
+    """The owner widens (asked of an administrator) or narrows (at once) the audience."""
+
+    visibility: Visibility
+    #: The daily credit cap, required before the bot opens outside.
+    credits_per_day: int | None = Field(default=None, ge=1, le=100_000_000)
+
+
+class ReviewIn(Wire):
+    decision: Literal["approve", "reject"]
+    #: Required to refuse; the owner reads it.
+    reason: str = Field(default="", max_length=300)
+
+
+class WithdrawIn(Wire):
+    """An administrator closes the outside audience: back to members only."""
+
+    reason: str = Field(min_length=4, max_length=300)
 
 
 class PreflightIn(Wire):
@@ -78,7 +101,11 @@ __all__ = [
     "PublicationPatch",
     "PublicationSettings",
     "PublishIn",
+    "ReviewIn",
+    "ScopeIn",
     "VersionIn",
+    "Visibility",
     "VisitorMessage",
     "VisitorRating",
+    "WithdrawIn",
 ]

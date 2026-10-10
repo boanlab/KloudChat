@@ -8,8 +8,13 @@ constrained here, on the session rather than on the caller:
 - the agent is the version's hidden copy (`Agent.snapshot_of`) with its knowledge text;
 - tools are 자료 찾기 and 계산 only, and no memory, 개인 맞춤 설정, project, connector, skill
   or other file of the owner's reaches the turn;
-- limits per visitor, per bot and per day, a concurrency cap per bot and across the instance,
-  and a short queue before 429.
+- limits per visitor, per address (visitors without an account), per bot and per day, the
+  owner's daily credit cap, a concurrency cap per bot and across the instance, and a short
+  queue before 429.
+
+A visitor without an account is a signed browser cookie (`VISITOR_COOKIE`), nothing more:
+they reach a bot only once an administrator opened it outside, and only their own
+conversations.
 
 The owner sees counts, frequent topics, unanswered questions (personal details masked) and
 👍👎 — not conversations, except one a visitor sent them or, with 「대화 열람」 on, those
@@ -19,6 +24,9 @@ started after the visitor's consent, both masked when read.
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import logging
 import random
 import re
@@ -47,8 +55,9 @@ from app.models.publishing import (
     PublicationSlot,
     PublicationStatus,
     PublicationVersion,
+    PublicationVisibility,
 )
-from app.models.user import AuditEvent, User, UserStatus, utcnow
+from app.models.user import AuditEvent, CreditLedger, User, UserStatus, utcnow
 from app.models.workspace import Agent, StoredFile, Visibility
 from app.services import governance, skill_specs
 
@@ -56,16 +65,28 @@ log = logging.getLogger(__name__)
 
 KST = ZoneInfo(settings.timezone)
 
-#: The limits a bot runs under unless its owner lowers them (`Publication.limits`).
+#: The limits a bot runs under unless its owner lowers them (`Publication.limits`). The
+#: per-address ones count visitors without an account only: members answer for their own.
 DEFAULT_LIMITS: dict[str, int] = {
     "perVisitorPerMinute": 10,
+    "perVisitorPerDay": 200,
     "perBotPerMinute": 60,
+    "perIpPerMinute": 20,
+    "perIpPerDay": 400,
     "turnsPerDay": 2000,
     "tokensPerDay": 4_000_000,
     "maxInputChars": 8000,
     "turnsPerConversation": 100,
     "concurrency": 4,
 }
+#: The owner's own cap on what the bot may spend a day, in credits (`limits.creditsPerDay`).
+#: Required before the bot is opened outside; no default, since only the owner knows it.
+CREDITS_PER_DAY = "creditsPerDay"
+CREDITS_PER_DAY_MAX = 100_000_000
+#: Visitors without an account, per address and day: new visitors (cookies) and conversations.
+#: Not the owner's to change; they bound what clearing cookies can buy.
+ANON_VISITORS_PER_IP_DAY = 30
+ANON_CONVERSATIONS_PER_IP_DAY = 100
 #: How long a turn waits for a free slot before 429.
 QUEUE_WAIT_SEC = 15.0
 #: A slot older than this is a crashed turn's leftover.
@@ -95,21 +116,36 @@ class Refused(Exception):
 # ── limits ─────────────────────────────────────────────────────────────
 
 
+def _whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def limits_of(pub: Publication) -> dict[str, int]:
-    """The bot's limits: the defaults, lowered where the owner asked (never raised)."""
+    """The bot's limits: the defaults, lowered where the owner asked (never raised), and the
+    owner's daily credit cap when there is one."""
     out = dict(DEFAULT_LIMITS)
     for key, value in (pub.limits or {}).items():
-        if key in out and isinstance(value, int) and not isinstance(value, bool) and value >= 1:
+        if key in out and _whole(value) and value >= 1:
             out[key] = min(value, DEFAULT_LIMITS[key])
+    if (cap := credits_cap(pub)) is not None:
+        out[CREDITS_PER_DAY] = cap
     return out
 
 
+def credits_cap(pub: Publication) -> int | None:
+    value = (pub.limits or {}).get(CREDITS_PER_DAY)
+    return min(value, CREDITS_PER_DAY_MAX) if _whole(value) and value >= 1 else None
+
+
 def clean_limits(raw: Any) -> dict[str, int]:
-    """What an owner may store: known keys, whole numbers from 1 up to the default."""
+    """What an owner may store: known keys, whole numbers from 1 up to the default; the daily
+    credit cap from 1 up to `CREDITS_PER_DAY_MAX`."""
     out: dict[str, int] = {}
     for key, value in (raw or {}).items() if isinstance(raw, dict) else []:
-        if key in DEFAULT_LIMITS and isinstance(value, int) and not isinstance(value, bool):
+        if key in DEFAULT_LIMITS and _whole(value):
             out[key] = max(1, min(value, DEFAULT_LIMITS[key]))
+        elif key == CREDITS_PER_DAY and _whole(value):
+            out[key] = max(1, min(value, CREDITS_PER_DAY_MAX))
     return out
 
 
@@ -156,24 +192,103 @@ async def counted(db: AsyncSession, publication_id: str, window: str, key: str) 
     return int(row or 0)
 
 
-async def admit(db: AsyncSession, pub: Publication, visitor_id: str,
-                now: datetime | None = None) -> None:
-    """Raises `Refused` (429) when the visitor, the bot or the day is over its limit; else
-    counts the turn. Caller commits."""
+def local_midnight(now: datetime | None = None) -> datetime:
+    """The start of the local day `day_window` counts, as an instant in UTC (as stored)."""
+    local = (now or utcnow()).astimezone(KST)
+    return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
+
+
+async def credits_today(db: AsyncSession, publication_id: str,
+                        now: datetime | None = None) -> int:
+    """Credits the bot's turns charged its owner since local midnight."""
+    spent = (await db.exec(select(func.coalesce(func.sum(CreditLedger.delta), 0)).where(
+        CreditLedger.publication_id == publication_id, CreditLedger.delta < 0,
+        col(CreditLedger.created_at) >= local_midnight(now)))).one()
+    return -int(spent or 0)
+
+
+async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
+                ip_key: str | None = None, now: datetime | None = None) -> None:
+    """Raises `Refused` (429) when the visitor, their address (a visitor without an account,
+    `ip_key`), the bot or the day is over its limit; else counts the turn. Caller commits."""
     now = now or utcnow()
     limits = limits_of(pub)
     minute, day = minute_window(now), day_window(now)
+    next_minute, midnight = _seconds_to_next_minute(now), _seconds_to_local_midnight(now)
     if await counted(db, pub.id, minute, f"turns:v:{visitor_id}") >= limits["perVisitorPerMinute"]:
-        raise Refused("visitor_rate_limited", 429, _seconds_to_next_minute(now))
+        raise Refused("visitor_rate_limited", 429, next_minute)
+    if await counted(db, pub.id, day, f"turns:v:{visitor_id}") >= limits["perVisitorPerDay"]:
+        raise Refused("visitor_daily_limit", 429, midnight)
+    if ip_key:
+        if await counted(db, pub.id, minute, f"turns:ip:{ip_key}") >= limits["perIpPerMinute"]:
+            raise Refused("visitor_rate_limited", 429, next_minute)
+        if await counted(db, pub.id, day, f"turns:ip:{ip_key}") >= limits["perIpPerDay"]:
+            raise Refused("visitor_daily_limit", 429, midnight)
     if await counted(db, pub.id, minute, "turns") >= limits["perBotPerMinute"]:
-        raise Refused("bot_rate_limited", 429, _seconds_to_next_minute(now))
+        raise Refused("bot_rate_limited", 429, next_minute)
     if await counted(db, pub.id, day, "turns") >= limits["turnsPerDay"]:
-        raise Refused("daily_turns_reached", 429, _seconds_to_local_midnight(now))
+        raise Refused("daily_turns_reached", 429, midnight)
     if await counted(db, pub.id, day, "tokens") >= limits["tokensPerDay"]:
-        raise Refused("daily_tokens_reached", 429, _seconds_to_local_midnight(now))
+        raise Refused("daily_tokens_reached", 429, midnight)
+    if (cap := credits_cap(pub)) is not None and await credits_today(db, pub.id, now) >= cap:
+        raise Refused("daily_credits_reached", 429, midnight)
     await bump(db, pub.id, minute, f"turns:v:{visitor_id}")
+    await bump(db, pub.id, day, f"turns:v:{visitor_id}")
+    if ip_key:
+        await bump(db, pub.id, minute, f"turns:ip:{ip_key}")
+        await bump(db, pub.id, day, f"turns:ip:{ip_key}")
     await bump(db, pub.id, minute, "turns")
     await bump(db, pub.id, day, "turns")
+
+
+async def admit_anonymous(db: AsyncSession, pub: Publication, ip_key: str, what: str,
+                          per_day: int, now: datetime | None = None) -> None:
+    """Counts a new visitor or conversation from an address without an account, refusing it
+    (429) past `per_day`. Caller commits."""
+    now = now or utcnow()
+    day = day_window(now)
+    key = f"{what}:ip:{ip_key}"
+    if await counted(db, pub.id, day, key) >= per_day:
+        raise Refused("visitor_daily_limit", 429, _seconds_to_local_midnight(now))
+    await bump(db, pub.id, day, key)
+
+
+# ── visitors without an account ────────────────────────────────────────
+
+
+#: The browser cookie that names a visitor without an account: `<id>.<signature>`.
+VISITOR_COOKIE = "kchat_bot_visitor"
+VISITOR_COOKIE_DAYS = 365
+_ANON_ID = re.compile(r"[A-Za-z0-9_-]{22,43}")
+
+
+def _visitor_key() -> bytes:
+    secret = settings.secret_key or settings.jwt_secret
+    return hashlib.sha256(b"kloudchat-bot-visitor\0" + secret.encode()).digest()
+
+
+def _sign(anon_id: str) -> str:
+    mac = hmac.new(_visitor_key(), anon_id.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac).decode().rstrip("=")
+
+
+def new_visitor_cookie() -> tuple[str, str]:
+    """A fresh anonymous id and the cookie value that carries it."""
+    anon_id = secrets.token_urlsafe(18)
+    return anon_id, f"{anon_id}.{_sign(anon_id)}"
+
+
+def visitor_from_cookie(value: str | None) -> str | None:
+    """The anonymous id a cookie carries, or None when it is missing or not ours."""
+    anon_id, _, signature = (value or "").partition(".")
+    if not _ANON_ID.fullmatch(anon_id) or not signature:
+        return None
+    return anon_id if hmac.compare_digest(signature, _sign(anon_id)) else None
+
+
+def ip_key(ip: str) -> str:
+    """An address as the counters key it: keyed, so the stored key does not give it back."""
+    return hmac.new(_visitor_key(), (ip or "-").encode(), hashlib.sha256).hexdigest()[:20]
 
 
 async def acquire_slot(publication_id: str, *, per_bot: int, instance_max: int,
@@ -385,9 +500,11 @@ async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list
 
 
 async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: Agent,
-                       model_id: str, note: str = "") -> PublicationVersion:
-    """Fixes the agent as it stands into a new version and makes it the active one: a hidden
-    copy of the agent and the text of its knowledge. Caller commits."""
+                       model_id: str, note: str = "", *,
+                       activate: bool = True) -> PublicationVersion:
+    """Fixes the agent as it stands into a new version: a hidden copy of the agent and the
+    text of its knowledge. It becomes the active one, or with `activate` false (a bot open
+    outside) the one waiting for review. Caller commits."""
     from app.routers.sessions import _agent_catalog_key
 
     number = int((await db.exec(select(func.max(PublicationVersion.number)).where(
@@ -435,10 +552,24 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
                  "checks": snap.check_skills or [], "contact": bool(agent.contact)},
     )
     db.add(version)
-    pub.active_version_id = version.id
+    if activate:
+        pub.active_version_id = version.id
+    else:
+        pub.pending_version_id = version.id
     pub.updated_at = utcnow()
     db.add(pub)
     return version
+
+
+def opens_outside(pub: Publication) -> bool:
+    """Whether people without an account reach the bot: its versions are then reviewed."""
+    return pub.visibility in (PublicationVisibility.link.value,
+                              PublicationVisibility.external.value)
+
+
+def flag_owner(pub: Publication) -> None:
+    """Marks something on the bot for its owner to look at (the badge)."""
+    pub.attention_at = utcnow()
 
 
 async def drop_versions(db: AsyncSession, version_rows: list[PublicationVersion]) -> None:
@@ -495,6 +626,8 @@ def pause(db: AsyncSession, pub: Publication, reason: str, *,
     pub.status = PublicationStatus.paused.value
     pub.pause_reason = reason
     pub.updated_at = utcnow()
+    if reason != "owner":
+        flag_owner(pub)
     db.add(pub)
     db.add(AuditEvent(actor_id=actor_id, action="publication.paused", target=pub.id,
                       detail=reason,
@@ -683,26 +816,37 @@ async def watch() -> None:
 
 
 __all__ = [
+    "ANON_CONVERSATIONS_PER_IP_DAY",
+    "ANON_VISITORS_PER_IP_DAY",
+    "CREDITS_PER_DAY",
     "DEFAULT_LIMITS",
     "PUBLISHABLE_TOOLS",
+    "VISITOR_COOKIE",
     "PublishedTurn",
     "Refused",
     "acquire_slot",
     "admit",
+    "admit_anonymous",
     "after_turn",
     "bump",
     "check_owners",
     "clean_limits",
+    "credits_cap",
+    "credits_today",
     "day_window",
     "delete_sessions",
     "drop_versions",
+    "flag_owner",
     "holding",
+    "ip_key",
     "limits_of",
     "make_version",
     "masked",
     "masked_transcript",
     "minute_window",
     "new_slug",
+    "new_visitor_cookie",
+    "opens_outside",
     "owner_blocks",
     "owner_may_read",
     "pause",
@@ -713,5 +857,6 @@ __all__ = [
     "sweep",
     "topics",
     "unanswered",
+    "visitor_from_cookie",
     "watch",
 ]

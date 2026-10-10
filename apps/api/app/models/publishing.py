@@ -5,8 +5,10 @@ by the publisher (`ChatSession.publication_id`), so the normal turn applies the 
 policy, credits and audit attribution. What a visitor reaches is fixed at publish time: a
 hidden copy of the agent (`Agent.snapshot_of`) and the text of its knowledge.
 
-Phase 1 opens bots to signed-in members only (`visibility = internal`); `link` and
-`external` exist in the schema for the administrator-approved scopes that follow.
+Members may open a bot as soon as it is published (`visibility = internal`). Opening it to
+people without an account — whoever holds the link (`link`) or anyone, listed on the public
+page (`external`) — waits for an administrator: the request sits in `review_state`, and only a
+version an administrator approved answers outside.
 """
 
 from __future__ import annotations
@@ -37,10 +39,22 @@ def _json(**kwargs) -> Column:
 class PublicationVisibility(StrEnum):
     #: Signed-in members of this instance.
     internal = "internal"
-    #: Whoever holds the link (administrator approval; not in phase 1).
+    #: Whoever holds the link, signed in or not; listed nowhere (administrator approval).
     link = "link"
-    #: Embedded or opened outside the institution (administrator approval; not in phase 1).
+    #: Anyone, listed on the public bot page (administrator approval).
     external = "external"
+
+
+#: Audiences from narrowest to widest: narrowing is the owner's to do, widening is reviewed.
+VISIBILITY_RANK = {"internal": 0, "link": 1, "external": 2}
+
+
+class ReviewState(StrEnum):
+    """An owner's request for a wider audience, or for a new version on one, as reviewed."""
+
+    none = ""
+    pending = "pending"
+    rejected = "rejected"
 
 
 class PublicationStatus(StrEnum):
@@ -96,6 +110,20 @@ class Publication(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     published_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: The audience asked for while a review is pending (or was refused); "" otherwise.
+    requested_visibility: str = Field(default="", max_length=20)
+    review_state: str = Field(default=ReviewState.none.value, max_length=20)
+    #: The administrator's words on the last decision (a refusal's reason), shown to the owner.
+    review_note: str = Field(default="")
+    reviewed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    reviewed_by: str | None = Field(default=None)
+    #: A new version waiting for review on a bot open outside; the approved one answers
+    #: meanwhile.
+    pending_version_id: str | None = Field(default=None)
+    #: When something the owner should look at happened (a pause, a decision), and when the
+    #: owner last opened the bot's page: the badge is the difference.
+    attention_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    owner_seen_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
 
 
 class PublicationVersion(SQLModel, table=True):
@@ -118,6 +146,9 @@ class PublicationVersion(SQLModel, table=True):
     summary: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
+    #: An administrator approved this version for people without an account.
+    approved_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    approved_by: str | None = Field(default=None)
 
 
 class PublicationVisitor(SQLModel, table=True):
@@ -125,17 +156,22 @@ class PublicationVisitor(SQLModel, table=True):
 
     __tablename__ = "publication_visitors"
     __table_args__ = (UniqueConstraint("publication_id", "user_id",
-                                       name="ux_publication_visitors_user"),)
+                                       name="ux_publication_visitors_user"),
+                      Index("ux_publication_visitors_anon", "publication_id", "anon_id",
+                            unique=True))
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
-    #: A member; null is reserved for the link scope's anonymous visitor.
+    #: A member; null for a visitor without an account.
     user_id: str | None = Field(default=None, foreign_key="users.id", index=True,
                                 ondelete="CASCADE")
+    #: A visitor without an account: the id their signed browser cookie carries.
+    anon_id: str | None = Field(default=None, max_length=64)
     #: The notice version consented to; 0 is none yet.
     consent_version: int = Field(default=0)
     consented_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     blocked: bool = Field(default=False)
+    blocked_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     first_seen_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     last_seen_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
@@ -189,4 +225,6 @@ __all__ = [
     "PublicationVersion",
     "PublicationVisibility",
     "PublicationVisitor",
+    "ReviewState",
+    "VISIBILITY_RANK",
 ]

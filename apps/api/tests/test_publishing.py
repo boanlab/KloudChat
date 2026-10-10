@@ -35,6 +35,7 @@ from app.models.publishing import (
     PublicationQuestion,
     PublicationSlot,
     PublicationVersion,
+    PublicationVisitor,
 )
 from app.models.user import AuditEvent, CreditLedger, User, UserRole, UserStatus, utcnow
 from app.models.workspace import Agent, Memory, StoredFile
@@ -178,6 +179,9 @@ async def world(monkeypatch, tmp_path):
     app.dependency_overrides[get_session] = db_session
     app.dependency_overrides[current_user] = lambda: state.user
     app.dependency_overrides[require_admin] = lambda: state.user
+    # The bot pages resolve the caller themselves: a member, or None without an account.
+    app.dependency_overrides[publications.bot_caller] = lambda: state.user
+    state.app = app
     state.users = {"owner": owner, "member": member, "other": other, "admin": admin}
     state.local = local
 
@@ -601,17 +605,18 @@ async def test_deleting_the_bot_takes_its_conversations_and_copies(world):
 # ── the migration ──────────────────────────────────────────────────────
 
 
-def _migration():
-    path = Path(__file__).parents[1] / "alembic" / "versions" / "0064_agent_publishing.py"
-    spec = importlib.util.spec_from_file_location("agent_publishing_0064", path)
+def _migration(name: str = "0064_agent_publishing"):
+    path = Path(__file__).parents[1] / "alembic" / "versions" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"migration_{name}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_the_migration_adds_and_drops_what_publishing_needs_on_sqlite():
-    migration = _migration()
-    assert (migration.revision, migration.down_revision) == ("0064", "0063")
+def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
+    first, outside = _migration(), _migration("0065_publishing_outside")
+    assert (first.revision, first.down_revision) == ("0064", "0063")
+    assert (outside.revision, outside.down_revision) == ("0065", "0064")
     engine = sa.create_engine("sqlite://")
     with engine.begin() as conn:
         for ddl in ("CREATE TABLE users (id VARCHAR PRIMARY KEY)",
@@ -621,17 +626,28 @@ def test_the_migration_adds_and_drops_what_publishing_needs_on_sqlite():
                     "CREATE TABLE governance (id VARCHAR PRIMARY KEY)"):
             conn.execute(sa.text(ddl))
         with Operations.context(MigrationContext.configure(conn)):
-            migration.upgrade()
+            first.upgrade()
+            outside.upgrade()
         inspector = sa.inspect(conn)
-        for model in (Publication, PublicationVersion, PublicationCounter, PublicationSlot,
-                      PublicationQuestion):
+        for model in (Publication, PublicationVersion, PublicationVisitor, PublicationCounter,
+                      PublicationSlot, PublicationQuestion):
             assert {c.name for c in model.__table__.columns} == {
                 c["name"] for c in inspector.get_columns(model.__tablename__)}
         assert {"publication_id", "visitor_id", "publication_version_id", "shared_at",
                 "viewable"} <= {c["name"] for c in inspector.get_columns("sessions")}
         assert {"snapshot_of", "contact"} <= {c["name"] for c in inspector.get_columns("agents")}
+        conn.execute(sa.text(
+            "INSERT INTO publications (id, owner_id, slug, visibility, created_at, updated_at) "
+            "VALUES ('p', 'u', 's', 'link', '2026-10-10', '2026-10-10')"))
         with Operations.context(MigrationContext.configure(conn)):
-            migration.downgrade()
+            outside.downgrade()
+        inspector = sa.inspect(conn)
+        assert "review_state" not in {c["name"] for c in inspector.get_columns("publications")}
+        assert "anon_id" not in {c["name"] for c in inspector.get_columns("publication_visitors")}
+        # The code before 0065 serves members only: every bot goes back to members.
+        assert conn.execute(sa.text("SELECT visibility FROM publications")).scalar() == "internal"
+        with Operations.context(MigrationContext.configure(conn)):
+            first.downgrade()
         inspector = sa.inspect(conn)
         assert "publications" not in inspector.get_table_names()
         assert {c["name"] for c in inspector.get_columns("sessions")} == {"id"}
