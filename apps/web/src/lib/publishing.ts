@@ -217,6 +217,7 @@ export function embedSnippet(slug: string): string {
 export const SCOPE_ERROR: Record<string, string> = {
   credits_cap_required: '구성원 밖으로 공개하려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
+  no_change: '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.',
 }
 
 interface BotAttention {

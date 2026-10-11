@@ -516,6 +516,32 @@ async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list
     }
 
 
+def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[str],
+                  files: list[StoredFile]) -> tuple:
+    """Everything a version answers with, for telling two apart."""
+    return (agent.name, agent.description, model_id, agent.system_prompt, sorted(tools),
+            sorted(checks), dict(agent.check_options or {}), agent.contact or "", agent.guide,
+            list(agent.starters or []), agent.temperature,
+            [(f.name, hashlib.sha256((f.text or "").encode()).hexdigest()) for f in files])
+
+
+async def same_as_latest(db: AsyncSession, pub: Publication, agent: Agent,
+                         model_id: str) -> bool:
+    """Whether the agent as it stands would publish exactly the newest version again (a second
+    click on 「새 판 공개」 while the first was still on its way)."""
+    latest = (await db.exec(select(PublicationVersion).where(
+        PublicationVersion.publication_id == pub.id)
+        .order_by(col(PublicationVersion.number).desc()).limit(1))).first()
+    snap = await db.get(Agent, latest.agent_snapshot_id) if latest is not None else None
+    if snap is None:
+        return False
+    copies = list((await db.exec(select(StoredFile).where(StoredFile.agent_id == snap.id)
+                                 .order_by(col(StoredFile.created_at)))).all())
+    return _answers_with(snap, snap.model, snap.tools or [], snap.check_skills or [], copies) \
+        == _answers_with(agent, model_id, _tools_of(agent), _post_checks(agent),
+                         await knowledge_rows(db, agent))
+
+
 async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: Agent,
                        model_id: str, note: str = "", *,
                        activate: bool = True) -> PublicationVersion:

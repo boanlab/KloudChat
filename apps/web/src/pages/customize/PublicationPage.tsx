@@ -1,5 +1,5 @@
 import { Ban, Clock, Copy, ExternalLink, Loader2, PauseCircle, PlayCircle, RotateCcw, Trash2, Upload, XCircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
 import { HubTopBar } from '@/components/customize/DetailLayout'
@@ -94,7 +94,11 @@ export function PublicationPage() {
     void load()
   }, [load])
 
+  // A second click before the first answer re-renders the button would publish twice.
+  const running = useRef(false)
   const run = async (work: () => Promise<Publication | void>) => {
+    if (running.current) return
+    running.current = true
     setBusy(true)
     setError(null)
     try {
@@ -104,6 +108,7 @@ export function PublicationPage() {
       const code = err instanceof ApiError ? err.detail : ''
       setError(SCOPE_ERROR[code] ? t(SCOPE_ERROR[code]) : errorMessage(err, t('저장하지 못했습니다.')))
     } finally {
+      running.current = false
       setBusy(false)
     }
   }

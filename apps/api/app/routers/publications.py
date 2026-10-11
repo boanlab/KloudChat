@@ -455,6 +455,8 @@ async def new_version(publication_id: str, payload: VersionIn, request: Request,
     if not checked["ok"]:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail={"code": "cannot_publish", "problems": checked["problems"]})
+    if await publishing.same_as_latest(db, pub, agent, checked["model"]["id"]):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no_change")
     reviewed = publishing.opens_outside(pub)
     version = await publishing.make_version(db, user, pub, agent, checked["model"]["id"],
                                             payload.note, activate=not reviewed)

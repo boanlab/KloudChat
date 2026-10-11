@@ -287,6 +287,9 @@ async def test_a_version_is_a_hidden_fixed_copy_and_rollback_brings_one_back(wor
     back = (await world.client.post(
         f"/publications/{pub['id']}/versions/{v1['id']}/activate")).json()
     assert back["activeVersionId"] == v1["id"]
+    # Nothing changed since the newest version: a second click makes no third one.
+    same = await world.client.post(f"/publications/{pub['id']}/versions", json={"note": "또"})
+    assert same.status_code == 409 and same.json()["detail"] == "no_change"
 
 
 # ── the visitor's turn ─────────────────────────────────────────────────
