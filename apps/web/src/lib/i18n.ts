@@ -9,6 +9,13 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 관리자 · 월 크레딧
+  '{name}의 월 크레딧을 {n}{로} 바꿨습니다.': 'Set {name}\'s monthly credits to {n}{로}.',
+  '월 크레딧을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not change the monthly credits. Try again shortly.',
+  '0으로 저장': 'Save as 0',
+  '0부터 100,000,000 사이의 정수로 입력하세요.': 'Enter a whole number from 0 to 100,000,000.',
+  '이 사용자는 다음 리필까지 모델을 쓸 수 없습니다.': 'This person cannot use any model until the next refill.',
+  '{name} 계정 삭제': 'Delete {name}\'s account',
   // 로그인·가입·비밀번호
   '{n}자 이상': 'At least {n} characters',
   '지금 {n}자': 'now {n}',
