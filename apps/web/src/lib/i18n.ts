@@ -257,6 +257,8 @@ const EN: Record<string, string> = {
   '하루 최대 크레딧': 'Daily credit limit',
   '이 챗봇이 하루에 쓸 수 있는 내 크레딧입니다. 크레딧이 들지 않는 모델이면 질문 하나를 1크레딧으로 셉니다. 다 쓰면 그날은 멈추고 다음 날 다시 열립니다.': 'The credits of yours this chatbot may spend in a day. On a model that costs no credits, each question counts as 1 credit. Once spent it stops for the day and reopens the next.',
   '1부터 {max}까지의 정수로 적어 주세요.': 'Enter a whole number from 1 to {max}.',
+  '크레딧 없음': 'No credits',
+  '1천 토큰당 입력 {in} · 출력 {out}크레딧': '{in} in · {out} out credits per 1,000 tokens',
   '질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.': 'Too many questions in a row. Send again in {n} seconds.',
   '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.': 'Nothing changed since the last version, so no new version was made.',
   '이 에이전트가 근거로 쓸 문서입니다. 질문마다 먼저 이 자료에서 찾아 답합니다. 짧은 자료는 통째로, 긴 자료는 질문과 맞는 대목만 들어갑니다.': 'Documents this agent answers from. Every question is looked up here first: short material goes in whole, long material by the passages that match the question.',

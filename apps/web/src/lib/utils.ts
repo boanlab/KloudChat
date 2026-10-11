@@ -144,3 +144,11 @@ export function browserName(ua: string): string {
     : ''
   return [browser, platform].filter(Boolean).join(' · ')
 }
+
+/** A model's token price as a picker shows it: credits per 1,000 tokens, in and out. */
+export function tokenRate(model: { inputCreditCost?: number; creditCost?: number }, t: (s: string) => string) {
+  const input = model.inputCreditCost ?? 0
+  const output = model.creditCost ?? 0
+  if (!input && !output) return t('크레딧 없음')
+  return t('1천 토큰당 입력 {in} · 출력 {out}크레딧').replace('{in}', String(input)).replace('{out}', String(output))
+}

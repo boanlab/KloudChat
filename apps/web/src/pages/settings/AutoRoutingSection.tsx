@@ -4,6 +4,7 @@ import { Badge, Button, Card, Field, Select, Switch } from '@/components/ui'
 import { errorCode, errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { tokenRate } from '@/lib/utils'
 
 /** User-facing text for the server's routing-policy refusal codes. */
 const ROUTING_REFUSALS: Record<string, string> = {
@@ -182,7 +183,7 @@ export function AutoRoutingSection() {
               .filter((model) => !economyModelIds.includes(model.id))
               .map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.label} · {model.inputCreditCost}/{model.creditCost}
+                  {model.label} · {tokenRate(model, t)}
                 </option>
               ))}
           </Select>
@@ -319,7 +320,7 @@ export function AutoRoutingSection() {
               .filter((model) => !qualityModelIds.includes(model.id))
               .map((model) => (
                 <option key={model.id} value={model.id}>
-                  {model.label} · {model.inputCreditCost}/{model.creditCost}
+                  {model.label} · {tokenRate(model, t)}
                 </option>
               ))}
           </Select>

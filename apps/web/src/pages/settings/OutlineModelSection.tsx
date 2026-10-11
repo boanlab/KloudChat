@@ -4,6 +4,7 @@ import { Button, Card, Field, Select } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { tokenRate } from '@/lib/utils'
 
 /** Model for the single outline call that plans a document; per-block calls keep the surface model. */
 export function OutlineModelSection() {
@@ -81,7 +82,7 @@ export function OutlineModelSection() {
             )}
             {planners.map((model) => (
               <option key={model.id} value={model.id}>
-                {model.label} · {model.inputCreditCost}/{model.creditCost}
+                {model.label} · {tokenRate(model, t)}
               </option>
             ))}
           </Select>
