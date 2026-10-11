@@ -59,7 +59,7 @@ test('the agent form picks a 템플릿 and a 테마; themes are kept in 설정 �
   await shot(page, 'agent-output', phone)
   await output.getByRole('link', { name: '테마 관리' }).click()
   await expect(page).toHaveURL(/\/settings\/themes$/)
-  await expect(page.getByRole('tab', { name: '테마' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '테마' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('region', { name: '내 테마' })).toContainText('학과 공식 문서')
   await page.getByRole('button', { name: '공유된 테마' }).click()
   await expect(page.getByRole('region', { name: '공유된 테마' })).toContainText('기관 공용')

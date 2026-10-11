@@ -1,5 +1,5 @@
 import { Boxes, FileText, MessageSquare, Plus } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
@@ -13,6 +13,7 @@ import {
   Modal,
   PageHeader,
   ReloadNotice,
+  RequiredNote,
   Textarea,
 } from '@/components/ui'
 import { BulkBar, PickBox, useBulkSelect } from '@/components/ui/BulkSelect'
@@ -20,6 +21,8 @@ import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
+import { errorMessage } from '@/lib/api'
+import { missingMessage } from '@/lib/formCheck'
 
 export function ProjectsPage() {
   const t = useT()
@@ -37,6 +40,31 @@ export function ProjectsPage() {
     description: '',
     instructions: '',
   })
+  const lang = useStore((s) => s.lang)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const create = async () => {
+    if (creating) return
+    if (!draft.name.trim()) {
+      setNameError(missingMessage(lang, t('이름')))
+      nameRef.current?.focus()
+      return
+    }
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const id = await createProject(draft)
+      setOpen(false)
+      setDraft({ name: '', description: '', instructions: '' })
+      navigate(`/projects/${id}`)
+    } catch (err) {
+      setCreateError(errorMessage(err, t('프로젝트를 만들지 못했습니다. 잠시 후 다시 시도하세요.')))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <>
@@ -131,27 +159,30 @@ export function ProjectsPage() {
         footer={
           <>
             <Button onClick={() => setOpen(false)}>{t('취소')}</Button>
-            <Button
-              variant="primary"
-              disabled={!draft.name.trim()}
-              onClick={() => {
-                void createProject(draft).then((id) => {
-                  setOpen(false)
-                  setDraft({ name: '', description: '', instructions: '' })
-                  navigate(`/projects/${id}`)
-                })
-              }}
-            >
+            <Button variant="primary" aria-busy={creating || undefined} onClick={() => void create()}>
               {t('만들기')}
             </Button>
           </>
         }
       >
-        <Field label={t('이름')}>
+        <form
+          noValidate
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void create()
+          }}
+        >
+        <RequiredNote />
+        <Field label={t('이름')} required error={nameError}>
           <Input
+            ref={nameRef}
             value={draft.name}
             maxLength={NAME_LIMIT}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+            onChange={(e) => {
+              setNameError(null)
+              setDraft((d) => ({ ...d, name: e.target.value }))
+            }}
             placeholder={t('예: 제품 출시 준비')}
           />
         </Field>
@@ -173,6 +204,12 @@ export function ProjectsPage() {
             placeholder={t('예: 모든 코드는 PyTorch 2.x 기준으로 작성한다. 수식은 LaTeX로.')}
           />
         </Field>
+        {createError && (
+          <p role="alert" className="text-base text-danger">
+            {createError}
+          </p>
+        )}
+        </form>
       </Modal>
     </>
   )

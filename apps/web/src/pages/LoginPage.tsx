@@ -1,14 +1,18 @@
 import { ArrowRight, CircleCheck, Clock, Loader2, TriangleAlert } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Button, Field, Input } from '@/components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { PasswordRule } from '@/components/auth/PasswordRule'
+import { Button, Field, Input, RequiredNote } from '@/components/ui'
 import { Brand } from '@/components/layout/Brand'
 import { ThemeToggle } from '@/components/layout/ThemeToggle'
 import { applyBrand } from '@/lib/brand'
-import { ApiError, authConfig } from '@/lib/api'
+import { ApiError, authConfig, isSentence } from '@/lib/api'
+import { checkRequired, DEFAULT_PASSWORD_MIN, passwordProblem } from '@/lib/formCheck'
 import { kindMeta, kindOrder } from '@/lib/kinds'
 import type { SessionKind } from '@/types'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+
+type FieldKey = 'name' | 'email' | 'password'
 
 /** Backend `detail` codes mapped to user-facing messages. */
 const ERRORS: Record<string, string> = {
@@ -31,6 +35,7 @@ const UNKNOWN_ERROR = '요청을 처리하지 못했습니다. 잠시 후 다시
 
 export function LoginPage() {
   const t = useT()
+  const lang = useStore((s) => s.lang)
   const { login, signup, authError, bootstrap, signedOutReason, adoptSession } = useStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   // No router while signed out: `?token=` on `/verify` is signup confirmation, elsewhere a password reset.
@@ -46,9 +51,18 @@ export function LoginPage() {
   )
   const [verified, setVerified] = useState<'active' | 'pending' | null>(null)
   const [signupPolicy, setSignupPolicy] = useState<{
+    mode: 'open' | 'approval' | 'closed'
     domains: string[]
     emailVerification: boolean
   } | null>(null)
+  const [passwordMin, setPasswordMin] = useState(DEFAULT_PASSWORD_MIN)
+  const [lockout, setLockout] = useState({ maxFailures: 5, lockoutMinutes: 15 })
+  /** Wrong passwords in a row for the address typed, counted here to warn before the lock. */
+  const [failures, setFailures] = useState(0)
+  const [fieldError, setFieldError] = useState<{ key: FieldKey; message: string } | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
   const [forgotOpen, setForgotOpen] = useState(false)
   const [sent, setSent] = useState(false)
   const [resetDone, setResetDone] = useState(false)
@@ -64,6 +78,8 @@ export function LoginPage() {
       .then((c) => {
         setResetEnabled(c.passwordResetEnabled)
         if (c.signup) setSignupPolicy(c.signup)
+        if (c.password?.minLength) setPasswordMin(c.password.minLength)
+        if (c.login) setLockout(c.login)
         // Ordered as in the sidebar.
         setEnabledKinds(kindOrder.filter((kind) => c.enabledKinds.includes(kind)))
         if (c.brand) {
@@ -103,6 +119,12 @@ export function LoginPage() {
   const submitReset = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy || !resetToken) return
+    const problem = passwordProblem(t, password, passwordMin)
+    setFieldError(problem ? { key: 'password', message: problem } : null)
+    if (problem) {
+      passwordRef.current?.focus()
+      return
+    }
     setBusy(true)
     setLocalError(null)
     try {
@@ -122,6 +144,9 @@ export function LoginPage() {
   const submitForgot = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
+    const missing = checkRequired(lang, [{ key: 'email' as const, label: t('이메일'), value: email, control: emailRef }])
+    setFieldError(missing)
+    if (missing) return
     setBusy(true)
     try {
       await authConfig.forgotPassword(email).catch(() => null)
@@ -135,16 +160,51 @@ export function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (busy) return
+    const missing = checkRequired<FieldKey>(lang, [
+      ...(mode === 'signup' ? [{ key: 'name' as const, label: t('이름'), value: name, control: nameRef }] : []),
+      { key: 'email', label: t('이메일'), value: email, control: emailRef },
+      { key: 'password', label: t('비밀번호'), value: password, control: passwordRef },
+    ])
+    const short = mode === 'signup' && !missing ? passwordProblem(t, password, passwordMin) : null
+    setFieldError(missing ?? (short ? { key: 'password', message: short } : null))
+    if (missing) return
+    if (short) {
+      passwordRef.current?.focus()
+      return
+    }
     setBusy(true)
     try {
       if (mode === 'login') await login(email, password)
       else await signup(email, password, name)
-    } catch {
-      // Reason is in `authError`.
+      setFailures(0)
+    } catch (err) {
+      // Reason is in `authError`. A wrong password is cleared so the next try starts empty.
+      if (err instanceof ApiError && err.detail === 'invalid_credentials') {
+        setFailures((n) => n + 1)
+        setPassword('')
+        passwordRef.current?.focus()
+      }
     } finally {
       setBusy(false)
     }
   }
+
+  /** The sign-in error as a sentence: a known code, the server's own sentence, or a general one. */
+  const authText = authError
+    ? ERRORS[authError]
+      ? t(ERRORS[authError])
+      : isSentence(authError) && !authError.startsWith('http_')
+        ? authError
+        : t(UNKNOWN_ERROR)
+    : null
+  const left = lockout.maxFailures - failures
+  const lockWarning =
+    mode === 'login' && authError === 'invalid_credentials' && failures >= 2 && left > 0
+      ? t('{n}번 더 틀리면 {m}분 동안 잠깁니다.')
+          .replace('{n}', String(left))
+          .replace('{m}', String(lockout.lockoutMinutes))
+      : null
+  const errorFor = (key: FieldKey) => (fieldError?.key === key ? fieldError.message : null)
 
   return (
     <div className="flex h-full bg-bg text-fg">
@@ -211,7 +271,9 @@ export function LoginPage() {
                   ? t('등록된 계정으로 이어서 작업합니다.')
                   : signupPolicy?.emailVerification
                     ? t('가입하면 확인 메일이 갑니다. 메일의 링크를 누르면 가입이 끝납니다.')
-                    : t('관리자 승인이 끝나면 크레딧이 배정되고 바로 쓸 수 있습니다.')}
+                    : signupPolicy?.mode === 'open'
+                      ? t('가입하면 바로 시작할 수 있습니다.')
+                      : t('관리자가 승인하면 쓸 수 있습니다.')}
           </p>
 
           {verifying && (
@@ -231,7 +293,7 @@ export function LoginPage() {
             </div>
           )}
           {localError && !resetToken && !forgotOpen && (
-            <div className="mt-6 flex items-start gap-2 rounded-control border border-danger/25 bg-danger/5 px-3 py-2.5 text-base text-danger">
+            <div role="alert" className="mt-6 flex items-start gap-2 rounded-control border border-danger/25 bg-danger/5 px-3 py-2.5 text-base text-danger">
               <TriangleAlert size={14} className="mt-0.5 shrink-0" />
               <span>{localError}</span>
             </div>
@@ -246,17 +308,26 @@ export function LoginPage() {
 
           {resetToken && (
             <form className="mt-6 space-y-4" onSubmit={submitReset}>
-              <Field label={t('새 비밀번호')} hint={t('10자 이상, 숫자와 기호 포함')}>
+              <Field
+                label={t('새 비밀번호')}
+                required
+                error={errorFor('password')}
+                hint={<PasswordRule value={password} minLength={passwordMin} />}
+              >
                 <Input
+                  ref={passwordRef}
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setFieldError(null)
+                  }}
                   autoComplete="new-password"
                   autoFocus
                 />
               </Field>
               {localError && (
-                <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
+                <div role="alert" className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
                   <TriangleAlert size={14} className="mt-0.5 shrink-0" />
                   <span>{localError}</span>
                 </div>
@@ -266,7 +337,7 @@ export function LoginPage() {
                 variant="primary"
                 size="lg"
                 className="w-full"
-                disabled={busy || password.length < 10}
+                aria-busy={busy || undefined}
               >
                 {busy ? <Loader2 size={16} className="animate-spin" /> : t('비밀번호 바꾸기')}
               </Button>
@@ -296,11 +367,15 @@ export function LoginPage() {
                 </>
               ) : (
                 <form className="space-y-4" onSubmit={submitForgot}>
-                  <Field label={t('이메일')}>
+                  <Field label={t('이메일')} required error={errorFor('email')}>
                     <Input
+                      ref={emailRef}
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value)
+                        setFieldError(null)
+                      }}
                       placeholder="you@example.com"
                       autoComplete="username"
                       autoFocus
@@ -311,7 +386,7 @@ export function LoginPage() {
                     variant="primary"
                     size="lg"
                     className="w-full"
-                    disabled={busy || !email}
+                    aria-busy={busy || undefined}
                   >
                     {busy ? <Loader2 size={16} className="animate-spin" /> : t('재설정 링크 받기')}
                   </Button>
@@ -341,7 +416,12 @@ export function LoginPage() {
             ).map((t) => (
               <button
                 key={t.id}
-                onClick={() => setMode(t.id)}
+                type="button"
+                aria-pressed={mode === t.id}
+                onClick={() => {
+                  setMode(t.id)
+                  setFieldError(null)
+                }}
                 className={`flex-1 rounded-control px-3 py-1.5 text-base font-medium transition-colors ${
                   mode === t.id ? 'bg-panel text-fg shadow-raised' : 'text-muted hover:text-fg'
                 }`}
@@ -353,12 +433,17 @@ export function LoginPage() {
           )}
 
           {!resetToken && !forgotOpen && (
-          <form className="mt-5 space-y-4" onSubmit={submit}>
+          <form className="mt-5 space-y-4" onSubmit={submit} noValidate>
+            {mode === 'signup' && <RequiredNote />}
             {mode === 'signup' && (
-              <Field label={t('이름')}>
+              <Field label={t('이름')} required error={errorFor('name')}>
                 <Input
+                  ref={nameRef}
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value)
+                    if (fieldError?.key === 'name') setFieldError(null)
+                  }}
                   placeholder={t('홍길동')}
                   autoComplete="name"
                 />
@@ -366,6 +451,8 @@ export function LoginPage() {
             )}
             <Field
               label={t('이메일')}
+              required={mode === 'signup'}
+              error={errorFor('email')}
               hint={
                 mode === 'signup' && signupPolicy && signupPolicy.domains.length > 0
                   ? `${t('가입 가능한 주소')}: ${signupPolicy.domains.map((d) => `@${d}`).join(', ')}`
@@ -373,9 +460,15 @@ export function LoginPage() {
               }
             >
               <Input
+                ref={emailRef}
                 type="email"
+                aria-required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  setFailures(0)
+                  if (fieldError?.key === 'email') setFieldError(null)
+                }}
                 placeholder={
                   mode === 'signup' && signupPolicy?.domains[0]
                     ? `you@${signupPolicy.domains[0]}`
@@ -386,12 +479,19 @@ export function LoginPage() {
             </Field>
             <Field
               label={t('비밀번호')}
-              hint={mode === 'signup' ? t('10자 이상, 숫자와 기호 포함') : undefined}
+              required={mode === 'signup'}
+              error={errorFor('password')}
+              hint={mode === 'signup' ? <PasswordRule value={password} minLength={passwordMin} /> : undefined}
             >
               <Input
+                ref={passwordRef}
                 type="password"
+                aria-required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (fieldError?.key === 'password') setFieldError(null)
+                }}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               />
             </Field>
@@ -419,10 +519,13 @@ export function LoginPage() {
                 )
               ))}
 
-            {authError && (
-              <div className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
+            {authText && (
+              <div role="alert" className="flex items-start gap-2 rounded-control border border-danger/30 bg-danger/5 px-3 py-2.5 text-base text-danger">
                 <TriangleAlert size={14} className="mt-0.5 shrink-0" />
-                <span>{ERRORS[authError] ?? UNKNOWN_ERROR}</span>
+                <span>
+                  {authText}
+                  {lockWarning && <span className="block">{lockWarning}</span>}
+                </span>
               </div>
             )}
 
@@ -431,13 +534,13 @@ export function LoginPage() {
               variant="primary"
               size="lg"
               className="w-full"
-              disabled={busy || !email || !password || (mode === 'signup' && !name)}
+              aria-busy={busy || undefined}
             >
               {busy ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
                 <>
-                  {mode === 'login' ? t('로그인') : t('가입 요청')}
+                  {mode === 'login' ? t('로그인') : signupPolicy?.mode === 'open' ? t('가입하기') : t('가입 요청')}
                   <ArrowRight size={16} />
                 </>
               )}

@@ -123,12 +123,12 @@ test('the detail says how it works in one line, its 묶음 behind 자세히 보�
 test('설정 › 메모리 holds what the hub\'s 메모리 tab held', async ({ page }, testInfo) => {
   const state = await hubFixture(page, testInfo)
   await page.goto('/settings')
-  const tabs = page.getByRole('tablist')
-  await expect(tabs.getByRole('tab', { name: '메모리' })).toBeVisible({ timeout: 15_000 })
-  await tabs.getByRole('tab', { name: '메모리' }).click()
+  const tabs = page.getByRole('navigation', { name: '설정 메뉴' })
+  await expect(tabs.getByRole('link', { name: '메모리' })).toBeVisible({ timeout: 15_000 })
+  await tabs.getByRole('link', { name: '메모리' }).click()
   await expect(page).toHaveURL(/\/settings\/memory$/)
   await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
-  await expect(tabs.getByRole('tab', { name: '테마' })).toBeVisible()
+  await expect(tabs.getByRole('link', { name: '테마' })).toBeVisible()
   expect(state.problems).toEqual([])
 })
 

@@ -242,7 +242,9 @@ async function beginEdit(page: Page, index = 1) {
 }
 
 async function openSidebarControl(page: Page, name: string | RegExp) {
-  const button = page.getByRole('button', { name, exact: typeof name === 'string' })
+  // Conversations in the sidebar are links; the account menu is a button.
+  const exact = typeof name === 'string'
+  const button = page.getByRole('link', { name, exact }).or(page.getByRole('button', { name, exact })).first()
   const bounds = await button.boundingBox()
   if (!bounds || bounds.x < 0 || bounds.x + bounds.width > (page.viewportSize()?.width ?? 0)) {
     await page.getByRole('button', { name: '사이드바 토글', exact: true }).click()
@@ -622,8 +624,8 @@ test('a fork started by account A cannot populate account B after login', async 
     await settleUi(page)
     await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
     await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-    await expect(page.getByRole('button', { name: '원본 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '수정된 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '원본 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '수정된 대화', exact: true })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '수정 후 다시 보내기', exact: true })).toHaveCount(0)
     for (const text of [...prompts, edited, freshAnswer]) await expect(page.getByText(text, { exact: true })).toHaveCount(0)
     expect(state.sendCalls()).toHaveLength(0)
@@ -653,9 +655,9 @@ test('a post-send session list from account A cannot replace account B workspace
     await settleUi(page)
     await expect(page).toHaveURL(new RegExp(`/s/${otherId}$`))
     await expect(page.getByLabel('프롬프트 입력')).toHaveValue('')
-    await expect(page.getByRole('button', { name: '원본 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '수정된 대화', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '다른 대화', exact: true })).toHaveCount(1)
+    await expect(page.getByRole('link', { name: '원본 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '수정된 대화', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '다른 대화', exact: true })).toHaveCount(1)
     for (const text of [...prompts, edited, freshAnswer]) await expect(page.getByText(text, { exact: true })).toHaveCount(0)
     expect(state.sendCalls()).toHaveLength(1)
     state.assertPreserved()

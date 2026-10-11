@@ -26,7 +26,7 @@ function Chord({ keys }: { keys: string[] }) {
   return (
     <span className="flex shrink-0 items-center gap-1">
       {keys.map((k, i) => (
-        <Key key={i}>{k === 'mod' ? (mac ? '⌘' : 'Ctrl') : k}</Key>
+        <Key key={i}>{k === 'mod' ? (mac ? '⌘' : 'Ctrl') : k === 'alt' ? (mac ? '⌥' : 'Alt') : k}</Key>
       ))}
     </span>
   )

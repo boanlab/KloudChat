@@ -6,7 +6,8 @@ import { fullSettings, ProcessSettingsEditor } from '@/components/agents/Process
 import { Group } from '@/components/customize/AgentForm'
 import { BackLink, HubTopBar } from '@/components/customize/DetailLayout'
 import { PageBody } from '@/components/layout/AppShell'
-import { Button, ConfirmDialog, Field, Input, LoadingState, Select, Textarea } from '@/components/ui'
+import { Button, ConfirmDialog, Field, Input, LoadingState, RequiredNote, Select, Textarea } from '@/components/ui'
+import { missingMessage } from '@/lib/formCheck'
 import { errorCode, errorMessage, userTemplatesApi, type UserTemplateIn } from '@/lib/api'
 import { useTemplateCatalogue } from '@/lib/templates'
 import { useT } from '@/lib/useT'
@@ -103,6 +104,9 @@ export function TemplateEditPage() {
   const [saved, setSaved] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const file = useRef<HTMLInputElement>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const lang = useStore((s) => s.lang)
   const from = params.get('from')
 
   useEffect(() => {
@@ -148,6 +152,12 @@ export function TemplateEditPage() {
   }
 
   const save = async () => {
+    if (saving) return
+    if (!value.name.trim()) {
+      setNameError(missingMessage(lang, t('이름')))
+      nameRef.current?.focus()
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -166,10 +176,10 @@ export function TemplateEditPage() {
   const title = row ? row.name : t('새 템플릿')
   return (
     <>
-      <HubTopBar tab="agents" tabLabel="에이전트" title={title} />
+      <HubTopBar tab="agents" tabLabel="내 템플릿" to="/customize/templates" title={title} />
       <PageBody>
         <div className="mx-auto max-w-3xl">
-          <BackLink tab="agents" label="에이전트" />
+          <BackLink tab="agents" label="내 템플릿" to="/customize/templates" />
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="mb-6 text-base text-muted">
             {t('문서 템플릿은 무엇을 받을지, 어떤 형식과 순서로 쓸지, 쓰기 전후에 무엇을 확인할지를 정합니다. 모양은 테마의 색과 글꼴로 그립니다.')}
@@ -187,6 +197,7 @@ export function TemplateEditPage() {
                 {error}
               </p>
             )}
+            <RequiredNote />
             {!row && (
               <Field label={t('기본 템플릿에서 시작')} hint={t('고르면 그 템플릿의 모든 설정이 채워집니다. 고친 뒤 저장합니다.')}>
                 <Select value="" onChange={(e) => void startFrom(e.target.value)}>
@@ -200,8 +211,12 @@ export function TemplateEditPage() {
               </Field>
             )}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('이름')}>
-                <Input value={value.name} maxLength={60} aria-required onChange={(e) => set('name', e.target.value)}
+              <Field label={t('이름')} required error={nameError}>
+                <Input ref={nameRef} value={value.name} maxLength={60}
+                  onChange={(e) => {
+                    setNameError(null)
+                    set('name', e.target.value)
+                  }}
                   placeholder={t('예: 우리 팀 주간 회의록')} />
               </Field>
               <Field label={t('분류')}>
@@ -227,9 +242,10 @@ export function TemplateEditPage() {
                   <Input value={value.docFormat.label} maxLength={30} onChange={(e) => setFormat('label', e.target.value)} />
                 </Field>
                 <Field label={t('머리 항목')} hint={t('한 줄에 하나, 열 개까지. 자료에 없으면 [항목] 빈칸')}>
+                  {/* One line, prefixed 예:, so an empty field does not read as already filled. */}
                   <Textarea rows={4} value={value.docFormat.fields.join('\n')}
                     onChange={(e) => setFormat('fields', e.target.value.split('\n').slice(0, 10))}
-                    placeholder={t('회의명\n일시\n장소\n참석자')} />
+                    placeholder={t('예: 회의명, 일시, 장소, 참석자를 한 줄에 하나씩')} />
                 </Field>
                 <Field label={t('번호 매기기')}>
                   <Select value={value.docFormat.numbering} onChange={(e) => setFormat('numbering', e.target.value as TemplateFormat['numbering'])}>
@@ -359,7 +375,7 @@ export function TemplateEditPage() {
                 </Button>
               )}
               <Button type="button" onClick={() => navigate(-1)}>{t('취소')}</Button>
-              <Button type="submit" variant="primary" disabled={saving || !mine || !value.name.trim()}>
+              <Button type="submit" variant="primary" disabled={!mine} aria-busy={saving || undefined}>
                 {saving ? t('저장 중…') : row ? t('저장') : t('만들기')}
               </Button>
             </div>

@@ -47,6 +47,87 @@ const EN: Record<string, string> = {
   '자체 호스팅 모델 생각': 'Self-hosted models think',
   '외부 모델 생각': 'External models think',
   '새 계정 월 크레딧': 'Monthly credits for new accounts',
+  // 관리자 · 정지 확인
+  '{name} 정지': 'Suspend {name}',
+  '{name} 정지 해제': 'Reinstate {name}',
+  '{name}님의 접속을 막을까요?': 'Block {name} from signing in?',
+  '바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.': 'They are signed out at once and their keys stop working. Bots they published stop too. Reinstate undoes this.',
+  '{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.': '{n} credits · 0–100,000,000 · this month\'s usage stays as it is.',
+  '0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.': '0–100,000,000 credits · this month\'s usage stays as it is.',
+  // 다듬기
+  '본문으로 건너뛰기': 'Skip to main content',
+  '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
+  '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
+  '새로고침': 'Reload',
+  // 용어 · 사이드바 · 모델 고르기 · 챗봇
+  '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
+  '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',
+  '진행 중인 일과 지켜야 할 조건 — 자료만 봐서는 모르는 것': 'Work in progress and conditions to keep — what the material alone does not say',
+  '참고할 외부 자료 — 주소, 대시보드, 티켓': 'Outside material to consult — addresses, dashboards, tickets',
+  '예: 답은 짧게': 'e.g. Keep answers short',
+  '위 안내를 확인하면 질문할 수 있습니다': 'Confirm the notice above to ask a question',
+  '{title} 메뉴': '{title} menu',
+  '내부 전용': 'Internal only',
+  '로컬': 'Local',
+  '외부': 'External',
+  '이 모델이 답하지 못하면 외부 모델로 넘길 수 있습니다.': 'If this model cannot answer, the request may go to an external model.',
+  // 에이전트 · 두 번 저장
+  '같은 이름의 에이전트를 방금 만들었습니다.': 'You just made an agent with this name.',
+  '다른 이름으로': 'Use another name',
+  // 불러오기 · 다시 시도
+  '불러오지 못했습니다.': 'Could not load.',
+  '평소보다 오래 걸립니다.': 'This is taking longer than usual.',
+  '기본 과정을 불러오지 못했습니다.': 'Could not load the standard processes.',
+  '기본 과정을 불러오는 중… 평소보다 오래 걸립니다.': 'Loading the standard processes… this is taking longer than usual.',
+  '모델 목록을 불러오는 중…': 'Loading models…',
+  '모델 목록을 불러오지 못했습니다.': 'Could not load the models.',
+  '기록을 불러오지 못했습니다.': 'Could not load the records.',
+  // 필수 칸 · 스킬 · 템플릿 · 프로젝트
+  '프로젝트를 만들지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not create the project. Try again shortly.',
+  '모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.': 'The model follows these in order. Write one numbered step per line.',
+  '초안으로 두기': 'Keep as a draft',
+  '초안 꺼짐 · 입력창에서 고를 수 있습니다': 'Draft off · can be picked in the composer',
+  '초안 켜짐 · 입력창에 나오지 않습니다': 'Draft on · not shown in the composer',
+  '예: 회의명, 일시, 장소, 참석자를 한 줄에 하나씩': 'e.g. meeting, date, place, attendees — one per line',
+  // 프로젝트 · 웹 자료 · 참고 파일
+  'http:// 또는 https://로 시작하는 주소를 입력하세요.': 'Enter an address that starts with http:// or https://.',
+  '웹페이지 주소를 입력하세요.': 'Enter the web page address.',
+  '이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.': 'This address cannot be opened (no such host). Check it, or save the page as a PDF and upload that.',
+  '내부 네트워크 주소는 읽을 수 없습니다. 페이지를 PDF로 저장해 올리세요.': 'Internal network addresses cannot be read. Save the page as a PDF and upload that.',
+  '이 페이지에서 글을 읽지 못했습니다. 페이지를 PDF로 저장해 올리세요.': 'No text could be read from this page. Save it as a PDF and upload that.',
+  '웹페이지 읽기가 꺼져 있습니다. 관리자에게 문의하거나 PDF로 저장해 올리세요.': 'Reading web pages is turned off. Ask an administrator, or save the page as a PDF and upload that.',
+  '웹페이지를 읽어 오지 못했습니다. 주소를 확인하거나 PDF로 저장해 올리세요.': 'Could not read the web page. Check the address, or save it as a PDF and upload that.',
+  '{name}: 빈 파일이라 올리지 않았습니다.': '{name}: empty, so it was not uploaded.',
+  '{name}: 실행 파일은 읽을 수 없어 올리지 않았습니다. 문서·PDF·텍스트 파일을 올리세요.': '{name}: programs cannot be read, so it was not uploaded. Upload documents, PDFs or text files.',
+  // 관리자 · 월 크레딧
+  '{name}의 월 크레딧을 {n}{로} 바꿨습니다.': 'Set {name}\'s monthly credits to {n}{로}.',
+  '월 크레딧을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not change the monthly credits. Try again shortly.',
+  '0으로 저장': 'Save as 0',
+  '0부터 100,000,000 사이의 정수로 입력하세요.': 'Enter a whole number from 0 to 100,000,000.',
+  '이 사용자는 다음 리필까지 모델을 쓸 수 없습니다.': 'This person cannot use any model until the next refill.',
+  '{name} 계정 삭제': 'Delete {name}\'s account',
+  // 로그인·가입·비밀번호
+  '{n}자 이상': 'At least {n} characters',
+  '지금 {n}자': 'now {n}',
+  '충족': 'met',
+  '가입하면 바로 시작할 수 있습니다.': 'You can start as soon as you sign up.',
+  '관리자가 승인하면 쓸 수 있습니다.': 'You can start once an administrator approves.',
+  '가입하기': 'Sign up',
+  '{n}번 더 틀리면 {m}분 동안 잠깁니다.': '{n} more wrong tries locks sign-in for {m} minutes.',
+  '비밀번호는 보안 탭에서 바꿉니다.': 'Change your password on the Security tab.',
+  '비밀번호 변경으로 가기': 'Go to Change password',
+  '설정 메뉴': 'Settings menu',
+  // 입력 확인 · 필수 칸
+  '표시는 꼭 채워야 하는 칸입니다.': 'marks a field that must be filled.',
+  '{field}{을} 입력하세요.': 'Enter {field}{을}.',
+  '질문은 {n}자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.': 'A question can be up to {n} characters. Attach longer material with "Attach files or photos".',
+  '비밀번호는 {n}자 이상이어야 합니다.': 'The password must be at least {n} characters.',
+  '{field}{은} {n}자 이상이어야 합니다.': '{field}{은} must be at least {n} characters.',
+  '{field}{은} {n}자까지 쓸 수 있습니다.': '{field}{은} can be up to {n} characters.',
+  '이메일 주소 형식이 올바르지 않습니다.': 'That is not a valid email address.',
+  '{field} 값을 확인하세요.': 'Check the {field}.',
+  '입력한 값을 확인하세요.': 'Check what you entered.',
+  '제목': 'Title',
   // 공개 챗봇 · 규정·업무 안내
   // 공개 챗봇 채널 · 키 · 관리자 열람
   'API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.': 'The API and MCP channels are not open yet. Switch them on under Channels in Overview; once an administrator approves, call the bot with a key below. You can make keys ahead of time.',
@@ -2730,8 +2811,7 @@ const EN: Record<string, string> = {
   '엔드포인트 URL': 'Endpoint URL',
   '연결됨 · 모델 {n}종': 'Connected · {n} models',
   '열 수 없는 링크입니다': 'This link cannot be opened',
-  '영문 소문자와 하이픈으로 짓습니다. 다른 메모리에서 [[이름]]으로 불러옵니다.':
-    'Lowercase letters and hyphens. Other memories link to it with [[name]].',
+  '나중에 찾기 쉬운 짧은 이름': 'A short name that is easy to find later',
   '예: 기술 검토 도우미': 'e.g. Technical review assistant',
   '예: 모든 코드는 PyTorch 2.x 기준으로 작성한다. 수식은 LaTeX로.':
     'e.g. Write all code against PyTorch 2.x. Equations in LaTeX.',
@@ -2769,6 +2849,7 @@ const EN: Record<string, string> = {
   '매번 확인': 'Ask every time',
   '모델 설정 저장 중…': 'Saving the model setting…',
   '모델 전환은 외부 대체 모델이 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
+  '모델 전환은 외부 모델로 넘기는 예비 경로가 없는 strict-local 모델이 실제로 사용 가능할 때만 적용됩니다.':
     'Switching models applies only when a strict-local model with no external fallback is actually available.',
   '모델의 데이터 경계 또는 가격 정보를 확인할 수 없습니다':
     'This model\'s data boundary or price could not be established',
@@ -2818,6 +2899,7 @@ const EN: Record<string, string> = {
   '탐지된 개인정보 범주': 'Categories found',
   '편집으로 돌아가기': 'Back to editing',
   '프록시가 self-hosted이며 외부 대체 모델이 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
+  '프록시가 self-hosted이며 외부 모델로 넘기는 예비 경로가 없다고 명시한 모델만 선택할 수 있습니다. 현재 모델 카탈로그의 위→아래 순서로 우선 사용합니다.':
     'Only models the proxy declares self-hosted with no external fallback can be chosen. Used top to bottom in the order of the current catalogue.',
   '현재 프록시가 strict-local로 선언한 모델이 없습니다. 사용자는 마스킹 또는 편집만 선택할 수 있습니다.':
     'The proxy currently declares no strict-local model, so masking and editing are the only choices.',
@@ -3567,8 +3649,8 @@ const EN: Record<string, string> = {
   '명조 — 보고서·인쇄': 'Serif — reports and print',
   '내보내는 파일에 실제로 쓰이는 두 가지입니다.': 'The two faces the exported files actually use.',
   '문체 규율': 'Voice',
-  '이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
-    'Sent with every turn in the project. Anything longer belongs in the project instructions.',
+  '이 테마를 쓰는 모든 답에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.':
+    'Sent with every answer that uses this theme. Anything longer belongs in the project instructions.',
   '예: 제목은 명사구로 쓴다. 한 문장에 한 사실만 담는다.': 'e.g. Write headings as noun phrases. One fact per sentence.',
   '이미지 스타일': 'Image style',
   '이미지 프롬프트 뒤에 그대로 붙습니다. 영어로 적는 편이 잘 통합니다.':

@@ -163,6 +163,7 @@ function Evidence({ evidence }: { evidence: StageEvidence }) {
   )
 }
 
+/** How long a stage took, in seconds; nothing for one that took no measurable time (「0ms」). */
 function seconds(ms?: number) {
   // A step that took no measurable time says nothing with 「0ms」.
   if (ms === undefined || ms < 1) return null

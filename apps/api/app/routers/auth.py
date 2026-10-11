@@ -45,6 +45,7 @@ from app.models.user import (
     PasswordReset as PasswordResetRow,
 )
 from app.schemas.auth import (
+    PASSWORD_MIN_LENGTH,
     AccessEventOut,
     AccessEventPage,
     ActiveSessionOut,
@@ -727,6 +728,13 @@ async def auth_config(db: DbSession):
             "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
         },
         "idleTimeoutMinutes": policy.idle_timeout_minutes,
+        # The rule every password form enforces, so the hints say what the server checks.
+        "password": {"minLength": PASSWORD_MIN_LENGTH},
+        # How many wrong passwords in a row lock an address, and for how long.
+        "login": {
+            "maxFailures": max(1, settings.login_max_failures),
+            "lockoutMinutes": settings.login_lockout_min,
+        },
     }
 
 

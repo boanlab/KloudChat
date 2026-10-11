@@ -142,7 +142,7 @@ test('a required tab click that does not navigate fails closed', async ({ page }
   const state = await mockAudit(page)
   await page.addInitScript(() => {
     document.addEventListener('click', (event) => {
-      if ((event.target as Element).closest('[role="tab"][href]')) {
+      if ((event.target as Element).closest('main nav a[href^="/settings"]')) {
         event.preventDefault()
         event.stopImmediatePropagation()
       }

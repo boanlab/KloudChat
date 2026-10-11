@@ -318,7 +318,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
 
         <Field
           label={`${t('문체 규율')} — ${(draft.body ?? '').length}/${BODY_MAX}`}
-          hint={t('이 프로젝트의 모든 턴에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.')}
+          hint={t('이 테마를 쓰는 모든 답에 함께 전달됩니다. 길어질 내용은 프로젝트 지침에 적으세요.')}
         >
           <Textarea
             rows={3}

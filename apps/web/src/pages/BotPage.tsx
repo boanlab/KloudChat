@@ -74,6 +74,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
   const stopper = useRef<AbortController | null>(null)
   const seq = useRef(0)
   const end = useRef<HTMLDivElement>(null)
+  const input = useRef<HTMLTextAreaElement>(null)
 
   const loadList = useCallback(async () => {
     try {
@@ -132,6 +133,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
     try {
       await botsApi.consent(slug, bot.consentVersion)
       setBot({ ...bot, consented: true })
+      // Straight on to the question; the box was disabled until now.
+      window.requestAnimationFrame(() => input.current?.focus())
     } catch (err) {
       setError(botErrorMessage(err, t))
     }
@@ -203,7 +206,6 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
       stopper.current = null
       setBusy(false)
       update((turn) => ({ ...turn, live: false }))
-      void loadList()
       if (conversation) {
         // The stored turn: its id for 👍👎, its words as kept.
         try {
@@ -214,6 +216,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
           /* the streamed text stays */
         }
       }
+      // After the turn is stored, so a first conversation shows up in 「내 대화」 with its title.
+      void loadList()
     }
   }
 
@@ -527,13 +531,18 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
               )}
               <div className="flex items-end gap-2">
                 <Textarea
+                  ref={input}
                   rows={2}
                   value={text}
                   disabled={!bot.consented || closed}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={onKey}
                   aria-label={t('질문 입력')}
-                  placeholder={bot.branding.placeholder || t('질문을 입력하세요')}
+                  placeholder={
+                    !bot.consented
+                      ? t('위 안내를 확인하면 질문할 수 있습니다')
+                      : bot.branding.placeholder || t('질문을 입력하세요')
+                  }
                   className="max-h-48 min-h-11"
                 />
                 {busy ? (

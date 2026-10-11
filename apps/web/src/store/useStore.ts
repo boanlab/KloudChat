@@ -83,7 +83,8 @@ import type {
   ToolCatalogEntry,
   User,
 } from '@/types'
-import { uid } from '@/lib/utils'
+import { fileSize, uid } from '@/lib/utils'
+import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
 
@@ -485,6 +486,8 @@ interface State {
   setNotice: (notice: string | null) => void
   /** A neutral, passing message with at most one action (「빼기」); outlives navigation. */
   toast: { text: string; action?: { label: string; run: () => void } } | null
+  /** The server's password rule (`/auth/config`), for every form that sets one. */
+  passwordMinLength: number
   setToast: (toast: { text: string; action?: { label: string; run: () => void } } | null) => void
   /** Rendering template picked in the gallery, waiting for the turn that will use it. */
   pendingTemplate: DesignTemplateRow | null
@@ -927,6 +930,7 @@ export const useStore = create<State>((set, get) => ({
               enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
               idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
               dictationEnabled: Boolean(c.dictationEnabled),
+              passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
             })
             armIdleWatch(c.idleTimeoutMinutes ?? 0, () => void get().logout('idle'))
           })
@@ -1210,8 +1214,8 @@ export const useStore = create<State>((set, get) => ({
   },
   apiKeys: null,
   loadApiKeys: async () => {
-    const rows = await keysApi.list().catch(() => null)
-    if (rows) set({ apiKeys: rows })
+    // Throws: the 키 screen shows the failure with 다시 시도 instead of loading forever.
+    set({ apiKeys: await keysApi.list() })
   },
   createApiKey: async (name) => {
     const row = await keysApi.create(name)
@@ -2106,8 +2110,10 @@ export const useStore = create<State>((set, get) => ({
       enabledKinds: (c.enabledKinds ?? ['chat']) as SessionKind[],
       idleTimeoutMinutes: c.idleTimeoutMinutes ?? 0,
       dictationEnabled: Boolean(c.dictationEnabled),
+      passwordMinLength: c.password?.minLength ?? DEFAULT_PASSWORD_MIN,
     })
   },
+  passwordMinLength: DEFAULT_PASSWORD_MIN,
   enabledKinds: ['chat', 'report', 'slides'],
   avOptions: {
     mode: 'video',
@@ -2974,8 +2980,8 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
 
 /* ── wire row → component shape ──────────────────────────────────────── */
 
-const bytes = (n: number) =>
-  n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+/** Exact for small files: an empty one reads 「0 B」, not 「1 KB」. */
+const bytes = (n: number) => fileSize(n)
 
 function toProjectFile(f: FileRow): ProjectFile {
   return {

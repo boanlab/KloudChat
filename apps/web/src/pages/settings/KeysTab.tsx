@@ -1,7 +1,8 @@
 import { errorMessage } from '@/lib/api'
 import { Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Badge, Button, Card, Field, Input, Modal } from '@/components/ui'
+import { useState } from 'react'
+import { useResource } from '@/lib/useResource'
+import { Badge, Button, Card, Field, Input, Modal, ResourceStatus } from '@/components/ui'
 import { relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { copyText } from '@/lib/clipboard'
@@ -18,9 +19,7 @@ export function KeysTab() {
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    void loadApiKeys()
-  }, [loadApiKeys])
+  const listing = useResource(loadApiKeys, [loadApiKeys])
 
   const allowed = user?.allowedModels ?? []
 
@@ -55,8 +54,10 @@ export function KeysTab() {
         </Card>
       )}
 
-      {apiKeys === null ? (
-        <Card className="p-8 text-center text-base text-muted">{t('불러오는 중입니다…')}</Card>
+      {apiKeys === null || listing.status === 'error' ? (
+        <Card>
+          <ResourceStatus resource={listing} label={t('불러오는 중입니다…')} failed={t('키 목록을 불러오지 못했습니다.')} />
+        </Card>
       ) : apiKeys.length === 0 ? (
         <Card className="p-8 text-center">
           <p className="text-base font-medium">{t('발급한 키가 없습니다')}</p>

@@ -163,7 +163,7 @@ test('every old address lands where its screen went', async ({ page }, testInfo)
     await expect(page, from).toHaveURL(to, { timeout: 15_000 })
   }
   await page.goto('/memory')
-  await expect(page.getByRole('tab', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
   await page.goto('/designs')
   await expect(page.getByTestId('settings-themes')).toBeVisible()
@@ -199,8 +199,8 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
   await expect(side.getByText('고정됨')).toBeVisible({ timeout: 15_000 })
   await expect(side.getByText('최근', { exact: true })).toBeVisible()
   // 1 pinned + 15 recent.
-  await expect(side.getByRole('button', { name: /^대화 \d+$/ })).toHaveCount(16)
-  await expect(side.getByRole('button', { name: old.title, exact: true })).toHaveCount(0)
+  await expect(side.getByRole('link', { name: /^대화 \d+$/ })).toHaveCount(16)
+  await expect(side.getByRole('link', { name: old.title, exact: true })).toHaveCount(0)
   await expect(side.getByRole('link', { name: '모든 대화 보기' })).toHaveAttribute('href', '/history')
 
   // The 검색 box opens the search dialog (search-dialog.spec.ts covers what it finds).
@@ -212,7 +212,7 @@ test('sidebar: pinned, then the 15 most recent, then 모든 대화 보기; the b
   // An older conversation, once open, stays in view.
   await page.goto(`/s/${old.id}`)
   if (testInfo.project.name === 'phone') await page.getByRole('button', { name: '사이드바 토글' }).click()
-  await expect(side.getByRole('button', { name: old.title, exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(side.getByRole('link', { name: old.title, exact: true })).toBeVisible({ timeout: 15_000 })
   await side.getByRole('link', { name: '모든 대화 보기' }).click()
   await expect(page).toHaveURL(/\/history$/)
   expect(state.problems).toEqual([])

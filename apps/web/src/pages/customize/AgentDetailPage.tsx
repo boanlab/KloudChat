@@ -1,4 +1,4 @@
-import { Bot, Copy, ExternalLink, Lock, Megaphone, Settings2, Share2, Trash2 } from 'lucide-react'
+import { Bot, Copy, ExternalLink, Lock, Settings2, Share2, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ProcessChain } from '@/components/agents/ProcessSection'
@@ -83,9 +83,9 @@ export function AgentDetailPage() {
   if (editable) menu.push({ label: '공유', icon: <Share2 size={14} />, run: () => setSharing(true) })
   // A chat agent of one's own, opened to members as a bot (공개 챗봇).
   const chatAgent = (agent.surface ?? agent.kinds[0] ?? 'chat') === 'chat'
-  if (editable && chatAgent) {
-    menu.push({ label: '챗봇으로 공개', icon: <Megaphone size={14} />, run: () => setPublishing(true) })
-  }
+  // Publishing is the owner's next step, so it is the main button rather than under ⋯; once
+  // published, the 챗봇 section below manages it.
+  const canPublish = editable && chatAgent && !agent.publication
   if (editable) {
     menu.push({
       label: '복제',
@@ -117,8 +117,9 @@ export function AgentDetailPage() {
         onTry={() => tryItem(item)}
         primary={
           mine
-            ? editable
-              ? { label: '편집', run: () => document.getElementById('settings')?.scrollIntoView({ behavior: 'smooth' }) }
+            ? // The settings form is on this page already: no 편집 button that only scrolls to it.
+              canPublish
+              ? { label: '챗봇으로 공개', run: () => setPublishing(true) }
               : undefined
             : {
                 label: agent.installed ? '추가됨' : '추가',
@@ -192,6 +193,8 @@ export function AgentDetailPage() {
           </DetailSection>
         )}
 
+        {/* The form below holds the 지시 when it can be edited; it is not shown twice. */}
+        {!editable && (
         <DetailSection title={t('지시')}>
           {hidden ? (
             <p className="flex items-center gap-2 rounded-card border border-line bg-elevated px-4 py-3 text-base text-muted">
@@ -206,6 +209,7 @@ export function AgentDetailPage() {
             <p className="text-base text-faint">{t('지시가 비어 있습니다.')}</p>
           )}
         </DetailSection>
+        )}
 
         {editable && (
           <DetailSection id="settings" title={t('설정')}>

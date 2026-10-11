@@ -66,11 +66,11 @@ test('첫 턴이 끝나면 대화 제목이 생성된다', async ({ page }) => {
   await page.getByLabel('프롬프트 입력').press('Enter')
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 
-  // The provisional title is the raw prompt; sidebar entries are buttons.
+  // The provisional title is the raw prompt; sidebar entries are links.
   await expect
     .poll(
       async () => {
-        const labels = await page.getByRole('button').allInnerTexts()
+        const labels = await page.getByRole('link').allInnerTexts()
         return labels.some((t) => t.includes('광합성') && !t.includes('두 문장으로'))
       },
       { timeout: 120_000, intervals: [2_000] },

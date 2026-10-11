@@ -278,8 +278,8 @@ test('the owner publishes a chat agent to members and gets its address', async (
   const { writes } = await botRoutes(page)
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: '더 보기' }).first().click()
-  await page.getByRole('menuitem', { name: '챗봇으로 공개' }).click()
+  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await expect(dialog.getByTestId('publish-model')).toContainText('내부 Qwen')
   // Members by default, at once; nothing asks for a credit cap.
@@ -303,8 +303,8 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   const { writes } = await botRoutes(page)
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: '더 보기' }).first().click()
-  await page.getByRole('menuitem', { name: '챗봇으로 공개' }).click()
+  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await dialog.getByRole('radio', { name: /링크 공개/ }).click()
   await expect(dialog.getByTestId('scope-picker')).toContainText('관리자가 승인하면 열립니다')
@@ -471,8 +471,8 @@ test('without an internal model the dialog says why and publishes nothing', asyn
   await page.route('**/api/publications/preflight', (route) => route.fulfill({ json: preflight({ ok: false, model: null, problems: ['no_local_model'] }) }))
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: '더 보기' }).first().click()
-  await page.getByRole('menuitem', { name: '챗봇으로 공개' }).click()
+  // The detail's main action on one's own chat agent, not hidden under 더 보기.
+  await page.getByRole('button', { name: '챗봇으로 공개' }).filter({ visible: true }).first().click()
   const dialog = page.getByRole('dialog', { name: '챗봇으로 공개' })
   await expect(dialog.getByTestId('publish-problem')).toContainText('내부 모델이 없어')
   await expect(dialog.getByRole('button', { name: '공개하기' })).toBeDisabled()

@@ -1,10 +1,10 @@
 import { ChevronRight, Info, Layers } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Button, Field, Input, Modal, Select } from '@/components/ui'
+import { Button, Field, Input, Modal, ResourceStatus, Select } from '@/components/ui'
 import { StepList } from '@/components/agents/PipelineEditor'
 import { bundlesApi, errorMessage, userPipelinesApi } from '@/lib/api'
-import { bareSteps, useProcessCatalogue, useStepVerdict, type ProcessDraft } from '@/lib/process'
+import { bareSteps, useProcessCatalogue, useProcessCatalogueState, useStepVerdict, type ProcessDraft } from '@/lib/process'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
@@ -328,7 +328,8 @@ export function ProcessSection({
   const t = useT()
   const setToast = useStore((s) => s.setToast)
   const [reloaded, setReloaded] = useState(0)
-  const cat = useProcessCatalogue(reloaded)
+  const catState = useProcessCatalogueState(reloaded)
+  const cat = catState.data
   const [imports, setImports] = useState<UserPipeline[] | null>(null)
   const fixed = !!agent.catalogKey
   const base = cat?.bases.find((b) => b.key === value.base) ?? null
@@ -479,7 +480,23 @@ export function ProcessSection({
             </Button>
           </div>
         )}
-        {radio('base', '기본 과정에서 시작', cat ? '기본 에이전트가 일하는 순서를 그대로 따릅니다.' : '기본 과정을 불러오는 중…', !cat)}
+        {radio(
+          'base',
+          '기본 과정에서 시작',
+          cat
+            ? '기본 에이전트가 일하는 순서를 그대로 따릅니다.'
+            : catState.status === 'error'
+              ? '기본 과정을 불러오지 못했습니다.'
+              : catState.slow
+                ? '기본 과정을 불러오는 중… 평소보다 오래 걸립니다.'
+                : '기본 과정을 불러오는 중…',
+          !cat,
+        )}
+        {!cat && catState.status === 'error' && (
+          <div className="ml-7">
+            <ResourceStatus resource={catState} compact failed={t('기본 과정을 불러오지 못했습니다.')} />
+          </div>
+        )}
         {value.mode === 'base' && (
           <div className="ml-7 space-y-2" data-testid="process-base">
             <Select

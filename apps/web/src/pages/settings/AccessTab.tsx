@@ -14,6 +14,7 @@ import { pageCount } from '@/lib/paging'
 import { browserName, formatDateTime, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
+import { PasswordSection } from './PasswordSection'
 
 const ACTION_LABEL: Record<string, string> = {
   login: '로그인',
@@ -321,6 +322,7 @@ function AccessLog() {
 export function AccessTab() {
   return (
     <div className="space-y-8">
+      <PasswordSection />
       <ActiveSessions />
       <AccessLog />
     </div>

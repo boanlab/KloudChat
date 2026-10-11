@@ -66,6 +66,25 @@ function boundary(
   return null
 }
 
+/**
+ * The model on a phone's chip: the name without its family and boundary suffix, then where it
+ * runs — 「27b · 로컬」, 「27b · 내부 전용」 — so the part that tells two models apart survives.
+ */
+function phoneModelLabel(m: ModelInfo, t: (s: string) => string): string {
+  const bare = (m.name || m.label).replace(/\s*\([^)]*\)\s*$/, '').trim()
+  const words = bare.split(/\s+/)
+  // 「Qwen3.8 27b」 → 「27b」; a single word, or a first word that is not a family name, stays.
+  const core = words.length > 1 && /^[A-Za-z]+[\d.]*$/.test(words[0]) ? words.slice(1).join(' ') : bare
+  const place = m.strictLocal
+    ? t('내부 전용')
+    : m.dataBoundary === 'self_hosted' || m.dataBoundary === 'hybrid'
+      ? t('로컬')
+      : m.dataBoundary === 'external'
+        ? t('외부')
+        : ''
+  return place ? `${core} · ${place}` : core
+}
+
 export function ModelPicker({
   kind,
   sessionId,
@@ -157,6 +176,9 @@ export function ModelPicker({
     )
   }
   const modelLabel = unresolvedAgentModel ? t('Agent 기본 모델') : active.label
+  const triggerText = autoActive
+    ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
+    : modelLabel
 
   return (
     <Dropdown
@@ -171,7 +193,9 @@ export function ModelPicker({
           type="button"
           disabled={selectionPending}
           aria-busy={selectionPending}
-          aria-label={label ? `${label}: ${modelLabel}` : undefined}
+          // The full name, also where a phone shows the short one.
+          aria-label={label ? `${label}: ${modelLabel}` : triggerText}
+          title={!field ? triggerText : undefined}
           className={cn(
             'flex h-9 items-center gap-1.5 rounded-control text-base font-medium transition-colors',
             field
@@ -187,11 +211,17 @@ export function ModelPicker({
         >
           <span className="flex min-w-0 items-center gap-1.5">
             {autoActive ? <Gauge size={14} /> : <Cpu size={14} />}
-            <span className={cn('truncate', !field && 'max-w-[220px] phone:max-w-[38vw]')}>
-              {autoActive
-                ? `${autoLane === 'auto_quality' ? t('Auto · 품질 우선') : t('Auto · 비용 절약')} · ${modelLabel}`
-                : modelLabel}
-            </span>
+            <span className={cn('truncate', !field && 'max-w-[220px] phone:hidden')}>{triggerText}</span>
+            {!field && (
+              // A phone keeps what tells models apart; the menu has the full name.
+              <span className="hidden min-w-[120px] truncate phone:inline">
+                {autoActive
+                  ? `Auto · ${unresolvedAgentModel ? modelLabel : phoneModelLabel(active, t)}`
+                  : unresolvedAgentModel
+                    ? modelLabel
+                    : phoneModelLabel(active, t)}
+              </span>
+            )}
           </span>
           {!compact && <ChevronDown size={14} className="shrink-0 text-faint" />}
         </button>
@@ -292,14 +322,18 @@ function ModelMenu({
         : qualityReason,
     },
   ]
+  // A lane the administrator has not made usable is not offered; the one in use stays visible.
+  const offeredLanes = showAuto ? lanes.filter((lane) => lane.available || autoLane === lane.mode) : []
   return (
     <>
-      {showAuto && (
-        <div className="border-b border-line p-1.5">
-          {lanes.map((lane) => (
+      {offeredLanes.length > 0 && (
+        <div className="border-b border-line p-1.5" role="group" aria-label={t('Auto')}>
+          {offeredLanes.map((lane) => (
             <button
               key={lane.mode}
               type="button"
+              role="menuitemradio"
+              aria-checked={autoLane === lane.mode}
               disabled={!lane.available || selectionPending}
               onClick={() => {
                 void onAuto(lane.mode)
@@ -327,7 +361,7 @@ function ModelMenu({
         </div>
       )}
       <div className="px-2.5 pt-2 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
-        {showAuto ? t('모델 직접 선택') : t('모델')}
+        {offeredLanes.length > 0 ? t('모델 직접 선택') : t('모델')}
       </div>
       {usable.length > SEARCHABLE_FROM && (
         <div className="px-1.5 pb-1">
@@ -371,6 +405,8 @@ function ModelMenu({
         <button
           key={m.id}
           type="button"
+          role="menuitemradio"
+          aria-checked={!unresolvedAgentModel && m.id === active.id}
           onClick={() => {
             void onPick(m.id)
             closeMenu()

@@ -1,6 +1,6 @@
 import { ChevronDown, Search } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { adminApi, usageApi, type AuditPage, type AuditQuery, type AuditRow } from '@/lib/api'
+import { adminApi, usageApi, type AuditQuery, type AuditRow } from '@/lib/api'
 import {
   ACTION_GROUPS,
   FIELD_LABEL,
@@ -11,11 +11,12 @@ import {
   targetParts,
   valueWords,
 } from '@/lib/auditLabels'
-import { Badge, Card, Input, Select } from '@/components/ui'
+import { Badge, Card, Input, ResourceStatus, Select } from '@/components/ui'
 import { Pager } from '@/components/ui/Pager'
 import { browserName, cn, formatDateTime } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
+import { useResource } from '@/lib/useResource'
 
 const SEVERITY: Record<string, 'neutral' | 'warn' | 'danger'> = {
   info: 'neutral',
@@ -73,8 +74,6 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(50)
-  const [data, setData] = useState<AuditPage | null>(null)
-  const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const settledQuery = useSettled(query)
   const settledAccount = useSettled(account)
@@ -103,24 +102,17 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
     }
   }, [page, size, settledQuery, settledAccount, group, period, from, to, t])
 
+  const audit = useResource(() => usageApi.audit(request), [request])
+  const data = audit.data
   useEffect(() => {
-    let live = true
-    usageApi.audit(request).then(
-      (result) => {
-        if (!live) return
-        setFailed(false)
-        setData(result)
-        setOpen(new Set())
-        if (!request.q && !request.account && !request.action && !request.since && !request.until) {
-          onTotal?.(result.total)
-        }
-      },
-      () => live && setFailed(true),
-    )
-    return () => {
-      live = false
+    if (!audit.data) return
+    setOpen(new Set())
+    if (!request.q && !request.account && !request.action && !request.since && !request.until) {
+      onTotal?.(audit.data.total)
     }
-  }, [request, onTotal])
+    // Once per answer, not per filter edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit.data])
 
   // A narrower filter starts again at the first page.
   const reset = <T,>(set: (v: T) => void) => (v: T) => {
@@ -201,10 +193,14 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
         </div>
       )}
 
-      {failed ? (
-        <Card className="p-10 text-center text-base text-muted">{t('기록을 불러오지 못했습니다')}</Card>
-      ) : !data ? (
-        <Card className="p-10 text-center text-base text-muted">{t('기록을 불러오는 중입니다…')}</Card>
+      {audit.status === 'error' || !data ? (
+        <Card>
+          <ResourceStatus
+            resource={audit}
+            label={t('기록을 불러오는 중입니다…')}
+            failed={t('기록을 불러오지 못했습니다.')}
+          />
+        </Card>
       ) : data.items.length === 0 ? (
         <Card className="p-10 text-center text-base text-muted">
           {filtered ? t('조건에 맞는 기록이 없습니다') : t('아직 기록된 사건이 없습니다')}

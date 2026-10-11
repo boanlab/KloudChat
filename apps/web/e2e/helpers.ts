@@ -25,7 +25,7 @@ async function submitAuthForm(page: Page, mode: 'login' | 'signup') {
     page.waitForResponse(
       (r) => r.url().includes(`/api/auth/${mode}`) && r.request().method() === 'POST',
     ),
-    form.getByRole('button', { name: mode === 'login' ? '로그인' : '가입 요청' }).click(),
+    form.getByRole('button', { name: mode === 'login' ? '로그인' : /^(가입 요청|가입하기)$/ }).click(),
   ])
 }
 

@@ -185,7 +185,7 @@ async function routeReady(page: Page, path: string) {
     await expect(main.getByRole('heading', { level: 1, name: t(heading), exact: true }),
       `Audit route: expected screen heading is missing at ${path}`).toBeVisible()
   }
-  if (parent) await expect(main.locator(`[role="tab"][href="${path}"]`),
+  if (parent) await expect(main.locator(`a[href="${path}"]`).first(),
     `Audit route: selected tab is missing at ${path}`).toHaveAttribute('aria-current', 'page')
 }
 
@@ -243,7 +243,8 @@ export async function auditEnglishMode(page: Page, routes = AUDIT_ROUTES): Promi
     await visit(page, path, userId)
     findings.push(...(await scan(page, name)))
 
-    const tabs = page.getByRole('tab')
+    // Tabs, and the settings menu's links (a nav of pages, not a tablist).
+    const tabs = page.locator(`[role="tab"], main nav[aria-label="${t('설정 메뉴')}"] a[href]`)
     const count = await tabs.count()
     for (let i = 0; i < count; i++) {
       const tab = tabs.nth(i)

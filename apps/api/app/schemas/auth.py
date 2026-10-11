@@ -21,10 +21,16 @@ class Wire(BaseModel):
     model_config = ConfigDict(alias_generator=_camel, populate_by_name=True)
 
 
+# The one password rule: signup, a change, a reset link and an administrator's reset all use it,
+# and `/auth/config` hands it to the screens that explain it.
+PASSWORD_MIN_LENGTH = 10
+PASSWORD_MAX_LENGTH = 200
+
+
 class SignupRequest(Wire):
     email: EmailStr
     # Upper bound keeps argon2 from becoming a DoS vector.
-    password: str = Field(min_length=10, max_length=200)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
     name: str = Field(min_length=1, max_length=80)
 
 
@@ -94,7 +100,7 @@ class ProfilePatch(Wire):
 
 class PasswordChange(Wire):
     current_password: str = Field(max_length=200)
-    new_password: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class PasswordForgot(Wire):
@@ -103,7 +109,7 @@ class PasswordForgot(Wire):
 
 class PasswordReset(Wire):
     token: str = Field(max_length=200)
-    new_password: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class EmailVerify(Wire):
