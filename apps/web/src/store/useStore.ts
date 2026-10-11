@@ -318,6 +318,8 @@ interface State {
   // ── models ────────────────────────────────────────────────────────────
   models: ModelInfo[]
   modelsLoading: boolean
+  /** The model list has answered at least once (or failed): before that, an empty list means "not yet". */
+  modelsSettled: boolean
   /** Per collection: still loading (an empty list alone cannot say). */
   workspaceLoading: boolean
   artifactsLoading: boolean
@@ -1063,6 +1065,7 @@ export const useStore = create<State>((set, get) => ({
   usersLoading: false,
   models: [],
   modelsLoading: false,
+  modelsSettled: false,
   workspaceLoading: true,
   artifactsLoading: true,
   artifactsLoadingMore: false,
@@ -1213,6 +1216,7 @@ export const useStore = create<State>((set, get) => ({
           qualityModelIds: [],
         },
         modelsLoading: false,
+        modelsSettled: true,
         modelByKind: reconcileDefaults(
           s.modelByKind,
           live,
@@ -1232,6 +1236,7 @@ export const useStore = create<State>((set, get) => ({
       // Keep what is loaded. `litellmAvailable` describes the list, not this request.
       set((s) => ({
         modelsLoading: false,
+        modelsSettled: true,
         litellmAvailable: s.models.length > 0 ? s.litellmAvailable : false,
       }))
     }
