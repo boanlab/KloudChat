@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import EmailStr, Field
 
 from app.models.user import UserRole
-from app.schemas.auth import Wire
+from app.schemas.auth import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, Wire
 from app.schemas.workspace import ApiKeyOut
 
 
@@ -103,7 +103,7 @@ class AdminKeysOut(Wire):
 class ResetPasswordRequest(Wire):
     """A password an administrator hands to the person; every sign-in they hold ends."""
 
-    password: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 class SetCreditsRequest(Wire):
