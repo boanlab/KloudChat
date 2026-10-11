@@ -5894,7 +5894,8 @@ async def _answer_turn(
             async with SessionLocal() as db:
                 await publishing.after_turn(
                     db, published, question=published.question or first_user_message,
-                    answer=content, usage=usage, failed=bool(failed))
+                    answer=content, usage=usage, failed=bool(failed),
+                    credits=credits + title_credits + side_credits)
                 await db.commit()
         except Exception as exc:  # noqa: BLE001 — the answer is kept without its count
             log.warning("bot statistics for %s not counted: %s",

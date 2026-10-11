@@ -459,6 +459,19 @@ async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world):
     assert publishing.clean_limits({"perBotPerMinute": 10_000}) == {"perBotPerMinute": 60}
 
 
+async def test_a_free_model_still_counts_one_credit_a_turn_against_the_daily_cap(world):
+    # strict-local/m is priced at 0: without a floor the cap would never be reached.
+    pub = await _publish(world, limits={"creditsPerDay": 2})
+    slug = pub["slug"]
+    sid, _ = await _ask(world, slug, "휴학 기한")
+    second = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                     json={"content": "복학 기한"})
+    assert second.status_code == 200
+    third = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                    json={"content": "한 번 더"})
+    assert third.status_code == 429 and third.json()["detail"] == "daily_credits_reached"
+
+
 async def test_a_bot_runs_at_most_its_concurrency_and_then_waits_in_line(world):
     first = await publishing.acquire_slot("bot", per_bot=1, instance_max=16, wait=0)
     assert first is not None

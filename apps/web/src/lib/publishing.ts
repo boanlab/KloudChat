@@ -265,10 +265,14 @@ export interface SettingsDraft {
   limits: BotLimits
 }
 
-/** A daily credit cap as typed: a whole number from 1, or undefined. */
+/** The largest daily credit cap the server stores (`publishing.CREDITS_PER_DAY_MAX`). */
+export const CREDITS_PER_DAY_MAX = 100_000_000
+
+/** A daily credit cap as typed: a whole number from 1 up to the largest, or undefined. */
 export function creditsCap(raw: string | number | undefined): number | undefined {
-  const value = Math.floor(Number(raw))
-  return Number.isFinite(value) && value >= 1 ? value : undefined
+  if (typeof raw === 'string' && !/^\s*\d+\s*$/.test(raw)) return undefined
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 1 && value <= CREDITS_PER_DAY_MAX ? value : undefined
 }
 
 export function toSettings(draft: SettingsDraft): PublicationSettings {

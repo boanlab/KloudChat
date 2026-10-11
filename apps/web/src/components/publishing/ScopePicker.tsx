@@ -1,7 +1,7 @@
 import { Globe2, Link2, Users } from 'lucide-react'
 import { Field, Input } from '@/components/ui'
 import type { BotVisibility } from '@/lib/api'
-import { VISIBILITIES, VISIBILITY_HINT, VISIBILITY_LABEL } from '@/lib/publishing'
+import { CREDITS_PER_DAY_MAX, VISIBILITIES, VISIBILITY_HINT, VISIBILITY_LABEL, creditsCap } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
@@ -59,24 +59,34 @@ export function ScopePicker({
         })}
       </div>
       {outside && (
-        <Field
-          label={t('하루 최대 크레딧')}
-          hint={
-            t('이 챗봇이 하루에 쓸 수 있는 내 크레딧입니다. 다 쓰면 그날은 멈추고 다음 날 다시 열립니다.') +
-            (creditsRemaining !== undefined ? ` ${t('남은 크레딧: {n}').replace('{n}', creditsRemaining.toLocaleString())}` : '')
-          }
-        >
-          <Input
-            type="number"
-            min={1}
-            inputMode="numeric"
-            required
-            value={credits}
-            onChange={(e) => onCredits(e.target.value)}
-            data-testid="scope-credits"
-            className="max-w-48"
-          />
-        </Field>
+        <div className="space-y-1">
+          <Field
+            label={t('하루 최대 크레딧')}
+            hint={
+              t('이 챗봇이 하루에 쓸 수 있는 내 크레딧입니다. 크레딧이 들지 않는 모델이면 질문 하나를 1크레딧으로 셉니다. 다 쓰면 그날은 멈추고 다음 날 다시 열립니다.') +
+              (creditsRemaining !== undefined ? ` ${t('남은 크레딧: {n}').replace('{n}', creditsRemaining.toLocaleString())}` : '')
+            }
+          >
+            <Input
+              type="number"
+              min={1}
+              max={CREDITS_PER_DAY_MAX}
+              step={1}
+              inputMode="numeric"
+              required
+              value={credits}
+              onChange={(e) => onCredits(e.target.value)}
+              aria-invalid={credits.trim() !== '' && creditsCap(credits) === undefined}
+              data-testid="scope-credits"
+              className="block max-w-48"
+            />
+          </Field>
+          {credits.trim() !== '' && creditsCap(credits) === undefined && (
+            <p role="alert" className="text-sm text-danger" data-testid="scope-credits-error">
+              {t('1부터 {max}까지의 정수로 적어 주세요.').replace('{max}', CREDITS_PER_DAY_MAX.toLocaleString())}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )

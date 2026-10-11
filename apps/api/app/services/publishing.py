@@ -84,7 +84,11 @@ DEFAULT_LIMITS: dict[str, int] = {
 }
 #: The owner's own cap on what the bot may spend a day, in credits (`limits.creditsPerDay`).
 #: Required before the bot is opened outside; no default, since only the owner knows it.
+#: A turn that charged nothing (a self-hosted model priced at 0) still counts one credit
+#: against it (`FREE_TURNS`), so the cap bounds a free bot by its number of answers.
 CREDITS_PER_DAY = "creditsPerDay"
+#: Day counter of the bot's turns that charged no credits; each counts one toward the cap.
+FREE_TURNS = "freeTurns"
 CREDITS_PER_DAY_MAX = 100_000_000
 #: Visitors without an account, per address and day: new visitors (cookies) and conversations.
 #: Not the owner's to change; they bound what clearing cookies can buy.
@@ -238,7 +242,9 @@ async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
         raise Refused("daily_turns_reached", 429, midnight)
     if await counted(db, pub.id, day, "tokens") >= limits["tokensPerDay"]:
         raise Refused("daily_tokens_reached", 429, midnight)
-    if (cap := credits_cap(pub)) is not None and await credits_today(db, pub.id, now) >= cap:
+    if (cap := credits_cap(pub)) is not None and (
+            await credits_today(db, pub.id, now) + await counted(db, pub.id, day, FREE_TURNS)
+            >= cap):
         raise Refused("daily_credits_reached", 429, midnight)
     await bump(db, pub.id, minute, f"turns:v:{visitor_id}")
     await bump(db, pub.id, day, f"turns:v:{visitor_id}")
@@ -872,9 +878,12 @@ def masked(text: str, limit: int = 300) -> str:
 
 
 async def after_turn(db: AsyncSession, turn: PublishedTurn, *, question: str, answer: str,
-                     usage: dict[str, Any], failed: bool) -> None:
-    """Counts the turn for the owner's statistics. Caller commits."""
+                     usage: dict[str, Any], failed: bool, credits: int = 0) -> None:
+    """Counts the turn for the owner's statistics, and a turn that charged no `credits`
+    toward the daily credit cap. Caller commits."""
     day = day_window()
+    if credits <= 0:
+        await bump(db, turn.publication_id, day, FREE_TURNS)
     tokens = int(usage.get("inputTokens") or 0) + int(usage.get("outputTokens") or 0)
     await bump(db, turn.publication_id, day, "tokens", tokens)
     if failed or not answer.strip():

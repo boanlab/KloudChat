@@ -307,7 +307,12 @@ test('opening a bot by link asks an administrator and needs a daily credit cap',
   await dialog.getByRole('radio', { name: /링크 공개/ }).click()
   await expect(dialog.getByTestId('scope-picker')).toContainText('관리자가 승인하면 열립니다')
   await expect(dialog.getByRole('button', { name: '공개하기' })).toBeDisabled()
+  // Out of range says why, next to the box, instead of only greying the button out.
+  await dialog.getByTestId('scope-credits').fill('0')
+  await expect(dialog.getByTestId('scope-credits-error')).toContainText('1부터 100,000,000까지의 정수')
+  await expect(dialog.getByRole('button', { name: '공개하기' })).toBeDisabled()
   await dialog.getByTestId('scope-credits').fill('3000')
+  await expect(dialog.getByTestId('scope-credits-error')).toHaveCount(0)
   await shot(page, 'publish-dialog-link', testInfo.project.name)
   await dialog.getByRole('button', { name: '공개하기' }).click()
   await expect(dialog.getByTestId('publish-requested')).toContainText('링크 공개는 관리자가 승인하면 열립니다')
