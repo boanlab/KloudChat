@@ -21,6 +21,8 @@ import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
 /** Within this many pixels of the bottom the transcript still follows new text. */
+/** Automatic retries of a transcript that did not arrive, before the page asks the reader. */
+const LOAD_RETRIES = 3
 const FOLLOW_GAP_PX = 120
 /** Further than this from the bottom, the 「맨 아래로」 button shows. */
 const AWAY_GAP_PX = 320
@@ -382,19 +384,41 @@ export function SessionPage() {
   const loaded = session !== null && session.messages.length > 0
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [failedLoad, setFailedLoad] = useState<{ id: string; attempt: number } | null>(null)
+  /** The session whose transcript has been fetched at least once on this page. */
+  const [fetchedId, setFetchedId] = useState<string | null>(null)
+  /** Automatic retries spent on this session's transcript. */
+  const autoRetries = useRef<{ id: string | undefined; count: number }>({ id: undefined, count: 0 })
   useEffect(() => {
     let current = true
     if (sessionId && !loaded) {
-      const completed = () => {
-        // openSession retains its shared, non-throwing contract; absence is not a new chat.
-        if (current && !useStore.getState().sessions.some((row) => row.id === sessionId)) {
-          setFailedLoad({ id: sessionId, attempt: loadAttempt })
-        }
+      const completed = (fetched: boolean) => {
+        if (!current) return
+        // A row that is gone, or a transcript that did not arrive, is not a new chat.
+        if (fetched && useStore.getState().sessions.some((row) => row.id === sessionId)) setFetchedId(sessionId)
+        else setFailedLoad({ id: sessionId, attempt: loadAttempt })
       }
-      void openSession(sessionId).then(completed, completed)
+      void openSession(sessionId).then(completed, () => completed(false))
     }
     return () => { current = false }
   }, [sessionId, loaded, openSession, loadAttempt])
+  if (autoRetries.current.id !== sessionId) autoRetries.current = { id: sessionId, count: 0 }
+  const loadFailed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
+  // A dropped request is retried on its own a few times, waiting longer each time.
+  const retrying = loadFailed && autoRetries.current.count < LOAD_RETRIES
+  useEffect(() => {
+    if (!retrying) return
+    const wait = 1500 * 2 ** autoRetries.current.count
+    const timer = window.setTimeout(() => {
+      autoRetries.current.count += 1
+      setLoadAttempt((attempt) => attempt + 1)
+    }, wait)
+    return () => window.clearTimeout(timer)
+  }, [retrying])
+  const retryLoad = () => setLoadAttempt((attempt) => attempt + 1)
+  // A conversation with turns on the server never shows the empty greeting while they load.
+  const awaitingTranscript =
+    session !== null && session !== undefined && session.messages.length === 0 &&
+    (session.messageCount > 0 || !!session.pending) && fetchedId !== session.id
 
   // Messages and jobs share one timeline, ordered by creation.
   const timeline = useMemo(() => {
@@ -505,22 +529,26 @@ export function SessionPage() {
   )
   const Icon = meta.icon
 
+  const loadingTranscript = (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      {loadFailed ? (
+        <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
+          <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
+          {retrying && <p className="text-sm text-faint">{t('잠시 후 다시 불러옵니다.')}</p>}
+          <Button onClick={retryLoad}>
+            <RotateCw size={14} />
+            {t('다시 시도')}
+          </Button>
+        </div>
+      ) : <LoadingState label={t('대화를 불러오는 중…')} />}
+    </div>
+  )
+
   if (!session) {
-    const failed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
     return (
       <>
         <TopBar left={<span className="text-base font-medium">{t('작업')}</span>} />
-        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-          {failed ? (
-            <div role="alert" className="flex max-w-sm flex-col items-center gap-3 text-center">
-              <p className="text-base text-muted">{t('최신 내용을 불러오지 못했습니다.')}</p>
-              <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
-                <RotateCw size={14} />
-                {t('다시 시도')}
-              </Button>
-            </div>
-          ) : <LoadingState />}
-        </div>
+        {loadingTranscript}
       </>
     )
   }
@@ -569,7 +597,9 @@ export function SessionPage() {
           {announcement}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          {session && timeline.length > 0 ? (
+          {awaitingTranscript ? (
+            loadingTranscript
+          ) : session && (timeline.length > 0 || proposal) ? (
             <>
               <div
                 ref={scrollRef}

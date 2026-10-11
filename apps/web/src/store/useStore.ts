@@ -348,7 +348,8 @@ interface State {
   setActiveSession: (id: string | null) => void
   /** Titles only; transcripts arrive with `openSession`. */
   loadSessions: () => Promise<void>
-  openSession: (id: string) => Promise<void>
+  /** Fetches the transcript; false when it could not be fetched (never throws). */
+  openSession: (id: string) => Promise<boolean>
   /**
    * Continues an agent chat on the report or slides surface with the same agent: opens the
    * session, then sends `text` with the conversation (as a file) and the chat's files.
@@ -1363,9 +1364,15 @@ export const useStore = create<State>((set, get) => ({
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch
     const accountSet: Set = (patch) => { if (ownsAccount()) set(patch) }
+    let row: Awaited<ReturnType<typeof sessionsApi.get>>
     try {
-      const row = await sessionsApi.get(id)
-      if (!ownsAccount()) return
+      row = await sessionsApi.get(id)
+    } catch {
+      // Deleted, not ours, or the network: the page tells these apart by the session row.
+      return false
+    }
+    try {
+      if (!ownsAccount()) return true
       const session = toSession(row)
       set((s) => ({
         sessions: s.sessions.some((c) => c.id === id)
@@ -1378,7 +1385,7 @@ export const useStore = create<State>((set, get) => ({
 
       // Job cards are server rows, so a reload has to fetch them.
       const jobRows = await jobsApi.list(id).catch(() => null)
-      if (!ownsAccount()) return
+      if (!ownsAccount()) return true
       if (jobRows) {
         set((s) => ({
           jobs: [
@@ -1396,14 +1403,15 @@ export const useStore = create<State>((set, get) => ({
       if (session.artifactId) wanted.add(session.artifactId)
       for (const m of session.messages) for (const a of m.artifactIds ?? []) wanted.add(a)
       const missing = [...wanted].filter((a) => !get().artifacts.some((x) => x.id === a))
-      if (missing.length === 0) return
+      if (missing.length === 0) return true
       const rows = await Promise.all(missing.map((a) => artifactsApi.get(a).catch(() => null)))
-      if (!ownsAccount()) return
+      if (!ownsAccount()) return true
       const found = rows.filter((r) => r !== null).map(toArtifact)
       if (found.length) set((s) => ({ artifacts: [...found, ...s.artifacts] }))
     } catch {
-      // Deleted or not ours; the page renders its empty state.
+      // The transcript is in; a job or artifact lookup that broke is not a failed load.
     }
+    return true
   },
 
   newSession: async (

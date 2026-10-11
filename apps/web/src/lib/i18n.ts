@@ -2252,6 +2252,8 @@ const EN: Record<string, string> = {
   '어느 장을 고쳐야 하는지 알 수 없습니다.': 'Nothing says which slide to fix.',
   '검사에서 지적된 문제를 고쳐 주세요: {message}': 'Fix what the check raised: {message}',
   '최신 내용을 불러오지 못했습니다.': 'Could not load the latest.',
+  '잠시 후 다시 불러옵니다.': 'Trying again shortly.',
+  '대화를 불러오는 중…': 'Loading the conversation…',
   '(계속)': '(cont.)',
   '자동으로 나눌 항목을 찾지 못했습니다. 문장을 줄이거나 새 장을 추가해 주세요.': 'Nothing here divides cleanly. Shorten the text or add a slide.',
   '{n}장을 두 장으로 나눔': 'Split slide {n} in two',
