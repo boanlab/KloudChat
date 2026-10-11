@@ -306,3 +306,13 @@ def test_a_deadline_copied_wrong_goes_back_to_the_person_s_day_even_if_a_page_ho
     assert [f["placeholder"] for f in other] == ["[일자]"]
     # Without the person's text (older callers) the trace reads as before.
     assert trace.check("설명회는 2026년 11월 18일에 연다.", f"{request}\n{page}", []) == []
+
+
+def test_a_kpi_block_is_traced_like_the_text():
+    # Quality lane Q14: a KPI's wrong 「이듬해 차이 96,000원」 went out unchecked.
+    trace = skill_scripts.entry("grounding-check")
+    material = "A안 연 3,840,000원, B안 연 5,712,000원"
+    text = "```kpi\n3,840,000원 | A안 연간\n96,000원 | 이듬해 차이\n```"
+    found = trace.check(text, material, [])
+    assert [f["text"] for f in found] == ["96,000원"]
+    assert "[수치] | 이듬해 차이" in trace.fix(text, found)

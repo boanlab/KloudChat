@@ -749,12 +749,14 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     bare = bool(options.get("bare"))
     lines = (text or "").split("\n")
     skip: set[int] = set()
-    # Code and diagrams are skipped; a 「```callout」 box is prose and is read.
+    # Code and diagrams are skipped; a 「```callout」 box is prose and is read, and so are a
+    # 「```kpi」 block's 「값 | 이름」 rows (quality lane Q14: a KPI's 「이듬해 차이 96,000원」).
     fenced, prose = False, False
     for k, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("```"):
-            fenced, prose = not fenced, stripped[3:].strip().lower() == "callout" and not fenced
+            fenced, prose = not fenced, stripped[3:].strip().lower() in ("callout", "kpi") \
+                and not fenced
             skip.add(k)
         elif (fenced and not prose) or not stripped or stripped.startswith(("#", "![", "<")):
             skip.add(k)
