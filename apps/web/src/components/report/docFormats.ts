@@ -35,7 +35,7 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "official", "label": "공문·안내문", "fields": ["수신", "참조", "발신", "시행일"], "numbering": "official", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "incident", "label": "장애 보고서", "fields": ["발생 일시", "영향 범위", "심각도", "작성자"], "numbering": "decimal", "head": "header", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "result_report", "label": "결과 보고서", "fields": ["보고일", "보고 부서", "보고자"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
-  {"id": "plan", "label": "연구·조사 계획서", "fields": ["과제명", "연구자", "소속", "지도교수", "작성일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
+  {"id": "plan", "label": "연구·조사 계획서", "fields": ["과제명", "연구자", "소속", "연구 기간", "지도교수", "작성일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
   {"id": "event_plan", "label": "추진 계획(안)", "fields": ["작성일", "작성 부서", "작성자"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
   {"id": "gaejo", "label": "개조식 보고서", "fields": ["보고일", "보고자(부서)", "보고 대상"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "gaejo", "closing": true},
   {"id": "status", "label": "업무·현황 보고", "fields": ["보고일", "보고자", "대상 기간", "보고 대상"], "numbering": "korean", "head": "memo", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false},
