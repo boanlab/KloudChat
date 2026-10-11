@@ -380,3 +380,48 @@ def test_a_monthly_price_over_years_takes_twelve_from_code_not_the_model():
     reply["options"][1]["items"][0].pop("months")
     costs = report_checks.option_costs(reply, numbers)
     assert costs["options"]["가"]["total"] == 17_280_000 == costs["options"]["나"]["total"]
+
+
+#: Research lane R-03: every figure inline in one paragraph, no price line, nothing attached.
+GPU = ("연구실 GPU 연산 자원 도입 안을 비교해서 결정 보고서로 써 줘. A안: 클라우드 GPU(A100 80GB "
+       "4장) 시간당 12,000원, 연간 예상 사용 2,000시간, 초기비용 없음. B안: 온프레미스 서버(A100 "
+       "80GB 4장) 구매가 1억 2천만원, 연간 전기·유지비 900만원, 내용연수 5년. 필수 조건: "
+       "연구비 연간 집행 한도 3,000만원 이내, 데이터 외부 반출 불가(민감 데이터 포함). "
+       "3년 총비용과 필수 조건 충족 여부로 권고해 줘.")
+
+
+def test_figures_written_inline_in_the_request_are_its_material():
+    from app.services import report
+
+    material = report._request_material(GPU)
+    assert material.startswith("# 요청에 적은 자료\n")
+    for figure in ("시간당 12,000원", "1억 2천만원", "900만원", "3,000만원"):
+        assert figure in material
+    assert "결정 보고서로 써 줘" not in material
+    # One amount is not material to settle.
+    assert report._request_material("예산 500만원 안에서 행사 기획안 써 줘.") == ""
+
+
+async def test_the_cost_pre_pass_totals_inline_figures_by_code():
+    from app.services import report
+
+    reply = {"period": "3년", "years": 3, "options": [
+        {"name": "A안", "items": [{"name": "사용료", "unit_price": 12000, "count": 2000,
+                                   "per": "year"}]},
+        {"name": "B안", "items": [
+            {"name": "구매가", "unit_price": 120000000, "count": 1, "per": "once"},
+            {"name": "전기·유지비", "unit_price": 9000000, "count": 1, "per": "year"}]}],
+        "scenarios": []}
+    pre = await report_checks.prepare(
+        "comparison", GPU, report._request_material(GPU), complete=_answering(reply),
+        model="m", api_key="k")
+    cost = next(r for r in pre.runs if r["skill"] == "compare-cost")
+    assert "72,000,000원" in cost["summary"] and "147,000,000원" in cost["summary"]
+
+
+def test_a_kpi_tile_groups_a_long_amount():
+    from app.services import report
+
+    text = "본문.\n\n```kpi\n72000000원 | A안 3년 총비용\n2026년 | 도입 연도\n```"
+    out = report._grounded_figures(text, True)
+    assert "72,000,000원 | A안 3년 총비용" in out and "2026년 | 도입 연도" in out

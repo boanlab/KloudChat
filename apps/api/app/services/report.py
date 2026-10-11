@@ -2869,7 +2869,9 @@ def _kpi_or_nothing(match: re.Match[str]) -> str:
         for line in lines
     ):
         return ""
-    return match.group(0)
+    # 「72000000원」 reads as 「72,000,000원」 on a tile.
+    return re.sub(r"(?m)^([^|\n]{0,80}?)(?<![\d.,])(\d{5,15})(?![\d.,])",
+                  lambda m: f"{m.group(1)}{int(m.group(2)):,}", match.group(0))
 
 
 def _pasted_without_marker(request: str) -> str:
@@ -2892,7 +2894,20 @@ def _request_material(request: str) -> str:
         return f"# 요청에 붙여 넣은 자료\n{memo}"
     lines = [line.strip() for line in (request or "").splitlines()
              if report_checks.price_line(line)]
+    if not lines:
+        # Figures stated inline (「A안: 시간당 12,000원, 연간 2,000시간. B안: 구매가 1억
+        # 2천만원 …」): the sentences that state amounts are the material, or the settled
+        # figures, the cost pre-pass and the trace had nothing to read (research R-03).
+        sentences = re.split(r"(?<=[.!?。])\s+|\n+", instruction_part(request or ""))
+        lines = [t.strip() for t in sentences if _WON.search(t)]
+        if sum(len(_WON.findall(t)) for t in lines) < 2:
+            lines = []
     return "# 요청에 적은 자료\n" + "\n".join(lines) if lines else ""
+
+
+#: An amount of money stated in the request: 「12,000원」, 「1억 2천만원」, 「900만 원」.
+_WON = re.compile(r"\d[\d,]{0,15}(?:\.\d{1,4})?\s{0,2}(?:[조억천만]\s{0,2}){0,4}"
+                  r"(?:\d[\d,]{0,15}\s{0,2}(?:[천만]\s{0,2}){1,2})?원")
 
 
 def _source_text(row: dict[str, Any]) -> str:
