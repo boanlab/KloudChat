@@ -17,7 +17,7 @@ from typing import Any
 from app.pipeline import registry
 from app.pipeline.bundle import Bundle, Document, Material, Request
 from app.pipeline.stage import Base, Context
-from app.services import cover_letter, freshness, internal_words, units, weekdays
+from app.services import cover_letter, freshness, internal_words, superlatives, units, weekdays
 from app.services.chat_format import normalize_raw_payload
 
 log = logging.getLogger("app.routers.sessions")
@@ -46,6 +46,8 @@ class Normalize(Base):
         normalized = units.fix_double_scale(normalized, first)
         # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
+        # 「모든 문항에서 가장 낮은」 narrowed to the columns the answer's own table bears out.
+        normalized = superlatives.narrow_sweeping_claims(normalized)
         if req.skill_keys or req.check_keys:
             # A skill's script ran: its report lines are not the person's answer.
             normalized = internal_words.strip_reports(normalized)
