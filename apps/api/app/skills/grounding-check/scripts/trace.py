@@ -343,6 +343,11 @@ def _table_columns(text: str) -> list[float]:
     return out
 
 
+#: A day offset: 「30일 전」, 「14일 전까지」, 「2주 뒤」 (not 영업일, which skips days off).
+_OFFSET = re.compile(r"(?<![\d영업])(\d{1,3})\s{0,2}(일|주일|주)\s{0,2}(?:전|후|뒤|이내|이전|이후|안에)")
+#: A unit price in the person's words: 「시간당 11,000원」, 「1인당 2만 원」, 「건당」, 「개당」, 「단가」.
+_RATE = re.compile(r"[가-힣]{0,4}당\s{0,2}\d|단가|요율|시급|일급|월급")
+
 #: Calendar constants a document converts with: a year is 12 months, 52 weeks, 365 days.
 _CONSTANT = {"개월": {12, 24, 36}, "주": {52}, "일": {7, 365}, "시간": {24}, "분": {60}}
 
@@ -387,6 +392,10 @@ class Sources:
             if 1 <= int(m.group(2)) <= 12:
                 self.year_months.add((2000 + int(m.group(1)), int(m.group(2))))
                 self.months.add(int(m.group(2)))
+        #: Day offsets the sources state (「30일 전」, 「2주 뒤」), as counts of days.
+        self.today = today
+        self.offsets = {int(n) * (7 if u.startswith("주") else 1)
+                        for n, u in _OFFSET.findall(text) if 0 < int(n) <= 400}
         self.years = {int(y) for y in re.findall(r"(?<!\d)((?:19|20)\d{2})(?!\d)", text)}
         self.years |= {2000 + int(y) for y in re.findall(r"(?<![\d.])(\d{2})\s{0,2}년", text)}
         for m in re.finditer(r"(?<![\d.])(\d{1,2})\s{0,2}월", text):
@@ -432,6 +441,10 @@ class Sources:
         #: Both only where numbers must come from the tools; otherwise the rows are material.
         self.rows: list[tuple[list[tuple[str, ...]], set[float]]] = []
         self.priced: set[float] = set()
+        #: Unit prices the person states (「시간당 11,000원」): a grounded quantity times one is
+        #: arithmetic on what they gave.
+        self.rates = sorted({abs(v) for v in self._person_values(material)
+                             if abs(v) >= 100})[:12] if _RATE.search(material or "") else []
         if numbers != "all":
             self.rows = _row_keys(_data_rows(material))
             rates = {abs(v) for v in self._person_values(material) if abs(v) >= 100}
@@ -490,6 +503,39 @@ class Sources:
         if value >= 10 and any(near(value, d, places) for d in self.derived):
             return value
         return None
+
+    def counted(self, year: int | None, month: int, day: int) -> bool:
+        """Whether the day is one the sources date moved by an offset they state: 「개강 3월 2일」
+        and 「30일 전」 give 2027년 1월 31일. Only offsets the sources name count."""
+        if not self.offsets or (year, month, day) in self.days or (None, month, day) in self.days:
+            return False
+        years = {year} if year else (self.years | {self.today.year, self.today.year + 1}
+                                     if self.today else self.years)
+        bases = []
+        for by, bm, bd in self.days:
+            for y in ({by} if by else {y for x in years for y in (x - 1, x, x + 1)}):
+                try:
+                    bases.append(dt.date(y, bm, bd))
+                except ValueError:
+                    continue
+        for y in years:
+            try:
+                target = dt.date(y, month, day)
+            except ValueError:
+                continue
+            if any(abs((target - base).days) in self.offsets for base in bases):
+                return True
+        return False
+
+    def as_written(self, raw: str, unit: str) -> float | None:
+        """The leading figure of 「20,000천원」 when the sources state amounts in 천원 (or 만원,
+        억원) — a cell copied with its header's unit — else None."""
+        m = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s?(천|만|억)\s*", raw)
+        if not m or _family(unit) not in ("원", "") or not re.search(
+                rf"\(\s{{0,2}}(?:단위\s{{0,2}}[:：]?\s{{0,2}})?{m.group(2)}\s?원\s{{0,2}}\)"
+                rf"|단위\s{{0,2}}[:：]?\s{{0,2}}{m.group(2)}\s?원", self.text):
+            return None
+        return float(m.group(1).replace(",", ""))
 
     def has_number(self, value: float, unit: str, places: int) -> bool:
         return self.match(value, unit, places) is not None
@@ -778,16 +824,26 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         for m, value, unit, checked in _number_matches(masked):
             if any(s < m.end() and m.start() < e for s, e in taken):
                 continue
+            places = _decimals(m.group("num"))
+            # The figure as written, before a column's 「(천원)」 or its own 「천」 scales it: a
+            # sheet cell copied under the sheet's own header (「42,000」 under 「예산(천원)」,
+            # 「20,000천원」 for the cell 20000) is the cell.
+            written = sources.as_written(m.group("num"), unit)
             if not unit and k in heads and 0 <= (col := _column_of(line, m.start())) < len(heads[k]):
                 head_unit, scale = heads[k][col]
                 if head_unit:
+                    if scale != 1:
+                        written = ko_number(m.group("num"))
                     value, unit, checked = value * scale, head_unit, True
+            known = sources.match(value, unit, places)
+            if known is None and written is not None:
+                known = sources.match(written, "원", places)
             numbers.append({"line": k, "match": m, "value": value, "unit": unit,
                             "checked": checked or (bare and ("." in m.group("num") or value >= 10)
                                                    and not (value == int(value) and 1900 <= value <= 2100)),
-                            "known": sources.match(value, unit, _decimals(m.group("num")))})
+                            "known": known})
             numbers[-1]["ok"] = numbers[-1]["known"] is not None or sources.quoted(
-                ko_number(m.group("num")), line)
+                ko_number(m.group("num")), line) or (written is not None and sources.quoted(written, line))
     # Plain arithmetic of grounded numbers written together (a line, a table) is grounded too,
     # and so are sums, differences and shares of the big figures anywhere (a total and its
     # change); a value already grounded elsewhere in the text may be repeated. A difference
@@ -823,6 +879,17 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                     for x in ((a + b, b - a) if family not in ("%", "%p")
                               else (a / b * 100, (b - a) / a * 100, (b - a) / b * 100))]
             pool = pools[key]
+            # A figure of the line with or without a figure of its kind anywhere in the text: 「최하늘
+            # 22시간을 제외하면 49.5시간」 is the table's 71.5시간 less the line's 22시간.
+            mine = [abs(a["value"]) for a in accepted if a["line"] == n["line"]
+                    and (_family(a["unit"]) == family or not a["unit"])]
+            kin = {abs(a["value"]) for a in accepted if family and _family(a["unit"]) == family}
+            pool = pool + [x for a in mine for b in kin for x in (a + b, abs(b - a))]
+            # A rate the person gave times a grounded quantity of another kind: 49.5시간 × 11,000원.
+            if family in ("원", "달러", "") and sources.rates:
+                quantities = {abs(a["value"]) for a in accepted
+                              if a["unit"] and _family(a["unit"]) not in ("원", "달러", "%", "%p")}
+                pool = pool + [r * q for r in sources.rates for q in quantities]
             if shares and family in ("원", "달러", ""):
                 grounded = {v for v, _ in big} | {abs(a["value"]) for a in accepted}
                 pool = pool + [v * f for v in grounded for f in shares]
@@ -920,6 +987,8 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
 
     def day(m: re.Match, y: int | None, mo: int, d: int) -> None:
         if not (1 <= mo <= 12 and 1 <= d <= 31):
+            return
+        if sources.counted(y, mo, d):
             return
         if (y is None or (y, mo, d) not in sources.days) and (None, mo, d) not in sources.days:
             found.append(_finding("date", line, k, *m.span()))
