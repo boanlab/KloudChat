@@ -257,3 +257,52 @@ def test_a_sheet_s_budget_cells_stay_in_the_rate_table():
             "| 2025 | 연구활동비 | 20,000 | 14,200 | 71.0 |\n\n"
             "SCIE+KCI 합계는 2022년 5건입니다. 연구비집행 시트는 2024·2025년 2개 연도만 있습니다.")
     assert trace.check(text, "집행률을 표로 정리해 줘.\n" + sheet, computed, _TOOL_NUMBERS) == []
+
+
+def test_a_unit_noted_once_on_the_material_line_scales_its_figures():
+    # Quality lane Q4: 「식음료 870 / … 단위 만원」 → a table under 「집행액(만원)」 kept 870.
+    trace = skill_scripts.entry("grounding-check")
+    material = ("아래 자료로 행사 결과보고서 써 줘.\n\n"
+                "- 예산: 편성 4,500만원 / 집행 4,215만원 (시상금 2,000 / 식음료 870 / "
+                "장소·장비 임차 610 / 멘토·심사 수당 520 / 홍보·기념품 215, 단위 만원)")
+    text = ("| 항목 | 집행액(만원) |\n|---|---:|\n| 시상금 | 2,000 |\n| 식음료 | 870 |\n"
+            "| 장소·장비 임차 | 610 |\n| 멘토·심사 수당 | 520 |\n| 홍보·기념품 | 215 |\n"
+            "식음료는 870만원을 썼다.")
+    assert trace.check(text, material, []) == []
+    standalone = "(단위: 천원)\n인건비 42000\n연구활동비 18000"
+    assert trace.check("| 항목 | 예산(만원) |\n|---|---|\n| 인건비 | 4,200 |", standalone, []) == []
+
+
+def test_a_blanked_value_takes_its_worked_calculation_with_it():
+    # Quality lane Q4: 「[수치] ÷ 30 ÷ 10개월 = 0만원/대/월」 was left after the blank.
+    trace = skill_scripts.entry("grounding-check")
+    line = "대당 월 비용은 7,200만원 ÷ 30 ÷ 10개월 = 24만원/대/월이다."
+    at = line.index("7,200만원")
+    found = [{"kind": "number", "text": "7,200만원", "line": 0, "start": at, "end": at + 7,
+              "placeholder": "[수치]"}]
+    assert trace.fix(line, found) == "대당 월 비용은 [수치]이다."
+    # A plain blank with no worked calculation stays a blank in its sentence.
+    plain = trace.fix("예산은 7,200만원이다.", [{**found[0], "start": 4, "end": 11}])
+    assert plain == "예산은 [수치]이다."
+
+
+def test_a_deadline_copied_wrong_goes_back_to_the_person_s_day_even_if_a_page_holds_it():
+    # Quality lane Q5: 「2026. 11. 6.(금) 18:00까지」 came out as 「2026년 11월 18일(수) 00시
+    # 2214분까지」 (내선 2214 run into the time) and a search page holding 11월 18일 excused it.
+    trace = skill_scripts.entry("grounding-check")
+    request = ("각 학과에 보낼 협조 요청 공문을 써 줘.\n\n- 제출 기한: 2026. 11. 6.(금) 18:00까지\n"
+               "- 담당: 기획예산팀 윤서영 (내선 2214)")
+    page = "2026년 11월 18일(수) 00시 공고 예정"
+    text = "제출 기한은 2026년 11월 18일(수) 00시 2214분까지입니다."
+    options = {"person": request}
+    found = trace.check(text, f"{request}\n{page}", [], options)
+    assert [f["kind"] for f in found] == ["date", "time"]
+    fixed = trace.fix(text, found)
+    assert fixed == "제출 기한은 2026. 11. 6.(금) [시각]까지입니다."
+    # A day in another month from the page stays; one not near a deadline becomes the blank.
+    elsewhere = f"{request}\n2026년 12월 3일 공고"
+    assert trace.check("관련 공고는 2026년 12월 3일에 나왔다.", elsewhere, [], options) == []
+    other = trace.check("설명회는 2026년 11월 18일에 연다.", f"{request}\n{page}", [], options)
+    assert [f["placeholder"] for f in other] == ["[일자]"]
+    # Without the person's text (older callers) the trace reads as before.
+    assert trace.check("설명회는 2026년 11월 18일에 연다.", f"{request}\n{page}", []) == []

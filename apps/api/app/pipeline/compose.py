@@ -844,7 +844,8 @@ class CheckStep(Step):
             p.text for p in parts if p.origin not in ("prepass", "computed", "derived"))])
         computed = _computed(bundle)
         # The strictness of the agent whose product this is, as its own run would trace it.
-        options = check_skills.options_for(req.today, _product(bundle).get("checkOptions"))
+        options = {**check_skills.options_for(req.today, _product(bundle).get("checkOptions")),
+                   "person": "\n".join([req.text, *req.untrusted])}
         keys = (ref,)
         if kind == "document":
             bundle.document.sections, outcome = check_skills.ground_sections(

@@ -121,14 +121,18 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
 
     prepass, settled = bundle.computed.prepass, bundle.computed.settled
     material = "\n".join([bundle.request.text, bundle.material.given, *bundle.material.grounds])
-    computed = [
+    worked = [
         *(prepass.blocks if prepass is not None else []), key_figures.block(settled),
         bundle.computed.values or "", *bundle.request.tool_outputs,
-        *(report._source_text(row) for row in (bundle.material.sources or [])),
     ]
+    computed = [*worked, *(report._source_text(row) for row in (bundle.material.sources or []))]
     options = check_skills.options_for(
         dt.datetime.now(ZoneInfo(settings.timezone)).date(), bundle.request.check_options,
         surface="report")
+    # The person's own words and files and what code worked out from them, apart from the
+    # search pages: a day they gave is copied, not traced to whichever page happens to hold a
+    # neighbouring one.
+    options["person"] = "\n".join([bundle.request.text, bundle.material.given, *worked])
     return material, computed, options
 
 
@@ -189,7 +193,9 @@ class AnswerGrounding(Base):
             material=f"{bundle.material.given}\n{req.check_material}",
             computed=[*req.tool_outputs, *(str(m.get("content") or "") for m in req.messages
                                            if m.get("role") == "assistant")],
-            options=check_skills.options_for(req.today, req.check_options, surface="chat"),
+            options={**check_skills.options_for(req.today, req.check_options, surface="chat"),
+                     "person": "\n".join([bundle.material.given, req.check_material,
+                                          *req.tool_outputs])},
             specs=req.skill_specs,
         )
         if not traced.found:

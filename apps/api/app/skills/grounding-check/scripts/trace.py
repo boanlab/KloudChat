@@ -267,6 +267,29 @@ _HEADER_UNIT = re.compile(
 _HEADER_WORD = {"인원": "명", "인력수": "명", "금액": "원", "단가": "원", "비용": "원", "예산": "원", "가격": "원",
                 "M/M": "MM"}
 _SCALE = {"천만원": 1e7, "백만원": 1e6, "억원": 1e8, "만원": 1e4, "천원": 1e3}
+#: 「…, 단위 만원)」, 「(단위: 천원)」: a unit the material states once for the bare figures of its
+#: line (or, alone on a line, of the table or list under it).
+_LINE_UNIT = re.compile(r"단위\s{0,2}[:：]?\s{0,2}(?P<u>천만\s?원|백만\s?원|억\s?원|만\s?원|천\s?원|원|명|건|개)(?![가-힣])")
+
+
+def line_units(lines: list[str]) -> dict[int, tuple[str, float]]:
+    """For each line, the unit (family, scale) a 「단위 ○○」 note gives its bare figures."""
+    out: dict[int, tuple[str, float]] = {}
+    carry: tuple[str, float] | None = None
+    for k, line in enumerate(lines):
+        m = _LINE_UNIT.search(line)
+        if m:
+            word = m.group("u").replace(" ", "")
+            unit = ("원", _SCALE[word]) if word in _SCALE else (_family(word), 1.0)
+            out[k] = unit
+            # A note alone on its line (「(단위: 만원)」) covers the block below it.
+            carry = unit if not re.search(r"\d", _LINE_UNIT.sub("", line)) else None
+            continue
+        if not line.strip():
+            carry = None
+        elif carry:
+            out[k] = carry
+    return out
 
 
 def column_units(lines: list[str]) -> dict[int, list[tuple[str, float]]]:
@@ -376,6 +399,7 @@ class Sources:
         self.values: list[tuple[float, str, int]] = []
         rows = number_text.splitlines()
         heads = column_units(rows)
+        noted = line_units(rows)
         for k, line in enumerate(rows):
             line = FULL_DAY.sub(lambda m: " " * len(m.group(0)), LIST_MARKER.sub(lambda m: " " * len(m.group(0)), line))
             for m in NUMBER.finditer(line):
@@ -385,6 +409,9 @@ class Sources:
                     continue
                 if not unit and k in heads and 0 <= (col := _column_of(line, m.start())) < len(heads[k]):
                     unit, scale = heads[k][col]
+                if not unit and k in noted:
+                    # 「식음료 870 …, 단위 만원」: 870 is 8,700,000원, and still the bare 870 too.
+                    self.values.append((value * noted[k][1], noted[k][0], _decimals(m.group("num"))))
                 self.values.append((value * scale, unit, _decimals(m.group("num"))))
         pool = [v for v, _, _ in self.values]
         self.derived = _table_columns(number_text)
@@ -842,10 +869,45 @@ def _finding(kind: str, line: str, k: int, start: int, end: int) -> dict:
             "placeholder": PLACEHOLDER[kind]}
 
 
+def person_days(text: str) -> dict[tuple[int | None, int, int], str]:
+    """The days the person wrote (their request and files, not the search pages), each with
+    how they wrote it: 「2026. 11. 6.(금)」."""
+    out: dict[tuple[int | None, int, int], str] = {}
+    for pattern in (FULL_DAY, MONTH_DAY, SHORT_DAY):
+        for m in pattern.finditer(text or ""):
+            y = int(m.group("y")) if "y" in m.groupdict() and m.group("y") else None
+            mo, d = int(m.group("m")), int(m.group("d"))
+            if 1 <= mo <= 12 and 1 <= d <= 31:
+                out.setdefault((y, mo, d), m.group(0).strip())
+    return out
+
+
+#: 「00시 2214분」: minutes no clock has — another figure (an extension) run into a time.
+_BROKEN_TIME = re.compile(r"(?<![\d:])\d{1,2}\s{0,2}시\s{0,2}\d{3,}\s{0,2}분")
+
+
+def _a_misread_day(y: int | None, mo: int, d: int, own: dict, near_deadline: bool) -> str | None:
+    """None when the day is the person's or in no month they dated; else what replaces it:
+    the person's one day of that month for a deadline (「11월 18일까지」 where they wrote
+    「11. 6.(금) 18:00까지」), or the blank. A search page that happens to hold the other day
+    does not excuse it — a day beside the person's own, in their month, is a copy gone wrong."""
+    if (y, mo, d) in own or (None, mo, d) in own:
+        return None
+    same = {key: text for key, text in own.items()
+            if key[1] == mo and (y is None or key[0] is None or key[0] == y)}
+    if not same:
+        return None
+    days = {key[1:] for key in same}
+    if near_deadline and len(days) == 1:
+        return max(same.values(), key=len)
+    return PLACEHOLDER["date"]
+
+
 def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[dict],
                   options: dict) -> list[tuple[int, int]]:
     """Dates, months, times and names on one line; returns the spans they take."""
     taken: list[tuple[int, int]] = []
+    own = person_days(str(options.get("person") or ""))
 
     def free(start: int, end: int) -> bool:
         return not any(s < end and start < e for s, e in taken)
@@ -854,20 +916,29 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
         taken.append((start, end))
         found.append(_finding(kind, line, k, start, end))
 
-    for m in FULL_DAY.finditer(masked):
-        taken.append(m.span())
-        y, mo, d = int(m.group("y")), int(m.group("m")), int(m.group("d"))
-        if 1 <= mo <= 12 and 1 <= d <= 31 and (y, mo, d) not in sources.days \
-                and (None, mo, d) not in sources.days:
+    def day(m: re.Match, y: int | None, mo: int, d: int) -> None:
+        if not (1 <= mo <= 12 and 1 <= d <= 31):
+            return
+        if (y is None or (y, mo, d) not in sources.days) and (None, mo, d) not in sources.days:
             found.append(_finding("date", line, k, *m.span()))
+            return
+        deadline = bool(re.match(r"[^.\n]{0,16}?(?:까지|마감|기한)", masked[m.end():]))
+        if (instead := _a_misread_day(y, mo, d, own, deadline)) is not None:
+            found.append({**_finding("date", line, k, *m.span()), "placeholder": instead})
+
+    for m in _BROKEN_TIME.finditer(masked):
+        add("time", *m.span())
+    for m in FULL_DAY.finditer(masked):
+        if not free(*m.span()):
+            continue
+        taken.append(m.span())
+        day(m, int(m.group("y")), int(m.group("m")), int(m.group("d")))
     for pattern in (MONTH_DAY, SHORT_DAY):
         for m in pattern.finditer(masked):
             if not free(*m.span()):
                 continue
             taken.append(m.span())
-            mo, d = int(m.group("m")), int(m.group("d"))
-            if 1 <= mo <= 12 and 1 <= d <= 31 and (None, mo, d) not in sources.days:
-                found.append(_finding("date", line, k, *m.span()))
+            day(m, None, int(m.group("m")), int(m.group("d")))
     for m in YEAR_MONTH.finditer(masked):
         if not free(*m.span()):
             continue
@@ -980,6 +1051,23 @@ def _blank_cell(cell: str, items: list[dict], offset: int) -> str:
     return cell
 
 
+_TERM_OR_BLANK = (r"(?:\[수치\]|\d[\d,]*(?:\.\d+)?\s?(?:천만\s?원|백만\s?원|억\s?원|만\s?원|천\s?원|원|개월|명|대|건|개|%|시간|일|회)?"
+                  r"(?:/(?:대|월|명|개|건|년|일|인|회|팀|시간|가구)){0,3})")
+#: A worked calculation (「[수치] ÷ 30 ÷ 10개월 = 0만원/대/월」): one blank leaves the rest wrong.
+_CHAIN = re.compile(rf"{_TERM_OR_BLANK}(?:\s{{0,2}}[÷×*+=−]\s{{0,2}}{_TERM_OR_BLANK}){{1,8}}")
+
+
+def _collapse_chain(part: str) -> str:
+    """A calculation holding a blank becomes one blank: its other terms and its result were
+    worked from the value that is gone."""
+    def one(m: re.Match) -> str:
+        chain = m.group(0)
+        if "[수치]" not in chain or ("=" not in chain and len(re.findall(r"[÷×*+−]", chain)) < 2):
+            return chain
+        return "[수치]"
+    return _CHAIN.sub(one, part)
+
+
 def _fix_line(line: str, items: list[dict]) -> str | None:
     """The line with each finding blanked; `None` when nothing is left of it."""
     if line.lstrip().startswith("|"):
@@ -1005,12 +1093,13 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
         for f in sorted(mine, key=lambda f: -f["start"]):
             rest = rest[: f["start"] - start] + rest[f["end"] - start:]
         # Invented values carrying the sentence alone: two or more, and no number left.
-        if len(mine) >= 2 and not re.search(r"\d", rest):
+        if len(mine) >= 2 and not re.search(r"\d", rest) and all(
+                f["placeholder"] in PLACEHOLDER.values() for f in mine):
             kept.append("")
             continue
         for f in sorted(mine, key=lambda f: -f["start"]):
             part = part[: f["start"] - start] + f["placeholder"] + part[f["end"] - start:]
-        kept.append(part)
+        kept.append(_collapse_chain(part))
     text = re.sub(r"(?<=\S)[ \t]{2,}", " ", "".join(kept)).rstrip()
     return text if text.strip() else None
 
