@@ -29,6 +29,7 @@ from typing import Any
 import httpx
 
 from app.core import logs
+from app.core.config import settings as env_settings
 from app.services import litellm as litellm_service
 from app.services import models as model_service
 from app.services import settings_store, thinking, tools_gateway
@@ -138,7 +139,10 @@ async def config(*, egress: bool = False) -> Config:
     )
     choices = [model["id"] for model in vision_choices(catalogue)]
     chosen = (values.get(settings_store.OCR_VISION_MODEL) or "").strip()
-    vision = chosen if chosen in choices else (choices[0] if choices and not chosen else "")
+    preferred = env_settings.ocr_vision_model
+    fallback = preferred if preferred in choices else (choices[0] if choices else "")
+    # A chosen model that stopped qualifying is not swapped for another: nothing is sent.
+    vision = chosen if chosen in choices else ("" if chosen else fallback)
     has_engine, has_vision = bool(engine_url), bool(vision)
     mode: str | None
     if wanted == "both":

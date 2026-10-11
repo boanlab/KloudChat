@@ -96,7 +96,10 @@ export function OcrSection({
           <Select value={visionModel} onChange={(e) => setVisionModel(e.target.value)}>
             <option value="">
               {ocr.visionChoices.length
-                ? t('자동 ({name})').replace('{name}', ocr.visionChoices[0].label)
+                ? t('자동 ({name})').replace(
+                    '{name}',
+                    (ocr.visionChoices.find((m) => m.id === ocr.visionModelInForce) ?? ocr.visionChoices[0]).label,
+                  )
                 : t('쓸 수 있는 모델 없음')}
             </option>
             {visionModel && !ocr.visionChoices.some((m) => m.id === visionModel) && (

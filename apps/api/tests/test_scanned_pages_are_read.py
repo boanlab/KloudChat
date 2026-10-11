@@ -301,6 +301,17 @@ async def test_both_readers_are_used_when_both_are_there(configured):
     assert cfg.mode == "both" and cfg.vision_model == VISION
 
 
+async def test_the_preferred_model_is_used_when_listed_else_the_first(configured, monkeypatch):
+    from app.core.config import settings as env_settings
+
+    monkeypatch.setattr(env_settings, "ocr_vision_model", "strict-local/not-served")
+    assert (await ocr.config()).vision_model == VISION
+    monkeypatch.setattr(env_settings, "ocr_vision_model", VISION)
+    assert (await ocr.config()).vision_model == VISION
+    monkeypatch.setattr(env_settings, "ocr_vision_model", "openai/outside-vision")
+    assert (await ocr.config()).vision_model == VISION
+
+
 async def test_only_a_strict_local_vision_model_can_be_chosen(configured):
     configured[settings_store.OCR_VISION_MODEL] = "openai/outside-vision"
     cfg = await ocr.config()
