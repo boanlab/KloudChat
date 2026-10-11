@@ -23,7 +23,7 @@ test('a template made from 회의록 in the editor carries every field the shipp
   await expect(form.getByRole('textbox', { name: /머리 항목/ })).toHaveValue(/회의명\n일시\n장소\n참석자\n작성자/)
   await form.getByRole('textbox', { name: '이름', exact: true }).fill('우리 팀 회의록')
   // The document format and the 진행 과정 설정, open to edit.
-  await expect(form.getByRole('combobox', { name: '머리 모양' })).toHaveValue('memo')
+  await expect(form.getByRole('combobox', { name: '머리 배치' })).toHaveValue('memo')
   await form.getByTestId('template-settings').locator('summary').click()
   await expect(form.getByTestId('settings-stages').getByRole('checkbox', { name: /실행 항목 칸 보정/ })).toBeChecked()
   await form.getByRole('textbox', { name: '검토 규칙' }).fill('결정마다 근거가 된 발언을 적는다.')

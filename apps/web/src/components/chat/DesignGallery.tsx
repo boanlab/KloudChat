@@ -326,11 +326,11 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('템플릿 고르기')}
-      description={t('아티팩트의 모양을 고릅니다.')}
+      description={t('아티팩트의 구성을 고릅니다. 색과 글꼴은 테마가 정합니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3 flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold">{t('어떤 모양으로 받을까요?')}</h3>
+          <h3 className="text-base font-semibold">{t('어떤 템플릿으로 받을까요?')}</h3>
           {kind === 'report' && (
             <Link to="/customize/templates/new" onClick={onClose} className="text-sm text-accent hover:underline" data-testid="gallery-new-template">
               {t('새 템플릿')}

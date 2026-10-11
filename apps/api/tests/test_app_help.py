@@ -118,17 +118,17 @@ def test_the_guide_says_export_is_its_own_tick_not_part_of_finish():
 
 
 def test_the_guide_puts_document_format_where_the_form_shows_it():
-    """「아티팩트 모양에서 문서 형식도 고릅니다」 was wrong for an agent on a base process: the
+    """「템플릿·테마에서 문서 형식도 고릅니다」 was wrong for an agent on a base process: the
     field shows only on 바로 답하기 or 직접 구성; a base's template sets the format."""
     ko = _agents_page("ko")
-    shape = ko["아티팩트 모양과 자료"]
+    shape = ko["템플릿·테마와 자료"]
     assert "**문서 형식** 칸은 보고서를 쓰는 에이전트가 바로 답하기나 직접 구성일 때만" in shape
     assert "문서 형식도 고를 수 있습니다" not in "\n".join(ko.values())
 
 
 def test_the_guide_says_sources_are_not_resummarised_on_a_schedule():
     ko, en = _agents_page("ko"), _agents_page("en")
-    assert "자료를 주기적으로 다시 읽거나 요약하지 않으며" in ko["아티팩트 모양과 자료"]
+    assert "자료를 주기적으로 다시 읽거나 요약하지 않으며" in ko["템플릿·테마와 자료"]
     assert "never runs by itself on a schedule" in en["Creating an agent"]
     # The persona's 「매주」 question reads that line among its sections.
     assert "정해진 때에 저절로 실행되거나" in app_help.block(_PERSONA)

@@ -221,7 +221,7 @@ export function TemplateEditPage() {
               </Field>
             </div>
 
-            <Group title={t('문서 형식')} hint={t('머리 항목, 번호, 머리 모양, 개조식, 「끝.」')} testId="template-format" open>
+            <Group title={t('문서 형식')} hint={t('머리 항목, 번호, 머리 배치, 개조식, 「끝.」')} testId="template-format" open>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={t('문서 종류 이름')} hint={t('머리에 보이는 이름. 비우면 템플릿 이름')}>
                   <Input value={value.docFormat.label} maxLength={30} onChange={(e) => setFormat('label', e.target.value)} />
@@ -236,7 +236,7 @@ export function TemplateEditPage() {
                     {catalogue.numberings.map((n) => <option key={n} value={n}>{t(NUMBERING_LABEL[n])}</option>)}
                   </Select>
                 </Field>
-                <Field label={t('머리 모양')}>
+                <Field label={t('머리 배치')}>
                   <Select value={value.docFormat.head} onChange={(e) => setFormat('head', e.target.value as TemplateFormat['head'])}>
                     {catalogue.heads.map((h) => <option key={h} value={h}>{t(HEAD_LABEL[h])}</option>)}
                   </Select>
@@ -272,7 +272,7 @@ export function TemplateEditPage() {
               <Field label={t('지침')} hint={t('쓰는 모델이 따를 규칙입니다. 독자에게는 보이지 않습니다.')}>
                 <Textarea rows={6} value={value.instructions} onChange={(e) => set('instructions', e.target.value)} />
               </Field>
-              <Field label={t('장르 규칙')} hint={t('개요와 본문에 함께 주는 모양 규칙')}>
+              <Field label={t('장르 규칙')} hint={t('개요와 본문에 함께 주는 형식 규칙')}>
                 <Textarea rows={3} value={value.genre} onChange={(e) => set('genre', e.target.value)} />
               </Field>
               <Field label={t('점검표')} hint={t('한 줄에 하나. 「- 」로 시작')}>
@@ -374,7 +374,7 @@ export function TemplateEditPage() {
               navigate('/customize/templates', { replace: true })
             }}
             title={t('{name} 삭제').replace('{name}', row?.name ?? '')}
-            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 모양으로 열립니다.')}
+            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 템플릿으로 열립니다.')}
           />
         </div>
       </PageBody>

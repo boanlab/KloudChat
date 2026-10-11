@@ -31,7 +31,7 @@ The form runs from top to bottom like this:
 3. **Extra work**: the bundle checkboxes (see "Bundles"). Set it up yourself has none; you build steps instead.
 4. **Detailed settings — The process's calculations, checks and outline**: shown only for an agent that writes reports (see "Detailed settings and your own templates").
 5. **Missing-information questions**: what to ask before writing when the material lacks it; up to four at a time while "Ask for missing information first" is on. A * marks a field you must fill.
-6. Under **More settings**: **Output shape**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Output shape and sources").
+6. Under **More settings**: **Template & theme**, **Conversation start**, **Sources**, **Skills and tools**, **Advanced** and **Share** (see "Template & theme and sources").
 
 A new agent is saved only when you press **Create**. The instructions go with every conversation of that agent, so write only the role and rules it should always follow. An agent works when you open a conversation and ask; it never runs by itself on a schedule such as weekly, nor re-summarises its sources.
 
@@ -61,11 +61,11 @@ A bundle groups a few things an agent does before and after writing. Each bundle
 - **Your own bundles**: **Customize** → **Agents** → **Add** → **Create a bundle**, or **Save this order as a bundle** in a custom order. They appear under Extra work in all your agents; edit and share them from **Manage bundles**.
 - Sharing works like skills (Only me · Everyone). A bundle or custom order that exports files, has another model review or calls another agent reaches others only once an administrator approves it under **Process review**; base processes and built-in bundles are shared at once.
 
-## Output shape and sources
+## Template & theme and sources
 
 These sit under **More settings** in the create-agent form.
 
-- **Output shape**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
+- **Template & theme**: pick the **template** (the structure of a report or deck) and the **theme** (colours, typeface, writing style). **New template** under the template makes your own; **Manage themes** under the theme opens Settings › Themes. An agent started from a base process uses the base's template when the template is left empty ("The base's template"), and that template sets the document format. The **Document format** field shows only for a report-writing agent on Answer directly or Set it up yourself.
 - **Conversation start**: **How to use** (shown on the conversation's first screen) and **Conversation starters** (one per line, up to six).
 - **Sources**: files and web addresses the agent searches and cites (**Attach file**, **Add URL**). They are not sent whole with every conversation; the agent looks things up when needed. A URL stores the page as it was when added and does not follow later changes. Sources are not re-read or re-summarised on a schedule, and an agent never runs by itself at set times; it works when you open a conversation and ask.
 - **Skills and tools**, **Advanced** (screens, first screen, model, variety, colour) and **Share**: **Only me** or **Everyone**, and when shared, **Let others take and edit it** or **Let others take it but keep the content private**.
@@ -81,7 +81,7 @@ An agent that writes reports can turn on **Set for this agent** under **Detailed
 - **Calculation checks**, **Judged checks**, **Value fixes**, **Fill in what is missing**: built-in checks and repair steps attached by name.
 - **When the material disagrees**: left empty, the writing says which value it used and why.
 
-Make your own document template with **New template** under **Output shape** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
+Make your own document template with **New template** under **Template & theme** › Template (or in the template picker). **Start from a built-in template** fills in all of its settings: the document format's head fields, numbering, head layout, bullet style and closing, the instructions, genre rule, checklist, missing-information questions, checks and detailed settings. An uploaded DOCX/HWPX sample document is read by the writing model as reference. The theme's colours and fonts draw it. Shared with **Everyone**, others can pick it; only its maker edits it. Your templates appear under **My templates** in the template picker.
 
 ## Save as agent
 

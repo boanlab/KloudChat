@@ -8,8 +8,8 @@ These two features have similar names, but each has a different role and scope. 
 
 | Feature | Role | Where to pick it | Scope |
 |---|---|---|---|
-| **Template** | The form of the artifact. The product includes report and slide templates. | **+** → **Pick a template** in the composer; **Output shape** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
-| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Output shape** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's outputs |
+| **Template** | The form of the artifact. The product includes report and slide templates. | **+** → **Pick a template** in the composer; **Template & theme** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
+| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Template & theme** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's outputs |
 
 ## Templates
 

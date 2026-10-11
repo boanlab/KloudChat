@@ -555,8 +555,8 @@ export function AgentForm({
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
         <Group
-          title={t('아티팩트 모양')}
-          hint={offered.includes('report') && process.mode !== 'base' ? t('템플릿, 테마, 문서 형식') : t('템플릿, 테마')}
+          title={t('템플릿·테마')}
+          hint={offered.includes('report') && process.mode !== 'base' ? t('문서 형식도 여기서 고릅니다') : undefined}
           testId="agent-output-group"
         >
           <div className="grid gap-4 sm:grid-cols-2">

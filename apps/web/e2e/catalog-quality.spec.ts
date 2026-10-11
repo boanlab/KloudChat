@@ -13,7 +13,7 @@ test('보고서 서식 고르기는 서식을 보이고 찾게 한다', async ({
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 20_000 })
 
-  await expect(dialog.getByText('어떤 모양으로 받을까요?')).toBeVisible()
+  await expect(dialog.getByText('어떤 템플릿으로 받을까요?')).toBeVisible()
   await expect(dialog.getByRole('button', { name: '이 양식으로 시작' }).first()).toBeVisible({
     timeout: 20_000,
   })

@@ -335,12 +335,12 @@ const EN: Record<string, string> = {
   '스킬과 도구 › 도구에 같은 도구가 두 번 들어 있습니다.': 'Skills and tools › Tools lists the same tool twice.',
   '스킬과 도구 › 도구에 지금 쓸 수 없는 도구가 있습니다. 빼고 저장하세요.': 'Skills and tools › Tools includes a tool that is not available now. Remove it and save.',
   '검사 스킬을 찾을 수 없습니다. 추가로 할 일의 검사를 확인하세요.': 'A check skill was not found. Check the checks under Extra steps.',
-  '테마를 찾을 수 없습니다. 아티팩트 모양에서 테마를 다시 고르세요.': 'The theme was not found. Choose a theme again under Output shape.',
-  '템플릿을 찾을 수 없습니다. 아티팩트 모양에서 템플릿을 다시 고르세요.': 'The template was not found. Choose a template again under Output shape.',
-  '템플릿이 사용할 화면과 맞지 않습니다. 아티팩트 모양의 템플릿이나 고급 › 사용할 화면을 바꾸세요.': 'The template does not fit the screens this agent uses. Change the template under Output shape, or Advanced › Screens.',
+  '테마를 찾을 수 없습니다. 템플릿·테마에서 테마를 다시 고르세요.': 'The theme was not found. Choose a theme again under Template & theme.',
+  '템플릿을 찾을 수 없습니다. 템플릿·테마에서 템플릿을 다시 고르세요.': 'The template was not found. Choose a template again under Template & theme.',
+  '템플릿이 사용할 화면과 맞지 않습니다. 템플릿·테마의 템플릿이나 고급 › 사용할 화면을 바꾸세요.': 'The template does not fit the screens this agent uses. Change the template under Template & theme, or Advanced › Screens.',
   '처음 여는 화면을 알 수 없습니다. 고급 › 처음 여는 화면을 다시 고르세요.': 'Unknown opening screen. Choose Advanced › Opening screen again.',
   '처음 여는 화면이 사용할 화면에 없습니다. 고급 › 사용할 화면을 확인하세요.': 'The opening screen is not one of the screens this agent uses. Check Advanced › Screens.',
-  '문서 형식을 찾을 수 없습니다. 아티팩트 모양에서 다시 고르세요.': 'The document format was not found. Choose again under Output shape.',
+  '문서 형식을 찾을 수 없습니다. 템플릿·테마에서 다시 고르세요.': 'The document format was not found. Choose again under Template & theme.',
   '문서 형식은 보고서 화면에서만 씁니다. 고급 › 사용할 화면에 보고서를 켜세요.': 'A document format applies to the report screen only. Turn on Report under Advanced › Screens.',
   '빠진 정보 질문: 「자료가 답했는지 판단」 방법을 고르세요.': 'Missing-information question: choose how to decide whether the material answers it.',
   '빠진 정보 질문: 「이 낱말이 있으면 답한 것」에 낱말을 하나 이상 적으세요.': 'Missing-information question: enter at least one word under “Answered if these words appear”.',
@@ -517,7 +517,6 @@ const EN: Record<string, string> = {
   '진행 과정을 저장하지 못했습니다. 단계를 확인해 주세요.': 'Could not save how it works. Check the steps.',
   '대화의 파일을 자료로 옮기지 못했습니다.': 'Could not add the conversation\'s files to its sources.',
   '이 에이전트가 늘 따를 역할과 규칙입니다. [채팅에서] [보고서에서] 줄 아래에 쓴 것은 그 화면에서만 씁니다.': 'The role and rules this agent always follows. Anything under a [채팅에서] or [보고서에서] line applies on that screen only.',
-  '템플릿, 테마, 문서 형식': 'Template, theme, document format',
   '보고서·슬라이드 대화가 이 템플릿으로 시작합니다.': 'Report and slide conversations start with this template.',
   '기본 과정의 템플릿': 'The base\'s template',
   '프로젝트의 테마보다 먼저 씁니다.': 'Takes precedence over the project\'s theme.',
@@ -2489,9 +2488,9 @@ const EN: Record<string, string> = {
   '저장하지 않고 닫기': 'Close without saving',
   '변경 내용 버리기': 'Discard the changes',
   // ── 작업 시작하기 ──────────────────────────────────────
-  '하려는 일을 고르면 필요한 자료와 아티팩트의 모양까지 함께 준비됩니다.':
-    'Pick the job and the material it needs — and the shape it comes in — are set with it.',
-  '어떤 모양으로 받을까요?': 'What shape should it come in?',
+  '하려는 일을 고르면 필요한 자료와 아티팩트의 템플릿까지 함께 준비됩니다.':
+    'Pick the job and the material it needs — and its template — are set with it.',
+  '어떤 템플릿으로 받을까요?': 'Which template should it come in?',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
   '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
   '모델 목록 새로고침': 'Refresh model list',
@@ -3311,7 +3310,7 @@ const EN: Record<string, string> = {
   '{name} 예시': '{name} example',
   '파일 첨부': 'A file attached',
   '도식을 만들지 못했습니다.': 'The figure could not be made.',
-  '아티팩트의 모양을 고릅니다.': 'Pick the shape of the artifact.',
+  '아티팩트의 구성을 고릅니다. 색과 글꼴은 테마가 정합니다.': 'Pick how the artifact is structured. The theme sets its colours and fonts.',
   '이 도식은 그릴 수 없습니다. 단계를 줄여 다시 시도해 주세요.': 'This figure cannot be drawn. Try again with fewer steps.',
   '지금은 도식을 그릴 수 없습니다. 잠시 뒤 다시 시도해 주세요.': 'Figures cannot be drawn right now. Try again in a moment.',
   '「{name}」로 그립니다. 고쳐 쓰거나 지우고 직접 적어도 됩니다 — 만들기를 눌러야 크레딧이 듭니다.': 'Drawn as a {name}. Rewrite it or clear it and write your own — credits are used only when you press Make.',
@@ -3325,12 +3324,12 @@ const EN: Record<string, string> = {
   '인상': 'Impression',
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
-  '제품이 갖고 있는 아티팩트의 모양입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
-    'The shapes an artifact can come out in. Pick one and its screen opens with the example sentence in the composer.',
+  '제품이 갖고 있는 아티팩트의 종류입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
+    'The kinds of artifact the product makes. Pick one and its screen opens with the example sentence in the composer.',
 
   // ── 프로젝트의 기본 서식 ────────────────────────────────────────
-  '이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
-    'Sets the shape work started in this project comes out in. Each conversation can still pick its own.',
+  '이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
+    'Sets the template work started in this project comes out in. Each conversation can still pick its own.',
 
   // ── 버전 기록 ───────────────────────────────────────────────────
   '되돌리지 못했습니다.': 'Could not restore.',
@@ -3414,6 +3413,8 @@ const EN: Record<string, string> = {
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
   // ── 테마 ───────────────────────────────────────────────
   '사용 안 함 — 기본 모양': 'None — the default look',
+  '사용 안 함 — 기본 템플릿': 'None — the default template',
+  '문서 형식도 여기서 고릅니다': 'The document format is chosen here too',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type.',
   '한 줄 설명': 'One-line description',
@@ -3760,7 +3761,7 @@ const EN: Record<string, string> = {
   '예: 너는 학회 심사위원이다. 기여·방법·실험을 나눠 근거와 함께 지적한다.': 'e.g. You are a program committee reviewer. Point out issues in contribution, method and experiments, with reasons.',
   '여기서 고른 화면의 @ 버튼에만 나타납니다.': 'It appears only under the @ button of the surfaces picked here.',
   '더 설정하기': 'More settings',
-  '아티팩트 모양': 'Output shape',
+  '템플릿·테마': 'Template & theme',
   '이 에이전트로 새 대화를 열 때의 화면입니다.': 'The surface a new conversation with this agent opens on.',
   '대화 시작': 'Conversation start',
   '사용법, 시작 문장': 'How to use, starters',
@@ -3982,7 +3983,6 @@ const EN: Record<string, string> = {
   '문서를 만들어야 내보내기 단계를 쓸 수 있습니다.': 'An export step needs a document to export.',
   '보고서(문서)': 'Report (document)',
   '대화(답)': 'Chat (answer)',
-  '템플릿, 테마': 'Template, theme',
   '지운 뒤 몇 초 동안은 화면 아래에서 되돌릴 수 있습니다. 그 뒤에는 완전히 지워지고, 다음 대화부터 이 내용을 참고하지 않습니다.': 'For a few seconds after deleting you can undo it at the bottom of the screen. After that it is gone for good and later conversations no longer use it.',
   '쓰기 전에 계산': 'Calculate before writing',
   '기본 제공 계산입니다. 자료에서 값을 읽어 코드로 계산해 두고, 글은 그 값만 씁니다.': 'Built-in calculations. Values are read from the material and computed by code; the text uses only those.',
@@ -4053,13 +4053,13 @@ const EN: Record<string, string> = {
   '한 줄에 하나, 여섯 개까지. 카드에 보입니다.': 'One per line, up to six. Shown on the card.',
   '예시 요청': 'Example request',
   '카드의 버튼이 입력창에 넣는 첫 문장': 'The first sentence the card puts in the composer',
-  '머리 항목, 번호, 머리 모양, 개조식, 「끝.」': 'Head fields, numbering, head layout, bullet style, closing',
+  '머리 항목, 번호, 머리 배치, 개조식, 「끝.」': 'Head fields, numbering, head layout, bullet style, closing',
   '문서 종류 이름': 'Document type name',
   '머리에 보이는 이름. 비우면 템플릿 이름': 'Shown in the head. Empty: the template name',
   '머리 항목': 'Head fields',
   '한 줄에 하나, 열 개까지. 자료에 없으면 [항목] 빈칸': 'One per line, up to ten. Missing ones stay as [field] blanks',
   '회의명\n일시\n장소\n참석자': 'Meeting\nDate\nPlace\nAttendees',
-  '머리 모양': 'Head layout',
+  '머리 배치': 'Head layout',
   '1. / 가.': '1. / a.',
   '1. / 가. / 1) / 가) (공문서)': '1. / a. / 1) / a) (official)',
   '번호 없음': 'No numbers',
@@ -4079,7 +4079,7 @@ const EN: Record<string, string> = {
   '지침': 'Instructions',
   '쓰는 모델이 따를 규칙입니다. 독자에게는 보이지 않습니다.': 'Rules the writing model follows. Readers never see them.',
   '장르 규칙': 'Genre rule',
-  '개요와 본문에 함께 주는 모양 규칙': 'A shape rule given to the outline and the body',
+  '개요와 본문에 함께 주는 형식 규칙': 'A format rule given to the outline and the body',
   '점검표': 'Checklist',
   '한 줄에 하나. 「- 」로 시작': 'One per line, starting with “- ”',
   '쓰기 전에 자료에 없으면 물어볼 것': 'What to ask before writing when the material lacks it',
@@ -4093,7 +4093,7 @@ const EN: Record<string, string> = {
   '예시 문서 빼기': 'Remove the sample document',
   '저장한 뒤 올릴 수 있습니다.': 'You can upload it after saving.',
   '모두에게 공개 (다른 사람은 고르기만)': 'Everyone (others can pick it, not edit it)',
-  '이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 모양으로 열립니다.': 'Agents using this template work without one. Documents already made open in the standard look.',
+  '이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 템플릿으로 열립니다.': 'Agents using this template work without one. Artifacts already made open with the default template.',
   '아직 없습니다.': 'None yet.',
   '내 템플릿': 'My templates',
   '내가 만든 템플릿': 'Templates I made',
