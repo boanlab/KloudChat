@@ -10,7 +10,7 @@ title: Settings
 
 ![Profile tab](/img/guide/settings-profile.png)
 
-You can change your name and your password. To change the password, enter the current password and a new password of at least 10 characters. Changing it signs out the sessions on your other devices. You can check your role and join date, the remaining credits and the allowance for this month, and the next refill date. Credits are reset to the allowance on the first day of each month and do not carry over. The email address cannot be changed.
+You can change your name (the password is on the **Security** tab). You can check your role and join date, the remaining credits and the allowance for this month, and the next refill date. Credits are reset to the allowance on the first day of each month and do not carry over. The email address cannot be changed.
 
 ## Preferences
 
@@ -37,7 +37,7 @@ KloudChat has no text-size setting of its own. To read larger text, zoom the bro
 - **Things worth knowing about me**: Describe your affiliation, your area of work, your level of understanding, and similar details. It applies **to conversations only** and is not delivered to reports or slide decks.
 - **Answer style**: Describe the length, the tone, and the format. It applies to both conversations and documents. Write entries such as "no introduction", "always include an example", or "give English terms alongside".
 
-The settings apply from the next conversation onward. If an agent or a project has instructions, those take precedence. You can open the tab directly with `Ctrl+Shift+I`, and when it is applied the processing steps of the answer show **Personalization applied**.
+The settings apply from the next conversation onward. If an agent or a project has instructions, those take precedence. You can open the tab directly with `Alt+Shift+P`, and when it is applied the processing steps of the answer show **Personalization applied**.
 
 ## Memory
 
@@ -58,5 +58,6 @@ Issue keys for use in external tools or scripts. You can issue up to 10 keys per
 ![Security tab](/img/guide/settings-access.png)
 
 - **Signed-in devices**: Shows the browser, the IP, and the last use time. The current device is marked, and individual sign-out and **Sign out all other devices** are provided. Calls made through an API key are not shown in this list.
+- **Change password**: Enter the current password and a new password of at least 10 characters. Changing it signs out the sessions on your other devices.
 - **Sign-in history**: Shows the last 100 sign-ins, failed sign-ins, password changes, and keys issued, together with the IP, the region, and the browser. Region information is shown only when the administrator has configured location data, and private networks are marked as "internal network".
 - Two-factor authentication is not provided. Use a sufficiently long password and sign out the devices you do not recognize.

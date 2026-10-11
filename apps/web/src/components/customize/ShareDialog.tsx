@@ -37,7 +37,7 @@ export function ShareDialog({
       onClose()
     } catch (err) {
       setError(
-        // Sharing re-runs the upload scan: a secret or hidden direction marks stop it.
+        // Sharing re-runs the upload scan: secrets or hidden directions stop it.
         err instanceof ApiError && err.detail.startsWith('skill_share_blocked')
           ? t('공유하기 전에 고칠 곳이 있습니다. 키·토큰처럼 보이는 문자열이나 보이지 않는 방향 제어 문자를 지워 주세요.')
           : errorMessage(err, t('저장하지 못했습니다.')),

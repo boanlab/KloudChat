@@ -33,7 +33,7 @@ function AccountItems() {
   const pendingUsers = users.filter((u) => u.status === 'pending').length
   const unreadIssues = useIssues((s) => s.unread)
   const reviews = useBotAttention((s) => s.reviews)
-  // On a conversation, carried to 「문의·신고」 so a report started there can attach it.
+  // Current conversation, attachable to a 「문의·신고」 report.
   const sessionId = useMatch('/s/:sessionId')?.params.sessionId
 
   return (

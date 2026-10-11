@@ -42,21 +42,20 @@ const ACTION_LABEL: Record<string, string> = {
   'publication.channels_closed': '채널 닫음',
 }
 
-/** What approving does, by what was asked. */
+/** Approval effect by request. */
 const REQUEST_CONSEQUENCE: Record<'visibility' | 'channels' | 'version', string> = {
   visibility: '승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
   channels: '승인하면 요청한 채널이 열려, 봇 키를 가진 프로그램이나 승인한 사이트에서도 이 챗봇이 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
   version: '승인하면 아래 판이 지금 공개 범위와 채널에서 답합니다. 승인 전까지는 지금 판이 답합니다.',
 }
 
-/** A review on the record, by what was asked. */
+/** Recorded review by request. */
 const ASKED_LABEL: Record<string, string> = {
   visibility: '범위 요청',
   channels: '채널 요청',
   version: '새 판 확인',
 }
 
-/** The fields a version comparison names. */
 const CHANGE_LABEL: Record<string, string> = {
   instructions: '지시',
   contact: '담당 부서·연락처',
@@ -66,7 +65,7 @@ const CHANGE_LABEL: Record<string, string> = {
   knowledge: '자료',
 }
 
-/** Tools a bot may have, by their screen names. */
+/** By screen name. */
 const TOOL_LABEL: Record<string, string> = {
   search_knowledge: '자료 찾기',
   calculate: '계산기',
@@ -77,14 +76,14 @@ function changeWords(value: unknown, t: (s: string) => string): string {
   return value == null ? '' : String(value)
 }
 
-/** The channels in a set, as words: 「다른 사이트에 넣기(https://…) · API」. */
+/** 「다른 사이트에 넣기(https://…) · API」. */
 function channelWords(set: BotChannels | null | undefined, t: (s: string) => string): string {
   return CHANNELS.filter((c) => set?.[c])
     .map((c) => (c === 'embed' ? `${t(CHANNEL_LABEL[c])} (${(set?.embed?.origins ?? []).join(', ')})` : t(CHANNEL_LABEL[c])))
     .join(' · ')
 }
 
-/** What the reason box is for: each needs words the owner (and the audit log) will read. */
+/** Each reason is read by the owner and the audit log. */
 type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'revoked'
 
 const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
@@ -96,7 +95,7 @@ const DECISION: Record<Decision, { title: string; hint: string; required: boolea
   revoked: { title: '챗봇 닫기', hint: '누구도 쓸 수 없게 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
 }
 
-/** /admin/publications — bots the members published: the review queue first, then all of them. */
+/** Review queue first, then every bot. */
 export function AdminPublicationsPage() {
   const { publicationId } = useParams()
   return publicationId ? <ReviewView id={publicationId} /> : <PublicationList />
@@ -476,10 +475,7 @@ function ReviewView({ id }: { id: string }) {
 }
 
 
-/**
- * Reading a bot's conversations for an abuse review: a reason first, recorded in the audit log
- * and shown to the bot's owner; personal details stay masked.
- */
+/** Abuse review: reason first (audit log, shown to the owner); personal details masked. */
 function ConversationsCard({ id }: { id: string }) {
   const t = useT()
   const [asking, setAsking] = useState(false)

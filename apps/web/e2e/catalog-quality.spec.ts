@@ -23,7 +23,7 @@ test('보고서 서식 고르기는 서식을 보이고 찾게 한다', async ({
   })
 })
 
-/** Image, audio and video 서식 were retired: those surfaces offer no picker. */
+/** Image, audio and video surfaces offer no 서식 picker. */
 test('이미지 표면에는 서식 고르기가 없다', async ({ page }) => {
   await page.goto('/new/image')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 20_000 })

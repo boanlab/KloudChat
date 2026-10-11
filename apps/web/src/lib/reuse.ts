@@ -7,8 +7,7 @@ import type { Artifact, SessionKind } from '@/types'
 
 const tr = (text: string) => translate(currentLang(), text)
 
-/** Both open a new conversation of the artifact's own kind with it attached; 「이걸로 새로 시작」
- *  also writes the request into the box, 「새 대화에 첨부」 leaves the box for the person. */
+/** Both open a new conversation with the artifact attached; `restart` also fills in the request. */
 export type ReuseHow = 'restart' | 'attach'
 
 /** Artifacts whose words can travel to a new conversation as a file; pictures and clips cannot. */
@@ -43,11 +42,7 @@ async function asFile(artifact: Artifact): Promise<File> {
   return new File([await res.blob()], `${name}.md`, { type: 'text/markdown' })
 }
 
-/**
- * Starts a new conversation with the artifact attached as source material, through the
- * ordinary upload path: the composer picks the file up (`pendingAttachment`) and a
- * 「새로 시작」 also drops a request into the box. Nothing is sent on the person's behalf.
- */
+/** New conversation with the artifact attached via the normal upload path; nothing sent on the person's behalf. */
 export function useReuseArtifact() {
   const navigate = useNavigate()
   const setPendingAttachment = useStore((s) => s.setPendingAttachment)

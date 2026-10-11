@@ -1,8 +1,4 @@
-/**
- * Report `{title, sections[]}` ↔ one Markdown document. Parsing must neither
- * split a section at a `##` inside a body nor return zero sections when the
- * last heading was deleted, since saving overwrites the artifact.
- */
+/** Report ↔ one Markdown document; never split on a body `##` nor return zero sections (saving overwrites). */
 
 import type { ReportSection } from '@/types'
 import { uid } from '@/lib/utils'

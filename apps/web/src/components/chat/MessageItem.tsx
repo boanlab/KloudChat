@@ -263,8 +263,7 @@ function MessageItemInner({
   const madeHere = sessionKind === 'image' || sessionKind === 'av'
   const [copied, setCopied] = useState(false)
   const [badgesOpen, setBadgesOpen] = useState(false)
-  // Earlier answers to the same question (‹ k/n ›); `null` shows the current one.
-  // The choice is keyed to the row and its draft count, so a new answer shows itself.
+  // Earlier answers (‹ k/n ›); `null` = current. Keyed to row and draft count, so a new answer shows itself.
   const drafts = message.superseded ?? []
   const draftsKey = `${message.id}:${drafts.length}`
   const [view, setView] = useState<{ key: string; index: number | null }>({ key: draftsKey, index: null })
@@ -353,8 +352,7 @@ function MessageItemInner({
     const shape = designTemplates.find((row) => row.id === renderTemplateId)
     const failed = turnFailureNotice(message, madeHere, t)
     const startedFrom = message.startedFrom
-    // The stored copy is masked whenever there is a finding; the bubble holds
-    // the typed original until the session is reopened.
+    // Stored copy masked on any finding; the bubble holds the typed original until reopen.
     const redacted = (routing?.findingCounts ?? []).filter(
       (finding) => finding.source === 'current_input',
     )

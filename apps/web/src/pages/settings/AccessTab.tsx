@@ -29,7 +29,7 @@ const ACTION_LABEL: Record<string, string> = {
 const SESSIONS_PER_PAGE = 10
 const EVENTS_PER_PAGE = 20
 
-/** A section heading with the list's total beside it: 「로그인된 기기 23」. */
+/** 「로그인된 기기 23」. */
 function Heading({ title, total }: { title: string; total: number | null }) {
   return (
     <h3 className="flex items-baseline gap-2 text-base font-medium">
@@ -43,10 +43,7 @@ function Heading({ title, total }: { title: string; total: number | null }) {
   )
 }
 
-/**
- * Live sign-ins, ten a page. The reader's own leads page 1, then the rest by latest
- * activity; ending the current one signs the reader out.
- */
+/** Ten a page; own sign-in leads page 1, rest by latest activity; ending the current one signs out. */
 function ActiveSessions() {
   const t = useT()
   const idleTimeoutMinutes = useStore((s) => s.idleTimeoutMinutes)
@@ -63,7 +60,7 @@ function ActiveSessions() {
       .sessions(page, SESSIONS_PER_PAGE)
       .then((res) => {
         if (!live) return
-        // Ending the last row of a page leaves it empty: step back to the last one there is.
+        // Emptied page: step back to the last one.
         const last = pageCount(res.total, SESSIONS_PER_PAGE)
         if (res.items.length === 0 && page > last) return setPage(last)
         setData(res)
@@ -82,7 +79,7 @@ function ActiveSessions() {
         setPage(1)
       } else {
         await accessApi.endSession(target.familyId)
-        // The cookie is burned; tear down locally.
+        // Cookie burned: tear down locally.
         if (target.current) return void useStore.getState().logout()
       }
       setReloads((n) => n + 1)
@@ -154,7 +151,7 @@ function ActiveSessions() {
                       {t(r.region)}
                     </span>
                   )}
-                  {/* Relative so the row stays one line on a phone; the exact time is the tooltip. */}
+                  {/* Relative: one line on a phone; exact time in the tooltip. */}
                   <time
                     dateTime={r.lastSeenAt}
                     title={formatDateTime(r.lastSeenAt)}
@@ -214,7 +211,7 @@ function ActiveSessions() {
   )
 }
 
-/** This account's own security events, twenty a page, newest first. */
+/** Twenty a page, newest first. */
 function AccessLog() {
   const t = useT()
   const [page, setPage] = useState(1)

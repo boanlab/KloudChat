@@ -10,7 +10,7 @@ This page explains where your input and attachments are stored, how far they are
 
 | Data | Storage location | Sent outside | Deletion point | Administrator access |
 |---|---|---|---|---|
-| Conversations and answers | Organization server | Follows the data boundary of the model. Requests to models marked **external provider** and **may switch to an external provider** are sent to that service; requests to **strict-local** models are not. | When the user deletes it, or when the retention period set by the administrator has passed | No screen for viewing conversation content is provided. |
+| Conversations and answers | Organization server | Follows the data boundary of the model. Requests to models marked **external provider** and **may switch to an external provider** are sent to that service; requests to **strict-local** models are not. | When the user deletes it, or when the retention period set by the administrator has passed | No viewing screen. Exceptions: a session copy the user attached to [Feedback and issues](personal/issues), and an abuse check of a published chatbot's conversations (recorded with its reason in the audit log). |
 | Attachments and project knowledge | Organization server | Same as conversations. | When the file, the conversation, or the project is deleted | Only the storage volume can be checked. |
 | Memory | Organization server | Sent to the model together with the request. | When the user deletes it | Cannot be viewed. |
 | Web search terms | Not stored. | Sent to the search engine when search mode is Always or Auto. | Not applicable | Cannot be viewed. |
@@ -43,6 +43,10 @@ When you write a report or a slide deck, generate an image, or call the API, det
 ### When always-on masking is set
 
 Personal data is masked in every request, and **the conversation history is also stored in masked form**. When you open it again later, only the placeholders are shown, and sending the original text is not allowed. "Stored masked in the history" appears at the bottom of the answer.
+
+## Internal material stays strict-local
+
+When the administrator turns on this policy, a request that carries attachments, project files or memory is answered by the strict-local twin of the chosen model instead, and that conversation never moves to an external model afterwards. Without a twin, the strict-local safe model set by the administrator answers. Without that either, the request is refused.
 
 ## strict-local models
 

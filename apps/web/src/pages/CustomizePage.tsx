@@ -53,7 +53,7 @@ const statusLabel = (key: string) => (key === 'shared' ? '공유됨' : STATUS_LA
 
 const list = (raw: string | null) => (raw ? raw.split(',').filter(Boolean) : [])
 
-/** The hub's state lives in the address: tab, view, query, filters, sort, a section opened whole. */
+/** Hub state in the address: tab, view, query, filters, sort, expanded section. */
 function useHubParams() {
   const [params, setParams] = useSearchParams()
   const raw = params.get('tab')
@@ -83,12 +83,12 @@ function useHubParams() {
   return { params, tab, sort, filter, all, update }
 }
 
-/** Tabs as pills; on a phone they scroll sideways. */
+/** Pills; scroll sideways on a phone. */
 function TabStrip({ tab, onChange }: { tab: HubTab; onChange: (next: HubTab) => void }) {
   const t = useT()
   const tHub = useTIn('hub')
   const strip = useRef<HTMLDivElement>(null)
-  // On a phone the strip scrolls: keep the open tab in view.
+  // Keep the open tab in view.
   useEffect(() => {
     const on = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]')
     on?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -137,7 +137,7 @@ function Segment({ view, onChange }: { view: View; onChange: (next: View) => voi
   )
 }
 
-/** 「+ 추가 ▾」: what can be made on this tab. */
+/** 「+ 추가 ▾」 per tab. */
 function AddMenu({ tab, compact = false }: { tab: HubTab; compact?: boolean }) {
   const t = useT()
   const navigate = useNavigate()
@@ -253,7 +253,7 @@ function SortMenu({ sort, onSort }: { sort: SortKey; onSort: (next: SortKey) => 
   )
 }
 
-/** The phone's single 「필터·정렬」 sheet. */
+/** Phone's single 「필터·정렬」 sheet. */
 function FilterSheet({
   open,
   onClose,
@@ -393,7 +393,7 @@ function SectionHead({ title, onAll }: { title: string; onAll?: () => void }) {
   )
 }
 
-/** /customize — 사용자 지정: agents (with the 묶음 they tick), skills and connectors. */
+/** Agents (with their 묶음), skills, connectors. */
 export function CustomizePage() {
   const [params] = useSearchParams()
   const moved = MOVED_TABS[params.get('tab') ?? '']
@@ -421,7 +421,7 @@ function Hub() {
   const showHidden = params.get('hidden') === '1'
   const admin = useStore((s) => s.user?.role === 'admin')
   const hub = useHubItems(tab, showHidden)
-  // 숨김 포함: administrators, and anyone holding a hidden part, may show what lists leave out.
+  // 숨김 포함: administrators and holders of a hidden part.
   const hiddenToggle = tab === 'skills' && (admin || hub.hiddenMine > 0) ? (
     <Button
       size="sm"
@@ -484,7 +484,7 @@ function Hub() {
     const empty = filtered.length === 0
     return (
       <div className="space-y-4">
-        {/* Quick status chips, the same filter the popover sets. */}
+        {/* Same filter as the popover. */}
         <div className="flex flex-wrap items-center gap-1.5">
           {STATUS_KEYS.filter((key) => hub.mine.some((i) => (key === 'shared' ? i.shared : i.status === key))).map((key) => {
             const on = filter.status.includes(key)
@@ -557,7 +557,7 @@ function Hub() {
           <Grid>{filtered.map((item) => card(item, 'mine'))}</Grid>
         )}
         {tab === 'agents' && (
-          // 묶음 live with the agents that tick them, not in a tab of their own.
+          // 묶음 live with the agents that tick them.
           <Link
             to="/customize/bundles"
             className="flex items-center gap-2 rounded-card border border-line px-4 py-3 text-base hover:bg-elevated focus-visible:outline-2 focus-visible:outline-accent"
@@ -609,7 +609,7 @@ function Hub() {
       )
     }
     const popular = sortItems(hub.explore.filter((i) => i.installs > 0), 'popular').slice(0, PER_SECTION)
-    // A card shows once: what 가장 많이 추가된 already holds is not repeated under 새.
+    // Shown once: 가장 많이 추가된 not repeated under 새.
     const fresh = sortItems(hub.explore.filter((i) => !popular.includes(i)), 'recent')
     return (
       <div className="space-y-10">
@@ -672,7 +672,7 @@ function Hub() {
             )}
           </div>
         ) : (
-          // Too narrow for one row, the search box takes the second line; filter and sort stay up top.
+          // Narrow: search box on the second line, filter and sort on top.
           <div className="@container mb-6">
             <div className="flex flex-wrap items-center gap-3">
               <TabStrip tab={tab} onChange={setTab} />

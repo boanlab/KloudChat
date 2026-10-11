@@ -4,7 +4,7 @@ import { EmptyState, LoadingState } from '@/components/ui'
 import { designsApi, type DesignRow } from '@/lib/api'
 import { useT } from '@/lib/useT'
 
-/** 공유된 테마: the themes others shared with everyone (설정 › 테마). */
+/** 공유된 테마: themes others shared (설정 › 테마). */
 export function SharedDesigns({ query }: { query: string }) {
   const t = useT()
   const [shared, setShared] = useState<DesignRow[] | null>(null)

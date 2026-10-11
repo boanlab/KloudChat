@@ -2,7 +2,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * The UX audit's keyboard, focus and announcement fixes against fixture data: forms that say
+ * Keyboard, focus and announcements against fixture data: forms that say
  * what is missing instead of disabling the button, the sign-in errors, the administrator's
  * credit dialog, the phone drawer as a modal, the settings menu, the model menu's radios,
  * the project's web-page error, the skip link and the shortcuts. Every request is mocked.

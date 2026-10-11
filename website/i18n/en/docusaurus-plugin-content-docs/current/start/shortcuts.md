@@ -14,7 +14,7 @@ Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` 
 |---|---|
 | Open a new conversation | `Alt+Shift+N` |
 | Move to the composer | `/` (outside a text field) |
-| Search conversations | `Ctrl+K` |
+| Search conversations and artifacts | `Ctrl+K` |
 | Collapse or expand the sidebar | `Ctrl+Shift+S` |
 | Copy the last answer | `Alt+Shift+C` |
 | Copy the last code block | `Ctrl+Shift+;` |

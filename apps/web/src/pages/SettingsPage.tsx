@@ -31,7 +31,7 @@ export function SettingsPage() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const strip = useRef<HTMLElement>(null)
-  // On a phone the tabs scroll: keep the open one in view.
+  // Phone: tabs scroll; keep the open one in view.
   useEffect(() => {
     strip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [pathname])
@@ -56,8 +56,7 @@ export function SettingsPage() {
           }
         />
 
-        {/* Links between pages, not tabs: each has its own address, and NavLink marks the open one
-            with aria-current. */}
+        {/* Page links, not tabs: own addresses; NavLink sets aria-current. */}
         <nav ref={strip} aria-label={t('설정 메뉴')} className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
           {tabs.map((tab) => (
             <NavLink

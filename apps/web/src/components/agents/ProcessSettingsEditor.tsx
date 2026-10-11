@@ -4,7 +4,7 @@ import { Button, Field, Input, Select, Textarea } from '@/components/ui'
 import { useT } from '@/lib/useT'
 import type { ProcessCatalogue, ProcessName, ProcessSettings, ProcessStructure } from '@/types'
 
-/** Every key filled: a stored setting (only the keys it sets) over the defaults. */
+/** Stored setting's keys over the defaults, every key filled. */
 export function fullSettings(base: ProcessSettings, own?: Partial<ProcessSettings> | null): ProcessSettings {
   return {
     ...base,
@@ -15,7 +15,6 @@ export function fullSettings(base: ProcessSettings, own?: Partial<ProcessSetting
 
 const lines = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean)
 
-/** A titled block of the editor. */
 function Part({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   const t = useT()
   return (
@@ -27,7 +26,7 @@ function Part({ title, hint, children }: { title: string; hint?: string; childre
   )
 }
 
-/** Checkboxes over a closed list of built-in names; each says what it reads first. */
+/** Checkboxes over built-in names, each saying what it reads first. */
 function Names({
   names,
   value,
@@ -75,13 +74,7 @@ function Names({
   )
 }
 
-/**
- * 진행 과정 설정: the built-in calculations a document runs before writing, the named 서식 보정
- * stages, the attachable checks, 검토 규칙 a person writes in words, the structure rules checked
- * by code, and the options. The same editor serves an agent (over its template's settings) and
- * a person's template. Every built-in item is labelled as what it is: a calculation the
- * product ships.
- */
+/** 진행 과정 설정 editor (calculations, 서식 보정, checks, 검토 규칙, structure rules, options); for an agent and for a person's template. */
 export function ProcessSettingsEditor({
   value,
   catalogue,

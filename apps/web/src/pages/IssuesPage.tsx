@@ -10,11 +10,7 @@ import { KIND_LABEL, useIssues } from '@/lib/issues'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
 
-/**
- * 「문의·신고」: what I sent, where it stands, and what the administrators said; new reports
- * and inquiries start here. The account menu passes the conversation the user came from as
- * router state, so a report started here can still attach it.
- */
+/** 「문의·신고」: sent items, status, replies; the account menu passes the originating conversation as router state. */
 export function IssuesPage() {
   const t = useT()
   const openReport = useIssues((s) => s.openReport)
@@ -126,7 +122,7 @@ function IssueItem({
       live = false
       if (url) URL.revokeObjectURL(url)
     }
-    // Opening is the trigger; `onSeen` and the unread flag are read at that moment.
+    // Opening triggers it; `onSeen` and unread read at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, row.id])
 

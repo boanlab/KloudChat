@@ -1,8 +1,4 @@
-/**
- * Words for published bots (공개 챗봇): what the publish check found, what a bot leaves out,
- * who it is open to and how its review stands, why it is paused, and the notice a visitor
- * reads before the first question. Also the owner's and the administrator's badge.
- */
+/** Words for published bots: check findings, exclusions, audience, review, pause reason, visitor notice, badges. */
 
 import { useEffect } from 'react'
 import { create } from 'zustand'
@@ -100,8 +96,7 @@ export function reviewLine(pub: Publication, t: (s: string) => string): string {
   return ''
 }
 
-/** The notice before the first question; with 「대화 열람」 on it asks for consent. A visitor
- *  without an account also learns the conversation lives in this browser only. */
+/** Notice before the first question; asks consent with 「대화 열람」 on; accountless visitors learn it stays in this browser. */
 export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => string, signedIn = true): string[] {
   const lines =
     view === 'on'
@@ -187,8 +182,7 @@ export const CHANNEL_ERROR: Record<string, string> = {
   revoked: '닫힌 챗봇입니다.',
 }
 
-/** Whether an audience can carry the channel: framing needs everyone, the API and MCP an
- *  audience outside the members. */
+/** Framing needs everyone; API and MCP an audience beyond members. */
 export function channelAllowed(visibility: BotVisibility, channel: BotChannel): boolean {
   if (channel === 'embed') return visibility === 'external'
   return visibility !== 'internal'

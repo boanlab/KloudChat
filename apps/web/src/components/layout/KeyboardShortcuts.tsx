@@ -8,11 +8,10 @@ import { useT } from '@/lib/useT'
 import { useStore } from '@/store/useStore'
 import { openSearch } from './SearchDialog'
 
-/** Window event that opens the dialog from anywhere. */
+/** Window event opening the dialog. */
 const OPEN_EVENT = 'kloudchat:shortcuts'
 export const openShortcuts = () => window.dispatchEvent(new Event(OPEN_EVENT))
 
-/** One key cap. */
 function Key({ children }: { children: ReactNode }) {
   return (
     <kbd className="inline-flex h-7 min-w-7 items-center justify-center rounded-control border border-line bg-elevated px-1.5 font-sans text-xs text-muted shadow-[0_1px_0_var(--line)]">
@@ -32,7 +31,7 @@ function Chord({ keys }: { keys: string[] }) {
   )
 }
 
-/** Global shortcut handler and the dialog listing them; mounted once in the shell. */
+/** Global shortcut handler and its dialog; mounted once in the shell. */
 export function KeyboardShortcuts() {
   const t = useT()
   const navigate = useNavigate()
@@ -57,7 +56,7 @@ export function KeyboardShortcuts() {
     const onKey = (e: KeyboardEvent) => {
       const chord = shortcutFor(e)
       if (!chord) return
-      // An open dialog owns the keyboard, except this dialog's own toggle chord.
+      // Open dialog owns the keyboard, except this dialog's toggle chord.
       const dialogUp = document.querySelector('[role="dialog"]') !== null
       if (dialogUp && !(chord.id === 'show-shortcuts' && open)) return
       const state = useStore.getState()

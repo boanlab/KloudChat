@@ -56,7 +56,7 @@ for (const lang of ['ko', 'en'] as const) {
     for (const path of ROUTES) {
       await page.goto(path)
       found.push(...(await scan(page, path)))
-      // A path that lands elsewhere is a screen that no longer exists.
+      // A path that lands elsewhere is a missing screen.
       if (new URL(page.url()).pathname !== path) gone.push(path)
     }
     console.log(`\n=== ${lang}: ${found.length}건 ===`)

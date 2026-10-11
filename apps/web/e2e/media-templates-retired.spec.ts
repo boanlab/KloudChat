@@ -62,7 +62,7 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
       defaults: { chat: 'fixture/chat', report: 'fixture/chat', image: 'fixture/image' },
       litellmAvailable: false, autoRouting: { enabled: false, available: false },
     } })
-    // The catalogue as the server now ships it: writing 서식 only.
+    // The catalogue as the server ships it: writing 서식 only.
     if (method === 'GET' && path === '/design-templates') return route.fulfill({ json: [minutes] })
     if (method === 'GET' && path === '/credits') return route.fulfill({ json: { monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 } })
     if (method === 'GET' && path === '/artifacts/counts') return route.fulfill({ json: { counts: {}, total: 0 } })
@@ -85,7 +85,7 @@ async function fixture(page: Page, testInfo: TestInfo, diagram: 'drawn' | 'undra
         },
       } })
     }
-    // The browser-drawn store route is gone; a call to it would be a regression.
+    // No browser-drawn store route; any call to it fails the test.
     if (path.endsWith('/diagrams/store')) {
       seen.stores += 1
       return route.fulfill({ status: 404, json: { detail: 'not_found' } })

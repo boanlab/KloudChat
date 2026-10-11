@@ -270,7 +270,7 @@ test('M1: an agent row shows its own name once, the other screen as a badge, and
       fixtureAgent('b1'.padEnd(33, '1'), '개조식 보고서', {
         ...report, ownerId: 'admin', ownerName: '관리자', catalogKey: 'gaejo-report', official: true,
       }),
-      // As the eval instance holds it: the copy keeps the catalogue key, not the official mark.
+      // A copy keeps the catalogue key, not the official mark.
       fixtureAgent('b2'.padEnd(33, '2'), '개조식 보고서', {
         ...report, catalogKey: 'gaejo-report', originId: 'b1'.padEnd(33, '1'),
       }),

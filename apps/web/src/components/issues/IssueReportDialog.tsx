@@ -19,10 +19,10 @@ import type { SessionKind } from '@/types'
 
 const KINDS: IssueKind[] = ['bug', 'feature', 'other']
 
-/** 「문의·신고」 form. Mounted once in the shell; opened through `useIssues().openReport`. */
+/** 「문의·신고」 form; mounted once in the shell, opened via `useIssues().openReport`. */
 export function IssueReportDialog() {
   const open = useIssues((s) => s.open)
-  // Remounted per opening so a closed form starts clean next time.
+  // Remounted per opening: starts clean.
   return open ? <IssueForm /> : null
 }
 
@@ -58,8 +58,7 @@ function IssueForm() {
     }
   }, [sessionId])
 
-  // The preview is drawn from the decoded picture, so no URL made from the picked file
-  // reaches the page.
+  // Preview drawn from the decoded picture: no URL of the picked file reaches the page.
   useEffect(() => {
     const canvas = preview.current
     if (!shot || !canvas) return
@@ -68,7 +67,7 @@ function IssueForm() {
       (bitmap) => {
         const context = canvas.getContext('2d')
         if (live && context) {
-          // Covers the box like `object-cover`: scaled to fill, centred, the overflow cut.
+          // `object-cover` equivalent: fill, centre, crop.
           const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height)
           const width = bitmap.width * scale
           const height = bitmap.height * scale

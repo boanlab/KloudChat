@@ -33,7 +33,7 @@ If the sign-in screen has a **Forgot your password?** link, you can receive a re
 
 ## Changing your password and managing devices
 
-- Changing your password: Account menu → **Settings** → **Profile**. Changing it signs you out on your other devices.
+- Changing your password: Account menu → **Settings** → **Security**. Changing it signs you out on your other devices.
 - List of signed-in devices and sign-in history: **Settings** → **Security**. For details, see [Settings](../personal/settings#security).
 
 ## Automatic sign-out

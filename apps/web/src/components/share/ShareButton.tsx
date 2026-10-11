@@ -13,7 +13,7 @@ type Scope = 'workspace' | 'link'
 const options: { id: Scope; label: string; description: string; icon: typeof Users }[] = [
   {
     id: 'workspace',
-    // `workspace` means any signed-in account; there is no membership roster.
+    // `workspace`: any signed-in account; no membership roster.
     label: '계정이 있는 사람',
     description: '이 인스턴스에 로그인하면 누구나 열 수 있습니다.',
     icon: Users,
@@ -39,7 +39,7 @@ const sharedState: Record<Scope, { label: string; title: string; tone: 'accent' 
   },
 }
 
-/** Read-only sharing of a session; the shared state shows in the top bar beside the button. */
+/** Read-only session sharing; shared state shown beside the button. */
 export function ShareButton({ session }: { session: Session }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -51,7 +51,7 @@ export function ShareButton({ session }: { session: Session }) {
 
   const url = share ? `${window.location.origin}/share/${share.token}` : ''
 
-  // Fetched on mount so the badge is right before the dialog opens.
+  // Fetched on mount: badge right before the dialog opens.
   useEffect(() => {
     let live = true
     setShare(null)
@@ -73,7 +73,7 @@ export function ShareButton({ session }: { session: Session }) {
       const rows = await sharesApi.list()
       setShare(rows.find((r) => r.sessionId === session.id) ?? null)
     } catch {
-      // Offline: keep the last known state.
+      // Offline: keep last known state.
     }
   }
 
@@ -192,7 +192,7 @@ export function ShareButton({ session }: { session: Session }) {
   )
 }
 
-/** Who opened the link: name for signed-in readers, IP for anonymous ones. */
+/** Link visitors: name if signed in, else IP. */
 function ShareViews({ shareId }: { shareId: string }) {
   const t = useT()
   const [rows, setRows] = useState<ShareViewRow[] | null>(null)

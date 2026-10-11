@@ -14,7 +14,7 @@ import type { Bundle, PipelineStep } from '@/types'
 
 type Lists = { shipped: Bundle[]; mine: Bundle[]; shared: Bundle[] }
 
-/** A bundle's items as one line: 근거 확인 · 상투어 걷어내기 · 내보내기(PDF). */
+/** One line: 근거 확인 · 상투어 걷어내기 · 내보내기(PDF). */
 function itemsLine(b: Bundle, t: (s: string) => string) {
   return b.items
     .map((i) => {
@@ -24,7 +24,7 @@ function itemsLine(b: Bundle, t: (s: string) => string) {
     .join(' · ')
 }
 
-/** The bundle editor: a name, and its items picked from the same steps 직접 구성 offers. */
+/** Name plus items from the steps 직접 구성 offers. */
 function BundleEditor({
   bundle,
   onClose,
@@ -90,11 +90,7 @@ function BundleEditor({
   )
 }
 
-/**
- * /customize/bundles — 묶음 관리: the shipped bundles, mine and the ones others shared. A bundle
- * shows as one more checkbox in every agent form's 「추가로 할 일」. Sharing works as a skill's
- * does; one that exports, reviews or runs another agent waits for an administrator.
- */
+/** 묶음 관리: shipped, own, shared; each a checkbox in 「추가로 할 일」; export/review/agent-running ones wait for an administrator when shared. */
 export function BundlesPage() {
   const t = useT()
   const [params, setParams] = useSearchParams()

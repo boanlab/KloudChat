@@ -6,7 +6,7 @@ import { useT } from '@/lib/useT'
 
 const LIMIT = 1500
 
-/** About-me and response-style text prepended to every chat; documents take only the style. */
+/** Prepended to every chat; documents take only the style. */
 export function PersonalizationTab() {
   const t = useT()
   const { user, updateProfile } = useStore()

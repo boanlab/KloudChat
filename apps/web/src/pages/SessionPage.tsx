@@ -20,14 +20,14 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Within this many pixels of the bottom the transcript still follows new text. */
-/** Automatic retries of a transcript that did not arrive, before the page asks the reader. */
+/** Automatic transcript retries before asking the reader. */
 const LOAD_RETRIES = 3
+/** Follow distance from the bottom, px. */
 const FOLLOW_GAP_PX = 120
-/** Further than this from the bottom, the 「맨 아래로」 button shows. */
+/** 「맨 아래로」 threshold, px. */
 const AWAY_GAP_PX = 320
 
-/** What a design system changes on each surface; audio and video are unaffected. */
+/** Theme effect per surface; audio and video unaffected. */
 const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   chat: '이 대화의 말투를 이 테마에 맞춥니다',
   report: '보고서의 말투와 색, 서체를 이 테마에 맞춥니다',
@@ -35,7 +35,7 @@ const DESIGN_REACHES: Partial<Record<SessionKind, string>> = {
   image: '그림의 색과 스타일을 이 테마에 맞춥니다',
 }
 
-/** Agent, project and design this empty session carries; the 서식 chip lives in the composer instead. */
+/** Agent, project and theme of an empty session; the template chip lives in the composer. */
 function StartingFrom({
   sessionId,
   kind,
@@ -43,7 +43,6 @@ function StartingFrom({
 }: {
   sessionId?: string | null
   kind: SessionKind
-  /** Omit the agent row when the agent is already the headline. */
   withoutAgent?: boolean
 }) {
   const t = useT()
@@ -51,7 +50,7 @@ function StartingFrom({
   const found = useStore((s) => s.agents.find((a) => a.id === session?.agentId))
   const agent = withoutAgent ? undefined : found
   const project = useStore((s) => s.projects.find((p) => p.id === session?.projectId))
-  // The agent's design (or the viewer's own of that name), else the project's: the server's order.
+  // Agent's theme (or the viewer's own of that name), else the project's: the server's order.
   const design = useStore((s) =>
     s.designs.find((d) => d.id === found?.designSystemId) ??
     (found?.designName ? s.designs.find((d) => d.name === found.designName) : undefined) ??
@@ -124,7 +123,7 @@ function StartingFrom({
   )
 }
 
-/** The agent's guide text and starter sentences; a starter is sent as-is. */
+/** Starters sent as-is. */
 function AgentGuide({
   agent,
   sessionId,
@@ -176,10 +175,7 @@ function AgentGuide({
   )
 }
 
-/**
- * One start button per surface an agent offers (자기소개서 in chat, 경력기술서 as a report):
- * the current one is marked, the others open a new conversation there with the same agent.
- */
+/** One start button per agent surface: current marked, others open a new conversation with the same agent. */
 function AgentSurfaces({
   agent,
   sessionId,
@@ -225,11 +221,7 @@ function AgentSurfaces({
   )
 }
 
-/**
- * In an agent chat, makes the agent's document from the conversation: a report or slides
- * session with the same agent, given the conversation as material. Only surfaces the agent
- * names; an agent with no surfaces named stays a chat agent.
- */
+/** Agent chat → its document: report or slides session with the same agent, conversation as material; only surfaces the agent names. */
 function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string }) {
   const t = useT()
   const navigate = useNavigate()
@@ -274,7 +266,6 @@ function HandOffButtons({ agent, sessionId }: { agent: Agent; sessionId: string 
   )
 }
 
-/** Empty state shown before the first prompt of a fresh session. */
 function Intro({
   kind,
   sessionId,
@@ -330,7 +321,7 @@ function Intro({
 export function SessionPage() {
   const t = useT()
   const { sessionId } = useParams()
-  // Selectors, not the whole store: `MessageItem`'s memo keys on these rows.
+  // Selectors, not the store: `MessageItem`'s memo keys on these rows.
   const jobs = useStore((s) => s.jobs)
   const projects = useStore((s) => s.projects)
   const agents = useStore((s) => s.agents)
@@ -342,7 +333,7 @@ export function SessionPage() {
   const openArtifact = useStore((s) => s.openArtifact)
 
   const [searchParams, setSearchParams] = useSearchParams()
-  // `?artifact=` opens a specific document instead of the session's latest.
+  // `?artifact=` opens that document instead of the latest.
   const requestedArtifactId = searchParams.get('artifact')
   const session = useStore((s) => s.sessions.find((c) => c.id === sessionId) ?? null)
   const kind: SessionKind = session?.kind ?? 'chat'
@@ -352,8 +343,7 @@ export function SessionPage() {
     setActiveSession(session?.id ?? null)
   }, [session?.id, setActiveSession])
 
-  // Deletes an empty session on leave, unless it holds an unsent draft.
-  // Deferred a tick so StrictMode's mount/cleanup/mount and a return to the same id cancel it.
+  // Empty session deleted on leave unless it holds a draft; deferred a tick for StrictMode remounts and same-id returns.
   const pendingCleanup = useRef<{ id: string; timer: number } | null>(null)
   useEffect(() => {
     const id = sessionId
@@ -380,20 +370,20 @@ export function SessionPage() {
     }
   }, [sessionId])
 
-  // The session list carries no transcript; a session opened by URL fetches its own.
+  // List carries no transcript; a session opened by URL fetches its own.
   const loaded = session !== null && session.messages.length > 0
   const [loadAttempt, setLoadAttempt] = useState(0)
   const [failedLoad, setFailedLoad] = useState<{ id: string; attempt: number } | null>(null)
-  /** The session whose transcript has been fetched at least once on this page. */
+  /** Transcript fetched at least once on this page. */
   const [fetchedId, setFetchedId] = useState<string | null>(null)
-  /** Automatic retries spent on this session's transcript. */
+  /** Automatic retries spent. */
   const autoRetries = useRef<{ id: string | undefined; count: number }>({ id: undefined, count: 0 })
   useEffect(() => {
     let current = true
     if (sessionId && !loaded) {
       const completed = (fetched: boolean) => {
         if (!current) return
-        // A row that is gone, or a transcript that did not arrive, is not a new chat.
+        // Gone row or missing transcript: not a new chat.
         if (fetched && useStore.getState().sessions.some((row) => row.id === sessionId)) setFetchedId(sessionId)
         else setFailedLoad({ id: sessionId, attempt: loadAttempt })
       }
@@ -403,7 +393,7 @@ export function SessionPage() {
   }, [sessionId, loaded, openSession, loadAttempt])
   if (autoRetries.current.id !== sessionId) autoRetries.current = { id: sessionId, count: 0 }
   const loadFailed = failedLoad?.id === sessionId && failedLoad?.attempt === loadAttempt
-  // A dropped request is retried on its own a few times, waiting longer each time.
+  // Dropped request retried a few times with backoff.
   const retrying = loadFailed && autoRetries.current.count < LOAD_RETRIES
   useEffect(() => {
     if (!retrying) return
@@ -415,12 +405,12 @@ export function SessionPage() {
     return () => window.clearTimeout(timer)
   }, [retrying])
   const retryLoad = () => setLoadAttempt((attempt) => attempt + 1)
-  // A conversation with turns on the server never shows the empty greeting while they load.
+  // Turns on the server: no empty greeting while loading.
   const awaitingTranscript =
     session !== null && session !== undefined && session.messages.length === 0 &&
     (session.messageCount > 0 || !!session.pending) && fetchedId !== session.id
 
-  // Messages and jobs share one timeline, ordered by creation.
+  // Messages and jobs: one timeline by creation.
   const timeline = useMemo(() => {
     if (!session) return []
     const sessionJobs = jobs.filter((j) => j.sessionId === session.id)
@@ -431,7 +421,7 @@ export function SessionPage() {
     return items.sort((a, b) => +new Date(a.t) - +new Date(b.t)).map((i) => i.node)
   }, [session, jobs])
 
-  // Outline card index: end of the transcript while pending, above the running turn once accepted.
+  // Outline card: transcript end while pending, above the running turn once accepted.
   const proposalAt = useMemo(() => {
     if (!session?.pending) return -1
     if (!streaming) return timeline.length
@@ -441,7 +431,7 @@ export function SessionPage() {
     }
     return timeline.length
   }, [session?.pending, streaming, timeline])
-  // A question card the waiting stage already shows is not shown twice.
+  // Not twice when the waiting stage shows it.
   const proposal = session?.pending && !waitingCardMessageId(session) ? (
     <ProposalCard sessionId={session.id} pending={session.pending} kind={kind} />
   ) : null
@@ -451,12 +441,9 @@ export function SessionPage() {
   const runningProgress = jobs.find(
     (j) => j.sessionId === session?.id && j.status === 'running',
   )?.progress
-  // The transcript follows new text only while the reader is at (or near) the
-  // bottom. Scrolling up to re-read an earlier answer stops the following; a
-  // button offers the way back, and a newly sent question re-engages it.
+  // Follow only near the bottom; scrolling up stops it, a button or a new question re-engages.
   const following = useRef(true)
-  // Set while the component's own smooth scroll is in flight: those scroll events
-  // are not the reader leaving the bottom.
+  // Own smooth scroll in flight: not the reader leaving the bottom.
   const settling = useRef(false)
   const [awayFromBottom, setAwayFromBottom] = useState(false)
   const measureFollowing = useCallback(() => {
@@ -477,25 +464,25 @@ export function SessionPage() {
     setAwayFromBottom(false)
     settling.current = behavior === 'smooth'
     el.scrollTo({ top: el.scrollHeight, behavior })
-    // A smooth scroll that never reaches the bottom (content kept growing) must not pin this.
+    // A smooth scroll that never reaches the bottom must not pin this.
     if (settling.current) window.setTimeout(() => { settling.current = false }, 800)
   }, [])
   const lastMessageId = session?.messages.at(-1)?.id
   const lastRole = session?.messages.at(-1)?.role
   useLayoutEffect(() => {
-    // A question the reader just sent always brings the bottom into view.
+    // A just-sent question brings the bottom into view.
     if (lastRole === 'user') following.current = true
   }, [lastMessageId, lastRole])
   useLayoutEffect(() => {
     if (!following.current) return
     scrollToBottom(streaming ? 'auto' : 'smooth')
   }, [timeline.length, lastLength, runningProgress, streaming, scrollToBottom])
-  // A new conversation opens at the bottom.
+  // New conversation opens at the bottom.
   useEffect(() => {
     following.current = true
     setAwayFromBottom(false)
   }, [session?.id])
-  // Screen readers hear when an answer has landed; the text itself is read on demand.
+  // Screen readers hear an answer land; text read on demand.
   const wasStreaming = useRef(false)
   const [announcement, setAnnouncement] = useState('')
   const lastError = session?.messages.at(-1)?.error
@@ -506,7 +493,7 @@ export function SessionPage() {
     wasStreaming.current = !!streaming
   }, [streaming, lastError, t])
 
-  // Applied once the session is loaded, then cleared so a closed panel stays closed.
+  // Applied once loaded, then cleared, so a closed panel stays closed.
   useEffect(() => {
     if (!requestedArtifactId || !session) return
     openArtifact(requestedArtifactId)
@@ -518,7 +505,7 @@ export function SessionPage() {
       },
       { replace: true },
     )
-    // Session by id: its identity changes on every streamed token.
+    // Session by id: identity changes per streamed token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedArtifactId, session?.id, openArtifact, setSearchParams])
 
@@ -608,7 +595,7 @@ export function SessionPage() {
                 data-testid="transcript"
               >
                 <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-                  {/* Per-message boundary: one malformed turn loses only its own bubble. */}
+                  {/* Per-message boundary: one malformed turn loses only its bubble. */}
                   {timeline.map((item, i) =>
                     item.type === 'message' ? (
                       <Fragment key={item.m.id}>
@@ -653,7 +640,7 @@ export function SessionPage() {
           ) : (
             <>
               <Intro kind={kind} sessionId={session?.id ?? sessionId ?? null} />
-              {/* URL id first: the row may not have arrived yet, and `null` would start a new session. */}
+              {/* URL id first: the row may not have arrived, and `null` would start a new session. */}
               <Composer
                 sessionId={session?.id ?? sessionId ?? null}
                 kind={kind}

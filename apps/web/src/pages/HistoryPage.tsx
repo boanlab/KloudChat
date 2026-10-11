@@ -21,7 +21,7 @@ import { dayLabel, dayOf } from '@/lib/days'
 import { useT } from '@/lib/useT'
 import type { SessionKind } from '@/types'
 
-/** Conversations per page; the server pages the list and the search alike. */
+/** Server pages list and search alike. */
 const PAGE_SIZE = 50
 
 interface Row {
@@ -29,7 +29,7 @@ interface Row {
   kind: SessionKind
   title: string
   updatedAt: string
-  /** While searching: a marked window of the message that matched. */
+  /** Search: marked window of the matching message. */
   snippet?: SearchRun[]
 }
 
@@ -39,7 +39,7 @@ interface Listing {
   page: number
 }
 
-/** Page numbers around `page`, with gaps as null: 1 … 4 5 6 … 12. */
+/** Gaps as null: 1 … 4 5 6 … 12. */
 function pageWindow(page: number, pages: number): (number | null)[] {
   const keep = new Set([1, pages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= pages))
   const out: (number | null)[] = []
@@ -52,7 +52,7 @@ function pageWindow(page: number, pages: number): (number | null)[] {
   return out
 }
 
-/** 처음 · 이전 · 1 2 3 … · 다음 · 마지막; `compact` is the one-line version above the list. */
+/** `compact`: one-line version above the list. */
 function Pager({
   page,
   pages,
@@ -110,24 +110,23 @@ function Pager({
   )
 }
 
-/** Every conversation, a page at a time, with bulk delete; the search reads titles and messages. */
+/** Search reads titles and messages. */
 export function HistoryPage() {
   const t = useT()
   const { deleteSessions } = useStore()
   const navigate = useNavigate()
-  // The search dialog's 「대화 기록에서 보기」 carries its words here; words and page live in the address.
+  // 「대화 기록에서 보기」 carries its words here; words and page live in the address.
   const [params, setParams] = useSearchParams()
   const urlQuery = params.get('q') ?? ''
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1)
   const [query, setQuery] = useState(urlQuery)
   const needle = query.trim()
-  // Back and forward bring their words with them.
   useEffect(() => {
     setQuery((current) => (current.trim() === urlQuery ? current : urlQuery))
   }, [urlQuery])
 
   const [listing, setListing] = useState<Listing | null>(null)
-  // Every conversation, whatever the search: what 「모든 대화 삭제」 removes.
+  // What 「모든 대화 삭제」 removes, regardless of search.
   const [allTotal, setAllTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState<string | null>(null)
@@ -152,7 +151,7 @@ export function HistoryPage() {
     [urlQuery, page, setParams],
   )
 
-  // Typing settles into the address (a new search starts on page 1), without a history entry per key.
+  // Typing settles into the address (page 1), no history entry per key.
   useEffect(() => {
     if (needle === urlQuery) return
     const timer = setTimeout(() => goTo({ q: needle, page: 1 }), 250)
@@ -185,7 +184,7 @@ export function HistoryPage() {
     work
       .then((next) => {
         setListing(next)
-        // Past the end (after deleting, or an old link): the last page there is.
+        // Past the end (after delete, old link): last page.
         if (next.page !== page) goTo({ page: next.page })
         const pages = Math.max(1, Math.ceil(next.total / PAGE_SIZE))
         if (urlQuery && page > pages && next.total > 0) goTo({ page: pages })
@@ -199,7 +198,7 @@ export function HistoryPage() {
     return () => controller.abort()
   }, [urlQuery, page, reload, goTo, t])
 
-  // The count of every conversation, once, when the page opens on a search.
+  // Total count once, when opening on a search.
   useEffect(() => {
     if (allTotal !== null || !urlQuery) return
     void historyApi.page(1, 1).then((found) => setAllTotal(found.total)).catch(() => undefined)
@@ -257,7 +256,7 @@ export function HistoryPage() {
     }
   }
 
-  // Before the first listing arrives the count is not known; 「0개」 would be wrong.
+  // Count unknown before the first listing; 「0개」 would be wrong.
   const everyone = allTotal ?? (urlQuery || !listing ? null : total)
 
   return (
@@ -346,7 +345,7 @@ export function HistoryPage() {
           <div className="overflow-hidden rounded-card border border-line bg-panel">
             {rows.map((s, i) => {
               const meta = kindMeta[s.kind]
-              // Rows are newest-first; a day heading appears where the day changes on this page.
+              // Newest-first; day heading where the day changes.
               const day = dayOf(s.updatedAt)
               const first = i === 0 || dayOf(rows[i - 1].updatedAt) !== day
               return (

@@ -27,19 +27,17 @@ const FORMAT_LABEL: Record<string, string> = { docx: 'DOCX', pdf: 'PDF', hwpx: '
 const targetOn = (item: BundleItem, surface: SessionKind) =>
   surface === 'report' || surface === 'chat' ? item.targets[surface] : null
 
-/** The file an export item makes when ticked without a format, as the server decides it: the one
- *  its `by_format` names for the agent's document format (HWPX for the 공문 family), else its first. */
+/** Format of an export ticked without one: server's `by_format` for the agent's format (공문 → HWPX), else first. */
 function exportDefault(item: BundleItem, docFormat: string | null | undefined): string {
   return (docFormat && item.settings.by_format?.[docFormat]) || item.settings.formats?.[0] || 'docx'
 }
 
-/** The format a person's tick sets: the one the agent's own words name (「워드」 「HWPX」 「PDF」),
- *  else the server's default for its document format. */
+/** Format a tick sets: the one the agent's words name (「워드」 「HWPX」 「PDF」), else the server default. */
 function exportTick(item: BundleItem, docFormat: string | null | undefined, asked: string | null | undefined): string {
   return asked || exportDefault(item, docFormat)
 }
 
-/** An item's tick: the person's, else the bundle's default. An export's tick is its format. */
+/** Tick: the person's, else the bundle default; an export's tick is its format. */
 function tickOf(item: BundleItem, sel: BundleSelection | undefined, docFormat?: string | null): boolean | string {
   const raw = sel && item.id in sel.items ? sel.items[item.id] : item.default
   if (item.kind === 'export') {
@@ -49,14 +47,10 @@ function tickOf(item: BundleItem, sel: BundleSelection | undefined, docFormat?: 
   return !!raw
 }
 
-/**
- * Words in an agent's name, description or 지시 that ask for a file back (「워드 파일로」 「DOCX」
- * 「PDF로 내보내」), not ones about files given to it (「첨부한 파일을」): a 바로 답하기 agent
- * answers in the chat and makes none.
- */
+/** Words asking for a file back (「워드 파일로」 「PDF로 내보내」), not about given files; 바로 답하기 makes none. */
 const WANTS_FILE = /docx|hwpx|\bpdf\b|워드|한글\s{0,2}(?:문서|파일)|파일\s{0,2}(?:로|형식)|내보내|\bword\b/i
 
-/** The format the words name outright (「HWPX」 「한글 파일」 「PDF」 「워드」 「DOCX」), else null. */
+/** Format named outright, else null. */
 function namedFormat(text: string, formats: string[]): string | null {
   const want = /hwpx|한글\s{0,2}(?:문서|파일)/i.test(text)
     ? 'hwpx'
@@ -68,14 +62,13 @@ function namedFormat(text: string, formats: string[]): string | null {
   return want && formats.includes(want) ? want : null
 }
 
-/** The file format those words name: HWPX or PDF when said, else DOCX (「워드」 「파일로」). */
+/** Named format: HWPX or PDF when said, else DOCX. */
 function askedFormat(text: string, formats: string[]): string {
   const want = namedFormat(text, formats) ?? 'docx'
   return formats.includes(want) ? want : (formats[0] ?? 'docx')
 }
 
-/** A base's name with what it makes, as other screens call it (「자료 추출·집계 (표)」); the part
- *  in brackets only when it adds words: never 「개조식 보고 (개조식 보고서)」 or 「회의록 (회의록)」. */
+/** Base name with its output (「자료 추출·집계 (표)」); brackets only when they add words. */
 function baseLabelOf(name: string, made: string | undefined): { name: string; made: string | null } {
   const flat = (s: string) => s.replace(/\s+/g, '')
   if (!made) return { name, made: null }
@@ -84,7 +77,7 @@ function baseLabelOf(name: string, made: string | undefined): { name: string; ma
   return a.includes(b) || b.includes(a) ? { name, made: null } : { name, made }
 }
 
-/** One 묶음: a checkbox, and behind 「자세히」 its items, each its own checkbox. */
+/** One 묶음: checkbox, items behind 「자세히」. */
 function BundleRow({
   bundle,
   surface,
@@ -99,18 +92,18 @@ function BundleRow({
   surface: SessionKind
   selection: BundleSelection | undefined
   formats: string[]
-  /** The agent's document format: what an export ticked without a format makes. */
+  /** Agent's document format: what a format-less export makes. */
   docFormat?: string | null
-  /** The format the agent's name, description or 지시 names: what a tick picks first. */
+  /** Format named in the agent's name, description or 지시: a tick's first pick. */
   asked?: string | null
   onChange: (next: BundleSelection | undefined) => void
-  /** Switches the agent to a base that writes a document, where a file export runs. */
+  /** Switch to a document-writing base, where a file export runs. */
   onDocumentBase?: () => void
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const items = bundle.items.filter((i) => targetOn(i, surface) !== null && targetOn(i, surface) !== 'self')
-  // What this bundle holds that nothing here can do (a file export for an agent that answers).
+  // Items unrunnable here (a file export on an answering agent).
   const cannot = bundle.items.filter((i) => targetOn(i, surface) === null)
   if (items.length === 0) return null
   const on = !!selection
@@ -120,9 +113,7 @@ function BundleRow({
     .filter((i) => i.kind !== 'export' && (targetOn(i, surface) === 'flow' || (on && tickOf(i, selection))))
     .map((i) => t(i.label))
     .join(' · ')
-  // The note says what ticking it does here: its items, never a promise of what it cannot do.
-  // A file export it holds is always named, with where it runs, so a person who needs a file
-  // sees before ticking that this agent will not make one.
+  // Note names only what ticking does here; a held file export always named with where it runs.
   const exportElsewhere = cannot.some((i) => i.kind === 'export')
   const listed = summary || (cannot.length > 0 ? items.map((i) => t(i.label)).join(' · ') : t(bundle.description))
   const note = exportElsewhere ? `${listed} · ${t('파일로 내보내기(문서 과정에서)')}` : listed
@@ -284,7 +275,7 @@ function SaveAsBundle({ steps, onSaved }: { steps: PipelineStep[]; onSaved: () =
             value={name}
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
-            // The dialog sits inside the agent form: Enter saves the bundle, not the agent.
+            // Inside the agent form: Enter saves the bundle, not the agent.
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return
               e.preventDefault()
@@ -299,10 +290,7 @@ function SaveAsBundle({ steps, onSaved }: { steps: PipelineStep[]; onSaved: () =
   )
 }
 
-/**
- * 「진행 과정」 and 「추가로 할 일」: 바로 답하기, a base the official agents work by, or 직접 구성
- * (고급); and the 묶음 ticked on top of it. The words 워크플로 and 작동 단계 are never shown.
- */
+/** 「진행 과정」 and 「추가로 할 일」; 워크플로·작동 단계 never shown. */
 export function ProcessSection({
   agent,
   value,
@@ -317,12 +305,11 @@ export function ProcessSection({
   onChange: (next: ProcessDraft) => void
   /** What a new conversation opens on, when no base fixes it. */
   surface: SessionKind
-  /** 직접 구성: what the agent's own step makes (its 사용할 화면), set beside the steps.
-   * Returns what puts the form back as it was, for the undo a one-click fix offers. */
+  /** 직접 구성: the agent step's 사용할 화면; returns an undo for the one-click fix. */
   onSurface?: (next: SessionKind) => (() => void) | void
-  /** The form's 빠진 정보 질문 as they stand: a 확인 질문 step is judged with them. */
+  /** Current 빠진 정보 질문; a 확인 질문 step is judged with them. */
   questions?: GapQuestion[]
-  /** Opens the form's 빠진 정보 질문 with a new question to fill. */
+  /** Opens 빠진 정보 질문 with a new question. */
   onAskQuestions?: () => void
 }) {
   const t = useT()
@@ -338,7 +325,7 @@ export function ProcessSection({
   const selfName = agent.name.trim() || t('이 에이전트')
   const verdict = useStepVerdict(value.steps, agent.id || null, value.mode === 'custom', { surface: on, name: selfName }, questions)
   const surfaceRef = useRef<HTMLSelectElement>(null)
-  // The first base that writes a document: where a 바로 답하기 agent that needs a file goes.
+  // First document-writing base: target for a 바로 답하기 agent needing a file.
   const documentBase = cat?.bases.find((b) => b.surface === 'report' && !b.draft) ?? null
   const wantsFile = WANTS_FILE.test(`${agent.name}\n${agent.description}\n${agent.systemPrompt}`)
   const baseLabel = (name: string, made: string | undefined) => {
@@ -356,7 +343,7 @@ export function ProcessSection({
     const next = cat?.bases.find((b) => b.key === key)
     let bundles = next ? next.bundles.map((b) => ({ ...b, items: { ...b.items } })) : value.bundles
     if (exportAs) {
-      // Switched because the person asked for a file: its 「다 쓰면 파일로 내보내기」 is ticked too.
+      // Switched for a file: its export ticked too.
       const finish = (cat?.bundles ?? []).find((b) => b.items.some((i) => i.kind === 'export'))
       const item = finish?.items.find((i) => i.kind === 'export')
       if (finish && item) {
@@ -370,7 +357,7 @@ export function ProcessSection({
   }
   const setMode = (mode: ProcessMode) => {
     if (mode === 'base') {
-      // The base kept from before, else the first the catalogue offers.
+      // Kept base, else the catalogue's first.
       const key = value.base ?? cat?.bases[0]?.key ?? null
       if (key) return pickBase(key)
     }
@@ -385,11 +372,11 @@ export function ProcessSection({
   }
   const ownWords = `${agent.name}\n${agent.description}\n${agent.systemPrompt}`
   const exportAs = askedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
-  // R2: ticking the export by hand picks the format the words name too, as the switch does.
+  // Manual export tick picks the named format too, as the switch does.
   const namedAs = namedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
-  // Every way here starts from a person who wants a file: the export comes ticked with it.
+  // Every path here wants a file: export comes ticked.
   const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key, exportAs) : undefined
-  /** Under a step's problem: the control that fixes it, one click away. */
+  /** Under a step's problem: its one-click fix. */
   const actionFor = (p: PipelineProblem, step: PipelineStep | null) => {
     const exportProblem =
       p.code === 'export_needs_document' || (step?.kind === 'export' && p.code === 'needs_product')
@@ -400,7 +387,7 @@ export function ProcessSection({
           className="ml-7 text-sm text-accent hover:underline"
           data-testid="export-fix"
           onClick={() => {
-            // Sets it, not only points at it; the notice puts it back.
+            // Sets it, not just points; the notice undoes it.
             const before = on
             const undo = onSurface('report')
             setToast({

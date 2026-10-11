@@ -6,11 +6,7 @@ const DEFAULT_NAME = 'kloudchat'
 /** The favicon the page loaded with, so a brand reverted to the default gets it back. */
 let shippedHref: string | null = null
 
-/**
- * A 32×32 favicon drawn the way `Brand` draws its mark without a logo: rounded
- * square in the accent colour with the bold initial. Favicons cannot follow the
- * page theme, so the light-theme accent is used.
- */
+/** 32×32 favicon like `Brand`'s initial mark; light-theme accent (favicons ignore the theme). */
 function initialFavicon(initial: string): string {
   const escaped = initial.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
   const svg =
@@ -38,8 +34,7 @@ export function applyBrand(brand: { name: string; logo: string }) {
     return
   }
 
-  // No logo: the tab shows the same initial the in-app mark shows, unless the
-  // name is still the default, whose shipped icon is the real one.
+  // No logo: initial favicon, unless the default name keeps the shipped icon.
   const initial = name[0]?.toUpperCase()
   if (!initial || name.toLowerCase() === DEFAULT_NAME) {
     if (shippedHref) {

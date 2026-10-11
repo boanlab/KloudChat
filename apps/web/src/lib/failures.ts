@@ -1,10 +1,6 @@
 import { errorCode, errorMessage, type StreamEvent } from '@/lib/api'
 
-/**
- * Actionable sentences for API refusal codes (`agent_disabled`,
- * `blocked_category:x`, …) and stream `error` events. Unknown codes are still
- * shown in brackets. Korean source strings, passed through the caller's `t`.
- */
+/** Sentences for API refusal codes and stream `error` events; unknown codes shown in brackets. */
 type T = (text: string) => string
 
 const SKILLS = '선택한 스킬을 이 요청에 적용할 수 없습니다. 스킬 선택을 바꿔 다시 시도하세요.'

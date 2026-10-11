@@ -8,7 +8,7 @@ import { useT } from '@/lib/useT'
 import { itemMeta, type HubItem } from './hubItems'
 import { ItemIconTile } from './ItemCard'
 
-/** A hub screen's top bar: 「사용자 지정 / {종류}」 back to the right tab. */
+/** Hub screen top bar: 「사용자 지정 / {종류}」 back to its tab. */
 export function HubTopBar({
   tab,
   tabLabel,
@@ -18,7 +18,7 @@ export function HubTopBar({
   tab: string
   tabLabel: string
   title: string
-  /** Where the middle crumb goes when it is not a hub tab (내 템플릿). */
+  /** Middle crumb target when not a hub tab (내 템플릿). */
   to?: string
 }) {
   const t = useT()
@@ -65,10 +65,7 @@ export interface MenuAction {
   danger?: boolean
 }
 
-/**
- * An item's screen: icon, name, summary, maker; 체험 and 추가 or 편집; the rest under ⋯.
- * On a phone the two main actions ride a bar pinned to the bottom.
- */
+/** Item screen: header, 체험 and 추가/편집, rest under ⋯; main actions pinned bottom on phones. */
 export function DetailLayout({
   item,
   tab,
@@ -86,7 +83,7 @@ export function DetailLayout({
   /** 「추가」 or 「편집」. */
   primary?: { label: string; run: () => void | Promise<void>; added?: boolean }
   menu: MenuAction[]
-  /** Beside the buttons: the on/off switch. */
+  /** Beside the buttons: on/off switch. */
   aside?: ReactNode
   children: ReactNode
 }) {
@@ -170,7 +167,6 @@ export function DetailLayout({
   )
 }
 
-/** One titled section of a detail screen. */
 export function DetailSection({ id, title, children }: { id?: string; title: string; children: ReactNode }) {
   return (
     <section id={id} aria-label={title} className="scroll-mt-4 space-y-3">

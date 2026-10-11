@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui'
 import { useT } from '@/lib/useT'
 
-/** Panel width: `narrow` beside the chat, `wide` reading width, `full` document only. */
+/** Panel width: `narrow` beside chat, `wide` reading width, `full` document only. */
 export type PanelMode = 'narrow' | 'wide' | 'full'
 
 const NEXT: Record<PanelMode, PanelMode> = { narrow: 'wide', wide: 'full', full: 'narrow' }
@@ -12,19 +12,19 @@ export function nextMode(mode: PanelMode): PanelMode {
   return NEXT[mode]
 }
 
-/** Width-cycle and close buttons shared by every artifact panel. */
+/** Width-cycle and close buttons for every artifact panel. */
 export function PanelControls({
   mode,
   onCycle,
   onClose,
 }: {
   mode: PanelMode
-  /** Omitted where the host cannot grow (fixed-width preview). */
+  /** Omitted where the host cannot grow. */
   onCycle?: () => void
   onClose?: () => void
 }) {
   const t = useT()
-  // Labelled by what pressing it does, not by the current state.
+  // Labelled by the action, not the state.
   const label =
     mode === 'narrow' ? t('넓게 보기') : mode === 'wide' ? t('문서만 보기') : t('패널 좁히기')
   const hint =
@@ -61,9 +61,9 @@ export function PanelControls({
   )
 }
 
-/** Panel-local width mode, reported up so the host can resize. */
+/** Panel-local width mode, reported to the host. */
 export function usePanelWidth(onModeChange?: (mode: PanelMode) => void) {
-  // Opens wide; the parent starts narrow, so the initial mode is announced once.
+  // Opens wide; parent starts narrow, so the initial mode is announced once.
   const [mode, setMode] = useState<PanelMode>('wide')
   useEffect(() => {
     onModeChange?.('wide')

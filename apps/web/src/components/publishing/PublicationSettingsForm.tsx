@@ -27,7 +27,7 @@ export function PublicationSettingsForm({
   draft: SettingsDraft
   defaults: BotLimits
   onChange: (next: SettingsDraft) => void
-  /** Turning 「대화 열람」 on or changing the retention asks visitors to read the notice again. */
+  /** Enabling 「대화 열람」 or changing retention re-asks visitors to read the notice. */
   viewChanged?: boolean
 }) {
   const t = useT()

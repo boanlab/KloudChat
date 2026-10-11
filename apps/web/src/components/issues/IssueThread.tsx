@@ -11,14 +11,14 @@ export function StatusBadge({ status }: { status: IssueStatus }) {
   return <Badge tone={STATUS_TONE[status]}>{t(STATUS_LABEL[status])}</Badge>
 }
 
-/** A report's thread: replies both ways, and the status changes with their reasons. */
+/** Report thread: replies both ways, status changes with reasons. */
 export function IssueThread({
   thread,
   viewer,
   onReply,
 }: {
   thread: IssueReply[]
-  /** Whose screen this is: their own entries sit on the right. */
+  /** Viewer's role: own entries on the right. */
   viewer: 'admin' | 'user'
   onReply?: (text: string) => Promise<void>
 }) {

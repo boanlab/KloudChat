@@ -58,33 +58,25 @@ import { fillBlank, useDocMarks } from '@/lib/docMarks'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/** The document looks in the order the picker shows them. */
+/** Picker order. */
 const DOC_LOOKS: { id: 'editorial' | 'poster' | 'minimal'; label: string; why: string }[] = [
   { id: 'editorial', label: '편집형', why: '제목 밑줄과 번호 붙은 절, 선명한 절 구분' },
   { id: 'poster', label: '매거진형', why: '색면 표지 띠와 강조색 절 제목' },
   { id: 'minimal', label: '미니멀', why: '먹색 제목과 회색 절 제목, 넓은 여백' },
 ]
 
-/** Accent colours by name; the same nine the slide picker offers. */
+/** Same nine accents as the slide picker. */
 const DOC_ACCENTS: [string, string][] = [
   ['#1e3a8a', '남색'], ['#1f6feb', '파랑'], ['#0f766e', '청록'], ['#15803d', '초록'],
   ['#5b5bd6', '보라'], ['#a21caf', '자주'], ['#c2410c', '주황'], ['#b91c1c', '빨강'], ['#334155', '먹'],
 ]
 
-/**
- * A ribbon group's own name, actually on screen.
- *
- * `RibbonGroup`'s `label` is an `aria-label` only — nothing a sighted person
- * reads. Fine for a group that is one self-explanatory button, but "매거진형"
- * next to "보고 문서" gives no hint that one is a look and the other an export
- * format. Set inline, before the value, so it costs no extra row and keeps
- * the group as tall as its single-line neighbours.
- */
+/** Visible group label (`RibbonGroup` label is aria-only): tells look and format apart. */
 function RibbonCaption({ children }: { children: ReactNode }) {
   return <span className="font-semibold text-faint">{children}</span>
 }
 
-/** A thumbnail of a document look: the first page, title and two sections. */
+/** Look thumbnail: first page, title, two sections. */
 function DocLookSwatch({ look, accent, size = 1 }: { look: string; accent: string; size?: number }) {
   const w = 22 * size
   const h = 28 * size
@@ -106,7 +98,7 @@ function DocLookSwatch({ look, accent, size = 1 }: { look: string; accent: strin
   )
 }
 
-/** Inserts a picture into one section; the server appends a Markdown image line. */
+/** Server appends a Markdown image line. */
 function AddSectionImage({ report }: { report: ReportArtifact }) {
   const t = useT()
   const [target, setTarget] = useState<string | null>(null)
@@ -200,7 +192,7 @@ function AddSectionImage({ report }: { report: ReportArtifact }) {
   )
 }
 
-/** Section matching a finding's `where` heading: exact first, then ignoring whitespace. */
+/** Exact heading match first, then whitespace-insensitive. */
 function sectionFor(sections: ReportSection[], where: string): ReportSection | undefined {
   if (!where) return undefined
   const exact = sections.find((s) => s.heading === where)
@@ -209,11 +201,10 @@ function sectionFor(sections: ReportSection[], where: string): ReportSection | u
   return sections.find((s) => loose(s.heading) === loose(where))
 }
 
-/** A selected passage and the section it belongs to. */
 interface Picked {
   sectionId: string
   text: string
-  /** Toolbar position, relative to the scrolling document. */
+  /** Relative to the scrolling document. */
   top: number
   left: number
 }
@@ -221,7 +212,7 @@ interface Picked {
 const originIcon = { web: Link2, connector: Plug, file: Paperclip }
 const citationStyles: ReportArtifact['citationStyle'][] = ['APA', 'MLA', 'Chicago', 'IEEE']
 
-/** A reference as it reads in the exported document. */
+/** As the exported document reads it. */
 function citationText(src: Source, style: ReportArtifact['citationStyle']): string {
   const title = src.title.trim() || '제목 없음'
   const author = src.author?.trim() ?? ''
@@ -245,14 +236,13 @@ function citationText(src: Source, style: ReportArtifact['citationStyle']): stri
   return `${author ? `${author}. ` : ''}${year ? `(${year}). ` : ''}${title}${[publisher, url].filter(Boolean).length ? `. ${[publisher, url].filter(Boolean).join('. ')}` : ''}`
 }
 
-/** Sections that visibly carry this source's numbered marker. */
+/** Sections showing this source's numbered marker. */
 function citedSections(source: Source, sections: ReportSection[]): ReportSection[] {
   const marker = new RegExp(`(?:\\[|［)\\s*${source.ordinal}\\s*(?:\\]|］)`)
   return sections.filter((section) => marker.test(sectionText(section)))
 }
 
-/** Every numbered marker found in the body, including numbers with no source. */
-/** Print tree portalled to `<body>`, outside the panel's clipping containers; `@media print` swaps it in. */
+/** Portalled to `<body>`, outside clipping containers; swapped in by `@media print`. */
 function PrintDocument({ report }: { report: ReportArtifact }) {
   const t = useT()
   const block = cleanTitleBlock(report.titleBlock)
@@ -290,7 +280,6 @@ function PrintDocument({ report }: { report: ReportArtifact }) {
   )
 }
 
-/** Reference list with citation checks. */
 function SourceList({
   sources,
   research,
@@ -304,7 +293,7 @@ function SourceList({
 }: {
   sources: Source[]
   research?: ReportArtifact['research']
-  /** Files the conversation attached: the material the document was written from. */
+  /** Attached files: the document's material. */
   attachedNames?: string[]
   style: ReportArtifact['citationStyle']
   onStyle: (style: ReportArtifact['citationStyle']) => void
@@ -549,10 +538,7 @@ function statusIcon(status: ReportSection['status']) {
   return <span className="block size-1.5 rounded-full bg-line-strong" />
 }
 
-/**
- * The artifact's `data` body without the row-level facts merged into it.
- * `title` stays: a restore reads it from the snapshot.
- */
+/** `data` without row-level facts; `title` kept for restore. */
 function documentBody(report: ReportArtifact): Record<string, unknown> {
   const body: Record<string, unknown> = { ...report }
   for (const fact of ['id', 'version', 'createdAt', 'updatedAt', 'sessionId', 'projectId', 'partial'])
@@ -560,7 +546,6 @@ function documentBody(report: ReportArtifact): Record<string, unknown> {
   return body
 }
 
-/** Report panel: streaming sections, web/page views, sources, editing and export. */
 export function ReportPanel({
   report,
   onClose,
@@ -569,17 +554,17 @@ export function ReportPanel({
 }: {
   report: ReportArtifact
   onClose?: () => void
-  /** Reports the width the document wants; the host decides whether there is room. */
+  /** Wanted width; the host decides whether there is room. */
   onModeChange?: (mode: PanelMode) => void
   onDirtyChange?: (dirty: boolean) => void
 }) {
   const t = useT()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [mode, setMode] = useState<PanelMode>('wide')
-  // Reading shows a calm header; 「편집」 opens the ribbon, which holds only the editing tabs.
+  // Reading: calm header; 「편집」: ribbon with editing tabs only.
   const [editMode, setEditMode] = useState(false)
   const [ribbon, setRibbon] = useState<'text' | 'insert' | 'design' | 'review'>('text')
-  // The header folds its view switch and labels into ⋯ below this width (a phone, a squeezed panel).
+  // Below this width the header folds into ⋯.
   const head = usePanelNarrow<HTMLDivElement>(540)
   const [historyRequest, setHistoryRequest] = useState<{ nonce: number; version?: number } | null>(null)
   const [documentLayout, setDocumentLayout] = useState<'pages' | 'edit'>('pages')
@@ -589,7 +574,7 @@ export function ReportPanel({
   const [citationError, setCitationError] = useState<string | null>(null)
   const [addingSource, setAddingSource] = useState(false)
   const [sourceDraft, setSourceDraft] = useState({ title: '', url: '', author: '', publisher: '', year: '' })
-  // The files the conversation's questions carried: what a document with no web source was written from.
+  // Attached files: the material when there is no web source.
   const attachedKey = useStore((s) => {
     const session = s.sessions.find((row) => row.id === report.sessionId)
     const names = (session?.messages ?? [])
@@ -598,15 +583,15 @@ export function ReportPanel({
     return [...new Set(names)].join('\u0000')
   })
   const attachedNames = useMemo(() => (attachedKey ? attachedKey.split('\u0000') : []), [attachedKey])
-  // Opens wide; the parent starts narrow, so the initial mode is announced once.
+  // Opens wide; parent starts narrow, so announced once.
   useEffect(() => {
     onModeChange?.('wide')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  // Only the ref is used: the contents drawer is positioned against it.
+  // Ref only: drawer anchor.
   const panel = usePanelNarrow<HTMLDivElement>()
   const [tocOpen, setTocOpen] = useState(false)
-  // The ribbon's height, so the contents drawer opens below it; it wraps on a narrow panel.
+  // Ribbon height for the drawer; wraps on a narrow panel.
   const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null)
   const [headerHeight, setHeaderHeight] = useState(0)
   useEffect(() => {
@@ -618,26 +603,25 @@ export function ReportPanel({
     return () => observer.disconnect()
   }, [headerEl])
   const [exportError, setExportError] = useState<string | null>(null)
-  /** One export; a failure is said under the ribbon instead of escaping as an error. */
+  /** Failure shown under the ribbon, not thrown. */
   const exportAs = async (format: ExportFormat) => {
     setExportError(null)
     setSaveError(null)
     if (format !== 'pdf' && format !== 'docx' && format !== 'hwpx' && format !== 'md') return
     await afterSaving(() => download(report.id, format, report.title))
   }
-  // Markdown source editor for the whole document.
+  // Markdown source editor open.
   const [editing, setEditing] = useState(false)
   // Ribbon slot the page editor's formatting bar is portalled into.
   const [toolbarSlot, setToolbarSlot] = useState<HTMLElement | null>(null)
   const [settingsSlot, setSettingsSlot] = useState<HTMLElement | null>(null)
-  // Section open for a rewrite, its instruction, and the quoted passage.
+  // Rewrite target section, instruction, quoted passage.
   const [rewriting, setRewriting] = useState<string | null>(null)
   const [rewriteNote, setRewriteNote] = useState('')
   const [rewriteQuote, setRewriteQuote] = useState('')
   const [rewriteBusy, setRewriteBusy] = useState(false)
   const [rewriteError, setRewriteError] = useState<string | null>(null)
 
-  // Section being fact-checked.
   const [checking, setChecking] = useState<string | null>(null)
   const [checkError, setCheckError] = useState<string | null>(null)
   const bodyCitationNumbers = citationNumbers(report.sections)
@@ -709,7 +693,7 @@ export function ReportPanel({
     }
   }
 
-  // Per-section fact check; annotates the section, no version snapshot.
+  // Annotates the section; no version snapshot.
   const factcheckSection = async (sectionId: string) => {
     setChecking(sectionId)
     setCheckError(null)
@@ -726,7 +710,7 @@ export function ReportPanel({
     }
   }
 
-  // Sends a weak claim to the conversation as a revision request.
+  // As a revision request in the conversation.
   const fixClaim = async (
     section: ReportSection,
     claim: NonNullable<ReportSection['factCheck']>['claims'][number],
@@ -746,7 +730,7 @@ export function ReportPanel({
     )
   }
 
-  // Rewrites the section a finding names; a document-wide finding goes to the conversation.
+  // Document-wide findings go to the conversation.
   const fixFinding = async (finding: LintFinding) => {
     const section = sectionFor(report.sections, finding.where)
     if (!section) {
@@ -766,13 +750,13 @@ export function ReportPanel({
       t('검사에서 지적된 문제를 고쳐 주세요: {message}').replace('{message}', finding.message),
     )
     const data = (row.data ?? {}) as { sections?: ReportSection[] }
-    // Written onto the prop too: the artifacts screen renders a copy, not the store row.
+    // Prop too: the artifacts screen renders a copy, not the store row.
     if (data.sections) report.sections = data.sections
     report.version = row.version
     useStore.getState().noteArtifactVersion(report.id, row.version)
   }
 
-  // One rewrite per section (see `byWhere`), sequential because they share a version.
+  // Sequential: rewrites share a version.
   const fixAllFindings = async (findings: LintFinding[]) => {
     const groups = byWhere(findings)
     const loose = groups.get('') ?? []
@@ -802,7 +786,7 @@ export function ReportPanel({
         failed.push(where)
       }
     }
-    // Findings no section owns go to the conversation as one message.
+    // Unowned findings: one message to the conversation.
     if (loose.length > 0) {
       await send(
         report.sessionId ?? '',
@@ -845,7 +829,7 @@ export function ReportPanel({
   }
   const openEditor = (open: boolean) => {
     setEditing(open)
-    // The editor needs source and preview side by side, so never narrow.
+    // Source and preview side by side: never narrow.
     const wanted: PanelMode = open && mode === 'narrow' ? 'wide' : mode
     setMode(wanted)
     onModeChange?.(wanted)
@@ -861,12 +845,12 @@ export function ReportPanel({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [recoveryCopied, setRecoveryCopied] = useState(false)
   const [restructuring, setRestructuring] = useState(false)
-  // Sections are mutated on the artifact object; structural edits need a re-render nudge.
+  // Sections mutate in place; structural edits need a re-render nudge.
   const [, setTick] = useState(0)
-  // No editing until the model stops.
+  // Locked while the model streams.
   const writing = report.sections.some((s) => s.status !== 'done')
 
-  // Markdown as it stood when the editor opened; saves compare content, not version.
+  // Markdown at open; saves compare content, not version.
   const baseline = useRef('')
 
   const startEditing = async () => {
@@ -885,19 +869,16 @@ export function ReportPanel({
     openEditor(true)
   }
 
-  // `web` is prose in the app's typography; `page` is the document in its template at A4 width.
+  // `web`: app typography; `page`: template at A4 width.
   const [view, setView] = useState<'web' | 'page'>(report.templateId ? 'page' : 'web')
-  // What the reader was looking at before the 「편집」 tab opened the page editor; leaving
-  // that tab puts it back, so 「홈」 is not left showing the editor.
+  // View before 「편집」, restored on leaving that tab.
   const viewBeforeEdit = useRef<'web' | 'page'>('web')
-  // The template decides the exported file's styles; stored on the document. With none
-  // the page view draws the shared seed (`_document`), as a retired 서식 does on the server.
+  // Template decides exported styles; none → shared seed (`_document`), as on the server.
   const [templateId, setTemplateId] = useState(report.templateId || '_document')
   const [templateSaving, setTemplateSaving] = useState(false)
   const [visualStyle, setVisualStyle] = useState(report.design?.visualStyle ?? 'editorial')
   const [documentAccent, setDocumentAccent] = useState(report.design?.accent ?? '#5b5bd6')
-  // Follow the document's own design when it arrives after mount: the draft learns its look
-  // from the stream's `design` event, and the saved copy may replace the draft in place.
+  // Design arriving after mount: stream `design` event, or saved copy replacing the draft.
   const shownStyle = report.design?.visualStyle
   const shownAccent = report.design?.accent
   useEffect(() => {
@@ -907,7 +888,7 @@ export function ReportPanel({
     if (shownAccent) setDocumentAccent(shownAccent)
   }, [shownAccent])
 
-  // Structural edits: one PATCH of the whole document, checked against the server first.
+  // One PATCH of the whole document, conflict-checked first.
   const restructureSections = async (next: ReportSection[], summary: string) => {
     setRestructuring(true)
     setSaveError(null)
@@ -931,7 +912,7 @@ export function ReportPanel({
 
   const [docEl, setDocEl] = useState<HTMLDivElement | null>(null)
   const marks = useDocMarks(report, writing)
-  // A blank filled where it stands: the section's text with that blank replaced, saved as an edit.
+  // Blank filled in place, saved as an edit.
   const fillPlaceholder = async (sectionId: string, text: string, nth: number, value: string) => {
     const at = report.sections.findIndex((s) => s.id === sectionId)
     if (at < 0) return false
@@ -986,7 +967,7 @@ export function ReportPanel({
       ...source,
       id: `s${Date.now().toString(36)}`,
       heading: t('{name} 사본').replace('{name}', source.heading || t('제목 없음')),
-      // Verdicts point at the original's sentences; the copy starts unchecked.
+      // Verdicts point at the original's sentences; copy starts unchecked.
       factCheck: undefined,
     }
     const next = [
@@ -1086,7 +1067,7 @@ export function ReportPanel({
     }
   }
   const { designTemplates, ensureDesignTemplates, send } = useStore()
-  // Nothing else on the report surface fetches the template catalogue.
+  // Only template-catalogue fetch on the report surface.
   useEffect(() => {
     void ensureDesignTemplates()
   }, [ensureDesignTemplates])
@@ -1094,11 +1075,10 @@ export function ReportPanel({
     () => designTemplates.filter((row) => row.kind === 'document'),
     [designTemplates],
   )
-  // The head of a document by purpose and its heading numbers, for the web view.
+  // Purpose head and heading numbers, web view.
   const webBlock = cleanTitleBlock(report.titleBlock)
   const webNumbers = sectionNumbers(report.sections, webBlock?.numbering ?? 'none', webBlock?.lists)
   const webClosingAt = closingIndex(webBlock, report.sections.length)
-  // Unsaved page-editor changes.
   const [pageEdits, setPageEdits] = useState<ReportSection[] | null>(null)
   const [pageTitle, setPageTitle] = useState<string | null>(null)
   const [pageSettingsEdits, setPageSettingsEdits] = useState<ReportArtifact['pageSettings'] | null>(null)
@@ -1132,13 +1112,11 @@ export function ReportPanel({
       pageBaseline.current = pageSnapshot(report.title, report)
     }
   }, [report.title, report.sections, report.pageSettings, report.reviewComments, report.titleBlock, pageEdits, pageTitle, pageSettingsEdits, reviewCommentEdits, titleBlockEdits])
-  /** Closes the Markdown source editor: unchanged, at once; changed, after the save (which
-   *  closes it on success and keeps it open, with the error, on failure). */
+  /** Unchanged: closes at once; changed: after a successful save (error keeps it open). */
   const leaveSourceEditor = () => {
     if (draft !== baseline.current) void saveDocument()
     else openEditor(false)
   }
-  // Commits pending edits, then acts.
   const afterSaving = async (act: () => void | Promise<void>) => {
     if (pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits) await savePageEdits()
     else if (editing && draft !== baseline.current) await saveDocument()
@@ -1151,7 +1129,7 @@ export function ReportPanel({
     else openEditor(false)
   }
 
-  // Page-view save; separate from `saveDocument`, which round-trips through Markdown.
+  // Page-view save; `saveDocument` round-trips through Markdown.
   const savePageEdits = async () => {
     if (!pageEdits && !pageTitle && !pageSettingsEdits && !reviewCommentEdits && !titleBlockEdits) return
     setPageSaving(true)
@@ -1244,8 +1222,7 @@ export function ReportPanel({
     setSaving(true)
     setSaveError(null)
     try {
-      // Conflict check by content, not version (the panel's version may be stale).
-      // A check before a write, not a lock.
+      // Conflict check by content (panel version may be stale); not a lock.
       const latest = await artifactsApi.get(report.id).catch(() => null)
       const latestData = (latest?.data ?? null) as { sections?: ReportSection[] } | null
       if (latest && latestData?.sections) {
@@ -1271,7 +1248,7 @@ export function ReportPanel({
         data: documentBody({ ...report, title, sections: parsed.sections }),
         title,
         summary: t('문서 편집'),
-        // The version just read, not the panel's possibly stale copy.
+        // Version just read, not the panel's possibly stale copy.
         expectedVersion: latest?.version ?? report.version,
       })
       report.title = title
@@ -1318,7 +1295,6 @@ export function ReportPanel({
   const formatted = report.sections.some((s) => s.format === 'html')
   const done = report.sections.filter((s) => s.status === 'done').length
 
-  // Selected passage, offered for rewrite.
   const [picked, setPicked] = useState<Picked | null>(null)
   const docRef = useRef<HTMLDivElement>(null)
   const handleRef = useRef<HTMLDivElement>(null)
@@ -1368,7 +1344,7 @@ export function ReportPanel({
   }
 
   const pageDirty = Boolean(pageEdits || pageTitle || pageSettingsEdits || reviewCommentEdits || titleBlockEdits)
-  /** Drops local drafts after a version is restored; the editors still hold the old text. */
+  /** Drops local drafts after a restore; editors still hold the old text. */
   const restoredVersion = () => {
     openEditor(false)
     setPageEdits(null)
@@ -1381,7 +1357,7 @@ export function ReportPanel({
   const reviewLabel = evidenceWarningCount > 0
     ? t('검토 · 확인 {count}').replace('{count}', String(evidenceWarningCount))
     : t('검토')
-  /** 「편집」: the page editor in the document's own pages, with the editing ribbon over it. */
+  /** 「편집」: page editor under the editing ribbon. */
   const enterEditMode = () => {
     if (editing) leaveSourceEditor()
     viewBeforeEdit.current = view
@@ -1397,7 +1373,7 @@ export function ReportPanel({
     setRibbon('text')
     setEditMode(true)
   }
-  /** Back to reading, in the view it came from; unsaved page edits stay, with 저장 in the header. */
+  /** Back to the previous view; unsaved page edits stay. */
   const leaveEditMode = () => {
     setDocumentLayout('pages')
     setPageSettingsOpen(false)
@@ -1406,7 +1382,7 @@ export function ReportPanel({
     setEditMode(false)
   }
   const showWeb = () => {
-    // The source editor covers both views; a view button closes it (saving first).
+    // Source editor covers both views; a view button closes it, saving first.
     if (editing) leaveSourceEditor()
     if (editMode) {
       setEditMode(false)
@@ -1427,7 +1403,7 @@ export function ReportPanel({
     if (view !== 'page') {
       if (!editing) void afterSaving(() => {})
       setView('page')
-      // The page view asks for room; web view gives it back.
+      // Page view asks for room; web view gives it back.
       if (onModeChange) {
         const wanted: PanelMode = mode === 'narrow' ? 'wide' : mode
         setMode(wanted)
@@ -1533,7 +1509,6 @@ export function ReportPanel({
         />
       )}
 
-      {/* Contents drawer. */}
       <nav
         className={cn(
           'w-52 shrink-0 flex-col border-r border-line bg-panel',
@@ -1736,8 +1711,7 @@ export function ReportPanel({
                 setView('page')
                 setDocumentLayout('edit')
               }
-              // A panel belongs to its tab: leaving 「디자인」 closes the page settings,
-              // leaving 「검토」 the source list.
+              // A panel closes with its tab (디자인: page settings, 검토: source list).
               if (tab !== 'design') setPageSettingsOpen(false)
               if (tab !== 'review' && ribbon === 'review') setPane('document')
               setExportError(null)
@@ -1933,7 +1907,7 @@ export function ReportPanel({
           )}
           {pane === 'sources' ? (
             <div className="mx-auto max-w-2xl px-6 py-6 max-sm:px-3">
-              {/* The review tools, reachable while reading; 편집 › 검토 holds the same ones. */}
+              {/* Review tools while reading; same as 편집 › 검토. */}
               {!(editMode && ribbon === 'review') && <section aria-label={t('검토')} className="mb-6 rounded-card border border-line bg-elevated/40 p-3">
                 <h2 className="mb-2 text-sm font-semibold">{t('검토')}</h2>
                 <div className="flex flex-wrap items-center gap-1.5">

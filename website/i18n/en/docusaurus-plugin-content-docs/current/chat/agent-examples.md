@@ -8,7 +8,7 @@ Examples of agents and templates for work documents you write often. Everything 
 
 ## Settings that work
 
-In testing, these settings changed the result the most.
+These settings have the largest effect on the result.
 
 - **Write the shape of the result into the instructions.** The order, the table columns, what comes on the first line; if useful, an example of a different request marked 「형식만 따르고 내용은 쓰지 않는다」 (copy the form, never the content).
 - **Have values the material does not give left as bracketed blanks.** Naming the slot, like 「[담당자]」 or 「[배포일]」, cuts invented dates, names and amounts.
@@ -260,4 +260,4 @@ You write a 결과 보고서 that goes up for approval (팀장 → 처장 → �
 
 - Open a conversation with one starter and one real memo. Check that numbers, dates and names match the material and that values the material lacks were left as bracketed blanks.
 - If two runs on the same memo differ a lot, write the shape (order, table columns) more concretely in the instructions.
-- You can also keep a good conversation with **⋯** › **Save as agent** on the output card ([Agents and skills](agents)).
+- You can also keep a good conversation with **⋯** › **Save as agent** on the artifact card ([Agents and skills](agents)).

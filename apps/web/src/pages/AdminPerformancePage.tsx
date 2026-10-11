@@ -96,10 +96,7 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
   return [ref, width]
 }
 
-/**
- * Thin lines over a recessive grid with a crosshair. `hover`/`onHover` are shared by
- * charts stacked on one time axis, so they read as one picture without two y-scales.
- */
+/** Thin lines, recessive grid, crosshair; `hover`/`onHover` shared by charts on one time axis. */
 function LineChart({
   lines,
   unit,
@@ -207,7 +204,7 @@ function LineChart({
             />
           )}
           {lines.map((l) => {
-            // A gap longer than three buckets is drawn as a gap, not a straight line.
+            // Gap > three buckets drawn as a gap.
             const step = l.points.length > 1 ? Math.min(...l.points.slice(1).map((p, i) => p[0] - l.points[i][0])) : 0
             let d = ''
             l.points.forEach((p, i) => {
@@ -282,7 +279,7 @@ function Legend({ lines }: { lines: Line[] }) {
   )
 }
 
-/** Slots in fixed order within one chart (the server sends at most six series). */
+/** Fixed slot order (server sends ≤ six series). */
 function colorsOf(series: PerfChart['series']): (name: string) => string {
   const slots = new Map(series.map((s, i) => [s.name, SERIES[Math.min(i, SERIES.length - 1)]]))
   return (name) => slots.get(name) ?? SERIES[0]
@@ -293,7 +290,7 @@ function toLines(
   colorOf: (name: string) => string,
   t: (text: string) => string,
 ): Line[] {
-  // "TTFT p95 · local/qwen3.8-27b": only the label part is translated.
+  // Only the label part is translated.
   const label = (name: string) => {
     const [head, ...rest] = name.split(' · ')
     return [t(head), ...rest].join(' · ')
@@ -575,7 +572,6 @@ export function AdminPerformancePage() {
           )}
         </Card>
 
-        {/* Host at a glance */}
         {data && (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <Tile
@@ -641,7 +637,6 @@ export function AdminPerformancePage() {
           </Section>
         )}
 
-        {/* GPU nodes and model servers */}
         {data && (
           <Section title={t('GPU 노드 · 모델 서버')} hint={t('vLLM 지표와 GPU 노드 지표는 KloudChat-LLM 게이트웨이의 /metrics로 읽습니다.')}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -717,7 +712,6 @@ export function AdminPerformancePage() {
           </Section>
         )}
 
-        {/* Charts */}
         {data && (
           <Section title={t('추이')}>
             <div className="grid gap-3 lg:grid-cols-2">
@@ -733,7 +727,6 @@ export function AdminPerformancePage() {
           </Section>
         )}
 
-        {/* Components */}
         {data && (
           <Section
             title={t('컴포넌트')}
@@ -758,7 +751,6 @@ export function AdminPerformancePage() {
           </Section>
         )}
 
-        {/* Models */}
         {data && (
           <Section title={t('모델별 지연')} hint={t('LiteLLM 요청 기록에서 분 단위로 집계합니다. p95는 분별 p95의 평균, 최고는 가장 나빴던 분입니다.')}>
             <Table
@@ -784,7 +776,6 @@ export function AdminPerformancePage() {
           </Section>
         )}
 
-        {/* Replicas and pipeline stages */}
         {data && (
           <div className="grid gap-x-6 lg:grid-cols-2">
             <Section title={t('api 복제본')}>
@@ -812,7 +803,6 @@ export function AdminPerformancePage() {
           </div>
         )}
 
-        {/* How the verdicts are made */}
         {th && (
           <Section title={t('판단 기준')}>
             <Card className="p-4 text-sm">

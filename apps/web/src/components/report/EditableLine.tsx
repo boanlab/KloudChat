@@ -1,9 +1,6 @@
 import { useEffect, useRef, type ElementType } from 'react'
 
-/**
- * Single-line `contentEditable` heading. The DOM is written only on outside
- * changes (never while focused), Enter commits, and paste is plain text.
- */
+/** Single-line heading: DOM written only on outside changes, Enter commits, plain-text paste. */
 export function EditableLine({
   as: Tag = 'h2',
   value,
@@ -16,11 +13,11 @@ export function EditableLine({
   as?: ElementType
   value: string
   editable: boolean
-  /** Called on blur and on Enter, never per keystroke. */
+  /** On blur and Enter, never per keystroke. */
   onChange: (next: string) => void
   placeholder?: string
   className?: string
-  /** Heading number shown before the text (`data-num`, drawn by CSS), never part of the value. */
+  /** `data-num`, drawn by CSS; never part of the value. */
   numberLabel?: string
 }) {
   const node = useRef<HTMLElement>(null)

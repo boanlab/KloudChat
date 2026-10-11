@@ -158,7 +158,8 @@ npx playwright test --config playwright.freshness.config.ts
 
 The `playwright.<name>.config.ts` files are what CI runs. Each starts its own
 Vite server on a fixed port and stubs the API with route handlers, so no stack
-or account is needed.
+or account is needed. [apps/web/README.md](../apps/web/README.md) lists the
+exceptions.
 
 ### API integration
 
@@ -243,6 +244,11 @@ source of truth the UI branches on. Server-side, the kind has to be accepted by
 the session router and appear in `OPTIONAL_KINDS` in
 `app/services/settings_store.py` so an administrator can toggle it.
 
+**Shipped agents, skills, bundles and templates.** Data under `app/agents/`,
+`app/skills/`, `app/bundles/` and `app/design_templates/`. Anything shipped
+must be expressible with the features a user has — no code path keyed on a
+shipped item's id.
+
 **A built-in tool.** `app/services/tools/builtin.py` — the function and its
 `Tool` schema sit together there; `registry.py` only assembles the turn's list
 and namespaces connector tools. Tools are attached only to models that support
@@ -252,8 +258,10 @@ from upstream or an invented call.
 Keep the total small. Every active tool ships its full schema on every turn,
 and model selection accuracy degrades well before twenty of them.
 
-**A connector.** `app/services/tools/catalog.py`. Only add servers you have
-actually started and whose tool count you have checked.
+**A connector.** Catalogue entries are database rows an administrator keeps
+under **시스템 › 커넥터 카탈로그** (`app/services/tools/catalog.py`); a stdio
+script goes under `mcp/` and runs via `uv run --script`. Only add servers you
+have actually started and whose tool count you have checked.
 
 **A model the proxy does not know about.** `app/services/adapters.py`. Video
 models live there because OpenRouter serves them from a separate endpoint that

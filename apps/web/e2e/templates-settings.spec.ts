@@ -2,9 +2,8 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { hubFixture } from './customize-fixture'
 
 /**
- * What a person can now set as the built-ins do: a template of their own made from every field
- * a shipped one sets (G5b/G7), an agent's 진행 과정 설정 (G6/G4), and the connector catalogue an
- * administrator keeps (G10). Fixture data only; the catalogue and the start values are the
+ * What a person can set as the built-ins do: a template of their own made from every field
+ * a shipped one sets, an agent's 진행 과정 설정, and the connector catalogue an administrator keeps. Fixture data only; the catalogue and the start values are the
  * API's own (`template-fixture.json`).
  */
 

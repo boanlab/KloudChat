@@ -14,7 +14,7 @@ On the home screen select **Chat**, enter a request, and press `Enter`. The answ
 
 | Element | Details |
 |---|---|
-| Processing complete · N steps | The items referenced while the answer was generated. Expand it to see steps such as using attachments, carrying over attachments from earlier turns, applying personalization settings, referring to memory, searching the web, reading documents, running code, and searching files. Files that were truncated or could not be read also appear here. |
+| Answered · N steps | The steps the answer went through. Reports and slides name what was done instead, such as "Wrote the report". Expand it to see steps such as using attachments, carrying over attachments from earlier turns, applying personalization settings, referring to memory, searching the web, reading documents, running code, and searching files. Files that were truncated or could not be read also appear here. |
 | Processing detail badge | Shows whether Auto switched the model, whether personal data was masked, and which model actually answered. On mobile it collapses to "n processing details". |
 | Usage line | Shows the model name, input and output tokens, and credits. Free models are marked **Free**. You can hide this line in Settings → Preferences. |
 | Sources | When a web search runs, numbers in the form `[1]` appear in the text and a source list appears below it. |

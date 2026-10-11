@@ -1,7 +1,4 @@
-/**
- * Token counters a turn carries: the writer's, and the planner's and reviewers' when they ran
- * (`outlineInputTokens`, `model:<id>:inputTokens`). The line under an answer shows their sum.
- */
+/** A turn's token counters: writer, planner, reviewers; the answer line shows the sum. */
 export type UsageCounters = Record<string, number | boolean | undefined>
 
 export function tokenTotals(usage: UsageCounters | undefined): { input: number; output: number } {

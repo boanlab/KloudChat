@@ -1,7 +1,4 @@
-/**
- * 「문의·신고」 on the client: the screen words for kinds and statuses, the dialog's open state
- * (opened from the account menu or an answer's 👎) and the reply badge.
- */
+/** 「문의·신고」 client: labels, dialog open state, reply badge. */
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { useStore } from '@/store/useStore'

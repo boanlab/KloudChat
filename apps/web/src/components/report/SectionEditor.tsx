@@ -25,7 +25,7 @@ import {
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef } from 'react'
 
-/** Page break node, distinct from a horizontal rule. */
+/** Distinct from a horizontal rule. */
 const PageBreak = Node.create({
   name: 'pageBreak',
   group: 'block',
@@ -72,7 +72,7 @@ const ParagraphLineHeight = Extension.create({
   },
 })
 
-/** The 개조식 roles `GAEJO_CSS` styles (※ note, 붙임 line), kept through editing; a ※ item keeps its note role too. */
+/** 개조식 roles `GAEJO_CSS` styles (※ note, 붙임 line), kept through editing. */
 const GAEJO_PARAGRAPHS = ['gaejo-note', 'gaejo-attach']
 
 const GaejoParagraph = Extension.create({
@@ -91,10 +91,8 @@ const GaejoParagraph = Extension.create({
   },
 })
 
-// Tiptap extensions (all MIT; no `@tiptap-pro`). The editor writes HTML,
-// hence a section's `format`; `services/richtext.py` converts back for the
-// exporters, and the server sanitises again on save.
-/** Figure columns flush right while editing: `.fig` on their cells and `.total` on a total row, as the preview and the exporters draw them. Decorations only; nothing is saved. */
+// All MIT (no `@tiptap-pro`). Editor writes HTML (`format`); `services/richtext.py` converts back, server sanitises on save.
+/** `.fig`/`.total` decorations as the preview and exporters draw them; nothing saved. */
 const FigureColumns = Extension.create({
   name: 'figureColumns',
   addProseMirrorPlugins() {
@@ -133,13 +131,13 @@ const FigureColumns = Extension.create({
 
 const EXTENSIONS = [
   StarterKit.configure({
-    // The section heading is drawn by the wrapper, so levels 1-2 are excluded.
+    // Wrapper draws the section heading: levels 1-2 excluded.
     heading: { levels: [3, 4] },
   }),
   TextStyle,
   FontSize,
   FontFamily,
-  // Inline styles must also pass the server's `_EDITABLE_STYLE` allowlist.
+  // Must also pass the server's `_EDITABLE_STYLE` allowlist.
   Color,
   BackgroundColor,
   ParagraphLineHeight,
@@ -170,14 +168,13 @@ export function SectionEditor({
 }: {
   html: string
   editable: boolean
-  /** Reports the focused editor so one toolbar can drive it. */
+  /** One toolbar drives the focused editor. */
   onReady?: (editor: Editor | null) => void
-  /** Registers the editor for document-wide operations. */
+  /** For document-wide operations. */
   onMount?: (editor: Editor | null) => void
   onChange?: (html: string) => void
 }) {
-  // Compare with the last emitted serialisation, not just the initial input:
-  // undoing or toggling back to the original content is also a real update.
+  // Against the last emitted serialisation: undo back to the original is a real update.
   const lastHtml = useRef<string | null>(null)
   const onReadyRef = useRef(onReady)
   const onMountRef = useRef(onMount)
@@ -211,19 +208,19 @@ export function SectionEditor({
   }, [editor, editable])
 
   useEffect(() => {
-    // Only on outside changes; writing while focused would move the caret.
+    // Outside changes only; writing while focused moves the caret.
     if (editor && !editor.isFocused && editor.getHTML() !== html) {
       editor.commands.setContent(html, { emitUpdate: false })
       lastHtml.current = editor.getHTML()
     }
   }, [editor, html])
 
-  // Unmount only; the callbacks' identities change on every parent render.
+  // Unmount only; callback identities change per render.
   useEffect(() => () => {
     onReadyRef.current?.(null)
     onMountRef.current?.(null)
   }, [])
 
-  // `doc-body` is the class the template seeds reach the body through.
+  // Template seeds reach the body through `doc-body`.
   return <EditorContent editor={editor} className="doc-body" />
 }

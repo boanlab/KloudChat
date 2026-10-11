@@ -5,12 +5,11 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind, Skill, StoreSkill } from '@/types'
 import type { ItemType } from './itemIcons'
 
-/** The hub's tabs, in order. 커넥터 shows its own screen, without 탐색. Templates are picked in
- *  the agent form and the composer; themes and memory live in 설정. */
+/** Hub tabs in order; templates picked in agent form and composer, themes and memory in 설정. */
 export const HUB_TABS = ['agents', 'skills', 'connectors'] as const
 export type HubTab = (typeof HUB_TABS)[number]
 
-/** Tabs that list items as cards, with 내 항목 / 탐색, search, filter and sort. */
+/** Card-list tabs: 내 항목 / 탐색, search, filter, sort. */
 export const CARD_TABS: HubTab[] = ['agents', 'skills']
 
 export const TAB_LABEL: Record<HubTab, string> = {
@@ -19,7 +18,7 @@ export const TAB_LABEL: Record<HubTab, string> = {
   connectors: '커넥터',
 }
 
-/** Where a tab that left the hub went: an old link (`?tab=memory`) lands there. */
+/** Destination of a tab that left the hub, for old `?tab=` links. */
 export const MOVED_TABS: Record<string, string> = {
   workflows: '/customize?tab=agents',
   templates: '/customize?tab=agents',
@@ -36,7 +35,7 @@ export const STATUS_LABEL: Record<ItemStatus, string> = {
   review: '검토 중',
 }
 
-/** One row on a hub card, whatever it is underneath. */
+/** One hub card row, whatever it is underneath. */
 export interface HubItem {
   key: string
   type: ItemType
@@ -55,12 +54,12 @@ export interface HubItem {
   shared: boolean
   /** In 내 항목. */
   mine: boolean
-  /** A store row the person already holds a copy of. */
+  /** Store row the person already holds a copy of. */
   added: boolean
   deletable: boolean
-  /** 숨김: a shipped part not offered in lists (`listed: false`), shown only behind 「숨김 포함」. */
+  /** 숨김: shipped part with `listed: false`, shown only with 「숨김 포함」. */
   hidden: boolean
-  /** Detail screen; null when the card has none (a shipped flow opens its locked section). */
+  /** Detail screen; null when none (a shipped flow opens its locked section). */
   to: string | null
   agent?: Agent
   skill?: Skill | StoreSkill
@@ -119,8 +118,7 @@ export function skillItem(s: Skill | StoreSkill, store: boolean): HubItem {
   }
 }
 
-/** Every item on one card tab, split into 내 항목 and 탐색. Hidden items (`listed: false`) are left
- *  out unless `showHidden`; `hiddenMine` counts the ones the person holds. */
+/** A card tab's items as 내 항목 and 탐색; hidden ones only with `showHidden` (`hiddenMine` counts held ones). */
 export function useHubItems(tab: HubTab, showHidden = false) {
   const agents = useStore((s) => s.agents)
   const skills = useStore((s) => s.skills)
@@ -154,7 +152,7 @@ export function useHubItems(tab: HubTab, showHidden = false) {
     locked: items.locked,
     hiddenMine: items.mine.filter((i) => i.hidden).length,
     hiddenAny: items.mine.some((i) => i.hidden) || items.explore.some((i) => i.hidden),
-    // Before the lists answer, an empty tab is loading, not empty.
+    // Before the lists answer: loading, not empty.
     loading: workspaceLoading || (tab === 'skills' && !skillStoreLoaded),
   }
 }

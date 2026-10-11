@@ -13,6 +13,7 @@ This screen sets the level of personal data protection, the audit record, and au
 | Personal data masking | Always masks national ID numbers, card numbers, phone numbers, and email addresses in every request, and stores them masked. The original cannot be sent |
 | Personal data protection for external models | In Chat, asks the user to choose when personal data is detected for a model that may switch to an external provider |
 | strict-local safe model | The model that "Switch to a safe local model" sends to. Only chat models the gateway declares as strict-local are candidates. **If you leave it empty**, users see a notice that there is no safe model |
+| Internal material stays strict-local | A request carrying attachments, project files or memory is answered by the strict-local twin of the same model, and the conversation never moves to an external model afterwards. Without a twin, the safe model answers. Without that, the request is refused |
 | Allow sending the original outside | Whether users may ignore the warning and send. Not possible while the masking policy is on |
 | Intent-based filter + topics to block | Refuses the request without using credits and records it in the audit log |
 | Automatic sign-out when idle | In minutes. 0 turns it off |

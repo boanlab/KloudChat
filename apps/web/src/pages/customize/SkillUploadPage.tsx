@@ -13,7 +13,7 @@ import { useStore } from '@/store/useStore'
 const ACCEPT = '.md,.zip,.skill'
 const MAX_FILES = 10
 
-/** Screen words per finding code; the server's own sentence is the fallback. */
+/** Per finding code; server sentence as fallback. */
 const FINDING_TEXT: Record<string, string> = {
   file_too_large: '파일이 2MB를 넘습니다.',
   not_utf8: 'UTF-8 텍스트가 아닙니다.',
@@ -72,7 +72,7 @@ const EXCLUDED_TEXT: Record<string, string> = {
 
 const fileKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`
 
-/** /customize/skills/upload — SKILL.md, .zip or .skill files, previewed and scanned before they are kept. */
+/** SKILL.md, .zip or .skill: previewed and scanned before kept. */
 export function SkillUploadPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -116,7 +116,7 @@ export function SkillUploadPage() {
     void check(next)
   }
 
-  // Dropping a file only removes its own card; nothing is asked of the server again.
+  // Removes only its card; no server call.
   const remove = (index: number) => {
     setFiles((list) => list.filter((_, i) => i !== index))
     setPreviews((list) => list.filter((_, i) => i !== index))
@@ -361,7 +361,7 @@ function PreviewCard({ file, preview, onRemove }: { file: File; preview?: SkillI
   )
 }
 
-/** What the server would run for the skill, as its SKILL.md asked and the allowlists kept. */
+/** What the server would run, as SKILL.md asked and the allowlists kept. */
 function ServerSummary({ server }: { server: NonNullable<SkillImportPreview['server']> }) {
   const t = useT()
   const rows: [string, string][] = []

@@ -3,10 +3,7 @@ import { cn } from '@/lib/utils'
 
 import { useT } from '@/lib/useT'
 
-/**
- * The password rule as a checklist that ticks while the person types. The rule is the
- * server's (`/auth/config` → `password.minLength`), so the screen never asks for more or less.
- */
+/** Live password checklist; rule from `/auth/config` → `password.minLength`. */
 export function PasswordRule({ value, minLength }: { value: string; minLength: number }) {
   const t = useT()
   const met = value.length >= minLength

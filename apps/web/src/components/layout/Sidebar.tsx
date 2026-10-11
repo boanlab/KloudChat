@@ -21,7 +21,7 @@ const rowState = (active: boolean) =>
     ? 'bg-selected font-medium text-fg'
     : 'text-muted hover:bg-elevated hover:text-fg'
 
-/** Unpinned conversations the sidebar keeps in view; the rest are on 대화 기록. */
+/** Unpinned conversations kept in view; rest on 대화 기록. */
 const RECENT = 15
 
 interface NavRow {
@@ -30,8 +30,7 @@ interface NavRow {
   icon: typeof Bot
 }
 
-// Agents, skills and connectors live in 「사용자 지정」; memory and themes in 설정.
-// 「챗봇」: bots members published, for anyone who only wants to ask.
+// Agents, skills, connectors in 「사용자 지정」; memory and themes in 설정; 「챗봇」 for members' bots.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
   { to: '/artifacts', label: '아티팩트', icon: Layers },
@@ -82,7 +81,7 @@ function SessionRow({
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') {
-            // Ends the rename only, not the phone drawer around it.
+            // Ends the rename only, not the drawer.
             e.preventDefault()
             setDraft(session.title)
             setEditing(false)
@@ -102,7 +101,7 @@ function SessionRow({
           : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
-      {/* A link, so it opens in a new tab and reads as a place, not an action. */}
+      {/* A link: opens in a new tab, reads as a place. */}
       <Link
         to={`/s/${session.id}`}
         aria-current={active ? 'page' : undefined}
@@ -176,7 +175,7 @@ export function Sidebar() {
   const navigate = useNavigate()
   const t = useT()
   const brand = useStore((s) => s.brand)
-  // My bots with something new: a pause, an administrator's decision.
+  // My bots with news: a pause, an admin decision.
   const botNews = useBotAttention((s) => s.bots)
   const {
     sessions,
@@ -195,16 +194,14 @@ export function Sidebar() {
 
   const pinned = filtered.filter((s) => s.pinned)
   const unpinned = filtered.filter((s) => !s.pinned)
-  // Row awaiting delete confirmation.
   const [confirming, setConfirming] = useState<Session | null>(null)
 
-  // Like other chat apps: the most recent few, then a way to all of them. Search (⌘K) covers
-  // every conversation and result, by title and by what they say.
+  // Most recent few, then 모든 대화 보기; search (⌘K) covers the rest.
   const cap = RECENT
   const recent = unpinned.slice(0, cap)
-  // From the route, not `activeSessionId`, which outlives the conversation screen.
+  // From the route: `activeSessionId` outlives the conversation screen.
   const openSessionId = useLocation().pathname.match(/^\/s\/([^/]+)/)?.[1] ?? null
-  // The open conversation stays in view even when it is older than the recent few.
+  // Open conversation stays in view even if older than the recent few.
   const openOlder = unpinned.slice(cap).find((s) => s.id === openSessionId)
   const visible = openOlder ? [...recent, openOlder] : recent
 
@@ -270,7 +267,7 @@ export function Sidebar() {
       </div>
 
       <div className="px-3 pb-2">
-        {/* Looks like a box, opens the search dialog: one search for conversations and results. */}
+        {/* Box-styled trigger for the search dialog. */}
         <button
           type="button"
           onClick={openSearch}
@@ -318,7 +315,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* `min-h-0` so a short window shrinks the list, not the footer. */}
+      {/* `min-h-0`: a short window shrinks the list, not the footer. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-t border-line px-3 py-2">
           {pinned.length > 0 && (
@@ -330,7 +327,7 @@ export function Sidebar() {
             </section>
           )}
           {visible.length > 0 && (
-            // One heading: with this few rows, 오늘 · 어제 · 지난 7일 buckets were mostly one-row headings.
+            // One heading: day buckets would mostly hold one row.
             <section className="mb-2">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
                 {t('최근')}

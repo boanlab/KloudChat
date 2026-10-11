@@ -11,7 +11,7 @@ const labels = {
   dark: '화면 밝기: 어둡게',
 }
 
-/** Cycles system, light, dark; the icon shows the current state. */
+/** Cycles system, light, dark; icon shows the current one. */
 export function ThemeToggle({ className }: { className?: string }) {
   const t = useT()
   const { theme, toggleTheme } = useStore()

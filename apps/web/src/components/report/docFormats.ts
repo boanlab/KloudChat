@@ -1,10 +1,4 @@
-/**
- * Documents by purpose — the web mirror of `apps/api/app/services/doc_formats.py`.
- *
- * The table between the `wire` markers is `doc_formats.wire()` verbatim (JSON, same order);
- * `tests/test_report_formats_export.py` keeps the two equal. `numberHeading` is
- * `doc_formats.number_heading`, and the exporters number headings the same way.
- */
+/** Web mirror of `services/doc_formats.py`: the `wire` table is `doc_formats.wire()` verbatim (kept equal by `tests/test_report_formats_export.py`); `numberHeading` = `number_heading`. */
 import type { ReportSection, ReportTitleBlock } from '@/types'
 import { FORMAT_SPACE, formatScaleCss } from './docType'
 import { PLACEHOLDER_CSS, blankFor, isBlank } from '@/lib/placeholders'
@@ -48,17 +42,16 @@ export const DOC_FORMATS: DocFormatWire[] = /* wire:begin */ [
   {"id": "term", "label": "대학 과제 리포트", "fields": ["과목", "담당교수", "학과", "학번", "이름", "제출일"], "numbering": "decimal", "head": "cover", "abstract": false, "keywords": false, "subtitle": false, "lists": "", "closing": false}
 ] /* wire:end */
 
-/** Formats retired with their agents (고객 맞춤 제안서, 자기소개서·경력기술서): an agent that has one
- *  keeps it, nothing new picks it. Kept in step with `doc_formats.RETIRED`. */
+/** Retired with their agents; kept for agents that have one (`doc_formats.RETIRED`). */
 export const RETIRED_FORMATS: readonly string[] = ['client_proposal', 'career_history']
 
-/** Shown where a head field is still blank: its own name in brackets (「[작성자]」), never an invented value. */
+/** Blank head field: its own name in brackets (「[작성자]」), never an invented value. */
 export { blankFor }
 
 const HEADS: DocHead[] = ['cover', 'header', 'memo', 'press', 'paper', 'draft']
 const NUMBERINGS: DocNumbering[] = ['decimal', 'roman', 'korean', 'official', 'none']
 
-/** The stored block, made safe to render; null when the document has none. */
+/** Safe-to-render block; null when none. */
 export function cleanTitleBlock(block: unknown): ReportTitleBlock | null {
   if (!block || typeof block !== 'object' || !Object.keys(block).length) return null
   const raw = block as Partial<ReportTitleBlock> & Record<string, unknown>
@@ -77,14 +70,14 @@ export function cleanTitleBlock(block: unknown): ReportTitleBlock | null {
   }
 }
 
-/** The number before a heading, given the running counters ([h2, h3, h4]). */
+/** Heading number from running counters ([h2, h3, h4]). */
 export function numberHeading(numbering: DocNumbering, level: number, counters: number[]): string {
   if (numbering === 'none') return ''
   const korean = '가나다라마바사아자차카타파하'
   const [a, b, c] = [...counters, 0, 0, 0].slice(0, 3)
   if (numbering === 'roman') {
     const romans = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
-    // Past XII the exporters fall back to digits too.
+    // Past XII the exporters use digits too.
     return level === 1 ? `${romans[a - 1] ?? a}.` : `${String.fromCharCode(64 + b)}.`
   }
   if (numbering === 'korean' || numbering === 'official') {
@@ -96,11 +89,10 @@ export function numberHeading(numbering: DocNumbering, level: number, counters: 
 }
 
 const CONTENT_HEADING_HTML = /<h([2-6])(\s[^>]*)?>/gi
-// A callout's title and a card's title are `<h3>`s the exporters draw inside the box or
-// card, unnumbered; numbering a card's would also take the `::before` its colour bar uses.
+// Callout/card titles: unnumbered `<h3>`s (a number would take the colour bar's `::before`).
 const CALLOUT_HTML = /(<section\b[^>]{0,200}\b(?:callout|cards)\b[^>]{0,200}>[\s\S]*?<\/section>)/i
 
-/** Headings inside a section's content: what the exporters number at level 2. */
+/** Content headings the exporters number at level 2. */
 export function contentHeadingCount(section: Pick<ReportSection, 'content' | 'format'>): number {
   if (section.format === 'html') {
     return section.content.split(CALLOUT_HTML).filter((_, at) => at % 2 === 0).join('').match(CONTENT_HEADING_HTML)?.length ?? 0
@@ -112,15 +104,12 @@ export function contentHeadingCount(section: Pick<ReportSection, 'content' | 'fo
 export interface SectionNumber {
   /** `1.`, `I.`, `1.2`, or empty. */
   label: string
-  /** Counters after the section's own heading, where its content headings start. */
+  /** Counters where the section's content headings start. */
   a: number
   b: number
 }
 
-/**
- * Each section's heading number, counting the headings in the sections before it. A
- * 개조식 붙임 (`lists: 'gaejo'`) is not numbered: it closes the body (`isAttachment`).
- */
+/** Heading number per section, counting earlier sections; 개조식 붙임 unnumbered (`isAttachment`). */
 export function sectionNumbers(
   sections: { level?: number; content: string; format?: ReportSection['format']; heading?: string }[],
   numbering: DocNumbering,
@@ -139,7 +128,7 @@ export function sectionNumbers(
   })
 }
 
-/** Content headings in an HTML body, each given its number as `data-num` (the paged preview). */
+/** Content headings with `data-num` (paged preview). */
 export function numberHtmlHeadings(html: string, numbering: DocNumbering, start: SectionNumber): string {
   if (numbering === 'none') return html
   let b = start.b
@@ -149,7 +138,7 @@ export function numberHtmlHeadings(html: string, numbering: DocNumbering, start:
   }))).join('')
 }
 
-/** The inline style a numbered section carries so its content headings count on from it. */
+/** Inline style so content headings count on from the section. */
 export function counterStyle(at: SectionNumber): { counterReset: string } {
   return { counterReset: `tba ${at.a} tbb ${at.b}` }
 }
@@ -161,11 +150,7 @@ const CONTENT_NUMBER: Record<Exclude<DocNumbering, 'none'>, string> = {
   official: 'counter(tbb, hangul) "."',
 }
 
-/**
- * Numbering rules under `.fmt`: the template's own section counter is switched off, a
- * heading with `data-num` shows it, and headings in a live body (`.tb-counted`, the
- * editor's `.ProseMirror`) count on from the section's `counter-reset`.
- */
+/** `.fmt` numbering: template counter off, `data-num` shown, live bodies (`.tb-counted`, `.ProseMirror`) count from `counter-reset`. */
 export function numberingCss(numbering: DocNumbering): string {
   const off = '.fmt h2::before { content: none !important; }'
   if (numbering === 'none') return off
@@ -175,7 +160,7 @@ export function numberingCss(numbering: DocNumbering): string {
 .fmt :is(.tb-counted, .ProseMirror) :is(h2, h3, h4, h5, h6):not(.callout *, .cards *)::before { content: ${CONTENT_NUMBER[numbering]} !important; margin-right: 0.45em; }`
 }
 
-/** The title block's own look; colours lean on `currentColor` so a dark theme or a filled cover keeps them. */
+/** Title-block look; `currentColor` keeps dark themes and filled covers legible. */
 export const TITLE_BLOCK_CSS = `
 .tb { margin: 0 0 10mm; }
 .tb .tb-title { margin: 0; font-size: var(--doc-title, 20pt); font-weight: 700; line-height: 1.3; }
@@ -239,25 +224,25 @@ const shown = (value: string, label: string) => (value.trim() && !isBlank(value)
   ? escapeHtml(value)
   : `<span class="tb-blank doc-placeholder">${escapeHtml(value.trim() || blankFor(label))}</span>`)
 
-/** Pairs of fields per table row: two across in the compact header table, one elsewhere. */
+/** Fields per row: two in the compact header table, one elsewhere. */
 export function fieldRows(fields: [string, string][], perRow: number): [string, string][][] {
   const rows: [string, string][][] = []
   for (let i = 0; i < fields.length; i += perRow) rows.push(fields.slice(i, i + perRow))
   return rows
 }
 
-/** A paper's author or affiliation line: the value alone when given, else labelled. */
+/** Author/affiliation line: value alone when given, else labelled. */
 export const paperLineLabelled = (label: string, value: string) => !(value.trim() && (label === '저자' || label === '소속'))
 
-/** Whether the block's format has its own scale and spacing: the 개조식 1쪽 보고 (`docType.FORMAT_SPACE`). */
+/** Own scale and spacing: 개조식 1쪽 보고 (`docType.FORMAT_SPACE`). */
 export const onePage = (block: Pick<ReportTitleBlock, 'format'> | null | undefined) =>
   Boolean(block && FORMAT_SPACE[block.format])
 
-/** The class list of the block's outer element; a cover in a page view is also `.cover`, so it owns its page. */
+/** A cover in a page view is also `.cover`, so it owns its page. */
 export const titleBlockClass = (block: ReportTitleBlock, paged: boolean) =>
   `tb tb-${block.head}${block.head === 'cover' && paged ? ' cover' : ''}${onePage(block) ? ' tb-onepage' : ''}`
 
-/** The title block as markup, for the paged preview (Paged.js takes an HTML string). */
+/** HTML string for Paged.js. */
 export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
   const fieldsTable = (perRow: number) => block.fields.length
     ? `<table class="tb-fields"><tbody>${fieldRows(block.fields, perRow).map((row) => `<tr>${row.map(([label, value]) => `<th>${escapeHtml(label)}</th><td>${shown(value, label)}</td>`).join('')}${row.length < perRow ? '<th></th><td></td>'.repeat(perRow - row.length) : ''}</tr>`).join('')}</tbody></table>`
@@ -267,7 +252,7 @@ export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
   const label = block.label ? `<p class="tb-label">${escapeHtml(block.label)}</p>` : ''
   let inner: string
   if (onePage(block)) {
-    // The 1쪽 보고: the title boxed, the head fields one line under it, right.
+    // 1쪽 보고: title boxed, head fields on one line under it, right.
     const line = block.fields.map(([key, value]) => `<span><b>${escapeHtml(key)}</b> ${shown(value, key)}</span>`).join('')
     inner = `<div class="tb-box">${heading}</div>${line ? `<p class="tb-fieldline">${line}</p>` : ''}`
   } else if (block.head === 'cover') inner = `${label}${heading}${subtitle}${fieldsTable(1)}`
@@ -294,10 +279,10 @@ export function titleBlockHtml(block: ReportTitleBlock, title: string): string {
   return `<header class="${titleBlockClass(block, true)}">${inner}</header>`
 }
 
-/** The 결재란 columns of a `draft` head, in signing order (`doc_formats.APPROVERS`). */
+/** 결재란 columns in signing order (`doc_formats.APPROVERS`). */
 export const APPROVERS = ['기안자', '검토자', '결재권자']
 
-/** One cell of the `draft` head; `field` indexes `block.fields`. */
+/** `field` indexes `block.fields`. */
 export interface DraftCell {
   kind: 'label' | 'value' | 'approver' | 'sign' | 'signer' | 'empty'
   text: string
@@ -305,10 +290,7 @@ export interface DraftCell {
   rowSpan?: number
 }
 
-/**
- * The 간이기안문 head as rows (`report_export._draft_grid`): register fields on the left,
- * the 결재란 on the right — 직위 in the head row, a tall blank to sign, 직위와 성명 under it.
- */
+/** 간이기안문 head rows (`report_export._draft_grid`): register fields left, 결재란 right. */
 export function draftRows(fields: [string, string][]): DraftCell[][] {
   const register = fields.map((pair, index) => ({ pair, index })).filter(({ pair }) => !APPROVERS.includes(pair[0]))
   const signer = (name: string) => fields.findIndex(([label]) => label === name)
@@ -330,11 +312,7 @@ export function draftRows(fields: [string, string][]): DraftCell[][] {
   })
 }
 
-/**
- * 개조식 (`lists: 'gaejo'`): each list depth hangs □ / ○ / - / ㆍ and sets in 2타 (one
- * Hangul) from its parent's marker; a ※ paragraph is a smaller note and the 붙임 lines
- * stand under their first item. The exporters draw the same (`report_export._docx_hanging`).
- */
+/** 개조식 hanging markers □/○/-/ㆍ at 2타 per depth, ※ note, 붙임 lines (`report_export._docx_hanging`). */
 export const GAEJO_CSS = `
 .fmt.gaejo ul:not(.steps) { list-style: none !important; margin: 0.3em 0 !important; padding-left: 0 !important; }
 .fmt.gaejo ul:not(.steps) ul { margin: 0.15em 0 0 -0.5em !important; }
@@ -352,10 +330,7 @@ export const GAEJO_CSS = `
 .fmt.gaejo p.gaejo-attach + p.gaejo-attach { margin-top: 0 !important; text-indent: 0; }
 `
 
-/**
- * The 1쪽 보고's 핵심 box (`report_export._pdf_core_box`): the label in a narrow column
- * beside its lines, a thin black rule round both.
- */
+/** 1쪽 보고 핵심 box (`report_export._pdf_core_box`): label column beside its lines, thin rule round both. */
 const CORE_CSS = `
 .fmt.tb-scaled .callout { display: grid !important; grid-template-columns: 4.2em 1fr; align-items: center; padding: 0 !important; border: 0.8pt solid currentColor !important; border-radius: 0 !important; background: none !important; }
 .fmt.tb-scaled .callout > :is(h3, h4) { grid-row: 1 / span 9; align-self: stretch; display: flex; align-items: center; justify-content: center; margin: 0 !important; padding: 0 0.3em; border-right: 0.5pt solid currentColor; color: inherit !important; font-size: var(--doc-h1) !important; }
@@ -365,15 +340,15 @@ const CORE_CSS = `
 .fmt.tb-scaled h2 { color: inherit !important; }
 `
 
-/** The class list a formatted document's outer element carries: `fmt`, plus `gaejo`, plus its own scale's `f-<id>`. */
+/** `fmt`, plus `gaejo`, plus `f-<id>`. */
 export const fmtClass = (block: ReportTitleBlock | null | undefined) =>
   block ? `fmt${block.lists === 'gaejo' ? ' gaejo' : ''}${onePage(block) ? ` tb-scaled f-${block.format}` : ''}` : ''
 
-/** Every rule a formatted document needs: its head, heading numbers, list style and its own scale. */
+/** Head, heading numbers, list style, own scale. */
 export const formatCss = (block: ReportTitleBlock) =>
   `${TITLE_BLOCK_CSS}\n${numberingCss(block.numbering)}${block.lists === 'gaejo' ? `\n${GAEJO_CSS}` : ''}${onePage(block) ? `\n${CORE_CSS}${formatScaleCss(block.format)}` : ''}`
 
-// The patterns `doc_formats.gaejo_markdown` reads; bounded, since the text is the writer's.
+// `doc_formats.gaejo_markdown` patterns; bounded, the text is the writer's.
 const FENCE_LINE = /^\s*```/
 const TYPED = /^(\s{0,12})(?:[-*+]\s{1,4})?([□■○◦ㅇ\-–―ㆍ·∙])\s{1,4}(\S.*)$/
 const ITEM = /^(\s{0,24})([-*+]|\d{1,3}[.)])\s{1,4}(.*)$/
@@ -382,14 +357,10 @@ const NUMBERED = /^\s{0,24}\d{1,3}\.\s{1,4}\S/
 const TYPED_DEPTH: Record<string, number> = {
   '□': 1, '■': 1, '○': 2, '◦': 2, 'ㅇ': 2, '-': 3, '–': 3, '―': 3, 'ㆍ': 4, '·': 4, '∙': 4,
 }
-/** The 2타 before 「끝.」 and after 「붙임」; non-breaking, so HTML keeps both. */
+/** 2타 before 「끝.」 and after 「붙임」; non-breaking for HTML. */
 export const GAP = '\u00a0\u00a0'
 
-/**
- * `doc_formats.gaejo_markdown`: typed markers (「□ 현황」, 「ㅇ」 for ○) become nested list
- * items, a ※ line under an item becomes an item at its depth (drawn with ※ as the marker),
- * a ※ line elsewhere stands apart as a note, and a 붙임 run is one paragraph a line per item.
- */
+/** `doc_formats.gaejo_markdown`: typed markers to nested items; ※ under an item at its depth, elsewhere a note; 붙임 run one paragraph, a line per item. */
 export function gaejoMarkdown(text: string): string {
   const lines = (text || '').split('\n')
   const typed = lines.some((line) => {
@@ -400,7 +371,7 @@ export function gaejoMarkdown(text: string): string {
   const indents: number[] = []
   let fenced = false
   let attaching = false
-  // The depth of the last list item, while a ※ line may still stand under it.
+  // Last item depth, while a ※ line may still stand under it.
   let itemDepth = 0
   const blank = () => {
     if (out.length && out[out.length - 1].trim()) out.push('')
@@ -448,7 +419,7 @@ export function gaejoMarkdown(text: string): string {
     if (stripped.startsWith('※')) {
       const note = `※ ${stripped.slice(1).trim()}`
       if (itemDepth) {
-        // A ※ under an item is a note at that item's depth: its own marker, no ○.
+        // ※ under an item: note at its depth, own marker, no ○.
         while (out.length && !out[out.length - 1].trim()) out.pop()
         out.push(`${'  '.repeat(itemDepth - 1)}- ${note}`)
         continue
@@ -491,10 +462,10 @@ export function gaejoMarkdown(text: string): string {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, '')
 }
 
-// `doc_formats.without_closing`: a typed 「끝.」 alone, after a gap of two, or after a sentence's end.
+// `doc_formats.without_closing`: 「끝.」 alone, after a two-space gap, or after a sentence end.
 const TYPED_CLOSING = /(?:^[\s\u00a0]{0,8}|[\s\u00a0]{2,8}|(?<=[.)」”])[\s\u00a0]{1,8})끝\s{0,2}\.\s{0,4}$/
 
-/** A Markdown body ending in 「끝.」: after its last line, or under a closing table or figure. */
+/** Markdown body ending in 「끝.」, incl. under a closing table or figure. */
 export function closeMarkdown(text: string): string {
   const lines = (text || '').split('\n').map((line) => line.replace(TYPED_CLOSING, ''))
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop()
@@ -505,7 +476,7 @@ export function closeMarkdown(text: string): string {
   return lines.join('\n')
 }
 
-/** An edited (HTML) body ending in 「끝.」: inside its last paragraph or item, or after a table. */
+/** HTML body ending in 「끝.」, inside its last paragraph or item, or after a table. */
 export function closeHtml(html: string): string {
   const end = Math.max(html.lastIndexOf('</p>'), html.lastIndexOf('</li>'))
   if (end < 0 || /<(?:table|figure|img)\b/i.test(html.slice(end))) return `${html}<p>${GAP}끝.</p>`
@@ -513,10 +484,7 @@ export function closeHtml(html: string): string {
   return `${head}${GAP}끝.${html.slice(end)}`
 }
 
-/**
- * A section as its format shows it: 개조식 Markdown canonical, and the last body of a
- * closing format ending in 「끝.」. The stored section is untouched.
- */
+/** Section as its format shows it (개조식 canonical, closing 「끝.」); stored section untouched. */
 export function shapedSection<T extends Pick<ReportSection, 'content' | 'format'> & { heading?: string }>(
   section: T,
   block: ReportTitleBlock | null | undefined,
@@ -525,14 +493,14 @@ export function shapedSection<T extends Pick<ReportSection, 'content' | 'format'
   if (!block) return section
   let content = section.content
   const attachment = isAttachment(section, block.lists)
-  // A 붙임 that lists nothing is not drawn (`report_export._drawn_sections`).
+  // Empty 붙임 not drawn (`report_export._drawn_sections`).
   if (attachment && section.format !== 'html' && NO_ATTACHMENT.test(content)) content = ''
   else if (attachment && section.format !== 'html') content = attachmentBody(content)
   if (section.format !== 'html' && block.lists === 'gaejo') content = gaejoMarkdown(content)
   if (block.closing && last) {
     if (section.format === 'html') content = closeHtml(content)
     else if (attachment) {
-      // 「끝.」 closes the 붙임 list; what was attached in full (a moved table) follows it.
+      // 「끝.」 closes the 붙임 list; a moved full attachment follows.
       const [list, ...rest] = content.split(/\n\s*\n/)
       content = rest.some((part) => /^\s*\|/m.test(part))
         ? [closeMarkdown(list), ...rest].join('\n\n')
@@ -545,17 +513,11 @@ export function shapedSection<T extends Pick<ReportSection, 'content' | 'format'
 const ATTACH_HEADING = /^\s{0,4}붙\s{0,2}임\s{0,4}$/
 const NO_ATTACHMENT = /^[\s\-*·]*(?:없음|해당\s?없음|-|—)?[\s.]*$/
 
-/**
- * Whether a 개조식 section is the 붙임 (`report_export._is_attachment`): drawn as the closing
- * 「붙임  1. ○○ 1부.」 lines after the body, with no heading or number of its own.
- */
+/** 개조식 붙임 (`report_export._is_attachment`): closing 「붙임  1. ○○ 1부.」 lines, no heading or number. */
 export const isAttachment = (section: { heading?: string }, lists: ReportTitleBlock['lists'] | undefined) =>
   lists === 'gaejo' && ATTACH_HEADING.test(section.heading ?? '')
 
-/**
- * The 붙임 section's body under its 붙임 label (`doc_formats.attachment_body`): 「붙임」 put
- * first when the writer left it off, and a label typed as a list item made a line of its own.
- */
+/** 붙임 body under its label (`doc_formats.attachment_body`): 「붙임」 prepended if missing, a list-item label split out. */
 export function attachmentBody(text: string): string {
   const lines = (text || '').split('\n')
   const at = lines.findIndex((line) => line.trim())
@@ -566,6 +528,6 @@ export function attachmentBody(text: string): string {
   return lines.join('\n')
 }
 
-/** Index of the section 「끝.」 closes: the last one (the reference list is not a section here). */
+/** Section 「끝.」 closes: the last (reference list is not a section here). */
 export const closingIndex = (block: ReportTitleBlock | null | undefined, count: number) =>
   block?.closing ? count - 1 : -1

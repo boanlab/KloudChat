@@ -2,10 +2,7 @@ import { useCallback } from 'react'
 import { useStore } from '@/store/useStore'
 import { translate, translateIn } from './i18n'
 
-/**
- * Returns a translator for the current language: `t('저장')`. A string not in
- * the dictionary comes back as the Korean it was given.
- */
+/** Translator for the current language; missing strings return the Korean. */
 export function useT(): (text: string) => string {
   const lang = useStore((s) => s.lang)
   // Stable while the language is: effects that list `t` must not re-run every render.

@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/** Name; email is the login identity and is not editable here, and the password lives under 보안. */
+/** Name only: email is the login identity; password under 보안. */
 function ProfileFields() {
   const t = useT()
   const { user, updateProfile } = useStore()
@@ -47,7 +47,6 @@ function ProfileFields() {
               className="w-64"
             />
           </Field>
-          {/* Lined up with the input, under the label. */}
           <div className="flex items-center gap-2 pt-7">
             <Button type="submit" disabled={name === user?.name} title={name === user?.name ? t('바뀐 내용이 없습니다') : undefined}>
               {t('저장')}
@@ -66,7 +65,7 @@ function ProfileFields() {
   )
 }
 
-/** Identity, allowance, and the cycle it resets on. */
+/** Identity, allowance, reset cycle. */
 export function ProfileTab() {
   const t = useT()
   const { user } = useStore()

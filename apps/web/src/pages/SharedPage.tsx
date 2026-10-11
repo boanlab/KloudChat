@@ -16,7 +16,7 @@ import { useT } from '@/lib/useT'
 import { SlideView } from '@/components/slides/DeckPanel'
 import type { DesignTokens, Slide } from '@/types'
 
-/** Agent, project and format the shared conversation started with; wording matches `StartingFrom` in SessionPage. */
+/** Starting agent, project, format; wording matches SessionPage's `StartingFrom`. */
 function StartedWithPanel({ context }: { context: SharedContext }) {
   const t = useT()
   const english = currentLang() === 'en'
@@ -65,13 +65,13 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
   )
 }
 
-/** Read-only view of a shared artifact or conversation; outside the app shell, the URL is the whole permission. */
+/** Outside the app shell; the URL is the whole permission. */
 export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
   const t = useT()
   const { token = '' } = useParams()
   const [payload, setPayload] = useState<SharedPayload | null>(null)
   const [error, setError] = useState<'gone' | 'signin' | 'failed' | null>(null)
-  // A link for signed-in people is asked again once the sign-in (or the refresh cookie) lands.
+  // Member-only link: asked again once sign-in (or refresh cookie) lands.
   const authenticated = useStore((s) => s.authenticated)
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
     return `**${m.role === 'user' ? t('질문') : t('답변')}**${from}\n\n${m.content}`
   }
   const shared = payload.kind === 'artifact' ? null : payload.artifact
-  // Each turn on its own, so the answer that made the result carries its card.
+  // Each turn alone, so the producing answer carries its card.
   const conversation = payload.kind === 'artifact' ? null : (
     <div className="space-y-6">
       {payload.messages.map((m, index) => (
@@ -157,7 +157,7 @@ export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
       ? null
       : (payload.startedWith ?? null)
 
-  // Result first, then the conversation that produced it.
+  // Result first, then its conversation.
   const artifact = payload.kind === 'artifact' ? payload : payload.artifact
 
   return (

@@ -2,12 +2,7 @@ import type { DesignTemplateRow } from '@/lib/api'
 import { DOC_FORMATS } from '@/components/report/docFormats'
 import type { Agent } from '@/types'
 
-/**
- * Detects chat sentences that are really orders for a document or a deck, so
- * the chat hands them to the report or slides surface. Deliberately narrow: a
- * document noun plus a writing verb, and not a question about documents or an
- * edit to an existing one.
- */
+/** Chat sentences ordering a document or deck, handed to that surface. Narrow: document noun plus writing verb, not a question or an edit. */
 
 const NOUN =
   /(공문|공지문|안내문|보고서|기획서|제안서|계획서|회의록|보도자료|결과\s?보고|주간\s?보고|월간\s?보고|출장\s?보고|사후\s?분석|품의서|기안문|협조문|시말서|경위서|사유서|추천서|자기소개서|자소서|경력\s?기술서|백서|매뉴얼|지침서|규정|약관|계약서|의견서|건의문|성명서|설문지|term paper|white paper|proposal|report|memo|minutes)/i
@@ -23,15 +18,11 @@ const ASKING =
 const EDITING =
   /(검토|첨삭|고쳐|고치|수정|다듬|요약|번역|평가|피드백|분석|비교|읽어|봐\s?줘|보고\s?판단|review|summari[sz]e|translate|proofread)[^가-힣A-Za-z]{0,2}(해\s?줘|해\s?주|해줄|해\s?봐|해\s?주세요|해줄래|하자|해|줘|주세요|줄래)?\s*[.?!~]*$/i
 
-/** Code that *produces* documents is a chat job, not a document: code is what is asked for
- *  (「스크립트를 짜 줘」, 「파이썬으로 자동 생성」), not a word in passing (「코드로 계산한 값」). */
+/** Code that produces documents stays in chat: code asked for, not mentioned in passing. */
 const CODING =
   /((스크립트|코드|프로그램|함수|파이썬|python|javascript|typescript|sql|매크로|script|code)\s?(를|을|로|으로)?\s?(짜|작성|만들|구현|짜\s?줘|write|generate)|자동\s?생성|자동화|엑셀\s?매크로|\bapi\b)/i
 
-/**
- * Message-sized writing: a text message, a chat or mail, a post or notice for a board, a few
- * lines. Answered in the chat even when the sentence calls it 안내문 or 공지문.
- */
+/** Message-sized writing (text, mail, post, notice): answered in chat even when called 안내문 or 공지문. */
 const SHORT =
   /(답장|회신|답신|문자|메시지|카톡|카카오톡|알림톡|sms|이메일|메일|e-?mail|게시\s?글|게시물|공지\s?글|홈페이지\s?공지|팝업|배너|슬로건|캐치프레이즈|한\s?줄|두\s?줄|세\s?줄|\d{1,3}\s?(?:줄|자|글자|문장)(?:로|으로|\s?내외|\s?이내|\s?짜리)?(?![가-힣])|짧게|간단히|간단하게)/i
 
@@ -41,12 +32,7 @@ function isOrder(s: string, noun: RegExp): boolean {
   return noun.test(s) && VERB.test(s) && !ASKING.test(s) && !EDITING.test(s) && !CODING.test(s)
 }
 
-/**
- * The person's own instruction, without what they pasted under it: the first paragraph, cut at
- * a blank line, a 「---」 or 「===」 rule, a quoted line or a pasted line over 400 characters
- * (the server's `context.instruction_part` reads the same way). A word inside a pasted mail
- * (「발표 자료를 11월 6일까지」) is not what the person asked for.
- */
+/** The person's own instruction without pasted text (first paragraph; same cut as `context.instruction_part`). */
 export function instructionPart(text: string): string {
   const lines = text.trim().split('\n')
   const kept: string[] = []
@@ -69,12 +55,7 @@ export function handoffSurface(text: string): 'report' | 'slides' | null {
 
 const SURFACE_WORDS = { report: /(보고서|문서|report)/i, slides: DECK } as const
 
-/**
- * In an agent chat, the agent's document surface the sentence orders, or null to answer
- * here. Only surfaces the agent offers, and only by name: the bound document's own name
- * (its 서식 or format, e.g. 「경력기술서」) or the surface's word — so a 자기소개서 answer
- * that agent writes in chat is not taken for a document.
- */
+/** Agent chat: the document surface the sentence orders, by bound document or surface name only. */
 export function agentHandoffSurface(
   text: string,
   offered: readonly string[],
@@ -97,7 +78,7 @@ export function agentHandoffSurface(
   return null
 }
 
-/** The names an agent's bound documents go by, per surface: its 서식 and its format. */
+/** Names an agent's bound documents go by, per surface: template and format. */
 export function agentDocumentNames(
   agent: Pick<Agent, 'renderTemplateId' | 'docFormat'>,
   templates: readonly Pick<DesignTemplateRow, 'id' | 'surface' | 'name' | 'nameEn'>[],

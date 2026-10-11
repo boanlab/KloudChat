@@ -18,7 +18,7 @@ const FAILURE_LABEL: Record<string, string> = {
   stopped: '사용자가 멈춤',
 }
 
-/** Saves a blob under its name; the token travels in a header, not the URL. */
+/** Saves a blob; token in a header, not the URL. */
 function save(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -28,11 +28,7 @@ function save(blob: Blob, name: string) {
   URL.revokeObjectURL(url)
 }
 
-/**
- * A reported session as it stood when it was reported: the transcript, each answer's stage
- * records (evidence included), the artifacts it made and its files. Read-only: nothing here
- * calls the reporter's session.
- */
+/** Reported session as reported: transcript, stage records, artifacts, files; read-only, never calls the live session. */
 export function SnapshotView({ reportId, snapshot }: { reportId: string; snapshot: IssueSnapshot }) {
   const t = useT()
   const pinnedRef = useRef<HTMLDivElement>(null)
@@ -183,7 +179,7 @@ function SnapshotMessage({
 }) {
   const t = useT()
   const summary = (message.routing as { run?: PipelineRun } | null)?.run
-  // The stored run carries the evidence the message's summary leaves out.
+  // Stored run holds evidence the summary omits.
   const run = summary ? (runs.get(summary.id) ?? summary) : null
   const routing = message.routing as { action?: string } | null
   const failure = (message as { failure?: string | null }).failure
@@ -193,7 +189,7 @@ function SnapshotMessage({
         <span className="font-medium text-muted">{message.role === 'user' ? t('질문') : t('답변')}</span>
         {message.model && <span>{message.model}</span>}
         {routing?.action && routing.action !== 'none' && (
-          // The privacy route's words from the audit log; an unknown code shows as recorded.
+          // Privacy route words from the audit log; unknown codes as recorded.
           <Badge title={routing.action}>{t(ACTION_LABEL[`privacy.${routing.action}`] ?? routing.action)}</Badge>
         )}
         {failure && <Badge tone="danger">{t(FAILURE_LABEL[failure] ?? failure)}</Badge>}
@@ -210,7 +206,7 @@ function SnapshotMessage({
       )}
       {run && run.stages.length > 0 && (
         <div className="mt-2 border-t border-line pt-2">
-          {/* `live` keeps it from fetching the reporter's run or offering a rerun. */}
+          {/* `live`: no fetch of the reporter's run, no rerun. */}
           <StageList sessionId={sessionId} run={run} live compact={false} />
         </div>
       )}

@@ -1,8 +1,5 @@
-/**
- * Pipeline stage records as the person reads them: one status per row, the waiting card's
- * place, and an agent's pipeline as a short chain of steps.
- */
-import type { Message, PipelineDefinition, PipelineRun, PipelineStage, Session } from '@/types'
+/** Stage records as read: one status per row and the waiting card's place. */
+import type { Message, PipelineRun, PipelineStage, Session } from '@/types'
 
 /** What a row's icon says: ✓ done, ! findings, ? waiting, – skipped, ✕ failed. */
 export type StageTone = 'done' | 'findings' | 'waiting' | 'skipped' | 'failed'
@@ -119,88 +116,12 @@ export function hasEvidence(stage: PipelineStage): boolean {
   )
 }
 
-/**
- * The message whose stage list holds the open question card: the last assistant message, when
- * its run is waiting and the session's pending card is a clarify card. Elsewhere the card keeps
- * its old place in the transcript.
- */
+/** Message holding the open question card: the last assistant message when its run waits on a clarify card. */
 export function waitingCardMessageId(session: Session | undefined): string | null {
   if (!session || session.pending?.stage !== 'clarify') return null
   const last = [...session.messages].reverse().find((m: Message) => m.role === 'assistant')
   if (!last?.run) return null
   return last.run.stages.some((s) => s.status === 'waiting') ? last.id : null
-}
-
-/** The six steps an agent's pipeline is drawn as, in order. */
-export type ChainStep = 'material' | 'question' | 'compute' | 'write' | 'check' | 'export'
-
-export const CHAIN_LABEL: Record<ChainStep, string> = {
-  material: '자료',
-  question: '질문',
-  compute: '계산',
-  write: '작성',
-  check: '검사',
-  export: '내보내기',
-}
-
-/** What a step does, said for the person, when the pipeline file gives no line of its own. */
-export const CHAIN_SUMMARY: Record<ChainStep, string> = {
-  material: '올린 자료를 읽습니다',
-  question: '빠진 정보가 있으면 먼저 물어봅니다',
-  compute: '날짜·수치를 미리 계산해 둡니다',
-  write: '아티팩트를 씁니다',
-  check: '다 쓴 뒤 근거를 확인합니다',
-  export: '파일로 내보냅니다',
-}
-
-/** The pipeline's own line for a step, else the general one. */
-export function chainSummary(pipeline: PipelineDefinition, step: ChainStep): string {
-  return pipeline.summary?.[step] || CHAIN_SUMMARY[step]
-}
-
-/** A check's name as the person reads it: the server's, else its id. */
-export function checkName(pipeline: PipelineDefinition, id: string): string {
-  return pipeline.checkNames?.[id] || id
-}
-
-const CHAIN_ORDER: ChainStep[] = ['material', 'question', 'compute', 'write', 'check', 'export']
-
-/** Which chain step a stage belongs to, by its kind and registry name. */
-export function chainStepOf(stage: { name: string; kind: string }): ChainStep | null {
-  const name = stage.name
-  if (/gap|clarify|question/.test(name)) return 'question'
-  if (/export/.test(name)) return 'export'
-  if (/research|material|source|search|context/.test(name)) return 'material'
-  if (stage.kind === 'check' || name.startsWith('check:')) return 'check'
-  if (stage.kind === 'compute' || /calc|settle|prepass/.test(name)) return 'compute'
-  if (stage.kind === 'model') return 'write'
-  return null
-}
-
-/** The chain steps a pipeline has, in the fixed order. */
-export function pipelineChain(pipeline: PipelineDefinition): ChainStep[] {
-  const found = new Set<ChainStep>()
-  for (const [flow, stages] of Object.entries(pipeline.flows ?? {})) {
-    if (flow === 'export') found.add('export')
-    for (const stage of stages ?? []) {
-      const step = chainStepOf(stage)
-      if (step) found.add(step)
-    }
-  }
-  if (pipeline.options?.search) found.add('material')
-  if (pipeline.checks?.length) found.add('check')
-  return CHAIN_ORDER.filter((step) => found.has(step))
-}
-
-/** Flow names in reading order; unknown flows after the known ones. */
-const FLOW_ORDER = ['pre', 'plan', 'write', 'make', 'revise', 'finish', 'export']
-
-export function orderedFlows(pipeline: PipelineDefinition): string[] {
-  const names = Object.keys(pipeline.flows ?? {})
-  return [
-    ...FLOW_ORDER.filter((name) => names.includes(name)),
-    ...names.filter((name) => !FLOW_ORDER.includes(name)),
-  ]
 }
 
 export const FLOW_LABEL: Record<string, string> = {
@@ -211,13 +132,6 @@ export const FLOW_LABEL: Record<string, string> = {
   revise: '고쳐 쓰기',
   finish: '답 마무리',
   export: '내보내기',
-}
-
-export const KIND_LABEL: Record<string, string> = {
-  compute: '계산',
-  model: '모델',
-  check: '검사',
-  io: '입출력',
 }
 
 /** Korean for the finding codes the check stages report; unknown codes show as they are. */
@@ -241,11 +155,7 @@ export const RERUN_ERROR: Record<string, string> = {
   model_unavailable: '이 작업에 쓴 모델을 지금은 쓸 수 없습니다.',
 }
 
-/**
- * The server's `reason` is short internal English; the person reads a Korean sentence. Known
- * reasons map by pattern, anything else by the stage's status. The raw text stays in the
- * expanded details.
- */
+/** Server `reason` (internal English) to a Korean sentence by pattern, else by status; raw text in details. */
 const REASONS: [RegExp, string][] = [
   [/^stopped at /, '앞 단계에서 멈춰 실행하지 않음'],
   [/timed? ?out|timeout/i, '시간이 초과됨'],

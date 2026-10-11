@@ -44,7 +44,7 @@ const STATE_TONE: Record<ChannelState, 'success' | 'accent' | 'neutral' | 'warn'
 
 const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
 
-/** Copies a text and says so for a moment. */
+/** Copies text, confirms briefly. */
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
@@ -76,10 +76,7 @@ function CodeBlock({ code, testId }: { code: string; testId?: string }) {
   )
 }
 
-/**
- * The bot's channels on one card: each one's state, switching it on (asked of an administrator)
- * or off (at once), the sites that may frame it, and the code to paste once it is open.
- */
+/** Bot channels: state, on (admin request) / off (immediate), framing sites, paste code once open. */
 export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (next: Publication) => void }) {
   const t = useT()
   const open = pub.channels ?? {}
@@ -176,7 +173,7 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
   )
 }
 
-/** When an administrator read this bot's conversations, and the reason they gave. */
+/** When an admin read this bot's conversations, and why. */
 export function AdminReadsCard({ pub }: { pub: Publication }) {
   const t = useT()
   const [rows, setRows] = useState<BotAdminRead[] | null>(null)
@@ -209,7 +206,7 @@ export function AdminReadsCard({ pub }: { pub: Publication }) {
   )
 }
 
-/** The developer's tab: keys for the API and MCP channels, how to call them, and their use. */
+/** Developer tab: API and MCP keys, how to call, usage. */
 export function ApiTab({ pub }: { pub: Publication }) {
   const t = useT()
   const [keys, setKeys] = useState<BotKey[] | null>(null)
@@ -238,7 +235,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
 
   const key = made?.key ?? 'kcb_YOUR_KEY'
   const base = apiBase()
-  // The bot's own first suggested question, as a JSON string (and safe inside the shell's '…').
+  // Bot's first suggested question as a JSON string, safe inside the shell's '…'.
   const question = JSON.stringify(pub.branding?.suggestedPrompts?.[0]?.trim() || t('무엇을 도와줄 수 있나요?'))
   const shellQuestion = question.replace(/'/g, "'\\''")
   const curl = [

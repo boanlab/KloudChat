@@ -1,7 +1,6 @@
 import { Node } from '@tiptap/core'
 
-// Tiptap atoms for the structured report blocks; without a node Tiptap drops
-// the markup on edit. `priority: 60` beats StarterKit's claim on `ol`/`figure`.
+// Tiptap atoms for structured blocks (else markup dropped on edit); `priority: 60` beats StarterKit on `ol`/`figure`.
 function pairsFrom(element: HTMLElement, selector: string): [string, string][] {
   return Array.from(element.querySelectorAll(selector)).map((row) => [
     row.querySelector('strong')?.textContent?.trim() ?? '',
@@ -60,10 +59,7 @@ export const StepsBlock = Node.create({
   ],
 })
 
-/**
- * Mermaid diagram: carries its source (so `richtext` can write the fence back)
- * and the stored picture. Mermaid does not run inside the editor.
- */
+/** Carries source (for `richtext` to write the fence back) and stored picture; mermaid does not run in the editor. */
 export const DiagramBlock = Node.create({
   name: 'diagramBlock',
   group: 'block',
@@ -94,7 +90,7 @@ export const DiagramBlock = Node.create({
   ],
 })
 
-/** Chart: carries the fence source, not the drawing. */
+/** Fence source, not the drawing. */
 export const ChartNode = Node.create({
   name: 'chartBlock',
   group: 'block',
@@ -115,8 +111,7 @@ export const ChartNode = Node.create({
   ],
 })
 
-// `section.cards`, not `div.cards`: `richtext` reads the block back with a
-// lazy close, and a wrapper sharing its children's tag would end at the first card.
+// `section.cards`, not `div.cards`: `richtext` lazy-closes, so a wrapper sharing children's tag would end at the first card.
 function cardsFrom(element: HTMLElement): { title: string; items: string[] }[] {
   return Array.from(element.querySelectorAll(':scope > div')).map((card) => ({
     title: card.querySelector('h3, h4')?.textContent?.trim() ?? '',

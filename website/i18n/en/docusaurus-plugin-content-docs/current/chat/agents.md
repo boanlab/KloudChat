@@ -20,7 +20,7 @@ Jobs such as minutes or a bullet-point report have no menu of their own; they ar
 - An agent conversation uses the model, tools, and material set on the agent. When material is registered, the model searches it with the **Find in files** tool. Not all of the material is sent with every request.
 - Within the same project, other conversations reference the conclusions that the agent left through **Shared notes**.
 
-The built-in agents are **Regulations and procedures** (규정·업무 안내), **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. Regulations and procedures answers from the regulations and guidelines you upload, citing the article as [n], and points anything the material does not cover to the department and contact written on the agent. **Official letter and draft** (공문·기안 초안) and **Presentation** (발표 자료) are published once they pass evaluation; until then only administrators see them.
+The built-in agents are **Regulations and procedures** (규정·업무 안내), **Bullet-style briefing** (개조식 보고), **Compare and decide** (비교·결정), **Extract and tally** (자료 추출·집계) and **Minutes** (회의록: meetings, interviews, lectures). Bullet-style briefing and Minutes write straight into the institution's format and show the format check results when done. Extract and tally pulls set columns out of internal Excel and CSV files, totals them by item, and keeps a change log of the rows it removed or changed. Regulations and procedures answers from the regulations and guidelines you upload, citing the article as [n], and points anything the material does not cover to the department and contact written on the agent.
 
 ## Creating an agent
 
@@ -97,7 +97,7 @@ Keep a conversation that went well as an agent. **Save as agent** in the **⋯**
 
 ## Workspace store
 
-**Explore** on **Customize** → **Agents** shows the agents that other users have published. An **Official** badge marks an item published by an administrator. Select **Import** to create a **copy** in your own list.
+**Explore** on **Customize** → **Agents** shows the agents that other users have published. An **Official** badge marks an item published by an administrator. Select **Add** to create a **copy** in your own list.
 
 - A copy does not include the original author's knowledge files. Its process and bundles come along (a custom order still waiting for approval stays behind; the copy uses the base process).
 - A copy of an agent published as "contents stay private" cannot be edited, and any change to the original applies to the copy as well.
@@ -110,7 +110,7 @@ A skill is a working method that applies **to one request only**. Select up to t
 ![The Skills screen](/img/guide/skills.png)
 
 - Use **Customize** → **Skills** to install a skill, stop using one, or build your own with a name, description, when to use it, steps, required tools, and visibility. A published skill is listed in the store, and other users import it as a copy.
-- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Scripts (.py, .sh, .js and the like) are never stored or run; they are left out. The text check is heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.
+- **Customize › Skills › Add › Upload skill** takes a SKILL.md (.md) or a .zip/.skill file containing one, several at a time. A .md file needs YAML front matter with `name` and `description`; .md and .txt files under `resources/` are appended to the body under 「참고 자료」 (References). Before anything is saved, each file shows a preview and its security-scan findings (blocked or warning). Python scripts under `scripts/` are stored with the skill and run only in the code execution sandbox; other scripts (.sh, .js and the like) are left out. A published skill with scripts can be copied by others only after an administrator approves it under **Skill review**. The checks are heuristic and will not catch every risk. **Upload as draft** saves the skill switched off.
 - A skill's **⋯ → Export (SKILL.md)** downloads your skill as a SKILL.md file. Sharing is refused while a skill contains key- or token-like strings or invisible direction-control characters.
 - A skill that requires tools is enabled only when all of these hold: you are on the Chat screen, the model supports tool calling, and that tool is connected. When a condition is not met, the reason is shown.
 - Skills you pick with **Choose skills** on a project's **Skills** tab appear first in that project's composer.

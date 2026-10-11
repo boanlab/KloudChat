@@ -1,8 +1,4 @@
-/**
- * Mermaid rendering shared by the web view (draws to show, stores the picture)
- * and the page view (draws off-screen to get the picture). One implementation,
- * so the stored digest matches on both surfaces.
- */
+/** Mermaid rendering shared by the web and page views, so the stored digest matches. */
 
 /** The diagram as an SVG string, or `null` if mermaid would not draw it. `look` is the surface's theme. */
 export async function draw(source: string, look: object): Promise<string | null> {
@@ -32,11 +28,7 @@ export async function draw(source: string, look: object): Promise<string | null>
   }
 }
 
-/**
- * Draws the diagram into `node` and returns the SVG element, or `null` if mermaid would not
- * draw it. Mermaid writes the element itself (`run`), so no string of markup passes through
- * the caller; the caller styles and sizes the element with DOM calls.
- */
+/** Draws into `node` via mermaid `run` (no markup string passes through); null if it would not draw. */
 export async function drawInto(node: HTMLElement, source: string, look: object): Promise<SVGSVGElement | null> {
   try {
     const { default: mermaid } = await import('mermaid')
@@ -63,7 +55,7 @@ export async function drawInto(node: HTMLElement, source: string, look: object):
   }
 }
 
-/** Strips `style`, `classDef` and `linkStyle` lines so the 서식 owns every colour; nodes are untouched. */
+/** Strips `style`, `classDef` and `linkStyle` lines so the template owns every colour. */
 function plain(source: string): string {
   return source
     .split('\n')
@@ -111,12 +103,7 @@ export async function rasterise(svg: string, scale = 2): Promise<string | null> 
   }
 }
 
-/**
- * Mermaid theme read off the target element's CSS tokens (`--ink`, `--accent`,
- * `--muted`, `--paper`, `--font-body`), so one function serves the app and a
- * 서식's shadow root. `fontSize` is above reading size because wide diagrams
- * are scaled down to the column.
- */
+/** Mermaid theme from the node's CSS tokens (app or template shadow root); `fontSize` above reading size since wide diagrams shrink. */
 export function theme(node: HTMLElement) {
   const read = (name: string, fallback: string) =>
     getComputedStyle(node).getPropertyValue(name).trim() || fallback
@@ -131,8 +118,7 @@ export function theme(node: HTMLElement) {
   return {
     theme: 'base' as const,
     fontFamily: face,
-    // `<text>`, not `<foreignObject>`: foreign content taints the canvas and
-    // `toDataURL` throws in `rasterise`. Top-level; `flowchart.htmlLabels` is deprecated.
+    // `<text>`, not `<foreignObject>`: foreign content taints the canvas in `rasterise`.
     htmlLabels: false,
     themeVariables: {
       // Flat, in the document's ink.
@@ -231,13 +217,7 @@ function shades(accent: string, paper: string, count: number): string[] {
   })
 }
 
-/**
- * The frames a document's own figures are drawn into. Width is fixed (the minimum a figure
- * gets); the height follows the drawing between `minAspect` (the tallest a frame may be — a
- * taller drawing is scaled down) and `maxAspect` (the flattest — set high, so a flat drawing
- * gets a frame that hugs it instead of blank paper above and below). A slide's frame is the
- * band under its title; a page's is at most 4:3.
- */
+/** Frames for a document's figures: fixed width; height follows the drawing within `minAspect`–`maxAspect`. */
 export interface Frame {
   width: number
   minAspect: number
@@ -246,14 +226,12 @@ export interface Frame {
   upscale: number
 }
 export const FRAMES: Record<'slide' | 'page', Frame> = {
-  // A band under the slide title, with the words beneath it.
-  // Small drawings grow to fill the band: a four-node flow is read from the back of a room.
+  // Band under the slide title; small drawings grow to fill it.
   slide: { width: 1920, minAspect: 4.2, maxAspect: 7, upscale: 3 },
   page: { width: 1400, minAspect: 4 / 3, maxAspect: 8, upscale: 1.6 },
 }
 
-/** A drawing this much taller than the frame allows is tried the other way round. Only tall
- *  ones: a flat drawing is padded by the frame and stays legible, a tall one shrinks. */
+/** Turn a drawing this much too tall; flat ones are padded instead. */
 const TURN_AT = 1.5
 
 function tooTall(size: { width: number; height: number }, frame: Frame): boolean {
@@ -278,8 +256,7 @@ function misfit(size: { width: number; height: number }, frame: Frame): number {
   return 1
 }
 
-/** The source with its top-level direction turned (LR↔TB), or null when it has none to turn
- *  or sets directions inside subgraphs (turning those would undo the writer's layout). */
+/** Top-level direction turned (LR↔TB); null when none or when subgraphs set their own. */
 export function flipped(source: string): string | null {
   if (/^\s*direction\s/m.test(source)) return null
   const head = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TB|TD|BT)\b/m.exec(source)
@@ -288,10 +265,7 @@ export function flipped(source: string): string | null {
   return source.replace(head[0], `${head[1]}${turned}`)
 }
 
-/**
- * `draw`, turning a drawing that is far too tall for its frame the other way round and keeping
- * the closer of the two. A flat drawing is left alone: the frame pads it and it stays legible.
- */
+/** `draw`, turning a far-too-tall drawing and keeping the closer fit. */
 export async function drawFitting(source: string, look: object, frame: Frame): Promise<string | null> {
   const first = await draw(source, look)
   if (!first) return null
@@ -304,8 +278,7 @@ export async function drawFitting(source: string, look: object, frame: Frame): P
   return second && again && misfit(again, frame) < misfit(size, frame) ? second : first
 }
 
-/** Where a drawing of `size` sits inside its frame: full width when it can be, centred, scaled
- *  up at most `frame.upscale`; the frame's height follows the drawing within the aspect range. */
+/** Placement in the frame: full width when possible, centred, upscaled at most `frame.upscale`. */
 function placement(size: { width: number; height: number }, frame: Frame) {
   const W = frame.width
   const pad = Math.round(W * 0.03)
@@ -319,10 +292,7 @@ function placement(size: { width: number; height: number }, frame: Frame) {
   return { W, H, dw, dh, x: (W - dw) / 2, y: (H - dh) / 2 }
 }
 
-/**
- * The picture inside a white frame, as one SVG string for the rasteriser. The drawing keeps its
- * own root (mermaid's styles select by its id) and becomes a nested `<svg>` placed by `placement`.
- */
+/** Picture in a white frame as one SVG; the drawing keeps its own root (mermaid styles select by id). */
 export function framed(svg: string, frame: Frame): string {
   const open = /<svg\b[^>]*>/.exec(svg)
   const size = measure(svg)
@@ -369,10 +339,7 @@ export function frameElement(drawn: SVGSVGElement, frame: Frame): SVGSVGElement 
   return outer
 }
 
-/**
- * `drawInto`, keeping the shape inside the frame's range like `drawFitting`: both candidates are drawn
- * off-screen and the closer one moves into `node`.
- */
+/** `drawInto` with `drawFitting`'s rule: both drawn off-screen, the closer moved into `node`. */
 export async function drawIntoFitting(
   node: HTMLElement,
   source: string,
@@ -410,10 +377,7 @@ export async function drawIntoFitting(
   }
 }
 
-/**
- * The paper look with the deck's own colours, for a figure drawn beside a slide's words.
- * Larger type than the page: the picture is scaled to a box a third of the slide wide.
- */
+/** Paper look in the deck's colours; larger type, as the picture shrinks on the slide. */
 export function slideTheme(colours: { accent: string; ink: string; muted: string; font?: string }) {
   return {
     theme: 'base' as const,

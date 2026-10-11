@@ -20,12 +20,7 @@ import type { Agent } from '@/types'
 import { PublicationSettingsForm } from './PublicationSettingsForm'
 import { ScopePicker } from './ScopePicker'
 
-/**
- * 「챗봇으로 공개」: the publish check (the internal model it will answer with, what a bot
- * leaves out, personal details in its material), who it is open to, the bot's settings, and
- * its address once it is published. Members get it at once; a link or an open listing is
- * asked of an administrator at the same time.
- */
+/** 「챗봇으로 공개」: publish check, audience, settings, address; link or listing asked of an admin. */
 export function PublishDialog({
   agent,
   open,

@@ -8,13 +8,10 @@ import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
 import { isImeKey } from '@/lib/ime'
 
-/** What a figure kind is called on screen. */
+/** On-screen name of a figure kind. */
 const FIGURE_NAMES: Record<string, string> = { method: '구조도', flow: '흐름도', concept: '개념도', compare: '비교도' }
 
-/**
- * Picks an existing image artifact for a slide or section, or generates one
- * in place via the synchronous `POST /sessions/{id}/images`.
- */
+/** Picks an image artifact for a slide or section, or generates one via `POST /sessions/{id}/images`. */
 export function PicturePicker({
   sessionId,
   aspect,
@@ -27,7 +24,7 @@ export function PicturePicker({
   context,
   visualStyle,
 }: {
-  /** Session the picture is charged to and stored under. */
+  /** Session charged and stored under. */
   sessionId?: string | null
   /** `16:9` for a slide, `4:3` for a document figure. */
   aspect: string
@@ -35,11 +32,11 @@ export function PicturePicker({
   onPick: (id: string | null) => void
   caption: string
   onCaption: (value: string) => void
-  /** Subject the picture is for; seeds the prompt suggestion. */
+  /** Subject; seeds the prompt suggestion. */
   about?: string
   /** Document title, passed to the suggestion. */
   title?: string
-  /** Surrounding text, so the suggestion does not redraw it. */
+  /** Surrounding text, so the suggestion doesn't redraw it. */
   context?: string
   /** Document look, so the picture matches. */
   visualStyle?: string
@@ -53,9 +50,9 @@ export function PicturePicker({
   const loadArtifacts = useStore((s) => s.loadArtifacts)
   const imageOn = useStore((s) => s.enabledKinds).includes('image')
   const canMake = imageOn && Boolean(sessionId)
-  // True while the box holds the untouched suggestion.
+  // Box holds the untouched suggestion.
   const [suggested, setSuggested] = useState(false)
-  // What the suggestion chose: a figure kind draws as shapes on the server, else a picture.
+  // Suggestion's choice: figure kind → server-drawn shapes, else a picture.
   const [chosen, setChosen] = useState<{ figure: string; style: string } | null>(null)
   const chatModel = useStore((s) => s.modelByKind.chat)
 
@@ -68,7 +65,7 @@ export function PicturePicker({
     })
     .slice(0, 24)
 
-  // Prompt suggestion, fetched once on open; a failure leaves the box empty.
+  // Fetched once on open; failure leaves the box empty.
   useEffect(() => {
     if (!canMake || !sessionId || prompt.trim()) return
     let alive = true
@@ -77,11 +74,11 @@ export function PicturePicker({
       .suggestFigure(sessionId, { title, about, context, visualStyle })
       .then((row) => {
         if (!alive || !(row.prompt || row.figure)) return
-        // A figure shows its description (what gets drawn); a picture shows its prompt.
+        // Figure: its description; picture: its prompt.
         setPrompt((row.figure ? row.description : row.prompt) ?? '')
         setSuggested(true)
         setChosen({ figure: row.figure ?? '', style: row.style ?? '' })
-        // A typed caption outranks the suggested one.
+        // Typed caption outranks the suggestion.
         if (row.caption) onCaption(caption.trim() || row.caption)
       })
       .catch(() => undefined)
@@ -91,7 +88,7 @@ export function PicturePicker({
     return () => {
       alive = false
     }
-    // Once on mount; re-running on `caption` would overwrite typing.
+    // Mount only; re-running on `caption` would overwrite typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -103,7 +100,7 @@ export function PicturePicker({
     try {
       let rows: { id: string }[]
       if (chosen?.figure && suggested) {
-        // Figure path: the box holds the description the server draws as shapes.
+        // Figure: box holds the description drawn as shapes.
         rows = [await drawFigure(sessionId, asked, chosen.figure, chatModel || undefined)]
       } else {
         rows = await sessionsApi.images(sessionId, {
@@ -111,16 +108,16 @@ export function PicturePicker({
           aspect,
           style: chosen?.style ?? '',
           count: 1,
-          // An illustration for a slide, not a rendering of one.
+          // An illustration for a slide, not a rendering of it.
           figure: true,
         })
       }
       await loadArtifacts()
-      // Select the new picture so the insert button is enabled.
+      // Select it so insert is enabled.
       if (rows[0]) onPick(rows[0].id)
       setPrompt('')
     } catch (err) {
-      // The drawing step's own sentences (an undrawable figure) are shown as they are.
+      // Drawing step's own sentences (undrawable figure) shown as is.
       setError(
         err instanceof Error && !(err instanceof ApiError) && err.message
           ? err.message

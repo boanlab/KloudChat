@@ -3,10 +3,10 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from '@/components/ui'
 import { currentLang, translate } from '@/lib/i18n'
 
-// Class components cannot use hooks, so the language is read directly.
+// Class component: no hooks, language read directly.
 const tr = (text: string) => translate(currentLang(), text)
 
-/** How each browser words a lazy chunk that could not be fetched. */
+/** Per-browser wording of a failed lazy chunk fetch. */
 const STALE_CHUNK = /dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i
 
 interface State {
@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   render() {
     const { error } = this.state
     if (!error) return this.props.children
-    // A screen's code that no longer exists on the server (a new version was deployed).
+    // Chunk gone from the server after a deploy.
     const stale = STALE_CHUNK.test(error.message)
 
     return (
@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               : tr('대화 내용은 서버에 그대로 저장되어 있습니다. 아래에서 다시 시도하거나 다른 화면으로 이동하세요.')}
           </p>
           {!stale && (
-            // For a report to the administrator; folded so it is not the first thing read.
+            // For an admin report; folded.
             <details className="mt-4 text-left">
               <summary className="cursor-pointer text-sm text-faint">{tr('기술 정보')}</summary>
               <pre className="mt-2 max-h-40 overflow-auto rounded-control border border-line bg-elevated px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap text-muted">
@@ -68,7 +68,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             )}
             <Button
               onClick={() => {
-                // Full reload: the state that threw is still in memory.
+                // Full reload: the throwing state is still in memory.
                 window.location.href = '/'
               }}
             >

@@ -36,7 +36,7 @@ export function SignupSection({
   const [credits, setCredits] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Typing wins over a fetch that lands late.
+  // Typing wins over a late fetch.
   const dirty = useRef(false)
 
   useEffect(() => {

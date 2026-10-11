@@ -809,7 +809,7 @@ test('a deep link to an agent loads each workspace list once', async ({ page }, 
   await page.goto(`/customize/agents/${AGENT}`)
   await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
   await page.waitForLoadState('networkidle')
-  // The sign-in load and the page's own share one request per list (ops OPS-11).
+  // The sign-in load and the page's own share one request per list.
   for (const list of ['/agents', '/projects', '/skills', '/memory']) {
     expect(state.reads.filter((path) => path === list), list).toHaveLength(1)
   }

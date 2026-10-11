@@ -43,12 +43,10 @@ test('슬라이드를 만들면 장별로 채워지고 pptx 로 받을 수 있�
   await approvePlan(page)
 
   // The outline lands first: the whole deck is on screen before any slide is written.
-  // 「보기」 is gone: its commands sit in the panel header now.
   // The 장 목록 button reads 「current/total」.
   await expect(page.getByRole('button', { name: '장 목록' })).toHaveText(/\d+\/[1-9]\d*/, { timeout: 120_000 })
 
   // 내보내기 stays disabled while any slide is still empty.
-  // 「파일」 is gone: its commands sit in the panel header now.
   const exportButton = page.getByRole('button', { name: '내려받기', exact: true })
   await expect(exportButton).toBeEnabled({ timeout: 360_000 })
 

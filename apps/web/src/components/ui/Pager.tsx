@@ -4,10 +4,7 @@ import { Button } from '@/components/ui'
 import { pageCount, pageWindow } from '@/lib/paging'
 import { useT } from '@/lib/useT'
 
-/**
- * "first–last / 전체 total건" on the left, 이전 · numbers · 다음 on the right.
- * `children` sits after the range (the audit log's page-size picker).
- */
+/** 「first–last / 전체 total건」 and 이전 · numbers · 다음; `children` after the range. */
 export function Pager({
   page,
   size,
@@ -22,7 +19,7 @@ export function Pager({
   size: number
   total: number
   onPage: (page: number) => void
-  /** The nav landmark's name, e.g. 「감사 로그 페이지」. */
+  /** Nav landmark name, e.g. 「감사 로그 페이지」. */
   label: string
   rangeTestId?: string
   className?: string

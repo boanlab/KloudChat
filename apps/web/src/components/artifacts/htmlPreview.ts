@@ -1,5 +1,4 @@
-/** Keep implicit fragment links inside srcdoc instead of navigating to the app.
- *  Explicit bases and stored/downloaded HTML retain their original semantics. */
+/** Implicit fragment links stay inside srcdoc; explicit bases and stored/downloaded HTML unchanged. */
 export function htmlPreviewDocument(html: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html')
   if (document.querySelector('base[href]')) return html

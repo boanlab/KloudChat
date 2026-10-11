@@ -26,12 +26,12 @@ const SEVERITY: Record<string, 'neutral' | 'warn' | 'danger'> = {
 
 const SIZES = [25, 50, 100, 200]
 
-/** What the server records in place of a secret; mirrors `audit.MASK`. */
+/** Mirrors `audit.MASK`. */
 const SECRET = '••••'
 
 type Period = 'all' | 'today' | '7d' | '30d' | 'custom'
 
-/** Local-day bounds as ISO instants; `until` is the start of the day after. */
+/** Local-day bounds as ISO; `until` is the next day's start. */
 function periodRange(period: Period, from: string, to: string): { since?: string; until?: string } {
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
   const today = startOf(new Date())
@@ -52,7 +52,7 @@ function periodRange(period: Period, from: string, to: string): { since?: string
   return {}
 }
 
-/** Typing settles before a request goes out. */
+/** Debounced. */
 function useSettled<T>(value: T, ms = 300): T {
   const [settled, setSettled] = useState(value)
   useEffect(() => {
@@ -79,7 +79,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
   const settledAccount = useSettled(account)
 
   useEffect(() => {
-    // The whole catalogue, so a model outside the administrator's own list still has a name.
+    // Whole catalogue: models outside the admin's own list still get a name.
     adminApi.catalogue().then(setCatalogue, () => setCatalogue([]))
   }, [])
 
@@ -114,7 +114,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.data])
 
-  // A narrower filter starts again at the first page.
+  // Narrower filter restarts at page 1.
   const reset = <T,>(set: (v: T) => void) => (v: T) => {
     set(v)
     setPage(1)
@@ -207,7 +207,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          {/* Wide screens: a table whose cells wrap instead of running off the card. */}
+          {/* Wide: table with wrapping cells. */}
           <table className="hidden w-full table-fixed text-base lg:table">
             <colgroup>
               <col className="w-[13rem]" />
@@ -231,7 +231,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
                   <tr className="align-top hover:bg-elevated" data-testid="audit-row">
                     <td className="px-4 py-2.5 tabular-nums text-muted">{formatDateTime(e.at)}</td>
                     <td className="px-4 py-2.5 break-words" title={e.actor}>
-                      {/* A long address breaks before its domain, not mid-word. */}
+                      {/* Breaks before the domain, not mid-word. */}
                       {t(e.actor).replace('@', '\u200b@')}
                     </td>
                     <td className="px-4 py-2.5">
@@ -256,7 +256,7 @@ export function AuditLog({ onTotal }: { onTotal?: (total: number) => void }) {
             </tbody>
           </table>
 
-          {/* Narrow screens: one stacked block per event. */}
+          {/* Narrow: one block per event. */}
           <ul className="divide-y divide-line lg:hidden">
             {data.items.map((e) => (
               <li key={e.id} className="space-y-1.5 px-4 py-3" data-testid="audit-row">
@@ -325,7 +325,6 @@ function ActionCell({
   const fields = changedFields(row)
   const words = detailWords(row, t)
   const shown = fields.slice(0, 3)
-  // One change reads in full on the row itself.
   const only = fields.length === 1 ? row.metadata?.changes?.[fields[0]] : undefined
   const summary =
     only && !(only[0] === SECRET && only[1] === SECRET)
@@ -377,7 +376,7 @@ function Where({ row }: { row: AuditRow }) {
   )
 }
 
-/** 「무엇이 바뀌었나」: item · before → after; older rows name the fields only. */
+/** 「무엇이 바뀌었나」: item · before → after; older rows name fields only. */
 function Changes({ row, modelName }: { row: AuditRow; modelName: (id: string) => string }) {
   const t = useT()
   const changes = row.metadata?.changes

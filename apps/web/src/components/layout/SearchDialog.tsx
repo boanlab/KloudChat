@@ -11,13 +11,13 @@ import { useStore } from '@/store/useStore'
 import type { Session } from '@/types'
 import { isImeKey } from '@/lib/ime'
 
-/** Window event that opens the dialog from anywhere: ⌘K, the sidebar's 검색 box. */
+/** Window event opening the dialog (⌘K, sidebar 검색 box). */
 const OPEN_EVENT = 'kloudchat:search'
 export const openSearch = () => window.dispatchEvent(new Event(OPEN_EVENT))
 
-/** Rows per group on the first answer; 「더 보기」 asks for this many more. */
+/** Rows per group initially and per 「더 보기」. */
 const PAGE = 8
-/** Conversations listed before anything is typed. */
+/** Conversations listed before typing. */
 const RECENT = 8
 const DEBOUNCE_MS = 200
 
@@ -35,7 +35,7 @@ interface Results {
   artifactsMore: boolean
 }
 
-/** Runs from the server, the query's words marked. */
+/** Server runs with query words marked. */
 function Marked({ runs, fallback }: { runs: SearchRun[]; fallback?: string }) {
   if (!runs.length) return <>{fallback ?? ''}</>
   return (
@@ -53,7 +53,7 @@ function Marked({ runs, fallback }: { runs: SearchRun[]; fallback?: string }) {
   )
 }
 
-/** ⌘K: one box over every conversation and result the person has, by title and by content. */
+/** ⌘K: search over all conversations and artifacts, by title and content. */
 export function SearchDialog() {
   const t = useT()
   const navigate = useNavigate()
@@ -68,7 +68,7 @@ export function SearchDialog() {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const returnTo = useRef<HTMLElement | null>(null)
-  // The answer to an older keystroke must not replace a newer one.
+  // Stale keystroke answers never replace newer ones.
   const request = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -95,8 +95,7 @@ export function SearchDialog() {
     if (open) inputRef.current?.focus()
   }, [open])
 
-  // A modal: Esc closes it wherever focus is, and focus that wanders out (a screen behind
-  // focusing its own box as it loads) comes back to the search box.
+  // Modal: Esc closes anywhere; wandering focus (a screen behind autofocusing) returns to the box.
   const dialogRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -187,7 +186,7 @@ export function SearchDialog() {
     [sessions],
   )
 
-  // One flat list for the arrow keys, in the order the groups are drawn.
+  // Flat list for arrow keys, in drawn group order.
   const rows = useMemo<Row[]>(() => {
     if (!trimmed) return recent.map((session) => ({ type: 'recent', key: `r-${session.id}`, session }))
     if (!results) return []
@@ -218,14 +217,14 @@ export function SearchDialog() {
     close()
   }
 
-  // Keep the active row in view while the arrows move it.
+  // Active row kept in view.
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${active}"]`)
     el?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    // The chord that opened it closes it again.
+    // The opening chord closes it.
     if (e.key === 'Escape' || (e.key.toLowerCase() === 'k' && (isMac() ? e.metaKey : e.ctrlKey))) {
       e.preventDefault()
       close()

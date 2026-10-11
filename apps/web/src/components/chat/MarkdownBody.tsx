@@ -127,8 +127,7 @@ function loadHighlighter(): Promise<Highlighter> {
   return highlighterPromise
 }
 
-// Highlighting waits for the text to stop changing: while an answer streams, the
-// block grows every frame and re-tokenising it each time is wasted work.
+// Highlight once the text stops changing; re-tokenising a streaming block every frame is waste.
 const SETTLE_MS = 300
 
 // Above this, highlighting is skipped: a pasted log is not worth the parse.
@@ -136,8 +135,7 @@ const HIGHLIGHT_LIMIT = 20_000
 
 /** Highlighted HTML for `text`, or null until the highlighter is in and the language known. */
 function useHighlighted(text: string, lang: string | undefined): string | null {
-  // Keyed by the source, so a block whose text changed shows plain text until its
-  // own highlight arrives rather than the previous block's colours.
+  // Keyed by source: changed text shows plain until its own highlight arrives.
   const key = `${lang ?? ''}\u0000${text}`
   const [done, setDone] = useState<{ key: string; html: string } | null>(null)
   useEffect(() => {
@@ -255,9 +253,7 @@ export function MarkdownBody({
       )}
     >
       <ReactMarkdown
-        // remark-cjk-friendly: CommonMark will not close `**` before a Korean particle.
-        // A single tilde is a range in Korean prose (「100~500 Hz」), not strikethrough:
-        // only `~~text~~` strikes.
+        // remark-cjk-friendly: CommonMark won't close `**` before a Korean particle. A single tilde is a range (「100~500 Hz」); only `~~text~~` strikes.
         remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkCjkFriendly, remarkMath]}
         // A bracket placeholder (「[담당자]」) is marked as a gap to fill.
         rehypePlugins={[rehypeKatex, rehypePlaceholders]}

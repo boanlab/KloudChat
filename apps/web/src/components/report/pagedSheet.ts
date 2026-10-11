@@ -1,6 +1,6 @@
 import type { ReportArtifact } from '@/types'
 
-/** A report's page settings with every field filled. */
+/** Page settings, every field filled. */
 export type PageSettings = Required<NonNullable<ReportArtifact['pageSettings']>>
 
 export const DEFAULT_PAGE_SETTINGS: PageSettings = {
@@ -10,12 +10,7 @@ export const DEFAULT_PAGE_SETTINGS: PageSettings = {
 
 const escapeCssContent = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ')
 
-/**
- * The stylesheet Paged.js lays a document out with, after the template's own `css`: the A4
- * page box, its margins, running header, footer and page number, and the rules that keep a
- * screen layout from reaching the pages. The page view (`DocumentEditor` PagedDocument) and
- * the 서식 gallery preview (`PagedPreview`) both paginate with it.
- */
+/** Paged.js sheet after the template `css`: A4 box, margins, running header/footer, page number, screen-layout guards; shared by the page view and `PagedPreview`. */
 export function pagedSheetCss(css: string, settings: PageSettings): string {
   return `
       html, body { margin: 0; padding: 0; background: white; }

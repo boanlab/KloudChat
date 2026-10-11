@@ -4,9 +4,7 @@ import { artifactsApi } from '@/lib/api'
 import { diagramKey } from '@/lib/diagramKey'
 import { rasterise } from '@/lib/mermaid'
 
-/**
- * A `chart` fence in a report, drawn with the deck's chart component.
- *
+/** `chart` fence, drawn with the deck's chart component:
  *     ```chart
  *     bar | 건
  *     분기 | 처리 건수 | 반려 건수
@@ -18,7 +16,7 @@ export function ChartBlock({
   owner,
 }: {
   source: string
-  /** Document to store the rendered picture on (the `.hwpx` export embeds it); absent in the transcript. */
+  /** Picture store target (the `.hwpx` export embeds it); absent in the transcript. */
   owner?: { artifactId: string; sectionId: string; stored?: Record<string, string> }
 }) {
   const chart = parse(source)
@@ -61,7 +59,7 @@ export function ChartBlock({
   )
 }
 
-/** Parses the fence; mirrors `report_export._chart_block`. Short rows are dropped, never padded. */
+/** Mirrors `report_export._chart_block`; short rows dropped, never padded. */
 export function parse(source: string): Parameters<typeof SlideChart>[0]['chart'] | null {
   const lines = source
     .split('\n')

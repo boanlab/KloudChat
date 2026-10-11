@@ -14,7 +14,7 @@ A connector is an external tool (an MCP server) that the model can call. Install
 |---|---|
 | Time | Looks up the current time and date. Available in Chat, Reports, and Slides. |
 
-**YouTube transcript** is hidden from the list; anyone who already installed it still sees it and it keeps working. **Deep research** is turned off in the catalogue, since it sends queries out to the web for minutes at a time; installed copies are not removed.
+The list shows only the entries the administrator made visible in the connector catalogue. A connector hidden from the list keeps working for anyone who already installed it.
 
 ## Adding a server directly
 

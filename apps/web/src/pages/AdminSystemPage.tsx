@@ -30,7 +30,6 @@ const tabs = [
   { to: '/admin/system/connectors', label: '커넥터 카탈로그', end: false },
 ]
 
-/** Titled section with a one-line description. */
 function Group({
   title,
   description,
@@ -51,7 +50,7 @@ function Group({
 
 export function AdminSystemPage() {
   const t = useT()
-  // Shared by several tabs; a save in one refreshes the others.
+  // Shared by tabs; a save in one refreshes the others.
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const reload = useCallback(async () => {
     const data = await adminApi.settings().catch(() => null)
@@ -62,7 +61,7 @@ export function AdminSystemPage() {
     void reload()
   }, [reload])
 
-  // A tab change drops what a section has not saved: asked first.
+  // Unsaved section on tab change: asked first.
   const unsaved = useUnsaved((s) => Object.values(s.dirty).some(Boolean))
   const clearUnsaved = useUnsaved((s) => s.clear)
   const navigate = useNavigate()
@@ -78,7 +77,7 @@ export function AdminSystemPage() {
           description={t('이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.')}
         />
 
-        {/* Scrolls horizontally: the labels overflow a phone width. */}
+        {/* Labels overflow a phone width. */}
         <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
           {tabs.map((tab) => (
             <NavLink

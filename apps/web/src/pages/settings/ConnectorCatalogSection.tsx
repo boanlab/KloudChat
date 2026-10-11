@@ -24,7 +24,7 @@ const ERRORS: Record<string, string> = {
 
 type EnvRow = { key: string; value: string; stored: boolean }
 
-/** One entry's form: what the catalogue lists, how it runs, and whether the gateway key goes in. */
+/** Listing, run mode, gateway-key injection. */
 function EntryForm({
   initial,
   meta,
@@ -39,7 +39,7 @@ function EntryForm({
   const t = useT()
   const [value, setValue] = useState<CatalogEntryIn>(() =>
     initial ? { ...BLANK, ...initial } : BLANK)
-  // A stored value is never sent back: it shows as 「저장됨」 and stays unless replaced.
+  // Stored value never sent back: 「저장됨」, kept unless replaced.
   const [env, setEnv] = useState<EnvRow[]>(() =>
     Object.entries(initial?.env ?? {}).map(([key, v]) => ({ key, value: v ?? '', stored: v === null })))
   const [error, setError] = useState<string | null>(null)
@@ -167,7 +167,7 @@ function EntryForm({
   )
 }
 
-/** 관리 › 시스템 › 커넥터 카탈로그: what members can install. Stored values never come back. */
+/** What members can install; stored values never come back. */
 export function ConnectorCatalogSection() {
   const t = useT()
   const [meta, setMeta] = useState<CatalogAdmin | null>(null)

@@ -42,9 +42,7 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
   disconnected: { label: '미연결', tone: 'neutral' },
 }
 
-/** An installed connector; catalogue entries are a separate shape with no id. */
-/** Whether a connector's surfaces narrow where it is offered: all of chat, report and slides
- *  (or none named) say nothing worth a chip. */
+/** Surfaces narrow the offer: all of chat/report/slides (or none) deserve no chip. */
 const narrowed = (kinds: readonly string[]) =>
   kinds.length > 0 && !['chat', 'report', 'slides'].every((k) => kinds.includes(k))
 
@@ -122,12 +120,11 @@ function ConnectorCard({
             {t('쓰기 {n}').replace('{n}', String(writeTools))}
           </Badge>
         )}
-        {/* Surfaces only when they narrow it; every surface says nothing. */}
         {narrowed(connector.kinds) &&
           connector.kinds.map((k) => <Badge key={k}>{t(kindMeta[k].label)}</Badge>)}
       </div>
 
-      {/* `mt-auto` keeps the foot aligned across a row of cards. */}
+      {/* `mt-auto`: foot aligned across a row. */}
       <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
         <span className="text-xs text-faint">
           {connector.lastSyncAt
@@ -169,7 +166,6 @@ function ConnectorCard({
   )
 }
 
-/** A catalogue entry that is not installed yet. */
 function CatalogCard({ entry, onNeedsCredentials }: {
   entry: CatalogEntry
   onNeedsCredentials: (entry: CatalogEntry) => void
@@ -250,7 +246,7 @@ function CatalogCard({ entry, onNeedsCredentials }: {
   )
 }
 
-/** Re-supplies credentials for an installed connector. Stored values never leave the server. */
+/** Re-supplies credentials; stored values never leave the server. */
 function ReCredentialModal({
   connector,
   entry,
@@ -271,7 +267,7 @@ function ReCredentialModal({
     setError(null)
   }, [connector?.id])
 
-  // A self-registered server has no catalogue entry; fall back to its env keys.
+  // Self-registered server: no catalogue entry, env keys instead.
   const fields =
     entry?.requiredEnv?.length
       ? entry.requiredEnv
@@ -324,7 +320,7 @@ function ReCredentialModal({
   )
 }
 
-/** Asks for the credentials a catalogue entry declares. Stored values never leave the server. */
+/** Credentials a catalogue entry declares; stored values never leave the server. */
 function CredentialsModal({
   entry,
   onClose,
@@ -396,7 +392,7 @@ function CredentialsModal({
   )
 }
 
-/** `KEY=value` per line to an env map; blank and malformed lines are dropped. */
+/** Blank and malformed lines dropped. */
 function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split('\n')) {
@@ -445,7 +441,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   const catalog = connectorCatalog
   const current = detail ? (connectors.find((c) => c.id === detail.id) ?? detail) : null
 
-  // One flat list each: official first, then by name.
+  // Official first, then by name.
   const ordered = <T extends { name: string; official?: boolean }>(items: T[]) =>
     [...items].sort((a, b) => Number(!!b.official) - Number(!!a.official) || t(a.name).localeCompare(t(b.name), 'ko'))
   const installedList = ordered(installed)
@@ -507,7 +503,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
                       key={c.id}
                       connector={c}
                       onOpen={() => setDetail(c)}
-                      // From the row first: a self-registered server has no catalogue entry.
+                      // Row first: a self-registered server has no catalogue entry.
                       needsCredentials={
                         (c.envKeys?.length ?? 0) > 0 ||
                         (catalog.find((e) => e.slug === c.slug)?.requiredEnv?.length ?? 0) > 0

@@ -1,7 +1,7 @@
 /** Personas for coverage and layout review: each need is a task the UI must make possible.
  *  `personas.spec.ts` asserts the `needs`. */
 
-export type Surface = 'chat' | 'report' | 'slides' | 'image' | 'av'
+type Surface = 'chat' | 'report' | 'slides' | 'image' | 'av'
 
 export interface Need {
   /** Stable id used in the coverage report. */

@@ -1,13 +1,7 @@
-/**
- * One type scale for documents, in points.
- *
- * `apps/api/app/services/doc_type.py` carries the same table for the page seeds, the
- * reportlab PDF, the `.docx` and the `.hwpx`; a test keeps the two equal. The web view
- * draws these at 96 dpi (`px`). Change a number in both files.
- */
+/** Document type scale in pt; mirrors `services/doc_type.py` (test keeps them equal; change both). Web draws at 96 dpi. */
 export const TYPE = {
   title: 20,
-  // A cover page's title and the kind label above it (`head: 'cover'`).
+  // Cover title and kind label (`head: 'cover'`).
   cover: 26,
   coverLabel: 12,
   lead: 11.5,
@@ -25,7 +19,7 @@ export const TYPE = {
   pageNumber: 9,
 } as const
 
-/** Line height as a multiple of the size. */
+/** Multiple of the size. */
 export const LEADING = {
   title: 1.25,
   heading: 1.35,
@@ -34,10 +28,7 @@ export const LEADING = {
   note: 1.5,
 } as const
 
-/**
- * A format's own scale over `TYPE` and `LEADING`, by `doc_formats` id: the 개조식 1쪽 보고
- * (`doc_type.FORMAT_TYPE`). Its sizes replace the shared ones wherever that format is drawn.
- */
+/** Per-format scale over `TYPE`/`LEADING` (`doc_type.FORMAT_TYPE`). */
 export const FORMAT_TYPE: Record<string, Partial<Record<keyof typeof TYPE, number>>> = {
   gaejo: {
     title: 18,
@@ -62,7 +53,7 @@ export const FORMAT_LEADING: Record<string, Partial<Record<keyof typeof LEADING,
   },
 }
 
-/** Vertical space in points around a format's blocks (`doc_type.FORMAT_SPACE`). */
+/** Points around a format's blocks (`doc_type.FORMAT_SPACE`). */
 export const FORMAT_SPACE: Record<string, Record<'headingBefore' | 'headingAfter' | 'item' | 'callout' | 'head', number>> = {
   gaejo: {
     headingBefore: 7,
@@ -73,7 +64,7 @@ export const FORMAT_SPACE: Record<string, Record<'headingBefore' | 'headingAfter
   },
 }
 
-/** A format's page margins in mm when the document sets none (`doc_type.FORMAT_MARGINS`). */
+/** Default page margins in mm (`doc_type.FORMAT_MARGINS`). */
 export const FORMAT_MARGINS: Record<string, Record<'top' | 'bottom' | 'left' | 'right', number>> = {
   gaejo: {
     top: 20,
@@ -83,12 +74,11 @@ export const FORMAT_MARGINS: Record<string, Record<'top' | 'bottom' | 'left' | '
   },
 }
 
-/** A size in CSS pixels at 96 dpi. */
 export function px(pt: number): number {
   return Math.round((pt * 4) / 3 * 100) / 100
 }
 
-/** Custom properties for the web view: `--doc-<name>` in px and `--doc-leading-<name>`. */
+/** `--doc-<name>` in px and `--doc-leading-<name>`. */
 export function docVariables(): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [name, pt] of Object.entries(TYPE)) out[`--doc-${name}`] = `${px(pt)}px`
@@ -96,22 +86,18 @@ export function docVariables(): Record<string, string> {
   return out
 }
 
-/** Typeface stacks for the stored `font` token; the exporters pick matching faces. */
+/** Stacks for the stored `font` token; exporters pick matching faces. */
 export const FAMILIES = {
   gothic: "'Pretendard', 'Pretendard Variable', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
   serif: "'Nanum Myeongjo', 'NanumMyeongjo', 'Noto Serif KR', 'Batang', 'Apple Myungjo', Georgia, serif",
 } as const
 
-/** The stack for a design's font, or `undefined` to inherit when nothing was chosen. */
+/** `undefined`: inherit. */
 export function fontFamilyFor(font?: string | null): string | undefined {
   return font === 'serif' ? FAMILIES.serif : font === 'gothic' ? FAMILIES.gothic : undefined
 }
 
-/**
- * The CSS a format with its own scale adds under `.fmt.f-<id>`: the `--doc-*` sizes it
- * overrides (in pt, as print measures them), its spacing and its page margins; empty for
- * a format that keeps the shared scale.
- */
+/** `.fmt.f-<id>` overrides (pt sizes, spacing, margins); empty for the shared scale. */
 export function formatScaleCss(format: string): string {
   const sizes = FORMAT_TYPE[format]
   const space = FORMAT_SPACE[format]

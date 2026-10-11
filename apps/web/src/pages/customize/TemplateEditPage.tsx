@@ -49,7 +49,7 @@ const BLANK: UserTemplateIn = {
   visibility: 'private',
 }
 
-/** A shipped template's fields as `/user-templates/start/{id}` sends them (snake_case). */
+/** As `/user-templates/start/{id}` sends them (snake_case). */
 function fromStart(raw: Record<string, unknown>): UserTemplateIn {
   const fmt = (raw.doc_format ?? {}) as Partial<TemplateFormat>
   return {
@@ -86,10 +86,7 @@ const SAVE_ERRORS: Record<string, string> = {
   template_form_unreadable: '예시 문서를 읽지 못했습니다.',
 }
 
-/**
- * 템플릿 만들기·편집: every field a shipped document template sets, in one form. It is drawn on
- * the shared document page with the theme's colours and fonts; no HTML or CSS of its own.
- */
+/** Every field a shipped document template sets; drawn on the shared document page with the theme, no own HTML/CSS. */
 export function TemplateEditPage() {
   const t = useT()
   const navigate = useNavigate()
@@ -242,7 +239,7 @@ export function TemplateEditPage() {
                   <Input value={value.docFormat.label} maxLength={30} onChange={(e) => setFormat('label', e.target.value)} />
                 </Field>
                 <Field label={t('머리 항목')} hint={t('한 줄에 하나, 열 개까지. 자료에 없으면 [항목] 빈칸')}>
-                  {/* One line, prefixed 예:, so an empty field does not read as already filled. */}
+                  {/* One line prefixed 예:, so an empty field does not read as filled. */}
                   <Textarea rows={4} value={value.docFormat.fields.join('\n')}
                     onChange={(e) => setFormat('fields', e.target.value.split('\n').slice(0, 10))}
                     placeholder={t('예: 회의명, 일시, 장소, 참석자를 한 줄에 하나씩')} />
@@ -398,7 +395,7 @@ export function TemplateEditPage() {
   )
 }
 
-/** /customize/templates — the person's templates and the ones shared with them. */
+/** Own templates and those shared with the person. */
 export function TemplatesPage() {
   const t = useT()
   const [rows, setRows] = useState<{ mine: UserTemplate[]; shared: UserTemplate[] } | null>(null)

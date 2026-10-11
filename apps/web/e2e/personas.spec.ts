@@ -21,7 +21,7 @@ async function openNewest(page: import('@playwright/test').Page, tab: string) {
   await page.waitForURL(/\/s\/[0-9a-f]{32}/, { timeout: 20_000 })
 }
 
-/** Needs recorded as open rather than as regressions, with the reason. */
+/** Needs that a clean account cannot check, with the reason. */
 const KNOWN_OPEN: Record<string, string> = {
   // Controls on a finished deck; a clean account has none (slides.spec.ts covers creation).
   'biz-pptx': '완성된 슬라이드 fixture가 없는 계정에서는 확인할 수 없음',
@@ -264,7 +264,6 @@ test.describe('페르소나 커버리지', () => {
               case 'off-docx':
               case 'res-export-pdf':
                 await openNewest(page, '보고서')
-                // 「파일」 is gone: its commands sit in the panel header now.
                 await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText(/Word|PDF/).first()).toBeVisible()
                 break
@@ -277,7 +276,6 @@ test.describe('페르소나 커버리지', () => {
                 break
               case 'biz-pptx':
                 await openNewest(page, '슬라이드')
-                // 「파일」 is gone: its commands sit in the panel header now.
                 await page.getByRole('button', { name: '내려받기', exact: true }).click()
                 await probe(page.getByText('PowerPoint')).toBeVisible()
                 break

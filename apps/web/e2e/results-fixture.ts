@@ -15,7 +15,7 @@ export const shareToken = 'shared-result-token'
 const at = '2026-10-08T00:00:00.000Z'
 const later = '2026-10-08T00:05:00.000Z'
 
-export interface Recorded {
+interface Recorded {
   exports: string[]
   uploads: string[]
   unexpected: string[]

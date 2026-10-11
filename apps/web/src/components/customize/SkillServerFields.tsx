@@ -8,7 +8,7 @@ import type { SkillScript, SkillServer } from '@/types'
 import { Block } from './AgentForm'
 
 let cached: Promise<SkillServerCatalogue> | null = null
-/** The shipped scripts and checks a skill may name; read once per page load. */
+/** Shipped scripts and checks a skill may name; read once per page load. */
 function useServerCatalogue(): SkillServerCatalogue | null {
   const [value, setValue] = useState<SkillServerCatalogue | null>(null)
   useEffect(() => {
@@ -26,7 +26,7 @@ function useServerCatalogue(): SkillServerCatalogue | null {
 
 const toggle = (list: string[], item: string) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item])
 
-/** A checkbox per shipped script: its skill's name, the reference, what it does. */
+/** Checkbox per shipped script: skill name, reference, purpose. */
 function RefList({
   refs,
   value,
@@ -64,7 +64,6 @@ function RefList({
   )
 }
 
-/** A switch with its words beside it. */
 function SwitchRow({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <div className="flex items-center gap-2">
@@ -76,7 +75,7 @@ function SwitchRow({ checked, onChange, label }: { checked: boolean; onChange: (
   )
 }
 
-/** One of the person's own scripts: name, what it does, the code behind 「코드 보기」. */
+/** One of the person's scripts: name, purpose, code behind 「코드 보기」. */
 export function ScriptRow({ script }: { script: SkillScript }) {
   const t = useT()
   const [open, setOpen] = useState(false)
@@ -110,11 +109,7 @@ export function ScriptRow({ script }: { script: SkillScript }) {
   )
 }
 
-/**
- * 「서버가 돌리는 점검」: what the server runs for this skill, chosen from the shipped scripts
- * and checks only — the same fields a shipped SKILL.md declares. The skill's own scripts can
- * be named only for `run_skill_script`, which runs them in the sandbox.
- */
+/** 「서버가 돌리는 점검」: shipped scripts and checks only; own scripts only via sandboxed `run_skill_script`. */
 export function SkillServerFields({
   value,
   onChange,
@@ -122,7 +117,7 @@ export function SkillServerFields({
 }: {
   value: SkillServer
   onChange: (next: SkillServer) => void
-  /** The skill's own uploaded scripts. */
+  /** Own uploaded scripts. */
   scripts: SkillScript[]
 }) {
   const t = useT()
