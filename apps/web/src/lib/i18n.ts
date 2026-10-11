@@ -1291,7 +1291,7 @@ const EN: Record<string, string> = {
   '다시 연결': 'Reconnect',
   '다운로드': 'Download',
   '메시지 수정': 'Edit message',
-  '메시지 수정 · 새 대화': 'Edit message · New conversation',
+  '메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다': 'Editing · sending starts a new conversation; this one stays as it is',
   '수정 취소': 'Cancel edit',
   '수정 후 다시 보내기': 'Save and resend',
   '수정한 메시지를 전송하지 못했습니다. 다시 시도하세요.': 'Could not send the edited message. Please try again.',

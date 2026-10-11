@@ -1823,7 +1823,7 @@ export function Composer({
         {editing && (
           <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
             <Pencil size={14} className="shrink-0 text-accent" />
-            <span className="min-w-0 flex-1">{t('메시지 수정 · 새 대화')}</span>
+            <span className="min-w-0 flex-1">{t('메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다')}</span>
             <Button size="icon" variant="ghost" title={t('수정 취소')} aria-label={t('수정 취소')}
               disabled={editPending || privacyRetrying} onClick={cancelEditing}>
               <X size={14} />

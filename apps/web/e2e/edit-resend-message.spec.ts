@@ -306,6 +306,8 @@ for (const action of ['cancel', 'Escape'] as const) {
 test('blank edits and composing Enter do not fork or send', async ({ page }, info) => {
   const state = await fixture(page, info)
   await beginEdit(page)
+  // Said before sending: the edit goes on in a new conversation and this one is kept.
+  await expect(page.getByText('메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다')).toBeVisible()
   const input = page.getByLabel('프롬프트 입력')
   const submit = page.getByRole('button', { name: '수정 후 다시 보내기', exact: true })
   await input.fill('   \n  ')
