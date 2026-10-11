@@ -1,4 +1,4 @@
-"""Instance-wide policy. One row, `id = 'default'`."""
+"""Instance-wide policy; single row `id = 'default'`."""
 
 from __future__ import annotations
 
@@ -20,66 +20,57 @@ class Governance(SQLModel, table=True):
     __tablename__ = "governance"
 
     id: str = Field(default="default", primary_key=True)
-    #: Redact resident registration numbers, phone numbers, card numbers and
-    #: emails from anything on its way to a model.
+    #: PII redaction (RRN, phone, card, email) before any model
     pii_masking: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
-    #: Inspect the complete chat envelope before it is sent to an external or
-    #: hybrid model.
+    #: full-envelope check before external/hybrid models
     external_data_guard: bool = Field(
         default=True, sa_column=Column(Boolean, nullable=False, server_default=text("true"))
     )
-    #: An upper bound, not a default. Users cannot choose raw external delivery
-    #: unless the administrator explicitly permits it.
+    #: upper bound: raw external delivery only if admin permits
     allow_user_raw_external: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
-    #: Strict-local model ids, revalidated against the live catalogue on every use.
+    #: strict-local ids, revalidated against live catalogue
     privacy_safe_model_ids: list = Field(
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Cost-saving auto routing.
     adaptive_routing_enabled: bool = Field(
         default_factory=lambda: settings.adaptive_routing_default,
         sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
-    #: Must resolve to a live, zero-priced strict-local chat model at runtime.
+    #: must resolve to a live, zero-priced strict-local model
     adaptive_classifier_model_id: str | None = Field(
         default_factory=lambda: settings.adaptive_classifier_model_default or None,
         sa_column=Column(String, nullable=True),
     )
-    #: Ordered economy candidates, revalidated every turn.
+    #: ordered, revalidated every turn
     adaptive_economy_model_ids: list = Field(
         default_factory=lambda: _ids(settings.adaptive_economy_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Quality-upgrade auto routing; independent of `adaptive_routing_enabled`.
+    #: independent of `adaptive_routing_enabled`
     adaptive_quality_enabled: bool = Field(
         default_factory=lambda: settings.adaptive_quality_default,
         sa_column=Column(Boolean, nullable=False, server_default=text("false")),
     )
-    #: Ordered upgrade candidates, revalidated every turn. Administrator-curated,
-    #: not a price sort.
+    #: ordered, admin-curated (not price-sorted), revalidated every turn
     adaptive_quality_model_ids: list = Field(
         default_factory=lambda: _ids(settings.adaptive_quality_models_default),
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: A turn that carries the organisation's own material — an attachment, a project's
-    #: files or instructions, a memory — runs on a strict-local model whatever was chosen:
-    #: the `strict-local/` twin of a `local/` model, else the first privacy-safe model.
+    #: internal material forces strict-local: `strict-local/` twin, else first privacy-safe model
     internal_data_strict_local: bool = Field(
         default_factory=lambda: settings.internal_data_strict_local_default,
         sa_column=Column(Boolean, nullable=False, server_default=text("true")),
     )
-    #: Model for a document's outline call only; the blocks use the surface's
-    #: own model. Empty keeps the surface's model for the outline too.
+    #: outline call only; empty: surface model
     outline_model_id: str | None = Field(
         default_factory=lambda: settings.outline_model_default or None,
         sa_column=Column(String, nullable=True),
     )
-    #: Refuse prompts whose intent falls in `blocked_categories`.
     intent_filter: bool = Field(
         default=False, sa_column=Column(Boolean, nullable=False, server_default=text("false"))
     )
@@ -87,17 +78,14 @@ class Governance(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Sign an idle browser out after this many minutes; 0 disables. Enforced
-    #: by the browser, which alone knows idleness (the silent refresh is a timer).
+    #: minutes; 0 disables. Browser-enforced (only it knows idleness).
     idle_timeout_minutes: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )
-    #: Turns running at once on published bots across the instance (`services.publishing`);
-    #: a turn past it waits in line, then is refused with 429.
+    #: instance-wide published-bot turn cap; overflow queues, then 429
     published_concurrency_max: int = Field(
         default=16, sa_column=Column(Integer, nullable=False, server_default="16")
     )
-    #: Delete message bodies older than this. 0 keeps everything.
     retention_days: int = Field(
         default=0, sa_column=Column(Integer, nullable=False, server_default="0")
     )

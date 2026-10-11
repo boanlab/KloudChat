@@ -1,5 +1,4 @@
-"""Admin-editable runtime settings. A row overrides the environment variable of
-the same key; secrets are stored encrypted (`services/settings.py`)."""
+"""Admin-editable settings; row overrides same-key env var, secrets encrypted."""
 
 from __future__ import annotations
 
@@ -16,7 +15,7 @@ class SystemSetting(SQLModel, table=True):
 
     key: str = Field(primary_key=True)
     value: str = Field(default="")
-    #: Encrypted at rest and never serialised back to the browser.
+    #: encrypted at rest, never sent to the browser
     secret: bool = Field(default=False)
     updated_at: datetime = Field(
         default_factory=utcnow, sa_column=Column(DateTime(timezone=True), nullable=False)

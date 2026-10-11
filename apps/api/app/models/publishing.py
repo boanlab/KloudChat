@@ -1,20 +1,4 @@
-"""Published agents (공개 챗봇): an agent fixed at one version and opened to other people.
-
-A publication is its owner's: every conversation on it is an ordinary `sessions` row owned
-by the publisher (`ChatSession.publication_id`), so the normal turn applies the publisher's
-policy, credits and audit attribution. What a visitor reaches is fixed at publish time: a
-hidden copy of the agent (`Agent.snapshot_of`) and the text of its knowledge.
-
-Members may open a bot as soon as it is published (`visibility = internal`). Opening it to
-people without an account — whoever holds the link (`link`) or anyone, listed on the public
-page (`external`) — waits for an administrator: the request sits in `review_state`, and only a
-version an administrator approved answers outside.
-
-A bot open outside can also be reached through channels, each opened by an administrator the
-same way (`channels`, asked in `requested_channels`): `embed` — framed on the owner's own sites
-(`origins`), `api` — the OpenAI-compatible endpoint, `mcp` — an MCP server. API and MCP callers
-hold a key the owner issued for that bot (`PublicationKey`).
-"""
+"""공개 챗봇: frozen agent copy, publisher-owned sessions, admin-gated outside."""
 
 from __future__ import annotations
 
@@ -42,20 +26,19 @@ def _json(**kwargs) -> Column:
 
 
 class PublicationVisibility(StrEnum):
-    #: Signed-in members of this instance.
     internal = "internal"
-    #: Whoever holds the link, signed in or not; listed nowhere (administrator approval).
+    #: link holders, unlisted (admin approval)
     link = "link"
-    #: Anyone, listed on the public bot page (administrator approval).
+    #: anyone, publicly listed (admin approval)
     external = "external"
 
 
-#: Audiences from narrowest to widest: narrowing is the owner's to do, widening is reviewed.
+#: narrowing is the owner's; widening is reviewed
 VISIBILITY_RANK = {"internal": 0, "link": 1, "external": 2}
 
 
 class ReviewState(StrEnum):
-    """An owner's request for a wider audience, or for a new version on one, as reviewed."""
+    """Owner's pending request for wider audience or new version."""
 
     none = ""
     pending = "pending"
@@ -64,20 +47,18 @@ class ReviewState(StrEnum):
 
 class PublicationStatus(StrEnum):
     draft = "draft"
-    #: Waiting for an administrator (link/external scopes).
+    #: awaiting admin (link/external)
     pending = "pending"
-    #: Open to its audience.
     approved = "approved"
-    #: Closed for now: by its owner, by an administrator, or automatically (credits, account).
+    #: by owner, admin, or automatically (credits, account)
     paused = "paused"
     rejected = "rejected"
     revoked = "revoked"
 
 
-#: Who may see what a visitor typed: `off` — usage statistics only (and conversations a
-#: visitor chose to send); `on` (「대화 열람」) — every conversation started after consent.
+#: `off`: stats and sent conversations only; `on` (「대화 열람」): all after consent
 CONVERSATION_VIEW = ("off", "on")
-#: How much of the answer's working the visitor sees.
+#: visitor-visible working detail
 SHOW_PROCESS = ("none", "summary", "full")
 
 
@@ -86,58 +67,50 @@ class Publication(SQLModel, table=True):
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     owner_id: str = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
-    #: The agent it was published from. Not a foreign key: the published versions are
-    #: copies, so the bot keeps working when the original is edited or deleted.
+    #: not a FK: versions are copies, survive edits/deletion
     agent_id: str = Field(default="", index=True)
-    #: The address: `/b/<slug>`.
+    #: `/b/<slug>`
     slug: str = Field(index=True, unique=True)
     title: str = Field(default="")
     description: str = Field(default="")
     visibility: str = Field(default=PublicationVisibility.internal.value, max_length=20)
     status: str = Field(default=PublicationStatus.draft.value, max_length=20)
-    #: Why it is paused: `owner`, `admin`, `credits`, `account`, `model`. Empty otherwise.
+    #: `owner`, `admin`, `credits`, `account`, `model`; else empty
     pause_reason: str = Field(default="", max_length=40)
-    #: The `publication_versions` row visitors talk to.
     active_version_id: str | None = Field(default=None)
-    #: `{"greeting", "suggestedPrompts": [≤4], "placeholder"}`.
     branding: dict | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Overrides of `services.publishing.DEFAULT_LIMITS`.
     limits: dict | None = Field(default=None, sa_column=_json(nullable=True))
-    #: Reserved switches (`{"feedback": true, ...}`); unknown keys are ignored.
+    #: reserved; unknown keys ignored
     features: dict | None = Field(default=None, sa_column=_json(nullable=True))
     show_process: str = Field(default="summary", max_length=20)
     show_sources: bool = Field(default=True)
-    #: Days a conversation is kept after its last message.
     retention_days: int = Field(default=30)
     conversation_view: str = Field(default="off", max_length=8)
-    #: Raised whenever what the notice says changes; a visitor consents to one version.
+    #: bumped on notice change; consent is per version
     consent_version: int = Field(default=1)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     updated_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
     published_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
-    #: The audience asked for while a review is pending (or was refused); "" otherwise.
+    #: audience under (or refused) review; else ""
     requested_visibility: str = Field(default="", max_length=20)
     review_state: str = Field(default=ReviewState.none.value, max_length=20)
-    #: The administrator's words on the last decision (a refusal's reason), shown to the owner.
+    #: admin's note on last decision, shown to owner
     review_note: str = Field(default="")
     reviewed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     reviewed_by: str | None = Field(default=None)
-    #: A new version waiting for review on a bot open outside; the approved one answers
-    #: meanwhile.
+    #: version awaiting review; approved one answers meanwhile
     pending_version_id: str | None = Field(default=None)
-    #: When something the owner should look at happened (a pause, a decision), and when the
-    #: owner last opened the bot's page: the badge is the difference.
+    #: owner badge: attention_at later than owner_seen_at
     attention_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     owner_seen_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
-    #: Channels an administrator opened: `{"embed": {"origins": [...]}, "api": {}, "mcp": {}}`;
-    #: a key present is a channel open.
+    #: admin-opened channels; key present = open
     channels: dict | None = Field(default=None, sa_column=_json(nullable=True))
-    #: The whole set of channels asked for while a review is pending; None otherwise.
+    #: channels requested under review; else None
     requested_channels: dict | None = Field(default=None, sa_column=_json(nullable=True))
 
 
 class PublicationVersion(SQLModel, table=True):
-    """One fixed state of the bot: the hidden agent copy, the model and what it held."""
+    """Frozen bot state: hidden agent copy, model, contents."""
 
     __tablename__ = "publication_versions"
     __table_args__ = (UniqueConstraint("publication_id", "number",
@@ -146,23 +119,22 @@ class PublicationVersion(SQLModel, table=True):
     id: str = Field(default_factory=_uuid, primary_key=True)
     publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
     number: int = Field(default=1)
-    #: The hidden `agents` row (`Agent.snapshot_of`) this version runs.
+    #: hidden `agents` row (`Agent.snapshot_of`)
     agent_snapshot_id: str = Field(default="")
-    #: The strict-local model it answers with.
+    #: strict-local answer model
     model: str = Field(default="")
     note: str = Field(default="")
-    #: What was fixed, for the version list: `{"knowledge": [{"name", "chars"}], "tools",
-    #: "checks", "agentName"}`.
+    #: version-list summary of what was fixed
     summary: dict | None = Field(default=None, sa_column=_json(nullable=True))
     created_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
-    #: An administrator approved this version for people without an account.
+    #: admin approval for account-less audiences
     approved_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     approved_by: str | None = Field(default=None)
 
 
 class PublicationVisitor(SQLModel, table=True):
-    """A person who opened a bot: their consent, and whether the owner blocked them."""
+    """Bot visitor: consent and block state."""
 
     __tablename__ = "publication_visitors"
     __table_args__ = (UniqueConstraint("publication_id", "user_id",
@@ -172,12 +144,12 @@ class PublicationVisitor(SQLModel, table=True):
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
-    #: A member; null for a visitor without an account.
+    #: member; null if account-less
     user_id: str | None = Field(default=None, foreign_key="users.id", index=True,
                                 ondelete="CASCADE")
-    #: A visitor without an account: the id their signed browser cookie carries.
+    #: account-less id from signed cookie
     anon_id: str | None = Field(default=None, max_length=64)
-    #: The notice version consented to; 0 is none yet.
+    #: consented notice version; 0 = none
     consent_version: int = Field(default=0)
     consented_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     blocked: bool = Field(default=False)
@@ -187,8 +159,7 @@ class PublicationVisitor(SQLModel, table=True):
 
 
 class PublicationCounter(SQLModel, table=True):
-    """A count in one time window (`m:202610101230`, `d:20261010`): turns, tokens, ratings,
-    topics. Written with one upsert per change, so replicas add up instead of overwriting."""
+    """Windowed count (`m:…`, `d:…`); upsert-added so replicas don't overwrite."""
 
     __tablename__ = "publication_counters"
     publication_id: str = Field(foreign_key="publications.id", primary_key=True,
@@ -199,8 +170,7 @@ class PublicationCounter(SQLModel, table=True):
 
 
 class PublicationSlot(SQLModel, table=True):
-    """A turn running on a bot, held while it streams: the concurrency limits count these
-    rows across replicas. A row older than the claim TTL is a crash's leftover."""
+    """Running bot turn for cross-replica concurrency limits; stale past claim TTL."""
 
     __tablename__ = "publication_slots"
     __table_args__ = (Index("ix_publication_slots_acquired", "publication_id", "acquired_at"),)
@@ -211,8 +181,7 @@ class PublicationSlot(SQLModel, table=True):
 
 
 class PublicationQuestion(SQLModel, table=True):
-    """A question the bot could not answer from its material, personal details masked. The
-    owner sees these sentences, never the conversation around them."""
+    """Unanswerable question, PII-masked; owner sees only this sentence."""
 
     __tablename__ = "publication_questions"
     __table_args__ = (Index("ix_publication_questions_at", "publication_id", "at"),)
@@ -225,17 +194,15 @@ class PublicationQuestion(SQLModel, table=True):
 
 
 class PublicationKey(SQLModel, table=True):
-    """A key the owner issued for one bot's API and MCP channels. Only its hash is kept: the
-    key itself is shown once, when it is made."""
+    """Per-bot API/MCP key; hash only, shown once."""
 
     __tablename__ = "publication_keys"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     publication_id: str = Field(foreign_key="publications.id", index=True, ondelete="CASCADE")
     name: str = Field(default="", max_length=80)
-    #: SHA-256 of the key, hex.
     key_hash: str = Field(max_length=64, unique=True, index=True)
-    #: `kcb_ab12…yz89`, to tell keys apart.
+    #: `kcb_ab12…yz89` for telling keys apart
     preview: str = Field(default="", max_length=40)
     created_by: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))

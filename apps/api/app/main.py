@@ -72,31 +72,26 @@ async def lifespan(app: FastAPI):
             async with SessionLocal() as db:
                 moved = await settings_store.rotate_secrets(db)
             if moved:
-                # The count stays out of the log: CodeQL reads any value out of
-                # `rotate_secrets` as secret material.
+                # count not logged: CodeQL treats it as secret material
                 log.info("stored secrets re-sealed under SECRET_KEY")
         except Exception as exc:  # noqa: BLE001 — old rows still open with the old key
             log.warning("stored secrets were not re-sealed: %s", exc)
-    # Catalogue renames and hidden flags apply at deploy, not at the owner's next sign-in.
+    # catalogue renames/hidden flags applied at deploy
     try:
         await starter.sync_catalog_at_startup(SessionLocal)
     except Exception as exc:  # noqa: BLE001 — the owner's next sign-in syncs it
         log.warning("catalogue not synced at startup: %s", exc)
-    # Reclaims deleted accounts' files when the disk fills; see services/storage.py.
     sweeper = asyncio.create_task(storage.watch())
-    # Published bots: retention of their conversations, and pausing a bot whose owner can no
-    # longer carry it (services/publishing.py).
+    # published bots: retention, pausing unaffordable bots
     bots = asyncio.create_task(publishing.watch())
-    # Scanned pages and document photos queued at upload (services/ocr_jobs.py).
     reader = asyncio.create_task(ocr_jobs.watch())
-    # Cross-process stop-button delivery: only with more than one API replica,
-    # so the single-instance default holds no extra Postgres connection open.
+    # cross-replica stop delivery; no extra connection for a single replica
     stop_listener = (
         asyncio.create_task(stop_signal.listen(sessions.fire_stop_locally))
         if stop_signal.needed()
         else None
     )
-    # Performance samples for the admin page; one replica also reads the host and GPUs.
+    # one replica also samples host and GPUs
     perf_task = asyncio.create_task(perf_collector.run()) if settings.perf_monitoring else None
     yield
     sweeper.cancel()
@@ -123,12 +118,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# Open streams and request durations per replica (`services/perf/live.py`).
+# per-replica open streams and request durations
 app.add_middleware(perf_live.LoadMiddleware)
 
 app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(branding.router, prefix=settings.api_prefix)
-# Mounted at /llm without the API prefix: the base URL external tools point at.
+# no API prefix: base URL for external tools
 app.include_router(llm.router)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(models.router, prefix=settings.api_prefix)
@@ -149,7 +144,7 @@ app.include_router(keys.router, prefix=settings.api_prefix)
 app.include_router(transcriptions.router, prefix=settings.api_prefix)
 app.include_router(shares.router, prefix=settings.api_prefix)
 app.include_router(publications.router, prefix=settings.api_prefix)
-# A published bot's channels for programs and other sites: the API, MCP and frame policy.
+# published bots: API, MCP, frame policy
 app.include_router(bot_api.router, prefix=settings.api_prefix)
 app.include_router(issues.router, prefix=settings.api_prefix)
 app.include_router(perf.router, prefix=settings.api_prefix)
@@ -157,7 +152,7 @@ app.include_router(perf.router, prefix=settings.api_prefix)
 
 @app.get(f"{settings.api_prefix}/health")
 async def health():
-    """Reports KloudChat and LiteLLM separately so the UI can say which is down."""
+    """KloudChat and LiteLLM status reported separately."""
     return {
         "status": "ok",
         "litellm": "ok" if await litellm.health() else "unavailable",

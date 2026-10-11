@@ -1,8 +1,4 @@
-"""Async engine and session dependency.
-
-Uses SQLModel's `AsyncSession` rather than SQLAlchemy's so `session.exec(select(...))`
-returns model instances directly instead of one-element rows.
-"""
+"""Async engine and session; SQLModel AsyncSession so `exec` returns model instances."""
 
 from collections.abc import AsyncGenerator
 
@@ -23,7 +19,7 @@ SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Request-scoped session. Commits are explicit; the dependency only rolls back."""
+    """Request-scoped session; explicit commits, rollback on error."""
     async with SessionLocal() as session:
         try:
             yield session

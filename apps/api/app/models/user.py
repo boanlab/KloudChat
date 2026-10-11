@@ -1,9 +1,4 @@
-"""Identity, refresh tokens, and the credit ledger.
-
-`litellm_user_id` is a one-way provisioning pointer set at activation; null
-without LiteLLM. `litellm_key` is the user's own proxy key, used for every model
-call on their behalf; encrypted at rest and never sent to a browser.
-"""
+"""Identity, refresh tokens, credit ledger; `litellm_key` encrypted, never sent to a browser."""
 
 from __future__ import annotations
 
@@ -25,7 +20,7 @@ def utcnow() -> datetime:
 
 
 def _ts_column(**kwargs) -> Column:
-    """Timezone-aware column; cycle math must not depend on the server's zone."""
+    """Timezone-aware; cycle math independent of server zone."""
     return Column(DateTime(timezone=True), **kwargs)
 
 
@@ -50,17 +45,14 @@ class User(SQLModel, table=True):
     role: UserRole = Field(default=UserRole.user)
     status: UserStatus = Field(default=UserStatus.pending)
 
-    # ── credits ────────────────────────────────────────────────────────
-    # Admin-assigned allowance. `credits_used` resets at `cycle_resets_at` and
-    # nothing carries over, so there is no balance column.
+    # allowance; usage resets at cycle_resets_at, no carry-over (no balance column)
     monthly_credits: int = Field(default=0)
     credits_used: int = Field(default=0)
     cycle_resets_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     litellm_user_id: str | None = Field(default=None)
-    #: Fernet ciphertext. Read it through `services.litellm.user_key`, never raw.
+    #: Fernet ciphertext; read via `services.litellm.user_key`
     litellm_key: str | None = Field(default=None)
-    #: Last four characters, for the admin screen.
     litellm_key_preview: str | None = Field(default=None)
     litellm_key_issued_at: datetime | None = Field(
         default=None, sa_column=_ts_column(nullable=True)
@@ -70,8 +62,7 @@ class User(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     )
-    #: Settings-screen switches. Defaults live in `schemas.auth.Preferences`;
-    #: a missing key means "not chosen".
+    #: defaults in `schemas.auth.Preferences`; missing key = not chosen
     preferences: dict = Field(
         default_factory=dict,
         sa_column=Column(JSONB, nullable=False, server_default=text("'{}'::jsonb")),
@@ -79,8 +70,7 @@ class User(SQLModel, table=True):
 
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
     last_active_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
-    #: Confirmation time of the mailed link (creation time for accounts never
-    #: asked). Null: link still outstanding.
+    #: mailed-link confirmation time; null = outstanding
     email_verified_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     @property
@@ -89,10 +79,7 @@ class User(SQLModel, table=True):
 
 
 class ApiKey(SQLModel, table=True):
-    """A proxy key the user holds themselves (unlike `User.litellm_key`).
-
-    Returned in full once, at creation; only `preview` afterwards.
-    """
+    """User-held proxy key; full value returned once, then `preview` only."""
 
     __tablename__ = "api_keys"
     __table_args__ = (Index("ix_api_keys_user_id", "user_id"),)
@@ -108,7 +95,7 @@ class ApiKey(SQLModel, table=True):
 
 
 class RevokeReason(StrEnum):
-    """Why a refresh token stopped being valid. Only a returning `rotated` token implies replay."""
+    """Refresh-token revocation cause; only a returning `rotated` implies replay."""
 
     rotated = "rotated"
     logout = "logout"
@@ -117,11 +104,7 @@ class RevokeReason(StrEnum):
 
 
 class RefreshToken(SQLModel, table=True):
-    """One row per issued refresh token. Rotation appends, never updates.
-
-    `family_id` ties a rotation chain together: a token presented after rotation
-    means a leak, so the whole family is revoked.
-    """
+    """Issued refresh token, append-only; reuse after rotation revokes the `family_id`."""
 
     __tablename__ = "refresh_tokens"
     __table_args__ = (Index("ix_refresh_tokens_family_id", "family_id"),)
@@ -134,10 +117,10 @@ class RefreshToken(SQLModel, table=True):
     revoked_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
     revoked_reason: RevokeReason | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
-    #: Sign-in origin, copied onto every token of the family for the session list.
+    #: sign-in origin, copied across the family
     ip: str = Field(default="")
     user_agent: str = Field(default="", max_length=400)
-    #: Last rotation; means "still open", not "in use" (the browser refreshes on a timer).
+    #: last rotation = still open, not in use (timer refresh)
     last_used_at: datetime | None = Field(default=None, sa_column=_ts_column(nullable=True))
 
     def is_usable(self, now: datetime | None = None) -> bool:
@@ -146,35 +129,31 @@ class RefreshToken(SQLModel, table=True):
 
 
 class CreditLedger(SQLModel, table=True):
-    """Append-only. Every deduction and every refill lands here for the usage screens."""
+    """Append-only deductions and refills."""
 
     __tablename__ = "credit_ledger"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     user_id: str = Field(foreign_key="users.id", index=True)
-    # Negative for spend, positive for an allowance grant or refill.
+    # negative spend, positive grant/refill
     delta: int
     reason: str
     session_id: str | None = Field(default=None)
     job_id: str | None = Field(default=None)
-    #: Model billed, recorded on the row because it can differ from the session's
-    #: model. Null when several models shared one charge.
+    #: billed model (may differ from session's); null if shared charge
     model: str | None = Field(default=None)
-    #: Surface the charge came from (`chat`, `image`, `av`, ...), kept on the row
-    #: so deleting the session does not move its spend.
+    #: on the row so session deletion doesn't move spend
     surface: str | None = Field(default=None)
-    #: Work done, in `unit` (seconds transcribed, chunks embedded). Set for
-    #: zero-credit models so they still reach the usage screens.
+    #: work in `unit`; lets zero-credit models reach usage screens
     units: int | None = Field(default=None)
     unit: str | None = Field(default=None)
-    #: A published bot's turn (`publications`): billed to its owner, shown apart on the
-    #: usage screens.
+    #: published-bot turn: billed to owner, shown separately
     publication_id: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts_column(nullable=False))
 
 
 class AuditEvent(SQLModel, table=True):
-    """Institution-facing trail. Written by the admin and auth routes."""
+    """Institution-facing audit trail."""
 
     __tablename__ = "audit_events"
 
@@ -184,20 +163,18 @@ class AuditEvent(SQLModel, table=True):
     action: str
     target: str = Field(default="")
     detail: str = Field(default="")
-    #: Structured, value-free context for machine-readable security events.
-    #: The Python name avoids SQLAlchemy's reserved ``metadata`` attribute.
+    #: value-free structured context; Python name avoids reserved `metadata`
     event_metadata: dict | None = Field(
         default=None, sa_column=Column("metadata", JSONB, nullable=True)
     )
     ip: str = Field(default="")
-    #: Raw `User-Agent` of the causing request; empty when there is no request.
+    #: raw request `User-Agent`; empty without request
     user_agent: str = Field(default="")
     severity: str = Field(default="info")
 
 
 class PasswordReset(SQLModel, table=True):
-    """Single-use password reset ticket. Only the hash is stored; rows are kept
-    after use so `used_at` tells a second click apart from a bad link."""
+    """Single-use reset ticket; hash only, kept after use to detect second clicks."""
 
     __tablename__ = "password_resets"
 
@@ -211,7 +188,7 @@ class PasswordReset(SQLModel, table=True):
 
 
 class EmailVerification(SQLModel, table=True):
-    """Single-use email verification ticket; same shape and rules as `PasswordReset`."""
+    """Single-use email verification ticket; same rules as `PasswordReset`."""
 
     __tablename__ = "email_verifications"
 

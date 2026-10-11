@@ -1,5 +1,4 @@
-"""Issue reports (「문의·신고」): what a person reported, the session snapshot they agreed to
-share, and the thread between them and the administrators."""
+"""Issue reports (「문의·신고」): report, consented session snapshot, admin thread."""
 
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ class IssueKind(StrEnum):
 
 
 class IssueStatus(StrEnum):
-    #: 접수 → 확인 중 → 해결 / 보류 (with a reason).
+    #: 접수 → 확인 중 → 해결 / 보류 (with reason)
     received = "received"
     checking = "checking"
     resolved = "resolved"
@@ -41,33 +40,28 @@ class IssueReport(SQLModel, table=True):
     __table_args__ = (Index("ix_issue_reports_status_created", "status", "created_at"),)
 
     id: str = Field(default_factory=_uuid, primary_key=True)
-    #: Goes with its reporter's account.
     user_id: str = Field(foreign_key="users.id", index=True, ondelete="CASCADE")
     kind: str = Field(default=IssueKind.bug.value)
     status: str = Field(default=IssueStatus.received.value)
     body: str = Field(default="")
-    #: An administrator; null until one takes it.
     assignee_id: str | None = Field(default=None)
     hold_reason: str = Field(default="")
-    #: The session it was sent from and the item it points at. References only: the
-    #: content, when shared, is in `snapshot`.
+    #: references only; shared content lives in `snapshot`
     session_id: str | None = Field(default=None)
     message_id: str | None = Field(default=None)
     artifact_id: str | None = Field(default=None)
-    #: The reporter ticked 「이 세션을 관리자에게 공유합니다」; `snapshot` is null otherwise.
+    #: 「이 세션을 관리자에게 공유합니다」; else `snapshot` null
     session_shared: bool = Field(default=False)
-    #: App build, browser, session kind, models, agent, pipeline, stage records (no
-    #: evidence), artifact version ids. No message text.
+    #: environment and ids only; no message text
     context: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
-    #: Read-only copy of the session at submit time; see `services.issue_snapshot`.
+    #: read-only copy at submit (`services.issue_snapshot`)
     snapshot: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     snapshot_bytes: int = Field(default=0)
-    #: Copied screenshot blob, under the reporter's storage directory.
+    #: copy under reporter's storage dir
     screenshot_key: str | None = Field(default=None)
     screenshot_name: str = Field(default="")
     screenshot_mime: str = Field(default="")
-    #: Last reply or status change by an administrator, and when the reporter last read
-    #: the report: the reply badge is the reports where the first is later.
+    #: reply badge: admin_updated_at later than user_seen_at
     admin_updated_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     user_seen_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
@@ -75,14 +69,14 @@ class IssueReport(SQLModel, table=True):
 
 
 class IssueReply(SQLModel, table=True):
-    """One entry in a report's thread: a reply, or a status change (with `status` set)."""
+    """Thread entry: reply or status change."""
 
     __tablename__ = "issue_replies"
 
     id: str = Field(default_factory=_uuid, primary_key=True)
     report_id: str = Field(foreign_key="issue_reports.id", index=True, ondelete="CASCADE")
     author_id: str | None = Field(default=None)
-    #: `admin` or `user`; copied so the thread reads right after a role change.
+    #: copied; survives role change
     author_role: str = Field(default="user")
     author_name: str = Field(default="")
     body: str = Field(default="")

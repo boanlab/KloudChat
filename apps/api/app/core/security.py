@@ -1,9 +1,4 @@
-"""Password hashing, access tokens, and refresh-token material.
-
-Access tokens are stateless JWTs verified from the signature alone. Refresh
-tokens are stored as SHA-256 digests only, so a database leak yields no usable
-tokens and rotation can detect replay (`routers/auth.py`).
-"""
+"""Password hashing, stateless access JWTs, refresh tokens stored as SHA-256 digests only."""
 
 from __future__ import annotations
 
@@ -38,21 +33,15 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def needs_rehash(password_hash: str) -> bool:
-    """True when the stored hash predates a parameter bump."""
+    """Stored hash predates a parameter bump."""
     try:
         return _hasher.check_needs_rehash(password_hash)
     except InvalidHashError:
         return True
 
 
-# ── access tokens ──────────────────────────────────────────────────────
-
-
 def create_access_token(user_id: str, role: str) -> tuple[str, int]:
-    """Returns the encoded token and its lifetime in seconds.
-
-    `jti` only keeps same-second tokens distinct in logs; access tokens are never revoked.
-    """
+    """(token, ttl seconds); `jti` only distinguishes same-second tokens, never revoked."""
     ttl = timedelta(minutes=settings.access_token_ttl_min)
     now = datetime.now(UTC)
     payload = {
@@ -75,11 +64,8 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     return claims if claims.get("typ") == "access" else None
 
 
-# ── refresh tokens ─────────────────────────────────────────────────────
-
-
 def new_refresh_token() -> tuple[str, str]:
-    """Returns `(plaintext, sha256)`. Only the digest is ever persisted."""
+    """(plaintext, sha256); only the digest persisted."""
     raw = secrets.token_urlsafe(48)
     return raw, hash_refresh_token(raw)
 
