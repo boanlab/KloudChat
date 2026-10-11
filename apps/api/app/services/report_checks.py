@@ -902,6 +902,11 @@ Fields (the code does the multiplication; do not multiply or add anything yourse
 - usage: the yearly usage per unit (per person) for a price per usage unit. threshold: when only the usage above this value
   is charged, that threshold (「연 20,000km 초과 시」). Leave it out when there is none.
 - rate: only when the price is a ratio of the unit price (35% → 0.35). sign: -1 for items that reduce the cost (보조금·지원금·잔존가치·매각액·환급).
+- A discount is its own item with sign -1: the discounted price as unit_price, the same count and per, and the percentage as rate
+  (「월 14,000원, 15% 할인」 → {{"name": "할인", "unit_price": 14000, "count": 40, "per": "month", "rate": 0.15, "sign": -1}}).
+- from_year: when an item starts in a later year (「2년 차부터 10% 할인」 → 2). Leave it out when it applies from the first year.
+- when: when an item applies only under a condition the material states (「연 단위 계약 시」, 「3년 약정 시」), that condition
+  in the material's words. The code prices the alternatives with and without it.
 
 Rules:
 - Put every alternative in the material in options, none left out, each with its cost items (items).
@@ -958,8 +963,8 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
         months = _plain(item.get("months"))
         if months is None and span is None:
             return None
-        factors, over = ([count, price, months] if months is not None
-                         else [count, price, span, 12]), None
+        factors, over = ([count, price, months, *tail] if months is not None
+                         else [count, price, span, 12, *tail]), None
         calendar = months is None
     else:
         usage = _plain(item.get("usage"))
@@ -970,15 +975,74 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
             factors, over = [count, price, usage, span], None
         else:
             factors, over = [count, price, span], [usage, threshold]
+    start = _plain(item.get("from_year"))
+    code: list[float] = []
+    if start is not None and float(start) > 1 and per not in _ONCE:
+        # 「2년 차부터」: the years from that one on, counted by code (3년 → 2 years).
+        first = int(float(start))
+        if per in _MONTH and _plain(item.get("months")) is not None:
+            left = float(_plain(item.get("months"))) - 12 * (first - 1)
+            factors = [count, price, left, *tail]
+        else:
+            if span is None:
+                return None
+            left = float(span) - (first - 1)
+            # The span is the third factor of a yearly, monthly (× 12) or usage price.
+            at = 3 if per not in _YEAR and per not in _MONTH and over is None else 2
+            factors = [*factors[:at], left, *factors[at + 1:]]
+        if left <= 0:
+            return None
+        code.append(left)
     out = {"name": item.get("name"), "factors": factors}
     if calendar:
         # 12 months a year is code's own factor here, not one the model put in.
         out["calendar"] = True
+    if code:
+        out["code"] = code
     if over:
         out["over"] = over
     if item.get("sign") in (-1, "-1"):
         out["sign"] = -1
+    if str(item.get("when") or "").strip():
+        out["when"] = str(item["when"]).strip()[:40]
+    # The item as the model named it: its first and later years are priced from it.
+    out["raw"] = {k: item.get(k) for k in ("unit_price", "count", "per", "months", "usage",
+                                           "threshold", "rate", "from_year")}
     return out
+
+
+def year_amount(item: dict, year: int) -> Decimal | None:
+    """What `item` costs in year `year` (1 = the first) of the comparison: a one-time cost
+    falls in the first year, a recurring one in every year from its `from_year`. None when
+    the item has no named fields to price a single year from."""
+    raw = item.get("raw")
+    if not raw:
+        return None
+    price = _plain(raw.get("unit_price"))
+    if price is None:
+        return None
+    count = Decimal(str(_plain(raw.get("count")) or 1))
+    per = str(raw.get("per") or "").strip().lower()
+    rate = _plain(raw.get("rate"))
+    amount = count * Decimal(str(price)) * (Decimal(str(rate)) if rate is not None else 1)
+    start = int(float(_plain(raw.get("from_year")) or 1))
+    if per in _ONCE:
+        amount = amount if year == 1 else Decimal(0)
+    elif year < start:
+        amount = Decimal(0)
+    elif per in _MONTH:
+        months = _plain(raw.get("months"))
+        left = Decimal(12) if months is None else max(
+            Decimal(0), min(Decimal(12), Decimal(str(months)) - 12 * (year - 1)))
+        amount *= left
+    elif per not in _YEAR:
+        usage = _plain(raw.get("usage"))
+        if usage is None:
+            return None
+        threshold = _plain(raw.get("threshold"))
+        amount *= max(Decimal(0), Decimal(str(usage)) - Decimal(str(threshold or 0)))
+    amount = amount.quantize(Decimal(1), rounding=ROUND_HALF_UP)
+    return -amount if item.get("sign") == -1 else amount
 
 
 def _cost_item(item: dict, swap: dict[float, Decimal]) -> Decimal:
@@ -1026,7 +1090,8 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
         if over is not None and not (isinstance(over, list) and len(over) == 2):
             return False
         # A factor of 1 (「1대」 unwritten) changes no amount.
-        allowed = [*numbers, 1.0, *([12.0] if item.get("calendar") else [])]
+        allowed = [*numbers, 1.0, *([12.0] if item.get("calendar") else []),
+                   *(float(c) for c in item.get("code") or [])]
         return all(_grounded(f, allowed) or _percent(f, numbers) for f in factors) and all(
             _grounded(f, numbers) for f in over or [])
 
@@ -1051,12 +1116,21 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
                        + (f" (자료에 없는 값이라 뺀 것: {', '.join(dropped[:4])})" if dropped else ""))
         return None
 
-    def run(swap: dict[float, Decimal]) -> dict[str, dict]:
+    def run(swap: dict[float, Decimal], conditions: frozenset[str] = frozenset()) -> dict[str, dict]:
         out = {}
         for option in options:
+            # An item that holds only under a condition (「연 단위 계약 시」) counts in that
+            # condition's scenario, not in the base.
+            items = [i for i in option["items"] if not i.get("when") or i["when"] in conditions]
             rows = [{"name": str(i["name"])[:40], "amount": int(_cost_item(i, swap)),
-                     "factors": i["factors"], "over": i.get("over")} for i in option["items"]]
-            out[option["name"]] = {"rows": rows, "total": sum(r["amount"] for r in rows)}
+                     "factors": i["factors"], "over": i.get("over")} for i in items]
+            entry = {"rows": rows, "total": sum(r["amount"] for r in rows)}
+            if not swap:
+                years = [[year_amount(i, y) for i in items] for y in (1, 2)]
+                if all(a is not None for row in years for a in row):
+                    entry["first_year"] = int(sum(years[0]))
+                    entry["next_year"] = int(sum(years[1]))
+            out[option["name"]] = entry
         return out
 
     scenarios = []
@@ -1071,6 +1145,9 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
         swap = {float(str(r["from"]).replace(",", "")): Decimal(str(r["to"]).replace(",", ""))
                 for r in pairs}
         scenarios.append({"name": str(spec["name"])[:40], "options": run(swap)})
+    conditions = sorted({i["when"] for o in options for i in o["items"] if i.get("when")})
+    for condition in conditions:
+        scenarios.insert(0, {"name": condition, "options": run({}, frozenset({condition}))})
     base = run({})
     lowest = min(base, key=lambda name: base[name]["total"])
     return {"period": str(data.get("period") or "")[:20], "options": base, "lowest": lowest,
@@ -1085,6 +1162,24 @@ def _factor_text(row: dict) -> str:
     return " × ".join(parts)
 
 
+def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
+    """Each option's first year (one-time costs in it) and next year (the recurring cost
+    alone), and the gaps between the options' totals: the amounts a comparison writes
+    besides the totals, worked out so the writer copies them and the trace finds them."""
+    lines = []
+    if all("first_year" in e for e in totals.values()):
+        lines.append(f"- {label}첫해(1회 비용 포함): " + ", ".join(
+            f"{o} {e['first_year']:,}원" for o, e in totals.items())
+            + " / 이듬해(반복 비용만): " + ", ".join(
+            f"{o} {e['next_year']:,}원" for o, e in totals.items()))
+    names = list(totals)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            lines.append(f"- {label}{a}와 {b}의 합계 차이: "
+                         f"{abs(totals[a]['total'] - totals[b]['total']):,}원")
+    return lines
+
+
 def _cost_block(result: dict) -> str:
     period = result["period"] or "비교 기간"
     rows = ["| 대안 | 항목 | 계산 | 금액(원) |", "|---|---|---|---:|"]
@@ -1097,11 +1192,13 @@ def _cost_block(result: dict) -> str:
              "sentences; do not recalculate.", "\n".join(rows)]
     lines.append("- " + ", ".join(f"{o} {e['total']:,}원" for o, e in result["options"].items())
                  + f" → 가장 적은 대안: {result['lowest']}")
+    lines += year_lines("", result["options"])
     for spec in result["scenarios"]:
         totals = spec["options"]
         lines.append(f"- 시나리오 「{spec['name']}」: " + ", ".join(
             f"{o} {e['total']:,}원" for o, e in totals.items())
                      + f" → 가장 적은 대안: {min(totals, key=lambda n: totals[n]['total'])}")
+        lines += year_lines(f"「{spec['name']}」 ", totals)
     if result["dropped"]:
         lines.append("- Left out of the calculation (values not in the material): " + ", ".join(result["dropped"][:6]))
     return "\n".join(lines)

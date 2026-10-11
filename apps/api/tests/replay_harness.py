@@ -151,10 +151,6 @@ def pin_recorded_defaults(patch: Patch) -> None:
     for name, value in RECORDED_DEFAULTS.items():
         patch(settings, name, value)
     pin_recorded_templates(patch)
-    # The records read the genre from the whole instruction, memo lines included (the
-    # minutes run's 「캡스톤디자인」 line named the project-proposal genre); the genre is now
-    # read from the ask's first paragraph first, which changes that run's prompts.
-    patch(report, "lead_instruction", context.instruction_part)
 
     # Model roles are read from the database first; a replay has none, so the pinned
     # environment above is what is in force, whatever another test left in the cache.
@@ -163,6 +159,25 @@ def pin_recorded_defaults(patch: Patch) -> None:
 
     patch(settings_store, "model_roles", model_roles)
     patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
+    # The records read the genre from the whole instruction, memo lines included (the
+    # minutes run's 「캡스톤디자인」 line named the project-proposal genre); the genre is now
+    # read from the ask's first paragraph first, which changes that run's prompts.
+    patch(report, "lead_instruction", context.instruction_part)
+    pin_recorded_prompts(patch)
+
+
+#: Pre-pass prompts as they were when the records were made (`_pinned_prompts/`): a call's key
+#: holds its prompt. The cost block's first/next-year and gap lines came later too.
+PINNED_PROMPTS = FIXTURES / "_pinned_prompts"
+
+
+def pin_recorded_prompts(patch: Patch) -> None:
+    from app.services import calc, report_checks
+
+    patch(calc, "PROMPT", (PINNED_PROMPTS / "calc.txt").read_text(encoding="utf-8"))
+    patch(report_checks, "_COST_PROMPT",
+          (PINNED_PROMPTS / "compare_cost.txt").read_text(encoding="utf-8"))
+    patch(report_checks, "year_lines", lambda label, totals: [])
 
 
 #: Shipped templates as they were when the records were made (`_pinned_templates/<id>/`):

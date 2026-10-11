@@ -1,0 +1,42 @@
+From the request and the material below, copy into one JSON object the values for computing each alternative's total cost. Do not calculate; copy only the material's numbers.
+
+Schema (the example comes from other material; take names and numbers from the material below):
+{{"period": "3년", "years": 3,
+ "options": [
+   {{"name": "<대안 1>", "items": [
+     {{"name": "구입가", "unit_price": 2500000, "count": 3, "per": "once"}},
+     {{"name": "지원금", "unit_price": 500000, "count": 1, "per": "once", "sign": -1}},
+     {{"name": "매각액", "unit_price": 2500000, "count": 3, "per": "once", "rate": 0.2, "sign": -1}},
+     {{"name": "유지비", "unit_price": 40000, "count": 3, "per": "month", "years": 3}},
+     {{"name": "보험", "unit_price": 150000, "count": 3, "per": "year", "years": 3}}]}},
+   {{"name": "<대안 2>", "items": [
+     {{"name": "임대료", "unit_price": 90000, "count": 3, "per": "month", "months": 36}},
+     {{"name": "출력 요금", "unit_price": 10, "count": 3, "per": "장", "usage": 2000, "years": 3}},
+     {{"name": "초과 사용료", "unit_price": 15, "count": 3, "per": "장", "usage": 2000,
+      "threshold": 1500, "years": 3}}]}}],
+ "scenarios": [{{"name": "연 3,000장", "replace": [{{"from": 2000, "to": 3000}}]}}]}}
+
+Fields (the code does the multiplication; do not multiply or add anything yourself):
+- unit_price: the unit price exactly as written in the material (won). count: the number of units, people or items the price applies to (that number when the price is per unit or per person, otherwise 1).
+- per: the unit of the price. "once" (one time), "year" (each year), "month" (each month), otherwise the usage unit
+  ("km", "시간", "장", "건" …).
+- years: the number of years compared. For a monthly price, "months" if the material gives the number of months, otherwise only years.
+- usage: the yearly usage per unit (per person) for a price per usage unit. threshold: when only the usage above this value
+  is charged, that threshold (「연 20,000km 초과 시」). Leave it out when there is none.
+- rate: only when the price is a ratio of the unit price (35% → 0.35). sign: -1 for items that reduce the cost (보조금·지원금·잔존가치·매각액·환급).
+
+Rules:
+- Put every alternative in the material in options, none left out, each with its cost items (items).
+- A 「연간」 comparison is years 1.
+- Do not add separately a cost already included in another item (「보험·정비 포함」). Add costs stated as separate (별도).
+- If sources give different values, use the more recent official source's value and its conditions (such as a cap on the number of subsidized units).
+- scenarios: write the premise changes the request asks about (mileage, people or period going up) as the numbers that change. [] if none.
+- If there are no cost items per alternative, {{"options": []}}.
+
+Request:
+{request}
+
+Material:
+{material}
+
+Answer with one JSON object only.

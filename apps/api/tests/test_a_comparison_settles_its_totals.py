@@ -425,3 +425,63 @@ def test_a_kpi_tile_groups_a_long_amount():
     text = "본문.\n\n```kpi\n72000000원 | A안 3년 총비용\n2026년 | 도입 연도\n```"
     out = report._grounded_figures(text, True)
     assert "72,000,000원 | A안 3년 총비용" in out and "2026년 | 도입 연도" in out
+
+
+#: Quality lane Q14 / built-in tuning S10: a conditional discount and a one-time cost.
+COLLAB = ("우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘.\n\n"
+          "A안: 사내 메신저 유지 + 화상회의 라이선스 추가\n"
+          "- 화상회의 라이선스 1인당 월 8,000원 × 40명\n\n"
+          "B안: 통합 협업툴 전환\n- 1인당 월 14,000원 × 40명, 연 단위 계약 시 15% 할인\n"
+          "- 초기 전환 컨설팅·데이터 이전 1회 300만원\n\n판단 기준: 연간 비용(첫해·이듬해)")
+COLLAB_REPLY = {"period": "1년", "years": 1, "options": [
+    {"name": "A안", "items": [
+        {"name": "화상회의 라이선스", "unit_price": 8000, "count": 40, "per": "month"}]},
+    {"name": "B안", "items": [
+        {"name": "구독료", "unit_price": 14000, "count": 40, "per": "month"},
+        {"name": "연 단위 계약 할인", "unit_price": 14000, "count": 40, "per": "month",
+         "rate": 0.15, "sign": -1, "when": "연 단위 계약 시"},
+        {"name": "전환 컨설팅", "unit_price": 3000000, "count": 1, "per": "once"}]}]}
+
+
+def test_a_conditional_discount_is_priced_with_and_without_it():
+    numbers = report_checks._material_numbers(COLLAB) + report_checks._calendar(COLLAB)
+    costs = report_checks.option_costs(COLLAB_REPLY, numbers)
+    base = costs["options"]
+    assert base["A안"]["total"] == 3_840_000 and base["B안"]["total"] == 9_720_000
+    assert (base["B안"]["first_year"], base["B안"]["next_year"]) == (9_720_000, 6_720_000)
+    assert (base["A안"]["first_year"], base["A안"]["next_year"]) == (3_840_000, 3_840_000)
+    discounted = next(sc for sc in costs["scenarios"]
+                      if sc["name"] == "연 단위 계약 시")["options"]
+    assert discounted["B안"]["total"] == 8_712_000
+    assert (discounted["B안"]["first_year"], discounted["B안"]["next_year"]) == (
+        8_712_000, 5_712_000)
+    block = report_checks._cost_block(costs)
+    for figure in ("8,712,000원", "5,712,000원", "6,720,000원", "3,840,000원"):
+        assert figure in block
+
+
+def test_a_discount_from_a_later_year_counts_only_those_years():
+    text = "3년 비교. 월 10,000원 × 10명, 2년 차부터 10% 할인. 다른 안은 연 1,000,000원."
+    numbers = report_checks._material_numbers(text) + report_checks._calendar(text)
+    reply = {"years": 3, "options": [
+        {"name": "가", "items": [
+            {"name": "구독", "unit_price": 10000, "count": 10, "per": "month"},
+            {"name": "2년 차 할인", "unit_price": 10000, "count": 10, "per": "month", "rate": 0.1,
+             "sign": -1, "from_year": 2}]},
+        {"name": "나", "items": [{"name": "연 요금", "unit_price": 1000000, "count": 1,
+                                  "per": "year"}]}]}
+    costs = report_checks.option_costs(reply, numbers)
+    가 = costs["options"]["가"]
+    # 3 years × 1,200,000 − 2 years × 120,000.
+    assert 가["total"] == 3_600_000 - 240_000
+    assert (가["first_year"], 가["next_year"]) == (1_200_000, 1_080_000)
+    assert costs["options"]["나"]["total"] == 3_000_000
+
+
+def test_the_cost_block_s_figures_ground_the_writer_s_amounts():
+    trace = __import__("app.services.skill_scripts", fromlist=["entry"]).entry("grounding-check")
+    numbers = report_checks._material_numbers(COLLAB) + report_checks._calendar(COLLAB)
+    block = report_checks._cost_block(report_checks.option_costs(COLLAB_REPLY, numbers))
+    text = ("B안은 연 단위 계약 시 첫해 8,712,000원, 이듬해부터 연 5,712,000원이다. "
+            "A안은 연 3,840,000원으로, 첫해 차이는 4,872,000원이다.")
+    assert trace.check(text, COLLAB, [block]) == []
