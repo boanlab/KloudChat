@@ -602,6 +602,42 @@ def _typed_markers(lines: list[str]) -> bool:
     )
 
 
+#: A list item that holds a table row: 「  - | 항목 | 계획 |」, 「○ |---|---|」.
+_ITEM_ROW = re.compile(r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}(\|.*\|)\s*$")
+#: A list item that is a table's caption: 「- 표: 예산 편성·집행」, 「- **표 2. …**」.
+_ITEM_CAPTION = re.compile(
+    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?표\s{0,2}(?:\d{1,3}\.|:).*)$")
+
+
+def _tables_out_of_items(lines: list[str]) -> list[str]:
+    """Table rows written as list items come back out as a table, its caption above it,
+    a blank line around: S09's 만족도·예산 tables printed as 「○ | 항목 | 계획 |」 lines
+    in the PDF and DOCX (verify1 NEW-12)."""
+    rows = [bool(_ITEM_ROW.match(line)) for line in lines]
+    if sum(rows) < 2:
+        return lines
+    out: list[str] = []
+    for k, line in enumerate(lines):
+        if rows[k]:
+            if not (k and rows[k - 1]):
+                caption = _ITEM_CAPTION.match(out[-1]) if out else None
+                if caption:
+                    out[-1] = caption.group(1)
+                if out and out[-1].strip():
+                    out.append("")
+            out.append(_ITEM_ROW.match(line).group(1))
+            if k + 1 < len(lines) and not rows[k + 1] and lines[k + 1].strip():
+                out.append("")
+            continue
+        out.append(line)
+    return out
+
+
+def tables_out_of_items(text: str) -> str:
+    """`text` with its list-item table rows written as a table (`_tables_out_of_items`)."""
+    return "\n".join(_tables_out_of_items((text or "").split("\n")))
+
+
 def gaejo_markdown(text: str) -> str:
     """A 개조식 body as one canonical Markdown: depth by nesting, two spaces a level.
 
@@ -612,7 +648,7 @@ def gaejo_markdown(text: str) -> str:
     「붙임  1. ○○ 1부.」 with the next items under it. Tables and fences pass through
     untouched.
     """
-    lines = (text or "").split("\n")
+    lines = _tables_out_of_items((text or "").split("\n"))
     typed = _typed_markers(lines)
     out: list[str] = []
     #: Indents of the open Markdown list levels.

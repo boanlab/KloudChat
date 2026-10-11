@@ -2052,6 +2052,8 @@ def normalize_document(
     out = []
     for sec in sections:
         mended, slips = hangul.repair_mixed_script(str(sec.get("content") or ""), context[:20000])
+        # A table written as list items is a table again, before its caption is numbered.
+        mended = doc_formats.tables_out_of_items(mended)
         if slips:
             log.info("mended mixed-script words in %r: %s", logs.safe(sec.get("heading")), logs.safe(slips[:5]))
         out.append({**sec, "content": mended})

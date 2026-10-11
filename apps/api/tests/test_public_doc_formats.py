@@ -328,3 +328,23 @@ def test_a_grant_application_s_cover_reads_its_institution_and_period():
     got = doc_formats.head_values(doc_formats.BY_ID["grant"], memo)
     assert got["신청 기관"] == "한빛대학교 평생교육원"
     assert got["사업 기간"].startswith("2027. 3. ~ 2027. 12.")
+
+
+def test_table_rows_written_as_list_items_come_back_as_a_table():
+    # verify1 NEW-12 (S09 개조식 결과 보고서): 「○ | 항목 | 계획 |」 lines in the PDF/DOCX.
+    body = ("- 만족도(응답 141명)\n  - 표: 만족도 조사 결과\n  - | 항목 | 만족도(5점 만점) |\n"
+            "  - |---|---|\n  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n- 예산 집행\n"
+            "  - 편성 4,500만원 / 집행 4,215만원\n")
+    out = doc_formats.gaejo_markdown(body)
+    assert ("표: 만족도 조사 결과\n\n| 항목 | 만족도(5점 만점) |\n|---|---|\n| 전반 만족 | 4.5 |\n"
+            "| 멘토링 | 4.6 |\n\n") in out
+    assert "- | " not in out and "  - 편성 4,500만원" in out
+
+
+def test_a_listed_table_is_numbered_like_any_other_once_normalized():
+    from app.services import report
+
+    body = ("- 만족도\n  - 표: 만족도 조사 결과\n  - | 항목 | 만족도 |\n  - |---|---|\n"
+            "  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n")
+    out = report.normalize_document([{"heading": "성과", "content": body}])[0]["content"]
+    assert "**표 1." in out and "\n| 항목 | 만족도 |\n|---|---|\n" in out and "- |" not in out
