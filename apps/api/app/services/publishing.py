@@ -852,19 +852,35 @@ _STOP = frozenset("""
 _PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", "부터", "이나", "이랑",
               "하고", "에는", "은", "는", "이", "가", "을", "를", "에", "의", "도", "로",
               "와", "과", "만", "요")
-_WORD = re.compile(r"[가-힣A-Za-z0-9]{2,20}")
+_WORD = re.compile(r"[가-힣A-Za-z0-9]{1,20}")
+#: Endings of a predicate (열어요, 비우면, 되는지): a verb or adjective, not a topic.
+_ENDINGS = ("어요", "아요", "해요", "나요", "까요", "가요", "세요", "에요", "예요", "죠", "니까",
+            "니다", "는지", "을까", "는데", "려면", "으면", "면", "는가", "던가")
 
 
 def topics(question: str, limit: int = 3) -> list[str]:
-    """A question's topic words, personal details masked first: what the owner sees counted."""
+    """A question's topic words, personal details masked first: what the owner sees counted.
+
+    A question form is caught whole before a particle is taken off (「있나요」 is not 「있나」),
+    and again after; a predicate (「열어요」 「비우면」, 「빌릴 수」) and a word with a digit in it
+    (「1은」 「22시」) carry no topic."""
     text, _ = governance.mask((question or "")[:1000], scope="egress")
+    words = _WORD.findall(text)
     out: list[str] = []
-    for word in _WORD.findall(text):
-        for particle in _PARTICLES:
-            if word.endswith(particle) and len(word) - len(particle) >= 2:
-                word = word[: -len(particle)]
+    for at, raw in enumerate(words):
+        if raw in _STOP or any(ch.isdigit() for ch in raw) or raw.endswith(_ENDINGS):
+            continue
+        if at + 1 < len(words) and words[at + 1] == "수":
+            # 「빌릴 수 있어요」: the word before 수 is a verb's form.
+            continue
+        word = raw
+        for _ in range(2):  # 「일요일에도」: particles stack
+            particle = next((p for p in _PARTICLES
+                             if word.endswith(p) and len(word) > len(p)), "")
+            if not particle:
                 break
-        if word.isdigit() or word in _STOP or len(word) < 2 or word in out:
+            word = word[: -len(particle)]
+        if word in _STOP or len(word) < 2 or word in out:
             continue
         out.append(word)
         if len(out) >= limit:

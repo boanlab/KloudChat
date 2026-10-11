@@ -698,3 +698,18 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
         assert "publications" not in inspector.get_table_names()
         assert {c["name"] for c in inspector.get_columns("sessions")} == {"id"}
         assert {c["name"] for c in inspector.get_columns("agents")} == {"id"}
+
+
+def test_frequent_topics_are_nouns_not_question_forms_or_verb_pieces():
+    # The ops lane's 「자주 나온 주제」 read 있나 · 빌릴 · 열어 · 시까지 · 비우면 · 1은.
+    asked = {
+        "연체료 있나요?": ["연체료"],
+        "일요일에도 열어요?": ["일요일"],
+        "대학원생은 몇 권 빌릴 수 있어요?": ["대학원생"],
+        "평일 몇 시까지 해요?": ["평일"],
+        "열람실 자리를 30분 비우면 어떻게 돼요?": ["열람실", "자리"],
+        "토요일 운영 시간은?": ["토요일", "운영", "시간"],
+    }
+    for question, words in asked.items():
+        assert publishing.topics(question) == words, question
+    assert "1은" not in publishing.topics("1은 2 더하기 3이면?")
