@@ -2471,6 +2471,10 @@ def fix_number_particles(text: str) -> str:
     return re.sub(r"((?:그림|표) (\d{1,3}))(으로|로|은|는|이|가|을|를|과|와)(?=[\s,.)」]|$)", agree, text)
 
 
+#: A dot that ends an abbreviation, not a sentence.
+_ABBREVIATION_END = re.compile(r"(?:\bvs|\be\.g|\bi\.e|\bet al|\bcf|\bFig|\bEq|\bNo|\bpp?)\.$", re.I)
+
+
 def split_long_paragraphs(body: str, limit: int = 400) -> str:
     """A prose paragraph over `limit` characters is cut at sentence ends into paragraphs
     of two or three sentences (about 180–330 characters). Tables, lists, quotes, code
@@ -2494,6 +2498,14 @@ def split_long_paragraphs(body: str, limit: int = 400) -> str:
             out.append(block)
             continue
         sentences = re.split(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"(?:\s+)(?=[^\s])", stripped)
+        # 「vs.」, 「e.g.」, 「et al.」 end a word, not a sentence: 「(초록·도입 vs. 본문)」.
+        merged: list[str] = []
+        for sentence in sentences:
+            if merged and _ABBREVIATION_END.search(merged[-1]):
+                merged[-1] += " " + sentence
+            else:
+                merged.append(sentence)
+        sentences = merged
         chunk: list[str] = []
         size = 0
         for sentence in sentences:
