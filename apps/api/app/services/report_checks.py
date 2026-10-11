@@ -169,8 +169,29 @@ class Prepass:
         return [d for d in self.dates if d.get("status") in ("ok", "repeat")] + lead
 
 
-def meeting_date(request: str, material: str) -> dt.date | None:
-    """The date a meeting was held, as the person or the material's header states it."""
+#: 「10/8(목)」, 「10월 8일(목)」, 「10. 8.(목)」: a day without its year, with its weekday.
+_DAY_WITH_WEEKDAY = re.compile(
+    r"(?<![\d./])(\d{1,2})\s{0,2}(?:[/.]|월)\s{0,2}(\d{1,2})\s{0,2}(?:일|\.)?\s{0,2}\(([월화수목금토일])\)")
+_WEEKDAYS = "월화수목금토일"
+
+
+def _year_of(month: int, day: int, weekday: str, today: dt.date) -> dt.date | None:
+    """The date this year or last whose weekday is the one written; None when neither is
+    (or both are), so the meeting date is asked rather than guessed."""
+    found = []
+    for year in (today.year, today.year - 1):
+        try:
+            date = dt.date(year, month, day)
+        except ValueError:
+            continue
+        if _WEEKDAYS[date.weekday()] == weekday:
+            found.append(date)
+    return found[0] if len(found) == 1 else None
+
+
+def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
+    """The date a meeting was held, as the person or the material's header states it. A
+    memo's 「10/8(목) 14시」 is the 8 October whose weekday is a Thursday, this year or last."""
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):
@@ -178,6 +199,12 @@ def meeting_date(request: str, material: str) -> dt.date | None:
                     return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
                 except ValueError:
                     continue
+    today = today or dt.date.today()
+    for text in (request, material):
+        for line in (text or "").splitlines():
+            if _MEETING.search(line) and (m := _DAY_WITH_WEEKDAY.search(line)):
+                if found := _year_of(int(m.group(1)), int(m.group(2)), m.group(3), today):
+                    return found
     return None
 
 
@@ -216,7 +243,7 @@ def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt
     A recording says no date aloud, so its 「다음 주 수요일」 stayed 미정 with 20261014 in the
     file's name (minutes-2). Nothing else gives one: the day the material was handed over
     became 「10월 8일에 열린 회의」 (minutes-3)."""
-    if found := meeting_date(request, material):
+    if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
         return found, "file"
@@ -1254,7 +1281,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     # Only minutes are about a day the material itself was made on; an RFP's or a
     # memo's relative dates are not read from today.
     base, source = (meeting_base(request, material, today) if meeting
-                    else (meeting_date(request, material), "text"))
+                    else (meeting_date(request, material, today), "text"))
     if base is None and meeting:
         # The meeting's date is 「[회의 일자]」; relative deadlines stay words.
         probe = today or dt.date.today()

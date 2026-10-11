@@ -218,3 +218,19 @@ async def test_the_head_s_date_is_the_read_one_or_a_blank():
     assert report_checks.minutes_head(head, filed)["fields"][1] == ["일시", "2026-10-14(수)"]
     given = {**head, "fields": [["회의명", "x"], ["일시", "2026-10-21 19:00"]]}
     assert report_checks.minutes_head(given, pre) is None
+
+
+def test_a_memo_day_with_its_weekday_is_the_meeting_date():
+    # Quality lane Q16: 「[메모] 10/8(목) 14시 … 주간회의」 left 「회의 일자: [회의 일자]」.
+    import datetime as _dt
+
+    from app.services import report_checks as _rc
+
+    memo = "[메모] 10/8(목) 14시 본관 3층 소회의실, 교육혁신팀 주간회의"
+    today = _dt.date(2026, 10, 11)
+    assert _rc.meeting_date("아래 메모로 회의록 작성해 줘.", memo, today) == _dt.date(2026, 10, 8)
+    assert _rc.meeting_base("회의록 작성해 줘.", memo, today) == (_dt.date(2026, 10, 8), "text")
+    # A weekday no year near today has (10/8 is a Thursday in 2026 only): still asked.
+    assert _rc.meeting_date("", "10/8(월) 주간회의", today) is None
+    # Without a weekday the year is not guessed.
+    assert _rc.meeting_date("", "10/8 14시 주간회의", today) is None
