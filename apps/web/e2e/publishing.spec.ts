@@ -418,9 +418,9 @@ test('a blocked visitor is told and cannot ask', async ({ page }, testInfo) => {
   await noAccount(page, testInfo)
   await botRoutes(page, { anonymous: true, blocked: true })
   await page.goto(`/b/${SLUG}`)
-  await page.getByRole('button', { name: '확인하고 시작' }).click({ timeout: 15_000 })
-  await expect(page.getByTestId('bot-blocked')).toContainText('이 챗봇을 쓸 수 없습니다.')
-  await expect(page.getByLabel('질문 입력')).toBeDisabled()
+  await expect(page.getByTestId('bot-blocked')).toContainText('이 챗봇을 쓸 수 없습니다.', { timeout: 15_000 })
+  await expect(page.getByRole('button', { name: '확인하고 시작' })).toHaveCount(0)
+  await expect(page.getByLabel('질문 입력')).toHaveCount(0)
   await expect(page.getByTestId('bot-paused')).toHaveCount(0)
 })
 
