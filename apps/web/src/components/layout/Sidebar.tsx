@@ -1,6 +1,6 @@
 import { ArrowRight, Bot, Boxes, FolderMinus, Layers, MoreHorizontal, Pencil, Pin, PinOff, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { ConfirmDialog, Dropdown, MenuItem, MenuLabel, MenuSeparator } from '@/components/ui'
 import { kindMeta } from '@/lib/kinds'
 import { useBotAttention } from '@/lib/publishing'
@@ -44,7 +44,6 @@ function SessionRow({
   active,
   emoji,
   projects,
-  onOpen,
   onRename,
   onTogglePin,
   onMove,
@@ -54,7 +53,6 @@ function SessionRow({
   active: boolean
   emoji?: string
   projects: Project[]
-  onOpen: () => void
   onRename: (title: string) => void
   onTogglePin: () => void
   onMove: (projectId: string | null) => void
@@ -84,6 +82,8 @@ function SessionRow({
         onKeyDown={(e) => {
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') {
+            // Ends the rename only, not the phone drawer around it.
+            e.preventDefault()
             setDraft(session.title)
             setEditing(false)
           }
@@ -102,17 +102,19 @@ function SessionRow({
           : 'text-muted hover:bg-elevated hover:text-fg',
       )}
     >
-      <button
-        onClick={onOpen}
+      {/* A link, so it opens in a new tab and reads as a place, not an action. */}
+      <Link
+        to={`/s/${session.id}`}
+        aria-current={active ? 'page' : undefined}
         className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left"
         title={`${t(meta.label)} · ${session.title}`}
       >
-        <Icon size={13} className="shrink-0" style={{ color: meta.color }} />
+        <Icon size={13} className="shrink-0" style={{ color: meta.color }} aria-hidden />
         <span className="min-w-0 flex-1 truncate">
-          {emoji && <span className="mr-1 opacity-70">{emoji}</span>}
+          {emoji && <span className="mr-1 opacity-70" aria-hidden>{emoji}</span>}
           {session.title}
         </span>
-      </button>
+      </Link>
       <Dropdown
         align="right"
         trigger={({ open }) => (
@@ -121,7 +123,7 @@ function SessionRow({
               'mr-1 grid size-8 shrink-0 place-items-center rounded-control text-faint transition-colors hover:bg-line hover:text-fg',
               open && 'opacity-100',
             )}
-            aria-label={t('메뉴')}
+            aria-label={t('{title} 메뉴').replace('{title}', session.title)}
             title={t('이 대화의 이름 바꾸기·고정·삭제')}
           >
             <MoreHorizontal size={14} />
@@ -213,7 +215,6 @@ export function Sidebar() {
       active={openSessionId === session.id}
       emoji={projects.find((p) => p.id === session.projectId)?.emoji}
       projects={projects}
-      onOpen={() => navigate(`/s/${session.id}`)}
       onRename={(title) => void renameSession(session.id, title)}
       onTogglePin={() => togglePinSession(session.id)}
       onMove={(projectId) => void moveSessionToProject(session.id, projectId)}

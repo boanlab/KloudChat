@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { IssueReportDialog } from '@/components/issues/IssueReportDialog'
 import { useIssueBadge } from '@/lib/issues'
@@ -119,13 +119,38 @@ export function AppShell() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, narrow])
 
+  // The phone drawer is a modal: focus moves into it, Escape closes it, and focus returns to
+  // what opened it. The page behind is `inert` meanwhile, so Tab cannot wander there.
+  const drawer = useRef<HTMLDivElement>(null)
+  const drawerOpen = narrow && open
+  useEffect(() => {
+    if (!drawerOpen) return
+    const opener = document.activeElement as HTMLElement | null
+    drawer.current?.querySelector<HTMLElement>('a[href], button:not([disabled]), input:not([disabled])')?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      // A menu or dialog opened from the drawer takes this Escape for itself.
+      const above = [...document.querySelectorAll('[role="menu"], [aria-modal="true"]')]
+      if (above.some((el) => el !== drawer.current)) return
+      e.preventDefault()
+      cycleSidebar()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (opener?.isConnected) opener.focus()
+    }
+  }, [drawerOpen, cycleSidebar])
+
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
       {/* The drawer stays mounted and slides; transitions collapse under the reduced-motion guard in index.css. */}
       {narrow && (
         <button
           aria-label={t('사이드바 닫기')}
-          tabIndex={open ? 0 : -1}
+          // Out of the Tab order (Escape closes the drawer from a keyboard); a screen reader's
+          // swipe still reaches it while the drawer is open.
+          tabIndex={-1}
           aria-hidden={!open}
           className={cn(
             'absolute inset-0 z-30 bg-black/40 transition-opacity duration-200',
@@ -135,6 +160,10 @@ export function AppShell() {
         />
       )}
       <div
+        ref={drawer}
+        role={drawerOpen ? 'dialog' : undefined}
+        aria-modal={drawerOpen || undefined}
+        aria-label={drawerOpen ? t('탐색') : undefined}
         className={
           narrow
             ? cn(
@@ -156,7 +185,7 @@ export function AppShell() {
       >
         <Sidebar />
       </div>
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main className="flex min-w-0 flex-1 flex-col" inert={drawerOpen ? true : undefined}>
         <Outlet />
       </main>
       <UndoBar />
