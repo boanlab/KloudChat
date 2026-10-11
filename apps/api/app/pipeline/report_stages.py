@@ -58,6 +58,7 @@ from app.services import outline as plan_rules
 from app.services.context import (
     build_document_messages,
     instruction_part,
+    lead_instruction,
     pasted_material,
     prompt_request,
 )
@@ -1789,7 +1790,11 @@ def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bund
                   trusted=list(kwargs.pop("trusted_context", None) or []),
                   untrusted=list(kwargs.pop("untrusted_context", None) or []), **kwargs)
     # The explicit 서식 wins, then the agent's bound format, then the words of the instruction.
-    doc_format = doc_formats.detect(instruction_part(request), req.template_id, req.format_id)
+    # The ask's first sentence names the format before the memo under it does (「결과보고서」
+    # over a memo line 「- 문제: … 와이파이 장애」).
+    doc_format = doc_formats.detect(lead_instruction(request), req.template_id, req.format_id)
+    if doc_format is None:
+        doc_format = doc_formats.detect(instruction_part(request), req.template_id, req.format_id)
     format_id = doc_format.id if doc_format is not None else ""
     # What the writing does besides writing: the 서식's settings, then the agent's own.
     process = process_settings.resolve(template_id=req.template_id, format_id=format_id,

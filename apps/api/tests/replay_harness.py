@@ -146,11 +146,15 @@ RECORDED_DEFAULTS = {
 
 def pin_recorded_defaults(patch: Patch) -> None:
     from app.core.config import settings
-    from app.services import settings_store
+    from app.services import context, report, settings_store
 
     for name, value in RECORDED_DEFAULTS.items():
         patch(settings, name, value)
     pin_recorded_templates(patch)
+    # The records read the genre from the whole instruction, memo lines included (the
+    # minutes run's 「캡스톤디자인」 line named the project-proposal genre); the genre is now
+    # read from the ask's first paragraph first, which changes that run's prompts.
+    patch(report, "lead_instruction", context.instruction_part)
 
     # Model roles are read from the database first; a replay has none, so the pinned
     # environment above is what is in force, whatever another test left in the cache.

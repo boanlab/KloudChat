@@ -1014,6 +1014,27 @@ def instruction_part(request: str) -> str:
     return text + tail
 
 
+#: A line of a pasted memo, not of an instruction: a list item, a table row, 「키: 값」.
+_MEMO_LINE = re.compile(
+    r"^[ \t]{0,8}(?:[-*•·□○◦▪]\s|\d{1,2}[.)]\s|\||[가-힣A-Za-z][^:：\n]{0,24}[:：]\s?\S)")
+
+
+def lead_instruction(request: str) -> str:
+    """The instruction's first paragraph when what follows the first blank line is a memo
+    (list items, table rows, 「키: 값」 lines): 「아래 자료로 행사 결과보고서 써 줘」 over
+    「- 문제: 2일차 새벽 … 와이파이 장애」. Else the whole instruction (`instruction_part`).
+
+    For deciding what kind of thing is asked for — a format, whether the present is asked
+    about — where a word in the memo (「장애」, 「지금」) is material, not the ask."""
+    instruction = instruction_part(request or "")
+    head, gap, rest = instruction.strip().partition("\n\n")
+    lines = [line for line in rest.splitlines() if line.strip()]
+    if not gap or not head.strip() or not lines:
+        return instruction
+    memo = sum(1 for line in lines if _MEMO_LINE.match(line))
+    return head if memo >= 2 and memo * 10 >= len(lines) * 6 else instruction
+
+
 def pasted_material(request: str) -> str:
     """The material pasted under the instruction, as a reference block; `""` when there
     is none worth carrying apart (under 200 characters)."""

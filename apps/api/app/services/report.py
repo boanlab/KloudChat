@@ -40,6 +40,7 @@ from app.services import outline as plan_rules
 from app.services.context import (
     build_document_messages,
     instruction_part,
+    lead_instruction,
     pasted_material,
 )
 
@@ -455,10 +456,12 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
         return template.genre
     if fmt is not None and fmt.id in _FORMAT_GENRES:
         return _FORMAT_GENRES[fmt.id]
-    instruction = instruction_part(request)
-    for pattern, rule in _GENRES:
-        if pattern.search(instruction):
-            return rule
+    # The ask's own first paragraph first: a memo line under it (「- 문제: … 와이파이 장애」)
+    # does not make a result report an incident report.
+    for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
+        for pattern, rule in _GENRES:
+            if pattern.search(instruction):
+                return rule
     return ""
 
 
