@@ -788,7 +788,14 @@ function MessageItemInner({
                   ? t('모델 실행 없음')
                   : toolAnswer
                     ? t('답변 모델 생성 없음')
-                    : model?.label ?? message.model} ·{' '}
+                    : model?.label ?? message.model}
+                {routing?.calculationModel
+                  ? ` + ${t('검산')} ${
+                      models.find((m) => m.id === routing.calculationModel)?.label ??
+                      routing.calculationModel
+                    }`
+                  : ''}{' '}
+                ·{' '}
                 {message.usage.estimated ? '≈ ' : ''}
                 {formatTokens(tokenTotals(message.usage).input)} in ·{' '}
                 {formatTokens(tokenTotals(message.usage).output)} out ·{' '}

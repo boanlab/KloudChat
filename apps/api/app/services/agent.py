@@ -689,6 +689,10 @@ async def run_turn(
     #: The request when the question asks for a current fact; the answer is then
     #: dated and marked unverified until a read tool returns material.
     freshness_request: str | None = None,
+    #: The outline/judge model that takes over a required calculation the writer would
+    #: not hand to the calculator (after its reminder); the writer then answers from the
+    #: verified result. Its tokens are counted as `model:<id>:inputTokens`/`outputTokens`.
+    calculation_handoff_model: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Drives one assistant turn to a final answer.
 
@@ -825,7 +829,19 @@ async def run_turn(
     provisional: list[str] = []
     anomaly_retried = False
     blanks_retried = False
+    #: Set when the writer skipped the calculator and the hand-off model took the gate.
+    handed_off = False
+    if calculation_handoff_model == model or not (
+        calculation_required and preflight_tool == "calculate"
+    ):
+        calculation_handoff_model = None
     while True:
+        # The hand-off model holds the gate until the calculator has verified the numbers.
+        hop_model = (
+            calculation_handoff_model
+            if handed_off and calculation_handoff_model and not preflight_completed
+            else model
+        )
         acc: _Accumulator | None = None
         hop_text: list[str] = []
         stream_kwargs: dict[str, Any] = {
@@ -877,21 +893,28 @@ async def run_turn(
                 post_preflight_force_sent = True
         else:
             model_attempted = True
-            async for kind, value in _stream_once(
-                model,
-                conversation,
-                hop_tools,
-                ctx.user_id,
-                ctx.api_key,
-                **stream_kwargs,
-            ):
-                if kind == "delta":
-                    hop_text.append(value)
-                    if not preflight_tool and not freshness_request:
-                        answer_text.append(value)
-                        yield {"type": "delta", "text": value}
-                else:
-                    acc = value
+            try:
+                async for kind, value in _stream_once(
+                    hop_model,
+                    conversation,
+                    hop_tools,
+                    ctx.user_id,
+                    ctx.api_key,
+                    **stream_kwargs,
+                ):
+                    if kind == "delta":
+                        hop_text.append(value)
+                        if not preflight_tool and not freshness_request:
+                            answer_text.append(value)
+                            yield {"type": "delta", "text": value}
+                    else:
+                        acc = value
+            except ChatStreamError as exc:
+                if hop_model == model:
+                    raise
+                # The hand-off model failing is the hand-off failing: the note, not an error.
+                log.info("calculation hand-off to %s failed: %s", hop_model, exc)
+                acc = _Accumulator()
         assert acc is not None
 
         if not running_preset and not acc.calls and hop_text:
@@ -908,9 +931,22 @@ async def run_turn(
                     answer_text.append(kept)
                     yield {"type": "retract", "text": redundant}
 
-        usage["inputTokens"] += acc.usage["inputTokens"]
-        usage["outputTokens"] += acc.usage["outputTokens"]
-        if acc.actual_model and acc.actual_model not in reported_models:
+        if hop_model != model:
+            # Another model's tokens, billed at its own price (`model:<id>:` counters).
+            for key in ("inputTokens", "outputTokens"):
+                counter = f"model:{hop_model}:{key}"
+                usage[counter] = usage.get(counter, 0) + acc.usage[key]
+            actual = acc.actual_model or hop_model
+            ran = bool(acc.actual_model or any(acc.usage.values()) or acc.calls or acc.content)
+            if ran and f"handoff:{actual}" not in reported_models:
+                reported_models.add(f"handoff:{actual}")
+                # The turn's model line names the model that ran the calculation too.
+                yield {"type": "calculation_handoff", "routedModel": hop_model,
+                       "actualModel": actual}
+        else:
+            usage["inputTokens"] += acc.usage["inputTokens"]
+            usage["outputTokens"] += acc.usage["outputTokens"]
+        if hop_model == model and acc.actual_model and acc.actual_model not in reported_models:
             reported_models.add(acc.actual_model)
             yield {
                 "type": "model_route",
@@ -959,6 +995,17 @@ async def run_turn(
                         "원래 질문의 값과 단위를 보존하여 검산할 식을 전달하세요."
                     ),
                 })
+                continue
+            if (
+                missed_preflight and calculation_handoff_model and not handed_off
+                and not acc.looped and not acc.runaway and not closing
+            ):
+                # The writer would not hand its numbers to the calculator: the outline
+                # model takes this turn's calculation, and the writer answers from the
+                # verified result. Its unverified draft stays private.
+                handed_off = True
+                log.info("calculator skipped by %s, handing the calculation to %s",
+                         model, calculation_handoff_model)
                 continue
             if missed_preflight or acc.looped or acc.runaway or (closing and acc.calls):
                 if calculation_required and preflight_tool == "calculate":

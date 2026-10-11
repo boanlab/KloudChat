@@ -4900,6 +4900,12 @@ async def send_message(
                     else [])]),
                 agent_key=agent_key or "",
                 calculation_required=calculation_required,
+                # A writer that will not call the calculator hands the calculation to the
+                # outline model (same allowlist and boundary, strict-local twin on that route).
+                calculation_handoff=(
+                    outline_model
+                    if calculation_required and preflight_tool == "calculate" else None
+                ),
                 calculation_expression=(
                     calculation_policy.direct_calculation_expression(content)
                     if calculation_required and preflight_tool == "calculate" else None
@@ -5298,6 +5304,8 @@ async def _answer_turn(
     force_tool: str | None = None,
     preflight_tool: str | None = None,
     calculation_required: bool = False,
+    #: The model that takes a required calculation the writer skipped (`agent.run_turn`).
+    calculation_handoff: dict | None = None,
     calculation_expression: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
@@ -5453,6 +5461,10 @@ async def _answer_turn(
                 **({"preflight_tool": preflight_tool} if preflight_tool else {}),
                 **({"calculation_required": True} if calculation_required else {}),
                 **(
+                    {"calculation_handoff_model": calculation_handoff["id"]}
+                    if calculation_handoff is not None else {}
+                ),
+                **(
                     {"calculation_expression": calculation_expression}
                     if calculation_expression is not None else {}
                 ),
@@ -5495,6 +5507,12 @@ async def _answer_turn(
             elif event["type"] == "usage":
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue  # re-emitted below with the credit figure
+            elif event["type"] == "calculation_handoff":
+                # The writer skipped the calculator; another model ran the calculation.
+                # Its tokens arrive as `model:<id>:` counters, its name on the routing.
+                routing = {**(routing or {}), "calculationModel": str(event["actualModel"])}
+                yield chat_service.sse({"type": "privacy_route", **routing})
+                continue
             elif event["type"] == "model_route":
                 actual_model = str(event["actualModel"])
                 routing = _with_actual_model(
@@ -5645,6 +5663,15 @@ async def _answer_turn(
         0 if not content or skip_completion_work
         else charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
     )
+    # The calculation hand-off's tokens, at that model's price, on its own ledger line.
+    handoff_credits = 0
+    if calculation_handoff is not None and content and not skip_completion_work:
+        prefix = f"model:{calculation_handoff['id']}:"
+        handoff_credits = charge_for_tokens(
+            calculation_handoff,
+            int(usage.get(prefix + "inputTokens") or 0),
+            int(usage.get(prefix + "outputTokens") or 0),
+        )
     if cost_routing:
         cost_routing = {**cost_routing, "executedModel": actual_model}
         if content and quality_model is not None and cost_routing.get("decision") == "routed":
@@ -5714,7 +5741,7 @@ async def _answer_turn(
                     role=Role.assistant,
                     content=stored_content,
                     steps=stored_steps or None,
-                    usage={**usage, "credits": credits},
+                    usage={**usage, "credits": credits + handoff_credits},
                     model=stored_actual_model,
                     routing=stored_routing,
                     artifact_ids=[new_artifact] if new_artifact else None,
@@ -5745,6 +5772,16 @@ async def _answer_turn(
                         model=stored_actual_model,
                         publication_id=published.publication_id if published else None,
                     )
+                    if handoff_credits and calculation_handoff is not None:
+                        settle(
+                            db,
+                            user,
+                            handoff_credits,
+                            reason="chat.calculation",
+                            session_id=session_id,
+                            model=calculation_handoff["id"],
+                            publication_id=published.publication_id if published else None,
+                        )
             elif superseded_ids:
                 # A rerun that produced nothing: the answer it was to replace is still
                 # there, untouched, and the question is not marked unanswered.
@@ -5883,7 +5920,7 @@ async def _answer_turn(
         yield chat_service.sse(_step_event(memory_step))
     if cost_routing:
         yield chat_service.sse({"type": "model_route", **cost_routing})
-    yield chat_service.sse({"type": "usage", **usage, "credits": credits})
+    yield chat_service.sse({"type": "usage", **usage, "credits": credits + handoff_credits})
     if title:
         yield chat_service.sse({"type": "title", "title": title})
     # The stored id travels with `done`; the browser's streaming id is provisional.
