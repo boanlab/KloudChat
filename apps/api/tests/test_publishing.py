@@ -125,7 +125,9 @@ async def world(monkeypatch, tmp_path):
     async def run_turn(model, messages, tools, ctx, **kwargs):
         state.calls.append({"model": model, "messages": messages,
                             "tools": sorted(t.name for t in tools), "ctx": ctx,
-                            "strict": kwargs.get("strict_local")})
+                            "strict": kwargs.get("strict_local"),
+                            "preset": kwargs.get("preset_call"),
+                            "not_covered": kwargs.get("preset_empty_answer")})
         knowledge = next((t for t in tools if t.name == "search_knowledge"), None)
         if knowledge is not None and state.search:
             found = await knowledge.run({"query": "휴학 신청"})
@@ -329,6 +331,19 @@ async def test_the_turn_runs_strict_local_on_the_owners_account_with_nothing_els
         audited = (await db.exec(select(AuditEvent).where(
             AuditEvent.action == "publication.published"))).all()
         assert audited and audited[0].actor_id == "owner"
+
+
+async def test_the_bot_searches_its_material_before_the_model_answers(world):
+    pub = await _publish(world)
+    await _ask(world, pub["slug"], "휴학은 언제까지 신청해요?")
+    (call,) = world.calls
+    # The server's own first call, with the visitor's question; the model is told the
+    # passages are in hand, to cite them and to say when they do not answer.
+    assert call["preset"] == ("search_knowledge", {"query": "휴학은 언제까지 신청해요?"})
+    assert "Material only" in call["messages"][0]["content"]
+    assert call["not_covered"] == (
+        "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다.\n\n"
+        "담당 부서·연락처: 학사지원팀 02-760-1234, haksa-desk@example.ac.kr")
 
 
 async def test_the_answer_cites_the_article_and_the_owner_counts_it(world):

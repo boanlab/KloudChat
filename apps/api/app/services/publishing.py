@@ -794,6 +794,32 @@ def resume_if_cleared(db: AsyncSession, pub: Publication, owner: User | None) ->
     return True
 
 
+# ── the visitor's answer ───────────────────────────────────────────────
+
+#: What a bot says when its material holds nothing for the question: the same sentence as
+#: the 「근거 없는 답 보류」 check's, so the owner's statistics count it either way.
+NOT_COVERED = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다."
+
+#: The system rule of a published bot's turn; the server has searched the material first.
+MATERIAL_ONLY_RULE = (
+    "Material only: you answer visitors from the material this bot was published with. The "
+    "server has already searched it with the question, and the passages are the first "
+    "search_knowledge result, numbered like [1]. Answer only from those passages (search "
+    "again with other words if they do not hold the answer), and put the passage number at "
+    "the end of each sentence that uses one, like [1]. Never answer from general knowledge "
+    "or guess a value, time, count or fee the passages do not state. When the material does "
+    f"not answer the question, say only 「{NOT_COVERED}」 and give the contact if the "
+    "instructions name one."
+)
+
+
+def not_covered_answer(contact: str) -> str:
+    """The bot's whole answer when its material search finds nothing for the question."""
+    contact = (contact or "").strip()
+    return NOT_COVERED + "\n\n" + (f"담당 부서·연락처: {contact}" if contact
+                                    else "담당 부서에 문의해 주세요.")
+
+
 # ── after a turn ───────────────────────────────────────────────────────
 
 

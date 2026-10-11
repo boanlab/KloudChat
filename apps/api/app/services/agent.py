@@ -686,6 +686,10 @@ async def run_turn(
     #: asked anything; the model then starts with the result in hand. A required
     #: calculation may need this trusted read first. Other gates remain first.
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: The turn's whole answer when `preset_call` searches the agent's material
+    #: (`search_knowledge`) and nothing matches: a published bot says its material does
+    #: not cover the question rather than answering from what the model remembers.
+    preset_empty_answer: str | None = None,
     #: The request when the question asks for a current fact; the answer is then
     #: dated and marked unverified until a read tool returns material.
     freshness_request: str | None = None,
@@ -1230,6 +1234,11 @@ async def run_turn(
                     "계산에 앞서 필요한 자료를 확인하지 못해 답을 확정할 수 없습니다. "
                     "확인할 수 있는 수치와 조건을 제공해 주세요."
                 )
+            if (
+                running_preset and preset_empty_answer and call["name"] == "search_knowledge"
+                and result.empty and not result.failed
+            ):
+                result.final_text = preset_empty_answer
             if (
                 verifying_arithmetic
                 and call["name"] == preflight_tool and not result.failed

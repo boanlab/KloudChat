@@ -219,12 +219,15 @@ _STRICT_LOCAL_TOOL_NAMES = frozenset(
 
 async def _knowledge_shelf(
     db: AsyncSession, user: User, session: ChatSession, agent: WorkspaceAgent | None
-) -> tuple[list[tuple[str, str, str | None]], str]:
-    """Documents `search_knowledge` can look through this turn, and their index collection.
+) -> tuple[list[tuple[str, str, str | None]], str, bool]:
+    """Documents `search_knowledge` can look through this turn, their index collection, and
+    whether the agent's own material is among them.
 
     An agent's knowledge and the files uploaded into this conversation, whole text
     because the tool runs inside the stream with no DB session. The collection is
     the agent's when there is one — the tool searches one — else the conversation's.
+    The agent's material is the one shelf nothing else puts in the prompt (uploads and
+    project knowledge are carried by `assemble`), so its turns search it first.
     """
     rows = (
         await db.exec(
@@ -252,11 +255,14 @@ async def _knowledge_shelf(
             or (row.project_id and row.project_id == session.project_id and row.agent_id is None)
         )
     ]
+    agent_material = bool(session.agent_id) and any(
+        row.text and row.agent_id and row.agent_id == session.agent_id for row in rows
+    )
     if session.agent_id:
         # The vector collection is the owner's; someone running a shared agent
         # searches the lexical shelf of their own uploads only.
         owned = agent is not None and agent.owner_id == user.id
-        return shelf, (agent.index_key or "") if owned else ""
+        return shelf, (agent.index_key or "") if owned else "", agent_material
     if session.project_id:
         # Project knowledge and the project's conversations' uploads share one
         # collection; uploads indexed before the project had one live under the
@@ -264,8 +270,8 @@ async def _knowledge_shelf(
         project = await db.get(Project, session.project_id)
         if project is not None and project.index_key:
             keys = [project.index_key] + ([session.index_key] if session.index_key else [])
-            return shelf, ",".join(keys)
-    return shelf, session.index_key or ""
+            return shelf, ",".join(keys), agent_material
+    return shelf, session.index_key or "", agent_material
 
 
 #: Skills offered to the model per turn; the description must stay a paragraph, not a catalogue.
@@ -3532,6 +3538,25 @@ def _freshness_followup_index(history: list[Message], session_id: str, content: 
     return None
 
 
+#: An agent turn whose material the server searched before the model was asked.
+_MATERIAL_FIRST_RULE = (
+    "Material first: the server has already searched this agent's attached material with the "
+    "question, and the passages are the first search_knowledge result, numbered like [1]. "
+    "Where they answer the question, answer from them and put the passage number at the end "
+    "of each sentence that uses one, like [1]. If they do not hold the answer, search again "
+    "with other words; what the material does not cover, say so instead of filling it in "
+    "from memory."
+)
+
+
+def _with_system_rule(messages: list[dict], rule: str) -> list[dict]:
+    """`messages` with `rule` appended to the system turn (a copy; the envelope is shared)."""
+    if messages and messages[0].get("role") == "system":
+        head = {**messages[0], "content": f"{messages[0].get('content') or ''}\n\n{rule}"}
+        return [head, *messages[1:]]
+    return [{"role": "system", "content": rule}, *messages]
+
+
 def _plans_first(session: ChatSession) -> bool:
     """Whether this surface offers an outline before writing (report and slides)."""
     return session.kind in (SessionKind.report, SessionKind.slides)
@@ -3790,6 +3815,8 @@ async def send_message(
     agent_row: WorkspaceAgent | None = None
     shelf: list[tuple[str, str, str | None]] = []
     shelf_key = ""
+    #: The agent's own material is on the shelf: the turn searches it before the model answers.
+    agent_material = False
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
     # What the server runs for the turn's skills, and the person's own scripts the sandbox
@@ -3801,7 +3828,7 @@ async def send_message(
         # The standing set, pruned of skills removed or barred since they were switched on.
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
-        shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
+        shelf, shelf_key, agent_material = await _knowledge_shelf(db, user, session, agent_row)
 
     requested_is_strict = _strict_model(requested_model)
     strict_candidate_available = _strict_route_possible(
@@ -4796,6 +4823,27 @@ async def send_message(
         place = weather_location(content)
         if place:
             preset_call = ("weather", {"location": place})
+    #: A published bot's answer when its material holds nothing for the question.
+    not_covered: str | None = None
+    if (
+        agent_material
+        and preset_call is None
+        and forced_tool is None
+        and not preflight_tool
+        and "search_knowledge" in tool_names
+    ):
+        # An agent's material reaches the model only through `search_knowledge`, and a
+        # model left to choose answered from memory instead (a bot said 연체료 하루 100원
+        # where its FAQ says there is none). The server searches with the question first,
+        # as it does a forced web search; the model may search again in other words.
+        preset_call = ("search_knowledge", {"query": content})
+        contact = agent_row.contact.strip() if agent_row is not None else ""
+        if published is not None:
+            not_covered = publishing.not_covered_answer(contact)
+        messages = _with_system_rule(
+            messages,
+            publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
+        )
     # A substantial chat request gets a short plan first: what an expert's answer would
     # hold, placed beside the question. Not on a turn routed down to an economy model.
     # A turn whose numbers must go through the calculator first is left to that
@@ -4863,6 +4911,7 @@ async def send_message(
                 # Short lookups are server presets. Long requests and weather
                 # without a named place use the allowed tool's forced planning hop.
                 preset_call=preset_call,
+                preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
                     content
@@ -5290,6 +5339,8 @@ async def _answer_turn(
     calculation_expression: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: The whole answer when that call is a material search that finds nothing.
+    preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
     caveat_request: str | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
@@ -5446,6 +5497,7 @@ async def _answer_turn(
                     if calculation_expression is not None else {}
                 ),
                 preset_call=preset_call,
+                **({"preset_empty_answer": preset_empty_answer} if preset_empty_answer else {}),
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
             ),
