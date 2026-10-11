@@ -17,7 +17,7 @@ const AS_USER = `async (path, init) => {
   return r.ok ? await r.json() : null
 }`
 
-test('검사에서 걸린 곳은 결과물 패널에서 셀 수 있고 읽을 수 있다', async ({ page }) => {
+test('검사에서 걸린 곳은 아티팩트 패널에서 셀 수 있고 읽을 수 있다', async ({ page }) => {
   test.setTimeout(120_000)
   await signIn(page)
 

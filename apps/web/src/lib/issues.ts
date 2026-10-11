@@ -33,7 +33,7 @@ export const CUT_LABEL: Record<IssueCut['code'], string> = {
   versions: '이전 판 본문을 뺐습니다',
   steps: '도구 실행 기록을 뺐습니다',
   content: '긴 메시지 {n}개를 줄였습니다',
-  artifacts: '결과물 {n}개의 본문을 뺐습니다',
+  artifacts: '아티팩트 {n}개의 본문을 뺐습니다',
   messages: '앞쪽 메시지 {n}개를 뺐습니다',
   bodies: '본문을 앞부분만 남겼습니다',
 }
@@ -50,7 +50,7 @@ export const CREATE_ERROR: Record<string, string> = {
   screenshot_too_large: '스크린샷은 5MB 이하로 올려 주세요.',
   session_not_found: '이 대화를 찾을 수 없습니다.',
   message_not_found: '고른 답변을 찾을 수 없습니다.',
-  artifact_not_found: '고른 결과물을 찾을 수 없습니다.',
+  artifact_not_found: '고른 아티팩트를 찾을 수 없습니다.',
 }
 
 export interface IssueTarget {

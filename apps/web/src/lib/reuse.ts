@@ -79,7 +79,7 @@ export function useReuseArtifact() {
       }
       navigate(`/new/${kind}`)
     } catch (err) {
-      setNotice(errorMessage(err, tr('결과물을 새 대화에 넣지 못했습니다.')))
+      setNotice(errorMessage(err, tr('아티팩트를 새 대화에 넣지 못했습니다.')))
     }
   }
 }

@@ -18,7 +18,7 @@ export const kindMeta: Record<
     icon: MessageSquare,
     color: '#5b53e8',
     tagline: '묻고, 파일을 올리고, 필요하면 검색과 코드까지 씁니다',
-    panelLabel: '결과물 열기',
+    panelLabel: '아티팩트 열기',
   },
   report: {
     label: '보고서',

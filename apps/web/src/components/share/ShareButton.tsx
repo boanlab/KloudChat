@@ -146,7 +146,7 @@ export function ShareButton({ session }: { session: Session }) {
                 {share.scope === 'link' ? t('계정 없이 열림') : t('계정 필요')}
               </Badge>
               <span>{t('{n}회 열람').replace('{n}', String(share.views))}</span>
-              <span className="text-faint">{t('대화와 결과물만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}</span>
+              <span className="text-faint">{t('대화와 아티팩트만 보입니다 — 프로젝트 파일·메모리는 포함되지 않습니다.')}</span>
             </div>
             <ShareViews shareId={share.id} />
             <Button variant="danger" size="sm" disabled={busy} onClick={() => void revoke()}>

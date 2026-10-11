@@ -122,7 +122,7 @@ test('an answer whose version was later edited opens that version', async ({ pag
   await expect(dialog.getByRole('region', { name: 'v1 내용 미리보기' })).toBeVisible()
 })
 
-test('the 결과물 page offers the same reuse', async ({ page }, testInfo) => {
+test('the 아티팩트 page offers the same reuse', async ({ page }, testInfo) => {
   const recorded = await resultsFixture(page, testInfo)
   await page.goto('/artifacts')
   await page.getByRole('button', { name: `${reportTitle} 더보기` }).click()

@@ -19,7 +19,7 @@ If the sign-up method is **Use after approval**, new accounts build up as waitin
 | Edit details | Name and email, **Reset password** (a random password; saving it signs out all of the user's sessions) |
 | Key management | Reissue the gateway key (the existing key is discarded at once) or replace it. List and delete the API keys the user created |
 | Suspend / Unsuspend | Reversible, and a record is kept |
-| Delete | Deletes conversations, projects, results, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |
+| Delete | Deletes conversations, projects, artifacts, memory, credit records, and the gateway key. You choose whether to delete the uploaded files and the generated image and video files from disk |
 
 ## Credit policy
 

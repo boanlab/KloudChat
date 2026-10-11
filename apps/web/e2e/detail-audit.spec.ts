@@ -26,7 +26,7 @@ const ROUTES: [path: string, label: string][] = [
   ['/new/image', '새 이미지'],
   ['/new/av', '새 오디오·동영상'],
   ['/projects', '프로젝트'],
-  ['/artifacts', '결과물'],
+  ['/artifacts', '아티팩트'],
   ['/agents', '에이전트'],
   ['/skills', '스킬'],
   ['/memory', '메모리'],

@@ -1,8 +1,10 @@
 """Screens and server messages use one set of words for one thing.
 
-A document's structure is a 템플릿 and its look a 테마; an agent's steps are its 진행 과정.
-The words those replaced (양식, 디자인, 워크플로, 작동 단계) and the hub's old 추천 do not come
-back on a screen, in the dictionary, in a step label or check result, or in the in-app guide.
+A document's structure is a 템플릿 and its look a 테마; an agent's steps are its 진행 과정;
+what a conversation produces (a report, a deck, a chart, a file) is an 아티팩트.
+The words those replaced (양식, 디자인, 워크플로, 작동 단계, 결과물) and the hub's old 추천
+do not come back on a screen, in the dictionary, in a step label or check result, or in the
+in-app guide.
 「서식」 alone stays: it is text formatting (bold, italics).
 
 An allowed use is listed with the reason; a new one goes into `_ALLOWED` the same way.
@@ -23,7 +25,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _WEB = _REPO / "apps/web/src"
 _APP = Path(__file__).resolve().parents[1] / "app"
 
-_OLD = re.compile(r"양식|디자인|워크플로|작동 단계|아티팩트|추천|서식 보정|새로 만들기")
+_OLD = re.compile(r"양식|디자인|워크플로|작동 단계|결과물|추천|서식 보정|새로 만들기")
 
 #: (file suffix, text the line carries) → why the word may stand there.
 _ALLOWED = {
@@ -88,5 +90,7 @@ def test_the_in_app_guide_uses_the_current_words():
 def test_the_check_catches_a_replaced_word():
     assert _OLD.search("{t('양식 고르기')}")
     assert _OLD.search("{t('이 프로젝트에서 새로 만들기')}")
+    assert _OLD.search("{t('아직 결과물이 없습니다')}")
+    assert not _OLD.search("{t('아직 아티팩트가 없습니다')}")
     assert not _OLD.search("{t('서식')}")
     assert not _OLD.search(_without_comments("x() // 예전 양식"))

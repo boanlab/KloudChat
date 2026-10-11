@@ -1,8 +1,8 @@
 ---
-title: Output editor
+title: Artifact editor
 ---
 
-# Output editor
+# Artifact editor
 
 You can edit reports and slides directly in the right-hand panel. The features are grouped by the tabs in the ribbon at the top.
 

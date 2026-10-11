@@ -20,7 +20,7 @@ test('페이지를 만들어 달라고 하면 아티팩트가 생긴다', async 
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
 
   // The tool step, live or already collapsed into the summary.
-  await expect(page.getByText(/결과물 (만드는 중|생성)/).first()).toBeVisible({ timeout: 240_000 })
+  await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({ timeout: 240_000 })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
 
   // Stored, of the kind asked for, with a real document in it.

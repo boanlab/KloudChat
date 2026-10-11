@@ -374,7 +374,7 @@ export function TemplateEditPage() {
               navigate('/customize/templates', { replace: true })
             }}
             title={t('{name} 삭제').replace('{name}', row?.name ?? '')}
-            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 결과물은 기본 모양으로 열립니다.')}
+            description={t('이 템플릿을 쓰던 에이전트는 템플릿 없이 일합니다. 이미 만든 아티팩트는 기본 모양으로 열립니다.')}
           />
         </div>
       </PageBody>

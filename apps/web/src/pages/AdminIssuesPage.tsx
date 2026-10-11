@@ -312,7 +312,7 @@ function IssueDetailView({ id }: { id: string }) {
                     {detail.snapshot?.title || t('제목 없는 대화')}
                     {' · '}
                     {t('메시지 {n}개').replace('{n}', String(detail.snapshot?.messages ?? 0))}
-                    {detail.snapshot && detail.snapshot.artifacts > 0 && ` · ${t('결과물 {n}개').replace('{n}', String(detail.snapshot.artifacts))}`}
+                    {detail.snapshot && detail.snapshot.artifacts > 0 && ` · ${t('아티팩트 {n}개').replace('{n}', String(detail.snapshot.artifacts))}`}
                   </p>
                   <p className="text-xs text-faint">{t('세션 사본을 열면 감사 기록에 남습니다.')}</p>
                   {opening ? <SnapshotLoading /> : (
@@ -400,7 +400,7 @@ function IssueDetailView({ id }: { id: string }) {
                 )}
                 {(context.artifacts?.length ?? 0) > 0 && (
                   <>
-                    <dt className="text-faint">{t('결과물 판')}</dt>
+                    <dt className="text-faint">{t('아티팩트 판')}</dt>
                     <dd className="font-mono text-xs [overflow-wrap:anywhere]">
                       {context.artifacts?.map((a) => `${a.id.slice(0, 8)} v${a.version}`).join(', ')}
                     </dd>

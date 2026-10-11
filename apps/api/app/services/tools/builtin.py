@@ -1146,7 +1146,7 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
 CREATE_ARTIFACT = Tool(
     name="create_artifact",
     description=(
-        "완성된 결과물을 별도 문서로 만들어 사용자 화면 옆에 띄웁니다. 기준은 "
+        "완성된 내용을 별도 문서(아티팩트)로 만들어 사용자 화면 옆에 띄웁니다. 기준은 "
         "길이가 아니라 쓰임새입니다. 대화 밖으로 나가 파일로 저장되거나 실행·"
         "렌더링·불러오기 되는 것만 문서입니다. 웹페이지, 스크립트, 설정 파일, "
         "데이터 파일이 그렇고, 네 줄짜리 docker-compose.yml 도 문서입니다. "
@@ -1204,8 +1204,8 @@ CREATE_ARTIFACT = Tool(
         "required": ["kind", "title", "content"],
     },
     run=create_artifact,
-    label="결과물 만드는 중",
-    title="결과물 생성",
+    label="아티팩트 만드는 중",
+    title="아티팩트 생성",
     read_only=False,
     wants_context=True,
 )

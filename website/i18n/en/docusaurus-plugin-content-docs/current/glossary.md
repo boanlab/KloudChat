@@ -8,8 +8,8 @@ title: Glossary
 |---|---|
 | Screen (Chat · Report · Slides · Image · Audio/Video) | The screen you choose on the home page. Administrators turn each one on and off |
 | Conversation (대화) | The record of one piece of work. One row in the sidebar |
-| Artifact (결과물) | A result produced in a conversation. The right-hand panel and the gallery |
-| Template (템플릿) | The structure and shape of the result (built in). It stays for the whole conversation |
+| Artifact (아티팩트) | A document, deck, chart or other file produced in a conversation. The right-hand panel and the gallery |
+| Template (템플릿) | The structure and shape of the artifact (built in). It stays for the whole conversation |
 | Theme (테마) | A bundle of colors, typefaces, and tone. Attached to an agent or a project, kept in Settings › Themes |
 | Project (프로젝트) | A workspace that groups material, instructions, and conversations |
 | Agent (에이전트) | A helper with set instructions, process, tools, and material. Start one from **+** → **Agents** in the composer |

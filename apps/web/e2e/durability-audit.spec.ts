@@ -41,7 +41,7 @@ test('내구성 감사 — 끊길 때, 겹칠 때, 길어질 때', async ({ page
 
   // R18: offline, a screen must not report an empty workspace.
   for (const [route, where, link, via] of [
-    ['/artifacts', '결과물', '결과물', 'sidebar'],
+    ['/artifacts', '아티팩트', '아티팩트', 'sidebar'],
     ['/memory', '메모리', '메모리', 'account'],
     ['/projects', '프로젝트', '프로젝트', 'sidebar'],
   ] as const) {

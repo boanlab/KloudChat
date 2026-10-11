@@ -427,7 +427,7 @@ async function runOne(page: Page, scenario: WorkScenario): Promise<Finding> {
   }
 }
 
-test('업무 시나리오를 실제로 수행하고 결과물을 읽는다', async ({ page }) => {
+test('업무 시나리오를 실제로 수행하고 아티팩트를 읽는다', async ({ page }) => {
   const chosen = slice()
   test.setTimeout(chosen.length * 480_000 + 120_000)
   fs.mkdirSync(OUT, { recursive: true })
@@ -474,5 +474,5 @@ test('업무 시나리오를 실제로 수행하고 결과물을 읽는다', asy
   const broken = findings.filter((f) =>
     ['empty', 'no-artifact', 'follow-up', 'stalled', 'error'].includes(f.verdict),
   )
-  expect(broken.map((f) => `${f.id}: ${f.verdict} ${f.detail}`), '앱이 결과물을 내놓지 못한 시나리오').toEqual([])
+  expect(broken.map((f) => `${f.id}: ${f.verdict} ${f.detail}`), '앱이 아티팩트를 내놓지 못한 시나리오').toEqual([])
 })

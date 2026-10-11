@@ -36,7 +36,7 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
       key: 'format',
       icon: <LayoutGrid size={13} />,
       name: (english && context.format.nameEn) || context.format.name,
-      label: t('결과물이 이 템플릿으로 나옵니다'),
+      label: t('아티팩트가 이 템플릿으로 나옵니다'),
     },
   ].filter(Boolean) as { key: string; icon: React.ReactNode; name: string; label: string }[]
 
@@ -152,7 +152,7 @@ export function SharedPage() {
       <header className="mb-6 border-b border-line pb-5">
         <div className="mb-2 flex items-center gap-2">
           {payload.kind === 'artifact' ? <FileText size={15} /> : <Layers size={15} />}
-          <Badge>{payload.kind === 'artifact' ? t('공유된 결과물') : t('공유된 대화')}</Badge>
+          <Badge>{payload.kind === 'artifact' ? t('공유된 아티팩트') : t('공유된 대화')}</Badge>
           <Badge>{t('읽기 전용')}</Badge>
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">{payload.title}</h1>
@@ -229,5 +229,5 @@ export function SharedArtifact({ payload, title }: { payload: { data: unknown; t
     )
   }
   if (data.content) return <Markdown>{`\`\`\`\n${data.content}\n\`\`\``}</Markdown>
-  return <p className="text-muted">{translate(currentLang(), '이 종류의 결과물은 아직 공유 화면에서 보여 줄 수 없습니다.')}</p>
+  return <p className="text-muted">{translate(currentLang(), '이 종류의 아티팩트는 아직 공유 화면에서 보여 줄 수 없습니다.')}</p>
 }

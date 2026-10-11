@@ -14,7 +14,7 @@ This page explains where your input and attachments are stored, how far they are
 | Attachments and project knowledge | Organization server | Same as conversations. | When the file, the conversation, or the project is deleted | Only the storage volume can be checked. |
 | Memory | Organization server | Sent to the model together with the request. | When the user deletes it | Cannot be viewed. |
 | Web search terms | Not stored. | Sent to the search engine when search mode is Always or Auto. | Not applicable | Cannot be viewed. |
-| Image and video prompts | Organization server | Follows the data boundary of the selected model, and in most cases is sent to an external service. | When the output is deleted | Cannot be viewed. |
+| Image and video prompts | Organization server | Follows the data boundary of the selected model, and in most cases is sent to an external service. | When the artifact is deleted | Cannot be viewed. |
 | Usage and sign-in history | Organization server | Not sent. | Follows the policy set by the administrator. | Can be viewed. It includes tokens, credits, sign-ins, and policy application records. The values of detected personal data are not recorded; only the type and the count are kept. |
 
 The **data boundary**, which differs by model, is shown in the model list. [Choosing a model](chat/models)

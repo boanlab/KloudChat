@@ -86,7 +86,7 @@ async function searchFixture(page: Page, testInfo: TestInfo) {
 }
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: '검색' })
-const box = (page: Page) => dialog(page).getByRole('combobox', { name: '대화와 결과물 검색' })
+const box = (page: Page) => dialog(page).getByRole('combobox', { name: '대화와 아티팩트 검색' })
 const options = (page: Page) => dialog(page).getByRole('option')
 
 test('⌘K opens the dialog: recent conversations, then grouped, marked results by content', async ({ page }, testInfo) => {
@@ -106,7 +106,7 @@ test('⌘K opens the dialog: recent conversations, then grouped, marked results 
 
   await box(page).fill('예산')
   const conversations = dialog(page).getByRole('region', { name: '대화' })
-  const results = dialog(page).getByRole('region', { name: '결과물' })
+  const results = dialog(page).getByRole('region', { name: '아티팩트' })
   await expect(conversations).toBeVisible()
   await expect(results).toBeVisible()
   // Title matches first, the word marked; then message matches with a marked window.
@@ -154,7 +154,7 @@ test('⌘K opens the dialog: recent conversations, then grouped, marked results 
 
   await page.keyboard.press('ControlOrMeta+k')
   await box(page).fill('없는말')
-  await expect(dialog(page).getByText('「없는말」와 맞는 대화나 결과물이 없습니다')).toBeVisible()
+  await expect(dialog(page).getByText('「없는말」와 맞는 대화나 아티팩트가 없습니다')).toBeVisible()
   expect(state.problems).toEqual([])
 })
 

@@ -65,7 +65,7 @@ test('첫 가입 계정은 관리자로 바로 입장한다', async ({ page }) =
     test.skip(true, '빈 DB 가 아닙니다 — 부트스트랩은 첫 가입에서만 검증됩니다.')
   }
 
-  await expect(page.getByRole('link', { name: '결과물' })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible({ timeout: 15_000 })
 })
 
 test('모델 선택기가 LiteLLM 카탈로그를 보여 준다', async ({ page }) => {

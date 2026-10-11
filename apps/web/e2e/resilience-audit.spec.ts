@@ -13,7 +13,7 @@ interface Defect {
 
 /** Screens that render a list, and the call that fills it. */
 const LISTS: [route: string, api: RegExp, where: string][] = [
-  ['/artifacts', /\/api\/artifacts(\?|$)/, '결과물'],
+  ['/artifacts', /\/api\/artifacts(\?|$)/, '아티팩트'],
   ['/memory', /\/api\/memory(\?|$)/, '메모리'],
   ['/projects', /\/api\/projects(\?|$)/, '프로젝트'],
   ['/agents', /\/api\/agents(\?|$)/, '에이전트'],

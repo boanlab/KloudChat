@@ -66,6 +66,6 @@ When a chatbot stops (credits used up, paused by an administrator and so on) or 
 ## On the visitor's side
 
 - Visitors read the notice before their first question. It states how long conversations are kept and whether the publisher can read them.
-- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download results.
+- A visitor without an account continues their conversations only through this browser's cookie. Clearing cookies loses past conversations. They cannot upload files or download artifacts.
 - Questions are limited per person, per address (visitors without an account) and per chatbot, per minute and per day. Lower the limits under **Settings** → **Limits** on the management page.
 - Conversations are deleted once the retention period (30 days by default) passes after the last question.

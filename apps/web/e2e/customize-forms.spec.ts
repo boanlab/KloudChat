@@ -59,7 +59,7 @@ test('agent form: essentials and 진행 과정 in view, folded groups, tools by 
   // Every group starts closed.
   const groups = page.getByTestId('agent-advanced').locator('details')
   await expect(page.getByTestId('agent-advanced').locator('summary')).toHaveText([
-    /결과물/, /대화 시작/, /자료/, /스킬과 도구/, /고급/, /공유/])
+    /아티팩트/, /대화 시작/, /자료/, /스킬과 도구/, /고급/, /공유/])
   for (const group of await groups.all()) await expect(group).not.toHaveAttribute('open', '')
   await expect(page.getByText(/mcp__/)).toHaveCount(0)
 

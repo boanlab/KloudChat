@@ -598,7 +598,7 @@ test('아티팩트는 대화에서 열고, 닫고, 다시 열 수 있다', async
     const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
     return list.find((s: { artifactId: string | null }) => s.artifactId) ?? null
   }, AS_USER)
-  test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
+  test.skip(!session, '아티팩트가 붙은 대화가 아직 없습니다.')
 
   await page.goto(`/s/${session.id}`)
   // The panel arrives open. `aside` is also the sidebar; the artifact panel has the close button.
@@ -637,7 +637,7 @@ test('분할 화면에서도 채팅 입력 영역이 찌그러지지 않는다',
     const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
     return list.find((s: { artifactId: string | null }) => s.artifactId) ?? null
   }, AS_USER)
-  test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
+  test.skip(!session, '아티팩트가 붙은 대화가 아직 없습니다.')
   await page.goto(`/s/${session.id}`)
   const prompt = page.getByLabel('프롬프트 입력')
   await expect(prompt).toBeVisible({ timeout: 20_000 })
@@ -647,7 +647,7 @@ test('분할 화면에서도 채팅 입력 영역이 찌그러지지 않는다',
   expect(await composer.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
 })
 
-test('1280px에서는 결과물이 채팅을 밀어 찌그러뜨리지 않고 겹쳐 열린다', async ({ page }) => {
+test('1280px에서는 아티팩트가 채팅을 밀어 찌그러뜨리지 않고 겹쳐 열린다', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page)
   const session = await page.evaluate(async (fn) => {
@@ -655,7 +655,7 @@ test('1280px에서는 결과물이 채팅을 밀어 찌그러뜨리지 않고 �
     const list = Array.isArray(rows) ? rows : (rows?.items ?? [])
     return list.find((s: { artifactId: string | null }) => s.artifactId) ?? null
   }, AS_USER)
-  test.skip(!session, '결과물이 붙은 대화가 아직 없습니다.')
+  test.skip(!session, '아티팩트가 붙은 대화가 아직 없습니다.')
   await page.goto(`/s/${session.id}`)
   const panel = page.locator('[data-panel="artifact"]')
   await expect(panel).toBeVisible({ timeout: 20_000 })

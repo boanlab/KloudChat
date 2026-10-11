@@ -177,7 +177,7 @@ _BUILTIN_BLURB: dict[str, str] = {
     "execute_code": "샌드박스에서 Python 코드로 계산하고 데이터를 다룹니다.",
     "run_skill_script": "스킬에 딸린 정해진 스크립트를 첨부 파일에 실행합니다.",
     "run_code": "첨부한 엑셀·CSV·PDF 같은 파일을 읽고 고칩니다.",
-    "create_artifact": "문서·코드·웹 페이지 같은 결과물을 따로 만듭니다.",
+    "create_artifact": "문서·코드·웹 페이지 같은 아티팩트를 따로 만듭니다.",
     "create_chart": "숫자를 차트로 그립니다.",
     "share_note": "다음 단계가 이어받을 결론을 공유 메모에 남깁니다.",
     "search_knowledge": "에이전트에 붙여 둔 자료에서 찾습니다.",

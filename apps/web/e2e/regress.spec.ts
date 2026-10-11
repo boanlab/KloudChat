@@ -37,7 +37,7 @@ test('웹 검색을 켜도 화면이 살아 있다 (스텝 렌더 크래시)', a
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
   // The shell is the tree a step-render crash would take with it.
   await openSidebar(page)
-  await expect(page.getByRole('link', { name: '결과물' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '아티팩트' })).toBeVisible()
 
   await page.reload()
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible({ timeout: 30_000 })

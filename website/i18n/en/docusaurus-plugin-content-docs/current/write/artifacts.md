@@ -4,16 +4,16 @@ title: Artifacts
 
 # Artifacts
 
-Outputs generated in a conversation, such as reports, slides, charts, code, web pages, and images, are called artifacts. They are collected on the **Artifacts** screen in the sidebar.
+Reports, slides, charts, code, web pages, images and other outputs generated in a conversation are called artifacts. They are collected on the **Artifacts** screen in the sidebar.
 
 ![Artifact gallery](/img/guide/artifacts.png)
 
-## Output panel
+## Artifact panel
 
-- The panel opens automatically when an output is generated. If you closed it, reopen it with a button such as **Open the report** or **Open the deck** at the top right of the conversation screen.
+- The panel opens automatically when an artifact is generated. If you closed it, reopen it with a button such as **Open the report** or **Open the deck** at the top right of the conversation screen.
 - Every panel shows the version and the edit time, and lets you copy, download, adjust the width (double-click to reset), switch between narrow, wide, and document-only views, and close the panel. If the screen is narrow, the panel is shown over the conversation.
 - Code and web pages support the **Preview** and **Source** tabs and zooming in and out. A web page runs in an isolated frame, so features that save values do not work.
-- In Chat too, a request such as "organize this into a table and turn it into a document" or "draw a chart from this data" generates an output in the panel.
+- In Chat too, a request such as "organize this into a table and turn it into a document" or "draw a chart from this data" generates an artifact in the panel.
 
 ## Export formats
 

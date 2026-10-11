@@ -18,7 +18,7 @@ async function token(page: Page) {
 
 const PROMPT = '다음 문장을 읽어줘: 기록 확인용 내레이션입니다.'
 
-test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page }) => {
+test('내레이션 대화는 이름과 아티팩트를 남긴다', async ({ page }) => {
   test.setTimeout(300_000)
   await signIn(page)
   const headers = { Authorization: `Bearer ${await token(page)}` }
@@ -44,7 +44,7 @@ test('내레이션 대화는 이름과 결과물을 남긴다', async ({ page })
   await expect
     .poll(async () => (await session()).artifactId, {
       timeout: 240_000,
-      message: '대화가 만들어낸 결과물을 가리키지 않습니다',
+      message: '대화가 만들어낸 아티팩트를 가리키지 않습니다',
     })
     .not.toBeNull()
 

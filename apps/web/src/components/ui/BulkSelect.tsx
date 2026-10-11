@@ -76,7 +76,7 @@ export function BulkBar({
   onToggleAll: () => void
   onClear: () => void
   onDelete: () => Promise<unknown>
-  /** Noun for what is deleted: "프로젝트", "결과물". */
+  /** Noun for what is deleted: "프로젝트", "아티팩트". */
   title: string
   /** What the delete takes with it, shown in the confirmation. */
   note?: string

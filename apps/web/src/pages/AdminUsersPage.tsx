@@ -482,7 +482,7 @@ export function AdminUsersPage() {
         title={t('계정을 삭제할까요?')}
         description={
           deleting
-            ? t('{name} ({email}) 의 대화·프로젝트·결과물·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.').replace('{name}', deleting.name).replace('{email}', deleting.email)
+            ? t('{name} ({email}) 의 대화·프로젝트·아티팩트·메모리·크레딧 기록이 모두 사라지고 LiteLLM 키도 폐기됩니다. 되돌릴 수 없습니다.').replace('{name}', deleting.name).replace('{email}', deleting.email)
             : undefined
         }
         footer={

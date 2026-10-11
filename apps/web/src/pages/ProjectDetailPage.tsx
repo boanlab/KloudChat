@@ -63,7 +63,7 @@ function EmojiGrid({ onPick }: { onPick: (emoji: string) => void }) {
 
 /** Mirrors the server's project delete: knowledge files go, sessions are detached, artifacts and memories stay. */
 const DELETE_SCOPE =
-  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 결과물과 메모리는 그대로 남습니다.'
+  '되돌릴 수 없습니다. 지침과 지식 파일이 사라집니다. 대화는 지워지지 않고 프로젝트 밖으로 나오며, 아티팩트와 메모리는 그대로 남습니다.'
 
 export function ProjectDetailPage() {
   const t = useT()

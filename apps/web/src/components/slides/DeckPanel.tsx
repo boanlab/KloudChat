@@ -2754,7 +2754,7 @@ export function DeckPanel({
 
   const removeSlide = () => {
     if (deck.slides.length <= 1) {
-      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 결과물 목록에서 지우세요.'))
+      setError(t('마지막 한 장은 지울 수 없습니다. 덱 자체를 지우려면 아티팩트 목록에서 지우세요.'))
       return
     }
     const next = deck.slides.filter((_, i) => i !== index)

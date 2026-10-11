@@ -105,8 +105,8 @@ export function SnapshotView({ reportId, snapshot }: { reportId: string; snapsho
       </section>
 
       {snapshot.artifacts.length > 0 && (
-        <section aria-label={t('결과물')} className="space-y-4">
-          <h3 className="text-base font-semibold">{t('결과물')}</h3>
+        <section aria-label={t('아티팩트')} className="space-y-4">
+          <h3 className="text-base font-semibold">{t('아티팩트')}</h3>
           {snapshot.artifacts.map((artifact, index) => {
             const isPinned = artifact.id === pinned.artifactId
             return (
@@ -119,7 +119,7 @@ export function SnapshotView({ reportId, snapshot }: { reportId: string; snapsho
                   <FileText size={14} className="text-faint" />
                   <span className="font-medium">{artifact.title || t('제목 없음')}</span>
                   <Badge>v{artifact.version}</Badge>
-                  {isPinned && <Badge tone="accent"><Pin size={11} />{t('신고한 결과물')}</Badge>}
+                  {isPinned && <Badge tone="accent"><Pin size={11} />{t('신고한 아티팩트')}</Badge>}
                   {artifact.versions.length > 0 && (
                     <span className="text-faint">
                       {t('판 기록 {n}개').replace('{n}', String(artifact.versions.length))}

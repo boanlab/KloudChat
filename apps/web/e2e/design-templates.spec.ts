@@ -221,7 +221,7 @@ test('덱 서식을 고르면 그 템플릿의 HTML 이 나오고 파일로 받�
 
   // The gallery card names the template the document was written into, not the kind.
   await page.goto('/artifacts')
-  await page.getByLabel('결과물 검색').fill(stored.title)
+  await page.getByLabel('아티팩트 검색').fill(stored.title)
   const galleryCard = page.locator('div.grid > *', { hasText: stored.title }).first()
   await expect(galleryCard.getByText('편집형 덱', { exact: true })).toBeVisible({
     timeout: 20_000,

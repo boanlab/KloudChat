@@ -196,18 +196,18 @@ export function ArtifactsPage() {
 
   return (
     <>
-      <TopBar left={<span className="text-base font-medium">{t('결과물')}</span>} />
+      <TopBar left={<span className="text-base font-medium">{t('아티팩트')}</span>} />
       <PageBody>
         <PageHeader
-          title={t('결과물')}
-          description={t('만든 결과물이 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
+          title={t('아티팩트')}
+          description={t('만든 아티팩트가 모두 여기 모입니다. 수정할 때마다 버전이 쌓이고, 만든 대화로 바로 돌아갈 수 있습니다.')}
         />
 
         <div className="mb-3 max-w-sm">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label={t('결과물 검색')}
+            aria-label={t('아티팩트 검색')}
             placeholder={t('제목으로 찾기')}
           />
         </div>
@@ -237,11 +237,11 @@ export function ArtifactsPage() {
           ) : artifacts.length === 0 ? (
             <EmptyState
               icon={<Layers size={18} />}
-              title={query ? t('찾는 결과물이 없습니다') : t('아직 결과물이 없습니다')}
+              title={query ? t('찾는 아티팩트가 없습니다') : t('아직 아티팩트가 없습니다')}
               description={
                 query
                   ? t('제목의 다른 부분으로 찾아보세요.')
-                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 결과물이 여기에 저장됩니다.')
+                  : t('챗·보고서·슬라이드·이미지·오디오/동영상에서 만든 아티팩트가 여기에 저장됩니다.')
               }
             />
           ) : (
@@ -251,8 +251,8 @@ export function ArtifactsPage() {
               allPicked={pick.allPicked}
               onToggleAll={pick.toggleAll}
               onClear={pick.clear}
-              title={t('결과물')}
-              note={t('결과물을 만든 대화는 그대로 남습니다.')}
+              title={t('아티팩트')}
+              note={t('아티팩트를 만든 대화는 그대로 남습니다.')}
               onDelete={async () => {
                 await deleteMany('artifacts', pick.ids)
                 pick.clear()
@@ -305,7 +305,7 @@ export function ArtifactsPage() {
                           variant="ghost"
                           size="icon"
                           aria-label={t('{name} 삭제').replace('{name}', a.title)}
-                          title={t('이 결과물을 삭제합니다')}
+                          title={t('이 아티팩트를 삭제합니다')}
                           onClick={() => setConfirming(a)}
                         >
                           <Trash2 size={14} />
@@ -424,7 +424,7 @@ export function ArtifactsPage() {
         open={confirmPreviewClose}
         onClose={() => setConfirmPreviewClose(false)}
         title={t('저장하지 않은 변경 내용이 있습니다')}
-        description={t('계속하면 결과물에서 바꾼 내용이 사라집니다.')}
+        description={t('계속하면 아티팩트에서 바꾼 내용이 사라집니다.')}
         confirmLabel={t('저장하지 않고 닫기')}
         onConfirm={closePreview}
       />

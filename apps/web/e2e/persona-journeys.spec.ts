@@ -224,7 +224,7 @@ async function waitForArtifact(
   )
 }
 
-test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하면 결과물로 남는다', async ({ page }) => {
+test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하면 아티팩트로 남는다', async ({ page }) => {
   test.setTimeout(300_000)
   const token = `PLAN-${stamp().toUpperCase()}`
   await page.goto('/new/chat')
@@ -239,7 +239,7 @@ test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하
   )
 
   // The tool must have been called; an inline answer is not a pass.
-  await expect(page.getByText(/결과물 (만드는 중|생성)/).first()).toBeVisible({
+  await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({
     timeout: 240_000,
   })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })
@@ -255,7 +255,7 @@ test('기획직 — 대화에서 한 페이지 문서를 만들어 달라고 하
   await expect(page.getByText(String(stored.title)).first()).toBeVisible({ timeout: 30_000 })
 })
 
-test('분석직 — 대화에서 준 숫자로 차트를 그리면 그 숫자가 결과물에 남는다', async ({ page }) => {
+test('분석직 — 대화에서 준 숫자로 차트를 그리면 그 숫자가 아티팩트에 남는다', async ({ page }) => {
   test.setTimeout(300_000)
   await page.goto('/new/chat')
   await useLocalModel(page)
@@ -289,7 +289,7 @@ test('개발직 — 스크립트를 만들어 달라고 하면 실행할 수 있
     `로그 파일을 날짜별로 묶어 압축하는 bash 스크립트를 파일로 만들어줘. ` +
       `스크립트 안 주석에 ${token} 를 그대로 남겨줘.`,
   )
-  await expect(page.getByText(/결과물 (만드는 중|생성)/).first()).toBeVisible({
+  await expect(page.getByText(/아티팩트 (만드는 중|생성)/).first()).toBeVisible({
     timeout: 240_000,
   })
   await expect(page.getByLabel('중지')).toHaveCount(0, { timeout: 240_000 })

@@ -964,7 +964,7 @@ export function ReportPanel({
 
   const removeSection = (at: number) => {
     if (report.sections.length <= 1) {
-      setSaveError(t('마지막 한 절은 지울 수 없습니다. 보고서 자체를 지우려면 결과물 목록에서 지우세요.'))
+      setSaveError(t('마지막 한 절은 지울 수 없습니다. 보고서 자체를 지우려면 아티팩트 목록에서 지우세요.'))
       return Promise.resolve()
     }
     const next = report.sections.filter((_, i) => i !== at)

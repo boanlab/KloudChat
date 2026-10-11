@@ -908,7 +908,8 @@ async def patch_artifact(
         raise HTTPException(
             status_code=409,
             detail=(
-                "이 결과물은 다른 곳에서 이미 수정되었습니다. 최신 내용을 받은 뒤 다시 저장하세요."
+                "이 아티팩트는 다른 곳에서 이미 수정되었습니다. "
+                "최신 내용을 받은 뒤 다시 저장하세요."
             ),
         )
 

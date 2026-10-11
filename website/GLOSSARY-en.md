@@ -30,7 +30,7 @@
 | 스킬 | skill | |
 | 시작점 | starting point | |
 | 템플릿 | template | 보고서·슬라이드의 구조 (글자 꾸밈의 「서식」은 formatting) |
-| 테마 | theme | 결과물의 색·글꼴 |
+| 테마 | theme | 아티팩트의 색·글꼴 |
 | 프로젝트 | project | |
 | 메모리 | memory | |
 | 보고서 | report | |
@@ -44,7 +44,7 @@
 | 잘림 위험 | overflow risk | |
 | 버전 기록 | version history | |
 | 내보내기 | Export | 메뉴일 때 대문자 |
-| 결과물 | artifact | 사이드바·화면 이름은 Artifacts |
+| 아티팩트 | artifact | 사이드바·화면 이름은 Artifacts |
 | 공유 | sharing / Share | |
 | 사용량 | usage | |
 | 접속 기록 | sign-in history | |

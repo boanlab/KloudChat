@@ -169,7 +169,7 @@ const COLORS = ['#5b53e8', '#2563eb', '#0f766e', '#334155', '#ea580c', '#db2777'
 
 /**
  * The agent form: name, instructions, 진행 과정 and 추가로 할 일 in view, the rest in folded
- * groups (결과물, 대화 시작, 자료, 스킬과 도구, 고급, 공유). The same form creates an agent (from
+ * groups (아티팩트, 대화 시작, 자료, 스킬과 도구, 고급, 공유). The same form creates an agent (from
  * scratch, or prefilled by 「에이전트로 저장」) and edits one in its detail screen's 「설정」.
  * Nothing is saved before 저장.
  */
@@ -555,7 +555,7 @@ export function AgentForm({
         <p className="text-sm font-semibold text-faint">{t('더 설정하기')}</p>
 
         <Group
-          title={t('결과물 모양')}
+          title={t('아티팩트 모양')}
           hint={offered.includes('report') && process.mode !== 'base' ? t('템플릿, 테마, 문서 형식') : t('템플릿, 테마')}
           testId="agent-output-group"
         >

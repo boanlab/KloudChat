@@ -233,8 +233,8 @@ function IssueForm() {
             )}
             {target.artifactId && pinArtifact && (
               <PinChip
-                label={t('결과물')}
-                text={target.artifactTitle || t('고른 결과물')}
+                label={t('아티팩트')}
+                text={target.artifactTitle || t('고른 아티팩트')}
                 onRemove={() => setPinArtifact(false)}
               />
             )}
@@ -281,7 +281,7 @@ function IssueForm() {
             <span className="font-medium text-fg">{info.title || t('제목 없는 대화')}</span>
             {' · '}
             {t('메시지 {n}개').replace('{n}', String(info.messageCount))}
-            {info.artifactCount > 0 && ` · ${t('결과물 {n}개').replace('{n}', String(info.artifactCount))}`}
+            {info.artifactCount > 0 && ` · ${t('아티팩트 {n}개').replace('{n}', String(info.artifactCount))}`}
           </p>
           <label className="flex items-start gap-2 text-base">
             <input
@@ -297,7 +297,7 @@ function IssueForm() {
           </label>
           <p className="text-sm text-faint">
             {share
-              ? t('대화 내용, 만든 결과물의 판, 단계 기록, 대화의 파일을 지금 상태 그대로 복사해 보냅니다. 나중에 대화를 고치거나 지워도 신고에 담긴 사본은 바뀌지 않습니다.')
+              ? t('대화 내용, 만든 아티팩트의 판, 단계 기록, 대화의 파일을 지금 상태 그대로 복사해 보냅니다. 나중에 대화를 고치거나 지워도 신고에 담긴 사본은 바뀌지 않습니다.')
               : t('체크하지 않으면 대화 내용은 보내지 않고, 사용한 모델과 단계 상태 같은 기록만 함께 갑니다.')}
           </p>
           {strict && (
@@ -327,7 +327,7 @@ function IssueForm() {
         </summary>
         <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-muted">
           <li>{t('앱 빌드, 브라우저, 화면 크기, 언어')}</li>
-          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·진행 과정, 단계 상태와 실패 사유, 결과물 판 번호')}</li>}
+          {info && <li>{t('대화 종류, 사용한 모델, 에이전트·진행 과정, 단계 상태와 실패 사유, 아티팩트 판 번호')}</li>}
         </ul>
       </details>
 

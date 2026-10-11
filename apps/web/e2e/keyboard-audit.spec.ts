@@ -18,7 +18,7 @@ const ROUTES: [string, string][] = [
   ['/new/report', '새 보고서'],
   ['/new/slides', '새 슬라이드'],
   ['/projects', '프로젝트'],
-  ['/artifacts', '결과물'],
+  ['/artifacts', '아티팩트'],
   ['/agents', '에이전트'],
   ['/skills', '스킬'],
   ['/memory', '메모리'],

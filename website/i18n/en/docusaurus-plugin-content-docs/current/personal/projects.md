@@ -31,7 +31,7 @@ Describe rules that apply to every conversation, such as "answer in polite langu
 
 ## Deleting a project
 
-Deleting a project deletes its instructions and knowledge files. Conversations are detached from the project and kept, and outputs and memory also remain.
+Deleting a project deletes its instructions and knowledge files. Conversations are detached from the project and kept, and artifacts and memory also remain.
 
 ## Comparison with conversation attachments
 

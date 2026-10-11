@@ -29,7 +29,7 @@ It writes section by section in order, and shows the first section in the right-
 Two methods are provided.
 
 - **Revise by request**: type into the input box at the bottom of the document, for example "Cut section 2 in half" or "Add one more section". [Revising by request](revise)
-- **Edit directly**: use the ribbon in the panel to edit sentences, reorder sections, insert pictures, and get a review. [Output editor](editor)
+- **Edit directly**: use the ribbon in the panel to edit sentences, reorder sections, insert pictures, and get a review. [Artifact editor](editor)
 
 ## Items you can specify in your request
 

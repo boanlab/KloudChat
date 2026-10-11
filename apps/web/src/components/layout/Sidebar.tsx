@@ -34,7 +34,7 @@ interface NavRow {
 // 「챗봇」: bots members published, for anyone who only wants to ask.
 const workspaceNav: NavRow[] = [
   { to: '/projects', label: '프로젝트', icon: Boxes },
-  { to: '/artifacts', label: '결과물', icon: Layers },
+  { to: '/artifacts', label: '아티팩트', icon: Layers },
   { to: '/bots', label: '챗봇', icon: Bot },
   { to: '/customize', label: '사용자 지정', icon: SlidersHorizontal },
 ]
@@ -388,7 +388,7 @@ export function Sidebar() {
         onClose={() => setConfirming(null)}
         onConfirm={() => confirming && void deleteSession(confirming.id)}
         title={t('{name} 삭제').replace('{name}', confirming?.title ?? '')}
-        description={t('되돌릴 수 없습니다. 이 대화가 만든 결과물도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
+        description={t('되돌릴 수 없습니다. 이 대화가 만든 아티팩트도 함께 지워지고 공유 링크도 끊깁니다. 프로젝트와 메모리는 남습니다.')}
       />
     </aside>
   )

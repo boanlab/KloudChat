@@ -23,7 +23,7 @@ test('생성 중에 다른 화면에 다녀와도 답이 도착해 있다', asyn
   await expect(page).toHaveURL(/\/s\/[0-9a-f]{32}/, { timeout: 30_000 })
   const conversation = page.url()
   await page.goto('/artifacts')
-  await expect(page.getByRole('heading', { name: '결과물' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: '아티팩트' })).toBeVisible({ timeout: 20_000 })
   await page.waitForTimeout(4_000)
 
   // Return inside the app, not by reload.

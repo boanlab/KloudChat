@@ -272,7 +272,7 @@ export function SearchDialog() {
       return (
         <div key={row.key} {...common} className={cn(common.className, 'items-center text-sm text-muted')}>
           {loadingMore === row.group ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
-          {row.group === 'sessions' ? t('대화 더 보기') : t('결과물 더 보기')}
+          {row.group === 'sessions' ? t('대화 더 보기') : t('아티팩트 더 보기')}
         </div>
       )
     }
@@ -344,8 +344,8 @@ export function SearchDialog() {
             aria-controls={listId}
             aria-activedescendant={rows[active] ? optionId(active) : undefined}
             aria-autocomplete="list"
-            aria-label={t('대화와 결과물 검색')}
-            placeholder={t('대화와 결과물 검색')}
+            aria-label={t('대화와 아티팩트 검색')}
+            placeholder={t('대화와 아티팩트 검색')}
             maxLength={200}
             className="h-14 min-w-0 flex-1 bg-transparent text-md outline-none placeholder:text-faint max-sm:h-12"
           />
@@ -375,7 +375,7 @@ export function SearchDialog() {
           )}
           {empty && !error && (
             <p className="px-3 py-6 text-center text-base text-faint">
-              {t('「{q}」와 맞는 대화나 결과물이 없습니다').replace('{q}', results!.query)}
+              {t('「{q}」와 맞는 대화나 아티팩트가 없습니다').replace('{q}', results!.query)}
             </p>
           )}
           {trimmed && sessionRows.length > 0 && (
@@ -385,8 +385,8 @@ export function SearchDialog() {
             </section>
           )}
           {trimmed && artifactRows.length > 0 && (
-            <section aria-label={t('결과물')}>
-              <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-faint">{t('결과물')}</p>
+            <section aria-label={t('아티팩트')}>
+              <p className="px-3 pt-1 pb-1.5 text-xs font-semibold text-faint">{t('아티팩트')}</p>
               {artifactRows.map(renderRow)}
             </section>
           )}

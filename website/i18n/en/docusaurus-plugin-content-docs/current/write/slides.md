@@ -43,4 +43,4 @@ In **File → Export**, choose PowerPoint (PPTX), PDF (for presenting), or text 
 
 ## Revising
 
-If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", proposes the structure again and waits for your approval. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Output editor](editor).
+If you ask for something like "make slide 2 more concise", only that slide is written again. A request that changes the structure, such as "extend it to 20 slides" or "add a case study slide", proposes the structure again and waits for your approval. For details, see [Revising by request](revise). To edit sentences yourself or reorder slides, use the [Artifact editor](editor).

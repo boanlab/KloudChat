@@ -8,8 +8,8 @@ These two features have similar names, but each has a different role and scope. 
 
 | Feature | Role | Where to pick it | Scope |
 |---|---|---|---|
-| **Template** | The form of the output. The product includes report and slide templates. | **+** → **Pick a template** in the composer; **Output** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
-| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Output** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's outputs |
+| **Template** | The form of the artifact. The product includes report and slide templates. | **+** → **Pick a template** in the composer; **Output shape** › **Template** in the agent settings | That conversation (clear it with × on the chip), or the conversations that agent opens |
+| **Theme** | A setting that bundles colors, typefaces, and writing style. | **Output shape** › **Theme** in the agent settings, **Edit › Theme** in the report or slides panel, the project settings | That agent's or project's outputs |
 
 ## Templates
 
@@ -26,6 +26,6 @@ Manage them in **Settings** → **Themes** (also opened by **Manage themes** in 
 - Set the name, the accent color, the body color, the secondary color, the typeface (sans-serif or serif), the writing style rules, the image style, and the rules to apply alongside them.
 - **Import from a document** extracts a draft from an existing hwpx, docx, or pdf file, or from a web address. It calls the model once, and you can review the content before saving.
 - The writing style applies to conversations, reports, and slides. Colors and typefaces apply to slides and report covers. The image style applies to images. Nothing applies to audio and video.
-- Theme settings are copied into an output when it is generated. Changing the theme later does not change outputs that already exist.
+- Theme settings are copied into an artifact when it is generated. Changing the theme later does not change artifacts that already exist.
 - An administrator can distribute a read-only shared theme with **Provide to all users**.
 - Of the built-in themes, the pickers show **Default** (기본) and **Document serif** (문서용 명조).

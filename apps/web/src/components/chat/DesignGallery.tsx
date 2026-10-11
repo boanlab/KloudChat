@@ -326,7 +326,7 @@ export function DesignGalleryModal({
       open={open}
       onClose={onClose}
       title={t('템플릿 고르기')}
-      description={t('결과물의 모양을 고릅니다.')}
+      description={t('아티팩트의 모양을 고릅니다.')}
       width="max-w-3xl"
     >
         <div className="mb-3 flex items-baseline justify-between gap-2">

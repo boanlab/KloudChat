@@ -52,7 +52,7 @@ Recordings are not stored. If there is no microphone or no permission, the messa
 
 - Use the `…` menu on a sidebar item to rename, pin, remove from a project, or delete. The title is generated automatically after the first answer.
 - A new conversation with nothing sent is deleted automatically when you leave the screen.
-- **Deleting a conversation also deletes the outputs and share links created in it.** Projects and memory are kept.
+- **Deleting a conversation also deletes the artifacts and share links created in it.** Projects and memory are kept.
 - To tidy up several conversations at once, use the account menu → **Conversation history**. [Usage and conversation history](../personal/usage-history)
 
 ## Adjusting answer length

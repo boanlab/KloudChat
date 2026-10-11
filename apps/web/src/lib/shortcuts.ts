@@ -35,7 +35,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'toggle-dictation', label: '말로 쓰기 시작·끝내기', keys: ['mod', 'Shift', 'M'], key: 'm', mod: true, shift: true },
   { id: 'toggle-sidebar', label: '사이드바 토글', keys: ['mod', 'Shift', 'S'], key: 's', mod: true, shift: true },
   { id: 'delete-conversation', label: '대화 삭제', keys: ['mod', 'Shift', '⌫'], key: 'Backspace', mod: true, shift: true },
-  { id: 'search', label: '대화·결과물 검색', keys: ['mod', 'K'], key: 'k', mod: true },
+  { id: 'search', label: '대화·아티팩트 검색', keys: ['mod', 'K'], key: 'k', mod: true },
   { id: 'show-shortcuts', label: '단축키 표시', keys: ['mod', '/'], key: '/', mod: true },
 ]
 

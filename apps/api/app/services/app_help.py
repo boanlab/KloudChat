@@ -28,7 +28,7 @@ _BLOCK_CHARS = 4500
 #: asks how, even several words later, is about the app.
 _APP_THINGS = (
     r"에이전트|스킬|템플릿|테마|메모리|커넥터|묶음|진행\s{0,2}과정|워크플로|내보내기|"
-    r"사용자\s{0,2}지정|크레딧|단축키|확인\s{0,2}질문"
+    r"사용자\s{0,2}지정|크레딧|단축키|확인\s{0,2}질문|아티팩트"
 )
 #: Words a task uses as often as a question about the app: only right beside 「어떻게」.
 _COMMON_THINGS = r"양식|디자인|프로젝트|결과물|공유|설정|모델|관리자"
@@ -150,9 +150,9 @@ def page_link(path: str, *, lang: str = "ko") -> str:
 
 #: The pages the guide has, by name, for a question none of its sections answers.
 _PAGES = {
-    "ko": "사용자 지정 › 에이전트 · 스킬 · 커넥터 / 설정 › 메모리 · 테마 / 프로젝트 / 결과물",
+    "ko": "사용자 지정 › 에이전트 · 스킬 · 커넥터 / 설정 › 메모리 · 테마 / 프로젝트 / 아티팩트",
     "en": "Customize › Agents · Skills · Connectors / Settings › Memory · Themes / Projects "
-          "/ Results",
+          "/ Artifacts",
 }
 
 

@@ -142,7 +142,7 @@ export const CHAIN_SUMMARY: Record<ChainStep, string> = {
   material: '올린 자료를 읽습니다',
   question: '빠진 정보가 있으면 먼저 물어봅니다',
   compute: '날짜·수치를 미리 계산해 둡니다',
-  write: '결과물을 씁니다',
+  write: '아티팩트를 씁니다',
   check: '다 쓴 뒤 근거를 확인합니다',
   export: '파일로 내보냅니다',
 }
