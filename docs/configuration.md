@@ -41,7 +41,7 @@ authorizes raw, masked or strict-local egress.
 
 | Side | Settings | Why there |
 | --- | --- | --- |
-| Deployment | `JWT_SECRET`, `SECRET_KEY`, `LITELLM_MASTER_KEY`, `TOOLS_GATEWAY_KEY`, `KCI_API_KEY`, `CODE_INTERPRETER_API_KEY`, `SCRAPER_API_KEY`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_NAME` | Secrets and keys. Never in a screen a browser can read; the master key can be replaced in **System › 프록시** but is never shown. |
+| Deployment | `JWT_SECRET`, `SECRET_KEY`, `LITELLM_MASTER_KEY`, `TOOLS_GATEWAY_KEY`, `CODE_INTERPRETER_API_KEY`, `SCRAPER_API_KEY`, `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD`, `BOOTSTRAP_ADMIN_NAME` | Secrets and keys. Never in a screen a browser can read; the master key can be replaced in **System › 프록시** but is never shown. |
 | Deployment | `BACKEND_BASE_URL`, `LITELLM_BASE_URL`, `PRINT_BASE_URL`, `SEARXNG_URL`, `SCRAPER_URL`, `CODE_INTERPRETER_URL`, `DEEP_RESEARCH_URL`, `INDEX_URL`, `OCR_URL`, `WHISPER_URL`, `PERF_METRICS_URL`, `GUIDE_BASE_URL`, `APP_BASE_URL` | Addresses of services this stack talks to. The gateway, LiteLLM, tool and mail-link addresses can also be overridden in **System** (they move without a redeploy); the environment is their boot value. |
 | Deployment | `DATABASE_URL`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `API_REPLICAS`, `ENV`, `API_PREFIX` | Database and processes. |
 | Deployment | `CORS_ORIGINS`, `COOKIE_SECURE`, `COOKIE_DOMAIN`, `REFRESH_COOKIE_NAME`, `KCHAT_TRUSTED_PROXIES`, `KCHAT_WEB_PORT`, `KCHAT_API_URL` | Network, proxy and cookie security: they depend on how the host is exposed. |
