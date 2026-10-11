@@ -1,24 +1,4 @@
-"""광고·홍보 문구에서 근거가 필요한 표현(최상급·비교·보장·의약 효능·후기·긴급성)과 자료에 없는 숫자를 찾습니다.
-
-인자(JSON 하나):
-  {"items": [{"label": "A안 제목", "text": "..."}, ...],      # 또는 "text": "..." 하나
-   "material": "사용자가 준 자료 원문(선택)",                 # 또는 "material_file": "첨부 이름.txt"
-   "category": "general" | "food" | "health_food" | "cosmetics" | "medical_device"}
-찾는 것:
-  superlative   최고·최초·유일·1위·No.1·최저가·가장 ~ 처럼 객관적 근거가 있어야 하는 표현
-  comparison    타사·경쟁사·「~보다 저렴」·「대비 2배」 같은 비교 표현
-  guarantee     보장·무조건·100%·부작용 없음 같은 단정
-  medical       치료·예방·완치·면역력·혈당·체지방 감소 같은 질병·효능 표현(식품·화장품이면 금지에 가깝다)
-  testimonial   인용 후기·「실제 고객」·만족도 수치
-  urgency       오늘만·마감 임박·선착순·한정 수량
-  offer         무료 체험·상담 예약·데모·환불 보장·사은품처럼 자료에 없는 혜택·서비스
-  number        자료에 없는 숫자·금액·비율·날짜
-  placeholder   [제품명] 같은 빈칸(오류 아님, 채울 목록)
-  style         「단순한 ~가 아닙니다」·혁신적·게임 체인저·줄표(—)·느낌표 겹침 같은 상투 표현
-같은 표현이 자료에 있으면 grounded=true 로 표시하고 심각도를 낮춥니다(근거 출처는 여전히 밝혀야 함).
-심각도: block(근거·자료 없이 내보내면 안 됨) · check(사람이 확인) · info.
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""광고·홍보 문구에서 근거가 필요한 표현(최상급·비교·보장·의약 효능·후기·긴급성)과 자료에 없는 숫자를 찾습니다."""
 
 from __future__ import annotations
 
@@ -84,7 +64,7 @@ RULES: list[tuple[str, str, str, str]] = [
      "구체적인 사실(무엇을, 얼마나, 누구에게)로 바꾼다. 줄표는 마침표나 쉼표로."),
 ]
 
-#: Why and how to fix, once per kind in the summary.
+#: Why and how to fix, once per kind.
 GUIDE: dict[str, dict[str, str]] = {kind: {"why": why, "fix": fix} for kind, _, why, fix in RULES} | {
     "number": {"why": "자료에 없는 숫자다(check 는 값은 있으나 단위가 다름). 지어낸 수치는 기만 광고가 된다.",
                "fix": "자료의 수치로 바꾸거나 「[수치]」 빈칸으로 둔다."},
@@ -126,7 +106,7 @@ def numbers(text: str) -> list[dict]:
     return found
 
 
-#: Counting words: often a count of things the material lists (「연동 채널 4개」), so a person checks.
+#: Counting words: often a count the material lists (「연동 채널 4개」); person checks.
 _COUNT_UNITS = {"개", "가지", "단계", "종", "곳"}
 
 
@@ -182,7 +162,7 @@ def _in_placeholder(text: str, start: int, end: int) -> bool:
 
 
 def _found(text: str, material: str = "", category: str = "general") -> list[dict]:
-    """Every occurrence with its span: `kind`, `match`, `start`, `end`, `grounded`, `severity`."""
+    """Every occurrence with kind, match, span, grounded, severity."""
     if category not in CATEGORIES:
         raise ValueError(f"category 는 {', '.join(CATEGORIES)} 가운데 하나")
     squashed = _squash(material)
@@ -257,8 +237,6 @@ def _material(options: dict) -> str:
     return text
 
 
-# ── the server's check (stage: post) ─────────────────────────────────────
-
 #: Product words in the material that make disease wording a block.
 _CATEGORY_WORDS: tuple[tuple[str, re.Pattern], ...] = (
     ("health_food", re.compile(r"건강\s{0,2}기능\s{0,2}식품|프로바이오틱스|유산균|영양제|비타민|오메가\s{0,2}3|홍삼|콜라겐")),
@@ -267,8 +245,7 @@ _CATEGORY_WORDS: tuple[tuple[str, re.Pattern], ...] = (
     ("food", re.compile(r"식품|음료|카페|베이커리|빵|커피|원두|디저트|메뉴|음식|레스토랑|식당")),
 )
 
-#: What each kind becomes when the copy cannot keep it (`action`): a bracket blank, the word
-#: taken out, the sentence dropped, or a rewrite by the writer with the finding.
+#: Fix per kind (`action`): blank, word removed, sentence dropped, or writer rewrite.
 ACTIONS = {"number": "blank", "offer": "blank", "testimonial": "drop", "qualifier": "remove",
            "superlative": "rewrite", "comparison": "rewrite", "guarantee": "rewrite",
            "urgency": "rewrite", "medical": "rewrite", "claim": "rewrite"}
@@ -308,8 +285,7 @@ def _mentioned(line: str, start: int, end: int) -> bool:
                for m in _MENTION.finditer(line))
 
 
-#: A sentence about the copy rather than in it: what was left out, what to fill in, what not
-#: to write (「무료 체험이 있으면 CTA에 넣으세요」「「최고」는 쓰지 않았습니다」).
+#: A sentence about the copy, not in it (「「최고」는 쓰지 않았습니다」).
 _NOTE = re.compile(r"있으면|없으면|않았|않습니다|않고|쓰지|넣지|빼고|뺐|제외|대신|금지|불가|피했|바꾸지|확장하지|쓸 수 없")
 #: Endings and particles that say nothing about the product.
 _STOP = {"있습", "합니", "됩니", "입니", "습니", "하는", "있는", "니다", "에서", "으로", "하고", "해서", "하면", "에게"}
@@ -323,21 +299,16 @@ def _note(line: str, start: int) -> bool:
 
 
 def _stated(quote: str, squashed: str) -> bool:
-    """Every word of a judged quote is in the material (its two-letter stems, every number): the
-    judge misread, the material says it."""
+    """Every word of a judged quote is in the material: judge misread."""
     words = [w[:2] for w in re.findall(r"[가-힣]{2,}", quote) if w[:2] not in _STOP]
     numbers = re.findall(r"\d+", quote)
     return bool(words) and all(w in squashed for w in words) and all(n in squashed for n in numbers)
 
 
 def check(text: str, material: str, computed=None, options=None) -> list[dict]:
-    """Findings to act on, each `{"kind", "text", "line", "start", "end", "placeholder", "action", "why"}`.
-
-    Ungrounded numbers, offers, testimonials and qualifiers (fixed by code); ungrounded
-    superlatives, comparisons, guarantees, urgency, disease wording, and the statements the
-    judge (in `computed`) found no source for (rewritten by the writer, else fixed by code)."""
+    """Findings to act on: ungrounded kinds (code fix) and judge-flagged statements (rewrite)."""
     options = dict(options or {})
-    #: The kinds to act on (all by default); a plan's numbers and ranks are its own decisions.
+    #: Kinds to act on (default all); a plan's numbers and ranks are its own.
     kinds = set(options.get("kinds") or ACTIONS)
     category = str(options.get("category") or category_of(material))
     if category not in CATEGORIES:
@@ -389,7 +360,7 @@ def check(text: str, material: str, computed=None, options=None) -> list[dict]:
 
 def _fix_line(line: str, items: list[dict]) -> str | None:
     """The line with its findings fixed; None when nothing of it is left."""
-    # Table cells: each value blanked in place; a row whose text cells all went is dropped.
+    # Table cells blanked in place; a row with all text cells gone is dropped.
     if line.lstrip().startswith("|"):
         for f in sorted(items, key=lambda f: -f["start"]):
             line = line[: f["start"]] + _word(f) + line[f["end"]:]
@@ -411,7 +382,7 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
             kept.append(piece)
             continue
         if any(f["action"] in ("drop", "rewrite") for f in mine):
-            # The sentence goes; a line of one sentence (a list item, a headline) goes whole.
+            # Sentence dropped; a one-sentence line goes whole.
             if sentences == 1:
                 return None
             kept.append("")
@@ -432,8 +403,7 @@ def _word(f: dict) -> str:
 
 
 def fix(text: str, findings: list[dict]) -> str:
-    """`text` with each finding fixed by code: a bracket blank, the word taken out, or the
-    sentence dropped (a testimonial, a statement no source holds) when its line keeps others."""
+    """`text` with findings fixed by code: blank, word removed, or sentence dropped."""
     by_line: dict[int, list[dict]] = {}
     for f in findings or []:
         by_line.setdefault(int(f["line"]), []).append(f)

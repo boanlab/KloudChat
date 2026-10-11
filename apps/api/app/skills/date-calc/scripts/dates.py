@@ -1,23 +1,4 @@
-"""상대 날짜(다음 주 금요일·이번 달 말·2주 뒤)를 기준일로 풀고, 기간·영업일을 셉니다.
-
-인자(JSON 하나), "op" 로 고릅니다.
-  {"op": "resolve", "base_date": "2026-10-12", "base_kind": "meeting",
-   "expressions": [{"text": "다음 주 금요일", "source_line": "강의계획서 → 이교수, 다음 주 금요일까지"}]}
-  {"op": "scan", "text": "<회의 메모나 전사본 전체>", "base_date": "2026-10-12"}
-      줄마다 상대·절대 날짜를 찾아 풉니다. 「[메일 — 10/9(금) …]」 줄부터는 그 메일 발신일이 기준입니다.
-  {"op": "span", "periods": [{"label": "A사", "start": "2019-04", "end": "2021-01"},
-                             {"label": "B사", "start": "2022-04", "end": "현재"}], "as_of": "2026-10"}
-      시작·끝 달 포함 개월 수, 겹침을 뺀 합계, 공백 구간.
-  {"op": "add", "date": "2026-10-19", "weeks": 8, "deadline": "2026-12-18"}
-  {"op": "lead_times", "text": "<자료 전체>"}
-      「발주 2026. 10. 19.」와 「발주 후 8주」처럼 기준 날짜와 기간을 짝지어 날짜로 풀고,
-      자료가 밝힌 완료 기한 하나와 견줍니다. 회의일이 없어도 됩니다.
-  {"op": "business_days", "start": "2026-10-01", "end": "2026-10-31"}
-  {"op": "add_business_days", "date": "2026-09-23", "days": 5}
-결과는 줄마다 사람이 읽는 한 줄을 출력하고 마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-날짜가 주말·공휴일이면 표시만 하고 옮기지 않습니다. 뜻이 둘 이상인 표현은 "unresolved", 잡음으로
-끊긴 표현은 "unclear" 로 돌려주고 날짜를 짐작하지 않습니다.
-"""
+"""상대 날짜(다음 주 금요일·이번 달 말·2주 뒤)를 기준일로 풀고, 기간·영업일을 셉니다."""
 
 from __future__ import annotations
 
@@ -297,8 +278,7 @@ def _resolve_match(kind: str, m: re.Match[str], base: dt.date, *, count: int = 4
     raise ValueError(kind)
 
 
-#: An event a date is given for, and an offset counted from it: 「개강이 2027년 3월 2일」,
-#: 「3월 2일 개강」, 「개강 30일 전」, 「학기 개시 30일 전」.
+#: Event with a date and an offset from it: 「3월 2일 개강」, 「개강 30일 전」.
 _EVENT = r"[가-힣]{2,6}(?:\s[가-힣]{2,4})?"
 _EVENT_BEFORE = re.compile(rf"({_EVENT})\s{{0,2}}(?:일)?(?:이|가|은|는|:|=)?\s{{0,3}}$")
 _EVENT_AFTER = re.compile(rf"^\s{{0,2}}(?:\([월화수목금토일]\))?\s{{1,2}}({_EVENT})")
@@ -312,8 +292,7 @@ _NOT_EVENT = re.compile(r"^(?:부터|까지|에서|기준|기준일|으로|및|�
 
 
 def _event(words: str) -> str:
-    """「학기 개시」, 「1학기 개강이」, 「개강일은」 → 「개강」: the event's last word, without its
-    particle or 「일」, under its usual name."""
+    """「학기 개시」, 「개강일은」 → 「개강」: the event's normalized name."""
     def bare(word: str) -> str:
         word = re.sub(r"(?<=[가-힣]{2})(?:이|가|은|는)$", "", word)
         return re.sub(r"(?<=[가-힣]{2})일$", "", word)
@@ -351,10 +330,7 @@ def named_dates(text: str, base: dt.date) -> dict[str, dt.date]:
 def find(text: str, base: dt.date, *, absolute: bool = True,
          named: dict[str, dt.date] | None = None,
          anchors: set[str] | None = None) -> list[dict]:
-    """Every date expression in `text`, resolved against `base`, left to right.
-
-    An offset counts from the date said before it in its sentence (only a date in `anchors`,
-    when given), else from the event it names when `text` (or `named`) dates that event."""
+    """Date expressions resolved against `base`; offsets count from the sentence's date or named event."""
     taken: list[tuple[int, int]] = []
     found: list[dict] = []
     matches: dict[int, tuple[re.Match[str], int]] = {}
@@ -374,8 +350,7 @@ def find(text: str, base: dt.date, *, absolute: bool = True,
             found.append(row)
             matches[id(row)] = (m, end)
     found.sort(key=lambda r: r["at"])
-    # 「개강 2027-03-02, 30일 전부터 14일 전까지」: an offset said right after a date in the same
-    # sentence counts from that date, not from the meeting or today.
+    # An offset right after a date in the same sentence counts from that date.
     anchor: dict | None = None
     chained: tuple[int, dt.date, str] | None = None
     events = named if named is not None else None
@@ -448,10 +423,7 @@ def _line_base(line: str, base: dt.date | None) -> tuple[dt.date | None, str]:
 
 
 def scan(text: str, base: dt.date | None = None, *, absolute: bool = True) -> list[dict]:
-    """Date expressions line by line, each bound to its line and the base it was read from.
-
-    A meeting header sets the base; a mail header sets the base to its sent date from that
-    line on. Without any base, only full dates are read."""
+    """Date expressions per line; a meeting header sets the base, a mail header its sent date."""
     out: list[dict] = []
     current, kind = base, "meeting" if base else ""
     # Events the whole text dates (「개강은 3월 2일」 in the request, 「학기 개시 30일 전」 in a rule).
@@ -555,8 +527,7 @@ def _full_dates(line: str) -> list[dt.date]:
 
 
 def _lead_label(line: str, start: int, end: int) -> str:
-    """What a lead time is for: a table row's first cell, else the words before it (or
-    after it, 「계약일로부터 30일 이내 납품」)."""
+    """What a lead time is for: the row's first cell, else nearby words."""
     text = line.strip()
     if text.startswith("|"):
         cells = [c.strip() for c in text.strip("|").split("|")]
@@ -566,12 +537,7 @@ def _lead_label(line: str, start: int, end: int) -> str:
 
 
 def lead_times(text: str) -> dict:
-    """Lead times stated against an anchor date the text gives (「발주 2026. 10. 19.」 and
-    「발주 후 8주」) turned into dates, each checked against the one completion deadline
-    the text states (「설치·검수 완료 2026. 12. 18.까지」) when there is exactly one.
-
-    Needs no meeting date: the anchor is an absolute date. An anchor word given two dates
-    is left unresolved rather than guessed."""
+    """Lead times from a stated anchor date, checked against the single completion deadline."""
     lines = (text or "").splitlines()
     seen: dict[str, set[dt.date]] = {}
     for line in lines:
@@ -677,9 +643,7 @@ def _redate(written: str, old: dt.date, new: dt.date) -> str:
 
 
 def post(text: str, args: dict) -> dict:
-    """The answer's dates against the script: a date the person's relative words resolve to
-    (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a day or three, or
-    left as a blank, is set to the worked-out date with its weekday (code)."""
+    """Answer dates missing a worked-out relative date by days (or blank) set to it (code)."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     try:
         today = parse_day(str(args.get("today") or "")) if args.get("today") else dt.date.today()

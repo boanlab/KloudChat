@@ -1,25 +1,4 @@
-"""견적 항목(수량×단가, MM×월 단가)을 합쳐 공급가액(VAT 별도)·부가세·합계(VAT 포함)·예산 대비·시나리오를 원 단위로 계산합니다.
-
-인자(JSON 하나):
-  {"vat_basis": "excl",                      # 항목 단가의 기준: excl(부가세 별도) | incl(포함)
-   "items": [{"name": "PM", "mm": 1.0, "monthly_price": 9000000},
-             {"name": "GPU 임차", "qty": 3, "unit": "개월", "unit_price": 1200000},
-             {"name": "강사료", "qty": [4, 16], "unit": "회×시간", "unit_price": 200000},
-             {"name": "인증 수수료", "amount": 3300000, "note": "발주기관 부담"}],
-   "discount": {"rate": 10} | {"amount": 500000},
-   "vat": {"rate": 10, "rounding": "floor"},  # floor(원 미만 절사, 기본) | half_up | ceil; "vat": false 면 면세
-   "truncate_to": 1000,                       # 공급가액을 천 원 미만 절사(선택)
-   "budget": {"amount": 48000000, "vat_basis": "excl"},
-   "per_head": {"n": 120},
-   "annualize": {"months": 5} | {"years": 3},
-   "scenarios": [{"name": "6개월", "premise": "PM 6MM", "overrides": [{"name": "PM", "mm": 6}],
-                  "remove": ["인증 수수료"], "add": []}],
-   "quotes": [{"vendor": "A사", "amount": 45650000, "vat_basis": "incl"}]}
-규칙: 금액은 원 단위 정수. 부가세 = 공급가액 × 10%, 원 미만 절사. 포함가 → 공급가액은 원 단위 사사오입.
-1인당 금액은 원 단위 사사오입이고 부가세 별도·포함을 함께 냅니다. 예산은 같은 부가세 기준으로 바꿔
-비교하고, 예산의 기준이 없으면 두 기준을 모두 계산해 "ambiguous" 로 표시합니다.
-결과는 견적 표(마크다운)와 요약을 출력하고 마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""견적 항목(수량×단가, MM×월 단가)을 합쳐 공급가액(VAT 별도)·부가세·합계(VAT 포함)·예산 대비·시나리오를 원 단위로 계산합니다."""
 
 from __future__ import annotations
 

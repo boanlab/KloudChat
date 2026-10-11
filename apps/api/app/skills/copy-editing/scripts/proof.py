@@ -1,20 +1,4 @@
-"""한국어 글의 자주 틀리는 맞춤법·띄어쓰기·표준어를 규정 조항과 함께 찾고, 문장 끝 어투(합니다체·해요체·한다체·개조식)가 섞인 곳을 짚습니다.
-
-인자(JSON 하나):
-  {"text": "교정할 글",            # 또는 "items": [{"label": "...", "text": "..."}]
-   "apply": true,                 # 선택: 확실한(sure=true) 고침만 적용한 글을 corrected 로
-   "register": "hamnida"}         # 선택: 맞출 어투(hamnida·haeyo·handa). 없으면 본문에서 가장 많은 어투
-찾는 것(kind):
-  spelling   맞춤법(한글 맞춤법): 되요→돼요, 몇일→며칠, 할께→할게, 깨끗히→깨끗이, 갯수→개수 …
-  spacing    띄어쓰기(한글 맞춤법 제5장): 할수 있다→할 수 있다, 한것 같다→한 것 같다, 하지않다→하지 않다 …
-  standard   표준어(표준어 규정·표준국어대사전): 설겆이→설거지, 희안하다→희한하다, 삼가하다→삼가다 …
-  register   어투 섞임: 본문 어투와 다른 문장 끝(인용·제목·목록은 따로 셈)
-결과마다 basis(근거 조항)와 sure(규정상 하나로 정해져 바로 고쳐도 되는지)를 붙입니다.
-sure=false 는 뜻에 따라 맞을 수도 있어(예: 「바램」은 「바래다」의 명사형일 수 있음) 사람이 봅니다.
-규정 원문: 국립국어원 「한글 맞춤법」(문화체육관광부 고시 제2017-12호), 「표준어 규정」(제2017-13호),
-표준국어대사전(stdict.korean.go.kr). 이 목록은 자주 틀리는 것만 담은 것으로 모든 오류를 찾지는 않습니다.
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""한국어 글의 자주 틀리는 맞춤법·띄어쓰기·표준어를 규정 조항과 함께 찾고, 문장 끝 어투(합니다체·해요체·한다체·개조식)가 섞인 곳을 짚습니다."""
 
 from __future__ import annotations
 
@@ -70,7 +54,6 @@ def _after_final(jongs: tuple[int, ...]):
 L, N = 8, 4  # ㄹ, ㄴ finals (관형사형 -ㄹ/-ㄴ/-는)
 
 RULES: tuple[tuple[Rule, Callable[[str, int], bool] | None], ...] = (
-    # ── 맞춤법 ──
     (Rule("spelling", r"됬", "됐", B35), None),
     (Rule("spelling", r"되(?=요|서|야)", "돼", B35, why="「되어요·되어서·되어야」가 줄면 「돼요·돼서·돼야」."), None),
     (Rule("spelling", r"뵈(?=요)|뵜", lambda m: "봬" if m.group(0) == "뵈" else "뵀", B35), None),
@@ -91,7 +74,6 @@ RULES: tuple[tuple[Rule, Callable[[str, int], bool] | None], ...] = (
     (Rule("spelling", r"금새", "금세", DICT, sure=False, why="「금시에」가 준 말은 「금세」(「금새」는 물건값)."), None),
     (Rule("spelling", r"어떻해", "어떡해", DICT, sure=False, why="「어떻게 해」가 준 말은 「어떡해」. 「어떻게」를 쓰려던 것인지 본다."), None),
     (Rule("spelling", r"던지\s+말던지", "든지 말든지", DICT, why="고르는 뜻은 「-든지」, 지난 일은 「-던지」."), None),
-    # ── 띄어쓰기 ──
     (Rule("spacing", r"수(?=\s?(?:있|없|도\s|밖에))", " 수", B42), _after_final((L,))),
     (Rule("spacing", r"것(?=\s?(?:같|이다|입니다|이에요|은|을|이|도|만|처럼)|[.,]|$)", " 것", B42), _after_final((L, N))),
     (Rule("spacing", r"때(?=[\s,.]|에|는|도|마다|까지|부터|가|의|$)", " 때", B2, why="「때」는 명사."), _after_final((L,))),
@@ -104,7 +86,6 @@ RULES: tuple[tuple[Rule, Callable[[str, int], bool] | None], ...] = (
     (Rule("spacing", r"(?<=[가-힣]지)(?=않|못하)", " ", B47), None),
     (Rule("spacing", _NB + r"(한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)(개|명|가지|곳|권|마리|살|시간|달|주일)"
           r"(?=[\s,.]|씩|가|를|는|의|도|와|에|만|이|은|을|과|로|$)", r"\1 \2", B43), None),
-    # ── 표준어 ──
     (Rule("standard", r"설겆이", "설거지", S20), None),
     (Rule("standard", r"희안(?=하|한)", "희한", DICT), None),
     (Rule("standard", r"어의\s?없", "어이없", DICT), None),
@@ -188,8 +169,6 @@ def apply(text: str, findings: list[dict], only_sure: bool = True) -> str:
     return "\n".join(lines)
 
 
-# ── 어투 ────────────────────────────────────────────────────────────────
-
 REGISTERS = {"hamnida": "합니다체", "haeyo": "해요체", "handa": "한다체", "bullet": "개조식"}
 _BULLET = re.compile(r"^\s*(?:[-*•·▪◦○●□■※]|\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\))\s*")
 _HEADING = re.compile(r"^\s*(?:#{1,6}\s|제\s?\d+\s?[장절조항]|\[[^\]]+\]\s*$|[IVX]+\.)")
@@ -250,9 +229,6 @@ def register(text: str, target: str = "") -> dict:
                  "expected": REGISTERS[main if not r["bullet"] else bullet_main]} for r in off],
         "mixed": bool(off),
     }
-
-
-# ── CLI ──────────────────────────────────────────────────────────────────
 
 
 def _row(label: str, text: str, do_apply: bool, target: str) -> dict:

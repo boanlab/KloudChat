@@ -1,18 +1,4 @@
-"""광고·SNS 문구를 채널·필드별 글자 수 한도(네이버·카카오·메타·구글·유튜브·인스타그램·링크드인)로 재고, 피드에서 「더 보기」 전에 보이는 부분을 알려 줍니다.
-
-인자(JSON 하나):
-  {"items": [{"label": "1안 제목", "channel": "naver_powerlink", "field": "title", "text": "..."},
-             {"label": "직접", "text": "...", "limit": 40, "unit": "chars"}]}
-  {"list": true, "channel": "meta"(선택)}   채널·필드 한도표와 출처를 낸다
-세는 법(unit):
-  chars            공백 포함 글자 수. 줄바꿈 1자, 이모지(피부색·ZWJ 결합 포함) 한 덩이 1자
-  chars_dw         한글·한자·전각 문자 2자, 그 밖 1자(Google Ads 의 두 배 너비 문자 규칙)
-  chars_no_spaces  공백·줄바꿈 제외
-  bytes_utf8       UTF-8 바이트
-결과: count, limit, over(넘은 만큼), hard(넘으면 등록·노출이 안 됨) / 권장 한도면 hard=false 와 잘리는 부분,
-  피드 글은 visible(「더 보기」 전 보이는 앞부분)과 hashtags(해시태그 수·한도).
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""광고·SNS 문구를 채널·필드별 글자 수 한도(네이버·카카오·메타·구글·유튜브·인스타그램·링크드인)로 재고, 피드에서 「더 보기」 전에 보이는 부분을 알려 줍니다."""
 
 from __future__ import annotations
 
@@ -23,10 +9,8 @@ import unicodedata
 
 UNITS = ("chars", "chars_dw", "chars_no_spaces", "bytes_utf8")
 
-#: channel → field → rule. `limit` with `hard: true` is rejected or cut by the platform; with
-#: `hard: false` it is a recommendation (text shows truncated) and `max` is the hard ceiling.
-#: `visible`: shown before 「더 보기」. Values checked against the sources on 2026-10-08;
-#: 「2차」 marks a figure no official page states.
+#: channel → field → rule; `hard` = platform rejects/cuts, else advisory (`max` = ceiling).
+#: `visible`: shown before 「더 보기」. Checked 2026-10-08; 「2차」 = no official source.
 SPECS: dict[str, dict] = {
     "naver_powerlink": {
         "name": "네이버 파워링크",
@@ -267,8 +251,6 @@ def listing(channel: str | None) -> list[dict]:
     return rows
 
 
-# ── the server's check: which channel a request names, and its limits ────────
-
 #: Channel names in a request (bounded patterns), first match per channel.
 _CHANNEL_WORDS: tuple[tuple[str, re.Pattern], ...] = (
     ("naver_powerlink", re.compile(r"파워\s{0,2}링크|네이버\s{0,2}(?:검색\s{0,2})?광고")),
@@ -293,9 +275,7 @@ _STATED = re.compile(r"(?<!\d)(\d{1,4})\s{0,2}(?:자|글자)\s{0,2}(?:안으로|
 
 
 def targets(request: str) -> list[dict]:
-    """The limits a request names: each channel's short fields, and a stated 「N자 이내」.
-
-    Each row: `key` (`channel.field`), `name`, `field`, `word`, `limit`, `unit`, `hard`, `min`."""
+    """Limits a request names: each channel's short fields and any stated 「N자 이내」."""
     out: list[dict] = []
     text = request or ""
     for channel, pattern in _CHANNEL_WORDS:
@@ -347,8 +327,7 @@ def _cells(line: str) -> list[str]:
 
 
 def table_items(text: str, rows: list[dict]) -> list[dict]:
-    """Pieces of copy read off the answer's tables: each cell under a header that names one of
-    `rows`' fields, as `{"key", "text"}` (a hard limit wins when two fields share a header)."""
+    """Copy pieces from answer tables: cells under a header naming a field of `rows`."""
     if not rows:
         return []
     ranked = sorted(rows, key=lambda r: (not r.get("hard", True), r["key"] != "stated.item"))

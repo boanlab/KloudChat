@@ -1,25 +1,4 @@
-"""서비스·기능 종료 일정(공지 → 신규 중단 → 종료 → 데이터 삭제)의 순서와 간격을 재고, 사용자가 정한 최소 고지 기간과 안내문 속 날짜를 맞춰 봅니다.
-
-인자(JSON 하나):
-  {"dates": {"announce": "2026-10-15",      # 공지일
-             "stop_new": "2026-11-01",      # 신규 가입·구매 중단
-             "billing_stop": "2026-11-30",  # 자동 결제 중단(선택)
-             "end": "2026-12-31",           # 서비스(기능) 종료
-             "export_until": "2027-01-31",  # 데이터 내보내기 마감(선택)
-             "delete": "2027-03-31"},       # 데이터 삭제
-   "min_gaps": [{"from": "announce", "to": "end", "days": 90, "basis": "이용약관 제12조"}],
-   "telecom": "value_added" | "facilities" | null,   # 전기통신사업법상 부가통신·기간통신 사업자의 사업 휴업·폐업이면
-   "text": "<안내문 초안(선택)>",
-   "today": "2026-10-08"}
-점검:
-  순서      공지 ≤ 신규 중단 ≤ 자동 결제 중단 ≤ 종료 ≤ 데이터 삭제, 내보내기 마감 ≤ 삭제(block)
-  간격      두 날짜 사이 일수, 사용자가 준 최소 간격(min_gaps) 미달(block)
-  법정 기간 telecom 을 주면 전기통신사업법 제26조①(부가 30일)·제19조①(기간 60일) 이용자 고지 기간을
-            재고(미달 block), 과기정통부 신고 기한을 알려 준다. 해당 여부 자체는 법무 확인
-  빈 날짜   없는 날짜는 빈칸과 물을 말로 낸다
-  안내문    text 를 주면 일정의 날짜가 안내문에 모두 있는지, 안내문에 일정에 없는 날짜나 틀린 요일이 있는지(block)
-날짜를 옮기지 않습니다. 주말은 표시만 합니다. 마지막 줄에 요약 JSON. 파일은 만들지 않습니다.
-"""
+"""서비스·기능 종료 일정(공지 → 신규 중단 → 종료 → 데이터 삭제)의 순서와 간격을 재고, 사용자가 정한 최소 고지 기간과 안내문 속 날짜를 맞춰 봅니다."""
 
 from __future__ import annotations
 
@@ -131,7 +110,6 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
     for key, (label, placeholder, question) in EXTRA.items():
         if key not in parsed:
             questions.append({"fact": key, "label": label, "question": question, "placeholder": placeholder})
-    # order
     ordered = [(key, parsed[key]) for key, *_ in STEPS if key in parsed]
     for (a, day_a), (b, day_b) in zip(ordered, ordered[1:], strict=False):
         if day_b < day_a:
@@ -156,7 +134,6 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
                                  "종료와 함께 데이터가 지워지면 종료 뒤 내보낼 기간이 없습니다.",
                                  "종료 전 내보내기 방법과 마감을 안내하세요."))
     gaps = [{"from": a, "to": b, "days": (day_b - day_a).days} for (a, day_a), (b, day_b) in zip(ordered, ordered[1:], strict=False)]
-    # gaps the user set
     for gap in min_gaps or []:
         a, b, need = gap.get("from"), gap.get("to"), gap.get("days")
         if a not in parsed or b not in parsed or not isinstance(need, int):
@@ -165,8 +142,7 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
             continue
         have = (parsed[b] - parsed[a]).days
         if have < need:
-            # A decision for the person, not a date: a proposed date read as settled ends up
-            # in the notice (eol-2).
+            # A person's decision, not a date: a proposed date read as settled leaks into the notice (eol-2).
             findings.append(_finding("block", "gap", f"{_label(a)}→{_label(b)} {have}일 < {need}일",
                                      f"정한 최소 간격({gap.get('basis') or '사용자 기준'})보다 {need - have}일 짧습니다.",
                                      f"{_label(a)}을 앞당길지 {_label(b)}을 늦출지 정해 주세요. "
@@ -200,7 +176,6 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
         if day.weekday() >= 5:
             findings.append(_finding("info", "weekend", f"{_label(key)} {_show(day)}", "주말입니다.",
                                      "고객 문의 대응이 되는 날인지 확인하세요(날짜는 옮기지 않음)."))
-    # the draft
     if text:
         years = [d.year for d in parsed.values()]
         hint = max(set(years), key=years.count) if years else (today_day.year if today_day else None)
@@ -230,8 +205,6 @@ def check(dates: dict, min_gaps: list[dict] | None = None, telecom: str | None =
     return {"timeline": timeline, "gaps": gaps, "legal": legal, "findings": findings, "questions": questions,
             "counts": counts}
 
-
-# ── the server's post check on a chat answer (`post_check: timeline`) ────
 
 #: Which schedule step a line's date is, by the words around it (first match wins).
 _STEP_WORDS = (
@@ -313,9 +286,7 @@ def schedule(text: str, hint: int | None) -> dict[str, str]:
 
 
 def post(text: str, args: dict) -> dict:
-    """A date the material does not give becomes 「[날짜]」 with a question for the person
-    (code), a wrong weekday is corrected, and the schedule the notice states is checked for
-    order (listed)."""
+    """Unsourced date → 「[날짜]」 + question (code), weekday fixed, schedule order listed."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     material = "\n".join([str(args.get("material") or ""), str(args.get("request") or "")])
     computed = [str(c) for c in args.get("computed") or []]
@@ -323,8 +294,7 @@ def post(text: str, args: dict) -> dict:
     years = [d.year for d in _known_dates([material], today.year if today else None)]
     hint = max(set(years), key=years.count) if years else (today.year if today else None)
     known = _known_dates([material], hint) | _relative(material, today)
-    # A date only code worked out (a filing deadline) belongs where the law is discussed; as a
-    # schedule date it is a decision nobody made (eol-2: 「2027. 1. 1.(금): 종료 공지」).
+    # Code-computed date (filing deadline) belongs with the law, not the schedule (eol-2).
     worked = _known_dates(computed, hint) - known
     days = _month_days([material])
     if not known and not material.strip():

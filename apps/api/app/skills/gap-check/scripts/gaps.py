@@ -1,19 +1,4 @@
-"""문서를 쓰기 전에, 물어볼 질문 목록 중 요청·자료에 없거나 모호한 것을 찾아 물을 질문으로 냅니다.
-
-질문 목록은 데이터다: 템플릿(template.toml 의 [[questions]])과 에이전트(에이전트 양식의 「빠진 정보 질문」,
-기본 제공 에이전트는 agents/*.toml 의 [[questions]])가 들고 있고, 서버가 합쳐서 넘긴다.
-질문마다 detector 가 「자료가 이미 답했나」를 정한다:
-  {"type": "builtin", "name": "meeting_date"}  — 아래 DETECTORS 의 이름(서버 추출기 값을 믿는 것 포함)
-  {"type": "keyword", "words": ["참석"], "when": ["회의"]}  — 낱말 하나라도 있으면 답한 것(when: 요청에 있을 때만 묻기)
-  {"type": "regex", "pattern": "...", "when": "..."}  — 요청+자료에서 찾음(대소문자 무시, 줄 단위)
-  {"type": "judge"}  — 서버가 판단 모델에 물은 결과(computed["judged"][id])
-
-인자(JSON 하나):
-  {"op": "check", "questions": [...], "request": "<요청과 사용자 답>", "material": "<자료>",
-   "computed": {"meeting_date": "2026-10-14", "clients": [...], "judged": {"q1": true}, ...}}
-  {"op": "rule", "findings": [<check 결과>]}  → 「자료대로 진행」 때 작성자에게 줄 빈칸 규칙 한 줄
-찾은 것: {"kind": "gap", "fact", "label", "question", "why", "placeholder"} — 최대 4개. 표준 라이브러리만 쓴다.
-"""
+"""문서를 쓰기 전에, 물어볼 질문 목록 중 요청·자료에 없거나 모호한 것을 찾아 물을 질문으로 냅니다."""
 
 from __future__ import annotations
 
@@ -39,8 +24,6 @@ def _has(pattern: str) -> Callable[[str, str, dict], tuple[bool, str]]:
     return lambda request, material, computed: (bool(compiled.search(f"{request}\n{material}")), "")
 
 
-# ── minutes ──────────────────────────────────────────────────────────────
-
 _YEARLESS_MEETING_DAY = re.compile(r"(?<!\d)(\d{1,2})\s{0,2}(?:월\s{0,2}|/)(\d{1,2})\s{0,2}일?[^\n]{0,20}(?:회의|미팅|모임)")
 
 
@@ -60,8 +43,7 @@ def _meeting_date(request: str, material: str, computed: dict) -> tuple[bool, st
     return False, ""
 
 
-#: Who a memo names: 「포스터 → 지민」, 「… 하자 (회장)」, 「수아가 하기로」. The same reading as
-#: `doc_formats.named_people`, which writes them into the head's 참석자 field.
+#: Who a memo names (「포스터 → 지민」); same reading as `doc_formats.named_people`.
 _NAMED = (
     re.compile(r"(?:→|->|=>)\s{0,2}([가-힣]{2,4}|[가-힣]○○)(?=\s{0,2}(?:[,(]|$)|(?:이|가|님|씨)?\s{0,2}(?:담당|맡))", re.M),
     re.compile(r"\((회장|부회장|위원장|부위원장|팀장|총무|간사|대표|사회자?|의장)\)\s{0,2}$", re.M),
@@ -104,9 +86,6 @@ def _action_dues(request: str, material: str, computed: dict) -> tuple[bool, str
     return False, f"담당은 있는데 기한이 없는 실행 항목: {shown}. 회의에서 정했으면 알려 주세요."
 
 
-# ── proposals ────────────────────────────────────────────────────────────
-
-
 def _client(request: str, material: str, computed: dict) -> tuple[bool, str]:
     if "clients" in computed:
         return bool(computed["clients"]), ""
@@ -135,9 +114,6 @@ def _vat(request: str, material: str, computed: dict) -> tuple[bool, str]:
     return _has(r"VAT|부가세|부가가치세")(request, material, computed)
 
 
-# ── comparisons ──────────────────────────────────────────────────────────
-
-
 def _prices(request: str, material: str, computed: dict) -> tuple[bool, str]:
     text = f"{request}\n{material}"
     if not re.search(r"비용|가격|요금|총비용|최저|예산|저렴|싼", request):
@@ -157,9 +133,6 @@ def _musts(request: str, material: str, computed: dict) -> tuple[bool, str]:
     return False, ""
 
 
-# ── careers ──────────────────────────────────────────────────────────────
-
-
 def _career_periods(request: str, material: str, computed: dict) -> tuple[bool, str]:
     if "periods" in computed:
         return bool(computed["periods"]), ""
@@ -177,9 +150,6 @@ def _length_rule(request: str, material: str, computed: dict) -> tuple[bool, str
     if not re.search(r"자기\s{0,2}소개서|자소서|문항", text):
         return True, ""
     return bool(re.search(r"\d[\d,]*\s{0,2}(?:자|바이트|byte)|글자\s{0,2}수\s{0,2}(?:제한|없)", text, re.I)), ""
-
-
-# ── data analysis ────────────────────────────────────────────────────────
 
 
 def _deadline_basis(request: str, material: str, computed: dict) -> tuple[bool, str]:
@@ -219,8 +189,7 @@ def _company_role(request: str, material: str, computed: dict) -> tuple[bool, st
                 r"입사\s{0,2}(?:지원|하려)|\(주\)|㈜|주식회사")(request, material, computed)
 
 
-#: The built-in detectors a question may name (`{"type": "builtin", "name": …}`): each reads
-#: the request and material, and trusts what the server's extractors already read.
+#: Built-in detectors (`{"type": "builtin", "name": …}`); trust server extractor values.
 DETECTORS: dict[str, Callable[[str, str, dict], tuple[bool, str]]] = {
     "meeting_date": _meeting_date,
     "attendees": _attendees,
@@ -264,8 +233,7 @@ def _compiled(pattern: str) -> re.Pattern[str]:
 
 
 def present(question: dict, request: str, material: str, computed: dict) -> tuple[bool, str]:
-    """Whether the request and material answer the question, by its detector; the detail,
-    when given, replaces its `why`. A detector this script cannot run asks nothing."""
+    """Whether request/material answer the question (+ detail); an unknown detector asks nothing."""
     detector = question.get("detector") if isinstance(question.get("detector"), dict) else {}
     kind = str(detector.get("type") or "")
     text = f"{request}\n{material}"

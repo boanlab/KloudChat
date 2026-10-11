@@ -1,28 +1,4 @@
-"""글에서 상투어·군더더기(채움말·얼버무림·빈 강조어·유행어·AI 투·번역투·영어 상투어)를 찾아 위치·고칠 방향·밀도를 냅니다.
-
-인자(JSON 하나):
-  {"text": "고칠 글",                               # 또는 "items": [{"label": "...", "text": "..."}]
-   "material": "사용자가 준 자료 원문(선택)",        # 자료에 있는 표현은 in_material=true
-   "categories": ["filler", "hedge", ...],         # 선택: 이 분류만
-   "apply": true}                                  # 선택: 안전한 자동 고침(auto)만 적용한 글을 fixed 로
-분류(category):
-  filler          채움말: 「~라고 할 수 있습니다」「~하도록 하겠습니다」「다양한」「기본적으로」
-  hedge           얼버무림: 「~것 같습니다」「~로 보입니다」「어느 정도」「다소」
-  intensifier     빈 강조어·평가어: 「매우」「획기적인」「최고의」「효과적으로」「극대화」
-  buzzword        유행어·기업어: 「시너지」「패러다임」「니즈」「고도화」「한 단계 도약」
-  ai              AI 투: 「단순한 ~가 아닙니다」「~의 시대」「살펴보겠습니다」「결론적으로」, 줄표(—)
-  translationese  번역투: 「~에 있어서」「~를 통해」「~하는 데 있어」「되어지다」「~에 의해」
-  english         영어 상투어: leverage, seamless, cutting-edge, in order to …
-처리(action):
-  delete      지운다(문장이 그대로 선다)
-  replace     replace 에 적힌 말로 바꾼다(auto=true 면 코드가 바꿔도 뜻이 같다)
-  concretize  자료의 사실(무엇을·얼마나·누가)로 바꾼다. 자료에 없으면 placeholder(「[구체적 수치]」 등)를 둔다
-  rewrite     문장 틀을 풀어 사실만 남긴다
-  check       맥락에 따라 괜찮을 수 있어 사람이 본다
-밀도(density)는 어절 100개당 가중 건수, 등급은 낮음(3 이하)·보통(8 이하)·높음.
-따옴표 「」 『』 “” "" 안의 말은 인용이라 자동으로 고치지 않습니다(quoted=true).
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""글에서 상투어·군더더기(채움말·얼버무림·빈 강조어·유행어·AI 투·번역투·영어 상투어)를 찾아 위치·고칠 방향·밀도를 냅니다."""
 
 from __future__ import annotations
 
@@ -42,8 +18,6 @@ WEIGHTS = {"delete": 1.0, "replace": 1.0, "concretize": 1.5, "rewrite": 1.5, "ch
 _H = "가-힣"
 _NB = rf"(?<![{_H}A-Za-z])"  # not inside a word on the left
 
-
-# ── Hangul helpers ───────────────────────────────────────────────────────
 
 def _jong(ch: str) -> int:
     """Final consonant index of a Hangul syllable (0 = open), -1 for anything else."""
@@ -71,8 +45,6 @@ def _formal(stem: str) -> str | None:
         return stem[:-1] + _with_jong(last, 17) + "니다"
     return None
 
-
-# ── the phrase list ──────────────────────────────────────────────────────
 
 Replace = Callable[[re.Match], "str | None"] | str | None
 
@@ -118,7 +90,6 @@ PLAN_HEDGES = {
 PLAN_HEDGE = "|".join(f"(?:{p})" for p in PLAN_HEDGES.values())
 
 RULES: tuple[Rule, ...] = (
-    # ── 채움말 ──
     Rule("filler", rf"(?P<stem>[{_H}A-Za-z0-9]+?)(?P<kind>다고|(?:이)?라고)\s+(?:할|볼)\s+수\s+(?P<end>있습니다|있다)",
          "replace", "돌려 말하지 말고 바로 맺는다: 「~라고 할 수 있습니다」→「~입니다」.", replace=_said_plain),
     Rule("filler", rf"([{_H}]*)할\s+필요가\s+(있습니다|있다)", "replace",
@@ -143,7 +114,6 @@ RULES: tuple[Rule, ...] = (
          "[구체적 경험]"),
     Rule("filler", rf"{_NB}등등", "replace", "「등등」→「등」, 나머지를 알면 나열한다.", replace="등"),
     Rule("filler", rf"{_NB}우선적으로", "replace", "「우선적으로」→「먼저」.", replace="먼저"),
-    # ── 얼버무림 ──
     # A plan or a judgment the author hedged on purpose: kept, never made definite.
     Rule("hedge", PLAN_HEDGE, "check",
          "계획·판단을 나타내는 말이다. 그대로 두고, 확정된 일이나 단정문으로 바꾸지 않는다."),
@@ -156,7 +126,6 @@ RULES: tuple[Rule, ...] = (
          replace=lambda m: m.group(0).replace("됩니다", "합니다")),
     Rule("hedge", rf"{_NB}(?:어느\s+정도|다소|일정\s+부분|어떤\s+의미에서|아마도?|대체로|비교적)(?=[\s,])", "concretize",
          "얼마나인지 자료의 수치로 쓰거나 지운다. 자료에 없으면 「[정도]」.", "[정도]"),
-    # ── 빈 강조어·평가어 ──
     Rule("intensifier", rf"{_NB}(?:매우|정말(?:로)?|굉장히|대단히|너무나|진짜|엄청)\s+(?=[{_H}])", "delete",
          "강조 부사는 지운다. 정도가 중요하면 수치로 쓴다.", replace=""),
     Rule("intensifier", rf"{_NB}(?:상당히|상당한|크게|대폭|현저히|획기적으로|비약적으로|월등히)(?=[\s])", "concretize",
@@ -174,7 +143,6 @@ RULES: tuple[Rule, ...] = (
          "몇인지 자료의 수치로 쓴다. 자료에 없으면 「[구체적 수치]」.", "[구체적 수치]"),
     Rule("intensifier", rf"{_NB}(?:고품질|프리미엄|하이엔드|최고급)", "concretize",
          "무엇이 고품질인지(소재·공정·인증)를 자료로 쓴다. 없으면 「[근거]」.", "[근거]"),
-    # ── 유행어·기업어 ──
     Rule("buzzword", rf"{_NB}(?:시너지(?:\s*효과)?|패러다임(?:\s*전환|\s*시프트)?|게임\s*체인저|퀀텀\s*점프|레벨\s*업)",
          "concretize", "무엇이 어떻게 바뀌는지 사실로 쓴다. 없으면 「[구체적 변화]」.", "[구체적 변화]"),
     Rule("buzzword", rf"{_NB}(?:고객\s*)?니즈", "replace", "「니즈」→「요구」 또는 구체적으로 무엇을 원하는지.",
@@ -186,7 +154,6 @@ RULES: tuple[Rule, ...] = (
     Rule("buzzword", r"(?:가치|부가가치)\s*창출|역량\s*강화|경쟁력\s*(?:강화|제고)|고도화|선도(?:하는|적인|적으로)|디지털\s*전환|내재화",
          "concretize", "무엇을 어떻게 하는지 쓴다(「역량 강화」→「상담원 12명 대상 4주 교육」). 없으면 「[구체적 내용]」.",
          "[구체적 내용]"),
-    # ── AI 투 ──
     Rule("ai", rf"단순한\s+[{_H}A-Za-z ]{{1,20}}(?:이|가)\s+아닙니다|[{_H}]+(?:이|가)\s+아닌,\s*[{_H}]+",
          "rewrite", "부정→반전 틀을 풀고 무엇인지 바로 쓴다."),
     Rule("ai", rf"(?:오늘날|요즘처럼|현대\s+사회에서)?\s*(?:빠르게|급격히|끊임없이)\s+변화하는|급변하는|[{_H}]+의\s+시대(?:입니다|이다|에|를)",
@@ -204,7 +171,6 @@ RULES: tuple[Rule, ...] = (
          "광고 상투 표현 대신 독자가 할 일을 쓴다(「14일 무료로 써 보기」 — 자료에 있을 때)."),
     Rule("ai", r"—|―|!{2,}", "replace", "줄표·느낌표 겹침은 쉼표·마침표로.",
          replace=lambda m: "!" if m.group(0).startswith("!") else ", "),
-    # ── 번역투 ──
     Rule("translationese", rf"([{_H}]+)(?:함에|하는\s*데)\s+있어(?:서)?", "replace",
          "「~함에 있어서」「~하는 데 있어」→「~할 때」.", replace=r"\1할 때"),
     Rule("translationese", rf"[{_H}A-Za-z0-9]+(?:에|에게)\s+있어(?:서)?(?=[\s,])(?!\s*(?:못|안|좋|다행))", "check",
@@ -235,7 +201,6 @@ RULES: tuple[Rule, ...] = (
     Rule("translationese", r"에\s+다름\s+아니|임에\s+틀림없|에\s+다름없", "rewrite", "「~에 다름 아니다」→「바로 ~이다」 또는 「~이다」."),
     Rule("translationese", rf"[{_H}A-Za-z0-9]+에\s+대(?:한|해서?)(?=\s)", "check",
          "「~에 대한」이 이어지면 줄인다(「품질에 대한 점검」→「품질 점검」)."),
-    # ── 영어 상투어 ──
     Rule("english", r"\b(?:in today's (?:fast-paced|ever-changing|digital) world|at the end of the day|moving forward)\b,?\s*",
          "delete", "Stock opener; cut it and start with the fact.", replace="", flags=re.I),
     Rule("english", r"\bit(?:'s| is) (?:important|worth) (?:to note|noting) that\s+", "delete",
@@ -351,14 +316,8 @@ def density(text: str, findings: list[dict]) -> dict:
             "density": value, "grade": grade, "by_category": {c: n for c, n in counts.items() if n}}
 
 
-# ── the server's check (stage: post) ─────────────────────────────────────
-
-
 def check(text: str, material: str, computed=None, options=None) -> list[dict]:
-    """Findings `{"kind", "text", "line", "start", "end", "placeholder", ...}`.
-
-    Only the phrases code can fix without changing the meaning (`auto`), outside quotes and not
-    the material's own wording; the rest is the writer's job, listed by `scan`."""
+    """Auto-fixable findings outside quotes and not in the material; the rest is `scan`'s."""
     options = dict(options or {})
     found = scan(text, material or "", options.get("categories"))
     return [dict(f, placeholder=f["replace"]) for f in found if f["auto"] and not f["in_material"]]
@@ -380,8 +339,6 @@ def summary(findings: list[dict]) -> str:
     shown = ", ".join(dict.fromkeys(f"「{f['text'].strip()[:30]}」" for f in findings))
     return f"상투어 {len(findings)}개 고침 ({kinds}): {shown[:400]}"
 
-
-# ── the server's post check on a chat answer (`post_check: scan`) ───────
 
 EDITED_HEADINGS = ("고친 글", "다듬은 글", "수정본", "바꾼 글", "수정안", "개선안", "최종본", "고쳐 쓴 글",
                    "다시 쓴 글", "교정본")
@@ -410,8 +367,7 @@ def section(text: str, names: tuple[str, ...] = EDITED_HEADINGS) -> tuple[int, i
 
 
 def original_text(args: dict) -> str:
-    """The text the person gave: the attachment, a fenced block, or the request after its
-    first paragraph."""
+    """The text the person gave: attachment, fenced block, or request after its first paragraph."""
     attached = str(args.get("attached") or "")
     if attached.strip():
         return attached
@@ -435,9 +391,7 @@ def _digits(token: str) -> str:
 
 
 def post(text: str, args: dict) -> dict:
-    """The rewritten text: safe code rewrites only (`auto`); a hedge of the original made
-    definite and a number the original lacks go to the writer, then are listed (hedge) or
-    blanked (number) on the final pass."""
+    """Rewritten text: safe auto fixes only; hedges made definite and new numbers to the writer."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     lines = (text or "").split("\n")
     span = section(text)
@@ -472,9 +426,6 @@ def post(text: str, args: dict) -> dict:
     lines[lo:hi] = body.split("\n")
     out["text"] = "\n".join(lines)
     return out
-
-
-# ── CLI ──────────────────────────────────────────────────────────────────
 
 
 def _row(label: str, text: str, material: str, categories, do_apply: bool) -> dict:

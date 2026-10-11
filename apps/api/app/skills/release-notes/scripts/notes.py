@@ -1,24 +1,4 @@
-"""변경 목록·커밋 로그·이슈 목록을 항목으로 나누고, 릴리스 노트가 모든 항목을 담았거나 뺀 이유를 밝혔는지, 버전·날짜·호환성 주의가 맞는지 점검합니다.
-
-인자(JSON 하나), "op" 로 고릅니다.
-  {"op": "parse", "log": "<변경 목록·커밋 로그·이슈 목록 원문>"}
-      줄마다 항목 하나. id(#123, ABC-45, 커밋 해시, 없으면 L3), 종류 추정(feature·improvement·fix·
-      removal·internal), 호환성 깨짐 후보(breaking)를 붙여 돌려준다.
-  {"op": "check",
-   "items": [{"id": "#12", "text": "...", "breaking": true}] 또는 "log": "<원문>",
-   "entries": [{"section": "새 기능", "text": "<릴리스 노트의 한 항목>", "sources": ["#12"]}],
-   "omitted": [{"id": "#14", "reason": "내부 빌드 설정"}],
-   "version": "2.4.0", "previous_version": "2.3.1", "date": "2026-10-20",
-   "notes": "<완성한 릴리스 노트 전문(선택)>"}
-점검:
-  누락        입력 항목마다 entries 의 sources 에 있거나 omitted 에 이유와 함께 있어야 한다(block)
-  지어냄      sources 가 없는 항목, 없는 id 를 가리키는 항목, 원래 항목에 없는 숫자(3배·40%)(block)
-  호환성      breaking 항목은 빼면 안 되고 「주의」 절에 할 일과 함께 있어야 한다(block),
-              1.0 이후인데 주 버전이 오르지 않으면 확인(check)
-  버전·날짜   version 이 previous_version 보다 커야 하고, notes 속 버전·날짜가 주어진 값과 같아야 한다
-  말투        티켓 번호·커밋 해시·코드 식별자가 사용자용 문장에 남았는지(check)
-심각도: block · check · info. 마지막 줄에 요약 JSON. 파일은 만들지 않습니다.
-"""
+"""변경 목록·커밋 로그·이슈 목록을 항목으로 나누고, 릴리스 노트가 모든 항목을 담았거나 뺀 이유를 밝혔는지, 버전·날짜·호환성 주의가 맞는지 점검합니다."""
 
 from __future__ import annotations
 
@@ -58,9 +38,6 @@ _JARGON = re.compile(r"(?<![\w-])(#\d+|[A-Z][A-Z0-9]+-\d+)(?![\w-])|\b[0-9a-f]{7
                      r"|\b[a-z]+_[a-z_]+\b|\b[a-z]+[A-Z]\w+\b")
 
 
-# ── parse ───────────────────────────────────────────────────────────────
-
-
 def _kind(text: str) -> tuple[str, bool]:
     match = _CONVENTIONAL.match(text)
     breaking = bool(_BREAKING.search(text)) or bool(match and match.group(3))
@@ -97,9 +74,6 @@ def parse(log: str) -> list[dict]:
         items.append({"id": ident, "text": text, "kind": kind, "breaking": breaking,
                       "section": "주의" if breaking else _SECTION_FOR[kind], "line": number})
     return items
-
-
-# ── check ───────────────────────────────────────────────────────────────
 
 
 def _semver(value: str) -> tuple[int, ...] | None:
@@ -187,7 +161,6 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
                                              "「주의」 절로 옮기고 사용자가 할 일(또는 [할 일])을 적으세요. "
                                              "깨지지 않는 변경이면 items 에 \"breaking\": false 로 밝히세요.",
                                              id=ident, entry=index))
-    # version and date
     current = _semver(version) if version else None
     if version and current is None:
         findings.append(_finding("block", "version", version, "버전 형식을 읽지 못했습니다.", "2.4.0 같은 형식으로 쓰세요."))
@@ -236,8 +209,6 @@ def check(items: list[dict], entries: list[dict], omitted: list[dict] | None = N
     return {"findings": findings, "coverage": coverage, "counts": counts}
 
 
-# ── the server's post check on a chat answer (`post_check: notes`) ──────
-
 _DATE_ANY = re.compile(r"(?<!\d)(20\d{2})\s*(?:[.\-/]|년)\s*(\d{1,2})\s*(?:[.\-/]|월)\s*(\d{1,2})\s*(?:일|\.)?")
 _VALUE = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)*)\s?(%|배|x|×|초|분|시간|일|개월|년|개|건|명|MB|GB|KB|ms|원)(?![\w])", re.I)
 _TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9_-]{1,}|[가-힣]{2,}")
@@ -257,9 +228,7 @@ def _terms(text: str) -> set[str]:
 
 
 def post(text: str, args: dict) -> dict:
-    """Dates and versions the change list does not give become blanks (code); a number it
-    does not give goes to the writer, then 「[수치]」; a note item no input item supports
-    goes to the writer and is listed."""
+    """Unlisted dates/versions blanked (code); unlisted numbers and unsupported items to writer."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     material = str(args.get("material") or "")
     if not material.strip():

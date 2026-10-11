@@ -1,17 +1,4 @@
-"""콘텐츠 주제를 네 기준(고객 영향 40·제품 적합 30·검색 잠재력 20·제작 부담 10)으로 점수 매겨 순위를 내고, 검색형·공유형·실험 비율과 날짜를 맞춘 발행 일정을 짭니다.
-
-인자(JSON 하나):
-  {"topics": [{"title": "...", "pillar": "축 이름", "type": "searchable" | "shareable" | "experimental",
-               "scores": {"impact": 1-10, "fit": 1-10, "search": 1-10, "resources": 1-10},
-               "basis": {"impact": "근거(자료의 어디)", "search": "월 검색량 1,200(네이버 키워드도구 9월)"}}, ...],
-   "weights": {"impact": 40, "fit": 30, "search": 20, "resources": 10},   # 선택, 합 100
-   "mix": {"searchable": 60, "shareable": 30, "experimental": 10},          # 선택, 합 100
-   "calendar": {"start": "2026-10-12", "weeks": 8, "per_week": 2, "weekdays": ["화", "목"]}}  # 선택
-점수: 1~10. resources 는 높을수록 만들기 쉽다. 점수가 없는 기준은 빈칸으로 두고 합계에서 그 가중치를 뺀 뒤
-  다시 100으로 맞춘다(missing 에 적음). 근거(basis)가 없는 점수는 assumed 로 표시한다 — 검색량을 지어내지 말 것.
-일정: 순위대로, 비율(mix)에 맞춰 칸을 채운다. 날짜는 start 주의 weekdays 요일부터. 칸보다 주제가 적으면 빈칸으로 둔다.
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""콘텐츠 주제를 네 기준(고객 영향 40·제품 적합 30·검색 잠재력 20·제작 부담 10)으로 점수 매겨 순위를 내고, 검색형·공유형·실험 비율과 날짜를 맞춘 발행 일정을 짭니다."""
 
 from __future__ import annotations
 

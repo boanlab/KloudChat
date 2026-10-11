@@ -1,26 +1,4 @@
-"""PESTEL·5 Forces·시장 세분화 틀을 채운 JSON 을 검사해, 요인마다 근거 사실·출처가 있거나 「자료 없음」으로 밝혀졌는지 보고 표로 그립니다.
-
-인자(JSON 하나):
-  {"template": "pestel" | "five_forces" | "segments"}   # 빈 틀(JSON)과 규칙만 받기
-  또는
-  {"framework": "pestel", "subject": "국내 반려동물 사료 시장", "today": "2026-10-08", "max_age_years": 3,
-   "factors": {"정치": [{"claim": "수입 사료 검역 강화로 원료 조달 기간이 늘어난다",
-                         "evidence": "농림축산검역본부 2026-03 고시: 검역 기간 5일→10일",
-                         "source": "농림축산검역본부 고시 제2026-12호", "url": "https://...", "date": "2026-03-02",
-                         "impact": "위협"}],
-               "경제": [{"status": "자료 없음", "to_find": "통계청 KOSIS 반려동물 관련 지출 통계"}], ...}}
-  {"framework": "five_forces", "forces": {"기존 경쟁": {"rating": "높음", "items": [...]}, "공급자 교섭력": {...},
-   "구매자 교섭력": {...}, "대체재 위협": {...}, "신규 진입 위협": {...}}}
-  {"framework": "segments", "segments": [{"name": "...", "criteria": "...",
-   "size": {"value": 12000, "unit": "개사", "source": "...", "date": "..."} | {"status": "자료 없음", "to_find": "..."},
-   "needs": [item...], "pains": [item...], "alternatives": [item...], "fit": "...", "reach": "..."}]}
-
-항목(item) 규칙: claim(판단) + evidence(사실) + source(출처, 사용자 자료면 「사용자 자료」) + date,
-  또는 "assumption": true + "basis", 또는 {"status": "자료 없음", "to_find": "어디서 무엇을 확인할지"}.
-  근거 없는 일반론(「경쟁이 치열하다」「성장 가능성이 크다」)은 generic 으로 막습니다.
-5 Forces 의 강도(높음·중간·낮음)는 출처 있는 항목이 하나 이상일 때만 쓰고, 없으면 「판단 보류」.
-결과는 표(markdown)와 문제 목록을 출력하고 마지막 줄에 결과 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""PESTEL·5 Forces·시장 세분화 틀을 채운 JSON 을 검사해, 요인마다 근거 사실·출처가 있거나 「자료 없음」으로 밝혀졌는지 보고 표로 그립니다."""
 
 from __future__ import annotations
 

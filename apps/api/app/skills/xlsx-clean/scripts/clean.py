@@ -1,11 +1,4 @@
-"""어지러운 엑셀·CSV 시트를 분석용 표로 정리합니다.
-
-인자(JSON 하나): {"file": "입력.xlsx", "sheet": "시트 이름(생략 시 전부)", "header_row": 머리글 행 번호(1부터, 생략 시 자동),
-"dedupe": false, "drop_totals": true, "add_totals": false, "recalc": true, "output": "출력 파일 이름(생략 가능)"}
-
-결과: outputs/<이름>_정리.xlsx (정리한 시트 + 변경내역 시트). 마지막 줄에 요약 JSON을 출력합니다.
-sandbox 밖에서도 `python clean.py '{"file": "a.xlsx"}'` 로 돌릴 수 있습니다(openpyxl 필요).
-"""
+"""어지러운 엑셀·CSV 시트를 분석용 표로 정리합니다."""
 
 from __future__ import annotations
 
@@ -47,9 +40,6 @@ DATE_SHORT = re.compile(r"^(\d{2})[./-](\d{1,2})[./-](\d{1,2})$")
 DATE_HEADER = re.compile(r"날짜|일자|일시|date|기준일|작성일|거래일|등록일|발행일|납기", re.I)
 SKIP_TOTAL_HEADER = re.compile(r"번호|코드|연도|년도|^no\.?$|^id$|순번|우편", re.I)
 EXCEL_EPOCH = dt.datetime(1899, 12, 30)
-
-
-# ── values ──────────────────────────────────────────────────────────────
 
 
 def blank(value) -> bool:
@@ -152,9 +142,6 @@ def is_texty(value) -> bool:
     )
 
 
-# ── reading ─────────────────────────────────────────────────────────────
-
-
 def read_csv(path: Path) -> tuple[dict[str, list[list]], dict]:
     data = path.read_bytes()
     encoding = "utf-8"
@@ -211,9 +198,6 @@ def read_xlsx(path: Path, only: str | None) -> tuple[dict[str, list[list]], dict
 def sheet_title(name: str) -> str:
     cleaned = re.sub(r"[\[\]:*?/\\]", "_", name).strip() or "Sheet1"
     return cleaned[:31]
-
-
-# ── cleaning ────────────────────────────────────────────────────────────
 
 
 def trim(rows: list[list]) -> list[list]:
@@ -385,8 +369,7 @@ def clean_sheet(sheet: str, rows: list[list], options: dict, log: list) -> dict:
         body.append(list(row))
         origin.append(index + 1)
     info = convert_columns(names, body, log, sheet)
-    # Fully identical rows are only marked unless removal was asked for (`dedupe: true`): two
-    # records may share every value the sheet shows (the same amount on the same day).
+    # Identical rows only marked unless `dedupe`: two records may share every shown value.
     dedupe = bool(options.get("dedupe", False))
     suspected = 0
     seen: set = set()
@@ -422,9 +405,6 @@ def clean_sheet(sheet: str, rows: list[list], options: dict, log: list) -> dict:
         **({"unit_note": unit_note} if unit_note else {}),
         "_body": body,
     }
-
-
-# ── writing ─────────────────────────────────────────────────────────────
 
 
 def write_book(results: list[dict], log: list, path: Path, add_totals: bool) -> dict:
@@ -538,9 +518,6 @@ def check_totals(path: Path, totals: dict[str, dict]) -> dict:
                     {"sheet": sheet_name, "cell": ref, "value": got, "expected": want}
                 )
     return report
-
-
-# ── entry ───────────────────────────────────────────────────────────────
 
 
 def pick_input(name: str | None) -> Path:

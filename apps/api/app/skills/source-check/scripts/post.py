@@ -1,13 +1,4 @@
-"""시장·경쟁 조사 답을 서버가 마지막에 점검합니다: 출처 없는 숫자·근거 없는 일반론·자료에 없는 인용·비교표의 출처 없는 칸.
-
-서버의 `post_check`(app/skills/README.md)가 부르는 진입점이고, 같은 폴더의 sources·claims·frame 을 씁니다.
-인자(JSON 하나): {"text": "<답>", "material": "<요청·자료>", "today": "2026-10-08", "final": false,
-               "skills": ["competitor-analysis"]}
-- 출처 없는 숫자 → 줄 끝(표면 출처 칸)에 「출처 미확인」(코드)
-- 비교표·배틀카드의 출처 없는 칸 → 「(확인 필요)」, 근거 없는 판정 → 「판단 보류」(코드, 비교 스킬일 때)
-- 근거 없는 일반론(인용이 있어도)·자료에 없는 인용 → 고쳐 쓰기 1회, 그래도 남은 인용은 「출처 미확인」으로 바꿈
-결과: {"text", "fixed", "rewrite", "flags"}. 마지막 줄에 결과 JSON. 파일은 만들지 않습니다.
-"""
+"""시장·경쟁 조사 답을 서버가 마지막에 점검합니다: 출처 없는 숫자·근거 없는 일반론·자료에 없는 인용·비교표의 출처 없는 칸."""
 
 from __future__ import annotations
 
@@ -41,8 +32,7 @@ _HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s|\*\*[^*\n]{1,40}\*\*\s*:?\s*$)")
 
 
 def _skipped(text: str, line: int | None) -> bool:
-    """Whether a line is an equation or stands under a heading of things to check (or the
-    sensitivity table, whose ranges are the answer's own arithmetic)."""
+    """Whether a line is an equation, under a to-check heading, or in the sensitivity table."""
     if line is None:
         return False
     lines = text.split("\n")
@@ -52,8 +42,7 @@ def _skipped(text: str, line: int | None) -> bool:
     return bool(_CHECKLIST.search(heading))
 
 
-#: The analysis's own call on a row (「직접」「간접」), or a bullet that points at the table's
-#: evidence (「근거: 비교표 「가격」 행」): a judgement, not a fact to source.
+#: The analysis's own row call (「직접」) or a pointer to table evidence: judgement, not fact.
 _CATEGORY = re.compile(r"^(?:직접|간접|대체|잠재|미확정|해외|국내)(?:\s?[/·(]\s?\S{1,6}\)?)?$")
 _POINTER = re.compile(r"근거\s?[:：]\s?(?:비교표|표|위\s?표)")
 
@@ -96,8 +85,7 @@ def post(text: str, args: dict) -> dict:
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     material = str(args.get("material") or "")
     final = bool(args.get("final"))
-    # What code printed is a source; so is what the answer itself works out in a written
-    # equation (「SAM = TAM × 45% = 1,010.9억원」), and a list of things to check states nothing.
+    # Code output, the answer's own written equations and to-check lists are sources.
     worked = "\n".join(line for line in text.split("\n") if "=" in line)
     known = "\n".join([material, *[str(c) for c in args.get("computed") or []], worked,
                        # Rates worked out from the material's own amounts (「16.5% 늘었다」).
@@ -131,8 +119,7 @@ def post(text: str, args: dict) -> dict:
                 {**_row(f), "why": f"{f['why']} — 수치·사례와 출처로 바꾸거나 지우세요"})
         elif f["kind"] in ("undefined_ref", "stale", "ref_no_date"):
             out["flags"].append(_row(f))
-    # The server says whether a skill on the turn answers in comparison tables
-    # (`tables: true` in its SKILL.md).
+    # Server flag: a turn skill answers in comparison tables (`tables: true`).
     if args.get("tables"):
         cells = [f for f in claims.check(text, material, {})
                  if f["kind"] in ("unsourced_cell", "empty_cell", "verdict_without_evidence",

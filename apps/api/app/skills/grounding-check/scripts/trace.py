@@ -1,21 +1,4 @@
-"""문서의 수치·날짜·시각·이름·기관·직함·제품명이 자료나 계산값에 있는지 대조하고, 없는 값은 빈칸으로 바꿉니다.
-
-인자(JSON 하나):
-  {"op": "check", "text": "<문서>", "material": "<요청·자료·사용자 답>",
-   "computed": ["<코드가 계산한 값: 확정 수치 블록, run_code 출력, calculate 결과>"],
-   "options": {"today": "2026-10-08", "bare": false, "numbers": "all"}}
-  {"op": "fix", "text": "<문서>", "findings": [<check 결과>]}
-  {"op": "repair", ...check 와 같은 인자...}  → 고친 글과 찾은 것
-options: titles=true 는 직함, products=true 는 제품·도구 이름도 대조(경력 문서),
-  bare=true 는 단위 없는 숫자(분석 표의 칸)도 대조, numbers="computed" 는 숫자를
-  computed 와 요청에서만 찾음(데이터 파일의 원래 칸 값은 분석 결과가 아님). today 는 요청이
-  「오늘」이라고 했을 때만 근거가 된다.
-자료에 명단(성명 열, 학번 옆 이름)이 있으면 글의 표·목록에 나오는 이름은 그 명단에 있어야 하고,
-  명단의 학번 옆이면 그 학번의 이름이어야 한다(옵션 없이 늘 대조).
-찾은 것: {"kind", "text", "line", "start", "end", "placeholder"}; kind 는 number·date·month·time·
-person·org·title·product·claim(자료에 기술 목록으로만 있는 도구로 일했다는 문장, 문장째 뺌).
-결과는 사람이 읽을 요약 줄과 마지막 줄 JSON 으로 낸다. 표준 라이브러리만 쓴다.
-"""
+"""문서의 수치·날짜·시각·이름·기관·직함·제품명이 자료나 계산값에 있는지 대조하고, 없는 값은 빈칸으로 바꿉니다."""
 
 from __future__ import annotations
 
@@ -23,8 +6,6 @@ import datetime as dt
 import json
 import re
 import sys
-
-# ── numbers as Korean documents write them ────────────────────────────────
 
 #: 「1억 8천만」, 「3,000만」, 「5천」, 「1.2조」, or a bare number (same as the server's units._TERM).
 TERM = (
@@ -65,8 +46,7 @@ _UNIT = "|".join(re.escape(u) for u in UNIT_WORDS)
 _NOT_UNIT = ("(?<=주)[의요]|(?<=일)[부반]|(?<=분)[석야기]|(?<=초)[과기]|(?<=회)[의사]|(?<=대)[비상학]"
              "|(?<=점)검|(?<=부)서|(?<=장)[소비]|(?<=행)사|(?<=팀)장|(?<=종)류|(?<=배)송|(?<=개)[발선]"
              "|(?<=명)단|(?<=건)[의물]|(?<=원)[인장]")
-#: A number with an optional unit. Not inside an identifier (「REQ-03」, 「T0161」, 「A100」,
-#: 「p95」) nor glued to another number.
+#: A number with an optional unit; not inside an identifier (「REQ-03」, 「p95」) nor glued to a number.
 NUMBER = re.compile(
     rf"(?<![A-Za-z\d.,_/#-])(?P<sign>[+-]|−|▲|▼)?(?P<num>{TERM})"
     rf"\s?(?P<unit>{_UNIT})?(?![A-Za-z\d])(?!{_NOT_UNIT})"
@@ -88,7 +68,6 @@ MASKED = re.compile(
     r"|\d{2,4}-\d{3,4}-\d{4}"
 )
 
-# ── dates and times ───────────────────────────────────────────────────────
 
 _WD = "월화수목금토일"
 FULL_DAY = re.compile(
@@ -119,7 +98,6 @@ TIME = re.compile(
     r"|:(?P<mm>[0-5]\d)(?!\d))"
 )
 
-# ── names ─────────────────────────────────────────────────────────────────
 
 HONORIFIC = (
     r"교수(?:님)?|박사|팀장|파트장|과장|부장|차장|실장|본부장|센터장|처장|원장|학과장|대리|사원|주임|"
@@ -188,7 +166,6 @@ KIND_WORDS = {
     "org": "기관·회사", "title": "직함", "product": "제품·도구", "claim": "자료에 없는 경력 문장",
 }
 
-# ── what the sources hold ─────────────────────────────────────────────────
 
 _NATIVE = {"한": 1, "하나": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4, "다섯": 5,
            "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10}
@@ -213,9 +190,7 @@ def _decimals(raw: str) -> int:
 
 
 def near(value: float, known: float, places: int, known_places: int | None = None) -> bool:
-    """`value` as written to `places` decimals is `known` rounded the way people round. A
-    printed source (`known_places`) was itself rounded; a computed one (None) may be a step off
-    in the last place shown (3.6134 − 3.6496 written −0.036)."""
+    """`value` at `places` decimals is `known` rounded; a computed `known` may be one off in the last place."""
     value, known = abs(value), abs(known)
     if abs(value - known) <= 1e-9 * max(1.0, known):
         return True
@@ -229,10 +204,7 @@ def near(value: float, known: float, places: int, known_places: int | None = Non
 
 
 def arith(pool: list[tuple[float, str]], family: str) -> list[float]:
-    """What plain arithmetic of numbers written together gives, for a value in `family`: a
-    count or a length is a sum or a difference of its own kind (or a product with a plain
-    number: 「8시간 × 2일」); a percent is any share or change; an amount is a sum, a gap, a
-    price times a count, or a total over a count. Multiplying by 1 proves nothing."""
+    """Plain arithmetic of nearby numbers giving a `family` value: sums, gaps, shares, price × count."""
     pool = sorted({(abs(v), f) for v, f in pool if v and abs(v) != 1})[:60]
     out: set[float] = set()
     percent, money = family in ("%", "%p"), family in ("원", "달러")
@@ -267,8 +239,7 @@ _HEADER_UNIT = re.compile(
 _HEADER_WORD = {"인원": "명", "인력수": "명", "금액": "원", "단가": "원", "비용": "원", "예산": "원", "가격": "원",
                 "M/M": "MM"}
 _SCALE = {"천만원": 1e7, "백만원": 1e6, "억원": 1e8, "만원": 1e4, "천원": 1e3}
-#: 「…, 단위 만원)」, 「(단위: 천원)」: a unit the material states once for the bare figures of its
-#: line (or, alone on a line, of the table or list under it).
+#: 「(단위: 천원)」: unit for the line's bare figures (alone on a line: the block below).
 _LINE_UNIT = re.compile(r"단위\s{0,2}[:：]?\s{0,2}(?P<u>천만\s?원|백만\s?원|억\s?원|만\s?원|천\s?원|원|명|건|개)(?![가-힣])")
 
 
@@ -293,8 +264,7 @@ def line_units(lines: list[str]) -> dict[int, tuple[str, float]]:
 
 
 def column_units(lines: list[str]) -> dict[int, list[tuple[str, float]]]:
-    """For each table row, the unit (family, scale) its header gives each column: a bare 「3.0」
-    under 「투입(MM)」 is MM, not people; 「4,850」 under 「(만 원)」 is 48,500,000."""
+    """Per table row, each column's unit from its header (「(만 원)」, 「투입(MM)」)."""
     out: dict[int, list[tuple[str, float]]] = {}
     header: list[tuple[str, float]] | None = None
     for k, line in enumerate(lines):
@@ -353,8 +323,7 @@ _CONSTANT = {"개월": {12, 24, 36}, "주": {52}, "일": {7, 365}, "시간": {24
 
 
 class Sources:
-    """What the output may say: the request, the material, the person's answers and what code
-    worked out, read once."""
+    """What the output may say: request, material, answers and code results, read once."""
 
     def __init__(self, material: str, computed: list[str] | str | None = None, *,
                  today: dt.date | None = None, numbers: str = "all") -> None:
@@ -426,32 +395,25 @@ class Sources:
         self.derived = _table_columns(number_text)
         figures = sorted({abs(v) for v in pool if abs(v) >= 10})
         if numbers == "all" and len(figures) <= 25:
-            # A short material: the sums, gaps and percent changes of its own figures are its
-            # too (a long one would excuse almost any number this way).
+            # Short material only: its own figures' sums, gaps and changes count too.
             self.derived += [x for i, a in enumerate(figures) for b in figures[i + 1:]
                              for x in (a + b, b - a, (b - a) / a * 100, a / b * 100, b / a)]
         if numbers == "all":
             # A price or a distance times a count: 「20만 원 × 2팀」, 「15,000km × 5대」.
             counts = sorted({abs(v) for v in pool if 1 < abs(v) < 100 and v == int(v)})
             self.derived += [a * c for a in figures for c in counts if a >= 1000]
-        #: An attached data file's rows, each as (the cells that name it, its values): a value
-        #: counts from a row only on a line that also names that row (「행 9 · 32201533 · 22시간」),
-        #: so a mean cannot pass as a cell it happens to equal. And a rate the person gave times
-        #: a computed value (「12시간 × 11,000원」) is the tool's result priced, not new arithmetic.
-        #: Both only where numbers must come from the tools; otherwise the rows are material.
+        #: Data rows (naming cells, values): a value counts only on a line naming its row; rate ×
+        #: computed value is priced tool output. Tools-only numbers mode; else rows are material.
         self.rows: list[tuple[list[tuple[str, ...]], set[float]]] = []
         self.priced: set[float] = set()
-        #: Unit prices the person states (「시간당 11,000원」): a grounded quantity times one is
-        #: arithmetic on what they gave.
+        #: Person-stated unit prices (「시간당 11,000원」): grounded quantity × price is grounded.
         self.rates = sorted({abs(v) for v in self._person_values(material)
                              if abs(v) >= 100})[:12] if _RATE.search(material or "") else []
         if numbers != "all":
             self.rows = _row_keys(_data_rows(material))
             rates = {abs(v) for v in self._person_values(material) if abs(v) >= 100}
             self.priced = {round(r * abs(x), 6) for r in rates for x in pool if x}
-        #: The people an attached roster names (a payroll sheet's 성명 column), and each row ID's
-        #: (학번 「32221045」) names: a name the answer puts in a table or a list must be one of
-        #: them, and beside that ID, that ID's.
+        #: Roster names and each row ID's names: listed names must be in it and match their ID.
         self.roster, self.id_names = _roster(material)
         self.skill_only: set[str] = set()
         lines = text.splitlines()
@@ -483,8 +445,7 @@ class Sources:
                 self.year_months.add((year, month))
 
     def match(self, value: float, unit: str, places: int) -> float | None:
-        """The source value `value` was written from (more precise than the text may be), or
-        None when no source holds it."""
+        """The source value `value` was written from, or None."""
         family = _family(unit)
         if family in _CONSTANT and value in _CONSTANT[family]:
             return value
@@ -505,8 +466,7 @@ class Sources:
         return None
 
     def counted(self, year: int | None, month: int, day: int) -> bool:
-        """Whether the day is one the sources date moved by an offset they state: 「개강 3월 2일」
-        and 「30일 전」 give 2027년 1월 31일. Only offsets the sources name count."""
+        """Whether the day is a source date moved by a source-stated offset (「3월 2일」 + 「30일 전」)."""
         if not self.offsets or (year, month, day) in self.days or (None, month, day) in self.days:
             return False
         years = {year} if year else (self.years | {self.today.year, self.today.year + 1}
@@ -528,8 +488,7 @@ class Sources:
         return False
 
     def as_written(self, raw: str, unit: str) -> float | None:
-        """The leading figure of 「20,000천원」 when the sources state amounts in 천원 (or 만원,
-        억원) — a cell copied with its header's unit — else None."""
+        """Leading figure of 「20,000천원」 when sources state amounts in 천원 (만원, 억원), else None."""
         m = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s?(천|만|억)\s*", raw)
         if not m or _family(unit) not in ("원", "") or not re.search(
                 rf"\(\s{{0,2}}(?:단위\s{{0,2}}[:：]?\s{{0,2}})?{m.group(2)}\s?원\s{{0,2}}\)"
@@ -552,9 +511,7 @@ _THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
 
 
 def _data_row(line: str) -> bool:
-    """Whether a line is an attached data file's raw row (CSV, a tab-separated sheet row, a
-    markdown table row) rather than something the person said. Prose commas (「주시고, 」) and
-    thousands separators do not make a row."""
+    """Whether a line is a raw data-file row (CSV, TSV, markdown table), not prose."""
     stripped = line.strip()
     if stripped.startswith("|") or line.count("\t") >= 2:
         return True
@@ -562,8 +519,7 @@ def _data_row(line: str) -> bool:
 
 
 def _said_by_person(material: str) -> str:
-    """The request and the person's answers without an attached data file's raw rows (their
-    cells are data, not results)."""
+    """Request and answers without raw data-file rows (cells are data, not results)."""
     return "\n".join(line for line in (material or "").splitlines() if not _data_row(line))
 
 
@@ -571,14 +527,12 @@ def _data_rows(material: str) -> str:
     return "\n".join(line for line in (material or "").splitlines() if _data_row(line))
 
 
-#: A cell that can name its row: an ID with letters and digits (「T0224」), a long number
-#: (학번 「32201533」), a date, a year, or a word.
+#: A cell that can name its row: alnum ID (「T0224」), long number (학번), date, year or word.
 _KEY_CELL = re.compile(r"(?=.*[A-Za-z가-힣])[\w.-]{2,40}|\d{5,15}|(?:19|20)\d{2}(?:[-./]\d{1,2}){0,2}")
 
 
 def _row_keys(rows: str) -> list[tuple[list[tuple[str, ...]], set[float]]]:
-    """Each data row's naming cells and values. A cell names a row when at most two rows hold
-    it; a common one (「공과대학」, 「Y」) names a row only with a second naming cell beside it."""
+    """Each data row's naming cells and values; a common cell names a row only with a second one."""
     table: list[list[str]] = []
     for line in rows.splitlines():
         if not re.sub(r"[\s:|-]", "", line):
@@ -604,8 +558,6 @@ def _row_keys(rows: str) -> list[tuple[list[tuple[str, ...]], set[float]]]:
             out.append(([(a, b) for i, a in enumerate(keys) for b in keys[i + 1:]], values))
     return out
 
-
-# ── people in a roster ────────────────────────────────────────────────────
 
 #: Korean surnames, the first syllable of a bare name in a table cell or a list item.
 SURNAMES = frozenset(
@@ -645,8 +597,7 @@ def _person(cell: str) -> str:
 
 
 def _roster(material: str) -> tuple[set[str], dict[str, set[str]]]:
-    """The names an attached table lists — its name column's, or beside a row ID — and the
-    names each ID's rows give. Empty unless at least two people are listed."""
+    """Names an attached table lists, and each ID's names; empty unless 2+ people."""
     names: set[str] = set()
     by_id: dict[str, set[str]] = {}
     column = -1
@@ -681,9 +632,7 @@ _LISTED = re.compile(
 
 def _listed_people(lines: list[str], skip: set[int], sources: Sources,
                    found: list[dict]) -> list[dict]:
-    """Names in the answer's tables and lists that the attached roster does not hold, or that
-    sit beside an ID the roster gives to someone else. Only when the material lists people;
-    a name the person typed is in the material too."""
+    """Listed names missing from the roster or beside another person's ID."""
     if not sources.roster:
         return []
     out: list[dict] = []
@@ -707,8 +656,7 @@ def _listed_people(lines: list[str], skip: set[int], sources: Sources,
         if k in skip or not stripped.startswith("|"):
             start = -1
             m = _LISTED.match(line) if k not in skip else None
-            # A list item's lead word is a name only at three syllables or as the roster's
-            # own (「정리:」, 「이상 행」 are not people).
+            # A list item's lead word is a name only at 3 syllables or if in the roster.
             if m and _person(m.group("name")) and (
                     len(m.group("name")) == 3 or m.group("name") in sources.roster) and (
                     ROW_ID.search(line) or re.search(r"학번|사번|부서|소속", line)):
@@ -739,17 +687,13 @@ def _listed_people(lines: list[str], skip: set[int], sources: Sources,
     return out
 
 
-# ── finding ───────────────────────────────────────────────────────────────
-
-
 def _masked(line: str) -> str:
     line = LIST_MARKER.sub(lambda m: " " * len(m.group(0)), line)
     return MASKED.sub(lambda m: " " * len(m.group(0)), line)
 
 
 def _number_matches(masked: str) -> list[tuple[re.Match, float, str, bool]]:
-    """`(match, value, unit, checked)` for each number: `checked` unless it is order, a length,
-    a year, or a bare number (bare ones are checked only with `bare`, see `check`)."""
+    """`(match, value, unit, checked)` per number; order, lengths, years, bare (unless `bare`) unchecked."""
     out = []
     for m in NUMBER.finditer(masked):
         unit = m.group("unit") or ""
@@ -792,8 +736,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
     bare = bool(options.get("bare"))
     lines = (text or "").split("\n")
     skip: set[int] = set()
-    # Code and diagrams are skipped; a 「```callout」 box is prose and is read, and so are a
-    # 「```kpi」 block's 「값 | 이름」 rows.
+    # Code and diagrams skipped; 「```callout」 prose and 「```kpi」 rows are read.
     fenced, prose = False, False
     for k, line in enumerate(lines):
         stripped = line.strip()
@@ -822,9 +765,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
             if any(s < m.end() and m.start() < e for s, e in taken):
                 continue
             places = _decimals(m.group("num"))
-            # The figure as written, before a column's 「(천원)」 or its own 「천」 scales it: a
-            # sheet cell copied under the sheet's own header (「42,000」 under 「예산(천원)」,
-            # 「20,000천원」 for the cell 20000) is the cell.
+            # Figure as written, before column/own 「천」 scaling: a copied sheet cell is the cell.
             written = sources.as_written(m.group("num"), unit)
             if not unit and k in heads and 0 <= (col := _column_of(line, m.start())) < len(heads[k]):
                 head_unit, scale = heads[k][col]
@@ -841,12 +782,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                             "known": known})
             numbers[-1]["ok"] = numbers[-1]["known"] is not None or sources.quoted(
                 ko_number(m.group("num")), line) or (written is not None and sources.quoted(written, line))
-    # Plain arithmetic of grounded numbers written together (a line, a table) is grounded too,
-    # and so are sums, differences and shares of the big figures anywhere (a total and its
-    # change); a value already grounded elsewhere in the text may be repeated. A difference
-    # of two totals needs a second round.
-    # A share the material states (「등록금의 3분의 2」, 「수업료의 50퍼센트」) applied to a grounded
-    # amount is arithmetic on the material's own figures too.
+    # Arithmetic of grounded numbers (line, table, big figures, material shares) is grounded;
+    # a difference of two totals needs a second round.
     shares = _shares("\n".join([material or "", *([computed] if isinstance(computed, str)
                                                      else list(computed or []))]))
     for _ in range(3):
@@ -876,8 +813,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                     for x in ((a + b, b - a) if family not in ("%", "%p")
                               else (a / b * 100, (b - a) / a * 100, (b - a) / b * 100))]
             pool = pools[key]
-            # A figure of the line with or without a figure of its kind anywhere in the text: 「최하늘
-            # 22시간을 제외하면 49.5시간」 is the table's 71.5시간 less the line's 22시간.
+            # A line figure ± a same-kind figure anywhere (「22시간을 제외하면 49.5시간」).
             mine = [abs(a["value"]) for a in accepted if a["line"] == n["line"]
                     and (_family(a["unit"]) == family or not a["unit"])]
             kin = {abs(a["value"]) for a in accepted if family and _family(a["unit"]) == family}
@@ -926,8 +862,7 @@ def _shares(text: str) -> list[float]:
 
 
 def _finding(kind: str, line: str, k: int, start: int, end: int) -> dict:
-    # Spaces a pattern took at the end, or a masked span's blank (a 「[…]」 after a date), are
-    # not part of the value.
+    # Trailing spaces or a masked blank are not part of the value.
     masked = _masked(line)
     while end > start and masked[end - 1].isspace():
         end -= 1
@@ -936,8 +871,7 @@ def _finding(kind: str, line: str, k: int, start: int, end: int) -> dict:
 
 
 def person_days(text: str) -> dict[tuple[int | None, int, int], str]:
-    """The days the person wrote (their request and files, not the search pages), each with
-    how they wrote it: 「2026. 11. 6.(금)」."""
+    """Days the person wrote (request and files, not search pages), each as written."""
     out: dict[tuple[int | None, int, int], str] = {}
     for pattern in (FULL_DAY, MONTH_DAY, SHORT_DAY):
         for m in pattern.finditer(text or ""):
@@ -953,10 +887,7 @@ _BROKEN_TIME = re.compile(r"(?<![\d:])\d{1,2}\s{0,2}시\s{0,2}\d{3,}\s{0,2}분")
 
 
 def _a_misread_day(y: int | None, mo: int, d: int, own: dict, near_deadline: bool) -> str | None:
-    """None when the day is the person's or in no month they dated; else what replaces it:
-    the person's one day of that month for a deadline (「11월 18일까지」 where they wrote
-    「11. 6.(금) 18:00까지」), or the blank. A search page that happens to hold the other day
-    does not excuse it — a day beside the person's own, in their month, is a copy gone wrong."""
+    """None for the person's own day (or undated month); else their one day that month, or a blank."""
     if (y, mo, d) in own or (None, mo, d) in own:
         return None
     same = {key: text for key, text in own.items()
@@ -1081,8 +1012,7 @@ def _other_values(line: str, masked: str, sources: Sources, k: int, found: list[
 
 
 def _titled(masked: str, m: re.Match) -> bool:
-    """A title held by someone: 「파트장(팀원 4명)」, 「대리로 승진」, 「박준영 대리」 — not
-    「팀장님께 보고」 in a request-shaped sentence."""
+    """A title held by someone (「박준영 대리」), not 「팀장님께 보고」 in a request."""
     after = masked[m.end():m.end() + 8]
     return bool(re.match(r"\s{0,2}(?:\(|로\s|으로\s|직|직책|직급|을\s맡|를\s맡|역할|승진)", after))
 
@@ -1104,9 +1034,6 @@ def _claims(lines: list[str], skip: set[int], sources: Sources) -> list[dict]:
     return out
 
 
-# ── repairing ─────────────────────────────────────────────────────────────
-
-
 def _blank_cell(cell: str, items: list[dict], offset: int) -> str:
     """A cell holding the stray value and little else becomes the blank alone."""
     rest = cell
@@ -1126,8 +1053,7 @@ _CHAIN = re.compile(rf"{_TERM_OR_BLANK}(?:\s{{0,2}}[÷×*+=−]\s{{0,2}}{_TERM_O
 
 
 def _collapse_chain(part: str) -> str:
-    """A calculation holding a blank becomes one blank: its other terms and its result were
-    worked from the value that is gone."""
+    """A calculation holding a blank becomes one blank."""
     def one(m: re.Match) -> str:
         chain = m.group(0)
         if "[수치]" not in chain or ("=" not in chain and len(re.findall(r"[÷×*+−]", chain)) < 2):
@@ -1173,8 +1099,7 @@ def _fix_line(line: str, items: list[dict]) -> str | None:
 
 
 def fix(text: str, findings: list[dict]) -> str:
-    """`text` with every finding blanked, or its sentence dropped (a claim, or a sentence of
-    invented values only)."""
+    """`text` with findings blanked, or sentences dropped (claims, invented-only sentences)."""
     by_line: dict[int, list[dict]] = {}
     for f in findings or []:
         by_line.setdefault(int(f["line"]), []).append(f)

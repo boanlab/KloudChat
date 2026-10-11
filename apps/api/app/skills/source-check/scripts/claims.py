@@ -1,18 +1,4 @@
-"""경쟁사 비교표·배틀카드의 칸마다 출처가 있는지, 아니면 「확인 필요」「자료 없음」으로 표시됐는지 보고, 근거 없는 우위 판정과 막연한 평가어를 찾습니다.
-
-인자(JSON 하나):
-  {"text": "<마크다운: 표와 목록>",
-   "material": "<사용자 자료 그대로>",          # 이 안에 그대로 있는 칸 내용·숫자는 자료 출처로 봅니다
-   "label_columns": 1,                        # 왼쪽에서 몇 열이 항목 이름인지(검사하지 않음)
-   "sections": "강점|약점|이기는|지는|우위|열위|가격|기능|반론|대응|차별",  # 이 제목 아래 글머리표도 검사
-   "fix": true}                               # 출처 없는 칸 → 「확인 필요」, 빈칸 → 「자료 없음」, 근거 없는 판정 → 「판단 보류」
-
-칸의 출처로 보는 것: [n] 인용, URL, 「출처:」, 「(자사 자료)」「(제공 자료)」, 같은 행의 출처·근거 열, 자료에 그대로 있는 내용.
-표시로 보는 것: 「확인 필요」「출처 미확인」「자료 없음」「가정」「판단 보류」.
-finding 의 kind: unsourced_cell · empty_cell · vague_cell(「우수」「강력」처럼 사실 없는 평가) ·
-verdict_without_evidence(한쪽이라도 확인 필요인데 우위를 판정) · unsourced_bullet.
-결과는 목록을 출력하고 마지막 줄에 결과 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""경쟁사 비교표·배틀카드의 칸마다 출처가 있는지, 아니면 「확인 필요」「자료 없음」으로 표시됐는지 보고, 근거 없는 우위 판정과 막연한 평가어를 찾습니다."""
 
 from __future__ import annotations
 
@@ -223,7 +209,6 @@ def fix(text: str, findings: list[dict]) -> str:
         lead = line[: len(line) - len(line.lstrip())]
         cells = _cells(line)
         for f in items:
-            # Locate the cell by its text and column name within this row.
             for col, cell in enumerate(cells):
                 if cell != f["text"]:
                     continue

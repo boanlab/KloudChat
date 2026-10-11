@@ -1,9 +1,4 @@
-"""답이 자료로 다 답하지 못했다고 말하면, 담당 부서·연락처를 적힌 그대로 덧붙입니다.
-
-인자(JSON 하나): {"text": "<답>", "options": {"surface": "chat", "contact": "<담당 부서·연락처>"}}
-연락처가 없으면 「담당 부서에 문의해 주세요.」를 붙인다. 대화 답에만 돈다.
-결과는 요약 줄과 마지막 줄 JSON 으로 낸다. 표준 라이브러리만 쓴다.
-"""
+"""답이 자료로 다 답하지 못했다고 말하면, 담당 부서·연락처를 적힌 그대로 덧붙입니다."""
 
 from __future__ import annotations
 
@@ -13,7 +8,7 @@ import sys
 
 NO_CONTACT = "담당 부서에 문의해 주세요."
 
-#: The answer says the material does not (fully) cover the question.
+#: Answer says the material does not (fully) cover the question.
 _SHORT = re.compile(
     r"(?:자료|규정|문서)(?:에서|에는|에|로는)?\s{0,3}(?:(?:이|그)\s{0,2})?"
     r"(?:질문에\s{0,2}(?:대한|맞는)\s{0,2})?(?:내용을|답을|근거를|내용은|내용이)?\s{0,3}"
@@ -23,8 +18,7 @@ _SHORT = re.compile(
     r"|자료[^\n.]{0,40}?(?:명시되어|포함되어|나와|언급되어)\s{0,2}있지\s{0,2}않"
 )
 _SOURCES = re.compile(r"\n#{2,3} ?출처[ \t]{0,4}\n")
-#: The answer's own pointer to the department; said after a full answer, it sends the reader
-#: away for nothing.
+#: Answer's own department pointer; pointless after a full answer.
 _REFERRAL = re.compile(r"담당\s{0,2}부서에\s{0,2}(?:문의|확인)")
 #: 「담당 부서에 문의해 주세요.」 standing alone as a sentence or a line.
 _BARE = re.compile(r"(?:^|(?<=[.!?。]))[ \t]{0,4}(?:자세한\s{0,2}(?:사항|내용)은\s{0,2})?"
@@ -44,7 +38,7 @@ def check(text: str, material: str = "", computed=None, options=None) -> list[di
     body = _SOURCES.split(text or "", maxsplit=1)[0]
     short = _SHORT.search(_REFERRAL.sub("", body[:6000]))
     if not short:
-        # A full answer that still ends by sending the reader to 「담당 부서」 with no one named.
+        # Full answer still ending with an unnamed 「담당 부서」 referral.
         bare = _BARE.search(body)
         if bare and not str(opts.get("contact") or "").strip():
             return [{"kind": "drop", "text": bare.group(0), "line": 0, "start": bare.start(),

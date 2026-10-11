@@ -1,15 +1,4 @@
-"""계산식·단위 변환·증감률을 정확히 다시 계산해 적어 둔 값과 대조합니다.
-
-인자(JSON 하나): {"items": [
-  {"label": "부가세", "expr": "1250000 * 0.1", "expected": 125000},
-  {"label": "매출 증가율", "kind": "change", "old": 120, "new": 150, "expected": 25},
-  {"label": "점유율 변화", "kind": "change", "old": 12.5, "new": 14, "as": "pp", "expected": 1.5},
-  {"label": "비중", "kind": "share", "part": 30, "whole": 120, "expected": 25},
-  {"label": "단위", "kind": "convert", "value": 1.2, "from": "억원", "to": "천원", "expected": 120000}
-]}
-expected 는 생략할 수 있고(계산만), "tolerance"(절대 오차)나 "decimals"(반올림 자리)로 비교 기준을 정합니다.
-결과는 표로 출력하고 마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""계산식·단위 변환·증감률을 정확히 다시 계산해 적어 둔 값과 대조합니다."""
 
 from __future__ import annotations
 

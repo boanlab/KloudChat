@@ -1,26 +1,4 @@
-"""원문과 고친 글을 견주어 숫자·날짜·시각·금액·이름·인용이 그대로 남았는지 확인하고, 바뀐 곳 목록과 뜻이 바뀔 수 있는 수정을 냅니다.
-
-인자(JSON 하나):
-  {"original": "원문",
-   "edited": "고친 글",
-   "protect": ["바꾸면 안 되는 말", ...],   # 선택: 제품명·법령명·고정 문구
-   "allow": ["사용자가 바꾸라고 한 말", ...]} # 선택: 이 말은 사라지거나 바뀌어도 됨(사용자 요청)
-지키는 값(kind):
-  date · time · number(단위 포함: 원·%·명·개·개월 …) · weekday「(월)」 · phone · email · url
-  name(영문·숫자 섞인 이름: KloudChat, GPT-4o) · org(㈜·주식회사·○○대학교 …) · person(「김민수 팀장」의 김민수)
-  quote(「」·“” 안의 인용) · protect(사용자가 준 말)
-결과:
-  lost            원문에 있던 값이 고친 글에서 사라지거나 바뀜(되돌려야 함)
-  format_changed  값은 같고 적는 법만 바뀜(「1,000원」→「1000원」) — 원문 표기로 되돌림
-  added           원문에 없던 값이 생김(새 주장 — 빼야 함)
-  changes         바뀐 곳(어절 단위): {line, before, after, type, risk}
-                  type: spacing(띄어쓰기만) · edit · insert · delete
-                  risk: negation(부정) · modality(의무·가능) · scope(범위·수량) · tense(시제) ·
-                        connective(및↔또는·인과) · value(값이 걸림) · removed(내용 삭제) · inserted(내용 추가)
-  risky           risk 가 있는 changes — 「의미가 바뀔 수 있는 수정」 목록의 바탕
-  pass            lost·added 가 없으면 true
-마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""원문과 고친 글을 견주어 숫자·날짜·시각·금액·이름·인용이 그대로 남았는지 확인하고, 바뀐 곳 목록과 뜻이 바뀔 수 있는 수정을 냅니다."""
 
 from __future__ import annotations
 
@@ -32,7 +10,6 @@ from collections import Counter
 
 _H = "가-힣"
 
-# ── protected values ─────────────────────────────────────────────────────
 
 _URL = re.compile(r"https?://[^\s<>()「」\"']+|www\.[^\s<>()「」\"']+")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
@@ -203,8 +180,6 @@ def compare(original: str, edited: str, protect: list[str] | None = None,
     return {"protected": len(before), "lost": lost, "format_changed": changed, "added": added}
 
 
-# ── what changed ─────────────────────────────────────────────────────────
-
 _RISKS: tuple[tuple[str, re.Pattern], ...] = (
     ("negation", re.compile(r"않|없|아니|못(?=[가-힣])|(?<![가-힣])안(?=[가-힣])|말(?:고|아|라|것)|금지|불가|\bnot\b|\bno\b|n't|never", re.I)),
     ("modality", re.compile(r"반드시|꼭|필수|의무|야(?=한|합|하|돼|됩|되|만)|수있|가능|권장|권고|허용|원칙적|예외|must|should|may|can|required", re.I)),
@@ -259,15 +234,12 @@ def _attached(text: str, lo: int, hi: int) -> bool:
 
 
 def changes(original: str, edited: str, protect: list[str] | None = None, limit: int = 300) -> list[dict]:
-    """Edits by whole eojeol, original line numbers, each with the reasons it may change the meaning.
-
-    Characters are compared without whitespace, so a spacing fix next to a wording change is
-    still its own row; spacing-only rows have `type: spacing`."""
+    """Eojeol-level edits with original line numbers and meaning-change risks."""
     original, edited = original or "", edited or ""
     a, pos_a = _chars(original)
     b, pos_b = _chars(edited)
     values = {re.sub(r"\s+", "", t["raw"]) for t in protected(original, protect) + protected(edited, protect)}
-    spans: list[tuple[int, int, int, int, bool, bool]] = []  # offsets in the texts + whether to widen each side
+    spans: list[tuple[int, int, int, int, bool, bool]] = []  # offsets + widen flags
     matcher = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
     for op, i1, i2, j1, j2 in matcher.get_opcodes():
         if op == "equal":
@@ -327,15 +299,12 @@ def report(original: str, edited: str, protect: list[str] | None = None, allow: 
             "pass": not kept["lost"] and not kept["added"]}
 
 
-# ── the server's post check (`post_check: preserve`) ────────────────────
-
 #: Headings the edited text stands under; the change log and notes after it are not checked.
 EDITED_HEADINGS = ("수정본", "고친 글", "교정본", "다듬은 글", "윤문본", "수정안", "최종본", "교정 결과",
                    "수정한 글", "고친 문장", "다듬은 문장")
 _HEADING = re.compile(r"^\s{0,3}(?:#{1,6}\s+|\*\*|\[|【)")
 _SECTION_END = re.compile(r"^\s{0,3}(?:#{1,6}\s+|(?:---|\*\*\*)\s*$|\*\*[^*\n]{1,30}\*\*\s*:?\s*$)")
-#: An estimate or a plan the original hedged: 「…때문인 것으로 보여진다」 must not become
-#: 「…때문이다」.
+#: A hedged estimate stays hedged (「…것으로 보여진다」 ↛ 「…때문이다」).
 HEDGES = {
     "것으로 보인다": re.compile(r"것\s?으로\s?(?:보|판단|예상|추정|생각)|(?:로|으로)\s?보(?:인|여|입|임)"),
     "예정": re.compile(r"예정"),
@@ -396,9 +365,7 @@ def _replace_once(text: str, old: str, new: str) -> str:
 
 
 def post(text: str, args: dict) -> dict:
-    """The edited section against the original: a value only re-written goes back to how the
-    original wrote it (code); a new value, a lost one and an added sentence go to the writer;
-    on the final pass a new value still there is taken out with the edit that brought it."""
+    """Edited section vs original: re-written values reverted (code); new/lost values to the writer."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     span = section(text)
     if span is None:

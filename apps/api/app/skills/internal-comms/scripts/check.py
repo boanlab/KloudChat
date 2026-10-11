@@ -1,21 +1,4 @@
-"""사내 공지·안내 초안이 자료에 없는 날짜·시간·숫자·연락처를 쓰지 않았는지, 꼭 있어야 할 부분이 있는지 점검합니다.
-
-인자(JSON 하나):
-  {"text": "<초안>",
-   "material": "<요청·자료·답변 원문 그대로>",
-   "kind": "notice" | "change" | "maintenance" | "3p" | "faq" | "general",   # 기본 notice
-   "register": "official" | "messenger" | "email",                         # 기본 email
-   "today": "2026-10-08"}                                                   # 선택: 요일 확인용 연도
-점검:
-  사실      초안의 날짜·요일·시간·전화·메일·URL·버전·숫자 가운데 자료에 없는 것(block),
-            날짜와 요일이 맞지 않는 것(block), 「다음 주」「내일」 같은 상대 날짜(check)
-  빈칸      [시행일] 같은 대괄호 빈칸을 모아 보여 준다(info) — 보내기 전에 채울 것
-  구성      kind 에 따라 요지·바뀌는 것·대상·시점·할 일·문의처(공지),
-            영향·시간대(점검), Progress/Plans/Problems(3p), 질문마다 답(faq)이 있는지(check).
-            빠진 사실은 "questions" 에 물을 말과 빈칸으로 낸다
-  말투      official 은 「끝.」으로 맺고 해요체를 쓰지 않는다, messenger 첫 줄 60자 이내 등
-심각도: block(이대로 보내면 안 됨) · check(사람이 확인) · info. 마지막 줄에 요약 JSON. 파일은 만들지 않습니다.
-"""
+"""사내 공지·안내 초안이 자료에 없는 날짜·시간·숫자·연락처를 쓰지 않았는지, 꼭 있어야 할 부분이 있는지 점검합니다."""
 
 from __future__ import annotations
 
@@ -75,9 +58,6 @@ _KIND_PARTS = {
     "3p": (),
     "faq": (),
 }
-
-
-# ── facts ───────────────────────────────────────────────────────────────
 
 
 def _hour(meridiem: str | None, hour: int) -> list[int]:
@@ -243,9 +223,6 @@ def _fact_findings(text: str, material: str, today: str | None) -> list[dict]:
     return findings
 
 
-# ── structure ───────────────────────────────────────────────────────────
-
-
 def _has_when(text: str) -> bool:
     if any(f["kind"] in ("date", "time") for f in facts(text)):
         return True
@@ -335,8 +312,6 @@ def check(text: str, material: str = "", kind: str = "notice", register: str = "
             "material_checked": bool((material or "").strip())}
 
 
-# ── the server's post check on a chat answer (`post_check: check`) ──────
-
 #: Facts a notice must not make up: blanked by code wherever the material lacks them.
 _BLANKED = ("date", "time", "email", "phone", "url", "version")
 _UNIT_AFTER = re.compile(r"\s?(?:%|명|건|개|곳|원|시간|분|초|일|주|개월|년|회|차|대|GB|MB|억|만|천)")
@@ -355,9 +330,7 @@ def _blank(text: str, fact: dict, placeholder: str) -> str:
 
 
 def post(text: str, args: dict) -> dict:
-    """A date, time, contact, link or version the material lacks becomes its blank (code),
-    a wrong weekday is corrected; a number the material lacks goes to the writer and, on the
-    final pass, becomes 「[수치]」 when it carries a unit."""
+    """Unsourced date/time/contact/link/version blanked (code), weekday fixed; numbers to writer."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     material = str(args.get("material") or "")
     if not material.strip():

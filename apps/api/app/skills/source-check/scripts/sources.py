@@ -1,19 +1,4 @@
-"""조사·분석 글에서 숫자가 든 줄마다 출처·날짜가 있는지, 아니면 가정·출처 미확인으로 표시됐는지 찾고, 오래된 출처와 근거 없는 일반론을 알립니다.
-
-인자(JSON 하나):
-  {"text": "<다 쓴 글(마크다운)>",
-   "material": "<사용자가 준 자료 그대로>",   # 이 안에 있는 숫자는 자료 출처로 봅니다
-   "today": "2026-10-08",                    # 오래된 출처 기준일(없으면 오늘)
-   "max_age_years": 3,                       # 이보다 오래된 출처는 stale
-   "fix": true}                              # 출처 없는 줄 끝에 「출처 미확인」을 붙인 fixed_text 를 함께 냄
-
-출처로 보는 것: 줄 안의 [n] 인용(아래 출처 목록에 정의돼 있어야 함), URL, 「출처:」「자료:」, 표의 출처·근거 열,
-자료에 있는 숫자. 표시로 보는 것: 「가정」「출처 미확인」「확인 필요」「자료 없음」「[수치]」 같은 빈칸.
-finding 의 kind: unsourced(출처 없는 숫자) · undefined_ref(정의 안 된 [n]) · ref_no_date · ref_no_link ·
-stale(오래된 출처) · generic(근거 없는 일반론: 「경쟁이 치열하다」 등, [n] 인용이 있어도) ·
-cite_mismatch([n]을 단 문장의 수치·핵심어가 자료 속 그 출처의 글에 없음 — material 을 줄 때).
-결과는 목록을 출력하고 마지막 줄에 결과 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""조사·분석 글에서 숫자가 든 줄마다 출처·날짜가 있는지, 아니면 가정·출처 미확인으로 표시됐는지 찾고, 오래된 출처와 근거 없는 일반론을 알립니다."""
 
 from __future__ import annotations
 
@@ -40,8 +25,7 @@ MARKED = re.compile(
     r"가정\s*[:：)]|로\s?가정|가정(?:한|하면|하여|해|치|값)|출처\s?미확인|확인\s?필요|자료\s?없음|추정치?\s*\(|\[(?:수치|금액|비율|시장\s?규모|점유율|매출|가격|날짜|연도|출처)[^\]]*\]"
 )
 YEAR = re.compile(r"(?<!\d)(19[5-9]\d|20[0-4]\d)(?!\d)")
-#: Statements that sound like analysis but carry no fact. Flagged only when the line has no
-#: number, citation or source of its own.
+#: Analysis-sounding statements with no fact; flagged only without own number/citation/source.
 GENERIC = re.compile(
     r"경쟁이\s?(?:매우\s?|더욱\s?)?치열|성장\s?(?:가능성|잠재력)이\s?(?:매우\s?)?(?:크|높|풍부)"
     r"|빠르게\s?성장|급성장|고성장|(?:시장|수요)이?가?\s?(?:꾸준히\s?|지속적으로\s?)?(?:확대|증가|늘어)"
@@ -50,8 +34,7 @@ GENERIC = re.compile(
     r"|디지털\s?전환이?\s?(?:가속|확산)|주목받고|각광|트렌드(?:가|이다|입니다)|업계\s?선도|선도\s?기업"
     r"|시장\s?(?:지배력|영향력)이\s?(?:크|높|강)|인지도가\s?(?:높|낮)"
 )
-#: Where one clause ends and the next begins (「…성장 중이며 경쟁이 치열하다」); a colon or a
-#: dash introduces the clause's own evidence and does not end it.
+#: Clause break (「…성장 중이며 …」); a colon or dash introduces evidence, not a new clause.
 CLAUSE_END = re.compile(r"(?:이며|며|하고|지만|는데|으나|고)\s|[,;]\s|[.!?](?:\s|$)")
 
 
@@ -180,9 +163,7 @@ def check(text: str, material: str = "", options: dict | None = None) -> list[di
                 }
             )
         generic = GENERIC.search(line) if not marked else None
-        # A citation does not make 「경쟁이 치열하다」 a fact; a figure in the same clause does
-        # (「경쟁이 치열하다: 상위 3사 요금이 월 9,900~12,000원」), and the source's own words
-        # are its own.
+        # A citation doesn't make 「경쟁이 치열하다」 a fact; a figure in the same clause does.
         own = bool(generic) and _flat(generic.group(0)) in _flat(material)
         if generic and not own and not QUANTITY.search(_clause(line, generic.start(), generic.end())):
             findings.append(
@@ -315,8 +296,7 @@ def _values(text: str) -> set[float]:
 
 
 def _derived(values: set[float]) -> set[float]:
-    """What simple arithmetic on the source's own values gives: sums, differences, ratios and
-    changes in percent (「171억원은 312억원의 54.8%」 is the source's, worked out)."""
+    """Simple arithmetic on the source's values: sums, differences, ratios, percent changes."""
     base = sorted(v for v in values if v)[:60]
     out = set(values)
     for a in base:
@@ -341,10 +321,7 @@ CLAIM_MARK = re.compile(r"(?P<own>" + OWN_MARK.pattern + r")|" + CITE_RUN.patter
 
 
 def cite_mismatches(lines: list[str], refs: dict, ref_lines: set[int], material: str) -> list[dict]:
-    """Cited claims the cited sources (their text in the material) do not hold: a figure that
-    no arithmetic on the material gives, or a claim none of whose words the sources use
-    (「공장장·경영진·IT 다중 승인 [2]」 against an interview that says none of it). The claim is
-    the clause the citations close."""
+    """Cited claims the cited sources don't hold: an underivable figure or no shared words."""
     out = []
     sources = {n: source_text(ref["text"], material) for n, ref in refs.items()}
     pool = _values(material)

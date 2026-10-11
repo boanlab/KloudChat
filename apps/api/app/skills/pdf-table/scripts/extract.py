@@ -1,12 +1,4 @@
-"""PDF 안의 표를 엑셀로 옮깁니다. 여러 쪽에 이어진 표는 하나로 잇고 반복 머리글은 뺍니다.
-
-인자(JSON 하나): {"file": "입력.pdf", "pages": "1-3,5"(생략 시 전부), "output": "출력 파일 이름(생략 가능)",
-"merge": true}
-
-결과: outputs/<이름>_표.xlsx (표마다 시트 하나 + 요약 시트). 마지막 줄에 요약 JSON을 출력합니다.
-pdfplumber가 있으면 선으로 그린 표를 읽고, 없거나 표를 못 찾으면 `pdftotext -layout`(없으면 pypdf)
-글자 배치를 열로 나눕니다. 스캔본(글자가 그림인 PDF)은 읽지 못합니다.
-"""
+"""PDF 안의 표를 엑셀로 옮깁니다. 여러 쪽에 이어진 표는 하나로 잇고 반복 머리글은 뺍니다."""
 
 from __future__ import annotations
 
@@ -69,9 +61,6 @@ def cell_value(raw):
 
 def looks_like_data(row: list) -> bool:
     return any(isinstance(cell_value(c), (int, float)) for c in row)
-
-
-# ── extraction ──────────────────────────────────────────────────────────
 
 
 def with_pdfplumber(path: Path, pages: list[int] | None) -> tuple[list[dict], int] | None:
@@ -166,9 +155,6 @@ def from_layout(texts: list[tuple[int, str]]) -> list[dict]:
     return tables
 
 
-# ── tidying ─────────────────────────────────────────────────────────────
-
-
 def tidy(tables: list[dict], merge: bool) -> tuple[list[dict], int]:
     merged: list[dict] = []
     repeated = 0
@@ -242,9 +228,6 @@ def write_book(tables: list[dict], target: Path, method: str) -> None:
     summary.append(["읽은 방법", method])
     summary.column_dimensions["E"].width = 60
     book.save(target)
-
-
-# ── entry ───────────────────────────────────────────────────────────────
 
 
 def fail(message: str) -> int:

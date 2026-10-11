@@ -1,9 +1,4 @@
-"""자료에서 찾은 대목이 없거나 답이 찾은 대목과 맞지 않으면, 답 대신 「자료에서 찾지 못했습니다」와 담당 부서·연락처를 보냅니다.
-
-인자(JSON 하나): {"text": "<답>", "computed": ["<이번 턴 도구 출력·앞선 답>"],
-  "options": {"surface": "chat", "contact": "<담당 부서·연락처>"}}
-대화 답에만 돈다. 결과는 요약 줄과 마지막 줄 JSON 으로 낸다. 표준 라이브러리만 쓴다.
-"""
+"""자료에서 찾은 대목이 없거나 답이 찾은 대목과 맞지 않으면, 답 대신 「자료에서 찾지 못했습니다」와 담당 부서·연락처를 보냅니다."""
 
 from __future__ import annotations
 
@@ -14,19 +9,19 @@ import sys
 NOT_FOUND = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다."
 NO_CONTACT = "담당 부서에 문의해 주세요."
 
-#: The answer already says the material does not hold it.
+#: Answer already says the material lacks it.
 _NOT_COVERED = re.compile(
     r"(?:자료|규정|문서|안내\s{0,2}자료)(?:에서|에는|에|로는)?\s{0,3}"
     r"(?:(?:이|그)\s{0,2})?(?:질문에\s{0,2}(?:대한|맞는)\s{0,2})?(?:내용을|답을|근거를)?\s{0,3}"
     r"(?:찾지\s{0,2}못|확인(?:되지|할\s{0,2}수\s{0,2}없)|나와\s{0,2}있지\s{0,2}않|없습니다|없어)"
 )
-#: A passage header of the agent's material in a tool result (`knowledge.render`).
+#: Material passage header in a tool result (`knowledge.render`).
 _PASSAGE = re.compile(r"^\[\d{1,3}\] 자료: ", re.M)
-#: An earlier answer's source list naming the material (no link: `agent._link_citations`).
+#: Earlier answer's source list naming the material (no link: `agent._link_citations`).
 _CITED = re.compile(r"^### 출처[ \t]{0,4}$", re.M)
 _SOURCES = re.compile(r"\n#{2,3} ?출처[ \t]{0,4}\n[\s\S]{0,6000}$")
 _SENTENCE = re.compile(r"(?<=[.!?。])[ \t]{1,8}|\n{1,8}")
-#: Support: share of a sentence's letter pairs found in what was retrieved.
+#: Support: share of a sentence's letter pairs found in retrieved text.
 _SUPPORT = 0.3
 _MIN_CLAIM = 12
 
@@ -42,8 +37,7 @@ def _pairs(text: str) -> set[str]:
 
 
 def corpus(computed) -> str:
-    """What the answer may rest on: this turn's passages of the material, and earlier answers
-    in the conversation that cited it."""
+    """Grounds: this turn's material passages and earlier answers citing it."""
     out = []
     for item in computed or []:
         text = str(item or "")

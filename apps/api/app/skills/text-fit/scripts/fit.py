@@ -1,20 +1,4 @@
-"""자기소개서 답의 글자 수·바이트를 지원 사이트의 세는 법대로 세고 한도·하한과 견줍니다.
-
-인자(JSON 하나): {"items": [
-  {"label": "문항 1", "text": "...", "limit": 700, "unit": "chars_with_spaces"},
-  {"label": "문항 2", "text": "...", "limit": 600, "unit": "chars_no_spaces", "min_ratio": 0.9},
-  {"label": "문항 3", "text": "...", "limit": 1500, "unit": "bytes_utf8", "newline": 1},
-  {"label": "문항 4", "text": "...", "limit": 1000, "unit": "bytes_ko2", "newline": 2}
-]}
-세는 법:
-  chars_with_spaces  공백 포함 글자 수 = len(text). 줄바꿈은 1자("newline": 2 면 2자).
-  chars_no_spaces    공백·줄바꿈·탭을 뺀 글자 수.
-  bytes_utf8         UTF-8 실제 바이트(한글 3, ASCII 1, ‘·’ 2, ‘→’ 3). 줄바꿈은 "newline" 바이트(기본 2).
-  bytes_ko2          한글·한자·전각 문자 2바이트, 그 밖 1바이트. 줄바꿈은 "newline" 바이트(기본 2).
-줄바꿈은 \\r\\n 을 하나로 셉니다. "skip_first_line": true 면 첫 줄(문항 제목)을 세지 않습니다.
-하한은 limit × min_ratio(기본 0.8)를 올림한 값입니다. "min" 을 주면 그 값을 씁니다.
-결과는 문항마다 한 줄을 출력하고 마지막 줄에 요약 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""자기소개서 답의 글자 수·바이트를 지원 사이트의 세는 법대로 세고 한도·하한과 견줍니다."""
 
 from __future__ import annotations
 
@@ -45,7 +29,7 @@ def normalise(text: str, skip_first_line: bool = False) -> str:
 
 
 def measure(text: str, unit: str = "chars_with_spaces", newline: int | None = None) -> int:
-    """The count a submission system makes of `text` (see the module text)."""
+    """The count a submission system makes of `text` in `unit`."""
     if unit not in UNITS:
         raise ValueError(f"모르는 단위: {unit}")
     text = normalise(text)

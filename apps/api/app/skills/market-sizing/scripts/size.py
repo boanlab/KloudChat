@@ -1,32 +1,4 @@
-"""TAM·SAM·SOM 을 하향식·상향식으로 계산하고, 단위·통화·연도를 맞추며, 가정·출처·민감도·정합성을 함께 냅니다.
-
-인자(JSON 하나):
-  {"market": "국내 중소기업 HR SaaS",
-   "year": 2026,                         # 기준 연도: 금액은 이 해로 맞춥니다
-   "unit": "억원",                        # 결과 단위: 원·만원·백만원·억원·조원, 또는 백만달러 등
-   "fx": {"USD": {"rate": 1380, "source": "한국은행 ECOS 2026-09 평균 환율", "date": "2026-09-30"}},
-   "max_age_years": 3,                   # 이보다 오래된 자료는 stale 로 표시
-   "sensitivity": {"pct": 20},           # 가정·출처 미확인 값을 ±20% 흔든 범위
-   "top_down": {
-     "tam": [{"label": "국내 HR SaaS 시장", "value": 5200, "unit": "억원", "year": 2024,
-              "source": "○○협회 2025 시장 보고서", "url": "https://...", "date": "2025-03-10"}],
-     "growth": {"label": "연평균 성장률", "value": 8, "unit": "%", "source": "...", "date": "2025-03"},
-     "sam": [{"label": "중소기업 비중", "value": 40, "unit": "%", "assumption": true,
-              "basis": "통계청 KOSIS 기업규모별 종사자 비중 참고"}],
-     "som": [{"label": "3년 내 점유율", "value": 3, "unit": "%", "assumption": true, "basis": "영업 인력 5명 기준"}]},
-   "bottom_up": {
-     "tam": [{"label": "대상 기업 수", "value": 12, "unit": "만개", "source": "통계청 KOSIS 전국사업체조사", "date": "2025-12"},
-             {"label": "연 객단가", "value": 600, "unit": "만원", "assumption": true, "basis": "경쟁사 공개 요금 평균"}],
-     "sam": [...], "som": {"direct": [{"label": "3년 차 고객 수", ...}, {"label": "연 객단가", ...}]}}}
-
-- 각 단계는 곱하는 값의 목록입니다. sam·som 이 목록이면 앞 단계 값에 곱하고(비율), {"direct": [...]} 이면 그 값들만 곱해 따로 셉니다.
-- 값마다 출처(source·url·date) 또는 "assumption": true 와 "basis"(근거)가 있어야 합니다. 둘 다 없으면 「출처 미확인」으로 표시합니다.
-- 금액은 통화(원·달러·유로·엔·위안)와 자리 단위(천·만·백만·억·조, thousand·million·billion)를 읽어 결과 단위로 바꿉니다.
-  다른 통화는 fx 에 환율(출처 포함)이 있어야 합니다. 자료 연도가 기준 연도와 다르면 growth 가 있을 때만 복리로 맞추고,
-  없으면 맞추지 않고 year_mismatch 로 알립니다.
-- 정합성: TAM ≥ SAM ≥ SOM, 비율 0~100%, 두 방식 TAM 차이(기본 2배 이상이면 알림).
-결과는 표·계산식·가정 목록을 출력하고 마지막 줄에 결과 JSON을 냅니다. 파일은 만들지 않습니다.
-"""
+"""TAM·SAM·SOM 을 하향식·상향식으로 계산하고, 단위·통화·연도를 맞추며, 가정·출처·민감도·정합성을 함께 냅니다."""
 
 from __future__ import annotations
 
@@ -220,7 +192,6 @@ class Sizer:
         self._seen: dict[str, int] = {}
         self._quiet = False
 
-    # ── units ──
     def to_target_money(self, amount_base: Fraction, currency: str) -> tuple[Fraction, str]:
         """Money in base currency units → target unit, with the conversion note."""
         note = ""
@@ -262,7 +233,6 @@ class Sizer:
             self.issues.append({**issue, "label": row["label"], "where": row["where"]})
         return row
 
-    # ── one factor ──
     def factor(
         self, item: dict, stage: str, approach: str, override: Fraction | None = None
     ) -> dict:
@@ -327,7 +297,6 @@ class Sizer:
             "item": item,
         }
 
-    # ── one approach ──
     def approach(
         self, name: str, spec: dict, overrides: dict | None = None, quiet: bool = False
     ) -> dict:
@@ -461,7 +430,6 @@ def run(args: dict) -> dict:
         raise SizingError("top_down 또는 bottom_up 중 하나는 있어야 합니다")
     results = {name: sizer.approach(name, spec) for name, spec in approaches.items()}
 
-    # consistency
     for name, res in results.items():
         values = [(s, res[s]) for s in _STAGES if s in res]
         for (a, va), (b, vb) in zip(values, values[1:], strict=False):
@@ -498,7 +466,7 @@ def run(args: dict) -> dict:
                     }
                 )
 
-    # sensitivity: each uncertain factor ±pct (or its own low/high), then all together
+    # sensitivity: each uncertain factor ±pct (or own low/high), then all together
     sensitivity = []
     for name, spec in approaches.items():
         uncertain = [i for i in _factors(spec) if _uncertain(i)]
@@ -617,8 +585,6 @@ def run(args: dict) -> dict:
     }
 
 
-# ── the server's post check on a chat answer (`post_check: size`) ───────
-
 _SCALE_WORDS = "조|천억|백억|십억|억|천만|백만|십만|만|천"
 _UNIT_WORDS = r"원|달러|유로|엔|위안|USD|가구|명|곳|개사|개소|개|社|건|%|퍼센트|배"
 #: A value as an answer writes it: 「260만가구」「36만 원」「10%」「120백만달러」「1,350원/달러」.
@@ -631,8 +597,7 @@ _BIG_HEAD = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s?(조|억)\s?$")
 
 
 def _qty(term: str, first: bool = False) -> tuple[Fraction, str, str, str] | None:
-    """The last value in `term` (the first with `first`): (number, scale word, unit, the text
-    as written); a compound 「40억 3,200만 원」 is one value."""
+    """Last (or `first`) value in `term`: (number, scale word, unit, text); 「40억 3,200만 원」 is one."""
     found = None
     candidates = [m for m in _QTY.finditer(term) if m.group(1).replace(",", "").strip(".")]
     if first and len(candidates) > 1:
@@ -661,8 +626,7 @@ def _qty(term: str, first: bool = False) -> tuple[Fraction, str, str, str] | Non
 
 
 def _evaluate(expression: str) -> Fraction | None:
-    """`a × b ÷ c` over the values it names (labels around each value are ignored); None for
-    anything else (a sum, a power, a bracketed term)."""
+    """`a × b ÷ c` over the values it names; None otherwise (sum, power, brackets)."""
     # Clauses joined by commas are prose around several calculations.
     if re.search(r",\s", expression):
         return None
@@ -683,8 +647,7 @@ def _evaluate(expression: str) -> Fraction | None:
         if token in ("÷", "/"):
             op = "÷"
             continue
-        # Each term names one value; a term with several (「평균 7,000원으로 잡고, 평균 50명」)
-        # is prose around a calculation, not a calculation to check.
+        # A term naming several values is prose, not a calculation.
         if len([m for m in _QTY.finditer(part) if m.group(1).strip(".,") not in ("1",)]) > 1:
             return None
         found = _qty(part, first=index > 0)
@@ -704,8 +667,7 @@ def _evaluate(expression: str) -> Fraction | None:
 
 
 def _written(value: Fraction, like: tuple[Fraction, str, str, str]) -> str:
-    """`value` written the way the stated result was: its scale word when the value reaches it,
-    else the next smaller one, and its unit."""
+    """`value` in the stated result's scale word (or next smaller) and unit."""
     _, scale, unit, raw = like
     number = value * 100 if unit in ("%", "퍼센트") else value
     order = [w for w in ("조", "억", "만", "") if not scale or _KO_SCALES[w] <= _KO_SCALES.get(scale, 1)]
@@ -737,9 +699,7 @@ def _swap(line: str, old: str, new: str) -> str:
 
 
 def post(text: str, args: dict) -> dict:
-    """Every written calculation in the answer worked again from the values it states — an
-    equation 「A × B = C」 and a table row whose basis says 「3억원 ÷ 200만원」 — and a wrong
-    result replaced, with the value carried to where the answer repeats it (code)."""
+    """Written calculations re-worked; wrong results replaced and carried to repeats (code)."""
     out: dict = {"text": text, "fixed": [], "rewrite": [], "flags": []}
     lines = (text or "").split("\n")
     swaps: dict[str, str] = {}
@@ -793,8 +753,7 @@ def post(text: str, args: dict) -> dict:
                 line = _swap(line, old, new)
         lines[i] = line
         segments = line.split("=")
-        # Only 「expr = result」 or 「label = expr = result」 from the line's start: a result
-        # further along a chained line is prose that mixes calculations.
+        # Only 「expr = result」 / 「label = expr = result」 from line start; chained lines are prose.
         first = 2 if len(segments) > 2 and not re.search(r"\d", segments[0]) else 1
         for k in range(first, min(first + 1, len(segments))):
             expression, result = segments[k - 1], segments[k]
