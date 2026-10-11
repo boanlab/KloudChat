@@ -170,10 +170,26 @@ def parse_needs(text: str) -> list[Question] | None:
             options = [str(o).strip() for o in (item.get("options") or []) if str(o).strip()]
         else:
             continue
+        question = _uncited(question)
+        options = [o for o in map(_uncited, options) if o and not _INVENTS.search(o)]
         if not question:
             continue
         out.append(Question(id=f"ask{i}", question=question[:200], options=options[:4]))
     return out or None
+
+
+#: Reference numbers the person never saw: 「검색 자료([1]~[10])」, 「[3]」, 「[2, 5]」.
+_CITES = re.compile(
+    r"\s{0,2}\(?\[\d{1,3}(?:\s{0,2},\s{0,2}\d{1,3}){0,10}\]"
+    r"(?:\s{0,2}[~∼,–-]\s{0,2}\[\d{1,3}\]){0,20}\)?")
+#: An option to invent what the material lacks: the card offers to ask, never to make up.
+_INVENTS = re.compile(
+    r"가상|임의|지어\s{0,2}(?:내|서|넣)|꾸며|가정(?:하여|해서|해)\s{0,2}(?:작성|채|넣|진행|써)"
+    r"|예시\s{0,2}(?:값|수치|데이터|내용)")
+
+
+def _uncited(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", _CITES.sub("", text)).strip()
 
 
 def merge_answers(request: str, answers: dict[str, str]) -> str:
