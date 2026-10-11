@@ -64,7 +64,7 @@ class ReportSave(Base):
         from app.models.user import User, utcnow
         from app.models.workspace import Artifact, ArtifactKind
         from app.pipeline.report_stages import report_design
-        from app.services import design_templates, lint, revise
+        from app.services import citations, design_templates, lint, revise
         from app.services import report as report_service
 
         model, outline_model = turn["model"], turn.get("outline_model")
@@ -96,6 +96,9 @@ class ReportSave(Base):
                         yield {"type": "section", "sectionId": section.get("id"),
                                "heading": section.get("heading"),
                                "content": section.get("content"), "done": True}
+        # The reference list holds what the body cites, numbered in the order first cited;
+        # a venue named as if it were the author gives way to the work's own name.
+        sections, sources = citations.tidy(sections, sources)
         bundle.document.sections = sections
         written = [s for s in sections if (s.get("content") or "").strip()]
         credits = (
