@@ -41,6 +41,7 @@ from app.core.config import settings
 from app.models.chat import SessionKind
 from app.services import (
     calc,
+    calc_check,
     deck_type,
     design,
     diagram_render,
@@ -2721,8 +2722,12 @@ async def _write_slides(
     density: str = "speaker",
     frame: bool = False,
     settled: list | None = None,
+    computed: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     """Writes slide bodies for an approved outline.
+
+    `computed` is the block of values code computed before writing (`calc.computed_values`);
+    every slide number naming one of them is read against it at the end.
 
     One draft call, then per-slide calls for the gaps it left.
     """
@@ -2751,6 +2756,9 @@ async def _write_slides(
     for slide in slides:
         yield {"type": "slide", "slide": slide, "done": False}
 
+    # Values code computed are given numbers too: a slide may carry them, and no grounding
+    # check strips them as unrequested.
+    given_extra = [computed] if computed else []
     outline_text = "\n".join(f"{i + 1}. {s['title']}" for i, s in enumerate(slides))
     written: list[str] = []
     #: Dividers seen so far; a divider's number counts dividers, not slides.
@@ -2789,7 +2797,7 @@ async def _write_slides(
         usage["inputTokens"] += spent["inputTokens"]
         usage["outputTokens"] += spent["outputTokens"]
         # Numbers in the request and its attachments are the ones a slide may use.
-        given = "\n".join([request, *(untrusted_context or [])])
+        given = "\n".join([request, *(untrusted_context or []), *given_extra])
         drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
         retold = _retold(slides, drafted)
         # Every approved slide ships: the person approved this outline, slide by slide. A
@@ -2942,7 +2950,7 @@ async def _write_slides(
         data = _json_object(body)
         # Same number check as the draft path.
         if index not in drafted:
-            facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
+            facts = _facts_set("\n".join([request, *(untrusted_context or []), *given_extra]))
             if data.get("metrics") and not _numbers_come_from(
                 [str(m[0]) for m in data["metrics"] if isinstance(m, list) and m], facts
             ):
@@ -2980,7 +2988,7 @@ async def _write_slides(
                 slide["body"] = line[:120]
         elif slide["layout"] == "chart":
             chart = _clean_chart(data.get("chart")) or chart_from_material(
-                str(slide.get("title") or ""), [request, *(untrusted_context or [])]
+                str(slide.get("title") or ""), [request, *(untrusted_context or []), *given_extra]
             )
             if chart:
                 slide["chart"] = chart
@@ -3014,7 +3022,7 @@ async def _write_slides(
         elif slide["layout"] == "table":
             # Rows however the writer shaped them: `rows`, `table`, objects, a pipe table.
             if rows := _rows_any(data, str(data.get("body") or "")):
-                given = "\n".join([request, *(untrusted_context or [])])
+                given = "\n".join([request, *(untrusted_context or []), *given_extra])
                 slide["rows"] = dedupe_rows(ground_cells(rows, _facts_set(given), given))
             else:
                 slide["layout"] = "bullets"
@@ -3104,7 +3112,7 @@ async def _write_slides(
                         added = notes_only_given(plain, slide, request)
                     notes = _join_notes(notes, added)
         if notes:
-            given_facts = _facts_set("\n".join([request, *(untrusted_context or [])]))
+            given_facts = _facts_set("\n".join([request, *(untrusted_context or []), *given_extra]))
             notes = notes_grounded(notes, given_facts)
             slide["notes"] = notes[:800]
 
@@ -3161,7 +3169,7 @@ async def _write_slides(
         | set(shape_patterns(slides, request))
         | set(fill_missing_notes(slides, request, title=title, subtitle=subtitle))
     )
-    given_text = "\n".join([request, *(untrusted_context or [])])
+    given_text = "\n".join([request, *(untrusted_context or []), *given_extra])
     touched |= set(mend_mixed_script(slides, given_text))
     touched |= set(strip_json_residue(slides))
     touched |= set(mend_scaled_numbers(slides, given_text))
@@ -3186,7 +3194,7 @@ async def _write_slides(
                 "the figures computed from it."
             ))
     # A run the material lays out (1~3차시, M1~M6) comes through whole.
-    material = "\n".join([request, *(untrusted_context or [])])
+    material = "\n".join([request, *(untrusted_context or []), *given_extra])
     written = "\n".join("\n".join(quality_gate._strings({k: v for k, v in sl.items()
                                                           if k != "image"})) for sl in slides)
     for kind, missing in quality_gate.missing_sequence(material, written):
@@ -3244,7 +3252,7 @@ async def _write_slides(
         try:
             fixed, spent = await rewrite_slide(
                 request=request, slides=slides, target_id=str(slide.get("id")),
-                model=model, api_key=api_key, material=list(untrusted_context or []),
+                model=model, api_key=api_key, material=[*(untrusted_context or []), *given_extra],
                 note=needs[index],
             )
         except Exception as exc:  # noqa: BLE001 — the slide stands, the gate reports it
@@ -3268,12 +3276,19 @@ async def _write_slides(
             touched.add(index)
     if needs or settled:
         # A rewritten slide passes the same mends as the rest.
-        vocabulary = "\n".join([request, *(untrusted_context or [])])
+        vocabulary = "\n".join([request, *(untrusted_context or []), *given_extra])
         touched |= set(mend_mixed_script(slides, vocabulary))
         touched |= set(strip_json_residue(slides))
         touched |= set(mend_scaled_numbers(slides, vocabulary))
     # A line the rewrite left too long is cut at a clause, its whole text kept in the notes.
     touched |= set(fit_long_bullets(slides))
+    # A number naming a value the code computed (「FCFS 평균 대기시간」) is that value.
+    recomputed: list[str] = []
+    if computed:
+        mended_calc, recomputed = calc_check.check_slides(slides, computed)
+        touched |= set(mended_calc)
+        if recomputed:
+            log.warning("deck values set back to the computed ones: %s", recomputed[:12])
     for index in sorted(touched):
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     findings = quality_gate.deck_findings(slides)
@@ -3285,12 +3300,17 @@ async def _write_slides(
     blanks, named = placeholders.summary(
         s for slide in slides for s in quality_gate._strings(
             {k: v for k, v in slide.items() if k not in ("image", "diagram")}))
+    quality_detail = "\n".join(filter(None, [
+        f"채울 빈칸: {named}" if blanks else "",
+        ("코드 계산 값으로 바로잡음: " + "; ".join(recomputed[:12])) if recomputed else "",
+    ]))
     yield {
         "type": "step", "id": "quality",
         "label": ("품질 점검: 문제 없음" if not findings else f"품질 점검 {len(findings)}건")
+        + (f" · 계산 값 {len(recomputed)}곳 바로잡음" if recomputed else "")
         + (f" · 빈칸 {blanks}개" if blanks else ""),
         "status": "done" if not findings else "error",
-        **({"detail": f"채울 빈칸: {named}"} if blanks else {}),
+        **({"detail": quality_detail} if quality_detail else {}),
     }
     yield {"type": "deck", "slides": harmonize(slides)}
     yield {"type": "usage", **usage}
@@ -3540,6 +3560,7 @@ async def write(
                 len(plan), wanted, " · ".join(item["title"] for item in plan),
             )
         # Derived numbers on slides come from code, as in a report.
+        computed = ""
         if calc.needed(request, document_context):
             yield {
                 "type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"
@@ -3552,6 +3573,7 @@ async def write(
             plan_rules.count(usage, spent, planned_apart=bool(outline_model))
             if computed:
                 trusted_context = [*(trusted_context or []), computed]
+                yield {"type": "computed", "values": computed}
             yield {
                 "type": "step", "id": "calc",
                 "label": "코드로 수치 계산" if status == "done" else "코드 계산 없음 — 모델이 계산",
@@ -3583,6 +3605,7 @@ async def write(
             trusted_context=trusted_context,
             untrusted_context=document_context,
             settled=settled,
+            computed=computed,
             usage=usage,
             research_rule=research_rule,
             figures_plan=figures_plan,

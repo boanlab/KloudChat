@@ -49,7 +49,9 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
   (CPU 스케줄링의 FCFS·SJF·SRTF·라운드 로빈, 정렬, 일정·기한 계산), implement that procedure
   step by step in code — never type the result — and print each run's order with start and
   end times (「FCFS | 순서 = P1 0-7, P2 7-11」) and every value the request names
-  (「FCFS | 평균 대기시간 = 4.75」). State the tie-break rule you used in one printed line.
+  (「FCFS | 평균 대기시간 = 4.75」), one value per line. Name each row with the request's own
+  words for it (「라운드 로빈(타임 퀀텀 2)」 when the request says so). State the tie-break rule
+  you used in one printed line.
 
 코드 블록 하나만 답하라:
 ```python
@@ -145,63 +147,99 @@ async def _one_run(
 _FIGURE = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
 
-def _item(line: str) -> tuple[str, list[float]]:
-    """A printed line as `(name, figures)`; a table row's name is its first cell."""
-    if "|" in line:
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        name, rest = cells[0], " ".join(cells[1:])
-    elif "=" in line:
-        name, rest = line.split("=", 1)
-    else:
-        return "", []
-    name = re.sub(r"[(（][^()（）]*[)）]|이론|계산|값", "", name)
+def _label(text: str) -> str:
+    """An item's name as two runs both write it: 「최대 처짐(이론)」 and 「최대 처짐」 alike."""
+    name = re.sub(r"[(（][^()（）]*[)）]|이론|계산|값", "", text)
     # Only Hangul and digits name an item, so 「차단 주파수 fc」 matches 「차단 주파수」.
-    name = re.sub(r"[^가-힣0-9]", "", name) or re.sub(r"\s", "", name)
+    return re.sub(r"[^가-힣0-9]", "", name) or re.sub(r"\s", "", name) or re.sub(r"\s", "", text)
+
+
+def _row_name(cell: str) -> str:
+    """A row's key: a number in base units (「1 kHz」 → 「1000」), else its letters and digits
+    — 「RR(q=2)」 and 「RR(q=4)」 are two rows, not one."""
+    if re.match(r"^-?\d", cell):
+        return _key(cell)
+    return re.sub(r"[^가-힣A-Za-z0-9]", "", cell).lower() or cell.strip()
+
+
+def _figures(text: str) -> list[float]:
     figures = []
-    for token in _FIGURE.findall(rest):
+    for token in _FIGURE.findall(text):
         try:
             figures.append(float(token))
         except ValueError:
             continue
+    return figures
+
+
+def _items(line: str) -> list[tuple[str, list[float]]]:
+    """A printed line as `(name, figures)` items.
+
+    A row naming its values (「FCFS | 순서 = P1 0-7 | 평균 대기시간 = 4.75」) is one item per
+    named value, each called by row and value (「fcfs|평균대기시간」); a row of bare cells is one
+    item called by its first cell; 「항목 = 값」 is one item."""
     if "|" in line:
-        # A row's own key (「100」 Hz) may repeat in its cells; the values follow it.
-        name = _key(name) if re.match(r"^-?\d", name) else name
-    return name, figures
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        row = _row_name(cells[0])
+        named = [c for c in cells[1:] if "=" in c]
+        if named:
+            items = []
+            for cell in named:
+                label, value = cell.split("=", 1)
+                if figures := _figures(value):
+                    items.append((f"{row}|{_label(label)}", figures))
+            return items
+        figures = _figures(" ".join(cells[1:]))
+        return [(row, figures)] if row and figures else []
+    if "=" in line:
+        name, rest = line.split("=", 1)
+        name, figures = _label(name), _figures(rest)
+        return [(name, figures)] if name and figures else []
+    return []
 
 
 def _close(x: float, y: float) -> bool:
     return abs(x - y) <= max(abs(x), abs(y)) * 0.005 + 1e-9
 
 
+def _same(figures: list[float], theirs: list[float]) -> bool:
+    # One run may print more figures; the shorter list must appear in the longer.
+    short, long_ = sorted((figures, theirs), key=len)
+    return all(any(_close(x, y) for y in long_) for x in short)
+
+
 def confirmed(first: list[str], second: list[str]) -> list[str]:
-    """Lines of `first` that `second` also computed: same item name, figures within 0.5%."""
-    other = {}
+    """Lines of `first` that `second` also computed: every item both printed within 0.5%."""
+    other: dict[str, list[float]] = {}
     for line in second:
-        name, figures = _item(line)
-        if name and figures:
+        for name, figures in _items(line):
             other.setdefault(name, figures)
     out = []
     for line in first:
-        name, figures = _item(line)
-        theirs = other.get(name)
-        if not (name and figures and theirs):
-            continue
-        # One run may print more columns; the shorter list must appear in the longer.
-        short, long_ = sorted((figures, theirs), key=len)
-        if all(any(_close(x, y) for y in long_) for x in short):
+        shared = [(figures, other[name]) for name, figures in _items(line) if name in other]
+        if shared and all(_same(mine, theirs) for mine, theirs in shared):
             out.append(line)
     return out
 
 
 def agree(first: list[str], second: list[str]) -> bool:
     """Whether two runs agree: at least two shared items, four in five of them equal."""
-    names_a = {n for n, f in map(_item, first) if n and f}
-    names_b = {n for n, f in map(_item, second) if n and f}
-    shared = names_a & names_b
+    mine = {n: f for line in first for n, f in _items(line)}
+    theirs = {n: f for line in second for n, f in _items(line)}
+    shared = mine.keys() & theirs.keys()
     if len(shared) < 2:
         return False
-    same = {n for n, _ in map(_item, confirmed(first, second))}
-    return len(same & shared) >= 0.8 * len(shared)
+    same = {n for n in shared if _same(mine[n], theirs[n])}
+    return len(same) >= 0.8 * len(shared)
+
+
+#: A request for the result of a procedure run on the material (a schedule, a sort): its
+#: values are the procedure's, never a guess, so one program's output beats none.
+PROCEDURE = re.compile(
+    r"스케줄링|(?<![A-Za-z])(?:FCFS|SJF|SRTF|LRU|FIFO)(?![A-Za-z])|라운드\s{0,2}로빈|"
+    r"round[\s-]?robin|간트|시뮬레이션|알고리즘|정렬|최단\s{0,2}경로|다익스트라|페이지\s{0,2}교체",
+    re.I,
+)
 
 
 async def computed_values(
@@ -256,22 +294,44 @@ async def computed_values(
                     )
         return ""
 
+    def single() -> str:
+        """One program's lines, when a procedure's two runs could not both finish in time."""
+        if len(runs) != 1 or not PROCEDURE.search(instruction_part(request or "")):
+            return ""
+        return (
+            "# 코드로 계산한 값\n"
+            "아래 값은 주어진 자료로 요청한 절차를 Python 으로 실행해 구했다(검산용 두 번째 "
+            "실행은 시간 안에 끝나지 않았다). 본문과 표에는 이 값을 그대로 옮기고, 같은 항목을 "
+            "손으로 다시 셈하거나 다른 값으로 적지 마라. 여기 없는 계산이 필요하면 「(계산 "
+            "필요)」로 남겨라.\n\n"
+            + "\n".join(runs[0])
+        )
+
     # Up to two pairs of runs; a failed run does not count against agreement.
     loop = asyncio.get_running_loop()
     ends = loop.time() + deadline
     for pair in ((prompt, again), (again, again)):
-        try:
-            results = await asyncio.wait_for(asyncio.gather(*(
-                _one_run(p_, material, complete=complete, model=model, api_key=api_key,
-                         usage=usage)
-                for p_ in pair
-            )), timeout=max(0.0, ends - loop.time()))
-        except TimeoutError:
-            log.info("calculation runs passed %.0fs; the writer goes on without them", deadline)
-            return "", usage, "timeout"
-        runs.extend(lines for lines in results if lines)
+        tasks = [
+            asyncio.ensure_future(_one_run(p_, material, complete=complete, model=model,
+                                           api_key=api_key, usage=usage))
+            for p_ in pair
+        ]
+        done, pending = await asyncio.wait(tasks, timeout=max(0.0, ends - loop.time()))
+        for task in pending:
+            task.cancel()
+        # A run that finished before the deadline still counts.
+        runs.extend(
+            lines for task in tasks
+            if task in done and not task.cancelled() and task.exception() is None
+            and (lines := task.result())
+        )
         if block := settled():
             return block, usage, "done"
+        if pending:
+            log.info("calculation runs passed %.0fs; the writer goes on without them", deadline)
+            if block := single():
+                return block, usage, "done"
+            return "", usage, "timeout"
     if len(runs) >= 2:
         log.info("calculation runs disagree; no computed values handed to the writer")
         return "", usage, "disputed"

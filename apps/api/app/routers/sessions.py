@@ -6587,6 +6587,10 @@ async def _document_write(work: PipelineBundle, service: Any, payload: str
         if event["type"] == "usage":
             work.usage = {k: v for k, v in event.items() if k != "type"}
             continue
+        if event["type"] == "computed":
+            # The values code computed for the slides: the stage's record shows them.
+            work.computed.values = str(event.get("values") or "")
+            continue
         yield event
     if work.plan.proposal is not None or work.findings.questions:
         raise PipelineStop("proposal offered" if work.plan.proposal is not None else "needs")

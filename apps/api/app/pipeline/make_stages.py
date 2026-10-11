@@ -49,8 +49,8 @@ class Hosted(Base):
 _WRITE = ("document.sections", "document.data", "plan.proposal", "findings.questions")
 
 for _stage in (
-    Hosted("deck-write", "model", "_deck_write", reads=("request",), writes=_WRITE,
-           needs="writer"),
+    Hosted("deck-write", "model", "_deck_write", reads=("request",),
+           writes=(*_WRITE, "computed.values"), needs="writer"),
     Hosted("deck-carry", "compute", "_deck_carry", reads=("request", "document.sections"),
            writes=("document.sections",), needs="carry_from"),
     Hosted("deck-save", "io", "_deck_save", reads=("request", "document", "usage", "wire"),
