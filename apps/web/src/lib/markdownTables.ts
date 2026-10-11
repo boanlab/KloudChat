@@ -1,4 +1,4 @@
-const GLUED_HEADER = /^([^|\n]*\S)[ \t]{0,8}(\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$/
+const GLUED_HEADER = /^([^|\n]*[^|\s])[ \t]{0,8}(\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$/
 const SEPARATOR_ROW = /^[ \t]{0,8}\|?(?:[ \t]{0,8}:?-{2,}:?[ \t]{0,8}\|){1,40}[ \t]{0,8}(?::?-{2,}:?)?[ \t]{0,8}$/
 
 /** A table header written on the same line as the sentence before it (「… 같습니다. | 주파수 |

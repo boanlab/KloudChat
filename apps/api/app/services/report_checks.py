@@ -3546,6 +3546,10 @@ def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numb
         return _grounded(value, numbers)
     if any(u == unit and abs(v - value) < 1e-6 * max(1.0, abs(v)) for v, u in given):
         return True
+    same = [v for v, u in given if u == unit][:60]
+    # 「B사는 A사보다 40만원 비싸다」: the gap between two of the material's own values.
+    if any(abs(abs(a - b) - value) < 0.5 for a in same for b in same if a != b):
+        return True
     if unit == "원":
         # A total of the material's own amounts: 「총상금 40만 원(20만 원 × 2팀)」.
         money = [v for v, u in given if u == "원"][:60]
@@ -3557,6 +3561,37 @@ def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numb
 
 #: A count of people the writer made by counting the names listed: 「참석 | 5명」.
 _HEADCOUNT = re.compile(r"참석|불참|참여|출석|인원")
+
+
+#: A number the material writes after its label but without a unit: 「(정원 40)」.
+_LABELLED = re.compile(rf"([가-힣A-Za-z]{{1,10}})\s{{0,2}}({units._TERM})(?![\d.,]|\s?[가-힣A-Za-z%])")
+#: A numbered list item at a line's start: 「1. 2학기 …」, 「4) 기타」.
+_LIST_MARK = re.compile(r"(?m)^\s{0,4}(\d{1,2})[.)]\s")
+
+
+def _labelled_numbers(material: str) -> list[tuple[str, float]]:
+    out = []
+    for m in _LABELLED.finditer(material or ""):
+        try:
+            out.append((m.group(1), units._ko_number(m.group(2))))
+        except ValueError:
+            continue
+    return out
+
+
+def _listed_count(material: str) -> int:
+    """How many items the material numbers 1, 2, 3 …: 「총 4개의 안건」 counts them."""
+    marks = [int(m.group(1)) for m in _LIST_MARK.finditer(material or "")]
+    count = 0
+    while count + 1 in marks:
+        count += 1
+    return count
+
+
+#: Where one sentence's clauses meet: 「…구성되었으며 다음 회의는…」, 「…배치하고, …」.
+_CLAUSE_BREAK = re.compile(
+    r"(?:(?<=며)|(?<=[하되있었았였이않]고)|(?<=지만)|(?<=는데))(?:,\s{0,2}|\s{1,2})(?=\S)"
+    r"|(?<=,)\s{1,2}")
 
 
 def _owner_known(cell: str, flat: str) -> bool:
@@ -3590,10 +3625,44 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
     out = [dict(s) for s in sections]
     codes: list[str] = []
 
+    labelled = _labelled_numbers(material)
+    listed = _listed_count(material)
+
+    def known(value: float, unit: str, text: str, at: int) -> bool:
+        if _quantity_known(value, unit, given, numbers):
+            return True
+        # 「정원 40명」 for the memo's 「(정원 40)」: the same label just before the number.
+        before = text[max(0, at - 16):at]
+        if any(label in before and abs(v - value) < 1e-9 for label, v in labelled):
+            return True
+        # 「총 4개의 안건」: the number of items the material lists.
+        return unit == "개" and listed >= 2 and value == listed
+
     def unknown(text: str, around: str = "") -> list[re.Match]:
         headcount = bool(_HEADCOUNT.search(f"{around} {text}"))
         return [m for v, u, m in _quantities(text)
-                if not (headcount and u == "명") and not _quantity_known(v, u, given, numbers)]
+                if not (headcount and u == "명") and not known(v, u, text, m.start())]
+
+    def blank(text: str) -> str:
+        for m in reversed(unknown(text)):
+            text = text[:m.start()] + "[수치]" + text[m.end():]
+        return text
+
+    def repair_sentence(sentence: str) -> str:
+        """A clause stating a number the material lacks goes, the sentence's other clauses
+        stay; when only the last clause holds it, the number becomes 「[수치]」 so the
+        sentence still ends. A sentence of nothing else goes whole."""
+        clauses, cut = [], 0
+        for m in _CLAUSE_BREAK.finditer(sentence):
+            clauses.append(sentence[cut:m.start()])
+            cut = m.end()
+        clauses.append(sentence[cut:])
+        bad = [bool(unknown(c)) for c in clauses]
+        if all(bad):
+            return ""
+        kept = [c for c, b in zip(clauses[:-1], bad[:-1], strict=True) if not b]
+        last = blank(clauses[-1]) if bad[-1] else clauses[-1]
+        return " ".join([*kept, last])
 
     for table in tables(out):
         owner = _column(table.header, r"담당|책임|owner")
@@ -3634,8 +3703,13 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
                 continue
             if fenced or _skip_line(line) or not unknown(line):
                 continue
-            kept = [part for part in units.SENTENCE_BREAK.split(line) if not unknown(part)]
-            codes.extend(["minutes_spec"] * (len(units.SENTENCE_BREAK.split(line)) - len(kept)))
+            kept = []
+            for part in units.SENTENCE_BREAK.split(line):
+                if unknown(part):
+                    codes.append("minutes_spec")
+                    part = repair_sentence(part)
+                if part:
+                    kept.append(part)
             lines[k] = " ".join(kept)
         out[index] = {**sec, "content": "\n".join(lines)}
     return out, codes
