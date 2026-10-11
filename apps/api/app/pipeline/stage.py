@@ -1,22 +1,4 @@
-"""The stage contract: one named step of a document or chat flow, reading and writing parts
-of the work bundle it declares.
-
-A stage is an object with
-
-- `name` — unique in the registry; what a pipeline file lists;
-- `kind` — `compute` (code only), `model` (asks a model), `check` (finds, fixes, finds
-  again) or `io` (reads or hands out files); for the record and for composing later;
-- `reads` / `writes` — dotted bundle fields (`computed.settled`, `document.sections`). The
-  runner compares the bundle before and after and refuses, in strict mode, a stage that
-  changed a field it did not declare; `usage` and `steps` are always writable;
-- `skip(bundle) -> str` — why it does not apply to this bundle ("" when it does);
-- `run(bundle, ctx)` — an async generator: it writes its fields on the bundle and yields
-  the wire events (`step`, `section`, …) the surface shows, in the order it always has.
-
-A stage ends the pipeline on purpose by raising `Stop` (a planning pass that offered its
-outline) or `Wait` (a question card the run waits on); any other exception is recorded as a
-failed stage and raised to the caller, exactly as the code before the move let it propagate.
-"""
+"""Stage contract: named step over declared bundle fields; `Stop`/`Wait` end a pipeline."""
 
 from __future__ import annotations
 
@@ -25,16 +7,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-#: Stage kinds; a check stage runs a check skill's check → fix → check.
+#: stage kinds; check = check → fix → check
 KINDS = ("compute", "model", "check", "io")
-#: Fields every stage may write.
+#: always writable
 ALWAYS_WRITABLE = ("usage", "steps", "wire")
 
 
 class Stop(Exception):  # noqa: N818 — a signal, not an error
-    """Ends the pipeline after this stage; the stages after it are recorded as not run."""
+    """Ends the pipeline; later stages recorded as not run."""
 
-    #: The record's status for a stop of this kind.
+    #: record status for this stop
     status = "stopped"
 
     def __init__(self, reason: str) -> None:
@@ -43,8 +25,7 @@ class Stop(Exception):  # noqa: N818 — a signal, not an error
 
 
 class Wait(Stop):
-    """Ends the pipeline to wait for the person (a question card); the run resumes when the
-    answers come. `evidence` goes on the record (the card's questions)."""
+    """Ends the pipeline to wait on a question card; `evidence` = the card's questions."""
 
     status = "waiting"
 
@@ -55,37 +36,34 @@ class Wait(Stop):
         self.evidence = dict(evidence or {})
 
 
-#: Words the `step` label adds for a status other than done.
+#: `step` label suffix per non-done status
 STATUS_WORDS = {"skipped": "해당 없음", "stopped": "멈춤", "failed": "실패", "waiting": "답 기다림",
                 "cancelled": "중단"}
 
 
 @dataclass(slots=True)
 class StepRecord:
-    """What one stage did, kept on the bundle, in the log and in the run record."""
+    """One stage's outcome: bundle, log and run record."""
 
     stage: str
     kind: str
     #: done · skipped · stopped · failed · waiting · cancelled
     status: str
     reason: str = ""
-    #: Declared fields that changed.
     wrote: list[str] = field(default_factory=list)
     events: int = 0
     ms: int = 0
-    #: The stage's Korean name, and a Korean line of what it did.
     label: str = ""
     summary: str = ""
-    #: What the stage worked from and changed (`runs.evidence`): computed values, findings
-    #: before and after, text old → new, code and its output, a card's questions.
+    #: inputs/changes (`runs.evidence`)
     evidence: dict[str, Any] = field(default_factory=dict)
     started_at: str = ""
     finished_at: str = ""
     attempt: int = 1
     run_id: str = ""
-    #: Whether the run kept a snapshot before this stage (it can be run again from here).
+    #: snapshot kept before this stage (rerunnable from here)
     rerunnable: bool = False
-    #: Tokens the stage spent, by usage key (`inputTokens`, `outlineOutputTokens`, …).
+    #: tokens spent, by usage key
     tokens: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -93,7 +71,7 @@ class StepRecord:
         return f"{self.run_id or 'run'}:{self.stage}:{self.attempt}"
 
     def stage_wire(self, *, evidence: bool = True) -> dict[str, Any]:
-        """The record as the surface reads it (`stage` on a `step` event, `routing.run`)."""
+        """Record as the surface reads it."""
         out = {
             "id": self.record_id, "runId": self.run_id, "name": self.stage,
             "label": self.label or self.stage, "kind": self.kind, "status": self.status,
@@ -108,8 +86,7 @@ class StepRecord:
         return out
 
     def wire(self) -> dict[str, Any]:
-        """The record as a surface `step` event (status `done` or `error`); `stage` carries
-        the whole record."""
+        """Record as a surface `step` event; `stage` = whole record."""
         name = self.label or self.stage
         if self.status == "done":
             label = f"{name} · {self.summary}" if self.summary else name
@@ -152,16 +129,13 @@ class StepRecord:
 
 @dataclass(slots=True)
 class Context:
-    """What a stage needs that is not work: the model call and the clock.
-
-    `complete` is looked up at call time by default, so a test that replaces the writer's
-    model call (`report._complete`) reaches every stage."""
+    """Model call and clock; `complete` resolved at call time so test patches apply."""
 
     complete: Callable[..., Awaitable[tuple[str, dict]]] | None = None
-    #: Free-form options the pipeline file sets (`[options]`).
+    #: pipeline file `[options]`
     options: dict[str, Any] = field(default_factory=dict)
     started: float = field(default_factory=time.monotonic)
-    #: The run this pass belongs to (`runs.Recorder`), for the records' ids.
+    #: owning run (`runs.Recorder`), for record ids
     run_id: str = ""
 
 
@@ -177,8 +151,7 @@ class Stage(Protocol):
 
 
 class Base:
-    """Defaults for a stage class: applies always, declares nothing. A stage that shows
-    nothing while it works overrides `apply`; one that emits events overrides `run`."""
+    """Stage defaults: always applies, declares nothing; override `apply` or `run`."""
 
     name = ""
     kind = "compute"

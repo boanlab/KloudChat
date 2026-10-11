@@ -1,17 +1,4 @@
-"""Runs a pipeline's stages in order over one bundle, recording every one.
-
-Each stage is recorded as `done`, `skipped` (with the reason the stage gave), `stopped`
-(it ended the pipeline on purpose), `failed` (it raised; the exception goes on to the
-caller, as it did before the flows were stages) or `cancelled` (the turn was closed under
-it). Stages after a stop are recorded as
-skipped with the stage that stopped them, so the record always names every stage.
-
-The wire events a stage yields pass through unchanged. The records themselves stay on the
-bundle (`bundle.steps`) and in the log; `emit_records` (on by default) also yields each as a
-surface `step` event with the whole record under `stage`. A `runs.Recorder` keeps the bundle
-after each stage so a later request can run the pipeline again from any of them. A stage
-that raises `Wait` is recorded as `waiting` (a question card the run waits on).
-"""
+"""Runs a pipeline's stages in order over one bundle, recording each."""
 
 from __future__ import annotations
 
@@ -31,12 +18,11 @@ from app.pipeline.stage import ALWAYS_WRITABLE, Context, Stage, StepRecord, Stop
 log = logging.getLogger(__name__)
 
 
-#: The stage running now, for whatever wants to attribute work to it (the replay harness
-#: tags each recorded model call with it).
+#: running stage, for attributing work (replay harness tags model calls)
 CURRENT_STAGE: ContextVar[str] = ContextVar("pipeline_stage", default="")
 
 
-#: Events the runner keeps the last of on the bundle (`Bundle.wire`).
+#: events whose last instance is kept on `Bundle.wire`
 _KEPT = frozenset({"titleBlock", "sources", "research", "title"})
 
 
@@ -65,20 +51,17 @@ def watched_fields(bundle: Any) -> list[str]:
 
 
 def strict_default() -> bool:
-    """`KLOUDCHAT_PIPELINE_STRICT=1`: refuse a stage that writes a field it did not declare
-    (the test suite runs with it; production does not pay for the comparison)."""
+    """`KLOUDCHAT_PIPELINE_STRICT=1`: refuse undeclared writes (tests on; prod skips the cost)."""
     return os.environ.get("KLOUDCHAT_PIPELINE_STRICT", "") == "1"
 
 
 def records_default() -> bool:
-    """`KLOUDCHAT_PIPELINE_STEPS`: send each stage record to the surface as a `step`
-    (category `pipeline`, the whole record under `stage`). On unless set to `0`; off, the
-    stream is what it was before the records."""
+    """`KLOUDCHAT_PIPELINE_STEPS`: emit stage records as `step` events; on unless `0`."""
     return os.environ.get("KLOUDCHAT_PIPELINE_STEPS", "1") != "0"
 
 
 def _spent(bundle: Any) -> dict[str, int]:
-    """The bundle's token counters as they stand (`bundle.usage`), numbers only."""
+    """Bundle token counters (`bundle.usage`), numbers only."""
     usage = getattr(bundle, "usage", None)
     if not isinstance(usage, dict):
         return {}
@@ -98,19 +81,17 @@ class Runner:
         self.name = name
         self.strict = strict_default() if strict is None else strict
         self.emit_records = records_default() if emit_records is None else emit_records
-        #: Keeps the bundle after each stage (`runs.Recorder`) for a later rerun; without
-        #: one, a `Witness` still says what each stage did when the records are shown.
+        #: bundle snapshots per stage for reruns; else a `Witness` for display
         self.recorder = recorder
         self.witness: runs.Witness = recorder or runs.Witness()
-        #: The attempt each stage's record carries (a rerun counts on from its parent's).
+        #: record attempt; reruns count on from the parent
         self.attempts: dict[str, int] = {}
-        #: The bundle's token counters when the running stage began (`StepRecord.tokens`).
+        #: token counters at stage start (`StepRecord.tokens`)
         self._spent_before: dict[str, int] = {}
 
     async def run(self, bundle: Any, ctx: Context | None = None, *,
                   start: str | None = None) -> AsyncIterator[dict[str, Any]]:
-        """Runs from the first stage, or from `start` (the stages before it recorded as
-        skipped: a resumed run reads what they left on the bundle)."""
+        """Runs from the first stage or `start`; earlier stages recorded as skipped."""
         ctx = ctx or Context()
         records: list[StepRecord] = bundle.steps
         names = [s.name for s in self.stages]
@@ -163,7 +144,7 @@ class Runner:
                     yield record.wire()
                 return
             except (GeneratorExit, asyncio.CancelledError):
-                # The turn was closed or cancelled under the stage (a stop, a lost socket).
+                # closed/cancelled mid-stage (stop, lost socket)
                 record.status, record.reason = "cancelled", "closed while running"
                 self._finish(record, began, stage, bundle)
                 records.append(record)
@@ -195,7 +176,7 @@ class Runner:
     def _record(self, stage: Stage, status: str, reason: str = "") -> StepRecord:
         from app.pipeline.labels import label
 
-        # A composed step carries its own title (`compose.Step.title`).
+        # composed step: own title (`compose.Step.title`)
         return StepRecord(stage.name, stage.kind, status, reason,
                           label=getattr(stage, "title", "") or label(stage.name),
                           attempt=self.attempts.get(stage.name, 1),
@@ -204,7 +185,6 @@ class Runner:
     def _finish(self, record: StepRecord, began: float, stage: Stage, bundle: Any) -> None:
         record.ms = int((time.monotonic() - began) * 1000)
         record.finished_at = _now()
-        # What this stage spent: the counters' growth while it ran.
         earlier = getattr(self, "_spent_before", {})
         record.tokens = {k: v - earlier.get(k, 0) for k, v in _spent(bundle).items()
                          if v - earlier.get(k, 0) > 0}

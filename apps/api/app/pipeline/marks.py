@@ -1,15 +1,4 @@
-"""Spans of a finished document the reader should look at, by section, for highlighting.
-
-- `placeholder` — a bracket blank 「[담당자]」 left for the person to fill
-  (`placeholders.PLACEHOLDER`): what the material did not give;
-- `ungrounded-replaced` — a blank the grounding check put where a value no source holds
-  stood: `original` is that value, `stage` the check that blanked it (read from the stage
-  records' `evidence.changes`);
-- `check-finding` — a sentence the verify stage still flags after its repair.
-
-Offsets are into the section's `content` as stored. `relocate` finds stored spans again in a
-body edited since (by their text), dropping those no longer there.
-"""
+"""Highlight spans per section: placeholders, grounding-blanked values, verify findings."""
 
 from __future__ import annotations
 
@@ -31,7 +20,7 @@ def _gap_reasons(bundle: Any) -> dict[str, str]:
 
 
 def _replaced(bundle: Any) -> dict[str, list[tuple[str, str, str]]]:
-    """Per section id: (blank, original value, stage) the grounding checks made."""
+    """Per section id: (blank, original value, stage) from grounding checks."""
     out: dict[str, list[tuple[str, str, str]]] = {}
     for record in getattr(bundle, "steps", None) or []:
         if record.stage not in _GROUNDING:
@@ -45,7 +34,7 @@ def _replaced(bundle: Any) -> dict[str, list[tuple[str, str, str]]]:
 
 
 def for_sections(bundle: Any, sections: list[dict]) -> list[dict[str, Any]]:
-    """The spans of each section of `sections` (as stored), sections with none left out."""
+    """Spans per stored section; sections without spans omitted."""
     gaps, replaced = _gap_reasons(bundle), _replaced(bundle)
     still = list(getattr(bundle.findings, "still", None) or [])
     out, total = [], 0
@@ -88,8 +77,7 @@ def for_sections(bundle: Any, sections: list[dict]) -> list[dict[str, Any]]:
 
 
 def relocate(stored: list[dict] | None, sections: list[dict]) -> list[dict[str, Any]]:
-    """`stored` spans found again in `sections` as they stand now: offsets by text, a span
-    whose text is gone dropped; blanks typed in since are added as placeholders."""
+    """Stored spans re-found by text; vanished ones dropped, new blanks added."""
     by_id = {str(s.get("id") or i): s for i, s in enumerate(sections or [])}
     kept: dict[str, list[dict]] = {}
     for row in stored or []:

@@ -1,10 +1,4 @@
-"""Handing the document over as files: the 파일 탭's exporters, kept as chat files.
-
-`export` makes each asked format the document offers, stores it for the chat, and leaves on
-the bundle the files made (`files`), the step that carries their download chips
-(`document.handed`, None when none was made) and what the reply says (`document.reply`).
-The document itself is not touched.
-"""
+"""Document handover as chat files via the 파일 탭 exporters."""
 
 from __future__ import annotations
 
@@ -34,7 +28,7 @@ class Export(Base):
     writes = ("files", "document.handed", "document.reply")
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
-        # Imported late: the exporters live with the 파일 탭's routes.
+        # late import: exporters live with 파일 탭 routes
         from app.routers.workspace import artifact_file, export_formats
 
         req, artifact = bundle.request, bundle.document.artifact

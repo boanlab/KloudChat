@@ -1,12 +1,4 @@
-"""The routing of a turn: which pipeline a message goes to.
-
-A message on a document surface either asks for a new document (the format's `plan` /
-`write`), works on the one on screen (`revise`), or only asks for it as a file (`export`);
-a page 서식 goes to the page writer and a chat message to the agent loop. `route` reads the
-facts the router settled (`Request.turn["route"]`) and names the target; the router
-dispatches on it. A revision the planner reads as a change of skeleton is planned again as
-a new document (`restructure`), which the router adds to the record once it knows.
-"""
+"""Turn routing: target pipeline for a message."""
 
 from __future__ import annotations
 
@@ -16,7 +8,7 @@ from app.pipeline import registry
 from app.pipeline.bundle import Bundle
 from app.pipeline.stage import Base, Context
 
-#: Targets, and what the record says for each.
+#: target → record label
 TARGETS = {
     "page": "페이지 쓰기",
     "handover": "파일로 건네기",
@@ -28,7 +20,7 @@ TARGETS = {
 
 
 def decide(facts: dict[str, Any]) -> str:
-    """The target of a turn from what the router settled about it."""
+    """Turn target from the router's settled facts."""
     kind = str(facts.get("kind") or "")
     documents = kind in ("report", "slides")
     if facts.get("page_template"):
@@ -45,7 +37,7 @@ def decide(facts: dict[str, Any]) -> str:
 
 
 class Route(Base):
-    """Names the pipeline the turn goes to (`plan.route`)."""
+    """Names the turn's pipeline (`plan.route`)."""
 
     name = "route"
     kind = "compute"

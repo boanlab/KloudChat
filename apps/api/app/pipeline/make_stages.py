@@ -1,13 +1,4 @@
-"""The coarse stages of the writers that are still one service call each: a deck and an HTML
-page.
-
-`deck.py` and `page.py` plan and write a document in one generator; each is a `model` stage
-here (`deck-write`, `page-write`), followed by what the router did after it — a deck's
-carried slides (`deck-carry`) and the store (`deck-save`, `page-save`).
-Their `make` flow (`app/pipelines/deck.toml`, `page.toml`) is recorded
-and rerun like any other; the work itself is the router's (`sessions._deck_write` …),
-called through the module so a test that replaces a helper there reaches the stage.
-"""
+"""Coarse single-call writer stages: deck and HTML page."""
 
 from __future__ import annotations
 
@@ -19,21 +10,20 @@ from app.pipeline.stage import Base, Context
 
 
 def _host():
-    # Late: the router imports the pipeline.
+    # late import: router imports the pipeline
     from app.routers import sessions
 
     return sessions
 
 
 class Hosted(Base):
-    """A stage whose work is a router function over the bundle (an async generator of wire
-    events)."""
+    """Stage whose work is a router async generator over the bundle."""
 
     def __init__(self, name: str, kind: str, work: str, *, reads: tuple[str, ...],
                  writes: tuple[str, ...], needs: str = "") -> None:
         self.name, self.kind, self.work = name, kind, work
         self.reads, self.writes = reads, writes
-        #: A `Request.turn` key the stage needs; without it the stage does not apply.
+        #: `Request.turn` key required; stage skipped without it.
         self.needs = needs
 
     def skip(self, bundle: Bundle) -> str:

@@ -1,12 +1,10 @@
-"""Korean names of the stages, as the surface shows them on a run's record."""
+"""Korean stage names shown on a run's record."""
 
 from __future__ import annotations
 
 LABELS: dict[str, str] = {
-    # before the first draft
     "check:gaps": "빠진 정보 찾기",
     "gap-card": "확인 질문",
-    # planning and writing a report
     "research": "자료 검색",
     "material": "자료 모으기",
     "outline": "개요 잡기",
@@ -35,23 +33,19 @@ LABELS: dict[str, str] = {
     "format-step": "템플릿 점검 결과",
     "quality": "품질 점검",
     "report-save": "저장",
-    # a chat answer's finish
     "answer-normalize": "답 다듬기",
     "check:answer-grounding": "근거 확인",
     "check:copy": "카피 점검",
     "check:skills": "스킬 점검",
     "text-fit": "분량 확인",
     "answer-replace": "답 바꾸기",
-    # a revision
     "revise-route": "고칠 곳 찾기",
     "revise-widen": "함께 고칠 곳",
     "revise-rewrite": "고쳐 쓰기",
     "consistency": "앞뒤 맞추기",
     "revise-load": "문서 불러오기",
     "revise-save": "저장",
-    # handing over files
     "export": "파일 만들기",
-    # a deck, a page, the routing of a turn
     "deck-write": "슬라이드 쓰기",
     "deck-carry": "그대로 둘 슬라이드",
     "deck-save": "저장",

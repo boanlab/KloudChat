@@ -1,12 +1,4 @@
-"""A revision's stages: one instruction applied to the document on screen.
-
-The code that stood in the middle of `sessions._revise_document`, cut along its steps; the
-router still loads the document and stores the result. `revise-route` decides what the
-instruction lands on (a reorder or a term swap by hand, else the planner), `revise-widen`
-finds the parts that rest on a changed fact and runs the format's pre-pass again with it,
-`revise-rewrite` rewrites each part, and `consistency` reads the revised document for one
-fact written two ways, repairs once and reads again.
-"""
+"""Revision stages: route, widen, rewrite, consistency over the document on screen."""
 
 from __future__ import annotations
 
@@ -45,7 +37,7 @@ def _part_event(part: dict, is_deck: bool) -> dict:
 
 
 def _stopped(bundle: Bundle, text: str = "", *, error: str = "") -> list[dict]:
-    """The events a revision that ends early sends: what it says, its usage, done."""
+    """Events for an early-ending revision: message, usage, done."""
     events = []
     if text:
         events.append({"type": "delta", "text": text})
@@ -57,7 +49,7 @@ def _stopped(bundle: Bundle, text: str = "", *, error: str = "") -> list[dict]:
 
 
 def strings(value: Any) -> list[str]:
-    """Every string inside a slide, for a check that reads its words."""
+    """All strings inside a slide."""
     if isinstance(value, str):
         return [value]
     if isinstance(value, dict):
@@ -68,8 +60,7 @@ def strings(value: Any) -> list[str]:
 
 
 class Route(Base):
-    """What the instruction lands on: two parts trading places and a term replaced across
-    the document are done by hand; anything else is the planner's call."""
+    """Revision target: swaps and term replacements by hand; else the planner."""
 
     name = "revise-route"
     kind = "model"
@@ -86,12 +77,11 @@ class Route(Base):
         swap = revise.term_swap(instruction)
         reorder = revise.order_swap(instruction, names) if swap is None else None
         if reorder is not None:
-            # Two parts trading places is a rearrangement done by hand: the model would
-            # redraw the deck (and add a 목차) to move two slides.
+            # swap by hand: model would redraw the deck (and add a 목차)
             first, second = reorder
             parts[first], parts[second] = parts[second], parts[first]
             if not is_deck:
-                # A conclusion now at the front does not re-list what follows it.
+                # conclusion moved to front: no re-listing what follows
                 parts = report.trim_leading_conclusion(parts)
             yield {"type": "step", "id": "route", "status": "done",
                    "label": f"순서 바꾸는 중: {names[first]} ↔ {names[second]}"}
@@ -101,8 +91,7 @@ class Route(Base):
                                note=f"{names[first]} ↔ {names[second]}")
             changed = 2
         elif swap is not None:
-            # A term replacement across the document is done by hand: exact, instant, and
-            # nothing else moves. The model is not asked to retype six sections for it.
+            # term swap by hand: exact, instant, nothing else moves
             old_term, new_term = swap
             parts, hits = revise.replace_term(parts, old_term, new_term)
             bundle.plan.title, title_hits = revise.replace_term(bundle.plan.title, old_term,
@@ -130,7 +119,7 @@ class Route(Base):
         bundle.usage["inputTokens"] += plan.usage["inputTokens"]
         bundle.usage["outputTokens"] += plan.usage["outputTokens"]
         if plan.inserts:
-            # New parts are written one by one and slotted in; the rest is untouched.
+            # new parts written one by one and slotted in
             position = plan.after + 1
             for offset, name in enumerate(plan.names):
                 if is_deck:
@@ -161,7 +150,7 @@ class Route(Base):
         by_hand = swap is not None or reorder is not None
         doc.by_hand, bundle.plan.revision = by_hand, plan
         if not by_hand and not plan.revises:
-            # A new-document request is said, not acted on.
+            # new-document request: said, not acted on
             yield {"type": "step", "id": "route", "label": "새 문서 요청", "status": "done"}
             for event in _stopped(bundle, "이건 지금 문서를 고치는 요청으로 보이지 않습니다. "
                                           "새로 쓰려면 '새로 써 줘' 라고 알려 주세요."):
@@ -174,9 +163,7 @@ class Route(Base):
 
 
 class Widen(Base):
-    """A follow-up that changes a criterion, figure, date or decision is revised wherever
-    the document states or rests on it, the summary and conclusion included; the format's
-    pre-pass runs again with it so the rewrites get the settled values."""
+    """Changed fact revised wherever it's stated or relied on; pre-pass rerun for settled values."""
 
     name = "revise-widen"
     kind = "model"
@@ -217,8 +204,7 @@ class Widen(Base):
 
 
 class Rewrite(Base):
-    """Each part the revision lands on, rewritten with the rest as context and held to the
-    material by code; one bad part is not a failed turn."""
+    """Per-part rewrite with context, held to material by code; one bad part ≠ failed turn."""
 
     name = "revise-rewrite"
     kind = "model"
@@ -262,8 +248,7 @@ class Rewrite(Base):
                         target_id=str(part.get("id") or ""),
                         model=req.model,
                         api_key=req.api_key,
-                        # The planner's paraphrase first, then the words as typed, so a
-                        # detail the paraphrase dropped still lands.
+                        # planner paraphrase + typed words, so dropped details still land
                         note=(
                             consistency.dependent_note(instruction)
                             if index in widened
@@ -277,13 +262,12 @@ class Rewrite(Base):
                     if not body.strip():
                         raise ValueError("빈 결과")
                     if revise.meta_talk(body):
-                        # A reply to the person is not the part; the part stays as it was.
+                        # reply to the person, not a part: keep the part
                         raise ValueError("본문 대신 대화 답이 나옴")
-                    # A figure the section had stays unless the rewrite drew a new one or the
-                    # person asked for it to go.
+                    # existing figure kept unless redrawn or removal asked
                     body = revise.keep_figure(str(part.get("content") or ""), body, instruction)
                     body = richtext.detach_tables(body)
-                    # 「470만 원 × 36개월 = …」 is checked by arithmetic, not trusted.
+                    # arithmetic checked, not trusted
                     body = report.trim_table_echo(
                         report.drop_redundant_kpi(
                             report.fix_point_units(
@@ -297,8 +281,7 @@ class Rewrite(Base):
                             )
                         )
                     )
-                    # The rewrite does not repeat what earlier sections already said, except
-                    # on an add: a sentence the person asked for is kept even when it repeats.
+                    # no repeats of earlier sections, except requested additions
                     if not re.search(r"추가|넣어|덧붙|더\s*써|보태", instruction):
                         earlier = [
                             re.sub(r"<[^<>]{0,2000}>", " ", str(p.get("content") or ""))
@@ -312,7 +295,7 @@ class Rewrite(Base):
                         )
                         body = report.trim_restatements(body, earlier, keep_items=gaejo)[0]
                     body = internal_words.scrub(body)
-                    # The rewrite is Markdown; an old `html` flag would show literal asterisks.
+                    # Markdown output; old `html` flag would show literal asterisks
                     renamed = (revise.requested_title(instruction)
                                if len(plan.targets) == 1 and index not in widened else None)
                     parts[index] = {
@@ -347,8 +330,7 @@ class Rewrite(Base):
 
 
 class Consistency(Base):
-    """One named figure, total, date or recommendation written two ways across parts is
-    found by code, repaired once and read again; what stays is said in the step."""
+    """Cross-part inconsistencies found by code, repaired once, rechecked."""
 
     name = "consistency"
     kind = "check"
@@ -396,7 +378,7 @@ def bundle_for(*, request: str, instruction: str, model: dict, planner: dict | N
                api_key: str, is_deck: bool, title: str, data: dict, parts: list[dict],
                material: list[str], plan: revise.Plan | None, format_id: str,
                usage: dict, session_id: str = "", turn: dict | None = None) -> Bundle:
-    """A revision's bundle: the document as loaded, the instruction, the material."""
+    """Revision bundle: loaded document, instruction, material."""
     from app.pipeline.bundle import Spec
 
     req = Request(text=request, model=model["id"], api_key=api_key,

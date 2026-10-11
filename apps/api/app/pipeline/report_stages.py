@@ -1,14 +1,4 @@
-"""The report writer's stages: `report.write`, cut along its steps.
-
-Each stage is the code that stood at that point of `report.write`, unchanged in what it
-asks, computes and emits; it now reads and writes the bundle instead of the function's
-locals. Helpers stay in `app.services.report` and are looked up there at call time, so a
-test that replaces one (`report._complete`, `report._long_form`) reaches the stage.
-
-Which stages a report runs is `app/pipelines/report.toml`; what each optional one does, and
-the options (`search`, `fixed_outline`, `draws`, the pre-pass), are the 서식's and the agent's
-진행 과정 설정 on the bundle (`bundle.spec.settings`, `services/process_settings.py`).
-"""
+"""Report writer stages cut from `report.write`; helpers looked up in `app.services.report` at call time (test patches)."""
 
 from __future__ import annotations
 
@@ -77,14 +67,14 @@ _CAUGHT = (httpx.HTTPError, KeyError, IndexError, ValueError)
 
 
 def _report():
-    # Imported late: `report` imports this module's runner from `write`.
+    # late import: `report` imports this module's runner
     from app.services import report
 
     return report
 
 
 def _messages(bundle: Bundle, prompt: str) -> list[dict[str, str]]:
-    """The writer's messages: the prompt under the material, as every writing call has."""
+    """Writer messages: prompt under the material."""
     return build_document_messages(
         SessionKind.report,
         prompt,
@@ -108,7 +98,7 @@ def _usage(bundle: Bundle) -> dict[str, Any]:
 
 
 def _material_text(bundle: Bundle) -> str:
-    # What an earlier pipeline step derived is no source for a check.
+    # derived material is no check source
     return "\n".join([bundle.request.text, *bundle.material.grounds])
 
 
@@ -116,8 +106,7 @@ def _material_text(bundle: Bundle) -> str:
 
 
 class Research(Base):
-    """Searches before planning, so the outline is planned on the sources; asks when a
-    document that needs the web found nothing."""
+    """Search before planning; asks when a web-needing document found nothing."""
 
     name = "research"
     kind = "io"
@@ -128,9 +117,7 @@ class Research(Base):
         report, req = _report(), bundle.request
         findings = research.Findings()
         web_search = req.web_search
-        # A document on the person's own material is not searched; a 경력기술서 never is. A
-        # work document (보도자료, 공문, 결과보고서, 공모 신청서) whose material came with it is
-        # not either, unless the words ask for the web.
+        # no search: own-material docs, 경력기술서, work docs with material (unless web asked)
         if web_search and (report._own_material(req.text) or not bundle.spec.settings.search
                            or report.material_complete(req.text, bundle.spec.format_id,
                                                        has_files=bool(req.untrusted))):
@@ -140,7 +127,7 @@ class Research(Base):
             planner = req.outline_model or req.model
             findings = await research.run(req.text, model=planner, api_key=req.api_key,
                                           scholarly=report.scholarly_document(req.text))
-            # A comparison of products reads each product's own pages too.
+            # product comparison: each product's own pages too
             findings = await research.deepen_for_products(
                 req.text, findings, model=planner, api_key=req.api_key)
             apart = bool(req.outline_model)
@@ -155,7 +142,7 @@ class Research(Base):
                 "status": "done",
                 "detail": findings.detail,
             }
-        # Copied: project citations must not be appended into the caller's list.
+        # copy: keep caller's list unmodified
         findings.sources = list(findings.sources)
         bundle.material.research = findings
         bundle.material.web_search = web_search
@@ -170,7 +157,7 @@ class Research(Base):
             and not report._carries_material(req.text)
             and not any(block.strip() for block in req.untrusted)
         ):
-            # A trend or literature document with no search results asks instead of writing.
+            # trend/literature with no results: ask instead of writing
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {
                 "type": "needs",
@@ -192,8 +179,7 @@ class Research(Base):
 
 
 class Assemble(Base):
-    """The material the writer reads: attachments, pasted material, project citations and
-    the research pages, each part with its origin."""
+    """Writer material (attachments, pasted, project citations, research pages) with origins."""
 
     name = "material"
     reads = ("request", "material.research", "material.web_search", "material.web_selected")
@@ -236,7 +222,7 @@ class Assemble(Base):
             project_selected += 1
         mat.sources = findings.sources
 
-        # Stored by the report artifact as its research log.
+        # research log for the report artifact
         yield {
             "type": "research",
             "research": {
@@ -250,18 +236,16 @@ class Assemble(Base):
                 "projectExcluded": project_excluded,
             },
         }
-        # Switched off needs no disclaimer; could not run and found nothing each get one.
+        # disclaimer only for could-not-run / found-nothing
         if mat.web_search and not findings.searched:
             mat.research_rule = research.UNRESEARCHED_RULE
         elif mat.web_search and mat.web_selected == 0:
             mat.research_rule = research.EMPTY_RULE
-        # Research pages go after the attached files, as their own labelled block.
         mat.parts = [Part(text, "attachment") for text in req.untrusted]
-        # Material pasted under the instruction is read whole, as a reference block.
+        # pasted material read whole as a reference block
         if pasted := pasted_material(req.text):
             mat.parts.append(Part(pasted, "pasted"))
-        # A composed run: what an earlier step's code printed is a source; what an earlier
-        # step wrote is read for its shape, its figures taken from the files and the code.
+        # composed run: earlier code output is a source; earlier writing for shape only
         mat.parts += [Part(f"# 코드 실행 결과(앞 단계)\n{text}", "computed", "tool")
                       for text in req.tool_outputs if text.strip()]
         if derived := [text for text in req.derived if text.strip()]:
@@ -324,7 +308,7 @@ class Outline(Base):
             raise Stop("outline failed") from None
 
         _count(bundle, spent, planner=True)
-        # A question instead of a 목차 — see `grounding.ASK_RULE`.
+        # question instead of 목차 — see `grounding.ASK_RULE`
         if req.may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
@@ -353,7 +337,6 @@ class Outline(Base):
             yield _usage(bundle)
             raise Stop("needs: results without data")
         if req.may_ask and report._subject_missing(text, request, "\n".join(untrusted)):
-            # A request with no subject is asked about.
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {
                 "type": "needs",
@@ -367,14 +350,13 @@ class Outline(Base):
             }
             yield _usage(bundle)
             raise Stop("needs: no subject")
-        # Carried on the plan so the writing pass, a separate request, writes a
-        # form — see `_FRAME_RULE`.
+        # carried on the plan for the separate writing request — see `_FRAME_RULE`
         frame = not req.may_ask and (
             report._results_without_data(request, untrusted)
             or grounding.subject_missing(text, request, "\n".join(untrusted))
         )
         findings = mat.research
-        # Written from memory; carried on the plan so the document opens by saying so.
+        # from memory: document opens by saying so
         unverified = (
             not req.may_ask
             and mat.web_search
@@ -383,14 +365,13 @@ class Outline(Base):
             and report._from_the_web(request)
         )
         title, headings = report._parse_outline(text)
-        # 「아래 개요로 써 줘」 with the outline pasted: the person's sections, not new ones.
-        # 개조식 keeps its fixed shape: a planner's seven sections never fit one page.
+        # pasted outline: person's sections; 개조식 keeps its fixed shape
         fixed = report.given_outline(request) or (
             list(bundle.spec.settings.outline) if not wanted else []
         )
         if fixed:
             headings = fixed
-        # A fixed outline of one or two sections (a 서식's 「본문」) is the person's own shape.
+        # 1-2 section fixed outline (서식 「본문」) is the person's shape
         least = 1 if (wanted or fixed) else report._MIN_SECTIONS
         headings = [
             report.without_instruction_aside(h, request)
@@ -419,8 +400,7 @@ class Outline(Base):
                 yield _usage(bundle)
                 raise Stop("outline: wrong size")
         if not fixed and not report.outline_is_json(text):
-            # The model wrote about the outline instead of giving it; one more ask for the
-            # JSON. The list read out of its prose stands only if the ask fails again.
+            # model wrote prose about the outline: one more JSON ask; prose list is the fallback
             log.info("report outline came as prose, asking for the JSON: %r", text[:300])
             try:
                 json_text, json_spent = await ask(
@@ -440,8 +420,7 @@ class Outline(Base):
                     if len(json_headings) >= least:
                         title, headings, text = json_title or title, json_headings, json_text
         if len(headings) < least:
-            # One more ask before giving up: an outline that came back cut off or in another
-            # shape is usually fine the second time.
+            # one retry: truncated/odd-shaped outlines usually fine second time
             log.warning("report outline too short (%d), asking again: %r", len(headings),
                         text[:1500])
             try:
@@ -479,13 +458,11 @@ class Outline(Base):
         }
         bundle.plan.title, bundle.plan.headings = title, headings
         bundle.plan.frame, bundle.plan.unverified = bool(frame), bool(unverified)
-        # Planning stops here: the caller stores the plan, shows it, and calls
-        # back with it approved. Figures are proposed now and asked about on a
-        # separate card — see `services.figures`.
+        # planning stops: caller stores, shows, re-calls with approval; figures on a separate card
         plan: dict[str, Any] = {
             "title": title[:200],
             "sections": headings,
-            # The request's own style wins; the outline's choice fills the default.
+            # request style wins; outline's choice is the default
             "visualStyle": (
                 design.visual_style_for(request)
                 if design.visual_style_for(request) != "editorial"
@@ -496,7 +473,7 @@ class Outline(Base):
             plan["frame"] = True
         if unverified:
             plan["unverified"] = True
-        # Pictures are offered only where the 서식 draws by itself, or when asked.
+        # pictures only where the 서식 draws or when asked
         if req.image_model and not (bundle.spec.settings.draws == "when-asked"
                                     and not diagrams.asks_for_diagrams(instruction_part(request))):
             drawn = await figures.propose(
@@ -528,13 +505,7 @@ def report_design(
     design_tokens: dict[str, str] | None,
     template_id: str | None,
 ) -> dict[str, str] | None:
-    """The design the written report is stored with; `None` when it carries none.
-
-    One decision for both ends of the run: `approved-plan` announces it before a word is
-    written, so the panel draws the document in the look it will keep, and `report-save`
-    stores it. A template's look outranks the project default and the request; with
-    neither, the approved plan (or the request) picks the style and the subject the colour.
-    """
+    """Stored design (None if none); template > project default > request, else plan picks style."""
     template = design_templates.get(template_id) if template_id else None
     if template is not None and template.look:
         return design.normalise_tokens({**(design_tokens or {}), "visualStyle": template.look})
@@ -555,7 +526,7 @@ def report_design(
 
 
 class ApprovedPlan(Base):
-    """Takes the approved 목차; the title and the sources it was planned on go out."""
+    """Takes the approved 목차; emits title and planning sources."""
 
     name = "approved-plan"
     reads = ("request", "material.sources")
@@ -572,30 +543,27 @@ class ApprovedPlan(Base):
             yield {"type": "error", "message": "승인된 개요가 비어 있습니다."}
             yield _usage(bundle)
             raise Stop("approved outline is empty")
-        # Emitted only when the model produced one, so the caller keeps its fallback.
+        # only when produced; caller keeps its fallback
         if plan.title:
             yield {"type": "title", "title": hangul.tidy_spacing(plan.title)[:200]}
-        # The look the document is stored with, before the first section: a draft drawn
-        # in the panel's default look would change under the reader when it is saved.
+        # look before first section, so the panel doesn't restyle on save
         req = bundle.request
         if look := report_design(req.text, approved, req.design_tokens, req.template_id):
             yield {"type": "design", "design": look}
-        # The same sources the outline was planned on.
         yield {"type": "sources", "sources": bundle.material.sources}
         plan.figures = {int(f.get("section", -1)): f for f in (bundle.request.figures_plan or [])
                         if f.get("prompt")}
 
 
 def _given(bundle: Bundle) -> str:
-    """What the person gave: the request's own material, the files, and the code's output."""
+    """Person-given material: request, files, code output."""
     req = bundle.request
     return "\n\n".join([_report()._request_material(req.text), *req.untrusted,
                          *req.tool_outputs]).strip()
 
 
 class Calc(Base):
-    """Derived numbers (gains in dB, errors, totals) computed by code, not the writer; the
-    printed values reach every section as given facts."""
+    """Derived numbers computed by code; printed values go to every section as facts."""
 
     name = "calc"
     kind = "model"
@@ -603,8 +571,7 @@ class Calc(Base):
     writes = ("computed.values", "material.trusted")
 
     def skip(self, bundle: Bundle) -> str:
-        # Over what the person gave, not the search pages (their figures are not data to
-        # compute; a proposal's method saying 「가중 평균」 asked for nothing).
+        # person's material only, not search pages
         if not calc.needed(bundle.request.text, [_given(bundle)]):
             return "nothing to compute in the request"
         return ""
@@ -612,8 +579,7 @@ class Calc(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         yield {"type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"}
-        # Copying the material's numbers into a program is a reading, not prose: the planner
-        # wrote correct values more often (93% against 84%) and closed its code block every time.
+        # planner model: more accurate values (93% vs 84%), always closes code block
         computed, spent, status = await calc.computed_values(
             req.text, bundle.material.grounds, complete=report._complete, model=req.judge,
             api_key=req.api_key)
@@ -635,7 +601,7 @@ class Calc(Base):
 
 
 class Announce(Base):
-    """The sections, announced up front so the panel can show the whole shape."""
+    """Announce sections up front for the panel."""
 
     name = "announce"
     reads = ("plan.headings",)
@@ -657,8 +623,7 @@ class Announce(Base):
 
 
 class Settle(Base):
-    """The figures the material settles, fixed before a word is written: every section is
-    told them, and what it wrote is read against them at the end."""
+    """Figures settled from the material before writing; sections checked against them."""
 
     name = "settle"
     kind = "model"
@@ -667,28 +632,25 @@ class Settle(Base):
 
     async def apply(self, bundle: Bundle, ctx: Context) -> None:
         report, req = _report(), bundle.request
-        # The figures settle from the person's files and the code's output, never from what an
-        # earlier step of a composed run wrote (`req.derived`).
+        # from files and code output, never `req.derived`
         given = _given(bundle)
         bundle.material.given = given
         if not given:
             return
         settled: list[key_figures.Figure] = []
         try:
-            # A judgement, not prose: the planner's, when one is set.
+            # judgement: planner model when set
             settled, bundle.computed.conflicts, spent = await key_figures.settle_all(
                 given, report._complete, req.judge, req.api_key)
             _count(bundle, spent, planner=True)
         except Exception as exc:  # noqa: BLE001 — written without them
             log.info("key figures not settled: %s", exc)
-        # What the inputs give (margin, break-even, the target's profit) is worked out by
-        # code and settled with them.
+        # derived values (margin, break-even, target profit) worked out by code
         bundle.computed.settled = [*settled, *key_figures.derived(settled)]
 
 
 class Prepass(Base):
-    """The format's own pre-pass: dates, the quote, scores and periods settled by code, in
-    blocks of their own beside the settled figures (not under their cap)."""
+    """Format pre-pass: dates, quote, scores, periods settled by code, outside the settled cap."""
 
     name = "prepass"
     kind = "model"
@@ -719,18 +681,17 @@ class Prepass(Base):
                        "status": "error", "detail": f"코드 계산 없이 씀 ({type(exc).__name__})"}
             _count(bundle, prepass_usage, planner=True)
         elif not quiet:
-            # A pre-pass that does not run says why.
+            # pre-pass that doesn't run says why
             yield {"type": "step", "id": "prepass", "label": "사전 계산 해당 없음", "status": "done",
                    "detail": "요청과 첨부에 계산할 자료가 없음"}
         if bundle.spec.settings.prepass_always and prepass is None:
-            # 개조식 is checked for its shape and pages even with nothing attached.
+            # 개조식 shape/page check even with nothing attached
             prepass = report_checks.Prepass(format_id=format_id,
                                             process=bundle.spec.settings)
         bundle.computed.prepass = prepass
         computed = bundle.computed.values
         if prepass is not None and prepass.costs_withheld and computed:
-            # Readings of the costs never agreed: no totals reach the writer, the sandbox's
-            # neither.
+            # cost readings disagree: no totals to writer or sandbox
             bundle.material.trusted = [p for p in bundle.material.trusted if p.text != computed]
         if prepass is not None and prepass.runs:
             settled = bundle.computed.settled
@@ -752,7 +713,7 @@ class Prepass(Base):
 
 
 class WriterNotes(Base):
-    """The settled figures and the conflicting ones, put in front of the writer."""
+    """Settled and conflicting figures in front of the writer."""
 
     name = "writer-notes"
     reads = ("computed.settled", "computed.conflicts", "computed.prepass", "spec.format_id")
@@ -763,20 +724,18 @@ class WriterNotes(Base):
         if com.settled:
             mat.parts = [Part(key_figures.block(com.settled), "settled"), *mat.parts]
         if com.settled or (com.prepass is not None and com.prepass.blocks):
-            # The blocks are the writer's notes; their names never reach the page.
+            # writer notes; block names never reach the page
             mat.parts = [*mat.parts, Part(internal_words.WRITER_NOTE, "note")]
             log.info("settled figures: %s", [(f.name, f.value) for f in com.settled])
         if com.conflicts:
-            # Both values, with where and when: the writer shows them, nothing merges them.
+            # both values with where/when; never merged
             mat.parts = [Part(key_figures.conflict_block(com.conflicts,
                                                               bundle.spec.settings.conflict_rule),
                               "conflicts"), *mat.parts]
 
 
 class Draft(Base):
-    """The whole document drafted in one call so numbers and conclusions stay consistent
-    across sections, then cut along its headings; a long document is written section by
-    section instead (`report._long_form`)."""
+    """One-call draft for consistency, cut by headings; long docs section by section (`report._long_form`)."""
 
     name = "draft"
     kind = "model"
@@ -788,7 +747,6 @@ class Draft(Base):
         long_form = report._long_form(req.text)
         bundle.document.long_form = long_form
         if long_form:
-            # Long documents are written section by section — see `_long_form`.
             yield {"type": "step", "id": "draft", "label": "절마다 길게 쓰는 중", "status": "done"}
             return
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
@@ -820,8 +778,7 @@ class Draft(Base):
 
 
 class Sections(Base):
-    """Each section taken in order: from the draft, or written on its own (four at a time
-    for a long document, the assumptions section first), then cleaned by code."""
+    """Sections in order: from draft or written alone (4 at a time, assumptions first), code-cleaned."""
 
     name = "sections"
     kind = "model"
@@ -838,11 +795,11 @@ class Sections(Base):
         outline_text = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(headings))
         document_context = bundle.material.document
 
-        #: The assumptions section's text once written, and where it stands.
+        #: Assumptions section text once written, and its position.
         assumptions: dict = {"text": "", "index": -1}
 
         async def write_section(index: int, section: dict, written: list[str]):
-            """One section's call, as the loop below makes it."""
+            """One section's call."""
             role = report._section_role(section["heading"], index, len(sections),
                                         "\n".join(written))
             return await report._complete(
@@ -850,8 +807,7 @@ class Sections(Base):
                 _messages(bundle, report._shaped(report._SECTION_PROMPT.format(
                     heading=section["heading"],
                     outline=outline_text,
-                    # Tail only: the whole document would crowd out the
-                    # instruction by section six.
+                    # tail only: whole doc crowds out the instruction
                     written="\n\n".join(written)[-4000:] or "(nothing yet)",
                     refs=refs,
                     request=prompt_request(request, 1500),
@@ -863,7 +819,7 @@ class Sections(Base):
                     genre=genre,
                 ), genre)
                     + (
-                    # Told before writing so the section can refer to its figure.
+                    # told before writing so the section can reference its figure
                     "\n\n"
                     + figures.note_for(
                         figures.Figure(
@@ -876,8 +832,7 @@ class Sections(Base):
                     else ""
                 )
                     + (
-                    # The assumptions section was written first; every other section
-                    # computes from it rather than settling the same inputs again.
+                    # others compute from the assumptions section, not re-settle inputs
                     "\n\nThese are this document's settled key assumptions. For values such as "
                     "price, unit cost, fixed cost and churn, use only those below, and never set "
                     "a new value for the same assumption. Do not rebuild the assumptions table; "
@@ -897,10 +852,7 @@ class Sections(Base):
                 2400 if long_form else 1200,
             )
 
-        # A section that settles the document's assumptions (「핵심 가정」, 「전제」) is written
-        # before the others, which are then told its values: written side by side, each
-        # section would settle its own price and fixed cost and the document would carry
-        # four different ones.
+        # assumptions section (「핵심 가정」, 「전제」) first: parallel sections would settle conflicting inputs
         assumption_at = next(
             (
                 i for i, sec in enumerate(sections)
@@ -919,9 +871,7 @@ class Sections(Base):
             except _CAUGHT as exc:
                 log.info("assumptions section not written first: %s", exc)
 
-        # A long document's sections are started together (four at a time) and taken in
-        # order below; each knows from its role line what the others cover, and the
-        # restatement trim still runs in order. A short one is drafted in one call.
+        # long: sections started 4 at a time, taken in order (trim runs in order); short: one draft
         gate = asyncio.Semaphore(4)
 
         async def gated(index: int, section: dict):
@@ -939,7 +889,7 @@ class Sections(Base):
         )
 
         for index, section in enumerate(sections):
-            # The position lives in `progress` only; the surface renders it.
+            # position in `progress` only; surface renders it
             label = str(section["heading"])
             progress = {"current": index + 1, "total": len(sections)}
             yield {
@@ -981,13 +931,11 @@ class Sections(Base):
                 continue
 
             _count(bundle, spent)
-            # Stray ideographs are read back into Hangul and table gaps closed once,
-            # before storing, so every reader sees the same text.
+            # stray ideographs to Hangul, table gaps closed once before storing
             body = richtext.detach_tables(report.unwrap_json_prose(body))
             if report.placeholder_heavy(body) and any(re.search(r"\d", m or "")
                                                       for m in document_context):
-                # 「[측정값]」 cells under an attached table of numbers: the model wrote the
-                # frame and left the data out. Asked once more, with the data in front of it.
+                # 「[측정값]」 cells under an attached numeric table: asked once more with the data
                 try:
                     refilled, more = await report._complete(
                         req.model,
@@ -1005,7 +953,7 @@ class Sections(Base):
                         body = refilled
             section["content"] = _cleaned(bundle, index, section, body)
 
-            # Drawn after the prose so a failed drawing leaves no dangling reference.
+            # drawn after prose: failed drawing leaves no dangling reference
             if (drawing := wanted_figures.get(index)) is not None:
                 yield {
                     "type": "step",
@@ -1026,8 +974,7 @@ class Sections(Base):
                 else:
                     bundle.usage["inputTokens"] += picture.pop("_in", 0)
                     bundle.usage["outputTokens"] += picture.pop("_out", 0)
-                    # Appended to the body as Markdown: the panel, the page view and
-                    # the exporters all read the body.
+                    # appended as Markdown: panel, page view, exporters all read the body
                     caption = str(picture.get("caption") or "").replace("]", " ")
                     section["content"] = (
                         f"{section['content'].rstrip()}\n\n![{caption}]({picture['src']})"
@@ -1057,17 +1004,14 @@ class Sections(Base):
 
 
 def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
-    """A written section as stored: restatements trimmed, blocks repaired, numbers and
-    owners held to the material — code, never a rewrite."""
+    """Section as stored: trims, block repair, number/owner guards — code, never a rewrite."""
     report, request = _report(), bundle.request.text
     sections, doc_format = bundle.document.sections, bundle.spec.format
     prepass, sources = bundle.computed.prepass, bundle.material.sources
     document_context = bundle.material.document
-    # Restatements of earlier numbers and filler sentences are cut by code; a model
-    # asked to reword them fills the gap with invented content.
+    # cut by code: model rewording invents content
     earlier = [str(s.get("content") or "") for s in sections[:index]]
-    # A reference list repeats the years the text cites and carries its own dates and
-    # publishers: the number and owner guards below are for prose, not for it.
+    # reference lists exempt from prose number/owner guards
     is_reference = bool(report._REFERENCE_HEADING.search(str(section["heading"] or "")))
     trimmed: list[str] = []
     if not is_reference:
@@ -1078,11 +1022,11 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         log.info("trimmed %d sentence(s) from %r: %s", len(trimmed), section["heading"],
                  trimmed[0][:80])
     clean, _ = hangul.read_back(report._without_own_heading(body, section["heading"]))
-    # The section is the document's level-two heading: its own subheadings sit below.
+    # section = level-two heading; subheadings below
     clean = report._FIGURE_MARK.sub(lambda m: f"\n\n{m.group(0)}\n\n", clean)
     clean = report.split_long_paragraphs(
         report.demote_subheadings(
-            # Fences back on their own lines first, then counted and paired.
+            # fences onto own lines, then counted and paired
             report.balance_fences(report.unglue_blocks(report.repair_pipe_tables(
                 report.split_glued_tables(clean))))
         )
@@ -1095,7 +1039,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
     clean = report.drop_redundant_kpi(report.drop_repeated_figures(clean))
     if not bundle.material.grounded:
         clean = report._without_invented_money(clean)
-    # Owners and dates come from the request, the material or a source — never the pen.
+    # owners and dates from request, material or source only
     clean = report._unsourced_owner_dates(
         clean,
         "\n".join(
@@ -1104,9 +1048,9 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
         prepass.bound_dates if prepass is not None and prepass.bound_dates else None,
     )
     if bundle.plan.unverified and index == 0:
-        # Stated at the head of the first section.
+        # stated at the head of the first section
         clean = report._UNVERIFIED_NOTE + "\n\n" + clean
-    # Written 「A × B = C」 checked by arithmetic before it is kept.
+    # 「A × B = C」 checked by arithmetic
     clean = report.fix_restated_amounts(
         report.fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(clean))),
         given_text,
@@ -1131,8 +1075,7 @@ def _cleaned(bundle: Bundle, index: int, section: dict, body: str) -> str:
 
 
 class Figures(Base):
-    """Structure, flow, comparison and concept figures the report draws for itself as
-    mermaid: the ones the writer placed in its text first, then the planner's."""
+    """Mermaid figures: writer-placed first, then the planner's."""
 
     name = "figures"
     kind = "model"
@@ -1142,18 +1085,13 @@ class Figures(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         request, sections = req.text, bundle.document.sections
-        # Planned on the written sections, so the planner reads what is actually there; a
-        # section with an approved picture keeps it. A peer review evaluates someone else's
-        # paper; it draws nothing of its own. A one-page 개조식 memo has no room for
-        # pictures it was not asked for either, and a 회의록 records the meeting, not figures.
+        # planned on written sections; skipped for peer review, one-page 개조식, 회의록; approved pictures kept
         draws_nothing = report._genre_rule(request).startswith("Genre: 학회 피어리뷰") or (
             bundle.spec.settings.draws == "when-asked"
             and not diagrams.asks_for_diagrams(instruction_part(request))
         )
         figure_cap = min(5, max(diagrams.MAX_FIGURES, len(sections) // 2 + 1))
-        # The figures the writer placed in its text come first: drawn where the text put
-        # them, and the prose already points at them (〔그림〕). The planner below only
-        # looks at the sections that have none.
+        # writer-placed (〔그림〕) first; planner only looks at sections with none
         drawn = 0
         for index, section in enumerate(sections):
             marks = report.figure_marks(str(section.get("content") or ""))
@@ -1210,11 +1148,9 @@ class Figures(Base):
             api_key=req.api_key,
             complete=report._complete,
             slide=False,
-            # About one figure for every two sections, between three and five, the writer's
-            # own figures counted.
+            # ~1 per 2 sections, 3–5, writer's counted
             limit=max(1, figure_cap - drawn),
-            # A report reads better with a few figures: two for five sections or more, else
-            # one.
+            # 2 for 5+ sections, else 1
             at_least=max(0, (2 if len(sections) >= 5 else 1) - drawn),
             wrap=lambda prompt: _messages(bundle, prompt),
         )
@@ -1265,9 +1201,7 @@ class Figures(Base):
 
 
 class Additions(Base):
-    """What the instruction asked for and the draft left out, added and never rewritten:
-    author-year citations, the API endpoints the material listed, the question set, the
-    computed tables, and a search for each comparison cell left open."""
+    """Additions the draft left out (citations, endpoints, question set, tables, open comparison cells), never rewrites."""
 
     name = "additions"
     kind = "model"
@@ -1299,20 +1233,18 @@ class Additions(Base):
                 log.info("amendment of %r changed the text; kept the draft",
                          sections[index]["heading"])
         findings, sources = bundle.material.research, bundle.material.sources
-        # Reference entries are looked up when the turn could search: a work no search finds
-        # is marked, not removed — the reader decides, knowing it was not confirmed.
+        # references looked up when search is on; unfound marked, not removed
         if findings.searched:
             sections = await report._mark_unverified_references(sections)
         sections = report.add_missing_endpoints(sections, material_text)
-        # The person's material only: the search pages are not questions to carry.
+        # person's material only, not search pages
         sections = report.carry_question_set(sections, bundle.material.given, req.text)
-        # A table the writer rebuilt from the computed rows is replaced by the computed one:
-        # the code's values, not the writer's copy of them.
+        # writer-rebuilt computed table replaced by the computed one
         if computed := bundle.computed.values:
             sections, replaced = calc.replace_tables(sections, computed)
             if replaced:
                 log.info("replaced %d table(s) with the computed values", replaced)
-        # A comparison cell left open (「배포 방식 명시 없음」) gets a search of its own.
+        # open comparison cell (「배포 방식 명시 없음」) gets its own search
         if findings.searched and sources is not None:
             try:
                 sections, spent = await report.fill_gaps_from_search(
@@ -1326,8 +1258,7 @@ class Additions(Base):
 
 
 class Normalize(Base):
-    """Every format mend, in one fixed order; the verify stage runs the same after its
-    repair. Then the list shape the format sets."""
+    """All format mends in fixed order (verify repeats it), then list shape."""
 
     name = "normalize"
     reads = ("request", "material", "computed.settled", "spec.format", "document.sections")
@@ -1347,8 +1278,7 @@ class Normalize(Base):
 
 
 class TitleBlock(Base):
-    """The head of the document as its purpose shapes it — the lab's date and people, the
-    minutes' time and place, a paper's authors — filled only from the request."""
+    """Purpose-shaped document head, filled only from the request."""
 
     name = "title-block"
     kind = "model"
@@ -1366,7 +1296,7 @@ class TitleBlock(Base):
         bundle.usage["inputTokens"] += spent.get("inputTokens", 0)
         bundle.usage["outputTokens"] += spent.get("outputTokens", 0)
         if prepass is not None and prepass.rfp and "rfp-client" in prepass.settings.head:
-            # The cover names the client the RFP names, not a guess or the proposer.
+            # cover names the RFP's client, never a guess or the proposer
             head_fixed, client_problem = report_checks.client_head(
                 block, prepass.rfp, f"{req.text}\n{given}")
             bundle.findings.head_fixed = head_fixed
@@ -1381,33 +1311,28 @@ class TitleBlock(Base):
 
 
 def checks_of(bundle: Bundle) -> tuple[list, list]:
-    """The verify stage's checks and the format's code checks, from the bundle: functions,
-    so a run kept across requests builds them again (`runs.REBUILT`)."""
+    """Verify and format code checks as functions, rebuilt per request (`runs.REBUILT`)."""
     report, req = _report(), bundle.request
     settled, prepass = bundle.computed.settled, bundle.computed.prepass
     judge = req.judge
     run_checks = list(checks.CODE_CHECKS)
-    # The judge reads the figure sentences only when it is not the writer, which
-    # over-flags its own sentences.
+    # judge reads figure sentences only when not the writer (writer over-flags itself)
     if req.outline_model and settled:
         run_checks.append(checks.judge_figures(req.outline_model, req.api_key))
-    # The writer's knowledge is checked against the web, and every assessment item is
-    # worked through by the judge: what no rule can find.
+    # web check of writer knowledge; judge works each assessment item
     if bundle.material.web_search:
         run_checks.append(fact_check.web_facts(judge, req.api_key))
     run_checks.append(fact_check.solve_questions(judge, req.api_key))
-    # The format's code checks join the same find → repair → find again.
     format_checks = report_checks.checks(prepass)
     run_checks.extend(format_checks)
-    # The format's judged checks: one judge call each, shown to the reader, never
-    # rewritten.
+    # judged format checks: one call each, shown, never rewritten
     run_checks.extend(report_checks.model_checks(
         prepass, complete=report._complete, judge=judge, api_key=req.api_key))
     if prepass is None and bundle.spec.settings.rules and judge:
-        # 검토 규칙 are judged with or without a pre-pass.
+        # 검토 규칙 judged with or without a pre-pass
         run_checks.append(report_checks.judge_rules(bundle.spec.settings.rules,
                                                     report._complete, judge, req.api_key))
-    # The 서식's structure rules (its sections, its tables): shown, never rewritten.
+    # 서식 structure rules: shown, never rewritten
     run_checks.extend(report_checks.structure_checks(bundle.spec.settings))
     return run_checks, format_checks
 
@@ -1420,7 +1345,7 @@ runs.REBUILT["checks-plan"] = _rebuild_checks
 
 
 class ChecksPlan(Base):
-    """The checks the verify stage runs, the check skills attached, the settled rows mended."""
+    """Verify-stage checks, attached check skills, settled rows mended."""
 
     name = "checks-plan"
     reads = ("request", "computed", "material.web_search", "findings.client_problem",
@@ -1440,8 +1365,7 @@ class ChecksPlan(Base):
         found.checks, found.format_checks = checks_of(bundle)
         if found.client_problem:
             found.before.append("client_name")
-        # Every value the document states traces to what was given or computed, else it is a
-        # blank: the attached check skills, before the verify stage and again after it.
+        # every value traces to given/computed, else blank; skills before and after verify
         keys = req.check_keys
         if keys is None:
             template = design_templates.get(req.template_id)
@@ -1453,8 +1377,7 @@ class ChecksPlan(Base):
 
 
 class MinutesRepair(Base):
-    """Every action row carries 출처 and 비고; dues the material binds are filled; with no
-    meeting date nothing is dated; owners and quantities the material lacks are repaired."""
+    """Minutes repair: 출처/비고 on action rows, bound dues, no dates without a meeting date, owners/quantities."""
 
     name = "minutes-repair"
     reads = ("request", "material.given", "computed.prepass", "document.sections")
@@ -1474,11 +1397,10 @@ class MinutesRepair(Base):
         sections, filled = report_checks.minutes_due_fill(sections, prepass.dates)
         before += ["minutes_due"] * filled
         if prepass.undated:
-            # No meeting date anywhere: no day is written as the meeting's or worked out.
+            # no meeting date: nothing dated as the meeting's
             sections, undated = report_checks.minutes_undated(sections, prepass.dates, known)
             before += undated
-        # Owners and quantities the material does not hold are repaired by code, then
-        # looked for again after the verify stage's own rewrites.
+        # owners/quantities repaired by code, rechecked after verify rewrites
         sections, ungrounded = report_checks.minutes_grounding(sections, known)
         before += ungrounded
         bundle.document.sections = sections
@@ -1491,7 +1413,7 @@ def _doc(bundle: Bundle) -> verify.Doc:
 
 
 class FormatFind(Base):
-    """The format's code checks, found once before the repair (for the record)."""
+    """Format code checks found once before repair (for the record)."""
 
     name = "format-find"
     kind = "check"
@@ -1507,8 +1429,7 @@ class FormatFind(Base):
 
 
 class Verify(Base):
-    """Every check names what it finds, one repair rewrites those sentences, the checks run
-    again, and what is still found is kept to be said — never passed off."""
+    """Find, repair once, find again; leftovers reported, never passed off."""
 
     name = "verify"
     kind = "check"
@@ -1542,8 +1463,7 @@ class Verify(Base):
 
 
 class MinutesReground(Base):
-    """The minutes' owner and quantity repair again, after the verify stage's rewrites;
-    what a second pass still finds is what stays."""
+    """Minutes owner/quantity repair after verify rewrites; second-pass leftovers stay."""
 
     name = "minutes-reground"
     kind = "check"
@@ -1565,8 +1485,7 @@ class MinutesReground(Base):
 
 
 class FormatAmend(Base):
-    """What the format must carry and the draft left out: added (one amendment each), then
-    looked for again; a cover that still misses the RFP's client is counted."""
+    """Required format content added (one amendment each), rechecked; missing RFP client counted."""
 
     name = "format-amend"
     kind = "model"
@@ -1614,7 +1533,7 @@ class FormatAmend(Base):
 
 
 class CareerPeriods(Base):
-    """Periods written one way, so the reader (and an ATS) reads them alike."""
+    """Periods in one format, for readers and ATS."""
 
     name = "career-periods-tidy"
     reads = ("document.sections",)
@@ -1630,8 +1549,7 @@ class CareerPeriods(Base):
 
 
 class PageLimit(Base):
-    """A page limit (개조식: one page; a proposal: the RFP's) counted on the rendered body;
-    a 개조식 body that runs over is condensed and counted again, a proposal's is said."""
+    """Page limit on rendered body: 개조식 over limit condensed, proposal over limit reported."""
 
     name = "page-limit"
     kind = "model"
@@ -1653,8 +1571,7 @@ class PageLimit(Base):
             return
         title, sections = bundle.plan.title, bundle.document.sections
         shown_block, design_tokens = bundle.document.head_block, req.design_tokens
-        # 개조식 is judged on both files people get, laid out as exported: the body through
-        # the 붙임 list and its 「끝.」; the longer of the two counts.
+        # 개조식: both exported files through 붙임 and 「끝.」; longer counts
         by_hwpx = bool(process.structure.page_limit)
 
         async def counted(rows: list[dict]) -> tuple[int | None, str]:
@@ -1671,15 +1588,13 @@ class PageLimit(Base):
 
         pages, counts = await counted(sections)
         if pages and pages > limit and not by_hwpx:
-            # Over the RFP's limit: said, not cut by code — what to drop is the proposer's
-            # call.
+            # over RFP limit: reported, not cut — proposer's call
             found.added_before.append("page_over")
             found.added_after.append("page_over")
             found.pages_note = f"본문 쪽수({counts}) / 제한 {limit}쪽"
         elif pages and pages > limit:
             found.added_before.append("page_over")
-            # Up to two rounds, each told the pages it is at; a round that does not shorten
-            # the measured body (or lost a number) is dropped.
+            # ≤2 rounds; round not shortening (or losing a number) dropped
             for _ in range(report_checks.CONDENSE_ROUNDS):
                 condensed = await report_checks.condense(
                     sections, pages=pages, limit=limit, complete=report._complete,
@@ -1700,7 +1615,7 @@ class PageLimit(Base):
 
 
 class FormatStep(Base):
-    """The format checks' record: found before the repair → left after it."""
+    """Format check record: found before repair → left after."""
 
     name = "format-step"
     reads = ("findings",)
@@ -1726,8 +1641,7 @@ class FormatStep(Base):
 
 
 class Quality(Base):
-    """The finished document read once more for what a reader trips on; said in the steps
-    (and the log) so a defect is never passed off as done. Then the document goes out."""
+    """Final read for reader-facing defects, reported in steps and log; then the document goes out."""
 
     name = "quality"
     reads = ("material", "computed.settled", "document", "findings", "spec.format")
@@ -1735,8 +1649,7 @@ class Quality(Base):
 
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, f = _report(), bundle.findings
-        # A line said word for word in an earlier section goes from the later one, before the
-        # reader and the saved lint see it twice.
+        # verbatim repeat of an earlier section's line dropped from the later one
         sections, repeated = lint.drop_repeats(bundle.document.sections)
         if repeated:
             log.info("dropped %d repeated line(s) across sections", len(repeated))
@@ -1751,7 +1664,7 @@ class Quality(Base):
         for code in f.added_after:
             findings.append({"code": code, "where": "document",
                              "detail": f.pages_note if code == "page_over" else ""})
-        # What the model checks found and no rule could confirm: listed for the reader.
+        # model findings no rule confirmed: listed for the reader
         for x in [x for x in f.still if not x.auto][:12]:  # web, question, judged figures
             findings.append({"code": x.code,
                              "where": str(sections[x.section].get("heading") or ""),
@@ -1760,12 +1673,10 @@ class Quality(Base):
             log.warning("report quality findings: %s",
                         logs.safe([(x["code"], x["where"]) for x in findings][:12], 2000))
         f.quality = findings
-        # Bracket blanks (「[담당자]」) are gaps left for the person, not defects: counted
-        # and named.
+        # bracket blanks (「[담당자]」) counted as gaps, not defects
         blanks, named = placeholders.summary([str(s.get("content") or "") for s in sections],
                                              bundle.document.head_block)
-        # The places to check, for the reader: what the web check and the question check
-        # found that no rule could confirm or mend.
+        # places to check: web/question findings no rule could confirm
         detail = " · ".join([f"채울 빈칸: {named}"] * bool(blanks)
                             + [x["detail"] for x in findings
                                if x["code"] in report._TO_CHECK])[:1500]
@@ -1778,7 +1689,7 @@ class Quality(Base):
             "status": "done" if not findings else "error",
             **({"detail": detail} if detail else {}),
         }
-        # The repair pass rewrites sentences; the list shape is set again after it.
+        # list shape reset after repair rewrites
         bundle.document.sections = report.untitled_body(
             report.gaejo_body(sections, bundle.spec.format), bundle.spec.settings.outline)
         yield {"type": "report", "sections": bundle.document.sections}
@@ -1795,32 +1706,30 @@ for _stage in (
 
 
 def bundle_for(*, request: str, model: str, api_key: str, **kwargs: Any) -> Bundle:
-    """A report bundle from `report.write`'s arguments, its format and genre settled."""
+    """Report bundle from `report.write`'s arguments, format and genre settled."""
     from app.pipeline.bundle import Request, Spec
 
     report = _report()
     req = Request(text=request, model=model, api_key=api_key,
                   trusted=list(kwargs.pop("trusted_context", None) or []),
                   untrusted=list(kwargs.pop("untrusted_context", None) or []), **kwargs)
-    # The explicit 서식 wins, then the agent's bound format, then the words of the instruction.
-    # The ask's first sentence names the format before the memo under it does (「결과보고서」
-    # over a memo line 「- 문제: … 와이파이 장애」).
+    # explicit 서식 > agent's bound format > instruction words (first sentence first)
     doc_format = doc_formats.detect(lead_instruction(request), req.template_id, req.format_id)
     if doc_format is None:
         doc_format = doc_formats.detect(instruction_part(request), req.template_id, req.format_id)
     format_id = doc_format.id if doc_format is not None else ""
-    # What the writing does besides writing: the 서식's settings, then the agent's own.
+    # 서식 settings, then the agent's own
     process = process_settings.resolve(template_id=req.template_id, format_id=format_id,
                                        own=req.process)
     governing = process_settings.governing_template(req.template_id, format_id)
     if governing is not None and governing.check_options:
-        # The 서식's strictness joins the agent's (a career history traces titles too).
+        # 서식 strictness joins the agent's
         req.check_options = {**{k: True for k in governing.check_options},
                              **dict(req.check_options or {})}
     spec = Spec(format=doc_format, format_id=format_id,
                 genre=report._genre_rule(request, doc_format, req.template_id),
                 process=process)
-    # Outline tokens are counted apart: planning may run on another model.
+    # outline tokens apart: planning may use another model
     usage = {"inputTokens": 0, "outputTokens": 0, "outlineInputTokens": 0,
              "outlineOutputTokens": 0}
     return Bundle(request=req, spec=spec, usage=usage)

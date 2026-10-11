@@ -1,19 +1,4 @@
-"""Check skills as stages of the `check` kind.
-
-A check skill (`app/skills/*-check`, `check_skills`) names its stage in its SKILL.md: a `pre`
-check finds what the material does not give before anything is written (one question card);
-a `post` check traces every value the finished text states to the material or to what code
-computed, blanks the rest, and checks again. Here each is a stage a pipeline file lists:
-
-- `check:gaps` — the attached `pre` checks over the request and material;
-- `gap-card` — the card those findings put up before writing, a stage the run waits at;
-- `check:grounding` / `check:grounding-again` — the attached `post` checks over a report's
-  sections, before the verify stage and again after its rewrites;
-- `check:answer-grounding` — the same over a chat answer;
-- `check:copy` — a chat answer written with a copy skill, checked as copy (`copy-check`);
-- `check:skills` — the scripts the turn's skills name in `post_check` over a chat answer
-  (`services/post_checks.py`).
-"""
+"""Check skills as `check`-kind stages (`pre` gap checks, `post` grounding/copy/script checks)."""
 
 from __future__ import annotations
 
@@ -36,9 +21,7 @@ from app.services import (
 
 
 class GapCheck(Base):
-    """What the format needs and the material does not give: the attached `pre` checks'
-    findings, asked on one card before the first draft (never on a revision or a
-    follow-up chat turn)."""
+    """Missing facts from `pre` checks, asked on one card before the first draft only."""
 
     name = "check:gaps"
     kind = "check"
@@ -66,13 +49,12 @@ class GapCheck(Base):
             material=req.check_material, today=req.today, specs=req.skill_specs, judged=judged)
 
 
-#: Questions on one card, at most.
+#: max questions per card
 _CARD = 5
 
 
 def card_questions(bundle: Bundle) -> list[dict]:
-    """The card before writing: the router's file questions, then one per missing fact
-    (its fact key, label, why and the blank it stays as), less what the last card asked."""
+    """Pre-writing card: router file questions, then missing facts, minus last card's."""
     card = bundle.request.turn.get("card") or {}
     asked = set(card.get("asked") or [])
     out = [{**q, "fact": "", "label": "", "why": str(q.get("detail") or ""),
@@ -86,10 +68,7 @@ def card_questions(bundle: Bundle) -> list[dict]:
 
 
 class GapCard(Base):
-    """The question card before the first draft, as a stage the run waits at: what the
-    files did not deliver and what the `pre` checks found missing, on one card. The run
-    stops `waiting`; the answers come back as the next message (merged as material), or
-    「있는 자료로 진행」 leaves each fact its bracket blank."""
+    """Pre-draft question card; the run stops `waiting` for answers or 「있는 자료로 진행」."""
 
     name = "gap-card"
     kind = "io"
@@ -129,19 +108,13 @@ def _trace(bundle: Bundle) -> tuple[str, list[str], dict]:
     options = check_skills.options_for(
         dt.datetime.now(ZoneInfo(settings.timezone)).date(), bundle.request.check_options,
         surface="report")
-    # The person's own words and files and what code worked out from them, apart from the
-    # search pages: a day they gave is copied, not traced to whichever page happens to hold a
-    # neighbouring one.
+    # person's own words/files apart from search pages: given days copied, not traced to a page
     options["person"] = "\n".join([bundle.request.text, bundle.material.given, *worked])
     return material, computed, options
 
 
 class GroundCheck(Base):
-    """The attached `post` check skills (grounding-check) over every section: check, fix
-    once, check again — a value no source holds becomes a bracket blank.
-
-    `again` runs after the verify stage, which rewrote sentences: what it brought in is
-    traced once more and what stays is counted as left."""
+    """`post` grounding checks per section: check, fix once, check; unsourced values → blanks."""
 
     kind = "check"
     reads = ("request", "material", "computed", "spec.format_id", "findings.check_keys",
@@ -175,8 +148,7 @@ class GroundCheck(Base):
 
 
 class AnswerGrounding(Base):
-    """Every value the answer states traces to the person's words and files or to what the
-    tools computed this turn and earlier; the rest become bracket blanks."""
+    """Answer values traced to person's input or tool output; the rest → bracket blanks."""
 
     name = "check:answer-grounding"
     kind = "check"
@@ -214,10 +186,7 @@ class AnswerGrounding(Base):
 
 
 class CopyCheck(Base):
-    """A chat answer written with a copy skill, checked as copy (`copy-check`): unsupported
-    numbers, offers, testimonials and qualifiers fixed by code; risky claims, statements no
-    source holds and pieces over their channel limit rewritten once by the writer, then
-    checked again (`services/copy_check.py`)."""
+    """Copy-skill check (`services/copy_check.py`): code fixes, one writer rewrite, recheck."""
 
     name = "check:copy"
     kind = "check"
@@ -260,9 +229,7 @@ class CopyCheck(Base):
 
 
 class SkillChecks(Base):
-    """The scripts the turn's skills name in `post_check`, over the finished answer: fixed by
-    code where safe, the rest rewritten once by the writer, checked again and fixed by code
-    (`services/post_checks.py`)."""
+    """Turn skills' `post_check` scripts over the answer (`services/post_checks.py`)."""
 
     name = "check:skills"
     kind = "check"
@@ -271,7 +238,7 @@ class SkillChecks(Base):
 
     def _keys(self, bundle: Bundle) -> list[str]:
         req = bundle.request
-        # A check the agent attaches with a `post` entry ran in `check:answer-grounding`.
+        # agent-attached `post` checks already ran in `check:answer-grounding`
         attached = [k for k in req.check_keys or ()
                     if not ((p := skill_specs.resolve(k, req.skill_specs)) and p.stage == "post")]
         return post_checks.on_turn((*req.skill_keys, *attached), req.tool_outputs,

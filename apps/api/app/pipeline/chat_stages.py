@@ -1,11 +1,4 @@
-"""A chat answer's stages after the agent loop: the code that stood at the end of
-`sessions._run_turn`, cut along its steps.
-
-The agent loop streams the answer; these stages normalize it, trace its values with the
-agent's `post` check skills, measure a cover letter's blocks against their limits, and —
-when anything changed — retract the streamed text and send the finished one. The routing
-and storage that follow stay with the router.
-"""
+"""Chat answer stages after the agent loop: normalize, trace, fit, replace."""
 
 from __future__ import annotations
 
@@ -24,8 +17,7 @@ log = logging.getLogger("app.routers.sessions")
 
 
 class Normalize(Base):
-    """The notice the answer policy owes, the raw payload unwrapped, the units and sums a
-    model slips on mended by code, and — when skills were on — the script reports taken out."""
+    """Code fixes for model slips: policy notice, raw payload, units/sums, script reports."""
 
     name = "answer-normalize"
     reads = ("request", "material.given")
@@ -36,33 +28,29 @@ class Normalize(Base):
         first = req.first_message
         normalized = freshness.normalize_answer_notice(
             bundle.document.streamed, req.text, req.model_info, req.actual_model)
-        # This is the current stored user text, not the merged reference envelope.
+        # `first`: stored user text, not the merged reference envelope
         normalized = normalize_raw_payload(normalized, first)
-        # A money table labelled in the wrong unit for the amounts the person gave.
+        # wrong unit label on a money table
         normalized = units.fix_unit_labels(normalized, first)
-        # An amount the person gave, copied a power of ten off into a calculation.
+        # given amount off by a power of ten
         normalized = units.fix_magnitude_slips(normalized, first)
-        # An amount the person gave, written in won and then scaled again (「10,000,000만 원」).
+        # won amount scaled twice (「10,000,000만 원」)
         normalized = units.fix_double_scale(normalized, first)
-        # A written 「A × B = D」 whose D is not the product (a 만/억 slip, a dropped zero).
+        # wrong product in 「A × B = D」
         normalized = units.fix_written_sums(units.fix_written_arithmetic(normalized))
-        # 「모든 문항에서 가장 낮은」 narrowed to the columns the answer's own table bears out.
+        # sweeping superlatives narrowed to the table's evidence
         normalized = superlatives.narrow_sweeping_claims(normalized)
         if req.skill_keys or req.check_keys:
-            # A skill's script ran: its report lines are not the person's answer.
+            # skill script report lines
             normalized = internal_words.strip_reports(normalized)
-        # The writer's apology for its own tool call is not the person's answer; the steps say it.
         normalized = internal_words.strip_tool_apologies(normalized)
-        # A picture or link into the sandbox (`sandbox:chart.png`, `결과.xlsx`, `artifact:…`)
-        # opens nothing in the browser: the file it names is in the chips under the answer.
+        # sandbox links open nothing; files are in the chips
         made = {str(out.get("name") or "") for step in bundle.document.kept_steps
                 for out in (step.get("outputs") or []) if isinstance(out, dict)}
         normalized = unlink_local_targets(normalized, made - {""})
-        # A date counted in the head from a date the person gave (「개강 2027-03-02, 30일 전」
-        # written 2월 1일) set to the calendar's first, so the weekday check below does not
-        # bend the weekday to the wrong day.
+        # offset dates fixed first so the weekday fix doesn't bend to a wrong day
         normalized = _dates_from_given(normalized, req, bundle.material.given)
-        # A weekday counted in the head (「10월 15일(수)」 for a Thursday) set to the calendar's.
+        # head-counted weekday set to the calendar's
         normalized, _ = weekdays.fix_weekdays(
             normalized, context=f"{req.text}\n{bundle.material.given}",
             today=req.today if isinstance(req.today, dt.date) else None)
@@ -70,8 +58,7 @@ class Normalize(Base):
 
 
 def _dates_from_given(answer: str, req: Request, material: str) -> str:
-    """`answer` with each date an offset from the person's own date resolves to set by the
-    date-calc script (the 날짜 계산 skill's post check, offsets from today left out)."""
+    """Dates offset from the person's own date recomputed by the date-calc script."""
     from app.services import skill_scripts
 
     today = req.today if isinstance(req.today, dt.date) else dt.date.today()
@@ -87,9 +74,7 @@ def _dates_from_given(answer: str, req: Request, material: str) -> str:
 
 
 class TextFit(Base):
-    """A cover letter's 「[제출용 답안 n]」 blocks (or its numbered question headings)
-    measured by code against the stated limits and rewritten up to twice when out of range;
-    the counts go under the answer."""
+    """Cover-letter blocks measured against stated limits; rewritten up to twice."""
 
     name = "text-fit"
     kind = "check"
@@ -137,8 +122,7 @@ class TextFit(Base):
 
 
 class Replace(Base):
-    """The finished answer in place of the streamed one: the client retracts the first
-    match, so the whole answer is replaced."""
+    """Finished answer replaces the streamed one (client retracts the first match)."""
 
     name = "answer-replace"
     reads = ("document.answer",)
@@ -164,7 +148,7 @@ def bundle_for(*, answer: str, request: str, model: dict, actual_model: str | No
                usage: dict[str, Any], skill_keys: tuple[str, ...] = (),
                check_options: dict | None = None,
                skill_specs: dict | None = None) -> Bundle:
-    """A chat answer's bundle: the streamed answer, the turn's words and material."""
+    """Chat answer bundle: streamed answer, turn text, material."""
     req = Request(
         text=request, model=model["id"], api_key=api_key, outline_model=judge,
         session_id=session_id, today=today,

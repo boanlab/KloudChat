@@ -1,22 +1,4 @@
-"""The work bundle a pipeline's stages read and write.
-
-One bundle per turn. Its parts are typed and narrow so a stage names exactly what it reads
-and writes (`Stage.reads` / `Stage.writes`, dotted: `computed.settled`):
-
-- `request` — what the turn was asked, as the caller gave it; never written by a stage;
-- `spec` — the document's format and genre, settled once from the request;
-- `material` — the parts the writer reads, each with where it came from (`Part.origin`);
-- `answers` — what the person answered on a question card, by question id;
-- `computed` — what code worked out before writing: computed values, settled figures and
-  their conflicts, the format's pre-pass;
-- `plan` — the outline: title, headings and how the document is framed;
-- `document` — the sections as written, the head block;
-- `findings` — what the checks found before and after their repair, the quality record;
-- `files` — files handed out (exports);
-- `steps` — one `StepRecord` per stage, written by the runner;
-- `usage` — tokens spent, by the writer and by the planner;
-- `wire` — the last event of each kind sent, kept by the runner.
-"""
+"""Per-turn work bundle; typed narrow parts so stages declare dotted reads/writes."""
 
 from __future__ import annotations
 
@@ -28,13 +10,7 @@ from app.pipeline.stage import StepRecord
 
 @dataclass(slots=True)
 class Part:
-    """One piece of material, with where it came from.
-
-    origin: `attachment` (a file or carried context), `pasted` (under the instruction),
-    `project` (project sources' citation list), `research` (search pages), `computed`
-    (code-computed values), `settled` (the settled figures block), `conflicts`, `prepass`
-    (a pre-pass block), `note` (a writer's note), `trusted` (the caller's trusted context),
-    `derived` (what an earlier pipeline step wrote: read, never a source of figures)."""
+    """Material piece with its origin; `derived` is never a figure source."""
 
     text: str
     origin: str
@@ -59,67 +35,53 @@ class Request:
     format_id: str | None = None
     design_tokens: dict[str, str] | None = None
     check_keys: tuple[str, ...] | None = None
-    #: The agent's `check_options` (how strict the trace is), `check_skills.options_for`.
+    #: `check_skills.options_for` trace strictness
     check_options: dict[str, Any] = field(default_factory=dict)
-    #: The agent's own 진행 과정 설정 (`Agent.process`), over its 서식's; None: the 서식's.
+    #: agent's 진행 과정 설정 over its 서식's; None = 서식's
     process: dict[str, Any] | None = None
     agent_key: str | None = None
     session_id: str = ""
-    #: The day the turn runs on, where a check needs it.
     today: Any = None
-    # A chat turn's finish reads these too.
-    #: The person's message as stored (not the merged reference envelope).
+    #: stored message, not the merged reference envelope
     first_message: str = ""
     messages: list[dict] = field(default_factory=list)
-    #: The catalogue entry of the writer, and the model that actually answered.
+    #: writer catalogue entry; model that actually answered
     model_info: dict | None = None
     actual_model: str | None = None
-    #: Unused: kept so runs stored before the strictness became data still restore.
+    #: unused; kept so older stored runs restore
     check_facts: str = ""
-    #: Attached and carried files' text: what the answer's values may come from too.
+    #: attached/carried file text; also a value source
     check_material: str = ""
-    #: What the turn's tools printed (a composed run: what an earlier step's code printed).
+    #: tool prints (composed run: earlier step's code output)
     tool_outputs: list[str] = field(default_factory=list)
-    #: What an earlier step of a composed run wrote: the writer reads it, the checks never
-    #: take a figure from it.
+    #: earlier composed step's text: writer reads, checks never take figures
     derived: list[str] = field(default_factory=list)
-    #: Keys of the skills on the turn (switched on or the agent's): a catalogue key, or
-    #: `skill:<id>` for a person's skill whose fields ask the server for something.
+    #: turn skill keys: catalogue key or `skill:<id>`
     skill_keys: tuple[str, ...] = ()
-    #: What the server runs for each key above and each attached `skill:<id>` check, read
-    #: from their rows (`services/skill_specs.py`); a shipped key not here reads its package.
+    #: server-run spec per key (`services/skill_specs.py`); missing shipped key → its package
     skill_specs: dict[str, Any] = field(default_factory=dict)
-    #: 빠진 정보 질문 the `pre` checks ask from (`services/gap_questions.py`).
     gap_questions: list[dict] = field(default_factory=list)
-    #: Whether this turn writes the first draft (the `pre` checks ask only then).
+    #: first draft turn; `pre` checks ask only then
     first_draft: bool = False
-    # A revision reads these.
-    #: The follow-up as typed.
     instruction: str = ""
     is_deck: bool = False
-    # Handing over files reads these.
     user_id: str = ""
     export_formats: list[str] = field(default_factory=list)
-    #: What the router settles the turn with and the stages never change: the model
-    #: entries (`model`, `outline_model`), `project_id`, `routing`, `skills_event`,
-    #: `context_steps`, `carry_from`, `carry_note`, `export_after`, `run_id`. Read by the
-    #: `io` stages that store the result.
+    #: router-settled, stage-immutable turn facts (models, project_id, routing, carry_*, run_id …)
     turn: dict[str, Any] = field(default_factory=dict)
 
     @property
     def judge(self) -> str:
-        """The planner when one is set, else the writer: judgements, not prose."""
+        """Planner if set, else writer: judgements, not prose."""
         return self.outline_model or self.model
 
 
 @dataclass(slots=True)
 class Spec:
-    #: `doc_formats.DocFormat` or None.
     format: Any = None
     format_id: str = ""
     genre: str = ""
-    #: `process_settings.Process`: what the writing does besides writing (its 서식's settings,
-    #: then the agent's own). None: the defaults (a bundle made before it was settled).
+    #: `process_settings.Process`; None = defaults
     process: Any = None
 
     @property
@@ -131,19 +93,17 @@ class Spec:
 
 @dataclass(slots=True)
 class Material:
-    #: The caller's trusted context, with what stages add to it.
     trusted: list[Part] = field(default_factory=list)
-    #: What the writer reads as reference, in the order it reads it.
+    #: writer reference, in read order
     parts: list[Part] = field(default_factory=list)
-    #: The request's own material and the attachments, as one text.
+    #: request material + attachments as one text
     given: str = ""
-    #: `research.Findings` of this pass.
     research: Any = None
     sources: list[dict[str, Any]] = field(default_factory=list)
     web_selected: int = 0
     web_search: bool = True
     research_rule: str = ""
-    #: Whether the material carries any numbers.
+    #: material has numbers
     grounded: bool = False
 
     @property
@@ -152,7 +112,7 @@ class Material:
 
     @property
     def grounds(self) -> list[str]:
-        """What the checks trace values to: every part but what an earlier step derived."""
+        """Check trace grounds: all parts except derived."""
         return [p.text for p in self.parts if p.origin != "derived"]
 
     @property
@@ -162,12 +122,11 @@ class Material:
 
 @dataclass(slots=True)
 class Computed:
-    #: The code-computed values block (`calc.computed_values`); "" when none.
+    #: `calc.computed_values` block; "" when none
     values: str = ""
-    #: `key_figures.Figure` list, the derived ones included.
+    #: `key_figures.Figure`s incl. derived
     settled: list[Any] = field(default_factory=list)
     conflicts: list[Any] = field(default_factory=list)
-    #: `report_checks.Prepass` or None.
     prepass: Any = None
 
 
@@ -177,75 +136,71 @@ class Plan:
     headings: list[str] = field(default_factory=list)
     frame: bool = False
     unverified: bool = False
-    #: The approved pictures by section index.
+    #: approved figures by section index
     figures: dict[int, dict] = field(default_factory=dict)
-    #: The planning pass's offer, before approval.
+    #: planning offer, pre-approval
     proposal: dict[str, Any] | None = None
-    #: A revision: `revise.Plan`, the parts it rewrites in order, and those widened to.
+    #: revision: `revise.Plan`, rewrite order, widened parts
     revision: Any = None
     order: list[int] = field(default_factory=list)
     widened: list[int] = field(default_factory=list)
-    #: The turn's target (`route`): page, handover, revise, report, deck or chat.
+    #: page · handover · revise · report · deck · chat
     route: str = ""
 
 
 @dataclass(slots=True)
 class Document:
     sections: list[dict[str, Any]] = field(default_factory=list)
-    #: Bodies cut from the one-shot draft, by heading.
+    #: one-shot draft bodies by heading
     drafted: dict[str, str] = field(default_factory=dict)
-    #: `## heading\nbody` of each section in order, as the next one is told.
+    #: `## heading\nbody` per section, fed to the next
     written: list[str] = field(default_factory=list)
     long_form: bool = False
     head_block: dict | None = None
-    #: Chat: the answer as streamed, and as finished.
+    #: chat: streamed and finished answer
     streamed: str = ""
     answer: str = ""
-    #: Chat: the step rows kept with the stored answer.
+    #: chat: step rows stored with the answer
     kept_steps: list[dict] = field(default_factory=list)
-    #: Chat: the length check stored on the answer's routing.
+    #: chat: length check on routing
     length_check: dict | None = None
-    #: A revision: the artifact's data as loaded, the parts changed, and whether by hand.
+    #: revision: loaded data, changed count, by hand
     data: dict[str, Any] = field(default_factory=dict)
     changed: int = 0
     by_hand: bool = False
-    #: Handing over: the stored artifact, the step with the files made, what the reply says.
+    #: handover: artifact, files step, reply
     artifact: Any = None
     handed: dict | None = None
     reply: str = ""
-    #: A revision: what `revise-load` read (the request, the title, the kind, the files).
+    #: revision: `revise-load` output
     loaded: dict[str, Any] | None = None
-    #: What an `io` save stage stored: `{"artifactId", "credits", "messageId", "version"}`.
+    #: `{"artifactId", "credits", "messageId", "version"}`
     saved: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
 class Findings:
-    #: The verify stage's checks, in order.
     checks: list[Any] = field(default_factory=list)
-    #: The format's own code checks (found before the repair, then repaired).
+    #: format code checks (pre-repair, then repaired)
     format_checks: list[Any] = field(default_factory=list)
     before: list[str] = field(default_factory=list)
     after: list[str] = field(default_factory=list)
     added_before: list[str] = field(default_factory=list)
     added_after: list[str] = field(default_factory=list)
-    #: `verify.Finding`s the repair left.
+    #: `verify.Finding`s left after repair
     still: list[Any] = field(default_factory=list)
-    #: `check_skills.Outcome` of the grounding checks.
+    #: grounding `check_skills.Outcome`
     traced: Any = None
     pages_note: str = ""
     client_problem: str = ""
     head_fixed: dict | None = None
-    #: The check skills attached (post stage).
     check_keys: tuple[str, ...] = ()
-    #: The quality gate's findings.
     quality: list[dict] = field(default_factory=list)
-    #: What the `pre` checks found the material does not give.
+    #: facts the material lacks (`pre` checks)
     gaps: list[dict] = field(default_factory=list)
-    #: The card put up before writing (`gap-card`): each question with its fact, label,
-    #: why, placeholder.
+    #: `gap-card` questions: fact, label, why, placeholder
     questions: list[dict] = field(default_factory=list)
-    #: A revision's consistency step (`consistency.align`), when it ran.
+    #: `consistency.align` result
     aligned: dict | None = None
 
 
@@ -262,11 +217,10 @@ class Bundle:
     files: list[dict[str, Any]] = field(default_factory=list)
     steps: list[StepRecord] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=dict)
-    #: The last event of each kind the stages sent (`titleBlock`, `sources`, `research`,
-    #: `title`), kept by the runner for the stage that stores the document.
+    #: last event per kind, for the save stage
     wire: dict[str, dict[str, Any]] = field(default_factory=dict)
 
-    #: Fields the runner's strict mode watches.
+    #: strict-mode watched fields
     FIELDS = (
         "spec.format_id", "spec.genre",
         "material.trusted", "material.parts", "material.given", "material.sources",

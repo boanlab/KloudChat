@@ -1,17 +1,4 @@
-"""A pipeline run kept across requests: the bundle as it stood after each stage, and what
-each stage did, so the run can be resumed — or run again from any recorded stage — later.
-
-`Recorder` is the runner's observer. Before the first stage it encodes the whole bundle
-(`start`); after each stage it encodes only the fields that stage changed (`after`). The
-state before stage *k* is `start` with the changes of the stages before *k* applied
-(`restore`). The same before/after view gives each record its `evidence`: computed values,
-findings added, text old → new, code and its output.
-
-Values are encoded as JSON (`encode` / `decode`): dataclasses of `app.*` modules by their
-fields with their type named, tuples and sets tagged, a format (`doc_formats.DocFormat`) by
-its id. What cannot be kept (a callable on a finding, an open database row) is dropped and
-comes back as `None`; a stage that needs it reads it again.
-"""
+"""Pipeline run kept across requests: per-stage snapshots and evidence for resume/rerun."""
 
 from __future__ import annotations
 
@@ -26,24 +13,20 @@ from typing import Any
 from app.pipeline.labels import label as stage_label
 from app.pipeline.stage import StepRecord
 
-#: Bundle parts whose fields are snapshot (each field of each, by dotted path).
+#: bundle parts snapshot field by field
 PARTS = ("spec", "material", "computed", "plan", "document", "findings")
-#: Whole fields at the top of the bundle.
+#: whole top-level fields
 TOP = ("answers", "files", "usage", "wire")
-#: Fields never kept: an open row (stages read it again from its id).
+#: never kept: open row, re-read by id
 SKIP = frozenset({"document.artifact"})
 
-#: Values a stage builds that are functions (a check), rebuilt from the restored bundle
-#: when the stage that built them is before the restart: stage name → rebuild.
+#: stage name → rebuild of function values (checks) on restore
 REBUILT: dict[str, Any] = {}
 
-#: Bounds on evidence.
+#: evidence bounds
 _MAX_ITEMS = 20
 _MAX_TEXT = 400
 _MAX_BLOCK = 4000
-
-
-# ── encoding ────────────────────────────────────────────────────────────
 
 
 def encode(value: Any) -> Any:
@@ -68,14 +51,14 @@ def encode(value: Any) -> Any:
         if cls.__module__ == "app.services.doc_formats" and cls.__name__ == "DocFormat":
             from app.services import doc_formats
 
-            # A shipped format by its id; a person's template's own, by its fields.
+            # shipped format by id; a person's template by its fields
             if doc_formats.BY_ID.get(value.id) is value:
                 return {"__fmt": value.id}
         if cls.__module__.startswith("app."):
             return {"__dc": f"{cls.__module__}:{cls.__qualname__}",
                     "f": {f.name: encode(getattr(value, f.name))
                           for f in dataclasses.fields(value)}}
-    # A callable, a compiled pattern, an ORM row: not kept.
+    # callable, compiled pattern, ORM row: not kept
     return None
 
 
@@ -131,9 +114,6 @@ def _hashable(value: Any) -> Any:
     return tuple(value) if isinstance(value, list) else value
 
 
-# ── the bundle's fields ─────────────────────────────────────────────────
-
-
 def paths(bundle: Any) -> list[str]:
     out = []
     for part in PARTS:
@@ -165,7 +145,7 @@ def _fingerprint(value: Any) -> int:
 
 
 def request_params(bundle: Any) -> dict[str, Any]:
-    """The bundle's request without the key (a rerun is given a fresh one)."""
+    """Request params minus the key (reruns get a fresh one)."""
     row = encode(bundle.request)
     row["f"].pop("api_key", None)
     return row
@@ -173,9 +153,7 @@ def request_params(bundle: Any) -> dict[str, Any]:
 
 def restore(request: dict[str, Any], snapshots: dict[str, Any], *, before: str,
             api_key: str) -> Any:
-    """The bundle as it stood when stage `before` was about to run.
-
-    Raises `KeyError` when the run kept no snapshot that far."""
+    """Bundle as it stood before stage `before`; `KeyError` if no snapshot that far."""
     from app.pipeline.bundle import Bundle
 
     if before not in rerunnable_from(snapshots):
@@ -200,16 +178,13 @@ def restore(request: dict[str, Any], snapshots: dict[str, Any], *, before: str,
 
 
 def carried(snapshots: dict[str, Any], *, before: str) -> dict[str, Any]:
-    """The snapshots of the stages before `before`: what a rerun from it starts with."""
+    """Snapshots of stages before `before`: a rerun's starting state."""
     kept = []
     for entry in snapshots.get("after") or []:
         if entry.get("stage") == before:
             break
         kept.append(entry)
     return {"start": snapshots.get("start") or {}, "after": kept}
-
-
-# ── evidence ────────────────────────────────────────────────────────────
 
 
 def _clip(text: Any, limit: int = _MAX_TEXT) -> str:
@@ -221,7 +196,7 @@ _TOKENS = re.compile(r"\S+|\s+")
 
 
 def text_changes(old: str, new: str, *, limit: int = _MAX_ITEMS) -> list[dict[str, str]]:
-    """What changed from `old` to `new`, word by word, as old → new pieces."""
+    """Word-level old → new pieces."""
     if old == new:
         return []
     a, b = _TOKENS.findall(old or ""), _TOKENS.findall(new or "")
@@ -242,7 +217,7 @@ def text_changes(old: str, new: str, *, limit: int = _MAX_ITEMS) -> list[dict[st
 
 
 def section_changes(before: list[dict], after: list[dict]) -> list[dict[str, str]]:
-    """Text a stage changed in the sections, by section, old → new."""
+    """Per-section old → new text a stage changed."""
     old_by_id = {str(s.get("id") or i): s for i, s in enumerate(before or [])}
     out: list[dict[str, str]] = []
     for i, section in enumerate(after or []):
@@ -271,7 +246,7 @@ def _figures(settled: list[Any]) -> list[dict[str, str]]:
 
 
 class Witness:
-    """Watches one stage: what the bundle held before it, to say afterwards what it did."""
+    """Watches one stage's before/after to describe what it did."""
 
     WATCHED = ("document.sections", "document.answer", "computed.settled", "computed.values",
                "findings.before", "findings.after", "findings.added_before",
@@ -338,24 +313,23 @@ class Witness:
 
 
 class Recorder(Witness):
-    """A `Witness` that also keeps the bundle after every stage, for `restore`."""
+    """`Witness` that also snapshots the bundle per stage, for `restore`."""
 
     def __init__(self, run_id: str = "") -> None:
         super().__init__()
         self.run_id = run_id
-        #: The pipeline and flow it runs (set by whoever picks them).
+        #: pipeline and flow (set by the caller)
         self.pipeline = ""
         self.flow = ""
         self.start: dict[str, Any] = {}
         self.after_stages: list[dict[str, Any]] = []
         self.request: dict[str, Any] = {}
         self._prints: dict[str, int] = {}
-        #: The stage the next pass would start at (after a wait or a failure).
+        #: resume stage after a wait or failure
         self.next = ""
 
     def begin(self, bundle: Any, *, carried: dict[str, Any] | None = None) -> None:
-        """Before the first stage. `carried`: the snapshots of the stages a rerun did not
-        run again, so this run can itself be rerun from any of them."""
+        """Before the first stage; `carried` = snapshots of stages a rerun skipped."""
         self.request = request_params(bundle)
         if carried:
             self.start = dict(carried.get("start") or {})
@@ -373,7 +347,7 @@ class Recorder(Witness):
         record.run_id = self.run_id
         record.rerunnable = True
         if record.status not in ("done", "skipped"):
-            # The state after a stop or a failure is not one to go on from.
+            # state after stop/failure: not resumable
             return
         changed = {}
         for p in paths(bundle):
@@ -396,8 +370,7 @@ class Recorder(Witness):
 
 
 def rerunnable_from(snapshots: dict[str, Any] | None) -> list[str]:
-    """The stages a run can be run again from: each one whose predecessors all kept their
-    state, and the one it stopped or failed at."""
+    """Rerun points: stages whose predecessors all kept state, plus the stop/failure stage."""
     if not snapshots:
         return []
     names = [str(e.get("stage") or "") for e in snapshots.get("after") or []]

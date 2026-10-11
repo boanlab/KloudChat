@@ -1,19 +1,4 @@
-"""The `io` stages that load a turn's document and store its result.
-
-What stood at the head and the tail of the router's runners (`sessions._run_report`,
-`sessions._revise_document`), cut out as stages so a run records them like any other and a
-rerun stores its result the same way a turn does:
-
-- `report-save` — the written report as an artifact (a new version when the session holds
-  one of the same kind), the assistant message, the bill and the searches;
-- `revise-load` — the document on screen, the request it was written from and its files;
-- `revise-save` — the revised document as a new version, the files asked for in the same
-  turn, the message and the bill.
-
-They reach the database and the bill through the router module (`sessions.SessionLocal`,
-`sessions._store_document`, `sessions.settle` …), looked up when they run, so a test that
-replaces one there reaches the stage.
-"""
+"""`io` stages loading a turn's document and storing its result (router helpers via module)."""
 
 from __future__ import annotations
 
@@ -30,25 +15,24 @@ log = logging.getLogger("app.routers.sessions")
 
 
 def _host():
-    # Late: the router imports the pipeline.
+    # late import: router imports the pipeline
     from app.routers import sessions
 
     return sessions
 
 
 def rerun_note(turn: dict[str, Any]) -> str:
-    """What the message of a rerun says first: 「검증」 단계부터 다시 만들었습니다."""
+    """Rerun message prefix: 「검증」 단계부터 다시 만들었습니다."""
     from app.pipeline.labels import label
 
     stage = str(turn.get("rerun_from") or "")
-    # A composed step names itself (`rerun_label`); a shipped stage by its registry label.
+    # composed step: own `rerun_label`; shipped stage: registry label
     name = str(turn.get("rerun_label") or "") or label(stage)
     return f"「{name}」 단계부터 다시 만들었습니다." if stage else ""
 
 
 class ReportSave(Base):
-    """The written report stored: carried parts put back (a restructure), the artifact (a
-    version when the session already holds a report), the message, the bill."""
+    """Stores the report: carried parts, artifact (new version if one exists), message, bill."""
 
     name = "report-save"
     kind = "io"
@@ -96,8 +80,7 @@ class ReportSave(Base):
                         yield {"type": "section", "sectionId": section.get("id"),
                                "heading": section.get("heading"),
                                "content": section.get("content"), "done": True}
-        # The reference list holds what the body cites, numbered in the order first cited;
-        # a venue named as if it were the author gives way to the work's own name.
+        # references numbered by first citation; venue-as-author replaced by the work's name
         sections, sources = citations.tidy(sections, sources)
         bundle.document.sections = sections
         written = [s for s in sections if (s.get("content") or "").strip()]
@@ -105,7 +88,7 @@ class ReportSave(Base):
             0
             if not written
             else host.charge_for_tokens(model, usage["inputTokens"], usage["outputTokens"])
-            # The planner's own tokens at the planner's own price, when one ran.
+            # planner tokens at planner price
             + host.charge_for_tokens(
                 outline_model or model,
                 usage.get("outlineInputTokens", 0),
@@ -117,14 +100,14 @@ class ReportSave(Base):
             session = await db.get(ChatSession, session_id)
             user = await db.get(User, user_id)
             if session is not None and user is not None:
-                # Generated title first; the session title reads as the raw prompt.
+                # generated title first; session title is the raw prompt
                 title = (doc_title or session.title or request.strip()[:60] or "보고서")[:200]
                 if carry_from and not revise.requested_title(carry_note):
                     kept = await db.get(Artifact, carry_from)
                     if kept is not None and kept.title:
                         title = kept.title
                 if written:
-                    # The same design `approved-plan` announced to the panel.
+                    # same design `approved-plan` announced
                     artifact_design = report_design(
                         request, approved_plan, design_tokens, req.template_id
                     )
@@ -142,11 +125,11 @@ class ReportSave(Base):
                             for s in sections
                         ],
                         "sources": sources,
-                        # Kept so a later rewrite is held to the same request.
+                        # later rewrites held to the same request
                         "request": request[:4000],
                         **({"research": research_log} if research_log is not None else {}),
                         "lint": lint.wire(lint.check(lint.from_sections(sections))),
-                        # Snapshot, as for the deck.
+                        # design snapshot, as for decks
                         **({"design": artifact_design} if artifact_design else {}),
                         **({"titleBlock": title_block} if title_block else {}),
                         "citationStyle": host._CITATION_STYLES.get(
@@ -167,7 +150,7 @@ class ReportSave(Base):
                         data=data,
                     )
                     session.artifact_id = artifact_id
-                    # The proposal has become the document.
+                    # proposal became the document
                     session.pending = None
                     message = Message(
                         session_id=session_id,
@@ -204,8 +187,7 @@ class ReportSave(Base):
 
 
 class ReviseLoad(Base):
-    """The document on screen and what it was written from: the session's first request
-    and the files its turns carried, within the writer's file budget."""
+    """Document on screen plus its first request and carried files, within the file budget."""
 
     name = "revise-load"
     kind = "io"
@@ -231,8 +213,7 @@ class ReviseLoad(Base):
                 return
             loaded: dict[str, Any] = {"kind": artifact.kind.value, "data": dict(artifact.data),
                                       "title": artifact.title or "", "artifactId": artifact.id}
-            # The request the document was written from and the files it drew on, so a
-            # rewrite keeps to the material instead of inventing plausible values.
+            # source request and files, so rewrites keep to material instead of inventing values
             turns = (
                 await db.exec(
                     select(Message)
@@ -272,8 +253,7 @@ class ReviseLoad(Base):
 
 
 class ReviseSave(Base):
-    """The revised document stored as a new version (the old body kept), the files the
-    same turn asked for made from it, the message and the bill."""
+    """Stores the revision as a new version, makes requested files, message, bill."""
 
     name = "revise-save"
     kind = "io"
@@ -310,12 +290,12 @@ class ReviseSave(Base):
                 if not is_deck:
                     data["wordCount"] = report_service.word_count(parts)
                     data["lint"] = lint.wire(lint.check(lint.from_sections(parts)))
-                    # The marks the document had, found again in the revised body.
+                    # existing marks re-found in the revised body
                     if marks := doc_marks.relocate(data.get("marks"), parts):
                         data["marks"] = marks
                     else:
                         data.pop("marks", None)
-                # `_store_document` snapshots the previous body as a version.
+                # `_store_document` keeps the previous body as a version
                 artifact_id = await host._store_document(
                     db,
                     session,
@@ -374,9 +354,7 @@ for _stage in (ReportSave(), ReviseLoad(), ReviseSave()):
 
 
 def _written_note(count: int, title_block: dict | None) -> str:
-    """The turn's line under a finished document, in the document's own genre word:
-    「5개 절로 회의록 작성을 마쳤습니다.」; a plain report keeps 「5개 섹션으로 보고서를
-    작성했습니다.」."""
+    """Finish line in the document's genre word (「5개 절로 회의록 작성을 마쳤습니다.」)."""
     from app.services import doc_formats
 
     found = doc_formats.BY_ID.get(str((title_block or {}).get("format") or ""))

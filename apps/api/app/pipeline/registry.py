@@ -1,20 +1,4 @@
-"""Stages by name, and the pipelines declared as data in `app/pipelines/*.toml`.
-
-A pipeline file names its stages in order and says when it applies:
-
-    name = "report"
-    agents = ["document"]          # catalogue agents whose turns it serves
-    plan = ["research", "material", "outline"]
-    write = ["research", "material", "approved-plan", …]
-    [summary]                      # one plain line per step of the drawn chain, for people
-    question = "빠진 정보가 있으면 먼저 물어봅니다"
-
-Every report is written by `report` and every chat answer finished by `chat`: what a document
-does besides writing (its pre-pass, its 서식 보정 stages, its checks and options) is the 서식's
-and the agent's 진행 과정 설정 (`services/process_settings.py`), not a file of its own. The
-names of the per-format files that were once here still open the runs stored under them
-(`LEGACY`).
-"""
+"""Stage registry and pipelines declared in `app/pipelines/*.toml`."""
 
 from __future__ import annotations
 
@@ -54,7 +38,7 @@ def stages() -> dict[str, Stage]:
 
 
 def _load_stages() -> None:
-    # The stage modules register themselves on import.
+    # stage modules self-register on import
     from app.pipeline import (  # noqa: F401
         chat_stages,
         check_stages,
@@ -72,11 +56,10 @@ class Pipeline:
     name: str
     formats: tuple[str, ...] = ()
     agents: tuple[str, ...] = ()
-    #: Named stage lists: `plan`, `write`, `finish`, `prepass` …
+    #: named stage lists: `plan`, `write`, `finish`, `prepass` …
     flows: dict[str, tuple[str, ...]] = field(default_factory=dict)
     options: dict[str, Any] = field(default_factory=dict)
-    #: What each step of the drawn chain (material, question, compute, write, check, export)
-    #: does, said for the person. Display only: no stage reads it.
+    #: per-step plain summary for the drawn chain; display only
     summary: dict[str, str] = field(default_factory=dict)
 
     def flow(self, name: str) -> tuple[str, ...]:
@@ -110,8 +93,7 @@ def pipelines() -> dict[str, Pipeline]:
     return out
 
 
-#: Retired pipeline names a stored run may carry; such a run reruns on `report` (plus
-#: `chat`'s finish), whose 진행 과정 설정 hold their stages and options.
+#: retired pipeline names of stored runs; rerun on `report` + `chat` finish
 LEGACY = ("gaejo-report", "minutes", "comparison-report", "dated", "career-docs",
           "client-proposal", "data-analysis")
 
@@ -133,7 +115,7 @@ def pipeline(name: str) -> Pipeline:
 
 
 def for_report(format_id: str | None = None) -> Pipeline:
-    """The pipeline that writes a report: `report`, whatever the format."""
+    """Report pipeline: `report`, unless a pipeline claims the format."""
     for pipe in pipelines().values():
         if format_id and format_id in pipe.formats:
             return pipe
@@ -141,7 +123,7 @@ def for_report(format_id: str | None = None) -> Pipeline:
 
 
 def for_chat(agent_key: str | None) -> Pipeline:
-    """The pipeline that finishes a chat answer of this agent; `chat` when none names it."""
+    """Chat finish pipeline for the agent; `chat` by default."""
     if agent_key:
         for pipe in pipelines().values():
             if agent_key in pipe.agents and pipe.flow("finish"):
