@@ -1851,9 +1851,10 @@ const EN: Record<string, string> = {
   '녹음 끝내기': 'Stop recording',
   '누르면 녹음을 끝내고 받아씁니다': 'Press to stop and transcribe',
   '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다': 'Speak and it is typed for you; edit before sending',
-  '마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다':
-    'Speak and it is typed for you; edit before sending. With the box empty, hold Space while you talk and it is sent when you let go',
-  '듣고 있습니다. 스페이스를 떼면 보냅니다': 'Listening. Release Space to send',
+  '듣고 있습니다. 스페이스를 떼면 받아 적습니다': 'Listening. Release Space to type it in',
+  '스페이스로 말하기': 'Hold Space to dictate',
+  '빈 입력창에서 스페이스를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다.':
+    'Hold Space in an empty composer and speak; on release the words are typed into the box, not sent.',
   '앱 설치': 'Install app',
   'KloudChat 을 앱으로 설치합니다': 'Install KloudChat as an app',
   'Dock 에 추가하기': 'Add to Dock',

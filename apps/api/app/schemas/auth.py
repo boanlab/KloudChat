@@ -51,6 +51,8 @@ class Preferences(Wire):
     auto_memory: bool = False
     #: The model / token / credit line under each answer.
     show_usage: bool = True
+    #: Hold space in an empty composer to dictate; the words are put in the box, not sent.
+    space_to_talk: bool = False
     #: Default action when protected data would leave for an external model;
     #: the administrator's policy is the upper bound for raw delivery.
     privacy_default_action: Literal[

@@ -653,11 +653,13 @@ export function Composer({
       setChatError(t('마이크를 쓸 수 없습니다. 브라우저의 마이크 권한을 확인해 주세요.'))
     }
   }
-  // Push to talk: hold space in an empty box, release to transcribe and send.
-  // `pushToTalk` marks a held-key recording; the mic button's recording waits for send.
+  // Push to talk, when switched on in 환경설정: hold space in the empty box, release to have
+  // the words put in the box (never sent). Off, space is just a space.
+  // `pushToTalk` marks a held-key recording.
+  const spaceToTalk = useStore((s) => s.user?.preferences.spaceToTalk === true)
   const pushToTalk = useRef(false)
   const holdToTalk = (e: { key: string; repeat: boolean; preventDefault: () => void }) => {
-    if (e.key !== ' ' || !canRecord || busy || transcribing) return false
+    if (e.key !== ' ' || !spaceToTalk || !canRecord || busy || transcribing) return false
     if (liveValue.current.trim()) return false
     e.preventDefault()
     if (e.repeat || recorder.current) return true
@@ -669,9 +671,8 @@ export function Composer({
     if (e.key !== ' ' || !pushToTalk.current) return false
     e.preventDefault()
     pushToTalk.current = false
-    void stopRecording().then((text) => {
-      if (text.trim()) submit(text)
-    })
+    // Transcribed into the box; the person reads it and sends it.
+    void stopRecording()
     return true
   }
   // Cmd/Ctrl+Shift+M toggles the mic; unlike push-to-talk it waits for send.
@@ -684,28 +685,6 @@ export function Composer({
     }
     window.addEventListener(DICTATION_EVENT, toggle)
     return () => window.removeEventListener(DICTATION_EVENT, toggle)
-  })
-  useEffect(() => {
-    if (!canRecord) return
-    // Also outside any field, but never on a control, where space is a click.
-    const idle = (target: EventTarget | null) => {
-      const el = target as HTMLElement | null
-      if (!el || el === document.body) return true
-      if (el.isContentEditable) return false
-      return !['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A', 'SUMMARY'].includes(el.tagName)
-    }
-    const down = (e: KeyboardEvent) => {
-      if (idle(e.target)) holdToTalk(e)
-    }
-    const up = (e: KeyboardEvent) => {
-      if (idle(e.target)) releaseToTalk(e)
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
   })
   // 「자동」 by default: the web tools are offered and the server searches when the words
   // call for it; 「켬」 searches every turn, 「끔」 offers nothing. `searchBlocked` still
@@ -1862,7 +1841,7 @@ export function Composer({
       title={
         recording
           ? t('누르면 녹음을 끝내고 받아씁니다')
-          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다. 빈 입력창에서 스페이스를 누른 채 말하면 떼는 순간 보냅니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
+          : `${t('마이크로 말하면 글로 받아 적습니다. 보내기 전에 고칠 수 있습니다')} (${isMac() ? '⌘' : 'Ctrl'}+Shift+M)`
       }
     >
       {transcribing ? (
@@ -2191,7 +2170,7 @@ export function Composer({
             onPaste={onPasteFiles}
             placeholder={
               recording && pushToTalk.current
-                ? t('듣고 있습니다. 스페이스를 떼면 보냅니다')
+                ? t('듣고 있습니다. 스페이스를 떼면 받아 적습니다')
                 : transcribing
                   ? t('받아쓰는 중…')
                   : pending

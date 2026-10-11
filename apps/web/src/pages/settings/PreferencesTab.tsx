@@ -12,6 +12,7 @@ export function PreferencesTab() {
   const t = useT()
   const { user, updateProfile } = useStore()
   const prefs = user?.preferences
+  const dictationEnabled = useStore((s) => s.dictationEnabled)
   const [allowRawExternal, setAllowRawExternal] = useState<boolean | null>(null)
   const set = (patch: Partial<Preferences>) => void updateProfile({ preferences: patch })
 
@@ -106,6 +107,12 @@ export function PreferencesTab() {
             value: prefs?.autoMemory ?? false,
             set: (v: boolean) => set({ autoMemory: v }),
           },
+          ...(dictationEnabled ? [{
+            label: '스페이스로 말하기',
+            desc: '빈 입력창에서 스페이스를 누른 채 말하면, 떼는 순간 받아 적어 입력창에 넣습니다. 보내지는 않습니다.',
+            value: prefs?.spaceToTalk ?? false,
+            set: (v: boolean) => set({ spaceToTalk: v }),
+          }] : []),
           {
             label: '토큰·크레딧 표시',
             desc: '각 응답 아래에 모델·토큰·크레딧을 표시합니다.',
