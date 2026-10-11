@@ -37,7 +37,10 @@ def _stray_hanja(text: str) -> str:
 
 #: Template or draft leftovers nobody meant to submit.
 _PLACEHOLDER = re.compile(
-    r"lorem ipsum|\{\{|\[REPLACE\]|\bTODO\b|\bTBD\b|여기에\s*\S*\s*(입력|작성|붙여)|"
+    # 「여기에 입력하세요」 ends where it stands; 「여기에 원문 입력 자체가」 (in addition) goes on.
+    r"lorem ipsum|\{\{|\[REPLACE\]|\bTODO\b|\bTBD\b|"
+    r"여기에\s*(?:\S+\s*)?(?:입력|작성|붙여\s*넣)"
+    r"(?=(?:하세요|하십시오|해\s*주세요|하시오|하기|기)?\s*(?:$|[.…)\]」』<>:]|[-—]))|"
     r"내용을\s*(입력|작성)|항목\s*[1-3]\s*$|샘플\s*(텍스트|내용)",
     re.I | re.M,
 )
@@ -260,7 +263,8 @@ def check(
             )
         for wrong in arithmetic.findings(text, where=where):
             findings.append(Finding("P0", "arithmetic", wrong["message"], where))
-        if found := _PLACEHOLDER.search(text):
+        # Line by line: a leftover ends its line, which the joined text hides.
+        if found := _PLACEHOLDER.search("\n".join([part.title, *part.labels, *part.lines])):
             findings.append(
                 Finding(
                     "P0",

@@ -286,3 +286,20 @@ def test_korean_prose_with_latin_and_numbers_is_left_alone():
         [{"heading": "가", "content": "컨테이너 격리 또는 트래픽 자동 차단을 RBAC 로 제어한다."}]
     )
     assert "hanja" not in [f.rule for f in lint.check(parts)]
+
+
+def test_a_sentence_that_goes_on_after_여기에_is_not_a_placeholder():
+    """「여기에 원문 입력 자체가 …」 means 「in addition, the input itself …」 (research lane)."""
+    for sentence in (
+        "여기에 원문 입력 자체가 비사실적 내용을 포함할 수 있다는 점이 더해진다.",
+        "여기에 덧붙여 말하면 표본이 작다.",
+        "여기에 작성자가 덧붙인 주석이 있다.",
+    ):
+        assert "placeholder" not in _rules(lint.check(_one("배경", sentence))), sentence
+    leftovers = (
+        "연구 배경: (여기에 내용 입력)",
+        "여기에 요약을 작성해 주세요.",
+        "원문은 여기에 붙여 넣기",
+    )
+    for leftover in leftovers:
+        assert "placeholder" in _rules(lint.check(_one("배경", leftover))), leftover
