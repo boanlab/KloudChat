@@ -567,6 +567,10 @@ async def run(
             lines.append(f"본문 발췌:\n{page_text(body)[:_BODY_CHARS]}")
         blocks.append("\n".join(lines))
 
+    if korean_query and not any(hit.get("lane") == korean_papers.LANE for _, hit in picks):
+        # Asked about Korean research and none was found: said, so the writer neither calls
+        # a survey above domestic nor fills 국내 동향 from memory (verify1 R-09).
+        blocks.append(korean_papers.none_found(korean_query))
     return Findings(
         sources=sources,
         context="\n\n".join(blocks),

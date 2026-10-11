@@ -88,6 +88,11 @@ match = '실험|측정|시험 결과'
 rule = '''Genre: 실험 보고서. Measured data as a table, with the computed columns added. State a difference by computing it next to the theoretical value, and do not invent procedures the request does not give (number of repetitions, equipment settings).'''
 
 [[genres]]
+id = "official-letter"
+match = '공문|시행\s{0,3}문|협조\s{0,3}요청'
+rule = '''Genre: 공문(시행문), in the form of the 행정업무운영 편람. Typesetting draws the head (수신·참조·발신·시행일) and the title, and appends 「끝.」, so write none of them. The body is one run of numbered items with no headings and no prose paragraphs: 「1.」 holds the purpose and the request in one sentence ending 「~하오니 … 주시기 바랍니다」 (or 「~하고자 하오니 …」); its details follow as one-line 「가. <항목>: <값>」 items (나. 다. …), a condition under an item as one 「※ …」 line; then one numbered item for what follows if it is not done, only when the material says so, and a last numbered item for the contact (「3. 문의: 기획예산팀 윤서영(내선 2214)」). An attachment goes last as 「붙임  <서식명> 1부.」. Put each item on its own line, unindented. Endings in 공문체 (「~하오니」 「~하여 주시기 바랍니다」 「~할 수 있습니다」), never an essay's 「~합니다」 explanation; no greeting, no reasons why a rule exists, no figures, no KPI or callout boxes, a table only when the material lists many rows. Copy every date, time, amount, address, e-mail and extension from the material character for character. Never add conditions, penalties, reasons or procedures the material does not state; what a 공문 usually carries but the material does not give (관련 문서 번호) is left out.'''
+
+[[genres]]
 id = "notice"
 match = '안내문|공지|가이드라인|규정|정책'
 rule = '''Genre: 안내·정책 문서. For each item, principle, allowed, forbidden and an example, briefly. No recommendation or summary section; put the effective date and contact at the end.'''

@@ -99,7 +99,7 @@ FORMATS: tuple[DocFormat, ...] = (
     ),
     DocFormat(
         "official", "공문·안내문", r"공문|시행\s{0,3}문|안내문|공지문|협조\s{0,3}요청",
-        ("수신", "참조", "발신", "시행일"), numbering="official", head="memo",
+        ("수신", "참조", "발신", "시행일"), numbering="official", head="memo", closing=True,
     ),
     DocFormat(
         "incident", "장애 보고서",
@@ -112,6 +112,17 @@ FORMATS: tuple[DocFormat, ...] = (
         r"결과\s{0,3}보고|출장\s{0,3}보고|실적\s{0,3}보고",
         ("보고일", "보고 부서", "보고자"),
         numbering="korean", head="memo", lists="gaejo", closing=True,
+    ),
+    DocFormat(
+        # A public grant application 「사업계획서 … 공모사업 신청용」: before `plan`, whose
+        # 연구자·연구 기간 cover it fell to through the bare-계획서 fallback (verify1 S13).
+        "grant", "공모·지원사업 계획서",
+        r"공모\s{0,3}(?:사업)?[^\n]{0,30}?(?:계획|신청)"
+        r"|(?:지원|보조|위탁|공모)\s{0,3}사업[^\n]{0,30}?(?:계획서|신청서)"
+        r"|(?:계획서|신청서)[^\n]{0,40}?(?:공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금|심사\s{0,3}위원)"
+        r"|(?:공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금)[^\n]{0,40}?(?:계획서|신청서)",
+        ("사업명", "신청 기관", "사업 기간", "작성일"), head="cover",
+        optional=("사업 기간",),
     ),
     DocFormat(
         "plan", "연구·조사 계획서",
@@ -152,7 +163,7 @@ FORMATS: tuple[DocFormat, ...] = (
     ),
     DocFormat(
         "comparison", "비교·분석 보고서",
-        r"비교\s{0,3}[·ㆍ/]?\s{0,3}(?:분석|검토|평가)\s{0,3}(?:보고서|보고|문서)"
+        r"비교\s{0,3}[·ㆍ/]?\s{0,3}(?:분석|검토|평가)(?:하는|한)?\s{0,3}(?:보고서|보고|문서)"
         r"|대안\s{0,3}(?:비교|평가)|(?:업체|제품|솔루션|서비스|입지|공급사|도입)\s{0,3}(?:비교|선정)"
         r"\s{0,3}(?:보고서|보고|검토|분석)",
         ("검토 대상", "판단 기준", "작성일", "작성자"), head="header",
@@ -242,6 +253,8 @@ _HEAD_ALIASES: dict[str, tuple[str, ...]] = {
     "보고 대상": ("보고 대상", "보고대상"),
     "고객사": ("고객사", "발주처", "발주 기관"),
     "사업명": ("사업명", "용역명"),
+    "신청 기관": ("신청 기관", "신청기관", "주관 기관", "수행 기관"),
+    "사업 기간": ("사업 기간", "사업기간"),
 }
 #: Labels that name a person in a sentence: 「보고자는 시설팀 김도윤 주무관.」
 _SAID_LABELS = ("작성자", "보고자", "이름", "보고일", "작성일", "보고 대상")
@@ -589,6 +602,77 @@ def _typed_markers(lines: list[str]) -> bool:
     )
 
 
+#: A list item that holds a table row: 「  - | 항목 | 계획 |」, 「○ |---|---|」.
+_ITEM_ROW = re.compile(r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}(\|.*\|)\s*$")
+#: A list item that is a table's caption: 「- 표: 예산 편성·집행」, 「- **표 2. …**」.
+_ITEM_CAPTION = re.compile(
+    r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?표\s{0,2}(?:\d{1,3}\.|:).*)$")
+
+
+def _tables_out_of_items(lines: list[str]) -> list[str]:
+    """Table rows written as list items come back out as a table, its caption above it,
+    a blank line around: S09's 만족도·예산 tables printed as 「○ | 항목 | 계획 |」 lines
+    in the PDF and DOCX (verify1 NEW-12)."""
+    rows = [bool(_ITEM_ROW.match(line)) for line in lines]
+    if sum(rows) < 2:
+        return lines
+    out: list[str] = []
+    for k, line in enumerate(lines):
+        if rows[k]:
+            if not (k and rows[k - 1]):
+                caption = _ITEM_CAPTION.match(out[-1]) if out else None
+                if caption:
+                    out[-1] = caption.group(1)
+                if out and out[-1].strip():
+                    out.append("")
+            out.append(_ITEM_ROW.match(line).group(1))
+            if k + 1 < len(lines) and not rows[k + 1] and lines[k + 1].strip():
+                out.append("")
+            continue
+        out.append(line)
+    return out
+
+
+#: A 공문 item line: 「1. …」, 「가. …」, 「1) …」, 「가) …」, 「※ …」, 「붙임 …」.
+_OFFICIAL_ITEM = re.compile(r"^\s{0,12}(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|※|붙\s{0,2}임)\s")
+
+
+def official_body(text: str) -> str:
+    """A 공문 body with each item on a paragraph of its own: 「가. 일시: …」 written indented
+    under 「1.」 would otherwise run into it as one line (a Markdown continuation) or, at four
+    spaces, print as code. Tables and fences pass through, a blank line around them."""
+    out: list[str] = []
+    fenced = False
+
+    def table(line: str) -> bool:
+        return line.lstrip().startswith("|")
+
+    for line in (text or "").split("\n"):
+        if _FENCE_LINE.match(line):
+            fenced = not fenced
+            out.append(line)
+            continue
+        if fenced:
+            out.append(line)
+            continue
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        if _OFFICIAL_ITEM.match(line):
+            line = stripped
+        # A blank line between two lines, unless both are a table's rows.
+        if out and out[-1].strip() and not (table(out[-1]) and table(line)):
+            out.append("")
+        out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
+
+
+def tables_out_of_items(text: str) -> str:
+    """`text` with its list-item table rows written as a table (`_tables_out_of_items`)."""
+    return "\n".join(_tables_out_of_items((text or "").split("\n")))
+
+
 def gaejo_markdown(text: str) -> str:
     """A 개조식 body as one canonical Markdown: depth by nesting, two spaces a level.
 
@@ -599,7 +683,7 @@ def gaejo_markdown(text: str) -> str:
     「붙임  1. ○○ 1부.」 with the next items under it. Tables and fences pass through
     untouched.
     """
-    lines = (text or "").split("\n")
+    lines = _tables_out_of_items((text or "").split("\n"))
     typed = _typed_markers(lines)
     out: list[str] = []
     #: Indents of the open Markdown list levels.

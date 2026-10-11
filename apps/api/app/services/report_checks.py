@@ -1007,7 +1007,7 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
         out["when"] = str(item["when"]).strip()[:40]
     # The item as the model named it: its first and later years are priced from it.
     out["raw"] = {k: item.get(k) for k in ("unit_price", "count", "per", "months", "usage",
-                                           "threshold", "rate", "from_year")}
+                                           "threshold", "rate", "from_year", "years")}
     return out
 
 
@@ -1069,12 +1069,13 @@ def _calendar(text: str) -> list[float]:
 
 
 def _percent(value: Any, numbers: list[float]) -> bool:
-    """「35%」 written as the factor 0.35."""
+    """「35%」 written as the factor 0.35; 「15% 할인」 as the price's share left, 0.85."""
     try:
         number = float(str(value).replace(",", ""))
     except (TypeError, ValueError):
         return False
-    return 0 < number < 1 and _grounded(round(number * 100, 6), numbers)
+    return 0 < number < 1 and (_grounded(round(number * 100, 6), numbers)
+                               or _grounded(round((1 - number) * 100, 6), numbers))
 
 
 def option_costs(data: dict, numbers: list[float], why: list[str] | None = None) -> dict | None:
@@ -1116,12 +1117,17 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
                        + (f" (자료에 없는 값이라 뺀 것: {', '.join(dropped[:4])})" if dropped else ""))
         return None
 
+    conditions = sorted({i["when"] for o in options for i in o["items"] if i.get("when")})
+    for option in options:
+        option["base"], option["by"] = conditional_items(option["items"], conditions,
+                                                         data.get("years"))
+
     def run(swap: dict[float, Decimal], conditions: frozenset[str] = frozenset()) -> dict[str, dict]:
         out = {}
         for option in options:
-            # An item that holds only under a condition (「연 단위 계약 시」) counts in that
-            # condition's scenario, not in the base.
-            items = [i for i in option["items"] if not i.get("when") or i["when"] in conditions]
+            # A condition's scenario (「연 단위 계약 시」) prices the option as that condition
+            # makes it; the base prices it without.
+            items = (option["by"][next(iter(conditions))] if conditions else option["base"])
             rows = [{"name": str(i["name"])[:40], "amount": int(_cost_item(i, swap)),
                      "factors": i["factors"], "over": i.get("over")} for i in items]
             entry = {"rows": rows, "total": sum(r["amount"] for r in rows)}
@@ -1145,13 +1151,60 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
         swap = {float(str(r["from"]).replace(",", "")): Decimal(str(r["to"]).replace(",", ""))
                 for r in pairs}
         scenarios.append({"name": str(spec["name"])[:40], "options": run(swap)})
-    conditions = sorted({i["when"] for o in options for i in o["items"] if i.get("when")})
     for condition in conditions:
         scenarios.insert(0, {"name": condition, "options": run({}, frozenset({condition}))})
     base = run({})
     lowest = min(base, key=lambda name: base[name]["total"])
     return {"period": str(data.get("period") or "")[:20], "options": base, "lowest": lowest,
             "scenarios": scenarios[:4], "dropped": dropped}
+
+
+def _same_base(a: dict, b: dict) -> bool:
+    ra, rb = a.get("raw") or {}, b.get("raw") or {}
+    return (str(ra.get("per") or "").strip().lower() == str(rb.get("per") or "").strip().lower()
+            and _plain(ra.get("count")) == _plain(rb.get("count")))
+
+
+def conditional_items(items: list[dict], conditions: list[str],
+                      years: Any) -> tuple[list[dict], dict[str, list[dict]]]:
+    """The items an option costs without any condition, and under each condition.
+
+    Only what lowers the cost (a discount, sign -1) is held back from the base. A cost the
+    model tagged with the condition too (「구독료」 tagged 「연 단위 계약 시」 beside its
+    discount) is still paid without it: S10 dropped B안's licence from the no-contract
+    case and priced it at the one-time 3,000,000원 alone (verify1 NEW-3). A cost tagged
+    with the condition that matches an untagged one (same unit and count) replaces that
+    one under the condition; with none to match, the base pays it at the full unit price."""
+    base = [i for i in items if not i.get("when")]
+    by: dict[str, list[dict]] = {}
+    for condition in conditions:
+        chosen = list(base)
+        for item in items:
+            if item.get("when") != condition:
+                continue
+            if item.get("sign") != -1:
+                twin = next((b for b in chosen if not b.get("when") and b.get("sign") != -1
+                             and _same_base(b, item)), None)
+                if twin is not None:
+                    chosen.remove(twin)
+            chosen.append(item)
+        by[condition] = chosen
+    for item in items:
+        if not item.get("when") or item.get("sign") == -1:
+            continue
+        if any(_same_base(b, item) and b.get("sign") != -1 for b in base):
+            continue
+        raw = dict(item.get("raw") or {})
+        rate = _plain(raw.get("rate"))
+        if rate is not None and float(rate) < 1:
+            # 「연 계약 시 85%」 with no full-price line: the full price is the base's.
+            raw["rate"] = None
+            full = explicit_factors({**raw, "name": item.get("name")}, years)
+            if full is None:
+                continue
+            item = full
+        base.append({k: v for k, v in item.items() if k != "when"})
+    return base, by
 
 
 def _factor_text(row: dict) -> str:
@@ -1172,6 +1225,11 @@ def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
             f"{o} {e['first_year']:,}원" for o, e in totals.items())
             + " / 이듬해(반복 비용만): " + ", ".join(
             f"{o} {e['next_year']:,}원" for o, e in totals.items()))
+        first = min(totals, key=lambda n: totals[n]["first_year"])
+        later = min(totals, key=lambda n: totals[n]["next_year"])
+        # 「A안이 2년 연속 더 적다」 is then a figure the block states, not the writer's.
+        lines.append(f"- {label}더 적은 대안: 첫해 {first}, 이듬해 {later}"
+                     + (f" (첫해·이듬해 2년 연속 {first})" if first == later else ""))
     names = list(totals)
     for i, a in enumerate(names):
         for b in names[i + 1:]:
@@ -1260,6 +1318,53 @@ def _same_totals(a: dict[str, dict], b: dict[str, dict]) -> bool:
             return False
         left.pop(match)
     return True
+
+
+def settled_options(readings: list[dict]) -> tuple[dict[str, dict], list[str]]:
+    """The options two readings price alike when the readings as a whole differ, and the
+    names of the rest. The GPU decision report (verify1 R-03) had its readings split over
+    one option, and every total — B안's 1억 4,700만 too — went to the writer as 「[금액]」."""
+    kept: dict[str, dict] = {}
+    unsettled: list[str] = []
+    first = readings[0]["options"] if readings else {}
+    names = list(dict.fromkeys(n for r in readings for n in r["options"]))
+    for name in names:
+        key = _option_key(name)
+        if any(_option_key(k) == key for k in kept) or any(
+                _option_key(u) == key for u in unsettled):
+            continue
+        seen = [e for r in readings for n, e in r["options"].items()
+                if _option_key(n) == key]
+        agreed = next((e for i, e in enumerate(seen) for other in seen[i + 1:]
+                       if e["total"] == other["total"]), None)
+        if agreed is not None:
+            kept[next((n for n in first if _option_key(n) == key), name)] = agreed
+        else:
+            unsettled.append(name)
+    return kept, unsettled
+
+
+def _partial_cost_block(kept: dict[str, dict], unsettled: list[str], period: str) -> str:
+    rows = ["| 대안 | 항목 | 계산 | 금액(원) |", "|---|---|---|---:|"]
+    for option, entry in kept.items():
+        for row in entry["rows"]:
+            rows.append(f"| {option} | {row['name']} | {_factor_text(row)} | {row['amount']:,} |")
+        rows.append(f"| {option} | 합계 |  | {entry['total']:,} |")
+    lines = [f"# 총비용 계산(코드): 일부만 확정\nThe code settled the {period or '비교 기간'} total "
+             "costs of the alternatives below (two readings of the material agreed on them). "
+             "Use these values as they are; do not recalculate.", "\n".join(rows),
+             "- " + ", ".join(f"{o} {e['total']:,}원" for o, e in kept.items())]
+    if all("first_year" in e for e in kept.values()):
+        lines.append("- 첫해(1회 비용 포함): " + ", ".join(
+            f"{o} {e['first_year']:,}원" for o, e in kept.items()) + " / 이듬해(반복 비용만): "
+            + ", ".join(f"{o} {e['next_year']:,}원" for o, e in kept.items()))
+    if unsettled:
+        lines.append(
+            f"- Not settled: {', '.join(unsettled)} — its cost items read differently each time. "
+            "Leave its total, its yearly totals and any difference from it as 「[금액]」; the unit "
+            "prices, quantities and amounts the material writes for it may still be used as "
+            "written.")
+    return "\n".join(lines)
 
 
 def _costs_agree(a: dict, b: dict) -> bool:
@@ -1574,7 +1679,10 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "compare-cost", "summary": summary})
             elif how == "split":
                 pre.costs_withheld = True
-                pre.blocks.append(_COST_WITHHELD)
+                kept, unsettled = settled_options([o[0] for o in outcomes if o[0] is not None])
+                period = next((o[0]["period"] for o in outcomes if o[0] is not None), "")
+                pre.blocks.append(_partial_cost_block(kept, unsettled, period) if kept
+                                  else _COST_WITHHELD)
                 readings = " / ".join(", ".join(f"{n} {e['total']:,}원" for n, e in o[0]["options"].items())
                                       for o in outcomes if o[0] is not None)
                 pre.runs.append({"skill": "compare-cost", "error": True,
@@ -2486,6 +2594,25 @@ def _slot(name: str) -> re.Pattern[str] | None:
     return next((value for pattern, value in _SLOTS if pattern.search(name)), None)
 
 
+#: An option's label in a comparison: 「A안」, 「B안의」, 「1안」.
+_OPTION_LABEL = re.compile(r"(?<![가-힣A-Za-z0-9])([A-Z]|[1-9])안")
+
+
+def _option_part(src: str, option: str) -> str:
+    """The stretch of a material line about one option, when the line describes several
+    (「A안: … B안: …」); the whole line otherwise."""
+    marks = [m for m in _OPTION_LABEL.finditer(src)]
+    if len({m.group(1) for m in marks}) < 2:
+        return src
+    starts = [m.start() for m in marks if m.group(1) == option]
+    if not starts:
+        return ""
+    start = starts[0]
+    after = next((m.start() for m in marks if m.start() > start and m.group(1) != option),
+                 len(src))
+    return src[start:after]
+
+
 def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, str, str, list[str]]]:
     """Blanks whose value the material states near the same words: `(section, sentence or
     row, blank, evidence lines)`. minutes-4 r2 wrote 「회당 [인원] 규모를 대강당 [석수]와 체육관
@@ -2499,6 +2626,12 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                 continue
             pieces = [line] if line.lstrip().startswith("|") else [
                 p for p in units.SENTENCE_BREAK.split(line) if placeholders.PLACEHOLDER.search(p)]
+            # A paragraph about one option reads only that option's part of a material line
+            # that describes several: the GPU report's 「A안 … 연간 집행 비용 [금액]」 was filled
+            # with B안's 900만원 from the same request line (verify1 R-03).
+            named_options = {m.group(1) for m in _OPTION_LABEL.finditer(line)}
+            option = (next(iter(named_options)) if len(named_options) == 1
+                      and not line.lstrip().startswith("|") else "")
             for piece in pieces:
                 own = _words(placeholders.PLACEHOLDER.sub(" ", piece)) - _COMMON
                 for m in placeholders.PLACEHOLDER.finditer(piece):
@@ -2510,6 +2643,10 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                     near = _words(piece[max(0, m.start() - 12):m.start()]) - _COMMON
                     evidence = []
                     for src in lines:
+                        if option:
+                            src = _option_part(src, option)
+                            if not src:
+                                continue
                         if placeholders.PLACEHOLDER.search(src) and not labelled.search(src):
                             continue
                         if labelled.search(src):
@@ -3546,6 +3683,10 @@ def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numb
         return _grounded(value, numbers)
     if any(u == unit and abs(v - value) < 1e-6 * max(1.0, abs(v)) for v, u in given):
         return True
+    same = [v for v, u in given if u == unit][:60]
+    # 「B사는 A사보다 40만원 비싸다」: the gap between two of the material's own values.
+    if any(abs(abs(a - b) - value) < 0.5 for a in same for b in same if a != b):
+        return True
     if unit == "원":
         # A total of the material's own amounts: 「총상금 40만 원(20만 원 × 2팀)」.
         money = [v for v, u in given if u == "원"][:60]
@@ -3557,6 +3698,37 @@ def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numb
 
 #: A count of people the writer made by counting the names listed: 「참석 | 5명」.
 _HEADCOUNT = re.compile(r"참석|불참|참여|출석|인원")
+
+
+#: A number the material writes after its label but without a unit: 「(정원 40)」.
+_LABELLED = re.compile(rf"([가-힣A-Za-z]{{1,10}})\s{{0,2}}({units._TERM})(?![\d.,]|\s?[가-힣A-Za-z%])")
+#: A numbered list item at a line's start: 「1. 2학기 …」, 「4) 기타」.
+_LIST_MARK = re.compile(r"(?m)^\s{0,4}(\d{1,2})[.)]\s")
+
+
+def _labelled_numbers(material: str) -> list[tuple[str, float]]:
+    out = []
+    for m in _LABELLED.finditer(material or ""):
+        try:
+            out.append((m.group(1), units._ko_number(m.group(2))))
+        except ValueError:
+            continue
+    return out
+
+
+def _listed_count(material: str) -> int:
+    """How many items the material numbers 1, 2, 3 …: 「총 4개의 안건」 counts them."""
+    marks = [int(m.group(1)) for m in _LIST_MARK.finditer(material or "")]
+    count = 0
+    while count + 1 in marks:
+        count += 1
+    return count
+
+
+#: Where one sentence's clauses meet: 「…구성되었으며 다음 회의는…」, 「…배치하고, …」.
+_CLAUSE_BREAK = re.compile(
+    r"(?:(?<=며)|(?<=[하되있었았였이않]고)|(?<=지만)|(?<=는데))(?:,\s{0,2}|\s{1,2})(?=\S)"
+    r"|(?<=,)\s{1,2}")
 
 
 def _owner_known(cell: str, flat: str) -> bool:
@@ -3590,10 +3762,44 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
     out = [dict(s) for s in sections]
     codes: list[str] = []
 
+    labelled = _labelled_numbers(material)
+    listed = _listed_count(material)
+
+    def known(value: float, unit: str, text: str, at: int) -> bool:
+        if _quantity_known(value, unit, given, numbers):
+            return True
+        # 「정원 40명」 for the memo's 「(정원 40)」: the same label just before the number.
+        before = text[max(0, at - 16):at]
+        if any(label in before and abs(v - value) < 1e-9 for label, v in labelled):
+            return True
+        # 「총 4개의 안건」: the number of items the material lists.
+        return unit == "개" and listed >= 2 and value == listed
+
     def unknown(text: str, around: str = "") -> list[re.Match]:
         headcount = bool(_HEADCOUNT.search(f"{around} {text}"))
         return [m for v, u, m in _quantities(text)
-                if not (headcount and u == "명") and not _quantity_known(v, u, given, numbers)]
+                if not (headcount and u == "명") and not known(v, u, text, m.start())]
+
+    def blank(text: str) -> str:
+        for m in reversed(unknown(text)):
+            text = text[:m.start()] + "[수치]" + text[m.end():]
+        return text
+
+    def repair_sentence(sentence: str) -> str:
+        """A clause stating a number the material lacks goes, the sentence's other clauses
+        stay; when only the last clause holds it, the number becomes 「[수치]」 so the
+        sentence still ends. A sentence of nothing else goes whole."""
+        clauses, cut = [], 0
+        for m in _CLAUSE_BREAK.finditer(sentence):
+            clauses.append(sentence[cut:m.start()])
+            cut = m.end()
+        clauses.append(sentence[cut:])
+        bad = [bool(unknown(c)) for c in clauses]
+        if all(bad):
+            return ""
+        kept = [c for c, b in zip(clauses[:-1], bad[:-1], strict=True) if not b]
+        last = blank(clauses[-1]) if bad[-1] else clauses[-1]
+        return " ".join([*kept, last])
 
     for table in tables(out):
         owner = _column(table.header, r"담당|책임|owner")
@@ -3634,8 +3840,13 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
                 continue
             if fenced or _skip_line(line) or not unknown(line):
                 continue
-            kept = [part for part in units.SENTENCE_BREAK.split(line) if not unknown(part)]
-            codes.extend(["minutes_spec"] * (len(units.SENTENCE_BREAK.split(line)) - len(kept)))
+            kept = []
+            for part in units.SENTENCE_BREAK.split(line):
+                if unknown(part):
+                    codes.append("minutes_spec")
+                    part = repair_sentence(part)
+                if part:
+                    kept.append(part)
             lines[k] = " ".join(kept)
         out[index] = {**sec, "content": "\n".join(lines)}
     return out, codes

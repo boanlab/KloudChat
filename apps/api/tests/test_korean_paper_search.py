@@ -359,6 +359,12 @@ async def test_a_report_on_korean_research_cites_korean_papers(monkeypatch):
     assert korean[0]["author"] == "이용준, 강장묵, 김지효 외"
     assert korean[0]["publisher"] == "한국산학기술학회 논문지, 25(3)"
     assert korean[1]["publisher"] == "DBpia"
+    assert "국내 논문 검색 결과 없음" not in found.context
+
+    # Nothing Korean found: the sources say so, and the survey above is not domestic.
+    papers.clear()
+    found = await research.run("거대언어모델 요약의 국내외 연구 동향 보고서", scholarly=True)
+    assert "[국내 논문 검색 결과 없음] 「거대언어모델 요약」" in found.context
 
     asked.clear()
     await research.run("LLM summarization factual consistency survey", scholarly=True)
@@ -387,3 +393,15 @@ async def test_the_search_tool_offers_korean_papers(monkeypatch):
     assert seen == ["거대언어모델 보안", "거대언어모델 보안"]
     kinds = builtin.WEB_SEARCH.parameters["properties"]["kind"]["enum"]
     assert "korean_papers" in kinds and "kci" not in kinds
+
+
+def test_the_subject_is_the_quoted_topic_not_the_document_s_words():
+    # verify1 R-09: 「한국연구재단 개인기초연구 중견연구 연구계획서」 was searched and
+    # found nothing.
+    request = ("한국연구재단 개인기초연구(중견연구) 연구계획서 초안을 써 줘. "
+               "주제는 \"대형 언어모델 기반 학술 문헌 요약의 사실 일관성 평가 방법 연구\"이고, "
+               "연구기간은 3년, 국내외 연구 동향을 포함해 줘.")
+    planned = ["한국연구재단 개인기초연구 중견연구 연구계획서"]
+    query = korean_papers.query_for(request, planned)
+    assert query.startswith("대형 언어모델") and "연구재단" not in query
+    assert korean_papers.terms("한국연구재단 개인기초연구 중견연구 연구계획서 초안") == []

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.pipeline import report_stages
-from app.services import report
+from app.services import doc_formats, report
 from app.services.context import instruction_part, lead_instruction
 
 _S09 = (
@@ -104,3 +104,37 @@ def test_a_single_body_section_prints_without_a_chapter_heading():
     assert pdf.startswith(b"%PDF")
     docx = report_export.to_docx("협조 요청", sections)
     assert docx[:2] == b"PK"
+
+
+def test_a_comparison_whose_options_come_priced_is_not_searched():
+    # S10 (verify1 Q7): the default comparison report searched and renamed the source's
+    # ISMS to ISMS-P.
+    request = open_scenario_s10()
+    # 「비교·검토하는 보고서」 names the comparison format.
+    assert doc_formats.detect(lead_instruction(request)).id == "comparison"
+    assert report.material_complete(request, "comparison")
+    assert not report.material_complete(request.replace("결론적으로", "관련 사례도 검색해서 "
+                                                        "결론적으로"), "comparison")
+    assert not report.material_complete("슬랙과 팀즈를 비교하는 보고서 써 줘.", "comparison")
+    assert report.material_complete("두 안 비교 보고서 써 줘.", "comparison", has_files=True)
+
+
+def open_scenario_s10() -> str:
+    return "\n".join([
+        "우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘. "
+        "결론적으로 어느 안을 추천하는지까지.",
+        "",
+        "A안: 지금 쓰는 사내 메신저(무료) 유지 + 화상회의 라이선스만 추가 구매",
+        "- 화상회의 라이선스 1인당 월 8,000원 × 40명",
+        "- 문서 공동편집 불가(지금처럼 파일 메일 첨부), 일정·할 일 관리 기능 없음",
+        "- 교육 필요 없음, 전환 작업 없음",
+        "",
+        "B안: 통합 협업툴(메신저·화상회의·공동편집·일정·할 일) 전환",
+        "- 1인당 월 14,000원 × 40명, 연 단위 계약 시 15% 할인",
+        "- 초기 전환 컨설팅·데이터 이전 1회 300만원",
+        "- 전 직원 교육 2시간 1회 필요",
+        "- 외부 클라우드 저장(국내 리전), 정보보호 인증(ISMS) 보유",
+        "- 지난 분기 설문에서 '파일 버전 혼선' 불만이 응답자 35명 중 21명",
+        "",
+        "판단 기준: 연간 비용(첫해·이듬해), 업무 효율, 보안, 도입 부담.",
+    ])

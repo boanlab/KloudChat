@@ -453,6 +453,12 @@ def material_complete(request: str, format_id: str | None, *, has_files: bool = 
         return False
     named = (format_id or "") in _MATERIAL_FORMATS or bool(
         _GRANT_APPLICATION.search(lead_instruction(request)))
+    if (format_id or "") == "comparison" and not named:
+        # A comparison whose options come priced in the request or its files is decided on
+        # them: a search turned S10's 「정보보호 인증(ISMS)」 into ISMS-P with a made-up gloss
+        # (quality Q7). Options named with nothing about them are still looked up.
+        priced = len(_MONEY.findall(request)) >= 2
+        return has_files or (priced and _carries_material(request))
     return named and (has_files or _carries_material(request))
 
 
@@ -546,7 +552,15 @@ def _shaped(prompt: str, genre: str) -> str:
 
 
 def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[dict]:
-    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times."""
+    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times; a
+    공문's body as its 1. 가. items, one paragraph each, with the same notation."""
+    if fmt is not None and fmt.id == "official":
+        return [
+            {**sec, "content": doc_formats.official_body(
+                doc_formats.official_notation(str(sec.get("content") or "")))}
+            if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")) else sec
+            for sec in sections
+        ]
     if fmt is None or fmt.lists != "gaejo":
         return sections
     return [
@@ -2046,6 +2060,8 @@ def normalize_document(
     out = []
     for sec in sections:
         mended, slips = hangul.repair_mixed_script(str(sec.get("content") or ""), context[:20000])
+        # A table written as list items is a table again, before its caption is numbered.
+        mended = doc_formats.tables_out_of_items(mended)
         if slips:
             log.info("mended mixed-script words in %r: %s", logs.safe(sec.get("heading")), logs.safe(slips[:5]))
         out.append({**sec, "content": mended})

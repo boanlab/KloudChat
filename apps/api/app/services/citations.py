@@ -176,10 +176,48 @@ def name_works(sections: list[dict], sources: list[dict] | None) -> list[dict]:
     ]
 
 
+def _key(text: str) -> str:
+    return re.sub(r"[^0-9a-z가-힣]", "", (text or "").lower())
+
+
+#: A reference entry's own start: 「[3]」, 「3.」, 「- 」.
+_ENTRY = re.compile(r"^\s{0,3}(?:\[\d{1,3}\]|\d{1,3}[.)]|[-*·])\s")
+
+
+def drop_restated_references(sections: list[dict], sources: list[dict] | None) -> list[dict]:
+    """The writer's own 「참고문헌」 entries that restate a source the server lists anyway,
+    taken out; the section goes when nothing else is in it. A research plan carried both
+    lists, the writer's half without authors or years (verify1 R-08)."""
+    titles = [k[:30] for k in (_key(str(src.get("title") or "")) for src in sources or [])
+              if len(k) >= 8]
+    if not titles:
+        return sections
+    out = []
+    for section in sections:
+        if (not _REFERENCE_HEADING.search(str(section.get("heading") or ""))
+                or str(section.get("format") or "markdown") != "markdown"):
+            out.append(section)
+            continue
+        entries: list[list[str]] = []
+        for line in str(section.get("content") or "").split("\n"):
+            if _ENTRY.match(line) or not entries:
+                entries.append([line])
+            else:
+                entries[-1].append(line)
+        kept = [e for e in entries if "".join(e).strip()
+                and not any(t in _key(" ".join(e)) for t in titles)]
+        if not any(_ENTRY.match(e[0]) for e in kept):
+            continue
+        out.append({**section, "content": "\n".join(line for e in kept for line in e).strip()})
+    return out
+
+
 def tidy(sections: list[dict], sources: list[dict] | None
          ) -> tuple[list[dict], list[dict]]:
-    """Both, in order: the works named, then the citations put in order."""
+    """In order: the writer's restated reference list dropped, the works named, then the
+    citations put in order."""
+    sections = drop_restated_references(sections, sources)
     return cite_order(name_works(sections, sources), list(sources or []))
 
 
-__all__ = ["cite_order", "cited", "name_works", "tidy"]
+__all__ = ["cite_order", "cited", "drop_restated_references", "name_works", "tidy"]

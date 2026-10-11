@@ -310,3 +310,82 @@ def test_documents_of_other_formats_keep_their_lists(kind: str):
     block = doc_formats.title_block(doc_formats.BY_ID["status"], {}, "")
     text = _text(kind, WRITERS[kind]("현황", SECTIONS[:1], title_block=block))
     assert "□" not in text and "○" not in text and "끝." not in text
+
+
+def test_a_grant_application_has_its_own_format_not_the_research_plan():
+    # verify1 S13: 「사업계획서 … 공모사업 신청용」 got the 연구자·연구 기간 cover.
+    ask = ("아래 메모로 「2027 지역 상생 디지털 배움터」 사업계획서 써 줘. 한빛시 공모사업 "
+           "신청용이고, 심사위원이 읽는 문서야.")
+    fmt = doc_formats.detect(ask)
+    assert fmt.id == "grant" and "연구자" not in fmt.fields and "신청 기관" in fmt.fields
+    assert doc_formats.detect("한국연구재단 연구계획서 초안을 써 줘.").id == "plan"
+    assert doc_formats.detect("창업 사업계획서 써 줘").id != "grant"
+
+
+def test_a_grant_application_s_cover_reads_its_institution_and_period():
+    memo = ("- 신청 기관: 한빛대학교 평생교육원 / 사업 기간: 2027. 3. ~ 2027. 12. (10개월)\n"
+            "- 목적: 한빛시 60세 이상 주민과 소상공인의 디지털 역량 격차 해소\n")
+    got = doc_formats.head_values(doc_formats.BY_ID["grant"], memo)
+    assert got["신청 기관"] == "한빛대학교 평생교육원"
+    assert got["사업 기간"].startswith("2027. 3. ~ 2027. 12.")
+
+
+def test_table_rows_written_as_list_items_come_back_as_a_table():
+    # verify1 NEW-12 (S09 개조식 결과 보고서): 「○ | 항목 | 계획 |」 lines in the PDF/DOCX.
+    body = ("- 만족도(응답 141명)\n  - 표: 만족도 조사 결과\n  - | 항목 | 만족도(5점 만점) |\n"
+            "  - |---|---|\n  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n- 예산 집행\n"
+            "  - 편성 4,500만원 / 집행 4,215만원\n")
+    out = doc_formats.gaejo_markdown(body)
+    assert ("표: 만족도 조사 결과\n\n| 항목 | 만족도(5점 만점) |\n|---|---|\n| 전반 만족 | 4.5 |\n"
+            "| 멘토링 | 4.6 |\n\n") in out
+    assert "- | " not in out and "  - 편성 4,500만원" in out
+
+
+def test_a_listed_table_is_numbered_like_any_other_once_normalized():
+    from app.services import report
+
+    body = ("- 만족도\n  - 표: 만족도 조사 결과\n  - | 항목 | 만족도 |\n  - |---|---|\n"
+            "  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n")
+    out = report.normalize_document([{"heading": "성과", "content": body}])[0]["content"]
+    assert "**표 1." in out and "\n| 항목 | 만족도 |\n|---|---|\n" in out and "- |" not in out
+
+
+S03 = ("각 학과에 보낼 협조 요청 공문을 써 줘.\n\n"
+       "- 제목 취지: 2027학년도 실험실습 기자재 수요조사 협조 요청\n"
+       "- 발신: 한빛대학교 기획처장 / 수신: 각 학과(부)장\n"
+       "- 제출 기한: 2026. 11. 6.(금) 18:00까지\n")
+
+
+def test_a_default_official_letter_is_one_body_without_chapters():
+    # quality Q11 (verify1 S03): the default 공문 came out as six chapter headings.
+    from app.services import process_settings, report
+
+    fmt = doc_formats.detect(S03)
+    assert fmt.id == "official" and fmt.closing
+    process = process_settings.resolve(template_id=None, format_id="official")
+    assert process.outline == ("본문",) and process.draws == "when-asked"
+    rule = report._genre_rule(S03, fmt)
+    assert rule.startswith("Genre: 공문(시행문)") and "no headings" in rule
+    sections = report.untitled_body([{"heading": "본문", "content": "x"}], process.outline)
+    assert sections[0]["heading"] == ""
+
+
+def test_an_official_letter_s_items_stand_on_lines_of_their_own():
+    from app.services import report
+
+    body = ("1. 2027학년도 수요조사를 하오니 협조하여 주시기 바랍니다.\n"
+            "  가. 제출 기한: 2026년 11월 6일(금) 18:00\n"
+            "    나. 제출 방법: 메일 제출\n"
+            "     ※ 학과장 확인 필수\n"
+            "2. 문의: 기획예산팀 윤서영(내선 2214)\n"
+            "붙임  실험실습 기자재 수요조사서 1부.")
+    out = report.gaejo_body([{"heading": "", "content": body}],
+                            doc_formats.BY_ID["official"])[0]["content"]
+    assert out.split("\n\n") == [
+        "1. 2027학년도 수요조사를 하오니 협조하여 주시기 바랍니다.",
+        "가. 제출 기한: 2026. 11. 6.(금) 18:00",
+        "나. 제출 방법: 메일 제출",
+        "※ 학과장 확인 필수",
+        "2. 문의: 기획예산팀 윤서영(내선 2214)",
+        "붙임  실험실습 기자재 수요조사서 1부.",
+    ]

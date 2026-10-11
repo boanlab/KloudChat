@@ -90,3 +90,36 @@ def test_a_cut_off_title_is_read_whole():
     assert research._titled_from_page(cut, page)["title"] == whole["title"]
     # A whole title is not touched.
     assert research._titled_from_page(whole, page) == whole
+
+
+# ── verify1 R-08: the writer's own 참고문헌 beside the server's list ──────
+
+RESTATED = (
+    "[1] A systematic survey of text summarization: From statistical methods to large "
+    "language models. ACM Computing Surveys.\n\n"
+    "[2] Hu, Q., Long, Q., & Wang, W. (2025). Decomposition dilemmas: Does claim "
+    "decomposition boost or burden fact-checking performance? In Proceedings of the 2025 "
+    "Conference.\n\nAlbuquerque, New Mexico.\n"
+)
+SOURCES_R08 = [
+    {"title": "A systematic survey of text summarization: From statistical methods to large "
+              "language models", "url": "https://doi.org/10.1/a", "ordinal": 1},
+    {"title": "Decomposition dilemmas: Does claim decomposition boost or burden fact-checking "
+              "performance?", "url": "https://doi.org/10.1/b", "ordinal": 2},
+]
+
+
+def test_a_reference_list_restating_the_server_s_sources_is_dropped():
+    sections = [{"heading": "배경", "content": "요약 연구가 있다[1]. 분해도 있다[2]."},
+                {"heading": "참고문헌", "content": RESTATED}]
+    out, sources = citations.tidy(sections, SOURCES_R08)
+    assert [s["heading"] for s in out] == ["배경"]
+    assert len(sources) == 2
+
+
+def test_an_entry_the_server_does_not_list_keeps_the_section():
+    extra = RESTATED + "\n[3] 홍길동. (2024). 『국내 요약 평가 연구』. 한국정보과학회.\n"
+    sections = [{"heading": "배경", "content": "요약 연구가 있다[1]."},
+                {"heading": "참고문헌", "content": extra}]
+    out = citations.drop_restated_references(sections, SOURCES_R08)
+    assert out[1]["content"] == "[3] 홍길동. (2024). 『국내 요약 평가 연구』. 한국정보과학회."

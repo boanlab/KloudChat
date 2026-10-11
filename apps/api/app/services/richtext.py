@@ -622,7 +622,7 @@ __all__ = [
 #: 「… 같습니다. | 주파수 (Hz) | 측정 이득 |」 — a table's header glued to the sentence
 #: before it, so Markdown reads the whole table as one paragraph.
 _GLUED_HEADER = re.compile(
-    r"^(?P<prose>[^|\n]{0,4000}\S)[ \t]{0,8}(?P<head>\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$"
+    r"^(?P<prose>[^|\n]{0,4000}[^|\s])[ \t]{0,8}(?P<head>\|(?:[^|\n]{0,200}\|){2,40})[ \t]{0,8}$"
 )
 _SEPARATOR_ROW = re.compile(
     r"^[ \t]{0,8}\|?(?:[ \t]{0,8}:?-{2,}:?[ \t]{0,8}\|){1,40}[ \t]{0,8}(?::?-{2,}:?)?[ \t]{0,8}$"
