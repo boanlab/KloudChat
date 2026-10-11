@@ -1,9 +1,4 @@
-"""Speech to text through the internal Whisper only.
-
-Audio never leaves the deployment: there is no outside model path, not even as an
-opt-in. Without a Whisper address transcription is unavailable and dictation hidden;
-a Whisper failure is reported, never retried elsewhere.
-"""
+"""Speech to text via internal Whisper only; audio never leaves the deployment, no fallback."""
 
 from __future__ import annotations
 
@@ -17,12 +12,11 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT = 180.0
 
-#: Checked before upload.
 MAX_BYTES = 25 * 1024 * 1024
 
 
 class TranscribeError(RuntimeError):
-    """Transcription failure with a user-facing message."""
+    """Transcription failure; user-facing message."""
 
 
 async def available() -> bool:
@@ -32,12 +26,12 @@ async def available() -> bool:
 async def transcribe_with_duration(
     data: bytes, filename: str = "speech.webm", language: str | None = None, prompt: str = ""
 ) -> tuple[str, int]:
-    """Transcript plus the audio seconds the backend reported (0 when unknown)."""
+    """Transcript plus reported audio seconds (0 if unknown)."""
     text = await transcribe(data, filename, language, prompt)
     return text, int(_last_seconds)
 
 
-#: Seconds reported by the last local transcription.
+#: seconds from the last local transcription
 _last_seconds = 0
 
 
@@ -47,11 +41,7 @@ async def transcribe(
     language: str | None = None,
     prompt: str = "",
 ) -> str:
-    """Audio bytes to text; raises `TranscribeError`.
-
-    `language`: ISO code to pin, or None to auto-detect within `SPOKEN`.
-    `prompt`: recent conversation text, passed to Whisper as a vocabulary hint.
-    """
+    """Audio bytes to text; `language` None = auto, `prompt` = vocabulary hint."""
     if len(data) > MAX_BYTES:
         raise TranscribeError("녹음이 너무 깁니다. 나눠서 말해 주세요.")
     if not data:
@@ -66,7 +56,7 @@ async def transcribe(
     return await _transcribe_locally(stt_url, data, filename, language, prompt)
 
 
-#: Expected languages; a detection outside this pair is retried pinned to `_HOME`.
+#: expected languages; other detections retried pinned to `_HOME`
 SPOKEN = ("ko", "en")
 
 _HOME = "ko"
@@ -75,7 +65,7 @@ _HOME = "ko"
 async def _transcribe_locally(
     stt_url: str, data: bytes, filename: str, language: str | None = None, prompt: str = ""
 ) -> str:
-    """Whisper via vLLM's OpenAI-shaped endpoint; `None` language auto-detects."""
+    """Whisper via vLLM's OpenAI-shaped endpoint; `None` language = auto-detect."""
     body = await _whisper(stt_url, data, filename, language, prompt)
     heard = str(body.get("language") or "").lower()[:2]
     if language is None and heard and heard not in SPOKEN:
@@ -98,7 +88,7 @@ async def _transcribe_locally(
 async def _whisper(
     stt_url: str, data: bytes, filename: str, language: str | None, prompt: str = ""
 ) -> dict:
-    """One Whisper pass; `verbose_json` so the response names the detected language."""
+    """One Whisper pass; `verbose_json` for the detected language."""
     url = f"{stt_url.rstrip('/')}/v1/audio/transcriptions"
     form: dict[str, str] = {"response_format": "verbose_json"}
     if language:

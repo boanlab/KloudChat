@@ -1,19 +1,11 @@
-"""One type scale for the deck.
-
-Sizes are in the panel's 400x225 slide units. The panel draws them as pixels times its
-zoom; the `.pptx` and `.pdf` draw a 960x540-point page, so a size crosses over
-multiplied by `K`. `apps/web/src/components/slides/typeScale.ts` carries the same table
-for the panel, and a test keeps the two equal, so a slide that fits in the panel fits in
-the file.
-"""
+"""Deck type scale in 400x225 panel units (×`K` → pt); mirrors web typeScale.ts."""
 
 from __future__ import annotations
 
-#: Points per slide unit: a 960-point page over a 400-unit panel.
+#: points per slide unit (960 / 400)
 K = 2.4
 
-#: Sizes in PowerPoint points. Slide titles are 32pt; the body starts at 22pt and steps
-#: down the `STEPS` ladder when a slide overflows, never up; nothing is drawn under 12pt.
+#: PowerPoint pt; title 32, body 22 down the `STEPS` ladder on overflow, floor 12
 TYPE: dict[str, float] = {
     # Covers.
     "cover": 36,
@@ -61,17 +53,15 @@ TYPE: dict[str, float] = {
     "gutterNumber": 22,
 }
 
-#: The body ladder, in points: a slide that overflows at 22 tries 18, then 16, 14, 12.
+#: body ladder (pt)
 STEPS: tuple[int, ...] = (22, 18, 16, 14, 12)
-#: The same ladder as `textScale` values, which every renderer multiplies its sizes by.
+#: ladder as `textScale` multipliers
 SCALES: tuple[float, ...] = tuple(round(step / STEPS[0], 4) for step in STEPS)
-#: No text is drawn smaller than this, whatever the scale.
 FLOOR_PT = 12
-#: Slide titles are 32pt; one that would wrap steps down to 30, then 28, and stays at 28
-#: on two lines if it still does not fit.
+#: title 32 → 30 → 28, then wraps at 28
 TITLE_STEPS: tuple[int, ...] = (32, 30, 28)
 
-#: Line heights, as a multiple of the size.
+#: line height ratio
 LEADING: dict[str, float] = {
     "title": 1.25,
     "body": 1.6,
@@ -84,12 +74,10 @@ LEADING: dict[str, float] = {
     "table": 1.4,
 }
 
-#: Space between bullet items, as a multiple of the body size.
+#: bullet gap, × body size
 BULLET_GAP = 0.35
 
-#: Body-slide geometry, in slide units: where the body box starts and ends, and the
-#: text column's side padding. The title sits above the box; each extra title line
-#: pushes the box down by one title line.
+#: body box geometry (slide units); each extra title line pushes the box down
 BODY_TOP = 66.5
 BODY_BOTTOM = 190
 PAD_X = 28
@@ -97,7 +85,7 @@ TITLE_WIDTH = 400 - 2 * PAD_X
 
 
 def em(text: str) -> float:
-    """Width of `text` in ems: a Hangul or CJK glyph is one em, anything else about half."""
+    """Width in ems: Hangul/CJK 1, else ~0.5."""
     width = 0.0
     for char in str(text or ""):
         code = ord(char)
@@ -111,7 +99,7 @@ def em(text: str) -> float:
 
 
 def lines(text: str, size: float, width: float) -> int:
-    """How many lines `text` takes at `size` in a column `width` units wide."""
+    """Line count of `text` at `size` in a `width`-unit column."""
     if not str(text or "").strip():
         return 0
     per_line = max(1.0, width / size)
@@ -119,19 +107,17 @@ def lines(text: str, size: float, width: float) -> int:
 
 
 def pt(name: str, scale: float = 1.0) -> float:
-    """The size in points for the exporters, at the slide's text scale, never under the floor."""
+    """Exporter size in pt at the slide's text scale, floored."""
     return max(FLOOR_PT, TYPE[name] * scale) if scale < 1 else TYPE[name]
 
 
 def units(name: str) -> float:
-    """The size in the panel's slide units."""
+    """Size in panel slide units."""
     return TYPE[name] / K
 
 
 def title_pt(title: str, width: float | None = None) -> float:
-    """The title's size in points: 32 when it fits one line, else the first of 30 and 28
-    that does, else 28. `width` is the title column in slide units.
-    """
+    """Title size in pt: 32 if one line, else 30 or 28."""
     column = TITLE_WIDTH if width is None else width
     for size in TITLE_STEPS:
         if lines(title, size / K, column) <= 1:
@@ -140,31 +126,24 @@ def title_pt(title: str, width: float | None = None) -> float:
 
 
 def table_size(rows: int) -> float:
-    """Table cell size from the row count, so the table stays above the footer.
-
-    One row in reserve for a cell that wraps; the same rule in every renderer.
-    """
+    """Table cell size from row count, one row in reserve; same rule in every renderer."""
     per_row = (BODY_BOTTOM - BODY_TOP) / (rows + 1.6)
     return max(units("tableMin"), min(units("tableMax"), per_row / 2.05))
 
 
 def table_pad(rows: int) -> float:
-    """Cell padding above and below the text that goes with `table_size`, in slide units."""
+    """Cell padding for `table_size`, in slide units."""
     per_row = (BODY_BOTTOM - BODY_TOP) / (rows + 1.6)
     return max(2.0, (per_row - table_size(rows) * LEADING["table"]) / 2)
 
 
 def table_row_height(rows: int) -> float:
-    """The row height that goes with `table_size`, in slide units."""
+    """Row height for `table_size`, in slide units."""
     return table_size(rows) * LEADING["table"] + 2 * table_pad(rows)
 
 
 def column_shares(rows: list[list[str]]) -> list[float]:
-    """Each column's share of the table width, from its widest cell.
-
-    Columns are weighted by the widest cell's em width, held between three and twenty-two
-    ems so one long cell cannot starve the others, plus two ems of padding.
-    """
+    """Column width shares by widest cell (3–22 ems, plus 2 padding)."""
     count = max((len(row) for row in rows), default=0)
     if not count:
         return []

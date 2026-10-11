@@ -1,10 +1,4 @@
-"""Check skills attached to an agent or a 서식, run by the server around writing.
-
-A check skill is a package under `app/skills/` whose SKILL.md names a `stage` and an `entry`
-script (app/skills/README.md). Before writing (`pre`), what the format needs and the material
-does not give becomes one question card; after writing (`post`), every value no source holds
-becomes a bracket blank — fixed once, checked again, and both counts recorded.
-"""
+"""Agent/서식 check skills: `pre` gap question card, `post` unsourced values blanked."""
 
 from __future__ import annotations
 
@@ -26,11 +20,8 @@ from app.services import (
 
 log = logging.getLogger(__name__)
 
-#: `post` checks run by a stage of their own (`check:copy`), not by `ground` (`own_stage`
-#: in the skill's fields). An attached check that also names `post_check` scripts
-#: (generic-language-killer) runs here as its entry only — the safe rewrites; switched on by
-#: the person, `check:skills` runs the rest.
-#: The question ids the gap card uses, so answers are told from the file questions.
+#: own_stage `post` checks (`check:copy`) run in their own stage, not `ground`
+#: gap card question ids, told apart from file questions
 GAP_PREFIX = "gap:"
 
 
@@ -39,12 +30,7 @@ Specs = Mapping[str, skill_specs.Spec] | None
 
 def attached(*, agent_checks: list | tuple | None = None, agent_key: str | None = None,
              template_checks: tuple[str, ...] = (), specs: Specs = None) -> tuple[str, ...]:
-    """The check skills an agent and a 서식 attach, agent first, each once.
-
-    `agent_checks` is the agent row's own list (`Agent.check_skills`), what every agent —
-    catalogue or a person's — runs with; `agent_key` reads a shipped spec instead, for a
-    replay or a test that has no row. A person's check skill (`skill:<id>`) counts when
-    `specs` holds it."""
+    """Check skills from agent then 서식, each once; `agent_key` for replay/tests."""
     own = list(agent_checks or ()) if agent_checks is not None else list(
         starter.agent_checks(agent_key))
     keys = [*own, *template_checks]
@@ -58,8 +44,7 @@ def of_stage(keys: tuple[str, ...], stage: str, specs: Specs = None) -> list[str
 
 
 def entry(key: str, specs: Specs = None) -> ModuleType:
-    """The shipped script a check skill runs, whoever's skill names it (never a person's
-    own file: `skill_specs.validate` lets an entry name shipped checks only)."""
+    """Shipped script a check skill runs (never a person's own file)."""
     spec = skill_specs.resolve(key, specs)
     ref = spec.entry_ref() if spec is not None and spec.stage else None
     if ref is None or ref[1] not in skill_packages.script_names(ref[0]):
@@ -72,15 +57,10 @@ def own_stage(key: str, specs: Specs = None) -> bool:
     return bool(spec and spec.own_stage)
 
 
-# ── before writing ───────────────────────────────────────────────────────
-
-
 def gaps(keys: tuple[str, ...], *, questions: list[dict], request: str, material: str,
          today: dt.date | None = None, specs: Specs = None,
          judged: dict[str, bool] | None = None) -> list[dict]:
-    """The attached `pre` checks' findings: the 빠진 정보 질문 (`services/gap_questions.py`)
-    the request and material do not answer. `judged` holds the judge model's reading of the
-    questions it decides."""
+    """Attached `pre` checks' unanswered 빠진 정보 질문; `judged` = judge's reading."""
     if not questions:
         return []
     computed = {**gap_questions.readings(questions, request, material, today),
@@ -96,7 +76,7 @@ def gaps(keys: tuple[str, ...], *, questions: list[dict], request: str, material
 
 
 def questions(found: list[dict]) -> list[grounding.Question]:
-    """One card's questions, each saying what is missing and why; answered in free text."""
+    """One card's questions with what's missing and why."""
     return [
         grounding.Question(id=f"{GAP_PREFIX}{f['fact']}", question=f["question"], detail=f["why"])
         for f in found
@@ -104,7 +84,7 @@ def questions(found: list[dict]) -> list[grounding.Question]:
 
 
 def rule(keys: tuple[str, ...], found: list[dict], specs: Specs = None) -> str:
-    """The writer's line when the person went on without the facts: each one a blank."""
+    """Writer's line when the person proceeds without facts: each a blank."""
     for key in of_stage(keys, "pre", specs):
         try:
             if text := entry(key, specs).rule(found):
@@ -115,7 +95,7 @@ def rule(keys: tuple[str, ...], found: list[dict], specs: Specs = None) -> str:
 
 
 def labelled(answers: dict[str, str], asked: list[dict]) -> dict[str, str]:
-    """Gap answers as 「회의 일시: 10월 7일」, so the request reads them as that fact."""
+    """Gap answers as 「회의 일시: 10월 7일」."""
     labels = {str(q.get("id") or ""): _label(q) for q in asked or []}
     out = {}
     for qid, text in (answers or {}).items():
@@ -126,11 +106,11 @@ def labelled(answers: dict[str, str], asked: list[dict]) -> dict[str, str]:
 
 
 def _label(question: dict) -> str:
-    """The asked question's label, as the card carried it."""
+    """Question label as carried on the card."""
     return str(question.get("label") or "")
 
 
-#: A reply that only says to go on: 「더 있는 정보는 없어. 자료대로 진행해 줘.」 — not an answer.
+#: "just proceed" reply, not an answer
 _GO_ON = re.compile(
     r"자료대로|있는\s{0,2}(?:자료|것|대로)|그대로\s{0,2}(?:진행|써)|더\s{0,2}(?:있는\s{0,2})?(?:정보|자료)\s{0,2}(?:는|가)?\s{0,2}없|"
     r"모르겠|몰라|없어요|없어\.?$|진행해\s{0,2}(?:줘|주세요)")
@@ -140,14 +120,11 @@ def goes_on(text: str) -> bool:
     return bool(_GO_ON.search(text or ""))
 
 
-# ── after writing ────────────────────────────────────────────────────────
-
-
-#: An agent's `check_options` the form offers (G3), with what each sets on the trace.
+#: form-offered `check_options` (G3) → trace settings
 CHECK_OPTIONS = {
-    #: 수치는 도구 계산 결과에서만 인정: a number counts only when a tool printed it.
+    #: 수치는 도구 계산 결과에서만 인정
     "tool_numbers": {"bare": True, "numbers": "computed"},
-    #: 직함·제품명까지 근거 확인: titles and product names are traced too.
+    #: 직함·제품명까지 근거 확인
     "titles": {"titles": True, "products": True},
 }
 
@@ -158,10 +135,7 @@ def clean_options(raw: dict | None) -> dict[str, bool]:
 
 def options_for(today: dt.date | None = None, settings: dict | None = None,
                 surface: str = "") -> dict:
-    """How strict the trace is: what the agent asked for (`Agent.check_options`) and its
-    서식 sets (`check_options` in a `template.toml`: a career history traces titles). Also what
-    every check may read: where it runs (`surface`) and the agent's 담당 부서·연락처
-    (`contact`), which the checks that point to it copy as written."""
+    """Trace strictness from agent and 서식 `check_options`, plus `surface`, `contact`."""
     options: dict = {"today": today.isoformat() if today else ""}
     for key in clean_options(settings):
         options.update(CHECK_OPTIONS[key])
@@ -176,16 +150,16 @@ def options_for(today: dt.date | None = None, settings: dict | None = None,
 @dataclass(slots=True)
 class Outcome:
     text: str
-    #: What the first check found (and the fix blanked).
+    #: first check's findings (fix blanked)
     found: list[dict] = field(default_factory=list)
-    #: What the check found again after the fix.
+    #: refound after the fix
     left: list[dict] = field(default_factory=list)
-    #: The findings by the check that made them, in the order they ran.
+    #: findings by check, in run order
     by_key: dict[str, list[dict]] = field(default_factory=dict)
 
     @property
     def traced_only(self) -> bool:
-        """Whether every finding is a value the trace (`grounding-check`) blanked."""
+        """Whether every finding is a `grounding-check` blank."""
         return set(self.by_key) <= {"grounding-check"}
 
     @property
@@ -205,7 +179,7 @@ class Outcome:
 
 def ground(keys: tuple[str, ...], text: str, *, material: str, computed: list[str],
            options: dict, specs: Specs = None) -> Outcome:
-    """The attached `post` checks over `text`: check, fix once, check again."""
+    """Attached `post` checks over `text`: check, fix once, recheck."""
     outcome = Outcome(text)
     for key in of_stage(keys, "post", specs):
         if own_stage(key, specs):
@@ -231,7 +205,7 @@ _REFERENCES = re.compile(r"참고\s{0,2}문헌|references|출처\s{0,2}목록", 
 def ground_sections(keys: tuple[str, ...], sections: list[dict], *, material: str,
                     computed: list[str], options: dict,
                     specs: Specs = None) -> tuple[list[dict], Outcome]:
-    """Each section's content traced; a reference list is the sources themselves."""
+    """Each section traced; reference list = the sources."""
     total = Outcome("")
     out = []
     for row in sections:

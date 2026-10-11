@@ -1,11 +1,4 @@
-"""The once-a-minute loop. Every replica writes its own load (`live`); one replica,
-holding a Postgres advisory lock on a connection of its own, also reads the host,
-the GPU nodes and LiteLLM's request log, and rolls up and prunes old rows.
-
-The lock rather than a Valkey one: this stack has no Valkey, and the lock lets go
-by itself when the holder's connection drops, so another replica takes over at
-its next minute.
-"""
+"""Per-minute perf loop; advisory-lock holder also reads hosts, GPUs, LiteLLM log."""
 
 from __future__ import annotations
 
@@ -21,9 +14,9 @@ from app.services.perf.host import HostReader, Row
 
 log = logging.getLogger(__name__)
 
-#: pg_advisory_lock key: "kcperf" in ASCII.
+#: "kcperf" in ASCII
 LOCK_KEY = 0x6B63_7065_7266
-#: Minutes LiteLLM is given to write a request's log row before that minute is read.
+#: minutes LiteLLM gets to write a request's log row
 MODEL_LOG_LAG_MIN = 3
 
 
@@ -41,14 +34,14 @@ def _list(spec: str) -> list[str]:
 
 
 class Leader:
-    """Holds the advisory lock on a dedicated connection for as long as it lasts."""
+    """Advisory lock on a dedicated connection; released when the connection drops."""
 
     def __init__(self) -> None:
         self.conn = None
 
     async def held(self) -> bool:
         if not settings.database_url.startswith("postgresql"):
-            return True  # a single process on SQLite (tests, local runs)
+            return True  # single process on SQLite
         import asyncpg
 
         if self.conn is not None and not self.conn.is_closed():
@@ -100,7 +93,7 @@ class Collector:
             ("app", name, live.REPLICA, value) for name, value in live.counters.drain().items()
         ]
         try:
-            from app.routers import sessions  # late: the router imports half the app
+            from app.routers import sessions  # late import: circular
 
             turns = sum(len(signals) for signals in sessions._STOPPING.values())
             rows.append(("app", "turns", live.REPLICA, float(turns)))
@@ -122,7 +115,7 @@ class Collector:
         return rows
 
     async def model_minute(self, ts: datetime) -> None:
-        """Reads LiteLLM's log for one minute a few minutes back, once."""
+        """LiteLLM log for one minute a few minutes back, once."""
         if not settings.perf_model_logs:
             return
         minute = ts - timedelta(minutes=MODEL_LOG_LAG_MIN)
@@ -161,7 +154,7 @@ async def run() -> None:
     collector = Collector()
     try:
         while True:
-            # On the minute, plus a few seconds so replicas do not race the lock.
+            # offset so replicas don't race the lock
             now = time.time()
             await asyncio.sleep(60 - now % 60 + 2)
             ts = store.minute(datetime.now(UTC))

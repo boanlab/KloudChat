@@ -1,15 +1,4 @@
-"""What an issue report carries about the session it came from.
-
-Two levels, by consent:
-
-- `context`: always. App build, browser, session kind, models, agent, pipeline, the stage
-  records without their evidence, artifact version ids — no message text, no document body.
-- `snapshot`: only when the reporter ticked 「이 세션을 관리자에게 공유합니다」. A read-only
-  copy of that one session at submit time — messages, the artifacts it made (current body and
-  the versions its runs wrote), the stage records with evidence, and its files with their
-  blobs copied — so a later edit or delete changes nothing in the report. Capped at
-  `MAX_BYTES`; what was cut is listed in `snapshot["truncated"]`.
-"""
+"""Issue-report session data: content-free context; snapshot only with consent."""
 
 from __future__ import annotations
 
@@ -28,21 +17,21 @@ from app.services import files as file_service
 
 log = logging.getLogger(__name__)
 
-#: Serialized snapshot ceiling. Cut in steps (see `capped`) until it fits.
+#: serialized snapshot cap; cut in steps (capped)
 MAX_BYTES = 2_000_000
-#: Copied blobs: per file and per report. Larger ones are listed, not copied.
+#: blob copy caps per file and report; larger listed only
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_COPY_BYTES = 30 * 1024 * 1024
 MAX_ARTIFACTS = 30
 MAX_RUNS = 20
 MAX_FILES = 40
-#: Per-message text kept when contents have to be clipped; the pinned one keeps more.
+#: per-message text when clipping; pinned keeps more
 _CLIP = 20_000
 _CLIP_PINNED = 60_000
-#: Stage records sent in `context` (never evidence).
+#: stage records in context (no evidence)
 _CONTEXT_RUNS = 10
 
-#: Routing actions that mean the turn ran on the strict-local route.
+#: routing actions meaning strict-local
 STRICT_ACTIONS = frozenset({"strict_local", "route_strict_local", "internal_strict_local"})
 
 _CLIENT_KEYS = ("userAgent", "appBuild", "path", "viewport", "lang", "timezone")
@@ -50,7 +39,7 @@ _CLIENT_KEYS = ("userAgent", "appBuild", "path", "viewport", "lang", "timezone")
 
 @dataclass(slots=True)
 class Loaded:
-    """One session's rows, read once for both the context and the snapshot."""
+    """One session's rows, read once for context and snapshot."""
 
     session: ChatSession
     messages: list[Message]
@@ -100,7 +89,7 @@ async def load(db, session: ChatSession) -> Loaded:
         .where(StoredFile.session_id == session.id, StoredFile.user_id == session.user_id)
         .order_by(col(StoredFile.created_at)).limit(MAX_FILES)
     )).all())
-    # Names only: an agent's prompt and a project's instructions never leave here.
+    # names only: agent prompts and project instructions never leave
     agent = await db.get(Agent, session.agent_id) if session.agent_id else None
     project = await db.get(Project, session.project_id) if session.project_id else None
     pipeline = await db.get(UserPipeline, session.pipeline_id) if session.pipeline_id else None
@@ -115,7 +104,7 @@ async def load(db, session: ChatSession) -> Loaded:
 
 
 def strict_local(loaded: Loaded) -> bool:
-    """Whether any turn of the session ran on the strict-local (internal data) route."""
+    """Whether any turn ran strict-local."""
     for message in loaded.messages:
         routing = message.routing if isinstance(message.routing, dict) else {}
         if {routing.get("action"), routing.get("initialAction")} & STRICT_ACTIONS:
@@ -139,14 +128,14 @@ def _models(loaded: Loaded) -> list[str]:
 
 
 def _run_out(run: PipelineRun, *, evidence: bool) -> dict[str, Any]:
-    # Imported late: the router owns the wire shape of a run.
+    # late import: router owns the run wire shape
     from app.routers.runs import _out
 
     return _out(run, evidence=evidence)
 
 
 def client_info(raw: dict | None) -> dict[str, str]:
-    """The browser's own description of itself, known keys only, each clipped."""
+    """Browser self-description: known keys, clipped."""
     out: dict[str, str] = {}
     for key in _CLIENT_KEYS:
         value = (raw or {}).get(key)
@@ -159,7 +148,7 @@ def context(
     loaded: Loaded | None, *, client: dict[str, str], api_version: str,
     message_id: str | None, artifact_id: str | None,
 ) -> dict[str, Any]:
-    """What goes with every report. No message text and no document body."""
+    """Per-report context; no message text or document body."""
     out: dict[str, Any] = {"client": client, "apiVersion": api_version}
     if loaded is None:
         return out
@@ -200,7 +189,7 @@ def build(
     loaded: Loaded, *, owner_id: str, report_id: str,
     message_id: str | None, artifact_id: str | None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """The snapshot and the storage keys of the blobs copied for it (for cleanup on failure)."""
+    """Snapshot and copied blob keys (for cleanup on failure)."""
     session = loaded.session
     copied: list[str] = []
     budget = MAX_COPY_BYTES
@@ -236,7 +225,7 @@ def build(
                 "id": v.id, "version": v.version, "summary": v.summary[:300],
                 "createdAt": _iso(v.created_at),
             }
-            # Bodies only for the versions a run wrote; the rest are ids.
+            # bodies only for run-written versions
             if (a.id, v.version) in referenced_versions and v.version != a.version:
                 row["data"] = v.data
             versions.append(row)
@@ -277,7 +266,7 @@ def size_of(snapshot: dict[str, Any]) -> int:
 
 
 def capped(snapshot: dict[str, Any], limit: int = MAX_BYTES) -> dict[str, Any]:
-    """`snapshot` cut down to `limit` bytes, least useful first; each cut is noted."""
+    """snapshot cut to limit bytes, least useful first; cuts noted."""
     notes: list[dict[str, Any]] = snapshot.setdefault("truncated", [])
     pinned = snapshot.get("pinned") or {}
     keep_artifacts = {pinned.get("artifactId"), (snapshot.get("session") or {}).get("artifactId")}
@@ -325,7 +314,7 @@ def capped(snapshot: dict[str, Any], limit: int = MAX_BYTES) -> dict[str, Any]:
         notes.append({"code": "artifacts", "count": dropped})
     messages = snapshot.get("messages", [])
     removed = 0
-    # Oldest first, never the pinned one.
+    # oldest first, never the pinned one
     while not fits() and len(messages) > 1:
         at = next((i for i, m in enumerate(messages) if m.get("id") != pinned.get("messageId")),
                   None)
@@ -336,7 +325,7 @@ def capped(snapshot: dict[str, Any], limit: int = MAX_BYTES) -> dict[str, Any]:
     if removed:
         notes.append({"code": "messages", "count": removed})
     if not fits():
-        # Still too big (one giant document): keep the frame, drop the bodies.
+        # still too big: keep the frame, drop bodies
         for artifact in snapshot.get("artifacts", []):
             artifact["data"] = None
         for message in messages:

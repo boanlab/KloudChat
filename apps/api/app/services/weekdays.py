@@ -1,20 +1,4 @@
-"""Weekdays written next to dates, checked against the calendar and set right by code.
-
-A model counts weekdays in its head and misses (「2026년 10월 15일(수)」 for a Thursday).
-Every date the text writes with a weekday — 「2026년 10월 15일(목)」, 「2026-10-15(목)」,
-「10월 15일(목)」, 「10/15(목)」, 「15일(목)」 after a month, 「10월 15일 목요일」 — gets the
-calendar's weekday.
-
-The year comes from the text itself first (the last date or year above the day, so
-「2027년 4월 13일(화)~19일(월)」 reads both days in 2027 and 「2027학년도 학사일정」 sets 2027 for
-March to December and 2028 for January and February), then from what the person gave (the
-year the request and material name most), then from today: the year that puts the day nearest
-to today. A day far from today whose written weekday is right in the other near year is left
-alone, because the year is the guess there, not the weekday.
-
-The person's words win over the guess: a weekday the request or material gives for the same day
-(「3월 2일 화요일」) is kept, and so is a weekday that is right in a year the person names.
-"""
+"""Weekdays beside dates corrected to the calendar."""
 
 from __future__ import annotations
 
@@ -27,7 +11,7 @@ WEEKDAYS = "월화수목금토일"
 
 
 def _wd(name: str) -> str:
-    """A weekday after a date: 「(목)」, 「(목요일)」, or 「 목요일」 (not 「목요일마다」)."""
+    """Weekday after a date: 「(목)」, 「(목요일)」, 「 목요일」."""
     return (rf"(?:\(\s{{0,2}}(?P<{name}>[{WEEKDAYS}])(?:요일)?\s{{0,2}}\)"
             rf"|\s{{1,2}}(?P<{name}2>[{WEEKDAYS}])요일(?!마다))")
 
@@ -44,15 +28,15 @@ _DATE = re.compile(
     + r"|(?<![\d월/.])(?P<d4>\d{1,2})\s{0,2}일\s{0,2}" + _wd("d_wd")
 )
 
-#: Years the person's words name: 「2027년」, 「2027학년도」, 「2027-03-02」.
+#: years named by the person: 「2027년」, 「2027학년도」, 「2027-03-02」
 _YEAR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(?:년|학년도|[.\-/]\s{0,2}\d{1,2}\s{0,2}[.\-/])")
-#: A year the text sets for what follows: 「2027학년도」, 「2027년」 (also the head of a full date).
+#: year set for following text: 「2027학년도」, 「2027년」
 _ANCHOR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(학년도|년)")
-#: The weekday inside a matched date, with what stands on either side of it.
+#: weekday in a matched date, with surroundings
 _WRITTEN = re.compile(rf"(\(\s{{0,2}}|\s)[{WEEKDAYS}]((?:요일)?\s{{0,2}}\)|요일$)")
 _FENCE = re.compile(r"```[\s\S]*?```")
 
-#: Days from today within which the nearest year is taken without a second thought.
+#: days from today where the nearest year is certain
 _SURE_DAYS = 120
 
 
@@ -64,7 +48,7 @@ class Fix:
 
 
 def context_year(context: str) -> int | None:
-    """The year the person's words name most (the later one on a tie), or None."""
+    """Year the person names most (later on tie), or None."""
     years = Counter(int(y) for y in _YEAR.findall(context or ""))
     if not years:
         return None
@@ -72,12 +56,12 @@ def context_year(context: str) -> int | None:
 
 
 def context_years(context: str) -> set[int]:
-    """Every year the person's words name."""
+    """Every year the person names."""
     return {int(y) for y in _YEAR.findall(context or "")}
 
 
 def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
-    """The weekdays the person's words give each day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
+    """Weekdays the person gives per day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
     out: dict[tuple[int | None, int, int], set[str]] = {}
     for m in _DATE.finditer(context or ""):
         g = m.groupdict()
@@ -96,7 +80,7 @@ def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
 
 
 def _anchor_year(text: str, at: int, month: int) -> tuple[int, int] | None:
-    """The year the last 「NNNN학년도」/「NNNN년」 before `at` gives `month`, with its position."""
+    """Year from the last 「NNNN학년도」/「NNNN년」 before `at` for `month`, with position."""
     found = None
     for m in _ANCHOR.finditer(text, 0, at):
         found = m
@@ -109,7 +93,7 @@ def _anchor_year(text: str, at: int, month: int) -> tuple[int, int] | None:
 
 
 def _nearest(month: int, day: int, today: dt.date) -> tuple[dt.date, bool] | None:
-    """The day in the year nearest to today, and whether that choice is clear."""
+    """Day in the year nearest today, and whether the choice is clear."""
     candidates = []
     for year in (today.year - 1, today.year, today.year + 1):
         try:
@@ -132,7 +116,7 @@ def _weekday_in(year: int, month: int, day: int) -> str:
 
 def fix_weekdays(text: str, *, context: str = "",
                  today: dt.date | None = None) -> tuple[str, list[Fix]]:
-    """`text` with every written weekday matching its date, and what was changed."""
+    """`text` with weekdays matching their dates, plus changes."""
     if not text or not re.search(rf"[{WEEKDAYS}]", text):
         return text, []
     today = today or dt.date.today()
@@ -169,7 +153,7 @@ def fix_weekdays(text: str, *, context: str = "",
                     dom, wd = int(g["d4"]), g["d_wd"] or g["d_wd2"]
                 anchored = _anchor_year(text, m.start(), month)
                 if anchored is not None and anchored[1] > year_at:
-                    # A heading or a year after the last full date (「## 2027학년도 학사일정」).
+                    # heading/year after the last full date
                     day = dt.date(anchored[0], month, dom)
                 elif year is not None or given_year is not None:
                     day = dt.date(year or given_year, month, dom)
@@ -183,15 +167,15 @@ def fix_weekdays(text: str, *, context: str = "",
         real = WEEKDAYS[day.weekday()]
         if not wd or wd == real:
             continue
-        # The person gave this day's weekday: theirs stands.
+        # person's weekday stands
         if wd in stated.get((day.year if explicit else None, day.month, day.day), set()) or (
                 not explicit and wd in stated.get((day.year, day.month, day.day), set())):
             continue
-        # A day with no year of its own whose weekday is right in a year the person names.
+        # right in a year the person names
         if not explicit and any(_weekday_in(y, day.month, day.day) == wd for y in named):
             continue
         if not sure:
-            # Far from today with no year anywhere: the weekday may be right for the other year.
+            # far from today, no year: may be right for the other year
             others = []
             for shift in (-1, 1):
                 try:

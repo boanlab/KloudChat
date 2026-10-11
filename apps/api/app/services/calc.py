@@ -1,8 +1,4 @@
-"""Derived values computed in the code sandbox before a document is written.
-
-The model writes a Python program over the given numbers; its printed lines reach the
-writer as fixed values. A failed or empty run leaves the document unchanged.
-"""
+"""Derived values computed in the sandbox before writing; failure leaves the document as is."""
 
 from __future__ import annotations
 
@@ -15,7 +11,7 @@ from app.services.context import instruction_part, pasted_material, prompt_reque
 
 log = logging.getLogger("kchat")
 
-#: Words that ask for derived values.
+#: requests for derived values
 _ASKS = re.compile(
     r"계산|구해|구하|산출|환산|변환|이득|데시벨|(?<![A-Za-z])dB(?![A-Za-z])|오차|평균|표준\s{0,2}편차|"
     r"분산|비율|증가율|감소율|증감|성장률|합계|총액|총합|총\s{0,2}비용|연간\s{0,2}비용|"
@@ -24,7 +20,7 @@ _ASKS = re.compile(
     r"단가|이자|수익률|할인율|환율|검산",
     re.I,
 )
-#: A data row of a Markdown table: 「| 1590 | 0.70 | …」.
+#: Markdown table data row
 _TABLE_ROW = re.compile(r"(?m)^\|\s{0,4}-?\d[\d.,]{0,15}\s{0,4}\|(?:[^|\n]{0,40}\|){1,20}")
 _NUMBER = re.compile(r"(?<![\w.])-?\d[\d,]{0,15}(?:\.\d{1,10})?")
 
@@ -65,20 +61,16 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
 {material}"""
 
 
-#: Citation marks (「[3]」, 「[1]~[10]」, 「[2, 5]」) are not data.
+#: citation marks aren't data
 _CITATION = re.compile(
     r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
 
-#: How long the code may take to settle its values (seconds): past it the writer goes on
-#: without them. Two pairs of runs on a slow model took six to seven minutes otherwise.
+#: settle deadline (s); writer proceeds without values after it
 DEADLINE = 120.0
 
 
 def needed(request: str, context: list[str] | None = None) -> bool:
-    """Whether the instruction asks for derived values over data that is present.
-
-    `context` is what the person gave (attachments, pasted material, answers): search pages
-    are not data to compute over, and a citation mark is not a number."""
+    """Whether the instruction asks for derived values over data present in `context`."""
     instruction = instruction_part(request or "")
     if not _ASKS.search(instruction):
         return False
@@ -89,8 +81,7 @@ def needed(request: str, context: list[str] | None = None) -> bool:
 def _code_of(text: str) -> str:
     match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000}?)```", text or "", re.S)
     if not match:
-        # A model that stops right after the code leaves the block unclosed (the 27B did in 5
-        # of 12 answers); the program is still all there.
+        # unclosed fence still holds the whole program (27B, 5/12)
         match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000})\Z", (text or "").rstrip(), re.S)
     return (match.group(1) if match else "").strip()
 
@@ -107,7 +98,7 @@ def _lines(stdout: str) -> list[str]:
 async def _one_run(
     prompt: str, material: str, *, complete, model: str, api_key: str, usage: dict[str, int]
 ) -> list[str]:
-    """One program written and run: its printed lines, `[]` when it fails twice."""
+    """One program written and run: printed lines, `[]` after two failures."""
     from app.services.tools import builtin
 
     error = ""
@@ -128,7 +119,7 @@ async def _one_run(
         stdout = result.content.split("stdout:\n", 1)[-1].split("\n\nstderr:", 1)[0]
         lines = [] if result.failed else _lines(stdout)
         if lines and len(lines) < 3 and _TABLE_ROW.search(material):
-            # The material has a table of data and the program printed a summary.
+            # material has a data table, program printed a summary
             error = (
                 "\n\n앞 코드는 요약값만 출력했다. 자료의 데이터 표 행마다 요청한 값을 계산해 "
                 "한 줄씩 출력하도록 고쳐서 다시 답하라."
@@ -148,15 +139,14 @@ _FIGURE = re.compile(r"(?<![\w.])-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
 
 
 def _label(text: str) -> str:
-    """An item's name as two runs both write it: 「최대 처짐(이론)」 and 「최대 처짐」 alike."""
+    """Item name as both runs write it: 「최대 처짐(이론)」 = 「최대 처짐」."""
     name = re.sub(r"[(（][^()（）]*[)）]|이론|계산|값", "", text)
-    # Only Hangul and digits name an item, so 「차단 주파수 fc」 matches 「차단 주파수」.
+    # Hangul and digits only: 「차단 주파수 fc」 = 「차단 주파수」
     return re.sub(r"[^가-힣0-9]", "", name) or re.sub(r"\s", "", name) or re.sub(r"\s", "", text)
 
 
 def _row_name(cell: str) -> str:
-    """A row's key: a number in base units (「1 kHz」 → 「1000」), else its letters and digits
-    — 「RR(q=2)」 and 「RR(q=4)」 are two rows, not one."""
+    """Row key: number in base units, else letters and digits (「RR(q=2)」 ≠ 「RR(q=4)」)."""
     if re.match(r"^-?\d", cell):
         return _key(cell)
     return re.sub(r"[^가-힣A-Za-z0-9]", "", cell).lower() or cell.strip()
@@ -173,11 +163,7 @@ def _figures(text: str) -> list[float]:
 
 
 def _items(line: str) -> list[tuple[str, list[float]]]:
-    """A printed line as `(name, figures)` items.
-
-    A row naming its values (「FCFS | 순서 = P1 0-7 | 평균 대기시간 = 4.75」) is one item per
-    named value, each called by row and value (「fcfs|평균대기시간」); a row of bare cells is one
-    item called by its first cell; 「항목 = 값」 is one item."""
+    """Printed line as `(name, figures)` items."""
     if "|" in line:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         row = _row_name(cells[0])
@@ -203,13 +189,13 @@ def _close(x: float, y: float) -> bool:
 
 
 def _same(figures: list[float], theirs: list[float]) -> bool:
-    # One run may print more figures; the shorter list must appear in the longer.
+    # shorter figure list must appear in the longer
     short, long_ = sorted((figures, theirs), key=len)
     return all(any(_close(x, y) for y in long_) for x in short)
 
 
 def confirmed(first: list[str], second: list[str]) -> list[str]:
-    """Lines of `first` that `second` also computed: every item both printed within 0.5%."""
+    """Lines of `first` also computed by `second` within 0.5%."""
     other: dict[str, list[float]] = {}
     for line in second:
         for name, figures in _items(line):
@@ -223,7 +209,7 @@ def confirmed(first: list[str], second: list[str]) -> list[str]:
 
 
 def agree(first: list[str], second: list[str]) -> bool:
-    """Whether two runs agree: at least two shared items, four in five of them equal."""
+    """Whether two runs agree: ≥2 shared items, 4 in 5 equal."""
     mine = {n: f for line in first for n, f in _items(line)}
     theirs = {n: f for line in second for n, f in _items(line)}
     shared = mine.keys() & theirs.keys()
@@ -233,8 +219,7 @@ def agree(first: list[str], second: list[str]) -> bool:
     return len(same) >= 0.8 * len(shared)
 
 
-#: A request for the result of a procedure run on the material (a schedule, a sort): its
-#: values are the procedure's, never a guess, so one program's output beats none.
+#: procedure results (schedule, sort): one program's output beats none
 PROCEDURE = re.compile(
     r"스케줄링|(?<![A-Za-z])(?:FCFS|SJF|SRTF|LRU|FIFO)(?![A-Za-z])|라운드\s{0,2}로빈|"
     r"round[\s-]?robin|간트|시뮬레이션|알고리즘|정렬|최단\s{0,2}경로|다익스트라|페이지\s{0,2}교체",
@@ -251,11 +236,7 @@ async def computed_values(
     api_key: str,
     deadline: float = DEADLINE,
 ) -> tuple[str, dict[str, int], str]:
-    """`(block for the writer, usage, status)`; status is done/failed/unavailable/skipped/
-    disputed/timeout.
-
-    Independent programs must agree before any value is handed to the writer, within
-    `deadline` seconds."""
+    """`(writer block, usage, status)`; independent programs must agree within `deadline`."""
     usage = {"inputTokens": 0, "outputTokens": 0}
     if not needed(request, context):
         return "", usage, "skipped"
@@ -266,7 +247,7 @@ async def computed_values(
     material = "\n\n".join(
         part for part in [pasted_material(request), *(context or [])] if part
     )[:14000]
-    # A short paste is not split off as material: the request is then quoted whole.
+    # short paste: request quoted whole
     prompt = PROMPT.format(
         request=prompt_request(request, 6000), material=material or "(요청 안)"
     )
@@ -281,7 +262,7 @@ async def computed_values(
             for lines in runs[i + 1 :]:
                 if agree(earlier, lines) and agree(lines, earlier):
                     kept = confirmed(earlier, lines)
-                    # A table keeps its header line when any of its rows is confirmed.
+                    # keep the header of a confirmed table
                     headers = [ln for ln in earlier if "|" in ln and not _FIGURE.search(ln)]
                     kept = (headers if any("|" in ln for ln in kept) else []) + kept
                     return (
@@ -295,7 +276,7 @@ async def computed_values(
         return ""
 
     def single() -> str:
-        """One program's lines, when a procedure's two runs could not both finish in time."""
+        """One program's lines when a procedure's two runs couldn't both finish."""
         if len(runs) != 1 or not PROCEDURE.search(instruction_part(request or "")):
             return ""
         return (
@@ -307,7 +288,7 @@ async def computed_values(
             + "\n".join(runs[0])
         )
 
-    # Up to two pairs of runs; a failed run does not count against agreement.
+    # up to two run pairs; failures don't count against agreement
     loop = asyncio.get_running_loop()
     ends = loop.time() + deadline
     for pair in ((prompt, again), (again, again)):
@@ -319,7 +300,7 @@ async def computed_values(
         done, pending = await asyncio.wait(tasks, timeout=max(0.0, ends - loop.time()))
         for task in pending:
             task.cancel()
-        # A run that finished before the deadline still counts.
+        # finished before the deadline: counts
         runs.extend(
             lines for task in tasks
             if task in done and not task.cancelled() and task.exception() is None
@@ -339,7 +320,7 @@ async def computed_values(
 
 
 def _key(cell: str) -> str:
-    """A row key as a plain number in base units: 「1 kHz」 → 「1000」, 「1,590 Hz」 → 「1590」."""
+    """Row key as a plain number in base units: 「1 kHz」 → 「1000」."""
     text = (cell or "").replace(",", "").replace("*", "").strip()
     m = re.match(r"^(-?\d+(?:\.\d+)?)\s{0,2}(k|M)?", text)
     if not m:
@@ -349,10 +330,7 @@ def _key(cell: str) -> str:
 
 
 def computed_table(block: str) -> tuple[list[str], list[list[str]]] | None:
-    """The per-row table in a computed block, as `(header, rows)`; None without one.
-
-    Two shapes are read: a header line and rows of bare cells (「100 | 0.990 | -0.087」),
-    or rows naming each value (「100 Hz | 측정 dB = -0.087 | 이론 dB = -0.017」)."""
+    """Per-row table in a computed block as `(header, rows)`, or None."""
     lines = [line for line in (block or "").splitlines() if line.count("|") >= 1]
     named = [line for line in lines if "=" in line and line.count("|") >= 1]
     if len(named) >= 3:
@@ -374,9 +352,7 @@ def computed_table(block: str) -> tuple[list[str], list[list[str]]] | None:
 
 
 def replace_tables(sections: list[dict], block: str) -> tuple[list[dict], int]:
-    """Tables whose rows match the computed table's first cells, replaced by it.
-
-    Returns (sections, number of tables replaced)."""
+    """Tables matching the computed table's first cells, replaced; `(sections, replaced count)`."""
     table = computed_table(block)
     if table is None:
         return sections, 0

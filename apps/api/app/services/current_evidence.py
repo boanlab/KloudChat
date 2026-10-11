@@ -15,7 +15,7 @@ def _korean(request: str) -> bool:
 
 
 def instruction(request: str) -> str:
-    """Instruction for a present-state question with no retrieved evidence this turn."""
+    """Instruction for a present-state question without retrieved evidence."""
     if _korean(request):
         return (
             "이 질문은 시간이 지나면 달라지는 현재 상태를 묻는데, 이번 요청에는 그것을 확인할 "
@@ -35,7 +35,7 @@ def instruction(request: str) -> str:
     )
 
 
-#: Words that already mark an answer as dated or unverified.
+#: words already marking an answer dated/unverified
 _HEDGED = re.compile(
     r"확인(?:하지|되지|되지\s*않|할\s*수\s*없|이\s*필요)|미검증|검증되지|검증이\s*필요|"
     r"(?:학습|지식|훈련|데이터)\s*(?:시점|기준)|\d{4}\s*년[^.\n]{0,8}기준|(?:시점|기준)\s*(?:기준|시점)|"
@@ -48,7 +48,7 @@ _HEDGED = re.compile(
 
 
 def caveat(request: str) -> str:
-    """The sentence appended when the model did not mark its answer as unverified."""
+    """Caveat appended when the answer lacks one."""
     if _korean(request):
         return (
             "\n\n_위 내용은 학습 시점의 지식이며, 현재 상태는 이번 요청에서 확인하지 않았습니다. "
@@ -65,10 +65,7 @@ def has_caveat(content: str) -> bool:
 
 
 def render(content: str, request: str, *, as_of: date | None = None) -> str:
-    """The answer as shown: the model's words, plus the caveat when they lack one.
-
-    `as_of` is accepted for callers that pass it; the caveat does not depend on it.
-    """
+    """Answer as shown: model text plus caveat if missing; `as_of` unused."""
     del as_of
     body = (content or "").strip()
     if not body:
@@ -84,7 +81,7 @@ def render(content: str, request: str, *, as_of: date | None = None) -> str:
 
 
 def usable_read_result(tool: Tool | None, result: ToolResult) -> bool:
-    """Recognize retrieved material, not whether it proves the user's claim."""
+    """Retrieved material present (not proof of the claim)."""
     if (
         tool is None
         or tool.read_only is not True
@@ -96,7 +93,7 @@ def usable_read_result(tool: Tool | None, result: ToolResult) -> bool:
     if re.match(r"\s*(?:오류|error|실패)\s*[:：]", result.content, re.I):
         return False
     if tool.source != "builtin":
-        # Authorized MCP read data counts as retrieved, without certifying its truth.
+        # authorized MCP read data counts as retrieved
         return True
     if tool.name == "web_search":
         return isinstance(result.search_evidence, SearchEvidence) and bool(

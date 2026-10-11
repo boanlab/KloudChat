@@ -1,9 +1,4 @@
-"""Reclaims files of deleted accounts once the volume passes the fill mark.
-
-Uploads live under `file_storage_dir/<user id>/`; the directory outlives the
-account row. Living accounts are never touched. Callers: the boot-time loop
-and the administrator's button on the usage screen.
-"""
+"""Reclaim deleted accounts' files past the fill mark; living accounts untouched."""
 
 from __future__ import annotations
 
@@ -23,17 +18,17 @@ from app.services import files as file_service
 
 log = logging.getLogger(__name__)
 
-#: How often the boot-time loop looks at the volume.
+#: boot loop interval
 _INTERVAL = 30 * 60
 
 
 @dataclass(slots=True)
 class Reclaim:
-    """What the sweep found and what it did."""
+    """Sweep findings and actions."""
 
     fill_before: float
     fill_after: float
-    #: Bytes and files under directories whose owner is gone, before the sweep.
+    #: orphaned bytes/files before the sweep
     orphan_bytes: int = 0
     orphan_files: int = 0
     freed_bytes: int = 0
@@ -64,10 +59,7 @@ async def orphan_directories(db: AsyncSession, root: Path) -> list[Path]:
 async def reclaim(
     db: AsyncSession, *, threshold: float | None = None, dry_run: bool = False
 ) -> Reclaim:
-    """Removes orphaned files, oldest first, until the volume is under `threshold`.
-
-    `dry_run` measures without deleting. Below the threshold nothing is removed.
-    """
+    """Remove orphaned files oldest-first until under threshold (dry_run measures only)."""
     root = file_service.storage_root()
     limit = settings.storage_reclaim_at if threshold is None else threshold
     before = fill(root)
@@ -95,7 +87,6 @@ async def reclaim(
         if fill(root) < limit:
             break
     for directory in orphans:
-        # An emptied directory goes with its files; one with files left stays.
         if not any(directory.rglob("*")):
             directory.rmdir()
             result.removed.append(directory.name)
@@ -126,7 +117,7 @@ async def reclaim(
 
 
 async def watch() -> None:
-    """Boot-time loop; a failed sweep is logged and waits for the next."""
+    """Boot-time loop; failures logged."""
     while True:
         try:
             if settings.storage_reclaim_at > 0:

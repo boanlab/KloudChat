@@ -1,10 +1,4 @@
-"""Cross-process delivery for the chat stop button.
-
-`sessions._STOPPING` holds one process's own `asyncio.Event`s. With more than one
-API process (`KCHAT_API_REPLICAS` > 1) the stop request can land on a different
-process than the one running the turn, so it is broadcast as a Postgres `NOTIFY`
-and every process sets its own copy of the signal.
-"""
+"""Cross-process chat stop via Postgres NOTIFY (multiple API replicas)."""
 
 from __future__ import annotations
 
@@ -23,12 +17,10 @@ log = logging.getLogger("kchat")
 
 CHANNEL = "kchat_stop"
 
-#: This process, named in every broadcast it sends. NOTIFY reaches the sender too;
-#: its own echo is ignored because it already fired its signals before sending, and
-#: the echo would otherwise stop a turn that started right after.
+#: sender id; own NOTIFY echo ignored (signals already fired; would stop the next turn)
 _ORIGIN = uuid.uuid4().hex
 
-#: Called with a session id whenever another process broadcasts a stop for it.
+#: callback for stops broadcast by other processes
 Listener = Callable[[str], None]
 
 
@@ -37,10 +29,10 @@ def payload_for(session_id: str) -> str:
 
 
 def session_from(payload: str) -> str | None:
-    """The session a broadcast names, or None when this process sent it."""
+    """Session named by a broadcast, or None if self-sent."""
     origin, sep, session_id = payload.partition(":")
     if not sep:
-        # A bare session id payload, without a sender.
+        # bare session id, no sender
         return origin or None
     if origin == _ORIGIN:
         return None
@@ -48,17 +40,12 @@ def session_from(payload: str) -> str | None:
 
 
 def needed() -> bool:
-    """Whether more than one process can be holding this session's signal."""
+    """Whether multiple processes may hold this session's signal."""
     return settings.api_replicas > 1
 
 
 async def broadcast(session_id: str) -> None:
-    """Tells every other process a turn on this session should stop.
-
-    Best-effort: the caller sets its own process's signal directly first, so a
-    failure here only costs the other processes' copies, not this one's. A no-op
-    at the default single replica — no Postgres round trip on the turn's own path.
-    """
+    """Best-effort broadcast of a stop; no-op at a single replica."""
     if not needed():
         return
     try:
@@ -73,11 +60,8 @@ async def broadcast(session_id: str) -> None:
 
 
 async def listen(on_stop: Listener) -> None:
-    """Runs until cancelled, calling `on_stop(session_id)` for every broadcast
-    from any process. Reconnects on a dropped connection; never raises, so a
-    database outage silences cross-process stop delivery rather than the API.
-    """
-    # asyncpg speaks the plain protocol; SQLAlchemy's `+asyncpg` suffix is its own marker.
+    """Listen for stop broadcasts until cancelled; reconnects, never raises."""
+    # asyncpg DSN: strip SQLAlchemy's +asyncpg
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
     def _callback(_connection: object, _pid: int, _channel: str, payload: str) -> None:
@@ -90,8 +74,7 @@ async def listen(on_stop: Listener) -> None:
         try:
             conn = await asyncpg.connect(dsn)
             await conn.add_listener(CHANNEL, _callback)
-            # `add_listener` delivers on this connection's own reader task; this
-            # loop just keeps the connection open and notices if it drops.
+            # listener runs on the connection's reader task; loop only keeps it alive
             while not conn.is_closed():
                 await asyncio.sleep(30)
         except asyncio.CancelledError:
@@ -101,6 +84,5 @@ async def listen(on_stop: Listener) -> None:
         finally:
             if conn is not None and not conn.is_closed():
                 await conn.close()
-        # A dropped or never-established connection retries; cancellation (app
-        # shutdown) is the only way out.
+        # retry on drop; only cancellation exits
         await asyncio.sleep(2)

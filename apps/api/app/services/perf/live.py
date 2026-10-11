@@ -1,5 +1,4 @@
-"""This process's own load: streams open now, requests and their durations since
-the last sample. Every replica writes its own row each minute (`collector`)."""
+"""This replica's live load (open streams, request durations), sampled per minute."""
 
 from __future__ import annotations
 
@@ -7,7 +6,7 @@ import socket
 import time
 from collections import deque
 
-#: Short container id under Docker; stands for the replica in the samples.
+#: short container id = replica
 REPLICA = f"api · {socket.gethostname()[:6]}"
 
 
@@ -17,7 +16,7 @@ class Counters:
         self.stream_peak = 0
         self.requests = 0
         self.errors = 0
-        # Bounded: a minute of a busy replica keeps the most recent 5000.
+        # bounded: latest 5000 per minute
         self.durations: deque[float] = deque(maxlen=5000)
 
     def open_stream(self) -> None:
@@ -34,7 +33,7 @@ class Counters:
         self.durations.append(seconds)
 
     def drain(self) -> dict[str, float]:
-        """Values for the minute just ended; resets the per-minute counts."""
+        """Values for the minute just ended; resets counts."""
         ordered = sorted(self.durations)
         out = {
             "streams": float(self.streams),
@@ -54,7 +53,7 @@ counters = Counters()
 
 
 class LoadMiddleware:
-    """Pure ASGI, so a streamed response is counted until its last byte."""
+    """Pure ASGI: streamed responses counted to the last byte."""
 
     def __init__(self, app) -> None:
         self.app = app

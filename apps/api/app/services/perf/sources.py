@@ -1,5 +1,4 @@
-"""Readers that go over the network: the GPU nodes' /metrics through the
-KloudChat-LLM gateway, and LiteLLM's request log."""
+"""Network readers: GPU node /metrics via the KloudChat-LLM gateway, LiteLLM request log."""
 
 from __future__ import annotations
 
@@ -19,7 +18,7 @@ from app.services.perf.host import Row
 log = logging.getLogger(__name__)
 
 HEADER = "X-Tools-Key"
-#: vLLM histograms read as quantiles: (family, short name).
+#: vLLM histograms as quantiles: (family, short name)
 _HISTOGRAMS = (
     ("vllm:time_to_first_token_seconds", "ttft"),
     ("vllm:e2e_request_latency_seconds", "e2e"),
@@ -28,7 +27,7 @@ _HISTOGRAMS = (
 
 
 async def metrics_base() -> str:
-    """`perf_metrics_url`, else `<backend>/metrics`, or "" with neither."""
+    """`perf_metrics_url`, else `<backend>/metrics`, else ""."""
     if settings.perf_metrics_url.strip():
         return settings.perf_metrics_url.strip().rstrip("/")
     values = await settings_store.all_values()
@@ -37,7 +36,7 @@ async def metrics_base() -> str:
 
 
 async def scrape(client: httpx.AsyncClient, base: str, target: str) -> str | None:
-    """One target's text, or None when it does not answer 200."""
+    """One target's text, or None unless 200."""
     key = settings.tools_gateway_key.strip()
     try:
         response = await client.get(
@@ -52,7 +51,7 @@ async def scrape(client: httpx.AsyncClient, base: str, target: str) -> str | Non
 
 
 class VllmReader:
-    """Gauges as read; counters and histograms as change since the previous scrape."""
+    """Gauges as read; counters/histograms as deltas since last scrape."""
 
     def __init__(self) -> None:
         self.prev: dict[str, tuple[float, dict]] = {}
@@ -152,7 +151,7 @@ class GpuReader:
         mem_total = prom.total(samples, "kloudchat_node_memory_total_bytes")
         mem_free = prom.total(samples, "kloudchat_node_memory_available_bytes")
         if mem_total and mem_free is not None:
-            # GB10: unified memory, so this is the model memory as well
+            # GB10 unified memory = model memory
             out.append(
                 ("gpu", "node_mem_percent", subject, 100.0 * (mem_total - mem_free) / mem_total)
             )
@@ -206,9 +205,6 @@ async def scrape_targets(targets: list[str], vllm: VllmReader, gpu: GpuReader) -
     return rows
 
 
-# ── LiteLLM request log ─────────────────────────────────────────────────
-
-
 def _when(value) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -226,9 +222,7 @@ def _pct(values: list[float], q: float) -> float:
 
 
 def model_rows(logs: list[dict], start: datetime, end: datetime) -> list[Row]:
-    """Per model in [start, end): calls, errors, latency and first-token quantiles
-    (seconds), output tokens. One `calls` row under subject "*" always marks the
-    minute as read."""
+    """Per-model stats in [start, end); a "*" `calls` row marks the minute read."""
     groups: dict[str, list[dict]] = defaultdict(list)
     for row in logs:
         began = _when(row.get("startTime"))
@@ -273,8 +267,7 @@ def model_rows(logs: list[dict], start: datetime, end: datetime) -> list[Row]:
 
 
 async def model_logs(start: datetime, end: datetime, max_pages: int = 30) -> list[dict] | None:
-    """LiteLLM's spend log rows started in [start, end), or None when unreadable.
-    /spend/logs/v2 returns no prompts or responses."""
+    """LiteLLM spend log rows in [start, end), or None; no prompts/responses."""
     base, key = await settings_store.litellm_config()
     if not base or not key:
         return None
@@ -291,7 +284,7 @@ async def model_logs(start: datetime, end: datetime, max_pages: int = 30) -> lis
                     "/spend/logs/v2",
                     params={
                         "start_date": start.strftime(fmt),
-                        # Inclusive at the second; rows past `end` are dropped by `model_rows`
+                        # inclusive to the second; `model_rows` drops rows past `end`
                         "end_date": (end + timedelta(seconds=1)).strftime(fmt),
                         "page": page,
                         "page_size": 100,

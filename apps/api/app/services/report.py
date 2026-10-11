@@ -47,13 +47,12 @@ from app.services.context import (
 
 log = logging.getLogger(__name__)
 
-#: Section-count bounds for the outline.
 _MIN_SECTIONS = 3
 _MAX_SECTIONS = 12
 
 
 def requested_sections(request: str) -> int | None:
-    """An explicit section count; page counts do not imply a number of sections."""
+    """Explicit section count; page counts imply none."""
     return plan_rules.requested_count(request, ("섹션", "절"), maximum=_MAX_SECTIONS)
 
 
@@ -279,7 +278,7 @@ _RESULTS_HEADING = re.compile(r"결과|측정|데이터|분석")
 
 
 def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> dict[str, str]:
-    """Puts the request's own data table into the results section when the draft left it out."""
+    """Request's data table added to the results section if the draft dropped it."""
     found = _TABLE.search(request)
     if not found or not drafted:
         return drafted
@@ -294,7 +293,7 @@ def _carry_table(request: str, headings: list[str], drafted: dict[str, str]) -> 
 
 
 def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
-    """The draft cut into sections by its `## ` lines, matched loosely; unwritten headings are absent."""
+    """Draft split into sections on loose `## ` matches."""
 
     def key(text: str) -> str:
         text = re.sub(r"^[\d.\s]+", "", text.strip())
@@ -311,7 +310,7 @@ def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
                 current = wanted[k]
                 found[current] = []
                 continue
-            # A stray sub-heading is kept as bold text.
+            # stray sub-heading kept as bold text
             if current is not None:
                 found[current].append(f"**{m.group(1).strip()}**")
                 continue
@@ -320,7 +319,7 @@ def _split_draft(draft: str, headings: list[str]) -> dict[str, str]:
     return {h: "\n".join(lines).strip() for h, lines in found.items() if "\n".join(lines).strip()}
 
 
-#: Block syntax per kind; a section is shown only the blocks it may use.
+#: block syntax per kind; each section sees only its allowed blocks
 _BLOCK_SYNTAX = {
     "table": (
         "- Write comparisons and per-item values as a table, with no blank lines between rows.\n"
@@ -365,7 +364,7 @@ _NUMBER = re.compile(
 )
 
 
-#: Writer rule for a bare form, when 있는 자료로 진행 answered a question the document needs.
+#: bare-form writer rule when 있는 자료로 진행 answered a needed question
 _FRAME_RULE = (
     "**This document is a bare form written without material.** Invent no facts, "
     "discussions, decisions, names or figures the request does not give. In each section, "
@@ -375,30 +374,26 @@ _FRAME_RULE = (
     "calculations or alternative comparisons. Formulas and general principles are fine."
 )
 
-#: Opens a document written without a single web source, when one was looked for.
+#: opener for a document with no web source found
 _UNVERIFIED_NOTE = (
     "_이 문서는 웹 검색에서 쓸 만한 자료를 얻지 못해 기억을 바탕으로 썼습니다. "
     "수치·연구명·서지는 확인이 필요합니다._"
 )
 
-#: A request that weighs options — the only kind the cost-table advice fits.
+#: option-weighing request: only fit for cost-table advice
 _DECISION = re.compile(r"대안|결정|권고|비용|타당성|선택")
 
-#: Marks a 개조식 genre: `_shaped` drops the prose writer's paragraph rules for it.
+#: 개조식 genre marker; `_shaped` drops prose paragraph rules
 _GAEJO_STYLE = "Style: 개조식."
 
-#: Genre rules of the formats a 서식 fixes, by format id: each bound 서식 carries its own
-#: (`genre.md` beside its `instructions.md`, `doc_format` in its `template.toml`). The four
-#: 공문서 genres (개조식 보고서, 간이기안문, 추진 계획, 결과 보고서) open their 개조식 part with
-#: `_GAEJO_STYLE`.
+#: per-format genre rules from each 서식's `genre.md`
 _FORMAT_GENRES: dict[str, str] = design_templates.format_genres()
-#: The same request words `doc_formats` reads, so the head and the body rules agree.
+#: same request words as `doc_formats`, so head and body agree
 _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
     key: re.compile(doc_formats.BY_ID[key].match, re.I) for key in _FORMAT_GENRES
 }
 
-#: Genre shape rules, matched on the request and given to the outline and the draft, in the
-#: order `app/genres.toml` lists them; an entry naming a format reads its 서식's rule.
+#: genre rules from `app/genres.toml`, in order
 def _load_genres() -> tuple[tuple[re.Pattern[str], str], ...]:
     import tomllib
     from pathlib import Path
@@ -424,44 +419,35 @@ _OWN_GENRES = re.compile(
 
 
 def _own_material(request: str) -> bool:
-    """Whether the request is about the person's own material and carries it (no web search).
-
-    Judged on the instruction only; never true for a paper or a literature document."""
+    """Request about the person's own material, carried with it (no web search)."""
     instruction = instruction_part(request)
     if _SCHOLARLY_DOC.search(instruction):
         return False
     return bool(_OWN_GENRES.search(instruction)) and _carries_material(request)
 
 
-#: Work documents whose facts all come from the person: a 보도자료 from the event's notes, a
-#: 공문 from the request, a 결과보고서 from the figures. The web brings nothing to them but
-#: unrelated references cited as grounds.
+#: work documents sourced entirely from the person; web adds only unrelated refs
 _MATERIAL_FORMATS = frozenset({
     "press", "official", "result_report", "minutes", "internal_draft", "gaejo", "event_plan",
     "status", "incident",
 })
-#: A public grant application, which the person writes from their own plan.
 _GRANT_APPLICATION = re.compile(r"공모|지원\s{0,3}사업|보조\s{0,3}사업|보조금|사업\s{0,3}신청")
 
 
 def material_complete(request: str, format_id: str | None, *, has_files: bool = False) -> bool:
-    """Whether a work document is written from the person's material alone, so the web is not
-    searched unless they ask for it (「관련 사례도 찾아서」)."""
+    """Work document written from the person's material alone (no web unless asked)."""
     instruction = instruction_part(request)
     if requests_web_search(instruction) or _SCHOLARLY_DOC.search(instruction):
         return False
     named = (format_id or "") in _MATERIAL_FORMATS or bool(
         _GRANT_APPLICATION.search(lead_instruction(request)))
     if (format_id or "") == "comparison" and not named:
-        # A comparison whose options come priced in the request or its files is decided on
-        # them, so a search cannot rename or gloss them. Options named with nothing about
-        # them are still looked up.
+        # priced options decided as given; unpriced ones still looked up
         priced = len(_MONEY.findall(request)) >= 2
         return has_files or (priced and _carries_material(request))
     return named and (has_files or _carries_material(request))
 
 
-#: A document whose related work is the literature: a paper draft, a survey.
 _SCHOLARLY_DOC = re.compile(
     r"논문\s{0,3}초안|논문을\s{0,3}써|투고|학회\s{0,3}논문|워크숍\s{0,3}논문|관련\s{0,3}연구|"
     r"연구\s{0,3}동향|문헌|선행\s{0,3}연구|서베이|survey|literature|related work",
@@ -470,23 +456,19 @@ _SCHOLARLY_DOC = re.compile(
 
 
 def scholarly_document(request: str) -> bool:
-    """Whether the document's sources are papers: researched in the literature mode."""
+    """Paper-sourced document (literature mode)."""
     return bool(_SCHOLARLY_DOC.search(instruction_part(request)))
 
 
 def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
                 template_id: str | None = None) -> str:
-    """The shape rule for the request's genre, or `""`; read from the instruction only.
-
-    A format fixed by the 서식 (`doc_formats.detect` with a template id) names its own rule,
-    so the head and the body agree; a person's template gives its own."""
+    """Genre shape rule from the instruction, or `""`; 서식 format rule first."""
     template = design_templates.get(template_id) if template_id else None
     if template is not None and template.user and template.genre:
         return template.genre
     if fmt is not None and fmt.id in _FORMAT_GENRES:
         return _FORMAT_GENRES[fmt.id]
-    # The ask's own first paragraph first: a memo line under it (「- 문제: … 와이파이 장애」)
-    # does not make a result report an incident report.
+    # ask's first paragraph first: memo lines don't change the genre
     for instruction in dict.fromkeys((lead_instruction(request), instruction_part(request))):
         for pattern, rule in _GENRES:
             if pattern.search(instruction):
@@ -494,9 +476,8 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
     return ""
 
 
-#: Prose-writer rules a 개조식 genre contradicts; `_shaped` drops the whole rule.
 def _plain_register(prompt: str) -> str:
-    """`prompt` with its 「~합니다」 register rules replaced by one 「~다」 rule."""
+    """「~합니다」 register rules replaced by one 「~다」 rule."""
     out: list[str] = []
     dropping, placed = False, False
     for line in prompt.split("\n"):
@@ -521,19 +502,15 @@ _PROSE_ONLY = (
 )
 
 
-#: Marks a genre written in the plain 「~다」 register (a paper, a research plan, a term
-#: report): `_shaped` swaps the writer's 「~합니다」 rule for it. A person's template genre
-#: carrying the same words gets the same register.
+#: plain 「~다」 register genre marker
 _PLAIN_REGISTER = "Register: 「~다」"
-#: The writer's register rules, said in 「~합니다」.
 _POLITE_RULES = ("One register for the whole document", "Every sentence ends in the")
 _PLAIN_RULE = ("- One register for the whole document: 「~다」 (「제안한다」, 「필요하다」, "
                "「~이다」). Never 「~합니다」 / 「~입니다」, table cells and list items aside.")
 
 
 def _shaped(prompt: str, genre: str) -> str:
-    """`prompt` without the prose rules a 개조식 genre overrides, and with the 「~다」 register
-    for a genre that asks for it; unchanged for any other."""
+    """Prompt adjusted for 개조식 and 「~다」 genres."""
     if _PLAIN_REGISTER in genre and _GAEJO_STYLE not in genre:
         return _plain_register(prompt)
     if _GAEJO_STYLE not in genre:
@@ -551,8 +528,7 @@ def _shaped(prompt: str, genre: str) -> str:
 
 
 def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[dict]:
-    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times; a
-    공문's body as its 1. 가. items, one paragraph each, with the same notation."""
+    """개조식 bodies as canonical list Markdown with 공문서 dates; 공문 as 1. 가. items."""
     if fmt is not None and fmt.id == "official":
         return [
             {**sec, "content": doc_formats.official_body(
@@ -581,7 +557,7 @@ _MONEY = re.compile(
 
 
 def _without_invented_money(text: str) -> str:
-    """Every sum of money replaced by 「[금액]」, for a document with no figures to draw on."""
+    """Sums of money replaced by 「[금액]」."""
     return _MONEY.sub("[금액]", text)
 
 
@@ -596,13 +572,7 @@ _BLANK_CELLS = {"", "미정", "(미정)", "-", "—", "tbd", "n/a", "없음"}
 def _cell_sourced(
     cell: str, compact: str, row: str = "", dates: list[dict] | None = None
 ) -> bool:
-    """Whether an owner or due-date cell names something the request or material names.
-
-    A date matches by month and day in any of the usual spellings (9/10 · 9월 10일 ·
-    2026-09-10); a person or team by any word of two characters or more. With `dates`
-    (date-calc's readings, each bound to its source line) a date is kept when the line this
-    row came from resolves to it — not because the same day appears somewhere else.
-    """
+    """Owner or due-date cell names something in the request or material (dates bound to their source line)."""
     flat = re.sub(r"\s+", "", cell)
     if placeholders.is_blank(cell) or flat.lower().strip("*_`") in _BLANK_CELLS or (
         flat in compact and dates is None
@@ -616,7 +586,6 @@ def _cell_sourced(
         if entries:
             written = report_checks._cell_dates(cell)
             return any(report_checks.date_matches(w, e) for w in written for e in entries)
-        # A row that shares no word with any line: the plain-text check below.
     elif dates is not None and flat in compact:
         return True
     for month, day in days:
@@ -639,10 +608,7 @@ def _cell_sourced(
 
 
 def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = None) -> str:
-    """Owner (담당) and due-date (기한) cells the request and material never mention become a
-    blank named by the column: 「[담당자]」, 「[기한]」.
-
-    `dates`: date-calc's readings of the material, which bind a resolved deadline to its line."""
+    """Unmentioned 담당/기한 cells become 「[담당자]」/「[기한]」 blanks."""
     compact = re.sub(r"\s+", "", source)
     if not compact or "|" not in text:
         return text
@@ -677,7 +643,7 @@ def _unsourced_owner_dates(text: str, source: str, dates: list[dict] | None = No
 
 
 def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
-    """The closed list of numbers the document may use, read off the request and the sources."""
+    """Closed list of numbers the document may use."""
     found: list[str] = []
     for text in [request, *[str(s.get("quote") or "") for s in sources]]:
         for match in _NUMBER.finditer(text):
@@ -704,7 +670,7 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
         return line
     line = "쓸 수 있는 수치 (every figure in the request and material): " + ", ".join(found[:40])
     if derived := derived_values(request):
-        # Implied arithmetic is done here, so the writer copies finished figures.
+        # arithmetic done here; writer copies finished figures
         line += (
             "\n계산된 값 (do not recompute; use each once, in the section that needs it such as"
             " cost or comparison, and do not repeat it in other sections; table cells hold only the"
@@ -714,7 +680,6 @@ def _facts_line(request: str, sources: list[dict[str, Any]]) -> str:
     return line
 
 
-#: 「월 470만 원」 「월 약 690만 원」 — a monthly amount in 만 원.
 _MONTHLY_WON = re.compile(r"월\s*(?:약\s*)?([\d,]+(?:\.\d+)?)\s*만\s*원")
 _HORIZON_MONTHS = re.compile(r"(\d{1,3})\s*개월")
 _HORIZON_YEARS = re.compile(r"(\d)\s*년\s*(?:TCO|총|치|간|동안|기준)")
@@ -723,7 +688,7 @@ _ADDED_MONTHLY = re.compile(r"추가\s{0,8}\(?\s{0,8}월\s{0,8}(?:약\s{0,8})?([
 
 
 def _won(value: float) -> str:
-    """A 만 원 figure the way a Korean reader writes it: 「5,640만 원」, 「1억 6,920만 원」."""
+    """만 원 figure in Korean notation (「1억 6,920만 원」)."""
     whole = round(value)
     if abs(value - whole) > 1e-6:
         return f"{value:,.1f}만 원"
@@ -734,17 +699,14 @@ def _won(value: float) -> str:
 
 
 def _label_before(text: str, end: int) -> str:
-    """The words naming the amount: the clause in front of it, up to a delimiter."""
+    """Clause naming the amount."""
     head = text[max(0, end - 40):end]
     head = re.split(r"[,:;\n•·()]|\s(?:와|과|및)\s", head)[-1]
     return re.sub(r"\s{0,8}(?:은|는|이|가|의)?\s{0,8}월\s{0,8}(?:약\s{0,8})?$", "", head).strip(" -–—")[:24]
 
 
 def derived_values(text: str) -> list[str]:
-    """Finished arithmetic the request calls for, as 「식 = 값」 lines; `[]` when none.
-
-    Monthly amounts are carried to the horizons the text names (「연」, 「36개월」, 「3년 TCO」),
-    an added monthly cost is folded in, and yearly totals are set against the yearly budget."""
+    """Finished arithmetic as 「식 = 값」 lines, or `[]`."""
     monthly: list[tuple[str, float]] = []
     for match in _MONTHLY_WON.finditer(text):
         try:
@@ -774,7 +736,7 @@ def derived_values(text: str) -> list[str]:
     lines: list[str] = []
     for label, value in monthly[:6]:
         if any(abs(value - a) < 1e-9 for a in added):
-            continue  # the added cost is shown folded into the base below
+            continue
         name = f"{label} " if label else ""
         for h in horizons:
             lines.append(f"{name}{_won(value)} × {h}개월 = {_won(value * h)}")
@@ -798,7 +760,7 @@ def derived_values(text: str) -> list[str]:
 
 
 def _others_line(headings: list[str], index: int) -> str:
-    """What the other sections own, so this one does not write them."""
+    """What other sections own."""
     others = [h for i, h in enumerate(headings) if i != index and h.strip()]
     if not others:
         return ""
@@ -859,14 +821,13 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
     return role, "- Blocks this section may use:\n" + rules
 
 
-#: Formats read as plain text — a 공문, a 보도자료, minutes, a result report, an internal
-#: draft: a KPI tile or a callout box is a briefing's device, not theirs.
+#: plain-text formats: no KPI tiles or callouts
 PLAIN_FORMATS = frozenset({"official", "press", "minutes", "result_report", "internal_draft"})
 _BOX = re.compile(r"^```(?P<kind>kpi|callout)[ \t]*\n(?P<body>.*?)^```[ \t]*$\n?", re.S | re.M)
 
 
 def plain_blocks(text: str) -> str:
-    """```kpi rows as 「- 이름: 값」 lines and a ```callout as one 「※ 제목: 내용」 line."""
+    """kpi rows and callouts as plain lines."""
     def one(m: re.Match) -> str:
         lines = [line.strip() for line in m.group("body").splitlines() if line.strip()]
         if not lines:
@@ -882,24 +843,22 @@ def plain_blocks(text: str) -> str:
     return _BOX.sub(one, text or "")
 
 
-#: A 서식's one fixed section named only 「본문」: the document has no chapters (a 공문's 1. 가.
-#: items, a 보도자료's lead and body), so the section prints without a heading.
+#: lone 「본문」 section: no chapters, printed without heading
 _BODY_ONLY = re.compile(r"^\s*(?:본문|내용|body)\s*$", re.I)
 
 
 def untitled_body(sections: list[dict], outline: tuple[str, ...] | list[str]) -> list[dict]:
-    """`sections` with the heading taken off when the fixed outline is one 「본문」 section."""
+    """Heading dropped for a lone 「본문」 outline."""
     if len(outline) != 1 or not _BODY_ONLY.match(outline[0]) or len(sections) != 1:
         return sections
     return [{**sections[0], "heading": ""}]
 
 
-#: Placeholder for an empty source list; an empty block makes the model invent citations.
+#: empty block makes the model invent citations
 _NO_REFS = "(none. Do not use numbered citations.)"
 
 
-#: Seconds between retries of a rate-limited call when the gateway names no reset time.
-#: Five rounds, about seventy seconds in all: past a token-per-minute window.
+#: 429 backoff without reset time; ~70 s covers a TPM window
 _BACKOFF = (2.0, 6.0, 12.0, 20.0, 30.0)
 
 
@@ -907,8 +866,7 @@ async def title_block_for(
     fmt: doc_formats.DocFormat, request: str, title: str, model: str, api_key: str,
     material: str = "",
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    """The format's head fields: what code reads under a matching label in the request and
-    material first, the model asked only for the rest; a value neither gives stays blank."""
+    """Format head fields: code-read labels first, model for the rest, else blank."""
     given = f"{request}\n{material}" if material.strip() else request
     read = doc_formats.head_values(fmt, given)
     spent = {"inputTokens": 0, "outputTokens": 0}
@@ -936,13 +894,11 @@ def _json_object_of(text: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-#: The most a re-asked, cut-off answer is given.
 _MOST_TOKENS = 16000
 
 
 def _tiebreak_model(model: str) -> str:
-    """The larger self-hosted model that settles two pre-pass readings that differ, on the
-    turn's own route: a strict-local turn gets its `strict-local/` twin, or its own model."""
+    """Larger self-hosted model for tie-breaking; strict-local twin on strict-local turns."""
     big = settings_store.cached_model_roles().code_fallback
     if model.startswith("strict-local/"):
         if big.startswith("local/"):
@@ -957,7 +913,7 @@ async def _complete(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call. Returns `(text, usage)`. Retries a 429."""
+    """Non-streaming call returning `(text, usage)`; retries 429."""
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -973,12 +929,12 @@ async def _complete(
                         "model": model,
                         "messages": messages,
                         "max_tokens": max_tokens,
-                        # Off where the provider allows; `thinking.switch` learns where not.
+                        # thinking off where allowed (`thinking.switch`)
                         **thinking.switch(model),
                     },
                 )
             except httpx.TimeoutException:
-                # A busy model server times one call out; the next usually goes through.
+                # transient timeout: one retry
                 if transient_retried or attempt == len(_BACKOFF):
                     raise
                 transient_retried = True
@@ -1004,14 +960,14 @@ async def _complete(
                 )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
-            # A token-per-minute 429 names when its window resets; wait for that.
+            # TPM 429 names its reset time
             delay = ratelimit.retry_delay(response.text, dict(response.headers), _BACKOFF[attempt])
             log.info("report call rate limited, retrying in %.0fs", delay)
             await asyncio.sleep(delay)
         response.raise_for_status()
         payload = response.json()
 
-    # A reasoning model can spend the whole ceiling thinking; re-ask with a bigger one.
+    # reasoning model may exhaust the ceiling thinking
     if bigger := thinking.starved(payload, max_tokens):
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
@@ -1029,7 +985,7 @@ async def _complete(
                 },
             )
             if again.status_code >= 400:
-                # A gateway that rejects `reasoning` refuses the whole call.
+                # gateway rejecting `reasoning` refuses the whole call
                 again = await client.post(
                     "/v1/chat/completions",
                     json={"model": model, "messages": messages, "max_tokens": bigger},
@@ -1038,7 +994,7 @@ async def _complete(
             retried = again.json()
             spent = retried.get("usage") or {}
             first = payload.get("usage") or {}
-            # Both calls are billed, so both are counted.
+            # both calls billed and counted
             payload = retried
             payload["usage"] = {
                 "prompt_tokens": int(first.get("prompt_tokens") or 0)
@@ -1047,7 +1003,7 @@ async def _complete(
                 + int(spent.get("completion_tokens") or 0),
             }
 
-    # An answer cut at the ceiling is asked once more with room.
+    # cut-off answer re-asked once with more room
     choice = (payload.get("choices") or [{}])[0]
     roomier = min(max_tokens * 2, _MOST_TOKENS)
     if (choice.get("finish_reason") == "length" and (choice.get("message") or {}).get("content")
@@ -1082,7 +1038,6 @@ async def _complete(
     }
 
 
-#: A thinking answer's reasoning when the server returns it inline.
 _THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.I)
 
 
@@ -1092,10 +1047,7 @@ async def _complete_thinking(
     api_key: str,
     max_tokens: int,
 ) -> tuple[str, dict]:
-    """One non-streaming call with the model's thinking on (vLLM's chat-template switch).
-
-    For a self-hosted thinking model only; no retries — the caller caps its time and falls
-    back to a plain reading. Returns `(text, usage)` like `_complete`."""
+    """Thinking-on call for self-hosted models; no retries."""
     switch = thinking.template_switch_on(model)
     if not switch:
         raise ValueError(f"{model} has no thinking switch")
@@ -1120,23 +1072,22 @@ async def _complete_thinking(
     }
 
 
-#: Document look: asked for in Korean, stored as the English name the renderer knows.
+#: Korean label → renderer style name
 _STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "minimal"}
 
 
 def _outline_style(text: str) -> str:
-    """The look the outline chose, or `""`. Read by regex so a partial answer keeps its style."""
+    """Outline's style, or `""`; regex so partial answers keep it."""
     match = re.search(r'"style"\s*:\s*"([^"]+)"', text)
     return _STYLES.get((match.group(1).strip() if match else ""), "")
 
 
-#: The planner's stated subject, checked against the request — see grounding.
 _subject_missing = grounding.subject_missing
 
 
-#: Documents about the person's own work that carry nothing without it.
+#: own-work documents empty without material
 _RESULTS = re.compile(r"결과|시험|실험|측정|캡스톤|제안서|설계 변경|기획서|연구 ?계획")
-#: Documents whose facts all come from outside — nothing to write without a search.
+#: web-sourced documents needing a search
 _FROM_THE_WEB = re.compile(
     r"동향|조사해|문헌|선행 ?연구|최근 (?:\d+ ?년|연구)|연구를 정리|현황을 조사|비교표|인용|"
     r"참고문헌|시카고|APA|출처를"
@@ -1147,7 +1098,7 @@ def _from_the_web(request: str) -> bool:
     return bool(_FROM_THE_WEB.search(request))
 
 
-#: Words that point at a thing the person has and did not attach.
+#: words pointing at unattached material
 _MATERIAL = re.compile(
     r"녹취|녹음|피드백|기록을|표가 있|파일|첨부|메모를|학위논문|논문 ?\d+ ?장"
     r"|(?:표|자료)를 (?:붙|드립|줍|보냅|첨부)"
@@ -1158,9 +1109,7 @@ _PAGES = re.compile(r"(?<!\d)(\d{1,4})\s{0,3}(?:장|쪽|페이지|p)\s{0,3}(?:�
 
 
 def _long_form(request: str) -> bool:
-    """Whether each section gets its own call, for detail a single draft would not give.
-
-    True for eight or more pages, or substantial pasted material with five or more named parts."""
+    """Per-section calls: 8+ pages, or substantial material with 5+ parts."""
     m = _PAGES.search(request)
     if m and int(m.group(1)) >= 8:
         return True
@@ -1183,9 +1132,7 @@ _TRAILING_TABLE_CAPTION = re.compile(
 
 
 def repair_pipe_tables(body: str) -> str:
-    """Two or more bare 「a | b | c」 lines with equal cell counts become a Markdown table.
-
-    The first line is the head; lines already in a proper table are left alone."""
+    """Bare 「a | b | c」 lines (2+, equal cells) as a Markdown table."""
     lines = (body or "").split("\n")
     out: list[str] = []
     i = 0
@@ -1201,7 +1148,7 @@ def repair_pipe_tables(body: str) -> str:
     while i < len(lines):
         if lines[i].strip().startswith("```"):
             fenced = not fenced
-        # Inside a fence (```kpi rows are 「value | label」) nothing is a table.
+        # nothing in a fence is a table
         first = None if fenced else cells(lines[i])
         if first is None:
             out.append(lines[i])
@@ -1228,7 +1175,7 @@ def repair_pipe_tables(body: str) -> str:
 
 
 def split_glued_tables(body: str) -> str:
-    """A head row and rule repeated inside a table start a second table."""
+    """Repeated head row and rule start a second table."""
     lines = (body or "").split("\n")
     rule = re.compile(r"^\s*\|?\s*:?-{2,}")
     out: list[str] = []
@@ -1244,9 +1191,7 @@ def split_glued_tables(body: str) -> str:
 
 
 def balance_fences(body: str) -> str:
-    """Unpaired 「```」 fences mended so one cannot swallow the rest of the section.
-
-    A bare fence followed by ordinary sentences goes; failing that, the last fence is closed."""
+    """Unpaired fences mended so none swallows the section."""
     lines = (body or "").split("\n")
     fences = [i for i, line in enumerate(lines) if line.strip().startswith("```")]
     if len(fences) % 2 == 0:
@@ -1262,8 +1207,7 @@ def balance_fences(body: str) -> str:
 
 
 def unglue_blocks(body: str) -> str:
-    """A fence or a table row written onto the end of a sentence goes back to its own
-    line: 「… 발전합니다 [4]. ```kpi」 and 「… 가능합니다 [5]. | 기준 | … |」."""
+    """Fence or table row glued to a sentence moved to its own line."""
     body = re.sub(r"(?m)^([^\n`|]*\S)[ \t]+(```[A-Za-z]*)[ \t]*$", r"\1\n\n\2", body or "")
     body = re.sub(r"(?m)^(?!```)([^\n`]*[.!?。])[ \t]+```[ \t]*$", r"\1\n```", body)
     return re.sub(r"(?m)^([^\n|]*[.!?。\]])[ \t]+(\|[^\n]*\|)[ \t]*$", r"\1\n\n\2", body)
@@ -1276,8 +1220,7 @@ def _caption_text(line: str, kind: str) -> str | None:
     return m.group("text").strip(" *_.:")
 
 
-#: A sentence that points into a source the reader does not have: 「매뉴얼 제2장 'X'은」,
-#: 「보고서 3절에서」, 「p. 12」, 「해당 매뉴얼은」.
+#: sentence pointing into a source's internals (「매뉴얼 제2장」, 「p. 12」)
 _SOURCE_INNARDS = re.compile(
     r"(?:매뉴얼|보고서|백서|가이드라인|가이드|안내서|지침|자료|문서)\s{0,2}(?:의\s{0,2})?"
     r"(?:제\s?\d{1,3}\s?(?:장|절|부|편)|\d{1,3}\s?(?:장|절)(?=[\s에은는의]))"
@@ -1285,15 +1228,12 @@ _SOURCE_INNARDS = re.compile(
     r"|(?<![가-힣A-Za-z])pp?\.\s?\d{1,4}"
     r"|(?:해당|이|그|동|위)\s(?:매뉴얼|백서|가이드라인|가이드|안내서|지침|자료|문서)(?:은|는|이|가|에서|에|의)"
 )
-# One `.` alternative (the cases are lookarounds) so no dot can be read two ways; a dot
-# inside a dotted date or number run (「2026. 11. 16.(월)」, 「1. 2.」) ends a sentence only
-# at the line's end.
+# single `.` alternative avoids ambiguity; dotted dates/numbers end a sentence only at line end
 _SENTENCE = re.compile(r"(?:[^.!?\n]|(?:(?<=\bp)|(?<=\bpp)|(?<=\d)(?=\.\d)|(?<=\d)(?=\.(?:\s{1,2}\d|\s{0,2}\())|(?:(?<=\d\.\s\d)|(?<=\d\.\s\d\d))(?!\.\s{0,2}[\d(])(?!\.\s*$))\.){0,2000}?(?<!\bp)(?<!\bpp)(?:(?!(?<=\d)\.\s{0,2}[\d(])(?<!\d\.\s\d)(?<!\d\.\s\d\d)[.!?]|(?:(?<=\d\.\s\d)|(?<=\d\.\s\d\d))\.(?=\s*$))(?:\s{0,2}\[\d{1,3}\](?:\[\d{1,3}\]){0,20})?(?=\s|$)")
 
 
 def source_innard_sentences(sections: list[dict]) -> dict[int, list[str]]:
-    """Per section index, the sentences that point into a source's own chapters or call
-    it 「해당 자료」 without naming it. A reference list is not prose and is skipped."""
+    """Per section, sentences pointing into source internals; references skipped."""
     found: dict[int, list[str]] = {}
     for index, sec in enumerate(sections):
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -1311,7 +1251,6 @@ def source_innard_sentences(sections: list[dict]) -> dict[int, list[str]]:
 
 
 
-#: The citation a sentence ends with: 「… 있습니다 [2].」, 「… 있습니다[2][4].」, 「… 있습니다. [2]」.
 _TRAILING_CITE = re.compile(r"\s{0,2}((?:\[\d{1,3}(?:[,，]\s?\d{1,3})*\]){1,6})(?=\s{0,2}[.!?。]?\s*$)")
 
 
@@ -1323,9 +1262,7 @@ def _cited(sentence: str) -> tuple[str, ...] | None:
 
 
 def collapse_repeated_citations(body: str) -> str:
-    """Consecutive sentences of a paragraph citing the same sources carry the number once, on the last.
-
-    Tables, lists, quotes, code and headings are left alone."""
+    """Same-source citations in consecutive sentences kept once, on the last."""
     out: list[str] = []
     for block in re.split(r"(\n\s*\n)", body or ""):
         stripped = block.strip()
@@ -1343,7 +1280,7 @@ def collapse_repeated_citations(body: str) -> str:
             if not cites[index] or cites[index] != cites[index + 1]:
                 continue
             bare = _TRAILING_CITE.sub("", sentences[index], count=1)
-            # A figure keeps its own source: the evidence check asks every number for one.
+            # figures keep their own citation for the evidence check
             if re.search(r"\d", bare):
                 continue
             sentences[index] = bare
@@ -1352,11 +1289,9 @@ def collapse_repeated_citations(body: str) -> str:
     return "".join(out)
 
 
-#: A figure the writer placed in its text: 「[[그림: flow | 처리 흐름 | 요청이 게이트웨이를 …]]」.
 _FIGURE_MARK = re.compile(r"\[\[\s*그림\s*[:：]\s*(?P<body>[^\]\n]{3,900}?)\s*\]\]")
-#: How the prose points at a figure or a table before it is numbered.
 _FIGURE_REF, _TABLE_REF = "〔그림〕", "〔표〕"
-#: The phrase around a reference whose figure could not be drawn, taken out with it.
+#: phrase around a reference to an undrawable figure
 _DANGLING_REF = re.compile(
     r"(?:위|아래|다음)?\s?〔(?:그림|표)〕(?:과|와|에서|에|은|는|을|를|의|처럼)?\s*"
     r"(?:같이|처럼|보듯이|보듯|나타낸 것처럼|정리한 것처럼|나타냈듯이)?\s*,?\s*"
@@ -1364,14 +1299,13 @@ _DANGLING_REF = re.compile(
 
 
 def _figure_markdown(made: dict, png: bytes) -> str:
-    """The figure as the body carries it: the picture drawn with the deck renderer's shapes,
-    and its caption."""
+    """Figure drawn with deck shapes, plus caption."""
     caption = str(made.get("caption") or "").strip() or "그림"
     return f"![{caption}]({diagram_render.data_uri(png)})\n\n*그림: {caption}*"
 
 
 def figure_marks(body: str) -> list[dict[str, str]]:
-    """The figures the writer placed: kind, caption, description, and the mark itself."""
+    """Placed figures: kind, caption, description, mark."""
     out = []
     for m in _FIGURE_MARK.finditer(body or ""):
         parts = [x.strip() for x in m.group("body").split("|")]
@@ -1385,7 +1319,7 @@ def figure_marks(body: str) -> list[dict[str, str]]:
 
 
 def shown_while_writing(body: str) -> str:
-    """The section as the panel shows it before its figures are drawn."""
+    """Section as shown before figures are drawn."""
     return _FIGURE_MARK.sub(
         lambda m: f"*〔그림 준비 중: {(m.group('body').split('|') + ['', ''])[1].strip() or '그림'}〕*",
         body or "",
@@ -1393,8 +1327,7 @@ def shown_while_writing(body: str) -> str:
 
 
 def drop_figure(body: str, mark: str) -> str:
-    """A figure that could not be drawn leaves no mark and no 〔그림〕 pointing at nothing:
-    the reference nearest before the mark goes with it."""
+    """Undrawable figure's mark and nearest 〔그림〕 reference removed."""
     at = body.find(mark)
     if at < 0:
         return body
@@ -1409,7 +1342,7 @@ def drop_figure(body: str, mark: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", head.rstrip() + "\n\n" + tail.lstrip())
 
 
-#: Metrics a document states more than once; one kind may go by several names.
+#: repeated metrics; one kind may have several names
 _METRIC_KINDS = {
     "growth": r"성장률|CAGR|연평균\s?성장|연평균",
     "size": r"시장\s?규모|시장\s?가치|시장은|시장이",
@@ -1424,10 +1357,7 @@ _METRIC_VALUE = re.compile(
 
 
 def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
-    """Groups of prose sentences giving one kind of metric different values in the same unit.
-
-    Each group is [(section index, sentence), …]. Tables, the reference list and sentences
-    giving two values (a range, a before and after) are skipped."""
+    """Groups of sentences giving one metric different values in the same unit."""
     found: dict[tuple[str, str], list[tuple[str, frozenset[str], int, str]]] = {}
     for index, sec in enumerate(sections):
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -1441,7 +1371,6 @@ def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
                 for kind, pattern in _METRIC_KINDS.items():
                     if not re.search(pattern, sentence):
                         continue
-                    # A rate is a percentage; a size is an amount.
                     mine = [v for v in values if (v[1] == "%") != (kind in ("size", "price"))]
                     if len(mine) == 1:
                         number, unit = mine[0]
@@ -1451,7 +1380,7 @@ def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
                     break
     groups = []
     for entries in found.values():
-        # Two values conflict only when one sentence's scope holds the other's.
+        # conflict only when one scope contains the other
         clash: dict[int, tuple[int, str]] = {}
         for i, (value_a, scope_a, index_a, sentence_a) in enumerate(entries):
             for value_b, scope_b, index_b, sentence_b in entries[i + 1:]:
@@ -1463,14 +1392,12 @@ def metric_conflicts(sections: list[dict]) -> list[list[tuple[int, str]]]:
     return groups
 
 
-#: Words that name a measure, not what is measured.
 _SCOPE_NOISE = frozenset({"연평균", "성장률", "CAGR", "시장", "규모", "점유율", "비중", "이익률",
                           "전환율", "약", "기준", "현재", "전망", "예상"})
 
 
 def _scope(sentence: str) -> frozenset[str]:
-    """What a sentence's figure is about: the words before its first topic or subject
-    particle (「글로벌 AI 사이버 보안 시장은」 → {글로벌, AI, 사이버, 보안})."""
+    """Subject words before the first topic/subject particle."""
     head = re.split(r"(?<=[가-힣A-Za-z)])(?:은|는|이|가)\s", sentence, maxsplit=1)[0][:60]
     words = re.findall(r"[가-힣A-Za-z]+", head)
     return frozenset(w for w in words if w not in _SCOPE_NOISE)
@@ -1479,8 +1406,7 @@ def _scope(sentence: str) -> frozenset[str]:
 
 
 
-#: What each quality finding is called in the step list.
-#: Findings a model made and no rule can confirm: listed for the reader to check.
+#: model-only findings, for the reader to check
 _TO_CHECK = ("fact", "question", "judged_figure", *report_checks.MODEL_LABELS)
 
 _QUALITY_LABELS = {
@@ -1508,12 +1434,12 @@ _QUALITY_LABELS = {
 }
 
 
-#: A repair instruction's own voice: 「고쳐라」, 「맞춰라」, 「답하라」.
+#: repair-prompt imperative endings
 _INSTRUCTION = re.compile(r"(?:고쳐|맞춰|답하|써|바로잡|채우|빼|확인해|하)라(?![가-힣])|말라")
 
 
 def reader_note(code: str, why: str) -> str:
-    """What a finding says to the reader on the quality step: never the repair prompt."""
+    """Reader-facing finding text, never the repair prompt."""
     if code == "judged_figure" or _INSTRUCTION.search(why or ""):
         return _QUALITY_LABELS.get(code, "확인 필요")
     return (why or "")[:200]
@@ -1524,7 +1450,7 @@ _SCALE = {"조": 1e12, "억": 1e8, "만": 1e4, None: 1.0, "": 1.0}
 
 
 def _amount(text: str) -> float | None:
-    """「38.4억 원」 → 3.84e9, 「8만 원」 → 80000, 「400명」 → 400; None when not one number."""
+    """Korean amount as a number, or None."""
     found = _AMOUNT.findall(text or "")
     if len(found) != 1:
         return None
@@ -1533,7 +1459,7 @@ def _amount(text: str) -> float | None:
 
 
 def _won_like(value: float, like: str) -> str:
-    """An amount written the way `like` was: 「3.84억 원/연」 for 「38.4억 원/연」."""
+    """Amount formatted like `like`."""
     tail = re.sub(r"^.*?(?:조|억|만)?\s?원", "", like, count=1) if "원" in like else ""
     if value >= 1e8:
         body = f"{value / 1e8:,.4f}".rstrip("0").rstrip(".") + "억 원"
@@ -1544,7 +1470,6 @@ def _won_like(value: float, like: str) -> str:
     return body + tail
 
 
-#: A Korean amount: 「4억 8,000만」, 「3,000만」, 「38.4억」, 「12,000」.
 _KO_AMOUNT = re.compile(
     r"(?<![\d.,])(?:\d[\d,]*(?:\.\d+)?\s?조(?:\s?\d[\d,]*\s?억)?(?:\s?\d[\d,]*\s?만)?"
     r"|\d[\d,]*(?:\.\d+)?\s?억(?:\s?\d[\d,]*\s?만)?"
@@ -1574,9 +1499,7 @@ def _ko_amount(value: float) -> str:
 
 
 def fix_restated_amounts(text: str, given: str) -> str:
-    """An amount a power of ten off a calculation the material already did gets the material's amount.
-
-    The sentence must carry two or more of that line's amounts exactly."""
+    """Power-of-ten slip against a material calculation corrected (2+ exact amounts required)."""
     lines = [
         {round(_ko_value(m.group(0)), 2) for m in _KO_AMOUNT.finditer(line)}
         for line in (given or "").split("\n")
@@ -1608,9 +1531,7 @@ def fix_restated_amounts(text: str, given: str) -> str:
 
 
 def fix_table_formulas(body: str) -> str:
-    """A table row's amount that is its shown product off by a power of ten is corrected.
-
-    Any other mismatch is left for a person."""
+    """Table amount off its shown product by a power of ten corrected."""
     out = []
     corrected: dict[str, str] = {}
     for line in (body or "").split("\n"):
@@ -1646,7 +1567,7 @@ def fix_table_formulas(body: str) -> str:
                     corrected[old.group(0)] = new.group(0)
         out.append("|" + "|".join(fixed) + "|" if fixed != cells else line)
     text = "\n".join(out)
-    # The wrong figure repeated elsewhere in the section (「연 약 38.4억 원」) goes with it.
+    # wrong figure repeated elsewhere fixed too
     for old, new in corrected.items():
         text = re.sub(rf"(?<![\d.,]){re.escape(old)}", new, text)
     return text
@@ -1656,30 +1577,27 @@ _UNDECIDED = re.compile(r"^\s*(?:\(미정\)|미정|TBD|-|—|\[[가-힣][가-힣
 
 
 def _table_rows(body: str):
-    """(label, value cell, line index, cells) for each body row of each table in `body`."""
+    """(label, value cell, line index, cells) per table body row."""
     lines = (body or "").split("\n")
     for i, line in enumerate(lines):
         if not line.strip().startswith("|") or re.match(r"^\s{0,16}\|?\s{0,16}:?-{2}", line):
             continue
         if i + 1 < len(lines) and re.match(r"^\s{0,16}\|?\s{0,16}:?-{2}", lines[i + 1]):
-            continue  # the head row
+            continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) >= 2 and cells[0]:
             yield re.sub(r"\s+", "", cells[0]), cells[1], i, cells
 
 
 def fill_undecided_cells(sections: list[dict]) -> list[dict]:
-    """An assumption that is 「[금액]」 or 「(미정)」 in one table and a figure in another takes
-    the figure.
-
-    Rows are matched by their first cell."""
+    """Placeholder assumption takes the figure from another table, matched by first cell."""
     decided: dict[str, str] = {}
     unit = re.compile(r"\d.{0,300}(?:원|만|억|조|%|명|박스|회|개월|건)")
     for sec in sections:
         for label, value, _, _ in _table_rows(str(sec.get("content") or "")):
             if _UNDECIDED.match(value) or not re.search(r"\d", value):
                 continue
-            # A figure with its unit beats a bare one from a table that split the unit off.
+            # value with unit beats a bare one
             if label not in decided or (unit.search(value) and not unit.search(decided[label])):
                 decided[label] = value
     out = []
@@ -1696,7 +1614,7 @@ def fill_undecided_cells(sections: list[dict]) -> list[dict]:
 
 
 def drop_repeated_tables(sections: list[dict]) -> list[dict]:
-    """A table restating an earlier one (most rows, same labels and figures) goes with its caption."""
+    """Duplicate table removed with its caption."""
     seen: dict[str, str] = {}
     out = []
     for sec in sections:
@@ -1738,7 +1656,6 @@ def drop_repeated_tables(sections: list[dict]) -> list[dict]:
 _YEAR = re.compile(r"(?<!\d)((?:19|20)\d{2})\s?년")
 
 
-#: A comparison cell the writer could not fill from the first search.
 _GAP = re.compile(
     r"명시\s?(?:없|되지)|확인\s?필요|자료\s?(?:없|에\s?없)|정보\s?없|공개\s?(?:안|되지)|미정|미확인"
     r"|^\s{0,16}\[[가-힣][가-힣 ·]{0,9}\]\s{0,16}$|^\s{0,16}[-—]\s{0,16}$|^\s{0,16}\(?\s{0,8}N/?A\s{0,8}\)?\s{0,16}$",
@@ -1760,7 +1677,7 @@ Answer with one JSON object only:
 둘 중 하나라도 아니면 {{"same_target": false, "same_measure": false, "value": "", "quote": ""}}
 
 {context}"""
-#: A business's own assumption (cost, price, churn, budget): never filled from the web.
+#: business's own assumptions: never filled from the web
 _OWN_ASSUMPTION = re.compile(
     r"원가|비용|가격|판매가|단가|이탈률|해지율|유지율|전환율|CAC|LTV|매출|이익|예산|고정비|변동비|"
     r"마진|공헌|성장률|점유율|규모|목표|구독료|객단가"
@@ -1768,8 +1685,7 @@ _OWN_ASSUMPTION = re.compile(
 
 
 def table_gaps(sections: list[dict]) -> list[tuple[int, int, int, str, str]]:
-    """`(section, line, column, row label, column header)` for each comparison cell left
-    open (「(자료에 배포 방식 명시 없음)」, 「—」), at most one per row."""
+    """Open comparison cells, at most one per row."""
     found: list[tuple[int, int, int, str, str]] = []
     rule = re.compile(r"^\s{0,16}\|?\s{0,16}:?-{2}")
     for si, sec in enumerate(sections):
@@ -1793,9 +1709,7 @@ def table_gaps(sections: list[dict]) -> list[tuple[int, int, int, str, str]]:
 async def fill_gaps_from_search(
     sections: list[dict], sources: list[dict], *, model: str, api_key: str
 ) -> tuple[list[dict], dict]:
-    """Each open comparison cell is searched for on its own and filled from what the pages say.
-
-    New pages join the sources; a cell the pages do not settle stays as written."""
+    """Open comparison cells searched individually and filled; unsettled ones kept."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     gaps = [g for g in table_gaps(sections)
             if not _OWN_ASSUMPTION.search(f"{g[3]} {g[4]}")][:_GAPS_PER_REPORT]
@@ -1822,7 +1736,7 @@ async def fill_gaps_from_search(
         value = str(judged.get("value") or "").strip()
         quote = re.sub(r"\s+", "", str(judged.get("quote") or ""))
         page = re.sub(r"\s+", "", findings.context)
-        # The same thing measured the same way, its words on the page, its numbers in them.
+        # same measure, words and numbers on the page
         numbers = re.findall(r"\d[\d,.]*", re.sub(r"\[\d{1,3}\]", "", value))
         if (judged.get("same_target") is not True or judged.get("same_measure") is not True
                 or len(quote) < 6 or quote not in page
@@ -1844,7 +1758,6 @@ async def fill_gaps_from_search(
         if (not answer or answer.startswith("없음") or _GAP.search(answer) or len(answer) > 160
                 or not re.search(r"\[\d{1,2}\]", answer)):
             continue
-        # The pages' own numbers become the document's next ones.
         renumber: dict[str, str] = {}
         for src in findings.sources:
             if f"[{src['ordinal']}]" in answer:
@@ -1879,7 +1792,7 @@ def _sentence_with(line: str, needle: str) -> str:
 def flagged_sentences(
     sections: list[dict], material: str, settled: list | None = None
 ) -> list[tuple[int, str, str]]:
-    """`(section, sentence, what is wrong)` for sentence-sized gate findings no mend settles."""
+    """Sentence-level gate findings no mend settles."""
     found: list[tuple[int, str, str]] = []
     for index, written, said in quality_gate.scaled_numbers(sections, material):
         for line in str(sections[index].get("content") or "").split("\n"):
@@ -1915,7 +1828,7 @@ def flagged_sentences(
                               f"{figure.unit}로 썼다. 정해진 값으로 고치고 그 값으로 계산한 수치도 "
                               "맞춰라. 이 문장이 다른 대상·경우(다른 고객층, 인상 시나리오 등)를 "
                               "말하는 것이면 원문을 그대로 답하라."))
-    # A wrong formula first: it misleads; a settled figure changed next; a placeholder only shows.
+    # order: wrong formula, changed figure, placeholder
     found.sort(key=lambda f: 0 if "식 「" in f[2] else 1 if "정해진" in f[2]
                else 2 if "자릿수" in f[2] else 3)
     return found[:_FLAGGED_PER_REPORT]
@@ -1931,7 +1844,7 @@ _JUDGED_PER_REPORT = 40
 
 
 def _all_in_material(sentence: str, known: list[float]) -> bool:
-    """Every number the sentence writes is one the material states (「약 1,200쪽」)."""
+    """All numbers stated in the material."""
     written = report_checks._material_numbers(sentence)
     return bool(written) and all(report_checks._grounded(n, known) for n in written)
 
@@ -1939,11 +1852,7 @@ def _all_in_material(sentence: str, known: list[float]) -> bool:
 async def judge_figure_sentences(
     sections: list[dict], settled: list, *, judge: str, api_key: str, material: str = ""
 ) -> tuple[list[tuple[int, str, str]], dict]:
-    """Settled-figure sentences the code passed, put to the judge model as yes/no questions.
-
-    A sentence whose every number the material states is not asked: it copies the
-    material, which the settled figures come from. Returns the ones the judge calls
-    wrong, in `flagged_sentences`' shape, and the usage."""
+    """Code-passed settled-figure sentences checked by the judge model; returns flagged and usage."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not settled:
         return [], spent
@@ -1994,7 +1903,7 @@ async def judge_figure_sentences(
 
 
 def relabel_unit_columns(sections: list[dict]) -> list[dict]:
-    """A 「CAC(천 원)」-style header over amounts the prose gives in won is relabelled in won."""
+    """「CAC(천 원)」-style header relabelled in won when prose uses won."""
     from app.services import quality_gate
 
     whole = "\n".join(str(sec.get("content") or "") for sec in sections)
@@ -2018,7 +1927,7 @@ def relabel_unit_columns(sections: list[dict]) -> list[dict]:
 
 
 def restore_choices(sections: list[dict], material: str) -> list[dict]:
-    """A carried question that lost any of its choices gets them back as the material wrote them."""
+    """Carried question's lost choices restored from the material."""
     from app.services import quality_gate
 
     questions = quality_gate.question_choices(material)
@@ -2052,13 +1961,11 @@ def normalize_document(
     sections: list[dict], *, settled: list | None = None, sources: list[dict] | None = None,
     request: str = "", context: str = "",
 ) -> list[dict]:
-    """Every deterministic mend of a written report, in one fixed order.
-
-    Idempotent, so the verify stage can run it again after a repair."""
+    """Deterministic report mends in fixed order; idempotent."""
     out = []
     for sec in sections:
         mended, slips = hangul.repair_mixed_script(str(sec.get("content") or ""), context[:20000])
-        # A table written as list items is a table again, before its caption is numbered.
+        # tables as list items restored before caption numbering
         mended = doc_formats.tables_out_of_items(mended)
         if slips:
             log.info("mended mixed-script words in %r: %s", logs.safe(sec.get("heading")), logs.safe(slips[:5]))
@@ -2073,7 +1980,7 @@ def normalize_document(
     except Exception:  # noqa: BLE001 — a mend that fails leaves the text as it was
         log.exception("final tidy failed; the sections are kept as written")
     out = caption_figures_and_tables(out)
-    # Weekdays beside dates are the calendar's, whatever the writer counted.
+    # calendar weekdays override the writer's
     out = [{**sec, "content": weekdays.fix_weekdays(
         str(sec.get("content") or ""), context=f"{request}\n{context}")[0]} for sec in out]
     out = [
@@ -2094,8 +2001,7 @@ def normalize_document(
 
 
 def _amount_or_none(written: str) -> float | None:
-    """「3,200만」 as a number; None for what is not one amount (a range read as
-    「3만 4만」), so a check skips it instead of failing the report."""
+    """「3,200만」 as a number; None if not one amount, so checks skip it."""
     try:
         if "천만" in written:
             return units._ko_number(written.replace("천만", "")) * 1e7
@@ -2105,9 +2011,7 @@ def _amount_or_none(written: str) -> float | None:
 
 
 def numeric_issues(sections: list[dict]) -> list[tuple[int, str, str]]:
-    """Sentences whose own figures disagree (a weekly rate and its yearly total, a CAGR).
-
-    Each is (section index, sentence, what is wrong, phrased for a rewrite)."""
+    """Sentences whose own figures disagree, as (section, sentence, problem, rewrite hint)."""
     found: list[tuple[int, str, str]] = []
     for index, sec in enumerate(sections):
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -2115,7 +2019,7 @@ def numeric_issues(sections: list[dict]) -> list[tuple[int, str, str]]:
         for line in str(sec.get("content") or "").split("\n"):
             if line.lstrip().startswith(("!", "```", "#")):
                 continue
-            # A table row has no full stop: the row is read as one sentence.
+            # table row read as one sentence
             pieces = [line.strip()] if line.lstrip().startswith("|") else [
                 m.group(0).strip() for m in _SENTENCE.finditer(line)
             ]
@@ -2145,8 +2049,7 @@ def numeric_issues(sections: list[dict]) -> list[tuple[int, str, str]]:
                     if span and start > 0:
                         implied = ((end / start) ** (1 / span) - 1) * 100
                         stated = float(rate.group(1))
-                        # Beyond 300% a year the two amounts are not one market's start and
-                        # end (a sentence comparing two different quantities).
+                        # >300%/yr: not one market's start and end
                         if abs(implied - stated) > 1.5 and -50 < implied < 300:
                             found.append((index, sentence, f"{start:,.0f}에서 {end:,.0f}로 "
                                           f"{span}년이면 연평균 {implied:.1f}%다(적힌 {stated}%와 맞지 "
@@ -2158,7 +2061,7 @@ def numeric_issues(sections: list[dict]) -> list[tuple[int, str, str]]:
 
 
 def _named_amount(text: str, names: str) -> float | None:
-    """The one amount the document gives under `names`; None when absent or not settled."""
+    """The one settled amount under `names`, or None."""
     values = set()
     for m in re.finditer(
         rf"(?:{names})[^\d\n|]{{0,12}}\|?\s?(\d[\d,]*(?:\.\d+)?\s?(?:조|억|만)?"
@@ -2173,9 +2076,7 @@ def _named_amount(text: str, names: str) -> float | None:
 
 
 def fix_pnl_tables(sections: list[dict]) -> list[dict]:
-    """A monthly P&L table recomputed from the document's price, unit cost and fixed cost.
-
-    Cumulative (「누적」) columns are left; nothing changes unless all three inputs are stated."""
+    """Monthly P&L table recomputed when price, unit cost and fixed cost are all stated."""
     whole = "\n".join(str(sec.get("content") or "") for sec in sections)
     price = _named_amount(whole, r"판매가|객단가|박스\s?가격|단가")
     unit_cost = _named_amount(whole, r"변동비|단위\s?원가|박스당\s?원가")
@@ -2203,7 +2104,7 @@ def fix_pnl_tables(sections: list[dict]) -> list[dict]:
             end = j
             while end < len(lines) and lines[end].strip().startswith("|"):
                 end += 1
-            # The inputs must be this table's: some row already agrees with them exactly.
+            # inputs must match some row exactly
             def agrees(row: str, volume=volume, revenue=revenue, cols=cols) -> bool:
                 cells = [c.strip() for c in row.strip().strip("|").split("|")]
                 try:
@@ -2258,17 +2159,13 @@ def fix_pnl_tables(sections: list[dict]) -> list[dict]:
     return out
 
 
-#: A sentence about the writing instructions, not the subject: 「쓸 수 있는 수치 목록에 따르면」,
-#: 「… 절이 아직 작성되지 않았습니다」. The reader never saw the instructions.
-#: The writer's own check of a settled block (「85,000,000원 × 0.10 = 8,500,000원이 견적 확정 블록의
-#: 7,727,273원과 다릅니다」) is talk about the instructions too.
+#: talk about writing instructions the reader never saw (incl. checks of settled blocks)
 _PROMPT_TALK = re.compile(
     r"쓸 수 있는 수치|수치 목록|요청 자료(?:에|의|로)|작성 지침|아직 (?:작성|쓰이)지 않았|개요(?:에|의) 따르면"
     r"|(?:확정|계산)\s{0,2}블록|확정 날짜 블록"
     r"|[×x*]\s{0,2}[\d.,]{1,12}\s{0,2}=\s{0,2}[\d,]{1,20}\s{0,2}원[^.\n]{0,80}?(?:과|와)\s{0,2}"
     r"(?:다릅니다|다르다|달라|일치하지\s{0,2}않)"
 )
-#: A fence whose language sits on the next line: 「```」 then 「callout」.
 _LONE_LANGUAGE = re.compile(r"(?m)^```[ \t]*\n(callout|kpi|cards|diagram|mermaid|chart)[ \t]*$")
 _TABLE_CAPTION_LINE = re.compile(r"^\s*(?:\*\*)?표\s?(?:\d{1,3})?[.:]")
 
@@ -2278,8 +2175,7 @@ def _cells(line: str) -> list[str]:
 
 
 def drop_cut_rows(body: str) -> str:
-    """A table row cut off mid-way (fewer cells than the header, no closing 「|」) is the
-    end of a reply that ran out, and goes; a table left with no rows goes with its caption."""
+    """Truncated table rows dropped; empty tables lose their caption."""
     lines = body.split("\n")
     out: list[str] = []
     i = 0
@@ -2307,7 +2203,7 @@ def drop_cut_rows(body: str) -> str:
 
 
 def drop_prompt_talk(body: str) -> str:
-    """Sentences about the writing instructions are taken out; a paragraph left empty goes."""
+    """Instruction-talk sentences removed; empty paragraphs dropped."""
     out = []
     for line in body.split("\n"):
         if line.lstrip().startswith(("|", "```", "!", "#")) or not _PROMPT_TALK.search(line):
@@ -2322,12 +2218,12 @@ def drop_prompt_talk(body: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-#: Fences whose body the renderers draw as blocks; any other fence is printed as text.
+#: fences drawn as blocks; others printed as text
 _DRAWN_FENCES = ("mermaid", "callout", "kpi", "cards", "diagram", "chart")
 
 
 def unfence_pictures(body: str) -> str:
-    """A plain code fence holding a picture is unwrapped, or the PDF prints its base64."""
+    """Code fence holding a picture unwrapped (else PDF prints base64)."""
     lines = body.split("\n")
     out: list[str] = []
     i = 0
@@ -2341,8 +2237,7 @@ def unfence_pictures(body: str) -> str:
         while j < len(lines) and not lines[j].strip().startswith("```"):
             j += 1
         if opening.group(1).lower() in _DRAWN_FENCES:
-            # A drawn block is copied whole, its closing fence with it: that fence is not
-            # the opening of a plain one.
+            # drawn block copied with its closing fence
             out.extend(lines[i:j + 1])
             i = j + 1
             continue
@@ -2355,19 +2250,15 @@ def unfence_pictures(body: str) -> str:
     return "\n".join(out)
 
 
-#: A fenced JSON object in a section body.
 _JSON_PROSE_FENCE = re.compile(r"```json[ \t]{0,8}\n(\{[\s\S]{0,200000}?\})\s{0,8}\n```")
 
 
-#: One KPI row: a short value, a bar, a short name (「120만 원 | 안2 연간 비용」).
 _KPI_ROW = re.compile(r"^\s{0,3}(?![|`#>*-])[^|\n`]{1,24}?\s\|\s[^|\n`]{1,48}$")
-#: A lone backtick or two where a ```kpi fence was meant (「`」, 「``kpi」).
 _KPI_EDGE = re.compile(r"^\s{0,3}`{1,2}\s{0,2}(?:kpi)?\s{0,2}$", re.I)
 
 
 def mend_kpi_fences(body: str) -> str:
-    """A KPI block written with a lone backtick (or none) around its 「값 | 이름」 rows becomes a
-    ```kpi fence, so it renders as KPI tiles and never as stray 「`」 and 「a | b」 lines."""
+    """Loose KPI rows wrapped in a ```kpi fence."""
     if " | " not in (body or ""):
         return body
     lines = body.split("\n")
@@ -2393,7 +2284,6 @@ def mend_kpi_fences(body: str) -> str:
                 rows.append(lines[j].strip())
             j += 1
         closed = opened and j < len(lines) and bool(_KPI_EDGE.match(lines[j]))
-        # Fenced by stray backticks, or two to four bare rows that start with a figure.
         bare = not opened and 2 <= len(rows) <= 4 and all(re.match(r"[\d+\-−]", r) for r in rows)
         if rows and len(rows) <= 4 and (closed or bare):
             out += ["```kpi", *rows, "```"]
@@ -2406,13 +2296,12 @@ def mend_kpi_fences(body: str) -> str:
     return "\n".join(out)
 
 
-#: Columns that say nothing when every cell is empty; a 확인·서명 column left for a pen stays.
+#: droppable all-empty columns; sign columns stay
 _DROPPABLE_COLUMN = re.compile(r"기한|마감|완료\s{0,2}(?:예정)?일|일정|비고")
 
 
 def drop_empty_columns(body: str) -> str:
-    """A 기한·비고 column empty in every row (회의록의 「기한」 left blank throughout) goes, and its
-    name leaves a 「표 n. 항목·내용·기한」 caption next to the table."""
+    """All-empty 기한·비고 column dropped, caption too."""
     if "|" not in (body or ""):
         return body
     lines = body.split("\n")
@@ -2452,33 +2341,31 @@ def drop_empty_columns(body: str) -> str:
 
 
 def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
-    """The deterministic mends run again after the rewriting passes, which can undo them."""
+    """Deterministic mends rerun after rewriting passes."""
     tidied = []
     for sec in sections:
         body = str(sec.get("content") or "")
-        # Each ```json block holding a section's prose is that prose.
         body = _JSON_PROSE_FENCE.sub(
             lambda m: unwrap_json_prose(m.group(1)) if unwrap_json_prose(m.group(1)) != m.group(1)
             else m.group(0), body)
         if body.lstrip().startswith("{"):
-            # A body the draft handed back wrapped as JSON, closed or cut off.
+            # body wrapped as JSON, closed or truncated
             body = re.sub(r'\n?\s{0,200}"\s{0,200}\}\s{0,200}\}?\s{0,200}$', "", unwrap_json_prose(body).replace(
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", mend_kpi_fences(body)))
             body = drop_empty_columns(body)
-            # 「<br>」 written for a line break: a cell keeps its parts with 「 · 」.
+            # 「<br>」 as 「 · 」
             body = "\n".join(
                 re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",
                        line, flags=re.I)
                 for line in body.split("\n")
             )
-            # 「[[5]]」 and 「[]」 left by a citation pass: one number, or nothing.
+            # 「[[5]]」/「[]」 from a citation pass
             body = re.sub(r"\[\[(\d{1,3})\]\](?!\()", r"[\1]", body)
             body = re.sub(r"\s?\[\](?!\()", "", body)
             body = internal_words.scrub(drop_prompt_talk(drop_cut_rows(body)))
-            # A settled figure slipped inside a formula is set back first, then every
-            # product and sum is worked out again.
+            # settled figures restored in formulas before recomputing
             body = key_figures.mend_operands(body, settled or [])
             body = fix_table_formulas(units.fix_written_sums(units.fix_written_arithmetic(body)))
         tidied.append({**sec, "content": body})
@@ -2486,9 +2373,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
 
 
 def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
-    """Numbered captions renumbered 1, 2, 3 … in document order, the text's references following.
-
-    Returns the sections and the names the text already points at (「표 5」)."""
+    """Captions renumbered in document order; returns sections and names already cited."""
     rule = re.compile(r"^\s{0,3}\|?\s{0,3}:?-{2,}")
     moved = {"표": {}, "그림": {}}
     counts = {"표": 0, "그림": 0}
@@ -2530,10 +2415,7 @@ def _renumber_references(sections: list[dict]) -> tuple[list[dict], set[str]]:
 
 
 def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
-    """Every figure captioned below as 「그림 N. 제목」 (its alt text), every table above as 「표 N. 제목」.
-
-    Numbered in document order; a writer's caption is renumbered, a missing table caption
-    is named from the header row."""
+    """Figures captioned below, tables above, numbered in order."""
     sections, mentioned = _renumber_references(sections)
     figure_no = table_no = 0
     previous_table: tuple[list[str], str] | None = None
@@ -2545,8 +2427,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             out.append(sec)
             continue
         content = str(sec.get("content") or "")
-        # 「−」 has no glyph in the exported PDF's face (it prints as □); 「[]」 is a citation
-        # with nothing in it; a line that is only 「표 4」 is a caption that lost its title.
+        # 「−」 lacks a PDF glyph; empty 「[]」; title-less 「표 4」 line
         content = content.replace("\u2212", "-")
         content = re.sub(r"\s?\[\s*\]", "", content)
         content = re.sub(r"(?m)^\s*표\s?\d{1,3}\s*\n", "", content)
@@ -2559,7 +2440,6 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             if figure:
                 figure_no += 1
                 title = _caption_text(figure.group("alt"), "그림") or figure.group("alt").strip()
-                # A caption line under the picture (blank lines between) is folded into it.
                 j = i + 1
                 while j < len(lines) and not lines[j].strip():
                     j += 1
@@ -2574,7 +2454,6 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 i += 1
                 continue
             if line.strip().startswith("```mermaid"):
-                # A drawn-in-browser figure: its caption is the line after the fence.
                 end = i + 1
                 while end < len(lines) and not lines[end].strip().startswith("```"):
                     end += 1
@@ -2595,7 +2474,6 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 r"^\s{0,3}\|?\s{0,3}:?-{2,}", lines[i + 1]
             ):
                 table_no += 1
-                # The caption above: the writer's own line (blank lines between), renumbered.
                 k = len(result) - 1
                 while k >= 0 and not result[k].strip():
                     k -= 1
@@ -2603,8 +2481,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 if given is not None:
                     del result[k:]
                 elif k >= 0 and (tail := _TRAILING_TABLE_CAPTION.search(result[k])):
-                    # 「… 필요합니다 [5]. 표: 배포 모델 비교」: the caption written onto the
-                    # paragraph's last line is lifted off it.
+                    # caption glued to the paragraph's last line lifted off
                     given = tail.group("text").strip(" *_.:")
                     result[k] = result[k][: tail.start()].rstrip()
                 header = [c.strip(" *") for c in line.strip().strip("|").split("|") if c.strip()]
@@ -2612,7 +2489,6 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                 while end < len(lines) and lines[end].strip().startswith("|"):
                     end += 1
                 if given is None:
-                    # 「표: …」 written under the table instead: it moves above, said once.
                     k = end
                     while k < len(lines) and not lines[k].strip():
                         k += 1
@@ -2620,8 +2496,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
                         given = below
                         lines[k] = ""
                 title = given or "·".join(header[:3]) or "표"
-                # A table shaped like the one before it (a lesson per table) takes that
-                # table's caption with its number moved on: 「1차시 …」 → 「2차시 …」.
+                # table shaped like the previous takes its caption, number advanced
                 if not given and previous_table and previous_table[0] == header:
                     step = re.search(r"(\d{1,2})\s?(차시|회차|주차|단계|일차|개월차)", previous_table[1])
                     if step:
@@ -2639,8 +2514,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
             result.append(line)
             i += 1
         text = re.sub(r"\n{3,}", "\n\n", "\n".join(result)).strip("\n")
-        # A reference with no figure or table to point at is taken out with its phrase,
-        # leaving the space between the words it stood between.
+        # dangling reference removed with its phrase
         if _FIGURE_REF in text or _TABLE_REF in text:
             text = re.sub(r"[ \t]{2,}", " ", _DANGLING_REF.sub(" ", text))
             text = re.sub(r" ([.,)])", r"\1", text)
@@ -2650,8 +2524,7 @@ def caption_figures_and_tables(sections: list[dict]) -> list[dict]:
 
 
 def _resolve_reference(result: list[str], lines: list[str], at: int, ref: str, name: str) -> bool:
-    """The 〔그림〕/〔표〕 nearest before the figure or table becomes its number; failing
-    that, the first one after it in the section. Whether the text pointed at it."""
+    """Nearest 〔그림〕/〔표〕 becomes the number; returns whether the text referenced it."""
     for k in range(len(result) - 1, -1, -1):
         if ref in result[k]:
             j = result[k].rfind(ref)
@@ -2665,9 +2538,7 @@ def _resolve_reference(result: list[str], lines: list[str], at: int, ref: str, n
 
 
 def _point_from_paragraph_before(result: list[str], name: str) -> None:
-    """A figure or table the text never mentions is pointed at the way a report does it:
-    「…로 구성됩니다(그림 2).」 at the end of the nearest prose paragraph before it. A table,
-    caption or picture in between is stepped over; a heading ends the search."""
+    """Unreferenced figure/table cited at the end of the nearest prior prose paragraph."""
     for k in range(len(result) - 1, -1, -1):
         line = result[k].rstrip()
         if not line.strip():
@@ -2679,10 +2550,10 @@ def _point_from_paragraph_before(result: list[str], name: str) -> None:
         m = re.search(r"(\s?(?:\[\d{1,3}\])+)?([.!?。])$", line)
         if m:
             head = line[: m.start()]
-            # 「…(표 2).」 already there: one bracket, 「(표 2, 그림 3)」.
+            # merge into an existing bracket
             if (prior := re.search(r"\(((?:그림|표) \d{1,3}(?:, (?:그림|표) \d{1,3})*)\)$", head)):
                 if name in prior.group(1).split(", "):
-                    return  # pointed at already: a second pass adds nothing
+                    return
                 head = head[: prior.start()] + f"({prior.group(1)}, {name})"
             else:
                 head = head + f"({name})"
@@ -2690,7 +2561,7 @@ def _point_from_paragraph_before(result: list[str], name: str) -> None:
         return
 
 
-#: Korean reads the last digit of a number; the particle after it follows that sound.
+#: final-digit sound for particle agreement
 _DIGIT_CODA = {"0": "ㅇ", "1": "ㄹ", "2": "", "3": "ㅁ", "4": "", "5": "", "6": "ㄱ",
                "7": "ㄹ", "8": "ㄹ", "9": ""}
 _PARTICLES = {"은": ("은", "는"), "는": ("은", "는"), "이": ("이", "가"), "가": ("이", "가"),
@@ -2699,8 +2570,7 @@ _PARTICLES = {"은": ("은", "는"), "는": ("은", "는"), "이": ("이", "가"
 
 
 def fix_number_particles(text: str) -> str:
-    """「표 1는」 → 「표 1은」, 「그림 2과」 → 「그림 2와」: the particle after a figure or
-    table number agrees with how the number is read."""
+    """Particle after a figure/table number agrees with its reading (「표 1은」)."""
     def agree(m: re.Match) -> str:
         number, particle = m.group(2), m.group(3)
         coda = "ㅂ" if number.endswith("0") and len(number) > 1 else _DIGIT_CODA[number[-1]]
@@ -2713,17 +2583,13 @@ def fix_number_particles(text: str) -> str:
     return re.sub(r"((?:그림|표) (\d{1,3}))(으로|로|은|는|이|가|을|를|과|와)(?=[\s,.)」]|$)", agree, text)
 
 
-#: A dot that ends an abbreviation, not a sentence.
 _ABBREVIATION_END = re.compile(r"(?:\bvs|\be\.g|\bi\.e|\bet al|\bcf|\bFig|\bEq|\bNo|\bpp?)\.$", re.I)
 
 
 def split_long_paragraphs(body: str, limit: int = 400) -> str:
-    """A prose paragraph over `limit` characters is cut at sentence ends into paragraphs
-    of two or three sentences (about 180–330 characters). Tables, lists, quotes, code
-    and headings are left as they are; a sentence is never split."""
+    """Long prose paragraphs split at sentence ends; blocks and sentences intact."""
     out: list[str] = []
     fenced = False
-    # A table written right under its paragraph, with no blank line, is its own block.
     body = re.sub(r"(?m)^([^|\n][^\n]*)\n(?=\|)", r"\1\n\n", body or "")
     for block in re.split(r"\n\s*\n", body):
         stripped = block.strip()
@@ -2740,7 +2606,7 @@ def split_long_paragraphs(body: str, limit: int = 400) -> str:
             out.append(block)
             continue
         sentences = re.split(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"(?:\s+)(?=[^\s])", stripped)
-        # 「vs.」, 「e.g.」, 「et al.」 end a word, not a sentence: 「(초록·도입 vs. 본문)」.
+        # abbreviation dots don't end sentences
         merged: list[str] = []
         for sentence in sentences:
             if merged and _ABBREVIATION_END.search(merged[-1]):
@@ -2751,7 +2617,6 @@ def split_long_paragraphs(body: str, limit: int = 400) -> str:
         chunk: list[str] = []
         size = 0
         for sentence in sentences:
-            # Close the paragraph before a sentence that would carry it past the limit.
             if chunk and size >= 150 and size + len(sentence) > limit:
                 out.append(" ".join(chunk))
                 chunk, size = [], 0
@@ -2769,8 +2634,7 @@ def split_long_paragraphs(body: str, limit: int = 400) -> str:
 
 
 def demote_subheadings(body: str) -> str:
-    """「## 분류 기준 확립」 inside a section becomes 「### …」 (and 「#」 too), so a
-    section's parts do not read as sections of the document. Fenced code is left alone."""
+    """In-section `##`/`#` demoted to `###`; fenced code untouched."""
     out, fenced = [], False
     for line in (body or "").split("\n"):
         if line.lstrip().startswith("```"):
@@ -2783,11 +2647,10 @@ def demote_subheadings(body: str) -> str:
 
 
 def _without_own_heading(body: str, heading: str) -> str:
-    """The section's text minus a repeat of its own heading on the first line."""
+    """Section text minus a repeated own heading."""
     lines = body.lstrip().split("\n", 1)
     first = re.sub(r"^#{1,6}\s*|\*+", "", lines[0]).strip()
-    # A lone bold line at the top with no sentence in it is a heading whatever it says
-    # (「**위험과 대응**」 over a section called 「위험」); the body starts below it.
+    # lone bold first line is a heading
     if (
         re.fullmatch(r"\*\*[^*\n]{1,40}\*\*\s*", lines[0])
         and not re.search(r"[.!?。]", lines[0])
@@ -2797,12 +2660,11 @@ def _without_own_heading(body: str, heading: str) -> str:
     if first != heading.strip() and (
         re.match(r"^#{1,6}\s+", lines[0]) or re.fullmatch(r"\*\*.+\*\*\s*", lines[0])
     ):
-        # Numbered headings may repeat the outline; plain numbered lists remain body text.
+        # numbered headings may repeat the outline; numbered lists stay
         first = re.sub(r"^\d+[.)]\s+", "", first)
     if first and first == heading.strip():
         return lines[1].lstrip() if len(lines) > 1 else ""
-    # A plain title-like first line (short, no sentence mark, a blank line after it) that
-    # contains the heading, or is contained in it, is the heading under a new name.
+    # short title-like first line matching the heading is a renamed heading
     if (
         len(lines) > 1
         and len(first) <= 40
@@ -2821,12 +2683,12 @@ def _heading_grams(text: str) -> set[str]:
 
 
 def _carries_material(request: str) -> bool:
-    """Whether the request carries its own material: long enough, or with a table in it."""
+    """Request carries its own material (long, or has a table)."""
     return len(request) >= 300 or "|" in request
 
 
 def _results_without_data(request: str, attached: list[str]) -> bool:
-    """Whether the request names or needs material (녹취, 표, 파일, results) that nothing attached carries."""
+    """Request needs material nothing attached carries."""
     if any(block.strip() for block in attached) or _carries_material(request):
         return False
     if _MATERIAL.search(request):
@@ -2837,7 +2699,7 @@ def _results_without_data(request: str, attached: list[str]) -> bool:
 
 
 def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str]:
-    """Drops sections named after one alternative and keeps a single 대안 비교 section."""
+    """Per-alternative sections merged into one 대안 비교."""
     if not alternatives or not headings:
         return headings
     names = [a for a in alternatives if len(a) >= 2]
@@ -2850,7 +2712,6 @@ def _fold_alternatives(headings: list[str], alternatives: list[str]) -> list[str
             continue
         keep.append(h)
     if dropped and not any("비교" in h for h in keep):
-        # After the calculation section if there is one, else after the situation.
         at = next((i + 1 for i, h in enumerate(keep) if "계산" in h or "전제" in h), None)
         keep.insert(min(len(keep), 2) if at is None else at, "대안 비교")
     return keep
@@ -2860,7 +2721,7 @@ _FOLLOW_OUTLINE = re.compile(
     r"개요\s{0,3}(?:로|대로|에\s{0,3}따라|를\s{0,3}따라)|이\s{0,3}(?:구성|목차)\s{0,3}(?:으로|로|대로)|"
     r"아래\s{0,3}(?:구성|목차)\s{0,3}(?:으로|로|대로)"
 )
-#: A line of a pasted outline that names a section: 서론·본론·결론, 「1.」 「Ⅱ.」 「제2장」.
+#: pasted-outline section line (서론·본론·결론, 「1.」, 「Ⅱ.」, 「제2장」)
 _OUTLINE_LINE = re.compile(
     r"^\s{0,3}(?:#{1,4}\s{1,3}|\*\*)?\s{0,2}((?:서론|본론|결론|맺음말|들어가며|나가며)[^\n*]{0,70}|"
     r"(?:[1-9][0-9]?|[IVX]{1,4}|[ⅠⅡⅢⅣⅤⅥⅦⅧ])[.)]\s{0,2}[^\n*]{2,70}|제\s{0,2}\d{1,2}\s{0,2}[장절][^\n*]{0,60})"
@@ -2869,14 +2730,11 @@ _OUTLINE_LINE = re.compile(
 
 
 def given_outline(request: str) -> list[str]:
-    """The sections of an outline the person pasted and asked the document to follow;
-    `[]` unless the instruction says to follow it and the material has three or more
-    section lines."""
+    """Sections of a pasted outline the instruction says to follow (3+), else `[]`."""
     if not _FOLLOW_OUTLINE.search(instruction_part(request)):
         return []
     material = request[len(instruction_part(request)) :]
-    # Several pasted answers each bring their own headings: a run ends where a numbered
-    # list starts over (「1.」 after 「3.」) or a new pasted block begins (「[2]」).
+    # runs split at restarted numbering or a new pasted block
     runs: list[list[str]] = [[]]
     last_number = 0
     for line in material.splitlines():
@@ -2897,8 +2755,7 @@ def given_outline(request: str) -> list[str]:
     runs = [run for run in runs if len(run) >= 3]
     if not runs:
         return []
-    # The outline is the run that has the parts the instruction names (서론·결론, 본론 N절);
-    # failing that, the last one — the latest answer is the outline that was agreed.
+    # run naming the instruction's parts, else the last (latest agreed)
     parts = re.findall(r"서론|본론|결론|맺음말|들어가며|나가며", instruction_part(request))
     for run in reversed(runs):
         if parts and any(part in heading for part in parts for heading in run):
@@ -2906,13 +2763,11 @@ def given_outline(request: str) -> list[str]:
     return runs[-1]
 
 
-#: 「구성은 A, B, C」 「끝에 참고문헌」 — sections the instruction names.
 _LISTED = re.compile(r"구성(?:은|:|：)\s{0,3}([^.。\n]{6,300})")
 
 
 def without_instruction_aside(heading: str, request: str) -> str:
-    """「결과(측정 표와 계산한 이득·이론값·오차)」 → 「결과」: a parenthetical the planner
-    copied from the instruction is what the section should hold, not its name."""
+    """Planner-copied parenthetical stripped from a heading."""
     m = re.fullmatch(r"\s{0,3}(.{2,40}?)\s{0,3}[(（]([^()（）]{6,80})[)）]\s{0,3}", heading or "")
     if m and m.group(2).strip() in instruction_part(request):
         return m.group(1).strip()
@@ -2920,9 +2775,7 @@ def without_instruction_aside(heading: str, request: str) -> str:
 
 
 def with_listed_sections(headings: list[str], request: str) -> list[str]:
-    """The planned headings plus any section the instruction names and the plan lacks.
-
-    참고문헌 goes last, others before it."""
+    """Planned headings plus instruction-named missing ones; 참고문헌 last."""
     instruction = instruction_part(request)
     named: list[str] = []
     if m := _LISTED.search(instruction):
@@ -2943,7 +2796,6 @@ def with_listed_sections(headings: list[str], request: str) -> list[str]:
         if "참고" in name:
             out.append(name)
             continue
-        # After the nearest earlier named section the plan has; first when there is none.
         anchor = next(
             (pos for prev in reversed(named[:index]) if (pos := where(prev, out)) is not None),
             None,
@@ -2953,8 +2805,7 @@ def with_listed_sections(headings: list[str], request: str) -> list[str]:
 
 
 def _heading_of(item: Any) -> str:
-    """An outline item as a heading: a string, or an object's heading/title. A question
-    the model slipped into the list (「{'question': …, 'options': …}」) is not a section."""
+    """Outline item as a heading; slipped-in questions excluded."""
     if isinstance(item, dict):
         item = item.get("heading") or item.get("title") or ""
     elif not isinstance(item, (str, int, float)):
@@ -2962,14 +2813,14 @@ def _heading_of(item: Any) -> str:
     text = str(item).strip()
     if text.startswith("{"):
         return ""
-    # 「검토 목적 (review purpose)」: an English gloss on a Korean heading is not part of it.
+    # English gloss dropped
     if re.search(r"[가-힣]", text):
         text = re.sub(r"\s{0,3}[(（][A-Za-z][A-Za-z0-9 ,:;&/'.-]{1,80}[)）]\s{0,3}$", "", text).strip()
     return text
 
 
 def _parse_outline(text: str) -> tuple[str, list[str]]:
-    """`(title, headings)` from whatever the model wrapped its JSON in; the title may be empty."""
+    """`(title, headings)` from wrapped JSON; title may be empty."""
     title = ""
     obj = re.search(r"\{.*\}", text, re.S)
     if obj:
@@ -2996,7 +2847,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
                 return title, headings[:_MAX_SECTIONS]
         except json.JSONDecodeError:
             pass
-    # A reply cut off at the token cap: the `sections` array's strings so far still count.
+    # truncated reply: partial `sections` array counts
     cut = re.search(r'"sections"\s*:\s*\[(?P<body>.*)', text, re.S)
     if cut:
         body = cut.group("body").split("]", 1)[0]
@@ -3009,8 +2860,7 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
             if not title and (named := re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.){1,120})"', text)):
                 title = named.group(1).strip()
             return title, headings[:_MAX_SECTIONS]
-    # A reply that ignored the format usually still holds a list, often under notes about
-    # the format (「**Sections**:」, 「구조:」). Only the list under the last header counts.
+    # format ignored: list under the last header counts
     raw = text.splitlines()
     start = 0
     for i, line in enumerate(raw):
@@ -3025,18 +2875,16 @@ def _parse_outline(text: str) -> tuple[str, list[str]]:
     for line in lines:
         if not line or _OUTLINE_NOTE.search(line):
             continue
-        # 「대상 환경 분석 (어떤 환경에 적용되는지)」: the gloss in brackets is not the title.
+        # bracketed gloss dropped
         line = re.sub(r"\s{0,3}[(（][^()（）]{1,40}[)）]\s*$", "", line).strip()
         if line and len(line) <= 40:
             headings.append(line)
     return title, headings[:_MAX_SECTIONS]
 
 
-#: The header a model writes above the list it means as the outline.
 _OUTLINE_LIST_HEADER = re.compile(
     r"^\s*(?:[-*+]|\d+[.)])?\s*\**\s*(?:sections?|구조|목차|섹션|outline)\s*\**\s*[:：]\s*\**\s*$", re.I
 )
-#: A line about the outline rather than a part of it.
 _OUTLINE_NOTE = re.compile(
     r"\*\*[^*]{1,30}\*\*\s*[:：]|[:：]\s*$|^(?:title|subject|style|alternatives|제목|주제|스타일|"
     r"요청된 항목|요청 항목|대안)\s*[:：]",
@@ -3045,7 +2893,7 @@ _OUTLINE_NOTE = re.compile(
 
 
 def outline_is_json(text: str) -> bool:
-    """Whether the outline came as the JSON object asked for, not as a list in prose."""
+    """Outline came as the requested JSON object."""
     match = re.search(r"\{.*\}", text or "", re.S)
     if not match:
         return bool(re.search(r'"sections"\s*:\s*\[', text or ""))
@@ -3058,7 +2906,7 @@ def outline_is_json(text: str) -> bool:
 def _refs_block(sources: list[dict[str, Any]]) -> str:
     if not sources:
         return _NO_REFS
-    # `.get` throughout: a hand-typed source carries only a title and a url.
+    # hand-typed sources: title and url only
     return "\n".join(
         f"[{s.get('ordinal', i + 1)}] {s.get('title') or s.get('url') or ''}"
         f" ({s.get('publisher') or ''})\n{s.get('quote') or ''}"
@@ -3067,10 +2915,7 @@ def _refs_block(sources: list[dict[str, Any]]) -> str:
 
 
 async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | None:
-    """One picture as a stored figure, or `None` when it could not be drawn.
-
-    Embedded as a `data:` URI so exported and mailed copies keep it. Never raises.
-    """
+    """Stored figure as a `data:` URI, or `None`; never raises."""
     if not image_model:
         return None
     base, _ = await settings_store.litellm_config()
@@ -3086,23 +2931,21 @@ async def _draw(figure: dict, image_model: dict | None, api_key: str) -> dict | 
         log.warning("figure could not be drawn: %s", exc)
         return None
     return {
-        # `encode` returns the whole `data:` URI.
         "src": pictures.encode(made.mime, made.data),
         "caption": str(figure.get("caption") or ""),
         "width": made.width,
         "height": made.height,
-        # Popped by the caller into the turn's usage.
+        # popped into the turn's usage
         "_in": made.input_tokens,
         "_out": made.output_tokens,
     }
 
 
-#: The two blocks that are nothing but figures, drawn large.
 _FIGURE_FENCE = re.compile(r"^```(?:kpi|chart)\b.*?^```\s*$", re.S | re.M)
 
 
 def _grounded_figures(text: str, grounded: bool) -> str:
-    """Figure blocks removed from a section with no material to draw them from; the prose stays."""
+    """Figure blocks dropped when there is no material; prose kept."""
     if not grounded:
         return _FIGURE_FENCE.sub("", text).strip()
     return re.sub(r"\n{3,}", "\n\n", _KPI_FENCE.sub(_kpi_or_nothing, text)).strip()
@@ -3113,7 +2956,7 @@ _UNDETERMINED = re.compile(r"미정|확인 필요|해당 없음|N/A|TBD|\?|\[[�
 
 
 def _kpi_or_nothing(match: re.Match[str]) -> str:
-    """A kpi block removed whole when any of its values is a placeholder rather than a number."""
+    """kpi block dropped if any value is a placeholder."""
     body = match.group(0).strip("`").split("\n", 1)[1] if "\n" in match.group(0) else ""
     lines = [
         line for line in body.split("\n") if line.strip() and not line.strip().startswith("```")
@@ -3123,25 +2966,20 @@ def _kpi_or_nothing(match: re.Match[str]) -> str:
         for line in lines
     ):
         return ""
-    # 「72000000원」 reads as 「72,000,000원」 on a tile.
+    # thousands separators for tiles
     return re.sub(r"(?m)^([^|\n]{0,80}?)(?<![\d.,])(\d{5,15})(?![\d.,])",
                   lambda m: f"{m.group(1)}{int(m.group(2)):,}", match.group(0))
 
 
 def _pasted_without_marker(request: str) -> str:
-    """Material pasted after the instruction's first paragraph though no 「---」 or long
-    line marks it (120 characters or more); else `""`. Read for its facts only."""
+    """Unmarked pasted material (120+ chars) after the first paragraph, or `""`."""
     head, _, rest = (request or "").strip().partition("\n\n")
     rest = rest.strip()
     return rest if head and len(rest) >= 120 else ""
 
 
 def _request_material(request: str) -> str:
-    """What the request itself gives as material, attachments or not: the pasted block,
-    a memo after the first paragraph, or else the request's own price lines.
-
-    Covers a one-line 「[견적 메모]」 under an attached RFP, which is neither pasted (no 「---」,
-    under 400 characters) nor an attachment."""
+    """Request's own material: pasted block, memo, or price lines."""
     if pasted := pasted_material(request):
         return pasted
     if memo := _pasted_without_marker(request):
@@ -3149,9 +2987,7 @@ def _request_material(request: str) -> str:
     lines = [line.strip() for line in (request or "").splitlines()
              if report_checks.price_line(line)]
     if not lines:
-        # Figures stated inline (「A안: 시간당 12,000원, 연간 2,000시간. B안: 구매가 1억
-        # 2천만원 …」): the sentences that state amounts are the material, or the settled
-        # figures, the cost pre-pass and the trace have nothing to read.
+        # inline amount sentences as material, else nothing to read
         sentences = re.split(r"(?<=[.!?。])\s+|\n+", instruction_part(request or ""))
         lines = [t.strip() for t in sentences if _WON.search(t)]
         if sum(len(_WON.findall(t)) for t in lines) < 2:
@@ -3159,13 +2995,12 @@ def _request_material(request: str) -> str:
     return "# 요청에 적은 자료\n" + "\n".join(lines) if lines else ""
 
 
-#: An amount of money stated in the request: 「12,000원」, 「1억 2천만원」, 「900만 원」.
 _WON = re.compile(r"\d[\d,]{0,15}(?:\.\d{1,4})?\s{0,2}(?:[조억천만]\s{0,2}){0,4}"
                   r"(?:\d[\d,]{0,15}\s{0,2}(?:[천만]\s{0,2}){1,2})?원")
 
 
 def _source_text(row: dict[str, Any]) -> str:
-    """A search source's words, so a value it gives traces to it."""
+    """Search source words, for value tracing."""
     return " ".join(str(row.get(k) or "") for k in ("title", "snippet", "quote", "content", "text", "excerpt"))
 
 
@@ -3176,58 +3011,44 @@ async def write(
     api_key: str,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
-    #: Model that plans, when an administrator named one; empty plans with `model`.
+    #: admin-named planner; empty uses `model`
     outline_model: str = "",
-    #: The approved 목차. Absent: plan, emit `proposal` (or `needs`) and stop.
-    #: Present: write exactly it.
+    #: approved 목차: absent plans and stops, present writes exactly it
     approved_plan: dict[str, Any] | None = None,
-    #: Whether this pass may stop to ask. False on the pass after 있는 자료로
-    #: 진행, or the same question loops.
+    #: False after 있는 자료로 진행, to avoid ask loops
     may_ask: bool = True,
-    #: Approved pictures to draw. `None` on the planning pass; `[]` means 그림 없이.
+    #: `None` on planning; `[]` means 그림 없이
     figures_plan: list[dict] | None = None,
-    #: Model that draws them. Empty disables the figure proposal.
+    #: empty disables figure proposal
     image_model: dict | None = None,
-    #: Whether to research through `services.research` before planning.
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
-    #: The session's 서식; one in `doc_formats.TEMPLATE_FORMATS` fixes the format and genre.
+    #: session 서식; may fix format and genre
     template_id: str | None = None,
-    #: The agent's bound `doc_formats` id; used when the 서식 fixes none.
+    #: agent's `doc_formats` id when the 서식 fixes none
     format_id: str | None = None,
-    #: The session's design tokens; the page count lays the body out in its face.
     design_tokens: dict[str, str] | None = None,
-    #: Check skills the agent and the 서식 attach (`check_skills.attached`); None reads the
-    #: 서식's own.
-    #: The agent's own 진행 과정 설정 (`Agent.process_settings`), over its 서식's.
+    #: agent's 진행 과정 설정, over its 서식's
     process: dict[str, Any] | None = None,
+    #: attached check skills; None reads the 서식's own
     check_keys: tuple[str, ...] | None = None,
-    #: The agent's `check_options`: how strict the trace is.
     check_options: dict[str, Any] | None = None,
-    #: What the server runs for a person's check skill among `check_keys` (`skill_specs`).
+    #: server runs for a person's check skills (`skill_specs`)
     skill_specs: dict[str, Any] | None = None,
-    #: Receives one record per stage (`StepRecord.as_dict`), run or not.
+    #: one record per stage, run or not
     trace: list[dict[str, Any]] | None = None,
-    #: The router's settlement of the turn (`Request.turn`): given, `report-save` stores the
-    #: written document; absent, the caller does.
+    #: router settlement: given, `report-save` stores the document
     turn: dict[str, Any] | None = None,
     session_id: str = "",
-    #: Keeps the bundle after each stage, so the run can be rerun from one later.
+    #: keeps the bundle per stage for reruns
     recorder: Any = None,
-    #: Receives the work bundle once built, for the caller that stores the run.
+    #: receives the built work bundle
     bundle_out: list | None = None,
-    #: A composed run: what earlier steps wrote (read, never a source of figures) and what
-    #: their code printed (a source).
+    #: composed run: earlier text (never a figure source), code output (a source)
     derived_context: list[str] | None = None,
     tool_outputs: list[str] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Streams `step`, `section` and one final `usage` event.
-
-    The caller owns persistence, billing and the artifact — this only writes. The work is
-    the format's pipeline (`app/pipelines/*.toml`): its `plan` stages when no outline is
-    approved yet, its `write` stages on the approved one; `trace`, when given, receives
-    each stage's record.
-    """
+    """Streams `step`, `section` and a final `usage` event; caller owns persistence."""
     from app.pipeline import registry, report_stages
     from app.pipeline.runner import Runner
     from app.pipeline.stage import Context
@@ -3270,14 +3091,10 @@ async def rewrite_section(
     note: str = "",
     sources: list[dict] | None = None,
     material: list[str] | None = None,
-    #: The document's format (`titleBlock.format`); its genre rules hold for the rewrite too.
+    #: genre rules also apply to the rewrite
     doc_format: str = "",
 ) -> tuple[str, dict]:
-    """Rewrites one section with the rest of the document as context.
-
-    `material` is the request's own data — attached files, pasted tables — carried
-    again so the rewrite draws its numbers from where the original did.
-    """
+    """Rewrites one section in document context; `material` is the request's own data."""
     outline = "\n".join(f"{i + 1}. {s.get('heading') or ''}" for i, s in enumerate(sections))
     written = "\n\n".join(
         f"## {s.get('heading')}\n{s.get('content') or ''}"
@@ -3292,13 +3109,13 @@ async def rewrite_section(
         heading=heading,
         outline=outline,
         written=written[-4000:] or "(nothing yet)",
-        # The shelf keeps the document's citation numbers valid.
+        # keeps citation numbers valid
         refs=_refs_block(sources or []),
         request=request[:1500],
         role=role,
         blocks=blocks,
         others=_others_line([str(x.get("heading") or "") for x in sections], position),
-        # Numbers already in the document, and in the material it was written from, are allowed too.
+        # existing document and material numbers allowed
         facts=_facts_line(
             "\n".join(
                 [request, *(material or []), *[str(s.get("content") or "") for s in sections]]
@@ -3309,7 +3126,7 @@ async def rewrite_section(
     )
     prompt = _shaped(prompt, genre)
     if note.strip():
-        # Last and labelled, or it reads as part of the original request.
+        # last and labelled, else read as the original request
         prompt += (
             f"\n\nWhy this section is being rewritten (must be applied):\n{note.strip()[:600]}\n"
             "If the reason names a form (three numbered items, one table, three sentences), write "
@@ -3324,7 +3141,7 @@ async def rewrite_section(
         api_key,
         1200,
     )
-    # The same normalisation `write` applies.
+    # same normalisation as `write`
     body = hangul.tidy_spacing(hangul.read_back(_without_own_heading(body, heading))[0])
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
@@ -3336,7 +3153,7 @@ async def rewrite_section(
 
 
 def _without_borrowed_tables(body: str, before: str, others: list[str], note: str) -> str:
-    """The rewrite's tables, minus any another section draws or the section never had and the note did not ask for."""
+    """Rewrite tables minus ones drawn elsewhere or never asked for."""
     if not _TABLE.search(body):
         return body
     elsewhere = {_table_key(m.group(0)) for text in others for m in _TABLE.finditer(text)}
@@ -3350,16 +3167,12 @@ def _without_borrowed_tables(body: str, before: str, others: list[str], note: st
     return re.sub(r"\n{3,}", "\n\n", _TABLE.sub(keep_or_drop, body)).strip()
 
 
-#: A note that asks for a table to go: 「표는 빼 줘」, 「표 1 삭제」.
 _DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신)")
-#: A table's caption line: 「**표 1. 연도별 예산**」, 「표 2 비교」.
 _CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}(?:<표|표)\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
 
 
 def _keeps_its_tables(body: str, before: str, note: str) -> str:
-    """A rewrite that lost the section's tables gets them back, with their captions: 「이 절만
-    다시 쓰기」 is about the prose, and 표 1 vanishing with it was a loss nobody asked for. Each
-    goes after the paragraph that first names it (「표 1」), else at the end."""
+    """Tables lost in a rewrite restored after the paragraph naming them, else at the end."""
     if _TABLE.search(body) or not _TABLE.search(before) or _DROPS_TABLE.search(note or ""):
         return body
     blocks: list[tuple[str, str]] = []
@@ -3372,7 +3185,7 @@ def _keeps_its_tables(body: str, before: str, note: str) -> str:
         number = _CAPTION.match(caption).group(1) if caption else ""
         paragraphs = out.split("\n\n")
         if caption and caption in (p.strip() for p in paragraphs):
-            # The rewrite kept the caption and lost the table under it.
+            # caption kept, table lost
             at = [p.strip() for p in paragraphs].index(caption)
             paragraphs.insert(at + 1, table)
             out = "\n\n".join(paragraphs)
@@ -3389,7 +3202,7 @@ def _keeps_its_tables(body: str, before: str, note: str) -> str:
 
 
 def _table_key(table: str) -> str:
-    """A table's header row, spacing and alignment marks removed."""
+    """Table header row, whitespace and alignment stripped."""
     head = table.strip().split("\n", 1)[0]
     return re.sub(r"[\s:|-]+", "", head)
 
@@ -3405,7 +3218,7 @@ def _as_number(text: str) -> float:
     return float(text.replace(",", ""))
 
 
-#: 「16억 9,200만 원 (470만 원 × 36개월)」 — a total written first, its formula after it.
+#: total written before its formula
 _VALUE_THEN_PRODUCT = re.compile(
     r"(?P<c>\d[\d,]*(?:\.\d+)?\s*억(?:\s*\d[\d,]*\s*만)?|\d[\d,]*(?:\.\d+)?\s*만)\s*원?\s*"
     r"\(\s*(?P<a>\d[\d,]*(?:\.\d+)?)\s*만\s*원?\s*[×x\*]\s*(?P<b>\d[\d,]*)\s*(?:개월|년|개|명|대|회)\s*\)"
@@ -3418,7 +3231,7 @@ _AMOUNT_WON = re.compile(
 
 
 def fix_ledger_magnitudes(text: str, request: str) -> str:
-    """An amount that is a ledger result off by a power of ten is set back to that result."""
+    """Power-of-ten slip against a ledger result restored."""
     results: list[float] = []
     for line in derived_values(request or ""):
         if " = " not in line:
@@ -3445,7 +3258,7 @@ def fix_ledger_magnitudes(text: str, request: str) -> str:
 
 
 def _to_man(text: str) -> float | None:
-    """「16억 9,200만」 → 169200, 「1억」 → 10000, 「5,640만」 → 5640; `None` when unreadable."""
+    """Korean amount in 만, or `None`."""
     plain = text.replace(",", "").replace(" ", "")
     match = re.fullmatch(r"(?:(\d{1,15}(?:\.\d{1,15})?)억)?(?:(\d{1,15}(?:\.\d{1,15})?)만)?", plain)
     if not match or not (match.group(1) or match.group(2)):
@@ -3453,10 +3266,7 @@ def _to_man(text: str) -> float | None:
     return float(match.group(1) or 0) * 10000 + float(match.group(2) or 0)
 
 
-#: The same noun twice in a row under different particles — 「방향으로 방향을 잡는다」 —
-#: a writer that restarted its phrase mid-sentence. Code and URLs are left alone.
-#: The first half must be an adverbial (「방향으로」, 「서울에서」); a subject followed by
-#: the same noun as object (「비용이 비용을 낳는다」) is a sentence, not a restart.
+#: restarted phrase: same noun under two particles, first adverbial (「방향으로 방향을」)
 _DOUBLED = re.compile(
     r"(?<![가-힣])([가-힣]{2,6})(으로|로|에서|에게|에|의|와|과|도)\s+"
     r"\1(으로|로|에서|에게|에|을|를|이|가|은|는|의|와|과|도)(?![가-힣])"
@@ -3464,8 +3274,7 @@ _DOUBLED = re.compile(
 
 
 def undouble_words(text: str) -> str:
-    """「방향으로 방향을」 → 「방향을」: the restarted phrase keeps its second, finished half.
-    Table rows and fenced code are left as written."""
+    """Restarted phrase keeps its second half; tables and code untouched."""
     out = []
     fenced = False
     for line in text.split("\n"):
@@ -3478,13 +3287,12 @@ def undouble_words(text: str) -> str:
     return "\n".join(out)
 
 
-#: A difference worked out in prose (「0.521 - 0.345 = 0.176」) is scratch work; a cost
-#: working (「470만 원 × 36개월 = …」) is asked for by the prompt and stays.
+#: prose subtraction is scratch work; cost workings stay
 _SHOWN_ARITHMETIC = re.compile(
     r"(?<![\d.])\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}[-−–]\s{0,8}\d[\d,]{0,15}(?:\.\d{1,15})?\s{0,8}=\s{0,8}(\d[\d,]{0,15}(?:\.\d{1,15})?)"
 )
 _NUMBER_TOKEN = re.compile(r"\d[\d,]*(?:\.\d+)?")
-#: Typed 개조식 markers and the ※ note: list lines, like 「-」 and 「*」.
+#: typed 개조식 markers count as list lines
 _GAEJO_MARKS = ("□", "■", "○", "◦", "ㅇ", "ㆍ", "·", "∙", "※")
 _SENTENCE_END = re.compile(r"(?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s{1,8}|(?<=다\.)\s{0,8}(?=[가-힣A-Za-z(「\d])")
 
@@ -3494,8 +3302,7 @@ def _number_keys(text: str) -> set[str]:
 
 
 def _collapse_arithmetic(body: str) -> str:
-    """「0.521 - 0.345 = 0.176으로 측정되어」 → 「0.176으로 측정되어」 outside tables and code:
-    a report states a result; the working belongs in a table note, if anywhere."""
+    """Prose scratch arithmetic collapsed to its result."""
     out = []
     fenced = False
     for line in body.split("\n"):
@@ -3509,10 +3316,7 @@ def _collapse_arithmetic(body: str) -> str:
 
 
 def trim_table_echo(body: str) -> str:
-    """A sentence whose two or more numbers are all cells of a table in the same section goes.
-
-    Shown arithmetic becomes its result; a section never loses its last prose sentence.
-    """
+    """Sentences only echoing same-section table cells dropped; last prose sentence kept."""
     lines = body.split("\n")
     table_cells: set[str] = set()
     for line in lines:
@@ -3520,7 +3324,6 @@ def trim_table_echo(body: str) -> str:
             for cell in line.strip().strip("|").split("|"):
                 table_cells |= _number_keys(cell)
     if len(table_cells) < 2:
-        # No table to echo; shown arithmetic in prose still becomes its result.
         return _collapse_arithmetic(body)
     out: list[str] = []
     fenced = False
@@ -3555,8 +3358,8 @@ _BARE_RATIO = re.compile(r"(?<![\d.%])0\.\d{1,15}(?![\d.%])")
 
 
 def fix_point_units(text: str) -> str:
-    """「%p」 after a difference of bare ratios (0.xxx) goes; a sentence about percentages keeps it."""
-    # Split with the separators kept, so paragraph breaks and fence lines survive.
+    """「%p」 after a ratio difference dropped."""
+    # separators kept so breaks and fences survive
     parts = re.split(r"((?<=[.!?。])" + units.NO_NUMBER_DOT_BREAK + r"\s{1,8})", text)
     for i in range(0, len(parts), 2):
         sentence = parts[i]
@@ -3587,8 +3390,7 @@ def _pct(value: float) -> str:
 
 
 def fix_percent_formulas(text: str) -> str:
-    """「(14-3) ÷ 14 × 100 = 1,400%」 is checked, not trusted: the result becomes 78.6%, and
-    the wrong figure is corrected wherever else the section repeats it."""
+    """Percentage formula results recomputed; wrong figures fixed everywhere."""
     wrong: dict[str, str] = {}
 
     def diff(m: re.Match) -> str:
@@ -3626,9 +3428,7 @@ def _section_text(section: dict) -> str:
 
 
 def trim_leading_conclusion(sections: list[dict]) -> list[dict]:
-    """A conclusion moved to the front drops sentences that only restate later sections' numbers.
-
-    Never emptied."""
+    """Front-loaded conclusion drops restatements of later numbers; never emptied."""
     if len(sections) < 2 or not _LEADING_CONCLUSION.search(str(sections[0].get("heading") or "")):
         return sections
     body = str(sections[0].get("content") or "")
@@ -3648,7 +3448,7 @@ _SENTENCE_ASK = re.compile(
 
 
 def requested_sentence_counts(request: str) -> dict[str, int]:
-    """「요약은 세 문장」 「결론 두 문장으로」 → {"요약": 3, "결론": 2}."""
+    """Requested sentence counts per section."""
     out: dict[str, int] = {}
     for m in _SENTENCE_ASK.finditer(request or ""):
         count = _KO_COUNT.get(m.group(2)) or int(m.group(2)) if m.group(2) else None
@@ -3658,9 +3458,7 @@ def requested_sentence_counts(request: str) -> dict[str, int]:
 
 
 def enforce_sentence_counts(sections: list[dict], request: str) -> list[dict]:
-    """A section the request sized in sentences keeps that many: the first N prose
-    sentences stay, later ones go; tables, lists and fenced blocks are not sentences and
-    stay where they are."""
+    """Sentence-count limits applied to prose only."""
     wanted = requested_sentence_counts(request)
     if not wanted:
         return sections
@@ -3692,7 +3490,7 @@ def enforce_sentence_counts(sections: list[dict], request: str) -> list[dict]:
 
 
 def fix_value_then_product(text: str) -> str:
-    """A total written before its formula is recomputed; a wrong one is replaced wherever it repeats."""
+    """Total before its formula recomputed and fixed everywhere."""
     out = text or ""
     corrections: list[tuple[str, str]] = []
     for match in reversed(list(_VALUE_THEN_PRODUCT.finditer(out))):
@@ -3712,8 +3510,7 @@ def fix_value_then_product(text: str) -> str:
 
 
 def _format_like(value: float, sample: str) -> str:
-    """`value` written the way `sample` was: thousands separators if it had them, no
-    needless decimals."""
+    """`value` formatted like `sample`."""
     rounded = round(value, 2)
     if abs(rounded - round(rounded)) < 1e-9:
         rounded = int(round(rounded))
@@ -3722,13 +3519,10 @@ def _format_like(value: float, sample: str) -> str:
 
 
 def fix_products(text: str) -> str:
-    """Every 「A × B = C」 in `text` recomputed; a wrong C is replaced everywhere in the text.
-
-    Only plain products with the same scale on both sides are touched."""
+    """「A × B = C」 recomputed; same-scale products only."""
     out = text or ""
     corrections: list[tuple[str, str, str, str]] = []
-    # The equations first, each result replaced in its own span (right to left so
-    # earlier offsets stay valid).
+    # right to left keeps offsets valid
     for match in reversed(list(_PRODUCT.finditer(out))):
         if (match.group("ua") or "") != (match.group("uc") or ""):
             continue
@@ -3746,9 +3540,7 @@ def fix_products(text: str) -> str:
         corrections.append(
             (match.group("c"), right, match.group("uc") or "", match.group("unitc") or "")
         )
-    # Then the same wrong figure wherever the text repeats it — a table cell below the
-    # sentence — matched as a whole number with its scale and unit, never inside another
-    # number: 「169,200만 원」 goes, 「2,169,200」 and 「169,2001」 stay.
+    # repeats fixed as whole numbers with scale and unit only
     for wrong, right, scale, unit in corrections:
         tail = (rf"\s*{re.escape(scale)}" if scale else "") + (rf"\s*{re.escape(unit)}" if unit else "")
         pattern = re.compile(rf"(?<![\d,.]){re.escape(wrong)}(?![\d,.]){tail}" if (scale or unit)
@@ -3761,7 +3553,7 @@ def fix_products(text: str) -> str:
 
 
 _PLACEHOLDER = re.compile(
-    # Value holes only: a 「[담당자]」 is the person's to fill, not the attached data's.
+    # value holes only; 「[담당자]」 is the person's
     r"\((?:미정|측정값|값|TBD|TODO|n/a|추후\s*기입|확인\s*필요)\)|\[(?:측정값|값|수치|금액)\]",
     re.I,
 )
@@ -3774,18 +3566,14 @@ body only, no section heading, in Markdown, in Korean. Do not wrap it in JSON.
 {body}"""
 
 
-#: Sentences that carry no fact: the model's way of saying it has nothing to add.
 _FILLER = re.compile(
     r"(명시되어 있지 않습니다|확인되지 않았습니다|자료에 (?:다른|별도의) [^.]*없습니다|"
     r"고려할 필요가 있습니다|중요한 역할을 합니다|할 수 있을 것으로 보입니다|"
     r"필요할 것으로 판단됩니다|주목할 만합니다|의미가 있다고 할 수 있습니다)"
 )
-#: Sentence breaks at whitespace only, for the restatement trimming.
 _SPACED_SENTENCE_END = units.SENTENCE_BREAK
-#: A line's indent, and its indent with a list marker (Markdown or a typed 개조식 one).
 _LINE_LEAD = re.compile(r"^\s{0,24}")
 _LIST_LEAD = re.compile(r"^\s{0,24}(?:(?:[-*+]|\d{1,3}[.)]|[□■○◦ㅇㆍ·∙※])\s{1,4})?")
-#: A number with the unit glued to it (「742명」 「6.1만 건」 「14분」 「4.1점」 「7%」).
 _NUMBER_FACT = re.compile(r"(?<![A-Za-z\d])\d[\d,.]*(?:\s*(?:만|억|천))?[가-힣%]?")
 
 
@@ -3794,7 +3582,7 @@ _PARTICLE = re.compile(
     r"되었|되어|하였|하여|했다|한다|하는|하고|하며|이며|으며|에서는|에서|으로|은|는|이|가|을|를|"
     r"의|에|로|와|과|도|된|한|며)$"
 )
-#: Words that carry no fact of their own; a restatement dressed in them is still one.
+#: filler words; restatement still counts
 _CONNECTIVES = frozenset(
     "이번 총 동안 기간 대상 기준 통해 위해 경우 또한 그리고 이후 당시 전체 각각 모두 해당 "
     "진행 운영 실시 수행 소속 포함 전제 결과 과정 중 및 등".split()
@@ -3802,8 +3590,7 @@ _CONNECTIVES = frozenset(
 
 
 def _stems(text: str) -> set[str]:
-    """Content words with the particle or ending cut off, so 「대상은」 and 「대상」 agree;
-    one-letter stems and connective words are not counted as content."""
+    """Content-word stems; short stems and connectives excluded."""
     out = set()
     for word in re.findall(r"[가-힣A-Za-z]{2,}", text):
         stem = _PARTICLE.sub("", word) or word
@@ -3812,8 +3599,7 @@ def _stems(text: str) -> set[str]:
     return out
 
 
-#: A line of a test (question, choice, answer, scoring): never trimmed as a restatement,
-#: since a wrong choice repeats the body's numbers on purpose.
+#: test lines: never trimmed (wrong choices repeat numbers)
 _ASSESSMENT_LINE = re.compile(
     r"[①-⑩]|^\s*(?:\*\*)?(?:서술형\s?)?\d{1,2}\s?[.)번](?:\*\*)?\s|^\s*\*\*서술형|"
     r"\d{1,2}\s?점\)|[?？]\s{0,8}$|(?:정답|모범\s?답|채점|배점|보기)\s?[:：]|시오\.?\s{0,8}$"
@@ -3823,17 +3609,10 @@ _ASSESSMENT_LINE = re.compile(
 def trim_restatements(
     body: str, earlier: list[str], *, keep_items: bool = False
 ) -> tuple[str, list[str]]:
-    """`(body without pure restatements and filler, the sentences cut)`.
-
-    A sentence is cut only when it is safe to lose: every number in it (with its unit)
-    already appears in an earlier section and it carries no word the earlier sections
-    lack, or it is a filler sentence. Tables and blocks are never touched, and a section
-    is never emptied. With `keep_items` (a 개조식 body) list items are kept whole too:
-    each is a line of its own, and a cut one leaves its parent item hanging."""
+    """`(body, cut sentences)`: pure restatements and filler dropped; blocks kept, never emptied."""
     if not body.strip():
         return body, []
-    # With no earlier sections the pool starts empty and grows sentence by sentence, so
-    # a section that says 「64에서 128로 갈 때 0.853에서 0.912로」 twice says it once.
+    # pool grows sentence by sentence
     earlier_text = " ".join(earlier)
     earlier_numbers = set(_NUMBER_FACT.findall(earlier_text))
     earlier_words = _stems(earlier_text)
@@ -3845,7 +3624,7 @@ def trim_restatements(
         if line.strip().startswith("```"):
             in_block = not in_block
         if line.strip().startswith("|"):
-            # Prose after a table that only reads the table back is a restatement too.
+            # reading a table back is a restatement
             cells = " ".join(
                 c for c in line.split("|") if c.strip() and not set(c.strip()) <= set("-: ")
             )
@@ -3862,18 +3641,15 @@ def trim_restatements(
             text = sentence.strip()
             numbers = set(_NUMBER_FACT.findall(text))
             words = _stems(text)
-            # A ratio drawn from the numbers already given (「64에서 128로 2배가 될 때」) is
-            # not a new fact.
+            # ratios of given numbers aren't new facts
             given = {n for n in numbers if n in earlier_numbers or re.fullmatch(r"\d{1,15}배", n)}
-            # Two numbers already given, or one number with nothing else new to say.
             restated = (
                 bool(numbers)
                 and numbers <= given
                 and (
                     len(numbers) >= 2
                     and len(words - earlier_words) <= max(1, len(words) // 5)
-                    # Three numbers already given together is the same statement, even
-                    # when a few generic words (「데이터에서 확인되는」) changed.
+                    # three given numbers together: same statement
                     or len(numbers) >= 3
                     and len(words - earlier_words) <= len(words) // 2
                     or len(numbers) == 1
@@ -3890,17 +3666,16 @@ def trim_restatements(
                 cut.append(text)
                 continue
             kept.append(sentence)
-            # What this sentence said is now said: a later sentence repeating it goes.
             earlier_numbers |= numbers
             earlier_words |= words
         if sentences and not kept and not any(x.strip() for x in out_lines):
-            # A section is never emptied: its first paragraph keeps its first sentence.
+            # never emptied
             kept = [sentences[0]]
             cut.remove(sentences[0].strip())
         if kept and kept == sentences:
             out_lines.append(line)
         elif kept:
-            # The line's indent stays, and its list marker when the first sentence went.
+            # indent kept; marker kept if the first sentence went
             lead = (_LINE_LEAD if sentences[0] in kept else _LIST_LEAD).match(line).group(0)
             out_lines.append(lead + " ".join(k.strip() for k in kept))
         elif not sentences:
@@ -3916,16 +3691,14 @@ _FIGURE_KEYWORDS = {"graph", "flowchart", "LR", "TD", "TB", "RL", "style", "fill
 
 
 def _figure_words(block: str) -> set[str]:
-    """The words a diagram shows, without its syntax: node labels, whatever the shape."""
+    """Diagram label words without syntax."""
     body = re.sub(r"^```\w*|```$", "", block.strip(), flags=re.M)
     body = re.sub(r"\*[^\n]*\*\s*$", "", body)
     return {w for w in re.findall(r"[가-힣A-Za-z][가-힣A-Za-z0-9]{1,}", body) if w not in _FIGURE_KEYWORDS}
 
 
 def drop_repeated_figures(text: str) -> str:
-    """A section drawing the same diagram twice keeps one: the captioned one, else the first.
-
-    Two blocks match when four fifths of the smaller's words appear in the larger."""
+    """Duplicate diagram dropped (4/5 word overlap); captioned one kept."""
     blocks = list(_FIGURE_BLOCK.finditer(text))
     if len(blocks) < 2:
         return text
@@ -3952,8 +3725,7 @@ def drop_repeated_figures(text: str) -> str:
 
 
 def drop_redundant_kpi(text: str) -> str:
-    """A ```kpi block whose every value already sits in a table of the same section says
-    the numbers twice; the table stays."""
+    """kpi block duplicating a same-section table dropped."""
     match = re.search(r"```kpi\n(.*?)```\n?", text, flags=re.S)
     if not match:
         return text
@@ -3965,7 +3737,7 @@ def drop_redundant_kpi(text: str) -> str:
 
 
 def placeholder_heavy(text: str) -> bool:
-    """Three or more 「[측정값]」- or 「(미정)」-style holes: a frame the data never reached."""
+    """Three or more value holes: unfilled frame."""
     return len(_PLACEHOLDER.findall(text or "")) >= 3
 
 
@@ -3974,7 +3746,7 @@ _REF_START = re.compile(r"(?<!\S)\[(\d{1,3})\]\s")
 
 
 def _title_key(entry: str) -> str:
-    """The longest Latin run of an entry, lowercased: the paper's title in practice."""
+    """Longest lowercased Latin run (the title, in practice)."""
     body = re.sub(r"https?://\S{1,400}|doi:\S{1,200}|arXiv:\s{0,3}\S{1,40}", " ", entry)
     runs = re.findall(r"[A-Za-z][A-Za-z0-9:,'\- ]{12,300}", body)
     title = max(runs, key=len) if runs else body
@@ -3982,12 +3754,10 @@ def _title_key(entry: str) -> str:
 
 
 def _references_from_table(body: str) -> str:
-    """A reference list written as a table, as numbered lines: a row whose first cell is
-    「[n]」 becomes 「[n] cell. cell. cell.」 (empty, 「(미정)」 and 「[저자]」 cells left out); the
-    header, the rule and prose around the table stay where they were."""
+    """Table-form reference list as numbered lines."""
     if not re.search(r"(?m)^\s{0,3}\|", body):
         return body
-    # Rows the writer broke across blank lines (「|\n\n[1] | …」) are joined first.
+    # rejoin rows split by blank lines
     body = re.sub(r"\|\s{0,8}\n\s{0,8}\n\s{0,3}(\[\d{1,3}\]\s{0,3}\|)", r"| \1", body)
     out = []
     for line in body.split("\n"):
@@ -4017,18 +3787,16 @@ def _split_references(body: str) -> tuple[str, list[tuple[int, str]]] | None:
     lead = body[: starts[0].start()].strip()
     bounds = [m.start() for m in starts] + [len(body)]
     entries = [
-        # An entry ends at a blank line: what follows is the writer's comment on the list.
+        # blank line ends an entry
         (int(m.group(1)), re.split(r"\n\s{0,8}\n", body[m.end() : bounds[i + 1]].strip())[0])
         for i, m in enumerate(starts)
     ]
     return lead, entries
 
 
-#: An entry never ends like a sentence; a note about the list (「…확인하시기 바랍니다」,
-#: 「…근거를 제공합니다」) does.
+#: notes end like sentences; entries don't
 _PROSE_END = re.compile(r"(?:니다|[이한된있없했였같않]다|이다|이에요|해요)\s{0,2}$")
-#: Where one entry ends and the next begins on the same line: before 「박찬승. 『」,
-#: 「Schmid, Andre.」, 「Lee, S. G.」 or a 「[저자]」 / 「(저자 확인 필요)」 placeholder.
+#: boundary between run-together entries
 _NEXT_ENTRY = re.compile(
     r"(?<=[.)])\s{1,4}(?="
     r"[가-힣]{2,4}\s{0,1}(?:\([^()]{0,40}\))?\.\s{0,2}(?:\(\d{4}\)\.\s{0,2})?[『「]"
@@ -4044,9 +3812,7 @@ _ENTRY_START = re.compile(
 
 
 def reference_list_only(sections: list[dict]) -> list[dict]:
-    """The reference section as a list: notes about the list (sentences ending like
-    sentences) go, run-together entries are split one per line, and a bold group label
-    keeps a line of its own."""
+    """Reference section cleaned: notes dropped, one entry per line, bold labels kept."""
     out = []
     for sec in sections:
         if not (
@@ -4056,9 +3822,8 @@ def reference_list_only(sections: list[dict]) -> list[dict]:
             out.append(sec)
             continue
         text = str(sec.get("content") or "")
-        # A number left at a line's end (「… 2025. [11]」) belongs to the entry below it.
+        # trailing number belongs to the next entry
         text = re.sub(r"[ \t]{1,4}(\[\d{1,3}\])[ \t]{0,4}\n", r"\n\1 ", text)
-        # A bold label glued to the sentence before it (「…싣습니다. **국내 연구**」).
         text = re.sub(r"\s{0,4}(\*\*[^*\n]{2,40}\*\*)\s{0,4}", r"\n\n\1\n\n", text)
         lines: list[str] = []
         for block in re.split(r"\n\s{0,8}\n|\n", text):
@@ -4068,26 +3833,21 @@ def reference_list_only(sections: list[dict]) -> list[dict]:
             if re.fullmatch(r"\*\*[^*\n]{2,40}\*\*", block):
                 lines.append(block)
                 continue
-            # Korean sentences end at 「다.」; an entry's 「1988.」 before Korean prose too.
             pieces = re.split(r"(?<=[다요])\.\s{1,4}|(?<=\d{4}\.)\s{1,4}(?=[가-힣])", block)
             for piece in pieces:
                 piece = piece.strip()
                 if piece and _PROSE_END.search(piece.rstrip(".")):
-                    # Entries, then a note (「…Penn Press. 본문에 인용된 … 있습니다」): the
-                    # note is the Korean sentence after the last entry's full stop.
+                    # trailing Korean note after the last entry
                     starts = [m.end() for m in re.finditer(r"[.)]\s{1,4}(?=[가-힣])", piece)]
                     piece = piece[: starts[-1]].strip() if starts else ""
                 if not piece:
                     continue
                 for entry in _NEXT_ENTRY.split(piece):
                     entry = entry.strip()
-                    # An entry opens with its author, a placeholder for one, or its title.
                     if entry and (_ENTRY_START.match(entry) or re.search(r"[『「]", entry[:40])):
                         lines.append(entry)
                     elif entry and lines and re.match(r"[A-Za-z0-9]", entry):
-                        # An entry the writer broke across lines continues the last one.
                         lines[-1] = f"{lines[-1]} {entry}"
-        # A label left with no entries under it goes too.
         kept = [
             line for i, line in enumerate(lines)
             if not line.startswith("**")
@@ -4113,8 +3873,7 @@ _ENDPOINT = re.compile(r"(GET|POST|PUT|PATCH|DELETE)\s{0,3}\|?\s{0,3}`?(/[\w/{}:
 
 
 def _works(sections: list[dict], material: str) -> list[str]:
-    """Works the document may cite: its reference entries, else the material's lines that
-    name an author, a year and a title."""
+    """Citable works: reference entries, else author-year-title material lines."""
     refs = next(
         (str(s.get("content") or "") for s in sections
          if _REFERENCE_HEADING.search(str(s.get("heading") or ""))),
@@ -4146,7 +3905,7 @@ async def _mark_unverified_references(sections: list[dict]) -> list[dict]:
     titles: dict[int, str] = {}
     for n, line in enumerate(entries):
         m = re.search(r"[『「]([^』」]{3,120})[』」]|\*([^*]{3,120})\*", line)
-        # A web source on the shelf carries its own link: only works named from memory.
+        # web sources carry links: only memory-named works
         if m and "http" not in line and _UNCONFIRMED.strip() not in line:
             titles[n] = (m.group(1) or m.group(2)).strip()
     if not titles:
@@ -4163,7 +3922,7 @@ async def _mark_unverified_references(sections: list[dict]) -> list[dict]:
 def additions_needed(
     sections: list[dict], request: str, material: str
 ) -> list[tuple[int, str]]:
-    """`(section index, what to add)` for what the instruction asked and the draft left out."""
+    """`(section index, addition)` for asked-for content the draft omitted."""
     instruction = instruction_part(request)
     body_idx = [
         i for i, s in enumerate(sections)
@@ -4187,14 +3946,12 @@ def additions_needed(
     return out
 
 
-#: A question's own line: numbered (「### 1.」, 「**③ (개념, 중)**」, 「문항 4」) and asking.
 _QUESTION_NUMBER = re.compile(
     r"^\s{0,16}(?:#{1,4}\s{0,8})?(?:\*\*)?\s{0,8}(?:\[?\d{1,2}\s?[.)\]번]|[①-⑩]|문항\s?\d{1,2}|Q\d{1,2})"
 )
-#: 「쓰시오」 asks; 「착용해 주십시오」 is a notice's request, not a question.
+#: 「(?<!십)시오」: notices' 「주십시오」 isn't a question
 _ASKS = re.compile(r"\?|(?<!십)시오\.?|것은\??\s{0,16}(?:\*\*)?\s{0,16}$|무엇인가|설명하라|쓰라")
 _ASKED_FOR = re.compile(r"문항|평가|퀴즈|시험|문제")
-#: A line that belongs to the question above it.
 _QUESTION_TAIL = re.compile(
     r"^(?:[①-⑩]|\(?[1-5가-마]\)|[-*+]\s|\||>|---|#{1,4}\s{0,8}(?:\*\*)?\s{0,8}(?:정답|해설|채점|모범)|"
     r"(?:\*\*)?\s{0,8}(?:정답|해설|풀이|채점|"
@@ -4204,8 +3961,7 @@ _ASSESSMENT_HEADING = re.compile(r"평가|문항|퀴즈")
 
 
 def _question_lines(text: str) -> list[int]:
-    """Lines that open a question: numbered and asking, or a bare number (「**문항 1**
-    [1차시]」) whose next line asks."""
+    """Lines opening a question, incl. bare numbers whose next line asks."""
     lines = text.split("\n")
     found = []
     for i, line in enumerate(lines):
@@ -4220,7 +3976,7 @@ def _question_lines(text: str) -> list[int]:
 
 
 def _stem_of(lines: list[str], i: int) -> str:
-    """The asking words of the question opened at line `i`."""
+    """Asking words of the question at line `i`."""
     return lines[i] if _ASKS.search(lines[i]) or i + 1 >= len(lines) else lines[i + 1]
 
 
@@ -4231,14 +3987,12 @@ def _stem_key(line: str) -> str:
 
 
 def question_set(material: str) -> str:
-    """The material's set of questions (five or more), as written: stems, options,
-    answers and scoring, from the first question to the end of the last one's lines."""
+    """The material's question set (5+), as written."""
     lines = (material or "").split("\n")
     stems = _question_lines(material or "")
     if len(stems) < 5:
         return ""
-    # The last question runs on through its own lines — options, answer, scoring — and
-    # stops at the first line that is none of those (the next answer's 「안내문」).
+    # last question ends at the first non-question line
     end = stems[-1] + 1
     after_blank = False
     answers = 0  # inside a 「## 정답 및 해설」 section: its heading level
@@ -4247,19 +4001,16 @@ def question_set(material: str) -> str:
         heading = re.match(r"^(#{1,4})\s", line)
         if re.match(r"^(?:검색어:|본문 발췌:|출처: https?://|\[\d{1,3}\] )", line):
             break
-        # A bold title line after a gap that is not the answers' starts the next piece
-        # (「**과학 실험 수업 안내문**」).
+        # bold title after a gap starts the next piece
         if (after_blank and re.fullmatch(r"\*\*[^*]{2,60}\*\*", line)
                 and not re.search(r"정답|해설|채점|모범|문항|\d", line)):
             break
         if heading and re.search(r"정답|해설|채점|모범", line):
             answers = answers or len(heading.group(1))
         elif answers:
-            # The answers run to the next heading of their own level or above.
             if heading and len(heading.group(1)) <= answers:
                 break
-        # A plain line ends the question only when a blank line came before it: the
-        # sentence under 「**정답**:」 is the answer, a new paragraph is not.
+        # plain line ends a question only after a blank
         elif line and not _QUESTION_TAIL.match(line) and after_blank:
             break
         after_blank = not line
@@ -4267,13 +4018,13 @@ def question_set(material: str) -> str:
     while end > stems[-1] + 1 and not lines[end - 1].strip():
         end -= 1
     block = [line for line in lines[stems[0]:end] if line.strip() != "---"]
-    # Headings inside become bold lines: the section keeps its own level.
+    # inner headings as bold lines
     block = [re.sub(r"^\s{0,16}#{1,4}\s{0,16}(.{1,2000}?)\s{0,64}$", r"**\1**", line) for line in block]
     return re.sub(r"\n{3,}", "\n\n", "\n".join(block)).strip()
 
 
 def carry_question_set(sections: list[dict], material: str, request: str) -> list[dict]:
-    """Questions asked for and given in the material are carried as written, not summarised."""
+    """Material questions carried verbatim."""
     if not _ASKED_FOR.search(instruction_part(request)):
         return sections
     block = question_set(material)
@@ -4300,9 +4051,7 @@ def carry_question_set(sections: list[dict], material: str, request: str) -> lis
 
 
 def add_missing_endpoints(sections: list[dict], material: str) -> list[dict]:
-    """API endpoints the material listed and the document omitted, added as rows to its API section.
-
-    Nothing is rewritten."""
+    """Omitted material API endpoints added to the API section."""
     given: dict[tuple[str, str], str] = {}
     for line in (material or "").splitlines():
         for m, path in _ENDPOINT.findall(line):
@@ -4344,7 +4093,7 @@ def add_missing_endpoints(sections: list[dict], material: str) -> list[dict]:
 
 
 def only_added(before: str, after: str) -> bool:
-    """Whether `after` keeps every line of `before` (whitespace aside) and is longer."""
+    """`after` keeps every line of `before` and is longer."""
     norm = lambda t: re.sub(r"\s+", " ", t).strip()  # noqa: E731
     kept_lines = [norm(line) for line in before.splitlines() if norm(line)]
     after_norm = norm(re.sub(r"\s{0,2}\([^()]{2,60}?(?:1[5-9]|20)\d{2}[a-z]?\)", "", after))
@@ -4367,9 +4116,7 @@ _AUTHOR_YEAR = re.compile(
 
 
 def fill_reference_list(sections: list[dict], material: str) -> list[dict]:
-    """A reference section with no entries (the writer put a sentence there, or nothing)
-    is rebuilt from the works the text cites: each 「저자 (연도)」 gets the bibliographic
-    line the material gives for that author and year, or a marked placeholder."""
+    """Empty reference section rebuilt from cited 「저자 (연도)」 works."""
     index = next(
         (
             i for i, sec in enumerate(sections)
@@ -4408,9 +4155,7 @@ def fill_reference_list(sections: list[dict], material: str) -> list[dict]:
 
 
 def drop_unbacked_citations(sections: list[dict], sources: list[dict]) -> list[dict]:
-    """「[n]」 markers that point at nothing go: a number is backed by the n-th source on
-    the shelf or by an 「[n]」 entry in the reference section. A pasted note numbered
-    「[2]」 is the person's own material, not a source, and is not cited as one."""
+    """Unbacked 「[n]」 markers dropped; pasted numbered notes aren't sources."""
     backed = set(range(1, len(sources or []) + 1))
     for sec in sections:
         if _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
@@ -4424,7 +4169,6 @@ def drop_unbacked_citations(sections: list[dict], sources: list[dict]) -> list[d
             lambda m: m.group(0) if int(m.group(1)) in backed else "",
             text,
         )
-        # 「… 있습니다 .」 left by a removed marker.
         return re.sub(r"[ \t]{1,2}([.,])", r"\1", text) if text else text
 
     out = []
@@ -4439,10 +4183,7 @@ def drop_unbacked_citations(sections: list[dict], sources: list[dict]) -> list[d
 
 
 def tidy_references(sections: list[dict]) -> list[dict]:
-    """The reference list one entry per line, each paper once, numbered 1, 2, 3, citations renumbered.
-
-    A citation of a dropped duplicate points at the kept one; a list with no numbered
-    entries is left alone."""
+    """Reference list deduplicated and renumbered, citations following."""
     index = next(
         (
             i for i, sec in enumerate(sections)
@@ -4478,7 +4219,6 @@ def tidy_references(sections: list[dict]) -> list[dict]:
             lambda m: f"[{mapping.get(int(m.group(1)), int(m.group(1)))}]",
             text,
         )
-        # 「[1] [1]」 after a merge is one citation.
         return re.sub(r"(\[\d{1,3}\])(?:[ ,]{0,2}\1){1,10}", r"\1", text)
 
     out = []
@@ -4496,7 +4236,7 @@ _PROSE_KEYS = ("content", "body", "text", "본문", "내용")
 
 
 def _prose_in(data, depth: int = 0) -> list[str]:
-    """The prose fields of a JSON answer, however deep the model nested them."""
+    """Prose fields of a nested JSON answer."""
     if depth > 3:
         return []
     if isinstance(data, dict):
@@ -4510,15 +4250,13 @@ def _prose_in(data, depth: int = 0) -> list[str]:
 
 
 def unwrap_json_prose(text: str) -> str:
-    """A section body the model wrapped as a one-key JSON object (`{"결과의 섹션 본문":
-    "..."}`) is that string; anything else comes back as it was."""
+    """Body wrapped as one-key JSON unwrapped; else unchanged."""
     stripped = (text or "").strip()
     fence = re.fullmatch(r"```(?:json)?\s{0,64}(\{.{0,200000}\})\s{0,64}```", stripped, re.S)
     if fence:
         stripped = fence.group(1)
     if stripped.startswith("{") and not stripped.endswith("}"):
-        # Cut before it closed: the one string it opened is the body so far.
-        # 「{"content": "…」 or 「{"section": {"number": 7, "title": "…", "body": "…」.
+        # truncated: the one opened string is the body
         opened = re.match(
             r'\{\s*(?:"[^"\n]{1,40}"\s*:\s*\{\s*)?'
             r'(?:"[^"\n]{1,40}"\s*:\s*(?:-?\d{1,6}|"[^"\n]{0,120}")\s*,\s*){0,4}'
@@ -4535,14 +4273,12 @@ def unwrap_json_prose(text: str) -> str:
     if not (stripped.startswith("{") and stripped.endswith("}")):
         return text
     try:
-        # Line breaks inside the strings are the model's, not JSON's: read them as written.
+        # strict=False: raw newlines in strings
         data = json.loads(stripped, strict=False)
     except (json.JSONDecodeError, ValueError):
         return text
     if isinstance(data, dict):
-        # {"section": "참고문헌", "content": "…"}: the body is the content, not the label;
-        # {"section": {"number": 7, "title": …, "body": "…"}} one level further in.
-        # {"sections": [{"title": …, "body": "…"}, …]}: each part's prose, in order.
+        # content/body fields at any depth, sections in order
         prose = _prose_in(data)
         if prose:
             return "\n\n".join(prose)

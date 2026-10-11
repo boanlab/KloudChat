@@ -1,18 +1,4 @@
-"""A person's own document 템플릿, made in the editor and used like a shipped 서식.
-
-A row (`UserTemplate`) holds every field a shipped document 서식 sets — what to bring, the
-instructions and the checklist, the genre rule, the document format (head fields, numbering,
-head layout, 개조식 lists, 「끝.」, a cover page), the check skills and how strict the trace is,
-the 빠진 정보 질문, and the 진행 과정 설정 (calculations, 서식 보정 stages, checks, 검토 규칙,
-structure rules, options). `build` makes the same `DesignTemplate` a shipped folder makes, on
-the shared document seed (`_document`) with the design's tokens: a person's template carries
-no HTML or CSS, so nothing it holds reaches a page as markup. Sessions and agents name it
-`ut-<id>`, and every reader of a 서식 reads it through `design_templates.get` once `ensure`
-has loaded it in this process.
-
-A form file (DOCX/HWPX) it was made from is kept as its extracted text, given to the writer
-as reference (the form's headings and columns) — never used as the export base.
-"""
+"""User-made document 템플릿 built as DesignTemplate; no user HTML/CSS reaches pages."""
 
 from __future__ import annotations
 
@@ -36,12 +22,12 @@ _LIMITS = {
     "instructions": 8000, "checklist": 4000, "genre": 4000, "form_text": 20000,
     "form_name": 200, "label": 30, "field": 20, "fill": 30,
 }
-#: Control characters (but tab and newline), zero-width and direction marks: never kept.
+#: control (except tab/newline), zero-width and bidi chars: dropped
 _HIDDEN = re.compile(r"[\x00-\x08\x0b-\x1f\x7f​-‏‪-‮⁠-⁩﻿]")
 
 
 class TemplateError(ValueError):
-    """A field the editor may not store; `code` is the wire detail."""
+    """Field the editor may not store; code is the wire detail."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -49,10 +35,10 @@ class TemplateError(ValueError):
 
 
 def plain(raw: Any, limit: int, *, lines: bool = False) -> str:
-    """Text as stored: hidden characters dropped, bounded; one line unless `lines`."""
+    """Stored text: hidden chars dropped, bounded; one line unless lines."""
     text = _HIDDEN.sub("", str(raw or ""))
     if lines:
-        # Kept as written (a shipped 서식's files end in a newline too), CRLF made LF.
+        # kept as written, CRLF → LF
         text = text.replace("\r\n", "\n").replace("\r", "\n")
     else:
         text = " ".join(text.split())
@@ -80,7 +66,7 @@ def _format(raw: Any) -> dict[str, Any]:
 
 
 def clean(payload: dict[str, Any]) -> dict[str, Any]:
-    """The row's fields from the editor's payload, each checked; raises `TemplateError`."""
+    """Validated row fields from the editor payload; raises TemplateError."""
     from app.services import (
         check_skills,
         gap_questions,
@@ -137,9 +123,6 @@ def clean(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ── the 서식 a row makes ────────────────────────────────────────────────────
-
-
 def template_id(row) -> str:
     return f"{PREFIX}{row.id}"
 
@@ -161,7 +144,7 @@ def doc_format_of(row) -> doc_formats.DocFormat:
 
 
 def build(row) -> design_templates.DesignTemplate:
-    """The `DesignTemplate` a row makes: the shared document seed, the row's own fields."""
+    """DesignTemplate for a row: shared seed plus row fields."""
     from app.services import gap_questions, process_settings
 
     cover = "cover cover-page" if row.cover_page else "cover"
@@ -189,13 +172,12 @@ def build(row) -> design_templates.DesignTemplate:
         visibility=row.visibility or "private")
 
 
-#: `updated_at` of each row this process holds a template for.
+#: updated_at per loaded row
 _LOADED: dict[str, Any] = {}
 
 
 async def ensure(db, ids) -> None:
-    """Load (or reload, when edited since) the person's templates among `ids` into this
-    process, so `design_templates.get` reads them; a deleted one is dropped."""
+    """Load/reload the person's templates among ids into this process; deleted ones dropped."""
     from sqlmodel import col, select
 
     from app.models.workspace import UserTemplate
@@ -221,7 +203,7 @@ def readable(row, user_id: str) -> bool:
 
 
 async def accessible(db, user_id: str, template: str | None):
-    """The row behind `template` when the person may use it (theirs or shared), else None."""
+    """Row behind template if usable (own or shared), else None."""
     from app.models.workspace import UserTemplate
 
     if not is_user(template):
@@ -231,8 +213,7 @@ async def accessible(db, user_id: str, template: str | None):
 
 
 async def usable(db, user_id: str, template: str | None) -> bool:
-    """Whether the person may use the template `template` names (theirs or shared), loading
-    it into this process when so. A shipped id is not this module's to judge: True."""
+    """Whether the person may use template (loads it); shipped ids → True."""
     if not is_user(template):
         return True
     row = await accessible(db, user_id, template)
@@ -243,7 +224,7 @@ async def usable(db, user_id: str, template: str | None) -> bool:
 
 
 async def load(db, user_id: str, ids) -> None:
-    """Load each person's template among `ids` the person may use."""
+    """Load each usable template among ids."""
     for template in {i for i in ids if is_user(i)}:
         await usable(db, user_id, template)
 
@@ -270,8 +251,7 @@ def wire(row, *, viewer_id: str, owner_name: str = "") -> dict[str, Any]:
 
 
 def draft_of(template: design_templates.DesignTemplate) -> dict[str, Any]:
-    """A shipped document 서식 as the editor's fields: every field it sets, so a person can
-    start from it (and a test can check a person can set them all)."""
+    """Shipped 서식 as editor fields (all of them)."""
     from app.services import process_settings
 
     fmt = (doc_formats.BY_ID.get(template.doc_format) if template.doc_format else None)
@@ -295,8 +275,7 @@ def draft_of(template: design_templates.DesignTemplate) -> dict[str, Any]:
 
 
 def catalogue() -> dict[str, Any]:
-    """What the editor offers: the format's choices, the check skills, the strictness, the
-    question detectors and the 진행 과정 설정 names, and the shipped 서식 to start from."""
+    """Editor options: formats, check skills, strictness, detectors, stages, shipped 서식."""
     from app.services import check_skills, gap_questions, process_settings, skill_packages
 
     checks = [{"key": p.key, "name": p.name, "stage": p.stage}

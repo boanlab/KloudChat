@@ -1,15 +1,4 @@
-"""Reads `.hwpx` into an editable document: title, headings, and HTML bodies with tables.
-
-`files._from_hwpx` reads the same archive as flat text for a model. OWPML is
-a zip of XML: `Contents/section*.xml` holds `<hp:p>` paragraphs,
-`Contents/header.xml` the styles they reference by id. Namespaces vary by
-producer, so everything matches on local names.
-
-Heading signals, in order of trust: `hh:heading` OUTLINE marks and `개요 N` /
-제목 / Heading style names; type size above the body's commonest size; and
-official-document numbering (`2-3.`, `가.`, `1)`) to break ties between
-headings of one size.
-"""
+"""`.hwpx` (OWPML) into an editable document with headings and tables."""
 
 from __future__ import annotations
 
@@ -25,13 +14,13 @@ from app.services import richtext
 
 log = logging.getLogger(__name__)
 
-#: `hh:charPr height` is in HWPUNIT, 1/100 pt.
+#: `hh:charPr height` in HWPUNIT (1/100 pt)
 _PT = 100.0
 
 _OUTLINE = re.compile(r"^(?:개요|Outline)\s*(\d+)", re.I)
 _HEADING_NAME = re.compile(r"제목|개요|heading|title", re.I)
 
-#: Official-document level numbering, outermost first.
+#: official level numbering, outermost first
 _NUMBERING = (
     re.compile(r"^\s*(?:제\s*)?\d+\s*장\b"),
     re.compile(r"^\s*\d+(?:[-.]\d+)+\.?\s"),
@@ -40,28 +29,27 @@ _NUMBERING = (
     re.compile(r"^\s*[가나다라마바사아자차카타파하]\s*\)\s"),
 )
 
-#: Leading bullet marks that make a paragraph a list item.
+#: bullet marks making a list item
 _BULLET = re.compile(r"^\s*[□■○●▪▫◦·•\-–]\s*")
 
-#: Longer text is prose whatever its size or numbering.
+#: longer = prose regardless
 _HEADING_MAX = 60
 
 
 @dataclass(slots=True)
 class Block:
-    """One paragraph or one table, in the order it appears."""
+    """One paragraph or table, in order."""
 
     kind: str  # "text" | "table" | "image"
     text: str = ""
     size: float = 0.0
     style: str = ""
-    #: `hh:heading type`: OUTLINE (heading, outranks every guess), BULLET or
-    #: NUMBER (list item; the mark is drawn by the word processor, not in the text).
+    #: `hh:heading type`: OUTLINE (heading, beats guesses), BULLET/NUMBER (list; mark not in text)
     mark: str = ""
     mark_level: int = 0
-    #: `hh:align horizontal` is CENTER; see `_title_index`.
+    #: CENTER alignment; see `_title_index`
     centred: bool = False
-    #: Tables only.
+    #: tables only
     grid: richtext.Grid | None = None
 
 
@@ -74,7 +62,7 @@ class Section:
 
 @dataclass(slots=True)
 class Document:
-    """A read file: its title, and the sections under it."""
+    """Read file: title and sections."""
 
     title: str
     sections: list[Section]
@@ -85,7 +73,7 @@ def _local(tag: str) -> str:
 
 
 def _text_of(node: ET.Element) -> str:
-    """Every `<hp:t>` run under this node, in order."""
+    """Every `<hp:t>` run under this node."""
     out: list[str] = []
     for element in node.iter():
         if _local(element.tag) == "t":
@@ -94,7 +82,7 @@ def _text_of(node: ET.Element) -> str:
 
 
 def _centred_shapes(header: ET.Element) -> set[str]:
-    """`paraPrIDRef`s whose paragraphs are centred."""
+    """`paraPrIDRef`s of centred paragraphs."""
     out: set[str] = set()
     for element in header.iter():
         if _local(element.tag) != "paraPr":
@@ -125,7 +113,7 @@ def _paragraph_kinds(header: ET.Element) -> dict[str, tuple[str, int]]:
 
 
 def _styles(header: ET.Element) -> tuple[dict[str, str], dict[str, float]]:
-    """`styleIDRef` → name, and `charPrIDRef` → point size."""
+    """`styleIDRef` → name, `charPrIDRef` → point size."""
     names: dict[str, str] = {}
     sizes: dict[str, float] = {}
     for element in header.iter():
@@ -146,11 +134,7 @@ def _styles(header: ET.Element) -> tuple[dict[str, str], dict[str, float]]:
 
 
 def _cells(table: ET.Element) -> richtext.Grid:
-    """A table as a grid of anchor cells with spans.
-
-    Cells are placed by `hp:cellAddr` / `hp:cellSpan` when present, else by
-    running position; squares covered by a merge are left empty.
-    """
+    """Table as an anchor-cell grid by `hp:cellAddr`/`hp:cellSpan`, else running position."""
     grid: dict[tuple[int, int], richtext.Cell] = {}
     taken: set[tuple[int, int]] = set()
     width = 0
@@ -168,10 +152,10 @@ def _cells(table: ET.Element) -> richtext.Grid:
                 down = max(1, int(span.get("rowSpan") or 1)) if span is not None else 1
             except ValueError:
                 at_row, at_col, across, down = row_index, column, 1, 1
-            # Step over squares a merge from above already holds.
+            # skip squares held by a merge from above
             while (at_row, at_col) in taken:
                 at_col += 1
-            # One line per paragraph; the cell keeps the writer's line breaks.
+            # one line per paragraph
             lines = [
                 " ".join(_text_of(para).split()) for para in cell.iter() if _local(para.tag) == "p"
             ]
@@ -187,7 +171,7 @@ def _cells(table: ET.Element) -> richtext.Grid:
     if not grid:
         return richtext.Grid()
     height = max(r for r, _ in grid) + 1
-    # Anchors only, in reading order.
+    # anchors only, reading order
     rows = [[grid[(r, c)] for c in range(width) if (r, c) in grid] for r in range(height)]
     return richtext.Grid(rows=[row for row in rows if any(c.text for c in row)])
 
@@ -200,7 +184,7 @@ def _walk(
     centred: set[str],
     out: list[Block],
 ) -> None:
-    """Blocks in document order; a table is one block and its cell paragraphs are not walked."""
+    """Blocks in order; tables as one block, cell paragraphs not walked."""
     for child in node:
         tag = _local(child.tag)
         if tag == "tbl":
@@ -209,7 +193,7 @@ def _walk(
                 out.append(Block(kind="table", grid=grid))
             continue
         if tag == "p":
-            # A paragraph carrying a table contributes only the table.
+            # table paragraph contributes only the table
             if any(_local(e.tag) == "tbl" for e in child.iter()):
                 _walk(child, names, sizes, kinds, centred, out)
                 continue
@@ -263,7 +247,7 @@ def _blocks(archive: zipfile.ZipFile) -> tuple[list[Block], dict[str, float]]:
 
 
 def _body_size(blocks: list[Block]) -> float:
-    """The point size carrying the most characters; the baseline headings stand above."""
+    """Point size with the most characters (body baseline)."""
     weight: dict[float, int] = {}
     for block in blocks:
         if block.kind == "text" and block.size:
@@ -274,9 +258,7 @@ def _body_size(blocks: list[Block]) -> float:
 
 
 def _is_heading(block: Block, body: float) -> bool:
-    """Whether this paragraph is a heading, by mark, style name, or size ratio; numbering is not a
-    signal here.
-    """
+    """Heading by mark, style name, or size ratio (not numbering)."""
     if block.kind != "text":
         return False
     if block.mark == "OUTLINE":
@@ -291,9 +273,7 @@ def _is_heading(block: Block, body: float) -> bool:
 
 
 def _levels(blocks: list[Block], body: float) -> dict[int, int]:
-    """Heading level (1..3) per block index: OUTLINE marks and `개요 N` say their own
-    level; the rest rank by size.
-    """
+    """Heading level (1..3) per block: OUTLINE/`개요 N` own level, rest by size."""
     marks = [i for i, b in enumerate(blocks) if _is_heading(b, body)]
     ranks = sorted({blocks[i].size for i in marks}, reverse=True)
     out: dict[int, int] = {}
@@ -305,7 +285,7 @@ def _levels(blocks: list[Block], body: float) -> dict[int, int]:
             out[i] = min(3, int(match.group(1)))
             continue
         depth = ranks.index(blocks[i].size) + 1 if blocks[i].size in ranks else 1
-        # Numbering deepens headings of the same size (가. under 2-3.).
+        # numbering deepens same-size headings (가. under 2-3.)
         if depth < 3:
             for offset, pattern in enumerate(_NUMBERING):
                 if pattern.match(blocks[i].text):
@@ -320,7 +300,7 @@ def _escape(text: str) -> str:
 
 
 def _html(blocks: list[Block]) -> str:
-    """One section's blocks as the markup the document editor stores."""
+    """One section's blocks as editor markup."""
     out: list[str] = []
     items: list[str] = []
 
@@ -362,9 +342,7 @@ _PARA = re.compile(r"<p>(.*?)</p>", re.S)
 
 
 def shape(parts: list[Section]) -> dict[str, Any]:
-    """Structural summary (headings, tables with spans, lists, paragraphs) for round-trip
-    comparison.
-    """
+    """Structural summary for round-trip comparison."""
     tables: list[list[list[tuple[str, int, int]]]] = []
     lists: list[list[str]] = []
     paragraphs: list[str] = []
@@ -383,7 +361,7 @@ def shape(parts: list[Section]) -> dict[str, Any]:
 
 
 def differences(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
-    """Human-readable differences between two `shape` results; empty when they match."""
+    """Differences between two `shape` results; empty when equal."""
     out: list[str] = []
     if before["headings"] != after["headings"]:
         lost = [h for h in before["headings"] if h not in after["headings"]]
@@ -415,12 +393,7 @@ def differences(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
 
 
 def _title_index(blocks: list[Block], body: float) -> int | None:
-    """Index of the title block: the first block, when it is a centred heading followed by another
-    heading.
-
-    Must run before `_levels`, or the title becomes the largest heading and
-    pushes every real one down a level.
-    """
+    """Title block index (centred heading followed by a heading); must run before `_levels`."""
     first = next((i for i, b in enumerate(blocks) if b.text or b.kind != "text"), None)
     if first is None or not _is_heading(blocks[first], body):
         return None
@@ -432,9 +405,7 @@ def _title_index(blocks: list[Block], body: float) -> int | None:
 
 
 def read(data: bytes) -> Document:
-    """Parses the file into a `Document`; a file with no headings becomes one section. Raises
-    `RuntimeError` for a bad archive.
-    """
+    """Parse into a `Document`; headingless file = one section. `RuntimeError` on bad archive."""
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:

@@ -19,10 +19,9 @@ _MAX_INTEGER_BITS = 512
 _MAX_CHOICES = 10
 _FIELDS = frozenset({"expression", "choices", "submitted_choice", "decimal_places"})
 _CHARACTERS = frozenset("0123456789.+-*/()eE \t\r\n")
-#: A decimal, optionally in scientific notation (「8.0e-6」, 「2E5」) with a small exponent.
+#: Decimal, optional small-exponent scientific notation.
 _NUMBER = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]{1,2})?\Z")
-#: Largest exponent in 「a ** n」 and in scientific notation: enough for engineering
-#: units, small enough that an exact rational stays within the bit budget.
+#: Max exponent; keeps exact rationals within bit budget.
 _MAX_EXPONENT = 30
 _SCOPE = (
     "입력한 식의 산술과 선지 일치만 검증했습니다. "
@@ -66,7 +65,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
     if not source:
         raise _InvalidCalculation
 
-    # Parentheses disappear from the AST; cap their nesting before parsing too.
+    # Parentheses vanish from AST; cap nesting before parsing.
     depth = 0
     for character in source:
         if character == "(":
@@ -83,7 +82,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
     nodes = list(ast.walk(tree))
     if len(nodes) > _MAX_AST_NODES:
         raise _InvalidCalculation
-    # Validate all syntax before evaluating an earlier division-by-zero branch.
+    # Full syntax validation before evaluating any division-by-zero branch.
     for node in nodes:
         if not isinstance(node, (
             ast.Expression, ast.Constant, ast.UnaryOp, ast.BinOp,
@@ -102,8 +101,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
             if exponent and abs(int(exponent.group(1))) > _MAX_EXPONENT:
                 raise _InvalidCalculation
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            # The exponent is a whole-number literal, checked before anything is
-            # evaluated: 「2 ** 0.5」 is invalid wherever it sits in the expression.
+            # Whole-number literal exponent only, checked before evaluation.
             power = node.right
             sign = 1
             if isinstance(power, ast.UnaryOp) and isinstance(power.op, (ast.UAdd, ast.USub)):
@@ -120,15 +118,13 @@ def _expression(raw: object) -> tuple[str, Fraction]:
         if level > _MAX_DEPTH:
             raise _InvalidCalculation
         if isinstance(node, ast.Constant) and type(node.value) in (int, float):
-            # AST floats have already rounded: recover the original decimal spelling.
+            # AST floats already rounded; recover decimal spelling.
             literal = ast.get_source_segment(source, node) or ""
             return _bounded(Fraction(literal))
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = evaluate(node.operand, level + 1)
             return -value if isinstance(node.op, ast.USub) else value
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            # Only a whole-number power: 「L ** 3」, 「10 ** -6」. A fractional power has no
-            # exact rational value.
             base = evaluate(node.left, level + 1)
             power = evaluate(node.right, level + 1)
             if power.denominator != 1 or abs(power.numerator) > _MAX_EXPONENT:
@@ -158,7 +154,7 @@ def _expression(raw: object) -> tuple[str, Fraction]:
 
 
 def _exact_decimal(value: Fraction) -> str:
-    """A finite decimal when exact, otherwise the exact reduced fraction."""
+    """Exact finite decimal, else reduced fraction."""
     denominator = value.denominator
     twos = fives = 0
     while denominator % 2 == 0:
@@ -179,8 +175,7 @@ def _exact_decimal(value: Fraction) -> str:
 
 
 def _rounded(value: Fraction, places: int) -> str:
-    # Operand sizes are capped. This precision exceeds both denominator and
-    # integer digits, so a rational adjacent to a half-way point stays on its side.
+    # Precision above operand sizes; half-way rounding stays correct.
     with localcontext() as context:
         context.prec = _MAX_INTEGER_BITS * 2 + 16
         decimal = Decimal(value.numerator) / Decimal(value.denominator)
@@ -209,7 +204,7 @@ def _calculate(arguments: dict[str, Any]) -> dict[str, Any]:
     try:
         evaluated = [_expression(choice)[1] for choice in choices] if choices else []
     except _DivisionByZero:
-        # A malformed option is not evidence that the main expression divides by zero.
+        # Malformed option ≠ evidence of division by zero.
         raise _InvalidCalculation from None
     expression, exact = _expression(arguments.get("expression"))
     value = _exact_decimal(exact) if places is None else _rounded(exact, places)
@@ -249,8 +244,7 @@ async def calculate(arguments: dict[str, Any]) -> ToolResult:
         return ToolResult(content=_ZERO_DIVISION_ERROR, detail="수치 검산 실패", failed=True)
     except (ValueError, TypeError, SyntaxError, ZeroDivisionError, OverflowError, RecursionError):
         return ToolResult(content=_ERROR, detail="수치 검산 실패", failed=True)
-    # A practice question may be checked before its learner answers. Keep the
-    # numeric result in model-only content, never in the visible step detail.
+    # Numeric result model-only; hidden from step detail (practice answers).
     return ToolResult(content=json.dumps(data, ensure_ascii=False), detail="수치 검산 완료")
 
 

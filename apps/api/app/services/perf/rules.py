@@ -1,5 +1,4 @@
-"""Verdicts from the recent samples: each names what is wrong, the series and window
-it rests on, and what to consider doing. Thresholds come from settings (`perf_*`)."""
+"""Perf verdicts from recent samples: issue, series/window, suggestion; thresholds from perf_* settings."""
 
 from __future__ import annotations
 
@@ -10,7 +9,7 @@ from app.services.perf.store import Key
 
 Points = list[tuple[datetime, float]]
 
-#: Series the rules read, by name.
+#: series read by the rules
 NAMES = (
     "waiting",
     "kv_cache_percent",
@@ -42,7 +41,7 @@ class Thresholds:
     disk_critical: float = 95
     error_rate_max: float = 5
     gpu_temp_max: float = 85
-    # vLLM reserves most of a GB10's unified memory up front, so ~97% is its resting level
+    # vLLM pre-reserves GB10 unified memory: ~97% is resting level
     gpu_node_mem_max: float = 99
     sustain_min: int = 10
     api_cpu_sustain_min: int = 15
@@ -74,7 +73,7 @@ def _within(points: Points, now: datetime, minutes: int) -> Points:
 
 
 def sustained(points: Points, now: datetime, minutes: int, over: float) -> bool:
-    """At least half the window sampled, and 80% of those samples at or over `over`."""
+    """Half the window sampled and 80% of samples ≥ over."""
     window = _within(points, now, minutes)
     if len(window) < max(3, minutes // 2):
         return False

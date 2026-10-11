@@ -1,8 +1,4 @@
-"""Offline IP-to-region lookup from a MaxMind DB file (`GEOIP_DATABASE`).
-
-Addresses never leave the instance: no database means an empty answer, and
-private ranges are never looked up.
-"""
+"""Offline IP-to-region lookup (MaxMind DB); addresses never leave the instance."""
 
 from __future__ import annotations
 
@@ -15,17 +11,17 @@ from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
-#: Opened once; the reader mmaps the database.
+#: opened once (mmap)
 _reader = None
 _reader_lock = threading.Lock()
 _tried = False
 
-#: Shown for private, loopback and link-local addresses.
+#: label for private/loopback/link-local
 _LOCAL = "내부망"
 
 
 def _open():
-    """The reader, or None. Failure is logged once and never retried."""
+    """Reader or None; failure logged once, never retried."""
     global _reader, _tried
     if _tried:
         return _reader
@@ -42,7 +38,7 @@ def _open():
             _reader = geoip2.database.Reader(path)
             log.info("geoip: reading %s", path)
         except Exception as exc:  # missing file, wrong format, library absent
-            # Warned, not raised: this runs on the sign-in path.
+            # warn only: sign-in path
             log.warning("geoip: disabled (%s)", exc)
             _reader = None
     return _reader
@@ -73,7 +69,7 @@ def _resolve(ip: str) -> str:
 
 
 def lookup(ip: str) -> str:
-    """Place name for an address; empty when unknown or no database is configured."""
+    """Place name for an address; empty if unknown."""
     ip = (ip or "").strip()
     if not ip:
         return ""

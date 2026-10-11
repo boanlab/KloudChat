@@ -1,17 +1,10 @@
-"""A written report's numbered citations put in order: the reference list holds only what the
-body cites, numbered 1, 2, 3 … in the order the body first cites it.
-
-`cite_order` runs once on a finished report before it is stored, so the stored sections and
-sources agree, and everything read from them — the review panel's 「이 자료를 쓴 절」, the
-IEEE numbers, the DOCX/HWPX/PDF reference list — follows. `name_works` puts the work's own
-name where the writer named a venue as if it were the author (「MDPI 연구(2026) [9]」).
-"""
+"""Report citations: only cited sources kept, numbered by first citation."""
 
 from __future__ import annotations
 
 import re
 
-#: 「[1]」「[2, 5]」「[3-4]」「［2］」; not a link's text 「[1](…)」 nor a footnote 「[^1]」.
+#: 「[1]」「[2, 5]」「[3-4]」「［2］」; not link text or footnotes
 _CITATION = re.compile(r"(?<!\[)[\[［]\s*(\d{1,3}(?:\s*[,，\-–]\s*\d{1,3}){0,9})\s*[\]］](?!\()")
 _REFERENCE_HEADING = re.compile(r"참고\s{0,3}문헌|references|bibliography|인용\s{0,3}문헌", re.I)
 _FENCE = "```"
@@ -29,7 +22,7 @@ def _numbers(spec: str) -> list[int]:
 
 
 def _written(numbers: list[int]) -> str:
-    """`[1, 2, 3, 5]` → 「[1-3, 5]」; two in a row stay 「[1, 2]」."""
+    """`[1, 2, 3, 5]` → 「[1-3, 5]」; pairs stay 「[1, 2]」."""
     numbers = sorted(dict.fromkeys(numbers))
     runs: list[list[int]] = []
     for n in numbers:
@@ -54,7 +47,7 @@ def _outside_code(text: str, fn) -> str:
 
 
 def cited(sections: list[dict]) -> list[int]:
-    """The numbers the body cites, each once, in the order first cited."""
+    """Cited numbers in first-cited order, once each."""
     seen: list[int] = []
     for section in sections:
         if not _prose(section):
@@ -72,13 +65,7 @@ def cited(sections: list[dict]) -> list[int]:
 
 def cite_order(sections: list[dict], sources: list[dict] | None
                ) -> tuple[list[dict], list[dict]]:
-    """`sections` and `sources` with the uncited sources dropped and the rest numbered by first
-    citation, every 「[n]」 in the body following its source.
-
-    Left as they are: a report with no sources, one whose body cites none (a document that
-    does not cite by number keeps its list), and one with a reference list of its own written
-    into the text (its numbering is the writer's). A number no source carries is dropped from
-    the body when it would now name another source, else left for the panel to point out."""
+    """Uncited sources dropped, rest renumbered by first citation."""
     sources = list(sources or [])
     if not sources:
         return sections, sources
@@ -101,11 +88,11 @@ def cite_order(sections: list[dict], sources: list[dict] | None
                 if n in mapping:
                     wanted.append(mapping[n])
                 elif n not in by_number and n > len(order):
-                    wanted.append(n)  # points at nothing before or after: the panel says so
+                    wanted.append(n)  # dangling: left for the panel
             return _written(wanted) if wanted else ""
 
         piece = _CITATION.sub(one, piece)
-        # 「[1][1]」 after a merge is one citation; 「… 있다 .」 left by a dropped marker.
+        # merged duplicates collapsed; stray space before period
         piece = re.sub(r"(\[\d{1,3}\])(?:[ ,]{0,2}\1){1,10}", r"\1", piece)
         return re.sub(r"[ \t]{1,2}([.,])", r"\1", piece)
 
@@ -119,7 +106,7 @@ def cite_order(sections: list[dict], sources: list[dict] | None
     return out, kept
 
 
-#: Venues a writer may put where a work's author goes.
+#: venues written in an author's place
 _VENUE_WORDS = (
     "MDPI", "arXiv", "ACM", "IEEE", "ACL Anthology", "ACL", "NeurIPS", "OpenReview",
     "Springer", "Elsevier", "PMLR", "AAAI", "KCI", "DBpia", "RISS", "KISS", "ScienceON",
@@ -128,12 +115,12 @@ _VENUE_WORDS = (
 
 
 def _work_label(source: dict) -> str:
-    """How the text names a work: its first author (「Wang 외」), else its title's head."""
+    """Text name of a work: first author (「Wang 외」), else title head."""
     author = str(source.get("author") or "").strip()
     if author:
         names = [a.strip() for a in re.split(r",|;| and | 외", author) if a.strip()]
         first = names[0] if names else author
-        # A Latin name by its surname; a Korean name whole.
+        # Latin by surname, Korean whole
         surname = first if re.search(r"[가-힣]", first) else first.split()[-1]
         many = len(names) > 1 or author.endswith("외")
         return f"{surname} 외" if many else surname
@@ -144,14 +131,13 @@ def _work_label(source: dict) -> str:
 
 
 def name_works(sections: list[dict], sources: list[dict] | None) -> list[dict]:
-    """「MDPI 연구(2026) [9]」 → 「Atomic Contrastive Verification 연구(2026) [9]」: a venue or
-    a site is not the author; the work's author (or its title) is named instead."""
+    """「MDPI 연구(2026) [9]」 → work's author or title in place of the venue."""
     by_number = {int(s.get("ordinal") or i): s for i, s in enumerate(sources or [], 1)}
     if not by_number:
         return sections
     venues = {v.lower() for v in _VENUE_WORDS}
     for source in by_number.values():
-        # A site (「mdpi.com」) too; an institute named as publisher may well be the author.
+        # sites too; a publisher institute may be the author
         value = str(source.get("publisher") or "").strip()
         if "." in value and len(value) <= 40:
             venues.add(value.lower())
@@ -180,13 +166,12 @@ def _key(text: str) -> str:
     return re.sub(r"[^0-9a-z가-힣]", "", (text or "").lower())
 
 
-#: A reference entry's own start: 「[3]」, 「3.」, 「- 」.
+#: reference entry start: 「[3]」, 「3.」, 「- 」
 _ENTRY = re.compile(r"^\s{0,3}(?:\[\d{1,3}\]|\d{1,3}[.)]|[-*·])\s")
 
 
 def drop_restated_references(sections: list[dict], sources: list[dict] | None) -> list[dict]:
-    """The writer's own 「참고문헌」 entries that restate a source the server lists anyway,
-    taken out; the section goes when nothing else is in it."""
+    """Writer's 「참고문헌」 entries restating server sources removed; empty section dropped."""
     titles = [k[:30] for k in (_key(str(src.get("title") or "")) for src in sources or [])
               if len(k) >= 8]
     if not titles:
@@ -213,8 +198,7 @@ def drop_restated_references(sections: list[dict], sources: list[dict] | None) -
 
 def tidy(sections: list[dict], sources: list[dict] | None
          ) -> tuple[list[dict], list[dict]]:
-    """In order: the writer's restated reference list dropped, the works named, then the
-    citations put in order."""
+    """Drop restated references, name works, order citations."""
     sections = drop_restated_references(sections, sources)
     return cite_order(name_works(sections, sources), list(sources or []))
 

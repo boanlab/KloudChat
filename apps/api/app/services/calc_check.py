@@ -1,10 +1,4 @@
-"""Slides read against the values code computed for them (`calc.computed_values`).
-
-A slide's number is compared with the computed value it names — the row (「FCFS」) from
-the line itself or from the slide's title, the value (「평균 대기시간」) from the line — and a
-different one is set back. A line that names two rows, or no value the code printed, is left
-alone: only an unambiguous claim is corrected.
-"""
+"""Slide numbers corrected against code-computed values; only unambiguous claims."""
 
 from __future__ import annotations
 
@@ -12,18 +6,18 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-#: A number as a slide writes it; 「P1」 and 「q=2」's letters are not numbers.
+#: slide number; letters in 「P1」「q=2」 excluded
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_.])-?\d{1,15}(?:\.\d{1,10})?(?![\d])")
-#: A number counting something else: 「2배」, 「30%」, 「3장」, 「2번」.
+#: counts of other things: 「2배」「30%」「3장」
 _OTHER_QUANTITY = re.compile(r"\s{0,2}(?:배|%|퍼센트|장|개|번|명|차|회|위|등|단계|가지|줄|쪽)")
 _PAREN = re.compile(r"[(（][^()（）]{0,80}[)）]")
-#: What may sit between the letters of a name as written: spaces, brackets, 「=」.
+#: allowed between a name's letters: spaces, brackets, 「=」
 _GAP = r"[^0-9A-Za-z가-힣]{0,3}"
 
 
 @dataclass(frozen=True, slots=True)
 class Stated:
-    """One value a program printed: 「FCFS | 평균 대기시간 = 4.75」 → row FCFS, label, 4.75."""
+    """One printed value: 「FCFS | 평균 대기시간 = 4.75」 → row, label, 4.75."""
 
     row: str
     label: str
@@ -32,7 +26,7 @@ class Stated:
 
 
 def stated_values(block: str) -> list[Stated]:
-    """The single-number values of a computed block, by row and label."""
+    """Single-number values of a computed block, by row and label."""
     out: list[Stated] = []
     for line in (block or "").splitlines():
         line = line.strip()
@@ -56,7 +50,7 @@ def _norm(text: str) -> str:
 
 
 def _pattern(name: str) -> re.Pattern[str] | None:
-    """`name` as written with any spacing or brackets inside it, not inside a longer word."""
+    """name with optional inner spacing/brackets, not inside a longer word."""
     if len(name) < 2:
         return None
     body = _GAP.join(re.escape(ch) for ch in name)
@@ -66,7 +60,7 @@ def _pattern(name: str) -> re.Pattern[str] | None:
 
 
 class _Names:
-    """How each row and each label of a computed block may be written on a slide."""
+    """Slide spellings of each row and label."""
 
     def __init__(self, stated: list[Stated]) -> None:
         rows = list(dict.fromkeys(s.row for s in stated if s.row))
@@ -74,7 +68,7 @@ class _Names:
         self.rows: dict[str, list[re.Pattern[str]]] = {}
         for row, core in zip(rows, cores, strict=True):
             names = {_norm(row)}
-            # 「SJF(비선점)」 is also written 「SJF」 — unless 「RR(q=2)」 and 「RR(q=4)」 share it.
+            # 「SJF(비선점)」 → 「SJF」 unless ambiguous (RR(q=2)/RR(q=4))
             if core and cores.count(core) == 1:
                 names.add(core)
             self.rows[row] = [p for n in sorted(names, key=len, reverse=True)
@@ -83,7 +77,7 @@ class _Names:
         for s in stated:
             full = _norm(s.label)
             names = {full}
-            # 「평균 대기」 for 「평균 대기시간」, when no other value of the row starts alike.
+            # prefix alias (「평균 대기」) when unique in the row
             prefix = full[:4]
             if len(full) > 4 and re.fullmatch(r"[가-힣]{4}", prefix) and sum(
                 1 for o in stated if o.row == s.row and _norm(o.label)[:4] == prefix
@@ -92,7 +86,7 @@ class _Names:
             self.labels[(s.row, s.label)] = [p for n in names if (p := _pattern(n))]
 
     def rows_in(self, text: str) -> list[tuple[int, int, str]]:
-        """`(start, end, row)` of each row named in `text`, left to right, overlaps dropped."""
+        """(start, end, row) of rows named in text, overlaps dropped."""
         hits = sorted(
             ((m.start(), m.end(), row) for row, patterns in self.rows.items()
              for p in patterns for m in p.finditer(text)),
@@ -113,8 +107,7 @@ class _Names:
 
 
 def _same(written: str, value: float) -> bool:
-    """`written` is `value` as rounded to the places it shows (「4.8」 for 4.75, 「1592」 for
-    1591.5). A small value is not rounded to a whole number: 「5」 is not 4.5."""
+    """Whether written equals value at its shown precision."""
     places = len(written.split(".", 1)[1]) if "." in written else 0
     if not places and abs(value) < 100:
         return abs(float(written) - value) < 1e-9
@@ -137,18 +130,18 @@ class Clash:
 
 
 def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> list[Clash]:
-    """Numbers in `text` that differ from the computed value they name."""
+    """Numbers in text that differ from the computed value they name."""
     hits = names.rows_in(text)
     if hits:
         segments = [(h[1], hits[i + 1][0] if i + 1 < len(hits) else len(text), h[2])
                     for i, h in enumerate(hits)]
     else:
-        # A line without a row name speaks of the slide's row, when its title names one.
+        # no row named: use the title's row
         in_title = {row for _, _, row in names.rows_in(context)}
         if len(in_title) == 1:
             segments = [(0, len(text), in_title.pop())]
         else:
-            # Values with no row (「평균 = 4.75」) are named by their label alone.
+            # row-less values matched by label
             segments = [(0, len(text), "")] if any(not s.row for s in stated) else []
     out: list[Clash] = []
     for start, end, row in segments:
@@ -161,10 +154,10 @@ def _clashes(text: str, context: str, names: _Names, stated: list[Stated]) -> li
             number = _first_number(text, start + m.end(),
                                    start + min(following, default=len(piece)))
             if number is None:
-                # 「… 퀀텀 4) 4.5가 평균 대기시간입니다」: the value before its label.
+                # value before its label
                 number = _first_number(text, start, start + m.start())
         else:
-            # 「FCFS 4.75, SJF 4.00 … 평균 대기시간입니다」: the label once for the whole line.
+            # one label for the whole line
             named = [s for s in mine if names.label_at(row, s.label, text)]
             if len(named) != 1:
                 continue
@@ -180,7 +173,7 @@ def _mend(text: str, clashes: list[Clash]) -> str:
     return text
 
 
-#: Where a sentence of the speaker notes ends; a decimal point is not one.
+#: sentence end in notes; not a decimal point
 _SENTENCE_END = re.compile(r"(?<=[.!?。])(\s{1,8})")
 
 
@@ -188,7 +181,7 @@ def _check_text(text: str, context: str, names: _Names, stated: list[Stated],
                 found: list[str]) -> str:
     out = []
     for line in (text or "").splitlines(keepends=True):
-        # Split keeping the separators (odd items), so the line comes back whole.
+        # split keeping separators (odd items) to rejoin whole
         for i, piece in enumerate(_SENTENCE_END.split(line)):
             if i % 2 or not piece:
                 out.append(piece)
@@ -202,7 +195,7 @@ def _check_text(text: str, context: str, names: _Names, stated: list[Stated],
 
 def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
                 found: list[str]) -> list[list[Any]]:
-    """A table with rows or columns named for the computed rows, values for its labels."""
+    """Table with computed rows/labels as headers."""
     if len(rows) < 2:
         return rows
     header = [str(c) for c in rows[0]]
@@ -232,7 +225,7 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
                 continue
             number = _first_number(cells[j], 0, len(cells[j]))
             if number is None:
-                # 「최소」 where the code printed the value.
+                # 「최소」 in place of the value
                 if cells[j].strip():
                     found.append(f"「{cells[j]}」 → {s.text} ({s.row} {s.label})")
                     fixed[j] = s.text
@@ -243,15 +236,13 @@ def _check_rows(rows: list[list[Any]], names: _Names, stated: list[Stated],
     return out
 
 
-#: Slide fields that hold words but are not the slide's own claims.
+#: word fields that aren't the slide's claims
 _SKIP = frozenset({"id", "layout", "title", "accent", "image", "diagram", "textScale", "number",
                    "rows", "notes"})
 
 
 def check_slides(slides: list[dict[str, Any]], block: str) -> tuple[list[int], list[str]]:
-    """Mends every slide number that differs from the computed value it names.
-
-    Returns `(touched slide indices, what was corrected)`."""
+    """Mend slide numbers that differ from computed values: (touched indices, corrections)."""
     stated = stated_values(block)
     if not stated:
         return [], []
@@ -269,7 +260,7 @@ def check_slides(slides: list[dict[str, Any]], block: str) -> tuple[list[int], l
             if isinstance(value, list):
                 if not inner:
                     return [walk(v, context, True) for v in value]
-                # A pair (「카드 제목」, 「설명」): each half reads the other as context.
+                # pair halves read each other as context
                 return [walk(v, " ".join([context, *(str(o) for j, o in enumerate(value)
                                                     if j != i and isinstance(o, str))]), True)
                         for i, v in enumerate(value)]

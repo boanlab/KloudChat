@@ -1,25 +1,4 @@
-"""Documents by purpose: the title block and the numbering each kind of document uses.
-
-Prose rules live in `report._GENRES`. The report artifact carries the result as ``titleBlock``:
-
-    {"format": "lab", "label": "실험 보고서", "subtitle": "",
-     "fields": [["실험일", "2026-10-02"], ["과목·분반", ""], ...],
-     "abstract": "", "keywords": [], "numbering": "decimal"}
-
-An empty value is a blank the person fills in; a value is never invented. Numbering styles:
-
-- ``decimal`` — 1. / 1.1 (h2 / h3)
-- ``roman``   — I. / A.
-- ``korean``  — 1. / 가. (and 1) for a third level)
-- ``official``— 1. / 가. / 1) / 가) — Korean official documents
-- ``none``    — headings unnumbered
-
-``lists: "gaejo"`` sets list depth 1–4 as □ / ○ / - / ㆍ with hanging indents and a line
-opening with ※ as a note (개조식); ``closing`` ends the document with 「끝.」 after the last
-line of the body or the 붙임 list. Both are drawn by the renderers, never written by the model.
-
-The web mirror is ``apps/web/src/components/report/docFormats.ts``; a test keeps them equal.
-"""
+"""Per-purpose document title blocks and heading numbering; mirrored in web `docFormats.ts`."""
 
 from __future__ import annotations
 
@@ -33,7 +12,7 @@ from app.services import placeholders
 
 
 def blank(label: str) -> str:
-    """Shown where a head field is still blank: its own name in brackets, 「[작성자]」."""
+    """Blank head field placeholder: 「[작성자]」."""
     return placeholders.blank(label)
 
 
@@ -41,25 +20,21 @@ def blank(label: str) -> str:
 class DocFormat:
     id: str
     label: str
-    #: Matched on the person's instruction (not on pasted material).
+    #: Matched on the instruction, not pasted material.
     match: str
     fields: tuple[str, ...]
     numbering: str = "decimal"
     abstract: bool = False
     keywords: bool = False
     subtitle: bool = False
-    #: How the title block is laid out: cover (a page of its own), header (a field table
-    #: under the title), memo (field rows above the title, official/minutes), press
-    #: (headline, subtitle, dateline), draft (간이기안문: register fields beside the 결재란,
-    #: see `APPROVERS`, then the title).
+    #: Title block layout: cover, header, memo, press, draft (결재란 + title).
     head: str = "header"
     citation: str = "apa"
-    #: ``gaejo``: lists drawn as □ / ○ / - / ㆍ, ※ lines as notes. Empty: plain lists.
+    #: ``gaejo``: □ / ○ / - / ㆍ lists, ※ notes; empty = plain.
     lists: str = ""
-    #: 「끝.」 after the body or the 붙임 list (시행규칙 제4조제5항).
+    #: 「끝.」 after body or 붙임 (시행규칙 제4조제5항).
     closing: bool = False
-    #: Fields shown only when the material gives them: 「지도교수」 heads a student's plan, not
-    #: a professor's.
+    #: Fields shown only when the material gives them.
     optional: tuple[str, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -90,8 +65,7 @@ FORMATS: tuple[DocFormat, ...] = (
         ("배포일", "보도 시점", "문의처"), numbering="none", subtitle=True, head="press",
     ),
     DocFormat(
-        # 별지 제2호서식: 발신하지 않는 내부결재 문서만. A full 기안문·시행문 (수신·발신명의·
-        # 결문) is a separate format, not this one.
+        # 별지 제2호서식: 내부결재 only; full 기안문·시행문 is separate.
         "internal_draft", "간이기안문",
         r"간이\s{0,3}기안|내부\s{0,3}결재|기안\s{0,3}(?:문|서)|기안해",
         ("생산등록번호", "등록일", "결재일", "공개 구분", "기안자", "검토자", "결재권자"),
@@ -107,15 +81,13 @@ FORMATS: tuple[DocFormat, ...] = (
         ("발생 일시", "영향 범위", "심각도", "작성자"), head="header",
     ),
     DocFormat(
-        # 실험 결과 보고서 is `lab`, matched earlier.
         "result_report", "결과 보고서",
         r"결과\s{0,3}보고|출장\s{0,3}보고|실적\s{0,3}보고",
         ("보고일", "보고 부서", "보고자"),
         numbering="korean", head="memo", lists="gaejo", closing=True,
     ),
     DocFormat(
-        # A public grant application 「사업계획서 … 공모사업 신청용」: before `plan`, so the
-        # bare-계획서 fallback does not give it the 연구자·연구 기간 cover.
+        # Before `plan`, so bare-계획서 fallback doesn't apply.
         "grant", "공모·지원사업 계획서",
         r"공모\s{0,3}(?:사업)?[^\n]{0,30}?(?:계획|신청)"
         r"|(?:지원|보조|위탁|공모)\s{0,3}사업[^\n]{0,30}?(?:계획서|신청서)"
@@ -149,7 +121,7 @@ FORMATS: tuple[DocFormat, ...] = (
         ("보고일", "보고자", "대상 기간", "보고 대상"), numbering="korean", head="memo",
     ),
     DocFormat(
-        # Student capstone: tried before the client proposal so 「캡스톤 사업 제안서」 stays here.
+        # Before client proposal so 「캡스톤 사업 제안서」 stays here.
         "proposal", "프로젝트 제안서",
         r"캡스톤|프로젝트\s{0,3}제안서|기획서",
         ("팀명", "팀원", "지도교수", "제출일"), head="cover",
@@ -186,20 +158,17 @@ FORMATS: tuple[DocFormat, ...] = (
 )
 
 BY_ID: dict[str, DocFormat] = {f.id: f for f in FORMATS}
-#: Formats retired with their agents (고객 맞춤 제안서, 자기소개서·경력기술서): an agent that
-#: has one keeps it, nothing new chooses it. Documents that name one are still written in it.
+#: Retired formats: kept by existing agents, never newly chosen.
 RETIRED = frozenset({"client_proposal", "career_history"})
 _COMPILED = [(f, re.compile(f.match, re.I)) for f in FORMATS]
-#: Tried after every format: a bare 「계획서」 is a study plan unless an event plan matched,
-#: and a bare 「제안서」 with no client named keeps the capstone form.
+#: Last-resort matches for bare 「계획서」 / 「제안서」.
 _FALLBACKS = [(BY_ID["plan"], re.compile(r"계획서")), (BY_ID["proposal"], re.compile(r"제안서"))]
 
-#: The 결재란 columns of a `draft` head, in signing order; each field holds 직위와 성명.
+#: `draft` 결재란 columns in signing order.
 APPROVERS = ("기안자", "검토자", "결재권자")
 
 def _template_formats() -> dict[str, str]:
-    """Render templates that fix the purpose: each declares `doc_format` in its own
-    `template.toml` (read here directly: `design_templates` builds on this module)."""
+    """`doc_format` from each render template's `template.toml`."""
     root = Path(__file__).resolve().parent.parent / "design_templates"
     out: dict[str, str] = {}
     for manifest in sorted(root.glob("*/template.toml")):
@@ -211,19 +180,18 @@ def _template_formats() -> dict[str, str]:
     return out
 
 
-#: Render templates that already fix the purpose, by template id.
+#: Purpose-fixing render templates by id.
 TEMPLATE_FORMATS = _template_formats()
 
 
 def detect(
     instruction: str, template_id: str | None = None, fixed: str | None = None
 ) -> DocFormat | None:
-    """The template's format, else `fixed` (an agent's bound format), else the first format
-    the instruction names; None otherwise."""
+    """Template format, else `fixed`, else first named in instruction; else None."""
     if template_id and template_id in TEMPLATE_FORMATS:
         return BY_ID[TEMPLATE_FORMATS[template_id]]
     if template_id and template_id.startswith("ut-"):
-        # A person's template carries its own format (`services/user_templates.py`).
+        # User templates carry their own format.
         from app.services import design_templates
 
         template = design_templates.get(template_id)
@@ -237,9 +205,7 @@ def detect(
     return None
 
 
-# ── head fields read from the material by code ──────────────────────────
-
-#: Labels the material writes a head field under, besides the field's own name.
+#: Extra material labels per head field.
 _HEAD_ALIASES: dict[str, tuple[str, ...]] = {
     "회의명": ("회의명",),
     "일시": ("일시", "회의 일시", "일자", "날짜"),
@@ -256,7 +222,7 @@ _HEAD_ALIASES: dict[str, tuple[str, ...]] = {
     "신청 기관": ("신청 기관", "신청기관", "주관 기관", "수행 기관"),
     "사업 기간": ("사업 기간", "사업기간"),
 }
-#: Labels that name a person in a sentence: 「보고자는 시설팀 김도윤 주무관.」
+#: Labels naming a person in a sentence.
 _SAID_LABELS = ("작성자", "보고자", "이름", "보고일", "작성일", "보고 대상")
 _DASH = re.compile(r"\s{1,3}[—–-]\s{1,3}")
 _HEADER_LINE = re.compile(r"^\s{0,4}\[([^\[\]\n]{4,240})\]\s{0,4}$")
@@ -266,9 +232,9 @@ _DAY_TIME = re.compile(
 _MEETING_NAME = re.compile(r"회의|위원회|미팅|모임|세미나|워크숍|간담회|협의회")
 _PLACE_WORD = re.compile(
     r"\d{2,4}\s{0,2}호|회의실|강당|세미나실|\d\s{0,2}층|홀$|센터$|관\s{0,2}\d")
-#: 「작성자는 나(조교 정다은)로」: the name in the parentheses.
+#: 「작성자는 나(조교 정다은)로」 → parenthesised name.
 _SAID_ME = r"\s{0,2}(?:는|은)\s{0,2}(?:나|저)\s{0,2}\(([^()\n]{2,30})\)"
-#: 「보고자는 시설팀 김도윤 주무관.」, 「보고자 학생지원팀.」
+#: 「보고자는 시설팀 김도윤 주무관.」
 _SAID_VALUE = (r"(?:\s{0,2}(?:는|은)\s{0,2}|\s{1,2})([가-힣A-Za-z0-9○][^,.:\n]{1,30}?)\s{0,2}"
                r"(?:(?:으로|로)\s{0,2}(?:해|써|적어|넣어|부탁)|이야|입니다|이고|예요|[.\n]|$)")
 _PROFILE = re.compile(r"경력|이력|자기소개|지원서|프로필|포트폴리오")
@@ -276,12 +242,11 @@ _PERSON = re.compile(r"[가-힣]{2,4}(?:○{1,2})?")
 
 
 def _base(field: str) -> str:
-    """「보고자(부서)」 → 「보고자」."""
     return re.sub(r"\s{0,2}\(.*?\)", "", field).strip()
 
 
 def _segments(text: str) -> list[str]:
-    """Comma-separated parts, a comma inside parentheses kept: 「김교수(위원장, 좌장), 박교수」."""
+    """Comma split, parenthesised commas kept."""
     out, depth, start = [], 0, 0
     for i, ch in enumerate(text):
         depth += ch in "(（"
@@ -294,8 +259,7 @@ def _segments(text: str) -> list[str]:
 
 
 def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
-    """`label: value` pairs on one line; a value runs to the next label, 「]」, 「 / 」 or
-    the end of the line."""
+    """One-line `label: value` pairs."""
     names = sorted(labels, key=len, reverse=True)
     rx = re.compile(r"(?:^|(?<=[\s\[(,/·—-]))(" + "|".join(re.escape(n) for n in names)
                     + r")\s{0,2}[:：]\s{0,3}")
@@ -312,9 +276,7 @@ def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
 
 
 def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
-    """Head fields the request and material state, read by code: 「일시: …」 labels, a memo's
-    bracketed header 「[메모 — 교육과정위원회, 2026-10-12(월) 15:00~16:10, 공학관 302호]」,
-    「작성자는 나(조교 정다은)로」, 「[경력 정리 — 박준영]」."""
+    """Head fields read by code from request and material."""
     wanted = {_base(f): f for f in fmt.fields}
     labels: dict[str, str] = {}
     for base, field_name in wanted.items():
@@ -358,18 +320,16 @@ def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
                 put(wanted["장소"], seg)
     listed = re.search(r"참석|출석|참가자|참여자", text or "")
     if "참석자" in wanted and wanted["참석자"] not in out and not listed:
-        # A memo without an attendance line: the people it names (speakers, owners) are listed,
-        # marked as read from the material.
+        # Memo without attendance line: named people listed, marked as from material.
         if len(people := named_people(text)) >= 2:
             put(wanted["참석자"], ", ".join(people[:8]) + NAMED_NOTE)
     return out
 
 
-#: What follows attendees read from the names in a memo, not from an attendance line.
+#: Attendees-from-names note.
 NAMED_NOTE = " (자료에 나온 이름 기준)"
 
-#: Who a memo names: 「포스터 → 지민」, 「… 하자 (회장)」, 「수아가 하기로」
-#: (gap-check reads the same).
+#: Memo name patterns (shared with gap-check).
 _NAMED = (
     re.compile(r"(?:→|->|=>)\s{0,2}([가-힣]{2,4}|[가-힣]○○)"
                r"(?=\s{0,2}(?:[,(]|$)|(?:이|가|님|씨)?\s{0,2}(?:담당|맡))", re.M),
@@ -380,7 +340,7 @@ _NAMED = (
 
 
 def named_people(text: str) -> list[str]:
-    """Names and roles the memo itself puts on someone, in order of first mention."""
+    """Names/roles the memo assigns, in first-mention order."""
     found: list[tuple[int, str]] = []
     for pattern in _NAMED:
         found += [(m.start(1), m.group(1)) for m in pattern.finditer(text or "")]
@@ -392,8 +352,7 @@ def named_people(text: str) -> list[str]:
 
 
 def fill_prompt(fmt: DocFormat, request: str, title: str, material: str = "") -> str:
-    """The question for the head fields: values only from the request and material, blanks
-    otherwise."""
+    """Head-field prompt: values from request/material only, else blanks."""
     extra = []
     if fmt.subtitle:
         extra.append('"subtitle": 제목 아래 한 줄(40자 이내)')
@@ -420,8 +379,7 @@ def fill_prompt(fmt: DocFormat, request: str, title: str, material: str = "") ->
 def title_block(
     fmt: DocFormat, answer: dict[str, Any], request: str, read: dict[str, str] | None = None
 ) -> dict[str, Any]:
-    """The artifact's ``titleBlock``; a value not found in `request` (the request and its
-    material) becomes a blank. `read` holds the values code read (`head_values`), which win."""
+    """Artifact ``titleBlock``; values not in `request` blanked, code-read `read` wins."""
     given = " ".join((request or "").split())
     squeezed = re.sub(r"\s+", "", given)
     raw = answer.get("fields") if isinstance(answer.get("fields"), dict) else {}
@@ -430,8 +388,7 @@ def title_block(
         text = " ".join(str(value or "").split())[:80]
         if not text:
             return ""
-        # Every token of the value must appear in the request (the attendees' provenance note
-        # is the code's own words).
+        # Every value token must appear in the request.
         tokens = [t for t in re.split(r"[\s,·/()]+", text.removesuffix(NAMED_NOTE)) if t]
         return text if all(re.sub(r"\s+", "", t) in squeezed for t in tokens) else ""
 
@@ -460,7 +417,7 @@ def title_block(
 
 
 def number_heading(numbering: str, level: int, counters: list[int]) -> str:
-    """The number before a heading, given the running counters ([h2, h3, h4])."""
+    """Heading number from running counters ([h2, h3, h4])."""
     if numbering == "none":
         return ""
     korean = "가나다라마바사아자차카타파하"
@@ -477,15 +434,13 @@ def number_heading(numbering: str, level: int, counters: list[int]) -> str:
     return f"{a}." if level == 1 else f"{a}.{b}"
 
 
-# ── 공문서 표기 (행정업무운영 편람; 시행규칙 제2조) ──────────────────────────
-
 _DIGITS = "영일이삼사오육칠팔구"
 _SMALL_UNITS = ("", "십", "백", "천")
 _LARGE_UNITS = ("", "만", "억", "조")
 
 
 def hangul_amount(amount: int) -> str:
-    """113560 → 「일십일만삼천오백육십」: every digit read, 일 included, as on a 공문."""
+    """113560 → 「일십일만삼천오백육십」 (공문 style)."""
     if amount <= 0:
         return "영"
     groups: list[str] = []
@@ -503,12 +458,12 @@ def hangul_amount(amount: int) -> str:
 
 
 def official_amount(amount: int) -> str:
-    """「금113,560원(금일십일만삼천오백육십원)」 — an amount that is the subject of approval."""
+    """「금113,560원(금일십일만삼천오백육십원)」."""
     return f"금{amount:,}원(금{hangul_amount(amount)}원)"
 
 
 def official_date(year: int, month: int, day: int) -> str:
-    """「2026. 10. 7.」: the 연·월·일 dropped for points, no leading zero."""
+    """「2026. 10. 7.」."""
     return f"{year}. {month}. {day}."
 
 
@@ -531,7 +486,7 @@ def _date_text(match: re.Match[str]) -> str:
 def _time_text(match: re.Match[str]) -> str:
     half, hour = match.group(1), int(match.group(2))
     minute = 30 if match.group(4) else int(match.group(3) or 0)
-    # 「3시」 may be 15:00 in speech: only a stated 오전·오후 or a 24-hour hour is certain.
+    # 「3시」 ambiguous: only stated 오전·오후 or 24-hour is certain.
     if half is None and hour < 13:
         return match.group(0)
     if half == "오후" and hour < 12:
@@ -542,7 +497,7 @@ def _time_text(match: re.Match[str]) -> str:
 
 
 def official_notation(text: str) -> str:
-    """Dates as 「2026. 10. 7.」 and times as 「14:00」 outside code fences."""
+    """공문 date/time notation outside code fences."""
     out: list[str] = []
     fenced = False
     for line in (text or "").split("\n"):
@@ -555,14 +510,11 @@ def official_notation(text: str) -> str:
     return "\n".join(out)
 
 
-# ── 개조식 ───────────────────────────────────────────────────────────────
-
-#: The marker of each list depth, 1 to 4.
+#: Markers per list depth 1–4.
 GAEJO_MARKERS = ("□", "○", "-", "ㆍ")
-#: A 개조식 보고's fixed sections, in order. The 핵심 두 줄 open the first as a callout;
-#: detail tables go to 붙임, which the page limit does not count.
+#: 개조식 보고 fixed sections; tables to uncounted 붙임.
 GAEJO_OUTLINE = ("현황", "문제점 및 검토", "향후 조치 및 결정 요청", "붙임")
-#: Typed markers by the depth they stand for; 「ㅇ」 is how ○ is often typed.
+#: Typed markers by depth; 「ㅇ」 = ○.
 _TYPED_DEPTH = {
     "□": 1, "■": 1, "○": 2, "◦": 2, "ㅇ": 2, "-": 3, "–": 3, "―": 3, "ㆍ": 4, "·": 4, "∙": 4,
 }
@@ -570,11 +522,11 @@ _TYPED = re.compile(r"^(\s{0,12})(?:[-*+]\s{1,4})?([□■○◦ㅇ\-–―ㆍ·
 _ITEM = re.compile(r"^(\s{0,24})([-*+]|\d{1,3}[.)])\s{1,4}(.*)$")
 _ATTACH = re.compile(r"^\s{0,8}붙\s{0,2}임\s{0,4}:?[\s\u00a0]{0,6}(.*)$")
 _NUMBERED = re.compile(r"^\s{0,24}\d{1,3}\.\s{1,4}\S")
-#: Two non-breaking spaces: the 2타 before 「끝.」 and after 「붙임」, kept by every renderer.
+#: Two NBSPs (2타) before 「끝.」 / after 「붙임」.
 GAP = "\u00a0\u00a0"
 
 
-#: A line opening with a date's month and day (「12. 31. 만료)」, 「7.(월) 오픈)가」, 「12.」).
+#: Line starting with a date's month/day remainder.
 _DATE_TAIL = re.compile(
     r"^\d{1,2}\.(?P<more>\s{1,2}\d{1,2}\.(?:\([월화수목금토일]\))?|\([월화수목금토일]\))?(?=[\s)]|$)"
 )
@@ -582,7 +534,7 @@ _DANGLING_NUMBER = re.compile(r"(?:^|[\s(])\d{1,4}\.$")
 
 
 def _date_tail(line: str, before: str) -> bool:
-    """Whether `line` is the rest of a date the line `before` was cut from."""
+    """`line` continues a date split from `before`."""
     found = _DATE_TAIL.match(line)
     if not found or not before.strip() or before.lstrip().startswith(("|", "#", "```", "~~~")):
         return False
@@ -595,22 +547,21 @@ def _date_tail(line: str, before: str) -> bool:
 
 
 def _typed_markers(lines: list[str]) -> bool:
-    """Whether the writer typed □/○ rather than nesting Markdown lists."""
+    """Writer typed □/○ instead of nested lists."""
     return any(
         (found := _TYPED.match(line)) and found.group(2) in "□■○◦ㅇ" for line in lines
     )
 
 
-#: A list item that holds a table row: 「  - | 항목 | 계획 |」, 「○ |---|---|」.
+#: List item holding a table row.
 _ITEM_ROW = re.compile(r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}(\|.*\|)\s*$")
-#: A list item that is a table's caption: 「- 표: 예산 편성·집행」, 「- **표 2. …**」.
+#: List item that is a table caption.
 _ITEM_CAPTION = re.compile(
     r"^\s{0,24}(?:[-*+]|[□■○◦ㅇㆍ·∙])\s{1,4}((?:\*\*)?표\s{0,2}(?:\d{1,3}\.|:).*)$")
 
 
 def _tables_out_of_items(lines: list[str]) -> list[str]:
-    """Table rows written as list items come back out as a table, its caption above it,
-    a blank line around, so 「○ | 항목 | 계획 |」 does not print as a list line."""
+    """List-item table rows restored as a captioned table."""
     rows = [bool(_ITEM_ROW.match(line)) for line in lines]
     if sum(rows) < 2:
         return lines
@@ -631,14 +582,12 @@ def _tables_out_of_items(lines: list[str]) -> list[str]:
     return out
 
 
-#: A 공문 item line: 「1. …」, 「가. …」, 「1) …」, 「가) …」, 「※ …」, 「붙임 …」.
+#: 공문 item line.
 _OFFICIAL_ITEM = re.compile(r"^\s{0,12}(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|※|붙\s{0,2}임)\s")
 
 
 def official_body(text: str) -> str:
-    """A 공문 body with each item on a paragraph of its own: 「가. 일시: …」 written indented
-    under 「1.」 would otherwise run into it as one line (a Markdown continuation) or, at four
-    spaces, print as code. Tables and fences pass through, a blank line around them."""
+    """공문 body, one paragraph per item; tables and fences pass through."""
     out: list[str] = []
     fenced = False
 
@@ -659,7 +608,7 @@ def official_body(text: str) -> str:
             continue
         if _OFFICIAL_ITEM.match(line):
             line = stripped
-        # A blank line between two lines, unless both are a table's rows.
+        # Blank line between lines unless both table rows.
         if out and out[-1].strip() and not (table(out[-1]) and table(line)):
             out.append("")
         out.append(line)
@@ -667,28 +616,20 @@ def official_body(text: str) -> str:
 
 
 def tables_out_of_items(text: str) -> str:
-    """`text` with its list-item table rows written as a table (`_tables_out_of_items`)."""
+    """`text` with list-item tables restored."""
     return "\n".join(_tables_out_of_items((text or "").split("\n")))
 
 
 def gaejo_markdown(text: str) -> str:
-    """A 개조식 body as one canonical Markdown: depth by nesting, two spaces a level.
-
-    Typed markers (「□ 현황」, 「 ○ 세부」, 「ㅇ」 for ○) become list items at their depth;
-    Markdown lists keep their nesting. A ※ line under an item becomes an item at that
-    item's depth (the renderers draw ※ as its marker); elsewhere it stands apart as a
-    note. A 붙임 run becomes one paragraph:
-    「붙임  1. ○○ 1부.」 with the next items under it. Tables and fences pass through
-    untouched.
-    """
+    """개조식 body as canonical nested Markdown; tables and fences untouched."""
     lines = _tables_out_of_items((text or "").split("\n"))
     typed = _typed_markers(lines)
     out: list[str] = []
-    #: Indents of the open Markdown list levels.
+    #: Open list-level indents.
     indents: list[int] = []
     fenced = False
     attaching = False
-    #: The depth of the last list item, while a ※ line may still stand under it.
+    #: Last item depth, for a following ※ line.
     item_depth = 0
 
     def blank() -> None:
@@ -707,8 +648,7 @@ def gaejo_markdown(text: str) -> str:
             item_depth = 0
             continue
         if not stripped:
-            # A gap inside the 붙임 run (one paragraph per item, as the editor saves it)
-            # does not end the run.
+            # Gap inside 붙임 run doesn't end it.
             if not attaching:
                 indents.clear()
                 out.append("")
@@ -717,7 +657,7 @@ def gaejo_markdown(text: str) -> str:
             if out[-1] == "붙임":
                 out[-1] = f"붙임{GAP}{stripped}"
             else:
-                # A hard break: the items stay one paragraph, a line each.
+                # Hard break: one paragraph, a line each.
                 out[-1] = out[-1].rstrip() + "  "
                 out.append(stripped)
             continue
@@ -725,7 +665,7 @@ def gaejo_markdown(text: str) -> str:
             blank()
         attaching = False
         if _date_tail(stripped, out[-1] if out else ""):
-            # A date cut at its dots (「연장(2026.」 / 「12. 31. 만료)」) is one line again.
+            # Rejoin a date split at its dots.
             out[-1] = out[-1].rstrip() + " " + stripped
             continue
         if found := _ATTACH.match(line):
@@ -739,7 +679,7 @@ def gaejo_markdown(text: str) -> str:
         if stripped.startswith("※"):
             note = "※ " + stripped[1:].strip()
             if item_depth:
-                # A ※ under an item is a note at that item's depth: its own marker, no ○.
+                # ※ under an item: note at that depth.
                 while out and not out[-1].strip():
                     out.pop()
                 out.append("  " * (item_depth - 1) + "- " + note)
@@ -763,7 +703,6 @@ def gaejo_markdown(text: str) -> str:
                 indents.append(indent)
             depth = min(len(indents), len(GAEJO_MARKERS))
             body = item.group(3).strip()
-            # A marker typed inside a Markdown item names its depth.
             if (inner := _TYPED.match(body)) and inner.group(2) in "□■○◦ㅇㆍ·∙":
                 depth, body = _TYPED_DEPTH[inner.group(2)], inner.group(3).strip()
             mark = "- " if item.group(2) in "-*+" else item.group(2) + " "
@@ -771,7 +710,7 @@ def gaejo_markdown(text: str) -> str:
             item_depth = depth
             continue
         if out and out[-1].lstrip().startswith(("- ", "* ")) and indents:
-            # Prose after a list: its own paragraph, not a lazy continuation of the item.
+            # Prose after a list: own paragraph.
             blank()
         indents.clear()
         item_depth = 0
@@ -781,8 +720,7 @@ def gaejo_markdown(text: str) -> str:
 
 
 def attachment_body(text: str) -> str:
-    """The 붙임 section's body under its 붙임 label: 「붙임」 put first when the writer left it
-    off, and a label typed as a list item (「- 붙임」) made a line of its own."""
+    """붙임 section body: label prepended if missing, list-item label split out."""
     lines = (text or "").split("\n")
     at = next((i for i, line in enumerate(lines) if line.strip()), None)
     if at is None:
@@ -795,19 +733,19 @@ def attachment_body(text: str) -> str:
     return "\n".join(lines)
 
 
-#: A typed 「끝.」: alone, after a gap of two, or after a sentence's end — not 「시작과 끝.」.
+#: Typed 「끝.」, not 「시작과 끝.」.
 _CLOSING = re.compile(
     r"(?:^[\s\u00a0]{0,8}|[\s\u00a0]{2,8}|(?<=[.)」”])[\s\u00a0]{1,8})끝\s{0,2}\.\s{0,4}$"
 )
 
 
 def without_closing(line: str) -> str:
-    """A line with a 「끝.」 the writer typed taken off; the renderers place their own."""
+    """Strip typed 「끝.」; renderers add their own."""
     return _CLOSING.sub("", line)
 
 
 def wire() -> list[dict[str, Any]]:
-    """The table the web mirror must equal."""
+    """Table the web mirror must equal."""
     return [
         {"id": f.id, "label": f.label, "fields": list(f.fields), "numbering": f.numbering,
          "head": f.head, "abstract": f.abstract, "keywords": f.keywords, "subtitle": f.subtitle,

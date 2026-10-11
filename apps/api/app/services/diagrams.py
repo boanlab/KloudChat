@@ -1,11 +1,4 @@
-"""Figures a document draws for itself: which parts want one, and the drawing for each.
-
-One planning call picks the parts where a figure says more than the words; each goes
-through `diagram.draw_native`, which draws it with the .pptx export's shapes. A deck keeps
-the source in `slide["diagram"]` and the picture in `slide["image"]`, a report carries the
-picture. A figure that cannot be drawn so is left out. No image model and no approval card:
-the cost is the writer's own tokens.
-"""
+"""Self-drawn document figures: one planning call, each drawn natively; undrawable ones dropped."""
 
 from __future__ import annotations
 
@@ -21,10 +14,10 @@ from app.services.report_export import diagram_key
 
 log = logging.getLogger(__name__)
 
-#: Figure kinds a document may draw for itself, with the name a reader sees.
+#: figure kinds with reader-facing names
 FIGURES = {"method": "구조도", "flow": "흐름도", "compare": "비교도", "concept": "개념도"}
 
-#: Figures per document.
+#: figures per document
 MAX_FIGURES = 3
 
 Completion = Callable[[str, list[dict[str, str]], str, int], Awaitable[tuple[str, dict]]]
@@ -40,8 +33,7 @@ _STRICT_RULES = """규칙:
   관계가 본문에 **적혀 있을 때만** 그린다.
 """
 
-#: Report planner rules: every part is a candidate, and a table does not rule out a
-#: comparison figure.
+#: report planner rules: every part eligible; tables don't exclude comparisons
 _REPORT_RULES = """규칙:
 - 보고서는 그림이 있어야 읽힌다. 각 부분에서 **구성(요소와 관계)·흐름(단계·순서)·
   대비(두 쪽 또는 여러 유형)·층위(상위·하위 개념, 분류)** 가운데 하나라도 본문에
@@ -84,21 +76,21 @@ _TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{3,}", re.M)
 
 
 def _has_table(text: str) -> bool:
-    """Whether a part already carries a Markdown table (a rule row under a head)."""
+    """Whether a part has a Markdown table."""
     return bool(_TABLE_RULE.search(text or ""))
 
 
 @dataclass(frozen=True, slots=True)
 class Planned:
-    """One figure the planner asked for, on part `index` (0-based)."""
+    """One planned figure on part index (0-based)."""
 
     index: int
     figure: str
     description: str
     caption: str
-    #: The part's own text: a drawn figure must agree with its tables (`figure_facts`).
+    #: part text; figure must agree with its tables
     context: str = ""
-    #: The whole document, for the option it recommends.
+    #: whole document, for the recommended option
     document: str = ""
 
 
@@ -115,11 +107,7 @@ async def plan(
     limit: int = MAX_FIGURES,
     at_least: int = 0,
 ) -> tuple[list[Planned], dict[str, int]]:
-    """Figures for these `(title, text)` parts; only `eligible` indices may get one. Never raises.
-
-    `complete` and `wrap` are the caller's, so the call is priced like the writer's and sees
-    the same sources.
-    """
+    """Figures for (title, text) parts, eligible indices only; never raises."""
     allowed = sorted(set(eligible))
     if not allowed:
         return [], {"inputTokens": 0, "outputTokens": 0}
@@ -151,7 +139,7 @@ async def plan(
     asked_for = not planned and asks_for_diagrams(request)
     short = len(planned) < min(at_least, len(allowed))
     if asked_for or short:
-        # Explicitly requested diagrams, or fewer than `at_least`: one retry, told why.
+        # explicitly requested or below at_least: one retry with reason
 
         if asked_for:
             asked = "·".join(dict.fromkeys(_ASKS_DIAGRAM.findall(request or ""))) or "도식"
@@ -180,7 +168,7 @@ async def plan(
 
 _ASKS_DIAGRAM = re.compile(
     r"구조도|흐름도|비교도|개념도|다이어그램|도식|도해|아키텍처\s*(?:그림|도)|"
-    # 「구조와 흐름은 그림으로」: a structure or flow asked for as a picture is a diagram.
+    # structure/flow asked as a picture = diagram
     r"(?:구조|흐름|관계|과정|절차|단계)[^\n.]{0,12}?그림으로|그림으로\s*(?:그려|보여|표현|나타)|시각화|도식화|"
     r"\b(?:diagram|flowchart|architecture\s+figure)\b",
     re.I,
@@ -188,12 +176,12 @@ _ASKS_DIAGRAM = re.compile(
 
 
 def asks_for_diagrams(request: str) -> bool:
-    """Whether the request itself names a diagram it wants."""
+    """Whether the request names a diagram."""
     return bool(_ASKS_DIAGRAM.search(request or ""))
 
 
 def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list[Planned]:
-    """The planner's answer as `Planned` rows: known kinds, eligible parts, one per part."""
+    """Planner answer as Planned rows: known kinds, eligible parts, one each."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in text and "]" in text else ""
     try:
         parsed = json.loads(block)
@@ -232,12 +220,8 @@ def parse(text: str, *, count: int, limit: int, eligible: Iterable[int]) -> list
 async def make(
     planned: Planned, *, model: str, api_key: str, slide: bool, accent: str = ""
 ) -> tuple[dict[str, Any], dict[str, int], bytes]:
-    """The source for one planned figure with its key, the spend, and its PNG.
-
-    Raises when the figure cannot be drawn (`diagram.Undrawable`, or no diagram at all);
-    callers leave the part as words.
-    """
-    # Imported here: `diagram` reaches the report writer, which reaches the deck rules.
+    """Source, key, spend, PNG for one planned figure; raises if undrawable."""
+    # local import: avoids a cycle through report/deck
     from app.services import diagram
 
     source, caption, usage, png = await diagram.draw_native(
@@ -249,9 +233,7 @@ async def make(
         accent=accent or diagram.ACCENT,
     )
     if planned.context:
-        # A box that says what the part's own table does not (안1 「중복 방지: 충족」 beside
-        # 「중복 예약 월 6건 발생」) leaves the figure out; a highlight on an option the document
-        # does not recommend comes off.
+        # figures contradicting their tables dropped; off-recommendation highlight removed
         checked = figure_facts.check(source, context=planned.context, document=planned.document)
         if checked.problems:
             raise figure_facts.Contradicted("; ".join(checked.problems))
@@ -272,7 +254,7 @@ async def make(
 
 
 def fence(made: dict[str, Any]) -> str:
-    """The figure as the Markdown a report section carries: a mermaid fence and its caption."""
+    """Figure as report Markdown: mermaid fence plus caption."""
     caption = str(made.get("caption") or "").strip()
     block = f"```mermaid\n{str(made.get('source') or '').strip()}\n```"
     return f"{block}\n\n*그림: {caption}*" if caption else block

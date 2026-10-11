@@ -1,7 +1,4 @@
-"""Proposes and prices document figures at outline time, before the prose is written.
-
-Nothing here draws; approved prompts go to `imagegen`.
-"""
+"""Outline-time figure proposals and pricing; drawing is imagegen's."""
 
 from __future__ import annotations
 
@@ -19,8 +16,7 @@ log = logging.getLogger(__name__)
 
 MAX_FIGURES = 4
 
-#: Assumed completion tokens per picture, for the approval-card estimate only;
-#: the ledger charges actual usage.
+#: estimate only; ledger charges actual usage
 _TOKENS_PER_IMAGE = 1000
 
 _PROMPT = """다음 문서에 그림을 넣는다면 어디에 무엇을 넣어야 하는지 판정하라.
@@ -55,7 +51,7 @@ diagram of a three-tier architecture, flat vector style, labelled boxes, \
 white background"}}]"""
 
 
-#: For the picker on one section: always proposes, unlike `_PROMPT`.
+#: single-section picker: always proposes
 _ONE_PROMPT = """다음 자리에 넣을 그림 하나를 제안하라.
 
 문서 제목: {title}
@@ -94,10 +90,10 @@ lighting, shallow depth of field", "description": ""}}
 엔진에서 상태를 읽는다."}}"""
 
 
-#: Style chip per document look; looks not listed leave the choice to the planner.
+#: style chip per look; unlisted → planner's choice
 _LOOK_STYLE = {"minimal": "미니멀"}
 
-#: Mermaid figure kinds the suggestion may name; `diagrams.FIGURES` draws them.
+#: mermaid kinds, drawn by diagrams.FIGURES
 _KINDS = ("flow", "method", "concept")
 _LOOK_NAMES = {
     "editorial": "편집형",
@@ -114,30 +110,30 @@ _LOOK_NAMES = {
 class Figure:
     """One proposed picture."""
 
-    #: Zero-based index into the document's parts.
+    #: zero-based part index
     section: int
     caption: str
     prompt: str
-    #: `flow` / `method` / `concept` for a figure drawn as shapes; empty for a picture.
+    #: flow/method/concept for shapes; empty for a picture
     figure: str = ""
-    #: Diagram description, for the figure path.
+    #: diagram description
     description: str = ""
     style: str = ""
 
 
 @dataclass(slots=True)
 class Proposal:
-    """Proposed figures and their estimated cost."""
+    """Proposed figures and estimated cost."""
 
     figures: list[Figure] = field(default_factory=list)
-    #: Approximate credits shown on the approval card.
+    #: approval-card credits
     credits: int = 0
-    #: The image model's display name.
+    #: image model display name
     model: str = ""
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
 
     def wire(self) -> dict[str, Any]:
-        # Key names are the approval card's.
+        # approval-card key names
         return {
             "figures": [
                 {"section": f.section, "caption": f.caption, "prompt": f.prompt}
@@ -149,7 +145,7 @@ class Proposal:
 
 
 def estimate(model: dict, count: int) -> int:
-    """Credits for `count` pictures on this model, rounded up per picture."""
+    """Credits for count pictures, rounded up per picture."""
     per_out = model.get("creditCost") or 0
     if per_out == 0:
         return 0  # self-hosted
@@ -166,7 +162,7 @@ async def propose(
     image_model: dict | None,
     limit: int = MAX_FIGURES,
 ) -> Proposal:
-    """Figures for this document's outline; empty is the common answer. Never raises."""
+    """Figures for the outline (usually empty); never raises."""
     if not parts or not image_model:
         return Proposal()
 
@@ -224,7 +220,7 @@ async def suggest(
     api_key: str,
     look: str = "",
 ) -> Figure | None:
-    """One picture for one place, pre-filled for the picker. `None` on any failure, never raises."""
+    """One pre-filled picture for the picker, or None; never raises."""
     base, _ = await settings_store.litellm_config()
     try:
         async with httpx.AsyncClient(
@@ -302,7 +298,6 @@ def _parse(text: str, count: int, limit: int) -> list[Figure]:
         prompt = str(item.get("prompt") or "").strip()
         if not (0 <= section < count) or not prompt:
             continue
-        # One picture per part.
         if any(f.section == section for f in out):
             continue
         out.append(
@@ -318,7 +313,7 @@ def _parse(text: str, count: int, limit: int) -> list[Figure]:
 
 
 def note_for(figure: Figure) -> str:
-    """Section-prompt note so the prose can refer to the figure."""
+    """Section-prompt note referencing the figure."""
     return (
         f"이 절에는 그림이 한 장 들어갑니다: {figure.caption or '도해'}. "
         "본문에서 그 그림을 한 번 언급하되, 그림이 말하는 것을 글로 다시 "

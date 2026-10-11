@@ -1,33 +1,4 @@
-"""Slide patterns: one table every renderer reads.
-
-A pattern is a data shape (what the writer fills) drawn by a general arrangement
-(how the screen, the PPTX and the PDF lay it out). Fifty-odd patterns come from four
-shapes and ten arrangements, so a renderer implements the arrangements once and every
-pattern of that arrangement follows.
-
-Shapes:
-- ``pairs``   — ``items: [[left, right], ...]``: a label and what it says.
-- ``columns`` — ``columns: [{"title": str, "items": [str, ...]}, ...]``: named lists side by side.
-- ``metrics`` — ``metrics: [[value, label], ...]``, as the ``metrics`` layout.
-- ``chart``   — ``chart: {kind, unit, categories, series}``, as the ``chart`` layout.
-- ``text``    — ``body``: one line under the title.
-
-Arrangements (``render``) and their parameters:
-- ``grid``    — boxes in ``cols`` columns; ``style``: card | person | feature.
-- ``list``    — one row per item; ``marker``: number | check | qa | term | star | target | ref.
-- ``flow``    — boxes left to right with connectors; ``style``: arrow | chevron | phase.
-- ``vflow``   — a vertical line with points (milestones).
-- ``stack``   — stacked bars that widen or narrow; ``shape``: pyramid | funnel.
-- ``cycle``   — items around a ring.
-- ``quad``    — a 2×2 grid; ``mode``: swot | matrix.
-- ``columns`` — named panels side by side; ``tone``: neutral | vs | posneg | beforeafter.
-- ``kpi``     — metrics; ``mode``: grid | bars | compare.
-- ``chart``   — the chart drawer with a fixed ``kind``.
-- ``text``    — a single large line; ``mode``: question | definition | hypothesis.
-
-The web mirror is ``apps/web/src/components/slides/patterns.ts``; a test keeps the two
-equal (`test_slide_patterns_are_one_table.py`).
-"""
+"""Slide patterns (shape × arrangement): one table for all renderers; mirrored in patterns.ts."""
 
 from __future__ import annotations
 
@@ -38,21 +9,19 @@ from typing import Any
 @dataclass(frozen=True)
 class Pattern:
     name: str
-    #: What the picker shows.
     label: str
     shape: str
     render: str
     params: dict[str, Any] = field(default_factory=dict)
     #: (fewest, most) items, or columns for ``columns``.
     count: tuple[int, int] = (3, 5)
-    #: Character limits: left/right of a pair, or a column title and its items.
+    #: Char limits: pair left/right, or column title/items.
     left_max: int = 14
     right_max: int = 80
-    #: When the outline should pick it — one line, read by the planner.
+    #: Planner hint: when to pick it (one line).
     use: str = ""
-    #: The writer's rules for this slide.
     rules: str = ""
-    #: An example answer (JSON, braces doubled for ``str.format``).
+    #: Example answer (JSON, braces doubled for ``str.format``).
     example: str = ""
     #: Only offered when the request carries numbers.
     numeric: bool = False
@@ -63,7 +32,6 @@ def _p(name, label, shape, render, params=None, **kw) -> Pattern:
 
 
 PATTERNS: tuple[Pattern, ...] = (
-    # ---- grid ----
     _p("cards-2", "카드 2개", "pairs", "grid", {"cols": 2, "style": "card"}, count=(2, 2),
        left_max=16, right_max=110,
        use="두 가지를 나란히 크게 — 두 방안, 두 축, 두 대상.",
@@ -98,7 +66,6 @@ PATTERNS: tuple[Pattern, ...] = (
        example=(
            '{{"items": [["김서연", "기획·PM"], ["박지훈", "백엔드"], ["이민아", "프론트엔드"]]}}'
        )),
-    # ---- list ----
     _p("checklist", "체크리스트", "pairs", "list", {"marker": "check"}, count=(3, 6),
        left_max=24, right_max=60,
        use="확인할 것·준비물·요건 — 점검 목록.",
@@ -149,7 +116,6 @@ PATTERNS: tuple[Pattern, ...] = (
            '{{"items": [["한국노동연구원 (2023)", "플랫폼 노동 실태조사 보고서"], '
            '["고용노동부 (2024)", "플랫폼 종사자 규모와 근무 실태"]]}}'
        )),
-    # ---- flow ----
     _p("process", "프로세스", "pairs", "flow", {"style": "arrow"}, count=(3, 5),
        left_max=12, right_max=50,
        use="입력에서 출력으로 가는 처리 흐름 — 데이터 흐름, 업무 절차.",
@@ -179,7 +145,6 @@ PATTERNS: tuple[Pattern, ...] = (
        use="세로로 이어지는 주요 시점 — 연혁, 진행 이정표.",
        rules="- items 는 `[시점, 일]`. 시간 순서. 날짜를 지어내지 마라.",
        example='{{"items": [["3월", "팀 구성"], ["4월", "제안서 제출"], ["6월", "중간 발표"]]}}'),
-    # ---- stack / cycle ----
     _p("pyramid", "피라미드", "pairs", "stack", {"shape": "pyramid"}, count=(3, 5),
        left_max=14, right_max=50,
        use="위로 갈수록 좁아지는 위계 — 욕구 단계, 우선순위 층.",
@@ -201,7 +166,6 @@ PATTERNS: tuple[Pattern, ...] = (
            '{{"items": [["계획", "목표 설정"], ["실행", "시범 운영"], ["점검", "지표 확인"], ["개'
            '선", "반영"]]}}'
        )),
-    # ---- quad ----
     _p("swot", "SWOT", "pairs", "quad", {"mode": "swot"}, count=(4, 4),
        left_max=8, right_max=90,
        use="강점·약점·기회·위협 분석.",
@@ -224,7 +188,6 @@ PATTERNS: tuple[Pattern, ...] = (
            '{{"items": [["즉시", "보안 패치"], ["계획", "리팩터링"], ["위임", "문서 정리"], ["보'
            '류", "새 기능"]]}}'
        )),
-    # ---- columns ----
     _p("compare-2", "두 안 비교", "columns", "columns", {"tone": "vs"}, count=(2, 2),
        left_max=16, right_max=40,
        use="두 대안을 항목별로 맞대어 — A안 대 B안, 기존 대 제안.",
@@ -295,7 +258,6 @@ PATTERNS: tuple[Pattern, ...] = (
            '{{"columns": [{{"title": "학생", "items": ["편의"]}}, {{"title": "관리실", "items": ['
            '"업무 감소"]}}, {{"title": "학교", "items": ["만족도"]}}]}}'
        )),
-    # ---- kpi ----
     _p("kpi-grid", "지표 격자", "metrics", "kpi", {"mode": "grid"}, count=(3, 6),
        use="숫자 서너 개를 한눈에 — 현황 지표.", numeric=True,
        rules="- metrics 는 `[값, 이름]` 3~6개. 값은 자료에 있는 수치만.",
@@ -308,7 +270,6 @@ PATTERNS: tuple[Pattern, ...] = (
        use="한 지표의 전과 후 두 수 — 14분 → 3분.", numeric=True,
        rules="- metrics 는 정확히 두 개 `[값, 이름]` — 먼저 전, 다음 후.",
        example='{{"metrics": [["14분", "도입 전 검색 시간"], ["3분", "도입 후"]]}}'),
-    # ---- chart ----
     _p("chart-pie", "원형 차트", "chart", "chart", {"kind": "pie"}, count=(2, 6),
        use="전체에 대한 구성비 — 합이 100%인 비중.", numeric=True,
        rules="- chart 는 kind pie, 계열 하나, 범주 2~6개. 값은 자료의 수치만.",
@@ -337,7 +298,6 @@ PATTERNS: tuple[Pattern, ...] = (
            '{{"chart": {{"kind": "stacked", "unit": "명", "categories": ["1학년", "2학년"], "seri'
            'es": [{{"name": "남", "values": [10, 12]}}, {{"name": "여", "values": [8, 9]}}]}}}}'
        )),
-    # ---- text ----
     _p("question", "질문", "text", "text", {"mode": "question"}, count=(1, 1), right_max=90,
        use="청중에게 던지는 물음 — 문제 제기, 토론 질문.",
        rules="- body 는 물음표로 끝나는 질문 하나. 90자 이내.",
@@ -361,19 +321,18 @@ SHAPE_FIELD = {
 
 
 def field_of(name: str) -> str | None:
-    """The slide field a pattern fills."""
+    """Slide field a pattern fills."""
     pattern = BY_NAME.get(name)
     return SHAPE_FIELD[pattern.shape] if pattern else None
 
 
 def catalogue() -> str:
-    """One line per pattern for the outline planner: 「name: 용도」."""
+    """Planner catalogue: 「name: 용도」 per line."""
     return "\n".join(f"- {p.name}: {p.use}" for p in PATTERNS)
 
 
 def clean_pairs(name: str, value: Any) -> list[list[str]]:
-    """`items` within the pattern's count and character limits; half-empty pairs dropped
-    (a checklist or objective may leave the right side empty)."""
+    """Clamped `items`; half-empty pairs dropped (checklist right side may be empty)."""
     pattern = BY_NAME[name]
     lo, hi = pattern.count
     optional_right = pattern.render == "list" and pattern.params.get("marker") in (
@@ -387,19 +346,19 @@ def clean_pairs(name: str, value: Any) -> list[list[str]]:
             continue
         left = " ".join(str(item[0]).split())[: pattern.left_max]
         right = " ".join(str(item[1]).split())[: pattern.right_max] if len(item) > 1 else ""
-        # A copied table row is not an item.
+        # copied table row is not an item
         if "|" in left or right.count("|") >= 2:
             continue
         if left and (right or optional_right):
             out.append([left, right])
     out = out[:hi]
-    # A fixed count (2×2, SWOT, two cards) is the pattern; elsewhere two items make a list.
+    # fixed count (2×2, SWOT) is the pattern; else 2 items suffice
     fewest = lo if lo == hi else min(lo, 2)
     return out if len(out) >= fewest else []
 
 
 def clean_columns(name: str, value: Any) -> list[dict[str, Any]]:
-    """`columns` within the pattern's count: each a title and 1–5 short items."""
+    """`columns` clamped: each a title and 1–5 short items."""
     pattern = BY_NAME[name]
     lo, hi = pattern.count
     out: list[dict[str, Any]] = []
@@ -419,7 +378,7 @@ def clean_columns(name: str, value: Any) -> list[dict[str, Any]]:
 
 
 def wire() -> list[dict[str, Any]]:
-    """The table the web mirror must equal: name, label, shape, render, params, count."""
+    """Table the web mirror must equal."""
     return [
         {"name": p.name, "label": p.label, "shape": p.shape, "render": p.render,
          "params": dict(p.params), "count": list(p.count)}

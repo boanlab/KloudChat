@@ -1,21 +1,4 @@
-"""Installable MCP servers: the catalogue administrators keep (관리 › 커넥터 카탈로그).
-
-The entries are rows (`ConnectorCatalogEntry`), seeded by migration 0062 with the three the code
-once listed (time, youtube, deep-research). Members install from them; an administrator adds,
-edits and removes them, a stdio command included (only an administrator may put a command on
-the server). Stdio scripts under `/srv/mcp` run via `uv run --script` (PEP 723 inline deps);
-reference servers need `npx`. Every enabled tool ships its schema on every turn, so the list is
-kept short.
-
-An entry's `env` values are stored sealed (`settings_store.encrypt_env`) and never sent back to
-a browser: an administrator sees each key, and a `${TOOLS_*_URL}` placeholder as written.
-The tools gateway key goes into a catalogue connector's process only as `TOOLS_GATEWAY_KEY`,
-and only while the variable the entry names (`tools_key_var`) resolves to the address of the
-tool it names (`tools_key_feature`), so an override cannot point it elsewhere.
-
-Readers in a turn are synchronous on a copy held in this process (`entries`), reloaded from the
-table at most every few seconds and at once after an administrator's change (`refresh`).
-"""
+"""Admin-managed MCP connector catalogue; env sealed, gateway key only for matching tool address."""
 
 from __future__ import annotations
 
@@ -28,7 +11,7 @@ from app.services import settings_store, tools_gateway
 
 log = logging.getLogger(__name__)
 
-#: Placeholder → feature address from the admin screen.
+#: Placeholder → feature address.
 _URL_VARS = {
     "TOOLS_RESEARCH_URL": "research",
     "TOOLS_STT_URL": "stt",
@@ -43,7 +26,7 @@ _ENV_KEY = re.compile(r"[A-Z][A-Z0-9_]{0,59}")
 _PLACEHOLDER = re.compile(r"\$\{(TOOLS_[A-Z]+_URL)\}")
 _TTL = 10.0
 
-#: The entries as this process last read them, by slug, and when.
+#: Cached entries by slug, plus load time.
 _CACHE: dict[str, dict[str, Any]] = {}
 _READ_AT = 0.0
 
@@ -64,7 +47,7 @@ def _entry(row) -> dict[str, Any]:
 
 
 def use(entries: list[dict[str, Any]]) -> None:
-    """Hold these entries (rows already read, or a test's)."""
+    """Install given entries."""
     global _READ_AT
     _CACHE.clear()
     for entry in entries:
@@ -73,7 +56,7 @@ def use(entries: list[dict[str, Any]]) -> None:
 
 
 async def refresh(db=None) -> None:
-    """Read the table again (with `db`, or a session of its own)."""
+    """Reload from the table."""
     from sqlmodel import col, select
 
     from app.models.workspace import ConnectorCatalogEntry
@@ -97,7 +80,7 @@ async def refresh(db=None) -> None:
 
 
 async def entries(*, enabled_only: bool = True) -> list[dict[str, Any]]:
-    """The catalogue in order, read again when the copy is older than a few seconds."""
+    """Catalogue in order; reloaded when stale."""
     if time.monotonic() - _READ_AT > _TTL:
         await refresh()
     rows = sorted(_CACHE.values(), key=lambda e: (e.get("position", 0), e["name"]))
@@ -105,14 +88,14 @@ async def entries(*, enabled_only: bool = True) -> list[dict[str, Any]]:
 
 
 async def entry(slug: str) -> dict[str, Any] | None:
-    """One entry by slug (an installed connector's), disabled ones included."""
+    """Entry by slug, disabled included."""
     if time.monotonic() - _READ_AT > _TTL:
         await refresh()
     return _CACHE.get(slug)
 
 
 def catalog_entry(slug: str) -> dict[str, Any] | None:
-    """One entry by slug from the copy held now (no read)."""
+    """Entry by slug from the cache."""
     return _CACHE.get(slug)
 
 
@@ -138,12 +121,7 @@ async def effective_endpoint(connector: Any) -> str:
 
 
 async def connector_env(connector: Any) -> dict[str, str]:
-    """A connector's resolved environment, plus the gateway key for a catalogue server
-    that calls a tool backend itself (`tools_key_for`: the URL variable it calls and
-    the tool that address must be).
-
-    The key is added only when that variable resolves to that tool's configured
-    address, so a supplied override cannot point it elsewhere."""
+    """Resolved env, plus gateway key only when the URL var resolves to that tool's address."""
     env = await resolve_env(connector.env)
     env.pop("TOOLS_GATEWAY_KEY", None)
     found = await entry(connector.slug) if getattr(connector, "official", False) else None
@@ -157,15 +135,11 @@ async def connector_env(connector: Any) -> dict[str, str]:
 
 
 async def resolve_env(env: dict[str, str] | None) -> dict[str, str]:
-    """A connector's environment opened (`settings_store.decrypt_env`) with feature-address
-    placeholders substituted."""
+    """Decrypted env with feature placeholders substituted."""
     out: dict[str, str] = {}
     for key, value in settings_store.decrypt_env(env).items():
         out[key] = await resolve_urls(value)
     return out
-
-
-# ── what an administrator may store ──────────────────────────────────────
 
 
 class EntryError(ValueError):
@@ -180,8 +154,7 @@ def _one_line(raw: Any, limit: int) -> str:
 
 def clean(payload: dict[str, Any], *, previous_env: dict[str, str] | None = None
           ) -> dict[str, Any]:
-    """An entry's fields from the admin form, each checked; `env` values sealed. A value sent
-    as `null` keeps the stored one (the form never sees a stored value)."""
+    """Validated admin-form fields; env sealed, `null` keeps stored value."""
     slug = str(payload.get("slug") or "").strip().lower()
     if not _SLUG.fullmatch(slug):
         raise EntryError("catalog_slug")
@@ -245,8 +218,7 @@ def clean(payload: dict[str, Any], *, previous_env: dict[str, str] | None = None
 
 
 def admin_wire(entry: dict[str, Any]) -> dict[str, Any]:
-    """An entry as the admin screen shows it: every env key, a placeholder value as written,
-    any other value only as 「set」 — never the value itself."""
+    """Admin view of an entry; secret values masked."""
     shown = {}
     for key, value in settings_store.decrypt_env(entry.get("env")).items():
         shown[key] = value if _PLACEHOLDER.fullmatch(value) else None

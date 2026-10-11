@@ -1,25 +1,4 @@
-"""Published agents (공개 챗봇): versions, limits, the visitor's turn, and what the owner sees.
-
-A bot answers on its owner's account: a visitor's conversation is a `sessions` row owned by
-the publisher and marked with the publication, and the ordinary turn runs it. The turn is
-constrained here, on the session rather than on the caller:
-
-- the model is a strict-local one, fixed with the version (refused when none exists);
-- the agent is the version's hidden copy (`Agent.snapshot_of`) with its knowledge text;
-- tools are 자료 찾기 and 계산 only, and no memory, 개인 맞춤 설정, project, connector, skill
-  or other file of the owner's reaches the turn;
-- limits per visitor, per address (visitors without an account), per bot and per day, the
-  owner's daily credit cap, a concurrency cap per bot and across the instance, and a short
-  queue before 429.
-
-A visitor without an account is a signed browser cookie (`VISITOR_COOKIE`), nothing more:
-they reach a bot only once an administrator opened it outside, and only their own
-conversations.
-
-The owner sees counts, frequent topics, unanswered questions (personal details masked) and
-👍👎 — not conversations, except one a visitor sent them or, with 「대화 열람」 on, those
-started after the visitor's consent, both masked when read.
-"""
+"""Published bots (공개 챗봇): owner's account, strict-local, own material, rate-limited."""
 
 from __future__ import annotations
 
@@ -66,8 +45,7 @@ log = logging.getLogger(__name__)
 
 KST = ZoneInfo(settings.timezone)
 
-#: The limits a bot runs under unless its owner lowers them (`Publication.limits`). The
-#: per-address ones count visitors without an account only: members answer for their own.
+#: Default limits; owner may only lower. Per-address limits apply to anonymous visitors.
 DEFAULT_LIMITS: dict[str, int] = {
     "perVisitorPerMinute": 10,
     "perVisitorPerDay": 200,
@@ -82,36 +60,31 @@ DEFAULT_LIMITS: dict[str, int] = {
     "perKeyPerMinute": 30,
     "perKeyPerDay": 2000,
 }
-#: The owner's own cap on what the bot may spend a day, in credits (`limits.creditsPerDay`).
-#: Required before the bot is opened outside; no default, since only the owner knows it.
-#: A turn that charged nothing (a self-hosted model priced at 0) still counts one credit
-#: against it (`FREE_TURNS`), so the cap bounds a free bot by its number of answers.
+#: Owner's daily credit cap; required before external opening; free turns count one each.
 CREDITS_PER_DAY = "creditsPerDay"
-#: Day counter of the bot's turns that charged no credits; each counts one toward the cap.
+#: Day counter of zero-credit turns.
 FREE_TURNS = "freeTurns"
 CREDITS_PER_DAY_MAX = 100_000_000
-#: Visitors without an account, per address and day: new visitors (cookies) and conversations.
-#: Not the owner's to change; they bound what clearing cookies can buy.
+#: Anonymous per-IP daily cap (new visitors, conversations); bounds cookie clearing.
 ANON_VISITORS_PER_IP_DAY = 30
 ANON_CONVERSATIONS_PER_IP_DAY = 100
-#: How long a turn waits for a free slot before 429.
+#: Max wait for a slot before 429.
 QUEUE_WAIT_SEC = 15.0
-#: A slot older than this is a crashed turn's leftover.
+#: Stale slot age (crashed turn).
 SLOT_TTL_SEC = 600
-#: Tools a published bot may call: its own material and the calculator. Nothing that leaves
-#: the boundary, writes into the owner's account (artifacts, notes) or runs code.
+#: Bot tools: own material and calculator only — no egress, writes or code.
 PUBLISHABLE_TOOLS = frozenset({"search_knowledge", "calculate"})
-#: Minute counters older than this are swept; day counters are kept for the statistics.
+#: Minute counter retention; day counters kept.
 _MINUTE_KEEP = timedelta(days=2)
 _DAY_KEEP = timedelta(days=400)
-#: Up to this many unanswered questions are shown; older ones are swept with retention.
+#: Max unanswered questions shown.
 UNANSWERED_SHOWN = 50
-#: A reason to read a conversation as an administrator is required and recorded.
+#: Required admin read-reason length.
 ADMIN_REASON_MIN = 4
 
 
 class Refused(Exception):
-    """A request a bot turns away: `code` for the client, HTTP `status`, `retry_after`."""
+    """Bot refusal: `code`, HTTP `status`, `retry_after`."""
 
     def __init__(self, code: str, status: int = 409, retry_after: int | None = None) -> None:
         super().__init__(code)
@@ -120,16 +93,12 @@ class Refused(Exception):
         self.retry_after = retry_after
 
 
-# ── limits ─────────────────────────────────────────────────────────────
-
-
 def _whole(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
 def limits_of(pub: Publication) -> dict[str, int]:
-    """The bot's limits: the defaults, lowered where the owner asked (never raised), and the
-    owner's daily credit cap when there is one."""
+    """Effective limits: defaults lowered by owner, plus credit cap."""
     out = dict(DEFAULT_LIMITS)
     for key, value in (pub.limits or {}).items():
         if key in out and _whole(value) and value >= 1:
@@ -145,8 +114,7 @@ def credits_cap(pub: Publication) -> int | None:
 
 
 def clean_limits(raw: Any) -> dict[str, int]:
-    """What an owner may store: known keys, whole numbers from 1 up to the default; the daily
-    credit cap from 1 up to `CREDITS_PER_DAY_MAX`."""
+    """Validated owner limits: known keys, 1..default; credit cap 1..max."""
     out: dict[str, int] = {}
     for key, value in (raw or {}).items() if isinstance(raw, dict) else []:
         if key in DEFAULT_LIMITS and _whole(value):
@@ -161,7 +129,7 @@ def minute_window(now: datetime | None = None) -> str:
 
 
 def day_window(now: datetime | None = None) -> str:
-    """The local calendar day: a daily limit resets at local midnight."""
+    """Local calendar day; resets at local midnight."""
     return "d" + (now or utcnow()).astimezone(KST).strftime("%Y%m%d")
 
 
@@ -177,7 +145,7 @@ def _seconds_to_local_midnight(now: datetime) -> int:
 
 async def bump(db: AsyncSession, publication_id: str, window: str, key: str,
                by: int = 1) -> None:
-    """Adds `by` to one counter with a single upsert. Caller commits."""
+    """Single-upsert counter increment. Caller commits."""
     if not by:
         return
     table = PublicationCounter.__table__
@@ -200,14 +168,14 @@ async def counted(db: AsyncSession, publication_id: str, window: str, key: str) 
 
 
 def local_midnight(now: datetime | None = None) -> datetime:
-    """The start of the local day `day_window` counts, as an instant in UTC (as stored)."""
+    """Local midnight as UTC instant."""
     local = (now or utcnow()).astimezone(KST)
     return local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(UTC)
 
 
 async def credits_today(db: AsyncSession, publication_id: str,
                         now: datetime | None = None) -> int:
-    """Credits the bot's turns charged its owner since local midnight."""
+    """Owner credits charged by the bot since local midnight."""
     spent = (await db.exec(select(func.coalesce(func.sum(CreditLedger.delta), 0)).where(
         CreditLedger.publication_id == publication_id, CreditLedger.delta < 0,
         col(CreditLedger.created_at) >= local_midnight(now)))).one()
@@ -217,10 +185,7 @@ async def credits_today(db: AsyncSession, publication_id: str,
 async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
                 ip_key: str | None = None, channel: str = "web", by_key: bool = False,
                 now: datetime | None = None) -> None:
-    """Raises `Refused` (429) when the visitor, their address (a visitor without an account,
-    `ip_key`), the bot or the day is over its limit; else counts the turn, and the channel it
-    came through. A key's caller (`by_key`) is a program: it has the key's limits instead of
-    a person's. Caller commits."""
+    """Count the turn or raise `Refused` (429); key callers use key limits. Caller commits."""
     now = now or utcnow()
     limits = limits_of(pub)
     minute, day = minute_window(now), day_window(now)
@@ -258,8 +223,7 @@ async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
 
 async def admit_anonymous(db: AsyncSession, pub: Publication, ip_key: str, what: str,
                           per_day: int, now: datetime | None = None) -> None:
-    """Counts a new visitor or conversation from an address without an account, refusing it
-    (429) past `per_day`. Caller commits."""
+    """Count an anonymous visitor/conversation per address; 429 past `per_day`. Caller commits."""
     now = now or utcnow()
     day = day_window(now)
     key = f"{what}:ip:{ip_key}"
@@ -268,12 +232,9 @@ async def admit_anonymous(db: AsyncSession, pub: Publication, ip_key: str, what:
     await bump(db, pub.id, day, key)
 
 
-# ── visitors without an account ────────────────────────────────────────
-
-
-#: The browser cookie that names a visitor without an account: `<id>.<signature>`.
+#: Anonymous visitor cookie `<id>.<signature>`.
 VISITOR_COOKIE = "kchat_bot_visitor"
-#: The same, in a frame on another site: `SameSite=None; Secure; Partitioned`.
+#: Cross-site embed variant: `SameSite=None; Secure; Partitioned`.
 EMBED_VISITOR_COOKIE = "kchat_bot_visitor_embed"
 VISITOR_COOKIE_DAYS = 365
 _ANON_ID = re.compile(r"[A-Za-z0-9_-]{22,43}")
@@ -290,13 +251,13 @@ def _sign(anon_id: str) -> str:
 
 
 def new_visitor_cookie() -> tuple[str, str]:
-    """A fresh anonymous id and the cookie value that carries it."""
+    """New anonymous id and cookie value."""
     anon_id = secrets.token_urlsafe(18)
     return anon_id, f"{anon_id}.{_sign(anon_id)}"
 
 
 def visitor_from_cookie(value: str | None) -> str | None:
-    """The anonymous id a cookie carries, or None when it is missing or not ours."""
+    """Anonymous id from a valid cookie, else None."""
     anon_id, _, signature = (value or "").partition(".")
     if not _ANON_ID.fullmatch(anon_id) or not signature:
         return None
@@ -304,17 +265,13 @@ def visitor_from_cookie(value: str | None) -> str | None:
 
 
 def ip_key(ip: str) -> str:
-    """An address as the counters key it: keyed, so the stored key does not give it back."""
+    """Keyed IP hash; not reversible."""
     return hmac.new(_visitor_key(), (ip or "-").encode(), hashlib.sha256).hexdigest()[:20]
 
 
 async def acquire_slot(publication_id: str, *, per_bot: int, instance_max: int,
                        wait: float = QUEUE_WAIT_SEC) -> str | None:
-    """A running-turn slot, waiting in line up to `wait` seconds; None when none came free.
-
-    Rows in `publication_slots` are the turns running across replicas: a new row's place
-    among the live ones decides whether it may run; one that may not withdraws and tries
-    again after a short, jittered pause."""
+    """Cross-replica running-turn slot, waiting up to `wait`; None if none freed."""
     deadline = time.monotonic() + wait
     while True:
         async with core_db.SessionLocal() as db:
@@ -352,18 +309,15 @@ async def release_slot(slot_id: str | None) -> None:
         log.warning("publication slot %s not released: %s", logs.safe(slot_id), logs.safe(exc))
 
 
-# ── the visitor's turn ─────────────────────────────────────────────────
-
-
 @dataclass(slots=True)
 class PublishedTurn:
-    """What `sessions.send_message` needs to run a visitor's turn on the publisher's account."""
+    """Inputs for running a visitor turn on the publisher's account."""
 
     publication_id: str
     version_id: str
     visitor_id: str
     model_id: str
-    #: The question as typed, for the owner's statistics (masked before it is stored).
+    #: Raw question for stats (masked before storage).
     question: str = ""
     slot_id: str | None = None
     first_turn: bool = False
@@ -376,8 +330,7 @@ class PublishedTurn:
 
 
 async def holding(events: AsyncIterator[str], turn: PublishedTurn) -> AsyncIterator[str]:
-    """Relays a turn's stream and gives its slot back when the turn ends, however it ends.
-    Sits inside the detached turn, so a visitor closing the tab does not free the slot early."""
+    """Relay stream, release slot on any end; in the detached turn so tab close won't free it."""
     try:
         async for event in events:
             yield event
@@ -391,17 +344,14 @@ def strict_chat_models(catalogue: list[dict], owner: User) -> list[dict]:
         m for m in catalogue
         if m.get("dataBoundary") == "self_hosted" and m.get("strictLocal") is True
         and "chat" in (m.get("kinds") or [])
-        # A privacy-only entry is the strict-local route privacy decisions move turns to:
-        # kept out of the picker, and exactly what a bot answers with.
+        # Privacy-only entry: strict-local route, hidden from picker.
         and (not allowed or m.get("id") in allowed)
     ]
 
 
 def pick_model(agent: Agent, catalogue: list[dict], owner: User, safe_ids: list[str],
                *, needs_tools: bool) -> dict | None:
-    """The strict-local model a version answers with: the agent's own model or its
-    `strict-local/` twin, then the default model's twin, then the first privacy-safe model.
-    None when this instance has no internal model the owner may use."""
+    """Strict-local model: agent's or twin, default's twin, first privacy-safe; else None."""
     usable = [m for m in strict_chat_models(catalogue, owner)
               if not needs_tools or m.get("supportsTools")]
     by_id = {m["id"]: m for m in usable}
@@ -424,23 +374,19 @@ def pick_model(agent: Agent, catalogue: list[dict], owner: User, safe_ids: list[
     return usable[0] if usable else None
 
 
-# ── preflight, versions ────────────────────────────────────────────────
-
-
-#: Codes the publish dialog names (`publishing.*` in the web client).
+#: Publish-dialog codes (`publishing.*`).
 _DISABLED_ALWAYS = ("memory", "personal", "files", "connectors", "web", "documents")
 
 
 def _tools_of(agent: Agent) -> list[str]:
-    """The agent's tools a bot keeps: inherit (null) keeps both, a list keeps what it names."""
+    """Tools kept: null inherits both, list keeps named."""
     if agent.tools is None:
         return sorted(PUBLISHABLE_TOOLS)
     return sorted(t for t in agent.tools if t in PUBLISHABLE_TOOLS)
 
 
 def _post_checks(agent: Agent) -> list[str]:
-    """The shipped `post` checks a bot keeps; a question card before writing and a person's
-    own check skills (which can change after publishing) are left out."""
+    """Shipped `post` checks kept; question card and own check skills dropped."""
     out = []
     for key in agent.check_skills or []:
         if str(key).startswith(skill_specs.USER):
@@ -459,8 +405,7 @@ async def knowledge_rows(db: AsyncSession, agent: Agent) -> list[StoredFile]:
 
 async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list[dict],
                     safe_ids: list[str]) -> dict[str, Any]:
-    """Whether `agent` can be published as it stands, the model it would answer with, what a
-    bot leaves out, and personal details found in its knowledge (a warning, not a refusal)."""
+    """Publishability, answering model, dropped features, and knowledge PII warnings."""
     problems: list[str] = []
     if agent.owner_id != owner.id or agent.snapshot_of:
         problems.append("not_owner")
@@ -518,7 +463,7 @@ async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list
 
 def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[str],
                   files: list[StoredFile]) -> tuple:
-    """Everything a version answers with, for telling two apart."""
+    """Version fingerprint."""
     return (agent.name, agent.description, model_id, agent.system_prompt, sorted(tools),
             sorted(checks), dict(agent.check_options or {}), agent.contact or "", agent.guide,
             list(agent.starters or []), agent.temperature,
@@ -527,8 +472,7 @@ def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[st
 
 async def same_as_latest(db: AsyncSession, pub: Publication, agent: Agent,
                          model_id: str) -> bool:
-    """Whether the agent as it stands would publish exactly the newest version again (a second
-    click on 「새 판 공개」 while the first was still on its way)."""
+    """Would republish the newest version unchanged (double click)."""
     latest = (await db.exec(select(PublicationVersion).where(
         PublicationVersion.publication_id == pub.id)
         .order_by(col(PublicationVersion.number).desc()).limit(1))).first()
@@ -545,9 +489,7 @@ async def same_as_latest(db: AsyncSession, pub: Publication, agent: Agent,
 async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: Agent,
                        model_id: str, note: str = "", *,
                        activate: bool = True) -> PublicationVersion:
-    """Fixes the agent as it stands into a new version: a hidden copy of the agent and the
-    text of its knowledge. It becomes the active one, or with `activate` false (a bot open
-    outside) the one waiting for review. Caller commits."""
+    """Snapshot agent as a new version; active or pending review. Caller commits."""
     from app.routers.sessions import _agent_catalog_key
 
     number = int((await db.exec(select(func.max(PublicationVersion.number)).where(
@@ -561,7 +503,7 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
         model=model_id,
         system_prompt=agent.system_prompt,
         tools=_tools_of(agent),
-        # Skills deny: none of the owner's skills (which can change) reach a visitor.
+        # No owner skills reach visitors.
         skill_ids=[],
         kinds=["chat"],
         surface="chat",
@@ -583,7 +525,7 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
     await db.flush()
     knowledge = []
     for row in await knowledge_rows(db, agent):
-        # The text only: the bot reads it, nobody downloads it, and the original's blob may go.
+        # Text only; original blob may go.
         db.add(StoredFile(user_id=owner.id, agent_id=snap.id, name=row.name, size=row.size,
                           mime=row.mime, storage_key="", text=row.text, tokens=row.tokens,
                           source_url=row.source_url))
@@ -604,34 +546,30 @@ async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: A
     return version
 
 
-# ── channels ───────────────────────────────────────────────────────────
-
-
-#: Where a turn came from, for the statistics: the bot's own page and the channels.
+#: Turn origin channels for stats.
 CHANNEL_NAMES = ("web", "embed", "api", "mcp")
-#: Channels an administrator opens. `embed` needs the bot listed for everyone (`external`);
-#: `api` and `mcp` need it open outside at all.
+#: Admin-opened channels; `embed` needs `external`, `api`/`mcp` need external opening.
 CHANNELS = ("embed", "api", "mcp")
 EMBED_ORIGINS_MAX = 10
-#: `https://host[:port]`, or `https://*.host` for one level of subdomains. Lower case only.
+#: `https://host[:port]` or one-level `https://*.host`; lower case.
 _ORIGIN = re.compile(r"https://(\*\.)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
                      r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?::\d{1,5})?")
 
 
 def clean_origin(raw: str) -> str | None:
-    """An origin as a frame-ancestors source, or None when it is not one this accepts."""
+    """Origin as a frame-ancestors source, else None."""
     value = (raw or "").strip().lower().rstrip("/")
     if len(value) > 200 or not _ORIGIN.fullmatch(value):
         return None
     host = value.split("://", 1)[1].split(":", 1)[0]
-    # A wildcard covers a site's subdomains, never a whole top-level domain.
+    # Wildcards never cover a whole TLD.
     if host.startswith("*.") and host.count(".") < 2:
         return None
     return value
 
 
 def clean_origins(raw: Any) -> list[str]:
-    """The sites an owner listed, cleaned; raises ValueError naming the first bad one."""
+    """Cleaned owner origins; ValueError on the first bad one."""
     out: list[str] = []
     for item in raw if isinstance(raw, list) else []:
         origin = clean_origin(str(item))
@@ -645,25 +583,25 @@ def clean_origins(raw: Any) -> list[str]:
 
 
 def channel_allowed(visibility: str, name: str) -> bool:
-    """Whether an audience can carry the channel at all."""
+    """Audience can carry the channel."""
     if name == "embed":
         return visibility == PublicationVisibility.external.value
     return visibility in (PublicationVisibility.link.value, PublicationVisibility.external.value)
 
 
 def channels_of(pub: Publication) -> dict[str, dict]:
-    """The channels in force: opened by an administrator and carried by the audience."""
+    """Channels in force: admin-opened and audience-carried."""
     return {name: dict(value or {}) for name, value in (pub.channels or {}).items()
             if name in CHANNELS and channel_allowed(pub.visibility, name)}
 
 
 def channel_open(pub: Publication, name: str) -> bool:
-    """Whether a request through the channel may reach the bot now."""
+    """Channel request may reach the bot now."""
     return pub.status == PublicationStatus.approved.value and name in channels_of(pub)
 
 
 def embed_origins(pub: Publication) -> list[str]:
-    """The sites that may frame the bot now; none unless the embed channel is open."""
+    """Allowed framing sites; none unless embed open."""
     if not channel_open(pub, "embed"):
         return []
     return [o for o in (pub.channels or {}).get("embed", {}).get("origins") or []
@@ -671,8 +609,7 @@ def embed_origins(pub: Publication) -> list[str]:
 
 
 def channels_cover(current: dict | None, wanted: dict) -> bool:
-    """Whether `wanted` asks for nothing `current` does not already have (closing a channel or
-    dropping a site never needs review)."""
+    """`wanted` adds nothing beyond `current` (narrowing needs no review)."""
     current = current or {}
     for name, value in wanted.items():
         if name not in current:
@@ -685,8 +622,7 @@ def channels_cover(current: dict | None, wanted: dict) -> bool:
 
 
 def narrow_channels(current: dict | None, wanted: dict) -> dict | None:
-    """What of `current` stays when the owner asks for `wanted`: a channel or site closes at
-    once; nothing new opens here."""
+    """`current` narrowed to `wanted`; nothing opens here."""
     out: dict[str, dict] = {}
     for name, value in (current or {}).items():
         if name not in wanted:
@@ -702,13 +638,10 @@ def narrow_channels(current: dict | None, wanted: dict) -> dict | None:
 
 
 def fit_channels(channels: dict | None, visibility: str) -> dict | None:
-    """The channels an audience can carry; None when none is left."""
+    """Channels the audience can carry; None if none."""
     kept = {name: value for name, value in (channels or {}).items()
             if name in CHANNELS and channel_allowed(visibility, name)}
     return kept or None
-
-
-# ── keys for the API and MCP channels ──────────────────────────────────
 
 
 KEY_PREFIX = "kcb_"
@@ -717,7 +650,7 @@ _KEY = re.compile(r"kcb_[A-Za-z0-9_-]{40,64}")
 
 
 def new_key() -> tuple[str, str, str]:
-    """A fresh key, its hash (what is stored) and the preview shown afterwards."""
+    """New key, stored hash, and preview."""
     key = KEY_PREFIX + secrets.token_urlsafe(32)
     return key, key_hash(key), f"{key[:8]}…{key[-4:]}"
 
@@ -731,23 +664,23 @@ def key_shaped(key: str) -> bool:
 
 
 def key_visitor(key_id: str) -> str:
-    """The visitor id a key's calls are kept under: never a cookie's (those have no colon)."""
+    """Key visitor id; colon keeps it apart from cookie ids."""
     return f"key:{key_id}"
 
 
 def opens_outside(pub: Publication) -> bool:
-    """Whether people without an account reach the bot: its versions are then reviewed."""
+    """Reachable without an account (versions reviewed)."""
     return pub.visibility in (PublicationVisibility.link.value,
                               PublicationVisibility.external.value)
 
 
 def flag_owner(pub: Publication) -> None:
-    """Marks something on the bot for its owner to look at (the badge)."""
+    """Set the owner badge."""
     pub.attention_at = utcnow()
 
 
 async def drop_versions(db: AsyncSession, version_rows: list[PublicationVersion]) -> None:
-    """Deletes the hidden agent copies and their knowledge text. Caller commits."""
+    """Delete hidden agent copies and knowledge text. Caller commits."""
     snaps = [v.agent_snapshot_id for v in version_rows if v.agent_snapshot_id]
     if not snaps:
         return
@@ -757,7 +690,7 @@ async def drop_versions(db: AsyncSession, version_rows: list[PublicationVersion]
 
 
 async def delete_sessions(db: AsyncSession, session_ids: list[str]) -> int:
-    """Removes published conversations whole. Caller commits."""
+    """Delete published conversations. Caller commits."""
     if not session_ids:
         return 0
     await db.exec(delete(Message).where(col(Message.session_id).in_(session_ids)))
@@ -768,22 +701,17 @@ async def delete_sessions(db: AsyncSession, session_ids: list[str]) -> int:
 
 
 def new_slug(title: str) -> str:
-    """An address that cannot be guessed from another's: the title's Latin letters when it
-    has any (a Korean title would be percent-encoded in every copied link), else `bot-`."""
+    """Unguessable slug: title's Latin letters, else `bot-`."""
     base = re.sub(r"[^0-9a-z]+", "-", (title or "").strip().lower()).strip("-")[:30]
     return f"{base or 'bot'}-{secrets.token_hex(4)}"
 
 
-# ── pausing ────────────────────────────────────────────────────────────
-
-
-#: Pauses the system makes, lifted by the system when the cause is gone; an owner's or an
-#: administrator's pause stays until they lift it.
+#: System pauses, auto-lifted; owner/admin pauses stay.
 AUTO_REASONS = ("credits", "account", "model")
 
 
 def owner_blocks(owner: User | None) -> str:
-    """Why the owner's account cannot carry the bot now, or ""."""
+    """Why the owner can't carry the bot, or ""."""
     if owner is None or owner.status is not UserStatus.active:
         return "account"
     if owner.credits_remaining <= 0:
@@ -793,8 +721,7 @@ def owner_blocks(owner: User | None) -> str:
 
 def pause(db: AsyncSession, pub: Publication, reason: str, *,
           actor_id: str | None = None) -> None:
-    """Pauses the bot and records it where the owner and the administrators look. Caller
-    commits."""
+    """Pause the bot and record it for owner and admins. Caller commits."""
     if pub.status == PublicationStatus.paused.value and pub.pause_reason == reason:
         return
     pub.status = PublicationStatus.paused.value
@@ -810,7 +737,7 @@ def pause(db: AsyncSession, pub: Publication, reason: str, *,
 
 
 def resume_if_cleared(db: AsyncSession, pub: Publication, owner: User | None) -> bool:
-    """Lifts a pause the system made once its cause is gone. Caller commits."""
+    """Lift a system pause once cleared. Caller commits."""
     if pub.status != PublicationStatus.paused.value or pub.pause_reason not in AUTO_REASONS:
         return False
     if pub.pause_reason in ("credits", "account") and owner_blocks(owner):
@@ -826,13 +753,10 @@ def resume_if_cleared(db: AsyncSession, pub: Publication, owner: User | None) ->
     return True
 
 
-# ── the visitor's answer ───────────────────────────────────────────────
-
-#: What a bot says when its material holds nothing for the question: the same sentence as
-#: the 「근거 없는 답 보류」 check's, so the owner's statistics count it either way.
+#: No-material answer; same as 「근거 없는 답 보류」 so stats count both.
 NOT_COVERED = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다."
 
-#: The system rule of a published bot's turn; the server has searched the material first.
+#: Published-bot system rule; material pre-searched.
 MATERIAL_ONLY_RULE = (
     "Material only: you answer visitors from the material this bot was published with. The "
     "server has already searched it with the question, and the passages are the first "
@@ -846,17 +770,13 @@ MATERIAL_ONLY_RULE = (
 
 
 def not_covered_answer(contact: str) -> str:
-    """The bot's whole answer when its material search finds nothing for the question."""
+    """Whole answer when material search finds nothing."""
     contact = (contact or "").strip()
     return NOT_COVERED + "\n\n" + (f"담당 부서·연락처: {contact}" if contact
                                     else "담당 부서에 문의해 주세요.")
 
 
-# ── after a turn ───────────────────────────────────────────────────────
-
-
-#: The answer says the material does not hold it (the bot's own words or the 「근거 없는 답
-#: 보류」 check's): counted as an unanswered question for the owner.
+#: Not-covered answers, counted as unanswered.
 _NOT_COVERED = re.compile(
     r"(?:자료|규정|문서|안내\s{0,2}자료)(?:에서|에는|에|로는)?\s{0,3}"
     r"(?:(?:이|그)\s{0,2})?(?:질문에\s{0,2}(?:대한|맞는)\s{0,2})?(?:내용을|답을|근거를)?\s{0,3}"
@@ -868,7 +788,7 @@ def unanswered(answer: str) -> bool:
     return bool(_NOT_COVERED.search((answer or "")[:4000]))
 
 
-#: Words that carry no topic: question forms, particles left as words, politeness.
+#: Topicless words.
 _STOP = frozenset("""
 어떻게 무엇 무엇인가요 뭔가요 뭐야 뭐예요 알려줘 알려 주세요 알려주세요 있나요 있어요 있습니까
 되나요 하나요 해야 하나요 언제 어디 누구 얼마 얼마나 경우 관련 대한 대해 대해서 그리고 그런데
@@ -879,17 +799,13 @@ _PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", 
               "하고", "에는", "은", "는", "이", "가", "을", "를", "에", "의", "도", "로",
               "와", "과", "만", "요")
 _WORD = re.compile(r"[가-힣A-Za-z0-9]{1,20}")
-#: Endings of a predicate (열어요, 비우면, 되는지): a verb or adjective, not a topic.
+#: Predicate endings, not topics.
 _ENDINGS = ("어요", "아요", "해요", "나요", "까요", "가요", "세요", "에요", "예요", "죠", "니까",
             "니다", "는지", "을까", "는데", "려면", "으면", "면", "는가", "던가")
 
 
 def topics(question: str, limit: int = 3) -> list[str]:
-    """A question's topic words, personal details masked first: what the owner sees counted.
-
-    A question form is caught whole before a particle is taken off (「있나요」 is not 「있나」),
-    and again after; a predicate (「열어요」 「비우면」, 「빌릴 수」) and a word with a digit in it
-    (「1은」 「22시」) carry no topic."""
+    """Masked question topic words for owner stats."""
     text, _ = governance.mask((question or "")[:1000], scope="egress")
     words = _WORD.findall(text)
     out: list[str] = []
@@ -897,10 +813,10 @@ def topics(question: str, limit: int = 3) -> list[str]:
         if raw in _STOP or any(ch.isdigit() for ch in raw) or raw.endswith(_ENDINGS):
             continue
         if at + 1 < len(words) and words[at + 1] == "수":
-            # 「빌릴 수 있어요」: the word before 수 is a verb's form.
+            # Word before 수 is a verb form.
             continue
         word = raw
-        for _ in range(2):  # 「일요일에도」: particles stack
+        for _ in range(2):  # particles stack
             particle = next((p for p in _PARTICLES
                              if word.endswith(p) and len(word) > len(p)), "")
             if not particle:
@@ -915,14 +831,13 @@ def topics(question: str, limit: int = 3) -> list[str]:
 
 
 def masked(text: str, limit: int = 300) -> str:
-    """A sentence as the owner may read it: personal details and secrets taken out."""
+    """Owner-readable sentence: PII and secrets removed."""
     return governance.mask(" ".join((text or "").split())[:limit], scope="egress")[0]
 
 
 async def after_turn(db: AsyncSession, turn: PublishedTurn, *, question: str, answer: str,
                      usage: dict[str, Any], failed: bool, credits: int = 0) -> None:
-    """Counts the turn for the owner's statistics, and a turn that charged no `credits`
-    toward the daily credit cap. Caller commits."""
+    """Count the turn for stats; zero-credit turns toward the cap. Caller commits."""
     day = day_window()
     if credits <= 0:
         await bump(db, turn.publication_id, day, FREE_TURNS)
@@ -940,18 +855,15 @@ async def after_turn(db: AsyncSession, turn: PublishedTurn, *, question: str, an
                                    version_id=turn.version_id, text=masked(question)))
 
 
-# ── what the owner and an administrator may read ───────────────────────
-
-
 def owner_may_read(session: ChatSession, pub: Publication) -> bool:
-    """A conversation the visitor sent, or one started under 「대화 열람」 while it is on."""
+    """Visitor-sent, or started under 「대화 열람」 while on."""
     if session.publication_id != pub.id:
         return False
     return session.shared_at is not None or (pub.conversation_view == "on" and session.viewable)
 
 
 def masked_transcript(messages: list[Message]) -> list[dict[str, Any]]:
-    """The conversation with personal details masked and the working left out."""
+    """Masked conversation without working steps."""
     return [
         {
             "id": m.id,
@@ -965,12 +877,8 @@ def masked_transcript(messages: list[Message]) -> list[dict[str, Any]]:
     ]
 
 
-# ── retention ──────────────────────────────────────────────────────────
-
-
 async def sweep(db: AsyncSession, now: datetime | None = None) -> dict[str, int]:
-    """Deletes each bot's conversations and unanswered questions past its retention, old
-    minute counters and stale slots. Commits."""
+    """Delete expired conversations, unanswered questions, old counters and stale slots. Commits."""
     now = now or utcnow()
     out = {"sessions": 0, "questions": 0}
     for pub in (await db.exec(select(Publication))).all():
@@ -978,8 +886,7 @@ async def sweep(db: AsyncSession, now: datetime | None = None) -> dict[str, int]
         old = list((await db.exec(select(ChatSession.id).where(
             ChatSession.publication_id == pub.id, col(ChatSession.updated_at) < cutoff))).all())
         out["sessions"] += await delete_sessions(db, old)
-        # A visitor without an account who has not come back within the retention is
-        # forgotten too (their conversations went above); a blocked one is kept.
+        # Expired anonymous visitors forgotten; blocked ones kept.
         await db.exec(delete(PublicationVisitor).where(
             PublicationVisitor.publication_id == pub.id, col(PublicationVisitor.user_id).is_(None),
             col(PublicationVisitor.blocked).is_(False),
@@ -1006,8 +913,7 @@ async def sweep(db: AsyncSession, now: datetime | None = None) -> dict[str, int]
 
 
 async def check_owners(db: AsyncSession) -> int:
-    """Pauses bots whose owner can no longer carry them and lifts the system's pauses whose
-    cause is gone. Commits; returns how many changed."""
+    """Pause unsupported bots, lift cleared system pauses. Commits; returns count."""
     changed = 0
     rows = (await db.exec(select(Publication).where(col(Publication.status).in_(
         [PublicationStatus.approved.value, PublicationStatus.paused.value])))).all()
@@ -1027,7 +933,7 @@ _INTERVAL = 30 * 60
 
 
 async def watch() -> None:
-    """The boot-time loop: retention and owner checks every half hour."""
+    """Boot loop: retention and owner checks every 30 min."""
     while True:
         try:
             async with core_db.SessionLocal() as db:

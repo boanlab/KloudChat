@@ -1,7 +1,4 @@
-"""Settled figures (판매가, 고정비, 목표 …) read once from the material and held fixed.
-
-The writer is told them; a sentence giving one another value is flagged, a table row is reset.
-"""
+"""Settled figures (판매가, 고정비, 목표 …) read once from the material and held fixed."""
 
 from __future__ import annotations
 
@@ -38,11 +35,11 @@ Material:
 
 Answer with one JSON array only."""
 
-#: A figure as written: 「20,000원」, 「3,000만 원」, 「2,500박스」, 「8%」, 「6개월」.
+#: figure as written: 「20,000원」, 「3,000만 원」, 「8%」, 「6개월」
 _VALUE = re.compile(
     rf"(?P<amount>{units._TERM})\s?(?P<unit>원|박스|명|가구|개월|회|건|개|%|세트)"
 )
-#: A sentence about a case other than the settled one: a scenario, a change, a range.
+#: sentence about another case: scenario, change, range
 _CASE = re.compile(
     r"시나리오|민감도|가정하면|라면|만약|인상|인하|올리|내리|늘리|줄이|확장|변경|바뀌|증가|감소|"
     r"상승|하락|최대|최소|전제|이상|이하|초과|미만|~|±|대비|차이|할인|프로모션|경쟁사|타사|업계|평균|"
@@ -85,7 +82,7 @@ def _values(text: str) -> list[tuple[str, float]]:
 
 
 def _given(figure: Figure, material: str) -> bool:
-    """The value is the material's: the same number and unit appear in it."""
+    """Whether the material contains the same number and unit."""
     number, unit = figure.number, figure.unit
     if number is None or not unit:
         return False
@@ -95,7 +92,7 @@ def _given(figure: Figure, material: str) -> bool:
 
 
 def _contested(figure: Figure, material: str) -> bool:
-    """The material calls the figure by its name with another value too."""
+    """Whether the material gives the named figure another value too."""
     for name in figure.names:
         for value in _stated_after(name, material, figure.unit):
             if figure.number is not None and abs(value - figure.number) > 1e-6 * max(1.0, value):
@@ -104,8 +101,8 @@ def _contested(figure: Figure, material: str) -> bool:
 
 
 def _stated_after(name: str, text: str, unit: str) -> list[float]:
-    """Values in `unit` written right after `name`: 「판매가는 20,000원」."""
-    # The name as a whole word, and the value not an operand of a formula.
+    """Values in `unit` right after `name`: 「판매가는 20,000원」."""
+    # whole-word name; value not a formula operand
     pattern = re.compile(
         rf"(?<![가-힣A-Za-z]){re.escape(name)}\s?(?:은|는|이|가|을|를|:|=|\|)?\s?(?:\|\s?)?"
         r"(?:약\s?|월\s?|연\s?|박스당\s?)?"
@@ -122,12 +119,10 @@ def _stated_after(name: str, text: str, unit: str) -> list[float]:
 
 @dataclass(slots=True)
 class Conflict:
-    """One named figure the material gives two or more values for, each with where it came from.
-
-    Kept, never settled: the writer is shown every value, and no check rewrites one into another."""
+    """Named figure with ≥2 material values; kept, never settled or rewritten."""
 
     name: str
-    #: `{"value", "where", "when", "line"}` per value, in the material's order.
+    #: `{"value", "where", "when", "line"}` per value, material order
     values: list[dict] = field(default_factory=list)
 
     def numbers(self) -> list[tuple[str, float]]:
@@ -141,7 +136,7 @@ MAX_CONFLICTS = 8
 
 
 def _line_with(material: str, name: str, value: str) -> str:
-    """The material line that gives `value` (by number and unit), the one naming `name` first."""
+    """Material line giving `value`, preferring one naming `name`."""
     wanted = _loose(value)
     lines = [line.strip() for line in (material or "").splitlines() if line.strip()]
     holding = [line for line in lines
@@ -156,7 +151,7 @@ _DATE_IN_LINE = re.compile(
 )
 
 
-#: A conflicting value may be a time, a size or a score, not only what is settled.
+#: conflicting value may be a time, size, or score
 _LOOSE = re.compile(
     rf"(?P<amount>{units._TERM})\s?(?P<unit>원|박스|명|가구|개월|회|건|개|%|세트|시간|분|초|일|주|년|"
     r"TB|GB|MB|km|kWh|kg|점|배|석|대|곳)"
@@ -189,7 +184,7 @@ def _conflict(name: str, values: list[dict], material: str) -> Conflict | None:
                 continue
             key: object = (unit, number)
         elif re.sub(r"\s+", "", value) in flat:
-            key = re.sub(r"\s+", "", value)  # a word value (a region, a plan name), verbatim
+            key = re.sub(r"\s+", "", value)  # word value (region, plan name), verbatim
         else:
             continue
         if key in seen:
@@ -206,7 +201,7 @@ def _conflict(name: str, values: list[dict], material: str) -> Conflict | None:
 
 
 def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
-    """The model's list, kept to what the material gives; a contested name becomes a conflict."""
+    """Model's list limited to material values; contested names → conflicts."""
     block = text[text.find("[") : text.rfind("]") + 1] if "[" in (text or "") else "[]"
     try:
         rows = json.loads(block)
@@ -235,7 +230,7 @@ def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
             continue
         seen.add(name)
         if _contested(figure, material):
-            # Two values under one name: both kept as a conflict, neither settled.
+            # two values under one name: conflict, neither settled
             others = [
                 {"value": units._ko_written(v, "") + figure.unit}
                 for n in figure.names for v in _stated_after(n, material, figure.unit)
@@ -248,19 +243,17 @@ def parse_all(text: str, material: str) -> tuple[list[Figure], list[Conflict]]:
 
 
 def parse(text: str, material: str) -> list[Figure]:
-    """The model's list, kept to what the material gives and does not contest."""
+    """Model's list limited to uncontested material values."""
     return parse_all(text, material)[0]
 
 
-#: How a document treats two values for one thing when its 서식 says nothing
-#: (`conflict_rule` in its 진행 과정 설정, `services/process_settings.py`).
+#: default conflict rule when the 서식 sets no `conflict_rule`
 DEFAULT_RULE = ("State in the sentence which value you used and why. Do not drop the other "
                 "value or merge them into one.")
 
 
 def conflict_block(conflicts: list[Conflict], rule: str = "") -> str:
-    """The values the material disagrees on, as the writer is shown them, with the 서식's rule
-    for them (`conflict_rule`)."""
+    """Conflicting values as shown to the writer, with the 서식's `conflict_rule`."""
     if not conflicts:
         return ""
     lines = []
@@ -281,7 +274,7 @@ def conflict_block(conflicts: list[Conflict], rule: str = "") -> str:
 
 
 def explains(sentences: list[str], conflicts: list[Conflict]) -> bool:
-    """Whether two places giving one metric two values are a conflict the material itself has."""
+    """Whether two places' values for one metric are a material conflict."""
     for c in conflicts:
         numbers = c.numbers()
         if len(numbers) < 2:
@@ -293,7 +286,7 @@ def explains(sentences: list[str], conflicts: list[Conflict]) -> bool:
 
 
 def block(figures: list[Figure]) -> str:
-    """The figures as the writer is told them."""
+    """Figures as told to the writer."""
     if not figures:
         return ""
     lines = [f"- {f.name}: {f.value}" for f in figures]
@@ -308,10 +301,10 @@ def block(figures: list[Figure]) -> str:
     )
 
 
-#: A kpi block's line: a value, then the label it stands for.
+#: kpi line: value, then label
 _KPI_LINE = re.compile(r"(?P<value>\d[\d,.]{0,15}\s?(?:조|억|만)?\s?(?:원|박스|명|가구|%))\s?\|\s?"
                        r"(?P<label>[^|\d]{2,30})")
-#: A count a per-unit amount could be multiplied by: 「2,000박스」, 「1만 명」.
+#: count a per-unit amount could multiply: 「2,000박스」, 「1만 명」
 _QUANTITY = re.compile(r"\d[\d,]{0,15}\s?(?:만\s?)?(?:박스|개|명|가구|건|세트|회)(?![가-힣]?당)")
 
 
@@ -321,19 +314,17 @@ def _power_of_ten(ratio: float) -> bool:
 
 
 def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float]]:
-    """`(sentence or row, figure, value written)` where `text` gives a settled figure another value.
-
-    Sentences about another case (a scenario, a change) are skipped."""
+    """`(sentence or row, figure, value)` giving a settled figure another value."""
     found: list[tuple[str, Figure, float]] = []
     for line in (text or "").split("\n"):
         stripped = line.strip()
         if kpi := _KPI_LINE.fullmatch(stripped):
-            # Value before label: 「50만 원 | 손익분기 매출」.
+            # value before label: 「50만 원 | 손익분기 매출」
             stripped = f"{kpi.group('label')} {kpi.group('value')}"
         if not stripped or stripped.startswith(("!", "```", "#")):
             continue
         if stripped.startswith("|"):
-            # Only a row labelled with the figure's name: 「| 판매가 | 2,000원 |」.
+            # only rows labelled with the figure name
             cells = [c.strip() for c in stripped.strip("|").split("|")]
             label = re.sub(r"\*|\s", "", cells[0]) if cells else ""
             for figure in figures:
@@ -353,8 +344,7 @@ def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float
                     wrote = [v for v in _stated_after(name, piece, figure.unit)
                              if abs(v - figure.number) > 1e-6 * max(1.0, figure.number)]
                     if name != figure.name:
-                        # An alias a thousandfold off is a total, not the per-unit figure,
-                        # unless no quantity in the sentence could multiply it.
+                        # alias ×1000 off = total, unless no quantity could multiply it
                         wrote = [v for v in wrote
                                  if 1e-3 < v / max(figure.number, 1e-9) < 1e3
                                  or (_power_of_ten(v / max(figure.number, 1e-9))
@@ -366,7 +356,7 @@ def conflicts(text: str, figures: list[Figure]) -> list[tuple[str, Figure, float
 
 
 def mend_rows(text: str, figures: list[Figure]) -> str:
-    """A table row named exactly for a settled figure (「| 판매가 | 2,000원 |」) gets its value."""
+    """Table row named for a settled figure gets its value."""
     lines = (text or "").split("\n")
     for i, line in enumerate(lines):
         if not line.lstrip().startswith("|"):
@@ -390,16 +380,14 @@ def mend_rows(text: str, figures: list[Figure]) -> str:
     return "\n".join(lines)
 
 
-#: Material worth settling: an amount in won, boxes, people, households or percent.
+#: settleable material: won, boxes, people, households, percent
 HAS_VALUES = re.compile(r"\d[\d,]{0,20}\s?(?:만|억|조)?\s?(?:원|박스|명|가구|%)")
 
 
 async def settle_all(
     material: str, complete, model: str, api_key: str
 ) -> tuple[list[Figure], list[Conflict], dict]:
-    """The named figures `material` settles and the ones it gives two values for.
-
-    `complete` is `(model, messages, api_key, max_tokens) -> (text, usage)`."""
+    """Settled figures and conflicts in `material`."""
     if not material or not HAS_VALUES.search(material):
         return [], [], {"inputTokens": 0, "outputTokens": 0}
     text, spent = await complete(
@@ -415,12 +403,12 @@ async def settle_all(
 
 
 async def settle(material: str, complete, model: str, api_key: str) -> tuple[list[Figure], dict]:
-    """The named figures `material` settles, asked of the model once."""
+    """Settled figures in `material`, one model call."""
     figures, _, spent = await settle_all(material, complete, model, api_key)
     return figures, spent
 
 
-#: An amount that is an operand: next to 「×」 or 「÷」 — 「3,000박스 × 2,000원」.
+#: operand next to 「×」/「÷」
 _OPERAND_NEXT_TO = re.compile(
     rf"(?<=[×x*÷])(?P<lead>\s?(?:[가-힣]{{1,8}}\s)?)(?P<a>{units._TERM})\s?(?P<au>원|박스)"
     rf"|(?P<b>{units._TERM})\s?(?P<bu>원|박스)(?=\s?[×x*÷])"
@@ -428,9 +416,7 @@ _OPERAND_NEXT_TO = re.compile(
 
 
 def mend_operands(text: str, figures: list[Figure]) -> str:
-    """Operands of a written product that are a settled figure a power of ten off, reset.
-
-    The product itself is recomputed afterwards by the arithmetic mends."""
+    """Product operands off a settled figure by a power of ten reset; product recomputed later."""
     if not text or not figures or not re.search(r"[×x*÷]", text):
         return text
 
@@ -444,8 +430,7 @@ def mend_operands(text: str, figures: list[Figure]) -> str:
             value = units._ko_number(amount)
         except ValueError:
             return m.group(0)
-        # Only an operand named as the figure in the preceding words; an unnamed amount
-        # may be another quantity altogether.
+        # only operands named as the figure; unnamed amounts may differ
         before = m.string[max(0, m.start() - 40):m.start()] + lead
         for figure in figures:
             if figure.unit != unit or figure.number is None or not value:
@@ -461,7 +446,7 @@ def mend_operands(text: str, figures: list[Figure]) -> str:
     return _OPERAND_NEXT_TO.sub(mend, text)
 
 
-#: The parts of a unit-economics plan, by what the material calls them.
+#: unit-economics roles by material names
 _ROLES = {
     "price": re.compile(r"판매가|객단가|가격|단가"),
     "cost": re.compile(r"변동비|원가"),
@@ -480,12 +465,12 @@ def _role(figure: Figure, role: str) -> bool:
 
 
 def _won(value: float) -> str:
-    """「12,000원」, 「5,000만원」: a won amount as the documents write it."""
+    """Won amount as written: 「12,000원」, 「5,000만원」."""
     return units._ko_written(value, "만" if value >= 100_000 else "") + "원"
 
 
 def derived(figures: list[Figure]) -> list[Figure]:
-    """Figures computed from the settled ones: margin, break-even, target profit and revenue."""
+    """Derived figures: margin, break-even, target profit and revenue."""
     pick = {role: next((f for f in figures if _role(f, role)), None) for role in _ROLES}
     price, cost, fixed = pick["price"], pick["cost"], pick["fixed"]
     margin_given, target = pick["margin"], pick["target"]
@@ -495,7 +480,7 @@ def derived(figures: list[Figure]) -> list[Figure]:
     if price and cost and price.number and cost.number is not None:
         margin = price.number - cost.number
         if margin_given and margin_given.number and abs(margin_given.number - margin) > 0.5:
-            return []  # the material's own margin disagrees: nothing is derived
+            return []  # material margin disagrees: derive nothing
     elif margin_given and margin_given.number:
         margin = margin_given.number
     if margin is None or margin <= 0:

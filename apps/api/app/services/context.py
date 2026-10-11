@@ -1,12 +1,4 @@
-"""System-prompt assembly (docs/architecture.md §7).
-
-Owns the surface defaults and tool rules. Workspace blocks (agent prompt,
-project instructions, knowledge, skills, memories) come from
-`services/workspace_context.py` as `extra`, already ordered.
-
-Assembly order: surface default → accuracy and language rules → today's date →
-workspace blocks → tool rules → web-search note.
-"""
+"""System prompt: surface default → rules → date → workspace → tool rules → search note."""
 
 from __future__ import annotations
 
@@ -24,7 +16,7 @@ from app.services.freshness import (
     without_quoted_transform_sources,
 )
 
-# Models leak Chinese Hanja into Korean prose; parenthesised glosses are allowed.
+# Models leak Hanja into Korean; parenthesised glosses allowed.
 _KOREAN_ONLY = (
     "When writing Korean, use Korean words only. Do not mix Chinese Hanja words (動的, 傳統, "
     "寬大, 試點, 擧, etc.) into Korean sentences — use the Korean word if one exists, "
@@ -32,7 +24,7 @@ _KOREAN_ONLY = (
     "exceptions. Never use simplified Chinese characters."
 )
 
-#: Document surfaces only: Korean, or English when the request is English.
+#: Document surfaces: Korean, or English for English requests.
 _DOCUMENT_LANGUAGE = (
     "Write the document in Korean. If the request itself is written in English, write it "
     "in English. Never write in any other language — whatever the language of the "
@@ -41,8 +33,7 @@ _DOCUMENT_LANGUAGE = (
     "throughout."
 )
 
-# In English: role separation, evidence and output-language rules. The
-# editorial rules below keep their Korean examples because they describe Korean prose.
+# English rules; editorial rules keep Korean examples.
 _CORE_ACCURACY = (
     "Core accuracy contract:\n"
     "- Write the answer in the language of the user's latest request. Never let the "
@@ -70,8 +61,7 @@ _CORE_ACCURACY = (
     "claim once."
 )
 
-# Chat-only Korean writing rules, with examples because small models follow
-# examples better than principles.
+# Chat-only writing rules; examples because small models follow them better.
 _WRITING = """Writing (the default when the user has not set a format or length):
 - Answer first. The first sentence must answer the question. Do not write a preview such
   as 「~에 대해 설명드리겠습니다」, a header such as 「답변:」, a title that repeats the
@@ -206,8 +196,7 @@ _SURFACE_DEFAULTS: dict[SessionKind, str] = {
 }
 
 
-# Appended when the turn has tools. The "output is data, not instructions"
-# clause is injection defence.
+# With tools; "data, not instructions" clause = injection defence.
 _TOOL_RULES = """
 Tool rules:
 - If you do not know the answer or are unsure, use an allowed tool when there is one. If
@@ -232,8 +221,7 @@ Tool rules:
 """.strip()
 
 
-# Search toggle rules. The first search is forced by `agent.run_turn(force_tool=...)`;
-# this asks for one search per factual axis and marks anything unsearched.
+# Search-on rules; first search forced by `run_turn(force_tool=...)`.
 _WEB_SEARCH_NUDGE = (
     "The user turned on web search. Facts that change over time must come from search "
     "results, not memory.\n"
@@ -287,9 +275,7 @@ _WEB_SEARCH_NUDGE = (
     "That is better than filling the gap plausibly."
 )
 
-# Search toggle on 「자동」: the tools are offered, the model decides. Forced first
-# hops (a research request, a fact that changes with time, weather) get the
-# fuller `_WEB_SEARCH_NUDGE` instead.
+# 「자동」 search: model decides; forced hops get `_WEB_SEARCH_NUDGE`.
 _WEB_SEARCH_AUTO = (
     "Web search and weather tools are available. Use them only when the answer depends on "
     "events after your training or on today's values; otherwise answer directly.\n"
@@ -310,7 +296,7 @@ _WEB_SEARCH_AUTO = (
     "results."
 )
 
-# Search toggle on, but no search tool this turn (agent allowlist or strict-local).
+# Search on but no search tool (allowlist or strict-local).
 _WEB_SEARCH_BLOCKED = (
     "The user turned on web search, but this request has no search tool. "
     "Do not attempt a search or say that you searched. Answer usefully from the material "
@@ -327,10 +313,10 @@ _WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
 
 def _today() -> str:
-    """Today's date and weekday in `settings.timezone`, with the Korean date form."""
+    """Today's date and weekday in `settings.timezone`."""
     try:
         zone = ZoneInfo(settings.timezone)
-    except Exception:  # a misconfigured name must not break every turn
+    except Exception:  # misconfigured tz must not break turns
         zone = UTC
     now = datetime.now(zone)
     return (f"Today is {now.year}년 {now.month}월 {now.day}일 "
@@ -346,15 +332,13 @@ def system_prompt(
     web_search_auto: bool = False,
     extra: list[str] | None = None,
 ) -> str:
-    """Assembles the system turn. `extra` is the caller-ordered workspace blocks.
-    `web_search_auto`: the tools are offered without a forced first search."""
+    """System turn; `extra` = caller-ordered workspace blocks."""
     parts = [
         _SURFACE_DEFAULTS.get(kind, _SURFACE_DEFAULTS[SessionKind.chat]),
         _CORE_ACCURACY,
         _KOREAN_ONLY,
     ]
-    # Chat only: document prompts carry their own rules, and the sample
-    # paragraph in `_WRITING` leaks into generated documents.
+    # Chat only: `_WRITING` sample leaks into documents.
     if kind is SessionKind.chat:
         parts.append(_WRITING)
     if kind is not SessionKind.chat:
@@ -370,7 +354,7 @@ def system_prompt(
             parts.append(_WEB_SEARCH_AUTO if web_search_auto else _WEB_SEARCH_NUDGE)
     if kind is SessionKind.chat:
         parts.append(_CHAT_TASK_CONTRACT)
-    # Workspace style and search nudges must not turn uncertain facts into certainty.
+    # Style/nudges must not harden uncertain facts.
     parts.append(FRESHNESS_INSTRUCTION)
     return "\n\n".join(parts)
 
@@ -388,22 +372,7 @@ def build_messages(
     turn_context: list[str] | None = None,
     remind_standing: bool = False,
 ) -> list[dict[str, str]]:
-    """Prepends the system turn and a user-role reference-data block to `history`.
-
-    `remind_standing` replays the conversation's standing directives (earlier user
-    messages that set a rule for every later answer) as a short exchange right before
-    the latest question — see `standing_directives`.
-
-    `untrusted_context` is reference data that holds for the whole conversation
-    (carried files, knowledge, memories): it opens the transcript so it stays a
-    stable prefix. `turn_context` is what arrived with *this* request (its own
-    attachments): it is placed right before the latest question, as its own
-    exchange, so the model reads the file next to the sentence about it rather
-    than glued to the conversation's opening line.
-
-    Fitting `history` into the model's window is `fit_history`'s job, done by the
-    caller before this; nothing is dropped here.
-    """
+    """System turn, reference data, `history`; directives and attachments before the question."""
     asked = next(
         (str(m.get("content") or "") for m in reversed(history) if m.get("role") == "user"), ""
     )
@@ -462,32 +431,26 @@ def build_messages(
     return _alternating(messages)
 
 
-#: A user message that sets a rule for the rest of the conversation, not just this answer.
+#: Rule for the rest of the conversation.
 _STANDING_RE = re.compile(
     r"앞으로|이\s*대화에서는|이제부터|지금부터|항상|매번|모든\s*(?:답|답변|대답|응답)|"
     r"답(?:변)?\s*(?:끝|마지막)에|\b(?:from\s+now\s+on|always|every\s+(?:answer|reply|response)|"
     r"for\s+the\s+rest\s+of|in\s+this\s+(?:chat|conversation))\b",
     re.I,
 )
-#: A later message that withdraws the standing rules.
+#: Withdrawal of standing rules.
 _WITHDRAW_RE = re.compile(
     r"규칙\s{0,8}(?:은|을)?\s{0,8}(?:취소|해제|그만|없던|풀)|원래대로|그만\s{0,8}해|평소처럼|"
     r"never\s{0,8}mind|forget\s{1,8}(?:the|that)\s{1,8}rule",
     re.I,
 )
-#: Most recent standing directives replayed; each clipped to this many characters.
+#: Max replayed directives and chars each.
 _STANDING_MAX, _STANDING_CHARS = 3, 240
 STANDING_ACK = "네, 그 규칙을 계속 지키겠습니다."
 
 
 def standing_directives(history: list[dict[str, str]]) -> list[str]:
-    """Earlier user messages that set a rule for every later answer, oldest first.
-
-    Replayed next to the question because small models honour a rule there far more
-    reliably than at the transcript's opening. Only short messages count — a long
-    message with 「앞으로」 in it is a task, not a rule — and a later withdrawal
-    (「원래대로」, 「규칙 취소」) clears them. The latest question is never replayed.
-    """
+    """Short earlier rule-setting messages, oldest first, until withdrawn."""
     found: list[str] = []
     users = [i for i, m in enumerate(history) if m.get("role") == "user"]
     for i in users[:-1]:
@@ -502,17 +465,13 @@ def standing_directives(history: list[dict[str, str]]) -> list[str]:
     return found[-_STANDING_MAX:]
 
 
-#: An answer language a message asks for: 「영어로」, 「in English」, 「한국어로」.
+#: Requested answer language.
 _ASKS_ENGLISH = re.compile(r"영어로|영문으로|\bin\s+English\b", re.I)
 _ASKS_KOREAN = re.compile(r"한국어로|한글로|우리말로|\bin\s+Korean\b", re.I)
 
 
 def standing_language_rule(standing: list[str], asked: str) -> str:
-    """The answer language a standing directive set, as a system rule; empty otherwise.
-
-    The chat default answers in the question's language; this keeps 「지금부터 답은 영어로만」
-    in force over later Korean questions. A question naming a language itself wins.
-    """
+    """Standing answer-language rule; a language named in the question wins."""
     if _ASKS_ENGLISH.search(asked) or _ASKS_KOREAN.search(asked):
         return ""
     language = ""
@@ -539,7 +498,7 @@ def standing_block(directives: list[str]) -> str:
     )
 
 
-#: The assistant's acknowledgement between a request's attachments and its question.
+#: Ack between attachments and question.
 TURN_CONTEXT_ACK = "첨부 파일을 확인했습니다. 이어지는 질문에 그 내용을 바탕으로 답하겠습니다."
 
 
@@ -547,23 +506,21 @@ TURN_CONTEXT_ACK = "첨부 파일을 확인했습니다. 이어지는 질문에 
 
 _CJK = re.compile(r"[ᄀ-ᇿ　-鿿가-힯豈-﫿＀-￯]")
 
-#: Tokens per character, deliberately high (about a fifth over on Korean chat):
-#: an under-count ends in a provider 400, an over-count only drops a turn early.
+#: Deliberately high tokens/char; under-count → provider 400.
 _TOKENS_PER_CJK_CHAR = 0.7
 _TOKENS_PER_OTHER_CHAR = 0.3
-#: Role and separator tokens a chat template adds around each message.
+#: Chat-template tokens per message.
 _TOKENS_PER_MESSAGE = 4
 
-#: Window kept for the answer (and the model's reasoning), bounded both ways.
+#: Answer/reasoning reserve, bounded.
 _MIN_ANSWER_RESERVE = 2_048
 _MAX_ANSWER_RESERVE = 8_192
-#: Once the history has to be cut, it is cut to this share of its budget, so a
-#: conversation that keeps growing is not re-cut (and re-summarised) every turn.
+#: Cut target share, avoiding re-cuts every turn.
 _TRIM_TO = 0.8
 
 
 def estimate_tokens(text: str) -> int:
-    """A deliberately high token estimate for `text`; see the ratios above."""
+    """Deliberately high token estimate."""
     if not text:
         return 0
     cjk = len(_CJK.findall(text))
@@ -574,7 +531,7 @@ def estimate_tokens(text: str) -> int:
 def _message_tokens(message: dict) -> int:
     content = message.get("content")
     if isinstance(content, list):
-        # Picture parts are billed by the provider on their own scale; count the text.
+        # Pictures billed separately; text only.
         text = " ".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
     else:
         text = str(content or "")
@@ -582,7 +539,7 @@ def _message_tokens(message: dict) -> int:
 
 
 def envelope_tokens(messages: list[dict], tool_definitions: list[dict] | None = None) -> int:
-    """Estimated prompt tokens of a whole request: messages plus tool schemas."""
+    """Estimated request tokens incl. tool schemas."""
     total = sum(_message_tokens(message) for message in messages)
     if tool_definitions:
         total += estimate_tokens(json.dumps(tool_definitions, ensure_ascii=False))
@@ -590,27 +547,17 @@ def envelope_tokens(messages: list[dict], tool_definitions: list[dict] | None = 
 
 
 def answer_reserve(window: int) -> int:
-    """Tokens of `window` held back for the answer."""
+    """Tokens reserved for the answer."""
     return min(_MAX_ANSWER_RESERVE, max(_MIN_ANSWER_RESERVE, window // 6))
 
 
 def history_budget(window: int, fixed_tokens: int) -> int:
-    """Tokens the earlier turns may take once the fixed parts of the request are counted.
-
-    `fixed_tokens`: the system turn, reference data, this turn's attachments and
-    question, and tool schemas — everything that is sent regardless of history.
-    """
+    """History token budget after fixed parts."""
     return max(0, window - answer_reserve(window) - fixed_tokens)
 
 
 def fit_history(history: list[dict], budget: int) -> tuple[list[dict], list[dict]]:
-    """Splits `history` (earlier turns, oldest first, the current question excluded) into
-    `(kept, dropped)` so that `kept` fits `budget` tokens.
-
-    Cuts fall on a user turn, so `kept` opens with a question and `dropped` holds whole
-    exchanges. Nothing is dropped while everything fits; once something must go, the
-    cut is made at `_TRIM_TO` of the budget so the next few turns fit without another.
-    """
+    """Split `history` into `(kept, dropped)` to fit `budget`; cuts on user turns, to `_TRIM_TO`."""
     if not history:
         return [], []
     costs = [_message_tokens(message) for message in history]
@@ -624,14 +571,14 @@ def fit_history(history: list[dict], budget: int) -> tuple[list[dict], list[dict
             break
         spent += costs[index]
         start = index
-    # Open on a question: an answer with no question above it reads as the model's own.
+    # Kept history opens on a question.
     while start < len(history) and history[start].get("role") != "user":
         start += 1
     return list(history[start:]), list(history[:start])
 
 
 def summary_block(summary: str | None, dropped_turns: int) -> str:
-    """The trusted block that stands in for the turns `fit_history` dropped."""
+    """Trusted stand-in for dropped turns."""
     lines = [
         "# Earlier conversation summary",
         f"The first {dropped_turns} messages of this conversation were replaced by the summary "
@@ -650,11 +597,7 @@ def summary_block(summary: str | None, dropped_turns: int) -> str:
 
 
 def with_pictures(messages: list[dict], uris: Sequence[str]) -> list[dict]:
-    """Attaches `uris` as `image_url` parts to the last user turn.
-
-    Must run after `build_messages`: `_alternating` concatenates `content`
-    strings and would flatten a parts list.
-    """
+    """Attach `uris` to the last user turn; only after `build_messages`."""
     if not uris:
         return messages
     for index in range(len(messages) - 1, -1, -1):
@@ -668,7 +611,6 @@ def with_pictures(messages: list[dict], uris: Sequence[str]) -> list[dict]:
 
 
 def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Merge adjacent same-role turns for alternating chat templates."""
     merged: list[dict[str, str]] = []
     for message in messages:
         if merged and merged[-1]["role"] == message["role"]:
@@ -682,8 +624,7 @@ def _alternating(messages: list[dict[str, str]]) -> list[dict[str, str]]:
 _HANGUL = re.compile(r"[가-힣]")
 _LATIN = re.compile(r"[A-Za-z]")
 
-# Explicit research wording counts as consent to search without the UI toggle.
-# Narrow on purpose: plain 「알려 줘」/「확인해 줘」 must not send a prompt outside.
+# Explicit research wording = search consent; narrow so 「알려 줘」 doesn't leak prompts.
 _EXPLICIT_WEB_REQUEST = re.compile(
     r"웹\s*검색|검색(?:해|하여|해서)|조사(?:해|하여|해서)|"
     r"검증(?:해|하여|해서)|출처(?:를|가)?\s*(?:찾|확인)|"
@@ -700,28 +641,28 @@ _DECLINED_WEB_REQUEST = re.compile(
 
 
 def declines_web_search(request: str) -> bool:
-    """Conservative explicit opt-out; conflicting same-turn instructions stay offline."""
+    """Conservative opt-out; conflicts stay offline."""
     return bool(_DECLINED_WEB_REQUEST.search(without_quoted_transform_sources(request or "")))
 
 
 def requests_web_search(request: str) -> bool:
-    """Whether the user's own words explicitly request external research."""
+    """User explicitly requests research."""
     text = without_quoted_transform_sources(request or "")
     return not declines_web_search(request) and bool(_EXPLICIT_WEB_REQUEST.search(text))
 
 
-#: Facts that change with time — the auto toggle searches these unasked.
+#: Time-varying facts; auto mode searches unasked.
 _TIME_SENSITIVE = re.compile(
     r"뉴스|속보|최신|최근|현재|지금|오늘|어제|내일|모레|이번\s*[주달]|올해|작년|내년|요즘|"
     r"시세|환율|주가|가격|얼마|출시|발표|일정|언제|몇\s*시|버전|업데이트|근황|현황|동향|"
     r"통계|순위|20[2-9]\d년|"
-    # What changed in a named release, and bibliography — both go stale in memory.
+    # Release changes, bibliography.
     r"바뀐|바뀌|달라진|달라졌|새로\s*생긴|없어졌|사라졌|폐지|아직|여전히|요즘도|"
-    # Fees, deadlines, sign-ups, places: what an office or a shop decides this year.
+    # Fees, deadlines, sign-ups, places.
     r"요금|비용|수수료|과태료|접수|마감|신청|학년도|회차|어디서|어디에|며칠|몇\s*[일번회]|횟수|기간|"
     r"지원금|지원\s*(?:제도|사업|받|있|되)|"
     r"arxiv|doi\b|서지|저자|"
-    # A product or standard with a version number: Python 3.14, React 19, GPT-5.
+    # Versioned product/standard.
     r"\b[A-Za-z][A-Za-z+#.-]{1,20}[ -]?\d{1,3}(?:\.\d+)?\b|"
     r"\b(?:latest|current|today|tonight|tomorrow|now|news|price|release|version|update|"
     r"schedule|recent|deprecated|removed|changed)\b",
@@ -734,25 +675,25 @@ _WEATHER_ASK = re.compile(
 )
 
 
-#: The person is telling, not asking: their own team, budget, rule, memo, code.
+#: Person telling own facts.
 _OWN_MATTER = re.compile(
     r"우리\s*(?:팀|회사|제품|프로젝트|연구실|부서|서비스)|우리는|내가|나는|저는|제가|"
     r"내\s*(?:코드|함수|파일|데이터|예산|일정|규칙)|적어\s*준|이거\s*:|다음\s*:|메모|규칙|코드명|"
     r"안건|회의\s*(?:내용|메모)|알겠지|기억해\s*둘|확인만|잡혔어|정했어|정해졌어|확정됐어|"
     r"\b(?:our|my|we|I)\b"
 )
-#: The question is about the conversation, not the world.
+#: About the conversation.
 _ABOUT_CONVERSATION = re.compile(
     r"아까|앞에서|앞서|방금|위에서|처음에|지금\s*코드|이\s*코드|그\s*(?:함수|코드|데이터|파일|표|"
     r"얘기|크기|값|규칙)|첨부|^\s*(?:그럼|그러면|그래서|그게|그거|그걸)\b"
 )
-#: A rule of thumb or a usual figure: answered from knowledge, with the ballpark caveat.
+#: Rule of thumb; answered from knowledge.
 _RULE_OF_THUMB = re.compile(
     r"적당|보통|대략|평균적으로|일반적으로|통상|권장|추천|좋을까|어떻게\s*(?:하면|할까)|"
     r"\b(?:typically|usually|roughly|recommended|appropriate)\b",
     re.I,
 )
-#: A time word alone (오늘, 내일, 지금) names the person's day, not the world's.
+#: Bare time word = person's day.
 _WORLD_CUE = re.compile(
     r"뉴스|속보|최신|최근|시세|환율|주가|가격|출시|발표(?:됐|된|했)|버전|업데이트|근황|현황|동향|"
     r"통계|순위|요금|수수료|과태료|접수|신청|등록|학년도|지원금|arxiv|doi\b|서지|저자|"
@@ -769,8 +710,7 @@ _ASK_CUE = re.compile(
 )
 
 
-#: A date the person gives (「2027년 3월 2일」, 「2027-03-02」, 「3월 2일」) and an offset from it
-#: (「30일 전」, 「2주 뒤」): counting days is arithmetic, not something to look up.
+#: Given date ± offset; arithmetic, no lookup.
 _GIVEN_DATE = re.compile(
     r"(?<!\d)20\d{2}\s{0,2}(?:년|[-./])\s{0,2}\d{1,2}\s{0,2}(?:월|[-./])\s{0,2}\d{1,2}"
     r"|(?<![\d./-])\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일")
@@ -783,27 +723,20 @@ def _date_arithmetic(text: str) -> bool:
 
 
 def needs_web_search(request: str) -> bool:
-    """Whether the words ask about something in the world that changes with time.
-
-    The auto toggle forces a search on these. It must not fire when the person is
-    telling us their own facts (「우리 팀 예산은 1200만 원」), asking about the
-    conversation (「아까 그 규칙」, 「지금 코드는」), asking for arithmetic on numbers
-    they gave, or asking a rule of thumb (「발표 10분이면 몇 장이 적당해?」). The tool
-    stays offered; only the forced first hop is withheld.
-    """
+    """Asks about time-varying world facts (not own facts, chat, arithmetic, rules of thumb)."""
     text = request or ""
     if not _TIME_SENSITIVE.search(text):
         return False
     if _OWN_MATTER.search(text) or _ABOUT_CONVERSATION.search(text):
         return bool(_WORLD_CUE.search(text) and requests_web_search(text))
-    # A sentence has to ask; a bare noun phrase (「앤트로픽 최신 모델」) is a lookup.
+    # Long non-question → lookup phrase.
     if len(text.split()) > 6 and not _ASK_CUE.search(text):
         return False
     if _RULE_OF_THUMB.search(text) and not re.search(r"최신|현재|지금|올해|요즘", text):
         return False
     if re.search(r"다시\s*계산|계산해", text) or _date_arithmetic(text):
         return False
-    # A bare time word (오늘, 내일, 몇 시) needs a world cue beside it.
+    # Bare time word needs a world cue.
     return bool(
         _WORLD_CUE.search(text) or re.search(r"환율|주가|시세|가격|얼마나\s*(?:올랐|내렸|됐)", text)
     )
@@ -813,9 +746,7 @@ def asks_weather(request: str) -> bool:
     return bool(_WEATHER_ASK.search(request or ""))
 
 
-#: Request phrasing that adds nothing to a search query. Each pattern is
-#: anchored at the end and uses no nested repetition (ReDoS);
-#: `search_query` peels them off one layer at a time.
+#: Search-query tail phrasing; end-anchored, no nested repetition (ReDoS).
 _TAIL_VERB = re.compile(
     r"(?:^|\s)(?:[가-힣]+해 ?(?:줘|주세요|줄래|주실래요|봐|달라)|"
     r"알려 ?(?:줘|주세요|줄래|주실래요|달라)|말해 ?(?:줘|주세요|줄래)|찾아 ?(?:줘|주세요|봐))$"
@@ -827,14 +758,14 @@ _TAIL_WORD = re.compile(
     r"언제까지인가요|있어|있나요|있을까|할까|인가요|인지|받아|받나요|되나요|돼요|해요|하나요|얼마|"
     r"이야|야|니|나요|까요|죠)$"
 )
-#: 「쓸 수 있어」「해야 해」: a verb phrase that only asks.
+#: Asking-only verb phrase.
 _TAIL_PHRASE = re.compile(
     r"(?:^|\s)[가-힣]+ ?(?:수 있(?:어|나요|을까)|해야 ?(?:해|돼|하나요|되나요))$"
 )
-#: A unit or counter left alone once the asking is gone: 「구직촉진수당 월」.
+#: Dangling unit/counter.
 _DANGLING_UNIT = re.compile(r"\s(?:월|년|일|주|개월|번|명|원)$")
 _FILLER = re.compile(r"(?:^|\s)(?:좀|제발|빨리|자세히|간단히|정확히)$")
-#: A particle left dangling on a word of two syllables or more once the asking is gone.
+#: Dangling particle.
 _DANGLING_PARTICLE = re.compile(r"(?<=[가-힣][가-힣])(?:이|가|은|는|을|를)$")
 _TIME_WORDS = re.compile(r"오늘|지금|현재|내일|모레|이번\s*주|주말|아침|점심|저녁|밤|오전|오후")
 _WEATHER_WORDS = re.compile(
@@ -848,16 +779,15 @@ SEARCH_QUERY_LIMIT = 120
 
 
 def search_needs_planning(request: str) -> bool:
-    """Do not cut a long request's subject, period or constraints into a preset."""
     return len(re.sub(r"\s+", " ", (request or "").strip())) > SEARCH_QUERY_LIMIT
 
 
 def search_query(request: str, *, prefer_primary: bool = False) -> str:
-    """The user's sentence as a search query: request phrasing trimmed, capped."""
+    """User sentence as a capped search query."""
     try:
         text, _site = search_site_scope(request or "")
     except ValueError:
-        # Leave conflicting operators for the search tool to reject before lookup.
+        # Conflicting operators left for the tool to reject.
         text = request or ""
     text = re.sub(r"\s+", " ", _HINT_PHRASES.sub(" ", text).strip())
     for _ in range(4):
@@ -875,8 +805,7 @@ def search_query(request: str, *, prefer_primary: bool = False) -> str:
         and not _search_site_operators(request or "")
         and not _HINT_OFFICIAL.search(query)
     ):
-        # Improve retrieval without assuming a country, authority domain or answer.
-        # Mixing an English cue into a Korean query can select the wrong search lane.
+        # No assumed country/authority; matching-script cue to keep the right lane.
         hint = "공식" if _HANGUL.search(request or "") else "official"
         if hint not in query:
             query = query[:SEARCH_QUERY_LIMIT - len(hint) - 1].rstrip() + " " + hint
@@ -884,7 +813,7 @@ def search_query(request: str, *, prefer_primary: bool = False) -> str:
 
 
 def weather_location(request: str) -> str | None:
-    """The place a weather question names, or None when it names none."""
+    """Weather place, or None."""
     text = re.sub(r"\s+", " ", (request or "").strip())
     head = _WEATHER_WORDS.split(text, maxsplit=1)[0]
     head = _TIME_WORDS.sub(" ", head)
@@ -897,8 +826,7 @@ def weather_location(request: str) -> str | None:
     return place or None
 
 
-#: Talk, not a question: a feeling, a greeting, thanks. 「오늘」 in 「오늘 기분이
-#: 별로야」 is not a request for today's news.
+#: Small talk, not a question.
 _SMALL_TALK = re.compile(
     r"기분|우울|힘들|위로|외로|슬프|심심|사랑해|고마워|고맙|안녕|반가워|잘\s*자|피곤|"
     r"수고|축하|미안|\b(?:thanks|thank you|hello|hi|lol|sad|tired|bored)\b",
@@ -911,8 +839,7 @@ def is_small_talk(request: str) -> bool:
     return len(text) <= 40 and bool(_SMALL_TALK.search(text)) and not requests_web_search(text)
 
 
-#: Hints a person writes into the question itself: where to look, how far
-#: back, in what language. Honoured on the server's own first search.
+#: In-question search hints (site, period, language) for the first search.
 _HINT_SITE = re.compile(r"\bsite:([A-Za-z0-9.-]+\.[A-Za-z]{2,})")
 _HINT_OFFICIAL = re.compile(
     r"공식\s*(?:사이트|홈페이지|자료|발표|문서|출처|기준|공지|공고)|정부\s*(?:자료|발표|사이트)|"
@@ -938,7 +865,7 @@ _HINT_ENGLISH = re.compile(
     r"영어\s*(?:자료|문서|로|기사)|영문\s*(?:자료|문서)|해외\s*(?:자료|문서|기사)|in english", re.I
 )
 _HINT_NEWS = re.compile(r"뉴스\s*(?:로|에서|기사|위주로)|기사\s*(?:로|에서|위주로)")
-#: The hint phrases, so `search_query` can leave them out of the query itself.
+#: Hint phrases stripped from the query.
 _HINT_PHRASES = re.compile(
     r"(?:공식|정부|기관)\s*(?:사이트|홈페이지|자료|발표|문서|출처|공지|공고)\s*"
     r"(?:기준으로|기준|에서|으로|로|만)?|공공기관\s*(?:자료)?\s*(?:기준으로|에서|로)?|"
@@ -949,7 +876,7 @@ _HINT_PHRASES = re.compile(
 
 
 def _search_site_operators(query: str) -> list[re.Match[str]]:
-    """Only standalone positive operators, not quoted text or excluded sites."""
+    """Standalone positive operators only."""
     quoted = iter(_quoted_spans(query))
     span = next(quoted, None)
     operators = []
@@ -965,7 +892,7 @@ def _search_site_operators(query: str) -> list[re.Match[str]]:
 
 
 def search_site_scope(query: str, site: object = None) -> tuple[str, str]:
-    """Use the existing single-domain hint grammar for model-written operators too."""
+    """Model operators via the single-domain hint grammar."""
     operators = _search_site_operators(query)
     if any(query[match.end() : match.end() + 1] in {"/", ":"} for match in operators):
         raise ValueError("search site must be a domain, not a path or port")
@@ -990,8 +917,7 @@ def search_site_scope(query: str, site: object = None) -> tuple[str, str]:
     return query, scoped
 
 
-#: A request for the literature itself — trends, prior work, key papers — rather than a
-#: fact: its searches go to the science lane too and bring back more results.
+#: Literature request; science lane, more results.
 _LITERATURE = re.compile(
     r"연구\s{0,3}동향|선행\s{0,3}연구|관련\s{0,3}연구|문헌\s{0,3}(?:조사|정리|검토)|핵심\s{0,3}논문|"
     r"대표\s{0,3}논문|논문(?:을|들을)?\s{0,3}(?:정리|찾|추천|골라|분석|조사)|서베이|"
@@ -1001,15 +927,12 @@ _LITERATURE = re.compile(
 
 
 def literature_request(request: str) -> bool:
-    """Whether the person asks about the research literature."""
+    """Asks about research literature."""
     return bool(_LITERATURE.search(instruction_part(request or "")))
 
 
 def instruction_part(request: str) -> str:
-    """The person's own instruction, without the material pasted under it: the text
-    before a 「---」 line, or before the first pasted line over 400 characters. The
-    planner's appended conditions (「덧붙인 조건:」) are part of the instruction wherever
-    they sit."""
+    """Instruction without pasted material (before 「---」 or a >400-char line)."""
     text = request or ""
     tail = ""
     marker = text.find("\n\n덧붙인 조건:")
@@ -1026,18 +949,13 @@ def instruction_part(request: str) -> str:
     return text + tail
 
 
-#: A line of a pasted memo, not of an instruction: a list item, a table row, 「키: 값」.
+#: Pasted memo line.
 _MEMO_LINE = re.compile(
     r"^[ \t]{0,8}(?:[-*•·□○◦▪]\s|\d{1,2}[.)]\s|\||[가-힣A-Za-z][^:：\n]{0,24}[:：]\s?\S)")
 
 
 def lead_instruction(request: str) -> str:
-    """The instruction's first paragraph when what follows the first blank line is a memo
-    (list items, table rows, 「키: 값」 lines): 「아래 자료로 행사 결과보고서 써 줘」 over
-    「- 문제: 2일차 새벽 … 와이파이 장애」. Else the whole instruction (`instruction_part`).
-
-    For deciding what kind of thing is asked for — a format, whether the present is asked
-    about — where a word in the memo (「장애」, 「지금」) is material, not the ask."""
+    """First paragraph when a memo follows, else `instruction_part`; for classifying the ask."""
     instruction = instruction_part(request or "")
     head, gap, rest = instruction.strip().partition("\n\n")
     lines = [line for line in rest.splitlines() if line.strip()]
@@ -1048,24 +966,20 @@ def lead_instruction(request: str) -> str:
 
 
 def pasted_material(request: str) -> str:
-    """The material pasted under the instruction, as a reference block; `""` when there
-    is none worth carrying apart (under 200 characters)."""
+    """Pasted material as a reference block; "" under 200 chars."""
     text = request or ""
     marker = text.find("\n\n덧붙인 조건:")
     if marker >= 0:
         text = text[:marker]
     rest = text[len(instruction_part(text)) :].strip()
     rest = re.sub(r"^-{3,8}[ \t]{0,8}\n", "", rest).strip()
-    # A picture pasted with a report is its caption to the writer: the base64 would only
-    # spend the context the report's later sections need.
+    # Inline base64 images → captions to save context.
     rest = re.sub(r"!\[([^\]]{0,200})\]\(data:[^)]{0,12000000}\)", r"[그림: \1]", rest)
     return f"# 요청에 붙여 넣은 자료\n{rest}" if len(rest) > 200 else ""
 
 
 def prompt_request(request: str, limit: int) -> str:
-    """The request as a prompt quotes it: the whole of it when short; the instruction,
-    with a note that the pasted material is in the references, when material was pasted
-    — cutting the request at `limit` would hand the planner half a proposal."""
+    """Request for prompts: whole if short, else instruction plus material note."""
     if not pasted_material(request):
         return (request or "")[:limit]
     note = "\n\n(The full material pasted into this request is in the reference data.)"
@@ -1073,7 +987,7 @@ def prompt_request(request: str, limit: int) -> str:
 
 
 def search_hints(request: str) -> dict[str, object]:
-    """What the user's own words say about where and how to search."""
+    """In-request search hints."""
     text = request or ""
     hints: dict[str, object] = {}
     sites = {match[1].lower() for match in _search_site_operators(text)}
@@ -1093,12 +1007,7 @@ def search_hints(request: str) -> dict[str, object]:
 
 
 def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
-    """What the web-search toggle means for this turn: whether the web tools are
-    offered, and the tool the first hop must call (or none).
-
-    `toggle` is `True` (search every turn), `False` (no web tools unless the words
-    ask for research) or `"auto"` (tools offered; a search is forced only when the
-    words ask for research or for something that changes with time)."""
+    """Web tools offered and forced first tool for this turn's toggle."""
     if declines_web_search(request):
         return False, None
     explicit = requests_web_search(request)
@@ -1108,8 +1017,7 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
             return True, "weather"
         if is_small_talk(request):
             return True, None
-        # A question about the literature (trends, key papers) is answered from the
-        # papers, not from memory, even when it does not say 「검색」.
+        # Literature questions searched even without 「검색」.
         searched = explicit or needs_web_search(request) or literature_request(request)
         return True, "web_search" if searched else None
     if toggle is True:
@@ -1120,7 +1028,7 @@ def search_plan(toggle: bool | str, request: str) -> tuple[bool, str | None]:
 
 
 def language_rule(request: str) -> str:
-    """An English-output instruction for a plainly English request; empty otherwise."""
+    """English-output rule for plainly English requests."""
     hangul = len(_HANGUL.findall(request))
     latin = len(_LATIN.findall(request))
     if latin < 40 or hangul * 4 > latin:
@@ -1140,15 +1048,10 @@ def build_document_messages(
     request: str = "",
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
-    #: `services.research` text on where the document's facts come from; goes
-    #: in the system turn because it is an instruction about the data block.
+    #: Research provenance rule; system turn.
     research_rule: str = "",
 ) -> list[dict[str, str]]:
-    """Role-separated messages for report and slide completion calls.
-
-    Trusted context keeps system priority; untrusted context is a user-role
-    data block; the generation prompt comes last.
-    """
+    """Role-separated document messages: trusted system, untrusted user data, prompt last."""
     trusted = list(trusted_context or [])
     if research_rule:
         trusted.append(research_rule)

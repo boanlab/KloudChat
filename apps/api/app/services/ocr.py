@@ -1,18 +1,4 @@
-"""Text from scanned pages: an OCR engine first, a vision model for the pages it is unsure of.
-
-Two readers, both inside the deployment:
-
-- the engine (ocr-shim behind `/tools/ocr`, CPU): every line with a score and a box;
-- a vision model through LiteLLM, only a `strict-local` one that declares vision: the
-  engine hands it the page picture. A page never goes to any other model.
-
-`mode` decides which are used (`both` by default). With both, the engine reads every
-page; a page it scored low, or one with a ruled table, is read again by the vision model,
-whose text is kept (it keeps word spacing and writes tables as tables). When the two
-readings differ in words or in any number, the page is marked for review rather than
-trusting either. Which pages need reading at all is decided here too: a PDF page with its
-own text layer is not read again.
-"""
+"""Scan OCR: in-deployment engine, strict-local vision for unsure pages; mismatches flagged."""
 
 from __future__ import annotations
 
@@ -38,25 +24,25 @@ log = logging.getLogger(__name__)
 
 MODES = ("both", "engine", "vision")
 DEFAULT_MAX_PAGES = 300
-#: The most an administrator may allow; the engine refuses past 2000 on its own.
+#: admin max; engine refuses past 2000
 MAX_PAGES_CEILING = 2000
 
-#: A page whose own text layer has fewer visible characters than this is a scan.
+#: fewer visible text-layer chars = scan
 TEXT_LAYER_MIN_CHARS = 20
-#: Engine score under which the vision model reads the page again (both readers on).
+#: engine score below which vision rereads
 VISION_BELOW = 0.90
-#: Engine score under which an engine-only page is marked for review.
+#: engine-only review threshold
 REVIEW_BELOW = 0.80
-#: Agreement (0..1, spacing and table marks ignored) under which two readings disagree.
+#: agreement (0..1) below which readings disagree
 AGREE_AT_LEAST = 0.85
-#: A picture is a document photo, not a photo with a stray sign, from this much text.
+#: text amount making a picture a document photo
 PHOTO_TEXT_MIN_CHARS = 20
 
-#: Pictures the readers accept, by recorded MIME type.
+#: accepted picture MIME types
 IMAGE_TYPES = frozenset(
     {"image/png", "image/jpeg", "image/tiff", "image/webp", "image/bmp", "image/gif"}
 )
-#: Largest picture or document sent to a reader.
+#: largest picture/document sent to a reader
 MAX_BYTES = 60 * 1024 * 1024
 
 _ENGINE_TIMEOUT = httpx.Timeout(150.0, connect=8.0)
@@ -83,12 +69,12 @@ VISION_PROMPT = (
 
 
 class OcrError(RuntimeError):
-    """A reader failed on a page; the job retries the file later."""
+    """Reader failed on a page; job retries later."""
 
 
 @dataclass(frozen=True)
 class Config:
-    """What is in force: `mode` is narrowed to the readers actually available."""
+    """Settings in force; mode narrowed to available readers."""
 
     enabled: bool
     mode: str | None
@@ -98,7 +84,7 @@ class Config:
 
 
 def vision_choices(catalogue: dict[str, Any]) -> list[dict[str, Any]]:
-    """Models a page may be shown to: strict-local and declaring vision, nothing else."""
+    """Eligible models: strict-local with vision only."""
     return [
         model
         for model in catalogue.get("models") or []
@@ -116,8 +102,7 @@ def _int(raw: str, default: int) -> int:
 
 
 async def config(*, egress: bool = False) -> Config:
-    """The settings in force. `egress` reads the model catalogue uncached, for the moment a
-    page is about to be shown to a model; otherwise a cached read is enough."""
+    """Settings in force; egress reads the catalogue uncached."""
     values = await settings_store.all_values()
     enabled = (values.get(settings_store.OCR_ENABLED) or "1").strip() != "0"
     wanted = (values.get(settings_store.OCR_MODE) or "both").strip()
@@ -133,7 +118,7 @@ async def config(*, egress: bool = False) -> Config:
     chosen = (values.get(settings_store.OCR_VISION_MODEL) or "").strip()
     preferred = env_settings.ocr_vision_model
     fallback = preferred if preferred in choices else (choices[0] if choices else "")
-    # A chosen model that stopped qualifying is not swapped for another: nothing is sent.
+    # disqualified chosen model not swapped: nothing sent
     vision = chosen if chosen in choices else ("" if chosen else fallback)
     has_engine, has_vision = bool(engine_url), bool(vision)
     mode: str | None
@@ -148,7 +133,7 @@ async def config(*, egress: bool = False) -> Config:
     elif wanted == "engine":
         mode = "engine" if has_engine else None
     else:
-        # Without the engine a PDF page cannot be turned into a picture; pictures still can.
+        # no engine: PDF pages can't be rasterized
         mode = "vision" if has_vision else None
     max_pages = max(
         1,
@@ -166,18 +151,15 @@ async def config(*, egress: bool = False) -> Config:
     )
 
 
-# ── which pages need reading ───────────────────────────────────────────
-
-
 @dataclass(frozen=True)
 class Plan:
-    """`pages` (1-based) to read; `layer` holds the text-layer pages kept as they are."""
+    """1-based pages to read; layer = text-layer pages kept."""
 
     kind: str  # "pdf" | "image"
     pages: tuple[int, ...]
     total: int
     layer: dict[int, str] = field(default_factory=dict)
-    #: Pages past the administrator's limit, left unread.
+    #: pages past the admin limit, unread
     skipped: int = 0
 
 
@@ -186,12 +168,12 @@ def _visible(text: str) -> int:
 
 
 def pdf_layer(data: bytes) -> list[str]:
-    """Each page's own text layer ("" for a scan). Raises on a PDF that cannot be opened."""
+    """Per-page text layer ("" for scans); raises if unopenable."""
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
     if len(reader.pages) > MAX_PAGES_CEILING:
-        # More pages than any reader takes; not planned at all.
+        # too many pages: not planned
         raise ValueError("too many pages")
     pages: list[str] = []
     for page in reader.pages:
@@ -202,14 +184,12 @@ def pdf_layer(data: bytes) -> list[str]:
     return pages
 
 
-#: Pixels of one picture a reader or model is handed; more is a decompression bomb.
+#: per-picture pixel cap (decompression bomb guard)
 MAX_PIXELS = 40_000_000
 
 
 def _frames(data: bytes, cap: int) -> int:
-    """Frames in a picture (a TIFF may hold many), counted by seeking and never past `cap`;
-    0 when it cannot be opened or its first frame claims more than MAX_PIXELS. Nothing is
-    decoded: Pillow reads sizes from the header."""
+    """Frame count from headers only, capped; 0 if unopenable or over MAX_PIXELS."""
     from PIL import Image
 
     try:
@@ -230,7 +210,7 @@ def _frames(data: bytes, cap: int) -> int:
 
 
 def plan(name: str, mime: str, data: bytes, max_pages: int) -> Plan | None:
-    """The pages of this upload that need reading, or None when none do. CPU-bound."""
+    """Pages needing reading, or None; CPU-bound."""
     if not data or len(data) > MAX_BYTES:
         return None
     mime = (mime or "").lower()
@@ -252,16 +232,13 @@ def plan(name: str, mime: str, data: bytes, max_pages: int) -> Plan | None:
             skipped=len(scanned) - len(kept),
         )
     if mime in IMAGE_TYPES:
-        # One frame past the limit is counted, so a longer file shows it was cut short.
+        # one extra frame counted to show truncation
         frames = _frames(data, max_pages + 1)
         if frames <= 0:
             return None
         kept = tuple(range(1, min(frames, max_pages) + 1))
         return Plan(kind="image", pages=kept, total=frames, skipped=frames - len(kept))
     return None
-
-
-# ── reading one page ───────────────────────────────────────────────────
 
 
 @dataclass
@@ -272,12 +249,12 @@ class PageRead:
     needs_review: bool = False
     has_table: bool = False
     layout: dict[str, Any] | None = None
-    #: The vision model read this page (one ledger unit each).
+    #: vision-read page (one ledger unit)
     vision_used: bool = False
 
 
 async def engine_read(cfg: Config, data: bytes, page: int, *, want_image: bool) -> dict[str, Any]:
-    """The engine's reading of one page (and the page picture when asked)."""
+    """Engine reading of one page (plus picture if asked)."""
     url = cfg.engine_url.rstrip("/") + "/ocr"
     try:
         async with tools_gateway.client(timeout=_ENGINE_TIMEOUT) as client:
@@ -290,7 +267,7 @@ async def engine_read(cfg: Config, data: bytes, page: int, *, want_image: bool) 
     except httpx.HTTPError as exc:
         raise OcrError(f"engine unreachable: {logs.safe(exc)}") from exc
     if response.status_code in (413, 415, 422):
-        # The document itself is the problem; retrying will not help.
+        # document itself is the problem: no retry
         raise OcrRefused(_engine_reason(response))
     if response.status_code >= 400:
         raise OcrError(f"engine answered {response.status_code}")
@@ -301,7 +278,7 @@ async def engine_read(cfg: Config, data: bytes, page: int, *, want_image: bool) 
 
 
 async def render(cfg: Config, data: bytes, page: int) -> bytes:
-    """The page as a JPEG, through the engine's renderer."""
+    """Page as JPEG via the engine renderer."""
     url = cfg.engine_url.rstrip("/") + "/render"
     try:
         async with tools_gateway.client(timeout=_ENGINE_TIMEOUT) as client:
@@ -321,7 +298,7 @@ async def render(cfg: Config, data: bytes, page: int) -> bytes:
 
 
 class OcrRefused(OcrError):
-    """The reader refused the document itself (too large, not a page); no retry."""
+    """Reader refused the document itself; no retry."""
 
 
 _REASONS = {
@@ -343,10 +320,7 @@ def _engine_reason(response: httpx.Response) -> str:
 
 
 async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> str:
-    """The vision model's transcription of one page picture.
-
-    The model is checked against an uncached catalogue right before the call: strict-local
-    and declaring vision, or the page is not sent at all."""
+    """Vision transcription of one page; model rechecked uncached before sending."""
     current = await config(egress=True)
     if not current.vision_model or current.vision_model != cfg.vision_model:
         raise OcrError("vision model not available as strict-local")
@@ -360,7 +334,7 @@ async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> s
         "model": cfg.vision_model,
         "temperature": 0,
         "max_tokens": _VISION_MAX_TOKENS,
-        # A strict-local route has no outside twin; this keeps it that way if one appears.
+        # strict-local has no outside twin; guard if one appears
         "disable_fallbacks": True,
         "messages": [
             {
@@ -378,7 +352,7 @@ async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> s
             base_url=base.rstrip("/"),
             headers={
                 "Authorization": f"Bearer {api_key or master}",
-                # The page is someone's document; LiteLLM keeps no copy of it in its logs.
+                # private document: no LiteLLM log copy
                 "x-litellm-enable-message-redaction": "true",
             },
             timeout=_VISION_TIMEOUT,
@@ -396,9 +370,7 @@ async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> s
 
 
 async def _every_deployment_contained(alias: str) -> bool:
-    """Whether every deployment LiteLLM holds under `alias` is strict-local. The catalogue
-    names an alias by its first row; a second, outside deployment under the same name could
-    be picked by load balancing, so each row is checked here, uncached."""
+    """Whether every LiteLLM deployment under alias is strict-local (uncached; load balancing)."""
     try:
         rows = [row for row in await litellm_service.model_info() if row.get("model_name") == alias]
     except litellm_service.LiteLLMError:
@@ -410,12 +382,10 @@ _FENCE = re.compile(r"^```[a-zA-Z]*\n(.*)\n```$", re.S)
 
 
 def _unfence(text: str) -> str:
-    """A transcription some models wrap in a code fence, without it."""
+    """Transcription without a wrapping code fence."""
     match = _FENCE.match(text.strip())
     return match.group(1).strip() if match else text
 
-
-# ── comparing two readings ─────────────────────────────────────────────
 
 _TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{2,}.*$", re.M)
 _NOISE = re.compile(r"[\s|]+")
@@ -423,21 +393,19 @@ _NUMBER = re.compile(r"\d[\d,.]*\d|\d")
 
 
 def normalised(text: str) -> str:
-    """Characters only: no spacing, no table pipes or separator rows, no marks."""
+    """Characters only: no spacing, pipes, separators, marks."""
     text = _TABLE_RULE.sub("", text)
     text = text.replace(UNREADABLE_MARK, "").replace(NO_TEXT_MARK, "")
     return _NOISE.sub("", text)
 
 
 def numbers(text: str) -> Counter:
-    """Every number in the text, thousands separators dropped, read with the spacing taken
-    out: the engine often drops the spaces of 「2025. 3. 1.」, which must not count as a
-    different date."""
+    """Numbers in text, separators and spacing removed (「2025. 3. 1.」 spacing ignored)."""
     return Counter(match.replace(",", "") for match in _NUMBER.findall(normalised(text)))
 
 
 def agreement(a: str, b: str) -> float:
-    """How alike two readings are, 0..1, spacing and table marks ignored."""
+    """Similarity 0..1, spacing and table marks ignored."""
     left, right = normalised(a), normalised(b)
     if not left and not right:
         return 1.0
@@ -447,8 +415,7 @@ def agreement(a: str, b: str) -> float:
 
 
 def disagree(engine_text: str, vision_text: str) -> bool:
-    """Whether the two readings differ enough that a person should look: in words, or in any
-    number at all (a wrong figure matters more than a wrong particle)."""
+    """Whether readings differ enough for review (words, or any number)."""
     if agreement(engine_text, vision_text) < AGREE_AT_LEAST:
         return True
     return numbers(engine_text) != numbers(vision_text)
@@ -461,7 +428,7 @@ def _vision_text(raw: str) -> str:
 async def read_page(
     cfg: Config, data: bytes, kind: str, mime: str, page: int, api_key: str
 ) -> PageRead:
-    """One page through the readers `cfg.mode` names."""
+    """One page through the readers cfg.mode names."""
     if cfg.mode == "vision":
         if kind == "pdf":
             if not cfg.engine_url:
@@ -522,8 +489,7 @@ async def read_page(
 
 
 async def _picture_for_model(data: bytes, mime: str, page: int) -> tuple[bytes, str]:
-    """The chosen frame as a JPEG of at most 2000 px a side. Every picture is decoded here
-    under the pixel cap and re-encoded, never handed on as uploaded."""
+    """Chosen frame as JPEG ≤2000 px, decoded under the pixel cap and re-encoded."""
     return await asyncio.to_thread(_frame_jpeg, data, page), "image/jpeg"
 
 
@@ -550,20 +516,15 @@ def _frame_jpeg(data: bytes, page: int) -> bytes:
     return buffer.getvalue()
 
 
-# ── putting the pages together ─────────────────────────────────────────
-
-
 def joined(pages: list[tuple[int, str]], kind: str) -> str:
-    """The file's text: PDF pages carry the `[페이지 n]` marker citations read; a single
-    picture is just its text."""
+    """File text: PDF pages with [페이지 n] markers; single picture plain."""
     if kind == "image" and len(pages) == 1:
         return pages[0][1].strip()
     return "\n\n".join(f"[페이지 {page}]\n{text.strip()}" for page, text in pages if text.strip())
 
 
 async def api_key_for(user) -> str:
-    """The owner's model key, so the page reads are theirs in the ledger; the master key
-    when they have none yet."""
+    """Owner's model key for ledger attribution; master key fallback."""
     return litellm_service.user_key(user) or (await settings_store.litellm_config())[1]
 
 

@@ -1,8 +1,4 @@
-"""A shipped skill script imported for the server's own use, outside the sandbox.
-
-The same file the sandbox runs for `run_skill_script`, so the report hooks and the chat
-post-processing compute exactly what the tool would. Only stdlib scripts are imported.
-"""
+"""Shipped stdlib skill scripts imported for server use, same file the sandbox runs."""
 
 from __future__ import annotations
 
@@ -16,7 +12,7 @@ from app.services import skill_packages
 
 @cache
 def module(key: str, script: str) -> ModuleType:
-    """`app/skills/<key>/scripts/<script>.py` as a module, loaded once per process."""
+    """`app/skills/<key>/scripts/<script>.py` as a module, cached per process."""
     package = skill_packages.package_for(key)
     if package is None or script not in package.scripts:
         raise LookupError(f"no script {key}/{script}")
@@ -26,7 +22,7 @@ def module(key: str, script: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise LookupError(f"cannot load {path}")
     loaded = importlib.util.module_from_spec(spec)
-    # Dataclasses and the like look the module up by name while it executes.
+    # dataclasses look the module up by name during exec
     sys.modules[name] = loaded
     spec.loader.exec_module(loaded)
     return loaded
@@ -45,7 +41,7 @@ def text_fit() -> ModuleType:
 
 
 def entry(key: str) -> ModuleType:
-    """A check skill's `entry` script (`stage` in its SKILL.md), for the server's own run."""
+    """Check skill's `entry` script, for the server's own run."""
     package = skill_packages.package_for(key)
     if package is None or not package.stage or not package.entry:
         raise LookupError(f"{key} is not a check skill")

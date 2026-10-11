@@ -1,19 +1,14 @@
-"""Plain text for search: what a result says, and the excerpt a match is shown in.
-
-Pure functions, no database and no app imports, so the model layer can call them on every
-write and the migration can keep a copy in step. Nothing here leaves the server: search
-reads the caller's own rows and answers only the caller.
-"""
+"""Search text and match excerpts; pure functions, caller's own rows only."""
 
 from __future__ import annotations
 
 from html.parser import HTMLParser
 from typing import Any
 
-#: Cap on the stored text of one result. Long enough for a 40-page report's words.
+#: stored text cap per result (~40-page report)
 TEXT_LIMIT = 20_000
 
-#: Keys whose values are settings, ids, styling or machine records, never what the result says.
+#: settings/ids/styling/machine keys, not content
 SKIP_KEYS = frozenset({
     "id", "templateId", "status", "format", "level", "layout", "kind", "language", "design",
     "lint", "research", "diagrams", "factCheck", "marks", "src", "url", "href", "image",
@@ -22,7 +17,7 @@ SKIP_KEYS = frozenset({
     "style", "css", "svg", "png", "dataUrl", "thumbnail", "provider", "jobId",
 })
 
-#: Elements whose text is code or drawing, not prose.
+#: code/drawing elements, not prose
 _SILENT = frozenset({"style", "script", "svg", "math", "template", "noscript"})
 
 
@@ -50,7 +45,7 @@ class _Text(HTMLParser):
 
 
 def html_text(markup: str) -> str:
-    """The words of an HTML fragment, without tags, styles or scripts."""
+    """Words of an HTML fragment, no tags/styles/scripts."""
     if "<" not in markup:
         return markup
     reader = _Text()
@@ -83,24 +78,22 @@ def _strings(value: Any, out: list[str], budget: list[int]) -> None:
 
 
 def artifact_text(data: Any) -> str:
-    """What a result says, as one line of words, capped at `TEXT_LIMIT`."""
+    """Result text as one line, capped at `TEXT_LIMIT`."""
     out: list[str] = []
     _strings(data, out, [TEXT_LIMIT])
     return " ".join(out)[:TEXT_LIMIT]
 
 
-# ── queries and excerpts ──────────────────────────────────────────────
-
-#: Bounds on what one query may ask: a few words, each short.
+#: query bounds
 MAX_TERMS = 6
 MAX_TERM = 40
 MAX_QUERY = 200
-#: Characters shown around a match.
+#: chars around a match
 SNIPPET = 140
 
 
 def terms(query: str) -> list[str]:
-    """The words of a query, lower-cased, deduplicated, bounded."""
+    """Query words: lower-cased, deduped, bounded."""
     seen: list[str] = []
     for word in (query or "")[:MAX_QUERY].split():
         word = word[:MAX_TERM].lower()
@@ -112,16 +105,16 @@ def terms(query: str) -> list[str]:
 
 
 def like_pattern(term: str) -> str:
-    """`%term%` with LIKE's own wildcards escaped (escape character `\\`)."""
+    r"""`%term%` with LIKE wildcards escaped (`\`)."""
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
 
 def _spans(text: str, words: list[str]) -> list[tuple[int, int]]:
-    """Where the words occur in `text`, case-insensitively, merged and in order."""
+    """Case-insensitive match spans, merged, in order."""
     lowered = text.lower()
     if len(lowered) != len(text):
-        # A case mapping that changes length would misplace every span; show it unmarked.
+        # length-changing case mapping would misplace spans
         return []
     found: list[tuple[int, int]] = []
     for word in words:
@@ -140,7 +133,7 @@ def _spans(text: str, words: list[str]) -> list[tuple[int, int]]:
 
 
 def parts(text: str, words: list[str]) -> list[dict[str, Any]]:
-    """`text` cut into `{"text", "hit"}` runs, the query's words marked."""
+    """`text` as `{"text", "hit"}` runs."""
     runs: list[dict[str, Any]] = []
     at = 0
     for start, end in _spans(text, words):
@@ -156,10 +149,7 @@ def parts(text: str, words: list[str]) -> list[dict[str, Any]]:
 def excerpt(
     text: str, words: list[str], *, cut_before: bool = False, cut_after: bool = False
 ) -> list[dict[str, Any]]:
-    """A window of about `SNIPPET` characters around the first match, as marked runs.
-
-    `cut_before` / `cut_after`: the text handed in is already a window of a longer original.
-    """
+    """~`SNIPPET`-char window around the first match, as marked runs."""
     flat = " ".join((text or "").split())
     if not flat:
         return []
@@ -169,7 +159,6 @@ def excerpt(
     first = min(hits) if hits else 0
     start = max(0, first - SNIPPET // 3)
     if start:
-        # Start on a word, not inside one.
         space = flat.find(" ", start, first)
         start = space + 1 if space != -1 else start
     end = min(len(flat), start + SNIPPET)

@@ -1,13 +1,4 @@
-"""A running summary of the turns a long conversation can no longer send.
-
-`context.fit_history` decides which earlier turns no longer fit the model's
-window; this writes the paragraph that stands in for them. The summary is
-incremental: the previous summary plus only the newly dropped turns go to the
-model, so the cost of a long conversation stays flat.
-
-One short non-streaming call on the enrichment model, like the title. Failure
-returns `None`: the caller then sends a stand-in note, never a made-up summary.
-"""
+"""Incremental running summary of turns dropped by `context.fit_history`; None on failure."""
 
 from __future__ import annotations
 
@@ -21,14 +12,12 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Characters of one dropped turn shown to the summariser; a long answer's head
-#: carries its point, and the tail is usually a source list.
+#: per-turn chars for the summariser; head carries the point
 _TURN_CHARS = 2_500
-#: Characters of all dropped turns together, oldest cut first.
+#: all dropped turns, oldest cut first
 _TURNS_CHARS = 14_000
-#: Characters of the previous summary carried into the next one.
+#: previous summary carried forward
 _PREVIOUS_CHARS = 3_000
-#: Answer length: enough for a paragraph of facts and a list of standing instructions.
 _MAX_TOKENS = 700
 
 _INSTRUCTION = (
@@ -59,12 +48,7 @@ def _line(turn: dict) -> str:
 
 
 def _batches(turns: list[dict]) -> list[list[dict]]:
-    """`turns` in order, cut into runs of at most `_TURNS_CHARS` characters of transcript.
-
-    A large drop (a switch to a model with a small window) is summarised batch by
-    batch, each call carrying the summary so far, so the opening turns are read
-    rather than clipped away.
-    """
+    """`turns` split into runs of ≤ `_TURNS_CHARS`; large drops summarised batch by batch."""
     batches: list[list[dict]] = [[]]
     spent = 0
     for turn in turns:
@@ -78,7 +62,7 @@ def _batches(turns: list[dict]) -> list[list[dict]]:
 
 
 def _transcript(turns: list[dict]) -> str:
-    """The dropped turns as `역할: 본문`, each clipped; a batch already fits the limit."""
+    """Dropped turns as `역할: 본문`, each clipped."""
     return "\n".join(line for line in (_line(turn) for turn in turns) if line)
 
 
@@ -101,12 +85,7 @@ async def summarize(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[str | None, dict[str, int]]:
-    """`(summary, usage)`; the summary is None on any failure, usage is reported either way.
-
-    `turns` are the dropped messages as `{"role", "content"}` — the outbound (already
-    masked, when the turn masks) bodies, never the stored ones, so the summary leaves
-    the network under the same rule the turn does.
-    """
+    """`(summary, usage)`; None on failure. `turns` are outbound (masked) bodies."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if not turns:
         return previous, spent
@@ -124,7 +103,6 @@ async def summarize(
                     "Authorization": f"Bearer {api_key}",
                     **({"x-litellm-enable-message-redaction": "true"} if redact_logging else {}),
                 },
-                # Longer than a title: the input is a page of conversation.
                 timeout=settings.title_timeout_sec * 2,
             ) as client:
                 response = await client.post(

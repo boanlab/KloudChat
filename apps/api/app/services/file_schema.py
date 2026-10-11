@@ -1,9 +1,4 @@
-"""What a data file looks like, computed by code and handed to the code model.
-
-Sheets and tables are shown as JSON arrays, one row per line: a schema written
-with " | " between cells gets parsed by the model as if the file held pipes.
-Every reader is stdlib (plus pypdf), the same footing as `services.files`.
-"""
+"""Data file schema for the code model; rows as JSON arrays (pipes get misread as file content)."""
 
 from __future__ import annotations
 
@@ -28,14 +23,11 @@ _NS = {
     "rel": "http://schemas.openxmlformats.org/package/2006/relationships",
 }
 _R_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-#: Built-in number formats that are dates.
+#: built-in date number formats
 _DATE_FORMAT_IDS = set(range(14, 23)) | {45, 46, 47}
 _EPOCH = dt.datetime(1899, 12, 30)
 _COLUMN = re.compile(r"^([A-Z]{1,3})(\d{1,7})$")
 _NUMBER = re.compile(r"^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?$")
-
-
-# ── xlsx ────────────────────────────────────────────────────────────────
 
 
 @dataclass(slots=True)
@@ -43,9 +35,9 @@ class Sheet:
     name: str
     rows: list[list] = field(default_factory=list)
     formulas: int = 0
-    #: Formula cells with no cached value: the file was written by code, never opened.
+    #: formula cells without cached value (written by code, never opened)
     uncached: int = 0
-    #: Stopped at `max_rows`.
+    #: stopped at `max_rows`
     truncated: bool = False
 
 
@@ -60,7 +52,7 @@ def _column_index(ref: str) -> int:
 
 
 def _date_styles(archive) -> set[int]:
-    """Indexes into cellXfs whose number format shows a date."""
+    """cellXfs indexes with a date number format."""
     try:
         root = ET.fromstring(_member(archive, "xl/styles.xml"))
     except (KeyError, ET.ParseError):
@@ -98,7 +90,7 @@ def _sheet_paths(archive) -> list[tuple[str, str]]:
 
 
 def read_xlsx(data: bytes, *, max_rows: int | None = None) -> list[Sheet]:
-    """Every sheet's cell values: str, int/float, datetime or None. Cached values for formulas."""
+    """Every sheet's cell values; cached values for formulas."""
     with _open_zip(data) as archive:
         shared: list[str] = []
         if "xl/sharedStrings.xml" in archive.namelist():
@@ -186,7 +178,7 @@ def _texty(value) -> bool:
 
 
 def header_row(rows: list[list]) -> int:
-    """Index of the likeliest header: the first wide, mostly-text row with data below."""
+    """Likeliest header row: first wide, mostly-text row with data below."""
     counts = [sum(_filled(v) for v in row) for row in rows[:SCAN_ROWS]]
     widest = max(counts or [0])
     if not widest:
@@ -258,9 +250,6 @@ def _xlsx(data: bytes) -> list[str]:
     return lines
 
 
-# ── csv ─────────────────────────────────────────────────────────────────
-
-
 def decode_text(data: bytes) -> tuple[str, str]:
     for encoding in ("utf-8-sig", "utf-8", "cp949"):
         try:
@@ -287,9 +276,6 @@ def _csv(data: bytes) -> list[str]:
         f"(sep={delimiter!r}), 전체 {len(rows)}줄"
     ]
     return lines + _table_lines(rows)
-
-
-# ── documents ───────────────────────────────────────────────────────────
 
 
 def _quoted(lines: list[str], limit: int = 8) -> list[str]:
@@ -385,11 +371,8 @@ def describe(name: str, data: bytes) -> str:
     return text if len(text) <= MAX_SCHEMA_CHARS else text[:MAX_SCHEMA_CHARS] + "\n  …(생략)"
 
 
-# ── output checks ───────────────────────────────────────────────────────
-
-
 def check_output(name: str, data: bytes) -> str:
-    """A short code-made check of a produced file: does it open, how much is in it."""
+    """Short code-made check of a produced file: opens, how much is in it."""
     suffix = PurePosixPath(name).suffix.lower()
     try:
         if suffix in (".xlsx", ".xlsm"):

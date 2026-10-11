@@ -1,11 +1,4 @@
-"""Names of the pipeline's own parts, which must never reach a reader.
-
-The writer is handed settled blocks (「# 확정 수치」, 「# 견적 확정 블록(코드 계산)」 …) and the
-pre-pass runs under step names (date-calc, quote-calc …). A document or answer that names
-them talks about how it was made: 「정확한 날짜는 코드 미해석」, 「확정 수치 블록에 해당 날짜
-해석값이 없어」, 「코드가 계산해 준 확정 날짜」. The writer is told
-the blocks are internal (`WRITER_NOTE`); `scrub` takes out what slips through anyway.
-"""
+"""Pipeline-internal names (blocks, steps) kept out of reader-facing text."""
 
 from __future__ import annotations
 
@@ -13,7 +6,6 @@ import re
 
 from app.services import units
 
-#: Said to the writer beside the settled blocks.
 WRITER_NOTE = (
     "# 작성 메모(내부)\nBlocks named like 「확정 수치」「확정 날짜」「견적 확정 블록」「…(코드)」, "
     "and the pre-calculation and step names, are internal notes (내부 메모) for writing. Put only "
@@ -22,7 +14,7 @@ WRITER_NOTE = (
     "「코드 미해석」. If a date or value could not be settled, write only 「확인 필요」."
 )
 
-#: Block, step and prompt-section names; anywhere a reader could see them.
+#: block, step, prompt-section names
 TERMS = re.compile(
     r"코드\s{0,2}(?:미해석|해석되지|해석하지\s{0,2}못)"
     r"|(?:확정|계산)\s{0,2}(?:수치\s{0,2}|날짜\s{0,2}|금액\s{0,2})?블록"
@@ -34,18 +26,18 @@ TERMS = re.compile(
     r"(?![A-Za-z-])"
     r"|쓸 수 있는 수치|수치 목록|자료끼리 다른 값|작성\s{0,2}(?:지침|메모)"
 )
-#: How the writing was done, in a document (an answer that ran code may say it did).
+#: how-it-was-written terms in documents
 DOCUMENT_TERMS = re.compile(
     TERMS.pattern
     + r"|코드(?:가|로)\s{0,2}(?:계산|풀|해석)|\(\s{0,2}코드\s{0,2}계산[^()\n]{0,24}\)|\(코드\)"
     r"|코드\s{0,2}계산"
 )
-#: A clause inside a table cell: the cell keeps the clauses that are about the subject.
+#: clause within a table cell
 _CLAUSE = re.compile(r"\s{0,4}(?:…|·{2,3}|[;,，]|—|–|\s/\s|\.\s)\s{0,4}")
 
 
 def found(text: str, *, document: bool = True) -> list[str]:
-    """The internal names in `text`, in order, each once."""
+    """Internal names in `text`, in order, once each."""
     rx = DOCUMENT_TERMS if document else TERMS
     return list(dict.fromkeys(m.group(0) for m in rx.finditer(text or "")))
 
@@ -66,8 +58,7 @@ def _row(line: str, rx: re.Pattern[str]) -> str:
 
 
 def scrub(text: str, *, document: bool = True) -> str:
-    """`text` without the internal names: a table cell drops the clause that has one, prose
-    the sentence; a paragraph left empty goes. Fenced blocks and headings are left alone."""
+    """`text` minus internal names (cell clause or sentence); fences, headings kept."""
     rx = DOCUMENT_TERMS if document else TERMS
     if not rx.search(text or ""):
         return text
@@ -93,9 +84,7 @@ def scrub(text: str, *, document: bool = True) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-#: A tool's or script's report copied into the answer: 「점검 결과: `block` 0건」, 「calculate:
-#: 171/312*100 = …」, 「스크립트가 형식 오류를 냈지만」 (skills g2–g4). The person reads the
-#: answer, not the run.
+#: tool/script reports copied into the answer (skills g2–g4)
 TOOL_REPORT = re.compile(
     r"`(?:block|check|info|pass|lost|added|risky|format_changed)`"
     r"|(?<![A-Za-z_])(?:block|check|info)\s{0,2}\d{1,4}\s{0,2}건"
@@ -111,8 +100,7 @@ TOOL_REPORT = re.compile(
     r"|(?<![A-Za-z])(?:preserve|proof|scan|timeline|sources|claims|frame|notes)\s{0,2}"
     r"(?:검사|점검|결과|스크립트)"
 )
-#: A raw JSON line: 「{"lost": [], …」, two `"key": value,` pairs in a row, a pretty-printed
-#: `"key": value` line or a bare bracket, or a tool's 「[실행 결과: …]」 header.
+#: raw JSON lines or 「[실행 결과: …]」 headers
 JSON_LINE = re.compile(
     r'^\s{0,8}[\[{]\s{0,2}"[A-Za-z_]{1,30}"\s{0,2}:'
     r'|(?:"[A-Za-z_]{1,30}"\s{0,2}:\s{0,2}[^,\n]{1,80},\s{0,2}){2}'
@@ -121,14 +109,12 @@ JSON_LINE = re.compile(
     r'|^\s{0,4}\[실행 결과\s{0,2}[:：][^\]\n]{0,60}\]\s{0,2}$',
     re.M,
 )
-#: How a table cell says a script fixed a phrase: shown as what it was.
+#: table cell saying a script fixed a phrase
 _SCRIPT_CELL = re.compile(r"스크립트\s{0,2}(?:auto\s{0,2})?(?:자동\s{0,2})?(교체|고침|수정)")
 
 
 def strip_reports(text: str) -> str:
-    """`text` without what a tool or script reported: a raw JSON line goes, a sentence that
-    quotes a run's counts or names a script goes, and a table cell says 「자동 교체」 instead.
-    Fenced blocks and headings are left alone."""
+    """`text` minus tool/script reports; cells say 「자동 교체」; fences and headings kept."""
     if not text or not (TOOL_REPORT.search(text) or JSON_LINE.search(text)
                         or _SCRIPT_CELL.search(text)):
         return text
@@ -159,16 +145,14 @@ def strip_reports(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-#: The writer apologising for its own tool call: 「방금 계산 도구를 잘못 호출했습니다」. The steps
-#: under the answer show what ran; a tool that failed is still said where it changes the answer.
+#: writer apologising for its own tool call
 TOOL_APOLOGY = re.compile(
     r"(?:도구|툴|tool|함수)(?:를|을)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)", re.I)
 _SORRY = re.compile(r"^\s{0,4}(?:죄송합니다|죄송해요|미안합니다|사과드립니다)[.!]?\s{0,4}$")
 
 
 def strip_tool_apologies(text: str) -> str:
-    """`text` without sentences that apologise for a tool call, and a bare 「죄송합니다.」 left
-    in front of one. Fenced blocks, headings and table rows are left alone."""
+    """`text` minus tool-call apologies; fences, headings, tables kept."""
     if not text or not TOOL_APOLOGY.search(text):
         return text
     out: list[str] = []

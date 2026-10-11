@@ -1,15 +1,4 @@
-"""Host and container usage from the host's /proc and cgroup v2, mounted
-read-only into the API container (docker-compose.yml: /proc → /host/proc,
-/sys/fs/cgroup → /host/cgroup). No docker socket and no privileges.
-
-Limits of reading from inside a container:
-- container names are not in /proc or cgroupfs; each container is named from
-  its processes (command line, process names, bind-mount sources) and, for this
-  stack, from the DNS names it answers to (`perf_dns_names`);
-- disk usage is known only for filesystems mounted into this container;
-- a container's network counters are those of its own network namespace, read
-  through one of its processes.
-"""
+"""Host/container usage from read-only /proc and cgroup mounts; no docker socket."""
 
 from __future__ import annotations
 
@@ -20,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 
 _CONTAINER = re.compile(r"docker-([0-9a-f]{64})\.scope|/docker/([0-9a-f]{64})")
-# Physical interfaces only: bridges and veths repeat the same traffic.
+# physical interfaces only: bridges/veths duplicate traffic
 _VIRTUAL_IF = re.compile(r"^(lo|veth|docker|br-|virbr|cni|flannel|cali|vxlan|tun|tap)")
 _WHOLE_DISK = re.compile(
     r"^(sd[a-z]{1,3}|vd[a-z]{1,3}|xvd[a-z]{1,3}|nvme\d{1,3}n\d{1,3}|mmcblk\d{1,3})$"
@@ -35,9 +24,6 @@ def read(path: str) -> str | None:
             return fh.read()
     except OSError:
         return None
-
-
-# ── parsers (pure) ──────────────────────────────────────────────────────
 
 
 def cpu_ticks(stat: str) -> tuple[int, int, int] | None:
@@ -66,7 +52,7 @@ def meminfo(text: str) -> dict[str, int]:
 
 
 def net_dev(text: str, physical_only: bool = True) -> tuple[int, int]:
-    """(received, sent) bytes summed over interfaces, loopback always excluded."""
+    """(received, sent) bytes over interfaces, loopback excluded."""
     rx = tx = 0
     for line in text.splitlines()[2:]:
         name, sep, rest = line.partition(":")
@@ -82,7 +68,7 @@ def net_dev(text: str, physical_only: bool = True) -> tuple[int, int]:
 
 
 def diskstats(text: str) -> dict[str, tuple[int, int, int]]:
-    """Whole disks: (sectors read, sectors written, ms spent doing I/O)."""
+    """Whole disks: (sectors read, sectors written, I/O ms)."""
     out: dict[str, tuple[int, int, int]] = {}
     for line in text.splitlines():
         f = line.split()
@@ -92,7 +78,7 @@ def diskstats(text: str) -> dict[str, tuple[int, int, int]]:
 
 
 def keyed(text: str) -> dict[str, int]:
-    """`key value` lines (cpu.stat, memory.stat)."""
+    """key value lines (cpu.stat, memory.stat)."""
     out: dict[str, int] = {}
     for line in text.splitlines():
         parts = line.split()
@@ -115,7 +101,7 @@ def io_bytes(text: str) -> tuple[int, int]:
 
 
 def cpu_quota(text: str | None) -> float | None:
-    """CPUs allowed by cpu.max ("max 100000" → None)."""
+    """CPUs from cpu.max ("max 100000" → None)."""
     if not text:
         return None
     parts = text.split()
@@ -128,10 +114,7 @@ def local_ipv4(fib_trie: str) -> set[str]:
     return {ip for ip in _LOCAL_V4.findall(fib_trie) if not ip.startswith("127.")}
 
 
-# ── naming ──────────────────────────────────────────────────────────────
-
-#: (label, pattern on the fingerprint). First match wins; `{own}` is replaced by
-#: this stack's data mount source so another instance's API is told apart.
+#: (label, fingerprint pattern), first match wins; {own} = this stack's data mount
 RULES: list[tuple[str, re.Pattern[str]]] = [
     ("gateway", re.compile(r"\bcaddy run\b")),
     ("litellm", re.compile(r"\blitellm\b[^|]{0,200}--config")),
@@ -156,14 +139,14 @@ RULES: list[tuple[str, re.Pattern[str]]] = [
 
 
 def fingerprint(proc: str, pids: list[str]) -> tuple[str, list[str]]:
-    """(command line | process names | mount sources, bind-mount sources)."""
+    """(cmdline | process names | mount sources, bind-mount sources)."""
     cmd = ""
     names: set[str] = set()
-    # Read once per container (names are cached), so a browser's thousand processes are fine.
+    # once per container (cached)
     for pid in sorted(pids, key=int)[:2000]:
         if not cmd:
             raw = read(f"{proc}/{pid}/cmdline") or ""
-            # Arguments with "=" may carry values; they never take part in naming.
+            # = args may carry values: excluded
             cmd = " ".join(a for a in raw.split("\0") if a and "=" not in a)[:400]
         comm = read(f"{proc}/{pid}/comm")
         if comm:
@@ -171,7 +154,7 @@ def fingerprint(proc: str, pids: list[str]) -> tuple[str, list[str]]:
     sources: list[str] = []
     for line in (read(f"{proc}/{pids[0]}/mountinfo") or "").splitlines() if pids else []:
         f = line.split()
-        # Bind and volume sources only: not the root, /proc masks or Docker's own files.
+        # bind/volume sources only
         if (
             len(f) > 4
             and len(f[3]) > 1
@@ -202,9 +185,6 @@ def classify(fp: str, sources: list[str], own_data: str | None) -> str:
     return "container"
 
 
-# ── reader ──────────────────────────────────────────────────────────────
-
-
 @dataclass
 class _Prev:
     at: float
@@ -215,7 +195,7 @@ Row = tuple[str, str, str, float]  # (source, name, subject, value)
 
 
 class HostReader:
-    """Keeps the previous counters so each call yields rates over the interval."""
+    """Keeps previous counters to yield interval rates."""
 
     def __init__(self, proc: str, cgroup: str, disks: dict[str, str], dns_names: list[str]):
         self.proc = proc.rstrip("/")
@@ -229,7 +209,7 @@ class HostReader:
         return read(f"{self.proc}/stat") is not None
 
     def _own(self) -> tuple[str | None, str | None]:
-        """This container's id and its data-volume source."""
+        """This container's id and data-volume source."""
         info = read("/proc/self/mountinfo") or ""
         own = _OWN_ID.search(info)
         data = None
@@ -240,7 +220,7 @@ class HostReader:
         return (own.group(1) if own else None), data
 
     def containers(self) -> dict[str, list[str]]:
-        """Container id → its host pids."""
+        """Container id → host pids."""
         out: dict[str, list[str]] = {}
         own = self._own()[0]
         try:
@@ -257,7 +237,7 @@ class HostReader:
             if match:
                 out.setdefault(match.group(1) or match.group(2), []).append(pid)
             elif own and text.strip() == "0::/":
-                # This container's own processes: its cgroup namespace shows them at the root.
+                # own processes at the cgroup-namespace root
                 out.setdefault(own, []).append(pid)
         return out
 
@@ -271,7 +251,7 @@ class HostReader:
         return None
 
     def _dns(self) -> dict[str, str]:
-        """IPv4 address → name, for the names this container can resolve."""
+        """IPv4 → name for resolvable names."""
         out: dict[str, str] = {}
         for name in self.dns_names:
             try:
@@ -283,7 +263,7 @@ class HostReader:
 
     def _label_all(self, ids: dict[str, list[str]]) -> dict[str, str]:
         own_id, own_data = self._own()
-        # Names are worked out once per container; DNS only when one is new.
+        # named once per container; DNS only for new ones
         dns = self._dns() if any(cid not in self._names for cid in ids) else {}
         self._names = {cid: name for cid, name in self._names.items() if cid in ids}
         labels: dict[str, str] = {}
@@ -298,7 +278,7 @@ class HostReader:
             if named and label not in ("api", "api (다른 인스턴스)"):
                 label = named.removeprefix("kloudchat-")
             labels[cid] = label
-        # Same label twice: the short id tells them apart (api replicas).
+        # duplicate label: short id disambiguates (api replicas)
         counts: dict[str, int] = {}
         for label in labels.values():
             counts[label] = counts.get(label, 0) + 1
@@ -386,7 +366,7 @@ class HostReader:
             if usage is not None:
                 r = rate(f"ccpu:{cid}", (usage,))
                 if r:
-                    # Percent of the host's CPUs, and of the container's own quota if any
+                    # percent of host CPUs and of container quota
                     cores = r[0] / 1e6
                     rows.append(("container", "cpu_percent", subject, 100.0 * cores / cpus))
                     rows.append(("container", "cpu_cores", subject, cores))

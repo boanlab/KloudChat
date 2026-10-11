@@ -1,10 +1,4 @@
-"""Which artifact (and which version of it) each assistant message produced.
-
-Media turns store their artifact ids on the message. Document turns (reports, decks,
-pages, revisions) do not: the pipeline run that settled the turn records the message,
-the artifact and the version it wrote (`PipelineRun`). Read here so every transcript —
-old ones included — can show the result under the answer that made it.
-"""
+"""Artifact and version produced by each assistant message, via `PipelineRun` for document turns."""
 
 from __future__ import annotations
 
@@ -15,7 +9,7 @@ from app.schemas.chat import MessageOut
 
 
 async def run_links(db, session_id: str) -> dict[str, tuple[str, int | None]]:
-    """`{message_id: (artifact_id, version)}` from the session's settled runs; latest wins."""
+    """`{message_id: (artifact_id, version)}` from settled runs; latest wins."""
     rows = (
         await db.exec(
             select(PipelineRun.message_id, PipelineRun.artifact_id, PipelineRun.artifact_version)
@@ -31,7 +25,7 @@ async def run_links(db, session_id: str) -> dict[str, tuple[str, int | None]]:
 
 
 def linked(m: Message, links: dict[str, tuple[str, int | None]] | None) -> MessageOut:
-    """The message on the wire, with the artifact its run wrote when it names none itself."""
+    """Wire message, with its run's artifact when it names none."""
     out = MessageOut.of(m)
     link = (links or {}).get(m.id)
     if link is None:

@@ -1,12 +1,4 @@
-"""Reading scanned pages in the background, one file at a time per API replica.
-
-An upload whose pages need OCR is stored at once with what could be read without it
-(`ocr_state = "queued"`); this loop then reads its pages. The claim is a row lock taken
-with `SKIP LOCKED`, so two replicas never take the same file, and every finished page is
-committed with a fresh `ocr_claimed_at`: a replica that dies mid-file leaves a claim that
-goes stale, and the next one resumes after the last committed page. A reader failure is
-retried a few times with a pause; a document the reader refuses outright is not.
-"""
+"""Background OCR per replica: SKIP LOCKED claims, per-page commits, stale resume."""
 
 from __future__ import annotations
 
@@ -28,12 +20,12 @@ from app.services.credits import record_units
 
 log = logging.getLogger(__name__)
 
-#: A running claim untouched this long belongs to a replica that stopped.
+#: stale-claim age (dead replica)
 LEASE = timedelta(minutes=10)
-#: Pause before a failed file is tried again.
+#: retry pause
 RETRY_AFTER = timedelta(seconds=90)
 MAX_ATTEMPTS = 3
-#: How long the loop sleeps when no upload woke it.
+#: idle sleep
 _IDLE_SEC = 30.0
 
 OPEN_STATES = ("queued", "running")
@@ -45,13 +37,12 @@ TURNED_OFF = "글자 읽기가 꺼져 있어 스캔한 쪽을 읽지 못했습�
 
 
 def wake() -> None:
-    """An upload was queued: look now rather than at the next idle tick."""
+    """Upload queued: check now."""
     _WAKE.set()
 
 
 async def queue_if_scanned(stored: StoredFile, data: bytes) -> bool:
-    """Marks a just-uploaded file for reading when some of its pages are scans or it is a
-    document photo. The caller commits, then calls `wake()`. Never raises."""
+    """Mark a new upload for OCR; caller commits then wake(). Never raises."""
     try:
         cfg = await ocr.config()
         if cfg.mode is None:
@@ -63,7 +54,7 @@ async def queue_if_scanned(stored: StoredFile, data: bytes) -> bool:
     if found is None or not found.pages:
         return False
     if found.kind == "pdf" and not cfg.engine_url:
-        # A PDF page becomes a picture only through the engine's renderer.
+        # PDF pages rasterized only via the engine
         return False
     stored.ocr_state = "queued"
     stored.ocr_total = len(found.pages)
@@ -71,7 +62,7 @@ async def queue_if_scanned(stored: StoredFile, data: bytes) -> bool:
     stored.ocr_review = 0
     stored.ocr_attempts = 0
     stored.ocr_claimed_at = None
-    # Until the pages are read, the text is what the PDF's own text layer holds.
+    # text layer until pages are read
     stored.text = ocr.joined(sorted(found.layer.items()), found.kind)
     stored.tokens = file_service.estimate_tokens(stored.text)
     stored.error = None
@@ -93,8 +84,7 @@ def _claimable():
 
 
 async def claim(db) -> StoredFile | None:
-    """The oldest open job no other replica holds, now marked running by this one with a
-    fresh `ocr_claim` token."""
+    """Oldest unheld job, claimed with a fresh ocr_claim."""
     query = (
         select(StoredFile)
         .where(_claimable())
@@ -116,12 +106,11 @@ async def claim(db) -> StoredFile | None:
 
 
 class LostClaim(RuntimeError):
-    """The file was deleted, or another replica took the job over; stop without writing."""
+    """File deleted or job taken over; stop without writing."""
 
 
 async def _hold(db, file_id: str, token: str) -> StoredFile:
-    """The job row, locked until this transaction commits, provided it still carries this
-    worker's claim. Every write of the job goes through here first."""
+    """Job row locked if it still carries this worker's claim; gate for every write."""
     stored = (
         await db.exec(
             select(StoredFile)
@@ -147,11 +136,11 @@ async def _still_there(db, file_id: str) -> bool:
 
 
 async def _finish(db, stored: StoredFile, kind: str, *, state: str, error: str | None) -> None:
-    """The file's text from its pages, and the job closed. The caller holds the claim."""
+    """Page text joined, job closed; caller holds the claim."""
     pages = sorted((await _pages(db, stored.id)).values(), key=lambda row: row.page)
     text = ocr.joined([(row.page, row.text) for row in pages], kind)
     if kind == "image" and len(ocr.normalised(text)) < ocr.PHOTO_TEXT_MIN_CHARS:
-        # A photo with a stray word on it stays a picture for the model to look at.
+        # photo with a stray word stays a picture
         text = ""
     stored.text = text
     stored.tokens = file_service.estimate_tokens(text)
@@ -159,8 +148,7 @@ async def _finish(db, stored: StoredFile, kind: str, *, state: str, error: str |
     stored.ocr_claim = None
     stored.ocr_done = sum(1 for row in pages if row.source != "text")
     stored.ocr_review = sum(1 for row in pages if row.needs_review)
-    # A failure says why; a finished file says nothing, even when some pages were past the
-    # limit (`ocr_done < ocr_total` tells the screen that).
+    # failures say why; done says nothing (ocr_done < ocr_total shows skipped pages)
     stored.error = error if state == "failed" else None
     db.add(stored)
     await db.commit()
@@ -168,9 +156,7 @@ async def _finish(db, stored: StoredFile, kind: str, *, state: str, error: str |
 
 
 async def _reindex(db, stored: StoredFile) -> None:
-    """The finished text replaces what the retrieval index held for this file. A file deleted
-    while its vectors were being written has them taken out again, so a deletion that raced
-    the write leaves nothing searchable behind."""
+    """Replace the file's index entries; vectors removed again if the file was deleted mid-write."""
     if not stored.text.strip():
         return
     file_id = stored.id
@@ -190,7 +176,7 @@ async def _reindex(db, stored: StoredFile) -> None:
 
 
 async def process(db, stored: StoredFile, token: str) -> None:
-    """Reads the pages a claimed file still lacks, committing each one under the claim."""
+    """Read missing pages of a claimed file, committing each."""
     file_id = stored.id
     cfg = await ocr.config()
     kind = "pdf" if stored.mime == "application/pdf" else "image"
@@ -212,7 +198,7 @@ async def process(db, stored: StoredFile, token: str) -> None:
     for page, text in plan.layer.items():
         if page not in have:
             db.add(FilePage(file_id=file_id, page=page, source="text", text=text))
-    # Pages past the limit count toward the total but are never read.
+    # pages past the limit counted, never read
     stored.ocr_total = len(plan.pages) + plan.skipped
     stored.ocr_claimed_at = utcnow()
     db.add(stored)
@@ -260,12 +246,12 @@ async def process(db, stored: StoredFile, token: str) -> None:
 
 
 async def run_one() -> bool:
-    """Claims and reads one file. False when there was nothing to do."""
+    """Claim and read one file; False if idle."""
     async with core_db.SessionLocal() as db:
         stored = await claim(db)
         if stored is None:
             return False
-        # Read before anything can fail: a rollback expires the row's attributes.
+        # read first: rollback expires attributes
         file_id, attempts, token = stored.id, int(stored.ocr_attempts or 0), stored.ocr_claim
         kind = "pdf" if stored.mime == "application/pdf" else "image"
         try:
@@ -273,7 +259,7 @@ async def run_one() -> bool:
         except asyncio.CancelledError:
             raise
         except LostClaim:
-            # Deleted, or taken over by another replica: that one owns the job now.
+            # deleted or taken over
             await db.rollback()
         except Exception as exc:  # noqa: BLE001 — a reader hiccup is tried again later
             refused = isinstance(exc, ocr.OcrRefused)
@@ -286,7 +272,7 @@ async def run_one() -> bool:
                 await db.rollback()
                 return True
             if refused or attempts >= MAX_ATTEMPTS:
-                # A document the reader refuses will not read better next time.
+                # refused documents won't improve on retry
                 await _finish(
                     db, stored, kind, state="failed", error=str(exc) if refused else GAVE_UP
                 )
@@ -301,7 +287,7 @@ async def run_one() -> bool:
 
 
 async def watch() -> None:
-    """The boot-time loop: read queued files, then wait for the next upload or tick."""
+    """Boot loop: read queued files, wait for upload or tick."""
     while True:
         try:
             while await run_one():

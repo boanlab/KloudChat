@@ -1,11 +1,4 @@
-"""One document, one set of facts: what a follow-up changed is revised everywhere it shows.
-
-A follow-up that changes a criterion, a figure, a date or a decision lands on the parts the
-planner names, while the summary, the conclusion and every part that states the old value
-keep it unless widened. `dependents` widens the rewrite to those parts;
-`conflicts` then reads the whole document for one named figure, total, date or recommended
-option written two ways, and `check` hands those to the verify stage's repair-once.
-"""
+"""Follow-up changes propagated document-wide; conflicting values found and repaired once."""
 
 from __future__ import annotations
 
@@ -21,15 +14,15 @@ from app.services.verify import Doc, Finding
 
 log = logging.getLogger(__name__)
 
-#: A follow-up that changes what the document says, not only how.
+#: follow-ups changing content, not only form
 _CONTENT_CHANGE = re.compile(
     r"\d|기준|가중치|배점|필수|조건|입사|퇴사|기간|경력|예산|단가|금액|비용|가격|날짜|일정|기한|마감"
     r"|결정|권고|추천|선정|대안|바뀌|바꿨|변경|아니라|틀렸|틀려|다시\s{0,2}(?:봐|계산|확인|따져)")
-#: Parts that restate or rest on the rest of the document.
+#: parts restating/resting on the rest
 _DEPENDS = re.compile(
     r"요약|개요|핵심|결론|권고|제언|종합|결정|추천|시사점|맺음|총평|요청\s{0,2}사항")
 _SUMMARY = re.compile(r"요약|개요|핵심|총평")
-#: Words of a follow-up that bind it to nothing in particular.
+#: follow-up words binding to nothing specific
 _FILLER = frozenset({"다시", "그리고", "그럼", "근데", "그냥", "이걸로", "봐", "줘", "해줘",
                      "맞는지", "있어", "없어", "이야", "이었어", "거야", "부탁", "문서", "보고서",
                      "내용"})
@@ -42,9 +35,7 @@ def changes_content(instruction: str) -> bool:
 def dependents(
     instruction: str, names: list[str], texts: list[str], targets: list[int]
 ) -> list[int]:
-    """Parts besides `targets` a content-changing follow-up must revise too: every summary,
-    conclusion or recommendation, and every part that names what the follow-up is about.
-    Body parts come first and the parts that restate them last."""
+    """Extra parts a content follow-up must revise (summaries, mentions); body first."""
     if not changes_content(instruction):
         return []
     keys = report_checks._words(instruction) - _FILLER
@@ -56,7 +47,7 @@ def dependents(
             restating.append(index)
         elif keys & report_checks._words(f"{name}\n{text}"):
             body.append(index)
-    # A summary at the top is rewritten last: it restates what the others now say.
+    # top summary rewritten last
     restating.sort(key=lambda i: bool(_SUMMARY.search(names[i] or "")))
     return body + restating
 
@@ -72,16 +63,14 @@ def dependent_note(instruction: str) -> str:
     )
 
 
-# ── reading the whole document for one fact written two ways ─────────────
-
-#: Labels a total or a deciding figure goes by.
+#: labels for totals and deciding figures
 _TOTAL_LABELS = ("총 경력", "총경력", "총비용", "총 비용", "총액", "합계", "공급가액",
                  "예산 상한", "상한", "초과액", "차액", "총점", "가중 점수", "점수")
 _AMOUNT = re.compile(
     r"(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(\s{0,2}(?:억|천만|만)(?:\s{0,2}\d[\d,]*\s{0,2}(?:만|천))?)?"
     r"\s{0,2}(원|%p|%|명|점|개월)"
     r"|(?<![\d.,])(\d{1,2})\s{0,2}년\s{0,2}(\d{1,2})\s{0,2}개월")
-#: A sentence about another case than the document's own: a scenario, a before, an if.
+#: sentences about another case (scenario, before, if)
 _OTHER_CASE = re.compile(
     r"시나리오|가정|라면|일\s{0,2}경우|늘면|줄면|만약|이전|기존|변경\s{0,2}전|v1|에서\s{1,3}[^.]{0,30}(?:으로|로)\s"
     r"|대비|보다")
@@ -108,7 +97,7 @@ def _value(m: re.Match[str]) -> tuple[float, str] | None:
 
 
 def _after(text: str, start: int) -> tuple[float, str, str] | None:
-    """The first value within 30 characters after `start`, no other label between."""
+    """First value within 30 chars after start, no label between."""
     m = _AMOUNT.search(text, start, min(len(text), start + 30))
     if not m:
         return None
@@ -117,8 +106,7 @@ def _after(text: str, start: int) -> tuple[float, str, str] | None:
 
 
 def stated(sections: list[dict], labels: list[str], options: list[str]) -> list[Stated]:
-    """Each `label` (or option + label) with the value written right after it, prose and
-    tables both; sentences about another case are left out."""
+    """Each label (or option + label) with its following value; other-case sentences excluded."""
     out: list[Stated] = []
     for index, sec in enumerate(sections):
         content = str(sec.get("content") or "")
@@ -158,7 +146,7 @@ def stated(sections: list[dict], labels: list[str], options: list[str]) -> list[
 
 
 def recommended(sections: list[dict], options: list[str]) -> list[tuple[int, str, str]]:
-    """`(section, line, option)` for each plain recommendation line (not conditional)."""
+    """(section, line, option) per unconditional recommendation line."""
     out = []
     for index, sec in enumerate(sections):
         for line in str(sec.get("content") or "").split("\n"):
@@ -174,9 +162,9 @@ def recommended(sections: list[dict], options: list[str]) -> list[tuple[int, str
 @dataclass(slots=True)
 class Conflict:
     key: str
-    #: The value the document should carry, or None when nothing settles it.
+    #: expected value, or None if unsettled
     want: str | None
-    #: `(section, sentence or row, value as written)` that differ from `want`.
+    #: (section, sentence/row, written value) differing from want
     off: list[tuple[int, str, str]]
     seen: list[str]
 
@@ -184,8 +172,7 @@ class Conflict:
 def conflicts(sections: list[dict], *, changed: set[int], instruction: str = "",
               settled: list | None = None, options: list[str] | None = None,
               leader: str | None = None) -> list[Conflict]:
-    """One figure, total or recommendation written with two values in two parts. The value
-    the changed parts carry wins, then a settled figure, then the follow-up's own words."""
+    """One fact with two values; changed parts win, then settled, then follow-up."""
     options = [o for o in options or [] if o]
     settled = list(settled or [])
     labels = list(dict.fromkeys([*_TOTAL_LABELS, *[f.name for f in settled if len(f.name) <= 12]]))
@@ -234,7 +221,7 @@ def _digits(text: str) -> str:
 
 def check(*, changed: set[int], instruction: str = "", settled: list | None = None,
           options: list[str] | None = None, leader: str | None = None):
-    """The cross-part check as a verify `Check`: a sentence off the value is rewritten once."""
+    """Cross-part check as a verify Check; off-value sentence rewritten once."""
     async def cross_section(doc: Doc):
         found: list[Finding] = []
         for c in conflicts(doc.sections, changed=changed, instruction=instruction,
@@ -265,21 +252,17 @@ def check(*, changed: set[int], instruction: str = "", settled: list | None = No
     return cross_section
 
 
-# ── the revision path: settle again, rewrite, align ─────────────────────
-
-
 async def settle_again(format_id: str, request: str, instruction: str, material: str, *,
                        model: str, api_key: str) -> report_checks.Prepass | None:
-    """The format's pre-pass run again with the follow-up read as part of the request, so a
-    changed weight, start month or budget reaches the rewrite as settled values."""
-    # Imported late: report is heavy and imports this tree.
+    """Format pre-pass rerun with the follow-up, so changed values arrive settled."""
+    # late import: report is heavy and imports this tree
     from app.services import process_settings, report
 
-    # Only a document whose 서식 names pre-pass steps has one to run again.
+    # only 서식 with pre-pass steps
     process = process_settings.for_format(format_id)
     if not process.prepass:
         return None
-    # Options listed in the request itself are its material.
+    # request-listed options are material
     material = material if (material or "").strip() else request
     try:
         return await report_checks.prepare(
@@ -295,8 +278,7 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
 
 
 def blocks_for_rewrite(pre: report_checks.Prepass | None) -> list[str]:
-    """What the rewrite is handed besides the material: the settled blocks and the note
-    that they are internal."""
+    """Settled blocks plus internal-use note for the rewrite."""
     if pre is None or not pre.blocks:
         return []
     return [*pre.blocks, internal_words.WRITER_NOTE]
@@ -312,7 +294,7 @@ def _options(pre: report_checks.Prepass | None) -> list[str]:
 
 
 def _leader(pre: report_checks.Prepass | None) -> str | None:
-    """The option the settled scores put first among those that meet every must-have."""
+    """Top-scored option meeting every must-have."""
     if pre is None or not pre.scores:
         return None
     status = (pre.musts or {}).get("options") or {}
@@ -328,10 +310,7 @@ def _leader(pre: report_checks.Prepass | None) -> str | None:
 async def align(parts: list[dict], *, changed: set[int], instruction: str, request: str,
                 material: str, pre: report_checks.Prepass | None, model: str,
                 api_key: str) -> tuple[list[dict], dict, dict]:
-    """The revised document read for one fact written two ways, a blank the follow-up or
-    the material fills, and the format's own checks; repaired once and read again.
-
-    Returns `(parts, step, usage)`; the step says what was found before and after."""
+    """Revised document checks, repaired once and rechecked: (parts, step, usage)."""
     from app.services import report
 
     run = [check(changed=changed, instruction=instruction, settled=(pre.figures if pre else None),

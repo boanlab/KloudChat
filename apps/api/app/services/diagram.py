@@ -1,10 +1,4 @@
-"""Labelled method/flow/concept figures as mermaid flowchart source, written by a model.
-
-House style: zones as subgraphs, rounded processes / square data / cylinder stores, solid
-forward and dashed auxiliary edges, one `hot` highlight. The source is what is stored; a
-report, a deck or the image surface draws it with the .pptx export's own shapes
-(`draw_native`). Only a chat answer's mermaid is drawn by the browser.
-"""
+"""Model-written mermaid method/flow/concept figures, drawn with the .pptx export's shapes."""
 
 from __future__ import annotations
 
@@ -17,7 +11,7 @@ from app.services.report import _complete
 
 log = logging.getLogger(__name__)
 
-#: Figure kinds, as the prompt describes them.
+#: figure kinds as the prompt describes them
 FIGURES: dict[str, str] = {
     "method": "제안 방법의 구조도 — 구성 요소와 그 사이의 데이터 흐름",
     "flow": "처리 흐름도 — 입력이 단계를 거쳐 결과가 되기까지",
@@ -93,7 +87,7 @@ _RULES = """
 """
 
 
-#: Size rules for a figure that shares a slide with words.
+#: size rules when sharing a slide with words
 
 _SLIDE_RULES = """
 ## 슬라이드용
@@ -132,10 +126,10 @@ _CAPTION = re.compile(r"^\s*(?:그림|Figure)\s*[:：]\s*(.+)$", re.M)
 
 
 def _parse(text: str) -> tuple[str, str]:
-    """Pulls the mermaid source and the caption out of the answer."""
+    """Mermaid source and caption from the answer."""
     block = _BLOCK.search(text)
     source = (block.group(1) if block else text).strip()
-    # A `style` line would override the house palette.
+    # style lines would override the house palette
     source = "\n".join(
         line
         for line in source.splitlines()
@@ -147,7 +141,7 @@ def _parse(text: str) -> tuple[str, str]:
     return source, (caption.group(1).strip() if caption else "")
 
 
-#: Mixed bracket shapes (`{(x)}`) that mermaid refuses, mapped to one shape.
+#: mixed bracket shapes mermaid refuses → one shape
 _MIXED = (
     (re.compile(r"\{\(([^)}]*)\)\}"), r"(\1)"),
     (re.compile(r"\(\{([^)}]*)\}\)"), r"{\1}"),
@@ -157,7 +151,7 @@ _MIXED = (
 
 
 def _mend(source: str) -> str:
-    """Rewrites mixed bracket shapes to a single valid one."""
+    """Rewrite mixed bracket shapes to one valid shape."""
     for pattern, replacement in _MIXED:
         source = pattern.sub(replacement, source)
     return source
@@ -174,11 +168,7 @@ async def draw(
     error: str = "",
     slide: bool = False,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Writes one figure as mermaid. Returns `(source, caption, usage)`.
-
-    `broken`/`error` carry a previous answer mermaid refused, for one retry. `slide`
-    adds the size rules for a figure that shares a slide with words.
-    """
+    """One figure as mermaid: (source, caption, usage); broken/error for one retry."""
     messages = _messages(description, figure, language, slide)
     if broken:
         messages.append({"role": "assistant", "content": f"```mermaid\n{broken}\n```"})
@@ -200,10 +190,10 @@ async def draw(
     return source, caption, usage
 
 
-#: Default accent of a figure outside a deck; a deck passes its own.
+#: figure accent outside a deck
 ACCENT = "#2563EB"
 
-#: Said to the writer when its source is not a flowchart the shapes can draw.
+#: retry note for sources the shapes can't draw
 _NOT_DRAWABLE = (
     "이 그림판은 flowchart 만 그린다. 첫 줄을 `flowchart LR` 또는 `flowchart TB` 로 하고, "
     "노드를 {n}개 이하로 줄여라."
@@ -211,9 +201,7 @@ _NOT_DRAWABLE = (
 
 
 class Undrawable(ValueError):
-    """The figure is not one the shapes can draw even after a rewrite, or nothing renders it.
-
-    `usage` is what the attempt spent, so a caller can still charge it."""
+    """Figure undrawable after rewrite, or no renderer; usage still chargeable."""
 
     def __init__(self, reason: str, usage: dict[str, Any] | None = None) -> None:
         super().__init__(reason)
@@ -240,12 +228,7 @@ async def draw_native(
     slide: bool = False,
     accent: str = ACCENT,
 ) -> tuple[str, str, dict[str, Any], bytes]:
-    """One figure written and drawn with the .pptx export's shapes, rendered to PNG.
-
-    Returns `(source, caption, usage, png)`. A source the shapes cannot read goes back to the
-    writer once, told why; still unreadable, or no renderer answering, raises `Undrawable`.
-    There is no browser fallback: a figure that cannot be drawn this way is left out.
-    """
+    """One figure drawn natively to PNG: (source, caption, usage, png); no fallback."""
     source, caption, usage = await draw(
         description=description, figure=figure, model=model, api_key=api_key,
         language=language, slide=slide,

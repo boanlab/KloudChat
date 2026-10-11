@@ -1,10 +1,4 @@
-"""「에이전트로 저장」: what a conversation settled, as a draft agent a person reviews.
-
-Nothing is saved here. The draft prefills the agent form; the person edits it and saves.
-「이 대화에서 정한 것」 is distilled from the person's own messages only (never the answers,
-never an agent's prompt) by the model the conversation ran on, so a strict-local conversation
-sends nothing anywhere it did not already go.
-"""
+"""「에이전트로 저장」 draft from the person's own messages, via the conversation's model."""
 
 from __future__ import annotations
 
@@ -19,7 +13,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: How much of the person's words is read: the latest messages first, within this budget.
+#: budget for the person's words, latest first
 _MAX_CHARS = 12_000
 _MAX_TOKENS = 600
 _MAX_LINES = 8
@@ -44,7 +38,7 @@ _LINE = re.compile(r"^\s{0,4}[-*•·]\s{1,3}(.{2,300})$")
 
 
 def _transcript(messages: list[str]) -> str:
-    """The person's messages, latest kept whole first, oldest dropped past the budget."""
+    """Person's messages, latest whole first, oldest dropped past budget."""
     kept: list[str] = []
     used = 0
     for text in reversed(messages):
@@ -71,12 +65,10 @@ def lines_of(reply: str) -> list[str]:
 
 
 class DistillFailed(Exception):
-    """The model did not answer (timed out, refused, broke) even after the one retry: the
-    draft's 지시 is not 「nothing settled」 but 「not read」, and the form says so."""
+    """Model unanswered after retry: draft's 지시 = 「not read」, not 「nothing settled」."""
 
 
-#: Tries per distillation: the first, and one retry on a timeout, a dropped connection or a
-#: 5xx (never on a 4xx: the same request would be refused again).
+#: first try + one retry on timeout/connection/5xx (never 4xx)
 _TRIES = 2
 
 
@@ -89,9 +81,7 @@ def _retryable(exc: Exception) -> bool:
 async def distill(model: str, messages: list[str], api_key: str, *, strict_local: bool,
                   masker: Callable[[str], tuple[str, int]] | None = None
                   ) -> tuple[list[str], dict[str, int]]:
-    """`(lines, usage)`: what the person settled; no lines when nothing was. Raises
-    `DistillFailed` when the model could not be read (its own `agent_draft_timeout_sec`, one
-    retry): never an empty answer that looks like 「nothing settled」."""
+    """`(lines, usage)`; raises `DistillFailed` when unreadable, never a fake empty answer."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     body = _transcript(messages)
     if not body:
@@ -116,7 +106,7 @@ async def distill(model: str, messages: list[str], api_key: str, *, strict_local
                     "messages": [{"role": "user", "content": text}],
                     "temperature": 0,
                     "max_tokens": _MAX_TOKENS,
-                    # A strict-local conversation's words go to its own model or nowhere.
+                    # strict-local: own model or nowhere
                     **({"disable_fallbacks": True} if strict_local else {}),
                 })
                 response.raise_for_status()
@@ -137,37 +127,33 @@ async def distill(model: str, messages: list[str], api_key: str, *, strict_local
     return lines_of(reply), spent
 
 
-#: A line about this conversation's own material (「아래 회의 메모로 만든다」): not a rule for
-#: next time.
+#: line about this conversation's material, not a future rule
 _THIS_ONE = re.compile(
     r"(?:아래|위|이번|이|첨부(?:한|된)?|붙인|올린|보낸)\s{0,2}(?:의\s{0,2})?"
     r"(?:회의\s{0,2})?(?:메모|자료|파일|대화|메일|내용|녹음|전사본?|문서|표|데이터)")
-#: Dates and day stamps in a title: 「10/8」 「2026-10-08」 「10월 8일」 「2026년」 「(월)」.
+#: date/day stamps in a title
 _DATED = re.compile(
     r"\d{2,4}\s{0,2}[./-]\s{0,2}\d{1,2}(?:\s{0,2}[./-]\s{0,2}\d{1,2})?\.?"
     r"|\d{1,4}\s{0,2}(?:년|월|일|주차?)|\([월화수목금토일]\)|(?<![가-힣])[1-4]분기")
 
 
-#: A line that says nothing was settled (「없음」 「(해당 없음)」 「정한 것 없음」), or the header
-#: echoed back: no rule.
+#: 「없음」-style lines or echoed header
 _NOTHING = re.compile(
     r"^[\s()\[\]「」.·:-]{0,6}(?:(?:해당\s{0,2}(?:사항\s{0,2})?)?없음|없습니다|정한\s{0,2}것\s{0,2}없음"
     r"|이\s{0,2}대화에서\s{0,2}정한\s{0,2}것|none|n/?a)[\s()\[\]「」.·:-]{0,6}$", re.I)
-#: At least two letters (Hangul or Latin) or digits: not just punctuation.
+#: at least two letters or digits
 _WORDY = re.compile(r"[가-힣A-Za-z0-9]{2}")
 
 
 def keep(line: str) -> bool:
-    """Whether a distilled line is a rule for next time, not about this conversation's
-    material, nor an empty or 「없음」 line."""
+    """Whether a distilled line is a future rule (not material-specific, empty, or 「없음」)."""
     text = (line or "").strip()
     return bool(_WORDY.search(text)) and not _NOTHING.match(text) \
         and not _THIS_ONE.search(text)
 
 
 def name_for(title: str, template_name: str = "") -> str:
-    """The draft's name: what the conversation made (its 템플릿's name, 「회의록 에이전트」),
-    else its title without dates; never a day stamp."""
+    """Draft name: template name, else title without dates."""
     if template_name:
         return f"{template_name} 에이전트"
     stem = " ".join(_DATED.sub(" ", title or "").split()).strip(" -·:,")
@@ -175,7 +161,7 @@ def name_for(title: str, template_name: str = "") -> str:
 
 
 def prompt_from(lines: list[str]) -> str:
-    """The 지시 section a draft starts with."""
+    """Draft's starting 지시 section."""
     lines = [line.strip() for line in lines if keep(line)]
     if not lines:
         return ""

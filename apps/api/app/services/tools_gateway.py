@@ -1,12 +1,4 @@
-"""The KloudChat-LLM gateway key on requests to the tool backends.
-
-The gateway answers `/tools/*` only with `X-Tools-Key` (`TOOLS_GATEWAY_KEY` on
-both sides). Every client that talks to a tool backend is built by `client()`:
-its request hook adds the key when the request URL lies under one of the
-configured tool addresses (`settings_store.tools_config`) and removes it
-otherwise, on every hop, so the key never goes to a fetched page, a third-party
-MCP server or a redirect target.
-"""
+"""X-Tools-Key on tool-backend requests only; stripped on every other hop."""
 
 from __future__ import annotations
 
@@ -28,7 +20,7 @@ def _origin(url: httpx.URL) -> tuple[str, str, int | None]:
 
 
 def under(url: str | httpx.URL, base: str) -> bool:
-    """Whether `url` is `base` or a path beneath it, on the same scheme, host and port."""
+    """Whether url is base or beneath it, same scheme/host/port."""
     if not base:
         return False
     try:
@@ -51,7 +43,7 @@ async def is_tools_url(url: str | httpx.URL, features: tuple[str, ...] = FEATURE
 
 
 async def key_for(url: str | httpx.URL, features: tuple[str, ...] = FEATURES) -> str:
-    """The key when `url` is one of `features`' tool addresses, else ""."""
+    """Key when url is a tool address of features, else ""."""
     key = settings.tools_gateway_key.strip()
     if key and await is_tools_url(url, features):
         return key
@@ -59,13 +51,10 @@ async def key_for(url: str | httpx.URL, features: tuple[str, ...] = FEATURES) ->
 
 
 def client(*, features: tuple[str, ...] = FEATURES, **kwargs: Any) -> httpx.AsyncClient:
-    """`httpx.AsyncClient` that carries the gateway key to the tool backends only.
-
-    `features` narrows which tool addresses get it: the MCP client, which also
-    calls servers people add themselves, passes `("research",)`."""
+    """AsyncClient sending the gateway key to tool backends only (features narrows which)."""
 
     async def attach(request: httpx.Request) -> None:
-        # Whatever a caller set is dropped; only the configured key, only to a tool.
+        # caller-set key dropped; configured key to tools only
         request.headers.pop(HEADER, None)
         key = await key_for(request.url, features)
         if key:

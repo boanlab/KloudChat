@@ -1,20 +1,4 @@
-"""Design template (서식) catalogue: the seed HTML, rules and files a document or deck is written
-into.
-
-Each entry is a folder under `app/design_templates/<id>/`:
-
-    template.toml     metadata
-    instructions.md   appended to the surface prompt
-    checklist.md      critique rubric
-    markup.md         the seed's element vocabulary (own or via `seed_from`)
-    seed.html         shell with `{{TITLE}}` / `{{TOKENS}}` / `{{BODY}}`
-    design.css        this 서식's own stylesheet, spliced into the seed
-    sample.html       body fragment the gallery previews
-    template.docx / template.pptx / form.docx / form.pptx   optional
-
-Seeds carry no script (artifacts render in a `sandbox=""` iframe) and carry
-`@media print` rules, since PDF export is the reader's print dialogue.
-"""
+"""Design template (서식) catalogue: seed HTML, rules, files in `app/design_templates/<id>/`."""
 
 from __future__ import annotations
 
@@ -40,20 +24,18 @@ from app.services import (
 )
 
 _ROOT = Path(__file__).resolve().parent.parent / "design_templates"
-#: A person's template id (`UserTemplate.id` behind it), so a session names it like a shipped one.
+#: User template id prefix (`UserTemplate.id`).
 USER_PREFIX = "ut-"
 
-#: Surface each template kind is offered on.
 SURFACE: dict[str, SessionKind] = {
     "deck": SessionKind.slides,
     "document": SessionKind.report,
 }
 
-#: Kinds that produce an HTML artifact: every kind the catalogue still has.
+#: Kinds producing an HTML artifact.
 HTML_KINDS = ("deck", "document")
 
-#: Tags a block may contain; others are unwrapped. No `h1`/`h2`: the wrapper
-#: writes the block heading. No `<pre>`: the file exporters read markdown lines.
+#: Allowed block tags (others unwrapped); no h1/h2 (wrapper's), no <pre> (exporters read md).
 _ALLOWED_TAGS = {
     "p",
     "h3",
@@ -83,28 +65,24 @@ _ALLOWED_TAGS = {
     "dl",
     "dt",
     "dd",
-    "sup",  # footnote reference; `<small>` carries the note
+    "sup",  # footnote ref; `<small>` holds the note
 }
 
-#: Removed with their contents. `h1`/`h2` in a body would duplicate the
-#: wrapper's heading.
+#: Removed with contents; h1/h2 would duplicate the wrapper heading.
 _REMOVED_WITH_CONTENT = {"script", "style", "iframe", "object", "embed", "link", "meta", "h1", "h2"}
-#: Attributes a block may carry, by tag. `class` reaches the seed's own names;
-#: `style` is filtered per declaration (person-edited blocks only) and `src`
-#: survives only as an embedded `data:` picture — both in `_attribute`.
+#: Allowed attrs by tag; `style` and `src` (data: only) filtered in `_attribute`.
 _ALLOWED_ATTRIBUTES = {
     "*": {"class", "style"},
     "img": {"src", "alt"},
-    # A chart's numbers or a diagram's source; the file exporters read it.
+    # chart data / diagram source for exporters
     "figure": {"data-source"},
-    # A page break a person inserted; `richtext` turns it into the exporters' break.
+    # user page break → exporters' break
     "div": {"data-page-break"},
     "td": {"colspan", "rowspan"},
     "th": {"colspan", "rowspan"},
 }
 
-#: Declarations a person may set in the editor. No layout properties: the
-#: seed owns position, display, spacing and background.
+#: User-editable declarations; no layout properties (seed owns layout).
 _EDITABLE_STYLE = {
     "font-size",
     "font-family",
@@ -116,13 +94,10 @@ _EDITABLE_STYLE = {
     "background-color",
     "line-height",
 }
-#: Property/value pair with no parentheses in the value, so `url(`,
-#: `expression(` and `calc(` never match. Security invariant.
+#: No parentheses in value: blocks `url(`, `expression(`, `calc(`. Security invariant.
 _DECLARATION = re.compile(r"^\s*([a-z-]{2,20})\s*:\s*([A-Za-z0-9 ,.%#'\"_-]{1,120})\s*$")
-#: `<code>` contents are text, escaped before the tag rules run. Closing tag
-#: required.
+#: `<code>` contents escaped before tag rules; closing tag required.
 _CODE = re.compile(r"(<code\b[^>]*>)(.*?)</code\s*>", re.S | re.I)
-#: An ampersand not already opening an entity.
 _BARE_AMP = re.compile(r"&(?!#?\w{1,32};)")
 
 
@@ -132,82 +107,72 @@ class DesignTemplate:
     kind: str
     name: str
     description: str
-    #: Gallery filter chip.
     category: str
-    #: English halves; empty falls back to the Korean. The client picks by language.
+    #: English variants; empty → Korean.
     name_en: str
     description_en: str
     category_en: str
     fills_en: tuple[str, ...]
     example_prompt_en: str
-    #: What the person has to bring, shown on the card.
+    #: What the user must bring (card).
     fills: tuple[str, ...]
-    #: Starting sentence the card's button puts in the composer.
+    #: Composer starter sentence.
     example_prompt: str
-    #: Appended to the generation prompt; never shown to the reader.
+    #: Appended to the generation prompt; never shown.
     instructions: str
-    #: The seed's element vocabulary (`markup.md`); the 서식's own instructions win.
+    #: Seed element vocabulary (`markup.md`); 서식 instructions win.
     markup: str
-    #: Critique rubric, kept apart from `instructions`.
     checklist: str
-    #: Slides on a dark ground; carried into the `.pptx`, not the `.pdf`.
+    #: Dark slides; `.pptx` only, not `.pdf`.
     dark: bool
-    #: `deck` only: one of `design.VISUAL_STYLES`. Empty for documents.
+    #: Deck only: one of `design.VISUAL_STYLES`.
     look: str
-    #: Path to `template.docx`, which `report_export` opens and appends to; empty for Word defaults.
+    #: `template.docx` base for `report_export`; empty → Word defaults.
     docx_template: str
-    #: Path to `template.pptx`, which `deck_export` builds on; empty for PowerPoint defaults.
+    #: `template.pptx` base for `deck_export`; empty → PowerPoint defaults.
     pptx_template: str
-    #: Whether the cover owns a sheet in paged exports.
+    #: Cover owns a sheet in paged exports.
     cover_page: bool
-    #: Path to the blank `form.docx` / `form.pptx` for download; empty when none.
+    #: Blank `form.docx` / `form.pptx` download; empty when none.
     form_file: str
 
-    #: The shell every slide or section is placed into.
     seed: str
-    #: Layout names this template describes; the first is the cover.
+    #: Layout names; first is the cover.
     layouts: tuple[str, ...]
     #: Block → markup wrappers from `template.toml`.
     wrap_cover: str
     wrap_block: str
-    #: Optional wrapper around every non-cover block, `{blocks}` inside.
+    #: Optional wrapper around non-cover blocks (`{blocks}`).
     wrap_group: str
-    #: `max_bullets` / `max_bullet_chars` the checker enforces; empty means the general bounds.
+    #: Checker bounds; empty → general bounds.
     limits: dict[str, int]
-    #: Body fragment the gallery card renders inside the seed.
     sample: str
-    #: Catalogue skills applied automatically in this 서식, by `catalog_key`.
+    #: Catalogue skills auto-applied, by `catalog_key`.
     skills: tuple[str, ...]
-    #: `skills = []` written out: the 서식 brings no skills on purpose (its rules live in its
-    #: instructions and the agent's prompt), not by omission.
+    #: Explicit `skills = []` (intentional, not omitted).
     no_skills: bool = False
-    #: Check skills (`stage` in their SKILL.md) the server runs around writing in this 서식,
-    #: by catalogue key; `check_skills` because `checks` is the checklist below.
+    #: Server-run check skills by catalogue key (`checks` is the checklist).
     check_skills: tuple[str, ...] = ()
-    #: `body_face = "design"`: the body face follows the design's `font` token in every
-    #: export (its `design.css` reads `--font-body`); otherwise the 서식 fixes its faces.
+    #: `body_face = "design"`: body face follows the design `font` token.
     body_face_from_design: bool = False
-    #: The document format it fixes (`doc_format` in `template.toml`), "" for none.
+    #: Fixed document format, "" for none.
     doc_format: str = ""
-    #: The writer's genre rule for that format (`genre.md`), given to the outline and the
-    #: draft; "" for none.
+    #: Writer genre rule (`genre.md`), "" for none.
     genre: str = ""
-    #: 빠진 정보 질문 its format needs (`[[questions]]`, `services/gap_questions.py`), checked
-    #: the way a person's agent's are.
+    #: 빠진 정보 질문 (`services/gap_questions.py`).
     questions: tuple[dict, ...] = ()
-    #: 진행 과정 설정 its format runs with (`[process]`, `services/process_settings.py`).
+    #: 진행 과정 설정 (`services/process_settings.py`).
     process: dict[str, Any] = field(default_factory=dict)
-    #: How strict the trace is in this 서식 (`check_skills.CHECK_OPTIONS` names).
+    #: Trace strictness (`check_skills.CHECK_OPTIONS`).
     check_options: tuple[str, ...] = ()
-    #: A person's template (`UserTemplate`): its row id, owner and sharing; "" for shipped.
+    #: User template row id, owner, sharing; "" for shipped.
     owner_id: str = ""
     visibility: str = ""
-    #: A person's template's own document format (`doc_formats.DocFormat`); None for shipped.
+    #: User template's own `doc_formats.DocFormat`; None for shipped.
     doc_format_def: Any = None
-    #: A person's template's form, as text for the writer to read (never an export base).
+    #: User template form as text for the writer (never an export base).
     form_reference: str = ""
-    #: Shown in the pickers (`listed = false` in `template.toml` hides it there): an unlisted
-    #: 서식 is still chosen by id, drawn and exported — old conversations and agents keep it.
+    #: Shown in pickers; unlisted still usable by id (old sessions, agents).
     listed: bool = True
 
     @property
@@ -220,7 +185,7 @@ class DesignTemplate:
 
     @property
     def checks(self) -> tuple[str, ...]:
-        """The checklist's bullet lines without their markers, for the gallery card."""
+        """Checklist bullet lines without markers, for the gallery card."""
         return tuple(
             line.lstrip("-").strip()
             for line in self.checklist.splitlines()
@@ -228,12 +193,12 @@ class DesignTemplate:
         )
 
 
-#: Extracted form text, keyed by path and mtime.
+#: Extracted form text by (path, mtime).
 _FORM_TEXT: dict[tuple[str, float], str] = {}
 
 
 def form_text(template: DesignTemplate) -> str:
-    """The blank form's text (headings, column names), for the model to write into."""
+    """Blank form text (headings, column names) for the model."""
     if template.form_reference:
         return template.form_reference
     if not template.form_file:
@@ -248,19 +213,17 @@ def form_text(template: DesignTemplate) -> str:
 
         try:
             _FORM_TEXT[key] = file_service.extract_text(path.name, "", path.read_bytes()).strip()
-        except Exception:  # noqa: BLE001 — an unreadable form is written without
+        except Exception:  # noqa: BLE001 — unreadable form → empty
             _FORM_TEXT[key] = ""
     return _FORM_TEXT[key]
 
 
-#: The 서식's own stylesheet is spliced in last in `<head>`, so it wins ties.
+#: 서식 stylesheet spliced last in <head> (wins ties).
 _HEAD_END = re.compile(r"</head\s*>", re.I)
 
 
 def _seed(folder: Path, meta: dict) -> str:
-    """The seed HTML (own `seed.html`, or the shared one named by `seed_from`) with `design.css`
-    spliced in.
-    """
+    """Seed HTML (own or `seed_from`) with `design.css` spliced in."""
     seed = ""
     own = folder / "seed.html"
     if own.is_file():
@@ -273,18 +236,18 @@ def _seed(folder: Path, meta: dict) -> str:
                 seed = shared.read_text(encoding="utf-8")
     if not seed:
         return ""
-    # A deck seed reads its sizes from the deck's one type scale.
+    # deck seed sizes from the deck type scale
     seed = seed.replace("{{DECK_TYPE}}", deck_preview.type_declarations())
     face = _read(folder, "design.css").strip()
     if not face:
         return seed
-    # A second `<style>` block; `stylesheet()` concatenates all of them in order.
+    # extra <style> block; `stylesheet()` concatenates all
     block = f"<style>\n/* {folder.name} */\n{face}\n</style>\n"
     return _HEAD_END.sub(lambda _m: block + "</head>", seed, count=1)
 
 
 def _look(meta: dict[str, Any], kind: str) -> str:
-    """Declared `look` for a deck template, else `"editorial"`; empty for other kinds."""
+    """Declared deck `look`, else "editorial"; empty for other kinds."""
     if kind != "deck":
         return ""
     look = str(meta.get("look") or "").strip()
@@ -294,7 +257,7 @@ def _look(meta: dict[str, Any], kind: str) -> str:
 
 
 def _seed_markup(folder: Path, meta: dict[str, Any]) -> str:
-    """`markup.md` from the folder, else from the `seed_from` folder."""
+    """`markup.md` from the folder or its `seed_from`."""
     own = _read(folder, "markup.md")
     if own:
         return own
@@ -311,7 +274,7 @@ def _read(folder: Path, name: str) -> str:
 
 
 def _template(folder: Path, meta: dict[str, Any]) -> DesignTemplate:
-    """One 서식 from its folder and its `template.toml`."""
+    """One 서식 from its folder and `template.toml`."""
     kind = str(meta.get("kind") or "")
     wrap: dict[str, Any] = meta.get("wrap") or {}
     return DesignTemplate(
@@ -398,7 +361,7 @@ def _load() -> dict[str, DesignTemplate]:
     found: dict[str, DesignTemplate] = {}
     if not _ROOT.is_dir():
         return found
-    # `_` folders hold shared seeds, not templates.
+    # `_` folders: shared seeds
     for folder in sorted(p for p in _ROOT.iterdir() if p.is_dir() and not p.name.startswith("_")):
         manifest = folder / "template.toml"
         if not manifest.is_file():
@@ -410,7 +373,7 @@ def _load() -> dict[str, DesignTemplate]:
     return found
 
 
-#: Read once; the catalogue ships inside the image.
+#: Loaded once; ships inside the image.
 _TEMPLATES = _load()
 
 
@@ -419,14 +382,14 @@ def all_templates() -> list[DesignTemplate]:
 
 
 def for_format(format_id: str | None) -> DesignTemplate | None:
-    """The shipped 서식 bound to a format: its settings and questions are the format's."""
+    """Shipped 서식 bound to a format (its settings and questions)."""
     if not format_id:
         return None
     return next((t for t in _TEMPLATES.values() if t.doc_format == format_id), None)
 
 
 def format_genres() -> dict[str, str]:
-    """Each bound format's genre rule, as its 서식 carries it (`genre.md`)."""
+    """Each bound format's genre rule (`genre.md`)."""
     return {t.doc_format: t.genre for t in _TEMPLATES.values() if t.doc_format and t.genre}
 
 
@@ -434,7 +397,7 @@ def for_surface(kind: SessionKind) -> list[DesignTemplate]:
     return [t for t in _TEMPLATES.values() if t.surface is kind]
 
 
-#: People's templates this process has loaded (`services/user_templates.ensure`), by id.
+#: Loaded user templates by id (`user_templates.ensure`).
 _USER: dict[str, DesignTemplate] = {}
 
 
@@ -444,7 +407,7 @@ def get(template_id: str | None) -> DesignTemplate | None:
 
 
 def remember(template: DesignTemplate) -> None:
-    """Hold a person's template (built by `user_templates.build`) for `get`."""
+    """Cache a user template (`user_templates.build`) for `get`."""
     if template.id.startswith(USER_PREFIX):
         _USER[template.id] = template
 
@@ -453,11 +416,10 @@ def forget(template_id: str) -> None:
     _USER.pop(template_id, None)
 
 
-#: The shared seed as a 서식 of its own, outside the catalogue.
+#: Shared seed as its own 서식, outside the catalogue.
 GENERIC_ID = "_document"
 
-#: Document 서식 taken out of the catalogue. Documents and sessions may still name them;
-#: `rendering` draws those in the shared seed, and nothing new can choose them.
+#: Retired document 서식: still drawn via the shared seed, not choosable.
 RETIRED = frozenset(
     {
         "doc-brief",
@@ -473,10 +435,7 @@ RETIRED = frozenset(
     }
 )
 
-#: Image, audio and video 서식, all taken out. Nothing ever drew a stored document in one:
-#: an image 서식 only shaped the prompt of the turn that picked it, an audio or video one only
-#: set the composer's chips. A request or a saved choice that still names one is read as
-#: naming none (`is_retired_media`).
+#: Retired image/audio/video 서식: read as none (`is_retired_media`).
 RETIRED_MEDIA = frozenset(
     {
         "audio-bed",
@@ -501,31 +460,27 @@ RETIRED_MEDIA = frozenset(
 )
 
 
-#: Document 서식 taken out of the catalogue but kept in the image: nothing new chooses them,
-#: and the documents and conversations that name one are still drawn and exported in it.
-#: Retired with their agents (자기소개서·경력기술서, 고객 맞춤 제안서); migration 0060 clears
-#: the saved choices.
+#: Retired but kept in the image: still drawn/exported, not choosable (migration 0060).
 RETIRED_KEPT = frozenset({"doc-career-history", "doc-client-proposal"})
 
 
 def offered() -> list[DesignTemplate]:
-    """The 서식 a person may choose: the catalogue without the retired ones it still draws.
-    Unlisted ones are in it (chosen by id); the pickers leave them out (`listed`)."""
+    """Choosable 서식: catalogue minus retired (unlisted included)."""
     return [t for t in _TEMPLATES.values() if t.id not in RETIRED_KEPT]
 
 
 def listed() -> list[DesignTemplate]:
-    """The 서식 the pickers show: `offered` without the unlisted ones."""
+    """Picker 서식: `offered` minus unlisted."""
     return [t for t in offered() if t.listed]
 
 
 def choosable(template_id: str | None) -> DesignTemplate | None:
-    """The 서식 when a person may pick it now; None for an unknown or retired id."""
+    """The 서식 if pickable now; None for unknown/retired ids."""
     return None if (template_id or "") in RETIRED_KEPT else get(template_id)
 
 
 def is_retired_media(template_id: str | None) -> bool:
-    """Whether the id names a retired image, audio or video 서식."""
+    """Whether the id is a retired image/audio/video 서식."""
     return (template_id or "") in RETIRED_MEDIA
 
 
@@ -539,7 +494,7 @@ _GENERIC = _template(
         "category_en": "Work",
         "layouts": ["cover", "section"],
         "wrap": {
-            # The shared seed's cover owns its page (`seed.html` cover page).
+            # shared seed cover owns its page
             "cover": '<div class="cover cover-page"><h1>{title}</h1>{body}</div>',
             "block": "<section><h2>{title}</h2>{body}</section>",
         },
@@ -548,27 +503,24 @@ _GENERIC = _template(
 
 
 def generic_with(meta: dict[str, Any]) -> DesignTemplate:
-    """A 서식 on the shared document seed with `meta` as its `template.toml` (a person's)."""
+    """서식 on the shared document seed with `meta` as its `template.toml`."""
     return _template(_ROOT / GENERIC_ID, meta)
 
 
 def rendering(template_id: str | None) -> DesignTemplate | None:
-    """The 서식 a stored document is drawn and exported in: its own, or the shared seed when
-    it names a retired one (or the seed itself). None for any other unknown id."""
+    """서식 a stored document renders in; shared seed for retired ids, None if unknown."""
     if found := get(template_id):
         return found
     if template_id in RETIRED or template_id == GENERIC_ID:
         return _GENERIC
     if (template_id or "").startswith(USER_PREFIX):
-        # A person's template not loaded here (or deleted): it is drawn on this seed anyway.
+        # unloaded/deleted user template: shared seed
         return _GENERIC
     return None
 
 
 def default_for(defaults: Any, kind: SessionKind) -> str | None:
-    """The project's default template id for this surface, or None when unset or no longer in the
-    catalogue.
-    """
+    """Project default template id for the surface, or None."""
     if not isinstance(defaults, dict):
         return None
     chosen = choosable(defaults.get(kind.value))
@@ -578,21 +530,21 @@ def default_for(defaults: Any, kind: SessionKind) -> str | None:
 
 
 def _quoted_code(match: re.Match[str]) -> str:
-    """One `<code>` element with its contents turned back into characters."""
+    """One `<code>` element with contents unescaped."""
     inner = _BARE_AMP.sub("&amp;", match.group(2))
     return f"{match.group(1)}{inner.replace('<', '&lt;').replace('>', '&gt;')}</code>"
 
 
-#: A leading `layout: …` line, anchored at the start of the fragment only.
+#: Leading `layout: …` line (fragment start only).
 _LAYOUT_DIRECTIVE = re.compile(r"^[ \t]*layout[ \t]*[:=][^\n]*\n", re.I)
 
 
-#: JSON envelope keys that describe the block rather than fill it.
+#: JSON envelope keys describing the block, not content.
 _ENVELOPE_META = frozenset({"layout", "title", "heading", "n", "index", "id"})
 
 
 def _unwrapped(fragment: str) -> str:
-    """The single string payload of a JSON-envelope answer; anything else is returned as is."""
+    """Single string payload of a JSON-envelope answer; else unchanged."""
     text = fragment.strip()
     if not text.startswith("{"):
         return fragment
@@ -611,7 +563,7 @@ def _unwrapped(fragment: str) -> str:
 
 
 def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
-    """Strips leading whole lines that only name a layout (`layout: bullets`, `bullets`)."""
+    """Strips leading layout-name-only lines."""
     names = {name.strip().lower() for name in layouts if name and name.strip()}
     text = fragment.lstrip("\n")
     while True:
@@ -620,7 +572,7 @@ def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
             text = without.lstrip("\n")
             continue
         head, newline, rest = text.partition("\n")
-        # A fragment that is only a layout name is left for `lint` to report.
+        # bare layout name: left for `lint`
         if newline and head.strip().strip("\"'`").lower() in names:
             text = rest.lstrip("\n")
             continue
@@ -628,14 +580,12 @@ def _without_layout_preamble(fragment: str, layouts: Sequence[str]) -> str:
 
 
 def _editable_style(raw: str) -> str:
-    """A `style=` value reduced to `_EDITABLE_STYLE` declarations matching `_DECLARATION`; empty
-    when nothing qualifies.
-    """
+    """`style=` reduced to allowed declarations; empty when none qualify."""
     kept = []
     for part in raw.split(";"):
         if not part.strip():
             continue
-        # Browsers serialise picked colours as `rgb(r, g, b)`; canonicalise to hex.
+        # picked colours `rgb(r, g, b)` → hex
         colour = re.fullmatch(
             r"\s*(color|background-color)\s*:\s*rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)\s*",
             part,
@@ -654,27 +604,17 @@ def _editable_style(raw: str) -> str:
 
 
 def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: bool = False) -> str:
-    """One block of authored HTML reduced to what the seed styles; artifacts are also opened outside
-    the sandbox.
-
-    Parsed as a browser would (nh3) and written back from the tree, so unknown attributes
-    or unclosed quotes cannot slip past the allow lists. Tags outside `_ALLOWED_TAGS` keep
-    their words only; `_REMOVED_WITH_CONTENT` go whole.
-
-    `layouts`: the template's layout names to strip from the front.
-    `editable_styles`: keep `_EDITABLE_STYLE` declarations (person-edited
-    blocks); model-written blocks get no inline style.
-    """
+    """Authored HTML reduced to what the seed styles (nh3, allow lists); safe outside sandbox."""
     text = _CODE.sub(_quoted_code, _without_layout_preamble(_unwrapped(fragment), layouts))
 
     def attribute(element: str, name: str, value: str) -> str | None:
         if name == "style":
             return (_editable_style(value) if editable_styles else "") or None
         if name == "src":
-            # `href` is not admitted at all; `src` only as a picture already in the file.
+            # no `href`; `src` only for embedded pictures
             return value if pictures.is_embedded(value) else None
         if name == "class" and value.strip().lower() == "cover":
-            # Only `wrap_cover` may produce the cover frame.
+            # cover frame only via `wrap_cover`
             return None
         return value
 
@@ -690,11 +630,7 @@ def sanitise(fragment: str, layouts: Sequence[str] = (), *, editable_styles: boo
 
 
 def _token_declarations(tokens: dict[str, str]) -> str:
-    """Design tokens as CSS custom properties, shared by `render` and `stylesheet`.
-
-    Includes `doc_type.CSS_VARIABLES`, the type scale the exporters also read.
-
-    """
+    """Design tokens (incl. `doc_type.CSS_VARIABLES`) as CSS custom properties."""
     return "\n".join(
         f"      --{name}: {value};"
         for name, value in (
@@ -704,13 +640,12 @@ def _token_declarations(tokens: dict[str, str]) -> str:
             ("muted", tokens.get("muted", "#666666")),
             (
                 "font-body",
-                # Linux fontconfig names the face `NanumMyeongjo`, Windows and macOS
-                # `Nanum Myeongjo`; with only the second the print sidecar fell back.
+                # fontconfig `NanumMyeongjo` vs Windows/macOS `Nanum Myeongjo`
                 "'Nanum Myeongjo', 'NanumMyeongjo', 'Batang', serif"
                 if tokens.get("font") == "serif"
                 else "'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
             ),
-            # Slots a 서식's `design.css` may override; default to the body face.
+            # overridable by `design.css`; default body face
             ("font-head", "var(--font-body)"),
             ("font-num", "var(--font-head)"),
         )
@@ -718,10 +653,7 @@ def _token_declarations(tokens: dict[str, str]) -> str:
 
 
 def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body: str) -> str:
-    """The finished single file: seed with `{{TOKENS}}`, `{{TITLE}}` and `{{BODY}}` filled.
-
-    Table cells in a column of figures are marked `.fig` (and a total row `.total`), so a
-    seed sets figures flush right and leaves a column of words left."""
+    """Finished single file; figure columns marked `.fig` (totals `.total`)."""
     return (
         template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
         .replace("{{TITLE}}", escape(title))
@@ -730,21 +662,17 @@ def render(template: DesignTemplate, *, title: str, tokens: dict[str, str], body
 
 
 def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
-    """The gallery card's page: the seed around `sample.html`, drawn as a finished document.
-
-    A 서식 bound to a document format (`doc_format` in its `template.toml`) gets that format's
-    rules as the web draws them — the head block, heading numbers, 개조식 — so the sample's
-    `header.tb` reads as it will in a real document."""
+    """Gallery card page: seed around `sample.html`, with the bound format's rules."""
     if template.kind == "deck":
         page = render(template, title=template.name, tokens=tokens, body=template.sample)
-        # Each slide at the body step the deck would settle on.
+        # body step the deck would settle on
         style = deck_preview.deck_style(sample_slides(template), template.seed)
         return _HEAD_END.sub(lambda _m: style + "</head>", page, count=1)
     if template.kind != "document":
         return render(template, title=template.name, tokens=tokens, body=template.sample)
     fmt = doc_formats.BY_ID.get(template.doc_format)
     if fmt is None:
-        # No format: a title and the sections, its blanks still marked as the page view does.
+        # no format: title, sections, blanks marked
         css = f"{format_css.PLACEHOLDER_CSS}\n{format_css.PAGED_CSS}"
         body = format_css.mark_placeholders(template.sample)
     else:
@@ -753,24 +681,22 @@ def preview(template: DesignTemplate, tokens: dict[str, str]) -> str:
     return page.replace("</head>", f"<style>\n{css}\n</style>\n</head>", 1)
 
 
-#: One slide of a deck sample; slides never nest, so the first `</section>` closes it.
+#: One deck sample slide (slides never nest).
 _SLIDE = re.compile(r"<section\b[^>]*\bclass=\"slide\b[^\"]*\"[^>]*>.*?</section\s*>", re.S | re.I)
 
-#: A single slide fills the frame and the page does not scroll past it.
+#: Single slide fills the frame, no scroll.
 _ONE_SLIDE = "<style>html, body { overflow: hidden; } .slide { height: 100vh; }</style>\n"
 
 
 def sample_slides(template: DesignTemplate) -> list[str]:
-    """The deck sample's slides in order, one `<section class="slide …">` each; empty for
-    any other kind.
-    """
+    """Deck sample slides in order; empty for other kinds."""
     if template.kind != "deck":
         return []
     return _SLIDE.findall(template.sample)
 
 
 def render_slide(template: DesignTemplate, *, tokens: dict[str, str], n: int) -> str | None:
-    """The seed around slide `n` (1-based) of the sample alone, or None when out of range."""
+    """Seed around sample slide `n` (1-based), or None."""
     slides = sample_slides(template)
     if not 1 <= n <= len(slides):
         return None
@@ -783,20 +709,18 @@ _STYLE_BLOCK = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
 
 
 def stylesheet(template: DesignTemplate, tokens: dict[str, str]) -> str:
-    """The seed's `<style>` blocks alone with `{{TOKENS}}` resolved, for the editor's shadow
-    root.
-    """
+    """Seed `<style>` blocks with tokens resolved, for the editor shadow root."""
     seed = template.seed.replace("{{TOKENS}}", _token_declarations(tokens))
     return "\n\n".join(match.group(1) for match in _STYLE_BLOCK.finditer(seed)).strip()
 
 
 def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
-    """Written blocks wrapped by `wrap_cover` / `wrap_block` / `wrap_group` into the seed's body."""
+    """Blocks wrapped by `wrap_cover` / `wrap_block` / `wrap_group` into the body."""
     cover = ""
     rest: list[str] = []
     for index, block in enumerate(blocks, start=1):
         body = block.get("html") or ""
-        # An empty body block is left out; an empty cover still makes its title page.
+        # empty blocks dropped; empty cover still makes its page
         if not body and block.get("layout") != "cover":
             continue
         markup = template.wrap_cover if block.get("layout") == "cover" else template.wrap_block
@@ -819,26 +743,26 @@ def assemble(template: DesignTemplate, blocks: list[dict[str, str]]) -> str:
 
 
 def figure(*, mime: str, data_b64: str, alt: str = "", caption: str = "") -> str:
-    """`<figure><img src="data:…"><figcaption>` markup for an encoded picture."""
+    """`<figure>` markup for an encoded picture."""
     body = f'<figure><img src="{pictures.data_uri(mime, data_b64)}" alt="{escape(alt)}" />'
     if caption:
         body += f"<figcaption>{escape(caption)}</figcaption>"
     return body + "</figure>"
 
 
-#: A whole `<figure>` element carrying an embedded `data:image/` picture.
+#: Whole `<figure>` with an embedded `data:image/` picture.
 _PICTURE = re.compile(
     r"<figure\b[^>]*>(?:(?!</figure>).)*?src=\"data:image/.*?</figure>", re.S | re.I
 )
 
 
 def pictures_in(fragment: str) -> str:
-    """The embedded `<figure>` elements of a block, in order; kept across a model rewrite."""
+    """Embedded `<figure>`s of a block, kept across rewrites."""
     return "".join(_PICTURE.findall(fragment))
 
 
 def escape(text: str) -> str:
-    """HTML-escapes text for markup."""
+    """HTML-escapes text."""
     return (
         text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )

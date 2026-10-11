@@ -1,15 +1,4 @@
-"""A deck 서식's sample drawn at the deck's own type scale.
-
-The gallery shows a deck 서식 as its `sample.html` inside the shared `_deck/seed.html`. Real
-decks are drawn from one table (`deck_type`): titles at 32pt, the body at 22pt stepping down
-18 → 16 → 14 → 12 only when a slide overflows, one step for the whole deck. The seed reads
-those sizes from custom properties this module declares, in points: a slide is 960 x 540pt,
-which is the 1280 x 720px frame the gallery lays a slide out in, so a size in the preview is
-the size in the panel and the file.
-
-Each slide's step is chosen the way `deck.auto_fit` and `deck.harmonize` choose it, from an
-estimate of the height the slide's words take in the seed's own column.
-"""
+"""Deck 서식 sample at the deck type scale (`deck_type`)."""
 
 from __future__ import annotations
 
@@ -19,22 +8,22 @@ from html.parser import HTMLParser
 
 from app.services import deck_type
 
-#: The slide page in points.
+#: slide page (pt)
 PAGE_W, PAGE_H = 960.0, 540.0
 _K = deck_type.K
-#: Where the panel puts the title's top, in slide units (`SlideView`'s top padding).
+#: title top in slide units (`SlideView` padding)
 TITLE_TOP = 24
 GUT = deck_type.PAD_X * _K
 PAD_TOP = TITLE_TOP * _K
 BODY_TOP = deck_type.BODY_TOP * _K
 PAD_BOTTOM = (225 - deck_type.BODY_BOTTOM) * _K
-#: The height the body may take under a one-line title.
+#: body height under a one-line title
 ROOM = (deck_type.BODY_BOTTOM - deck_type.BODY_TOP) * _K
 INNER = PAGE_W - 2 * GUT
-#: 1rem in points (16px at 1280px wide).
+#: 1rem in pt (16px at 1280px)
 REM = 12.0
 
-#: Custom property → `deck_type.TYPE` key, declared in the seed's `:root`.
+#: custom property → `deck_type.TYPE` key
 _SIZES = {
     "title": "title",
     "cover": "cover",
@@ -52,12 +41,12 @@ _SIZES = {
     "page-number": "pageNumber",
 }
 
-#: Layouts the fit leaves alone, as `deck._STRUCTURAL` does for the panel's.
+#: layouts the fit skips (like `deck._STRUCTURAL`)
 _FIXED = ("cover", "quote")
 
 
 def type_declarations() -> str:
-    """The seed's size and geometry properties, from `deck_type`."""
+    """Seed size and geometry properties from `deck_type`."""
     lines = [f"    --deck-{name}: {deck_type.TYPE[key]:g}pt;" for name, key in _SIZES.items()]
     lines += [
         f"    --deck-floor: {deck_type.FLOOR_PT}pt;",
@@ -69,9 +58,6 @@ def type_declarations() -> str:
         f"    --body-top: {BODY_TOP:g}pt;",
     ]
     return "\n".join(lines)
-
-
-# ── a small tree of the slide ──────────────────────────────────────
 
 
 @dataclass
@@ -116,7 +102,7 @@ class _Tree(HTMLParser):
                 return
 
     def handle_data(self, data: str) -> None:
-        # Inline text joins its block; `all_text` reads it back in order.
+        # inline text joins its block
         self.stack[-1].children.append(_Node("#text", text=data))
 
 
@@ -124,9 +110,6 @@ def _section(fragment: str) -> _Node | None:
     tree = _Tree()
     tree.feed(fragment)
     return next((n for n in tree.root.children if n.tag == "section"), None)
-
-
-# ── height estimate, in points ─────────────────────────────────────
 
 
 def _lines(text: str, size: float, width: float) -> int:
@@ -169,7 +152,7 @@ def _table_need(node: _Node) -> float:
 
 
 def _block_need(node: _Node, scale: float, width: float, layout: str) -> float:
-    """Height of one top-level block of a slide."""
+    """Height of one top-level block."""
     T = deck_type.TYPE
     text = node.all_text()
     if node.tag in ("ul", "ol"):
@@ -198,11 +181,11 @@ def _block_need(node: _Node, scale: float, width: float, layout: str) -> float:
         columns = [c for c in node.children if c.tag == "div"]
         if not columns:
             return 0.0
-        # Two columns, a gap and the ruled column's inset between them.
+        # two columns, gap, ruled inset
         column = (width - 2.5 * REM) / len(columns) - 1.75 * REM
         return max(_stack_need(c.children, scale, column, layout) for c in columns)
     if node.tag == "div":
-        # The example panel: a label column and padding around the case.
+        # example panel: label column and padding
         inner = width - 2 * 1.45 * REM - 4 * REM
         return _stack_need(node.children, scale, inner, layout) + 2 * 1.3 * REM
     return 0.0
@@ -213,7 +196,7 @@ def _stack_need(nodes: list[_Node], scale: float, width: float, layout: str) -> 
 
 
 def _measure(seed: str) -> float:
-    """The body column in points: the last `--measure: min(Nrem, P%)` the 서식 declares."""
+    """Body column in pt: last `--measure: min(Nrem, P%)`."""
     found = re.findall(r"--measure:\s*min\(\s*([\d.]+)rem\s*,\s*([\d.]+)%\s*\)", seed)
     if not found:
         return INNER
@@ -224,11 +207,11 @@ def _measure(seed: str) -> float:
 @dataclass
 class SlideFit:
     layout: str
-    #: The body ladder step as a `textScale`; 1.0 is 22pt.
+    #: body step as `textScale` (1.0 = 22pt)
     scale: float
-    #: The title size in points.
+    #: title size (pt)
     title: float
-    #: Rows in the slide's table, 0 for none.
+    #: table rows, 0 for none
     rows: int = 0
 
 
@@ -239,7 +222,7 @@ def _fit(fragment: str, measure: float) -> SlideFit:
     layout = next((c for c in section.cls.split() if c != "slide"), "bullets")
     heading = next((n for n in section.children if n.tag == "h2"), None)
     title_text = heading.all_text() if heading else ""
-    # The title runs the slide's width less the corner the number sits in.
+    # slide width minus the number corner
     title_width = (INNER - 4 * REM) / _K
     title = deck_type.title_pt(title_text, title_width)
     rows = len([tr for tr in section.find("tr") if tr.children])
@@ -257,9 +240,7 @@ def _fit(fragment: str, measure: float) -> SlideFit:
 
 
 def fits(slides: list[str], seed: str) -> list[SlideFit]:
-    """Each slide's step and title size, with one body step for the deck (`deck.harmonize`):
-    the smallest any body slide needs, not below 18pt; a slide that needs less keeps its own.
-    """
+    """Per-slide step and title size; one deck body step (smallest needed, ≥18pt)."""
     measure = _measure(seed)
     fitted = [_fit(slide, measure) for slide in slides]
     body = [f for f in fitted if f.layout not in _FIXED]
@@ -272,7 +253,7 @@ def fits(slides: list[str], seed: str) -> list[SlideFit]:
 def _rule(f: SlideFit) -> str:
     rule = f"--text-scale: {f.scale:g}; --deck-title: {f.title:g}pt;"
     if f.rows:
-        # The table's cell size and padding go with its row count, as in the panel.
+        # cell size/padding by row count, as in the panel
         size = deck_type.table_size(f.rows) * _K
         pad = deck_type.table_pad(f.rows) * _K
         rule += f" --deck-table: {size:.2f}pt; --table-pad: {pad:.2f}pt;"
@@ -280,13 +261,13 @@ def _rule(f: SlideFit) -> str:
 
 
 def slide_style(slides: list[str], seed: str, n: int) -> str:
-    """A `<style>` that sets slide `n`'s (1-based) step and title size, for one slide alone."""
+    """`<style>` for slide `n` (1-based) alone."""
     f = fits(slides, seed)[n - 1]
     return f"<style>.slide {{ {_rule(f)} }}</style>\n"
 
 
 def deck_style(slides: list[str], seed: str) -> str:
-    """A `<style>` that sets every slide's step and title size, for the whole sample."""
+    """`<style>` for every slide."""
     rules = "\n".join(
         f".slide:nth-of-type({i}) {{ {_rule(f)} }}"
         for i, f in enumerate(fits(slides, seed), start=1)

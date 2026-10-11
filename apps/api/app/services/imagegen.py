@@ -1,9 +1,4 @@
-"""Image generation via `chat/completions` with `modalities: ["image", "text"]`.
-
-Style is folded into the prompt; aspect is sent as `image_config` (honoured
-by Gemini only) and also said in the prompt. The produced size is measured
-and kept beside the requested aspect.
-"""
+"""Image generation via chat/completions; aspect via image_config and prompt."""
 
 from __future__ import annotations
 
@@ -26,10 +21,10 @@ from app.services import settings_store, thinking
 
 log = logging.getLogger(__name__)
 
-#: Per image; the surface generates them one at a time.
+#: per image, generated one at a time
 _TIMEOUT = 180.0
 
-#: Style chip → the `Style:` sentence it becomes in the prompt.
+#: style chip → prompt Style sentence
 _STYLE_PHRASE = {
     "도식": (
         "Style: clean academic vector diagram, white background, rounded boxes with thin "
@@ -64,10 +59,7 @@ _STYLE_PHRASE = {
     ),
 }
 
-#: Chip names on the wire and on screen, in order (mirrored by the web composer). 자동 leaves
-#: the choice to the planner; 없음 sends no style; 차트 is drawn by `chart_code`. The
-#: 구조도 · 흐름도 · 개념도 chips never reach here (`diagram.draw_native`); 도식 is accepted
-#: on the wire through `_STYLE_PHRASE` but not offered.
+#: wire/screen chips (mirrored in web); diagram chips go to draw_native; 도식 accepted, not offered
 STYLE_CHOICES = [
     "자동",
     "인포그래픽",
@@ -80,7 +72,7 @@ STYLE_CHOICES = [
     "없음",
 ]
 
-#: Label handling by `labels` value; any other value lets the planner decide.
+#: label handling by labels value; else planner decides
 _LABEL_RULE = {
     "ko": "Labels are allowed and must be the exact Korean strings from the request, written "
     'into the prompt in quotes beside each element — e.g. Intake ("취수") — never translated '
@@ -89,8 +81,7 @@ _LABEL_RULE = {
     "none": "No text anywhere: no labels, no captions, no letters, no numbers",
 }
 
-#: Rewrites a request into the structured prompt a picture model follows:
-#: subject, composition, relations, labels, closing Style line.
+#: request → structured picture prompt
 _PLANNER_PROMPT = """너는 그림 모델(Gemini Image, GPT Image)에 줄 프롬프트를 쓰는 기획자다.
 아래 요청을 그림 모델이 그대로 따를 수 있는 **영어 프롬프트 하나**로 바꿔라.
 
@@ -156,7 +147,7 @@ _FIGURE_RULE = (
     "하나, 한 가지 주제, 작게 봐도 읽히게. 글자는 넣지 마라.\n"
 )
 
-#: For a picture inside a slide or section: one figure, no text, no page frame.
+#: in-slide/section picture: one figure, no text, no frame
 _FIGURE_CLAUSE = (
     "a single illustrative figure to sit inside a document, not a page of its "
     "own: no text, no words, no letters, no title, no caption, no labels or "
@@ -168,7 +159,7 @@ _DATA_URL = re.compile(r"^data:(image/[a-z+]+);base64,(.+)$", re.S)
 
 
 class ImageError(RuntimeError):
-    """Generation failed; the message is user-facing."""
+    """Generation failed; user-facing message."""
 
 
 @dataclass(slots=True)
@@ -177,13 +168,13 @@ class GeneratedImage:
     mime: str
     input_tokens: int
     output_tokens: int
-    #: Measured from the bytes; `0` when unreadable.
+    #: measured; 0 when unreadable
     width: int = 0
     height: int = 0
 
     @property
     def aspect(self) -> str:
-        """The ratio produced, as `"16:9"`, or `""` when unmeasured."""
+        """Produced ratio ("16:9") or ""."""
         if not self.width or not self.height:
             return ""
         divisor = gcd(self.width, self.height)
@@ -191,7 +182,7 @@ class GeneratedImage:
 
 
 def _measure(data: bytes) -> tuple[int, int]:
-    """`(width, height)`, or `(0, 0)` for bytes Pillow cannot open. Never raises."""
+    """(width, height), or (0, 0); never raises."""
     try:
         with Image.open(io.BytesIO(data)) as image:
             return int(image.width), int(image.height)
@@ -201,18 +192,16 @@ def _measure(data: bytes) -> tuple[int, int]:
 
 
 def honours_aspect(model_id: str) -> bool:
-    """Whether the model honours `image_config.aspect_ratio`. Gemini does; the OpenAI image models
-    return a square.
-    """
+    """Whether the model honours image_config.aspect_ratio (Gemini yes, OpenAI square)."""
     return "gemini" in model_id.lower() or model_id.lower().startswith("google/")
 
 
-#: Ratios the composer offers; 16:9 is the default.
+#: composer ratios; 16:9 default
 OFFERED_ASPECTS: tuple[str, ...] = ("16:9", "9:16", "4:3", "1:1")
 
 
 def aspects_for(model_id: str) -> list[str]:
-    """Ratios the composer offers for this model; published with the model catalogue."""
+    """Composer ratios for this model (published with the catalogue)."""
     return list(OFFERED_ASPECTS) if honours_aspect(model_id) else ["1:1"]
 
 
@@ -225,22 +214,18 @@ def compose_prompt(
     figure: bool = False,
     square_only: bool = False,
 ) -> str:
-    """The prompt as sent: request, figure clause, style, design system, aspect note.
-
-    Later phrases win where two disagree. The stored prompt stays what the
-    person typed.
-    """
+    """Prompt as sent; later phrases win; stored prompt stays as typed."""
     parts = [prompt.strip().rstrip(".").strip()]
     if figure:
         parts.append(_FIGURE_CLAUSE)
     phrase = _STYLE_PHRASE.get(style)
-    # A planned prompt already ends on its own Style line.
+    # planned prompt ends with its own Style line
     if phrase and "\nStyle:" not in prompt:
         parts.append(phrase)
     if design.strip():
         parts.append(design.strip())
     if square_only:
-        # Said so, the model composes for the square instead of clipping a wide picture.
+        # stated so the model composes square instead of clipping
         parts.append(
             "The canvas is square: compose everything to fit fully inside it with a clear "
             "margin on all sides; nothing may touch or cross the edge"
@@ -259,9 +244,7 @@ async def plan(
     model: str,
     api_key: str,
 ) -> tuple[str, dict[str, int]]:
-    """`(prompt, usage)`: the request rewritten by a language model into a structured picture
-    prompt; the request itself when the planner fails.
-    """
+    """(prompt, usage): structured picture prompt, or the request on planner failure."""
 
     label_rule = _LABEL_RULE.get(labels) or (
         "Decide from the request: a diagram or infographic carries short labels in the "
@@ -298,7 +281,7 @@ async def plan(
                 },
             )
             if thinking.refused(model, response):
-                # The same request without the switch the provider refused.
+                # retry without the refused switch
                 body = json.loads(response.request.content or b"{}")
                 body.pop("reasoning", None)
                 body.update(thinking.switch(model))
@@ -331,9 +314,7 @@ def _unfenced(text: str) -> str:
 
 
 def _shape_note(aspect: str) -> str:
-    """The aspect as ratio plus orientation word; models honour the word more reliably than the
-    ratio.
-    """
+    """Aspect as ratio plus orientation word (word honoured more reliably)."""
     try:
         wide, tall = (float(part) for part in aspect.split(":", 1))
     except ValueError:
@@ -348,7 +329,7 @@ def _shape_note(aspect: str) -> str:
 def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
     images = message.get("images") or []
     if not images:
-        # Prose instead of an image: a refusal.
+        # prose instead of an image: refusal
         text = (message.get("content") or "").strip()
         raise ImageError(text[:200] or "이미지를 만들지 못했습니다.")
 
@@ -362,16 +343,14 @@ def _extract(message: dict[str, Any]) -> tuple[bytes, str]:
         raise ImageError("이미지 데이터가 손상되었습니다.") from exc
 
 
-#: Ratios `image_config.aspect_ratio` accepts; other models ignore the field.
+#: image_config.aspect_ratio values; other models ignore it
 _RATIOS = {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
 
 
 async def generate(
     *, base_url: str, api_key: str, model: str, prompt: str, aspect: str = ""
 ) -> GeneratedImage:
-    """One picture, or `ImageError`. `aspect` is sent as `image_config` in addition to the
-    prompt.
-    """
+    """One picture, or ImageError."""
     payload: dict = {
         "model": model,
         "modalities": ["image", "text"],
@@ -408,13 +387,13 @@ async def generate(
         width=width,
         height=height,
         input_tokens=int(usage.get("prompt_tokens") or 0),
-        # `image_tokens` is already included in `completion_tokens`.
+        # image_tokens already in completion_tokens
         output_tokens=int(usage.get("completion_tokens") or 0),
     )
 
 
 def store(user_id: str, image: GeneratedImage) -> tuple[str, str]:
-    """Writes the blob and returns `(file_id, storage_key)`."""
+    """Write the blob: (file_id, storage_key)."""
     file_id = uuid.uuid4().hex
     extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}.get(
         image.mime, "png"

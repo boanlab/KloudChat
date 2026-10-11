@@ -1,24 +1,4 @@
-"""The official processes a person's own agent can start from (진행 과정).
-
-An agent's 진행 과정 is one of three:
-
-- `direct` — 바로 답하기: no base; only what its ticked 묶음 add;
-- `base` — 기본 과정에서 시작: an offered catalogue agent's process (its question card,
-  format, template and pipeline), run as shipped, with the 묶음 a person ticks;
-- `custom` — 직접 구성 (고급): the agent's own steps in the step editor.
-
-A base is an offered catalogue agent (`app/agents/*.toml`, not retired; drafts for
-administrators). Its steps, as a person reads them, are the `[summary]` lines of its file (else
-of the pipeline it runs), at most five. Its 묶음 are the ones its file names, with
-their items' ticks (`services/bundles.py`): picking the base ticks them, and compiling them
-gives the row exactly the check skills and strictness the official agent holds.
-
-A pipeline of the agent's own (`UserPipeline.agent_id`) exists only when a ticked item is a
-step (a chat agent's calculation, an export, a person's bundle with a review or another
-agent); its `@self` step runs the agent's own flow. Shipped bundles never wait for review; a
-person's bundle that exports, reviews or runs another agent does, as a 직접 구성 with those
-does (`needs_review`).
-"""
+"""Official bases (진행 과정) for a person's agent: `direct`, `base`, `custom`."""
 
 from __future__ import annotations
 
@@ -28,7 +8,6 @@ from typing import Any
 from app.pipeline import compose
 from app.services import bundles as bundle_service
 
-#: The `@self` agent step: the agent whose own process the pipeline is, on its own shipped flow.
 SELF = compose.SELF
 
 DIRECT = "direct"
@@ -44,23 +23,21 @@ class Base:
     surface: str
     doc_format: str | None
     template: str | None
-    #: `(summary key, line)` pairs of the pipeline it runs, at most five.
+    #: `(summary key, line)` pairs, at most five
     steps: tuple[tuple[str, str], ...]
-    #: The 묶음 its file names, as stored selections.
+    #: 묶음 named by its file, as stored selections
     bundles: tuple[dict, ...] = ()
-    #: The format checks its flow runs (what 형식 검사 means for it), by name.
+    #: format checks its flow runs
     format_checks: tuple[str, ...] = ()
-    #: Whether it ships 빠진 정보 질문 (its 서식's or its own); a person's agent on it may add
-    #: its own, so 빠진 정보 먼저 묻기 is offered either way.
+    #: ships 빠진 정보 질문 (own or 서식's)
     asks: bool = False
     draft: bool = False
-    #: The official agent's own 진행 과정 설정 (`[process]` in its file), over its 서식's; an
-    #: agent started on it without settings of its own takes them (`put_process`).
+    #: official `[process]` settings over its 서식's; inherited by agents without their own
     process: dict | None = None
 
     @property
     def custom(self) -> bool:
-        """Whether 직접 구성 may start from it: a step can run a document or an answer."""
+        """Whether 직접 구성 may start from it."""
         return self.surface in ("report", "chat")
 
     def wire(self) -> dict[str, Any]:
@@ -75,7 +52,7 @@ class Base:
 
     @property
     def template_name(self) -> str:
-        """What it makes, as the template list calls it (「회의록」), shown beside its name."""
+        """Kind label from the template list (「회의록」)."""
         from app.services import design_templates
 
         found = design_templates.get(self.template) if self.template else None
@@ -96,7 +73,7 @@ def _base(spec: dict) -> Base:
     from app.services import gap_questions, process_settings
 
     surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
-    # The steps as a person reads them: the agent file's `[summary]`, else its pipeline's.
+    # agent file's `[summary]`, else its pipeline's
     summary = dict(spec.get("summary") or {}) or _pipeline_for(spec).summary
     steps = tuple((k, summary[k]) for k in _SUMMARY_ORDER if summary.get(k))[:5]
     process = process_settings.resolve(template_id=spec.get("template"),
@@ -117,24 +94,23 @@ def _base(spec: dict) -> Base:
 
 
 def bases(*, drafts: bool = False) -> list[Base]:
-    """The bases a person may pick, in catalogue order; drafts for administrators."""
+    """Pickable bases in catalogue order; drafts for admins."""
     from app.services import starter
 
     return [_base(spec) for spec in starter.offered_agents(drafts=drafts)]
 
 
 def get(key: str | None, *, drafts: bool = True) -> Base | None:
-    """The base for a catalogue key; None for an unknown or retired one."""
+    """Base for a catalogue key; None if unknown or retired."""
     return next((b for b in bases(drafts=drafts) if b.key == key), None) if key else None
 
 
-#: 문서 형식 → the base offered for it (migration 0060 backfills `agents.base_key` with it).
+#: 문서 형식 → base (migration 0060 backfills `agents.base_key`)
 BY_FORMAT = {"gaejo": "gaejo-report", "minutes": "minutes", "comparison": "comparison-report"}
 
 
 def needs_review(base: Base | None, steps: list[dict[str, Any]]) -> bool:
-    """Whether others may run a 직접 구성 only after an administrator approves it: it exports
-    files, has another model review, or runs another agent."""
+    """Whether a 직접 구성 needs admin approval: exports, model review, or another agent."""
     return any(s.get("kind") in ("export", "review")
                or (s.get("kind") == "agent" and s.get("ref") != SELF)
                for s in compose.normalize(steps))
@@ -142,8 +118,7 @@ def needs_review(base: Base | None, steps: list[dict[str, Any]]) -> bool:
 
 def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
           check_skills: list | None, *, doc_format: str | None = None) -> list[str]:
-    """What the agent does, a line each: its base's steps (no question line when it asks
-    nothing) and what its 묶음 add as steps of their own."""
+    """Agent's step lines: base steps plus 묶음 steps."""
     asking = "gap-check" in (check_skills or [])
     if base is None:
         return ["바로 답합니다", *bundle_service.lines(surface, selections, known,
@@ -166,9 +141,7 @@ def chain(base: Base | None, surface: str, selections: list[dict], known: dict,
 
 def process_of(agent, row, *, owner: bool, known: dict[str, bundle_service.Bundle],
                titles: dict[str, str] | None = None) -> dict[str, Any]:
-    """An agent's 진행 과정 on the wire: `{mode, base, bundles, chain, review, needsReview,
-    steps?}`. `row` is the pipeline it is bound to (None: none); `steps` go to the owner only;
-    `known` is every bundle its selections may name."""
+    """Agent 진행 과정 on the wire; `steps` owner-only."""
     key = agent.catalog_key or getattr(agent, "base_key", None)
     base = get(key)
     surface = agent.surface or next(iter(agent.kinds or []), None) or "chat"

@@ -18,22 +18,20 @@ KST = ZoneInfo("Asia/Seoul")
 
 
 def next_cycle_reset(after: datetime | None = None) -> datetime:
-    """First day of the next month at 00:00 KST, stored as UTC."""
+    """Next month's first day 00:00 KST, as UTC."""
     now = (after or utcnow()).astimezone(KST)
     year, month = (now.year + 1, 1) if now.month == 12 else (now.year, now.month + 1)
     return datetime(year, month, 1, tzinfo=KST).astimezone(UTC)
 
 
 def cycle_start(at: datetime | None = None) -> datetime:
-    """First day of the current month at 00:00 KST, as UTC. The only month boundary the usage
-    screens use.
-    """
+    """Current month's first day 00:00 KST, as UTC; the usage screens' only month boundary."""
     now = (at or utcnow()).astimezone(KST)
     return datetime(now.year, now.month, 1, tzinfo=KST).astimezone(UTC)
 
 
 def grant_initial_allowance(db: AsyncSession, user: User, monthly_credits: int) -> None:
-    """Sets the allowance and opens the first cycle. Caller commits."""
+    """Set allowance and open the first cycle. Caller commits."""
     user.monthly_credits = monthly_credits
     user.credits_used = 0
     user.cycle_resets_at = next_cycle_reset()
@@ -48,9 +46,7 @@ def grant_initial_allowance(db: AsyncSession, user: User, monthly_credits: int) 
 
 
 def set_allowance(db: AsyncSession, user: User, monthly_credits: int) -> None:
-    """Changes the allowance mid-cycle; `credits_used` is untouched, so it may exceed the new
-    allowance.
-    """
+    """Change allowance mid-cycle; `credits_used` untouched (may exceed it)."""
     delta = monthly_credits - user.monthly_credits
     user.monthly_credits = monthly_credits
     if user.cycle_resets_at is None:
@@ -61,9 +57,7 @@ def set_allowance(db: AsyncSession, user: User, monthly_credits: int) -> None:
 
 
 def charge_for_tokens(model: dict, input_tokens: int, output_tokens: int) -> int:
-    """Credits for one turn: per-1k rates for input and output, rounded up, never zero for a priced
-    model.
-    """
+    """Credits for one turn: per-1k in/out rates, rounded up, never zero when priced."""
     per_in = model.get("inputCreditCost") or 0
     per_out = model.get("creditCost") or 0
     if per_in == 0 and per_out == 0:
@@ -73,20 +67,18 @@ def charge_for_tokens(model: dict, input_tokens: int, output_tokens: int) -> int
 
 
 def has_headroom(user: User, model: dict) -> bool:
-    """Pre-flight check: at least one 1k-output turn's worth remains."""
+    """Pre-flight: one 1k-output turn's worth left."""
     per_out = model.get("creditCost") or 0
     if per_out == 0:
         return True
     return user.credits_remaining >= per_out
 
 
-#: Surface by the first segment of a `reason` (`deck.generate` → slides).
-#: `document.*` is absent on purpose: it happens on both document surfaces, so
-#: those callers pass `surface` explicitly.
+#: surface by `reason` prefix; `document.*` omitted (both surfaces), callers pass `surface`
 _SURFACE_OF_REASON = {
     "chat": "chat",
     "report": "report",
-    "page": "report",  # the HTML document track
+    "page": "report",  # HTML document track
     "deck": "slides",
     "image": "image",
     "audio": "av",
@@ -95,7 +87,7 @@ _SURFACE_OF_REASON = {
 
 
 def surface_for(reason: str) -> str | None:
-    """The surface a reason is spoken from, or `None` when it does not say."""
+    """Surface implied by `reason`, or `None`."""
     return _SURFACE_OF_REASON.get(reason.split(".", 1)[0])
 
 
@@ -110,17 +102,11 @@ def settle(
     surface: str | None = None,
     publication_id: str | None = None,
 ) -> None:
-    """Deducts on completion; may overshoot. Caller commits.
-
-    `model` when one model earned the charge; `surface` when `reason` does not
-    say (`document.*`), else derived from it.
-    """
+    """Deduct on completion; may overshoot. Caller commits."""
     if credits <= 0:
         return
     surface = surface or surface_for(reason)
-    # An atomic SQL increment, not read-add-write: two turns of one account settling at
-    # once must both land. It is queued on the session and run at its next flush
-    # (`_apply_credit_deltas`); the loaded object carries the new value for this request.
+    # atomic SQL increment queued for flush (`_apply_credit_deltas`): concurrent turns both land
     info = getattr(getattr(db, "sync_session", db), "info", None)
     if isinstance(info, dict):
         info.setdefault(_DELTAS, []).append((user.id, credits))
@@ -144,7 +130,7 @@ _DELTAS = "kchat_credit_deltas"
 
 @event.listens_for(Session, "before_flush")
 def _apply_credit_deltas(session: Session, _context, _instances) -> None:
-    """The charges `settle` queued, written as one atomic increment each."""
+    """Write queued `settle` charges as atomic increments."""
     for user_id, credits in session.info.pop(_DELTAS, []):
         session.execute(
             update(User)
@@ -153,7 +139,7 @@ def _apply_credit_deltas(session: Session, _context, _instances) -> None:
         )
 
 
-#: Ledger reason of a web search: zero credits, `units` searches, no model.
+#: web search ledger reason: zero credits, `units` searches
 SEARCH_REASON = "search.web"
 
 
@@ -169,7 +155,7 @@ def record_units(
     surface: str | None = None,
     publication_id: str | None = None,
 ) -> None:
-    """A zero-delta ledger row for free work measured in units (seconds, chunks). Caller commits."""
+    """Zero-delta ledger row for free unit-measured work. Caller commits."""
     if units <= 0:
         return
     db.add(
@@ -196,8 +182,7 @@ def record_searches(
     surface: str | None = None,
     publication_id: str | None = None,
 ) -> None:
-    """Web searches a turn ran, one ledger row per turn, so the usage screens can
-    show search volume against the engines' quotas. Free: no credits move. Caller commits."""
+    """Per-turn web search ledger row for quota tracking; free. Caller commits."""
     record_units(
         db,
         user,
@@ -212,13 +197,11 @@ def record_searches(
 
 
 def refill_if_due(db: AsyncSession, user: User, now: datetime | None = None) -> bool:
-    """Resets one account's cycle if due; idempotent. Called wherever the user row is loaded. Caller
-    commits.
-    """
+    """Reset one account's cycle if due; idempotent. Caller commits."""
     now = now or utcnow()
     if user.cycle_resets_at is None or user.cycle_resets_at > now:
         return False
-    # A reset, not a top-up: unused credits expire.
+    # reset, not top-up: unused credits expire
     db.add(
         CreditLedger(
             user_id=user.id,
@@ -233,7 +216,7 @@ def refill_if_due(db: AsyncSession, user: User, now: datetime | None = None) -> 
 
 
 async def refill_due(db: AsyncSession, now: datetime | None = None) -> int:
-    """Resets every due cycle (admin button / cron sweep). Returns how many users were refilled."""
+    """Reset every due cycle (admin/cron); refilled user count."""
     now = now or utcnow()
     users = (
         await db.exec(

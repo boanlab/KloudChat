@@ -1,17 +1,10 @@
-"""Model facts LiteLLM `/model/info` does not report: adapter-only models and overrides.
-
-`ADAPTER_MODELS` lists models LiteLLM does not proxy (video); `MODEL_OVERRIDES`
-corrects rows it proxies but describes incompletely (no `mode`, context window,
-capability flags, or a zero price). Zero-priced remote models are dropped from
-the catalogue by `services/models.py`.
-"""
+"""Model facts missing from LiteLLM `/model/info`: adapter-only models and overrides."""
 
 from __future__ import annotations
 
 from typing import Any
 
-#: Video models, called only via `videogen.submit`. Full per-second prices are
-#: in `videogen._RATES`; `credit_cost` is the cheapest per-second rate.
+#: Video models via `videogen.submit` only; `credit_cost` = cheapest per-second rate.
 ADAPTER_MODELS: list[dict[str, Any]] = [
     {
         "id": "google/veo-3.1-lite",
@@ -55,12 +48,10 @@ ADAPTER_MODELS: list[dict[str, Any]] = [
     },
 ]
 
-# Every entry must also appear in `videogen.ALIASES` to be callable.
+# each entry must also be in `videogen.ALIASES`
 
 
-# Keyed on the reported `model_name`, merged over the `/model/info` row.
-# Image `credit_cost` is per generated image (1 credit = $0.00001); unpriced
-# models drop out of the catalogue and `GET /admin/settings` reports them.
+# keyed on `model_name`, merged over `/model/info`; image credit_cost per image
 MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
     "nano-banana": {
         "label": "Nano Banana",
@@ -80,18 +71,15 @@ MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
         "kinds": ["image"],
         "description": "OpenAI 이미지 생성. 텍스트 렌더링에 강함",
     },
-    # `supports_vision` decides whether an attached picture is sent at all; an
-    # unlisted model is treated as text-only. Only contained models are listed:
-    # the privacy guard reads text and cannot inspect an image. See
-    # `workspace_context.reads_pictures`.
+    # vision only for contained models: privacy guard can't inspect images
     "strict-local/qwen3.8-27b": {"supports_vision": True},
     "strict-local/qwen3.8-flash": {"supports_vision": True},
 }
 
-# Providers whose zero price is real (own hardware); a remote zero means unknown.
+# own-hardware providers: zero price is real
 FREE_PROVIDERS = {"hosted_vllm", "vllm", "local", "openai_like"}
 
-# Loopback and private ranges; a dotless host is a docker service name.
+# loopback/private ranges; dotless host = docker service
 INTERNAL_HOST_PREFIXES = ("localhost", "127.", "10.", "192.168.", "172.", "host.docker.internal")
 
 

@@ -1,10 +1,4 @@
-"""Which table columns hold figures: those are set flush right, the rest stay left.
-
-One rule for every surface — the `.docx`/PDF/`.hwpx` exporters, the HTML a template renders
-(`mark_html` puts `class="fig"` on those cells for the seed's `td.fig` rule) and the web
-editor (`apps/web/src/components/report/figureColumns.ts`, kept equal by a test).
-「주 3일」, 「전면」, 「가능」 are words, so their column stays left; 「51,810,000원」 is a figure.
-"""
+"""Figure columns of tables (flush right); mirrors web figureColumns.ts."""
 
 from __future__ import annotations
 
@@ -12,21 +6,21 @@ import re
 
 from app.services import placeholders
 
-#: A header naming a money or count column; its figures are set flush right.
+#: money/count header; figures flush right
 NUMERIC_HEAD = re.compile(
     r"금액|단가|수량|합계|소계|총액|총계|예산|비용|가격|요금|점수|비율|증감|%"
     r"|(?:^|[\s(（/])(?:천|만|백만|억)?원(?:[)）\s]|$)"
 )
-#: One figure, a unit and citation marks allowed: `51,810,000원`, `12.5%`, `17,280,000[2]`.
+#: one figure with unit/citation marks: `51,810,000원`, `12.5%`, `17,280,000[2]`
 NUMERIC_CELL = re.compile(
     r"^[-+−△▲▼]?\s*\d[\d,]*(?:\.\d+)?\s*"
     r"(?:%p?|원|천원|만원|백만원|억원|명|개|건|회|식|부|대|쪽|MM|M/M|개월|년|일|시간|분|초"
     r"|점|배|kg|km|ms|GB|MB|TB)?"
     r"(?:\s*\[\d+\])*$"
 )
-#: A date reads as a label, not an amount: `2018.11`, `2026-10-23(금)`.
+#: dates are labels, not amounts
 DATE_CELL = re.compile(r"^(?:19|20)\d{2}[.\-/]")
-#: Cells that say there is no figure; they neither make nor break a numeric column.
+#: no-figure cells; neutral for numeric columns
 NO_FIGURE = frozenset(
     {"", "-", "–", "—", "·", "자료 없음", "해당 없음", "미정", "확인 필요", "조건 미확인", "(기입)"}
 )
@@ -36,7 +30,7 @@ _ENTITY = {"&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"',
 
 
 def plain(text: str) -> str:
-    """A cell's words: Markdown emphasis and code markers and HTML tags taken off."""
+    """Cell text without Markdown markers and HTML tags."""
     text = _TAG.sub("", text or "")
     for entity, char in _ENTITY.items():
         text = text.replace(entity, char)
@@ -46,9 +40,7 @@ def plain(text: str) -> str:
 
 
 def figure_columns(rows: list[list[str]]) -> set[int]:
-    """Columns whose body cells are set flush right: a money or count header (금액, 원, 수량,
-    단가, 합계 …) over at least one figure, or a body that is figures throughout (the first
-    column, which names the rows, only by its header)."""
+    """Flush-right columns: money/count header over a figure, or all-figure body."""
     if len(rows) < 2:
         return set()
     head, body = rows[0], rows[1:]
@@ -72,12 +64,12 @@ def figure_columns(rows: list[list[str]]) -> set[int]:
     return out
 
 
-#: The first cell of a total row: 「합계」 「총계」 「총액」 「계」, a note in brackets allowed.
+#: total row first cell: 「합계」 「총계」 「총액」 「계」
 TOTAL_LABEL = re.compile(r"^(?:합\s?계|총\s?계|총\s?액|계)(?:\s*\(.{0,30}\))?$")
 
 
 def is_total(row: list[str]) -> bool:
-    """Whether a body row is the table's total, by its first cell."""
+    """Whether a body row is the total row."""
     return bool(row) and bool(TOTAL_LABEL.match(plain(row[0])))
 
 
@@ -102,8 +94,7 @@ def _mark_table(table: str) -> str:
     rows = [
         [cell.group(3) for cell in _CELL.finditer(row.group(1))] for row in _ROW.finditer(table)
     ]
-    # A spanned cell shifts the columns under it, and a head block's field table is labels
-    # beside values; both are left as they are.
+    # spanned cells and head field tables left as is
     opening = table[: table.index(">") + 1]
     if not rows or "tb-fields" in opening or re.search(r"\b(?:col|row)span=", table, re.I):
         return table
@@ -133,6 +124,5 @@ def _mark_table(table: str) -> str:
 
 
 def mark_html(html: str) -> str:
-    """Every table's figure cells, head included, given `class="fig"`, and its total row
-    `class="total"`."""
+    """All tables: figure cells `class="fig"`, total row `class="total"`."""
     return _TABLE.sub(lambda found: _mark_table(found.group(0)), html or "")

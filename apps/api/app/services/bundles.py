@@ -1,29 +1,4 @@
-"""묶음 (bundles): what an agent does around its writing, in groups a person ticks.
-
-The shipped bundles are data (`app/bundles/*.toml`): 쓰기 전에 준비하기 · 다 쓴 뒤 검토하기 ·
-마무리하기. A person's own bundle is a `UserPipeline` row of `kind = "bundle"` in the same
-shape: a name and a list of items. An item is a pipeline step as `app/pipeline/compose.py`
-stores one (`kind`, `ref`, `settings`) plus `id`, `label` and `default`.
-
-Where an item runs is decided by its kind alone, the same for a shipped bundle and a person's
-(`target`):
-
-- `check` of a check skill with a stage runs inside the agent's own flow
-  (`Agent.check_skills`): `gap-check` asks before writing; `grounding-check` and
-  `generic-language-killer` check, fix once and check again in the report flow's own loop;
-- `option` (`tool_numbers`, `titles`) sets how strict `grounding-check` is
-  (`Agent.check_options`);
-- `flow` (`format-checks`, `repair`) is the report flow's own find → repair → find again,
-  always on where the flow has it;
-- `skill` (`date-calc`, `quote-calc`): a report flow computes them itself; a chat agent runs
-  them as steps before it;
-- `human` `outline`, `review`, `export`, `agent` and `check` `copy-check` are steps of the
-  agent's own pipeline, around its `@self` step.
-
-An agent file (`app/agents/*.toml`) names the bundles it runs (`bundles = [...]`), and the
-seeder compiles them with `compile` exactly as `PUT /agents/{id}/process` compiles a person's
-ticks: the same base and the same bundles make the same agent.
-"""
+"""묶음 (bundles): agent pre/post-writing items; shipped or user, compiled alike."""
 
 from __future__ import annotations
 
@@ -35,13 +10,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent / "bundles"
 SELF = "@self"
-#: The kinds of an item; `option` and `flow` exist only in bundles, the rest are compose steps.
+#: item kinds; option/flow are bundle-only
 KINDS = ("check", "option", "flow", "skill", "human", "review", "export", "agent")
-#: `option` refs: `check_skills.CHECK_OPTIONS`.
+#: option refs: check_skills.CHECK_OPTIONS
 OPTIONS = ("tool_numbers", "titles")
 FLOWS = ("format-checks", "repair")
-#: An item a bundle may hold only once an administrator approved it, before anyone but its
-#: author runs it: it hands files out, sends the text to another model, or runs another agent.
+#: items needing admin approval before non-authors run them (files out, other model, other agent)
 RISKY = ("export", "review")
 
 
@@ -70,7 +44,7 @@ class Item:
 
 @dataclass(frozen=True, slots=True)
 class Bundle:
-    #: A shipped bundle's key, or `user:<row id>` for a person's.
+    #: shipped key or user:<row id>
     ref: str
     name: str
     description: str = ""
@@ -106,7 +80,7 @@ def _item(row: dict, n: int) -> Item:
 
 @cache
 def shipped() -> dict[str, Bundle]:
-    """The shipped bundles, by key, in their order."""
+    """Shipped bundles by key, in order."""
     out = []
     for path in sorted(ROOT.glob("*.toml")):
         raw = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -118,14 +92,13 @@ def shipped() -> dict[str, Bundle]:
 
 
 USER = "user:"
-#: The bundle of a person's own check skills (`skill_specs`: a skill with a `stage`).
+#: user check-skill bundle (skills with a stage)
 MINE = "mine:checks"
 MINE_SKILL = "skill:"
 
 
 def own_checks(rows) -> Bundle | None:
-    """「내 검사 스킬」: a person's skills that declare a stage, one item each, so an agent
-    attaches them the way it ticks a shipped check (`Agent.check_skills` gets `skill:<id>`)."""
+    """「내 검사 스킬」: user stage skills as items (skill:<id>)."""
     from app.services import skill_specs
 
     items = []
@@ -145,7 +118,7 @@ def own_checks(rows) -> Bundle | None:
 
 
 def of_row(row) -> Bundle:
-    """A person's bundle from its `user_pipelines` row (`kind = "bundle"`)."""
+    """User bundle from its user_pipelines row."""
     from app.pipeline import compose
 
     steps = compose.normalize(row.stages)
@@ -157,9 +130,7 @@ def of_row(row) -> Bundle:
 
 
 def target(item: Item, surface: str) -> str | None:
-    """Where an item runs on this surface: `check` / `option` (the agent row), `flow` (the
-    report flow does it anyway), `before` / `after` / `self` (a step of the agent's own
-    pipeline), or None when nothing there can run it."""
+    """Where an item runs here (check/option/flow/before/after/self), or None."""
     from app.services import skill_packages
 
     if surface not in ("report", "chat"):
@@ -167,9 +138,7 @@ def target(item: Item, surface: str) -> str | None:
     kind, ref = item.kind, item.ref
     if kind == "check":
         if ref.startswith(MINE_SKILL):
-            # A person's check skill (`skill:<id>`): its stage rides in the item, read off
-            # its row when the bundle was built (`own_checks`). It runs as an attached check;
-            # one that runs in a stage of its own has no step to run it.
+            # user check skill: stage from the item; own-stage ones have no step
             stage = str(item.settings.get("stage") or "")
             if stage not in skill_packages.STAGES or item.settings.get("own_stage"):
                 return None
@@ -202,9 +171,7 @@ def target(item: Item, surface: str) -> str | None:
 
 
 def export_default(item: Item, doc_format: str | None = None) -> str:
-    """The file an export item makes when ticked without a format: the one its `by_format`
-    names for the agent's document format (마무리하기: HWPX for the 공문 family), else its
-    first `formats`."""
+    """Default export file: by_format for the doc format, else first format."""
     by_format = item.settings.get("by_format")
     if isinstance(by_format, dict) and doc_format and by_format.get(doc_format):
         return str(by_format[doc_format])
@@ -213,7 +180,7 @@ def export_default(item: Item, doc_format: str | None = None) -> str:
 
 def _value(bundle: Bundle, item: Item, ticks: dict[str, Any],
            doc_format: str | None = None) -> Any:
-    """The item's tick: the person's, else its bundle's default. An export's is its format."""
+    """Item tick: user's, else bundle default; export tick is its format."""
     raw = ticks.get(item.id, item.default)
     if item.kind == "export":
         from app.pipeline import compose
@@ -225,7 +192,7 @@ def _value(bundle: Bundle, item: Item, ticks: dict[str, Any],
 
 
 def clean(selections: Any) -> list[dict[str, Any]]:
-    """Selections as stored: `[{"bundle": ref, "items": {id: tick}}]`, each bundle once."""
+    """Stored selections, each bundle once."""
     out, seen = [], set()
     for row in selections if isinstance(selections, list) else []:
         if not isinstance(row, dict):
@@ -243,20 +210,18 @@ def clean(selections: Any) -> list[dict[str, Any]]:
 
 @dataclass(slots=True)
 class Compiled:
-    """What ticked bundles make of an agent: its row fields and, when an item needs one, the
-    steps of its own pipeline."""
+    """Agent row fields and pipeline steps from ticked bundles."""
 
     check_skills: list[str] = field(default_factory=list)
     check_options: dict[str, bool] = field(default_factory=dict)
     steps: list[dict[str, Any]] | None = None
-    #: A person's bundle in use that others may run only once approved.
+    #: user bundle in use needing approval for others
     unapproved: list[str] = field(default_factory=list)
 
 
 def compile(surface: str, selections: list[dict[str, Any]],
             known: dict[str, Bundle], *, doc_format: str | None = None) -> Compiled:
-    """The agent the ticked bundles make on this surface. `known`: every bundle the person
-    may use, by ref; an unknown one is skipped."""
+    """Agent built from ticked bundles on this surface; unknown refs skipped."""
     from app.pipeline import compose
 
     out = Compiled()
@@ -290,12 +255,12 @@ def compile(surface: str, selections: list[dict[str, Any]],
     if before or after:
         steps: list[dict] = []
         if "gap-check" in out.check_skills:
-            # A bound pipeline asks through its own card, not the flow's.
+            # bound pipeline asks via its own card
             steps.append({"kind": "human", "ref": "gaps"})
         steps += before
         if surface == "report" and not any(
                 s["kind"] == "human" and s["ref"] == "outline" for s in before):
-            # The report flow offers its outline before writing; so does its pipeline.
+            # report flow and its pipeline offer the outline first
             steps.append({"kind": "human", "ref": "outline"})
         steps.append({"kind": "agent", "ref": SELF})
         steps += after
@@ -306,9 +271,7 @@ def compile(surface: str, selections: list[dict[str, Any]],
 def settled(surface: str, selections: list[dict[str, Any]],
             known: dict[str, Bundle], *, doc_format: str | None = None
             ) -> list[dict[str, Any]]:
-    """Selections as stored for an agent on this surface: an item nothing here can run (a
-    file export for an agent that answers in chat) is stored off, so the row never says it
-    exports what it cannot."""
+    """Stored selections; unrunnable items stored off."""
     out = []
     for row in clean(selections):
         bundle = known.get(row["bundle"])
@@ -326,8 +289,7 @@ def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
          check_skills: list | None = None,
          check_options: dict | None = None,
          doc_format: str | None = None) -> list[dict[str, Any]]:
-    """The ticked bundles, every item's tick filled in. An agent made before bundles (none
-    stored) shows the shipped ones its checks amount to."""
+    """Ticked bundles with ticks filled; pre-bundle agents map from checks."""
     rows = clean(selections)
     if not rows and check_skills:
         checks = set(check_skills)
@@ -352,7 +314,7 @@ def view(selections: list[dict[str, Any]], known: dict[str, Bundle], *,
 
 def lines(surface: str, selections: list[dict[str, Any]],
           known: dict[str, Bundle], *, doc_format: str | None = None) -> list[str]:
-    """What the ticked bundles add, one plain line per item that runs."""
+    """One plain line per running item."""
     out = []
     for row in clean(selections):
         bundle = known.get(row["bundle"])

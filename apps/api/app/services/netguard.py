@@ -1,14 +1,4 @@
-"""Where a fetch on someone's behalf may go: the public internet, nothing behind it.
-
-A page fetch runs from inside the deployment, next to the database, LiteLLM, the tool
-gateway and whatever else the private network holds. A URL a person types or a model
-picks must not turn that position into a probe of those services (SSRF). The rule is
-by address, not by name: the host is resolved and every address it resolves to has to
-be a public one.
-
-The check happens before the request; a redirect the fetcher follows is the fetcher's
-to check (the Crawl4AI shim does the same check on the address it ended up at).
-"""
+"""SSRF guard: fetches only to public addresses, judged by resolved address, not name."""
 
 from __future__ import annotations
 
@@ -20,7 +10,7 @@ from urllib.parse import urlsplit
 
 _IP = ipaddress.IPv4Address | ipaddress.IPv6Address
 
-#: Names that always mean this machine or this deployment, whatever DNS says.
+#: Names always meaning this machine/deployment, regardless of DNS.
 _INTERNAL_HOSTS = frozenset(
     {
         "localhost",
@@ -30,7 +20,7 @@ _INTERNAL_HOSTS = frozenset(
         "metadata",
     }
 )
-#: Suffixes reserved for local names (RFC 6761/6762) and reverse lookups.
+#: Reserved local suffixes (RFC 6761/6762) and reverse lookups.
 _INTERNAL_SUFFIXES = (".localhost", ".local", ".internal", ".arpa", ".home.arpa")
 
 SCHEME = "http(s) 주소만 읽을 수 있습니다."
@@ -41,12 +31,7 @@ Resolver = Callable[[str], Awaitable[list[str]]]
 
 
 def is_public(address: _IP) -> bool:
-    """Whether an address belongs to the public internet.
-
-    `is_global` follows the IANA special-purpose registries: loopback, private, link-local,
-    carrier-grade NAT (100.64/10), documentation and reserved ranges are all excluded.
-    Multicast and an IPv4 address carried inside IPv6 are handled explicitly.
-    """
+    """Whether an address is public internet (is_global, plus multicast and IPv4-mapped IPv6)."""
     mapped = getattr(address, "ipv4_mapped", None)
     if mapped is not None:
         return is_public(mapped)
@@ -63,10 +48,7 @@ async def _system_resolver(host: str) -> list[str]:
 
 
 async def refusal(url: str, *, resolve: Resolver | None = None) -> str | None:
-    """Why `url` may not be fetched, in the reader's words; None when it may.
-
-    `resolve` stands in for DNS in tests.
-    """
+    """Why `url` may not be fetched (reader-facing), or None; `resolve` replaces DNS in tests."""
     parts = urlsplit(url.strip())
     if parts.scheme.lower() not in ("http", "https"):
         return SCHEME
@@ -82,7 +64,7 @@ async def refusal(url: str, *, resolve: Resolver | None = None) -> str | None:
     literal = _literal(host)
     if literal is not None:
         return None if is_public(literal) else INTERNAL
-    # A dotless name is a service on this deployment's network (`litellm`, `kloudchat-db`).
+    # dotless name = service on the deployment network
     if "." not in host:
         return INTERNAL
 
@@ -100,11 +82,7 @@ async def refusal(url: str, *, resolve: Resolver | None = None) -> str | None:
 
 
 def _literal(host: str) -> _IP | None:
-    """The host as an IP address literal, or None for a name.
-
-    Only the dotted-quad and RFC 4291 forms count; `0x7f000001`, `2130706433` and
-    `127.1` are names here and are refused as dotless or resolved and judged.
-    """
+    """Host as an IP literal, or None; only dotted-quad and RFC 4291 forms count."""
     try:
         return ipaddress.ip_address(host)
     except ValueError:

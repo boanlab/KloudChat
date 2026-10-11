@@ -1,4 +1,4 @@
-"""Prometheus text format: just enough to read vLLM and gpu-exporter."""
+"""Minimal Prometheus text parser for vLLM and gpu-exporter."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import math
 import re
 from dataclasses import dataclass
 
-# Bounded: one line is at most a few kilobytes in practice.
+# bounded line length
 _LINE = re.compile(r"^([A-Za-z_:][A-Za-z0-9_:]{0,200})(?:\{(.{0,4000})\})?\s+(\S{1,64})")
 _LABEL = re.compile(r'([A-Za-z_][A-Za-z0-9_]{0,100})="((?:[^"\\]|\\.){0,1000})"')
 _MAX_LINE = 8192
@@ -39,13 +39,13 @@ def parse(text: str) -> list[Sample]:
 
 
 def total(samples: list[Sample], name: str) -> float | None:
-    """Sum over every label set of `name`, or None when absent."""
+    """Sum of `name` over label sets, or None."""
     values = [s.value for s in samples if s.name == name]
     return sum(values) if values else None
 
 
 def buckets(samples: list[Sample], family: str) -> dict[float, float]:
-    """Cumulative histogram counts by upper bound, summed across label sets."""
+    """Cumulative histogram counts by bound, summed over label sets."""
     out: dict[float, float] = {}
     for s in samples:
         if s.name == f"{family}_bucket" and "le" in s.labels:
@@ -55,7 +55,7 @@ def buckets(samples: list[Sample], family: str) -> dict[float, float]:
 
 
 def delta(cur: dict[float, float], prev: dict[float, float] | None) -> dict[float, float]:
-    """Counts observed between two scrapes; a counter reset keeps the current counts."""
+    """Counts between two scrapes; counter reset keeps current counts."""
     if not prev:
         return {}
     diff = {le: cur[le] - prev.get(le, 0.0) for le in cur}
@@ -65,7 +65,7 @@ def delta(cur: dict[float, float], prev: dict[float, float] | None) -> dict[floa
 
 
 def quantile(hist: dict[float, float], q: float) -> float | None:
-    """`histogram_quantile` over cumulative counts; None with no observations."""
+    """`histogram_quantile` over cumulative counts; None if empty."""
     if not hist:
         return None
     bounds = sorted(hist)

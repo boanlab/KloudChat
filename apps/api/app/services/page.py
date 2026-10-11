@@ -1,10 +1,4 @@
-"""Writing an HTML artifact, block by block.
-
-Two-pass like the `report` and `deck` tracks: an outline call names the
-blocks, then each block is written on its own call. The model writes only the
-inside of a block; `design_templates.assemble` places it in the seed's
-structure, so an off-vocabulary answer degrades to a plain paragraph.
-"""
+"""HTML artifact writing: outline call, then one call per block."""
 
 from __future__ import annotations
 
@@ -26,18 +20,18 @@ from app.services.design_templates import DesignTemplate
 
 log = logging.getLogger(__name__)
 
-#: One model call per block, so this is the multiplier on the bill.
+#: one call per block: bill multiplier
 _MIN_BLOCKS = 4
 _MAX_BLOCKS = 24
-#: Deck templates get the slide track's ceiling.
+#: deck templates: slide track ceiling
 _MAX_SLIDES = 50
-#: Ceiling when no count was asked for.
+#: ceiling when no count asked
 _DEFAULT_MAX = 10
 
-#: Waits between retries of a rate-limited call, in seconds.
+#: 429 retry waits (s)
 _BACKOFF = (2.0, 6.0)
 
-#: ```html … ``` — models fence markup even when told not to.
+#: models fence markup anyway
 _FENCE = re.compile(r"^\s*```[A-Za-z]*\s*\n(.*?)\n?\s*```\s*$", re.S)
 
 _OUTLINE_PROMPT = """다음 요청에 맞는 {noun}의 제목과 구성을 만들어라.
@@ -82,7 +76,7 @@ HTML 조각만 답하라. 설명, 코드 울타리, `<html>`·`<body>`·`<style>
 
 원래 요청: {request}"""
 
-#: What each surface calls its parts, so the prompts read naturally.
+#: surface part names for prompts
 _WORDS = {
     "deck": ("발표 자료", "장"),
     "document": ("문서", "절"),
@@ -96,7 +90,7 @@ def _text(payload: dict[str, Any]) -> str:
 async def _complete(
     model: str, messages: list[dict[str, str]], api_key: str, max_tokens: int
 ) -> tuple[str, dict[str, int]]:
-    """One non-streaming call with 429 retry. Same contract as `deck._complete`."""
+    """One non-streaming call with 429 retry; same contract as `deck._complete`."""
     base, _ = await settings_store.litellm_config()
     async with httpx.AsyncClient(
         base_url=base.rstrip("/"),
@@ -110,7 +104,7 @@ async def _complete(
                     "model": model,
                     "messages": messages,
                     "max_tokens": max_tokens,
-                    # See `thinking.switch`: off where the provider allows it.
+                    # off where the provider allows (`thinking.switch`)
                     **thinking.switch(model),
                 },
             )
@@ -124,15 +118,14 @@ async def _complete(
                 )
             if response.status_code != 429 or attempt == len(_BACKOFF):
                 break
-            # A token-per-minute 429 names when its window resets; wait for that.
+            # TPM 429 names its window reset
             delay = ratelimit.retry_delay(response.text, dict(response.headers), _BACKOFF[attempt])
             log.info("page call rate limited, retrying in %.0fs", delay)
             await asyncio.sleep(delay)
         response.raise_for_status()
         payload = response.json()
 
-    # A reasoning model can spend the whole ceiling thinking and return an
-    # empty answer; see `services/thinking.py`.
+    # reasoning model may spend the whole ceiling thinking (`services/thinking.py`)
     if bigger := thinking.starved(payload, max_tokens):
         log.info("%s: answer starved by reasoning, re-asking with %s tokens", model, bigger)
         async with httpx.AsyncClient(
@@ -150,7 +143,7 @@ async def _complete(
                 },
             )
             if again.status_code >= 400:
-                # One retry of the re-ask, without the switch.
+                # one retry of the re-ask, without the switch
                 again = await client.post(
                     "/v1/chat/completions",
                     json={"model": model, "messages": messages, "max_tokens": bigger},
@@ -159,7 +152,7 @@ async def _complete(
             retried = again.json()
             spent = retried.get("usage") or {}
             first = payload.get("usage") or {}
-            # Both calls are charged, so both are counted.
+            # both calls charged and counted
             payload = retried
             payload["usage"] = {
                 "prompt_tokens": int(first.get("prompt_tokens") or 0)
@@ -176,7 +169,7 @@ async def _complete(
 
 
 def _json_object(text: str) -> dict[str, Any]:
-    """The first JSON object in a reply that may be fenced or prefaced."""
+    """First JSON object in a possibly fenced or prefaced reply."""
     body = _FENCE.sub(r"\1", text.strip())
     start, end = body.find("{"), body.rfind("}")
     if start < 0 or end <= start:
@@ -188,12 +181,12 @@ def _json_object(text: str) -> dict[str, Any]:
 
 
 def _ceiling(template: DesignTemplate | None) -> int:
-    """How many blocks one document may run to: slides get the deck's room."""
+    """Block ceiling; slides get the deck's."""
     return _MAX_SLIDES if template is not None and template.kind == "deck" else _MAX_BLOCKS
 
 
 def requested_blocks(request: str, template: DesignTemplate | None = None) -> int | None:
-    """A count stated in the request, clamped. `None` if unstated."""
+    """Clamped count stated in the request, or `None`."""
     match = re.search(r"(\d{1,3})\s*(?:장|페이지|절|쪽|개)", request)
     if not match:
         return None
@@ -201,12 +194,12 @@ def requested_blocks(request: str, template: DesignTemplate | None = None) -> in
     return max(_MIN_BLOCKS, min(asked, _ceiling(template))) if asked > 0 else None
 
 
-#: `{"title": "…", "layout": "…"}` even when a quote is missing from a key.
+#: `{"title": "…", "layout": "…"}` despite missing key quotes
 _SALVAGE = re.compile(r'\{[^{}]*?title"?\s*:\s*"([^"]+)"[^{}]*?layout"?\s*:\s*"([^"]+)"', re.S)
 
 
 def _salvaged(text: str) -> dict[str, Any]:
-    """A plan pulled out of malformed JSON, or `{}`."""
+    """Plan salvaged from malformed JSON, or `{}`."""
     blocks = [
         {"title": title.strip(), "layout": layout.strip()}
         for title, layout in _SALVAGE.findall(text)
@@ -218,7 +211,7 @@ def _salvaged(text: str) -> dict[str, Any]:
 
 
 def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[str, str]]]:
-    """`(title, blocks)`, with unknown layouts coerced to the first body layout."""
+    """`(title, blocks)`; unknown layouts → first body layout."""
     data = _json_object(text) or _salvaged(text)
     title = str(data.get("title") or "").strip()
     fallback = template.layouts[1] if len(template.layouts) > 1 else template.layouts[0]
@@ -236,18 +229,14 @@ def _parse_outline(text: str, template: DesignTemplate) -> tuple[str, list[dict[
                 "layout": layout if layout in template.layouts else fallback,
             }
         )
-    # The first block is always the template's cover layout.
+    # first block = template cover
     if blocks:
         blocks[0]["layout"] = template.layouts[0]
     return title, blocks[: _ceiling(template)]
 
 
 def _guide(template: DesignTemplate) -> str:
-    """The template's rules, its layout vocabulary, and its blank form when it ships one.
-
-    The form's guidance lines are addressed to a person filling it in, so the
-    form arrives labelled as a shape rather than as text to keep.
-    """
+    """Template rules, layout vocabulary, and blank form labelled as shape (not text to keep)."""
     rules = template.instructions
     if template.markup:
         rules = f"{rules}\n\n{template.markup}" if rules else template.markup
@@ -278,7 +267,7 @@ def _citation_rule(findings: research.Findings, kind: str) -> str:
 
 
 def _fragment(text: str, template: DesignTemplate) -> str:
-    """One block's markup: unfenced, stray ideographs read back into Hangul, sanitised."""
+    """One block's markup: unfenced, ideographs read back to Hangul, sanitised."""
     clean, _ = hangul.read_back(text.strip())
     return templates.sanitise(_FENCE.sub(r"\1", hangul.tidy_spacing(clean)), template.layouts)
 
@@ -292,23 +281,18 @@ async def write(
     tokens: dict[str, str] | None = None,
     trusted_context: list[str] | None = None,
     untrusted_context: list[str] | None = None,
-    #: The model that plans; empty means the writer plans too.
+    #: planner; empty = writer plans
     outline_model: str = "",
-    #: A plan somebody approved. Absent, this plans and stops with `proposal`
-    #: (or `needs`); present, it writes exactly what was approved.
+    #: approved plan: absent → plan and stop with `proposal`/`needs`; present → write it
     approved_plan: dict[str, Any] | None = None,
-    #: Whether this pass may stop to ask. False on the pass after "있는 자료로 진행".
+    #: False after "있는 자료로 진행"
     may_ask: bool = True,
-    #: Whether to research the request before the outline.
+    #: research before the outline
     web_search: bool = True,
     project_sources: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Streams `step`, `title`, `block`, a final `page` and one `usage` event.
-
-    The caller owns persistence, billing and the artifact. A block that fails
-    is left empty and the rest continues.
-    """
-    # Planning is counted apart from writing because it can run on another model.
+    """Streams `step`, `title`, `block`, `page`, `usage`; failed blocks left empty."""
+    # planning counted apart: may run on another model
     usage = {
         "inputTokens": 0,
         "outputTokens": 0,
@@ -320,8 +304,7 @@ async def write(
     surface = template.surface
 
     findings = research.Findings()
-    # Availability is checked before the step is drawn, so a deployment with no
-    # search backend does not report "no sources" on every document.
+    # check first: no "no sources" step without a search backend
     if web_search and await research.available():
         yield {"type": "step", "id": "sources", "label": "자료 찾는 중", "status": "running"}
         findings = await research.run(request, model=outline_model or model, api_key=api_key)
@@ -386,8 +369,7 @@ async def write(
             "projectExcluded": project_excluded,
         },
     }
-    # Search switched off needs no disclaimer; a search that could not run and
-    # one that found nothing are told apart.
+    # no disclaimer when search is off; failed vs empty search told apart
     research_rule = ""
     if web_search and not findings.searched:
         research_rule = research.UNRESEARCHED_RULE
@@ -439,7 +421,7 @@ async def write(
             return
 
         plan_rules.count(usage, spent, planned_apart=bool(outline_model))
-        # A question instead of a plan — see `grounding.ASK_RULE`.
+        # question instead of plan (`grounding.ASK_RULE`)
         if may_ask and (asked := grounding.parse_needs(text)):
             yield {"type": "step", "id": "outline", "label": "확인이 필요합니다", "status": "done"}
             yield {"type": "needs", "questions": [q.wire() for q in asked]}
@@ -447,8 +429,7 @@ async def write(
             return
         title, plan = _parse_outline(text, template)
 
-        # A flat plan is re-asked once, naming the missing layouts; the second
-        # answer is kept only if it is less flat.
+        # flat plan re-asked once; kept only if less flat
         missing = plan_rules.flat_layouts(plan, template.layouts[1:]) if plan else []
         if missing:
             log.info("page outline flat for %s, unused: %s", template.id, ",".join(missing))
@@ -468,7 +449,7 @@ async def write(
                 else:
                     log.info("page outline still flat for %s, keeping the first", template.id)
         if not plan:
-            # The raw answer is logged: it is the only way to tell a refusal from malformed JSON.
+            # raw answer logged: refusal vs malformed JSON
             log.warning("page outline unparseable for %s: %s", template.id, text[:300])
             yield {"type": "step", "id": "outline", "label": "구성 잡는 중", "status": "error"}
             yield {
@@ -485,7 +466,7 @@ async def write(
             "status": "done",
             "detail": " · ".join(item["title"] for item in plan),
         }
-        # Planning stops here; the caller stores the proposal and calls back with it approved.
+        # planning stops; caller stores the proposal
         yield {
             "type": "proposal",
             "plan": {
@@ -522,7 +503,7 @@ async def write(
 
     for index, block in enumerate(blocks):
         heading = str(block["title"])
-        # Same progress shape as the slide and report tracks.
+        # same progress shape as slides/report
         progress = {"current": index + 1, "total": len(blocks)}
         yield {
             "type": "step",
@@ -601,7 +582,7 @@ async def rewrite_block(
     api_key: str,
     note: str = "",
 ) -> tuple[str, dict[str, int]]:
-    """Rewrites one block's markup under the first pass's prompt, with the rest as context."""
+    """Rewrite one block under the first pass's prompt, rest as context."""
     target = blocks[index]
     noun, unit = _WORDS.get(template.kind, ("문서", "절"))
     outline = "\n".join(f"{i + 1}. {b.get('title') or ''}" for i, b in enumerate(blocks))
@@ -621,7 +602,7 @@ async def rewrite_block(
         request=request[:1200],
     )
     if note.strip():
-        # Last and labelled, so it does not read as part of the original request.
+        # last and labelled: not part of the original request
         prompt += f"\n\n이번에 다시 쓰는 이유(반드시 반영):\n{note.strip()[:600]}"
 
     text, usage = await _complete(
@@ -634,7 +615,7 @@ async def rewrite_block(
 
 
 def filled(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The blocks that say something; what billing and the message count."""
+    """Non-empty blocks (billing, message count)."""
     return [b for b in blocks if (b.get("html") or "").strip()]
 
 

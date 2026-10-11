@@ -1,9 +1,4 @@
-"""Conservative, privacy-preserving routing for explicitly Auto sessions.
-
-The application owns this decision rather than LiteLLM so account allowlists,
-privacy policy, billing and the transcript all agree on the model that ran.
-Every uncertain state keeps the user's quality model.
-"""
+"""Privacy-preserving Auto routing, app-owned; any uncertainty keeps the quality model."""
 
 from __future__ import annotations
 
@@ -20,12 +15,11 @@ from app.services import settings_store
 log = logging.getLogger(__name__)
 
 CLASSIFIER_VERSION = "auto-cost-2026-09-03.v2"
-#: Cap on the whole answer-model envelope (system prompt, tool definitions, history) the
-#: classifier reads; above it Auto refuses to route. Must fit an ordinary chat envelope.
+#: classifier envelope cap; above it Auto doesn't route
 MAX_CLASSIFIER_CHARS = 80_000
 MIN_LOW_CONFIDENCE = 0.9
 MIN_HIGH_CONFIDENCE = 0.9
-# Room for the system wrapper and an answer in the candidate's context window.
+# system wrapper + answer reserve
 _CONTEXT_RESERVE_TOKENS = 2_048
 _OUTPUT_REASONS = frozenset(
     {
@@ -72,11 +66,7 @@ def classifier_context(
     messages: list[dict[str, str]],
     tool_definitions: list[dict[str, Any]] | None = None,
 ) -> str | None:
-    """The full answer-model envelope (messages plus tool definitions) as JSON, or None when over
-    `MAX_CLASSIFIER_CHARS`.
-
-    Never truncated: the classifier must see exactly what the answer model sees.
-    """
+    """Full answer-model envelope as JSON, never truncated; None over `MAX_CLASSIFIER_CHARS`."""
     payload: dict[str, Any] = {"messages": messages}
     if tool_definitions:
         payload["qualityModelTools"] = tool_definitions
@@ -88,7 +78,7 @@ def classifier_context(
 
 
 def estimated_context_tokens(parts: list[str]) -> int:
-    """UTF-8 byte count as a conservative token upper bound (a BPE token is at least one byte)."""
+    """UTF-8 bytes as a token upper bound."""
     return max(1, sum(len(part.encode("utf-8")) for part in parts))
 
 
@@ -130,26 +120,22 @@ def economy_is_baseline_usable(
         and (not allowed_model_ids or model_id in allowed_model_ids)
         and "chat" in model.get("kinds", [])
         and model.get("privacyOnly") is not True
-        # `hybrid` is admitted here; `economy_candidates` checks it against
-        # the quality model's boundary.
+        # `hybrid` checked later in `economy_candidates`
         and model.get("dataBoundary") not in {"unknown", None}
     )
 
 
-#: `hybrid` may fall back outside mid-turn and `unknown` is no boundary, so
-#: both rank with `external`.
+#: hybrid (mid-turn fallback) and unknown rank as external
 _BOUNDARY_RANK = {"self_hosted": 0, "hybrid": 1, "external": 1, "unknown": 1}
 
 
 def widens_boundary(candidate: dict[str, Any], chosen: dict[str, Any]) -> bool:
-    """True when `candidate` would send data further than `chosen`; routing may never widen the
-    boundary.
-    """
+    """True when `candidate` widens the data boundary beyond `chosen` (never allowed)."""
     if _BOUNDARY_RANK.get(str(candidate.get("dataBoundary")), 1) > _BOUNDARY_RANK.get(
         str(chosen.get("dataBoundary")), 1
     ):
         return True
-    # Strict-local is stronger than self-hosted: no external fallback at all.
+    # strict-local: no external fallback at all
     return bool(chosen.get("strictLocal")) and not candidate.get("strictLocal")
 
 
@@ -162,9 +148,7 @@ def quality_candidates(
     context_tokens: int,
     requires_tools: bool,
 ) -> list[dict[str, Any]]:
-    """Upgrade candidates in the administrator's order (not a price sort). An upgraded call keeps
-    its tools.
-    """
+    """Upgrade candidates in admin order; keep tools."""
     by_id = {str(model.get("id")): model for model in catalogue}
     valid: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -184,7 +168,7 @@ def quality_candidates(
         if model_id == str(quality_model.get("id")):
             continue
         context_window = _non_negative_int(model.get("contextWindow")) or 0
-        # An unstated window is admitted here (unlike the economy lane).
+        # unstated window admitted (unlike economy)
         if context_window and context_tokens + _CONTEXT_RESERVE_TOKENS > context_window:
             continue
         if requires_tools and model.get("supportsTools") is not True:
@@ -202,9 +186,7 @@ def economy_candidates(
     context_tokens: int,
     requires_tools: bool,
 ) -> list[dict[str, Any]]:
-    """Economy candidates in the administrator's order: cheaper, no wider boundary, window large
-    enough. Routed economy calls get no tools.
-    """
+    """Economy candidates in admin order: cheaper, no wider boundary, enough window; no tools."""
     by_id = {str(model.get("id")): model for model in catalogue}
     quality_in = _non_negative_int(quality_model.get("inputCreditCost"))
     quality_out = _non_negative_int(quality_model.get("creditCost"))
@@ -223,8 +205,7 @@ def economy_candidates(
             continue
         assert model is not None
         boundary = str(model.get("dataBoundary") or "unknown")
-        # External only under an external quality model; hybrid (may fall
-        # back outside mid-turn) only under hybrid or external.
+        # external only under external quality; hybrid under hybrid/external
         if boundary == "external" and quality_boundary != "external":
             continue
         if boundary == "hybrid" and quality_boundary not in ("hybrid", "external"):
@@ -253,9 +234,7 @@ async def classify(
     user_id: str,
     api_key: str,
 ) -> Classification | None:
-    """Classifies with the strict-local model; None on any failure or malformed answer (keep the
-    quality model).
-    """
+    """Classify with the strict-local model; None on failure (keep quality model)."""
     base_url, _ = await settings_store.litellm_config()
     if not base_url or not api_key:
         return None

@@ -1,43 +1,38 @@
-"""Lexical retrieval over an agent's own documents, used by the `search_knowledge` tool.
-
-Scoring is term containment plus character bigrams (bigrams carry Korean, where
-whitespace tokens include particles). Runs with no backend; `merge()` combines
-this ranking with the vector index's.
-"""
+"""Lexical retrieval over an agent's documents (`search_knowledge`)."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-#: Characters per chunk.
+#: chars per chunk
 _CHUNK = 900
-#: Characters each chunk repeats of the previous one.
+#: chars repeated from the previous chunk
 _OVERLAP = 150
-#: Terms shorter than this match everything.
+#: shorter terms match everything
 _MIN_TERM = 2
 
 
 @dataclass(slots=True)
 class Passage:
-    """One retrieved chunk, with enough to cite it."""
+    """Retrieved chunk with citation info."""
 
     document: str
-    #: 1-based.
+    #: 1-based
     index: int
     text: str
     score: float
     source_url: str | None = None
-    #: The article (「제12조(휴학)」) the passage sits under, when the document has articles.
+    #: article (「제12조(휴학)」) the passage sits under
     section: str = ""
-    #: The page it starts on, when the text carries page marks (a PDF's 「[페이지 3]」).
+    #: start page from 「[페이지 3]」 marks
     page: int | None = None
-    #: The document's 시행일/개정일 as written in it (「시행 2025. 3. 1.」), when it states one.
+    #: 시행일/개정일 as written
     dated: str = ""
 
     @property
     def label(self) -> str:
-        """How the passage is cited: 「학칙 · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.」."""
+        """Citation form: 「학칙 · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.」."""
         parts = [self.document]
         if self.section:
             parts.append(self.section)
@@ -53,8 +48,7 @@ def _body(text: str) -> str:
 
 
 def _spans(body: str) -> list[tuple[int, str]]:
-    """`(start, piece)`: overlapping windows over `body`, cut at a paragraph or sentence break
-    where one is near."""
+    """`(start, piece)` overlapping windows, cut near paragraph/sentence breaks."""
     chunks: list[tuple[int, str]] = []
     start = 0
     while start < len(body):
@@ -62,7 +56,7 @@ def _spans(body: str) -> list[tuple[int, str]]:
         if end < len(body):
             window = body[start:end]
             cut = max(window.rfind("\n\n"), window.rfind(". "), window.rfind("다.\n"))
-            # Back half only, so a heading alone never becomes a chunk.
+            # back half only: no heading-only chunk
             if cut > _CHUNK // 2:
                 end = start + cut
         raw = body[start:end]
@@ -76,17 +70,17 @@ def _spans(body: str) -> list[tuple[int, str]]:
 
 
 def chunk(text: str) -> list[str]:
-    """Overlapping windows, cut at a paragraph or sentence break where one is near."""
+    """Overlapping windows cut near paragraph/sentence breaks."""
     return [piece for _, piece in _spans(_body(text))]
 
 
-#: An article heading of a Korean regulation: 「제12조(휴학)」, 「제3조의2 (적용 범위)」.
+#: Korean regulation article heading
 _ARTICLE = re.compile(
     r"(?m)^[ \t]{0,4}(제[ \t]{0,2}\d{1,4}[ \t]{0,2}조(?:의[ \t]{0,2}\d{1,3})?"
     r"(?:[ \t]{0,2}\([^()\n]{1,40}\))?)")
-#: A page mark the PDF extractor writes (`files._from_pdf`).
+#: PDF page mark (`files._from_pdf`)
 _PAGE = re.compile(r"\[페이지 (\d{1,5})\]")
-#: 「시행 2025. 3. 1.」「2024.2.28. 개정」「2025년 3월 1일부터 시행한다」.
+#: 「시행 2025. 3. 1.」「2024.2.28. 개정」「2025년 3월 1일부터 시행한다」
 _DATE = r"(\d{4})[ \t]{0,2}(?:\.|년|-)[ \t]{0,2}(\d{1,2})[ \t]{0,2}(?:\.|월|-)[ \t]{0,2}(\d{1,2})"
 _DATED = re.compile(
     r"(시행|개정|제정)[ \t]{0,3}:?[ \t]{0,2}" + _DATE
@@ -100,9 +94,7 @@ def _article(heading: str) -> str:
 
 
 def _section_at(body: str, start: int, piece: str, query: str = "") -> str:
-    """The article a passage belongs to: the one in force where it starts (or the first it
-    opens with). A passage running over several articles is cited by the one the question
-    matches best."""
+    """Article of a passage: in force at its start; multi-article passages by best query match."""
     heads = list(_ARTICLE.finditer(piece))
     before = None
     for match in _ARTICLE.finditer(body, 0, start + 1):
@@ -123,7 +115,7 @@ def _section_at(body: str, start: int, piece: str, query: str = "") -> str:
 
 
 def _page_of(body: str, start: int, piece: str, section: str) -> int | None:
-    """The page the cited article's part of the passage is on."""
+    """Page of the cited article's part."""
     at = 0
     if section:
         for match in _ARTICLE.finditer(piece):
@@ -142,7 +134,7 @@ def _page_at(body: str, start: int, piece: str) -> int | None:
 
 
 def dated(text: str) -> str:
-    """The document's latest 시행일 (else 개정일, else 제정일) as written in it, or ""."""
+    """Latest 시행일 (else 개정일, 제정일) as written, or ""."""
     found: dict[str, tuple[int, int, int]] = {}
     for match in _DATED.finditer((text or "")[:200_000]):
         if match.group(1):
@@ -165,12 +157,12 @@ def dated(text: str) -> str:
 
 
 def _terms(text: str) -> set[str]:
-    """Whitespace tokens, lowercased, punctuation stripped."""
+    """Lowercased tokens, punctuation stripped."""
     return {t for t in re.split(r"[^0-9A-Za-z가-힣]+", text.lower()) if len(t) >= _MIN_TERM}
 
 
 def _bigrams(text: str) -> set[str]:
-    """Character bigrams over letters only."""
+    """Letter-only character bigrams."""
     letters = re.sub(r"[^0-9a-z가-힣]+", "", text.lower())
     return {letters[i : i + 2] for i in range(len(letters) - 1)}
 
@@ -181,10 +173,7 @@ def _flatten(text: str) -> str:
 
 
 def score(query: str, passage: str) -> float:
-    """0–1: term containment and bigram overlap, measured against the query.
-
-    Containment rather than token equality, because Korean particles attach to words.
-    """
+    """0–1 term containment + bigram overlap vs the query (containment: Korean particles)."""
     q_terms, q_grams = _terms(query), _bigrams(query)
     if not q_terms and not q_grams:
         return 0.0
@@ -196,7 +185,7 @@ def score(query: str, passage: str) -> float:
     return round(0.65 * term_hit + 0.35 * gram_hit, 4)
 
 
-#: Minimum score for a passage to be returned.
+#: min passage score
 _FLOOR = 0.12
 
 
@@ -206,7 +195,7 @@ def search(
     *,
     limit: int = 4,
 ) -> list[Passage]:
-    """Best passages across `(name, text, source_url)` documents, at most two per document."""
+    """Best passages over `(name, text, source_url)`, ≤2 per document."""
     scored: list[Passage] = []
     for name, text, url in documents:
         body = _body(text)
@@ -233,7 +222,7 @@ def search(
     return scored[:limit]
 
 
-#: Total characters below which every document is returned whole, unranked.
+#: below this total, every document returned whole
 _WHOLE_SHELF = 12_000
 
 
@@ -243,8 +232,7 @@ def gather(
     *,
     limit: int = 4,
 ) -> tuple[list[Passage], bool]:
-    """`(passages, ranked)`: whole shelf if small, best passages otherwise. A small document
-    with articles comes back an article at a time, so each can be cited by its own number."""
+    """`(passages, ranked)`: whole small shelf (split by article) or best passages."""
     total = sum(len(text) for _, text, _ in documents)
     if total <= _WHOLE_SHELF:
         out: list[Passage] = []
@@ -257,7 +245,7 @@ def gather(
 
 
 def _articles(name: str, body: str, url: str | None) -> list[Passage]:
-    """A whole document, split at its article headings when it has two or more."""
+    """Whole document, split at article headings when ≥2."""
     when = dated(body)
     heads = list(_ARTICLE.finditer(body))
     if len(heads) < 2:
@@ -276,8 +264,7 @@ def _articles(name: str, body: str, url: str | None) -> list[Passage]:
 
 
 def render(passages: list[Passage]) -> str:
-    """Tool output: each passage under a numbered 「자료:」 line the turn renumbers and the
-    answer cites (`agent._number_sources`)."""
+    """Tool output: passages under numbered 「자료:」 lines (`agent._number_sources`)."""
     if not passages:
         return ""
     return "\n\n".join(
@@ -288,12 +275,12 @@ def render(passages: list[Passage]) -> str:
     )
 
 
-#: Vector share of the merged score.
+#: vector share of merged score
 _VECTOR_WEIGHT = 0.6
 
 
 def merge(vector: list[dict], lexical: list[Passage], *, limit: int = 4) -> list[Passage]:
-    """One ranked list from both retrievers, matched on `(document, index)`."""
+    """Merged ranking of both retrievers by `(document, index)`."""
     merged: dict[tuple[str, int], Passage] = {}
     for row in vector:
         key = (str(row.get("document") or ""), int(row.get("index") or 0))

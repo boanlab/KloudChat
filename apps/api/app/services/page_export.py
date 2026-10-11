@@ -1,9 +1,4 @@
-"""Reads an HTML artifact back into the shapes `deck_export` and `report_export` render.
-
-Structural, not visual: the markup was assembled by `design_templates.assemble`
-from a closed vocabulary, so it can be read back with certainty. `printing.py`
-draws the `.pdf`; this feeds the editable `.docx` and `.pptx`.
-"""
+"""HTML artifact read back structurally into deck_export/report_export shapes."""
 
 from __future__ import annotations
 
@@ -13,7 +8,7 @@ from typing import Any
 
 from app.services import pictures
 
-#: Block containers whose text is collected separately.
+#: block containers, text collected separately
 _TEXT_TAGS = {
     "h2",
     "h3",
@@ -29,9 +24,7 @@ _TEXT_TAGS = {
     "figcaption",
 }
 
-#: Admitted by `design_templates` and read for structure rather than for words
-#: of its own. `code` text arrives unmarked. `sup` is carried so a footnote
-#: marker reaches the paragraph's text.
+#: read for structure; sup kept for footnote markers
 _CARRIED_TAGS = {
     "ul",
     "ol",
@@ -52,11 +45,10 @@ _CARRIED_TAGS = {
     "sup",
 }
 
-#: Admitted and deliberately not carried. The three sets together cover every
-#: tag `design_templates._ALLOWED_TAGS` admits; `test_page_export` pins that.
+#: admitted, not carried; three sets cover _ALLOWED_TAGS (pinned by test)
 _DROPPED_TAGS = {"hr"}
 
-#: Seed layout class → `deck_export` layout.
+#: seed layout class → deck_export layout
 _DECK_LAYOUT = {
     "cover": "title",
     "section": "section",
@@ -72,11 +64,7 @@ _DECK_LAYOUT = {
 
 
 class _Reader(HTMLParser):
-    """Collects each `<section>` of an artifact into a flat record.
-
-    Deliberately shallow: nesting beyond heading, lines, quote and table is
-    read for its text only.
-    """
+    """Each section as a flat record; deeper nesting read as text only."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -87,35 +75,34 @@ class _Reader(HTMLParser):
         self._buffer: list[str] = []
         self._row: list[str] = []
         self._skip = 0
-        #: Depth inside `div.cols`, and the column being filled.
+        #: div.cols depth and current column
         self._cols = 0
         self._column: list[str] | None = None
-        #: A `<dt>` waiting for the `<dd>` that defines it.
+        #: dt awaiting its dd
         self._term = ""
-        #: Footnotes seen in the block being read; reset per block, as the seed's CSS counter is.
+        #: footnotes per block (reset like the CSS counter)
         self._notes = 0
-        #: Which pair block is open (`kpi`, `steps` or nothing) and the halves collected so far.
+        #: open pair block (kpi/steps) and halves so far
         self._pairs = ""
         self._pair_buffer: list[str] = []
 
-    # ── structure ──────────────────────────────────────────────────────
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         classes = (dict(attrs).get("class") or "").split()
         if self._skip:
             self._skip += 1
             return
-        # The slide number is furniture the exporters draw themselves.
+        # slide number drawn by exporters
         if "num" in classes:
             self._skip = 1
             return
-        # A block is a `<section>`, or the document seed's `div.cover`.
+        # block: section or div.cover
         if tag == "section" or (tag == "div" and "cover" in classes):
             self._open(classes, container=tag)
             return
         if self._block is None:
             return
         if tag == "br":
-            # Without a space the two halves arrive as one run-on word.
+            # space prevents run-on words
             if self._tag is not None:
                 self._buffer.append(" ")
             return
@@ -126,13 +113,12 @@ class _Reader(HTMLParser):
                     {"mime": picture[0], "data": picture[1], "caption": ""}
                 )
             return
-        # A chart carries its numbers in `data-source`.
+        # chart numbers in data-source
         if tag == "figure" and "chart" in classes:
             if source := (dict(attrs).get("data-source") or "").strip():
                 self._block["charts"].append(source)
             return
-        # A KPI strip or a numbered procedure: `<div>`/`<ol>` with inline
-        # `<strong>`/`<span>` pairs inside.
+        # KPI strip / numbered steps: strong/span pairs
         if "kpi" in classes or "steps" in classes:
             self._flush()
             self._pairs = "kpi" if "kpi" in classes else "steps"
@@ -166,7 +152,7 @@ class _Reader(HTMLParser):
             self._skip -= 1
             return
         if self._pairs and self._block is not None:
-            # `div` closes a KPI cell and `li` a step; the outer `div`/`ol` closes the block.
+            # div closes a KPI cell, li a step; outer closes the block
             if tag in ("div", "li") and self._pair_buffer:
                 self._flush()
                 pair = [*self._pair_buffer, ""][:2]
@@ -195,9 +181,8 @@ class _Reader(HTMLParser):
             return
         self._buffer.append(data)
 
-    # ── collection ─────────────────────────────────────────────────────
     def _open(self, classes: list[str], *, container: str) -> None:
-        # A nested `.cover` inside an open block is the document seed's header.
+        # nested .cover = document seed header
         if self._block is not None:
             return
         layout = next((c for c in classes if c not in ("slide", "page")), "section")
@@ -220,7 +205,7 @@ class _Reader(HTMLParser):
         }
 
     def _item(self, text: str) -> None:
-        """One line of a list, kept in its column as well when it is in one."""
+        """One list line, also kept in its column."""
         if self._block is None:
             return
         self._block["bullets"].append(text)
@@ -228,7 +213,7 @@ class _Reader(HTMLParser):
             self._column.append(text)
 
     def _pair(self) -> None:
-        """A `<dt>` nothing defined, emitted on its own."""
+        """Undefined dt emitted alone."""
         if self._term:
             self._item(self._term)
             self._term = ""
@@ -247,7 +232,7 @@ class _Reader(HTMLParser):
             if not self._block["title"]:
                 self._block["title"] = text
             elif self._column is not None:
-                # A column's own heading leads that column.
+                # column heading leads the column
                 self._column.append(text)
                 self._block["bullets"].append(text)
             else:
@@ -258,13 +243,11 @@ class _Reader(HTMLParser):
             self._pair()
             self._term = text
         elif tag == "dd":
-            # A definition list is a list of labelled items: `목적: 3세대 엔진 선정 근거 확보`.
+            # definition list → labelled items
             self._item(f"{self._term}: {text}" if self._term else text)
             self._term = ""
         elif tag == "small":
-            # A footnote stays where it stood. The `*` marker is written here
-            # because the seed's CSS counter is generated content and reaches
-            # no export.
+            # footnote kept in place; * written here (CSS counter isn't exported)
             self._notes += 1
             self._block["paragraphs"].append(f"{'*' * self._notes} {text}")
             self._block["notes"].append(text)
@@ -295,13 +278,13 @@ class _Reader(HTMLParser):
 
 
 def _h1_titles(html: str) -> list[str]:
-    """`<h1>` sits outside the reader's tag set; the document cover uses it."""
+    """h1 outside the tag set; used by the document cover."""
     found = re.findall(r"<h1[^>]*>(.*?)</h1>", html, re.S)
     return [re.sub(r"<[^>]+>", "", one).strip() for one in found]
 
 
 def read(html: str) -> list[dict[str, Any]]:
-    """Every block of an artifact, in order."""
+    """Every block, in order."""
     reader = _Reader()
     reader.feed(html)
     reader.close()
@@ -313,7 +296,7 @@ def read(html: str) -> list[dict[str, Any]]:
 
 
 def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
-    """An HTML deck as the slide dicts `deck_export` draws. Empty blocks are dropped."""
+    """HTML deck as deck_export slide dicts; empty blocks dropped."""
     slides: list[dict[str, Any]] = []
     for block in read(html):
         layout = _DECK_LAYOUT.get(block["layout"], "bullets")
@@ -331,7 +314,7 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
             slide["rows"] = block["rows"]
         elif layout == "two-column" and len([c for c in block["columns"] if c]) >= 2:
             slide["columns"] = [c for c in block["columns"] if c]
-            # Also flattened for renderers that only know `bullets`.
+            # flattened for bullets-only renderers
             slide["bullets"] = [item for column in slide["columns"] for item in column]
         elif block["bullets"]:
             slide["bullets"] = block["bullets"]
@@ -339,10 +322,10 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
             slide["bullets"] = block["paragraphs"]
             prose = True
         if block["notes"] and not prose:
-            # No slide layout draws a source line, so footnotes become speaker notes.
+            # no layout draws sources: footnotes → speaker notes
             slide["notes"] = "\n".join(block["notes"])
         if block["images"]:
-            # One picture per slide.
+            # one picture per slide
             slide["image"] = block["images"][0]
         if not (
             slide.get("bullets")
@@ -357,7 +340,7 @@ def to_slides(html: str, *, accent: str = "") -> list[dict[str, Any]]:
 
 
 def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
-    """An HTML document as the markdown sections `report_export` draws."""
+    """HTML document as report_export markdown sections."""
     sections: list[dict[str, str]] = []
     for block in read(html):
         lines: list[str] = []
@@ -367,7 +350,7 @@ def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
         lines.extend(f"- {item}" for item in block["bullets"])
         if block["quote"]:
             lines.append(f"> {block['quote']}")
-        # The same fences the report writer produces.
+        # same fences as the report writer
         for pairs, lang in ((block["metrics"], "kpi"), (block["steps"], "steps")):
             if rows := [pair for pair in pairs if pair and pair[0]]:
                 body = "\n".join(f"{left} | {right}" for left, right in rows)
@@ -375,7 +358,7 @@ def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
         for source in block["charts"]:
             lines.append(f"```chart\n{source}\n```")
         if block["rows"]:
-            # A GFM table, which the exporters draw as a real table.
+            # GFM table
             width = max(len(row) for row in block["rows"])
             padded = [[*row, *([""] * (width - len(row)))] for row in block["rows"]]
             lines.append(
@@ -386,7 +369,7 @@ def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
             )
         content = "\n\n".join(lines)
         if cover_page and block["layout"] == "cover":
-            # The cover occupies its own sheet in HTML/PDF; keep that boundary in Word/HWPX.
+            # keep the cover's own page in Word/HWPX
             content = f"{content}\n\n<!-- pagebreak -->".strip()
         if not content.strip() and not block["title"] and not block["images"]:
             continue
@@ -395,7 +378,7 @@ def to_sections(html: str, *, cover_page: bool = True) -> list[dict[str, Any]]:
             "content": content,
             "level": 1,
         }
-        # Placed after the section's prose by the exporters.
+        # placed after the prose by exporters
         if block["images"]:
             section["images"] = block["images"]
         sections.append(section)

@@ -1,10 +1,4 @@
-"""Fixed-schema work the report pipeline does by code for the lineup's formats.
-
-Before writing (`prepare`): dates resolved against the meeting or mail date, a quote summed,
-weighted scores computed, career periods counted — handed to the writer as settled blocks.
-After writing (`checks`, `amendments`, `page_count`): what each format must carry, found by code;
-the verify stage repairs once and checks again. Every run is recorded as a step.
-"""
+"""Report pipeline's code work: pre-pass facts before writing, format checks and repairs after."""
 
 from __future__ import annotations
 
@@ -25,8 +19,7 @@ from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
 
-#: Which steps run, checks apply and amendments are made is the document's 진행 과정 설정
-#: (`services/process_settings.py`), carried on the pre-pass (`Prepass.process`).
+#: steps, checks and amendments per 진행 과정 설정 (`process_settings.py`), on `Prepass.process`
 
 _PRICE_LINE = re.compile(
     r"(?:단가|MM|M/M|견적|월\s{0,2}단가|×|x\s{0,2}\d|\d\s{0,2}(?:명|대|개|식|회|개월|부|권)\s{0,4}[×x*])"
@@ -43,8 +36,7 @@ def price_line(line: str) -> bool:
 
 _WEIGHTS = re.compile(
     r"가중치|중요도|배점|비중\s{0,2}\d|\d{1,3}\s{0,2}[:·/]\s{0,2}\d{1,3}\s{0,2}[:·/]\s{0,2}\d{1,3}"
-    # 「비용 50, 모바일 앱 30, HR 연동 20」: three or more
-    # criteria each with a bare number.
+    # 3+ criteria with bare numbers: 「비용 50, 모바일 앱 30, HR 연동 20」
     r"|(?:[가-힣A-Za-z][가-힣A-Za-z ]{0,10}\s\d{1,3}(?:점|%)?\s{0,2}[,，]\s{0,2}){2,6}"
     r"[가-힣A-Za-z][가-힣A-Za-z ]{0,10}\s\d{1,3}(?:점|%)?(?!\d)")
 _FULL_DATE = re.compile(
@@ -56,14 +48,13 @@ _VALIDITY = re.compile(r"(?:견적\s{0,2})?유효\s{0,2}기간\s{0,2}(?:은|는|
 _TABLE_RULE = re.compile(r"^\s{0,8}\|?\s{0,8}:?-{2,}")
 
 
-# ── tables ───────────────────────────────────────────────────────────────
+# ── tables ──
 
 
 @dataclass(slots=True)
 class Table:
     section: int
     header: list[str]
-    #: `(line as written, cells)` per body row.
     rows: list[tuple[str, list[str]]]
     above: str = ""
 
@@ -99,7 +90,7 @@ def _column(header: list[str], pattern: str) -> int | None:
 
 
 def _words(text: str) -> set[str]:
-    """Words of two characters or more, particles trimmed: what binds a row to a line."""
+    """2+ char words, particles trimmed: what binds a row to a line."""
     out = set()
     for word in re.findall(r"[가-힣A-Za-z0-9○]{2,20}", text or ""):
         word = re.sub(r"(?:까지|에서|으로|에게|님이|님은|님|이가|은|는|이|가|을|를|의|에|로|과|와|도)$", "", word)
@@ -108,45 +99,37 @@ def _words(text: str) -> set[str]:
     return out
 
 
-# ── before writing ──────────────────────────────────────────────────────
+# ── before writing ──
 
 
 @dataclass(slots=True)
 class Prepass:
     format_id: str = ""
-    #: `process_settings.Process` the document is written with; None: the defaults.
     process: Any = None
     base_date: str = ""
-    #: Where `base_date` came from: 「text」, 「file」 (the attachment's name), 「said:오늘」
-    #: (the person said the meeting was today or yesterday), or "" when nothing gives it.
+    #: `base_date` source: 「text」, 「file」 (attachment name), 「said:오늘」 (today/yesterday), or ""
     base_source: str = ""
-    #: date-calc rows (`scan`), each bound to its `source_line`.
     dates: list[dict] = field(default_factory=list)
-    #: Lead times turned into dates from the material's anchor date (`lead_times`).
     lead: dict | None = None
     quote_input: dict | None = None
     quote: dict | None = None
     scores: dict | None = None
     periods: dict | None = None
-    #: Must-have conditions and each option's status under them (`must_status`).
     musts: dict | None = None
-    #: Each option's total cost (`option_costs`), for a comparison priced by parts.
     costs: dict | None = None
-    #: Readings of the costs that never agreed: the writer is handed no totals at all.
+    #: never-agreeing cost readings: writer gets no totals
     costs_withheld: bool = False
-    #: What the RFP fixes for a proposal: client names, period end or length, page limit.
     rfp: dict | None = None
-    #: Each role's headcount and MM (`staffing`), so a document never writes MM as people.
+    #: per-role headcount and MM (`staffing`): MM never written as people
     staff: dict[str, dict] = field(default_factory=dict)
     figures: list[key_figures.Figure] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
-    #: `{"skill", "summary"}` per run, for the step record; `error` marks a failed run and
-    #: `skipped` one with nothing to work on, both said in the step.
+    #: `{"skill", "summary"}` per run; `error` = failed, `skipped` = nothing to do
     runs: list[dict] = field(default_factory=list)
 
     @property
     def settings(self):
-        """Its 진행 과정 설정; one made without them (an older run) reads its format's."""
+        """Its 진행 과정 설정; older runs without one read the format's."""
         from app.services import process_settings
 
         if self.process is not None:
@@ -155,12 +138,12 @@ class Prepass:
 
     @property
     def counts_from_meeting(self) -> bool:
-        """Relative dates count from the meeting day (`date_base = "meeting"`, 회의록)."""
+        """Relative dates from meeting day (`date_base = "meeting"`)."""
         return self.settings.date_base == "meeting"
 
     @property
     def undated(self) -> bool:
-        """Minutes whose meeting date nothing gives: it stays 「[회의 일자]」."""
+        """Minutes with no known meeting date: stays 「[회의 일자]」."""
         return self.counts_from_meeting and not self.base_source
 
     @property
@@ -169,15 +152,14 @@ class Prepass:
         return [d for d in self.dates if d.get("status") in ("ok", "repeat")] + lead
 
 
-#: 「10/8(목)」, 「10월 8일(목)」, 「10. 8.(목)」: a day without its year, with its weekday.
+#: yearless day with weekday: 「10/8(목)」, 「10월 8일(목)」, 「10. 8.(목)」
 _DAY_WITH_WEEKDAY = re.compile(
     r"(?<![\d./])(\d{1,2})\s{0,2}(?:[/.]|월)\s{0,2}(\d{1,2})\s{0,2}(?:일|\.)?\s{0,2}\(([월화수목금토일])\)")
 _WEEKDAYS = "월화수목금토일"
 
 
 def _year_of(month: int, day: int, weekday: str, today: dt.date) -> dt.date | None:
-    """The date this year or last whose weekday is the one written; None when neither is
-    (or both are), so the meeting date is asked rather than guessed."""
+    """Date this year or last matching the weekday; None if neither or both (ask, don't guess)."""
     found = []
     for year in (today.year, today.year - 1):
         try:
@@ -190,8 +172,7 @@ def _year_of(month: int, day: int, weekday: str, today: dt.date) -> dt.date | No
 
 
 def meeting_date(request: str, material: str, today: dt.date | None = None) -> dt.date | None:
-    """The date a meeting was held, as the person or the material's header states it. A
-    memo's 「10/8(목) 14시」 is the 8 October whose weekday is a Thursday, this year or last."""
+    """Meeting date from the person or material header; yearless day resolved by weekday."""
     for text in (request, material):
         for line in (text or "").splitlines():
             if (m := _FULL_DATE.search(line)) and _MEETING.search(line):
@@ -208,13 +189,13 @@ def meeting_date(request: str, material: str, today: dt.date | None = None) -> d
     return None
 
 
-#: An attached file's heading in the material: 「## 녹음_연구실주간미팅_20261014_1000.mp3」.
+#: attached file heading: 「## 녹음_연구실주간미팅_20261014_1000.mp3」
 _FILE_HEADING = re.compile(r"^#{2,3}\s{1,3}(\S[^\n]{0,200}\.[A-Za-z0-9]{2,5})\s{0,3}$")
 _FILE_DATE = re.compile(r"(?<!\d)(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?!\d)")
 
 
 def file_date(material: str) -> dt.date | None:
-    """A date in an attached file's name (20261014, 2026-10-14, 2026_10_14)."""
+    """Date in an attached file's name (20261014, 2026-10-14, 2026_10_14)."""
     for line in (material or "").splitlines():
         if not (head := _FILE_HEADING.match(line.strip())):
             continue
@@ -226,29 +207,24 @@ def file_date(material: str) -> dt.date | None:
     return None
 
 
-#: The person saying the meeting was today or yesterday: 「오늘 회의」, 「어제 한 미팅」. Not
-#: 「오늘까지 회의록」 (a due day) or 「오늘 회의록」 (the document).
+#: 「오늘 회의」, 「어제 한 미팅」 — not 「오늘까지 회의록」 (due) or 「오늘 회의록」 (document)
 _SAID_DAY = re.compile(
     r"(?<![가-힣])(오늘|금일|어제|어저께|그저께|그제)(?!\s{0,2}(?:까지|중|안에|내로))"
     r"(?:\s{1,3}[가-힣A-Za-z0-9]{1,10}){0,3}?\s{0,3}(?:회의|미팅|모임|간담회|세미나)(?!록)"
 )
-#: The gap card's answer merged into the request: 「- 회의 일시: 10월 7일 오후 2시」.
+#: gap-card answer merged into request: 「- 회의 일시: 10월 7일 오후 2시」
 _ANSWERED_DAY = re.compile(r"회의\s{0,2}일시\s{0,2}[:：]\s{0,4}(\d{1,2})\s{0,2}(?:월|[/.])\s{0,2}(\d{1,2})")
 _DAYS_BACK = {"오늘": 0, "금일": 0, "어제": 1, "어저께": 1, "그저께": 2, "그제": 2}
 
 
 def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt.date | None, str]:
-    """The base relative dates are read from, and where it came from: the text, the file's
-    name, or the person saying the meeting was today or yesterday (the turn's date, KST).
-    A recording says no date aloud, so the file's name (20261014) may carry it. Nothing else
-    gives one: the day the material was handed over is not the meeting's."""
+    """Relative-date base and source: text, file name, or 'today/yesterday' (KST); never handover day."""
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
         return found, "file"
     if today and (said := _ANSWERED_DAY.search(request or "")):
-        # The person's answer to the 「회의 일시」 question, without a year: the latest such
-        # day not after today.
+        # yearless 「회의 일시」 answer: latest such day not after today
         try:
             day = dt.date(today.year, int(said.group(1)), int(said.group(2)))
         except ValueError:
@@ -263,7 +239,7 @@ def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt
 
 
 def _base_words(source: str) -> str:
-    """Where the base date came from, as the step and the date block say it."""
+    """Base-date source, as step and date block word it."""
     if source == "file":
         return "첨부 파일 이름의 날짜"
     if source.startswith("said:"):
@@ -271,13 +247,12 @@ def _base_words(source: str) -> str:
     return ""
 
 
-#: Date-calc's reading of a line when no meeting date is known: the words kept, no date.
+#: date-calc reading with no meeting date: words kept, no date
 _NO_BASE = "no_base"
 
 
 def _undated(rows: list[dict], probe: dt.date) -> list[dict]:
-    """Rows scanned from a stand-in base, the relative ones turned back into words: a memo
-    with no meeting date resolves no 「다음 주 금요일」. Dates the material wrote out stay."""
+    """Stand-in-base rows with relative dates turned back into words; written-out dates stay."""
     out = []
     for row in rows:
         if row.get("base_kind") == "meeting" and row.get("base_date") == probe.isoformat():
@@ -294,9 +269,7 @@ _SPEAKER = re.compile(r"^\s{0,4}[^\s:|#]{1,12}\s{0,2}:\s")
 
 
 def _with_context(rows: list[dict], material: str) -> None:
-    """Each row given the words that say what it is for: its own line, and in a transcript
-    the line before, where 「서○○는 데이터 정제 쪽을 맡아 줘요」 names the task the reply
-    「다음 주 수요일까지 하겠습니다」 dates. A memo's line before is another item."""
+    """Row context: own line, plus the line before in a transcript (names the task the reply dates)."""
     lines = (material or "").splitlines()
     for row in rows:
         number = int(row.get("line") or 0)
@@ -304,12 +277,12 @@ def _with_context(rows: list[dict], material: str) -> None:
         near = [_SPEAKER.sub("", own).strip()]
         if _SPEAKER.match(own):
             before = next((ln for ln in reversed(lines[:max(0, number - 1)]) if ln.strip()), "")
-            # A transcript's speaker labels (「한교수:」) are on every line and bind nothing.
+            # speaker labels (「한교수:」) bind nothing
             near.insert(0, _SPEAKER.sub("", before).strip())
         row["context"] = " ".join(near)[:600]
 
 
-#: The date block's head when the meeting's date is nowhere: no date is worked out from today.
+#: date block head when meeting date unknown: nothing computed from today
 _UNDATED_HEAD = (
     "회의 일자: not in the material or the request. Write the meeting date in the head field 일시 and "
     "in the body (회의 개요 etc.) as 「[회의 일자]」; do not guess it from today or the day the material "
@@ -358,7 +331,7 @@ def _date_block(rows: list[dict], base: str, base_note: str = "", *, undated: bo
 
 
 def _lead_verdict(row: dict) -> str:
-    """How a lead-time date stands against the deadline, in words."""
+    """Lead-time date vs deadline, in words."""
     if "within" not in row:
         return ""
     slack = int(row["slack_days"])
@@ -454,18 +427,16 @@ def _item_grounded(item: dict, numbers: list[float]) -> bool:
         _grounded(f, numbers) for f in factors)
 
 
-#: A requirement that keeps processing in the country: 「국외로 이전하지 않으며, 처리 시스템은
-#: 국내에 둔다」, 「외부 LLM API 사용 불가」.
+#: in-country processing requirement: 「국외로 이전하지 않으며 …」, 「외부 LLM API 사용 불가」
 _DOMESTIC_ONLY = re.compile(
     r"(?:국외|해외)\S{0,4}\s{0,4}(?:이전하지|이전\s{0,2}금지|이전\s{0,2}불가|두지\s{0,2}않)|"
     r"국내에\s{0,2}(?:둔다|두어야|설치|구축)|"
     r"외부\s{0,4}(?:LLM|API|AI|클라우드)\S{0,6}\s{0,4}(?:사용|호출|이용|연동)?\s{0,2}(?:금지|불가|하지\s{0,2}않)"
 )
-#: An item that sends the data abroad or to an outside model: 「외부 LLM API 사용료」.
+#: item sending data abroad or to an outside model: 「외부 LLM API 사용료」
 _OFFSHORE_ITEM = re.compile(r"(?:외부|해외|국외)\s{0,4}(?:LLM|API|AI|리전|클라우드)", re.I)
 _REQ_ID = re.compile(r"\b[A-Z]{2,4}-\d{2,3}\b")
-#: The material itself setting an item aside: 「(대체)」, 「제외」, 「불가」. A bare 「대체」 is
-#: not one: 「국내 GPU로 대체」 names the replacement, which stays in.
+#: material setting an item aside: 「(대체)」, 「제외」, 「불가」; bare 「대체」 names a replacement
 _SET_ASIDE = re.compile(
     r"\(\s{0,2}(?:대체|제외|불가|미포함)[^()\n]{0,20}\)|제외|불가|미포함|발주기관\s{0,2}부담|"
     r"고객\s{0,2}부담|대체\s{0,2}(?:됨|되어|되므로|대상)"
@@ -477,11 +448,7 @@ _CLIENT_PAYS = re.compile(
 
 
 def _ruled_out(item: dict, material: str) -> str:
-    """Why the material rules a quote item out, or ""; a backstop under the model's own call.
-
-    The line must name the item, and the set-aside word must follow one of the item's own
-    prices in the same clause (「3,300,000원(발주기관 부담)」), not just share the line.
-    """
+    """Material's reason to rule out a quote item, or ""; set-aside word must follow the item's price."""
     name = str(item.get("name") or "")
     prices = [item[k] for k in ("monthly_price", "unit_price", "amount") if k in item]
     lines = (material or "").splitlines()
@@ -499,7 +466,7 @@ def _ruled_out(item: dict, material: str) -> str:
                 return f"자료: 「{line.strip()[:60]}」"
     words = [w for w in re.split(r"[\s()·/,]+", name) if len(w) >= 2][:6]
     for line in lines:
-        # 「※ 품질인증 심사 수수료는 발주기관이 별도 부담함」: the RFP names the item, not its price.
+        # RFP names the item, not its price: 「※ 품질인증 심사 수수료는 발주기관이 별도 부담함」
         matched = [w for w in words if w in line]
         pays = _CLIENT_PAYS.search(line)
         if (pays and len(matched) >= min(2, len(words)) and sum(map(len, matched)) >= 4
@@ -520,10 +487,7 @@ _BUDGET_LINE = re.compile(r"예산|기초금액|사업비|추정\s{0,2}가격|�
 
 
 def price_basis(material: str) -> str:
-    """「excl」 or 「incl」 when the material's own price lines state the VAT basis, else "".
-
-    A budget's basis (「기초금액 … 부가가치세 포함」) is not the prices' basis.
-    """
+    """「excl」/「incl」 if material price lines state the VAT basis, else ""; budget basis ignored."""
     marks = {
         "incl" if m.group(1) == "포함" else "excl"
         for line in (material or "").splitlines()
@@ -534,11 +498,7 @@ def price_basis(material: str) -> str:
 
 
 def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
-    """The extracted quote input with every value the material does not state dropped.
-
-    Items the material rules out (a requirement they break, or set aside in so many
-    words) stay in the list as `excluded` with a `reason`, so the total leaves them out.
-    """
+    """Quote input minus unstated values; ruled-out items kept as `excluded` with `reason`."""
     numbers = _material_numbers(material)
     dropped: list[str] = []
     items = []
@@ -549,7 +509,7 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
                                          "unit_price", "amount", "note")
                     if k in item and item[k] is not None}
             if "monthly_price" in kept and "mm" not in kept and "unit_price" not in kept:
-                # 「qty: 7, unit: MM, monthly_price」 is a unit price under another name.
+                # 「qty: 7, unit: MM, monthly_price」 = unit price
                 kept["unit_price"] = kept.pop("monthly_price")
             reason = str(item.get("reason") or "").strip()[:120] if item.get("excluded") else ""
             if item.get("excluded") and not reason:
@@ -557,8 +517,7 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
             reason = reason or _ruled_out(kept, material)
             priced = any(k in kept for k in ("monthly_price", "unit_price", "amount"))
             if not priced:
-                # An excluded item extracted without its price (「qty: 7, excluded」) is set
-                # aside, not priced.
+                # priceless excluded item: set aside, not priced
                 if reason:
                     set_aside.append({"name": kept["name"], "excluded": True, "reason": reason})
                 else:
@@ -571,9 +530,7 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
             items.append(kept)
         elif isinstance(item, dict):
             dropped.append(str(item.get("name") or "?"))
-    # The prices' stated basis wins over the model's, so a 「VAT 별도」 rate card is not summed
-    # as VAT included. Prices that state no basis are VAT 별도, as quoted unit prices are,
-    # whatever basis a budget elsewhere in the material uses.
+    # stated price basis beats model's; unstated = VAT 별도 regardless of budget basis
     stated = price_basis(material)
     basis = stated or "excl"
     out: dict[str, Any] = {"vat_basis": basis, "items": items}
@@ -612,13 +569,13 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
 
 
 def excluded_items(data: dict | None) -> list[dict]:
-    """The quote input's items left out of the price, with why."""
+    """Quote items left out of the price, with reasons."""
     data = data or {}
     return [*(i for i in data.get("items") or [] if i.get("excluded")),
             *(data.get("set_aside") or [])]
 
 
-#: The material speaks of VAT: only then is a quote with no stated basis worth flagging.
+#: material mentions VAT: only then flag a quote with no basis
 _VAT_WORD = re.compile(r"부가세|부가가치세|VAT", re.I)
 
 
@@ -673,7 +630,6 @@ def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool
         elif _VAT_WORD.search(material):
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원(부가세 기준 불분명)")
         else:
-            # A memo that never mentions VAT gets no VAT question raised from it.
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원 (as the material writes it)")
     return "\n".join(lines)
 
@@ -688,7 +644,7 @@ def _quote_figures(result: dict) -> list[key_figures.Figure]:
     ]
 
 
-# Career periods: 「2019.04 ~ 2021.01」, 「2023.03~ 현재」, 「2019년 4월 – 2021년 1월」.
+# career periods: 「2019.04 ~ 2021.01」, 「2023.03~ 현재」, 「2019년 4월 – 2021년 1월」
 _YM = r"(?:20|19)?\d{2}\s{0,2}(?:[./-]|년)\s{0,2}\d{1,2}\s{0,2}월?"
 _PERIOD = re.compile(
     rf"(?P<start>{_YM})\s{{0,3}}[~∼〜–—-]\s{{0,3}}(?P<end>{_YM}|현재|재직\s{{0,2}}중|진행\s{{0,2}}중)?"
@@ -784,11 +740,9 @@ def _q(value: Decimal) -> float:
 
 
 def scores(data: dict) -> dict | None:
-    """Weighted scores by the comparison rules S1–S4.
-
-    S1 cost: lowest ÷ own × weight. S2 benefit: own ÷ highest × weight; 있음/없음: weight or 0.
-    S3 a criterion with no value for some option: (a) left out and the rest rescaled to 100,
-    and (b) scored 0 — both shown. S4 a tie is reported as a tie, never broken by order."""
+    """Weighted scores, rules S1–S4.
+    S1 cost: lowest ÷ own × w. S2 benefit: own ÷ highest × w; 있음/없음: w or 0.
+    S3 missing value: (a) dropped and rescaled to 100, (b) scored 0 — both shown. S4 ties reported."""
     criteria = [c for c in data.get("criteria") or [] if isinstance(c, dict) and c.get("name")]
     options = [o for o in data.get("options") or [] if isinstance(o, dict) and o.get("name")]
     if not criteria or len(options) < 2:
@@ -928,7 +882,7 @@ _MONTH = ("month", "월", "개월")
 
 
 def _plain(raw: Any) -> Any:
-    """A number field as the model wrote it, 「15,000」 or 「15,000km」 read as 15000."""
+    """Model's number field: 「15,000」 or 「15,000km」 → 15000."""
     if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         return raw
     m = re.match(r"\s{0,4}(\d[\d,]{0,20}(?:\.\d{1,10})?)", str(raw or ""))
@@ -936,9 +890,7 @@ def _plain(raw: Any) -> Any:
 
 
 def explicit_factors(item: dict, years: Any) -> dict | None:
-    """An item given by named fields (unit_price, count, per, years, months, usage,
-    threshold, rate) as the factors and `over` code multiplies: the model names what each
-    number is and code does the arithmetic. `None` when a field the unit needs is missing."""
+    """Named fields → factors and `over` for code to multiply; `None` if a needed field is missing."""
     price = _plain(item.get("unit_price"))
     if price is None:
         return None
@@ -974,7 +926,7 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
     start = _plain(item.get("from_year"))
     code: list[float] = []
     if start is not None and float(start) > 1 and per not in _ONCE:
-        # 「2년 차부터」: the years from that one on, counted by code (3년 → 2 years).
+        # 「2년 차부터」: remaining years by code (3년 → 2)
         first = int(float(start))
         if per in _MONTH and _plain(item.get("months")) is not None:
             left = float(_plain(item.get("months"))) - 12 * (first - 1)
@@ -983,7 +935,7 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
             if span is None:
                 return None
             left = float(span) - (first - 1)
-            # The span is the third factor of a yearly, monthly (× 12) or usage price.
+            # span is the third factor for yearly, monthly (× 12) or usage prices
             at = 3 if per not in _YEAR and per not in _MONTH and over is None else 2
             factors = [*factors[:at], left, *factors[at + 1:]]
         if left <= 0:
@@ -991,7 +943,6 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
         code.append(left)
     out = {"name": item.get("name"), "factors": factors}
     if calendar:
-        # 12 months a year is code's own factor here, not one the model put in.
         out["calendar"] = True
     if code:
         out["code"] = code
@@ -1001,16 +952,13 @@ def explicit_factors(item: dict, years: Any) -> dict | None:
         out["sign"] = -1
     if str(item.get("when") or "").strip():
         out["when"] = str(item["when"]).strip()[:40]
-    # The item as the model named it: its first and later years are priced from it.
     out["raw"] = {k: item.get(k) for k in ("unit_price", "count", "per", "months", "usage",
                                            "threshold", "rate", "from_year", "years")}
     return out
 
 
 def year_amount(item: dict, year: int) -> Decimal | None:
-    """What `item` costs in year `year` (1 = the first) of the comparison: a one-time cost
-    falls in the first year, a recurring one in every year from its `from_year`. None when
-    the item has no named fields to price a single year from."""
+    """Cost of `item` in comparison year `year` (1-based); None if no fields to price a year."""
     raw = item.get("raw")
     if not raw:
         return None
@@ -1054,18 +1002,18 @@ def _cost_item(item: dict, swap: dict[float, Decimal]) -> Decimal:
     return amount.quantize(Decimal(1), rounding=ROUND_HALF_UP) * (-1 if item.get("sign") == -1 else 1)
 
 
-#: A monthly price over a span of years: 12 months a year is a factor no material writes.
+#: monthly price over years: ×12 is a factor no material writes
 _MONTHLY = re.compile(r"월\s{0,2}(?:[\d,]|요금|사용료|임대료|관리비|구독료|이용료)|/\s{0,2}월|매월")
 _YEARLY = re.compile(r"\d\s{0,2}년|연간|연\s{0,2}(?:비용|기준|단위|총액)")
 
 
 def _calendar(text: str) -> list[float]:
-    """Calendar constants a cost may multiply by: 12 when monthly prices meet years."""
+    """Allowed calendar factors: 12 when monthly prices meet years."""
     return [12.0] if _MONTHLY.search(text or "") and _YEARLY.search(text or "") else []
 
 
 def _percent(value: Any, numbers: list[float]) -> bool:
-    """「35%」 written as the factor 0.35; 「15% 할인」 as the price's share left, 0.85."""
+    """「35%」 → 0.35; 「15% 할인」 → 0.85."""
     try:
         number = float(str(value).replace(",", ""))
     except (TypeError, ValueError):
@@ -1075,8 +1023,7 @@ def _percent(value: Any, numbers: list[float]) -> bool:
 
 
 def option_costs(data: dict, numbers: list[float], why: list[str] | None = None) -> dict | None:
-    """Each option's total cost from the extracted factors, every factor one the material
-    states; `None` when fewer than two options are left, the reason added to `why`."""
+    """Each option's total from material-stated factors; `None` (reason in `why`) if < 2 options left."""
     def grounded(item: Any) -> bool:
         if not isinstance(item, dict) or not item.get("name"):
             return False
@@ -1086,7 +1033,7 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
             return False
         if over is not None and not (isinstance(over, list) and len(over) == 2):
             return False
-        # A factor of 1 (「1대」 unwritten) changes no amount.
+        # factor 1 (unwritten 「1대」) allowed
         allowed = [*numbers, 1.0, *([12.0] if item.get("calendar") else []),
                    *(float(c) for c in item.get("code") or [])]
         return all(_grounded(f, allowed) or _percent(f, numbers) for f in factors) and all(
@@ -1121,8 +1068,7 @@ def option_costs(data: dict, numbers: list[float], why: list[str] | None = None)
     def run(swap: dict[float, Decimal], conditions: frozenset[str] = frozenset()) -> dict[str, dict]:
         out = {}
         for option in options:
-            # A condition's scenario (「연 단위 계약 시」) prices the option as that condition
-            # makes it; the base prices it without.
+            # condition scenario (「연 단위 계약 시」) priced with the condition; base without
             items = (option["by"][next(iter(conditions))] if conditions else option["base"])
             rows = [{"name": str(i["name"])[:40], "amount": int(_cost_item(i, swap)),
                      "factors": i["factors"], "over": i.get("over")} for i in items]
@@ -1163,13 +1109,7 @@ def _same_base(a: dict, b: dict) -> bool:
 
 def conditional_items(items: list[dict], conditions: list[str],
                       years: Any) -> tuple[list[dict], dict[str, list[dict]]]:
-    """The items an option costs without any condition, and under each condition.
-
-    Only what lowers the cost (a discount, sign -1) is held back from the base. A cost the
-    model tagged with the condition too (「구독료」 tagged 「연 단위 계약 시」 beside its
-    discount) is still paid without it. A cost tagged
-    with the condition that matches an untagged one (same unit and count) replaces that
-    one under the condition; with none to match, the base pays it at the full unit price."""
+    """Option items unconditioned and per condition; only discounts withheld from base, tagged costs replace matching untagged ones."""
     base = [i for i in items if not i.get("when")]
     by: dict[str, list[dict]] = {}
     for condition in conditions:
@@ -1192,7 +1132,7 @@ def conditional_items(items: list[dict], conditions: list[str],
         raw = dict(item.get("raw") or {})
         rate = _plain(raw.get("rate"))
         if rate is not None and float(rate) < 1:
-            # 「연 계약 시 85%」 with no full-price line: the full price is the base's.
+            # 「연 계약 시 85%」 without a full-price line: full price goes to base
             raw["rate"] = None
             full = explicit_factors({**raw, "name": item.get("name")}, years)
             if full is None:
@@ -1211,9 +1151,7 @@ def _factor_text(row: dict) -> str:
 
 
 def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
-    """Each option's first year (one-time costs in it) and next year (the recurring cost
-    alone), and the gaps between the options' totals: the amounts a comparison writes
-    besides the totals, worked out so the writer copies them and the trace finds them."""
+    """First-year/next-year amounts per option and total gaps, precomputed for the writer and trace."""
     lines = []
     if all("first_year" in e for e in totals.values()):
         lines.append(f"- {label}첫해(1회 비용 포함): " + ", ".join(
@@ -1222,7 +1160,7 @@ def year_lines(label: str, totals: dict[str, dict]) -> list[str]:
             f"{o} {e['next_year']:,}원" for o, e in totals.items()))
         first = min(totals, key=lambda n: totals[n]["first_year"])
         later = min(totals, key=lambda n: totals[n]["next_year"])
-        # 「A안이 2년 연속 더 적다」 is then a figure the block states, not the writer's.
+        # makes 「2년 연속 더 적다」 a block-stated figure
         lines.append(f"- {label}더 적은 대안: 첫해 {first}, 이듬해 {later}"
                      + (f" (첫해·이듬해 2년 연속 {first})" if first == later else ""))
     names = list(totals)
@@ -1259,14 +1197,13 @@ def _cost_block(result: dict) -> str:
 
 Complete = Callable[..., Any]
 
-#: The settling reading with thinking on: its time cap, and the tokens its thinking and its
-#: answer share (Flash+thinking took 150 s median on cost extraction; outlines hit 6,400).
+#: thinking settle-read time cap and token budget (Flash+thinking: 150 s median on costs; outlines hit 6,400)
 DELIBERATE_SEC = 360.0
 DELIBERATE_TOKENS = 12000
 
 
 def _failure(exc: Exception) -> str:
-    """Why a pre-pass failed, in words the step can show."""
+    """Pre-pass failure reason, user-facing."""
     if isinstance(exc, KeyError):
         return f"값 {exc} 없음"
     if isinstance(exc, (ValueError, ArithmeticError, TypeError)) and str(exc):
@@ -1285,7 +1222,7 @@ def _json(text: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-#: What a split vote leaves the writer: no totals, the places for them marked.
+#: split vote: no totals, placeholders marked
 _COST_SPLIT = "총비용 계산 불일치 — 직접 확인 필요"
 _COST_WITHHELD = (
     "# 총비용 계산(코드): 확정 못 함\nThe cost items read from the material differed on every reading, so the "
@@ -1295,13 +1232,12 @@ _COST_WITHHELD = (
 
 
 def _option_key(name: str) -> str:
-    """An option's name as two readings compare it: 「팀링크 (엔터프라이즈)」 is 「팀링크」."""
+    """Option name for comparison: 「팀링크 (엔터프라이즈)」 → 「팀링크」."""
     return re.sub(r"\s+|\(.*?\)|（.*?）", "", str(name))
 
 
 def _same_totals(a: dict[str, dict], b: dict[str, dict]) -> bool:
-    """The same options at the same totals; a name may carry more words in one reading
-    (「법인 카셰어링」 for 「카셰어링」)."""
+    """Same options, same totals; names may carry extra words (「법인 카셰어링」 ~ 「카셰어링」)."""
     if len(a) != len(b):
         return False
     left = list(b.items())
@@ -1316,8 +1252,7 @@ def _same_totals(a: dict[str, dict], b: dict[str, dict]) -> bool:
 
 
 def settled_options(readings: list[dict]) -> tuple[dict[str, dict], list[str]]:
-    """The options two readings price alike when the readings as a whole differ, and the
-    names of the rest, so one unsettled option does not blank every total."""
+    """Options two differing readings price alike, plus the rest's names; one split option doesn't blank all."""
     kept: dict[str, dict] = {}
     unsettled: list[str] = []
     first = readings[0]["options"] if readings else {}
@@ -1362,7 +1297,7 @@ def _partial_cost_block(kept: dict[str, dict], unsettled: list[str], period: str
 
 
 def _costs_agree(a: dict, b: dict) -> bool:
-    """Two readings agree when they price the same options to the same totals."""
+    """Readings agree: same options, same totals."""
     return _same_totals(a["options"], b["options"])
 
 
@@ -1373,15 +1308,7 @@ def _quote_key(result: dict) -> tuple:
 
 async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool],
                 tiebreak: str, settle: Callable[[], Any] | None = None) -> tuple[Any, str, list]:
-    """Two readings by the writer's model, a third by `tiebreak` when they differ.
-
-    `settle`, when given, is tried first for the third reading (a reading that thinks); when
-    it fails, times out or reads nothing, the third reading is `tiebreak`'s.
-
-    Returns `(result, how, outcomes)`: the result two readings agree on and 「agreed」 or
-    「voted」; `None` and 「split」 when they all differ, or 「empty」 when none gave one. Each
-    outcome is `(result | None, why)`; a reading that raised is left out of them and counts as
-    none, and when every reading raised the first error is raised."""
+    """Two readings, a third (`settle` first, else `tiebreak`) on disagreement; returns `(result, how, outcomes)`."""
     async def read(model: str) -> Any:
         try:
             return await extract(model)
@@ -1421,7 +1348,7 @@ async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool]
 
 @dataclass(slots=True)
 class PrepassJob:
-    """What every pre-pass step is given: the turn's request and material, and the calls."""
+    """Pre-pass step inputs: request, material, calls."""
 
     format_id: str
     request: str
@@ -1432,8 +1359,7 @@ class PrepassJob:
     today: dt.date | None
     tiebreak_model: str
     usage: dict
-    #: A completion with the model's thinking on, for the reading that settles a split
-    #: (`report._complete_thinking`); None keeps the plain third reading.
+    #: thinking completion for the split-settling read (`report._complete_thinking`); None = plain third read
     deliberate: Complete | None = None
 
     def count(self, more: dict) -> None:
@@ -1446,10 +1372,7 @@ async def prepare(
     api_key: str, usage: dict | None = None, today: dt.date | None = None,
     tiebreak_model: str = "", process: Any = None, deliberate: Complete | None = None,
 ) -> Prepass:
-    """The document's pre-pass: what code settles before a word is written.
-
-    The steps and their order are its 진행 과정 설정's `prepass` (`process`; None: the
-    format's 서식's); each records its run — done, skipped or failed — in `Prepass.runs`."""
+    """Pre-pass: code-settled facts before writing; steps from pipeline `prepass`, runs in `Prepass.runs`."""
     from app.pipeline.runner import CURRENT_STAGE
     from app.services import process_settings
 
@@ -1470,16 +1393,14 @@ async def prepare(
 
 
 async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
-    """Relative dates resolved against the meeting's (or the memo's) date; lead times
-    counted from the material's own anchor date."""
+    """Relative dates from meeting/memo date; lead times from material's anchor date."""
     request, material, today = job.request, job.material, job.today
     meeting = pre.counts_from_meeting
-    # Only minutes are about a day the material itself was made on; an RFP's or a
-    # memo's relative dates are not read from today.
+    # minutes only: RFP/memo relative dates never read from today
     base, source = (meeting_base(request, material, today) if meeting
                     else (meeting_date(request, material, today), "text"))
     if base is None and meeting:
-        # The meeting's date is 「[회의 일자]」; relative deadlines stay words.
+        # meeting date 「[회의 일자]」: relative deadlines stay words
         probe = today or dt.date.today()
         rows = _undated(skill_scripts.dates().scan(material, probe), probe)
     else:
@@ -1493,7 +1414,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
     undated = meeting and base is None
     if block := _date_block(rows, first, _base_words(pre.base_source), undated=undated):
         pre.blocks.append(block)
-    # 「발주 후 8주」 counts from the material's own absolute date, meeting date or not.
+    # 「발주 후 8주」: from material's absolute date regardless of meeting date
     lead = skill_scripts.dates().lead_times(material)
     lead_rows = [r for r in lead["items"] if r["status"] == "ok"]
     if lead["items"]:
@@ -1523,7 +1444,7 @@ async def _date_calc(pre: Prepass, job: PrepassJob) -> None:
 
 
 async def _proposal_rfp(pre: Prepass, job: PrepassJob) -> None:
-    """What the RFP fixes: the client's names, the period, the page limit."""
+    """RFP terms: client names, period, page limit."""
     if terms := rfp_terms(job.material, job.request):
         pre.rfp = terms
         shown = [x for x in (
@@ -1535,7 +1456,7 @@ async def _proposal_rfp(pre: Prepass, job: PrepassJob) -> None:
 
 
 async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
-    """The quote's lines read twice (a third reading settles a split) and summed by code."""
+    """Quote lines read twice (third settles split), summed by code."""
     material, api_key = job.material, job.api_key
     settings = pre.settings
     complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
@@ -1553,7 +1474,6 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
             return None, dropped
 
         try:
-            # Read twice; a third reading by the larger model settles a split.
             agreed, how, outcomes = await _vote(
                 read_quote, lambda a, b: _quote_key(a[2]) == _quote_key(b[2]),
                 tiebreak_model or model)
@@ -1569,7 +1489,6 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
                 pre.blocks.append(_quote_block(result, left_out, bool(data.get("basis_assumed")),
                                                material))
                 if "quote-totals" in settings.code_checks:
-                    # A document whose totals are checked holds them as settled figures.
                     pre.figures.extend(_quote_figures(result))
                 counted = [line for line in result.get("lines") or [] if not line.get("excluded")]
                 summary = (f"견적 {len(counted)}항목 → 공급가액(VAT 별도) {result['supply']:,}원, "
@@ -1587,7 +1506,7 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "quote-calc", "error": True, "summary":
                                  f"견적 계산 못 함 (자료에 없는 값이라 뺀 것: {', '.join(dropped[:4])})"})
             else:
-                # Prices totalled per option by compare-cost are no miss here.
+                # compare-cost totals cover it: not a miss
                 by_option = "compare-cost" in settings.prepass
                 pre.runs.append({"skill": "quote-calc", "error": not by_option,
                                  "skipped": by_option,
@@ -1600,17 +1519,15 @@ async def _quote_calc(pre: Prepass, job: PrepassJob) -> None:
 
 async def _staffing(pre: Prepass, job: PrepassJob) -> None:
     if not pre.staff:
-        # Read by code even when the quote reading did not settle.
         pre.staff = staffing(job.material)
 
 
 async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
-    """Each option's total over the period, read twice and computed by code."""
+    """Each option's period total: read twice, computed by code."""
     request, material, api_key = job.request, job.material, job.api_key
     complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
     if len(_amounts(material)) >= 2:
-        # Options priced by parts (unit price × count × years) settle their totals before
-        # writing, also when no 「단가」 line runs quote-calc.
+        # part-priced options (unit × count × years) settle totals even without quote-calc
         given = f"{request}\n{material}"
         numbers = _material_numbers(given) + _calendar(given)
 
@@ -1623,9 +1540,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             why: list[str] = []
             return option_costs(_json(text), numbers, why), (why[0] if why else "")
 
-        # Two readings that differ are settled by one more on the outline model with its
-        # thinking on (Flash+thinking read 15/15 cost cases, 150 s median, against 12/15
-        # without); past the time cap the plain third reading settles.
+        # split settled by outline model w/ thinking (15/15 vs 12/15 without, 150 s median); plain third past cap
         thinker = next((m for m in (model, tiebreak_model)
                         if m and thinking.thinks_by_default(m)), "")
         deliberated = False
@@ -1641,13 +1556,11 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             return found, (why[0] if why else "")
 
         try:
-            # Totals reach the writer only when two readings agree, a third by the larger
-            # model settling a split.
             costs, how, outcomes = await _vote(
                 read_costs, _costs_agree, tiebreak_model or model,
                 think_costs if job.deliberate is not None and thinker else None)
             if costs is not None:
-                # A scenario is kept only when another agreeing reading gives it the same totals.
+                # scenario kept only if another agreeing reading has same totals
                 others = [o[0] for o in outcomes if o[0] is not None and o[0] is not costs
                           and _costs_agree(o[0], costs)]
                 kept = [sc for sc in costs["scenarios"] if any(
@@ -1681,7 +1594,6 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "compare-cost", "error": True,
                                  "summary": f"{_COST_SPLIT} ({readings[:600]})"})
             else:
-                # Never silent: a failed total is recorded as a step.
                 why = next((o[1] for o in outcomes if o[1]), "")
                 pre.runs.append({"skill": "compare-cost", "error": True, "summary": "총비용 계산 못 함 ("
                                  + (why or "응답에서 대안별 비용 항목을 읽지 못함") + ")"})
@@ -1695,7 +1607,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
 
 
 async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
-    """Must-have conditions judged per option, and weighted scores when weights are given."""
+    """Must-haves per option; weighted scores if weights given."""
     request, material, api_key = job.request, job.material, job.api_key
     complete, model, count = job.complete, job.model, job.count
     try:
@@ -1732,7 +1644,7 @@ async def _compare_check(pre: Prepass, job: PrepassJob) -> None:
 
 
 async def _career_periods(pre: Prepass, job: PrepassJob) -> None:
-    """Each period's months and the total, counted by code."""
+    """Period months and total, by code."""
     material, request, today = job.material, job.request, job.today
     if span := career_periods(material, request, today or dt.date.today()):
         pre.periods = span
@@ -1746,7 +1658,6 @@ async def _career_periods(pre: Prepass, job: PrepassJob) -> None:
                          "summary": "자료에서 경력 기간을 읽지 못해 기간 계산 안 함"})
 
 
-#: The pre-pass steps a pipeline file's `prepass` list names.
 PREPASS_STEPS: dict[str, Callable[[Prepass, PrepassJob], Any]] = {
     "date-calc": _date_calc,
     "proposal-rfp": _proposal_rfp,
@@ -1758,7 +1669,7 @@ PREPASS_STEPS: dict[str, Callable[[Prepass, PrepassJob], Any]] = {
 }
 
 
-# ── after writing: checks the verify stage repairs ───────────────────────
+# ── after writing: checks repaired by verify stage ──
 
 
 def _amounts(text: str) -> list[float]:
@@ -1783,7 +1694,7 @@ _SCENARIO_TABLE = re.compile(r"시나리오|대안|옵션|안\s{0,2}\d|전제|�
 
 
 def _row_amount(line: str) -> float | None:
-    """The last amount of a table row (a bare 「47,100,000」 cell read as won) or a sentence."""
+    """Last amount in a table row (bare 「47,100,000」 = won) or sentence."""
     if line.lstrip().startswith("|"):
         found = [a for c in cells(line)[1:] for a in _amounts(c if "원" in c else c + "원") if a >= 1000]
     else:
@@ -1798,7 +1709,7 @@ def _quote_expected(kind: str, quote: dict) -> list[int]:
 
 
 async def quote_totals(doc: Doc, quote: dict) -> tuple[list[Finding], dict]:
-    """Rows of the quote table whose 공급가액·부가세·총액 differ from quote-calc."""
+    """Quote-table rows whose 공급가액·부가세·총액 differ from quote-calc."""
     found: list[Finding] = []
     if not quote or not quote.get("lines"):
         return found, {}
@@ -1849,7 +1760,7 @@ async def quote_totals(doc: Doc, quote: dict) -> tuple[list[Finding], dict]:
     return found, {}
 
 
-#: A sentence's quote total: 「견적 총액 85,000,000원(부가세 포함)」, 「합계(VAT 별도)는 …원」.
+#: sentence quote total: 「견적 총액 85,000,000원(부가세 포함)」, 「합계(VAT 별도)는 …원」
 _TOTAL_SAID = re.compile(
     r"(?P<label>(?:견적|제안)?\s{0,2}(?:총액|총\s{0,2}견적\s{0,2}금액|합계)"
     r"(?:\s{0,2}\(\s{0,2}(?P<b1>부가세|VAT)\s{0,2}(?P<k1>포함|별도)\s{0,2}\))?)"
@@ -1858,8 +1769,7 @@ _TOTAL_SAID = re.compile(
 
 
 def _total_slips(text: str, quote: dict) -> list[tuple[str, int, int]]:
-    """Totals a sentence states that are not quote-calc's: VAT 별도 against 공급가액, else the
-    VAT-included 합계. Scenario totals pass."""
+    """Sentence totals differing from quote-calc (VAT 별도 vs 공급가액, else 합계); scenario totals pass."""
     if not quote.get("lines"):
         return []
     others = {int(r.get(k) or 0) for r in quote.get("scenarios") or [] for k in ("supply", "total")}
@@ -1870,7 +1780,7 @@ def _total_slips(text: str, quote: dict) -> list[tuple[str, int, int]]:
         want = quote["supply"] if basis == "별도" else quote["total"]
         loose = set()
         if not basis and "합계" in m.group("label"):
-            # A bare 「합계」 may sum any part: 「PM 합계 35,000,000원」.
+            # bare 「합계」 may sum any part: 「PM 합계 35,000,000원」
             loose = {quote["supply"], quote["subtotal"],
                      *(int(line.get("amount") or 0) for line in quote["lines"])}
         if written != want and written not in others | loose:
@@ -1879,8 +1789,7 @@ def _total_slips(text: str, quote: dict) -> list[tuple[str, int, int]]:
 
 
 def _back_computed(quote: dict) -> set[int]:
-    """Amounts got by reading a settled amount on the other VAT basis — 85,000,000 taken as
-    VAT included gives 77,272,727 + 7,727,273 — that no settled value is."""
+    """Amounts from misreading a settled amount's VAT basis (85,000,000 → 77,272,727 + 7,727,273)."""
     known = {int(quote.get(k) or 0) for k in ("subtotal", "discount", "supply", "vat", "total")}
     known |= {int(line.get("amount") or 0) for line in quote.get("lines") or []}
     for row in quote.get("scenarios") or []:
@@ -1929,7 +1838,7 @@ def _cell_dates(cell: str) -> list[tuple[int | None, int, int]]:
 
 
 def bound_rows(row_text: str, dates: list[dict]) -> list[dict]:
-    """The resolved dates whose source line is the one this row came from (most words shared)."""
+    """Resolved dates whose source line is this row's (most shared words)."""
     words = _words(row_text)
     if not words:
         return []
@@ -1952,9 +1861,7 @@ def date_matches(found: tuple[int | None, int, int], entry: dict) -> bool:
 
 
 async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict]:
-    """Each action row: an owner, a due date (「[기한]」 when the material gives none, 「미정」
-    with its reason when the meeting put it off), a due date that is
-    date-calc's reading of the line it came from."""
+    """Each action row: owner and due date (「[기한]」 if none given, 「미정」 + reason if deferred), per date-calc."""
     found: list[Finding] = []
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
     for table in tables(doc.sections):
@@ -2004,7 +1911,7 @@ _REPEAT_CELL = re.compile(r"(?:매주|격주)\s{0,2}[월화수목금토일]요�
 
 
 def _stray_repeat(when: str, action: str, bound: list[dict]) -> bool:
-    """A 「매주 월요일」 on a row whose task is not the one the recurring line names."""
+    """「매주 월요일」 on a row other than the recurring line's task."""
     repeats = [d for d in bound if d.get("status") == "repeat"]
     return bool(repeats and _REPEAT_CELL.search(when or "") and action.strip()
                 and not any(_action_hits(action, d) for d in repeats))
@@ -2031,7 +1938,7 @@ _BLANK = {"", "-", "—", "–", "?", "n/a", "N/A"}
 
 
 async def comparison_cells(doc: Doc, scored: dict | None) -> tuple[list[Finding], dict]:
-    """Comparison tables: no blank cell; written weighted scores equal the code's."""
+    """Comparison tables: no blank cell; weighted scores match code's."""
     found: list[Finding] = []
     options = list((scored or {}).get("options") or {})
     for table in tables(doc.sections):
@@ -2097,10 +2004,7 @@ def _tokens(text: str) -> list[float]:
 
 
 def _derived(numbers: list[float]) -> set[float]:
-    """What is written from the material's own numbers: a difference (exact, 「+7.0%p」), a
-    percent change (「36.1% 절감」) and a small multiple (「4배」), rounded half up as people do.
-
-    Counts under ten are left out: ratios of 「4명」 and 「2주」 would excuse any number."""
+    """Values derived from material numbers (difference, % change, small multiple), rounded half up; counts < 10 skipped."""
     pool = sorted({n for n in numbers if n >= 10 or n != int(n)})[:80]
     out: set[float] = set()
 
@@ -2119,7 +2023,6 @@ def _derived(numbers: list[float]) -> set[float]:
     return out
 
 
-#: Dates and periods in material or text: read as dates, never as figures.
 _DATE_LIKE = re.compile(
     r"(?<![\d.])(?:19|20)\d{2}\s{0,2}(?:[./-]|년)\s{0,2}\d{1,2}(?:\s{0,2}(?:[./-]|월)\s{0,2}\d{1,2})?\s{0,2}[월일]?"
     r"|(?<![\d.])\d{2}\s{0,2}년\s{0,2}\d{1,2}\s{0,2}월"
@@ -2137,8 +2040,7 @@ def _known(value: float, known: set[float]) -> bool:
 
 
 async def career_numbers(doc: Doc, periods: dict | None) -> tuple[list[Finding], dict]:
-    """Numbers the material does not give (nor code derived from it), and a total career that is
-    not date-calc's."""
+    """Numbers not in or derived from material, and a total career differing from date-calc's."""
     material_numbers = figure_tokens(doc.material)
     known = set(material_numbers) | _derived(material_numbers)
     if periods:
@@ -2154,7 +2056,6 @@ async def career_numbers(doc: Doc, periods: dict | None) -> tuple[list[Finding],
             stripped = line.strip()
             if not stripped or stripped.startswith(("```", "!")):
                 continue
-            # Dates and periods are checked as periods, not as figures.
             strays = [n for n in figure_tokens(stripped) if n >= 2 and not _known(n, known)]
             if strays:
                 found.append(Finding(
@@ -2198,7 +2099,7 @@ _PERIOD_TEXT = re.compile(
 
 
 def tidy_periods(sections: list[dict]) -> tuple[list[dict], int]:
-    """Every period written one way: 「2019.04 ~ 2021.01」, 「2023.03 ~ 현재」."""
+    """One period style: 「2019.04 ~ 2021.01」, 「2023.03 ~ 현재」."""
     changed = 0
 
     def one(m: re.Match[str]) -> str:
@@ -2215,18 +2116,17 @@ def tidy_periods(sections: list[dict]) -> tuple[list[dict], int]:
     return out, changed
 
 
-# ── lead times: 「발주 후 8주」 as the date code worked out ─────────────────
+# ── lead times: 「발주 후 8주」 as code-computed date ──
 
-#: A date as written: 「2026. 12. 14.」 「2026-12-14」 「12월 14일」 「12. 14.」.
+#: written date: 「2026. 12. 14.」 「2026-12-14」 「12월 14일」 「12. 14.」
 _DAY_IN = re.compile(
     r"(20\d{2})\s{0,2}(?:[-./]|년)\s{0,2}(\d{1,2})\s{0,2}(?:[-./]|월)\s{0,2}(\d{1,2})(?!\d)"
     r"|(?<![\d.,])(\d{1,2})\s{0,2}(?:\.|월)\s{0,2}(\d{1,2})\s{0,2}[.일](?!\d)")
-#: Words that make a line about when something is done or delivered.
 _DONE_WORDS = re.compile(r"납기|납품|완료|설치|도착|입고|준공|검수|인도|\d{1,3}\s{0,2}주")
-#: A late verdict by the deadline (「기한 2026. 12. 18. 초과」), not a risk (「초과 위험」).
+#: late verdict vs deadline (「기한 2026. 12. 18. 초과」), not a risk (「초과 위험」)
 _LATE_WORDS = r"초과|넘(?:어|음|김|는다|긴다)|미충족|불충족|맞추지\s{0,2}못"
 _ON_TIME_WORDS = r"이내|충족|준수|맞춤|전\s{0,2}완료"
-#: A date written as when the thing is done: 「완료일: 2026. 12. 14.」, 「납품 예정 12월 14일」.
+#: done date: 「완료일: 2026. 12. 14.」, 「납품 예정 12월 14일」
 _DONE_DATE = re.compile(
     r"(?:완료|납품|도착|입고|준공|인도)(?:[^\n\d기마까]{0,8})(?P<day>"
     r"20\d{2}\s{0,2}(?:[-./]|년)\s{0,2}\d{1,2}\s{0,2}(?:[-./]|월)\s{0,2}\d{1,2}(?!\d)"
@@ -2246,7 +2146,7 @@ def _days_in(text: str) -> list[tuple[int | None, int, int]]:
 
 
 def _lead_keys(label: str) -> list[str]:
-    """Names a written line uses for a lead-time row: 「A사(에이브이원)」 → A사, 에이브이원."""
+    """Names for a lead-time row: 「A사(에이브이원)」 → A사, 에이브이원."""
     return [k for k in re.split(r"[\s()（）\[\]·,/:]+", label or "") if len(k) >= 2][:4]
 
 
@@ -2256,7 +2156,7 @@ def _day_matches(found: tuple[int | None, int, int], iso: str) -> bool:
 
 
 def _verdict_near(text: str, deadline: str, words: str) -> bool:
-    """Whether `words` follow 「기한」 or the deadline's date closely, as a verdict."""
+    """Whether `words` closely follow 「기한」 or the deadline date."""
     month, day = int(deadline[5:7]), int(deadline[8:10])
     near = rf"(?:기한|마감|{month}\s{{0,2}}[.월]\s{{0,2}}{day}\s{{0,2}}[.일]?)[^\n]{{0,16}}?(?:{words})"
     for m in re.finditer(near, text):
@@ -2266,12 +2166,11 @@ def _verdict_near(text: str, deadline: str, words: str) -> bool:
 
 
 def _lead_problem(text: str, row: dict, allowed: list[str]) -> str:
-    """What a line about one lead-time row gets wrong: a date code did not work out, or
-    the deadline verdict turned round."""
+    """A lead-time line's error: uncomputed date or inverted deadline verdict."""
     problems = []
     if _DONE_WORDS.search(text):
         wrong = [d for d in _days_in(text) if not any(_day_matches(d, iso) for iso in allowed)]
-        # 「완료일: 2026. 12. 18.」 is the done date even when it is a date the material has.
+        # 「완료일:」 date is the done date even if the material has it
         wrong += [d for m in _DONE_DATE.finditer(text) if not _UNTIL.match(text[m.end():m.end() + 4])
                   for d in _days_in(m.group("day")) if not _day_matches(d, row["date"])]
         if wrong:
@@ -2290,8 +2189,7 @@ def _lead_rows_in(text: str, rows: list[dict]) -> list[dict]:
 
 
 async def lead_time_dates(doc: Doc, lead: dict | None) -> tuple[list[Finding], dict]:
-    """Lines about one lead-time row (a vendor's 납기) whose date or deadline verdict is
-    not what date-calc worked out; a table with the rows as columns is read by column."""
+    """Lead-time lines whose date or verdict differs from date-calc; row-as-column tables read by column."""
     found: list[Finding] = []
     rows = [r for r in (lead or {}).get("items") or [] if r.get("status") == "ok" and r.get("label")]
     if not rows:
@@ -2360,7 +2258,7 @@ def _cell_still(line: str, column: int, row: dict, allowed: list[str]) -> bool:
 
 
 def lead_dates_missing(sections: list[dict], lead: dict | None) -> list[dict]:
-    """Lead-time rows whose worked-out date the document never writes."""
+    """Lead-time rows whose computed date is never written."""
     whole = _whole(sections)
     days = _days_in(whole)
     return [r for r in (lead or {}).get("items") or [] if r.get("status") == "ok"
@@ -2442,8 +2340,6 @@ def _staff_counts_check(pre: Prepass) -> Check | None:
     return staff_check
 
 
-#: The format code checks a pipeline file's `checks` list names, each built on the pre-pass
-#: (None when the pre-pass gave it nothing to check).
 CHECK_FAMILIES: dict[str, Callable[[Prepass], Check | None]] = {
     "quote-totals": _quote_totals_check,
     "proposal-schedule": _proposal_schedule_check,
@@ -2458,25 +2354,23 @@ CHECK_FAMILIES: dict[str, Callable[[Prepass], Check | None]] = {
 
 
 def checks(pre: Prepass | None) -> list[Check]:
-    """The document's code checks, as its 진행 과정 설정 names them (what its structure
-    implies first: 개조식 문체); they run before and after the repair."""
+    """Code checks from pipeline settings (structure-implied first); run before and after repair."""
     if pre is None:
         return []
     built = [CHECK_FAMILIES[name](pre) for name in pre.settings.code_checks]
     return [check for check in built if check is not None]
 
 
-# ── staffing: people are people, MM is effort ───────────────────────────
+# ── staffing: people vs MM ──
 
-#: 「AI 엔지니어 1명 3.0MM」, 「퍼블리셔 2명 각 4MM」 in the material.
+#: 「AI 엔지니어 1명 3.0MM」, 「퍼블리셔 2명 각 4MM」
 _STAFF_LINE = re.compile(
     r"([A-Za-z가-힣][A-Za-z가-힣 ]{0,20}?)\s{0,2}(\d{1,3})\s{0,2}명\s{0,3}(?:[,·×x*]\s{0,2})?(?:각\s{0,2})?"
     r"(\d{1,3}(?:\.\d{1,2})?)\s{0,2}(?:MM|M/M|맨먼스)", re.I)
 
 
 def staffing(material: str, quote_input: dict | None = None) -> dict[str, dict]:
-    """Each role's headcount and MM as the material states them, read by code first and
-    then from quote-calc's reading: `{role: {"people": n | None, "mm": x | None}}`."""
+    """Per-role headcount and MM from material (code, then quote-calc): `{role: {"people", "mm"}}`."""
     out: dict[str, dict] = {}
     for m in _STAFF_LINE.finditer(material or ""):
         role = re.sub(r"^(?:[-*·•]\s{0,2}|및\s|그리고\s)", "", m.group(1).strip()).strip()
@@ -2517,8 +2411,7 @@ def _said_headcounts(text: str, roles: dict[str, dict]) -> list[tuple[str, float
 
 
 async def staff_counts(doc: Doc, roles: dict[str, dict]) -> tuple[list[Finding], dict]:
-    """A role's headcount written as its MM (「AI 엔지니어 3명(3.0MM)」 where the plan is
-    1명 × 3.0MM)."""
+    """Headcount written as MM (「3명(3.0MM)」 where plan is 1명 × 3.0MM)."""
     found: list[Finding] = []
     for index, sec in enumerate(doc.sections):
         content = str(sec.get("content") or "")
@@ -2554,11 +2447,10 @@ def _row_off(line: str, role: str, column: int, roles: dict[str, dict]) -> bool:
     return bool(m and _headcount_problem(role, float(m.group(1)), roles[role]))
 
 
-# ── placeholders the material can fill ──────────────────────────────────
+# ── placeholders the material can fill ──
 
 _DAY_VALUE = (r"(?:20\d{2}\s{0,2}[-./년]\s{0,2})?\d{1,2}\s{0,2}(?:[/.]|월\s{0,2})\s{0,2}\d{1,2}\s{0,2}일?"
               r"(?:\s{0,2}\([월화수목금토일]\))?")
-#: A blank's name and what a value for it looks like in the material.
 _SLOTS: tuple[tuple[re.Pattern[str], re.Pattern[str]], ...] = (
     (re.compile(r"이메일|메일\s{0,2}주소|e-?mail", re.I),
      re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,4}")),
@@ -2577,7 +2469,6 @@ _SLOTS: tuple[tuple[re.Pattern[str], re.Pattern[str]], ...] = (
      re.compile(r"(?<![\d.])\d{1,3}(?:\.\d{1,3})?\s{0,2}(?:%|퍼센트)"
                 r"|(?<![\d,])\d[\d,]{0,12}\s{0,2}(?:명|석|건|개|대|원|일|kg|km)(?!분)")),
 )
-#: Words too common to tie a blank to a line of the material.
 _COMMON = frozenset({"회의", "자료", "확인", "다음", "기준", "경우", "결과", "내용", "관련", "예정",
                      "필요", "정도", "이번", "해당", "진행", "현재", "부분", "사항", "미정", "원문",
                      "비고", "출처", "담당", "기한", "완료"})
@@ -2587,13 +2478,11 @@ def _slot(name: str) -> re.Pattern[str] | None:
     return next((value for pattern, value in _SLOTS if pattern.search(name)), None)
 
 
-#: An option's label in a comparison: 「A안」, 「B안의」, 「1안」.
 _OPTION_LABEL = re.compile(r"(?<![가-힣A-Za-z0-9])([A-Z]|[1-9])안")
 
 
 def _option_part(src: str, option: str) -> str:
-    """The stretch of a material line about one option, when the line describes several
-    (「A안: … B안: …」); the whole line otherwise."""
+    """Part of a multi-option material line about one option; whole line otherwise."""
     marks = [m for m in _OPTION_LABEL.finditer(src)]
     if len({m.group(1) for m in marks}) < 2:
         return src
@@ -2607,8 +2496,7 @@ def _option_part(src: str, option: str) -> str:
 
 
 def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, str, str, list[str]]]:
-    """Blanks whose value the material states near the same words: `(section, sentence or
-    row, blank, evidence lines)`, e.g. 「대강당 [석수]」 with 「대강당이 600석」 in the transcript."""
+    """Blanks the material fills nearby: `(section, sentence/row, blank, evidence lines)`."""
     lines = [ln.strip() for ln in (material or "").splitlines() if ln.strip()]
     out: list[tuple[int, str, str, list[str]]] = []
     for index, sec in enumerate(sections):
@@ -2617,8 +2505,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                 continue
             pieces = [line] if line.lstrip().startswith("|") else [
                 p for p in units.SENTENCE_BREAK.split(line) if placeholders.PLACEHOLDER.search(p)]
-            # A paragraph about one option reads only that option's part of a material line
-            # that describes several, so 「A안 … [금액]」 is not filled with B안's value.
+            # option paragraph reads only its option's part, so 「A안 … [금액]」 never gets B안's value
             named_options = {m.group(1) for m in _OPTION_LABEL.finditer(line)}
             option = (next(iter(named_options)) if len(named_options) == 1
                       and not line.lstrip().startswith("|") else "")
@@ -2626,7 +2513,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                 own = _words(placeholders.PLACEHOLDER.sub(" ", piece)) - _COMMON
                 for m in placeholders.PLACEHOLDER.finditer(piece):
                     name = m.group(1)
-                    # The blank's own name ties it too: 「[경력 시작 월]」 to 「총 경력 … 2019년 4월」.
+                    # blank's own name ties too: 「[경력 시작 월]」 ↔ 「총 경력 … 2019년 4월」
                     named = _words(name) - _COMMON
                     labelled = re.compile(re.escape(name) + r"\s{0,2}[:：]\s{0,2}\S")
                     value = _slot(name)
@@ -2644,8 +2531,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                             continue
                         if value is None:
                             continue
-                        # A value the sentence already carries (「교무처 마감 11/2」 in 비고)
-                        # is not the blank's.
+                        # value already in the sentence is not the blank's
                         fresh = [v.group(0) for v in value.finditer(src)
                                  if _digits_of(v.group(0)) not in _digits_of(piece)]
                         if not fresh:
@@ -2659,7 +2545,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
 
 
 async def material_blanks(doc: Doc) -> tuple[list[Finding], dict]:
-    """A blank the material can fill is a defect: the repair fills it from the lines shown."""
+    """Blanks the material can fill: repair fills from shown lines."""
     found: list[Finding] = []
     for index, piece, blank, evidence in answerable_blanks(doc.sections, doc.material):
         if any(f.section == index and f.sentence == piece for f in found):
@@ -2684,7 +2570,7 @@ def _digits_of(text: str) -> str:
     return re.sub(r"[\s,]", "", text)
 
 
-# ── after writing: what is missing is added, never rewritten ─────────────
+# ── after writing: add missing, never rewrite ──
 
 
 @dataclass(slots=True)
@@ -2692,11 +2578,9 @@ class Amendment:
     section: int
     code: str
     instruction: str
-    #: True while the document still lacks it.
     missing: Callable[[list[dict]], bool]
-    #: Text appended by code instead of asked of the model.
     append: str = ""
-    #: Found and shown, never changed (no edit that only adds can mend it).
+    #: shown only; add-only edit can't fix
     report_only: bool = False
 
 
@@ -2713,8 +2597,7 @@ def _section_for(sections: list[dict], pattern: str, fallback: int = -1) -> int:
 
 
 def _summary_instruction(lines: int) -> str:
-    """What the summary callout amendment asks for: 「핵심」 then `lines` lines (two: the
-    conclusion and the decision needed, as a 개조식 report opens)."""
+    """Summary callout ask: 「핵심」 then `lines` lines (conclusion, decision needed)."""
     if lines == 2:
         return ("Add a callout block, opened by the line 「```callout」, at the very start of this section. Its "
                 "first line is 「핵심」, the "
@@ -2729,8 +2612,7 @@ def _summary_instruction(lines: int) -> str:
 
 def amendments(pre: Prepass | None, sections: list[dict], material: str, request: str,
                conflicts: list[key_figures.Conflict], title_block: dict | None = None) -> list[Amendment]:
-    """What the document must carry and does not: its 진행 과정 설정's `amend` names and its
-    structure's summary callout."""
+    """Missing required content: pipeline `amend` names and the summary callout."""
     if pre is None or not sections:
         return []
     out: list[Amendment] = []
@@ -2760,8 +2642,7 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
             out.append(Amendment(index, "validity_missing", "", lambda secs: "유효" not in _whole(secs),
                                  append=f"- 견적 유효기간: {stated}"))
     if pre.lead and (absent := lead_dates_missing(sections, pre.lead)):
-        # 「8주」 left as a span: the dates code worked out, and how each stands to the
-        # deadline, added as one line where the options are weighed.
+        # span like 「8주」: computed dates and deadline standing added as one line
         index = _section_for(sections, r"검토|문제|비교|분석|일정")
         starts = ", ".join(dict.fromkeys(f"{r['anchor']} {r['start']}" for r in absent))
         said = ", ".join(f"{r['label'] or r['text']} {r['date']}"
@@ -2829,7 +2710,7 @@ def amendments(pre: Prepass | None, sections: list[dict], material: str, request
 
 
 def _status_cell(sections: list[dict], option: str, word: str) -> bool:
-    """Whether a table marks `option` with `word` (a status row, or a status column)."""
+    """Whether a table marks `option` with `word` (status row or column)."""
     for table in tables(sections):
         column = next((k for k, h in enumerate(table.header) if option in h), None)
         for _, row in table.rows:
@@ -2864,10 +2745,10 @@ def _unverified_options(sections: list[dict], options: list[str]) -> list[str]:
     return [o for o in dict.fromkeys(found) if o and len(o) <= 30]
 
 
-# ── page count ───────────────────────────────────────────────────────────
+# ── page count ──
 
 
-#: What the page limit leaves out: 붙임 (개조식), 부록·별지·가격 제안서 (제안서, E7).
+#: excluded from the page limit: 붙임 (개조식), 부록·별지·가격 제안서 (제안서, E7)
 _ATTACHMENT = re.compile(r"^\s{0,4}\[?(?:붙임|첨부|별첨|부록|별지|가격\s{0,2}제안)")
 _PAGES_ASKED = re.compile(
     r"(?<!\d)(\d{1,2}|한|두|세)\s{0,2}(?:쪽|장|페이지|page)\s{0,3}(?:이내|이하|안으로|짜리|분량|으로|로|내외)"
@@ -2875,8 +2756,7 @@ _PAGES_ASKED = re.compile(
 
 
 def page_limit(process: Any, request: str, material: str = "") -> int | None:
-    """The body's page limit: what the person asks, else the RFP's (`page_limit_rfp`, a
-    proposal), else the 서식's own (`page_limit`, 개조식: one page)."""
+    """Body page limit: user's, else RFP's (`page_limit_rfp`), else 서식's (`page_limit`)."""
     structure = process.structure
     m = _PAGES_ASKED.search(request or "")
     if m:
@@ -2888,14 +2768,14 @@ def page_limit(process: Any, request: str, material: str = "") -> int | None:
 
 
 def body_sections(sections: list[dict]) -> list[dict]:
-    """The body as the limit counts it: everything before the 붙임."""
+    """Body as counted: everything before 붙임."""
     return [s for s in sections if not _ATTACHMENT.match(str(s.get("heading") or ""))]
 
 
 async def page_count(
     title: str, sections: list[dict], title_block: dict | None, tokens: dict | None = None
 ) -> int | None:
-    """Pages of the body as the PDF export lays it out; None when it cannot render."""
+    """Body pages in PDF export; None if unrenderable."""
     from app.services import report_export  # heavy: fonts and reportlab load on first use
 
     try:
@@ -2912,8 +2792,7 @@ async def page_count(
 async def hwpx_page_count(
     title: str, sections: list[dict], title_block: dict | None, tokens: dict | None = None
 ) -> int | None:
-    """Pages of the body through the 「붙임」 line as the `.hwpx` lays it out (an estimate,
-    `report_export.hwpx_pages`); None when it cannot render. People open the HWPX."""
+    """Estimated `.hwpx` body pages through 「붙임」; None if unrenderable."""
     from app.services import report_export
 
     try:
@@ -2927,7 +2806,7 @@ async def hwpx_page_count(
     return body or None
 
 
-#: The 「끝.」 that closes a 개조식 document, after its 붙임 list (시행규칙 제4조제5항).
+#: 개조식 closing 「끝.」 after the 붙임 list (시행규칙 제4조제5항)
 _CLOSING_LINE = re.compile(r"(?:^|\s)끝\.[ \t\u00a0]{0,8}$", re.M)
 
 
@@ -2938,9 +2817,7 @@ async def body_pages(
     tokens: dict | None = None,
     page_settings: dict | None = None,
 ) -> tuple[int | None, int | None]:
-    """`(hwpx, pdf)` pages of a 개조식 body through its 붙임 list and 「끝.」, as the exports
-    lay it out: every section drawn (the 붙임 included), with the document's design, title
-    block and page settings — what the 파일 탭 hands out. None where it cannot render."""
+    """`(hwpx, pdf)` pages of a 개조식 body through 붙임 and 「끝.」, as exported; None if unrenderable."""
     from app.services import report_export
 
     def measure() -> tuple[int, int]:
@@ -2972,7 +2849,6 @@ Rules:
 Section:
 {content}"""
 
-#: Rounds of condensing a body that runs over its page limit; each is measured again.
 CONDENSE_ROUNDS = 2
 
 
@@ -2981,10 +2857,7 @@ def _lines(text: str) -> int:
 
 
 def _tables_to_attachment(sections: list[dict]) -> list[dict]:
-    """The body's pipe tables moved, with their captions, to the 붙임 (made when missing).
-
-    A pointer stays where each table stood. The 핵심 callout and other fences stay.
-    """
+    """Move body pipe tables and captions to 붙임 (created if missing), leaving pointers."""
     out = [dict(s) for s in sections]
     moved: list[str] = []
     for sec in out:
@@ -3024,12 +2897,7 @@ def _tables_to_attachment(sections: list[dict]) -> list[dict]:
 
 async def condense(sections: list[dict], *, pages: int, limit: int, complete: Complete,
                    model: str, api_key: str, usage: dict | None = None) -> list[dict]:
-    """One condensing round: the body's tables moved to 붙임, then each body section
-    rewritten to the line count the measured overflow calls for.
-
-    A rewrite that drops a number is not kept; nor is the round if the document as a
-    whole lost one.
-    """
+    """One condensing round; rewrites that drop a number are discarded."""
     out = _tables_to_attachment(sections)
     body = [i for i, s in enumerate(out) if not _ATTACHMENT.match(str(s.get("heading") or ""))]
     total = sum(_lines(str(out[i].get("content") or "")) for i in body) or 1
@@ -3066,15 +2934,15 @@ async def condense(sections: list[dict], *, pages: int, limit: int, complete: Co
     return out
 
 
-# ── proposal: what the RFP fixes ────────────────────────────────────────
+# ── proposal: RFP terms ──
 
 _CLIENT_LABEL = re.compile(
     r"(?:발주\s{0,2}기관|수요\s{0,2}기관|발주처|고객사|기관명|수\s{0,2}신)\s{0,2}[:：]\s{0,2}([^\n,|·「『(\[]{2,40})")
-#: 「[RFP 발췌 — 한빛물류(주) 「…」]」, 「[미팅 메모 — 그린텍스타일(주) 인사팀, …]」.
+#: 「[RFP 발췌 — 한빛물류(주) 「…」]」, 「[미팅 메모 — 그린텍스타일(주) 인사팀, …]」
 _CLIENT_HEAD = re.compile(
     r"^\s{0,4}\[?\s{0,2}(?:RFP|제안\s{0,2}요청서|미팅\s{0,2}메모|고객\s{0,2}메일|과업\s{0,2}지시서|공고)[^\n—–\]]{0,20}[—–-]\s{0,2}"
     r"([^\n「『,\]]{2,40}?)\s{0,2}(?:[「『,\]]|$)", re.M)
-#: A page header lifted from an RFP PDF: 「제안요청서  |  한국농식품정보원  |  2026」.
+#: RFP PDF page header: 「제안요청서  |  한국농식품정보원  |  2026」
 _CLIENT_RUNNING = re.compile(r"^\s{0,4}(?:제안\s{0,2}요청서|RFP)\s{0,3}\|\s{0,3}([^|\n]{2,30}?)\s{0,3}\|")
 _OURS_LINE = re.compile(r"우리\s{0,2}회사|제안사|당사|실적")
 _PERIOD_LINE = re.compile(r"(?:사업|용역|수행|계약|과업)\s{0,2}기간[^\n]{0,100}")
@@ -3083,13 +2951,13 @@ _BODY_PAGES = re.compile(r"본문\s{0,3}(\d{1,3})\s{0,2}(?:쪽|페이지|매|pag
 
 
 def _client_key(name: str) -> str:
-    """A client name for comparing: 「(주)」, 「주식회사」, 「(가상)」 and spaces out."""
+    """Client name for comparison: 「(주)」, 「주식회사」, 「(가상)」, spaces stripped."""
     name = re.sub(r"\(\s{0,2}(?:주|가상|사|재|유)\s{0,2}\)|주식회사|㈜", "", name or "")
     return re.sub(r"[\s\"'“”‘’]+", "", name).strip(" -·:")
 
 
 def rfp_terms(material: str, request: str) -> dict | None:
-    """Client names, the period's end (or length in months) and the body page limit an RFP states."""
+    """RFP's client names, period end (or months) and body page limit."""
     text = f"{request}\n{material}"
     clients: list[str] = []
     for line in text.splitlines():
@@ -3098,7 +2966,6 @@ def rfp_terms(material: str, request: str) -> dict | None:
         for m in (*_CLIENT_LABEL.finditer(line), *_CLIENT_HEAD.finditer(line),
                   *_CLIENT_RUNNING.finditer(line)):
             name = m.group(1).strip(" -·:")
-            # A name, not a date or a number (「[고객 메일 — 2026-10-06(화), …]」).
             if (2 <= len(_client_key(name)) <= 30 and re.match(r"[가-힣A-Za-z(㈜]", name)
                     and not re.search(r"\d{2,4}\s{0,2}[-./년]", name)):
                 clients.append(name)
@@ -3124,11 +2991,7 @@ def rfp_terms(material: str, request: str) -> dict | None:
 
 
 def client_head(block: dict | None, rfp: dict | None, text: str = "") -> tuple[dict | None, str]:
-    """The head's 고객사 against the RFP's client: `(fixed block or None, problem or "")`.
-
-    A blank or a wrong name is set to the RFP's when it names one client; with several, a
-    wrong name is only reported. A name `text` (request and material) gives is kept unless it
-    is the proposer's own."""
+    """Head 고객사 vs RFP client: `(fixed block or None, problem or "")`; fixed only for a single client."""
     if not block or not rfp or not rfp.get("clients"):
         return None, ""
     fields = [list(f) for f in block.get("fields") or []]
@@ -3153,15 +3016,15 @@ def client_head(block: dict | None, rfp: dict | None, text: str = "") -> tuple[d
     return None, problem
 
 
-# ── minutes with no meeting date ────────────────────────────────────────
+# ── minutes with no meeting date ──
 
 _WD = "월화수목금토일"
-#: A day as the writer spells it: 「2026년 10월 8일(목)」, 「10월 8일」, 「2026-10-08」, a time after.
+#: written day: 「2026년 10월 8일(목)」, 「10월 8일」, 「2026-10-08」, optional time
 _SOME_DAY = (r"(?:(?:20\d{2}\s{0,2}년\s{0,2})?\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일"
              r"|20\d{2}\s{0,2}[-./]\s{0,2}\d{1,2}\s{0,2}[-./]\s{0,2}\d{1,2}\.?)"
              rf"(?:\s{{0,2}}\([{_WD}]\))?"
              r"(?:\s{0,2}(?:오전|오후|저녁|밤)?\s{0,2}\d{1,2}\s{0,2}(?:시|:\d{2})(?:\s{0,2}\d{1,2}\s{0,2}분)?)?")
-#: 「10월 8일에 열린 축제 부스 준비 회의」: a day the text gives as the meeting's own.
+#: day stated as the meeting's: 「10월 8일에 열린 … 회의」
 _MEETING_DAY = re.compile(
     rf"(?P<day>{_SOME_DAY})(?P<tail>\s{{0,2}}(?:에\s{{0,2}})?(?:열린|열렸던|개최된|진행된|진행한|있었던|가진|한)"
     r"\s{1,3}(?:[^\s.\n]{1,14}\s{1,3}){0,4}?[^\s.\n]{0,14}(?:회의|미팅|모임|간담회))"
@@ -3175,7 +3038,7 @@ UNDATED_NOTE = "회의 일자 미기재로 날짜 미확정"
 
 
 def _day_known(day: str, known: str) -> bool:
-    """Whether the material or request writes this month and day itself."""
+    """Whether material or request writes this month and day."""
     found = _cell_dates(day)
     if not found:
         return False
@@ -3186,10 +3049,7 @@ def _day_known(day: str, known: str) -> bool:
 
 
 def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tuple[list[dict], list[str]]:
-    """With no meeting date in the request, the material or the file's name, a day written as
-    the meeting's (「2026년 10월 8일에 열린 … 회의」) becomes 「[회의 일자]」, and a
-    deadline cell holding words (「다음 주 금요일」) or a day worked out from nothing becomes
-    「[기한]」 with the words and why in 비고."""
+    """No meeting date known: meeting day → 「[회의 일자]」, word/invented deadlines → 「[기한]」 + 비고."""
     words = [d for d in dates if d.get("status") == _NO_BASE]
     out = [dict(s) for s in sections]
     codes: list[str] = []
@@ -3228,7 +3088,6 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
             dated = bool(_cell_dates(when))
             value = "[기한]"
             if repeat := _REPEAT_CELL.search(when):
-                # 「매주 월요일」 holds without a start day; one worked out from nothing goes.
                 if not dated or _day_known(when, known):
                     continue
                 value, said = repeat.group(0), ""
@@ -3252,8 +3111,7 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
 
 
 def minutes_head(block: dict | None, pre: Prepass | None) -> dict | None:
-    """The minutes' 일시 left blank: the meeting date code read (the file's name, 「오늘 회의」),
-    else 「[회의 일자]」 — never a day guessed from today."""
+    """Blank 일시: code-read meeting date, else 「[회의 일자]」; never guessed from today."""
     if not block or pre is None or "meeting-date" not in pre.settings.head:
         return None
     fields = [list(f) for f in block.get("fields") or []]
@@ -3282,7 +3140,7 @@ _MONTH_INDEX = re.compile(r"(?<![A-Za-z0-9])M\s{0,1}\+?\s{0,1}(\d{1,2})(?!\d)|(\
 
 
 def _schedule_over(line: str, rfp: dict) -> str:
-    """Why this schedule line runs past the RFP's period, or ""."""
+    """Why a schedule line exceeds the RFP period, or ""."""
     if _AFTER_PROJECT.search(line):
         return ""
     if end := rfp.get("end"):
@@ -3307,7 +3165,7 @@ def _schedule_over(line: str, rfp: dict) -> str:
 
 
 async def proposal_schedule(doc: Doc, rfp: dict | None) -> tuple[list[Finding], dict]:
-    """Schedule lines that end after the period the RFP fixes."""
+    """Schedule lines ending after the RFP period."""
     found: list[Finding] = []
     if not rfp or not (rfp.get("end") or rfp.get("months")):
         return found, {}
@@ -3320,7 +3178,7 @@ async def proposal_schedule(doc: Doc, rfp: dict | None) -> tuple[list[Finding], 
                 if ln.lstrip().startswith(("```", "~~~")):
                     fenced = not fenced
                     continue
-                # A picture's data URI reads as 「M6」 to the month pattern; no repair can mend it.
+                # image data URI matches the month pattern (「M6」); unrepairable
                 if fenced or not ln.strip() or ln.lstrip().startswith("![") or "data:image" in ln:
                     continue
                 lines.append((index, ln))
@@ -3345,19 +3203,18 @@ async def proposal_schedule(doc: Doc, rfp: dict | None) -> tuple[list[Finding], 
     return found, {}
 
 
-# ── 개조식: no prose, noun endings, the two-line 핵심 ───────────────────
+# ── 개조식: no prose, noun endings, two-line 핵심 ──
 
-#: A line outside a list longer than this reads as a prose paragraph.
 GAEJO_PROSE_CHARS = 60
 _LIST_LINE = re.compile(r"^\s{0,12}(?:[-*+]\s|\d{1,2}[.)]\s|[□■○◦ㅇ·ㆍ∙-]\s)")
 _NOT_PROSE = re.compile(r"^\s{0,4}(?:\||#|※|>|표\s{0,2}[:：]|붙\s{0,2}임|\(?끝\.?\)?$|!\[|<)")
-#: Sentence endings; 「…필요」 「…예정」 「…함」 are the noun endings that pass.
+#: sentence endings; noun endings (「…필요」 「…예정」 「…함」) pass
 _VERB_ENDING = re.compile(r"(?:니다|세요|어요|아요|해요|에요|예요|네요|[가-힣]다)[.!]?$")
 _TRAILING = re.compile(r"(?:\s{0,2}\[\d{1,3}(?:[,\s]{1,3}\d{1,3}){0,5}\]|\s{0,2}\([^()\n]{0,60}\)|[*_\s])+$")
 
 
 def _gaejo_lines(sections: list[dict]):
-    """`(section, line)` of the body outside fences, 붙임 and references."""
+    """`(section, line)` of body outside fences, 붙임 and references."""
     for index, sec in enumerate(sections):
         if _ATTACHMENT.match(str(sec.get("heading") or "")):
             continue
@@ -3383,7 +3240,7 @@ def _verb_ended(line: str) -> bool:
 
 
 async def gaejo_style(doc: Doc) -> tuple[list[Finding], dict]:
-    """Prose paragraphs in the body, and items closed as sentences (「…합니다」) not nouns."""
+    """Prose paragraphs and sentence-ended items (「…합니다」) in the body."""
     found: list[Finding] = []
     for index, line in _gaejo_lines(doc.sections):
         if _prose(line):
@@ -3405,7 +3262,7 @@ _CALLOUT_OPEN = re.compile(r"^\s{0,3}```\s{0,2}callout\s*$")
 
 
 def summary_lines(sections: list[dict]) -> int | None:
-    """Lines under 「핵심」 in the first body section's callout; None when there is none."""
+    """Lines under 「핵심」 in the first section's callout; None if absent."""
     body = [s for s in sections if not _ATTACHMENT.match(str(s.get("heading") or ""))]
     if not body:
         return None
@@ -3424,10 +3281,10 @@ def summary_lines(sections: list[dict]) -> int | None:
     return None
 
 
-# ── minutes: the rows form and the five columns ─────────────────────────
+# ── minutes: rows form and five columns ──
 
 _ACTION_HEADING = re.compile(r"실행|할\s{0,2}일|조치|후속|담당")
-#: The value end of a rows item: 「<small>정다은 · 2026-10-23(금)</small>」 or a bare 「정다은 · 10월 23일」.
+#: rows item value end: 「<small>정다은 · 2026-10-23(금)</small>」 or bare 「정다은 · 10월 23일」
 _ROW_VALUES = re.compile(
     r"(?:<small>\s{0,2}(?P<a>[^<·]{1,20}?)\s{0,2}·\s{0,2}(?P<b>[^<]{1,40}?)\s{0,2}</small>"
     r"|\s(?P<c>[가-힣A-Za-z○]{2,10}(?:\s[가-힣]{2,5})?|미정|확인\s필요|\[[가-힣]{2,6}\])\s{0,2}·\s{0,2}(?P<d>[^·\n]{1,30}?))[\s*]{0,4}$")
@@ -3435,7 +3292,7 @@ _SOURCE_WORD = re.compile(r"회의|메일|출처|자료|전사|녹음|메모")
 
 
 def _list_row_values(line: str) -> tuple[str, str, str] | None:
-    """`(담당, 기한, the item's text before them)` of a rows item, or None."""
+    """`(담당, 기한, preceding text)` of a rows item, or None."""
     if not _LIST_LINE.match(line):
         return None
     m = _ROW_VALUES.search(line)
@@ -3455,7 +3312,6 @@ def _list_row_problems(line: str, bound: list[dict]) -> tuple[list[str], str]:
     if not _DUE_CELL_OK.match(when):
         if _RELATIVE_WORDS.search(when) or len(when) > 16:
             problems.append("기한 값에는 날짜(요일)·미정·[기한]만 쓴다 — 원문 표현은 앞 문장으로")
-    # The reason is what follows the item's bold title.
     rest = re.sub(r"^\s{0,12}[-*+]\s{1,3}\*\*[^*\n]{1,120}\*\*", "", text)
     if "미정" in f"{who} {when}" and len(re.sub(r"<[^>]{1,20}>|[*\-\s.]", "", rest)) < 4:
         problems.append("「미정」이면 사유(회의에서 정하지 않음 등)를 앞 문장에 적는다")
@@ -3473,8 +3329,7 @@ def _list_row_problems(line: str, bound: list[dict]) -> tuple[list[str], str]:
 
 
 async def minutes_list_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict]:
-    """Action items written as rows (「- **할 일** 설명 <small>담당 · 기한</small>」): the same
-    values a table row must carry."""
+    """Row-form action items (「- **할 일** … <small>담당 · 기한</small>」) checked like table rows."""
     found: list[Finding] = []
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
     for index, sec in enumerate(doc.sections):
@@ -3491,8 +3346,7 @@ async def minutes_list_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding],
 
 
 def minutes_columns(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
-    """Action tables given the 출처 and 비고 columns they lack; 출처 is the line the row's date
-    was read from (회의, or the mail by its sent date), else 「[출처]」."""
+    """Add missing 출처·비고 columns; 출처 = the date's source line (회의 or mail), else 「[출처]」."""
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")]
     out = [dict(s) for s in sections]
     added = 0
@@ -3533,36 +3387,33 @@ _WRITTEN_DATES = frozenset({"full_date", "month_day", "named_month_end", "vague"
 
 
 def _action_hits(action: str, entry: dict) -> int:
-    """Words the row's task shares with the line the date was read from (a transcript's line
-    before included); a repeat counts its own line only, the one that names the recurring task."""
+    """Row-task words shared with the date's line (and the line before; repeats: own line only)."""
     own = _SPEAKER.sub("", entry.get("source_line", ""))
     near = own if entry.get("status") == "repeat" else (entry.get("context") or own)
     return len(_words(action) & _words(near))
 
 
 def _strong_dates(row_text: str, bound: list[dict], action: str | None = None) -> list[dict]:
-    """The resolved dates a row is plainly about: two words or more shared with the line and
-    the two before it, one of them a word of the row's task, and no other date as close."""
+    """Dates a row is plainly about: 2+ shared words incl. a task word, no closer rival date."""
     words = _words(row_text)
     scored = []
     for d in bound:
-        # Only what code worked out: a date the material wrote out (「11/2」, 「1월 말」) left
-        # as 미정 is the writer's call, and 「오늘」 is the meeting day, not a deadline.
+        # code-resolved dates only: material's own dates left 미정 = writer's call; 「오늘」 = meeting day
         if d.get("kind") in _WRITTEN_DATES or d.get("date") == d.get("base_date"):
             continue
-        # Names and 「회의」 are on every row, so a shared name alone does not bind a date.
+        # names and 「회의」 on every row: shared name alone binds nothing
         if action is not None and not _action_hits(action, d):
             continue
         near = words & _words(d.get("context") or d.get("source_line", ""))
         if len(near) >= 2:
-            # The line's own words count twice over the line before it.
+            # own-line words weighted double
             own = _words(_SPEAKER.sub("", d.get("source_line", "")))
             scored.append((len(near) + len(words & own), d))
     if not scored:
         return []
     best = max(n for n, _ in scored)
     top = [d for n, d in scored if n == best]
-    # 「다음 주부터 매주 월요일」: the repeat is the deadline, its start date is part of it.
+    # 「다음 주부터 매주 월요일」: repeat is the deadline
     repeating = {d.get("source_line") for d in top if d.get("status") == "repeat"}
     top = [d for d in top if d.get("status") == "repeat" or d.get("source_line") not in repeating]
     return top if len({_due_value(d) for d in top}) == 1 else []
@@ -3576,7 +3427,7 @@ def _due_value(entry: dict) -> str:
 
 
 def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | None:
-    """The column that says what is to be done: 「할 일」, else the first one not owner·due·note."""
+    """Task column: 「할 일」, else first non-owner·due·note column."""
     found = _column(header, r"할\s{0,2}일|내용|항목|조치|과제|업무|실행")
     if found is not None and found not in others:
         return found
@@ -3584,10 +3435,8 @@ def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | Non
 
 
 def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
-    """Action rows left 「미정」 or 「[기한]」 though date-calc resolved their line get that date, the words
-    said moved to 비고, so the cell agrees with the prose."""
-    # Read from the meeting's own date only: a line a later header or mail re-dated is left
-    # to the writer.
+    """Fill 「미정」/「[기한]」 action rows with date-calc's resolved date; original words to 비고."""
+    # meeting date only: lines re-dated by later header or mail left to writer
     base = next((d.get("base_date") for d in dates), "")
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")
              and d.get("base_date") == base and d.get("base_kind") in ("meeting", "given")]
@@ -3613,8 +3462,7 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
                                     bound, action)
             if entries:
                 picks.append((line, row, entries, _action_hits(action, entries[0])))
-        # One line's date goes to the row that names its task best, filled or not; rows tie
-        # only when the line names several tasks.
+        # one line's date → best-matching row; ties only when line names several tasks
         actions = [row[task] if task is not None and task < len(row) else "" for _, row in table.rows]
         for line, row, entries, hits in picks:
             if hits < max(_action_hits(a, entries[0]) for a in actions):
@@ -3630,11 +3478,10 @@ def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict
     return out, filled
 
 
-#: A quantity with a unit a booth spec or an action is stated in: 「4m」, 「220V」, 「2개」.
 _QUANTITY = re.compile(
     rf"(?<![\d.,A-Za-z])({units._TERM})\s?(km|cm|mm|kg|kW|m|V|W|L|명분|인분|개월|개|명|원|시간|시|대|팀|곳)(?![A-Za-z])"
 )
-#: Owner words that name no one in particular and so need no material behind them.
+#: owner words naming no one: need no material backing
 _ANY_OWNER = re.compile(
     r"미정|확인\s{0,2}필요|해당\s{0,2}없음|전체|전원|공동|참석자|각자|^[-—–]?$|^\[[가-힣 ·]{1,10}\]$")
 _OWNER_SPLIT = re.compile(r"[,·/、→]|\s(?:및|와|과)\s")
@@ -3642,8 +3489,7 @@ _OWNER_SPLIT = re.compile(r"[,·/、→]|\s(?:및|와|과)\s")
 
 _NATIVE = {"한": 1, "하나": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4, "다섯": 5,
            "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10}
-#: 「두 명씩」, 「세 군데」: what a transcript says for 「2명」, 「3곳」. Read on the material
-#: side only, where a stray match (「세 대학」) can only excuse, never accuse.
+#: spoken counts (「두 명씩」=「2명」); material side only, so a stray match only excuses
 _NATIVE_COUNT = re.compile(
     r"(?<![가-힣])(하나|한|둘|두|셋|세|넷|네|다섯|여섯|일곱|여덟|아홉|열)\s?(명|개|곳|군데|대|팀|시간|시)"
 )
@@ -3668,16 +3514,15 @@ def _quantities(text: str) -> list[tuple[float, str, re.Match]]:
 
 def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numbers: list[float]) -> bool:
     if unit == "시":
-        # 「13시」 against 「13:00」.
         return _grounded(value, numbers)
     if any(u == unit and abs(v - value) < 1e-6 * max(1.0, abs(v)) for v, u in given):
         return True
     same = [v for v, u in given if u == unit][:60]
-    # 「B사는 A사보다 40만원 비싸다」: the gap between two of the material's own values.
+    # gap between two material values: 「B사는 A사보다 40만원 비싸다」
     if any(abs(abs(a - b) - value) < 0.5 for a in same for b in same if a != b):
         return True
     if unit == "원":
-        # A total of the material's own amounts: 「총상금 40만 원(20만 원 × 2팀)」.
+        # sum of material amounts: 「총상금 40만 원(20만 원 × 2팀)」
         money = [v for v, u in given if u == "원"][:60]
         pool = sorted(set(numbers))[:80]
         return any(abs(a * b - value) < 0.5 for a in money for b in pool) or any(
@@ -3685,13 +3530,11 @@ def _quantity_known(value: float, unit: str, given: set[tuple[float, str]], numb
     return False
 
 
-#: A count of people the writer made by counting the names listed: 「참석 | 5명」.
 _HEADCOUNT = re.compile(r"참석|불참|참여|출석|인원")
 
 
-#: A number the material writes after its label but without a unit: 「(정원 40)」.
+#: unitless number after a label: 「(정원 40)」
 _LABELLED = re.compile(rf"([가-힣A-Za-z]{{1,10}})\s{{0,2}}({units._TERM})(?![\d.,]|\s?[가-힣A-Za-z%])")
-#: A numbered list item at a line's start: 「1. 2학기 …」, 「4) 기타」.
 _LIST_MARK = re.compile(r"(?m)^\s{0,4}(\d{1,2})[.)]\s")
 
 
@@ -3706,7 +3549,7 @@ def _labelled_numbers(material: str) -> list[tuple[str, float]]:
 
 
 def _listed_count(material: str) -> int:
-    """How many items the material numbers 1, 2, 3 …: 「총 4개의 안건」 counts them."""
+    """Count of items the material numbers 1, 2, 3 …."""
     marks = [int(m.group(1)) for m in _LIST_MARK.finditer(material or "")]
     count = 0
     while count + 1 in marks:
@@ -3714,7 +3557,6 @@ def _listed_count(material: str) -> int:
     return count
 
 
-#: Where one sentence's clauses meet: 「…구성되었으며 다음 회의는…」, 「…배치하고, …」.
 _CLAUSE_BREAK = re.compile(
     r"(?:(?<=며)|(?<=[하되있었았였이않]고)|(?<=지만)|(?<=는데))(?:,\s{0,2}|\s{1,2})(?=\S)"
     r"|(?<=,)\s{1,2}")
@@ -3739,12 +3581,7 @@ def _skip_line(line: str) -> bool:
 
 
 def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], list[str]]:
-    """Owners and quantities the material does not hold, repaired: an action row's owner who
-    is named nowhere becomes 「[담당자]」; a spec row whose sizes and counts are not in
-    the material is removed, a cell with one gets 「[수치]」 in its place, and a sentence stating
-    one is dropped.
-
-    Returns the sections and one code per repair (「minutes_owner」, 「minutes_spec」)."""
+    """Repair owners/quantities absent from material; returns sections and repair codes."""
     flat = re.sub(r"\s+", "", material or "")
     numbers = _material_numbers(material)
     given = {(v, u) for v, u, _ in _quantities(_digits(material))}
@@ -3757,11 +3594,10 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
     def known(value: float, unit: str, text: str, at: int) -> bool:
         if _quantity_known(value, unit, given, numbers):
             return True
-        # 「정원 40명」 for the memo's 「(정원 40)」: the same label just before the number.
+        # 「정원 40명」 vs memo's 「(정원 40)」: same label before the number
         before = text[max(0, at - 16):at]
         if any(label in before and abs(v - value) < 1e-9 for label, v in labelled):
             return True
-        # 「총 4개의 안건」: the number of items the material lists.
         return unit == "개" and listed >= 2 and value == listed
 
     def unknown(text: str, around: str = "") -> list[re.Match]:
@@ -3775,9 +3611,7 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
         return text
 
     def repair_sentence(sentence: str) -> str:
-        """A clause stating a number the material lacks goes, the sentence's other clauses
-        stay; when only the last clause holds it, the number becomes 「[수치]」 so the
-        sentence still ends. A sentence of nothing else goes whole."""
+        """Drop the clause with an unsupported number; last clause → 「[수치]」; lone sentence dropped."""
         clauses, cut = [], 0
         for m in _CLAUSE_BREAK.finditer(sentence):
             clauses.append(sentence[cut:m.start()])
@@ -3804,7 +3638,6 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
             around = " ".join([*table.header, *row])
             spec_cells = [k for k, c in enumerate(row) if k not in (owner, due) and unknown(c, around)]
             if spec_cells and owner is None:
-                # A spec row: its value is the made-up number.
                 content = content.replace(line + "\n", "", 1).replace(line, "", 1)
                 codes.append("minutes_spec")
                 continue
@@ -3841,7 +3674,7 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
     return out, codes
 
 
-# ── comparison: must-haves and the recommendation ───────────────────────
+# ── comparison ──
 
 _YES = ("있음", "예", "O", "o", "true", "True", "1", "충족", "지원", "가능")
 
@@ -3873,8 +3706,7 @@ _NO_WORDS = ("없음", "아니오", "X", "x", "false", "False", "0", "미지원"
 
 
 def material_tables(material: str) -> list[dict[str, dict[str, str]]]:
-    """Pipe tables pasted in the material as `{row name: {header: cell}}`, the first column
-    naming the option; a table pasted without its `|---|` rule line is read too."""
+    """Material pipe tables as `{row name: {header: cell}}`; rule line optional."""
     found: list[dict[str, dict[str, str]]] = []
     block: list[list[str]] = []
 
@@ -3900,7 +3732,7 @@ def material_tables(material: str) -> list[dict[str, dict[str, str]]]:
 
 
 def _header_for(must: dict, header: list[str]) -> str | None:
-    """The column a must-have's value sits in: most shared words, the unit breaking ties."""
+    """Must-have's column: most shared words, unit breaks ties."""
     want = _words(str(must.get("name") or ""))
     unit = str(must.get("unit") or "").strip()
     best, best_score = None, 0
@@ -3912,7 +3744,7 @@ def _header_for(must: dict, header: list[str]) -> str | None:
 
 
 def _table_value(cell: str, must: dict) -> Any:
-    """A must-have's value read from a table cell; `None` when the cell gives none."""
+    """Must-have value from a cell; `None` if none."""
     text = (cell or "").strip()
     if must.get("kind") == "yesno":
         if text in _YES or text.startswith(("있음", "지원", "가능")):
@@ -3930,9 +3762,7 @@ def _table_value(cell: str, must: dict) -> Any:
 
 
 def must_values_from_tables(data: dict, material: str) -> dict:
-    """Option must-have values a pasted table states, read by code before the model's
-    reading: a column header names the condition, a row names the option
-    (commute minutes 47/52/58 in a table)."""
+    """Must-have values from pasted tables (header = condition, row = option), read before the model."""
     musts = [m for m in data.get("musts") or [] if isinstance(m, dict) and m.get("name")]
     if not musts:
         return data
@@ -3961,9 +3791,7 @@ def must_values_from_tables(data: dict, material: str) -> dict:
 
 
 def must_status(data: dict, numbers: list[float], material: str = "") -> dict | None:
-    """Each option 충족 / 탈락(사유) / 조건 미확인 under the must-haves; limits and values the
-    request and material do not state are left out. Values a pasted table gives are read
-    from it by code (`must_values_from_tables`)."""
+    """Each option 충족 / 탈락(사유) / 조건 미확인; unstated limits/values left out."""
     if material:
         data = must_values_from_tables(data, material)
     musts = []
@@ -4026,7 +3854,7 @@ _NONE_MEETS = re.compile(r"충족(?:하는)?\s{0,2}대안(?:이)?\s{0,2}없")
 
 
 def recommended_option(line: str, options: list[str]) -> str | None:
-    """The option a recommendation line picks: the first named outside a 「탈락」 clause."""
+    """Recommended option: first named outside a 「탈락」 clause."""
     if not _RECOMMEND.search(line):
         return None
     named = sorted((line.find(o), o) for o in options if o and o in line)
@@ -4065,14 +3893,13 @@ def _recommend_problem(line: str, musts: dict | None, scored: dict | None) -> st
 
 
 async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict | None):
-    """The recommendation against the must-haves and the computed scores."""
+    """Recommendation vs must-haves and computed scores."""
     found: list[Finding] = []
     if not musts and not scored:
         return found, {}
     if not doc.sections:
         return found, {}
-    # Every part that states the recommendation, sentence by sentence: a summary that lists
-    # all three options before 「에듀노트를 권고합니다」 is read for the one it recommends.
+    # each recommending sentence read separately: summary listing all options before the pick
     stating = [i for i, s in enumerate(doc.sections)
                if re.search(r"결론|권고|요약|추천|제언", str(s.get("heading") or ""))] or [0]
     for index in stating:
@@ -4089,9 +3916,8 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
     return found, {}
 
 
-# ── the judge (the larger self-hosted model): one call per document, shown not rewritten ────────
+# ── judge (large self-hosted model): one call per document, shown not rewritten ──
 
-#: Seconds a judge call may take; past it the document goes on unjudged.
 JUDGE_TIMEOUT = 60.0
 
 _OWNER_PROMPT = """Below are the meeting material and the action items of the minutes. Among the items whose owner the material
@@ -4129,7 +3955,7 @@ Answer with one JSON object only: {{"items": [{{"sentence": "뒤에 나온 문�
 
 async def judge_json(complete: Complete, model: str, api_key: str, prompt: str,
                      max_tokens: int = 1200) -> tuple[list[dict], dict]:
-    """The judge's `items`, or [] when it fails, times out or answers out of shape."""
+    """Judge `items`; [] on failure, timeout or bad shape."""
     try:
         text, spent = await asyncio.wait_for(
             complete(model, [{"role": "user", "content": prompt}], api_key, max_tokens),
@@ -4146,7 +3972,7 @@ def _flat(text: str) -> str:
 
 
 def _place(sections: list[dict], quoted: str) -> tuple[int, str] | None:
-    """The section and the line as written that a judge quoted."""
+    """Section and line a judge quoted."""
     want = _flat(quoted).strip("「」\"' ")
     if len(want) < 6:
         return None
@@ -4253,8 +4079,7 @@ Answer with one JSON object only: {{"items": [{{"sentence": "문장을 그대로
 
 def judge_rules(rules: tuple[str, ...] | list[str], complete: Complete, judge: str,
                 api_key: str) -> Check:
-    """A person's 검토 규칙, in words: one judge call quotes the sentences that break them.
-    Shown to the person with the rule they break; never rewritten on the judge's word."""
+    """User 검토 규칙 via one judge call; findings shown, never rewritten."""
     listed = list(rules)
 
     @model_check
@@ -4283,7 +4108,7 @@ def judge_rules(rules: tuple[str, ...] | list[str], complete: Complete, judge: s
     return rule_review
 
 
-# ── structure rules: the shape a 서식 declares, checked by code ──────────────
+# ── structure rules (서식 shape, code-checked) ──
 
 _SPACE = re.compile(r"\s+")
 
@@ -4293,7 +4118,7 @@ def _squeezed(text: str) -> str:
 
 
 def _section_order(sections_wanted: tuple[str, ...]) -> Check:
-    """Every section the 서식 lists is there, in its order (shown, not rewritten)."""
+    """서식 sections present and in order (shown, not rewritten)."""
 
     async def section_order(doc: Doc) -> tuple[list[Finding], dict]:
         headings = [_squeezed(s.get("heading")) for s in doc.sections]
@@ -4321,8 +4146,7 @@ def _section_order(sections_wanted: tuple[str, ...]) -> Check:
 
 
 def _required_table(table: dict) -> Check:
-    """A table with the columns the 서식 requires (under a heading with its words, when
-    given): shown when none has them all."""
+    """Table with the 서식's required columns (under matching heading if given)."""
     columns = [str(c) for c in table.get("columns") or []]
     heading = _squeezed(table.get("heading"))
 
@@ -4346,9 +4170,7 @@ def _required_table(table: dict) -> Check:
 
 
 def structure_checks(process: Any) -> list[Check]:
-    """The 서식's structure rules checked by code: its sections in order (not when the
-    outline is fixed: code set them) and its required tables. The 개조식 style, the summary
-    callout and the page limit run as their own check, amendment and stage."""
+    """서식 structure checks: section order (unless outline fixed) and required tables."""
     structure = process.structure
     out: list[Check] = []
     if structure.sections and not process.fixed_outline:
@@ -4357,7 +4179,6 @@ def structure_checks(process: Any) -> list[Check]:
     return out
 
 
-#: The judged checks a pipeline file's `judged` list names.
 JUDGED_CHECKS: dict[str, Callable[[Complete, str, str], Check]] = {
     "judge-owners": lambda complete, judge, api_key: judge_owners(complete, judge, api_key),
     "judge-bindings": lambda complete, judge, api_key: judge_bindings(complete, judge, api_key),
@@ -4367,9 +4188,7 @@ JUDGED_CHECKS: dict[str, Callable[[Complete, str, str], Check]] = {
 
 def model_checks(pre: Prepass | None, *, complete: Complete | None, judge: str,
                  api_key: str) -> list[Check]:
-    """The document's judged checks (E5), as its 진행 과정 설정 names them, then its 검토
-    규칙: one judge call each per document, findings shown to the reader and never rewritten
-    on the judge's word."""
+    """Judged checks (E5) from pipeline settings, then 검토 규칙; findings shown, never rewritten."""
     if pre is None or complete is None or not judge:
         return []
     out = [JUDGED_CHECKS[name](complete, judge, api_key) for name in pre.settings.judged]
@@ -4378,7 +4197,7 @@ def model_checks(pre: Prepass | None, *, complete: Complete | None, judge: str,
     return out
 
 
-# ── the record ──────────────────────────────────────────────────────────
+# ── record ──
 
 LABELS = {
     "quote_total": "견적 합계가 계산과 다름",
@@ -4412,7 +4231,7 @@ LABELS = {
     "placeholder_answerable": "자료에 있는 값을 빈칸으로 둠",
     "staff_headcount": "투입 MM을 인원으로 씀",
 }
-#: The judge's findings (E5): shown for a person to check, not counted as format repairs.
+#: judge findings (E5): shown for review, not counted as repairs
 MODEL_LABELS = {
     "owner_change": "담당 변경 미반영 후보(확인 필요)",
     "number_binding": "다른 대상에 붙은 숫자 후보(확인 필요)",

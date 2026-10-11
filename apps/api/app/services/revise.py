@@ -1,8 +1,4 @@
-"""Routes an instruction typed under a finished document to the parts it targets.
-
-Scopes: `parts` (named parts), `whole` (every part), `new` (plan again from
-scratch). Nothing here rewrites; the surfaces do that.
-"""
+"""Routes a post-document instruction to its target parts; no rewriting here."""
 
 from __future__ import annotations
 
@@ -17,7 +13,7 @@ from app.services import settings_store
 
 log = logging.getLogger(__name__)
 
-#: Parts one instruction may touch before it becomes a whole-document pass.
+#: Target cap before a whole-document pass.
 MAX_TARGETS = 3
 
 _PROMPT = """The user typed the sentence below while looking at a finished document.
@@ -65,20 +61,17 @@ Reply with a JSON object only.
 
 @dataclass(slots=True)
 class Plan:
-    """Where an instruction lands, and what it asks for there."""
+    """Instruction target and request."""
 
-    #: `parts` · `whole` · `insert` · `outline` · `new`. `insert` adds new parts after
-    #: `after` and leaves the rest alone; `outline` means the document's skeleton
-    #: changes and the caller should plan it again from the current one; `new` means
-    #: the caller should plan again from nothing.
+    #: `parts` | `whole` | `insert` | `outline` (re-plan from current) | `new` (from scratch).
     scope: str = "new"
-    #: Indices into the document's parts, zero-based and already bounded.
+    #: Zero-based, bounded part indices.
     targets: list[int] = field(default_factory=list)
-    #: `insert`: the new parts go after this zero-based index (-1 = at the start).
+    #: `insert`: after this index (-1 = start).
     after: int = -1
-    #: `insert`: titles of the new parts, in order.
+    #: `insert`: new part titles.
     names: list[str] = field(default_factory=list)
-    #: The instruction as something to do, for the rewrite prompt.
+    #: Instruction as a task for the rewrite prompt.
     note: str = ""
     usage: dict[str, int] = field(default_factory=lambda: {"inputTokens": 0, "outputTokens": 0})
 
@@ -96,7 +89,7 @@ class Plan:
 
 
 def _parse(text: str, count: int, message: str) -> Plan:
-    """The model's JSON as a `Plan`, bounded to parts that exist; `new` when unusable."""
+    """Model JSON → bounded `Plan`; `new` when unusable."""
     block = text[text.find("{") : text.rfind("}") + 1] if "{" in text and "}" in text else ""
     try:
         parsed = json.loads(block)
@@ -116,7 +109,7 @@ def _parse(text: str, count: int, message: str) -> Plan:
         if not names:
             return Plan(scope="outline", note=note)
         try:
-            after = int(parsed.get("after"))  # one-based: 0 = at the start
+            after = int(parsed.get("after"))  # one-based: 0 = start
         except (TypeError, ValueError):
             after = count - 1  # before the closing part
         after = max(-1, min(after - 1, count - 1))
@@ -127,7 +120,7 @@ def _parse(text: str, count: int, message: str) -> Plan:
     numbers: list[int] = []
     for value in parsed.get("targets") or []:
         try:
-            # One-based in the prompt, as numbered on screen.
+            # One-based in prompt, as on screen.
             index = int(value) - 1
         except (TypeError, ValueError):
             continue
@@ -148,7 +141,7 @@ async def plan(
     model: str,
     api_key: str,
 ) -> Plan:
-    """Read one instruction against one document's outline (`parts`, in order). Never raises."""
+    """Plan one instruction against the outline. Never raises."""
     if not parts or not message.strip():
         return Plan()
 
@@ -175,7 +168,7 @@ async def plan(
                             ),
                         }
                     ],
-                    # Room for a reasoning model to think and still answer.
+                    # Room for reasoning models.
                     "max_tokens": 600,
                 },
             )
@@ -187,7 +180,7 @@ async def plan(
 
     raw = payload.get("usage") or {}
     reply = payload["choices"][0]["message"]
-    # A reasoning model that ran out of room leaves its answer in the reasoning field.
+    # Truncated reasoning model leaves answer in reasoning field.
     text = str(reply.get("content") or "").strip() or str(
         reply.get("reasoning_content") or reply.get("reasoning") or ""
     ).strip()
@@ -203,7 +196,7 @@ async def plan(
     return place_insert(decided, parts, message)
 
 
-#: Phrases that plainly mean "start over"; checked before the routing call.
+#: Plain "start over" phrases; checked before routing.
 _START_OVER = re.compile(
     r"(새로\s*(써|작성|만들)|처음부터\s*다시|다른\s*주제로|아예\s*다시|버리고\s*다시)"
 )
@@ -213,8 +206,7 @@ def obviously_new(message: str) -> bool:
     return bool(_START_OVER.search(message))
 
 
-#: What people call each export format. 「한글」 alone is also the language (「한글로 써
-#: 줘」), so it counts as the format only next to a file word or a hand-over verb.
+#: Export format words; 「한글」 counts only beside a file word or hand-over verb.
 _FORMAT_WORDS = (
     ("pdf", r"PDF|피디에프"),
     (
@@ -227,8 +219,7 @@ _FORMAT_WORDS = (
     ("pptx", r"PPTX?|파워\s{0,2}포인트|피피티"),
     ("md", r"마크다운|Markdown"),
 )
-#: The format word's tail, up to where a hand-over ends: 「PDF로 줘」 「한글 파일도 같이」
-#: 「워드 파일로 바꿔 줘」 「한글 파일이랑 PDF」. 「PDF 첨부 자료의 …」 is not one.
+#: Format-word tail up to the hand-over end.
 _FORMAT_TAIL = (
     r"(?:\s{0,2}(?:파일|문서|형식|포맷|버전|본))?\s{0,2}"
     r"(?:(?:이랑|랑|하고|와|과|및|[,/·])|(?:로|으로|도|만)?"
@@ -241,29 +232,25 @@ _FORMAT_ASK = [
     (name, re.compile(rf"(?<![A-Za-z])(?:{words})(?![A-Za-z]){_FORMAT_TAIL}", re.I))
     for name, words in _FORMAT_WORDS
 ]
-#: A file asked for without naming its format.
+#: File asked without a format.
 _FILE_ASK = re.compile(
     r"다운로드|다운\s{0,2}받|내려\s{0,2}받|내보내\s{0,2}(?:줘|주세요|주시|줄래|기)|파일로\s{0,2}(?:줘|주세요|주시|받|저장|뽑)|"
     r"파일\s{0,2}(?:좀\s{0,2})?(?:줘|주세요|주시)|파일로\s{0,2}(?:만들어|변환)"
 )
-#: An edit asked for in the same turn: 「견적 고치고 PDF로」 still revises.
+#: Same-turn edit request.
 _EDIT_ASK = re.compile(
     r"고쳐|고치|수정|바꿔|바꾸|변경|추가|넣어|넣고|빼고|빼\s{0,2}줘|삭제|지워|줄여|줄이|늘려|늘리|"
     r"다시\s{0,2}(?:써|쓰|작성)|보완|보강|반영|손봐|다듬|채워|합쳐|나눠|옮겨|맞춰|정정|"
     r"써\s{0,2}(?:줘|주세요)|작성해|요약해|강조|틀렸|잘못"
 )
-#: Someone else's edit, reported rather than asked for: 「인사팀장님이 고쳐서 올린대」.
+#: Third-party edit, reported not requested.
 _THIRD_PARTY_EDIT = re.compile(
     r"[가-힣]{1,10}(?:님이|께서|이|가)\s{1,3}(?:직접\s{1,3})?(?:고쳐|수정해|손봐|바꿔|다듬어)서"
 )
 
 
 def export_request(message: str) -> tuple[list[str], bool] | None:
-    """The file formats a turn asks for, and whether it also asks for an edit.
-
-    `None` when it asks for no file. An empty list asks for a file without naming
-    the format. Order follows the words.
-    """
+    """Requested file formats (in word order) and edit flag; None = no file, [] = unnamed format."""
     text = " ".join((message or "").split())[:600]
     if not text:
         return None
@@ -281,13 +268,13 @@ def export_request(message: str) -> tuple[list[str], bool] | None:
     formats = list(dict.fromkeys(name for _, name in sorted(found)))
     edits = bool(_EDIT_ASK.search(rest))
     if edits and not formats:
-        # 「다운로드 버튼 설명을 추가해 줘」 is about the document, not a file request.
+        # 「다운로드 버튼 설명」 is about the document, not a file request.
         return None
     return formats, edits
 
 
 def export_only(message: str) -> list[str] | None:
-    """The formats of a turn that only asks for the document as a file; `None` otherwise."""
+    """Formats of a file-only turn; else None."""
     asked = export_request(message)
     if asked is None or asked[1]:
         return None
@@ -295,15 +282,14 @@ def export_only(message: str) -> list[str] | None:
 
 
 def without_export(message: str) -> str:
-    """The instruction with its file request removed, for the rewriter."""
+    """Instruction minus its file request."""
     text = " ".join((message or "").split())
     for _, pattern in _FORMAT_ASK:
         text = pattern.sub(" ", text)
     return " ".join(_FILE_ASK.sub(" ", text).split()) or message
 
 
-#: A rewrite that answers the person instead of being the part: 「PDF로 보내드리기는
-#: 여기에서 직접 처리할 수 없습니다. 다만 아래에 견적 절 본문을 완성해 두었으니…」.
+#: Rewrite that talks to the person instead of being the part.
 _META_TALK = re.compile(
     r"(?:여기|이곳|이\s{0,2}화면|채팅|대화)(?:에서|서)?\s{0,4}(?:는\s{0,4})?(?:직접\s{0,4})?"
     r"(?:처리|보내|전달|제공|생성|변환|첨부|만들)\S{0,6}\s{0,4}(?:수\s{0,2}없|어렵|못\s)|"
@@ -318,12 +304,12 @@ _META_OPENING = re.compile(r"^\s{0,4}(?:(?:네|알겠습니다|물론입니다)[
 
 
 def meta_talk(body: str) -> bool:
-    """Whether a rewritten part carries the assistant talking about the request."""
+    """Rewritten part contains assistant meta-talk."""
     text = str(body or "")
     return bool(_META_OPENING.search(text) or _META_TALK.search(text[:4000]))
 
 
-#: 「관리형 OpenSearch Service」를 「AWS OpenSearch Service」로 통일해 줘 — a term swap.
+#: Quoted term swap.
 _TERM_SWAP = re.compile(
     r"[「\"“']([^」\"”']{1,80})[」\"”']\s{0,8}(?:를|을|은|는)?\s{0,8}(?:전부|모두|다)?\s{0,8}"
     r"[「\"“']([^」\"”']{1,80})[」\"”']\s{0,8}(?:로|으로)\s{0,8}"
@@ -332,7 +318,7 @@ _TERM_SWAP = re.compile(
 _SWAP_SCOPE = re.compile(r"전체|전부|모두|다\s|통일|모든")
 
 
-#: 「보안 규칙 장과 필수 계정 장의 순서를 바꿔 줘」 — two parts trade places.
+#: Two parts swap places.
 _ORDER_SWAP = re.compile(
     r"(?P<a>[가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3}?)\s{0,8}(?:장|절|부분|슬라이드|섹션)?"
     r"(?:이랑|하고|과|와|랑)\s{1,8}"
@@ -342,10 +328,7 @@ _ORDER_SWAP = re.compile(
 
 
 def order_swap(instruction: str, parts: list[str]) -> tuple[int, int] | None:
-    """Indices of the two existing parts the instruction asks to trade places, or `None`.
-
-    Both names must match parts (see `_match_part`); the swap is done without a model call.
-    """
+    """Indices of two parts to swap, or None; no model call."""
     text = " ".join((instruction or "").split())
     match = _ORDER_SWAP.search(text)
     if not match:
@@ -360,12 +343,11 @@ def order_swap(instruction: str, parts: list[str]) -> tuple[int, int] | None:
 
 
 def _match_part(name: str, parts: list[str]) -> int | None:
-    """The part `name` points at: an exact title, then a title containing the phrase,
-    then a title sharing every word of the name."""
+    """Part by exact title, containing phrase, then shared words."""
     squeeze = lambda t: re.sub(r"\s+", "", t).lower()  # noqa: E731
     wanted = squeeze(name)
     if not any(squeeze(part) == wanted or wanted in squeeze(part) for part in parts):
-        # 「첫 주 일정이랑」: a particle the pattern could not split off the name.
+        # Trailing particle the pattern missed.
         if len(name) > 2 and name[-1] in "이은는을를의":
             return _match_part(name[:-1], parts)
     for index, part in enumerate(parts):
@@ -380,10 +362,7 @@ def _match_part(name: str, parts: list[str]) -> int | None:
 
 
 def term_swap(instruction: str) -> tuple[str, str] | None:
-    """`(old, new)` when the instruction replaces one quoted term by another document-wide.
-
-    Applied by plain string replacement, so nothing else in the document moves.
-    """
+    """`(old, new)` for a document-wide quoted term swap; plain string replace."""
     text = " ".join((instruction or "").split())
     match = _TERM_SWAP.search(text)
     if not match or not _SWAP_SCOPE.search(text):
@@ -395,7 +374,7 @@ def term_swap(instruction: str) -> tuple[str, str] | None:
 
 
 def replace_term(value, old: str, new: str) -> tuple[object, int]:
-    """`value` with every string field's `old` replaced by `new`, and the count."""
+    """`value` with `old` → `new` in all string fields, plus count."""
     if isinstance(value, str):
         count = value.count(old)
         return (value.replace(old, new) if count else value), count
@@ -434,7 +413,7 @@ def _has_content(part: dict, is_deck: bool) -> bool:
     return bool((part.get("content") or "").strip())
 
 
-#: Words so common in titles and notes alike that their presence names no part.
+#: Title words too common to identify a part.
 _GENERIC_TITLE_WORDS = frozenset({
     "다음", "현황", "사항", "결과", "정리", "소개", "개요", "요약", "및", "그리고", "전체", "주요",
 })
@@ -443,10 +422,7 @@ _GENERIC_TITLE_WORDS = frozenset({
 def carry_parts(
     new: list[dict], old: list[dict], *, is_deck: bool, mentioned: str
 ) -> tuple[list[dict], int]:
-    """The re-planned parts, with each unchanged, unmentioned part's words carried from `old`.
-
-    A carried part keeps its new position, id and accent. Returns `(parts, carried count)`.
-    """
+    """Re-planned parts with untouched parts' text carried; returns `(parts, carried count)`."""
     said = (mentioned or "").lower()
     by_name: dict[str, dict] = {}
     for part in old:
@@ -458,7 +434,7 @@ def carry_parts(
     for part in new:
         name = _part_name(part, is_deck)
         previous = by_name.get(name)
-        # A part the instruction names is rewritten; generic title words name nothing.
+        # Named parts rewritten; generic words ignored.
         tokens = [t for t in name.split() if len(t) >= 2 and t.lower() not in _GENERIC_TITLE_WORDS]
         named = name.lower() in said or (
             bool(tokens) and all(token.lower() in said for token in tokens)
@@ -483,8 +459,7 @@ _QUOTED = re.compile(r"[「\"“']([^」\"”']{2,80})[」\"”']")
 
 
 def requested_title(instruction: str) -> str | None:
-    """The new name when the instruction asks to rename a part and quotes the name
-    (「위험 절 제목을 「위험과 대응」으로 바꾸고 …」), else None."""
+    """Quoted new name for a rename request, else None."""
     text = instruction or ""
     if not _TITLE_ASK.search(text):
         return None
@@ -493,7 +468,7 @@ def requested_title(instruction: str) -> str | None:
         return None
     if len(quoted) == 1:
         return quoted[0].group(1).strip()
-    # 「위험」 절 제목을 「위험과 대응」으로: the new name is the one 「…으로/로/라고」 follows.
+    # New name is the one before 「…으로/로/라고」.
     for match in quoted:
         tail = text[match.end() : match.end() + 6]
         if re.match(r"\s{0,8}(?:으로|로|라고)", tail):
@@ -505,9 +480,7 @@ _BEFORE = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:앞
 _AFTER = re.compile(r"\s{0,8}(?:절|장|부분)?\s{0,8}(?:바로\s{0,8})?(?:뒤에|뒤로|다음에|아래에)")
 
 
-#: 「위험 장을 하나 추가해 줘」 「한계 절을 넣어 줘」 「FAQ 슬라이드 추가」: a new part named
-#: outright. The name is what precedes 장/절/슬라이드; a part that already exists is a
-#: revision of it, not an insert.
+#: New named part; existing name means revision, not insert.
 _ADD_PART = re.compile(
     r"([가-힣A-Za-z0-9·\s]{1,16}?)\s{0,8}(?:장|절|슬라이드|섹션|페이지)(?:을|를)?\s{0,8}"
     r"(?:(한|하나|두|둘|\d)\s{0,8}(?:개|장)?\s{0,8})?(?:더\s{0,8})?(?:추가|넣어|넣고|만들어\s{0,8}넣)"
@@ -515,10 +488,7 @@ _ADD_PART = re.compile(
 
 
 def explicit_insert(message: str, parts: list[str]) -> Plan | None:
-    """An insert plan for an instruction that adds exactly one new, named part; else `None`.
-
-    Several parts, an existing part, or a count change are left to the planner.
-    """
+    """Insert plan for exactly one new named part; else None."""
     text = " ".join((message or "").split())
     if re.search(r"\d{1,3}\s{0,8}장으로|줄여|늘려|합쳐|합치|삭제|빼", text):
         return None
@@ -527,7 +497,7 @@ def explicit_insert(message: str, parts: list[str]) -> Plan | None:
         return None
     name = re.sub(r"^(?:새로\s*|새\s*|그리고\s*)", "", match.group(1)).strip(" ·")
     name = re.split(r"[.,。]\s*", name)[-1].strip()
-    # 「결론 뒤에 한계 절을」: the placement words come before the name.
+    # Placement words precede the name.
     name = re.split(r"\s(?:앞|뒤|다음|사이)(?:에|으로|로)?\s+", " " + name)[-1].strip()
     if not (1 <= len(name) <= 14) or any(name == p.strip() for p in parts):
         return None
@@ -536,11 +506,11 @@ def explicit_insert(message: str, parts: list[str]) -> Plan | None:
 
 
 def place_insert(plan: Plan, parts: list[str], message: str) -> Plan:
-    """The insert placed beside the part its words name (「결론 뒤에」), else where planned."""
+    """Insert placed by named neighbour (「결론 뒤에」), else as planned."""
     if not plan.inserts:
         return plan
     text = " ".join((message or "").split())
-    best: tuple[int, int] | None = None  # (position in text, after-index)
+    best: tuple[int, int] | None = None  # (text position, after-index)
     for index, name in enumerate(parts):
         short = name.strip()
         if not short:
@@ -562,7 +532,7 @@ def place_insert(plan: Plan, parts: list[str], message: str) -> Plan:
 
 _PART_WORD = r"\s*(?:장|절|부분|슬라이드|섹션)?\s*(?:을|를|은|는|의|에서|만)"
 _CLOSING_NAME = re.compile(r"마무리|결론|감사|요약\s*및\s*결정|closing|thank", re.I)
-#: 「<이름> 장을」: the words a person uses to point at a part by its name.
+#: 「<이름> 장을」 part reference.
 _NAMED_PHRASE = re.compile(
     r"([가-힣A-Za-z0-9·/&()]{1,20}(?:\s{1,8}[가-힣A-Za-z0-9·/&()]{1,20}){0,3})\s{1,8}(?:장|절|부분|슬라이드|섹션)"
     r"\s{0,8}(?:을|를|은|는|의|에서|만)"
@@ -576,47 +546,42 @@ _STRUCTURAL_ASK = re.compile(
 
 
 def named_target(plan: Plan, parts: list[str], message: str) -> Plan:
-    """The plan retargeted to the one existing part the words name (「다음 단계 장을 연표로」).
-
-    Zero or several names, whole/insert plans and structural asks keep the planner's plan.
-    """
+    """Plan retargeted to the single existing part named; otherwise unchanged."""
     if plan.scope not in ("parts", "outline"):
         return plan
     if plan.scope == "parts" and not plan.targets:
         return plan
     text = " ".join((message or "").split())
     if _STRUCTURAL_ASK.search(text):
-        # Merging, adding, removing or reordering parts is the planner's call to make.
+        # Structural changes left to the planner.
         return plan
-    # A name counts only when followed by a part word (「다음 단계 장을」), not as bare text.
+    # Name counts only with a part word after it.
     mentioned = [
         i for i, name in enumerate(parts)
         if len(name.strip()) >= 2 and re.search(rf"{re.escape(name.strip())}{_PART_WORD}", text)
     ]
     if not mentioned:
-        # The phrase before 장/절 as the core of one part's name.
+        # Phrase before 장/절 as name core.
         phrase = _NAMED_PHRASE.search(text)
         if phrase:
             core = phrase.group(1).strip()
             holders = [i for i, name in enumerate(parts) if core and core in name]
             words = [w for w in core.split() if len(w) >= 2]
             if not holders and words:
-                # Every word of the phrase in one part's name.
                 holders = [i for i, name in enumerate(parts) if all(w in name for w in words)]
             shares_a_word = any(any(w in name for w in words) for name in parts)
             if len(holders) == 1:
                 mentioned = holders
                 text = text.replace(core, parts[holders[0]].strip(), 1)
             elif not holders and not shares_a_word and len(core) >= 2 and plan.scope == "parts":
-                # A named part that does not exist is added before the closing part,
-                # rather than guessing another part to rewrite.
+                # Missing named part added before closing part.
                 last_is_closing = bool(parts) and bool(_CLOSING_NAME.search(parts[-1]))
                 closing = len(parts) - 1 if last_is_closing else len(parts)
                 return Plan(
                     scope="insert", after=closing - 1, names=[core], note=plan.note,
                     usage=plan.usage,
                 )
-    # A name contained in a longer mentioned name belongs to the longer one.
+    # Shorter name inside a longer mention belongs to the longer.
     mentioned = [i for i in mentioned if not any(
         j != i and parts[i].strip() in parts[j].strip() and len(parts[j]) > len(parts[i])
         for j in mentioned
@@ -630,8 +595,7 @@ def named_target(plan: Plan, parts: list[str], message: str) -> Plan:
 
 
 def into_existing_part(plan: Plan, parts: list[str], message: str) -> Plan:
-    """An `insert` that the words aim *into* an existing part (「비용 절에 표를 넣어 줘」)
-    is that part's edit, not a new part beside it."""
+    """`insert` aimed into an existing part is that part's edit."""
     if not plan.inserts:
         return plan
     text = " ".join((message or "").split())
@@ -644,16 +608,14 @@ def into_existing_part(plan: Plan, parts: list[str], message: str) -> Plan:
     return plan
 
 
-#: Words about the skeleton itself: 「3장을 맨 앞으로」, 「절을 합쳐」, 「목차 순서」.
+#: Skeleton words.
 _SKELETON_WORDS = re.compile(
     r"\d\s{0,2}(?:장|절|번)|장을|장은|절을|슬라이드|섹션|목차|구성|순서|합쳐|나눠"
 )
 
 
 def within_named_parts(plan: Plan, parts: list[str], message: str) -> Plan:
-    """An `outline` plan whose words only move or add content inside parts it names
-    (「예산 부족분 얘기를 맨 위로 올리래. 붙임에 … 추가해 줘」) is a pass over the document
-    as it is, so re-planning does not drop the memo the document was written from."""
+    """`outline` plan editing only inside named parts → pass over current document."""
     if not plan.restructures or not parts:
         return plan
     text = " ".join((message or "").split())
@@ -676,7 +638,7 @@ _ANY_FENCE = re.compile(r"```[a-zA-Z]*\n(.*?)```", re.S)
 
 
 def _ascii_art(block: str) -> bool:
-    """A code block that is a drawing in box characters, not code."""
+    """Box-character drawing, not code."""
     lines = [ln for ln in block.splitlines() if ln.strip()]
     if len(lines) < 3:
         return False
@@ -686,8 +648,7 @@ def _ascii_art(block: str) -> bool:
 
 
 def keep_figure(old: str, new: str, instruction: str) -> str:
-    """The rewritten section with the old mermaid fence restored, unless the rewrite has its
-    own fence or the instruction asked to remove the figure."""
+    """Rewrite with old mermaid fence restored unless replaced or removal asked."""
     if "```mermaid" in (new or "") or "```mermaid" not in (old or ""):
         return new
     if _REMOVE_FIGURE.search(instruction or ""):
@@ -695,7 +656,7 @@ def keep_figure(old: str, new: str, instruction: str) -> str:
     fence = _FENCE.search(old)
     if not fence:
         return new
-    # ASCII-box drawings standing in for the figure are dropped.
+    # ASCII-box stand-ins dropped.
     body = _ANY_FENCE.sub(lambda m: "" if _ascii_art(m.group(1)) else m.group(0), new or "")
     return f"{body.rstrip()}\n\n{fence.group(0).strip()}"
 
@@ -707,7 +668,7 @@ _COUNT_MENTION = re.compile(
 
 
 def without_counts(request: str) -> str:
-    """The request with its part counts removed, so the planner reads only the note's count."""
+    """Request minus part counts; planner reads the note's count."""
     return " ".join(_COUNT_MENTION.sub(" ", request or "").split())
 
 
@@ -728,7 +689,7 @@ _BODY_TOO = re.compile(r"본문도|내용도|슬라이드도|글머리표도|함
 
 
 def notes_only(message: str) -> bool:
-    """Whether the instruction asks only for speaker notes, leaving the slides' words alone."""
+    """Speaker-notes-only request."""
     text = " ".join((message or "").split())
     return bool(_NOTES_ASK.search(text)) and not _BODY_TOO.search(text)
 
@@ -741,7 +702,7 @@ _EVERY_PART = re.compile(
 
 
 def notes_everywhere(plan: Plan, parts: list[str], message: str) -> Plan:
-    """A notes request for every slide as a whole-deck pass, past the planner's target cap."""
+    """Notes for every slide as whole-deck pass, past target cap."""
     if plan.scope in ("outline", "new") or not parts:
         return plan
     text = " ".join((message or "").split())
@@ -753,7 +714,7 @@ def notes_everywhere(plan: Plan, parts: list[str], message: str) -> Plan:
 
 
 def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
-    """An outline plan when the words state a new part count (「6장으로 줄여 줘」)."""
+    """Outline plan for a stated new part count."""
     if plan.scope == "outline" or not parts:
         return plan
     match = _TARGET_COUNT.search(" ".join((message or "").split()))
@@ -762,18 +723,17 @@ def count_change(plan: Plan, parts: list[str], message: str) -> Plan:
     wanted = int(match.group(1))
     if wanted <= 0 or wanted == len(parts):
         return plan
-    # Exactly one count in the note (two would cancel), led by a word so a bullet
-    # 「- 6장으로」 is not read as a range.
+    # One count only, word-led so 「- 6장으로」 isn't a range.
     note = f"장수는 {wanted}장으로 맞춘다. {without_counts(plan.note)}".strip()
     return Plan(scope="outline", note=note[:600], usage=plan.usage)
 
 
-#: How much of a part's own words the restructure planner and writer see.
+#: Part text chars shown to restructure planner/writer.
 _PART_TEXT_CHARS = 600
 
 
 def outline_block(parts: list[str], texts: list[str] | None = None) -> str:
-    """The current outline for the restructure planner, with each part's words when given."""
+    """Current outline for the restructure planner."""
     lines = []
     for i, name in enumerate(parts):
         lines.append(f"{i + 1}. {name}")
@@ -808,14 +768,10 @@ def _dedupe_tables(slides: list[dict]) -> list[dict]:
 
 
 def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """Rows of table slides merged away by a restructure, moved into the slide that absorbed them.
-
-    A gone slide the instruction names gives its rows to a new table slide sharing a title
-    word, up to six rows with the header.
-    """
+    """Merged-away table rows moved into the absorbing slide (≤ six rows with header)."""
 
     said = (mentioned or "").lower()
-    # The writer's own repeats give up their slots before absorbed rows ask for them.
+    # Writer's own repeats yield slots first.
     new = _dedupe_tables(new)
     new_titles = {str(s.get("title") or "") for s in new}
     for gone in old:
@@ -829,8 +785,7 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
         tables = [s for s in new if isinstance(s.get("rows"), list) and s.get("rows")]
         host = next((s for s in tables if _title_tokens(str(s.get("title") or "")) & tokens), None)
         if host is None:
-            # 「이슈·위험도 한 장으로」: the slide named with the gone one in the same phrase
-            # is where it went (the one whose title says 「이슈」).
+            # Slide named with the gone one in a merge phrase is its destination.
             for words in _merge_phrases(said):
                 if tokens & words:
                     partners = words - tokens
@@ -848,8 +803,7 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
                 break
             key = str(row[0]).strip()
             key_tokens = set(re.findall(r"[가-힣A-Za-z0-9]{2,}", key))
-            # Already covered: every key word is in the host, or one distinctive word
-            # (three+ Hangul syllables, or containing a digit like p95) is.
+            # Covered if all key words, or one distinctive word, in host.
             distinctive = {
                 t for t in key_tokens if (len(t) >= 3 and not t.isascii()) or re.search(r"\d", t)
             }
@@ -863,7 +817,7 @@ def absorb_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dic
 
 
 def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """New timelines that share a date with a longer old timeline take back the old pairs."""
+    """New timelines sharing a date with a longer old one take back old pairs."""
 
     def keys(slide: dict) -> set[str]:
         out = set()
@@ -888,7 +842,7 @@ def carry_by_content(new: list[dict], old: list[dict], *, mentioned: str) -> lis
 
 
 def _merge_phrases(said: str) -> list[set[str]]:
-    """Word sets of each 「A와 B는 한 장으로」 phrase, one per segment, particles stripped."""
+    """Particle-stripped word sets per 「A와 B는 한 장으로」 phrase."""
     out: list[set[str]] = []
     for segment in re.split(r"[.。,，\n;]", said or ""):
         m = re.search(r"^(.{0,60}?)\s{0,8}(?:한\s{0,8}장|하나)\s{0,8}(?:으로|에)", segment)
@@ -903,7 +857,7 @@ def _merge_phrases(said: str) -> list[set[str]]:
 
 
 def _destination(gone: dict, tables: list[dict], said: str) -> dict | None:
-    """The new table slide a gone table's rows belong to, by title word or merge phrase."""
+    """Destination table slide by title word or merge phrase."""
     title = str(gone.get("title") or "")
     tokens = {t for t in _title_tokens(title) if t.lower() in said}
     host = next((s for s in tables if _title_tokens(str(s.get("title") or "")) & tokens), None)
@@ -920,10 +874,7 @@ def _destination(gone: dict, tables: list[dict], said: str) -> dict | None:
 
 
 def unmix_rows(new: list[dict], old: list[dict], *, mentioned: str) -> list[dict]:
-    """Rows of a gone table removed from tables other than their destination.
-
-    A table keeps at least two body rows.
-    """
+    """Gone table's rows removed from non-destination tables (≥ two body rows kept)."""
     said = (mentioned or "").lower()
     new_titles = {str(s.get("title") or "") for s in new}
     tables = [s for s in new if isinstance(s.get("rows"), list) and len(s.get("rows") or []) > 1]
@@ -960,10 +911,7 @@ _TIMELINE_WORDS = ("단계", "일정", "로드맵", "타임라인", "계획", "�
 def keep_timeline_layout(
     new: list[dict], old: list[dict], *, mentioned: str, request: str = ""
 ) -> list[dict]:
-    """An old timeline slide the instruction did not name, restored when the new deck has none.
-
-    The new slide sharing a title word (or about 단계·일정·로드맵) becomes the timeline.
-    """
+    """Unnamed old timeline restored onto a matching new slide when none remains."""
     said = (mentioned or "").lower()
     if any(s.get("layout") == "timeline" for s in new):
         return new
@@ -986,7 +934,7 @@ def keep_timeline_layout(
             None,
         )
         if host is None:
-            # No host: an unrequested agenda or statement slide gives up its slot.
+            # No host: unrequested agenda/statement slide yields its slot.
             asked = f"{said} {(request or '').lower()}"
             filler = next(
                 (
@@ -1023,7 +971,7 @@ def keep_timeline_layout(
 
 
 def refresh_agenda(slides: list[dict]) -> list[dict]:
-    """An agenda slide carried over from the old deck lists the new deck's slides."""
+    """Carried agenda slide relists the new deck."""
     body_titles = [
         str(s.get("title") or "")
         for s in slides
@@ -1036,7 +984,7 @@ def refresh_agenda(slides: list[dict]) -> list[dict]:
 
 
 def document_block(parts: list[str], texts: list[str]) -> str:
-    """The current document's words, as source material for a restructure's writer."""
+    """Current document text as restructure source."""
 
     chunks = []
     for i, name in enumerate(parts):
@@ -1052,7 +1000,7 @@ def document_block(parts: list[str], texts: list[str]) -> str:
 
 
 def label(plan: Plan, parts: list[str]) -> str:
-    """What the step on screen says this pass is doing."""
+    """On-screen step label."""
     if plan.scope == "insert":
         return "추가하는 중: " + " · ".join(plan.names)
     if plan.scope == "whole":

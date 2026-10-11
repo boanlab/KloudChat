@@ -1,11 +1,4 @@
-"""File work in the code sandbox: fixed skill scripts and model-written code.
-
-`run_skill_script` runs a shipped package script against the chat's files, or one of the
-person's own skill scripts (`Skill.script_files`) — those only ever run here, in the sandbox.
-`run_code` has the code model write Python for a task, runs it, repairs it once
-from the error, then gives the fallback model one try. Both store what the run
-wrote under `outputs/` as the user's files and list them on the step.
-"""
+"""Sandbox file tools: skill scripts and model-written code, outputs stored as user files."""
 
 from __future__ import annotations
 
@@ -27,12 +20,12 @@ from app.services import (
 )
 from app.services.tools.base import Tool, ToolContext, ToolResult
 
-#: Schema text handed to the code model, all files together.
+#: Schema chars for the code model, all files.
 _SCHEMA_BUDGET = 9_000
 _EXIT_MARK = "__KLOUDCHAT_EXIT__"
-#: What the step keeps of a run for 코드 보기 / 출력 보기, in characters.
+#: Trace char caps for code/output views.
 _TRACE_CODE, _TRACE_STDOUT, _TRACE_STDERR = 6_000, 3_000, 1_500
-#: An absolute path of two or more segments outside the chat's /mnt/data.
+#: Absolute path outside /mnt/data.
 _FOREIGN_PATH = re.compile(r"(?<![\w.)\]/])/(?!mnt/data(?:/|\b))[A-Za-z_.][\w.\-]*(?:/[\w.\-]+)+")
 
 _RULES = """너는 샌드박스에서 실행될 파이썬 스크립트를 쓴다. 규칙:
@@ -64,14 +57,11 @@ _REPAIR = """앞의 코드가 제대로 끝나지 않았다.
 
 
 class CodeModelError(RuntimeError):
-    """The code model could not be reached or answered nothing usable."""
-
-
-# ── code model ──────────────────────────────────────────────────────────
+    """Code model unreachable or unusable."""
 
 
 def code_models(strict_local: bool) -> list[str]:
-    """The writer then the fallback; a strict-local turn gets only `strict-local/` ids."""
+    """Writer then fallback; strict-local turns get `strict-local/` ids only."""
     roles = settings_store.cached_model_roles()
     out: list[str] = []
     for model in (roles.code, roles.code_fallback):
@@ -125,9 +115,6 @@ async def write_code(model: str, messages: list[dict[str, str]], api_key: str) -
     return code
 
 
-# ── shared ──────────────────────────────────────────────────────────────
-
-
 def _names(value: Any) -> list[str]:
     if isinstance(value, str):
         value = [value]
@@ -148,7 +135,7 @@ def _missing(names: list[str], available: list[sandbox.InputFile]) -> ToolResult
 
 
 def _failure_reason(result: sandbox.RunResult, outputs: list[dict]) -> str | None:
-    """Why a run needs another try, or None when it did its job."""
+    """Retry reason, or None on success."""
     if result.memory_exceeded:
         return (
             f"{sandbox.MEMORY_LIMIT} 코드의 잘못이 아니라 메모리 한도 때문이다. 필요한 열만 읽거나"
@@ -177,7 +164,7 @@ def _head(text: str, limit: int) -> str:
 
 
 def _scrub(text: str, secrets: list[str]) -> str:
-    """No sandbox or service secrets and no paths outside /mnt/data on the step."""
+    """Strip secrets and non-/mnt/data paths."""
     for secret in secrets:
         text = text.replace(secret, "[비밀값]")
     text = _FOREIGN_PATH.sub(lambda m: "…/" + m.group(0).rsplit("/", 1)[-1], text)
@@ -187,7 +174,7 @@ def _scrub(text: str, secrets: list[str]) -> str:
 def _trace(
     code: str, stdout: str, stderr: str, ctx: ToolContext, *, attempt: int | None = None
 ) -> dict[str, Any]:
-    """The step's `code`/`stdout`/`stderr` heads; masked again like `detail` on masked turns."""
+    """Step trace heads; re-masked on masked turns."""
     secrets = [
         value
         for value in (
@@ -213,11 +200,8 @@ def _trace(
     return trace
 
 
-# ── run_skill_script ────────────────────────────────────────────────────
-
-
 def _skill_command(path: str, args: dict[str, Any]) -> str:
-    # Run through bash: the py sandbox masks /proc, which LibreOffice needs for recalculation.
+    # Via bash: py sandbox masks /proc, LibreOffice needs it.
     payload = shlex.quote(json.dumps(args, ensure_ascii=False))
     return (
         f"python3 {shlex.quote(path)} {payload}; status=$?; echo; echo \"{_EXIT_MARK} $status\""
@@ -236,7 +220,7 @@ def _exit_status(stdout: str) -> tuple[str, int | None]:
 
 
 def _own(skill: str, ctx: ToolContext | None) -> tuple[str, dict[str, Any]] | None:
-    """The person's own skill `skill` names (its key or its name), with scripts."""
+    """Own skills by key or name, with scripts."""
     own = getattr(ctx, "own_scripts", None) or {}
     text = skill.strip().strip("「」\"'")
     if text in own:
@@ -246,8 +230,7 @@ def _own(skill: str, ctx: ToolContext | None) -> tuple[str, dict[str, Any]] | No
 
 async def _run_own(key: str, own: dict[str, Any], args: dict[str, Any],
                    ctx: ToolContext) -> ToolResult:
-    """A person's own script, run in the sandbox exactly as a shipped one is: mounted
-    read-only, given the chat's files, its outputs stored as the person's files."""
+    """Own script run like a shipped one: read-only mount, chat files, outputs stored."""
     files: dict[str, str] = dict(own.get("files") or {})
     name = str(own.get("name") or "스킬")
     script = str(args.get("script") or "").strip().removesuffix(".py") or next(iter(files), "")
@@ -340,7 +323,7 @@ async def run_skill_script(args: dict[str, Any], ctx: ToolContext) -> ToolResult
         command = _skill_command(path, script_args)
         result = await sandbox.run(client, ctx.sandbox, command, lang="bash", refs=refs + skill_refs)
         if "No such file or directory" in result.stderr and path in result.stderr:
-            # The package refs expired on the sandbox: upload again and retry once.
+            # Package refs expired: re-upload, retry once.
             skill_refs = await sandbox.skill_refs(client, package, fresh=True)
             result = await sandbox.run(client, ctx.sandbox, command, lang="bash", refs=refs + skill_refs)
         outputs, notes = await sandbox.collect_outputs(
@@ -393,9 +376,6 @@ def _skill_tool_description(own: dict[str, dict[str, Any]] | None = None) -> str
     )
 
 
-# ── run_code ────────────────────────────────────────────────────────────
-
-
 def _schemas(inputs: list[sandbox.InputFile]) -> str:
     blocks, used = [], 0
     for file in inputs:
@@ -415,7 +395,7 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     task = str(args.get("task") or "").strip()
     if not task:
         return ToolResult(content="오류: task 가 비었습니다. 무엇을 할지 한국어로 적으세요.", failed=True)
-    await settings_store.model_roles()  # refreshes the values `code_models` reads
+    await settings_store.model_roles()  # refreshes `code_models` inputs
     models = code_models(ctx.strict_local)
     if not models:
         return ToolResult(content="오류: 코드를 쓸 모델이 설정되지 않았습니다.", failed=True)
@@ -435,11 +415,11 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             "content": f"작업: {task[:4000]}\n\n입력 파일:\n{_schemas(inputs)}",
         },
     ]
-    # (model, is a repair) — one repair on the writer, then one try on the fallback.
+    # (model, is_repair): one writer repair, then one fallback try.
     plan = [(models[0], False), (models[0], True)] + [(m, True) for m in models[1:2]]
     attempts: list[str] = []
     code = ""
-    #: The code behind `result` and which attempt wrote it; a later failed write leaves both.
+    #: Code behind `result` and its attempt; kept on later failure.
     ran_code, ran_attempt = "", 0
     result: sandbox.RunResult | None = None
     outputs: list[dict] = []
@@ -461,7 +441,7 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             ran_code, ran_attempt = code, len(attempts) + 1
             stored: list[dict] = []
             if not result.crashed:
-                # A crashed attempt's half-written files are not handed to the user.
+                # Crashed attempt's partial files withheld.
                 stored, more = await sandbox.collect_outputs(
                     client, result, user_id=ctx.user_id, session_id=ctx.session_id,
                     state=ctx.sandbox,
@@ -494,11 +474,8 @@ async def run_code(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     )
 
 
-# ── execute_code ────────────────────────────────────────────────────────
-
-
 async def execute_code(args: dict[str, Any], ctx: ToolContext | None = None) -> ToolResult:
-    """The model's own code, with the chat files it names mounted and `outputs/` kept."""
+    """Model code with named chat files mounted; `outputs/` kept."""
     code = str(args.get("code") or "")
     if not code.strip():
         return ToolResult(content="오류: code 가 비었습니다.", failed=True)
@@ -532,8 +509,6 @@ async def execute_code(args: dict[str, Any], ctx: ToolContext | None = None) -> 
         outputs=[{k: row[k] for k in ("id", "name", "size")} for row in outputs] or None,
     )
 
-
-# ── tools ───────────────────────────────────────────────────────────────
 
 EXECUTE_CODE = Tool(
     name="execute_code",
@@ -622,8 +597,7 @@ RUN_SKILL_SCRIPT = run_skill_script_tool()
 
 
 def with_own_scripts(tools: list[Tool], own: dict[str, dict[str, Any]]) -> list[Tool]:
-    """The turn's tools with `run_skill_script` offering the person's own scripts too; a
-    turn without the tool (not allowed, no sandbox) gains nothing."""
+    """Turn tools with own scripts added to `run_skill_script`, if present."""
     if not own:
         return tools
     return [run_skill_script_tool(own) if tool.name == RUN_SKILL_SCRIPT.name else tool

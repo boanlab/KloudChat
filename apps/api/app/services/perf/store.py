@@ -15,10 +15,10 @@ from app.services.perf.host import Row
 
 ROLLUP_STEP = 600
 
-#: Per-minute counts: rolled up and bucketed as sums, not means.
+#: per-minute counts: summed, not averaged
 SUM_NAMES = frozenset({"calls", "errors", "out_tokens", "requests", "preemptions", "errors_5xx"})
 
-#: Range → (seconds, display bucket in seconds).
+#: range → (seconds, display bucket seconds)
 RANGES: dict[str, tuple[int, int]] = {
     "1h": (3600, 60),
     "24h": (86400, 600),
@@ -74,7 +74,7 @@ async def exists(db: AsyncSession, ts: datetime, source: str, name: str, subject
 
 
 async def rollup(db: AsyncSession, now: datetime, raw_hours: int, max_hours: int = 3) -> int:
-    """Folds raw rows older than `raw_hours` into 10-minute rows, an hour at a time."""
+    """Fold raw rows older than raw_hours into 10-minute rows, hourly."""
     cutoff = now - timedelta(hours=raw_hours)
     folded = 0
     for _ in range(max_hours):
@@ -153,8 +153,7 @@ async def series(
     source: str | None = None,
     subjects: Iterable[str] | None = None,
 ) -> dict[Key, list[Point]]:
-    """Mean and peak per display bucket, raw and rolled rows together; counts
-    (`SUM_NAMES`) are summed instead of averaged."""
+    """Mean and peak per display bucket (raw+rolled); SUM_NAMES summed."""
     bucket = _bucket(db, step).label("bucket")
     query = select(
         MetricSample.source,
@@ -182,7 +181,7 @@ async def series(
 async def latest(
     db: AsyncSession, *, since: datetime, source: str | None = None
 ) -> dict[Key, tuple[datetime, float]]:
-    """The newest raw value of every series written after `since`."""
+    """Newest raw value per series since since."""
     query = select(
         MetricSample.ts,
         MetricSample.source,
@@ -201,7 +200,7 @@ async def latest(
 async def recent(
     db: AsyncSession, *, since: datetime, names: Iterable[str]
 ) -> dict[Key, list[tuple[datetime, float]]]:
-    """Raw points of the named series after `since`, oldest first (for the rules)."""
+    """Raw points of named series since since, oldest first (rules)."""
     query = (
         select(
             MetricSample.ts,

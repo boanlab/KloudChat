@@ -1,8 +1,4 @@
-"""A mermaid flowchart drawn as native, editable .pptx shapes in the deck's font and accent.
-
-Only flowcharts are read (`flowchart` / `graph`, any direction). Anything else, or a
-chart past `MAX_NODES`, returns None and the caller keeps the picture.
-"""
+"""Mermaid flowcharts as native, editable .pptx shapes; else None (caller keeps the picture)."""
 
 from __future__ import annotations
 
@@ -15,12 +11,12 @@ from app.services import flow_layout
 MAX_NODES = 18
 
 _HEAD = re.compile(r"^\s*(?:flowchart|graph)\s+(TB|TD|BT|LR|RL)\b", re.I)
-#: A node reference with an optional shape: id[..] id(..) id([..]) id((..)) id{..} id[(..)]
+#: Node ref with optional shape: id[..] id(..) id([..]) id((..)) id{..} id[(..)]
 _NODE = re.compile(
     r"(?P<id>[A-Za-z0-9_가-힣]{1,40})\s{0,2}"
     r"(?:(?P<shape>\(\(|\(\[|\[\(|\[\[|\[|\(|\{\{|\{|>)"
     r"\s{0,2}\"?(?P<label>[^\]\)\}\"]{0,120}?)\"?\s{0,2}(?:\)\)|\]\)|\)\]|\]\]|\]|\)|\}\}|\}))?"
-    r"(?:\([^()]{0,40}\))?"  # a stray 「(입력)」 after a label
+    r"(?:\([^()]{0,40}\))?"  # stray 「(입력)」 after a label
     r"(?::::(?P<cls>[A-Za-z0-9_-]{1,30}))?"
 )
 _SUBGRAPH = re.compile(
@@ -51,13 +47,13 @@ class Edge:
 
 @dataclass
 class Graph:
-    direction: str  # "LR" or "TB"
+    direction: str
     nodes: dict[str, Node] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     groups: dict[str, tuple[str, list[str]]] = field(default_factory=dict)
-    #: A group's own `direction` line, when it has one ("LR" or "TB").
+    #: Group's own `direction` ("LR"/"TB"), if any.
     group_dirs: dict[str, str] = field(default_factory=dict)
-    #: Whether boxes carry icons; a layout turns them off when they would cost text size.
+    #: Off when icons would cost text size.
     icons: bool = True
 
 
@@ -69,8 +65,7 @@ def _shape_of(opener: str | None) -> str:
 
 
 def _plain_label(raw: str) -> str:
-    """A mermaid label as text: <br/> is a line break, other markup and entities go,
-    and a line of 「key : value」 pairs keeps one space around its colon."""
+    """Mermaid label as text: <br/> → newline, markup/entities dropped, 「key : value」 kept."""
     text = re.sub(r"<\s*br\s*/?\s*>", "\n", raw or "", flags=re.I)
     text = re.sub(r"<[^>]{1,40}>", "", text)
     text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("#quot;", '"')
@@ -79,7 +74,7 @@ def _plain_label(raw: str) -> str:
 
 
 def parse(source: str) -> Graph | None:
-    """The flowchart in `source`, or None when it is not one this module can draw."""
+    """Flowchart in `source`, or None when not drawable."""
     lines = [ln.strip() for ln in (source or "").splitlines() if ln.strip()]
     if not lines or not (head := _HEAD.match(lines[0])):
         return None
@@ -126,7 +121,7 @@ def parse(source: str) -> Graph | None:
             if m.group(2) == "hot":
                 hot.add(m.group(1))
             continue
-        # A chain: node (arrow node)*
+        # chain: node (arrow node)*
         pos = 0
         first = _NODE.match(line, pos)
         if not first:
@@ -151,7 +146,7 @@ def parse(source: str) -> Graph | None:
     for nid in hot:
         if nid in graph.nodes:
             graph.nodes[nid].hot = True
-    # An edge to a group stands for its members: the first member receives it, the last sends.
+    # edge to a group: first member receives, last sends
     for edge in graph.edges:
         if edge.a in graph.groups and graph.groups[edge.a][1]:
             edge.a = graph.groups[edge.a][1][-1]
@@ -166,8 +161,7 @@ def parse(source: str) -> Graph | None:
         return None
     if _compares(graph):
         graph.direction = "LR"
-        # A comparison has no direction: no arrowheads, and links only between
-        # counterparts on the same row.
+        # comparison: no arrowheads, links only between same-row counterparts
         rows = {m: i for _g, (_l, members) in graph.groups.items() for i, m in enumerate(members)}
         side = {m: g for g, (_l, members) in graph.groups.items() for m in members}
         kept = []
@@ -183,23 +177,20 @@ def parse(source: str) -> Graph | None:
 
 @dataclass
 class Placed:
-    x: float  # centre, in the box's units
+    x: float  # centre, box units
     y: float
     w: float
     h: float
-    # In a flow laid out in rows (`flow_layout`): the row, the column in it, the place in
-    # the column's stack, how many share the column, and whether the column ends its row.
-    # Row and column are -1 elsewhere.
+    # `flow_layout` rows only (else -1): row, column, stack place, column size, row end
     row: int = -1
     col: int = -1
     lane: int = 0
     lanes: int = 1
-    last: bool = False  # the last column of its row
+    last: bool = False
 
 
 def _compares(graph: Graph) -> bool:
-    """Two or more groups holding nearly every node, with no edge inside any group: the
-    groups are the sides of a comparison, not stages of one flow."""
+    """Comparison test: 2+ groups covering nearly all nodes, no intra-group edges."""
     if len(graph.groups) < 2:
         return False
     group_of = {m: g for g, (_l, members) in graph.groups.items() for m in members}
@@ -212,9 +203,7 @@ def _compares(graph: Graph) -> bool:
 
 
 def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
-    """Node centres and sizes inside a `width` × `height` box: layers along the flow
-    (longest path from the sources), ordered within a layer by their parents' positions.
-    A flow goes to `flow_layout`, which folds it into rows that keep its text readable."""
+    """Node centres and sizes in `width` × `height`; flows go to `flow_layout`."""
     if (rows := flow_layout.place(graph, width, height)) is not None:
         return rows
     ids = list(graph.nodes)
@@ -223,7 +212,7 @@ def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
     for e in graph.edges:
         succs[e.a].append(e.b)
         preds[e.b].append(e.a)
-    # Longest-path layers; a cycle is cut where it closes (visiting order).
+    # longest-path layers; cycles cut where they close
     layer: dict[str, int] = {}
     visiting: set[str] = set()
 
@@ -240,14 +229,12 @@ def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
     for n in ids:
         depth(n)
     if _compares(graph):
-        # A comparison: each side is a column of its own (LR layers), its items stacked in
-        # source order; links between the sides are drawn across, not used for layers.
+        # comparison: one column per side; cross links not used for layering
         group_index = {m: i for i, (_g, (_l, members)) in enumerate(graph.groups.items())
                        for m in members}
         for n in ids:
             layer[n] = group_index.get(n, len(graph.groups))
-    # A group's members sit in consecutive layers of their own order when the source
-    # put them side by side without edges: keep source order as the tie-break.
+    # source order as tie-break for edgeless side-by-side members
     count = max(layer.values()) + 1
     layers: list[list[str]] = [[] for _ in range(count)]
     for n in ids:
@@ -264,23 +251,22 @@ def layout(graph: Graph, width: float, height: float) -> dict[str, Placed]:
                 order[n],
             )
         )
-    # Members of one group sit next to each other in a layer, so its box can hold them.
+    # group members adjacent within a layer
     for lay in layers:
         before = {n: i for i, n in enumerate(lay)}
         lay.sort(key=lambda n: (group_rank.get(group_of.get(n, ""), -1), before[n]))
     across = max(len(lay) for lay in layers)
     flow_len = width if graph.direction == "LR" else height
     cross_len = height if graph.direction == "LR" else width
-    # Spacing first, then sizes: the gap between layers carries the arrows (and their
-    # labels), the gap between neighbours keeps boxes apart; what is left is the boxes.
+    # gaps first (arrows, labels), boxes get the rest
     flow_gap = max(28.0, flow_len * 0.06) if count > 1 else 0.0
     if _compares(graph):
-        # The two sides need room between their frames for the links and their labels.
+        # room between sides for links and labels
         flow_gap = max(64.0, flow_len * 0.12)
     cross_gap = max(14.0, cross_len * 0.05) if across > 1 else 0.0
     cell_flow = (flow_len - flow_gap * (count - 1)) / count
     cell_cross = (cross_len - cross_gap * (across - 1)) / across
-    # A box is never taller than a third of the band (LR) nor wider than its cell (TB).
+    # box ≤ 1/3 band (LR), ≤ cell width (TB)
     box_flow = min(cell_flow, 220.0)
     box_cross = min(cell_cross, (cross_len * 0.34) if graph.direction == "LR" else 260.0)
     placed: dict[str, Placed] = {}
@@ -308,19 +294,18 @@ def _hex(colour: tuple[float, float, float] | str) -> tuple[int, int, int]:
         c = colour.lstrip("#")
         return int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
     values = tuple(colour)
-    if any(v > 1 for v in values):  # already 0–255 (an RGBColor)
+    if any(v > 1 for v in values):  # already 0–255 (RGBColor)
         return tuple(int(v) for v in values)  # type: ignore[return-value]
     return tuple(int(round(v * 255)) for v in values)  # type: ignore[return-value]
 
 
-#: Body font of a figure (the app's own face); a viewer without it substitutes its sans.
+#: Figure body font; viewers without it substitute their sans.
 FONT = "Pretendard"
 
 
 _ICONS_DIR = Path(__file__).resolve().parent.parent / "assets" / "material_icons"
 
-#: Words in a node's label and the Material Symbols icon each calls for; the first match
-#: wins, so the narrower reading comes first. No match, no icon.
+#: Label word → Material Symbols icon; first match wins (narrower first).
 _ICON_WORDS: tuple[tuple[str, str], ...] = (
     (r"암호|복호|encrypt", "lock"), (r"키|인증|토큰|로그인|SSO|JWT|OAuth", "key"),
     (r"보안|방어|보호|차단|방화벽|위협|공격", "shield"), (r"정책|규정|컴플라이언스", "policy"),
@@ -357,7 +342,7 @@ _ICON_RES = [(re.compile(p, re.I), name) for p, name in _ICON_WORDS]
 
 
 def icon_for(label: str) -> str | None:
-    """The Material Symbols icon a node's label calls for, or None."""
+    """Material Symbols icon for a node label, or None."""
     for pattern, name in _ICON_RES:
         if pattern.search(label or "") and (_ICONS_DIR / f"{name}.svg").exists():
             return name
@@ -365,8 +350,7 @@ def icon_for(label: str) -> str | None:
 
 
 def _icon_blobs(name: str, rgb: tuple[int, int, int]) -> tuple[bytes, bytes]:
-    """`(svg, png)` of the icon in one solid colour: the SVG is what PowerPoint shows,
-    the PNG the raster fallback it requires beside it."""
+    """`(svg, png)` of a solid-colour icon; PNG is PowerPoint's required fallback."""
     import io
 
     import PIL.Image
@@ -384,8 +368,7 @@ def _icon_blobs(name: str, rgb: tuple[int, int, int]) -> tuple[bytes, bytes]:
 
 
 def _add_svg_picture(slide, svg: bytes, png: bytes, left, top, size) -> None:
-    """A picture whose blip is the PNG with the SVG attached (`asvg:svgBlip`), as
-    PowerPoint itself writes an inserted SVG: vector where read, raster elsewhere."""
+    """Picture with PNG blip plus `asvg:svgBlip`, as PowerPoint writes inserted SVGs."""
     import io
 
     from pptx.opc.constants import RELATIONSHIP_TYPE as RT
@@ -415,15 +398,14 @@ def _add_svg_picture(slide, svg: bytes, png: bytes, left, top, size) -> None:
 
 
 def _tighten(text: str) -> str:
-    """「AI 보안」, 「소재: 사내」 without the space at a Hangul–Latin boundary."""
+    """Drops the space at Hangul–Latin boundaries (「AI 보안」)."""
     text = re.sub(r"(?<=[A-Za-z0-9:)\]%])[ ](?=[가-힣])", "", text)
     text = re.sub(r"(?<=[가-힣])[ ](?=[A-Za-z0-9(\[:])", "", text)
     return re.sub(r"(?<=[A-Za-z0-9)\]]) (?=:)", "", text)
 
 
 def _sides(a: Placed, b: Placed, lr: bool) -> tuple[str, str]:
-    """Which side a line leaves `a` by and enters `b` by: along the flow between layers,
-    across it between neighbours in one layer."""
+    """Exit/entry sides: along the flow between layers, across within a layer."""
     if lr:
         if abs(a.x - b.x) < 1:
             return ("bottom", "top") if b.y > a.y else ("top", "bottom")
@@ -433,17 +415,14 @@ def _sides(a: Placed, b: Placed, lr: bool) -> tuple[str, str]:
     return ("bottom", "top") if b.y > a.y else ("top", "bottom")
 
 
-_STEP = 4.0  # grid pitch in points
+_STEP = 4.0  # grid pitch (pt)
 _OUT = {"right": (1, 0), "left": (-1, 0), "bottom": (0, 1), "top": (0, -1)}
 
 
 def _route(
     a_box, a_side: str, b_box, b_side: str, *, obstacles, frames, used, bounds, owner: str = ""
 ) -> list[tuple[float, float]]:
-    """An orthogonal A* path between the middles of two box sides, clear of other boxes.
-
-    Bends and shared runs cost extra; falls back to an elbow. Taken cells go into `used`.
-    """
+    """Orthogonal A* route between box-side midpoints avoiding boxes; elbow fallback."""
     import heapq
 
     def mid(box, side):
@@ -459,7 +438,7 @@ def _route(
     for x0, y0, x1, y1 in [*obstacles, a_box, b_box]:
         c0, c1 = cell(x0 - 6, y0 - 6), cell(x1 + 6, y1 + 6)
         blocked.update((i, j) for i in range(c0[0], c1[0] + 1) for j in range(c0[1], c1[1] + 1))
-    for x0, y0, x1, _ in frames:  # the group's title strip
+    for x0, y0, x1, _ in frames:  # group title strip
         c0, c1 = cell(x0 + 4, y0), cell(x1 - 4, y0 + 18)
         blocked.update((i, j) for i in range(c0[0], c1[0] + 1) for j in range(c0[1], c1[1] + 1))
     outline: set[tuple[int, int]] = set()
@@ -472,13 +451,13 @@ def _route(
 
     sx, sy = mid(a_box, a_side)
     gx, gy = mid(b_box, b_side)
-    # A short stub straight out of each side, so the line meets the box square on.
+    # short stub out of each side: square entry
     so, go = _OUT[a_side], _OUT[b_side]
     start = cell(sx + so[0] * 10, sy + so[1] * 10)
     goal = cell(gx + go[0] * 10, gy + go[1] * 10)
     for c in (start, goal):
         blocked.discard(c)
-    # The stubs' own cells are free even inside the 6-point margin.
+    # stub cells free even inside the 6 pt margin
     for (x, y), (dx, dy) in (((sx, sy), so), ((gx, gy), go)):
         for k in range(0, 4):
             blocked.discard(cell(x + dx * k * _STEP / 1.5, y + dy * k * _STEP / 1.5))
@@ -504,7 +483,7 @@ def _route(
             n = (c[0] + nd[0], c[1] + nd[1])
             if not (0 <= n[0] < cols and 0 <= n[1] < rows) or n in blocked:
                 continue
-            # Lines from one box share their trunk; another box's line is avoided.
+            # same-box lines share a trunk; other boxes' lines avoided
             shared = used.get(n)
             step = 1.0 + (8.0 if nd != d else 0.0)
             step += (0.0 if owner in shared else 3.0) if shared else 0.0
@@ -515,7 +494,7 @@ def _route(
                 came[(n, nd)] = (c, d)
                 heapq.heappush(frontier, (new + h(n), new, n, nd))
     if found is None:
-        # No way round: an elbow through the middle.
+        # no route: elbow through the middle
         mxp = (sx + gx) / 2
         return [(sx, sy), (mxp, sy), (mxp, gy), (gx, gy)] if a_side in ("left", "right") else [
             (sx, sy), (sx, (sy + gy) / 2), (gx, (sy + gy) / 2), (gx, gy)]
@@ -528,8 +507,7 @@ def _route(
     for c in cells:
         used.setdefault(c, set()).add(owner)
     mids = [point(c) for c in cells]
-    # The first and last straight runs sit exactly on the sides' middles (the grid is
-    # 4 points coarse), so the line meets each box square on, with no jog.
+    # end runs snapped to side midpoints (4 pt grid would jog)
     horizontal_a, horizontal_b = a_side in ("left", "right"), b_side in ("left", "right")
     k = 0
     while k < len(cells) and (cells[k][1] if horizontal_a else cells[k][0]) == (
@@ -555,43 +533,39 @@ def _route(
 
 
 def _tint(rgb: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
-    """`rgb` mixed toward white by `amount` (0 keeps it, 1 is white)."""
+    """`rgb` mixed toward white by `amount` (0–1)."""
     return tuple(int(round(c + (255 - c) * amount)) for c in rgb)  # type: ignore[return-value]
 
 
 def text_area(
     node: Node, w: float, h: float, icons: bool = True
 ) -> tuple[float, float, str | None]:
-    """`(width, height, icon)` a node's label has in a `w` × `h` box: a diamond's text sits
-    in its inner part, and an icon, when one fits, takes the left of the box."""
+    """`(width, height, icon)` for a label in a `w` × `h` box (diamond inner part, icon on left)."""
     text_w = w * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
     text_h = h * (0.6 if node.shape == "diamond" else 0.9 if node.shape == "circle" else 1)
     if node.shape in ("box", "round"):
-        # A rounded rectangle's text area stops short of its corners (OOXML roundRect:
-        # inset = radius × 0.29), on every side.
+        # roundRect text inset = radius × 0.29 (OOXML)
         inset = (0.12 if node.shape == "box" else 0.3) * min(w, h) * 0.29289
         text_w, text_h = text_w - 2 * inset, text_h - 2 * inset
     elif node.shape == "diamond":
-        text_w = w * 0.5  # its text area is the inner half across (taller text still reads)
+        text_w = w * 0.5  # diamond: inner half across
     icon = icon_for(node.label) if icons and node.shape in ("box", "round") else None
     icon_size = min(h * 0.42, 22.0)
     if icon and w - icon_size - 16 >= 48:
-        # Icon on the left, text beside it: the text frame starts after the icon.
+        # text frame starts after the icon
         return text_w - (icon_size + 6), text_h, icon
     return text_w, text_h, None
 
 
 def _ems(text: str) -> float:
-    """A text's width in ems: a Hangul or CJK glyph a little under one (measured on
-    LibreOffice's Pretendard), a Latin letter or digit about 0.6, a space 0.3."""
+    """Text width in ems (Hangul/CJK ~1, Latin ~0.6, space 0.3; LibreOffice Pretendard)."""
     return sum(
         0.92 if ord(ch) >= 0x1100 else 0.3 if ch == " " else 0.6 for ch in text
     )
 
 
 def _lines(part: str, room: float) -> int | None:
-    """How many lines `part` takes wrapped at spaces in `room` ems, or None when one of
-    its words alone is wider (it would break inside the word: 「라벨/링」)."""
+    """Lines for `part` wrapped in `room` ems; None if a word alone overflows."""
     lines, used = 0, 0.0
     for word in part.split() or [""]:
         width = _ems(word)
@@ -605,8 +579,7 @@ def _lines(part: str, room: float) -> int | None:
 
 
 def _font_size(label: str, width: float, height: float) -> int:
-    """The largest size from 14 pt down to 8 pt at which `label` wraps inside the box
-    between words; at 8 pt, wherever it must."""
+    """Largest size 14→8 pt wrapping between words; at 8 pt, anywhere."""
     for size in range(14, 7, -1):
         room = (width - 8) / size
         counts = [_lines(part, room) for part in label.split("\n")]
@@ -630,7 +603,7 @@ def draw_pptx(
     pt=None,
     tight: bool = False,
 ) -> None:
-    """Native shapes and routed lines for `graph` inside the box, in points (960 × 540 slide)."""
+    """Native shapes and routed lines for `graph`, in points (960 × 540 slide)."""
     from pptx.dml.color import RGBColor
     from pptx.enum.dml import MSO_LINE_DASH_STYLE
     from pptx.enum.shapes import MSO_SHAPE
@@ -641,8 +614,7 @@ def draw_pptx(
     pt = pt or Pt
     font = font or FONT
     primary_rgb = _hex(accent)
-    # Palette: primary (the deck's accent) for the emphasised step, secondary (a pale
-    # tint of it) for the other boxes, neutral tones for groups, lines and text.
+    # primary for emphasis, pale tint for boxes, neutrals for groups/lines/text
     primary = RGBColor(*primary_rgb)
     secondary = RGBColor(*_tint(primary_rgb, 0.86))
     group_line = RGBColor(*_tint(primary_rgb, 0.6))
@@ -653,16 +625,15 @@ def draw_pptx(
     placed = layout(graph, width, height)
 
     def flat(shape) -> None:
-        """No shadow, glow or bevel: an empty effect list overrides the theme's."""
+        """No shadow/glow/bevel: empty effect list overrides the theme."""
         sppr = shape._element.spPr
         for old in sppr.findall(qn("a:effectLst")):
             sppr.remove(old)
-        # The theme style reference brings its own effects (LibreOffice draws a shadow
-        # from it); every colour here is set directly, so the reference goes.
+        # theme style ref brings effects (LibreOffice shadow): removed
         for style in shape._element.findall(qn("p:style")):
             shape._element.remove(style)
         effects = sppr.makeelement(qn("a:effectLst"), {})
-        # The effect list follows the fill and line in spPr's schema order.
+        # effectLst after fill and ln (spPr schema order)
         line = sppr.find(qn("a:ln"))
         if line is not None:
             line.addnext(effects)
@@ -676,19 +647,18 @@ def draw_pptx(
         frame.vertical_anchor = anchor
         frame.margin_left = frame.margin_right = pt(4)
         frame.margin_top = frame.margin_bottom = pt(2)
-        # A label's own line breaks (mermaid's <br/>) are paragraphs, each centred.
+        # each <br/> line its own centred paragraph
         for n, line in enumerate(text.split("\n")):
             para = frame.paragraphs[0] if n == 0 else frame.add_paragraph()
             para.alignment = PP_ALIGN.CENTER
             run = para.add_run()
-            # LibreOffice adds its own gap where Hangul meets Latin letters, digits or
-            # punctuation; the written space there would make it a double one.
+            # LibreOffice adds its own Hangul–Latin gap: avoid double space
             run.text = _tighten(line) if tight else line
             run.font.name = font
             run.font.size = pt(size)
             run.font.bold = bold
             run.font.color.rgb = colour
-            # East Asian glyphs take the font from <a:ea>, not <a:latin>.
+            # East Asian glyphs use <a:ea>, not <a:latin>
             rpr = run._r.get_or_add_rPr()
             ea = rpr.find(qn("a:ea"))
             if ea is None:
@@ -696,7 +666,7 @@ def draw_pptx(
                 rpr.append(ea)
             ea.set("typeface", font)
 
-    # Group backgrounds first, so they sit under their members.
+    # group backgrounds first (under members)
     pad, title_room = 8.0, 16.0
     frames: list[tuple[float, float, float, float]] = []
     for label, members in flow_layout.frames(graph, placed):
@@ -713,21 +683,21 @@ def draw_pptx(
             and y0 < top + o.y + o.h / 2 and top + o.y - o.h / 2 < y1
             for o in others
         ):
-            continue  # it would cover a shape outside it: no box rather than a wrong one
+            continue  # would cover an outside shape: skip
         x0, y0 = max(x0, left - pad), max(y0, top - pad - title_room)
         frames.append((x0, y0, x1, y1))
         g = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE, pt(x0), pt(y0), pt(x1 - x0), pt(y1 - y0)
         )
         g.adjustments[0] = 0.06
-        # Flat on white: the group is a thin dashed outline on the white ground.
+        # flat: thin dashed outline on white
         g.fill.solid()
         g.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
         g.line.color.rgb = group_line
         g.line.width = pt(0.75)
         g.line.dash_style = MSO_LINE_DASH_STYLE.DASH
         flat(g)
-        # In rows the figure is printed at its own size: the title keeps a readable 10 pt.
+        # rows printed at own size: 10 pt title
         title_pt = 10 if any(p.row >= 0 for p in placed.values()) else 9
         set_text(g, label, title_pt, label_grey, bold=True, anchor=MSO_ANCHOR.TOP)
 
@@ -746,9 +716,8 @@ def draw_pptx(
             s.adjustments[0] = 0.12 if node.shape == "box" else 0.3
         s.fill.solid()
         s.fill.fore_color.rgb = primary if node.hot else secondary
-        s.line.fill.background()  # no outline: the fill carries the shape
+        s.line.fill.background()
         flat(s)
-        # A diamond's text area is its inner half: size the text for that.
         text_w, text_h, icon = text_area(node, p.w, p.h, graph.icons)
         icon_size = min(p.h * 0.42, 22.0)
         set_text(
@@ -764,7 +733,7 @@ def draw_pptx(
             )
         shapes[nid] = s
 
-    # Open polylines routed around boxes; a connector would run straight through them.
+    # polylines routed around boxes (connectors cut through)
 
     lr = graph.direction == "LR"
     boxes = {
@@ -780,8 +749,7 @@ def draw_pptx(
         a, b = placed[edge.a], placed[edge.b]
         rows = a.row >= 0 and b.row >= 0
         if rows and flow_layout.kind(a, b) == "mark":
-            # A step back across the figure, or on past a whole row: a short stub at its
-            # source and a note naming where it goes, not a line over everything between.
+            # long back/skip edge: stub at source plus target note
             back_marks.append((edge, a))
             continue
         sa, sb = flow_layout.sides(a, b) if rows else _sides(a, b, lr)
@@ -805,9 +773,7 @@ def draw_pptx(
             head = {"type": "triangle", "w": "med", "len": "med"}
             ln.append(ln.makeelement(qn("a:tailEnd"), head))
         if edge.label:
-            # Beside a run of the line, longest runs first, at the first spot that covers
-            # no box and no label already placed.
-            # A long label takes two lines rather than a wider gap.
+            # beside a run, longest first, first free spot; long labels wrap to two lines
             two = len(edge.label) > 8
             tw = min(150.0, 9.0 * (-(-len(edge.label) // 2) if two else len(edge.label)) + 12)
             th = 24.0 if two else 14.0

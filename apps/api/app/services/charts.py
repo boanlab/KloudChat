@@ -1,9 +1,4 @@
-"""DrawingML chart styling shared by the deck (.pptx) and the report (.docx).
-
-`apply` styles an existing python-pptx chart; `part` builds one through a
-throwaway presentation and returns the chart part and workbook blobs a `.docx`
-embeds.
-"""
+"""DrawingML chart styling shared by .pptx and .docx."""
 
 from __future__ import annotations
 
@@ -11,8 +6,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-#: (latin, East Asian) pairs. `font.name` sets `a:latin` only; Hangul is drawn
-#: from `a:ea`.
+#: (latin, East Asian); Hangul drawn from a:ea
 FACES = {
     "gothic": ("Segoe UI", "맑은 고딕"),
     "serif": ("Georgia", "바탕"),
@@ -23,7 +17,7 @@ _AXIS = "C8C8C8"
 
 
 def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str]) -> None:
-    """Styles a chart: zero-floored value axis, light gridlines, accent series, document faces."""
+    """Style a chart: zero-floored axis, light grid, accent series, document faces."""
     from pptx.dml.color import RGBColor
     from pptx.enum.chart import XL_LEGEND_POSITION, XL_MARKER_STYLE
     from pptx.util import Pt
@@ -47,7 +41,7 @@ def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str])
         frame = value_axis.axis_title.text_frame
         frame.text = unit
         _text(frame.paragraphs[0].font, muted, 12, faces)
-        # Upright: the default rotated title lays a Hangul unit on its side.
+        # upright: rotated title tips Hangul units
         frame._txBody.bodyPr.set("rot", "0")
         frame._txBody.bodyPr.set("vert", "horz")
 
@@ -56,13 +50,12 @@ def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str])
     category_axis.format.line.color.rgb = RGBColor.from_string(_AXIS)
     _text(category_axis.tick_labels.font, muted, 12, faces)
 
-    # First series in the accent, later ones in a lighter mix of it.
     for position, series in enumerate(chart.plots[0].series):
         colour = accent if position == 0 else mix(accent, RGBColor(0xFF, 0xFF, 0xFF), 0.55)
         if kind == "line":
             series.format.line.color.rgb = colour
             series.format.line.width = Pt(2.5)
-            # Markers otherwise keep the theme palette.
+            # markers otherwise keep the theme palette
             series.marker.style = XL_MARKER_STYLE.CIRCLE
             series.marker.size = 6
             series.marker.format.fill.solid()
@@ -75,11 +68,7 @@ def apply(chart, *, kind: str, unit: str, accent, muted, faces: tuple[str, str])
 
 
 def _plain_frame(chart) -> None:
-    """Removes the frame and rounded corners Word draws around an unstyled chart.
-
-    `c:spPr` is schema-ordered and must follow `c:chart`, or Word offers to
-    repair the file.
-    """
+    """Strip Word's default chart frame; c:spPr must follow c:chart or Word repairs."""
     from pptx.oxml import parse_xml
     from pptx.oxml.ns import nsdecls, qn
 
@@ -106,7 +95,7 @@ def part(
     muted,
     faces: tuple[str, str],
 ) -> tuple[bytes, bytes] | None:
-    """`(chart part blob, workbook blob)` built via a throwaway presentation, or None on failure."""
+    """(chart part blob, workbook blob) via a throwaway presentation, or None."""
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE
@@ -137,14 +126,14 @@ def part(
 
 
 def mix(colour, toward, amount: float):
-    """`colour` moved `amount` (0..1) toward `toward`."""
+    """colour moved amount toward toward."""
     from pptx.dml.color import RGBColor
 
     return RGBColor(*(round(a + (b - a) * amount) for a, b in zip(colour, toward, strict=True)))
 
 
 def _text(font, colour, size: int, faces: tuple[str, str]) -> None:
-    """Sets size, colour and both latin and East Asian faces on a chart font."""
+    """Set size, colour, latin and East Asian faces."""
     from pptx.oxml.ns import qn
     from pptx.util import Pt
 

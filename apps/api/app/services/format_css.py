@@ -1,11 +1,4 @@
-"""A document format's own CSS for pages the server renders: the gallery preview.
-
-The web draws a formatted document with `formatCss` (`apps/web/src/components/report/
-docFormats.ts`): the head block's look, heading numbers, 개조식 lists and, for the 1쪽 보고,
-its own scale. The fixed rules are kept verbatim in `design_templates/_document/format.css`
-and the rule builders are ported below; `tests/test_template_previews.py` keeps both equal
-to the TypeScript, so the card shows what a finished document looks like.
-"""
+"""Document-format CSS for gallery previews (docFormats.ts port, test-pinned)."""
 
 from __future__ import annotations
 
@@ -18,7 +11,7 @@ _SOURCE = Path(__file__).resolve().parents[1] / "design_templates" / "_document"
 
 
 def _part(name: str) -> str:
-    """The text between `/* @begin name */` and `/* @end name */` in `format.css`."""
+    """Text between /* @begin name */ and /* @end name */ in format.css."""
     found = re.search(
         rf"/\* @begin {name} \*/(.*?)/\* @end {name} \*/",
         _SOURCE.read_text(encoding="utf-8"),
@@ -128,8 +121,7 @@ def format_css(fmt: doc_formats.DocFormat) -> str:
     )
 
 
-#: The paged preview's own rules that a head block meets (`pagedSheet.ts`): a cover's height
-#: is its own; a cover page ends at its page break, not at a screen height.
+#: pagedSheet.ts head-block rules: cover keeps its own height, ends at its page break
 PAGED_CSS = ".cover { min-height: 0 !important; }"
 
 # `docFormats.ts` CALLOUT_HTML and CONTENT_HEADING_HTML.
@@ -141,9 +133,7 @@ _SECTION_HEADING = re.compile(r"<section\b[^>]*>\s*$", re.I)
 
 
 def number_headings(html: str, numbering: str) -> str:
-    """Each section heading and content heading given its `data-num`, as the paged preview
-    numbers them (`sectionNumbers`, `numberHtmlHeadings`); a callout's or card's title is
-    not counted."""
+    """data-num on headings as the paged preview numbers them; callout titles skipped."""
     if numbering == "none":
         return html
     a = b = 0
@@ -173,7 +163,7 @@ _OPEN = re.compile(r"^<(/?)([A-Za-z][A-Za-z0-9-]*)")
 
 
 def mark_placeholders(html: str) -> str:
-    """`placeholders.ts` markPlaceholders: each 「[담당자]」 in the text marked as a blank."""
+    """placeholders.ts markPlaceholders."""
     skipping = 0
     marked = False
     out: list[str] = []
@@ -194,7 +184,6 @@ def mark_placeholders(html: str) -> str:
 
 
 def preview(fmt: doc_formats.DocFormat, sample: str) -> tuple[str, str]:
-    """`(css, body)` for a sample written in `fmt`: the body in the formatted document's own
-    element, its headings numbered and its blanks marked, and the rules that draw it."""
+    """(css, body) for a sample in fmt: numbered headings, marked blanks."""
     body = mark_placeholders(number_headings(sample, fmt.numbering))
     return f"{format_css(fmt)}\n{PAGED_CSS}", f'<div class="{fmt_class(fmt)}">{body}</div>'

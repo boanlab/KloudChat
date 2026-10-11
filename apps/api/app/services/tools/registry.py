@@ -1,8 +1,4 @@
-"""Assembles the tool list for one turn.
-
-Built-ins win name collisions (the loop resolves tools by name); connector tools
-are namespaced `mcp__<slug>__<tool>`.
-"""
+"""Per-turn tool list; built-ins win collisions, connector tools as `mcp__<slug>__<tool>`."""
 
 from __future__ import annotations
 
@@ -57,7 +53,7 @@ def _make_runner(connector: Connector, tool_name: str, env: dict[str, str]):
             return ToolResult(content=f"오류: {exc}", failed=True)
         if not text:
             return ToolResult(content="(빈 응답)", detail="결과 없음", empty=True)
-        # Caps what a server can push into the context.
+        # Cap on server-pushed context.
         capped = text[:30_000]
         detail = f"{len(text):,}자" + (" (일부)" if len(text) > 30_000 else "")
         return ToolResult(content=capped, detail=detail)
@@ -66,7 +62,7 @@ def _make_runner(connector: Connector, tool_name: str, env: dict[str, str]):
 
 
 async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
-    """Every enabled tool from every enabled, connected connector this user has."""
+    """Enabled tools from the user's connected connectors."""
     connectors = (
         await db.exec(
             select(Connector).where(
@@ -111,7 +107,7 @@ async def connector_tools(db: AsyncSession, user: User) -> list[Tool]:
                 source=connector.slug,
             )
         )
-    # Stable order: the privacy decision token hashes the exact tool list.
+    # Stable order: privacy decision token hashes the tool list.
     return sorted(out, key=lambda tool: tool.name)
 
 
@@ -127,20 +123,13 @@ async def build_tools(
     strict_local: bool = False,
     skills: list[tuple[str, str, str]] | None = None,
 ) -> list[Tool]:
-    """The turn's tool list.
-
-    `allowed`: None inherits everything the user has, [] denies all, a list is a hard filter.
-    `knowledge`: the agent's documents, offered as `search_knowledge` under the same allowlist.
-    `skills`: installed skills not switched on, offered as `use_skill` for the model to pick.
-    """
+    """Turn tool list; `allowed`: None = all, [] = none, list = hard filter."""
     if strict_local:
-        # Only in-process built-ins; no connectors, no vector retrieval. `share_note`
-        # is excluded because a note reaches later turns that may run on external models.
+        # In-process built-ins only; `share_note` excluded (notes reach later external-model turns).
         tools = [CALCULATE, CREATE_ARTIFACT, CREATE_CHART]
         wanted = allowed is None or bool({RUN_SKILL_SCRIPT.name, RUN_CODE.name} & set(allowed))
         if settings.sandbox_in_boundary and wanted and (await settings_store.tools_config()).exec:
-            # The sandbox runs in the self-hosted stack with no network; run_code then
-            # writes its code on a strict-local model (see `sandbox_tools.code_models`).
+            # Sandbox is self-hosted and offline; run_code uses a strict-local model.
             tools += [RUN_SKILL_SCRIPT, RUN_CODE]
         include_connectors = False
         knowledge_collection = ""
@@ -166,10 +155,10 @@ async def build_tools(
     return tools
 
 
-#: The group every in-process tool is listed under in the pickers.
+#: Picker group for in-process tools.
 BUILTIN_GROUP = "기본 도구"
 
-#: One line a person reads in the tool picker; the model reads `Tool.description`.
+#: Picker blurb; model reads `Tool.description`.
 _BUILTIN_BLURB: dict[str, str] = {
     "calculate": "사칙연산과 거듭제곱을 정확히 계산합니다.",
     "web_search": "웹에서 최신 자료를 찾아 출처와 함께 답합니다.",
@@ -185,7 +174,7 @@ _BUILTIN_BLURB: dict[str, str] = {
 
 
 def _humanize(tool_name: str) -> str:
-    """`list_open_issues` → `list open issues`; a connector's tool with no title of its own."""
+    """`list_open_issues` → `list open issues`."""
     return tool_name.replace("__", " ").replace("_", " ").strip() or tool_name
 
 
@@ -195,12 +184,7 @@ def _first_line(text: str) -> str:
 
 
 async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
-    """Tool names an agent or skill may reference, with labels and current availability.
-
-    Each row also carries what the pickers show a person: `group` (기본 도구 or the
-    connector's name), a short `title` and a one-line `description`. The raw name stays
-    for the allowlist and is never the headline.
-    """
+    """Referenceable tool names with picker labels and availability."""
     available = {tool.name: tool for tool in await build_tools(db, user, web_search=True)}
     rows: dict[str, dict[str, object]] = {}
     for tool in (
@@ -224,7 +208,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
             "description": _BUILTIN_BLURB.get(tool.name) or _first_line(tool.description),
         }
 
-    # Connector names stay valid while disconnected; availability is rechecked at execution.
+    # Disconnected connectors stay valid; availability rechecked at execution.
     connectors = (
         await db.exec(
             select(Connector).where(
@@ -256,7 +240,7 @@ async def tool_catalog(db: AsyncSession, user: User) -> list[dict[str, object]]:
                 "description": _first_line(row.description),
             }
 
-    # Exists only for an agent with shelf documents (see AgentOut.has_knowledge).
+    # Only for agents with shelf documents.
     rows["search_knowledge"] = {
         "name": "search_knowledge",
         "label": "에이전트 지식이 있을 때 검색",

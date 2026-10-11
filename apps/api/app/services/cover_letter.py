@@ -1,12 +1,4 @@
-"""Server post-processing of a cover-letter answer (자기소개서): lengths measured, not trusted.
-
-The answer's 「[제출용 답안 n]」 blocks are measured with text-fit against the limits the
-person stated (「공백 포함 700자」, 「1,000바이트 이내」); a block outside its range gets up to
-two rewrites asking for the exact amount to add or cut, and the closest result is kept. An answer
-written without the tags is read by the question headings the request numbered. Numbers, titles and blind-hiring
-words the person's material does not carry are flagged, never filled in. Only the blocks are
-measured (contract C1): an explanation or a refusal outside them is not.
-"""
+"""Cover-letter (자기소개서) post-processing: blocks measured by text-fit, rewritten to limits, unsupported words flagged."""
 
 from __future__ import annotations
 
@@ -26,16 +18,15 @@ _MARKER = re.compile(
     r"^[ \t]{0,3}[>*_#\s]{0,6}[\[［]\s{0,2}제출용\s{0,2}답안\s{0,2}(\d{1,2})\s{0,2}[\]］][*_ \t]{0,4}(.{0,200})$",
     re.M,
 )
-#: A line that ends a block: a heading, a rule, a table, a count line, a note, the next tag.
+#: block terminators: heading, rule, table, count line, note, next tag
 _BLOCK_END = re.compile(
     r"^[ \t]{0,3}(?:#{1,6}\s|-{3,}\s*$|\*{3,}\s*$|\||[\[［]|\*\*[\[［(]|※|\(?\s{0,2}(?:글자\s{0,2}수|바이트\s{0,2}수|분량)"
     r"|>\s{0,2}※|(?:설명|참고|메모|안내)\s{0,2}[:：])"
-    # A table written without its outer pipes: 「문항 | 기준 | 실제 | 한도」.
+    # table without outer pipes
     r"|^[ \t]{0,3}[^|\n]{1,40}\|[^|\n]{1,80}\|"
 )
 _FENCE = re.compile(r"^\s{0,3}```")
-#: A question heading in an answer written without the tags: 「**1. 지원 동기**」, 「### 문항 2」,
-#: 「[문항 1] …」, 「Q3.」. The rest of the line is a short title.
+#: question headings in untagged answers; rest of line is a short title
 _HEADING = re.compile(
     r"^[ \t]{0,3}(?:#{1,6}[ \t]{1,3})?[*_]{0,3}[ \t]{0,2}[\[［(]?[ \t]{0,2}"
     r"(?:(?:문항|Q)[ \t]{0,2}(\d{1,2})[ \t]{0,2}(?:번)?|(\d{1,2})[ \t]{0,2}(?:번[ \t]{0,2}문항|[.)번]))"
@@ -56,7 +47,7 @@ _NEWLINE_BYTES = re.compile(r"줄\s{0,2}바꿈\s{0,2}(?:은|는|:)?\s{0,2}(\d)\s
 _TITLE_WORDS = re.compile(
     r"팀장|파트장|파트\s{0,2}리드|본부장|센터장|실장|부장|차장|과장(?![하된되])|대리|수석|책임(?![지져질감을이은의])|선임|매니저|"
     r"대표(?![적하로])|위원장|회장|조장|"
-    # 「리더십」 is a quality, not a title.
+    # 「리더십」 is a quality, not a title
     r"(?<![A-Za-z])(?:PM|PL|CTO|CEO|리더(?!십))(?![A-Za-z])"
 )
 _SCHOOL = re.compile(r"[가-힣]{2,12}(?:대학교|여자대학|고등학교|과학고|외고)")
@@ -69,7 +60,7 @@ class Limit:
     limit: int
     unit: str
     newline: int | None = None
-    #: Said to the person when the counting rule was not stated and the strictest was used.
+    #: note when no counting rule was stated (strictest used)
     assumed: str = ""
 
 
@@ -77,7 +68,7 @@ class Limit:
 class Block:
     number: int
     text: str
-    #: The block's lines as written in the answer, for replacing it.
+    #: block lines as written, for replacement
     raw: str
 
 
@@ -87,13 +78,13 @@ class Outcome:
     rows: list[dict] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
     rewritten: list[int] = field(default_factory=list)
-    #: The judge's 「same experience, same content」 candidates, for a person to check.
+    #: judge's duplicate-experience candidates
     repeats: list[str] = field(default_factory=list)
     detail: str = ""
 
 
 def limits(text: str) -> tuple[list[Limit], float | None]:
-    """The length limits a request states, by question number when it numbers them."""
+    """Length limits stated in the request, by question number."""
     found: list[Limit] = []
     lines = (text or "").splitlines()
     for line in lines:
@@ -138,15 +129,12 @@ def limits(text: str) -> tuple[list[Limit], float | None]:
     return found, ratio
 
 
-#: A turn asking for the letter to be written or changed, not a question about it.
+#: turn asks to write/change, not a question about it
 _WRITE_ASK = re.compile(r"자기\s{0,2}소개서|자소서|문항|써\s{0,2}줘|고쳐|다시\s{0,2}써|늘려|줄여|넣어|빼\s{0,2}줘|맞춰")
 
 
 def blocks(answer: str, request: str = "", material: str = "") -> list[Block]:
-    """The 「[제출용 답안 n]」 blocks: the lines after each tag up to the next tag or a note.
-
-    With no tag, when this turn asks for writing and the request or material numbers its
-    questions with limits, the answer's own question headings mark the blocks instead."""
+    """「[제출용 답안 n]」 blocks; untagged answers split by numbered question headings."""
     tagged = _tagged_blocks(answer)
     if tagged or not _WRITE_ASK.search(request or ""):
         return tagged
@@ -167,7 +155,7 @@ def _heading_blocks(answer: str, numbers: set[int]) -> list[Block]:
         if m and int(m.group(1) or m.group(2)) in numbers:
             heads.append((i, int(m.group(1) or m.group(2))))
     seen = [n for _, n in heads]
-    # Each asked question once, in order: a numbered list inside an answer is not a heading.
+    # each asked question once, in order
     if not heads or len(set(seen)) != len(seen) or seen != sorted(seen):
         return []
     out: list[Block] = []
@@ -206,7 +194,7 @@ def _tagged_blocks(answer: str) -> list[Block]:
         number, trailing = int(m.group(1)), m.group(2).strip()
         start = i
         body: list[str] = []
-        # A long remainder on the tag line is the answer itself; a short one is its title.
+        # long tag-line remainder = answer; short = title
         if len(trailing) > 60:
             body.append(trailing)
         j = i + 1
@@ -263,7 +251,7 @@ def measure(block: Block, limit: Limit, ratio: float | None) -> dict:
 
 
 def unsupported(text: str, material: str) -> list[str]:
-    """Numbers, titles and blind-hiring words in `text` that the person's material lacks."""
+    """Numbers, titles, blind-hiring words absent from the material."""
     numbers = report_checks.figure_tokens(material)
     known = set(numbers) | report_checks._derived(numbers)
     flags: list[str] = []
@@ -281,8 +269,7 @@ def unsupported(text: str, material: str) -> list[str]:
 
 
 def _flag_note(flags: list[str]) -> str:
-    """The flagged words, with the blank to put in their place: a number the material does not
-    carry becomes 「[구체적 성과 수치]」, a title 「[직함]」."""
+    """Flagged words with their blanks (「[구체적 성과 수치]」, 「[직함]」)."""
     numbers = [f for f in flags if re.fullmatch(r"[\d.]+", f)]
     hint = "「[구체적 성과 수치]」" if numbers else ""
     if len(numbers) < len(flags):
@@ -317,9 +304,9 @@ _HOW = {"chars_with_spaces": "characters including spaces (공백 포함 글자 
         "bytes_utf8": "UTF-8 bytes (Hangul 3 bytes; Latin letters, digits and spaces 1 byte; "
                       "a line break {nl} bytes)",
         "bytes_ko2": "bytes with Hangul at 2 and everything else at 1 (a line break {nl} bytes)"}
-#: Bytes one Korean letter takes, for 「about n Hangul letters」.
+#: bytes per Korean letter
 _PER_LETTER = {"bytes_utf8": 3, "bytes_ko2": 2}
-#: Rewrites per block.
+#: rewrites per block
 _ATTEMPTS = 2
 _THINK = re.compile(r"<think>.{0,20000}?</think>", re.S)
 _LEAD_LABEL = re.compile(r"^\s{0,3}(?:\*\*)?(?:고친|수정한|다시 쓴)\s{0,2}(?:글|답안|본문)(?:\*\*)?\s{0,2}[:：]?\s{0,2}\n")
@@ -367,9 +354,7 @@ async def post_process(
     answer: str, *, request: str, material: str, complete: Complete | None = None,
     model: str = "", api_key: str = "", usage: dict | None = None, judge: str = "",
 ) -> Outcome | None:
-    """None when the answer has no submit blocks or the request states no limit.
-
-    With `judge`, two or more blocks are read once for the same experience told twice."""
+    """None without submit blocks or limits; judge checks for repeated experiences."""
     found = blocks(answer, request, material)
     if not found:
         return None
@@ -393,7 +378,7 @@ async def post_process(
     failing = [(b, lim) for b, lim in pairs if rows[b.number].get("status") in ("over", "under")]
     if failing and complete is not None and model:
         async def repair(block: Block, limit: Limit) -> None:
-            # Up to two targeted rewrites; each starts from the closest text so far.
+            # up to two targeted rewrites from the closest text
             best_text, best_row = block.text, rows[block.number]
             before = set(unsupported(block.text, material))
             avoid: list[str] = []
@@ -432,7 +417,7 @@ async def post_process(
                 outcome.rewritten.append(block.number)
 
         await asyncio.gather(*(repair(b, lim) for b, lim in failing))
-        # Measured again from the answer as it now stands.
+        # remeasured from the current answer
         final_blocks = {b.number: b for b in blocks(outcome.content, request, material)}
         for block, limit in pairs:
             if block.number in final_blocks:
@@ -464,7 +449,7 @@ async def post_process(
 
 async def repeats(final: dict[int, str], *, complete: Complete, judge: str, api_key: str,
                   usage: dict | None = None) -> list[str]:
-    """「답안 2: …」 for each sentence the judge reads as an experience already told the same way."""
+    """「답안 2: …」 per sentence repeating an experience."""
     text = "\n\n".join(f"[제출용 답안 {n}]\n{body}" for n, body in sorted(final.items()))
     items, spent = await report_checks.judge_json(
         complete, judge, api_key, report_checks._REPEAT_PROMPT.format(
@@ -488,13 +473,12 @@ _LIMIT_HEADER = re.compile(r"한도|제한|기준|목표|최대|하한|최소|%|
 
 
 def _table_row(line: str) -> bool:
-    """A row of a pipe table, with or without its outer pipes (「1 | 공백 포함 700자 | 397자」)."""
+    """Pipe-table row, outer pipes optional."""
     return line.count("|") >= 2 or (line.lstrip().startswith("|") and line.count("|") >= 1)
 
 
 def _measured_cell(cell: str, measured: dict) -> str:
-    """The table cell with the code's count: the number swapped when the cell already says the
-    same unit, the whole cell otherwise (「공백 포함 330자 (바이트는 확인하지 못함)」)."""
+    """Cell with the code's count (number swapped if same unit, else whole cell)."""
     suffix = measured.get("suffix", "")
     numbers = re.findall(r"\d[\d,]*", cell)
     same_unit = suffix and re.search(r"\d[\d,]*\s{0,2}" + re.escape(suffix), cell)
@@ -504,16 +488,12 @@ def _measured_cell(cell: str, measured: dict) -> str:
 
 
 def fit_shown(row: dict) -> str:
-    """「한글 2바이트 538바이트」: the count without its limit."""
+    """Count without its limit."""
     return f"{row.get('counted_as', '')} {row['value']:,}{row.get('suffix', '')}".strip()
 
 
 def fix_count_table(answer: str, rows: list[dict]) -> str:
-    """The answer's own count table, its measured column set to text-fit's numbers.
-
-    The table may be written without outer pipes or a rule line; its rows are matched
-    to blocks by the number in their first cell, or in order when no row is numbered.
-    """
+    """Answer's count table with measured column from text-fit; rows matched by number or order."""
     by_number = {r["number"]: r for r in rows}
     lines = answer.split("\n")
     i = 0
@@ -524,7 +504,7 @@ def fix_count_table(answer: str, rows: list[dict]) -> str:
         header = report_checks.cells(lines[i])
         column = next((k for k, h in enumerate(header)
                        if _COUNT_HEADER.search(h) and not _LIMIT_HEADER.search(h)), None)
-        # 「한도」 alone is the stated limit; a model sometimes writes its own target there.
+        # 「한도」 alone is the stated limit (models write targets there)
         cap = next((k for k, h in enumerate(header) if _CAP_HEADER.fullmatch(h.strip())), None)
         j = i + 1
         body: list[int] = []
@@ -552,7 +532,7 @@ def fix_count_table(answer: str, rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
-#: 「바이트는 확인하지 못함」: a count the model could not make. Code made it.
+#: uncounted-by-model marker; code counted
 _UNSURE = re.compile(r"확인\s{0,2}(?:하지|되지|을\s{0,2}하지)\s{0,2}(?:못|않)|검증\s{0,2}(?:하지|되지)\s{0,2}(?:못|않)"
                      r"|세지\s{0,2}못|측정\s{0,2}(?:하지|되지)\s{0,2}(?:못|않)|미확인")
 _COUNT_WORD = re.compile(r"바이트|글자\s{0,2}수|글자|자\s{0,2}수|분량|byte", re.I)
@@ -561,8 +541,7 @@ _ALL_FIT = re.compile(r"(?:모두|모든\s{0,2}(?:답안|문항)|두\s{0,2}(?:�
 
 
 def _measured_wording(answer: str, rows: list[dict], texts: list[str]) -> str:
-    """The answer's own words about the counts, said with code's numbers: a 「확인하지 못했습니다」
-    line about the count gives way to the measured line, and 「모두 한도 이내」 goes when one is not."""
+    """Answer's count statements rewritten with code's numbers."""
     if not rows:
         return answer
     inside = {line.strip() for text in texts for line in text.split("\n") if line.strip()}
@@ -585,7 +564,7 @@ def _measured_wording(answer: str, rows: list[dict], texts: list[str]) -> str:
 
 
 def wire(outcome: Outcome) -> dict:
-    """What the answer's routing carries for the line under it."""
+    """Routing note for the line under it."""
     return {
         "rows": [
             {"number": r["number"], "label": r["label"], "unit": r["unit"], "value": r["value"], "limit": r.get("limit"),

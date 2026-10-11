@@ -1,25 +1,4 @@
-"""빠진 정보 질문: what an agent asks before writing when the material does not answer it.
-
-The questions are data, the same shape wherever they live:
-
-- a 서식 carries the ones its format needs (`[[questions]]` in its `template.toml`);
-- an agent carries its own (`Agent.gap_questions`, the agent form's 「빠진 정보 질문」; a
-  shipped agent's come from `[[questions]]` in `app/agents/<key>.toml`, seeded onto its row).
-
-A question is `{id, label, question, why, placeholder, detector}`. Its detector says whether
-the request and material already answer it (`skills/gap-check/scripts/gaps.py`):
-
-- `{"type": "builtin", "name": …}` — one of the shipped detectors (`builtin_names`), some of
-  which trust what the server's extractors read (`readings`);
-- `{"type": "keyword", "words": [...], "when": [...]}` — any word present answers it; `when`
-  asks only when the request has one of those words;
-- `{"type": "regex", "pattern": …, "when": …}` — a bounded pattern (`regex_ok`);
-- `{"type": "judge"}` — the judge model reads the material once for all such questions and
-  must quote the words that answer each (`judged`).
-
-The gap check (`gap-check`, attached through 「빠진 정보 먼저 묻기」) asks at most four, on
-one card, before the first draft.
-"""
+"""빠진 정보 질문: pre-writing questions with builtin/keyword/regex/judge detectors."""
 
 from __future__ import annotations
 
@@ -43,14 +22,14 @@ Complete = Callable[[str, list[dict], str, int], Awaitable[tuple[str, dict]]]
 
 
 class QuestionError(ValueError):
-    """A question the form or a file may not store; `code` is the wire detail."""
+    """Question the form or a file may not store; code is the wire detail."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
 
 
-#: The built-in detectors as the agent form names them: what each finds in the material.
+#: built-in detectors as the agent form names them
 DETECTOR_LABELS = {
     "meeting_date": "회의 날짜(연도까지)",
     "attendees": "참석자",
@@ -72,20 +51,19 @@ DETECTOR_LABELS = {
 
 
 def detector_catalogue() -> list[dict[str, str]]:
-    """The built-in detectors the form offers, each with what it looks for."""
+    """Built-in detectors with what each looks for."""
     return [{"name": n, "label": DETECTOR_LABELS.get(n, n)} for n in builtin_names()]
 
 
 def builtin_names() -> tuple[str, ...]:
-    """The shipped detectors a question may name."""
+    """Shipped detector names."""
     from app.services import skill_scripts
 
     return tuple(skill_scripts.module("gap-check", "gaps").DETECTORS)
 
 
 def regex_ok(pattern: str) -> bool:
-    """Whether a pattern is safe to run on a person's text: short, every repeat bounded
-    (at most `_REPEAT_MAX`), and no repeat inside another — so it cannot backtrack for long."""
+    """Whether a pattern is backtrack-safe: short, bounded repeats, none nested."""
     if not pattern or len(pattern) > _PATTERN_MAX:
         return False
     try:
@@ -165,7 +143,7 @@ def _detector(raw: Any, n: int) -> dict[str, Any]:
 
 
 def clean(raw: Any) -> list[dict[str, Any]]:
-    """Questions as stored, each checked; raises `QuestionError` on the first bad one."""
+    """Validated stored questions; raises QuestionError."""
     rows = raw if isinstance(raw, list) else []
     if len(rows) > MAX_QUESTIONS:
         raise QuestionError("gap_too_many", f"질문은 {MAX_QUESTIONS}개까지입니다.")
@@ -192,8 +170,7 @@ def of_template(template) -> list[dict[str, Any]]:
 
 
 def for_format(doc_format: str | None) -> list[dict[str, Any]]:
-    """The questions of the 서식 that fixes `doc_format`, for an agent bound to the format
-    without a 서식 of its own."""
+    """Questions of the 서식 bound to doc_format."""
     from app.services import design_templates
 
     if not doc_format:
@@ -206,9 +183,7 @@ def for_format(doc_format: str | None) -> list[dict[str, Any]]:
 
 def resolve(*, own: list | None, base_key: str | None = None, template_id: str | None = None,
             doc_format: str | None = None) -> list[dict[str, Any]]:
-    """What the agent asks before writing: its 서식's questions (or those of the 서식 bound to
-    its format), then its own — the row's, else (none stored) the official agent it runs
-    as (`base_key`). Each id once."""
+    """Pre-writing questions: 서식's, then the agent's own (or base_key's); unique ids."""
     from app.services import design_templates, starter
 
     template = design_templates.get(template_id) if template_id else None
@@ -225,12 +200,8 @@ def resolve(*, own: list | None, base_key: str | None = None, template_id: str |
     return out
 
 
-# ── what the server reads for the detectors ───────────────────────────────
-
-
 def readings(questions: list[dict], request: str, material: str, today) -> dict[str, Any]:
-    """What the server's extractors already read for the built-in detectors the questions
-    name, so the script trusts them over its own patterns."""
+    """Extractor readings for named built-in detectors (trusted over script patterns)."""
     from app.services import report_checks
 
     names = {str((q.get("detector") or {}).get("name") or "") for q in questions
@@ -283,9 +254,7 @@ def _flat(text: str) -> str:
 
 async def judged(questions: list[dict], *, request: str, material: str, complete: Complete,
                  model: str, api_key: str, usage: dict | None = None) -> dict[str, bool]:
-    """Whether the material answers each judge-type question: the model must quote the words
-    that answer it, and code checks the quote is there. A question the model could not settle
-    (no reply, no model) counts as answered: nothing is asked on a guess."""
+    """Judge-type answers: quote required and verified; unsettled counts as answered."""
     asked = [q for q in questions if (q.get("detector") or {}).get("type") == "judge"]
     if not asked:
         return {}

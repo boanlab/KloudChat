@@ -1,12 +1,4 @@
-"""The user guide as a built-in help source: what the chat reads when a question is about
-KloudChat itself (「에이전트를 어떻게 만들어?」).
-
-The guide's sections (`app/help/docs.json`, built from `website/docs` by
-`scripts/build_help.py`) ship in the image and are searched in process: nothing leaves the
-instance. A chat turn whose question asks how to do something in this app gets the best few
-sections as a trusted block, so the answer names this app's own screens and buttons instead
-of generic advice.
-"""
+"""User guide as in-process help source for questions about KloudChat itself."""
 
 from __future__ import annotations
 
@@ -24,26 +16,25 @@ _DOCS = Path(__file__).resolve().parent.parent / "help" / "docs.json"
 _TOP = 3
 _BLOCK_CHARS = 4500
 
-#: Things a person makes or sets only in an app like this one: a question that names one and
-#: asks how, even several words later, is about the app.
+#: app-only nouns; "how" plus one of these, even words apart, is an app question
 _APP_THINGS = (
     r"에이전트|스킬|템플릿|테마|메모리|커넥터|묶음|진행\s{0,2}과정|워크플로|내보내기|"
     r"사용자\s{0,2}지정|크레딧|단축키|확인\s{0,2}질문|아티팩트|"
-    # The screen itself: 「글씨를 크게 볼 수 있나요」 「회의록 만드는 기능이 어디 있어요」.
+    # the screen itself
     r"기능|메뉴|버튼|글씨|글자\s{0,2}크기|화면\s{0,2}(?:크게|확대|글자)"
 )
-#: Words a task uses as often as a question about the app: only right beside 「어떻게」.
+#: task words: app question only right beside 「어떻게」
 _COMMON_THINGS = r"양식|디자인|프로젝트|결과물|공유|설정|모델|관리자"
 _FEATURES = f"{_APP_THINGS}|{_COMMON_THINGS}"
 _HOW = (r"어떻게|어디서|어디에서|어디에|어디|뭐야|무엇|방법|하는\s{0,2}법|할\s{0,2}수\s{0,2}있"
         r"|(?:만들|만드|추가할|추가하|쓸|넣을|바꿀|지울|연결할|설정할)\s{0,2}수\s{0,2}있")
 _DO = (r"만들|만드|추가|설정|바꾸|바꿔|지우|지워|삭제|연결|공유|쓰|써|사용|켜|꺼|끄|고르|골라|저장|"
        r"내보내|올리|올려")
-#: The app named as the place: 「여기서」 「이 앱에서」 「KloudChat에서」.
+#: app named as the place
 _HERE = (r"여기\s{0,2}(?:서|에서)"
          r"|이\s{0,2}(?:앱|서비스|프로그램|사이트)\s{0,2}(?:에서|은|는|의|으로|로)"
          r"|kloud\s{0,2}chat|클라우드\s{0,2}챗")
-#: A question about using this app. Bounded patterns only: it runs on a person's text.
+#: app-usage question; bounded patterns (runs on user text)
 _ABOUT_APP = re.compile(
     r"kloud\s{0,2}chat|클라우드\s{0,2}챗|이\s{0,2}(?:앱|서비스|프로그램|사이트)(?:에서|은|는|의)"
     rf"|(?:{_HERE})[^\n]{{0,40}}?(?:{_HOW}|{_APP_THINGS})"
@@ -63,7 +54,7 @@ def about_app(text: str) -> bool:
 
 
 def _terms(text: str) -> list[str]:
-    """Words, and Hangul as two-letter pieces (Korean particles stay out of the way)."""
+    """Words plus Hangul bigrams (keeps particles out of the way)."""
     out: list[str] = []
     for word in _WORD.findall((text or "").lower()):
         if re.match(r"[가-힣]", word):
@@ -90,7 +81,7 @@ def _index() -> tuple[list[dict[str, Any]], list[Counter], dict[str, float]]:
 
 
 def search(query: str, *, lang: str = "ko", limit: int = _TOP) -> list[dict[str, Any]]:
-    """The guide's best sections for the question, in its language."""
+    """Best guide sections for the question, in its language."""
     rows, bags, idf = _index()
     wanted = set(_terms(query))
     if not wanted:
@@ -106,7 +97,7 @@ def search(query: str, *, lang: str = "ko", limit: int = _TOP) -> list[dict[str,
     return [row for _, row in scored[:limit]]
 
 
-#: What every help block holds the answer to: the guide, and nothing it does not say.
+#: answer only from the guide
 _GROUNDING = (
     "Rules for this answer:\n"
     "- Describe only screens, menus, buttons, settings and features that the guide sections "
@@ -121,7 +112,7 @@ _GROUNDING = (
     "writing), ignore this block and do the task.\n"
 )
 
-#: How long a how-to answer is: a busy person wants the path, not the page.
+#: how-to answer length: the path, not the page
 _BRIEF = (
     "How to answer:\n"
     "- Brief. First line: where to start (screen › menu › button). Then at most 6 numbered "
@@ -142,14 +133,14 @@ _BRIEF = (
 
 
 def page_link(path: str, *, lang: str = "ko") -> str:
-    """The guide page's address on the published site, or "" when none is configured."""
+    """Published guide page URL, or ""."""
     base = (settings.guide_base_url or "").rstrip("/")
     if not base or not path:
         return ""
     page = path[: -len("/index")] if path.endswith("/index") else path
     return f"{base}/{'en/' if lang == 'en' else ''}docs/{page}"
 
-#: The pages the guide has, by name, for a question none of its sections answers.
+#: guide page names, for questions no section answers
 _PAGES = {
     "ko": "사용자 지정 › 에이전트 · 스킬 · 커넥터 / 설정 › 메모리 · 테마 / 프로젝트 / 아티팩트",
     "en": "Customize › Agents · Skills · Connectors / Settings › Memory · Themes / Projects "
@@ -158,9 +149,7 @@ _PAGES = {
 
 
 def block(query: str, *, lang: str = "ko") -> str:
-    """The trusted block a chat turn about this app reads: the guide's best sections, or —
-    when none fits — that the guide does not cover it and where to look, so the answer never
-    invents a feature."""
+    """Trusted help block: best sections, or a no-coverage note so no feature is invented."""
     found = search(query, lang=lang)
     head = "# KloudChat 사용 안내 (이 앱의 도움말)\n" \
         "The person is asking how to do something in this app, KloudChat.\n" + _GROUNDING \

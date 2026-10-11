@@ -1,9 +1,4 @@
-"""Proposes a design system draft from an existing document with one model call.
-
-The draft is returned to the editor, never stored. Every field passes through
-`design.normalise_tokens` / `design.craft_keys`, so invented values become
-defaults. Caller owns billing.
-"""
+"""Design-system draft from an existing document (one model call, not stored; caller bills)."""
 
 from __future__ import annotations
 
@@ -18,7 +13,7 @@ from app.services import design, settings_store, thinking
 
 log = logging.getLogger(__name__)
 
-#: Characters of the source sent to the model.
+#: source chars sent to the model
 _MAX_SOURCE = 12_000
 
 _PROMPT = """다음 문서를 읽고, 이 조직이 쓰는 글과 서식의 규칙을 디자인 시스템으로 정리하라.
@@ -61,13 +56,12 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 700,
-                # A reasoning model may spend the whole budget thinking and
-                # return empty content.
+                # reasoning model may return empty content
                 **thinking.switch(model),
             },
         )
         if thinking.refused(model, response):
-            # The same request without the switch the provider refused.
+            # retry without the refused switch
             body = json.loads(response.request.content or b"{}")
             body.pop("reasoning", None)
             body.update(thinking.switch(model))
@@ -83,7 +77,7 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
 
 
 def _object(text: str) -> dict:
-    """The first JSON object in a reply that may be fenced or prefaced."""
+    """First JSON object in a possibly fenced reply."""
     body = re.sub(r"^\s*```[A-Za-z]*\s*\n(.*?)\n?\s*```\s*$", r"\1", text.strip(), flags=re.S)
     start, end = body.find("{"), body.rfind("}")
     if start < 0 or end <= start:
@@ -95,12 +89,11 @@ def _object(text: str) -> dict:
 
 
 class ExtractError(RuntimeError):
-    """Nothing usable came back; the message is user-facing."""
+    """Nothing usable came back; user-facing message."""
 
 
 async def extract(*, source: str, model: str, api_key: str) -> tuple[dict, dict[str, int]]:
-    """`(draft, usage)`: a normalised design system proposal. Raises `ExtractError` when unreadable.
-    """
+    """(draft, usage) normalised proposal; raises ExtractError."""
     text = re.sub(r"\n{3,}", "\n\n", source).strip()
     if len(text) < 40:
         raise ExtractError("읽을 내용이 너무 짧습니다.")

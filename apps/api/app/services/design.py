@@ -1,9 +1,4 @@
-"""Design system tokens (read by renderers), prompt blocks (read by the model), and craft rules.
-
-Tokens are limited to what `.pptx`, `.pdf`, `.hwpx` and the browser preview
-can all draw. Colours reach the model only through `image_clause`. Nothing
-here reads the database.
-"""
+"""Design-system tokens (renderers), prompt blocks (model), craft rules; no DB access."""
 
 from __future__ import annotations
 
@@ -11,7 +6,7 @@ import re
 
 from app.models.chat import SessionKind
 
-#: Deck styles; a report uses only the first three.
+#: deck styles; reports use the first three
 VISUAL_STYLES = (
     "editorial",
     "poster",
@@ -26,34 +21,32 @@ VISUAL_STYLES = (
     "paper",
 )
 
-#: What a project with no design system gets; matches `deck._ACCENT` and the
-#: exporters' defaults.
+#: no-design defaults; match deck._ACCENT and exporters
 DEFAULT_TOKENS: dict[str, str] = {
     "accent": "#5b5bd6",
     "ink": "#1a1a1a",
     "muted": "#666666",
     "font": "gothic",
     "visualStyle": "editorial",
-    #: Drawn on every deck slide but the cover.
+    #: every deck slide but the cover
     "footer": "",
     "logo": "",
 }
 
-#: The logo is an inline data URI so an exported deck needs no server. SVG is
-#: excluded: the exporters decode with PIL, which cannot read it.
+#: inline data URI (no server); no SVG (PIL can't decode)
 _MAX_LOGO_BYTES = 256 * 1024
 _LOGO = re.compile(r"^data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+$", re.I)
 
-#: `fonts.py` keys; the two faces the image ships.
+#: fonts.py keys shipped in the image
 FONTS = ("gothic", "serif")
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
-#: Free-text prose that reaches every turn in the project.
+#: free-text prose for every project turn
 MAX_BODY = 400
 MAX_IMAGE_STYLE = 200
 
-#: Brand-agnostic craft rules; `kinds` is the surfaces each rule is sent to.
+#: brand-agnostic craft rules; kinds = target surfaces
 CRAFT: dict[str, dict] = {
     "restraint": {
         "label": "군더더기 덜기",
@@ -77,7 +70,7 @@ CRAFT: dict[str, dict] = {
 
 
 def normalise_tokens(raw: dict | None) -> dict[str, str]:
-    """A complete token set; each invalid field falls back to its default independently."""
+    """Complete token set; invalid fields fall back individually."""
     out = dict(DEFAULT_TOKENS)
     for key in ("accent", "ink", "muted"):
         value = str((raw or {}).get(key) or "").strip()
@@ -99,24 +92,24 @@ def normalise_tokens(raw: dict | None) -> dict[str, str]:
 
 
 def tokens_of(design) -> dict[str, str]:
-    """The token set to hand a renderer. `None` design means the defaults."""
+    """Token set for a renderer; None means defaults."""
     return normalise_tokens(getattr(design, "tokens", None) if design else None)
 
 
 def craft_keys(raw) -> list[str]:
-    """Known craft keys, in `CRAFT` order, deduplicated."""
+    """Known craft keys, CRAFT order, deduplicated."""
     asked = {str(key).strip() for key in (raw or [])}
     return [key for key in CRAFT if key in asked]
 
 
 def craft_block(keys, kind: SessionKind) -> str:
-    """The craft rules that can act on this surface, or `""`."""
+    """Craft rules for this surface, or ""."""
     parts = [CRAFT[key]["text"] for key in craft_keys(keys) if kind in CRAFT[key]["kinds"]]
     return "\n".join(parts)
 
 
 def prompt_block(design, kind: SessionKind) -> str:
-    """The trusted context block for one turn, or `""` when there is no body and no craft."""
+    """Trusted context block for one turn, or ""."""
     if design is None:
         return ""
     body = (design.body or "").strip()
@@ -132,7 +125,7 @@ def prompt_block(design, kind: SessionKind) -> str:
 
 
 def image_clause(design) -> str:
-    """Accent colour and house style phrase for an image prompt; empty when neither is set."""
+    """Accent and house style for an image prompt, or empty."""
     if design is None:
         return ""
     parts: list[str] = []
@@ -146,7 +139,7 @@ def image_clause(design) -> str:
 
 
 def visual_style_for(request: str) -> str:
-    """Visual style keyed off style words in the request; `"editorial"` by default."""
+    """Visual style from request style words; "editorial" default."""
     text = (request or "").lower()
     if any(word in text for word in ("매거진", "포스터", "강렬", "임팩트", "피치", "홍보", "색면")):
         return "poster"
@@ -171,8 +164,7 @@ def visual_style_for(request: str) -> str:
     return "editorial"
 
 
-#: Where a deck will be shown → the look that suits that room. Checked in order;
-#: the first room named in the request wins. Empty when nothing is named.
+#: venue → look; first venue named wins
 _VENUES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("minimal", ("학술", "학회", "세미나", "심사", "논문", "디펜스", "연구실", "컨퍼런스", "저널")),
     (
@@ -203,15 +195,13 @@ _VENUES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-#: Report looks the page view and the exporters render; a venue style outside this set
-#: falls to the nearest one.
+#: report looks renderers support; other venue styles map to nearest
 _REPORT_LOOKS = {"editorial": "editorial", "poster": "poster", "minimal": "minimal",
                  "paper": "minimal", "mono": "minimal", "slate": "editorial", "dark": "poster",
                  "split": "editorial", "warm": "poster", "pastel": "poster", "forest": "editorial"}
 
 
-#: Subjects and looks that read better in a serif: the humanities, the academy, the law,
-#: and the quiet looks. Everything else keeps the gothic.
+#: serif subjects/looks (humanities, academic, law, quiet); else gothic
 _SERIF_WORDS = (
     "논문", "학술", "학회", "세미나", "연구", "인문", "역사", "문학", "철학", "법", "판례",
     "에세이", "수필", "칼럼", "백서", "연차 보고", "annual report", "회고", "기념",
@@ -220,7 +210,7 @@ _SERIF_LOOKS = {"minimal", "paper", "warm"}
 
 
 def font_for(request: str, style: str = "") -> str:
-    """`"serif"` for a subject or look that reads better in one, else `"gothic"`."""
+    """"serif" or "gothic" for a subject/look."""
     text = (request or "").lower()
     if style in _SERIF_LOOKS or any(word in text for word in _SERIF_WORDS):
         return "serif"
@@ -228,7 +218,7 @@ def font_for(request: str, style: str = "") -> str:
 
 
 def report_look_for(request: str, accent: str) -> dict[str, str]:
-    """Tokens for a report with no design: the look its request or venue asks for, and `accent`."""
+    """No-design report tokens: requested/venue look plus accent."""
     style = visual_style_for(request)
     if style == "editorial":
         style = venue_style_for(request) or "editorial"
@@ -238,10 +228,7 @@ def report_look_for(request: str, accent: str) -> dict[str, str]:
 
 
 def venue_style_for(request: str) -> str:
-    """The look the venue calls for, read off the request; `""` when no venue is named.
-
-    A style word in the request (`visual_style_for`) outranks this.
-    """
+    """Venue look from the request, or ""; style words outrank it."""
 
     text = (request or "").lower()
     for style, words in _VENUES:

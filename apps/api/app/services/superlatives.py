@@ -1,24 +1,20 @@
-"""「모든 문항에서 가장 낮다」 read against the table the answer printed, and narrowed by code.
-
-The table is taken as right and the sweeping word as wrong: the claim is rewritten to the
-columns where the row really is the lowest (or highest).
-"""
+"""「모든 문항에서 가장 낮다」 narrowed to the table's actual lowest/highest columns."""
 
 from __future__ import annotations
 
 import re
 
 _CELL_NUMBER = re.compile(r"^\**\s{0,2}(-?\d[\d,]{0,15}(?:\.\d{1,6})?)\s{0,2}(%|점|명|건)?\**$")
-#: Columns that count rather than measure: 「응답 수」, 「인원」, 「건수」.
+#: count columns, not measures: 「응답 수」, 「인원」, 「건수」
 _COUNT_HEAD = re.compile(r"(?:응답|인원|건|명|사례|표본)\s{0,2}수?$|^\s{0,2}n\s{0,2}$|수$", re.I)
-#: 「모든 문항에서」, 「전 문항」, 「모든 항목에서」, 「전체 지표」.
+#: 「모든 문항에서」, 「전 문항」, 「전체 지표」
 _ALL = re.compile(r"(?:모든|전체|전)\s{0,2}(?P<noun>문항|항목|지표|영역|과목)")
 _LOW = re.compile(r"가장\s{0,2}낮|최저")
 _HIGH = re.compile(r"가장\s{0,2}높|최고")
 
 
 def _tables(text: str) -> list[tuple[int, list[str], dict[str, list[float | None]]]]:
-    """Each Markdown table as (the line after it, its measured columns, row label → values)."""
+    """Markdown tables as (line after, measured columns, row label → values)."""
     out = []
     lines = text.split("\n")
     k = 0
@@ -50,8 +46,7 @@ def _tables(text: str) -> list[tuple[int, list[str], dict[str, list[float | None
 
 
 def narrow_sweeping_claims(text: str) -> str:
-    """A sentence naming a table row and 「모든 문항에서 가장 낮은」 keeps the columns where
-    that row is the lowest (highest), named; one true for every column is left as written."""
+    """Narrow 「모든 문항에서 가장 낮은」 to the columns where it holds; all-true left as is."""
     if "|" not in (text or "") or not _ALL.search(text or ""):
         return text
     tables = _tables(text)

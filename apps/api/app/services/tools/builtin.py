@@ -1,8 +1,4 @@
-"""Built-in tools: SearXNG search, Crawl4AI fetch (Firecrawl-shaped shim), sandboxed code,
-artifacts, charts and shared notes.
-
-Backend addresses come from `settings_store.tools_config`; a tool with no address is not offered.
-"""
+"""Built-in tools: search, fetch, code, artifacts, charts, notes; unconfigured ones hidden."""
 
 from __future__ import annotations
 
@@ -53,7 +49,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _terms(query: str) -> list[str]:
-    """Query words a result is scored against."""
+    """Query words for scoring."""
     words = re.findall(r"[\w가-힣-]+", query.lower())
     return [w for w in words if len(w) >= 2 and not w.isdigit()]
 
@@ -61,38 +57,27 @@ def _terms(query: str) -> list[str]:
 def _covers(text: str, term: str) -> bool:
     if term in text:
         return True
-    # Drop a trailing Korean particle (청소년의 → 청소년) or counter (2026년 → 2026).
+    # Strip trailing Korean particle/counter (청소년의 → 청소년, 2026년 → 2026).
     return len(term) >= 3 and term[-1] in "의은는이가을를과와에로도년월일" and term[:-1] in text
 
 
 def _rank(rows: list[dict[str, str]], query: str) -> list[dict[str, str]]:
-    """Results carrying more query words first; engine order kept among equals.
-    A hit from the query's own lane (a paper from the science engines, an
-    article from the news engines) gets a head start of half the query's words:
-    a blog that repeats the whole question outranks the paper itself otherwise,
-    while a lane hit about something else still sinks."""
+    """More query words first; own-lane hits get a half-query head start."""
     terms = _terms(query)
     names, _ = _anchors(query)
     head_start = len(terms) // 2 + 1
 
     def score(row: dict[str, str]) -> int:
         overlap = _overlap(row, terms)
-        # A lane hit is judged against the words its lane was asked with (the
-        # English lane saw 「Ubuntu 24.04」, not the Korean sentence), and gets
-        # the head start only when it fits half of them; the science lane also
-        # returns papers that merely share a word. The English lane, being a
-        # supplement, gets a single step.
+        # Lane hit judged against its own lane query; English lane gets one step.
         lane_query = row.get("lane_query")
         if lane_query:
             lane_terms = _terms(lane_query) or terms
             fits = _overlap(row, lane_terms) * 2 >= len(lane_terms)
-            # The kind's lane and a lane the person asked for (official) lead;
-            # the English lane, a supplement, gets a single step.
             boosted = head_start if row.get("lane") in ("kind", "official") else 1
         else:
             fits = boosted = False
-        # A community thread answers, but a page that is not one ranks first;
-        # the subject's own site ranks ahead of everything.
+        # Community threads one step down; subject's own site first.
         community = any(_host(row["url"]).endswith(h) for h in _COMMUNITY_HOSTS)
         return (
             overlap
@@ -112,12 +97,12 @@ def _overlap(row: dict[str, str], terms: list[str]) -> int:
 
 
 def _off_topic(rows: list[dict[str, str]], query: str) -> bool:
-    """No result carries even one word of a multi-word query (engine suspended or captcha'd)."""
+    """No result shares a word with the query (engine suspended/captcha)."""
     terms = _terms(query)
     return len(terms) >= 2 and all(_overlap(row, terms) == 0 for row in rows)
 
 
-#: A path that is a front page under another name; such a hit answers nothing.
+#: Front-page paths; answer nothing.
 _INDEX_LEAVES = {
     "index",
     "index.html",
@@ -127,7 +112,7 @@ _INDEX_LEAVES = {
     "index.php",
     "main.do",
 }
-#: Hits per host kept, so one blog's series does not fill the list.
+#: Per-host hit cap.
 _PER_HOST = 2
 
 
@@ -147,7 +132,7 @@ def _host(url: str) -> str:
     return urlparse(url).netloc.lower().removeprefix("www.").removeprefix("m.")
 
 
-#: Korean boards and Q&A sites: kept, ranked a step below everything else.
+#: Korean boards/Q&A: kept, ranked lower.
 _COMMUNITY_HOSTS = (
     "instiz.net",
     "dcinside.com",
@@ -160,15 +145,13 @@ _COMMUNITY_HOSTS = (
     "cafe.naver.com",
 )
 
-#: Words that carry no subject on their own in a Latin-alphabet query.
+#: Subjectless Latin words.
 _LATIN_STOPWORDS = frozenset(
     "the a an and or of to in on for with is are was be do does how what when where "
     "which who why can i my me you your it its this that these those need needed current "
     "latest new best top vs from by at as into about".split()
 )
-#: Pages that never answer a Korean user's question: social feeds and foreign
-#: Q&A boards (TikTok, Blind, HiNative, Reddit, Quora) that a general engine
-#: returns for a query it did not understand, and adult sites.
+#: Never-useful hosts: social feeds, foreign Q&A, adult sites.
 _UNWANTED_HOSTS = (
     "tiktok.com",
     "instagram.com",
@@ -185,7 +168,7 @@ _UNWANTED_HOSTS = (
 _UNWANTED = re.compile(r"야동|섹스|성인\s*(?:사이트|영상)|19금|porn|xxx|hentai|에로|성인야", re.I)
 
 
-#: Korean places that carry no 시·구·동 suffix in everyday speech.
+#: Korean places used without 시·구·동 suffix.
 _KR_TOWNS = frozenset(
     "분당 판교 강남 홍대 잠실 일산 광교 동탄 송도 해운대 서면 명동 이태원 여의도 마곡 상암 위례 "
     "목동 노원 수지 죽전 정자 서현 야탑 미금 평촌 산본 부평 성남 용인 수원 화성 오산 평택 천안 "
@@ -197,8 +180,7 @@ _KR_PLACE = re.compile(r"[가-힣]{1,4}(?:특별시|광역시|시|구|군|읍|�
 
 
 def _places(query: str) -> list[str]:
-    """Korean place names in the query — 분당, 성남시, 정자동 — as their stem
-    (성남시 → 성남). A hit about somewhere else is not an answer."""
+    """Korean place stems in the query (성남시 → 성남)."""
     found: list[str] = []
     for token in re.findall(r"[가-힣]+", query):
         if token in _KR_TOWNS:
@@ -211,12 +193,7 @@ def _places(query: str) -> list[str]:
 
 
 def _anchors(query: str) -> tuple[list[str], list[str]]:
-    """The query's proper nouns as far as text can tell, as `(names, versions)`:
-    Latin-alphabet words of four letters or more (FastAPI, Ubuntu, NeurIPS —
-    three-letter ones like LTS or CVE are too common to anchor on) and tokens
-    with digits (24.04, D-2, 3.14). A hit must carry one of the names and every
-    version: a page about Ubuntu that never says 24.04 is not about 24.04.
-    Korean places (`_places`) are checked beside these, each mandatory."""
+    """Query proper nouns as `(names, versions)`; hits need one name and every version."""
     names: list[str] = []
     versions: list[str] = []
     for token in re.findall(r"[A-Za-z][A-Za-z0-9.+#_-]*|\d+(?:\.\d+)+|[A-Za-z]-\d+", query):
@@ -227,14 +204,13 @@ def _anchors(query: str) -> tuple[list[str], list[str]]:
             versions.append(lowered)
         elif len(lowered) >= 4:
             names.append(lowered)
-    # A bare major version after a name: Node.js 22, React 19, PostgreSQL 17.
+    # Bare major version after a name (Node.js 22).
     for match in re.finditer(r"[A-Za-z][A-Za-z.+#_-]*\s+(\d{1,3})(?![\d.])", query):
         versions.append(match.group(1))
     return names, versions
 
 
-#: A title mostly in another script (Cyrillic, Thai, Arabic, Hebrew) answers a
-#: Korean or English question only by accident.
+#: Titles mostly in other scripts.
 _OTHER_SCRIPTS = re.compile(r"[\u0400-\u04FF\u0E00-\u0E7F\u0600-\u06FF\u0590-\u05FF]")
 
 
@@ -256,8 +232,7 @@ def _anchored(
 
 
 def _own_site(row: dict[str, str], names: list[str]) -> bool:
-    """The subject's own domain — nodejs.org for Node.js, ubuntu.com for Ubuntu,
-    neurips.cc for NeurIPS: the page a question about it should start from."""
+    """Subject's own domain (nodejs.org for Node.js)."""
     host = _host(row["url"]).replace("-", "")
     return any(re.sub(r"[^a-z0-9]", "", name) in host for name in names if len(name) >= 4)
 
@@ -270,9 +245,7 @@ def _unwanted(row: dict[str, str]) -> bool:
 
 
 def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str, str]]:
-    """The best `count` of `rows` (given news-first for a fresh query): duplicates,
-    feeds, adult pages and hits without the query's proper nouns out, front
-    pages benched, at most `_PER_HOST` per host, then `_rank`."""
+    """Best `count` rows: filtered, front pages benched, per-host cap, then `_rank`."""
     seen: set[str] = set()
     per_host: dict[str, int] = {}
     kept: list[dict[str, str]] = []
@@ -292,14 +265,13 @@ def _select(rows: list[dict[str, str]], query: str, count: int) -> list[dict[str
             continue
         per_host[host] = per_host.get(host, 0) + 1
         kept.append(row)
-    # A thin list is padded with what was benched rather than left short.
+    # Pad a thin list with benched hits.
     kept.extend(benched[: max(0, count - len(kept))])
     return _rank(kept, query)[:count]
 
 
 def _latin_only(query: str) -> str:
-    """The query's Latin-alphabet and numeric tokens, or the whole query when
-    there are fewer than two of them."""
+    """Latin/numeric tokens, or whole query if fewer than two."""
     tokens = [
         t
         for t in re.findall(r"[A-Za-z][A-Za-z0-9.+#_'-]*|\d[\d.]*", query)
@@ -308,11 +280,9 @@ def _latin_only(query: str) -> str:
     return " ".join(tokens) if len(tokens) >= 2 else query
 
 
-#: Korean intent words an English-language page would state in English. Only
-#: these travel into the English lane; the subject's name is already Latin.
+#: Korean intent words → English for the English lane.
 _INTENT_EN = [
-    # Specific intents first: only the first two travel, and 「날짜」 is in
-    # almost every question.
+    # Specific intents first; only first two travel.
     (re.compile(r"지원\s*종료|서비스\s*종료|종료일|EOL", re.I), "end of life"),
     (re.compile(r"마감일|마감|제출\s*기한"), "deadline"),
     (re.compile(r"최신\s*버전|최신\s*판"), "latest version"),
@@ -330,8 +300,7 @@ _INTENT_EN = [
     (re.compile(r"일정|날짜"), "dates"),
 ]
 
-#: Time words that narrow a `site:go.kr` search to nothing: the notice says
-#: 「2026년」 in its body, not its title.
+#: Time words that empty a `site:go.kr` search.
 _TIME_NOISE = re.compile(r"\b20\d\d년?\b|올해|작년|내년|최근|지금|현재|오늘|요즘")
 
 
@@ -340,9 +309,7 @@ def _core_query(query: str) -> str:
 
 
 def _english_query(query: str) -> str:
-    """The query for the English lane: its Latin-alphabet tokens plus the
-    English word for what it asks (「Ubuntu 24.04 지원 종료일」 → 「Ubuntu 24.04
-    end of life」), or the whole query when nothing is Latin."""
+    """English-lane query: Latin tokens plus intent words, else whole query."""
     tokens = [
         t
         for t in re.findall(r"[A-Za-z][A-Za-z0-9.+#_'-]*|\d[\d.]*", query)
@@ -356,10 +323,10 @@ def _english_query(query: str) -> str:
     return " ".join([*tokens, *extras[:2]])
 
 
-#: A question about a paper, whatever the model called the search.
+#: Paper-question cues.
 _PAPER_CUES = re.compile(r"논문|arxiv|\bdoi\b|preprint|학술지|저널|\bpaper\b", re.I)
 
-#: SearXNG parameters of each search kind's own lane; "web" has none.
+#: SearXNG params per search kind lane; "web" none.
 _LANES: dict[str, dict[str, str]] = {
     "news": {"categories": "news", "time_range": "month"},
     "papers": {"categories": "science"},
@@ -367,8 +334,7 @@ _LANES: dict[str, dict[str, str]] = {
 }
 
 
-#: Search hints the caller may pass — parsed from the user's own words by
-#: `context.search_hints`, or set by the model on the tool call.
+#: Caller search hints (`context.search_hints` or model).
 _TIME_RANGES = ("day", "week", "month", "year")
 _LANGUAGES = {"ko": "ko-KR", "ko-KR": "ko-KR", "en": "en"}
 
@@ -382,13 +348,7 @@ async def _searxng(
     kind: str = "web",
     hints: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Search hits for `query`. Beside the general lane run, as they apply:
-    the kind's own lane (news for a fresh query, science for papers, IT for
-    code); an English lane when the subject has a Latin-alphabet name (Ubuntu
-    24.04, NeurIPS 2026 — the official page is English and a Korean locale
-    hides it); a `site:go.kr` lane for `official`; and `site`, `time_range`
-    and `language` hints on every lane. Lane hits that fit the question come
-    first."""
+    """Hits from general plus kind/English/official lanes; fitting lane hits first."""
     from app.services.context import search_site_scope
 
     hints = hints or {}
@@ -407,7 +367,7 @@ async def _searxng(
         if hints.get("time_range") in _TIME_RANGES:
             lane_params["time_range"] = hints["time_range"]
         if kind == "papers":
-            # Titles are English; a Korean locale drags in unrelated Korean journals.
+            # English titles; Korean locale pulls unrelated journals.
             paper_query = _latin_only(query)
             lane_params.update(
                 q=f"{paper_query} site:{site}" if site else paper_query, language="en"
@@ -433,7 +393,7 @@ async def _searxng(
     hits: list[dict[str, str]] = []
 
     def collect(payload: dict[str, Any], *, lane: str = "", lane_query: str = "") -> None:
-        # Over-fetch, then keep the best `count` after `_select`.
+        # Over-fetch, then `_select`.
         for row in (payload.get("results") or [])[: count * 3]:
             hits.append(
                 {
@@ -441,7 +401,6 @@ async def _searxng(
                     "url": row.get("url") or "",
                     "snippet": row.get("content") or "",
                     "published": str(row.get("publishedDate") or "")[:10],
-                    # Scholarly engines name the work's authors, venue and DOI.
                     **{key: row[key] for key in ("authors", "journal", "doi")
                        if row.get(key)},
                     **({"lane": lane, "lane_query": lane_query} if lane else {}),
@@ -463,18 +422,16 @@ async def _searxng(
                 scoped_hits.append(hit)
         hits = scoped_hits
     terms = _terms(query)
-    # A `site:` lane answers with whatever the domain has; a hit sharing no
-    # word with the question is that, not an answer.
+    # Official lane hits need query-word overlap.
     hits = [h for h in hits if h.get("lane") != "official" or _overlap(h, terms) > 0]
     return _select(hits, query, count)
 
 
 async def _read(base_url: str, url: str, formats: list[str], **options: Any) -> dict[str, Any]:
-    """The shim's `data` for `url` in `formats`; `{}` on failure."""
+    """Shim `data` for `url`; `{}` on failure."""
     if not base_url:
         return {}
-    # Search results and model-picked addresses pass through here too: nothing on the
-    # deployment's own network is fetched on a reader's behalf.
+    # SSRF guard: no fetching the deployment's own network.
     if reason := await netguard.refusal(url):
         log.info("scrape refused: %s", reason)
         return {}
@@ -491,14 +448,13 @@ async def _read(base_url: str, url: str, formats: list[str], **options: Any) -> 
         log.info("scrape failed: %s", logs.safe(exc))
         return {}
     if isinstance(payload, dict) and payload.get("success") is False:
-        # The reader answered but could not read (its browser died, the page refused):
-        # said loudly, since every search would otherwise read zero pages in silence.
+        # Reader up but failing: logged loudly, else searches read nothing silently.
         log.warning(
             "scrape reported failure: %s", logs.safe(str(payload.get("error") or "")[:200]),
         )
         _scrape_failures[0] += 1
         if _scrape_failures[0] == _SCRAPE_ALARM:
-            # A health check can pass while every read fails; only this counter notices.
+            # Health check can pass while reads fail; only this counter notices.
             log.error(
                 "the page reader has failed %d times in a row — searches are reading no "
                 "pages; check the crawl4ai shim", _SCRAPE_ALARM,
@@ -510,32 +466,29 @@ async def _read(base_url: str, url: str, formats: list[str], **options: Any) -> 
 
 
 async def _scrape(base_url: str, url: str) -> str:
-    """Page body as Markdown through the shim; empty string on failure.
-
-    The gateway replaces the Authorization header; the key is still sent for bare-shim deployments.
-    """
+    """Page Markdown via shim; "" on failure. Key sent for bare-shim deployments."""
     data = await _read(base_url, url, ["markdown"])
     return str(data.get("markdown") or data.get("content") or "").strip()
 
 
 async def scrape_html(base_url: str, url: str) -> str:
-    """The page's own HTML, head included (for its meta tags); empty string on failure."""
+    """Raw page HTML incl. head; "" on failure."""
     data = await _read(base_url, url, ["rawHtml"], onlyMainContent=False)
     return str(data.get("rawHtml") or "")
 
 
-#: Reader failures in a row, and the count at which they are reported as an outage.
+#: Consecutive reader failures and outage threshold.
 _scrape_failures = [0]
 _SCRAPE_ALARM = 20
 
 
-#: Shared with callers outside the tool loop (shelf ingestion, `services.research`).
+#: Shared with shelf ingestion and `services.research`.
 scrape = _scrape
 searxng = _searxng
 
 
 def _search_source_url(value: Any) -> str | None:
-    """A structurally usable HTTP(S) reference; network access remains netguard's job."""
+    """Structurally valid HTTP(S) URL; network checks are netguard's."""
     if not isinstance(value, str):
         return None
     url = value.strip()
@@ -547,7 +500,7 @@ def _search_source_url(value: Any) -> str | None:
             return None
         if parsed.username is not None or parsed.password is not None:
             return None
-        # Accessing port validates nonnumeric and out-of-range ports.
+        # Port access validates the port.
         _ = parsed.port
     except ValueError:
         return None
@@ -556,11 +509,11 @@ def _search_source_url(value: Any) -> str | None:
 
 _SURVEY = re.compile(r"\b(?:survey|sok|systematization|review|overview|taxonomy)\b", re.I)
 
-#: A method or benchmark name as papers write it: StruQ, CaMeL, SecAlign, BIPIA.
+#: Method/benchmark name pattern (StruQ, CaMeL).
 _WORK_NAME = re.compile(
     r"(?<![\w-])([A-Z][a-z]{1,12}[A-Z][A-Za-z0-9]{0,12}|[A-Z]{4,10}[a-z]{0,3}[A-Z]?[A-Za-z]{0,6})(?![\w-])"
 )
-#: Names that are not works: field acronyms, companies, venues, formats.
+#: Non-work names: acronyms, companies, venues, formats.
 _NOT_A_WORK = frozenset("""
 LLM LLMs MLLM MLLMs ASR ASRs SOTA OpenAI NeurIPS ICLR ICML USENIX IEEE SIGSAC ACL EMNLP NAACL
 AAAI KDD COLM HTML JSON URL URLs API APIs GPU GPUs CPU USA OWASP MITRE GitHub ArXiv PyTorch
@@ -572,15 +525,13 @@ _CHASE_NAMES = 6
 
 
 def _arxiv_html(url: str) -> str | None:
-    """The full-text HTML address of an arXiv paper link."""
+    """arXiv full-text HTML URL."""
     m = re.search(r"arxiv\.org/(?:abs|pdf|html)/(\d{4}\.\d{4,5})", url or "")
     return f"https://arxiv.org/html/{m.group(1)}" if m else None
 
 
 def cited_works(texts: list[str], known: str, limit: int = _CHASE_NAMES) -> list[str]:
-    """Names of works several of the papers mention — the field's reference points that
-    a keyword search ranks below last month's preprints. A name in only one paper is that
-    paper's own; acronyms of the field and names already among the hits are left out."""
+    """Works cited by several papers; single-paper and already-hit names excluded."""
     docs = []
     for text in texts:
         names = {n for n in _WORK_NAME.findall(text or "") if n not in _NOT_A_WORK}
@@ -600,7 +551,7 @@ def cited_works(texts: list[str], known: str, limit: int = _CHASE_NAMES) -> list
 async def _chase_citations(
     backends: Any, hits: list[dict[str, Any]], topic: str, hints: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Hits for works the top papers cite in common, one per name, each found by name."""
+    """Hits for commonly cited works, one per name."""
     pages = [u for u in (_arxiv_html(str(h.get("url") or "")) for h in hits) if u]
     pages = list(dict.fromkeys(pages))[:_CHASE_PAPERS]
     if len(pages) < 2:
@@ -631,14 +582,13 @@ async def _chase_citations(
     return out
 
 
-#: The server's literature lookup: queries per call and hits kept across them.
+#: Literature lookup: queries per call, hits kept.
 _MAX_PLANNED = 6
 _MAX_PLANNED_HITS = 24
 
 
 def _interleave(batches: list[list[dict[str, Any]]], limit: int) -> list[dict[str, Any]]:
-    """Hits taken in turn from each query's list — every query's best first — each URL
-    once, up to `limit`."""
+    """Round-robin hits across queries, unique URLs, up to `limit`."""
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for rank in range(max((len(b) for b in batches), default=0)):
@@ -658,22 +608,20 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
     kind = str(args.get("kind") or "web")
-    if kind in ("korean_papers", "kci"):  # `kci`: the earlier name
+    if kind in ("korean_papers", "kci"):  # legacy name
         return await _korean_papers_search(query)
     if kind not in ("web", *_LANES):
         kind = "web"
     if kind == "web" and _PAPER_CUES.search(query):
-        # A paper question without the kind set: the science lane (arXiv,
-        # Semantic Scholar, Crossref) answers it; the general lane gives blogs.
+        # Paper question: science lane, not blogs.
         kind = "papers"
 
     backends = await settings_store.tools_config()
-    # Time-sensitive words get the news lane too; see `_searxng`.
+    # Time-sensitive → news lane too.
     from app.services.context import needs_web_search
 
     hints = {k: args.get(k) for k in ("site", "time_range", "language", "official") if args.get(k)}
-    # The server's literature lookup: several planned queries in one call, so the answer
-    # draws on a field rather than on the five hits of one phrasing.
+    # Several planned queries per call for field coverage.
     planned = [
         str(q).strip()[:200] for q in (args.get("queries") or []) if str(q).strip()
     ][:_MAX_PLANNED]
@@ -687,10 +635,9 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
                 return_exceptions=True,
             )
             hits = _interleave([b for b in batches if isinstance(b, list)], _MAX_PLANNED_HITS)
-            # Surveys first: they are what is read in full, and they name the field's
-            # foundational papers that a keyword search ranks below last month's preprints.
+            # Surveys first: read in full, name foundational papers.
             hits.sort(key=lambda h: not _SURVEY.search(str(h.get("title") or "")))
-            # Works the top papers cite in common, found by name and put up front.
+            # Commonly cited works up front.
             chased = await _chase_citations(
                 backends, hits, planned[1] if len(planned) > 1 else planned[0], hints
             )
@@ -714,7 +661,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
     if kind == "papers" and korean_papers.wanted(query):
-        # A question about Korean research: Korean papers (KCI·DBpia·RISS) first.
+        # Korean research: KCI·DBpia·RISS first.
         found = await korean_papers.search(query, 4)
         seen = {str(h.get("url") or "") for h in found}
         hits = [*found, *(h for h in hits if str(h.get("url") or "") not in seen)]
@@ -728,8 +675,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
         for hit in hits
         if isinstance(hit, dict) and (url := _search_source_url(hit.get("url")))
     ]
-    # Blogs and content sites are not offered as sources while three others remain;
-    # official, scholarly and news-of-record hits are read first.
+    # Low-credibility sites withheld while three others remain.
     trusted = [hit for hit in hits if credibility.tier(hit["url"]) > 0]
     if len(trusted) >= 3:
         hits = trusted
@@ -749,7 +695,7 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             empty=True,
         )
 
-    # Top few read in full; the rest stay as titles the model can fetch by URL.
+    # Top few read in full; rest as fetchable titles.
     bodies = await asyncio.gather(
         *(
             _scrape(backends.fetch, h["url"])
@@ -775,15 +721,13 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     return ToolResult(
         content="\n".join(lines),
         detail=f"{len(hits)}개 결과 · {scraped}개 본문 읽음",
-        # Link-only results remain useful for ordinary follow-up fetches, but
-        # cannot release the current-fact gate by their heading or URL alone.
+        # Link-only results can't release the current-fact gate.
         search_evidence=SearchEvidence(tuple(usable_sources)) if usable_sources else None,
     )
 
 
 async def _korean_papers_search(query: str) -> ToolResult:
-    """Korean scholarly papers (KCI·DBpia·RISS …) found through the search backend, each with
-    the authors, year, venue and DOI its landing page gives (`services/korean_papers.py`)."""
+    """Korean papers via search backend, with landing-page metadata."""
     hits = await korean_papers.search(query, max(settings.web_search_results, 8))
     if not hits:
         return ToolResult(content=f"'{query}' 에 대한 국내 학술 논문 검색 결과가 없습니다.",
@@ -814,7 +758,7 @@ async def fetch_url(args: dict[str, Any]) -> ToolResult:
     url = str(args.get("url") or "").strip()
     if not url.startswith(("http://", "https://")):
         return ToolResult(content="오류: http(s) URL 이 필요합니다.", failed=True)
-    # Told apart from an unreadable page so the model does not try the address again.
+    # Distinct from unreadable so the model won't retry.
     if reason := await netguard.refusal(url):
         return ToolResult(content=f"오류: {reason} ({url})", failed=True)
     backends = await settings_store.tools_config()
@@ -896,8 +840,7 @@ FETCH_URL = Tool(
     title="문서 읽기",
 )
 
-#: Geocoding (OpenStreetMap Nominatim reads Korean place names; Open-Meteo's own
-#: geocoder does not) and the forecast itself. Both are keyless public services.
+#: Nominatim geocoding (reads Korean names) and Open-Meteo forecast; both keyless.
 _GEOCODE_URL = "https://nominatim.openstreetmap.org/search"
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _WEATHER_AGENT = "KloudChat/1.0 (weather tool)"
@@ -931,7 +874,7 @@ _WMO = {
     96: "우박 동반 뇌우",
     99: "강한 우박 동반 뇌우",
 }
-#: Beyond these, a raw date reads better than reaching for 글피/그글피.
+#: Beyond these, raw dates.
 _DAY_NAMES = ("오늘", "내일", "모레")
 _WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 
@@ -944,7 +887,7 @@ def _sky(code: Any) -> str:
 
 
 def _day_label(i: int, iso_date: str) -> str:
-    """`오늘(2026-09-11)` for the near days, `9월 15일(화)` past that."""
+    """`오늘(2026-09-11)` near, `9월 15일(화)` beyond."""
     if i < len(_DAY_NAMES):
         return f"{_DAY_NAMES[i]}({iso_date})"
     try:
@@ -955,8 +898,7 @@ def _day_label(i: int, iso_date: str) -> str:
 
 
 def format_weather(place: str, data: dict[str, Any]) -> str:
-    """The forecast as the model reads it: a numbered source line, the current
-    conditions, then one line per day."""
+    """Forecast for the model: source line, current, one line per day."""
     current = data.get("current") or {}
     daily = data.get("daily") or {}
     lat, lon = data.get("latitude"), data.get("longitude")
@@ -1007,9 +949,7 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                     ),
                     failed=True,
                 )
-            # Nominatim's own top hit is relevance-ranked, not importance-ranked:
-            # a minor stop or shop sharing the name can outrank the place itself.
-            # Importance among the top few candidates is the closer proxy.
+            # Nominatim ranks by relevance; pick top-few by importance.
             hit = max(hits, key=lambda h: float(h.get("importance") or 0))
             forecast = await client.get(
                 _FORECAST_URL,
@@ -1025,9 +965,7 @@ async def weather(args: dict[str, Any]) -> ToolResult:
                         "precipitation_probability_max"
                     ),
                     "timezone": "auto",
-                    # Open-Meteo serves up to 16 without a key; 10 covers the
-                    # travel-planning window a "이번 주말" / "다음 주" question
-                    # asks about without reaching into the unreliable tail.
+                    # 10 days: covers weekend/next-week questions, avoids unreliable tail (max 16).
                     "forecast_days": 10,
                 },
             )
@@ -1062,10 +1000,10 @@ WEATHER = Tool(
     title="날씨",
 )
 
-#: Report and deck are excluded: they have their own pipelines.
+#: Report and deck have their own pipelines.
 _ARTIFACT_KINDS = {"html", "code"}
 
-#: Tags that only mark up running text; HTML using nothing else is treated as prose.
+#: Inline-only tags; HTML with just these is prose.
 _PROSE_TAGS = frozenset(
     {
         "p",
@@ -1092,13 +1030,13 @@ _PROSE_TAGS = frozenset(
     }
 )
 
-#: Languages that name prose; only honoured when the model states one.
+#: Prose languages; honoured only when stated.
 _PROSE_LANGUAGES = frozenset({"text", "txt", "plain", "md", "markdown"})
 
-#: Prose shorter than this is returned as an answer, not an artifact.
+#: Shorter prose returned as answer.
 _PROSE_MAX_CHARS = 1000
 
-#: Below this the model is told to repeat the artifact body in the answer.
+#: Below this, artifact body echoed in answer.
 _ECHO_MAX_CHARS = 600
 
 _TAG_NAME = re.compile(r"<\s*/?\s*([A-Za-z][\w-]*)")
@@ -1106,12 +1044,12 @@ _ANY_TAG = re.compile(r"<[^>]*>")
 
 
 def _visible_length(kind: str, content: str) -> int:
-    """Visible character count, markup and entities discounted."""
+    """Visible chars, markup and entities discounted."""
     text = _ANY_TAG.sub(" ", content) if kind == "html" else content
     return len(" ".join(unescape(text).split()))
 
 
-#: Words in the user's request that ask for a file or document.
+#: File/document request words.
 _FILE_WORDS = re.compile(
     r"파일|문서로|문서를|다운로드|내려받|내보내|첨부|저장해|"
     r"\.(?:txt|md|docx|pptx|xlsx|csv|pdf|html|ya?ml|json)\b|"
@@ -1121,12 +1059,12 @@ _FILE_WORDS = re.compile(
 
 
 def _asked_for_a_file(request: str) -> bool:
-    """Whether the user's own words asked for a file; `userRequested` alone is not trusted."""
+    """User's own words asked for a file; `userRequested` alone untrusted."""
     return bool(_FILE_WORDS.search(request or ""))
 
 
 def _is_prose(kind: str, content: str, language: str) -> bool:
-    """Whether the payload is writing to be read rather than a file a program uses."""
+    """Prose for reading, not a program's file."""
     if kind == "code":
         return language in _PROSE_LANGUAGES
     if "<!doctype" in content.lower():
@@ -1134,7 +1072,7 @@ def _is_prose(kind: str, content: str, language: str) -> bool:
     return {tag.group(1).lower() for tag in _TAG_NAME.finditer(content)} <= _PROSE_TAGS
 
 
-#: An image a document points at by file name: `<img src="x.png">` or `![](x.png)`.
+#: Image reference by file name.
 _IMAGE_REF = re.compile(
     r"""(?P<head><img\b[^>]*?\bsrc\s*=\s*)(?P<q>["']?)(?P<src>[^"'\s>]+)(?P=q)"""
     r"|(?P<mhead>!\[[^\]]*\]\()(?P<msrc>[^)\s]+)(?=[)\s])",
@@ -1148,12 +1086,12 @@ _IMAGE_TYPES = {
     "webp": "image/webp",
     "svg": "image/svg+xml",
 }
-#: A chart larger than this is not carried inside the document.
+#: Max inlined chart size.
 _INLINE_IMAGE_MAX = 4 * 1024 * 1024
 
 
 def _local_name(src: str) -> str | None:
-    """The file name a relative image reference names, or None for a URL or data URI."""
+    """File name of a relative image ref; None for URL/data URI."""
     if re.match(r"^(?:[a-z][\w+.-]*:|//|#)", src, re.I):
         return None
     name = src.split("?")[0].split("#")[0].rstrip("/").rsplit("/", 1)[-1]
@@ -1161,11 +1099,7 @@ def _local_name(src: str) -> str | None:
 
 
 async def _inline_images(content: str, ctx: ToolContext) -> tuple[str, list[str]]:
-    """Embeds the chat's own image files a document names; returns the names not found.
-
-    A chart the code step wrote lives in the chat's files, not next to the document, so
-    `<img src="scatter.png">` would show a broken picture in the panel and the download.
-    """
+    """Embed referenced chat images; returns missing names."""
     refs = {
         name
         for m in _IMAGE_REF.finditer(content)
@@ -1175,7 +1109,7 @@ async def _inline_images(content: str, ctx: ToolContext) -> tuple[str, list[str]
         return content, []
     files = await sandbox.session_files(ctx.user_id, ctx.session_id)
     by_name: dict[str, sandbox.InputFile] = {}
-    for file in files:  # newest first: the latest chart of a name wins
+    for file in files:  # newest first: latest chart of a name wins
         by_name.setdefault(file.name, file)
         by_name.setdefault(file.name.lower(), file)
     uris: dict[str, str] = {}
@@ -1206,7 +1140,7 @@ async def _inline_images(content: str, ctx: ToolContext) -> tuple[str, list[str]
 
 
 async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
-    """Records an artifact for the turn to store once it finishes."""
+    """Queue an artifact for storage after the turn."""
     kind = str(args.get("kind") or "").strip().lower()
     title = str(args.get("title") or "").strip()
     content = str(args.get("content") or "")
@@ -1222,14 +1156,13 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     if not title:
         return ToolResult(content="오류: title 이 필요합니다.", failed=True)
 
-    # "html" with no tags is Markdown; relabel rather than refuse.
+    # Tagless "html" relabelled as Markdown.
     if kind == "html" and not _TAG_NAME.search(content):
         kind = "code"
         language = "markdown"
 
     visible = _visible_length(kind, content)
-    # Short prose is sent back to the answer unless the user's words asked for a file.
-    # Not `failed`: an errored step marks the whole turn 중단됨.
+    # Short prose → answer unless a file was asked; not `failed` (would mark turn 중단됨).
     requested = bool(args.get("userRequested")) and _asked_for_a_file(ctx.request)
     if not requested and visible < _PROSE_MAX_CHARS and _is_prose(kind, content, language):
         return ToolResult(
@@ -1360,12 +1293,12 @@ CREATE_ARTIFACT = Tool(
 )
 
 
-#: One per series, in order; assigned here rather than asked of the model.
+#: Series colours, assigned not model-chosen.
 _SERIES_COLOURS = ("#5b5bd6", "#e8834a", "#2ea88a", "#c74e8e", "#6b7280")
 
 
 def _chart_table(series: list[dict], x_label: str) -> dict:
-    """Table rows derived from the same points the chart renders."""
+    """Table rows from the chart's points."""
     keys: list[str] = []
     for one in series:
         for point in one["points"]:
@@ -1382,10 +1315,7 @@ def _chart_table(series: list[dict], x_label: str) -> dict:
 
 
 async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
-    """Records a chart artifact for the turn to store once it finishes.
-
-    Colours are assigned and the table derived here, not taken from the model.
-    """
+    """Queue a chart artifact; colours and table derived here."""
     chart_type = str(args.get("chartType") or "bar").strip().lower()
     if chart_type not in ("bar", "line", "stacked"):
         chart_type = "bar"
@@ -1408,7 +1338,7 @@ async def create_chart(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
             try:
                 value = float(point.get("y"))
             except (TypeError, ValueError):
-                # Dropped rather than plotted as zero.
+                # Dropped, not zero.
                 continue
             label = str(point.get("x") or "").strip()
             if label:
@@ -1514,10 +1444,7 @@ _NOTE_MAX_CHARS = 4000
 
 
 async def share_note(args: dict, ctx: ToolContext) -> ToolResult:
-    """Queues a shared note for later turns; scope is the project if any, else this session.
-
-    The same `key` overwrites an earlier note.
-    """
+    """Queue a shared note (project, else session); same `key` overwrites."""
     title = str(args.get("title") or "").strip()
     body = str(args.get("body") or "").strip()
     if not title:
@@ -1596,16 +1523,16 @@ SHARE_NOTE = Tool(
 
 
 async def available_builtins(web_search_enabled: bool) -> list[Tool]:
-    """Local tools plus configured backends; web search needs the per-turn toggle too."""
+    """Local tools plus configured backends; web search also per-turn toggle."""
     backends = await settings_store.tools_config()
     tools: list[Tool] = [CALCULATE]
     if backends.fetch:
         tools.append(FETCH_URL)
         if web_search_enabled and backends.search:
-            # Search without fetch yields snippets only.
+            # No fetch → snippets only.
             tools.insert(0, WEB_SEARCH)
     if web_search_enabled:
-        # External like a fetch, so it follows the same toggle (and strict-local drops it).
+        # External; follows fetch toggle, dropped on strict-local.
         tools.append(WEATHER)
     if backends.exec:
         tools.append(EXECUTE_CODE)
@@ -1618,12 +1545,7 @@ async def available_builtins(web_search_enabled: bool) -> list[Tool]:
 
 
 def skill_tool(skills: list[tuple[str, str, str]]) -> Tool:
-    """`use_skill`: the installed skills the person did not switch on, offered by their
-    `when_to_use` so the model can reach for one itself and read its instructions for
-    the rest of the turn.
-
-    `skills`: `(name, when_to_use, body)` for each candidate.
-    """
+    """`use_skill` over installed, not-enabled skills by `when_to_use`."""
     by_name = {name: (when, body) for name, when, body in skills}
     listed = "; ".join(
         f"「{name}」 — {' '.join((when or '').split())[:120] or '설명 없음'}"
@@ -1678,15 +1600,10 @@ def skill_tool(skills: list[tuple[str, str, str]]) -> Tool:
 
 
 def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str = "") -> Tool:
-    """Search tool over preloaded documents — an agent's knowledge, a conversation's
-    uploads — since tools hold no DB session.
-
-    `collection`: vector index collection(s) merged in when set; several are
-    comma-separated (a project's and, for uploads indexed before it, the chat's own).
-    """
+    """Search over preloaded documents (tools hold no DB session); `collection` comma-separated."""
     collections = [key for key in (collection or "").split(",") if key.strip()]
 
-    # The description lists each document's headings so the model knows what the shelf covers.
+    # Headings in description show shelf coverage.
     def _outline(text: str, limit: int = 12) -> str:
         seen: list[str] = []
         for line in text.splitlines():
@@ -1711,13 +1628,12 @@ def knowledge_tool(documents: list[tuple[str, str, str | None]], collection: str
         if not query:
             return ToolResult(content="검색어가 비어 있습니다.", failed=True)
         passages, ranked = knowledge.gather(documents, query)
-        # Vector hits are merged with, not preferred over, the lexical scorer's.
+        # Vector hits merged, not preferred.
         if collections and ranked:
             hits = []
             for key in collections:
                 hits.extend(await index_client.search(collection=key, query=query) or [])
-            # A vector hit for a document no longer on the shelf (deleted, moved, or
-            # an entry the index failed to drop) is not evidence.
+            # Vector hits for off-shelf documents aren't evidence.
             living = {name for name, _, _ in documents} | {
                 str(doc_id) for _, _, doc_id in documents if doc_id
             }

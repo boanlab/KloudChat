@@ -1,23 +1,4 @@
-"""A long flowchart laid out in rows that read at the size the figure is printed.
-
-A flow drawn on one line grows as wide as its steps. A report prints a figure at the text
-width (about 466 pt on A4), so a 900 pt line of eleven steps prints at half size, its box
-text at 5 pt and its edge labels at 4. Here the steps are folded into rows instead, each
-read left to right, the rows stacked. How many steps share a row follows from the text: the
-most per row at which every box still takes `BOX_PT` in the frame it is drawn in, never so
-few that the figure becomes a column.
-
-The steps keep their order: layers come from the flow's own edges (a solid edge before a
-dashed one when a loop has to be cut, so the feedback is what goes back), the given
-phases (subgraphs) close a row where they fit, and a phase that runs over two rows gets a
-frame on each. Lines stay short: within a row, from a row's end to the next row's start,
-or an arc back over a near box in the row. Any other edge (back across rows, or on past
-a whole row) is a short stub at its source with a note naming where it goes. Every node
-and edge is still drawn; only the long lines across the whole figure go.
-
-`diagram_shapes.layout` hands a flow here; `diagram_shapes.draw_pptx` asks `sides` and
-`frames` how to connect and frame what this placed.
-"""
+"""Long flowcharts folded into rows that stay legible at printed size."""
 
 from __future__ import annotations
 
@@ -29,52 +10,45 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # pragma: no cover
     from app.services.diagram_shapes import Graph, Placed
 
-#: The smallest box text, in points of the frame the figure is drawn in, that the row
-#: count is chosen for. A document figure's frame is printed at about its own size, so
-#: this is the printed size. A decision diamond holds its text in its inner half and
-#: may go one point under it, still at the 9 pt a printed figure needs.
+#: Min box text (pt, in the drawn frame) the row count is chosen for.
 BOX_PT = 10.0
 DECISION_PT = 9.0
-#: Edge labels are drawn at this size (`diagram_shapes.draw_pptx`).
+#: Edge label size (`diagram_shapes.draw_pptx`).
 EDGE_PT = 8.0
-#: A document figure's frame width, in points: with its trimmed margin, just under the
-#: narrower of the text columns (DOCX/HWPX 150 mm = 425 pt; the A4 PDF about 466 pt), so
-#: both print it at its own size.
+#: Document figure frame width (pt): fits DOCX/HWPX 425 pt and A4 PDF ~466 pt columns.
 DOCUMENT_WIDTH = 410.0
 
-_BOX_H = 52.0  # a box's height in a row
+_BOX_H = 52.0
 _MIN_BOX_H = 30.0
-_LANE_GAP = 16.0  # between boxes sharing a column
-_COL_GAP = 24.0  # between columns, before room for an edge label
-_MAX_CELL = 150.0  # a box no wider than this
-_DIAMOND_WIDTH = 1.3  # a decision's column, against the others
-_MIN_CELL = 60.0  # a box narrower than this reads cramped: taken only when nothing else fits
-_LEAD = 16.0  # left inset that a line wrapping to the next row runs down
-_ROW_GAP = 26.0  # between rows: the line to the next row runs here
-_TITLE = 24.0  # extra between rows when phases are framed (the frame's title strip)
-_ARC = 18.0  # extra above a row for a short back-edge arcing over it
-_MARK = 22.0  # extra between rows for an edge's marker
-_SPAN = 3  # a back-edge over at most this many columns arcs; a longer one is a marker
-_MIN_PER_ROW = 3  # a flow is never folded thinner than this (no tall column)
+_LANE_GAP = 16.0
+_COL_GAP = 24.0  # between columns, plus edge-label room
+_MAX_CELL = 150.0
+_DIAMOND_WIDTH = 1.3  # decision column width ratio
+_MIN_CELL = 60.0  # min box width; only when nothing else fits
+_LEAD = 16.0  # left inset for row-wrap lines
+_ROW_GAP = 26.0
+_TITLE = 24.0  # extra row gap for phase-frame title
+_ARC = 18.0  # extra above a row for back-edge arcs
+_MARK = 22.0  # extra row gap for edge markers
+_SPAN = 3  # max columns a back-edge arcs over; longer → marker
+_MIN_PER_ROW = 3  # min steps per row (no tall column)
 
 
 @dataclass
 class Plan:
-    rows: list[list[list[str]]]  # rows → columns → nodes stacked in that column
+    rows: list[list[list[str]]]  # rows → columns → stacked nodes
     placed: dict[str, Placed]
     width: float
     height: float
-    min_font: int  # the smallest box text against its floor: ≥ 0 when every box reads
-    back: set[int] = field(default_factory=set)  # indices of edges that go back
-    icons: bool = True  # whether boxes carry icons (only when they cost no text size)
-    cell: float = 0.0  # a box's width
-    smallest: int = 0  # the smallest box text, in points
+    min_font: int  # smallest box text vs floor; ≥ 0 when all readable
+    back: set[int] = field(default_factory=set)  # back-edge indices
+    icons: bool = True  # icons only when they cost no text size
+    cell: float = 0.0
+    smallest: int = 0  # smallest box text (pt)
 
 
 def applies(graph: Graph) -> bool:
-    """A flow this lays out: left-to-right, or top-to-bottom rows of phases (`direction LR`
-    inside each subgraph), or a top-to-bottom chain of five steps or more. Not a
-    comparison, and not a hierarchy (a top-to-bottom tree)."""
+    """LR flows, TB rows of LR phases, or TB chains of 5+ steps; not comparisons or trees."""
     from app.services.diagram_shapes import _compares
 
     if len(graph.nodes) < 2 or _compares(graph):
@@ -89,9 +63,7 @@ def applies(graph: Graph) -> bool:
 
 
 def _layers(graph: Graph) -> tuple[list[list[str]], set[int]]:
-    """Longest-path layers over the edges that go forward, and the indices of the ones that
-    go back. Solid edges are taken first, then dashed ones, each in source order; an edge
-    that would close a loop goes back."""
+    """Longest-path layers over forward edges, plus back-edge indices (solid edges first)."""
     ids = list(graph.nodes)
     succ: dict[str, list[str]] = {n: [] for n in ids}
     back: set[int] = set()
@@ -128,7 +100,7 @@ def _layers(graph: Graph) -> tuple[list[list[str]], set[int]]:
 
     for n in ids:
         depth(n)
-    # A source feeding one later step sits just before it, not at the far left.
+    # source feeding one later step sits just before it
     for n in ids:
         if not preds[n] and succ[n]:
             layer[n] = max(layer[n], min(layer[m] for m in succ[n]) - 1)
@@ -148,8 +120,7 @@ def _layers(graph: Graph) -> tuple[list[list[str]], set[int]]:
 
 
 def _rows(layers: list[list[str]], per_row: int, graph: Graph) -> list[list[list[str]]]:
-    """Layers packed into rows of at most `per_row`, as even as the count allows, closing a
-    row at a phase boundary where the phases fit."""
+    """Layers packed into even rows of at most `per_row`, breaking at phase boundaries."""
     total = len(layers)
     count = math.ceil(total / per_row)
     group_of = {m: g for g, (_l, members) in graph.groups.items() for m in members}
@@ -162,7 +133,7 @@ def _rows(layers: list[list[str]], per_row: int, graph: Graph) -> list[list[list
             else:
                 runs.append([i])
         pieces: list[list[int]] = []
-        for run in runs:  # a phase longer than a row is split evenly
+        for run in runs:  # phase longer than a row: split evenly
             parts = math.ceil(len(run) / per_row)
             size = math.ceil(len(run) / parts)
             pieces += [run[k:k + size] for k in range(0, len(run), size)]
@@ -183,8 +154,7 @@ def _rows(layers: list[list[str]], per_row: int, graph: Graph) -> list[list[list
 
 
 def _label_width(label: str) -> float:
-    """The width an edge label takes beside its line (as `diagram_shapes.draw_pptx` sizes
-    it), on one line, or on two when it is long."""
+    """Edge label width beside its line (one or two lines)."""
     text = label.replace("\n", " ").strip()
     if not text:
         return 0.0
@@ -199,8 +169,7 @@ def _place(
     from app.services.diagram_shapes import Placed, _font_size, text_area
 
     rows = _rows(layers, per_row, graph)
-    # In a column of several, a step whose edge leaves for a far row or goes back takes
-    # the bottom place, where its marker has room below it.
+    # far/back-edge source takes the column's bottom place (marker room)
     row_of = {n: r for r, row in enumerate(rows) for column in row for n in column}
     order = {n: (r, c) for r, row in enumerate(rows) for c, column in enumerate(row)
              for n in column}
@@ -214,7 +183,6 @@ def _place(
         for c, column in enumerate(row):
             for k, n in enumerate(column):
                 where[n] = (r, c, k)
-    # How each edge runs decides the room between rows: an arc over a row, a marker.
     lanes = [max(len(col) for col in row) for row in rows]
     probe = {
         n: Placed(0, 0, 0, 0, row=r, col=c, lane=k, lanes=len(rows[r][c]),
@@ -223,7 +191,7 @@ def _place(
     }
     kinds = {kind(probe[e.a], probe[e.b]) for e in graph.edges}
     arcs, marks = "arc" in kinds, "mark" in kinds
-    # Column gaps: room for the label of an edge between neighbours in a row.
+    # column gaps: room for edge labels between neighbours
     gaps: list[list[float]] = []
     for row in rows:
         col = {n: c for c, column in enumerate(row) for n in column}
@@ -234,7 +202,7 @@ def _place(
                 row_gaps[g] = max(row_gaps[g], min(96.0, _label_width(e.label) + 10))
         gaps.append(row_gaps)
     lead = _LEAD if len(rows) > 1 else 0.0
-    # A decision's text sits in its inner half: its column is wider than the others.
+    # decision text in its inner half: wider column
     weight = [
         [_DIAMOND_WIDTH if any(graph.nodes[n].shape == "diamond" for n in column) else 1.0
          for column in row]
@@ -282,7 +250,7 @@ def _place(
         y += row_h + row_gap
     if free:
         height = natural
-    elif used_w < width:  # the block sits in the middle of a wider box
+    elif used_w < width:  # block centered in a wider box
         for p in placed.values():
             p.x += (width - used_w) / 2
     def sizes(icons: bool) -> list[int]:
@@ -291,7 +259,7 @@ def _place(
             for n, p in placed.items()
         ]
 
-    # Icons only where none of them makes its box's text smaller: all boxes alike.
+    # icons only if no box's text shrinks
     bare, with_icons = sizes(False), sizes(True)
     icons = with_icons == bare
     floors = [
@@ -303,10 +271,7 @@ def _place(
 
 
 def plan(graph: Graph, width: float, height: float | None = None) -> Plan | None:
-    """The rows for `graph` in a frame `width` wide (and `height` high, when the frame is
-    fixed): the most steps per row at which every box keeps `BOX_PT`; when none does, the
-    count whose smallest text is largest. Never thinner than `_MIN_PER_ROW` a row unless
-    the frame's height leaves nothing else. None when the flow cannot be placed at all."""
+    """Rows for `graph`: most steps per row keeping `BOX_PT`; None when unplaceable."""
     layers, back = _layers(graph)
     total = len(layers)
     floor = min(total, _MIN_PER_ROW)
@@ -325,8 +290,7 @@ def plan(graph: Graph, width: float, height: float | None = None) -> Plan | None
 
 
 def frame_size(graph: Graph) -> tuple[float, float] | None:
-    """A document figure's box in points: `DOCUMENT_WIDTH` wide (or narrower when its
-    boxes do not need it), as high as its rows. None when this does not lay it out."""
+    """Document figure size in points, or None when not laid out here."""
     if not applies(graph):
         return None
     made = plan(graph, DOCUMENT_WIDTH)
@@ -336,8 +300,7 @@ def frame_size(graph: Graph) -> tuple[float, float] | None:
 
 
 def place(graph: Graph, width: float, height: float) -> dict[str, Placed] | None:
-    """Node boxes for `graph` inside a `width` × `height` box, or None when this does not
-    lay it out (the caller's own layout then does)."""
+    """Node boxes for `graph` in `width` × `height`, or None when not laid out here."""
     if not applies(graph):
         return None
     made = plan(graph, width, height)
@@ -348,16 +311,13 @@ def place(graph: Graph, width: float, height: float) -> dict[str, Placed] | None
 
 
 def kind(a: Placed, b: Placed) -> str:
-    """How the edge between two placed boxes runs: `lane` within a column, `forward`,
-    `wrap` to the next row, `arc` back over a near box in the row, `mark` back further or
-    forward past a whole row (a note at the source, not a line over the figure)."""
+    """Edge routing: `lane`, `forward`, `wrap`, `arc` or `mark` (note at source)."""
     if a.row == b.row and a.col == b.col:
         return "lane"
     if (b.row, b.col) > (a.row, a.col):
         if a.row == b.row:
             return "forward"
-        # Only the turn from a row's end to the next row's start, or straight down, is a
-        # short line; any other edge to a later row would run across the figure.
+        # only row-end → next-row-start or straight down is short
         if b.row == a.row + 1 and ((a.last and b.col == 0) or a.col == b.col):
             return "wrap"
         return "mark"
@@ -368,7 +328,7 @@ def kind(a: Placed, b: Placed) -> str:
 
 
 def sides(a: Placed, b: Placed) -> tuple[str, str]:
-    """Which sides a line leaves `a` by and enters `b` by, in rows."""
+    """Exit side of `a` and entry side of `b`."""
     how = kind(a, b)
     if how == "lane":
         return ("bottom", "top") if b.y > a.y else ("top", "bottom")
@@ -377,7 +337,7 @@ def sides(a: Placed, b: Placed) -> tuple[str, str]:
     if how == "wrap":
         if a.col == b.col and b.col != 0:
             return "bottom", "top"
-        # Down out of the last lane, else out to the right; into the next row from the left.
+        # down from last lane, else right; into next row from the left
         return ("bottom" if a.lane == a.lanes - 1 else "right"), "left"
     if how == "arc":
         return ("top", "top") if a.lane == 0 and b.lane == 0 else ("bottom", "bottom")
@@ -385,7 +345,7 @@ def sides(a: Placed, b: Placed) -> tuple[str, str]:
 
 
 def marker_text(label: str, target: str) -> str:
-    """What a marker says: the edge's label, then the step it goes to."""
+    """Marker text: edge label, then target step."""
     target = " ".join(target.split())
     if len(target) > 12:
         target = target[:11] + "…"
@@ -394,8 +354,7 @@ def marker_text(label: str, target: str) -> str:
 
 
 def frames(graph: Graph, placed: dict[str, Placed]) -> list[tuple[str, list[str]]]:
-    """The phase frames to draw: one per phase, or one per row a phase runs over when the
-    flow is in rows (the later ones titled as continuing)."""
+    """Phase frames: one per phase, or per row a phase spans."""
     if not placed or all(p.row < 0 for p in placed.values()):
         return list(graph.groups.values())
     out: list[tuple[str, list[str]]] = []

@@ -1,17 +1,11 @@
-"""How long to wait after a 429 from the model gateway.
-
-LiteLLM's token-per-minute limiter answers with the moment the window resets
-(「Limit resets at: 2026-09-06 05:25:06 UTC」). A fixed backoff that ends before
-that moment retries into the same wall; waiting for the reset succeeds on the next
-call. A 429 that names no reset falls back to the given backoff step.
-"""
+"""Wait after a gateway 429: until LiteLLM's named TPM reset, else the backoff step."""
 
 from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
 
-#: Never wait longer than this for one retry, whatever the gateway says.
+#: cap for one retry wait
 MAX_WAIT_SEC = 90.0
 
 _RESET = re.compile(
@@ -22,9 +16,7 @@ _RESET = re.compile(
 def retry_delay(
     body: str, headers: dict | None, fallback: float, *, now: datetime | None = None
 ) -> float:
-    """Seconds to sleep before retrying: until the named reset, else `Retry-After`, else
-    `fallback`.
-    """
+    """Seconds to sleep: named reset, else Retry-After, else fallback."""
     moment = now or datetime.now(UTC)
     match = _RESET.search(body or "")
     if match:

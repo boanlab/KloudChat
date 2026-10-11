@@ -20,7 +20,7 @@ class ChatStreamError(RuntimeError):
     pass
 
 
-# Tool name → progress label shown while it runs.
+# tool → running progress label
 _STEP_LABELS: dict[str, str] = {
     "web_search": "웹 검색 중",
     "search": "웹 검색 중",
@@ -40,7 +40,7 @@ def step_label(tool_name: str) -> str:
     return _STEP_LABELS.get(base, base.replace("_", " "))
 
 
-# Tool name → noun form shown on a finished step.
+# tool → finished-step noun
 _STEP_TITLES: dict[str, str] = {
     "web_search": "웹 검색",
     "search": "웹 검색",
@@ -68,16 +68,12 @@ TITLE_CHARS = 40
 
 
 def provisional_title(prompt: str) -> str:
-    """Session title from the prompt's first `TITLE_CHARS`; final on media surfaces, replaced by
-    `generate_title` elsewhere.
-    """
+    """Session title from the prompt; final on media surfaces, else replaced by `generate_title`."""
     return " ".join((prompt or "").split())[:TITLE_CHARS]
 
 
 def media_prompt(session_id: str, prompt: str, *, unanswered: bool = False) -> Message:
-    """The user turn of a media (image/audio/video) session; `unanswered` marks a request that
-    produced nothing.
-    """
+    """User turn of a media session; `unanswered` = produced nothing."""
     return Message(
         session_id=session_id,
         role=Role.user,
@@ -94,11 +90,7 @@ def media_answer(
     credits: int = 0,
     partial: bool = False,
 ) -> Message:
-    """The assistant turn of a media session: artifact ids, no prose.
-
-    `content` must stay empty; the transcript renders the artifacts. `partial`
-    marks a batch that failed midway and is stored as `interrupted`.
-    """
+    """Assistant turn of a media session: artifact ids, empty `content`."""
     return Message(
         session_id=session_id,
         role=Role.assistant,
@@ -121,9 +113,7 @@ async def generate_title(
     disable_fallbacks: bool = False,
     redact_logging: bool = False,
 ) -> tuple[str | None, dict[str, int]]:
-    """`(title, usage)` from one short non-streaming call; title is None on failure, usage is
-    reported either way.
-    """
+    """`(title, usage)`; title None on failure."""
     spent = {"inputTokens": 0, "outputTokens": 0}
     if masker is not None:
         first_user_message, user_hits = masker(first_user_message)

@@ -1,8 +1,4 @@
-"""The shipped catalogue of agents, skills and design systems.
-
-The oldest administrator's account holds the agents and skills, shared to
-everyone; people take copies from the store. Designs are seeded per account.
-"""
+"""Shipped catalogue of agents, skills and designs (owned by the oldest admin, shared)."""
 
 from __future__ import annotations
 
@@ -25,13 +21,12 @@ from app.models.workspace import (
 )
 from app.services import skill_packages
 
-#: Agents reference skills by `key`; the seeder swaps keys for row ids.
-#: Every shipped skill is a package (`app/skills/<key>/SKILL.md`).
+#: agents reference skills by key (seeder maps to ids); every shipped skill is a package
 _SKILLS: list[dict] = list(skill_packages.catalog_specs())
 
-#: Earlier shipped bodies by (key, version); an untouched one is upgraded in place.
+#: earlier shipped bodies by (key, version); untouched ones upgraded in place
 _LEGACY_CATALOG_BODIES = {
-    # Before it became the calc-check package (as calculation-unit-check).
+    # formerly calculation-unit-check
     ("calc-check", "1.0.0"): """수치를 설명하기 전에 `execute_code` 로 실제 계산을 재현한다.
 
 1. 입력값마다 출처·단위·기준 시점을 적는다. 주어진 값과 가정한 값을 구분한다.
@@ -43,14 +38,12 @@ _LEGACY_CATALOG_BODIES = {
 도구를 실행하지 못했으면 검산했다고 쓰지 말고, 필요한 계산과 미검증 상태를 밝힌다.""",
 }
 
-#: Shipped agents (`app/agents/<key>.toml`), seeded like skills. Optional bindings per spec:
-#: `surface`, `template` (서식 id), `doc_format` and `design` (a `_DESIGNS` name).
+#: shipped agents (app/agents/<key>.toml); optional surface/template/doc_format/design
 _AGENT_ROOT = Path(__file__).resolve().parent.parent / "agents"
 
 
 def _compile_bundles(spec: dict) -> None:
-    """The check skills and strictness an agent's 묶음 amount to, as `PUT /agents/{id}/process`
-    compiles a person's (`services/bundles.py`): `checks`, `check_options`, `steps`."""
+    """Check skills, options and steps an agent's 묶음 compile to (as PUT /agents/{id}/process)."""
     from app.services import bundles
 
     surface = str(spec.get("surface") or (spec.get("kinds") or ["chat"])[0])
@@ -71,13 +64,12 @@ def _agent_specs() -> list[dict]:
             spec[name] = str(spec.get(name) or "").strip()
         _compile_bundles(spec)
         if "questions" in spec:
-            # 빠진 정보 질문, checked the way the agent form checks a person's.
+            # 빠진 정보 질문, validated like the agent form
             from app.services import gap_questions
 
             spec["questions"] = gap_questions.clean(spec["questions"])
         if "process" in spec:
-            # 진행 과정 설정, checked and stored the way the agent form's 세부 설정 stores a
-            # person's (`Agent.process_settings`).
+            # 진행 과정 설정, validated and stored like the agent form
             from app.services import process_settings
 
             spec["process"] = process_settings.stored_form(
@@ -90,18 +82,17 @@ _AGENTS: list[dict] = _agent_specs()
 
 
 def retired_agents() -> frozenset[str]:
-    """Catalogue keys taken out (`retired = true`): their rows stay, hidden and unstartable."""
+    """Retired catalogue keys: rows kept, hidden and unstartable."""
     return frozenset(spec["key"] for spec in _AGENTS if spec.get("retired"))
 
 
 def draft_agents() -> frozenset[str]:
-    """Catalogue keys still in evaluation (`draft = true`): administrators alone see them,
-    until they pass the lineup evaluation and the flag is dropped."""
+    """Draft catalogue keys: admin-only until evaluated."""
     return frozenset(spec["key"] for spec in _AGENTS if spec.get("draft"))
 
 
 def offered_agents(*, drafts: bool = False) -> list[dict]:
-    """The shipped agents a person may pick, in catalogue order; drafts only when asked."""
+    """Pickable shipped agents in catalogue order; drafts on request."""
     return [spec for spec in _AGENTS
             if not spec.get("retired") and (drafts or not spec.get("draft"))]
 
@@ -111,14 +102,12 @@ def agent_spec(key: str | None) -> dict | None:
 
 
 def _questions(spec: dict) -> list[dict] | None:
-    """A shipped agent's own 빠진 정보 질문 as its row stores them; None when it declares none
-    (its 서식's are asked)."""
+    """Shipped agent's own 빠진 정보 질문, or None (서식's apply)."""
     return [dict(q) for q in spec["questions"]] if spec.get("questions") else None
 
 
 def _process(spec: dict) -> dict | None:
-    """A shipped agent's own 진행 과정 설정 as its row stores them; None when it sets none (its
-    서식's apply)."""
+    """Shipped agent's own 진행 과정 설정, or None (서식's apply)."""
     return dict(spec["process"]) if spec.get("process") else None
 
 
@@ -128,14 +117,12 @@ def _hidden_design(name: str | None) -> bool:
 
 def design_listed(name: str | None, owner_id: str | None = None,
                   catalog_owner: str | None = None) -> bool:
-    """Whether a theme is shown in the pickers: False only for the catalogue owner's row of a
-    shipped theme marked `listed: False`. A person's own copy of that name is theirs and stays
-    listed; new accounts are not given one (`seed_designs`)."""
+    """Whether a theme shows in pickers; False only for the owner's unlisted shipped row."""
     return not (_hidden_design(name) and owner_id is not None and owner_id == catalog_owner)
 
 
 def agent_checks(key: str | None) -> tuple[str, ...]:
-    """The check skills a shipped agent attaches (`checks` in its toml), by catalogue key."""
+    """Check skills a shipped agent attaches, by catalogue key."""
     return tuple(str(k) for k in (agent_spec(key) or {}).get("checks") or ())
 
 _DESIGNS: list[dict] = [
@@ -157,7 +144,7 @@ _DESIGNS: list[dict] = [
     },
     {
         "name": "발표용 청록",
-        # Not in the pickers (2026-10); what already wears it keeps it.
+        # off the pickers; existing users keep it
         "listed": False,
         "description": "슬라이드와 표지 이미지를 같은 청록으로 묶습니다.",
         "tokens": {"accent": "#0f766e", "ink": "#0f172a", "muted": "#64748b", "font": "gothic"},
@@ -169,8 +156,7 @@ _DESIGNS: list[dict] = [
 
 
 def _server_fields(key: str) -> dict | None:
-    """A shipped package's server fields as its row stores them; None when it asks for
-    nothing."""
+    """Shipped package server fields as stored, or None."""
     from app.services import skill_specs
 
     package = skill_packages.package_for(key)
@@ -181,7 +167,7 @@ def _server_fields(key: str) -> dict | None:
 
 
 def skill_name(key: str) -> str:
-    """The shipped name behind a catalogue key, or `""` for a key nobody ships."""
+    """Shipped name for a catalogue key, or ""."""
     return next((spec["name"] for spec in _SKILLS if spec["key"] == key), "")
 
 
@@ -191,7 +177,7 @@ def _slug(name: str) -> str:
 
 
 def _estimated_tokens(spec: dict) -> int:
-    """Cheap, stable estimate for the selector; exact tokenisation is model-specific."""
+    """Cheap stable token estimate for the selector."""
     text = f"{spec.get('when_to_use', '')}\n{spec.get('body', '')}".strip()
     return max(1, ceil(len(text) / 3.5)) if text else 0
 
@@ -200,12 +186,12 @@ def estimate_tokens(when_to_use: str, body: str, description: str = "") -> int:
     return _estimated_tokens({"when_to_use": when_to_use, "body": body or description})
 
 
-#: Slug → key, to adopt rows seeded without a `catalog_key`.
+#: slug → key, to adopt rows seeded without catalog_key
 _LEGACY_CATALOG_KEYS = {_slug(spec["name"]): spec["key"] for spec in _SKILLS}
 
 
 async def seed_designs(db: AsyncSession, user_id: str) -> int:
-    """Seeds the starting designs into an account that has none. The caller commits."""
+    """Seed starting designs into an account with none; caller commits."""
     existing = (
         await db.exec(
             select(func.count()).select_from(DesignSystem).where(DesignSystem.owner_id == user_id)
@@ -213,8 +199,7 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
     ).one()
     if existing:
         return 0
-    # A theme taken off the pickers goes only to the catalogue owner, whose official agents
-    # still wear it; another account starting now is not given it.
+    # unlisted themes only to the catalogue owner (official agents still use them)
     owner = await catalog_owner_id(db)
     specs = [spec for spec in _DESIGNS
              if spec.get("listed") is not False or owner is None or owner == user_id]
@@ -224,7 +209,7 @@ async def seed_designs(db: AsyncSession, user_id: str) -> int:
 
 
 async def catalog_owner_id(db: AsyncSession) -> str | None:
-    """The account holding the shared catalogue: the oldest administrator."""
+    """Catalogue owner: the oldest administrator."""
     return (
         await db.exec(
             select(User.id)
@@ -236,13 +221,8 @@ async def catalog_owner_id(db: AsyncSession) -> str | None:
 
 
 async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
-    """Syncs the shipped agents and skills into one account, shared to everyone.
-
-    Idempotent by catalogue key. An edited skill body is never overwritten.
-    Sharing is set on the first run only, so an entry switched back to 개인
-    stays private; a deleted entry is shipped again. The caller commits.
-    """
-    # Row lock: concurrent logins would otherwise race on the unique key index.
+    """Sync shipped agents/skills into the owner account; idempotent, caller commits."""
+    # row lock: concurrent logins race on the unique key index
     await db.exec(select(User.id).where(User.id == owner_id).with_for_update())
     existing_agents = list(
         (await db.exec(select(Agent).where(col(Agent.owner_id) == owner_id))).all()
@@ -250,9 +230,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     existing_skills = list(
         (await db.exec(select(Skill).where(col(Skill.owner_id) == owner_id))).all()
     )
-    # First run ⇔ no shipped entry has been shared or taken yet. Skills seeded
-    # per account before the shared catalogue carry keys too, but stayed
-    # private and uninstalled, so a key alone cannot answer this.
+    # first run ⇔ nothing shared or taken yet (keys alone can't tell: old per-account seeds)
     shipped_skills = {spec["key"] for spec in _SKILLS}
     established = any(agent.catalog_key for agent in existing_agents) or any(
         skill.catalog_key in shipped_skills
@@ -280,13 +258,12 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             skill = adopted
             skill.catalog_key = key
         if skill is not None:
-            # A draft (`status: draft`, offered only with `settings.skill_drafts`) stays
-            # private to the administrator: never shared, so only an evaluator sees it.
+            # drafts stay admin-private (never shared)
             if spec.get("draft"):
                 skill.visibility = Visibility.private
             elif not established:
                 skill.visibility = Visibility.org
-            # Only an untouched earlier shipped body is upgraded.
+            # only untouched earlier bodies upgraded
             previous = _LEGACY_CATALOG_BODIES.get((key, skill.version))
             upgraded = bool(previous and skill.body.strip() == previous.strip())
             if skill.required_tools is None:
@@ -301,7 +278,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 skill.estimated_tokens = estimate_tokens(
                     skill.when_to_use, skill.body, skill.description
                 )
-            # What the server runs for it follows the package, on the row like a person's.
+            # server fields follow the package
             skill.server_fields = _server_fields(key)
             db.add(skill)
             ids[key] = skill.id
@@ -336,8 +313,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
         key = spec["key"]
         agent = agents_by_catalog.get(key)
         if spec.get("retired"):
-            # Taken out: the row and every copy stay (their conversations still open) but are
-            # hidden and start nothing new. A retired agent is never seeded afresh.
+            # retired: rows and copies kept (conversations open) but hidden; never reseeded
             if agent is not None:
                 agent.retired = True
                 agent.visibility = Visibility.private
@@ -350,15 +326,14 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                     db.add(copy)
             continue
         if agent is not None:
-            # A renamed agent: copies that still wear an earlier shipped name take the new one.
+            # renamed agent: copies with an old shipped name take the new one
             if former := [str(n) for n in spec.get("former_names") or ()]:
                 renamed = await db.exec(select(Agent).where(
                     col(Agent.origin_id) == agent.id, col(Agent.name).in_(former)))
                 for copy in renamed.all():
                     copy.name = spec["name"]
                     db.add(copy)
-            # Agents always follow the shipped prompt. Copies whose prompt still
-            # equals the original are refreshed too; edited copies are left alone.
+            # prompt follows shipped; copies with the original prompt refreshed, edited ones kept
             if agent.system_prompt != spec["system_prompt"]:
                 untouched = await db.exec(
                     select(Agent).where(
@@ -371,7 +346,7 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                     copy.guide = spec.get("guide", "")
                     copy.starters = list(spec.get("starters", []))
                     db.add(copy)
-            # The same for its 진행 과정 설정: copies still holding the shipped settings follow.
+            # same for 진행 과정 설정
             if agent.process_settings != _process(spec):
                 kept = await db.exec(select(Agent).where(col(Agent.origin_id) == agent.id))
                 for copy in kept.all():
@@ -396,12 +371,12 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
             agent.temperature = spec.get("temperature", 0.5)
             agent.color = spec.get("color", "#5b53e8")
             agent.retired = False
-            # A design the owner picked since is kept.
+            # owner's later design pick kept
             if agent.design_system_id is None:
                 agent.design_system_id = designs.get(spec.get("design", ""))
             db.add(agent)
             continue
-        # The owner may already hold an agent of the same name; the shipped one steps aside.
+        # same-name owner agent: shipped one steps aside
         slug = base = _slug(spec["name"])
         n = 2
         while slug in slugs:
@@ -422,25 +397,24 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
                 guide=spec.get("guide", ""),
                 starters=list(spec.get("starters", [])),
                 skill_ids=[ids[k] for k in spec.get("skills", []) if k in ids],
-                # The checks and their strictness live on the row, as a person's own do.
+                # checks and strictness on the row
                 check_skills=list(spec.get("checks") or []),
                 check_options=dict(spec.get("check_options") or {}) or None,
                 bundles=list(spec.get("bundles") or []),
                 gap_questions=_questions(spec),
                 process_settings=_process(spec),
-                # Never inherit: missing or `[]` denies every tool, a list is a hard allowlist.
+                # never inherit: missing/[] denies all tools; list = hard allowlist
                 tools=list(spec.get("tools", [])),
                 temperature=spec.get("temperature", 0.5),
                 color=spec.get("color", "#5b53e8"),
                 catalog_key=key,
-                # A draft is shared like the rest but shown to administrators only
-                # (`draft_agents`); dropping the flag publishes it.
+                # drafts shared but admin-only (draft_agents); dropping the flag publishes
                 visibility=Visibility.org,
             )
         )
         made += 1
 
-    # Retired keys are removed from the owner's rows; copies carry no key.
+    # retired keys removed from owner rows; copies carry none
     shipped_agents = {spec["key"] for spec in _AGENTS}
     for skill in existing_skills:
         if skill.catalog_key and skill.catalog_key not in shipped_skills:
@@ -451,13 +425,12 @@ async def seed_catalog(db: AsyncSession, owner_id: str) -> int:
     return made
 
 
-#: pg_advisory_xact_lock key for a catalogue sync: "kccat" in ASCII.
+#: pg_advisory_xact_lock key ("kccat")
 CATALOG_LOCK_KEY = 0x6B_6363_6174
 
 
 async def _catalog_lock(db: AsyncSession) -> None:
-    """Serialises catalogue syncs across replicas (startup, sign-ins) until the caller's
-    transaction ends; nothing on SQLite (one process: tests, local runs)."""
+    """Serialise catalogue syncs across replicas for the transaction; no-op on SQLite."""
     conn = await db.connection()
     if conn.dialect.name == "postgresql":
         await conn.execute(text("SELECT pg_advisory_xact_lock(:key)"),
@@ -465,7 +438,7 @@ async def _catalog_lock(db: AsyncSession) -> None:
 
 
 async def sync_catalog(db: AsyncSession, user: User) -> int:
-    """Syncs the catalogue on sign-in, only for the account that holds it."""
+    """Sync the catalogue on sign-in, for the owner only."""
     if user.role is not UserRole.admin:
         return 0
     if await catalog_owner_id(db) != user.id:
@@ -475,9 +448,7 @@ async def sync_catalog(db: AsyncSession, user: User) -> int:
 
 
 async def sync_catalog_at_startup(session_factory) -> int:
-    """Syncs the catalogue once as the API starts, so renames and hidden flags reach everyone
-    without waiting for the owner to sign in. Replicas take turns under the advisory lock; the
-    sync is idempotent, so the second one finds nothing to do. Nothing without an owner yet."""
+    """Startup catalogue sync under the advisory lock (idempotent); no-op without an owner."""
     async with session_factory() as db:
         await _catalog_lock(db)
         owner = await catalog_owner_id(db)
@@ -490,7 +461,7 @@ async def sync_catalog_at_startup(session_factory) -> int:
 
 
 def runtime_metadata(skill: Skill) -> dict:
-    """Catalog key, required tools and token estimate for a skill row."""
+    """Catalogue key, required tools, token estimate for a skill row."""
     return {
         "catalog_key": skill.catalog_key,
         "required_tools": list(skill.required_tools or []),

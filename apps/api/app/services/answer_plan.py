@@ -1,7 +1,4 @@
-"""A short plan of what an expert answer holds, added before a substantial chat answer.
-
-One quick call on the same model and already-masked messages; a failed plan changes nothing.
-"""
+"""Short expert-answer plan prepended to substantial chat answers; failure is a no-op."""
 
 from __future__ import annotations
 
@@ -11,13 +8,13 @@ from typing import Any
 
 log = logging.getLogger("kchat")
 
-#: A request to make something, plan something or act on something.
+#: make/plan/act requests
 _SUBSTANTIAL = re.compile(
     r"짜\s{0,2}줘|만들어|정리해|써\s{0,2}줘|작성|계획|설계|추천|비교|어떻게\s{0,2}(?:해야|하면|하나)|"
     r"방법|해야\s{0,2}(?:해|하나|할까)|대응|전략|일정|예산|문항|지도안|안내문|기획|제안|"
     r"검토|분석|진단|돌려\s{0,2}줘|알려\s{0,2}줘"
 )
-#: Short exchanges that are not worth a plan: thanks, yes/no, a one-word follow-up.
+#: short exchanges not worth a plan
 _CASUAL = re.compile(r"^(?:고마워|감사|ㅇㅋ|오케이|응|네|아니|좋아|그래)\b")
 
 PROMPT = """(이 메시지는 답을 쓰기 전의 준비다. 답은 쓰지 마라.)
@@ -36,7 +33,7 @@ def wanted(content: str) -> bool:
 
 
 async def plan(messages: list[dict[str, Any]], *, complete, model: str, api_key: str) -> str:
-    """The plan's bullet lines, or `""`."""
+    """Plan bullet lines, or ""."""
     probe = [*messages, {"role": "user", "content": PROMPT}]
     try:
         text, _ = await complete(model, probe, api_key, max_tokens=250)
@@ -50,7 +47,7 @@ async def plan(messages: list[dict[str, Any]], *, complete, model: str, api_key:
 
 
 def attach(messages: list[dict[str, Any]], outline: str) -> list[dict[str, Any]]:
-    """`messages` with the plan beside the latest question (text questions only)."""
+    """Messages with the plan beside the latest question (text only)."""
     if not outline or not messages or messages[-1].get("role") != "user":
         return messages
     last = messages[-1]

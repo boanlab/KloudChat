@@ -1,9 +1,4 @@
-"""Shipped skill packages: `app/skills/<key>/SKILL.md` plus fixed `scripts/*.py`.
-
-The front matter (YAML) carries the catalogue fields; the markdown body is the
-instruction text. A package's directory name is its catalogue key, so an
-installed copy finds its scripts through `catalog_key` without a migration.
-"""
+"""Shipped skill packages (app/skills/<key>/SKILL.md + scripts); directory name = catalogue key."""
 
 from __future__ import annotations
 
@@ -18,27 +13,23 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent / "skills"
 
-#: Keys renamed when a skill became a package; old rows and copies still resolve.
+#: renamed keys; old rows still resolve
 RENAMED = {"calculation-unit-check": "calc-check"}
 
 _FIELDS = ("name", "description", "when_to_use", "kinds", "required_tools", "version", "status",
            "stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
            "own_stage", "uses", "listed")
-#: A check skill's stage: run by the server before (`pre`) or after (`post`) writing.
+#: check-skill stage: before (pre) or after (post) writing
 STAGES = ("pre", "post")
 
-#: `draft` packages are kept out of the catalogue and `run_skill_script` unless
-#: `settings.skill_drafts` is on, and then seeded private to the administrator.
+#: drafts hidden unless settings.skill_drafts; then admin-private
 _STATUSES = ("published", "draft")
 
-#: `listed: false` keeps a package out of the lists people pick from (the skill hub, the store,
-#: pickers) without taking anything away: it still runs by name, in bundles, in the editors that
-#: name it and in the conversations that used it. Unlike `draft`, it does not gate
-#: `run_skill_script`. Administrators see unlisted skills behind 「숨김 포함」.
+#: hidden from pickers only; still runs by name/bundles; no run_skill_script gate
 
 
 class PackageError(ValueError):
-    """A SKILL.md that cannot be read as a package."""
+    """SKILL.md unreadable as a package."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,31 +44,28 @@ class SkillPackage:
     body: str
     root: Path
     status: str = "published"
-    #: Script name (file stem) → its first docstring line.
+    #: script stem → first docstring line
     scripts: dict[str, str] = field(default_factory=dict)
-    #: Paths relative to `root`, in upload order.
+    #: paths relative to root, upload order
     files: tuple[str, ...] = ()
-    #: `pre`/`post` for a check skill the server runs around writing; empty otherwise.
+    #: pre/post for server-run check skills
     stage: str = ""
-    #: The script a check skill's server run imports.
+    #: script imported by the server run
     entry: str = ""
-    #: Scripts the server runs on a chat answer whenever this skill is on the turn
-    #: (`services/post_checks.py`), each `<key>/<script>`; a bare name is this package's.
+    #: post-check scripts on every chat answer (<key>/<script>; bare = own)
     post_checks: tuple[str, ...] = ()
-    #: Whether the post check also asks the judge model for statements the material lacks.
+    #: also ask the judge for unsupported statements
     post_judge: bool = False
-    #: `copy_check: true` — its answers are copy: the copy check (`services/copy_check.py`)
-    #: runs over them; `copy_kinds` narrows what it checks (a content plan: only claims,
-    #: health claims and guarantees).
+    #: copy check over answers; copy_kinds narrows it
     copy_check: bool = False
     copy_kinds: tuple[str, ...] = ()
-    #: `tables: true` — its answers are comparison tables: `source-check/post` checks cells.
+    #: comparison-table answers: cells checked
     tables: bool = False
-    #: `own_stage: true` — a `post` check that runs in a stage of its own, not in `ground`.
+    #: post check in its own stage, not ground
     own_stage: bool = False
-    #: What the judge looks at in particular for this skill (`post_judge: "<focus>"`).
+    #: judge focus for this skill
     judge_focus: str = ""
-    #: Shown in the lists people pick from; `listed: false` hides it there only.
+    #: shown in pickers
     listed: bool = True
 
     @property
@@ -85,7 +73,7 @@ class SkillPackage:
         return self.status == "draft"
 
     def spec(self) -> dict:
-        """The catalogue entry `starter._SKILLS` expects."""
+        """Catalogue entry for starter._SKILLS."""
         return {
             "draft": self.draft,
             "listed": self.listed,
@@ -100,14 +88,14 @@ class SkillPackage:
         }
 
     def script_path(self, script: str) -> str | None:
-        """`skills/<key>/scripts/<script>.py` as mounted in the sandbox, or None."""
+        """Sandbox path of a package script, or None."""
         stem = script.strip().removesuffix(".py")
         if stem not in self.scripts:
             return None
         return f"skills/{self.key}/scripts/{stem}.py"
 
     def upload_files(self) -> list[tuple[str, bytes]]:
-        """`(sandbox name, bytes)` for every file of the package."""
+        """(sandbox name, bytes) for every package file."""
         return [(f"skills/{self.key}/{rel}", (self.root / rel).read_bytes()) for rel in self.files]
 
     @property
@@ -196,7 +184,7 @@ def load(root: Path) -> SkillPackage:
 
 
 def _post_checks(key: str, raw) -> tuple[str, ...]:
-    """`post_check: preserve` or a list, each named `<key>/<script>` (own key when bare)."""
+    """post_check list as <key>/<script> (bare = own key)."""
     items = [raw] if isinstance(raw, str) else list(raw or [])
     out = []
     for item in items:
@@ -211,7 +199,7 @@ def _post_checks(key: str, raw) -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def packages() -> dict[str, SkillPackage]:
-    """Every package under `app/skills`, by key."""
+    """All packages by key."""
     if not ROOT.is_dir():
         return {}
     return {
@@ -222,7 +210,7 @@ def packages() -> dict[str, SkillPackage]:
 
 
 def package_for(key: str | None) -> SkillPackage | None:
-    """The package behind a catalogue key (renamed keys included)."""
+    """Package for a catalogue key (renamed keys included)."""
     if not key:
         return None
     key = key.strip()
@@ -230,8 +218,7 @@ def package_for(key: str | None) -> SkillPackage | None:
 
 
 def listed(key: str | None) -> bool:
-    """Whether a catalogue key's package is shown in the lists people pick from; True for a
-    key with no package (a person's own skill)."""
+    """Whether a key is shown in pickers; True without a package."""
     package = package_for(key)
     return package.listed if package is not None else True
 
@@ -243,13 +230,13 @@ def drafts_enabled() -> bool:
 
 
 def offered() -> list[SkillPackage]:
-    """Packages the catalogue and `run_skill_script` offer: drafts only while enabled."""
+    """Offered packages (drafts only if enabled)."""
     drafts = drafts_enabled()
     return [package for package in packages().values() if drafts or not package.draft]
 
 
 def find(skill: str) -> SkillPackage | None:
-    """An offered package by key or by its shipped name, as a model may write either."""
+    """Offered package by key or shipped name."""
     text = skill.strip().strip("「」\"'")
     found = package_for(text)
     if found is None:
@@ -260,12 +247,12 @@ def find(skill: str) -> SkillPackage | None:
 
 
 def post_checked() -> list[SkillPackage]:
-    """Packages that name post-check scripts, for the server's run on a chat answer."""
+    """Packages with post-check scripts."""
     return [package for package in packages().values() if package.post_checks]
 
 
 def checks(stage: str) -> list[SkillPackage]:
-    """Check skills of one stage, for the server's own runs."""
+    """Check skills of one stage."""
     return [package for package in packages().values() if package.stage == stage]
 
 
@@ -274,7 +261,7 @@ def catalog_specs() -> list[dict]:
 
 
 def scripted() -> list[SkillPackage]:
-    """Offered packages that ship at least one script, for `run_skill_script`."""
+    """Offered packages with at least one script."""
     return [package for package in offered() if package.scripts]
 
 

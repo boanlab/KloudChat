@@ -1,17 +1,4 @@
-"""The copy check on a chat answer written with a copy skill: claims and channel lengths.
-
-`copy-check` (app/skills/copy-check, stage `post`) runs here when one of the copy skills is
-on the turn — switched on, picked through `use_skill`, or attached by the agent. A judge
-reads the answer against the material once (its prompt ships in the package); the claims
-script turns that reply and its own scan into findings:
-
-- ungrounded numbers, offers, testimonials and qualifiers are fixed by code (a bracket blank,
-  the word taken out, the sentence dropped);
-- ungrounded superlatives, comparisons, guarantees, urgency, disease wording and the
-  statements the judge found no source for go back to the writer once, with any piece over
-  its channel limit; the result is scanned again, and what the scan finds and what the writer
-  left word for word is fixed by code.
-"""
+"""Copy check on copy-skill chat answers: claims and channel lengths."""
 
 from __future__ import annotations
 
@@ -25,8 +12,7 @@ from app.services import skill_packages, skill_scripts, skill_specs
 
 log = logging.getLogger(__name__)
 
-#: The shipped skills whose answers are copy: those whose SKILL.md says `copy_check: true`.
-#: A turn's skills are read through their specs (`services/skill_specs.py`), a person's too.
+#: shipped skills with `copy_check: true`
 COPY_SKILLS = frozenset(k for k, p in skill_packages.packages().items() if p.copy_check)
 KEY = "copy-check"
 
@@ -44,7 +30,7 @@ def _copy(key: str, specs: Specs) -> skill_specs.Spec | None:
 
 
 def used_skills(outputs: list[str], specs: Specs = None) -> set[str]:
-    """Copy skills a `use_skill` call returned this turn: the output carries the body."""
+    """Copy skills returned by `use_skill` this turn."""
     found = set()
     candidates = {k: skill_specs.resolve(k, specs) for k in COPY_SKILLS}
     candidates.update({k: s for k, s in (specs or {}).items() if s.copy_check})
@@ -57,27 +43,26 @@ def used_skills(outputs: list[str], specs: Specs = None) -> set[str]:
 
 def on_turn(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None,
             specs: Specs = None) -> set[str]:
-    """The copy skills the turn wrote with: switched on, attached, or picked by `use_skill`."""
+    """Copy skills on the turn: switched on, attached, or via `use_skill`."""
     return ({k for k in keys or () if _copy(k, specs)}
             | used_skills(list(outputs or []), specs))
 
 
 def active(keys: tuple[str, ...] | list[str], outputs: list[str] | None = None,
            specs: Specs = None) -> bool:
-    """Whether the turn wrote with a copy skill."""
+    """Whether the turn used a copy skill."""
     return bool(on_turn(keys, outputs, specs))
 
 
 @dataclass(slots=True)
 class Outcome:
     text: str
-    #: The first check's findings.
     found: list[dict] = field(default_factory=list)
-    #: Findings still there after the writer's rewrite (then fixed by code).
+    #: findings after the rewrite (then fixed by code)
     left: list[dict] = field(default_factory=list)
-    #: Pieces measured against the channel limits, as they stand at the end.
+    #: pieces vs channel limits, final
     rows: list[dict] = field(default_factory=list)
-    #: Pieces over a hard limit before the rewrite.
+    #: pieces over a hard limit before the rewrite
     over: list[dict] = field(default_factory=list)
     rewritten: bool = False
 
@@ -160,8 +145,7 @@ async def _judged(answer: str, material: str, rows: list[dict], *, complete: Com
 
 
 def _items(reply: dict, text: str = "", rows: list[dict] | None = None) -> list[dict]:
-    """The pieces to measure: table cells under a field's header (read by code), then what the
-    judge lifted out of anything else, each piece once."""
+    """Pieces to measure: table cells under a field header, then judge-lifted pieces, once each."""
     found = _length().table_items(text, rows or []) if text else []
     seen = {i["text"] for i in found}
     for item in reply.get("items") or []:
@@ -208,7 +192,7 @@ def _cleaned(reply: str) -> str:
 async def run(answer: str, *, request: str, material: str, complete: Complete, model: str,
               judge: str, api_key: str, usage: dict | None = None,
               skills: frozenset[str] | set[str] = frozenset(), specs: Specs = None) -> Outcome:
-    """Check, fix by code, rewrite once with what code cannot fix, check again."""
+    """Check, code-fix, rewrite once, recheck."""
     claims, length = _claims(), _length()
     material = "\n".join(x for x in (request, material) if x and x.strip())
     rows = length.targets(request)
@@ -236,22 +220,20 @@ async def run(answer: str, *, request: str, material: str, complete: Complete, m
                 api_key, min(12000, 2 * len(text) + 1000))
             _spend(usage, spent)
             new = _cleaned(reply_text)
-            # A rewrite that lost half a long answer is not kept.
+            # reject rewrites losing half a long answer
             if new and len(new) >= min(0.5 * len(text), len(text) - 300):
                 text, outcome.rewritten = new, True
             else:
                 log.warning("copy check rewrite not kept: %d of %d characters", len(new), len(text))
         except Exception as exc:  # noqa: BLE001 — code fixes what is left
             log.warning("copy check rewrite failed: %r", exc)
-        # Left: what the scan finds in the new text, and the judge's quotes still there word
-        # for word. A second reading is not trusted to blank text the first did not question.
+        # second reading never blanks text the first didn't question
         outcome.left = claims.check(text, material, [reply], options)
         text = claims.fix(text, outcome.left)
         if outcome.rewritten and outcome.over:
-            # The pieces as they now stand, measured again; this reading only lifts them out.
+            # re-measure; this reading only lifts pieces
             reply = await _judged(text, material, rows, complete=complete,
                                   judge=judge or model, api_key=api_key, usage=usage)
-    # The final text's pieces: its tables read again by code, and what the judge lifted out.
     outcome.rows = [r for r in length.measured(_items(reply, text, rows), rows)
                     if r["text"] in text]
     outcome.text = length.restate_counts(text, outcome.rows)

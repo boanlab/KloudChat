@@ -1,8 +1,4 @@
-"""Authorised workspace context for one model turn.
-
-Only agent/project instructions and activated skills are trusted (system-priority)
-blocks; files, memories and project knowledge are untrusted data.
-"""
+"""Per-turn workspace context; only instructions and activated skills trusted."""
 
 from __future__ import annotations
 
@@ -47,7 +43,7 @@ _MEMORY_TYPE_LABEL = {
 
 
 class WorkspaceContextError(ValueError):
-    """Stable refusal code, safe to return from a router."""
+    """Stable refusal code, router-safe."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,16 +54,13 @@ class ContextBlock:
 
 
 def reads_pictures(model: dict | None) -> bool:
-    """Whether this turn's model may be handed a picture: declared vision and strict-local only.
-
-    The privacy guard inspects text only, so images never go to an external route.
-    """
+    """Images only to declared-vision strict-local models (privacy guard reads text only)."""
     return bool(model and model.get("supportsVision") and model.get("strictLocal"))
 
 
 @dataclass(frozen=True, slots=True)
 class TurnPicture:
-    """One attached picture, ready to become an `image_url` content part."""
+    """Attached picture for an `image_url` part."""
 
     name: str
     mime: str
@@ -77,19 +70,17 @@ class TurnPicture:
 
 @dataclass(frozen=True, slots=True)
 class ContextFile:
-    """How much of one file reached the model."""
+    """How much of a file reached the model."""
 
     name: str
-    #: "included", "truncated", "omitted" (over budget), "unreadable" (extraction
-    #: failed), "picture" (handed to the model), "picture_unseen" (model lacks vision) or
-    #: "reading" (scanned pages still being read; what is read so far may be included).
+    #: included | truncated | omitted | unreadable | picture | picture_unseen | reading.
     state: str
     kept_chars: int
     total_chars: int
     id: str = ""
     source_url: str | None = None
     locations: tuple[str, ...] = ()
-    #: For "reading": pages read so far and pages to read.
+    #: "reading" progress: pages done / total.
     pages_done: int = 0
     pages_total: int = 0
 
@@ -106,19 +97,19 @@ class AppliedSkill:
 class WorkspaceContext:
     blocks: tuple[ContextBlock, ...]
     applied_skills: tuple[AppliedSkill, ...]
-    #: Design tokens (the project's, else the agent's); None (not defaults) when neither has one.
+    #: Project's, else agent's tokens; None when neither.
     design_tokens: dict[str, str] | None = None
-    #: Names only: memory bodies are private and the timeline is screen-shared.
+    #: Names only: bodies private, timeline screen-shared.
     loaded_memories: tuple[str, ...] = ()
     total_memories: int = 0
-    #: Attachment and project-knowledge fates, in budget order.
+    #: Attachment and knowledge fates, budget order.
     attachments: tuple[ContextFile, ...] = ()
     knowledge: tuple[ContextFile, ...] = ()
-    #: Files attached to earlier turns of this conversation, carried into this one.
+    #: Files carried from earlier turns.
     carried: tuple[ContextFile, ...] = ()
-    #: Pictures the model can see, in attachment order; empty when it cannot.
+    #: Visible pictures, attachment order; empty without vision.
     pictures: tuple[TurnPicture, ...] = ()
-    #: The agent's bound `doc_formats` id on a report session, else None.
+    #: Agent's bound `doc_formats` id on report sessions.
     doc_format: str | None = None
 
     @property
@@ -166,7 +157,7 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
     if agent.kinds and session.kind.value not in agent.kinds:
         raise WorkspaceContextError("agent_kind_mismatch")
     if agent.sealed and agent.origin_id:
-        # A sealed copy holds no prompt; the still-shared original's is used, never stored.
+        # Sealed copy has no prompt; origin's used, never stored.
         origin = await db.get(Agent, agent.origin_id)
         if origin is not None and origin.visibility is Visibility.org:
             agent = _with_prompt(agent, origin.system_prompt)
@@ -176,7 +167,6 @@ async def _load_agent(db: AsyncSession, user: User, session: ChatSession) -> Age
 
 
 def _with_prompt(agent: Agent, prompt: str) -> Agent:
-    """Detached copy of `agent` carrying `prompt`; never persisted."""
     shadow = Agent.model_validate(agent, from_attributes=True)
     shadow.system_prompt = prompt
     return shadow
@@ -185,11 +175,7 @@ def _with_prompt(agent: Agent, prompt: str) -> Agent:
 async def _load_design_system(
     db: AsyncSession, user: User, project: Project | None, agent: Agent | None = None
 ) -> DesignSystem | None:
-    """The design system that applies, if it still exists and is visible; None otherwise.
-
-    Same order as the 서식: the agent's bound design, then the project's. Sessions carry
-    no design of their own. An agent bound to a design the user cannot see (a seeded or
-    shared agent naming its owner's row) wears the user's own design of that name."""
+    """Agent's bound design, else project's; unseen bound design → user's same-named one."""
     if agent is not None and agent.design_system_id:
         row = await db.get(DesignSystem, agent.design_system_id)
         if row is not None and (row.owner_id == user.id or row.shared):
@@ -222,7 +208,6 @@ async def _load_project(db: AsyncSession, user: User, session: ChatSession) -> P
 
 
 def _personal_block(user: User, kind: SessionKind) -> str:
-    """개인 맞춤 설정 block; document surfaces get only the response style."""
     prefs = Preferences.of(user)
     about = prefs.about_me.strip()
     style = prefs.response_style.strip()
@@ -240,14 +225,13 @@ def _personal_block(user: User, kind: SessionKind) -> str:
     return "\n".join(lines)
 
 
-#: A line opening a part of an agent prompt meant for one surface only (up to the next such
-#: line): one agent writes a cover letter in chat and a career history as a report.
+#: Surface-only prompt section header, until the next.
 _SURFACE_PART = re.compile(r"^[ \t]{0,3}\[(채팅|보고서|슬라이드)에서\][ \t]{0,4}$", re.M)
 _SURFACE_WORDS = {"채팅": "chat", "보고서": "report", "슬라이드": "slides"}
 
 
 def surface_prompt(prompt: str, kind: str) -> str:
-    """The prompt as one surface reads it: the common part plus that surface's parts."""
+    """Common prompt plus this surface's parts."""
     parts = _SURFACE_PART.split(prompt or "")
     kept = [parts[0].strip()]
     for word, body in zip(parts[1::2], parts[2::2], strict=True):
@@ -262,7 +246,7 @@ def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
     prompt = surface_prompt(agent.system_prompt, kind.value)
     contact = (getattr(agent, "contact", "") or "").strip()
     if contact:
-        # 담당 부서·연락처 from the agent form, given to the model to repeat word for word.
+        # Department/contact for verbatim repetition.
         prompt = (prompt + "\n\n" if prompt else "") + (
             "# 담당 부서·연락처\n"
             "When the material does not answer the question, or answers it only in part, "
@@ -270,12 +254,12 @@ def _agent_block(agent: Agent | None, kind: SessionKind) -> str:
     return f"# 역할\n{prompt}" if prompt else ""
 
 
-#: Share of the file budget project knowledge keeps even when attachments took the rest.
+#: Knowledge's minimum share of the file budget.
 _KNOWLEDGE_FLOOR = 0.25
 
 
 def knowledge_budget_after(file_budget: int, spent_on_files: int) -> int:
-    """Characters project knowledge may take once this turn's and earlier files took theirs."""
+    """Chars left for project knowledge after files."""
     return max(file_budget - spent_on_files, int(file_budget * _KNOWLEDGE_FLOOR))
 
 
@@ -285,8 +269,6 @@ def _project_instructions(project: Project | None) -> str:
     return f"# 프로젝트 지침 — {project.name}\n{project.instructions.strip()}"
 
 
-
-
 async def _project_knowledge(
     db: AsyncSession,
     user: User,
@@ -294,7 +276,7 @@ async def _project_knowledge(
     focus: str = "",
     budget: int | None = None,
 ) -> tuple[str, list[ContextFile]]:
-    """Untrusted project knowledge within `budget`, and each file's fate."""
+    """Untrusted project knowledge within `budget`, with fates."""
     if project is None:
         return "", []
 
@@ -309,7 +291,7 @@ async def _project_knowledge(
         )
     ).all()
     readable = [f for f in files if f.text]
-    # Shelves within budget are sent whole; larger ones are searched by passage.
+    # Fits budget → whole; else passage search.
     total = sum(len(f.text) for f in readable)
     passages = (
         knowledge_service.search(
@@ -319,8 +301,7 @@ async def _project_knowledge(
         else []
     )
     if not passages:
-        # Fits whole, no question to search by, or nothing matched: the files
-        # themselves, excerpted around the focus where one is too long.
+        # Whole files, excerpted around focus if too long.
         knowledge, used = _knowledge_block(
             readable, header="# 프로젝트 지식", focus=focus, budget=budget
         )
@@ -369,8 +350,7 @@ async def _project_knowledge(
 
 
 def _focus_terms(focus: str, text: str) -> list[str]:
-    """Words of `focus` as they occur in `text`: Korean particles attach to a word, so
-    「제80조는」 counts by its longest prefix the document contains, 「제80조」."""
+    """`focus` words as found in `text`, matched by longest contained prefix (particles)."""
     lowered = text.lower()
     terms: list[str] = []
     for raw in re.split(r"[\s,·?!.]+", focus.lower())[:8]:
@@ -384,18 +364,15 @@ def _focus_terms(focus: str, text: str) -> list[str]:
 
 
 def _excerpt(text: str, budget: int, focus: str) -> str:
-    """The `budget` characters of `text` most relevant to `focus` (lexical; head when no focus)."""
+    """Most `focus`-relevant `budget` chars (lexical; head without focus)."""
     terms = _focus_terms(focus, text) if focus.strip() else []
     if not terms:
         return text[:budget]
 
-    # Score fixed windows and keep the highest-scoring run. A word found in most
-    # windows (「조항」 in a rulebook) says little about which one was asked for, so
-    # each word weighs by its rarity and its length: 「제290조」 once outweighs
-    # 「조항」 everywhere.
+    # Fixed-window scoring; words weighted by rarity and length.
     window = 1_000
     windows = [text[i : i + window] for i in range(0, len(text), window)]
-    # Matching is case-insensitive; the text handed on keeps its own case.
+    # Case-insensitive match; original case kept.
     lowered = [w.lower() for w in windows]
     span = max(1, budget // window)
     if len(windows) <= span:
@@ -413,8 +390,7 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
             best_at, best = start, total
     if best <= 0:
         return text[:budget]
-    # The earliest best run ends on the hit; slide later while nothing is lost so
-    # the hit sits inside the run with what follows it, not at its edge.
+    # Slide run later so the hit isn't at the edge.
     for _ in range(span // 2):
         if best_at + span >= len(windows) or sum(scores[best_at + 1 : best_at + 1 + span]) < best:
             break
@@ -425,21 +401,14 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
     return (lead + picked)[:budget]
 
 
-#: Share of a model's context window that attached files may take, in characters at
-#: roughly 2.5 per token (Korean runs shorter, English longer), and the ceiling above
-#: which a file is excerpted regardless of the window.
+#: File share of context window (~2.5 chars/token) and excerpt ceiling.
 _FILE_WINDOW_SHARE = 0.35
 _CHARS_PER_TOKEN = 2.5
 _FILE_BUDGET_CAP = 150_000
 
 
 def file_budget(model: dict | None) -> int:
-    """Characters of attached text this turn may carry.
-
-    `FILE_CONTEXT_CHARS` is the floor, kept for models whose window is unknown. A model
-    that reports its window gets a share of it, so a sixteen-page paper reaches a
-    128k-token model whole instead of as its first third.
-    """
+    """Attached-text char budget: window share, `FILE_CONTEXT_CHARS` floor."""
     floor = settings.file_context_chars
     window = int((model or {}).get("contextWindow") or 0)
     if window <= 0:
@@ -450,11 +419,7 @@ def file_budget(model: dict | None) -> int:
 def _knowledge_block(
     files: list[StoredFile], header: str, focus: str = "", budget: int | None = None
 ) -> tuple[str, list[ContextFile]]:
-    """Knowledge block plus each file's fate under `budget` (`settings.file_context_chars`
-    when not given).
-
-    `focus` steers which part of an over-budget file is excerpted; empty takes the head.
-    """
+    """Knowledge block plus file fates under `budget`; `focus` steers excerpts."""
     if not files:
         return "", []
 
@@ -502,10 +467,7 @@ def _knowledge_block(
 async def _memory_block(
     db: AsyncSession, user: User, project: Project | None, session: ChatSession | None = None
 ) -> tuple[str, tuple[str, ...], int]:
-    """Memory block, the names in it, and the total count.
-
-    Scopes: `global`, the project id, and the session id (notes shared outside a project).
-    """
+    """Memory block, names, total; scopes: global, project, session."""
     scopes = ["global"]
     if project is not None:
         scopes.append(project.id)
@@ -580,7 +542,7 @@ async def _resolve_skills(
             allowed is not None
             and skill.id not in allowed
             and (
-                # A store install is a copy; an allowlist naming the shared origin covers it.
+                # Store install is a copy; origin allowlist covers it.
                 not skill.origin_id or skill.origin_id not in allowed
             )
         ):
@@ -588,9 +550,7 @@ async def _resolve_skills(
         metadata = starter.runtime_metadata(skill)
         missing = sorted(set(metadata["required_tools"]) - available_tool_names)
         if missing and set(missing) <= SEARCH_TOOLS:
-            # Search declined for the turn (「웹 검색 없이」, the toggle off) or a material pack
-            # to keep to: the skill works from what the person gave. Only research with nothing
-            # given and no search backend at all is refused.
+            # Refused only with no material and no search backend.
             if not material_given and not await _search_configured():
                 raise WorkspaceContextError("skill_search_unavailable")
             metadata = {**metadata, "material_only": True}
@@ -600,10 +560,10 @@ async def _resolve_skills(
     return resolved
 
 
-#: Tools a research skill reads the web with; without them it keeps to the given material.
+#: Research skill web tools.
 SEARCH_TOOLS = frozenset({"web_search", "fetch_url"})
 
-#: Said beside a research skill whose search is off this turn.
+#: Note for a research skill with search off.
 MATERIAL_ONLY_NOTE = (
     "Web search is off for this turn (declined, or the person gave the material to keep to): "
     "work from the material in this conversation only, and do not say you searched. Say in "
@@ -623,8 +583,7 @@ async def _search_configured() -> bool:
 
 
 def gives_material(question: str, attachment_ids: list[str] | None) -> bool:
-    """Whether the turn hands over material to work from: files, or a pack pasted under the
-    request."""
+    """Turn gives files or pasted material."""
     from app.services.context import pasted_material
 
     if attachment_ids:
@@ -657,11 +616,7 @@ def _file_report(
     knowledge: tuple[ContextFile, ...],
     carried: tuple[ContextFile, ...] = (),
 ) -> str:
-    """Every file's fate, stated to the model as a trusted server fact (whole files included).
-
-    `carried` files were attached to earlier turns of the same conversation; they are
-    listed so the model never tells the user an upload it made earlier does not exist.
-    """
+    """File fates as trusted server fact; carried files listed so earlier uploads aren't denied."""
     rows = [
         *((file, False) for file in attachments),
         *((file, True) for file in carried),
@@ -677,7 +632,7 @@ def _file_report(
         "받지 못했다고 말해서는 안 된다.",
     ]
     for file, from_earlier in rows:
-        # An earlier turn's upload is named as such, so "the PDF I sent before" resolves.
+        # Earlier uploads labelled for "the PDF I sent before".
         name = f"{file.name} (앞선 턴에 첨부)" if from_earlier else file.name
         if file.state == "included":
             lines.append(f"- {name} — 전체 {file.total_chars:,}자 전달됨")
@@ -719,11 +674,7 @@ def _file_report(
 async def _earlier_attachments(
     db: AsyncSession, user: User, session: ChatSession, *, exclude: set[str]
 ) -> list[StoredFile]:
-    """Readable files attached to earlier turns of this conversation, newest first.
-
-    Only uploads made in this session count: project knowledge and agent shelves have
-    their own paths, and a file attached to this turn is handled as this turn's.
-    """
+    """Readable earlier-turn uploads in this session, newest first."""
     rows = (
         await db.exec(
             select(StoredFile)
@@ -743,8 +694,7 @@ async def _earlier_attachments(
 
 
 async def _given_file_ids(db: AsyncSession, session: ChatSession) -> set[str]:
-    """Files the person attached to this session's own messages; a document's exports are
-    stored in the session too, but are not material."""
+    """Files attached to this session's messages; exports excluded."""
     rows = (
         await db.exec(
             select(Message.attachments).where(
@@ -775,26 +725,12 @@ async def assemble(
     how_to: bool = False,
     published: bool = False,
 ) -> WorkspaceContext:
-    """Build one authorised context without auto-activating installed skills.
-
-    `vision`: the answer of `reads_pictures` for this turn's model.
-    `focus`: what to excerpt a long attachment around; empty takes the head.
-    `question`: what the person asked this turn. A file carried from an earlier turn
-    is excerpted around it when it no longer fits whole; this turn's own attachment
-    keeps `focus`, since 「요약해줘」 is not a thing to search a fresh file for.
-    `file_budget`: characters of attached text to carry (`file_budget(model)`); the
-    configured floor when not given.
-    `how_to`: the turn asks how to use this app. Its answer is the user guide's, so the
-    person's memories and 개인 맞춤 설정 stay out, so they do not resurface as advice.
-    `published`: a visitor's turn on a published bot, run on its owner's account. The
-    owner's memories, 개인 맞춤 설정 and project stay out; the bot's agent copy and the files
-    of the conversation are all it reads.
-    """
+    """Authorised context, no skill auto-activation; `how_to`/`published` drop personal data."""
     agent = await _load_agent(db, user, session)
     project = None if published else await _load_project(db, user, session)
     design = await _load_design_system(db, user, project, agent)
     instructions = _project_instructions(project)
-    # Memories are chat-only; not loaded elsewhere so the context step reports none.
+    # Memories chat-only.
     if session.kind is SessionKind.chat and not how_to and not published:
         memories, memory_names, memory_total = await _memory_block(db, user, project, session)
     else:
@@ -810,7 +746,7 @@ async def assemble(
     )
 
     blocks: list[ContextBlock] = []
-    # Least specific first; later blocks win where they disagree.
+    # Least specific first; later blocks win.
     if not how_to and not published and (personal := _personal_block(user, session.kind)):
         blocks.append(ContextBlock("user.instructions", personal, True))
     if text := _agent_block(agent, session.kind):
@@ -840,8 +776,7 @@ async def assemble(
         ordered = [by_id[file_id] for file_id in attachment_ids if file_id in by_id]
         looked_at: dict[str, TurnPicture] = {}
         if vision:
-            # A picture is shown to a model that can see it, even when its words were read
-            # out of it (those go along as text too).
+            # Visible pictures sent even when OCR text exists.
             for stored in ordered:
                 if not pictures.can_be_seen(stored.mime, stored.size):
                     continue
@@ -860,8 +795,7 @@ async def assemble(
         def being_read(stored) -> bool:
             return stored.ocr_state in ("queued", "running")
 
-        # A picture whose words were read goes as both: the words stay in the text the
-        # privacy checks read, the picture shows the model what the words do not.
+        # OCR'd pictures sent as both: text for privacy checks, image for the rest.
         readable = [stored for stored in ordered if stored.text]
         unreadable = [
             stored
@@ -871,7 +805,7 @@ async def assemble(
         attached, used = _knowledge_block(
             readable, header="# 이번 요청에 첨부된 파일", focus=focus, budget=file_budget
         )
-        # Fates are reported in attachment order; `used` follows `readable`, then `ordered`.
+        # Fates in attachment order.
         spent = iter(used)
 
         def _fate(stored) -> ContextFile:
@@ -906,13 +840,9 @@ async def assemble(
         if attached:
             blocks.append(ContextBlock("attachment", attached, False))
 
-    # A file uploaded earlier in this chat stays readable for the rest of it. This
-    # turn's own attachments are served first and whole where they fit; earlier ones
-    # take what is left of the same budget, excerpted around the new question, so a
-    # long document carried for many turns costs at most the budget, never more.
+    # Earlier uploads share the leftover budget, excerpted around the new question.
     carried_files: tuple[ContextFile, ...] = ()
-    # A document turn that brings no file of its own works from the files the session was
-    # given, so a follow-up re-planned as a new outline keeps the memo.
+    # Fileless document turn reuses session files.
     document_followup = (
         session.kind in (SessionKind.report, SessionKind.slides) and not attachment_ids
     )
@@ -936,19 +866,14 @@ async def assemble(
                     blocks.append(ContextBlock("attachment.earlier", earlier_block, False))
                 carried_files = tuple(carried)
             else:
-                # Nothing left this turn; the report below still says the files exist.
+                # Budget exhausted; report still lists files.
                 carried_files = tuple(
                     ContextFile(
                         stored.name, "omitted", 0, len(stored.text), stored.id, stored.source_url
                     )
                     for stored in earlier
                 )
-    # Project knowledge shares the one file budget with this turn's attachments and
-    # the carried ones: it takes what they left, never less than a quarter of the
-    # budget, so a big upload narrows the knowledge to the relevant passages instead
-    # of pushing the conversation itself out of the window.
-    # Knowledge is read around what was asked: the explicit focus (a document
-    # surface's answers) when there is one, else the question itself.
+    # Knowledge gets leftover budget (min a quarter), read around focus or question.
     whole_budget = file_budget or settings.file_context_chars
     knowledge_budget = knowledge_budget_after(
         whole_budget, sum(f.kept_chars for f in (*attached_files, *carried_files))
@@ -958,7 +883,7 @@ async def assemble(
     )
     if knowledge:
         blocks.append(ContextBlock("project.knowledge", knowledge, False))
-    # Last trusted block, closest to the material it describes.
+    # Last trusted block, next to its material.
     if report := _file_report(attached_files, knowledge_files, carried_files):
         blocks.append(ContextBlock("files.report", report, True))
 
@@ -988,7 +913,7 @@ async def assemble(
 
 
 async def design_for(db: AsyncSession, user: User, session: ChatSession) -> DesignSystem | None:
-    """The session's design system, for surfaces (image generation) that never call `assemble`."""
+    """Session design system for surfaces skipping `assemble`."""
     try:
         agent = await _load_agent(db, user, session)
     except WorkspaceContextError:
@@ -999,7 +924,7 @@ async def design_for(db: AsyncSession, user: User, session: ChatSession) -> Desi
 async def agent_settings(
     db: AsyncSession, user: User, session: ChatSession
 ) -> tuple[str | None, list[str] | None, float | None]:
-    """`(model_override, tool_allowlist, temperature)`, preserving null versus empty."""
+    """`(model_override, tool_allowlist, temperature)`; null vs empty preserved."""
     agent = await _load_agent(db, user, session)
     if agent is None:
         return None, None, None

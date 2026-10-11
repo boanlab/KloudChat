@@ -1,35 +1,4 @@
-"""진행 과정 설정: what a document's writing does besides writing, as data.
-
-A 서식 (`[process]` in its `template.toml`, or a person's template row) and an agent (the
-agent form's 진행 과정 › 고급, `Agent.process`) carry the same settings; the report flow reads
-nothing else (`app/pipelines/report.toml` lists every stage, and each optional one runs only
-when these settings name it). The shipped 서식 declare exactly what their formats did, so a
-person who sets the same values gets the same run.
-
-The settings, each optional (an unset one inherits the 서식's, then the defaults below):
-
-- `prepass` — 쓰기 전에 계산: built-in calculations, by name (`PREPASS`), in the order run;
-- `date_base` — `meeting`: relative dates count from the meeting day (회의록), with no meeting
-  day nothing is dated; `text`: from the date the material states;
-- `stages` — named 서식 보정 stages (`STAGES`): the minutes' row repair, the career periods
-  written one way, the page limit;
-- `checks` / `judged` — attachable built-in checks by name (계산 확인, `CHECKS`, and 판정 검사,
-  `JUDGED`): code checks repaired once and found again; judge calls shown, never rewritten;
-- `amend` — what the document must carry, added by code or one model call (`AMENDS`);
-- `head` — head values code fills (`HEADS`);
-- `rules` — 검토 규칙 a person writes in words: one judge call quotes the sentences that break
-  them; shown to the person, never rewritten;
-- `structure` — declarative shape rules checked by code: `sections` (in order; the outline
-  when `fixed_outline`), `tables` (a table with these columns), `summary_lines` (a 「핵심」
-  callout of N lines at the top), `style = "gaejo"` (개조식: no prose lines, noun endings),
-  `page_limit` (N pages, condensed to fit), `page_limit_rfp` (the RFP's limit, counted);
-- `search` (false: 웹 검색 안 함), `fixed_outline`, `draws` (`when-asked`: 그림은 요청할 때만),
-  `prepass_always`, `prepass_quiet`;
-- `conflict_rule` — how the writer treats two values the material gives for one thing.
-
-Every name is from a closed list the code ships, labelled as a built-in calculation; every text
-is bounded. `clean` raises `ProcessError` on the first bad value.
-"""
+"""진행 과정 설정: 서식/agent process settings as data; `clean` raises `ProcessError`."""
 
 from __future__ import annotations
 
@@ -37,7 +6,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
-#: 쓰기 전에 계산: the pre-pass steps (`report_checks.PREPASS_STEPS`), by name.
+#: 쓰기 전에 계산 steps (`report_checks.PREPASS_STEPS`)
 PREPASS = {
     "date-calc": "날짜 계산(상대 날짜·납기)",
     "proposal-rfp": "제안요청서 조건 읽기(고객사·기간·쪽수)",
@@ -47,14 +16,14 @@ PREPASS = {
     "compare-check": "필수 조건·가중 점수 계산",
     "career-periods": "경력 기간 계산",
 }
-#: 서식 보정 stages a 서식 or an agent switches on, by registry name.
+#: 서식 보정 stages by registry name
 STAGES = {
     "minutes-repair": "실행 항목 칸 보정(출처·비고 열, 풀린 기한, 자료에 없는 담당·수량)",
     "minutes-reground": "고친 뒤 담당·수량 다시 확인",
     "career-periods-tidy": "경력 기간 표기 통일",
     "page-limit": "쪽수 제한 맞추기",
 }
-#: 계산 확인: the format code checks (`report_checks.CHECK_FAMILIES`), by name.
+#: 계산 확인 code checks (`report_checks.CHECK_FAMILIES`)
 CHECKS = {
     "quote-totals": "견적 합계 확인",
     "proposal-schedule": "제안 일정 확인",
@@ -66,13 +35,13 @@ CHECKS = {
     "staff-counts": "투입 인원 확인",
     "material-blanks": "자료로 채울 빈칸 찾기",
 }
-#: 판정 검사: the judged checks (`report_checks.JUDGED_CHECKS`), by name.
+#: 판정 검사 (`report_checks.JUDGED_CHECKS`)
 JUDGED = {
     "judge-owners": "담당자 확인",
     "judge-bindings": "수치와 대상 연결 확인",
     "judge-repeats": "되풀이된 경험 찾기",
 }
-#: 빠진 것 채우기: what the document must carry, added after writing.
+#: 빠진 것 채우기: added after writing
 AMENDS = {
     "requirement-ids": "요구사항 ID 빠짐 채우기",
     "quote-validity": "견적 유효기간 적기",
@@ -80,7 +49,7 @@ AMENDS = {
     "conflict-values": "자료끼리 다른 값 나란히 적기",
     "unverified-options": "조건 미확인 대안과 확인할 것 적기",
 }
-#: Head values code fills from a calculation.
+#: head values filled from a calculation
 HEADS = {
     "meeting-date": "머리 일시를 회의 날짜로(날짜 계산)",
     "rfp-client": "표지 고객사를 제안요청서대로(제안요청서 조건 읽기)",
@@ -89,7 +58,7 @@ DATE_BASES = ("text", "meeting")
 DRAWS = ("auto", "when-asked")
 STYLES = ("", "gaejo")
 
-#: Which part of a computation each check, stage and fill reads, said beside it in the form.
+#: computation part each check/stage/fill reads (form hint)
 NEEDS = {
     "lead-dates": "date-calc", "minutes-rows": "date-calc", "quote-totals": "quote-calc",
     "proposal-schedule": "proposal-rfp", "compare-cells": "compare-check",
@@ -111,14 +80,14 @@ _COLUMN_MAX = 20
 _CONFLICT_MAX = 600
 MAX_PAGES = 30
 MAX_SUMMARY = 4
-#: Every key a stored setting may carry.
+#: storable keys
 KEYS = ("prepass", "date_base", "stages", "checks", "judged", "amend", "head", "rules",
         "structure", "search", "fixed_outline", "draws", "prepass_always", "prepass_quiet",
         "conflict_rule")
 
 
 class ProcessError(ValueError):
-    """A setting the form or a file may not store; `code` is the wire detail."""
+    """Unstorable setting; `code` = wire detail."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -128,7 +97,7 @@ class ProcessError(ValueError):
 @dataclass(frozen=True, slots=True)
 class Structure:
     sections: tuple[str, ...] = ()
-    #: `{"columns": [...], "heading": "<words a heading has>"}` each.
+    #: `{"columns": [...], "heading": "..."}` each
     tables: tuple[dict, ...] = ()
     summary_lines: int = 0
     style: str = ""
@@ -150,7 +119,7 @@ class Process:
     prepass: tuple[str, ...] = ()
     date_base: str = "text"
     stages: tuple[str, ...] = ()
-    #: The generic report's default: the dates a pre-pass worked out are checked.
+    #: generic report default: pre-pass dates checked
     checks: tuple[str, ...] = ("lead-dates",)
     judged: tuple[str, ...] = ()
     amend: tuple[str, ...] = ()
@@ -164,10 +133,9 @@ class Process:
     prepass_quiet: bool = False
     conflict_rule: str = ""
 
-    # ── what the stages read ──────────────────────────────────────────
 
     def has_stage(self, name: str) -> bool:
-        """Whether an optional stage runs: named, or (the page limit) implied by a limit."""
+        """Whether an optional stage runs (named, or page limit implied)."""
         if name == "page-limit" and (self.structure.page_limit or self.structure.page_limit_rfp):
             return True
         return name in self.stages
@@ -178,7 +146,7 @@ class Process:
 
     @property
     def code_checks(self) -> tuple[str, ...]:
-        """The code checks in order: what the structure implies (개조식 문체), then the named."""
+        """Code checks in order: structure-implied (개조식), then named."""
         implied = ("gaejo-style",) if self.structure.style == "gaejo" else ()
         return tuple(dict.fromkeys([*implied, *self.checks]))
 
@@ -197,9 +165,6 @@ class Process:
 
 
 DEFAULT = Process()
-
-
-# ── reading a stored setting ──────────────────────────────────────────────
 
 
 def _text(raw: Any, limit: int) -> str:
@@ -267,14 +232,14 @@ def _structure(raw: Any) -> dict[str, Any]:
 
 
 def clean(raw: Any) -> dict[str, Any]:
-    """A stored setting: only the keys it sets, each checked. `{}` sets nothing."""
+    """Stored setting: only set keys, each checked; `{}` sets nothing."""
     data = raw if isinstance(raw, dict) else {}
     out: dict[str, Any] = {}
     if "prepass" in data:
         names = _names(data["prepass"], PREPASS, "process_prepass", "쓰기 전에 계산")
         if len(names) > MAX_PREPASS:
             raise ProcessError("process_prepass", f"쓰기 전 계산은 {MAX_PREPASS}개까지입니다.")
-        # Run in the order the shipped 서식 run them.
+        # shipped 서식 order
         out["prepass"] = tuple(n for n in PREPASS if n in names)
     if "date_base" in data:
         base = str(data.get("date_base") or "text")
@@ -318,7 +283,7 @@ def clean(raw: Any) -> dict[str, Any]:
 
 
 def stored_form(cleaned: dict[str, Any]) -> dict[str, Any]:
-    """A cleaned setting as a row's JSON holds it (lists, not tuples)."""
+    """Cleaned setting as row JSON (lists)."""
 
     def plain(value: Any) -> Any:
         if isinstance(value, (tuple, list)):
@@ -331,8 +296,7 @@ def stored_form(cleaned: dict[str, Any]) -> dict[str, Any]:
 
 
 def stored(raw: Any) -> dict[str, Any]:
-    """`clean` for a value read back from a row or a file: a bad stored value sets nothing
-    rather than failing the turn."""
+    """`clean` for stored values: bad value sets nothing instead of failing the turn."""
     try:
         return clean(raw)
     except ProcessError:
@@ -340,7 +304,7 @@ def stored(raw: Any) -> dict[str, Any]:
 
 
 def apply(base: Process, settings: dict[str, Any] | None) -> Process:
-    """`base` with what `settings` (cleaned) sets; the structure merges key by key."""
+    """`base` overlaid with cleaned `settings`; structure merged per key."""
     if not settings:
         return base
     changes = {k: v for k, v in settings.items() if k in KEYS and k != "structure"}
@@ -350,13 +314,12 @@ def apply(base: Process, settings: dict[str, Any] | None) -> Process:
 
 
 def of_template(template) -> dict[str, Any]:
-    """A 서식's `[process]` as it is stored (shipped: its `template.toml`)."""
+    """서식's stored `[process]`."""
     return dict(getattr(template, "process", None) or {})
 
 
 def governing_template(template_id: str | None, format_id: str | None):
-    """The 서식 whose settings the document follows: the one picked when it fixes a format
-    (a person's template always does), else the shipped one bound to the format."""
+    """서식 governing the document: picked one if format-fixing, else the format's own."""
     from app.services import design_templates
 
     template = design_templates.get(template_id) if template_id else None
@@ -367,23 +330,19 @@ def governing_template(template_id: str | None, format_id: str | None):
     return None
 
 
-#: What a format does unless its 서식 or the agent says otherwise. A 공문, a 보도자료, minutes,
-#: a result report and an internal draft are read as plain text: pictures only when asked.
+#: format defaults; text-only formats draw pictures only when asked
 FORMAT_DEFAULTS: dict[str, dict[str, Any]] = {
     fmt: {"draws": "when-asked"}
     for fmt in ("official", "press", "minutes", "result_report", "internal_draft")
 }
-# A 공문 is one body of 1. 가. items under its head, never chapters: the outline is one
-# 「본문」 section, printed without a heading. A person's template sets the same with
-# 고정 목차 「본문」.
+# 공문: one untitled 「본문」 section of 1. 가. items
 FORMAT_DEFAULTS["official"] = {**FORMAT_DEFAULTS["official"], "fixed_outline": True,
                                "structure": {"sections": ("본문",)}}
 
 
 def resolve(*, template_id: str | None, format_id: str | None,
             own: dict[str, Any] | None = None) -> Process:
-    """What a document's writing does: the defaults (the format's own among them), then its
-    서식's settings, then the agent's own (`Agent.process`)."""
+    """Effective settings: defaults, then 서식, then agent (`Agent.process`)."""
     template = governing_template(template_id, format_id)
     out = apply(DEFAULT, FORMAT_DEFAULTS.get(format_id or ""))
     out = apply(out, of_template(template) if template is not None else None)
@@ -391,12 +350,12 @@ def resolve(*, template_id: str | None, format_id: str | None,
 
 
 def for_format(format_id: str | None) -> Process:
-    """A stored document's settings when only its format is known (a revision)."""
+    """Settings of a stored document by format only (revisions)."""
     return resolve(template_id=None, format_id=format_id)
 
 
 def catalogue() -> dict[str, Any]:
-    """What the forms offer, each name with its label and what it reads."""
+    """Form options: name, label, what it reads."""
 
     def rows(names: dict[str, str]) -> list[dict[str, str]]:
         return [{"name": k, "label": v, "needs": NEEDS.get(k, "")} for k, v in names.items()]

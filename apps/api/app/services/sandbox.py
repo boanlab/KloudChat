@@ -1,14 +1,4 @@
-"""The code sandbox (LibreCodeInterpreter): uploads, runs, and the files a run leaves behind.
-
-Every upload opens a sandbox session of its own and its refs live 24 hours. A turn
-keeps its state on `ToolContext.sandbox`: the exec session the first run opened
-(later runs continue it, so `outputs/` and variables carry over) and the refs of
-the chat files it uploaded. Skill packages are uploaded read-only once per process
-and package version, and uploaded again once their refs near expiry.
-
-Outputs are what a run writes under `outputs/`; they are downloaded and stored as
-the user's files in the chat session, and the tool result lists their ids.
-"""
+"""Code sandbox (LibreCodeInterpreter): uploads, runs, outputs stored as the user's chat files."""
 
 from __future__ import annotations
 
@@ -33,12 +23,12 @@ from app.services.skill_packages import SkillPackage
 log = logging.getLogger(__name__)
 
 OUTPUT_DIR = "outputs/"
-#: The sandbox returns at most this many new files per run and drops the rest silently.
+#: per-run new file cap; extras dropped silently by the sandbox
 MAX_OUTPUTS = 10
 MAX_INPUT_FILES = 20
 MAX_INPUT_BYTES = 80 * 1024 * 1024
 MAX_OUTPUT_BYTES = 60 * 1024 * 1024
-#: Refs live 24 h on the sandbox; renewed well before.
+#: refs live 24 h; renewed earlier
 SKILL_REF_TTL_SEC = 20 * 3600
 TIMEOUT_MS = 30_000
 
@@ -47,13 +37,13 @@ MEMORY_LIMIT = (
     "다시 시도하세요."
 )
 TIME_LIMIT = "실행 시간 한도(30초)를 넘어 중단됐습니다. 처리할 양을 줄이거나 나눠서 실행하세요."
-#: What the sandbox says when the kernel killed a run over its memory cgroup.
+#: sandbox message when the kernel OOM-killed a run
 _OOM_MARKER = "delimiter not found"
 _TIMEOUT_MARKER = "Execution exceeded"
 
 
 class SandboxError(RuntimeError):
-    """The sandbox could not be reached or refused the request; the message is user-facing."""
+    """Sandbox unreachable or refused; user-facing message."""
 
 
 @dataclass(slots=True)
@@ -71,7 +61,7 @@ class RunResult:
 
     @property
     def crashed(self) -> bool:
-        """An exception, a kill or a timeout, as opposed to warnings on stderr."""
+        """Exception, kill or timeout (not stderr warnings)."""
         return (
             self.memory_exceeded
             or self.timed_out
@@ -98,7 +88,7 @@ def interpret(payload: dict[str, Any]) -> RunResult:
 
 
 class Client:
-    """HTTP client for one sandbox base URL (the gateway path injects the key itself)."""
+    """HTTP client for one sandbox base URL (gateway injects the key)."""
 
     def __init__(self, base: str, api_key: str = "", timeout: float = 120.0) -> None:
         self.base = base.rstrip("/")
@@ -108,7 +98,7 @@ class Client:
     async def upload(
         self, items: list[tuple[str, bytes]], *, kind: str | None = None, read_only: bool = False
     ) -> list[dict[str, str]]:
-        """One new sandbox session holding `items`; returns the refs `exec` takes."""
+        """New sandbox session with `items`; refs for `exec`."""
         multipart = [
             ("file", (name, data, mimetypes.guess_type(name)[0] or "application/octet-stream"))
             for name, data in items
@@ -158,7 +148,7 @@ class Client:
             async with tools_gateway.client(timeout=self.timeout) as client:
                 response = await client.post(f"{self.base}/exec", headers=self.headers, json=body)
                 response.raise_for_status()
-                # A long run is preceded by keep-alive spaces; json.loads skips them.
+                # keep-alive spaces before a long run's JSON
                 payload = json.loads(response.text)
         except (httpx.HTTPError, ValueError) as exc:
             raise SandboxError(f"코드 실행에 실패했습니다 ({type(exc).__name__}).") from exc
@@ -189,14 +179,11 @@ class Client:
 
 
 async def client() -> Client | None:
-    """The configured sandbox, or None when code execution is off."""
+    """Configured sandbox, or None when code execution is off."""
     backends = await settings_store.tools_config()
     if not backends.exec:
         return None
     return Client(backends.exec, settings.code_interpreter_api_key)
-
-
-# ── the chat's files ────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,7 +195,7 @@ class InputFile:
 
 
 async def session_files(user_id: str, session_id: str) -> list[InputFile]:
-    """This chat's files for this user, newest first: uploads and earlier outputs."""
+    """This chat's files for this user, newest first."""
     if not session_id:
         return []
     async with SessionLocal() as db:
@@ -227,7 +214,7 @@ def read_input(file: InputFile) -> bytes:
 
 
 async def store_output(user_id: str, session_id: str, name: str, data: bytes) -> dict[str, Any]:
-    """Keeps a produced file as the user's own, in the chat it came from."""
+    """Store a produced file as the user's own, in its chat."""
     stored = StoredFile(
         user_id=user_id,
         session_id=session_id or None,
@@ -250,7 +237,7 @@ async def store_output(user_id: str, session_id: str, name: str, data: bytes) ->
 def pick_inputs(
     files: list[InputFile], wanted: list[str] | None
 ) -> tuple[list[InputFile], list[str]]:
-    """The files a run gets, one per name (newest wins), and the wanted names not found."""
+    """Run input files, one per name (newest wins), plus missing names."""
     by_name: dict[str, InputFile] = {}
     for file in files:
         by_name.setdefault(file.name, file)
@@ -273,7 +260,7 @@ def pick_inputs(
 
 
 async def input_refs(sandbox: Client, state: dict[str, Any], files: list[InputFile]) -> list[dict]:
-    """Refs for `files`, uploading the ones this turn has not uploaded yet."""
+    """Refs for `files`, uploading new ones."""
     known: dict[str, dict] = state.setdefault("inputs", {})
     fresh = [f for f in files if f.id not in known]
     if fresh:
@@ -289,7 +276,7 @@ _SKILL_REFS: dict[str, tuple[str, float, list[dict]]] = {}
 
 
 async def skill_refs(sandbox: Client, package: SkillPackage, *, fresh: bool = False) -> list[dict]:
-    """The package's files mounted read-only under `skills/<key>/`."""
+    """Package files mounted read-only under `skills/<key>/`."""
     fingerprint = package.fingerprint
     cached = _SKILL_REFS.get(package.key)
     if (
@@ -306,8 +293,7 @@ async def skill_refs(sandbox: Client, package: SkillPackage, *, fresh: bool = Fa
 
 async def own_refs(sandbox: Client, state: dict[str, Any], folder: str,
                    files: dict[str, str]) -> list[dict]:
-    """A person's own skill scripts mounted read-only under `skills/<folder>/scripts/`, once
-    per turn. They run here only, at `run_code`'s trust; the server never imports them."""
+    """Person's own skill scripts mounted read-only; never imported by the server."""
     cache = state.setdefault("own_refs", {})
     if folder not in cache:
         cache[folder] = await sandbox.upload(
@@ -325,14 +311,14 @@ async def run(
     lang: str = "py",
     refs: list[dict] | None = None,
 ) -> RunResult:
-    """Runs in the turn's sandbox session, opening one on the first call."""
+    """Run in the turn's sandbox session, opening one on first call."""
     session = state.get("session")
     try:
         result = await sandbox.exec(code, lang=lang, files=refs or None, session_id=session)
     except SandboxError:
         if not session:
             raise
-        # An expired or reaped session: start a new one with the same files.
+        # expired/reaped session: reopen with the same files
         state.pop("session", None)
         result = await sandbox.exec(code, lang=lang, files=refs or None)
     if result.session_id:
@@ -343,7 +329,7 @@ async def run(
 async def collect_outputs(
     sandbox: Client, result: RunResult, *, user_id: str, session_id: str, state: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Downloads and stores what the run wrote under `outputs/`; also returns warnings."""
+    """Download and store `outputs/` files; warnings too."""
     notes: list[str] = []
     generated = result.generated
     if len(generated) >= MAX_OUTPUTS:
@@ -377,7 +363,7 @@ async def collect_outputs(
 
 
 def last_json(stdout: str) -> dict[str, Any] | None:
-    """The JSON object a script printed on its last non-empty line."""
+    """JSON object on the script's last non-empty line."""
     for line in reversed(stdout.strip().splitlines()):
         line = line.strip()
         if not line:
@@ -406,7 +392,7 @@ def report(
     stdout: str | None = None,
     head: str = "",
 ) -> str:
-    """The tool result the model reads: outcome, output files with checks, printed text."""
+    """Tool result for the model: outcome, output files with checks, printed text."""
     parts = [head] if head else []
     if outputs:
         listed = []

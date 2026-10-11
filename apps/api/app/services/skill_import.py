@@ -1,19 +1,4 @@
-"""Uploaded skills: a SKILL.md, or a .zip/.skill package around one, read into a skill row.
-
-Nothing here touches the file system. An archive is read in memory, entry by entry and
-within fixed limits; only text the person can read in the skill page is kept.
-
-- The server fields (`stage`, `entry`, `post_check`, `post_judge`, `copy_check`,
-  `copy_kinds`, `tables`, `own_stage`, `uses`) are kept when they name shipped scripts
-  (`services/skill_specs.py`); anything else is a finding and is dropped.
-- Python scripts under `scripts/` are kept in the row (`Skill.script_files`), shown in the
-  preview with their own scan, and run only in the code sandbox through `run_skill_script`
-  — never imported by the server, never written to `app/skills`. Other script types are
-  dropped. Sharing a skill with scripts waits for an administrator.
-
-Every problem is a `Finding`: `block` stops the upload (structure or safety), `warn`
-is shown and the upload may go on. The scans are heuristics, not a guarantee.
-"""
+"""Uploaded skills read in memory into a row; server fields allowlisted, scripts sandbox-only."""
 
 from __future__ import annotations
 
@@ -33,14 +18,14 @@ from app.models.chat import SessionKind
 from app.schemas.workspace import SkillIn
 from app.services import skill_packages, skill_specs
 
-#: One uploaded file, raw.
+#: one uploaded file, raw
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
-#: Uncompressed total of one archive.
+#: uncompressed archive total
 MAX_TOTAL_BYTES = 2 * 1024 * 1024
 MAX_ENTRIES = 50
-#: Uncompressed/compressed past this is treated as a bomb.
+#: compression ratio treated as a bomb
 MAX_RATIO = 100
-#: Files per request.
+#: files per request
 MAX_FILES = 10
 
 ARCHIVE_SUFFIXES = (".zip", ".skill")
@@ -75,16 +60,14 @@ SCRIPT_SUFFIXES = frozenset(
 NESTED_SUFFIXES = frozenset(
     {".zip", ".skill", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".whl", ".jar"}
 )
-#: Archive noise that is skipped without a word.
+#: archive noise, skipped silently
 _JUNK = ("__MACOSX/", ".DS_Store", "Thumbs.db")
 
-#: Front matter a person may set: the catalogue fields, and the server fields naming shipped
-#: scripts (`skill_specs.FIELDS`, checked against its allowlists). `status` is the
-#: catalogue's alone.
+#: settable front matter: catalogue + allowlisted server fields; status is catalogue-only
 ACCEPTED = ("name", "description", "when_to_use", "kinds", "required_tools", "version",
             *skill_specs.FIELDS)
 SERVER_ONLY = tuple(f for f in skill_packages._FIELDS if f not in ACCEPTED)
-#: A person's own scripts: Python only (the sandbox runs `python3`), under `scripts/`.
+#: user scripts: Python only, under scripts/
 KEPT_SCRIPT_SUFFIX = ".py"
 MAX_SCRIPTS = 8
 MAX_SCRIPT_BYTES = 64 * 1024
@@ -152,9 +135,9 @@ class Preview:
     kept: list[str] = field(default_factory=list)
     excluded: list[Excluded] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
-    #: What the server runs for it, as `Skill.server_fields` stores it; None for nothing.
+    #: server_fields as stored; None for nothing
     server: dict | None = None
-    #: Its own Python scripts, kept for the sandbox.
+    #: own Python scripts, for the sandbox
     scripts: list[Script] = field(default_factory=list)
 
     @property
@@ -169,11 +152,8 @@ class Preview:
         self.findings.append(Finding("warn", code, message, file, line))
 
 
-# ── entry points ──────────────────────────────────────────────────────
-
-
 def inspect(filename: str, data: bytes, known_tools: set[str] | None = None) -> Preview:
-    """What `filename` would become as a skill, with every finding. Never raises on content."""
+    """Prospective skill from filename with findings; never raises on content."""
     name = PurePosixPath((filename or "SKILL.md").replace("\\", "/")).name[:200] or "SKILL.md"
     preview = Preview(filename=name)
     if len(data) > MAX_UPLOAD_BYTES:
@@ -196,9 +176,7 @@ def inspect(filename: str, data: bytes, known_tools: set[str] | None = None) -> 
 
 
 def scan_script(source: str, *, file: str) -> list[Finding]:
-    """A person's script read without running it: what it reaches outside the sandbox's
-    working folder (network, other processes, files elsewhere, code built at run time) is a
-    warning; a secret or a hidden direction control blocks, as on sharing."""
+    """Static scan of a user script: escapes warn; secrets/hidden bidi block."""
     out = [f for f in scan_text(source, file=file, sharing=True)
            if f.code in ("secret_like", "hidden_characters", "encoded_blob")]
     try:
@@ -261,7 +239,7 @@ def _called(func: ast.expr) -> str:
 
 
 def _outside(node: ast.expr | None) -> bool:
-    """A literal path that leaves the working folder: absolute, home or `..`."""
+    """Literal path leaving the working folder (absolute, ~, ..)."""
     if isinstance(node, ast.Call) and _called(node.func) in ("Path", "pathlib.Path") \
             and node.args:
         node = node.args[0]
@@ -288,8 +266,7 @@ def _writes_outside(node: ast.Call, called: str) -> bool:
 
 
 def scan_text(text: str, *, file: str = "", sharing: bool = False) -> list[Finding]:
-    """Heuristic warnings on instruction text. With `sharing`, secrets and hidden
-    direction controls block: a shared skill spreads them to every copy."""
+    """Heuristic warnings on instructions; sharing makes secrets/bidi blocking."""
     out: list[Finding] = []
     lines = text.splitlines()[:5_000]
     hard = "block" if sharing else "warn"
@@ -329,7 +306,7 @@ def scan_text(text: str, *, file: str = "", sharing: bool = False) -> list[Findi
     if (n := first(_BASE64)) is not None:
         out.append(Finding("warn", "encoded_blob", "긴 base64 인코딩 덩어리가 있습니다.", file, n))
     if (n := first(_SECRET)) is not None:
-        # The value itself is never repeated: only where it is.
+        # value never repeated, only its location
         out.append(
             Finding(hard, "secret_like", "API 키·토큰처럼 보이는 문자열이 있습니다.", file, n)
         )
@@ -337,7 +314,7 @@ def scan_text(text: str, *, file: str = "", sharing: bool = False) -> list[Findi
 
 
 def blocking_on_share(name: str, description: str, when_to_use: str, body: str) -> list[Finding]:
-    """Block-level findings for a skill about to be shared with the organisation."""
+    """Blocking findings before org-wide sharing."""
     text = "\n".join((name, description, when_to_use, body))
     return [f for f in scan_text(text, sharing=True) if f.blocking]
 
@@ -353,7 +330,7 @@ def to_skill_md(
     body: str,
     server: dict | None = None,
 ) -> str:
-    """A skill row as a SKILL.md that `inspect` reads back to the same fields."""
+    """Skill row as a SKILL.md that inspect round-trips."""
     meta = {
         "name": name,
         "description": description,
@@ -362,15 +339,12 @@ def to_skill_md(
         "required_tools": list(required_tools or []),
         "version": version or "1.0.0",
     }
-    # Only the server fields that ask for something, in SKILL.md's own order.
+    # only active server fields, SKILL.md order
     for key, value in skill_specs.normalize(server).items():
         if value:
             meta[key] = value
     head = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False, width=10_000).strip()
     return f"---\n{head}\n---\n{body.strip()}\n"
-
-
-# ── SKILL.md ──────────────────────────────────────────────────────────
 
 
 def _decode(data: bytes) -> str | None:
@@ -445,7 +419,7 @@ def _read_skill_md(preview: Preview, text: str, file: str) -> None:
 
 
 def _read_server_fields(preview: Preview, meta: dict, file: str) -> None:
-    """The server fields, kept where they name shipped scripts; each refusal a warning."""
+    """Server fields kept when naming shipped scripts; refusals as warnings."""
     raw = {key: meta[key] for key in skill_specs.FIELDS if key in meta}
     if not raw:
         return
@@ -461,7 +435,7 @@ def _check_tools(preview: Preview, known: set[str] | None) -> None:
     runs_scripts = bool(preview.scripts or (preview.server or {}).get("uses"))
     for tool in preview.required_tools:
         if tool == "run_skill_script" and runs_scripts:
-            # It runs its own scripts (in the sandbox) or shipped ones it names.
+            # own scripts (sandbox) or named shipped ones
             keep.append(tool)
         elif tool == "run_skill_script":
             preview.warn(
@@ -479,9 +453,6 @@ def _check_tools(preview: Preview, known: set[str] | None) -> None:
 
 def _scannable(preview: Preview) -> str:
     return "\n".join((preview.name, preview.description, preview.when_to_use, preview.body))
-
-
-# ── archives ──────────────────────────────────────────────────────────
 
 
 def _is_symlink(info: zipfile.ZipInfo) -> bool:
@@ -575,7 +546,7 @@ def _read_archive(preview: Preview, data: bytes) -> None:
             rel = info.filename[len(root) + 1 :] if root else info.filename
             try:
                 with archive.open(info) as handle:
-                    # Never trust the header: read at most what is left of the budget.
+                    # never trust the header: read at most the remaining budget
                     raw = handle.read(MAX_TOTAL_BYTES - read_total + 1)
             except (
                 zipfile.BadZipFile,
@@ -633,7 +604,7 @@ def _own_script(rel: str) -> bool:
 
 
 def _keep_script(preview: Preview, rel: str, raw: bytes) -> bool:
-    """Keeps one `scripts/<name>.py` with its scan; False when it blocks the upload."""
+    """Keep one scripts/<name>.py with its scan; False if it blocks."""
     file = preview.filename
     stem = PurePosixPath(rel).stem
     if stem.startswith("_"):
@@ -693,9 +664,7 @@ def _append_resources(preview: Preview, texts: dict[str, str]) -> None:
         )
 
 
-# ── scan patterns ─────────────────────────────────────────────────────
-#
-# Each runs on one line of at most 4,000 characters; quantifiers are bounded.
+# scan patterns: one line ≤4,000 chars, bounded quantifiers
 
 _OVERRIDE = re.compile(
     r"\b(?:ignore|disregard|forget|override)\s{1,3}(?:all\s{1,3}|any\s{1,3})?(?:the\s{1,3})?"
@@ -777,7 +746,7 @@ def _exfil_line(lines: list[str]) -> int | None:
     return None
 
 
-#: Bidi embeddings/overrides/isolates, marks, zero-width characters and a stray BOM.
+#: bidi controls, marks, zero-width chars, stray BOM
 _HIDDEN = frozenset(
     "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c"
     "\u200b\u200c\u2060\u2061\u2062\u2063\u2064\ufeff\u00ad"
@@ -786,7 +755,7 @@ _HIDDEN = frozenset(
 
 def _hidden_line(lines: list[str]) -> int | None:
     for number, line in enumerate(lines, 1):
-        # A zero-width joiner alone is how emoji sequences are written; it is not counted.
+        # lone ZWJ is emoji syntax: not counted
         if any(
             ch in _HIDDEN or (unicodedata.category(ch) == "Cf" and ch != "\u200d") for ch in line
         ):

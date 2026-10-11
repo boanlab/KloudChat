@@ -1,20 +1,11 @@
-"""A drawn figure checked against the words it was drawn from, before it is kept.
-
-A comparison figure names each option's values in its boxes (「중복 방지: 충족」 under 안1). The
-model that draws it reads a one-line description, not the section's table, and can say what
-the table does not: 안1 「충족」 where the table says 「중복 예약 월 6건 발생」, 안2 「자료 없음」
-where the table says 「120만 원」. Code reads the section's Markdown tables, finds the cell for
-the box's option and criterion, and calls the figure contradicted when the two disagree; the
-caller then leaves the figure out. A highlighted box (`:::hot`) on an option other than the one
-the document recommends loses its highlight.
-"""
+"""Comparison figures checked against section tables; contradicted ones dropped."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-#: An option's name: 「안1」 「1안」 「A안」 「대안 2」 「제2안」.
+#: option name: 「안1」「1안」「A안」「대안 2」「제2안」
 _OPTION = re.compile(r"(?:대안\s{0,2}|안\s{0,2})(\d{1,2})(?!\d)"
                      r"|제?\s{0,2}(\d{1,2}|[A-D])\s{0,2}안(?![가-힣])")
 _SUBGRAPH = re.compile(r'^\s*subgraph\s+(\w+)\s*(?:\[\s*"?([^"\]]*)"?\s*\])?', re.M)
@@ -32,7 +23,7 @@ _RECOMMEND = re.compile(
 
 
 class Contradicted(ValueError):
-    """A figure that says what the words it was drawn from do not."""
+    """Figure contradicting its source words."""
 
 
 @dataclass(slots=True)
@@ -42,7 +33,7 @@ class Check:
 
 
 def option_of(text: str) -> str:
-    """The option a label or title names, normalised (「안2」), or ''."""
+    """Normalised option named by a label (「안2」), or ''."""
     m = _OPTION.search(text or "")
     if not m:
         return ""
@@ -70,13 +61,13 @@ def _tables(text: str) -> list[list[list[str]]]:
 
 
 def table_cells(text: str) -> dict[tuple[str, str], str]:
-    """(option, criterion) → cell, from every table whose header or first column names options."""
+    """(option, criterion) → cell from option tables."""
     cells: dict[tuple[str, str], str] = {}
     for rows in _tables(text):
         head = rows[0]
         options = [option_of(c) for c in head]
         if sum(1 for o in options if o) >= 2:
-            # Options across the top, criteria down the first column.
+            # options across the top, criteria down column 1
             for row in rows[1:]:
                 if not row:
                     continue
@@ -110,7 +101,7 @@ def _contradicts(said: str, cell: str) -> bool:
     if not said or not cell or _flat(said) == _flat(cell) or _flat(said) in _flat(cell):
         return False
     if _UNKNOWN.search(said):
-        # 「자료 없음」 in the box where the table gives a value.
+        # 「자료 없음」 where the table has a value
         return not _UNKNOWN.search(cell)
     if _VERDICT_YES.match(said):
         return bool(_NEGATIVE.search(cell))
@@ -124,18 +115,17 @@ def _contradicts(said: str, cell: str) -> bool:
 
 
 def recommended(document: str) -> str:
-    """The option the document recommends (「안2를 권고합니다」), or ''."""
+    """Recommended option (「안2를 권고합니다」), or ''."""
     found = {option_of(m.group(1)) for m in _RECOMMEND.finditer(document or "")}
     found.discard("")
     return found.pop() if len(found) == 1 else ""
 
 
 def check(source: str, *, context: str, document: str = "") -> Check:
-    """Problems with `source` against the tables in `context`; the source with a highlight on
-    a non-recommended option taken off."""
+    """Problems in source vs context tables; source with stray highlight removed."""
     problems: list[str] = []
     titles = {m.group(1): (m.group(2) or m.group(1)) for m in _SUBGRAPH.finditer(source or "")}
-    # Which subgraph each line sits in.
+    # subgraph per line
     owner: dict[str, str] = {}
     stack: list[str] = []
     for line in (source or "").split("\n"):

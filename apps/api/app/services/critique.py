@@ -1,8 +1,4 @@
-"""One-pass model review of a finished document: a score and findings in the linter's shape.
-
-The rubric is the template's `checklist.md`, or `_DEFAULT_RUBRIC` for the
-built-in report and deck tracks. The score is advisory; nothing is gated on it.
-"""
+"""One-pass advisory model review: score and linter-shaped findings, rubric from checklist.md."""
 
 from __future__ import annotations
 
@@ -19,10 +15,10 @@ log = logging.getLogger(__name__)
 
 MAX_FINDINGS = 6
 
-#: Characters of the document sent to the reviewer.
+#: document chars sent
 _MAX_SOURCE = 10_000
 
-#: Rubric for documents not written into a template.
+#: rubric for non-template documents
 _DEFAULT_RUBRIC = """- 첫 부분을 읽고 이 문서가 무엇을 위한 것인지, 누가 읽는지 알 수 있는가.
 - 부분끼리 내용이 겹치지 않는가.
 - 주장마다 근거가 붙어 있는가. 숫자에 단위와 기준 시점이 있는가.
@@ -63,15 +59,14 @@ JSON 객체로만 답하라.
 {body}"""
 
 
-#: A finding claiming the document's sums are wrong; dropped when
-#: `arithmetic.findings` disagrees.
+#: sum-error claims; dropped unless arithmetic.findings agrees
 _ARITHMETIC_CLAIM = re.compile(
     r"(계산|합산|차액|곱|산출)[^.]{0,40}(일치하지|맞지 않|다르|틀리|오류)"
 )
 
 
 class CritiqueError(RuntimeError):
-    """Nothing usable came back; the message is user-facing."""
+    """Nothing usable came back; user-facing message."""
 
 
 async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[str, int]]:
@@ -100,7 +95,7 @@ async def _complete(model: str, prompt: str, api_key: str) -> tuple[str, dict[st
 
 
 def _scan(body: str) -> tuple[list[str], bool, int]:
-    """`(closers still open, ends inside a string, offset of the last complete item)`."""
+    """(open closers, inside string, last complete item offset)."""
     stack: list[str] = []
     in_string = escaped = False
     cut = 0
@@ -127,7 +122,7 @@ def _scan(body: str) -> tuple[list[str], bool, int]:
 
 
 def _closed(body: str) -> str:
-    """Truncated JSON with open brackets closed; a half-written item is dropped whole."""
+    """Truncated JSON closed; half-written item dropped."""
     stack, in_string, cut = _scan(body)
     if in_string:
         body = body[:cut]
@@ -154,7 +149,7 @@ def _object(text: str) -> dict:
 
 
 def document(parts: list[dict[str, str]]) -> str:
-    """The document as a reviewer reads it: headings and the words under them."""
+    """Document as the reviewer reads it."""
     lines: list[str] = []
     for part in parts:
         heading = (part.get("heading") or "").strip()
@@ -169,7 +164,7 @@ def document(parts: list[dict[str, str]]) -> str:
 async def review(
     *, title: str, body: str, rubric: str, model: str, api_key: str
 ) -> tuple[dict, dict[str, int]]:
-    """`(critique, usage)`: score clamped to 0..10, findings normalised to the linter's shape."""
+    """(critique, usage): score clamped 0..10, findings normalised."""
     if len(body.strip()) < 40:
         raise CritiqueError("검토할 내용이 너무 짧습니다.")
 
@@ -185,7 +180,7 @@ async def review(
     )
     data = _object(reply)
     if not data:
-        # Both ends: an unreadable reply is usually well-formed until it stops.
+        # both ends: truncated replies are well-formed until they stop
         log.warning(
             "critique unparseable (%d chars): %s … %s", len(reply), reply[:200], reply[-200:]
         )
@@ -199,7 +194,7 @@ async def review(
         raise CritiqueError("검토 결과에 점수가 없습니다 — 다시 요청해 보세요.") from None
 
     findings = []
-    # Arithmetic findings are kept only when the checker also found an error.
+    # arithmetic findings kept only if the checker agrees
     sums_wrong = bool(arithmetic.findings(body))
     for raw in (data.get("findings") or [])[:MAX_FINDINGS]:
         if not isinstance(raw, dict):

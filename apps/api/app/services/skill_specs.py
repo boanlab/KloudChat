@@ -1,15 +1,4 @@
-"""What the server runs for one skill on a turn, read from its row: shipped or a person's.
-
-A shipped package declares its server fields in SKILL.md (`app/skills/README.md`); a person's
-skill sets the same fields in the skill form or its uploaded SKILL.md, and they are stored on
-the row (`Skill.server_fields`). Both reach the checks the same way: a turn carries a `Spec`
-for every skill on it, by the key the checks name it with — the catalogue key for a shipped
-row, `skill:<row id>` for a person's.
-
-Every field names shipped code only (`<key>/<script>` from the allowlists below), so the
-server never imports a person's own file. A person's own scripts (`Skill.script_files`) run
-only in the code sandbox through `run_skill_script` (`services/tools/sandbox_tools.py`).
-"""
+"""Per-turn server skill specs; fields name shipped code only, user scripts sandbox-only."""
 
 from __future__ import annotations
 
@@ -22,10 +11,10 @@ from typing import Any
 
 from app.services import skill_packages
 
-#: How a person's skill is named on a turn and in `Agent.check_skills`.
+#: user skill key on turns and Agent.check_skills
 USER = "skill:"
 
-#: The fields a row may carry, as the SKILL.md front matter names them.
+#: storable fields, SKILL.md front-matter names
 FIELDS = ("stage", "entry", "post_check", "post_judge", "copy_check", "copy_kinds", "tables",
           "own_stage", "uses")
 
@@ -39,11 +28,11 @@ class Spec:
     key: str
     name: str = ""
     body: str = ""
-    #: `pre`/`post`: a check the server runs around writing once an agent attaches it.
+    #: pre/post server check once attached
     stage: str = ""
-    #: The shipped script that check runs, `<key>/<script>`.
+    #: shipped script for that check
     entry: str = ""
-    #: Shipped scripts run over a chat answer whenever the skill is on the turn.
+    #: shipped scripts over chat answers
     post_checks: tuple[str, ...] = ()
     post_judge: bool = False
     judge_focus: str = ""
@@ -51,9 +40,9 @@ class Spec:
     copy_kinds: tuple[str, ...] = ()
     tables: bool = False
     own_stage: bool = False
-    #: Shipped scripts its instructions run through `run_skill_script`.
+    #: shipped scripts via run_skill_script
     uses: tuple[str, ...] = ()
-    #: A person's own scripts by name → first docstring line; sandbox only.
+    #: user scripts → first docstring line; sandbox only
     scripts: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -65,7 +54,7 @@ class Spec:
         return (owner, script) if owner and script else None
 
     def fields(self) -> dict[str, Any]:
-        """As a row stores it (`Skill.server_fields`)."""
+        """As stored in Skill.server_fields."""
         return {
             "stage": self.stage, "entry": self.entry, "post_check": list(self.post_checks),
             "post_judge": self.judge_focus or self.post_judge, "copy_check": self.copy_check,
@@ -86,22 +75,21 @@ def of_package(package: skill_packages.SkillPackage | None) -> Spec | None:
 
 
 def package_fields(package: skill_packages.SkillPackage) -> dict[str, Any]:
-    """A shipped package's server fields as its seeded row stores them."""
+    """Shipped package server fields as seeded."""
     spec = of_package(package)
     assert spec is not None
     return spec.fields()
 
 
 def key_of(row) -> str:
-    """The key a row's skill goes by on a turn: its catalogue key when it is a shipped
-    package's copy, else `skill:<id>`."""
+    """Turn key: catalogue key for shipped copies, else skill:<id>."""
     if row.catalog_key and skill_packages.package_for(row.catalog_key) is not None:
         return skill_packages.package_for(row.catalog_key).key  # type: ignore[union-attr]
     return f"{USER}{row.id}"
 
 
 def of_row(row) -> Spec:
-    """The row's spec: its stored fields; a shipped copy that stores none reads its package."""
+    """Row spec: stored fields, else the package's."""
     key = key_of(row)
     stored = getattr(row, "server_fields", None)
     scripts = {str(f.get("name")): str(f.get("summary") or "")
@@ -126,7 +114,7 @@ def _as_dict(spec: Spec) -> dict[str, Any]:
 
 
 def wire(spec: Spec) -> dict[str, Any]:
-    """A spec as JSON carries it (a composed run's agent, its stored request)."""
+    """Spec from JSON (composed run's agent, stored request)."""
     return {k: list(v) if isinstance(v, tuple) else v for k, v in _as_dict(spec).items()}
 
 
@@ -138,13 +126,7 @@ def of_wire(raw: dict[str, Any]) -> Spec:
 
 async def for_turn(db, user_id: str, *, agent_checks: list | None = None,
                    agent_owner: str = "") -> tuple[dict[str, Spec], dict[str, dict[str, Any]]]:
-    """What the server runs for a turn's skills, read from their rows: the person's enabled
-    skills whose fields ask for something (a shipped copy that stores none reads its
-    package), and the check skills the agent attaches (`skill:<id>`), the agent owner's rows.
-    Every field names shipped scripts only.
-
-    Also the person's own scripts by skill key (`{name, files}`), which only the sandbox
-    runs (`run_skill_script`)."""
+    """Turn skill specs (enabled + agent-attached checks) and user scripts by key."""
     from sqlmodel import col, select
 
     from app.models.workspace import Skill
@@ -172,7 +154,7 @@ async def for_turn(db, user_id: str, *, agent_checks: list | None = None,
 
 
 def resolve(key: str, specs: Mapping[str, Spec] | None = None) -> Spec | None:
-    """The spec a turn holds for `key`, else the shipped package's."""
+    """Turn spec for key, else the shipped package's."""
     if specs and key in specs:
         return specs[key]
     if key.startswith(USER):
@@ -180,19 +162,16 @@ def resolve(key: str, specs: Mapping[str, Spec] | None = None) -> Spec | None:
     return of_package(skill_packages.package_for(key))
 
 
-# ── what a person's skill may name ───────────────────────────────────────
-
-
 @cache
 def post_check_refs() -> tuple[str, ...]:
-    """Shipped scripts a skill may run over its answers: those a shipped skill runs so."""
+    """Shipped answer scripts a skill may run."""
     return tuple(sorted({ref for package in skill_packages.packages().values()
                          for ref in package.post_checks}))
 
 
 @cache
 def entry_refs() -> dict[str, tuple[str, ...]]:
-    """Shipped check entries by stage: what a person's check skill may run."""
+    """Shipped check entries by stage."""
     out: dict[str, set[str]] = {stage: set() for stage in skill_packages.STAGES}
     for package in skill_packages.packages().values():
         if package.stage and package.entry:
@@ -201,13 +180,13 @@ def entry_refs() -> dict[str, tuple[str, ...]]:
 
 
 def script_refs() -> tuple[str, ...]:
-    """Shipped scripts `run_skill_script` offers, each `<key>/<script>`."""
+    """Shipped scripts run_skill_script offers."""
     return tuple(f"{p.key}/{s}" for p in skill_packages.scripted() for s in p.scripts)
 
 
 @cache
 def copy_kinds() -> tuple[str, ...]:
-    """What the copy check can be narrowed to (`copy-check/claims`'s finding kinds)."""
+    """Copy-check narrowing kinds."""
     from app.services import skill_scripts
 
     try:
@@ -217,7 +196,7 @@ def copy_kinds() -> tuple[str, ...]:
 
 
 def catalogue() -> dict[str, Any]:
-    """The choices the skill form offers, each with the shipped skill that uses it."""
+    """Skill-form choices with the shipped skill using each."""
     packages = skill_packages.packages()
 
     def label(ref: str) -> dict[str, str]:
@@ -245,7 +224,7 @@ def _kind_words() -> dict[str, str]:
 
 
 class FieldError(ValueError):
-    """A server field a person may not set; `code` is the wire detail."""
+    """Server field a person may not set; code is the wire detail."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -258,7 +237,7 @@ def _refs(raw: Any) -> list[str]:
 
 
 def normalize(raw: Any) -> dict[str, Any]:
-    """Stored fields read back, unknown ones dropped (never raises)."""
+    """Stored fields read back; unknowns dropped, never raises."""
     data = raw if isinstance(raw, dict) else {}
     judge = data.get("post_judge")
     return {
@@ -278,10 +257,7 @@ def normalize(raw: Any) -> dict[str, Any]:
 
 def validate(raw: Any, *,
              own_scripts: tuple[str, ...] = ()) -> tuple[dict[str, Any], list[FieldError]]:
-    """A person's server fields against the allowlists: what is kept, and each refusal.
-
-    `own_scripts` are the skill's own script names: `uses` may name them (`<script>` alone,
-    run in the sandbox), nothing else may — the server runs shipped code only."""
+    """User server fields vs allowlists: (kept, refusals); uses may name own scripts (sandbox)."""
     data = raw if isinstance(raw, dict) else {}
     errors: list[FieldError] = []
     out = normalize({})
@@ -341,7 +317,7 @@ def validate(raw: Any, *,
 
 
 def empty(fields: dict[str, Any] | None) -> bool:
-    """Whether stored fields ask the server for nothing."""
+    """Whether stored fields request nothing."""
     clean = normalize(fields)
     return not any(clean.values())
 

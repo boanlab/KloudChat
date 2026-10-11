@@ -1,16 +1,11 @@
-"""Audit trail helpers: the action codes the API writes and value diffs for them.
-
-A change event carries `metadata.changes = {field: [old, new]}`. Secrets are masked
-and long values clipped, so the trail says what changed without storing what it is.
-"""
+"""Audit action codes and value diffs; secrets masked, long values clipped."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-#: Every action code written to `audit_events`. The admin screen labels each one;
-#: `tests/test_audit_log.py` checks both directions.
+#: all action codes in `audit_events`; admin labels checked by `tests/test_audit_log.py`
 ACTIONS: frozenset[str] = frozenset(
     {
         # auth
@@ -96,7 +91,7 @@ ACTIONS: frozenset[str] = frozenset(
     }
 )
 
-#: Shown in place of a secret, set or not.
+#: secret placeholder, set or not
 MASK = "••••"
 _SECRET = re.compile(r"(key|password|secret|token)", re.IGNORECASE)
 _MAX_TEXT = 160
@@ -108,7 +103,7 @@ def is_secret(field: str) -> bool:
 
 
 def clip(value: Any) -> Any:
-    """`value` made small and JSON-safe: long text cut, long lists shortened."""
+    """`value` made small and JSON-safe."""
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, (list, tuple, set)):
@@ -118,7 +113,6 @@ def clip(value: Any) -> Any:
             out.append(f"…(+{len(items) - _MAX_ITEMS})")
         return out
     if hasattr(value, "value") and not isinstance(value, dict):
-        # Enums record their wire value.
         value = value.value
     text = str(value)
     return text if len(text) <= _MAX_TEXT else text[:_MAX_TEXT] + "…"
@@ -129,11 +123,7 @@ def masked(value: Any) -> str:
 
 
 def diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, list[Any]]:
-    """`{field: [old, new]}` for the fields of `after` whose value differs from `before`.
-
-    Secret-looking fields are compared but recorded masked; a secret that was
-    resubmitted is recorded as changed, since its old value cannot be shown either way.
-    """
+    """`{field: [old, new]}` for changed fields; secrets masked, resubmitted ones count."""
     out: dict[str, list[Any]] = {}
     for field, new in after.items():
         old = before.get(field)
@@ -151,7 +141,7 @@ def diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, list[Any]]:
 def _same(a: Any, b: Any) -> bool:
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         return list(a) == list(b)
-    # A cleared value and an unset one are the same thing on screen.
+    # cleared and unset look the same
     if a in (None, "") and b in (None, ""):
         return True
     return a == b

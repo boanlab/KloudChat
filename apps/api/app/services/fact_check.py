@@ -1,4 +1,4 @@
-"""Model checks for `verify`: claims checked against the web, assessment items solved."""
+"""Model checks for verify: web claim checks, assessment items solved."""
 
 from __future__ import annotations
 
@@ -99,7 +99,7 @@ def _prose(doc: Doc) -> list[tuple[int, str]]:
 
 
 async def _evidence(query: str) -> list[dict]:
-    """The two best-ranked pages for `query`, fetched; no model call."""
+    """Top two pages for query, fetched; no model call."""
     backends = await settings_store.tools_config()
     if not backends.search:
         return []
@@ -121,7 +121,7 @@ async def _evidence(query: str) -> list[dict]:
 
 
 def web_facts(judge: str, api_key: str) -> Check:
-    """Up to a dozen checkable claims, each searched and judged against what it finds."""
+    """Up to 12 claims, each searched and judged."""
 
     @model_check
     async def check(doc: Doc):
@@ -178,8 +178,7 @@ def web_facts(judge: str, api_key: str) -> Check:
                 continue
             letter = str(judged.get("source") or "A").strip()[:1]
             page = pages["AB".index(letter)] if letter in "AB"[: len(pages)] else pages[0]
-            # Only on a page about the same subject that really holds the quoted words;
-            # a judge reading an unrelated page says 「틀림」 too.
+            # same-subject page holding the quoted words only; unrelated pages also read 「틀림」
             quote = re.sub(r"\s+", "", str(judged.get("quote") or ""))
             if judged.get("same_subject") is not True or len(quote) < 8 or quote not in re.sub(
                 r"\s+", "", page["text"]
@@ -211,8 +210,7 @@ def _items(doc: Doc) -> list[tuple[int, str]]:
             block = "\n".join(lines[start:end]).strip()
             if block:
                 out.append((index, block))
-        # Each row of a question table (header names 문항 and 정답) is an item; a lesson
-        # plan's table is not.
+        # question-table rows (문항, 정답) are items; lesson-plan tables aren't
         header = ""
         for line in lines:
             if not line.lstrip().startswith("|"):
@@ -229,7 +227,7 @@ def _items(doc: Doc) -> list[tuple[int, str]]:
 
 
 def solve_questions(judge: str, api_key: str) -> Check:
-    """Each assessment item solved by the judge: one right answer, no science error."""
+    """Assessment items solved by the judge: one right answer, no science error."""
 
     @model_check
     async def check(doc: Doc):
@@ -255,8 +253,7 @@ def solve_questions(judge: str, api_key: str) -> Check:
                 usage[key] += used.get(key, 0)
             judged = _json(text, "{")
             if isinstance(judged, dict) and judged.get("ok") is False and judged.get("problem"):
-                # A wrong key or second right answer is repaired; a science or scoring
-                # judgement is only shown.
+                # wrong key / second answer repaired; science or scoring only shown
                 kind = str(judged.get("kind") or "")
                 found.append(Finding(index, block, "question",
                                      f"평가 문항 검토: {str(judged['problem']).strip()}", rank=1,

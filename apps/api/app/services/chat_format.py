@@ -1,4 +1,4 @@
-"""A chat answer's shape: a whole-answer fence the user forbade, links the reader cannot open."""
+"""Chat answer shape: forbidden whole-answer fence, unopenable links."""
 
 import re
 
@@ -36,29 +36,21 @@ def normalize_raw_payload(content: str, request: str) -> str:
     return "".join(lines[1:-1])
 
 
-#: A Markdown link or picture: `[text](target)`, `![alt](target)`. The target may hold spaces
-#: (「(artifact:산점도: Study Hours vs Score)」), which Markdown then shows as raw text.
+#: Markdown link/picture; target may contain spaces
 _LINK = re.compile(r"(?P<bang>!?)\[(?P<text>[^\]\n]{0,300})\]\((?P<target>[^)\n]{1,500})\)")
-#: Targets a reader's browser can open from the answer.
 _WEB = re.compile(r"^(?:https?://|mailto:|tel:|#|data:image/)", re.I)
-#: Paths inside the code sandbox, not on the web.
+#: code-sandbox paths
 _SANDBOX_PATH = re.compile(r"^/(?:mnt|tmp|home|workspace|sandbox|outputs|data)/", re.I)
 
 
 def _target_name(target: str) -> str:
-    """The file a local target names: 「sandbox:/mnt/data/chart_1.png」 → 「chart_1.png」."""
+    """File named by a local target: sandbox:/mnt/data/x.png -> x.png."""
     target = re.sub(r"^[a-z][\w+.-]{1,20}:", "", target.strip().strip("<>"), flags=re.I)
     return target.split("?")[0].split("#")[0].rstrip("/").rsplit("/", 1)[-1].strip()
 
 
 def unlink_local_targets(text: str, made: set[str] | frozenset[str] = frozenset()) -> str:
-    """Links and pictures that point into the sandbox or the chat's own store, as plain words.
-
-    The model writes `![부서별 집행률](sandbox:chart_1.png)`, `[결과.xlsx](결과.xlsx)` or
-    `[산점도](artifact:산점도)`: none of these opens in the reader's browser (a broken picture,
-    a dead link, raw link text). A file the code made (`made`, by name) is downloaded from the
-    chips under the answer, so its picture or link becomes a pointer to it; other targets keep
-    only their words. Web links and inline pictures stay; fenced code is left alone."""
+    """Sandbox/store links as plain words (made files → chips); web links kept."""
     if not text or "](" not in text:
         return text
 
