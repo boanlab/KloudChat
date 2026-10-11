@@ -306,6 +306,8 @@ interface State {
   /** Shared skills not yet copied into this account; loaded separately from the workspace. */
   skillStore: StoreSkill[]
   skillStoreLoading: boolean
+  /** Whether the shared skill list has answered once; until then 탐색 is loading, not empty. */
+  skillStoreLoaded: boolean
   /** The last listing failed; distinct from empty. */
   skillStoreError: boolean
   designs: DesignRow[]
@@ -511,6 +513,9 @@ interface State {
   clearMediaError: () => void
   /** Replaces the store's copy with the server's, and returns it. */
   refreshArtifact: (id: string) => Promise<Artifact | null>
+  /** The newest saved version of an artifact the panels saved in place; the answer's card reads it. */
+  artifactVersions: Record<string, number>
+  noteArtifactVersion: (id: string, version: number) => void
 
   // ── workspace ─────────────────────────────────────────────────────────
   /** One call after sign-in; each screen also refreshes its own slice. */
@@ -886,6 +891,8 @@ export const useStore = create<State>((set, get) => ({
       }
       try {
         const session = await auth.refresh()
+        // No refresh cookie: signed out, said with 204 rather than a logged 401.
+        if (!session) throw new Error('signed_out')
         rememberSignedOut(false)
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })
@@ -1001,6 +1008,7 @@ export const useStore = create<State>((set, get) => ({
       artifacts: [],
       skills: [],
       skillStore: [],
+      skillStoreLoaded: false,
       designs: [],
       designTemplates: [],
       availableTools: [],
@@ -1092,6 +1100,7 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   skillStore: [],
   skillStoreLoading: false,
+  skillStoreLoaded: false,
   skillStoreError: false,
   designs: [],
   designTemplates: [],
@@ -2089,6 +2098,9 @@ export const useStore = create<State>((set, get) => ({
     if (id) void get().refreshArtifact(id)
   },
 
+  artifactVersions: {},
+  noteArtifactVersion: (id, version) =>
+    set((s) => (s.artifactVersions[id] === version ? s : { artifactVersions: { ...s.artifactVersions, [id]: version } })),
   refreshArtifact: async (id) => {
     const row = await artifactsApi.get(id).catch(() => null)
     if (!row) return null
@@ -2372,6 +2384,7 @@ export const useStore = create<State>((set, get) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
       skillStoreError: rows === null,
       skillStoreLoading: false,
+      skillStoreLoaded: true,
     }))
   },
   installSkill: async (id) => {

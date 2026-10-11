@@ -1416,7 +1416,8 @@ export function Composer({
   // Everything but dictation, the model and send sits behind 「+」 (a bottom sheet on a phone);
   // what is switched on shows as a chip above the input.
   const showTemplates = hasTemplates && (started || !sessionId) && !editing
-  const showSkills = !isMedia && usableSkills.length > 0
+  // Offered before any skill is added, so a new account can find them from here.
+  const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
   const micInMenu = phone && canRecord && !recording && !transcribing
   const hasTools =
@@ -1578,7 +1579,9 @@ export function Composer({
               />
             </div>
             {shownSkills.length === 0 && (
-              <p className="px-2.5 py-1.5 text-sm text-faint">{t('맞는 스킬이 없습니다.')}</p>
+              <p className="px-2.5 py-1.5 text-sm text-faint">
+                {usableSkills.length === 0 ? t('아직 추가한 스킬이 없습니다.') : t('맞는 스킬이 없습니다.')}
+              </p>
             )}
             {shownSkills.map((s) => {
               const selected = activeSkills.some((skill) => skill.id === s.id)
@@ -1605,9 +1608,15 @@ export function Composer({
               )
             })}
             <MenuSeparator />
-            <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
-              {t('스킬 관리')}
-            </MenuItem>
+            {usableSkills.length === 0 ? (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills&view=explore')}>
+                {t('스킬 둘러보기')}
+              </MenuItem>
+            ) : (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
+                {t('스킬 관리')}
+              </MenuItem>
+            )}
           </>
         )}
         {plusView === 'web' && (
@@ -1814,7 +1823,7 @@ export function Composer({
         {editing && (
           <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-sm">
             <Pencil size={14} className="shrink-0 text-accent" />
-            <span className="min-w-0 flex-1">{t('메시지 수정 · 새 대화')}</span>
+            <span className="min-w-0 flex-1">{t('메시지 수정 · 보내면 새 대화로 이어지고, 지금 대화는 그대로 남습니다')}</span>
             <Button size="icon" variant="ghost" title={t('수정 취소')} aria-label={t('수정 취소')}
               disabled={editPending || privacyRetrying} onClick={cancelEditing}>
               <X size={14} />
@@ -2054,7 +2063,12 @@ export function Composer({
                     ? pending.stage === 'clarify'
                       ? t('답을 적거나, 위에서 고르세요')
                       : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                    : t(placeholders[kind])
+                    : session?.artifactId && (kind === 'report' || kind === 'slides')
+                      // The document is made: the next message changes it.
+                      ? kind === 'slides'
+                        ? t('고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘')
+                        : t('고칠 곳을 적으세요. 예: 2절을 더 짧게 써 줘')
+                      : t(placeholders[kind])
             }
             aria-label={t('프롬프트 입력')}
             data-composer=""

@@ -25,6 +25,7 @@ export function SkillDetailPage() {
   const loadSkillStore = useStore((s) => s.loadSkillStore)
   const workspaceLoading = useStore((s) => s.workspaceLoading)
   const skillStoreLoading = useStore((s) => s.skillStoreLoading)
+  const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
   const toggleSkill = useStore((s) => s.toggleSkill)
   const upsertSkill = useStore((s) => s.upsertSkill)
   const deleteSkill = useStore((s) => s.deleteSkill)
@@ -46,7 +47,7 @@ export function SkillDetailPage() {
       <>
         <HubTopBar tab="skills" tabLabel="스킬" title="" />
         <PageBody>
-          {workspaceLoading || skillStoreLoading || skills.length === 0 ? (
+          {workspaceLoading || skillStoreLoading || !skillStoreLoaded ? (
             <LoadingState label={t('스킬을 불러오는 중…')} />
           ) : (
             <EmptyState icon={<Sparkles size={18} />} title={t('이 스킬을 찾을 수 없습니다')} description={t('지워졌거나 볼 수 없는 스킬입니다.')} />

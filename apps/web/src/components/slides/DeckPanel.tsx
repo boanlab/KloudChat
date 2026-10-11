@@ -57,7 +57,7 @@ import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
-import { PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
+import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
 import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
@@ -209,25 +209,6 @@ const LOOKS: Record<VisualStyle, Look> = {
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
-const BASE_LAYOUTS: { id: Slide['layout']; label: string }[] = [
-  { id: 'title', label: '표지' },
-  { id: 'agenda', label: '목차' },
-  { id: 'section', label: '구분 장' },
-  { id: 'bullets', label: '글머리표' },
-  { id: 'two-column', label: '두 단' },
-  { id: 'quote', label: '인용문' },
-  { id: 'statement', label: '핵심 메시지' },
-  { id: 'table', label: '표' },
-  { id: 'metrics', label: '핵심 수치' },
-  { id: 'big-number', label: '큰 숫자' },
-  { id: 'chart', label: '차트' },
-  { id: 'bands', label: '항목과 설명' },
-  { id: 'cards', label: '카드' },
-  { id: 'steps', label: '단계' },
-  { id: 'tiles', label: '표식' },
-  { id: 'timeline', label: '연표' },
-  { id: 'closing', label: '마무리' },
-]
 
 /** Picker groups for the patterns, by arrangement; `slide_patterns.py` holds the table. */
 const PATTERN_GROUPS: { label: string; renders: Pattern['render'][] }[] = [
@@ -2061,6 +2042,7 @@ export function DeckPanel({
     // Written onto the prop too: the artifacts screen renders a copy, not the store row.
     if (data.slides) deck.slides = data.slides
     deck.version = row.version
+    useStore.getState().noteArtifactVersion(deck.id, row.version)
   }
   // One rewrite per slide (see `byWhere`), sequential because they share a version.
   const fixAllFindings = async (findings: LintFinding[]) => {
@@ -2084,6 +2066,7 @@ export function DeckPanel({
         const data = (row.data ?? {}) as { slides?: Slide[] }
         if (data.slides) deck.slides = data.slides
         deck.version = row.version
+        useStore.getState().noteArtifactVersion(deck.id, row.version)
       } catch {
         failed.push(where)
       }
@@ -2163,6 +2146,7 @@ export function DeckPanel({
       const next = (row.data as { slides?: Slide[] } | null)?.slides
       if (next) deck.slides = next
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
     } catch (err) {
       setError(errorMessage(err, t('확인하지 못했습니다.')))
     } finally {
@@ -2327,6 +2311,7 @@ export function DeckPanel({
     if (latest && onServer) {
       deck.slides = onServer
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
     }
     const current = deck.slides[index]
     if (!current) return
@@ -2374,6 +2359,7 @@ export function DeckPanel({
       if (!data.slides) throw new Error(t('다시 쓰지 못했습니다.'))
       deck.slides = data.slides
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(data.slides)
     } catch (err) {
       setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
@@ -2498,6 +2484,7 @@ export function DeckPanel({
       deck.slides = slides
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(slides)
       setSlideDraft(null)
       setEditing(false)
@@ -2525,6 +2512,7 @@ export function DeckPanel({
       const slides = data.slides ?? []
       deck.slides = slides
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
       if (data.design) deck.design = data.design
       baseline.current = JSON.stringify(slides)
       const current = slides[Math.min(index, Math.max(slides.length - 1, 0))]
@@ -2573,6 +2561,7 @@ export function DeckPanel({
       deck.slides = next
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
       setEditing(false)
       setSlideDraft(null)
@@ -2624,6 +2613,7 @@ export function DeckPanel({
       deck.slides = next
       if (design) deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2661,6 +2651,7 @@ export function DeckPanel({
       deck.design = design
       setBulkAccent(nextAccent)
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(deck.slides)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2695,6 +2686,7 @@ export function DeckPanel({
       })
       deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setVisualStyle(nextStyle)
     } catch (err) {
       setError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
@@ -2819,6 +2811,7 @@ export function DeckPanel({
       })
       deck.reviewComments = comments
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setReviewComments(comments)
     } catch (err) {
       setError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
@@ -3354,13 +3347,16 @@ export function DeckPanel({
         >
         {ribbon === 'text' && (editing || bulkMode) && (
           <RibbonGroup wide label={t('슬라이드 편집')}>
-            <div ref={setEditToolbarSlot} className="flex items-center" />
+            <div ref={setEditToolbarSlot} className="peer flex items-center" />
+            <span className="hidden px-2 text-xs text-muted peer-empty:inline">
+              {t('슬라이드의 글자를 누르면 글자 도구가 나옵니다')}
+            </span>
           </RibbonGroup>
         )}
         {ribbon === 'text' && !editing && !bulkMode && <RibbonGroup label={t('슬라이드 작업')}>
           <Button size="sm" disabled={writing || !slide} onClick={() => void startEditing()}>
             <Pencil size={13} />
-            {t('이 장 고치기')}
+            {t('직접 고치기')}
           </Button>
           <Button
             size="sm"
@@ -3652,7 +3648,7 @@ export function DeckPanel({
               <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                    {t('발표 노트')}
+                    {editing ? t('이 장 편집') : t('발표 노트')}
                   </span>
                   {!editing && (
                     <Dropdown
@@ -3732,6 +3728,7 @@ export function DeckPanel({
 
                 {editing ? (
                   <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-muted">{t('슬라이드 텍스트')}</p>
                     <Textarea
                       rows={5}
                       value={draft}
@@ -3741,7 +3738,8 @@ export function DeckPanel({
                     <p className="text-xs text-faint">
                       {t('위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.')}
                     </p>
-                    {slideDraft && ['table', 'metrics', 'cards'].includes(selectedElement ?? '') && (
+                    {/* A table's cells are edited here; clicking one on the slide does not open them. */}
+                    {slideDraft && (['table', 'metrics', 'cards'].includes(selectedElement ?? '') || slideDraft.layout === 'table') && (
                       <SlideDataEditor
                         slide={slideDraft}
                         onChange={(next) => {
@@ -3869,6 +3867,7 @@ export function DeckPanel({
                         </Button>
                       </div>
                     )}
+                    <p className="text-xs font-semibold text-muted">{t('발표 노트')}</p>
                     <Textarea
                       rows={3}
                       value={notes}

@@ -216,7 +216,8 @@ export const auth = {
     call<AuthSession>('/auth/login', body({ email, password })),
   signup: (email: string, password: string, name: string) =>
     call<SignupResult>('/auth/signup', body({ email, password, name })),
-  refresh: () => call<AuthSession>('/auth/refresh', { method: 'POST' }),
+  /** `undefined` (204) when the browser holds no refresh cookie: signed out. */
+  refresh: () => call<AuthSession | undefined>('/auth/refresh', { method: 'POST' }),
   logout: () => call<void>('/auth/logout', { method: 'POST' }),
   /** Reachable while `pending` — the approval-waiting screen polls it. */
   me: () => call<User>('/auth/me'),

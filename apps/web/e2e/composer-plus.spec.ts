@@ -127,6 +127,18 @@ test('skills are found by name, and chips show and remove what is on', async ({ 
   expect(unexpected).toEqual([])
 })
 
+test('a new account with no skills still finds 스킬 in 「+」, pointing to where to add one', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info, { skills: false })
+  await page.goto(`/s/${chatId}`)
+  await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
+  expect(await toolNames(page)).toContain('스킬')
+  await openTool(page, '스킬')
+  await expect(page.getByText('아직 추가한 스킬이 없습니다.')).toBeVisible()
+  expect(unexpected).toEqual([])
+  await page.getByRole('menuitem', { name: '스킬 둘러보기' }).click()
+  await expect(page).toHaveURL(/\/customize\?tab=skills&view=explore$/)
+})
+
 test('「@」 typed into an empty box picks an agent, which then shows as a chip', async ({ page }, info) => {
   const { unexpected, created } = await composerFixture(page, info)
   await page.goto('/new/chat')

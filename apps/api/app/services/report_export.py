@@ -63,11 +63,43 @@ def _glyphs(font: str) -> frozenset[int] | None:
 _GLYPHS: dict[str, frozenset[int] | None] = {}
 
 
+_TABLE_CAPTION = re.compile(r"^\s*(?:<[^>]+>\s*)*(?:표|Table)\s?\d{1,3}\s?[.:]")
+
+
+def _is_table_caption(flowable: object) -> bool:
+    """Whether a story item is a 「표 1. …」 caption paragraph."""
+    text = getattr(flowable, "text", None)
+    if text is None:
+        return False
+    return bool(_TABLE_CAPTION.match(str(text)))
+
+
+#: Unicode sub- and superscript letters and signs (not the digits ¹²³, which the faces draw).
+_SCRIPT_LETTER = re.compile("[\u1d62-\u1d6a\u2090-\u209c\u2080-\u208e\u2071\u207f\u2c7c\u1d43-\u1d5b]")
+
+
+def _script_markup(character: str) -> str:
+    """`ᵢ` → `<sub>i</sub>`, `ⁿ` → `<super>n</super>`; empty for any other character."""
+    tag, _, code = unicodedata.decomposition(character).partition(" ")
+    if tag not in ("<sub>", "<super>") or not code:
+        return ""
+    base = _escape(chr(int(code.split()[0], 16)))
+    return f"<sub>{base}</sub>" if tag == "<sub>" else f"<super>{base}</super>"
+
+
 def _with_fallback(markup: str, font: str) -> str:
     """`markup` with every run of characters `font` cannot draw set in the gothic face.
 
     reportlab has no per-glyph fallback: NanumMyeongjo has no Hanja at all, so a serif
     PDF printed `漢字` as boxes. NanumGothic covers the KS X 1001 Hanja."""
+    # 「Σᵢ wᵢ」: sub- and superscript letters are set as such; the faces lack most of them.
+    if _SCRIPT_LETTER.search(markup):
+        markup = "".join(
+            part if part.startswith("<") else _SCRIPT_LETTER.sub(
+                lambda m: _script_markup(m.group(0)) or m.group(0), part
+            )
+            for part in _MARKUP.split(markup)
+        )
     if font not in _GLYPHS:
         _GLYPHS[font] = _glyphs(font)
     have = _GLYPHS[font]
@@ -3178,7 +3210,12 @@ def to_pdf(
             if kind == "table":
                 accent = HexColor(style["accent"]) if style else HexColor("#5b5bd6")
                 if drawn := _pdf_table(text, styles, accent, text_width):
-                    story.append(Spacer(1, 2 * mm))
+                    gap = Spacer(1, 2 * mm)
+                    # A 「표 1.」 caption above the table goes to the page the table starts on.
+                    if story and _is_table_caption(story[-1]):
+                        story[-1].keepWithNext = 1
+                        gap.keepWithNext = 1
+                    story.append(gap)
                     story.append(drawn)
                     story.append(Spacer(1, 3 * mm))
                 continue

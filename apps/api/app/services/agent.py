@@ -483,7 +483,9 @@ _MATERIAL = re.compile(r"^\[(\d{1,3})\] 자료: (.{1,300})$")
 MATERIAL_SOURCE = "material:"
 
 
-def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> str:
+def _number_sources(
+    content: str, sources: list[str], call: dict[str, Any], titles: dict[str, str] | None = None
+) -> str:
     """Renumbers the `[n]` entries of a tool result so the numbers run across
     the whole turn, registering each URL in `sources`; a page fetched by URL
     gets a number of its own at the top. The model cites these numbers."""
@@ -503,6 +505,8 @@ def _number_sources(content: str, sources: list[str], call: dict[str, Any]) -> s
         url = lines[i + 1].strip().rstrip(".,;:")
         if _URL.fullmatch(url):
             lines[i] = f"[{_source_number(url, sources)}] {match.group(2)}"
+            if titles is not None and (title := match.group(2).strip()) and url not in titles:
+                titles[url] = title
     content = "\n".join(lines)
     if call["name"] == "fetch_url" and not content.startswith("오류:"):
         try:
@@ -586,12 +590,16 @@ def _is_homepage(url: str) -> bool:
     return bool(parsed.netloc) and parsed.path in ("", "/")
 
 
-def _source_label(url: str) -> str:
-    """`host · last path segment` for a source list entry."""
+def _source_label(url: str, title: str = "") -> str:
+    """`title · host` for a source list entry, else `host · last path segment`."""
     from urllib.parse import unquote, urlparse
 
     parsed = urlparse(url)
     host = parsed.netloc.removeprefix("www.")
+    # The search result's own title: 「SelfCheckGPT: Zero-Resource … · arxiv.org」, not a slug.
+    title = re.sub(r"\s+", " ", title or "").strip().replace("[", "(").replace("]", ")")
+    if title and not _URL.fullmatch(title) and title != url:
+        return f"{title[:90]}{'…' if len(title) > 90 else ''} · {host}"
     leaf = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1]).replace("-", " ")
     leaf = re.sub(r"\s+", " ", leaf).strip()
     return f"{host} · {leaf[:48]}" if leaf and leaf.lower() not in {"index.html", "index"} else host
@@ -814,6 +822,8 @@ async def run_turn(
     arithmetic_evidence: dict[tuple[str, str], asyncio.Future[ToolResult | None]] = {}
     #: URLs the tools returned, in the order the model saw them numbered.
     sources: list[str] = []
+    #: The search results' titles by URL, for the 출처 list.
+    source_titles: dict[str, str] = {}
     answer_text: list[str] = []
     searches = 0
     empty_searches = 0
@@ -1339,7 +1349,7 @@ async def run_turn(
             }
             if not result.failed and call["name"] != "web_search":
                 ctx.outputs.append(result.content)
-            result.content = _number_sources(result.content, sources, call)
+            result.content = _number_sources(result.content, sources, call, source_titles)
             conversation.append(
                 {
                     "role": "tool",
@@ -1490,7 +1500,8 @@ async def run_turn(
         appendix = "\n\n### 출처\n" + "\n".join(
             f"- [{n}] {sources[n - 1].removeprefix(MATERIAL_SOURCE)}"
             if sources[n - 1].startswith(MATERIAL_SOURCE)
-            else f"- [{n}] [{_source_label(sources[n - 1])}]({sources[n - 1]})"
+            else f"- [{n}] [{_source_label(sources[n - 1], source_titles.get(sources[n - 1], ''))}]"
+            f"({sources[n - 1]})"
             for n in cited
         )
         answer_text.append(appendix)

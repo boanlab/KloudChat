@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { PendingPlan, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { layoutLabel } from '@/components/slides/patterns'
 
 /** Clarification or outline approval before artifact generation. */
 export function ProposalCard({
@@ -244,7 +245,7 @@ export function ProposalCard({
               aria-label={t('{n}번 제목').replace('{n}', String(i + 1))}
               className="min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-1.5 py-0.5 hover:border-line focus:border-accent focus:bg-panel focus:outline-none"
             />
-            {item.layout && <Badge>{item.layout}</Badge>}
+            {layoutLabel(item.layout) && <Badge>{t(layoutLabel(item.layout) ?? '')}</Badge>}
             <Button
               variant="ghost"
               size="icon"
@@ -314,11 +315,18 @@ export function ProposalCard({
           </Button>
         )}
       </div>
+      {streaming ? (
+        // Accepted and being written: a status, not a button that cannot be pressed.
+        <p role="status" className="mt-3 flex items-center gap-1.5 text-sm text-muted">
+          <Loader2 size={13} className="animate-spin" />
+          {kind === 'slides' ? t('이 구성으로 만드는 중…') : t('이 개요로 쓰는 중…')}
+        </p>
+      ) : (
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="primary"
           size="sm"
-          disabled={streaming || items.every((i) => !i.title.trim())}
+          disabled={items.every((i) => !i.title.trim())}
           onClick={() =>
             run(
               { approve: true, ...(dirty ? { plan: asPlan() } : {}) },
@@ -326,17 +334,14 @@ export function ProposalCard({
             )
           }
         >
-          {streaming ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <CircleCheck size={13} />
-          )}
+          <CircleCheck size={13} />
           {dirty ? t('고친 대로 생성') : t('이대로 생성')}
         </Button>
         <span className="text-sm text-muted">
           {t('제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.')}
         </span>
       </div>
+      )}
     </Shell>
   )
 }

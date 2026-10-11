@@ -408,8 +408,11 @@ def build_messages(
         (str(m.get("content") or "") for m in reversed(history) if m.get("role") == "user"), ""
     )
     rules = list(extra or [])
+    standing = standing_directives(history) if remind_standing else []
     if rule := language_rule(asked if isinstance(asked, str) else ""):
         rules.append(rule.replace("write the entire output", "write the entire answer"))
+    elif rule := standing_language_rule(standing, asked if isinstance(asked, str) else ""):
+        rules.append(rule)
     prompt = system_prompt(
         kind,
         with_tools=with_tools,
@@ -436,7 +439,6 @@ def build_messages(
     last_user = next(
         (i for i in range(len(history) - 1, -1, -1) if history[i].get("role") == "user"), None
     )
-    standing = standing_directives(history) if remind_standing else []
     if (attached or standing) and last_user is not None:
         messages.extend(history[:last_user])
         if attached:
@@ -498,6 +500,36 @@ def standing_directives(history: list[dict[str, str]]) -> list[str]:
         if _STANDING_RE.search(text):
             found.append(text[:_STANDING_CHARS])
     return found[-_STANDING_MAX:]
+
+
+#: An answer language a message asks for: 「영어로」, 「in English」, 「한국어로」.
+_ASKS_ENGLISH = re.compile(r"영어로|영문으로|\bin\s+English\b", re.I)
+_ASKS_KOREAN = re.compile(r"한국어로|한글로|우리말로|\bin\s+Korean\b", re.I)
+
+
+def standing_language_rule(standing: list[str], asked: str) -> str:
+    """The answer language a standing directive set, as a system rule; empty otherwise.
+
+    The chat default answers in the question's language, so a Korean question after
+    「지금부터 답은 영어로만」 pulled the answer back to Korean (research lane, R-10). The
+    latest question naming a language itself wins.
+    """
+    if _ASKS_ENGLISH.search(asked) or _ASKS_KOREAN.search(asked):
+        return ""
+    language = ""
+    for line in standing:
+        if _ASKS_ENGLISH.search(line):
+            language = "en"
+        elif _ASKS_KOREAN.search(line):
+            language = "ko"
+    if language != "en":
+        return ""
+    return (
+        "Earlier in this conversation the user asked for every answer in English and has "
+        "not withdrawn it. Write the entire answer in English, even when the question is "
+        "in Korean — headings, table headers, lists, everything. The structural rules still "
+        "apply; the Korean style rules (합니다체, 한글 표기) do not."
+    )
 
 
 def standing_block(directives: list[str]) -> str:

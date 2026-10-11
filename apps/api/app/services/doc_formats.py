@@ -58,6 +58,9 @@ class DocFormat:
     lists: str = ""
     #: 「끝.」 after the body or the 붙임 list (시행규칙 제4조제5항).
     closing: bool = False
+    #: Fields shown only when the material gives them: 「지도교수」 heads a student's plan, not
+    #: a professor's.
+    optional: tuple[str, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -113,7 +116,8 @@ FORMATS: tuple[DocFormat, ...] = (
     DocFormat(
         "plan", "연구·조사 계획서",
         r"(?:연구|조사)\s{0,3}계획|연구\s{0,3}제안서",
-        ("과제명", "연구자", "소속", "지도교수", "작성일"), head="cover",
+        ("과제명", "연구자", "소속", "연구 기간", "지도교수", "작성일"), head="cover",
+        optional=("연구 기간", "지도교수"),
     ),
     DocFormat(
         "event_plan", "추진 계획(안)",
@@ -421,6 +425,7 @@ def title_block(
 
     fields = [[name, grounded((read or {}).get(name)) or grounded(raw.get(name))]
               for name in fmt.fields]
+    fields = [[name, value] for name, value in fields if value or name not in fmt.optional]
     block: dict[str, Any] = {
         "format": fmt.id,
         "label": fmt.label,

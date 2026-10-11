@@ -161,8 +161,9 @@ async def test_numbers_run_across_searches_and_citations_become_links(monkeypatc
     )
     assert "[9]는 그대로" in text
     assert "### 출처" in text
-    assert "- [1] [example.go.kr · 2026](https://example.go.kr/policy/2026)" in text
-    assert "- [3] [journal.example.org · 42](https://journal.example.org/article/42)" in text
+    # Named by the search results' titles, not the address's last segment.
+    assert "- [1] [정책 문서 · example.go.kr](https://example.go.kr/policy/2026)" in text
+    assert "- [3] [논문 · journal.example.org](https://journal.example.org/article/42)" in text
     assert "### 확인한 출처" not in text
     assert "검색·열람한 결과에 없던" not in text
 

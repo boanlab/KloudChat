@@ -417,7 +417,7 @@ export function ProjectDetailPage() {
             <div>
               <p className="text-base font-medium">{t('기본 템플릿')}</p>
               <p className="text-sm text-muted">
-                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 모양으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
+                {t('이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.')}
               </p>
             </div>
             {formatSurfaces.map((kind) => (
@@ -439,7 +439,7 @@ export function ProjectDetailPage() {
                   }
                   className="h-9 w-full rounded-control border border-line bg-panel px-3 text-base focus:border-accent focus:outline-none"
                 >
-                  <option value="">{t('사용 안 함 — 기본 모양')}</option>
+                  <option value="">{t('사용 안 함 — 기본 템플릿')}</option>
                   {formats
                     .filter((row) => row.surface === kind && (isListed(row) || row.id === project.renderTemplates[kind]))
                     .map((row) => (

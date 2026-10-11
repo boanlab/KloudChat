@@ -164,7 +164,8 @@ function Evidence({ evidence }: { evidence: StageEvidence }) {
 }
 
 function seconds(ms?: number) {
-  if (ms === undefined) return null
+  // A step that took no measurable time says nothing with 「0ms」.
+  if (ms === undefined || ms < 1) return null
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
 

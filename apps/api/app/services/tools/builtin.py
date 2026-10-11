@@ -7,6 +7,7 @@ Backend addresses come from `settings_store.tools_config`; a tool with no addres
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
 from datetime import date
@@ -24,6 +25,7 @@ from app.services import (
     kci,
     knowledge,
     netguard,
+    sandbox,
     settings_store,
     tools_gateway,
 )
@@ -1115,6 +1117,77 @@ def _is_prose(kind: str, content: str, language: str) -> bool:
     return {tag.group(1).lower() for tag in _TAG_NAME.finditer(content)} <= _PROSE_TAGS
 
 
+#: An image a document points at by file name: `<img src="x.png">` or `![](x.png)`.
+_IMAGE_REF = re.compile(
+    r"""(?P<head><img\b[^>]*?\bsrc\s*=\s*)(?P<q>["']?)(?P<src>[^"'\s>]+)(?P=q)"""
+    r"|(?P<mhead>!\[[^\]]*\]\()(?P<msrc>[^)\s]+)(?=[)\s])",
+    re.I,
+)
+_IMAGE_TYPES = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "svg": "image/svg+xml",
+}
+#: A chart larger than this is not carried inside the document.
+_INLINE_IMAGE_MAX = 4 * 1024 * 1024
+
+
+def _local_name(src: str) -> str | None:
+    """The file name a relative image reference names, or None for a URL or data URI."""
+    if re.match(r"^(?:[a-z][\w+.-]*:|//|#)", src, re.I):
+        return None
+    name = src.split("?")[0].split("#")[0].rstrip("/").rsplit("/", 1)[-1]
+    return name or None
+
+
+async def _inline_images(content: str, ctx: ToolContext) -> tuple[str, list[str]]:
+    """Embeds the chat's own image files a document names; returns the names not found.
+
+    A chart the code step wrote lives in the chat's files, not next to the document, so
+    `<img src="scatter.png">` would show a broken picture in the panel and the download.
+    """
+    refs = {
+        name
+        for m in _IMAGE_REF.finditer(content)
+        if (name := _local_name(m.group("src") or m.group("msrc") or ""))
+    }
+    if not refs:
+        return content, []
+    files = await sandbox.session_files(ctx.user_id, ctx.session_id)
+    by_name: dict[str, sandbox.InputFile] = {}
+    for file in files:  # newest first: the latest chart of a name wins
+        by_name.setdefault(file.name, file)
+        by_name.setdefault(file.name.lower(), file)
+    uris: dict[str, str] = {}
+    missing: list[str] = []
+    for name in sorted(refs):
+        file = by_name.get(name) or by_name.get(name.lower())
+        mime = _IMAGE_TYPES.get(name.rsplit(".", 1)[-1].lower()) if "." in name else None
+        if file is None or mime is None or file.size > _INLINE_IMAGE_MAX:
+            missing.append(name)
+            continue
+        try:
+            data = sandbox.read_input(file)
+        except OSError:
+            missing.append(name)
+            continue
+        uris[name] = f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+
+    def swap(m: re.Match[str]) -> str:
+        src = m.group("src") or m.group("msrc") or ""
+        uri = uris.get(_local_name(src) or "")
+        if uri is None:
+            return m.group(0)
+        if m.group("head") is not None:
+            return f'{m.group("head")}"{uri}"'
+        return f"{m.group('mhead')}{uri}"
+
+    return _IMAGE_REF.sub(swap, content), missing
+
+
 async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
     """Records an artifact for the turn to store once it finishes."""
     kind = str(args.get("kind") or "").strip().lower()
@@ -1152,6 +1225,24 @@ async def create_artifact(args: dict[str, Any], ctx: ToolContext) -> ToolResult:
                 "userRequested 를 true 로 두고 다시 부르세요."
             ),
             detail="답변에 직접 적기",
+        )
+
+    content, missing = await _inline_images(content, ctx)
+    if missing:
+        have = [
+            f.name for f in await sandbox.session_files(ctx.user_id, ctx.session_id)
+            if "." in f.name and f.name.rsplit(".", 1)[-1].lower() in _IMAGE_TYPES
+        ]
+        listed = ", ".join(f"「{n}」" for n in dict.fromkeys(have)) or "없음"
+        return ToolResult(
+            content=(
+                f"'{title}' 은 만들지 않았습니다. 문서가 가리키는 그림 "
+                f"{', '.join(f'「{n}」' for n in missing)} 이 이 대화의 파일에 없습니다(있는 그림: "
+                f"{listed}). 코드로 그린 그림은 outputs/ 에 쓴 파일 이름 그대로 src 에 적으면 "
+                "문서 안에 넣어 드립니다. 그림을 다시 그리거나 이름을 맞춰 다시 부르세요. 그림 "
+                "없이 만든다면 답변에 그림을 넣었다고 쓰지 마세요."
+            ),
+            detail="그림 파일을 찾지 못함",
         )
 
     ctx.pending_artifacts.append(
@@ -1217,7 +1308,9 @@ CREATE_ARTIFACT = Tool(
                     "form submit과 이를 통한 외부 요청은 차단되므로 "
                     'type="button"과 click/input 이벤트로 계산·검증을 구현하세요. '
                     "localStorage나 부모 창(parent) 접근에 의존하지 말고, "
-                    "내려받은 파일도 작동하도록 CSS/JS를 같은 문서에 담으세요."
+                    "내려받은 파일도 작동하도록 CSS/JS를 같은 문서에 담으세요. "
+                    "코드 실행으로 만든 그림은 그 파일 이름 그대로 "
+                    '<img src="chart.png"> 처럼 적으면 문서 안에 넣어 드립니다.'
                 ),
             },
             "language": {

@@ -121,6 +121,22 @@ test('a tab with nothing of the person\'s own opens on 탐색', async ({ page },
   expect(state.unexpected).toEqual([])
 })
 
+test('탐색 says it is loading, not empty, until the lists answer, and shows each card once', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { listDelayMs: 1500 })
+  for (const tab of ['agents', 'skills']) {
+    await page.goto(`/customize?tab=${tab}&view=explore`)
+    await expect(page.getByRole('status').filter({ hasText: '불러오는 중' })).toBeVisible()
+    await expect(page.getByText(/아직 공유된 .* 항목이 없습니다/)).toHaveCount(0)
+    await expect(page.getByRole('status').filter({ hasText: '불러오는 중' })).toHaveCount(0, { timeout: 15_000 })
+    // A card in 가장 많이 추가된 is not repeated under 새.
+    const cards = page.getByTestId('item-card')
+    await expect(cards.first()).toBeVisible()
+    const keys = await cards.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-item')))
+    expect(new Set(keys).size).toBe(keys.length)
+  }
+  expect(state.unexpected).toEqual([])
+})
+
 const redirects: [string, RegExp][] = [
   ['/agents', /\/customize\?tab=agents$/],
   ['/skills', /\/customize\?tab=skills$/],
