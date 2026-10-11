@@ -9,6 +9,16 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 프로젝트 · 웹 자료 · 참고 파일
+  'http:// 또는 https://로 시작하는 주소를 입력하세요.': 'Enter an address that starts with http:// or https://.',
+  '웹페이지 주소를 입력하세요.': 'Enter the web page address.',
+  '이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.': 'This address cannot be opened (no such host). Check it, or save the page as a PDF and upload that.',
+  '내부 네트워크 주소는 읽을 수 없습니다. 페이지를 PDF로 저장해 올리세요.': 'Internal network addresses cannot be read. Save the page as a PDF and upload that.',
+  '이 페이지에서 글을 읽지 못했습니다. 페이지를 PDF로 저장해 올리세요.': 'No text could be read from this page. Save it as a PDF and upload that.',
+  '웹페이지 읽기가 꺼져 있습니다. 관리자에게 문의하거나 PDF로 저장해 올리세요.': 'Reading web pages is turned off. Ask an administrator, or save the page as a PDF and upload that.',
+  '웹페이지를 읽어 오지 못했습니다. 주소를 확인하거나 PDF로 저장해 올리세요.': 'Could not read the web page. Check the address, or save it as a PDF and upload that.',
+  '{name}: 빈 파일이라 올리지 않았습니다.': '{name}: empty, so it was not uploaded.',
+  '{name}: 실행 파일은 읽을 수 없어 올리지 않았습니다. 문서·PDF·텍스트 파일을 올리세요.': '{name}: programs cannot be read, so it was not uploaded. Upload documents, PDFs or text files.',
   // 관리자 · 월 크레딧
   '{name}의 월 크레딧을 {n}{로} 바꿨습니다.': 'Set {name}\'s monthly credits to {n}{로}.',
   '월 크레딧을 바꾸지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not change the monthly credits. Try again shortly.',

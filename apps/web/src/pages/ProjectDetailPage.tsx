@@ -20,7 +20,7 @@ import {
   Textarea,
   useMenuClose,
 } from '@/components/ui'
-import { downloadFile, errorMessage, templateText } from '@/lib/api'
+import { ApiError, downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
@@ -37,6 +37,7 @@ import { startFailure } from '@/lib/failures'
 import type { MemoryEntry } from '@/types'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
+import { KNOWLEDGE_ACCEPT, knowledgeRefusal } from '@/lib/knowledgeFiles'
 
 type Tab = 'sessions' | 'knowledge' | 'skills' | 'memory'
 
@@ -105,6 +106,8 @@ export function ProjectDetailPage() {
   const [uploading, setUploading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [urlOpen, setUrlOpen] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const urlInputRef = useRef<HTMLInputElement>(null)
   const [urlDraft, setUrlDraft] = useState('')
   const [urlBusy, setUrlBusy] = useState(false)
   const [expandedFile, setExpandedFile] = useState<string | null>(null)
@@ -155,13 +158,24 @@ export function ProjectDetailPage() {
 
   const addKnowledgeFiles = async (picked: File[]) => {
     if (!picked.length) return
+    const problems: string[] = []
+    const readable = picked.filter((file) => {
+      const refusal = knowledgeRefusal(file, t)
+      if (refusal) problems.push(refusal)
+      return !refusal
+    })
+    setFileError(problems.length ? problems.join(' ') : null)
+    if (!readable.length) return
     setUploading(true)
     try {
-      for (const file of picked) {
-        await uploadFile(file, { projectId: project.id }).catch(() => null)
+      for (const file of readable) {
+        await uploadFile(file, { projectId: project.id }).catch((err) => {
+          problems.push(`${file.name}: ${errorMessage(err, t('올리지 못했습니다.'))}`)
+        })
       }
     } finally {
       setUploading(false)
+      setFileError(problems.length ? problems.join(' ') : null)
     }
   }
   addKnowledgeRef.current = addKnowledgeFiles
@@ -176,16 +190,28 @@ export function ProjectDetailPage() {
   }
 
   const saveUrl = async () => {
+    if (urlBusy) return
     const url = urlDraft.trim()
-    if (!/^https?:\/\//i.test(url)) return
+    if (!/^https?:\/\/\S+/i.test(url)) {
+      setUrlError(
+        url
+          ? t('http:// 또는 https://로 시작하는 주소를 입력하세요.')
+          : t('웹페이지 주소를 입력하세요.'),
+      )
+      urlInputRef.current?.focus()
+      return
+    }
     setUrlBusy(true)
-    setFileError(null)
+    setUrlError(null)
     try {
       await addProjectUrl(project.id, url)
       setUrlDraft('')
       setUrlOpen(false)
     } catch (err) {
-      setFileError(errorMessage(err, t('웹페이지를 읽어 오지 못했습니다.')))
+      setUrlError(urlFailure(err, t))
+      // Back to the address, selected, so it can be corrected in place.
+      urlInputRef.current?.focus()
+      urlInputRef.current?.select()
     } finally {
       setUrlBusy(false)
     }
@@ -206,21 +232,45 @@ export function ProjectDetailPage() {
       />
       <Modal
         open={urlOpen}
-        onClose={() => !urlBusy && setUrlOpen(false)}
+        onClose={() => {
+          if (urlBusy) return
+          setUrlOpen(false)
+          setUrlError(null)
+        }}
         title={t('웹 자료 추가')}
         description={t('페이지를 지금 읽어 프로젝트에 보관합니다. 이후 원문이 바뀌어도 작업에는 저장된 내용이 사용됩니다.')}
         footer={
           <>
             <Button onClick={() => setUrlOpen(false)} disabled={urlBusy}>{t('취소')}</Button>
-            <Button variant="primary" onClick={() => void saveUrl()} disabled={urlBusy || !/^https?:\/\//i.test(urlDraft.trim())}>
+            <Button variant="primary" onClick={() => void saveUrl()} aria-busy={urlBusy || undefined}>
+              {urlBusy && <Loader2 size={14} className="animate-spin" aria-hidden />}
               {urlBusy ? t('읽는 중…') : t('읽어서 보관')}
             </Button>
           </>
         }
       >
-        <Field label={t('웹페이지 주소')}>
-          <Input value={urlDraft} onChange={(event) => setUrlDraft(event.target.value)} placeholder="https://example.com/report" autoFocus />
-        </Field>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault()
+            void saveUrl()
+          }}
+        >
+          <Field label={t('웹페이지 주소')} required error={urlError}>
+            <Input
+              ref={urlInputRef}
+              type="url"
+              inputMode="url"
+              value={urlDraft}
+              onChange={(event) => {
+                setUrlDraft(event.target.value)
+                setUrlError(null)
+              }}
+              placeholder="https://example.com/report"
+              autoFocus
+            />
+          </Field>
+        </form>
       </Modal>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -579,6 +629,7 @@ export function ProjectDetailPage() {
                   ref={fileInput}
                   type="file"
                   multiple
+                  accept={KNOWLEDGE_ACCEPT}
                   className="hidden"
                   aria-label={t('지식 파일 선택')}
                   onChange={(e) => {
@@ -664,7 +715,7 @@ export function ProjectDetailPage() {
                   </Card>
                 ))
               )}
-              {fileError && <p className="text-base text-danger">{fileError}</p>}
+              {fileError && <p role="alert" className="text-base text-danger">{fileError}</p>}
             </div>
           )}
 
@@ -814,4 +865,22 @@ export function ProjectDetailPage() {
       />
     </>
   )
+}
+
+/** Why a web page could not be kept, with what to do instead; said inside the dialog. */
+function urlFailure(err: unknown, t: (text: string) => string): string {
+  const detail = err instanceof ApiError ? err.detail : ''
+  if (detail === '주소의 호스트를 찾을 수 없습니다.') {
+    return t('이 주소를 열 수 없습니다(호스트 없음). 주소를 확인하거나 PDF로 저장해 올리세요.')
+  }
+  if (detail === '내부 네트워크 주소는 읽을 수 없습니다.') {
+    return t('내부 네트워크 주소는 읽을 수 없습니다. 페이지를 PDF로 저장해 올리세요.')
+  }
+  if (detail === 'page_unreadable') {
+    return t('이 페이지에서 글을 읽지 못했습니다. 페이지를 PDF로 저장해 올리세요.')
+  }
+  if (detail === 'fetch_unavailable') {
+    return t('웹페이지 읽기가 꺼져 있습니다. 관리자에게 문의하거나 PDF로 저장해 올리세요.')
+  }
+  return errorMessage(err, t('웹페이지를 읽어 오지 못했습니다. 주소를 확인하거나 PDF로 저장해 올리세요.'))
 }

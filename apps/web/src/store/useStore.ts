@@ -83,7 +83,7 @@ import type {
   ToolCatalogEntry,
   User,
 } from '@/types'
-import { uid } from '@/lib/utils'
+import { fileSize, uid } from '@/lib/utils'
 import { DEFAULT_PASSWORD_MIN } from '@/lib/formCheck'
 import { currentLang, translate, type Lang } from '@/lib/i18n'
 import { counters } from '@/lib/usage'
@@ -2900,8 +2900,8 @@ function toSession(raw: SessionRow, keepMessages?: Message[]): Session {
 
 /* ── wire row → component shape ──────────────────────────────────────── */
 
-const bytes = (n: number) =>
-  n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+/** Exact for small files: an empty one reads 「0 B」, not 「1 KB」. */
+const bytes = (n: number) => fileSize(n)
 
 function toProjectFile(f: FileRow): ProjectFile {
   return {
