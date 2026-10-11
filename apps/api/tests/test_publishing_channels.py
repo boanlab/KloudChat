@@ -440,6 +440,10 @@ async def test_closing_the_outside_audience_closes_every_channel_at_once(world):
 
 async def test_a_paused_or_revoked_bot_answers_no_channel(world):
     pub, key = await _with_api(world)
+    world.user = None
+    long = await _complete(world, key, pub["slug"], "가" * 8001)
+    # One question over the limit is too long itself, not a conversation carried too far.
+    assert long.status_code == 400 and long.json()["error"]["code"] == "too_long"
     world.as_("admin")
     await world.client.post(f"/admin/publications/{pub['id']}/status",
                             json={"status": "paused", "reason": "확인 중입니다"})

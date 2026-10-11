@@ -259,6 +259,9 @@ async def _turn(db: DbSession, request: Request, pub: Publication, key: Publicat
     version = await _version(db, pub)
     limits = publishing.limits_of(pub)
     content = _with_record(history, question)
+    if len(question) > limits["maxInputChars"]:
+        # The question alone is over: shortening it, not the conversation, is the fix.
+        raise Failed(400, "too_long", _MESSAGES["too_long"])
     if len(history) > _HISTORY_MAX or len(content) > limits["maxInputChars"]:
         raise Failed(400, "history_too_long",
                      "The conversation carried is too long; continue it with the "
