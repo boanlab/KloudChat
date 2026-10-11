@@ -122,6 +122,7 @@ export function AppShell() {
   // The phone drawer is a modal: focus moves into it, Escape closes it, and focus returns to
   // what opened it. The page behind is `inert` meanwhile, so Tab cannot wander there.
   const drawer = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
   const drawerOpen = narrow && open
   useEffect(() => {
     if (!drawerOpen) return
@@ -144,6 +145,17 @@ export function AppShell() {
 
   return (
     <div className="relative flex h-full overflow-hidden bg-bg text-fg">
+      {/* First stop for a keyboard: past the sidebar's links to the screen itself. */}
+      <a
+        href="#main"
+        onClick={(e) => {
+          e.preventDefault()
+          mainRef.current?.focus()
+        }}
+        className="sr-only z-[200] rounded-control bg-accent px-3 py-2 text-base font-medium text-accent-fg focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+      >
+        {t('본문으로 건너뛰기')}
+      </a>
       {/* The drawer stays mounted and slides; transitions collapse under the reduced-motion guard in index.css. */}
       {narrow && (
         <button
@@ -185,7 +197,13 @@ export function AppShell() {
       >
         <Sidebar />
       </div>
-      <main className="flex min-w-0 flex-1 flex-col" inert={drawerOpen ? true : undefined}>
+      <main
+        id="main"
+        ref={mainRef}
+        tabIndex={-1}
+        className="flex min-w-0 flex-1 flex-col outline-none"
+        inert={drawerOpen ? true : undefined}
+      >
         <Outlet />
       </main>
       <UndoBar />
