@@ -133,11 +133,13 @@ export function AgentCreatePage() {
   const defaultModel =
     [...models].filter((m) => m.kinds.includes('chat')).sort((a, b) => a.creditCost - b.creditCost)[0]?.id ?? ''
   const { draft, error, decided, retry } = useSessionDraft()
+  // The form opens without waiting for the models: only its 모델 field waits, and fills in the
+  // default when they arrive (`AgentForm`'s `defaultModel`).
   const initial = useMemo(() => {
-    if (models.length === 0 || draft === undefined) return null
-    const blank = emptyAgent(defaultModel)
+    if (draft === undefined) return null
+    const blank = emptyAgent('')
     return draft ? fromDraft(blank, draft) : blank
-  }, [models.length, defaultModel, draft])
+  }, [draft])
   const initialProcess: ProcessDraft | undefined = draft
     ? { mode: draft.mode, base: draft.base, bundles: draft.bundles, steps: [] }
     : undefined
@@ -163,11 +165,12 @@ export function AgentCreatePage() {
             draftFiles={draft?.files ?? []}
             addedPrompt={decided.prompt}
             creating
+            defaultModel={defaultModel}
             onSaved={(saved) => navigate(`/customize/agents/${saved.id}`, { replace: true })}
             onCancel={() => navigate('/customize?tab=agents')}
           />
         ) : (
-          <LoadingState label={draft === undefined ? t('대화를 읽는 중입니다') : t('모델 목록을 불러오는 중입니다')} />
+          <LoadingState label={t('대화를 읽는 중입니다')} />
         )}
         </div>
       </PageBody>

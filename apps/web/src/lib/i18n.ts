@@ -9,6 +9,14 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 불러오기 · 다시 시도
+  '불러오지 못했습니다.': 'Could not load.',
+  '평소보다 오래 걸립니다.': 'This is taking longer than usual.',
+  '기본 과정을 불러오지 못했습니다.': 'Could not load the standard processes.',
+  '기본 과정을 불러오는 중… 평소보다 오래 걸립니다.': 'Loading the standard processes… this is taking longer than usual.',
+  '모델 목록을 불러오는 중…': 'Loading models…',
+  '모델 목록을 불러오지 못했습니다.': 'Could not load the models.',
+  '기록을 불러오지 못했습니다.': 'Could not load the records.',
   // 필수 칸 · 스킬 · 템플릿 · 프로젝트
   '프로젝트를 만들지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not create the project. Try again shortly.',
   '모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.': 'The model follows these in order. Write one numbered step per line.',

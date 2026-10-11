@@ -1156,8 +1156,8 @@ export const useStore = create<State>((set, get) => ({
   },
   apiKeys: null,
   loadApiKeys: async () => {
-    const rows = await keysApi.list().catch(() => null)
-    if (rows) set({ apiKeys: rows })
+    // Throws: the 키 screen shows the failure with 다시 시도 instead of loading forever.
+    set({ apiKeys: await keysApi.list() })
   },
   createApiKey: async (name) => {
     const row = await keysApi.create(name)

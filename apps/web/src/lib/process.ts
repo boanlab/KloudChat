@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { processApi, userPipelinesApi } from '@/lib/api'
+import { useResource, type Resource } from '@/lib/useResource'
 import type { Agent, BundleSelection, GapQuestion, PipelineStep, PipelineVerdict, ProcessCatalogue, ProcessMode } from '@/types'
 
 /** The agent's own step in its 직접 구성 or a 묶음: it runs that agent's own flow. */
@@ -25,26 +26,30 @@ export function processOf(agent: Agent): ProcessDraft {
   return { mode: p.mode, base: p.base, bundles: p.bundles ?? [], steps: bareSteps(p.steps ?? []) }
 }
 
-/** The bases and the 묶음 a person may tick, fetched once per page. */
-let catalogue: Promise<ProcessCatalogue | null> | null = null
+/** The bases and the 묶음 a person may tick, fetched once per page; a failure is not kept. */
+let catalogue: Promise<ProcessCatalogue> | null = null
 export function reloadProcessCatalogue() {
   catalogue = null
 }
-export function useProcessCatalogue(version = 0) {
-  const [value, setValue] = useState<ProcessCatalogue | null>(null)
-  useEffect(() => {
-    let current = true
+function fetchCatalogue(): Promise<ProcessCatalogue> {
+  catalogue ??= processApi.bases().catch((err: unknown) => {
+    catalogue = null
+    throw err
+  })
+  return catalogue
+}
+
+/** The catalogue as a `Resource`: loading, failed (with 다시 시도), or here. */
+export function useProcessCatalogueState(version = 0): Resource<ProcessCatalogue> {
+  return useResource(() => {
     if (version > 0) catalogue = null
-    catalogue ??= processApi.bases().catch(() => {
-      catalogue = null
-      return null
-    })
-    void catalogue.then((v) => current && setValue(v))
-    return () => {
-      current = false
-    }
+    return fetchCatalogue()
   }, [version])
-  return value
+}
+
+/** The catalogue, or null while it loads or after it failed. */
+export function useProcessCatalogue(version = 0) {
+  return useProcessCatalogueState(version).data
 }
 
 /** The server's verdict on an agent's own steps, refreshed as they change. */

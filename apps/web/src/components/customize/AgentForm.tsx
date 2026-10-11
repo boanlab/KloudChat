@@ -7,7 +7,7 @@ import { gapFieldId, gapProblems, type GapProblem } from '@/lib/gapQuestions'
 import { ProcessSection } from '@/components/agents/ProcessSection'
 import { fullSettings, ProcessSettingsEditor } from '@/components/agents/ProcessSettingsEditor'
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
-import { Button, Field, Input, Select, Textarea } from '@/components/ui'
+import { Button, Field, Input, ResourceStatus, Select, Textarea } from '@/components/ui'
 import { agentSaveError, type AgentErrorPlace } from '@/lib/agentErrors'
 import { agentsApi, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
@@ -193,6 +193,7 @@ export function AgentForm({
   initialProcess,
   draftFiles = [],
   addedPrompt = '',
+  defaultModel = '',
 }: {
   initial: Agent
   creating: boolean
@@ -206,10 +207,14 @@ export function AgentForm({
   draftFiles?: { id: string; name: string; size: number }[]
   /** 「에이전트로 저장」: the 지시 section distilled after the form opened, added once. */
   addedPrompt?: string
+  /** A new agent's model once the list arrives; set only while nobody has picked one. */
+  defaultModel?: string
 }) {
   const t = useT()
   const agents = useStore((s) => s.agents)
   const models = useStore((s) => s.models)
+  const modelsLoading = useStore((s) => s.modelsLoading)
+  const loadModels = useStore((s) => s.loadModels)
   const skills = useStore((s) => s.skills)
   const availableTools = useStore((s) => s.availableTools)
   const designs = useStore((s) => s.designs)
@@ -260,6 +265,14 @@ export function AgentForm({
     setDone(false)
     setDraft(next)
   }
+
+  // The model list may arrive after the form opened: its default fills the untouched field once.
+  const modelPicked = useRef(!creating)
+  useEffect(() => {
+    if (modelPicked.current || !defaultModel) return
+    modelPicked.current = true
+    setDraft((d) => (d.model ? d : { ...d, model: defaultModel }))
+  }, [defaultModel])
 
   // The distillation arrives after the form is usable: added below whatever is written by then.
   const added = useRef('')
@@ -708,14 +721,34 @@ export function AgentForm({
               </Select>
             </Field>
             <Field label={t('모델')}>
-              <Select value={draft.model} onChange={(e) => edit({ ...draft, model: e.target.value })}>
-                <option value="">{t('화면 기본 모델')}</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
+              {models.length === 0 ? (
+                // Only this field waits for the list; a failed load says so and can be asked again.
+                <ResourceStatus
+                  compact
+                  resource={{
+                    status: modelsLoading ? 'loading' : 'error',
+                    slow: false,
+                    reload: () => void loadModels(),
+                  }}
+                  label={t('모델 목록을 불러오는 중…')}
+                  failed={t('모델 목록을 불러오지 못했습니다.')}
+                />
+              ) : (
+                <Select
+                  value={draft.model}
+                  onChange={(e) => {
+                    modelPicked.current = true
+                    edit({ ...draft, model: e.target.value })
+                  }}
+                >
+                  <option value="">{t('화면 기본 모델')}</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </Field>
             <Field
               label={`${t('다양성')} — ${draft.temperature}`}

@@ -799,6 +799,48 @@ export function LoadingState({ label }: { label?: string }) {
   )
 }
 
+/**
+ * The loading and failed states of a `useResource`, in one place: a spinner that says when it
+ * is taking long, or 「불러오지 못했습니다」 with 다시 시도. Renders nothing once loaded.
+ */
+export function ResourceStatus({
+  resource,
+  label,
+  failed,
+  compact = false,
+}: {
+  resource: { status: 'loading' | 'error' | 'ok'; slow: boolean; reload: () => void }
+  /** While loading, e.g. 「모델 목록을 불러오는 중…」. */
+  label?: string
+  /** On failure; 「불러오지 못했습니다.」 when not given. */
+  failed?: string
+  /** One line, for a single field rather than a whole section. */
+  compact?: boolean
+}) {
+  const t = useT()
+  if (resource.status === 'ok') return null
+  const box = compact
+    ? 'flex flex-wrap items-center gap-2 py-1.5 text-sm'
+    : 'flex flex-wrap items-center justify-center gap-2 px-6 py-12 text-base'
+  if (resource.status === 'error') {
+    return (
+      <div role="alert" className={cn(box, 'text-danger')}>
+        <span>{failed ?? t('불러오지 못했습니다.')}</span>
+        <Button type="button" size="sm" onClick={resource.reload}>
+          {t('다시 시도')}
+        </Button>
+      </div>
+    )
+  }
+  return (
+    <div role="status" className={cn(box, 'text-faint')}>
+      <span className="size-3 animate-spin rounded-full border-2 border-line-strong border-t-transparent" aria-hidden />
+      <span>{label ?? t('불러오는 중…')}</span>
+      {resource.slow && <span>{t('평소보다 오래 걸립니다.')}</span>}
+    </div>
+  )
+}
+
 /** Stale-list notice with a retry. */
 export function ReloadNotice({ onRetry }: { onRetry: () => void }) {
   const t = useT()
