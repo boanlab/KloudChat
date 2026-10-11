@@ -664,3 +664,19 @@ async def test_a_strict_local_vision_model_is_accepted(configured):
     shown = await _ocr_settings({})
     assert [choice["id"] for choice in shown["visionChoices"]] == [VISION]
     assert shown["modeInForce"] == "both" and shown["engineConfigured"]
+
+
+async def test_without_the_engine_a_pdf_is_not_queued_but_a_photo_is(db, configured, monkeypatch):
+    real_tools = settings_store.tools_config
+
+    async def no_engine():
+        import dataclasses
+
+        return dataclasses.replace(await real_tools(), ocr="")
+
+    monkeypatch.setattr(settings_store, "tools_config", no_engine)
+    assert (await ocr.config()).mode == "vision"
+    scan = await _stored(db, "scan.pdf", "application/pdf", _pdf([None]))
+    photo = await _stored(db, "page.png", "image/png", _picture())
+    assert scan.ocr_state is None and scan.error
+    assert photo.ocr_state == "queued"

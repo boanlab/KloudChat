@@ -61,6 +61,9 @@ async def queue_if_scanned(stored: StoredFile, data: bytes) -> bool:
         return False
     if found is None or not found.pages:
         return False
+    if found.kind == "pdf" and not cfg.engine_url:
+        # A PDF page becomes a picture only through the engine's renderer.
+        return False
     stored.ocr_state = "queued"
     stored.ocr_total = len(found.pages)
     stored.ocr_done = 0
