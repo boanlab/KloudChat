@@ -2145,8 +2145,69 @@ def _clean_bullets(value: Any) -> list[str]:
         if text.count("|") >= 2:
             continue
         if text:
-            out.append(text[:80])
+            out.append(_cut_at_word(text, _BULLET_HARD))
     return out[:6]
+
+
+#: A bullet past this runs over two rows on a slide (lint's long-line bound): rewritten.
+LONG_BULLET = 45
+#: The most a bullet keeps before the long-line rewrite; cut between words, never inside one.
+_BULLET_HARD = 160
+
+
+def _cut_at_word(text: str, limit: int) -> str:
+    """`text` within `limit` characters, cut at the last space so no word is split.
+
+    The research lane's seminar deck cut 「…ROUGE-L의 0.42와 BERTScore의 0.」 mid-number at a
+    fixed 80; a line with no space to cut at is kept whole."""
+    if len(text) <= limit:
+        return text
+    at = text.rfind(" ", 0, limit + 1)
+    if at <= 0:
+        return text
+    return text[:at].rstrip(" ,，;:·—–-(")
+
+
+#: Where a long bullet may be cut into a head and the rest: a comma, a dash, a colon.
+_BULLET_CLAUSE = re.compile(r",\s|，|\s[—–-]\s|;\s|:\s")
+
+
+def long_bullets(slides: list[dict[str, Any]]) -> dict[int, list[str]]:
+    """`{slide index: its bullets longer than LONG_BULLET}` for body slides."""
+    out: dict[int, list[str]] = {}
+    for index, slide in enumerate(slides):
+        if str(slide.get("layout") or "") in (*_STRUCTURAL, "agenda"):
+            continue
+        if lines := [str(b) for b in slide.get("bullets") or [] if len(str(b)) > LONG_BULLET]:
+            out[index] = lines
+    return out
+
+
+def fit_long_bullets(slides: list[dict[str, Any]]) -> list[int]:
+    """Bullets still over LONG_BULLET after the rewrite, cut at their last clause break that
+    leaves a readable head; the whole line goes to the speaker notes, so nothing is lost.
+
+    A line with no such break stays as it is (the long-line check still reports it)."""
+    touched = []
+    for index, lines in long_bullets(slides).items():
+        slide = slides[index]
+        notes = str(slide.get("notes") or "")
+        bullets = []
+        for bullet in slide.get("bullets") or []:
+            text = str(bullet)
+            heads = [m.start() for m in _BULLET_CLAUSE.finditer(text)
+                     if 12 <= m.start() <= LONG_BULLET]
+            if text not in lines or not heads:
+                bullets.append(bullet)
+                continue
+            bullets.append(text[: heads[-1]].rstrip(" ,，;:—–-"))
+            if re.sub(r"\s", "", text) not in re.sub(r"\s", "", notes):
+                notes = (notes.rstrip() + " " if notes.strip() else "") + text.rstrip(".") + "."
+        if bullets != list(slide.get("bullets") or []):
+            slide["bullets"] = bullets
+            slide["notes"] = notes[:1200]
+            touched.append(index)
+    return touched
 
 
 #: Slide table bounds: what a 16:9 slide fits at a readable size.
@@ -2698,6 +2759,8 @@ async def _write_slides(
     # The whole deck in one call keeps the thread; the per-slide pass below
     # writes whatever the draft skipped.
     drafted: dict[int, dict[str, Any]] = {}
+    #: A retold slide's view of the rest of the deck, for its own rewrite.
+    elsewhere: dict[int, str] = {}
     yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "running"}
     try:
         draft_text, spent = await _complete(
@@ -2729,18 +2792,20 @@ async def _write_slides(
         given = "\n".join([request, *(untrusted_context or [])])
         drafted = _split_deck_draft(draft_text, slides, _facts_set(given), given)
         retold = _retold(slides, drafted)
-        # An explicit total preserves every approved slot, including user edits.
-        # Keep its valid draft rather than shortening the deck or adding model calls.
-        # A stated range keeps its low end: retold slides go only while the deck stays in it.
-        floor = (slide_range(request) or (0, 0))[0]
-        if retold and requested_slides(request) is None and len(slides) - len(retold) >= floor:
-            log.info("deck retold slides dropped: %s", ",".join(str(i) for i in sorted(retold)))
-            kept = [i for i in range(len(slides)) if i not in retold]
-            slides[:] = [slides[i] for i in kept]
-            drafted = {new: drafted[old] for new, old in enumerate(kept) if old in drafted}
-            wanted_figures = {
-                new: wanted_figures[old] for new, old in enumerate(kept) if old in wanted_figures
+        # Every approved slide ships: the person approved this outline, slide by slide. A
+        # slide whose draft only retells another is written again on its own below, told
+        # what the earlier slides already said, instead of being dropped from the deck.
+        if retold:
+            log.info("deck retold slides rewritten: %s", ",".join(str(i) for i in sorted(retold)))
+            # What the rest of the deck says, so the rewrite takes its own ground.
+            elsewhere = {
+                i: "\n".join(
+                    f"{slides[j]['title']}: {' / '.join(_drafted_text(row).splitlines())}"
+                    for j, row in sorted(drafted.items()) if j != i and j not in retold
+                )
+                for i in retold
             }
+            drafted = {i: row for i, row in drafted.items() if i not in retold}
         yield {"type": "step", "id": "draft", "label": "초안 쓰는 중", "status": "done"}
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         log.warning("deck draft failed, writing slide by slide: %s", exc)
@@ -2807,7 +2872,10 @@ async def _write_slides(
                         template.format(
                             heading=slide["title"],
                             outline=outline_text,
-                            written="\n".join(written)[-3000:] or "(none yet)",
+                            written=(
+                                elsewhere[index][-3000:] if index in elsewhere
+                                else "\n".join(written)[-3000:]
+                            ) or "(none yet)",
                             # Prompts without `{count}` ignore the extra field.
                             count=(
                                 ("6~8" if slide["layout"] == "two-column" else "4~6")
@@ -3093,9 +3161,10 @@ async def _write_slides(
         | set(shape_patterns(slides, request))
         | set(fill_missing_notes(slides, request, title=title, subtitle=subtitle))
     )
-    touched |= set(mend_mixed_script(slides, "\n".join([request, *(untrusted_context or [])])))
+    given_text = "\n".join([request, *(untrusted_context or [])])
+    touched |= set(mend_mixed_script(slides, given_text))
     touched |= set(strip_json_residue(slides))
-    touched |= set(mend_scaled_numbers(slides, "\n".join([request, *(untrusted_context or [])])))
+    touched |= set(mend_scaled_numbers(slides, given_text))
     # A slide still holding a placeholder (「(여기에 퀴즈 1번 문항)」), or a part the
     # request asked for that the slide only names, is written once more, told what to put.
     needs = requested_contents(slides, request)
@@ -3156,6 +3225,13 @@ async def _write_slides(
             "This slide was written in another language. Rewrite the same content in Korean — "
             "the title, the screen text and the speaker notes alike. Keep only proper nouns, "
             "abbreviations and units as they were."))
+    for index, lines in long_bullets(slides).items():
+        needs.setdefault(index, (
+            "Some items on this slide run past two rows on screen: "
+            + " / ".join(f"「{line}」" for line in lines[:3])
+            + ". Rewrite every item as a short phrase within 40 characters — one point per item, "
+            "no sentence endings — and move the explanation into the speaker notes. Keep every "
+            "fact, term and number."))
     for index, slide in enumerate(slides):
         if any(f["code"] == "placeholder" for f in quality_gate.deck_findings([slide])):
             needs[index] = ("Remove the placeholder text (「(여기에 …)」 and the like) and fill "
@@ -3196,9 +3272,13 @@ async def _write_slides(
         touched |= set(mend_mixed_script(slides, vocabulary))
         touched |= set(strip_json_residue(slides))
         touched |= set(mend_scaled_numbers(slides, vocabulary))
+    # A line the rewrite left too long is cut at a clause, its whole text kept in the notes.
+    touched |= set(fit_long_bullets(slides))
     for index in sorted(touched):
         yield {"type": "slide", "slide": auto_fit(slides[index]), "done": True}
     findings = quality_gate.deck_findings(slides)
+    findings += [{"code": "long_line", "where": f"{i + 1}장", "detail": lines[0][:160]}
+                 for i, lines in long_bullets(slides).items()]
     if findings:
         log.warning("deck quality findings: %s", [(f["code"], f["where"]) for f in findings][:12])
     # Bracket blanks (「[담당자]」) are gaps left for the person: counted, not defects.

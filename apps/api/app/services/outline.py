@@ -53,7 +53,30 @@ def requested_range(
         lo, hi = int(match.group(1)), int(match.group(2))
         if 1 <= lo < hi <= maximum:
             return lo, hi
+    # 「10장 내외」, 「12장 안팎」, 「8장 정도」: about that many, a fifth either way (at least 1).
+    for match in re.finditer(
+        rf"(?<![\d.~～–-])(\d{{1,2}})\s{{0,2}}(?:개\s{{0,2}})?(?:{unit})", text
+    ):
+        if not _APPROXIMATE.match(suffix_words(text, match.end())):
+            continue
+        prefix = text[max(0, match.start() - 8) : match.start()].rstrip()
+        if prefix.endswith(("제", "본문", "본론", "내용")):
+            continue
+        about = int(match.group(1))
+        spread = max(1, round(about / 5))
+        lo, hi = max(1, about - spread), min(maximum, about + spread)
+        if lo < hi:
+            return lo, hi
     return None
+
+
+#: Words after a count that make it approximate: 「10장 내외」, 「12장 안팎」, 「8장 정도」.
+_APPROXIMATE = re.compile(r"(?:으로|로)?\s{0,2}(?:내외|안팎|정도|쯤|가량|남짓|전후|언저리)")
+
+
+def suffix_words(text: str, end: int) -> str:
+    """The few characters after a count, for its qualifier."""
+    return text[end : end + 8].lstrip()
 
 
 def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> int | None:
@@ -74,8 +97,9 @@ def requested_count(request: str, units: tuple[str, ...], *, maximum: int) -> in
         prefix = request[max(0, match.start() - 8) : match.start()].rstrip()
         suffix = request[match.end() : match.end() + 4]
         if prefix.endswith(("~", "–", "-")) or suffix.lstrip().startswith(
-            ("이상", "이하", "내외", "정도", "~", "–", "-")
-        ):
+            ("이상", "이하", "~", "–", "-")
+        ) or _APPROXIMATE.match(suffix_words(request, match.end())):
+            # 「10장 내외」 is a range around ten, not ten exactly (`requested_range`).
             continue
         if prefix.endswith(("제", "본문", "본론", "내용")):
             continue
