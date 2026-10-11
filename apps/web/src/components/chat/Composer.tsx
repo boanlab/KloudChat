@@ -3,6 +3,7 @@ import {
   AtSign,
   Boxes,
   Check,
+  FileText,
   ChevronLeft,
   ChevronRight,
   Gauge,
@@ -45,6 +46,7 @@ import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
 import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { ATTACH_ACCEPT, attachRefusal } from '@/lib/attachable'
+import { isImeKey } from '@/lib/ime'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -379,6 +381,11 @@ useStore.subscribe((state, previous) => {
 })
 
 const FILL_EVENT = 'kloudchat:fill-composer'
+/** A paste longer than this folds into a chip. */
+const PASTE_FOLD = 2000
+/** What one message may hold (the API's own limit), and where the counter appears. */
+const MESSAGE_LIMIT = 200_000
+const MESSAGE_WARN = 150_000
 const ATTACH_EVENT = 'kloudchat:attach-to-session'
 
 /**
@@ -524,6 +531,10 @@ export function Composer({
   )
   liveAttachments.current = attachments
   const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
+  /** Long pastes held as chips; they join the message on send. */
+  const [pasted, setPasted] = useState<string[]>([])
+  const livePasted = useRef(pasted)
+  livePasted.current = pasted
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
   const [privacyRetrying, setPrivacyRetrying] = useState(false)
   const [modelSelectionPending, setModelSelectionPending] = useState(false)
@@ -968,15 +979,23 @@ export function Composer({
   /** A new conversation's first turn: the text stays in the box until the server takes it. */
   const [startPending, setStartPending] = useState(false)
   const holdingStart = useRef(false)
+  /** A send is on its way and its turn has not shown yet: a second Enter waits for it. */
+  const submitting = useRef(false)
+  const [secondSend, setSecondSend] = useState(false)
+  useEffect(() => {
+    if (busy) submitting.current = false
+  }, [busy])
   /** The server took the first turn: the box empties before its state is carried over. */
   const releaseStart = () => {
     if (!holdingStart.current) return
     holdingStart.current = false
     liveValue.current = ''
     liveAttachments.current = []
+    livePasted.current = []
     draftStore.set(draftKeyFor(null, kind), '')
     setValue('')
     setAttachments([])
+    setPasted([])
   }
 
   useEffect(() => {
@@ -1246,14 +1265,60 @@ export function Composer({
     !isMedia && !editPending,
   )
   const onPasteFiles = usePasteFiles((files) => void addFiles(files))
+  // A long paste folds into a chip (「붙여 넣은 텍스트 · 37,200자」) instead of flooding the box;
+  // it goes with the message, or is opened into the box, or attached as a file.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    onPasteFiles(e)
+    if (e.defaultPrevented || editing) return
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    if (text.length <= PASTE_FOLD) return
+    e.preventDefault()
+    activeRestoreToken.current = null
+    setPasted((current) => {
+      const next = [...current, text]
+      livePasted.current = next
+      return next
+    })
+  }
+  const dropPasted = (index: number) =>
+    setPasted((current) => {
+      const next = current.filter((_, at) => at !== index)
+      livePasted.current = next
+      return next
+    })
+  const openPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    const next = liveValue.current.trim() ? `${liveValue.current.replace(/\s+$/, '')}\n\n${text}` : text
+    liveValue.current = next
+    if (!editing) draftStore.set(draftKey, next)
+    setValue(next)
+    requestAnimationFrame(() => ref.current?.focus())
+  }
+  const attachPasted = (index: number) => {
+    const text = livePasted.current[index] ?? ''
+    dropPasted(index)
+    void addFiles([new File([text], t('붙여넣은-텍스트.txt'), { type: 'text/plain' })])
+  }
+  const typedLength = value.length + pasted.reduce((sum, text) => sum + text.length + 2, 0)
 
   const submit = (spoken?: string) => {
-    const text = (spoken ?? value).trim()
+    const text = (spoken ?? [value.trim(), ...livePasted.current].filter(Boolean).join('\n\n')).trim()
+    if (text.length > MESSAGE_LIMIT) {
+      setChatError(t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.'))
+      return
+    }
     if (text && !spoken && !editing && !busy && (uploading || awaitingModels)) {
       setQueuedSend(true)
       return
     }
     setQueuedSend(false)
+    if (text && !editing && (submitting.current || holdingStart.current)) {
+      // 「Enter」 twice before the first turn showed: one question, said so.
+      setSecondSend(true)
+      window.setTimeout(() => setSecondSend(false), 3000)
+      return
+    }
     if (startPending || !text || busy || composing.current || modelSelectionPending || unsupportedVideo || uploading || editSending.current || pendingPrivacy) return
     if (editing && editContext.current) {
       if (sessionId && useStore.getState().running[sessionId]) return
@@ -1337,13 +1402,25 @@ export function Composer({
     // Skills stay on: picked once, they apply to the conversation's later turns too.
     const startSettled = () => {
       holdingStart.current = false
+      submitting.current = false
       setStartPending(false)
     }
+    submitting.current = true
+    // No sign of the turn after 15 s: the conversation is read again from the server, so a
+    // turn that started (or never did) shows as it is.
+    const resyncFrom = sessionId
+    window.setTimeout(() => {
+      if (!submitting.current) return
+      submitting.current = false
+      if (resyncFrom) void useStore.getState().openSession(resyncFrom)
+    }, 15_000)
     if (sessionId) {
       liveValue.current = ''
       liveAttachments.current = []
+      livePasted.current = []
       setValue('')
       setAttachments([])
+      setPasted([])
     } else {
       holdingStart.current = true
       setStartPending(true)
@@ -1396,7 +1473,7 @@ export function Composer({
         attachments: sentAttachments,
         webSearch: sentWebSearch,
         onSession: (id) => navigate(`/s/${id}`),
-      }).catch((error: unknown) => {
+      }).finally(startSettled).catch((error: unknown) => {
         setComposerRestore({
           sessionId,
           value: text,
@@ -1498,6 +1575,8 @@ export function Composer({
     holdingStart.current = false
     setStartPending(false)
     setQueuedSend(false)
+    livePasted.current = []
+    setPasted([])
   }, [sessionId, kind])
 
   const toggleSkill = (id: string, selected: boolean) => {
@@ -1883,7 +1962,7 @@ export function Composer({
   const sendButton = (
     <button
       onClick={streaming && sessionId ? () => stopStreaming(sessionId) : () => submit()}
-      disabled={(!value.trim() && !streaming) || modelSelectionPending || editPending || startPending || queuedSend || !!pendingPrivacy}
+      disabled={(!value.trim() && !pasted.length && !streaming) || typedLength > MESSAGE_LIMIT || modelSelectionPending || editPending || startPending || queuedSend || !!pendingPrivacy}
       className={cn(
         'grid size-9 shrink-0 place-items-center rounded-full transition-colors',
         streaming
@@ -1898,8 +1977,10 @@ export function Composer({
             ? t('보내는 중…')
           : modelSelectionPending
             ? t('모델 설정 저장 중…')
-          : !value.trim()
+          : !value.trim() && !pasted.length
             ? t('보낼 내용을 먼저 입력하세요')
+          : typedLength > MESSAGE_LIMIT
+            ? t('질문은 200,000자까지 보낼 수 있습니다. 긴 자료는 「파일·사진 첨부」로 올리세요.')
             : unsupportedVideo
               ? t('이 모델은 이 조합을 만들지 않습니다')
               : uploading
@@ -1946,6 +2027,7 @@ export function Composer({
         )}
         {(project ||
           attachments.length > 0 ||
+          pasted.length > 0 ||
           uploadFailed.length > 0 ||
           webSearchChip ||
           sessionAgent ||
@@ -2040,7 +2122,7 @@ export function Composer({
                 </button>
               </Badge>
             ))}
-            {attachments.map((f) => {
+            {attachments.map((f, at) => {
               const reading = ocrNote(f, t)
               return (
               <span
@@ -2072,14 +2154,25 @@ export function Composer({
                 )}
                 {f.error && <TriangleAlert size={10} />}
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    // Focus moves to the next chip's ×, else the box: never lost to the page.
+                    const neighbour = attachments[at + 1] ?? attachments[at - 1]
                     setAttachments((current) => {
                       activeRestoreToken.current = null
                       const next = current.filter((item) => item.id !== f.id)
                       liveAttachments.current = next
                       return next
                     })
-                  }
+                    requestAnimationFrame(() => {
+                      const label = neighbour ? t('{name} 제거').replace('{name}', neighbour.name) : ''
+                      const chip = label
+                        ? [...document.querySelectorAll<HTMLButtonElement>('[data-attachment-remove]')]
+                          .find((button) => button.getAttribute('aria-label') === label)
+                        : undefined
+                      ;(chip ?? ref.current)?.focus()
+                    })
+                  }}
+                  data-attachment-remove=""
                   className="text-faint hover:text-fg"
                   aria-label={t('{name} 제거').replace('{name}', f.name)}
                 >
@@ -2088,6 +2181,32 @@ export function Composer({
               </span>
               )
             })}
+            {pasted.map((text, at) => (
+              <span
+                key={`pasted-${at}`}
+                className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs"
+              >
+                <FileText size={10} className="text-faint" />
+                {t('붙여 넣은 텍스트 · {n}자').replace('{n}', text.length.toLocaleString())}
+                <button type="button" onClick={() => openPasted(at)} className="text-accent hover:underline">
+                  {t('펼치기')}
+                </button>
+                <button type="button" onClick={() => attachPasted(at)} className="text-accent hover:underline">
+                  {t('파일로 첨부')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dropPasted(at)
+                    requestAnimationFrame(() => ref.current?.focus())
+                  }}
+                  className="text-faint hover:text-fg"
+                  aria-label={t('붙여 넣은 텍스트 제거')}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
             {uploading && (
               <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
                 <Loader2 size={10} className="animate-spin" />
@@ -2154,20 +2273,20 @@ export function Composer({
               setValue(e.target.value)
             }}
             onKeyDown={(e) => {
-              if (e.key === 'Escape' && editing && !e.nativeEvent.isComposing) {
+              if (e.key === 'Escape' && editing && !isImeKey(e)) {
                 e.preventDefault()
                 cancelEditing()
                 return
               }
               if (holdToTalk(e)) return
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.key === 'Enter' && !e.shiftKey && !isImeKey(e)) {
                 e.preventDefault()
                 submit()
               }
             }}
             onKeyUp={releaseToTalk}
             // File pastes only; text pastes are untouched.
-            onPaste={onPasteFiles}
+            onPaste={onPaste}
             placeholder={
               recording && pushToTalk.current
                 ? t('듣고 있습니다. 스페이스를 떼면 받아 적습니다')
@@ -2230,6 +2349,21 @@ export function Composer({
           <button onClick={clearMediaError} aria-label={t('닫기')} className="shrink-0">
             <X size={13} />
           </button>
+        </p>
+      )}
+      {typedLength >= MESSAGE_WARN && (
+        <p
+          className={cn('mt-1 px-1 text-right text-xs', typedLength > MESSAGE_LIMIT ? 'text-danger' : 'text-faint')}
+          aria-live="polite"
+        >
+          {`${typedLength.toLocaleString()} / ${MESSAGE_LIMIT.toLocaleString()}${t('자')}`}
+          {typedLength > MESSAGE_LIMIT && ` · ${t('긴 자료는 「파일·사진 첨부」로 올리세요.')}`}
+        </p>
+      )}
+      {secondSend && (
+        <p role="status" className="mt-2 flex items-center gap-2 px-1 text-sm text-muted">
+          <Loader2 size={13} className="shrink-0 animate-spin" />
+          {t('앞 질문을 보내는 중입니다.')}
         </p>
       )}
       {queuedSend && (

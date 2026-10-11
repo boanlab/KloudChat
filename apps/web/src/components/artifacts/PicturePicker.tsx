@@ -6,6 +6,7 @@ import { ApiError, errorMessage, sessionsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { drawFigure, useStore } from '@/store/useStore'
+import { isImeKey } from '@/lib/ime'
 
 /** What a figure kind is called on screen. */
 const FIGURE_NAMES: Record<string, string> = { method: '구조도', flow: '흐름도', concept: '개념도', compare: '비교도' }
@@ -142,7 +143,7 @@ export function PicturePicker({
                 setSuggested(false)
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                if (e.key === 'Enter' && !isImeKey(e)) {
                   e.preventDefault()
                   void make()
                 }

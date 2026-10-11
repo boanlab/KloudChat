@@ -155,3 +155,107 @@ test('a request for a text message and a board notice is answered in chat, not m
   expect(created[1].kind).toBe('report')
   expect(unexpected).toEqual([])
 })
+
+test('Enter twice on home sends one question and says the first is on its way', async ({ page }, info) => {
+  const { unexpected, sends, created } = await composerFixture(page, info)
+  const create = gate()
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() === 'POST') await create.opened
+    await route.fallback()
+  })
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('한 번만 보내져야 합니다')
+  await input.press('Enter')
+  await input.press('Enter')
+  await expect(page.getByText('앞 질문을 보내는 중입니다.')).toBeVisible()
+  create.open()
+  await expect.poll(() => sends.length).toBe(1)
+  await page.waitForTimeout(500)
+  expect(sends).toHaveLength(1)
+  expect(created).toHaveLength(1)
+  expect(unexpected).toEqual([])
+})
+
+test('an Enter that ends a Korean composition (keyCode 229) does not send', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('안녕하세요')
+  await input.evaluate((el) => {
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'keyCode', { get: () => 229 })
+    el.dispatchEvent(event)
+  })
+  await page.waitForTimeout(300)
+  expect(sends).toHaveLength(0)
+  await expect(input).toHaveValue('안녕하세요')
+  expect(unexpected).toEqual([])
+})
+
+test('removing an attachment by keyboard moves focus to the next chip, then the box', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  let n = 0
+  await page.route('**/api/files', async (route) => {
+    n += 1
+    await route.fulfill({ status: 201, json: {
+      id: `f${String(90 + n).padStart(32, '0')}`, name: `메모${n}.txt`, size: 12, mime: 'text/plain', tokens: 4,
+      projectId: null, sessionId: null, preview: '', error: null, createdAt: '2026-10-09T07:00:00.000Z' } })
+  })
+  await page.goto('/')
+  const picker = page.getByLabel('파일 선택')
+  await picker.setInputFiles([{ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('a') }])
+  await picker.setInputFiles([{ name: 'b.txt', mimeType: 'text/plain', buffer: Buffer.from('b') }])
+  const first = page.getByRole('button', { name: '메모1.txt 제거' })
+  await first.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: '메모2.txt 제거' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByLabel('프롬프트 입력')).toBeFocused()
+  expect(unexpected).toEqual([])
+})
+
+test('a long paste folds into a chip that goes with the message, opens, or becomes a file', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  const paste = (text: string) => input.evaluate((el, value) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', value)
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  }, text)
+  const long = '가'.repeat(3000)
+  await paste(long)
+  await expect(page.getByText('붙여 넣은 텍스트 · 3,000자')).toBeVisible()
+  await expect(input).toHaveValue('')
+  // 펼치기 puts it in the box.
+  await page.getByRole('button', { name: '펼치기' }).click()
+  await expect(input).toHaveValue(long)
+  await input.fill('요약해 주세요')
+  await paste(long)
+  await input.press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(sends[0].body.content).toBe(`요약해 주세요\n\n${long}`)
+  expect(unexpected).toEqual([])
+})
+
+test('the counter shows near the limit and a message over it is not sent', async ({ page }, info) => {
+  const { unexpected, sends } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('나'.repeat(200_001))
+  await expect(page.getByText('200,001 / 200,000자', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: '전송' })).toBeDisabled()
+  await input.press('Enter')
+  await expect(page.getByRole('alert')).toContainText('질문은 200,000자까지 보낼 수 있습니다.')
+  expect(sends).toHaveLength(0)
+  expect(unexpected).toEqual([])
+})

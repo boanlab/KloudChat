@@ -9,6 +9,7 @@ import { useT } from '@/lib/useT'
 import { cn, relativeTime } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { Session } from '@/types'
+import { isImeKey } from '@/lib/ime'
 
 /** Window event that opens the dialog from anywhere: ⌘K, the sidebar's 검색 box. */
 const OPEN_EVENT = 'kloudchat:search'
@@ -230,7 +231,7 @@ export function SearchDialog() {
       close()
       return
     }
-    if (e.nativeEvent.isComposing) return
+    if (isImeKey(e)) return
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       if (!rows.length) return
