@@ -14,17 +14,17 @@ rule = '''Genre: 학회 피어리뷰. This evaluates a manuscript — do not rew
 [[genres]]
 id = "paper"
 match = '논문\s{0,3}초안|논문을\s{0,3}써|투고|학회\s{0,3}논문|워크숍\s{0,3}논문|paper\s{0,3}draft'
-rule = '''Genre: 학술 논문 초안. Sections in the order the request gives. In related work cite only confirmed real papers, with authors and year, and say in one sentence per work how it differs from this paper. Use tables only for the experimental design and the results frame; related work, threat model and method are prose. If the experiments are not done yet, do not describe results — write hypotheses and plans, and leave the results table empty as 「실험 예정」. The references are the list of papers cited in the text — no unconfirmed bibliographic entries.'''
+rule = '''Genre: 학술 논문 초안. Sections in the order the request gives. In related work cite only confirmed real papers, with authors and year, and say in one sentence per work how it differs from this paper. Use tables only for the experimental design and the results frame; related work, threat model and method are prose. If the experiments are not done yet, do not describe results — write hypotheses and plans, and leave the results table empty as 「실험 예정」. The references are the list of papers cited in the text — no unconfirmed bibliographic entries. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
 
 [[genres]]
 id = "term-report"
 match = '리포트|레포트|기말\s{0,3}(?:과제|보고서)|중간\s{0,3}(?:과제|보고서)|과제\s{0,3}보고서|에세이'
-rule = '''Genre: 대학 과제 리포트. State the thesis in one sentence at the end of the introduction; each body section develops one strand of that thesis with evidence — do not just list theories. Cite studies, books and sources from the material in the text as (저자 연도), and collect them in the references at the end as 「저자 (연도). 『제목』. 출판사.」. Write no bibliographic entries, page numbers or quotations the material does not give. The conclusion restates the thesis and ends with one open question.'''
+rule = '''Genre: 대학 과제 리포트. State the thesis in one sentence at the end of the introduction; each body section develops one strand of that thesis with evidence — do not just list theories. Cite studies, books and sources from the material in the text as (저자 연도), and collect them in the references at the end as 「저자 (연도). 『제목』. 출판사.」. Write no bibliographic entries, page numbers or quotations the material does not give. The conclusion restates the thesis and ends with one open question. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
 
 [[genres]]
 id = "research-plan"
 match = '연구\s{0,3}계획서|조사\s{0,3}계획서|연구\s{0,3}제안서'
-rule = '''Genre: 연구·조사 계획서. The research has not been done, so write no results. Number research questions and hypotheses like RQ1·H1; method in the order sample, instruments, procedure, analysis; variables and items as tables. Cite prior surveys and studies from the material as (기관 또는 저자 연도) and collect them in the references. Statistics only as the material gives them, with the source year.'''
+rule = '''Genre: 연구·조사 계획서. The research has not been done, so write no results. Number research questions and hypotheses like RQ1·H1; method in the order sample, instruments, procedure, analysis; variables and items as tables. Cite prior surveys and studies from the material as (기관 또는 저자 연도) and collect them in the references. Statistics only as the material gives them, with the source year. Register: 「~다」 throughout (「제안한다」, 「필요하다」), never 「~합니다」.'''
 
 [[genres]]
 format = "internal_draft"

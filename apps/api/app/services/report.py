@@ -462,6 +462,23 @@ def _genre_rule(request: str, fmt: doc_formats.DocFormat | None = None,
 
 
 #: Prose-writer rules a 개조식 genre contradicts; `_shaped` drops the whole rule.
+def _plain_register(prompt: str) -> str:
+    """`prompt` with its 「~합니다」 register rules replaced by one 「~다」 rule."""
+    out: list[str] = []
+    dropping, placed = False, False
+    for line in prompt.split("\n"):
+        if line.startswith("- "):
+            dropping = any(phrase in line for phrase in _POLITE_RULES)
+            if dropping and not placed:
+                out.append(_PLAIN_RULE)
+                placed = True
+        elif not line.startswith("  "):
+            dropping = False
+        if not dropping:
+            out.append(line)
+    return "\n".join(out)
+
+
 _PROSE_ONLY = (
     "Prose is the default",
     "A section is at least two",
@@ -471,8 +488,21 @@ _PROSE_ONLY = (
 )
 
 
+#: Marks a genre written in the plain 「~다」 register (a paper, a research plan, a term
+#: report): `_shaped` swaps the writer's 「~합니다」 rule for it. A person's template genre
+#: carrying the same words gets the same register.
+_PLAIN_REGISTER = "Register: 「~다」"
+#: The writer's register rules, said in 「~합니다」.
+_POLITE_RULES = ("One register for the whole document", "Every sentence ends in the")
+_PLAIN_RULE = ("- One register for the whole document: 「~다」 (「제안한다」, 「필요하다」, "
+               "「~이다」). Never 「~합니다」 / 「~입니다」, table cells and list items aside.")
+
+
 def _shaped(prompt: str, genre: str) -> str:
-    """`prompt` without the prose rules a 개조식 genre overrides; unchanged for any other."""
+    """`prompt` without the prose rules a 개조식 genre overrides, and with the 「~다」 register
+    for a genre that asks for it; unchanged for any other."""
+    if _PLAIN_REGISTER in genre and _GAEJO_STYLE not in genre:
+        return _plain_register(prompt)
     if _GAEJO_STYLE not in genre:
         return prompt
     out: list[str] = []
