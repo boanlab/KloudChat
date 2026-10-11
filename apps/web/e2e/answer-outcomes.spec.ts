@@ -137,3 +137,11 @@ test('a planning turn that asked questions says it asked, not that it showed an 
   await page.getByText('확인할 것을 여쭸습니다').click()
   await expect(page.getByText('0ms')).toHaveCount(0)
 })
+
+test('once the deck is made, the box asks what to change, not for a new topic', async ({ page }, testInfo) => {
+  await sessionFixture(page, testInfo, [{ ...question, content: '세미나 발표 자료를 만들어 줘.' }, {
+    id: 'm2', role: 'assistant', content: '10장짜리 슬라이드를 만들었습니다.', createdAt: at, model: 'fixture/model',
+  }], { kind: 'slides', artifactId: '55555555555555555555555555555555' })
+  await page.goto(`/s/${id}`)
+  await expect(page.getByLabel('프롬프트 입력')).toHaveAttribute('placeholder', '고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘')
+})

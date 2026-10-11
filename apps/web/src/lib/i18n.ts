@@ -3431,6 +3431,8 @@ const EN: Record<string, string> = {
   '끊긴 답 · 끝까지 쓰지 못했습니다': 'Cut off · this answer was not finished',
   '아직 추가한 스킬이 없습니다.': 'No skills added yet.',
   '스킬 둘러보기': 'Browse skills',
+  '고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘': 'Say what to change, e.g. turn slide 3 into a table',
+  '고칠 곳을 적으세요. 예: 2절을 더 짧게 써 줘': 'Say what to change, e.g. make section 2 shorter',
   '이 구성으로 만드는 중…': 'Making it with this structure…',
   '이 개요로 쓰는 중…': 'Writing it with this outline…',
   '본문을 누르면 글자 도구가 나옵니다': 'Click the text to bring up the text tools',

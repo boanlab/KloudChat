@@ -2063,7 +2063,12 @@ export function Composer({
                     ? pending.stage === 'clarify'
                       ? t('답을 적거나, 위에서 고르세요')
                       : t('고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요')
-                    : t(placeholders[kind])
+                    : session?.artifactId && (kind === 'report' || kind === 'slides')
+                      // The document is made: the next message changes it.
+                      ? kind === 'slides'
+                        ? t('고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘')
+                        : t('고칠 곳을 적으세요. 예: 2절을 더 짧게 써 줘')
+                      : t(placeholders[kind])
             }
             aria-label={t('프롬프트 입력')}
             data-composer=""
