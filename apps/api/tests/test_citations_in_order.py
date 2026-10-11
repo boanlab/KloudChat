@@ -3,7 +3,7 @@
 import io
 import zipfile
 
-from app.services import citations, report_export
+from app.services import citations, report_export, research
 
 
 def _src(n: int, title: str, **more) -> dict:
@@ -80,3 +80,13 @@ def test_a_venue_is_not_named_as_the_author():
     # An institute named as publisher may be the author: left as written.
     assert "한국교육개발원 연구 [3]" in out
 
+
+def test_a_cut_off_title_is_read_whole():
+    cut = {"title": "FELM: Benchmarking Factuality Evaluation of", "url": "https://a.org/1"}
+    whole = {"title": "FELM: Benchmarking Factuality Evaluation of Large Language Models",
+             "url": "https://b.org/2"}
+    assert research._fuller(cut, [cut, whole])["title"] == whole["title"]
+    page = "Menu\n# FELM: Benchmarking Factuality Evaluation of Large Language Models\nAbstract"
+    assert research._titled_from_page(cut, page)["title"] == whole["title"]
+    # A whole title is not touched.
+    assert research._titled_from_page(whole, page) == whole

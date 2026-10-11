@@ -509,6 +509,11 @@ async def run(
         if len(picks) >= max_sources:
             break
 
+    # A title the engine cut off (「FELM: Benchmarking Factuality Evaluation of」) is read
+    # whole from another hit for the same work, the longer one kept.
+    every = [hit for hits in hit_lists for hit in hits]
+    picks = [(q, _fuller(hit, every)) for q, hit in picks]
+
     # Bodies for the first `_BODIES` picks of each query, fetched together.
     wanted = [
         index
@@ -527,6 +532,7 @@ async def run(
     for index, (query_index, hit) in enumerate(picks):
         ordinal = len(sources) + 1
         body = (bodies.get(index) or "").strip()
+        hit = _titled_from_page(hit, body)
         sources.append(
             {
                 "id": f"src{index}_{uuid.uuid4().hex[:6]}",
@@ -731,6 +737,42 @@ def _same_work(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
     """Whether two title keys name one work: equal, or one a cut-off start of the other."""
     short, long_ = sorted((a, b), key=len)
     return long_[: len(short)] == short
+
+
+def _fuller(hit: dict, others: list[dict]) -> dict:
+    """`hit` with the longest title any hit gives the same work (its own when none is
+    longer)."""
+    title = str(hit.get("title") or "").strip()
+    work = _work_key(title)
+    if not work:
+        return hit
+    longer = [str(o.get("title") or "").strip() for o in others
+              if len(str(o.get("title") or "").strip()) > len(title)]
+    best = max((t for t in longer if (key := _work_key(t)) and _same_work(work, key)),
+               key=len, default="")
+    return {**hit, "title": best} if best else hit
+
+
+#: A title's last word that says it was cut off mid-phrase.
+_DANGLING = re.compile(
+    r"(?:\b(?:of|for|and|the|in|on|with|to|a|an|via|from|by|using)|[:,\-–]|\.\.\.|…)$", re.I)
+
+
+def _titled_from_page(hit: dict, body: str) -> dict:
+    """A cut-off title (ending 「… Evaluation of」 or 「…」) completed from the page's own line
+    that starts with it, when the page was read."""
+    title = str(hit.get("title") or "").strip()
+    if not body or not _DANGLING.search(title):
+        return hit
+    stem = re.sub(r"\s*(?:\.\.\.|…)$", "", title).strip()
+    if len(stem) < 12:
+        return hit
+    for line in body[:6000].splitlines():
+        line = line.strip(" #*\t")
+        if (line.lower().startswith(stem.lower()) and len(stem) < len(line) <= 250
+                and not _DANGLING.search(line)):
+            return {**hit, "title": line}
+    return hit
 
 
 #: Hosts whose name says the venue better than the bare domain does.
