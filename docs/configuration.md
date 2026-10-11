@@ -43,7 +43,7 @@ itself reads are in the second column.
 
 | `.env` | Container | Default | Notes |
 | --- | --- | --- | --- |
-| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives the LiteLLM address and the six tool endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. |
+| `BACKEND_BASE_URL` | `BACKEND_BASE_URL` | — | The KloudChat-LLM gateway. Setting this alone derives the LiteLLM address and the seven tool endpoints by appending paths. `/tools/index` is optional: without it, agent knowledge is searched lexically. `/tools/ocr` is optional: without it, scanned PDF pages are not read (document photos still are, by a strict-local vision model, when one is chosen). |
 | `KCHAT_TOOLS_GATEWAY_KEY` | `TOOLS_GATEWAY_KEY` | — | Shared secret the gateway requires on every `/tools/*` request, sent as `X-Tools-Key`. Must equal `TOOLS_GATEWAY_KEY` in KloudChat-LLM's `.env`. Generate with `openssl rand -hex 32`. Attached only to requests under a configured tool address (see below); blank sends nothing and a gateway that requires it answers 401. |
 | `LITELLM_BASE_URL` | `LITELLM_BASE_URL` | derived | Only when LiteLLM is not behind the gateway. |
 | `LITELLM_MASTER_KEY` | `LITELLM_MASTER_KEY` | — | Never leaves the API process. Not returned by any route, including admin routes. |
@@ -59,7 +59,15 @@ The gateway derives these paths:
 <BACKEND_BASE_URL>/tools/research   deep research (MCP)
 <BACKEND_BASE_URL>/tools/stt        speech-to-text
 <BACKEND_BASE_URL>/tools/index      retrieval index for agent knowledge and chat uploads
+<BACKEND_BASE_URL>/tools/ocr        text from scanned pages (ocr-shim); `OCR_URL` without the gateway
 ```
+
+Scanned pages are read in the background (`services/ocr_jobs.py`): the engine
+first, and pages it is unsure of or that hold a ruled table again by a vision
+model. That model is chosen in the admin screen (System › Features › Text from
+scans) and must be strict-local and declare vision; right before each page is
+sent, every LiteLLM deployment under its name is checked to be strict-local,
+and the page is not sent otherwise.
 
 A feature with no address drops out of the tool list. It does not break
 anything else.
@@ -73,9 +81,9 @@ and `/v1/*` are authenticated by LiteLLM itself; `/health` stays open.)
 The API attaches the key in one place, `services/tools_gateway.py`: every
 client that talks to a tool backend (web search, document fetch, code
 execution, the deep-research MCP connector, speech-to-text, the retrieval
-index, and the admin screen's connection test) is built by
+index, the OCR engine, and the admin screen's connection test) is built by
 `tools_gateway.client()`, whose request hook adds the header only when the
-request URL lies under one of the six tool addresses in effect (same scheme,
+request URL lies under one of the seven tool addresses in effect (same scheme,
 host, port and path prefix) and strips it otherwise — so it never reaches a
 fetched page, a user's own MCP server or a redirect target. The MCP client is
 narrower still: it sends the key only to the deep-research address. The `youtube`
