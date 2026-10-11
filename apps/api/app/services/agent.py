@@ -395,6 +395,78 @@ _COMPUTE_BLANKS = (
 )
 
 
+#: Tools that run code; their printed lines are the turn's computed values.
+_CODE_TOOLS = frozenset({"run_code", "execute_code"})
+#: A decimal the answer states: 「4.75」, 「2.25」 (not 「v1.2.3」, not 「P1.5」).
+_DECIMAL = re.compile(r"(?<![A-Za-z0-9_.])\d{1,9}\.\d{1,6}(?![A-Za-z0-9_.])")
+_ANY_NUMBER = re.compile(r"(?<![A-Za-z0-9_.])-?\d[\d,]{0,15}(?:\.\d{1,10})?")
+_FENCED = re.compile(r"```.*?(?:```|\Z)", re.S)
+#: A sentence saying the code could not run for a limit: 「코드가 실행 한도에 막혀 …」.
+_LIMIT_CLAIM = re.compile(
+    r"(?:코드|도구|툴|실행|계산\s{0,2}도구)[^.!?\n]{0,30}(?:한도|제한|횟수)[^.!?\n]{0,12}"
+    r"(?:막혀|막혔|걸려|걸렸|닿아|닿았|초과|넘어|넘겨)"
+)
+_COMPUTE_UNVERIFIED = (
+    "답에 적은 다음 값은 이번 턴의 코드 실행 출력에 없습니다: {values}. 손으로 셈한 값을 쓰지 "
+    "말고, run_code 로 그 값을 구하는 코드를 실행해 출력한 다음, 위의 코드 출력값만으로 답을 "
+    "처음부터 다시 쓰세요. 코드가 이미 출력한 값이 있으면 그 값을 그대로 옮기세요."
+)
+
+
+def _text_of(message: dict) -> str:
+    content = message.get("content")
+    if isinstance(content, list):
+        return "\n".join(str(p.get("text") or "") for p in content if isinstance(p, dict))
+    return str(content or "")
+
+
+def _numbers(text: str) -> list[float]:
+    out = []
+    for token in _ANY_NUMBER.findall(text or ""):
+        try:
+            out.append(float(token.replace(",", "")))
+        except ValueError:
+            continue
+    return out
+
+
+def _unverified_figures(answer: str, known_text: str) -> list[str]:
+    """Decimals the answer states that no given text holds (as written, rounding allowed,
+    or as a percentage of a ratio): the values a code turn's answer worked out by hand."""
+    known = _numbers(known_text)
+    missing: list[str] = []
+    for token in _DECIMAL.findall(_FENCED.sub(" ", answer or "")):
+        value = float(token)
+        places = len(token.split(".", 1)[1])
+        tolerance = 0.5 * 10 ** -places + 1e-9
+        if any(abs(value - k) <= tolerance or abs(value - k * 100) <= tolerance
+               or abs(value * 100 - k) <= tolerance * 100 for k in known):
+            continue
+        if token not in missing:
+            missing.append(token)
+    return missing
+
+
+def strip_limit_claims(text: str) -> str:
+    """`text` without sentences claiming that the code was stopped by a limit."""
+    if not text or not _LIMIT_CLAIM.search(text):
+        return text
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+        if fenced or stripped.startswith(("```", "#", "|")) or not _LIMIT_CLAIM.search(line):
+            out.append(line)
+            continue
+        kept = [piece for piece in re.split(r"(?<=[.!?])\s{1,8}", line)
+                if piece.strip() and not _LIMIT_CLAIM.search(piece)]
+        if kept:
+            out.append(" ".join(kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
+
+
 def _repeated_tail(text: str) -> str:
     """The redundant second copy when `text` is one block written twice in a row
     (`A\\n\\n\\nA`), else ''.
@@ -844,6 +916,17 @@ async def run_turn(
     provisional: list[str] = []
     anomaly_retried = False
     blanks_retried = False
+    #: Printed results of this turn's successful code runs, and whether a code call was refused.
+    code_outputs: list[str] = []
+    code_refused = False
+    #: The answer's hand-worked values were sent back once to be computed.
+    figures_retried = False
+    #: Tool hops granted past the cap: one, to compute the values the answer worked by hand.
+    extra_hops = 0
+    #: After this hop's tools run, the next call is the last (the cap's code calls ran).
+    close_after_tools = False
+    #: What the turn was given (the request, the history), for telling a computed number apart.
+    given_text = "\n".join(_text_of(m) for m in messages)
     #: Set when the writer skipped the calculator and the hand-off model took the gate.
     handed_off = False
     if calculation_handoff_model == model or not (
@@ -1146,6 +1229,26 @@ async def run_turn(
                 conversation.append(acc.assistant_message())
                 conversation.append({"role": "user", "content": _COMPUTE_BLANKS})
                 continue
+            if (spoken_now and code_outputs and not figures_retried and "run_code" in by_name
+                    and not preflight_tool and len(
+                        missing := _unverified_figures(
+                            spoken_now, "\n".join([given_text, *code_outputs]))) >= 2):
+                # Values the code did not print, worked out by hand (the lecture turn's SRTF
+                # 2.25 and RR 6.50 while six code runs were done): taken back and asked once
+                # to compute them, with one more tool hop past the cap if it was reached.
+                figures_retried = True
+                log.info("answer values missing from the code outputs, asking once to compute")
+                streamed = "".join(hop_text)
+                del answer_text[len(answer_text) - len(hop_text) :]
+                yield {"type": "retract", "text": streamed}
+                conversation.append(acc.assistant_message())
+                conversation.append({"role": "user", "content": _COMPUTE_UNVERIFIED.format(
+                    values=", ".join(missing[:12]))})
+                if closing or hop >= settings.max_tool_hops:
+                    extra_hops = max(extra_hops, hop + 1 - settings.max_tool_hops)
+                    close_after_tools = True
+                closing = False
+                continue
             if hop and not spoken_now:
                 # Tools ran but the answer is empty: ask once more without tools.
                 conversation.append(acc.assistant_message())
@@ -1163,8 +1266,16 @@ async def run_turn(
             break
 
         hop += 1
-        if hop > settings.max_tool_hops:
+        cap_code = (hop > settings.max_tool_hops + extra_hops and not close_after_tools
+                    and bool(acc.calls) and "run_code" in by_name
+                    and all(call["name"] in _CODE_TOOLS for call in acc.calls.values()))
+        if cap_code:
+            # The cap reached on code the answer depends on: those calls still run, and the
+            # next call is the last, answering from their printed values — not by hand.
+            close_after_tools = True
+        elif hop > settings.max_tool_hops + extra_hops:
             # Hop cap: one last call with no tools, answering from what it has.
+            code_refused |= any(call["name"] in _CODE_TOOLS for call in acc.calls.values())
             conversation.append(acc.assistant_message())
             for index, call in sorted(acc.calls.items()):
                 conversation.append(
@@ -1406,6 +1517,8 @@ async def run_turn(
             }
             if not result.failed and call["name"] != "web_search":
                 ctx.outputs.append(result.content)
+            if not result.failed and call["name"] in _CODE_TOOLS:
+                code_outputs.append(result.content)
             result.content = _number_sources(result.content, sources, call, source_titles)
             conversation.append(
                 {
@@ -1469,6 +1582,15 @@ async def run_turn(
                 yield terminal_origin
             yield {"type": "delta", "text": terminal_text}
             break
+
+        if close_after_tools:
+            close_after_tools = False
+            closing = True
+            conversation.append({"role": "user", "content": (
+                "도구는 더 쓸 수 없습니다. 위 코드 실행 출력의 값으로 답을 쓰세요. 코드가 출력하지 "
+                "않은 값을 손으로 셈해 채우지 말고, 그 항목은 코드로 구하지 못했다고 밝히세요."
+            )})
+            continue
 
         if searches >= MAX_WEB_SEARCHES or fetches >= MAX_FETCHES:
             conversation.append(
@@ -1536,6 +1658,11 @@ async def run_turn(
         yield {"type": "retract", "text": answer}
         yield {"type": "delta", "text": scrubbed}
         answer = scrubbed
+    if code_outputs and not code_refused and (unclaimed := strip_limit_claims(answer)) != answer:
+        # Every code call ran: a sentence saying a limit stopped the code is not so.
+        yield {"type": "retract", "text": answer}
+        yield {"type": "delta", "text": unclaimed}
+        answer = unclaimed
     linked, cited = _link_citations(answer, sources)
     if linked != answer:
         # The citations sit mid-text, so the answer is re-sent whole.
@@ -1563,6 +1690,14 @@ async def run_turn(
         )
         answer_text.append(appendix)
         yield {"type": "delta", "text": appendix}
+    if code_outputs and not preflight_tool and len(
+            hand := _unverified_figures(answer, "\n".join([given_text, *code_outputs]))) >= 2:
+        note = (
+            "\n\n_다음 값은 이번 코드 실행 출력에 없어 코드로 확인하지 못했습니다: "
+            + ", ".join(hand[:12]) + "_"
+        )
+        answer_text.append(note)
+        yield {"type": "delta", "text": note}
     unverified = [u for u in _urls_in(answer) if u not in seen_urls and _looks_like_a_source(u)]
     if unverified and seen_urls:
         note = (
