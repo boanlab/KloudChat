@@ -128,7 +128,7 @@ def agent_checks(key: str | None) -> tuple[str, ...]:
 _DESIGNS: list[dict] = [
     {
         "name": "기본",
-        "description": "지금까지의 기본값 그대로. 색과 서체만 고정합니다.",
+        "description": "보라 강조색과 고딕 서체만 정하고, 문체 규칙은 두지 않는 수수한 테마입니다.",
         "tokens": {"accent": "#5b5bd6", "ink": "#1a1a1a", "muted": "#666666", "font": "gothic"},
         "body": "",
         "image_style": "clean uncluttered composition, generous whitespace",
