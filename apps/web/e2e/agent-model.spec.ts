@@ -62,7 +62,7 @@ test('에이전트로 시작한 대화는 에이전트의 모델을 쓰고, 작�
     await page.getByRole('button', { name: pinned! }).click()
     // The <select> prints "Vendor · Name"; picker rows print the name alone.
     const rowName = other.split(' · ').pop()!
-    await page.getByRole('menu').getByRole('button', { name: rowName, exact: false }).first().click()
+    await page.getByRole('menu').getByRole('menuitemradio', { name: rowName, exact: false }).first().click()
     await expect(page.getByRole('button', { name: other })).toBeVisible({ timeout: 20_000 })
     // Written to the conversation, so it survives a reload.
     await page.reload()

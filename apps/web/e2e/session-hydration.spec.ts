@@ -300,7 +300,7 @@ for (const kind of ['chat', 'report', 'slides'] as const) {
         if (selection === 'pending inheritance') {
           await page.screenshot({ path: info.outputPath('agent-model-pending.png'), animations: 'disabled' })
           await picker.click()
-          const fallback = page.getByRole('button', { name: /^Fixture/ }).last()
+          const fallback = page.getByRole('menuitemradio', { name: /^Fixture/ }).last()
           await expect(fallback).toBeVisible()
           await expect(fallback.locator('svg.lucide-check')).toHaveCount(0)
           await page.screenshot({ path: info.outputPath('agent-model-menu.png'), animations: 'disabled' })
@@ -359,7 +359,7 @@ for (const kind of ['report', 'slides'] as const) {
       state.detail.release()
       await page.goto(`/s/${id}`)
       await page.getByRole('button', { name: 'Agent 기본 모델', exact: true }).click()
-      await page.getByRole('button', { name: /^Fixture/ }).click()
+      await page.getByRole('menuitemradio', { name: /^Fixture/ }).click()
       await expect.poll(() => state.writes.length).toBe(1)
       expect(state.writes[0]).toEqual({ method: 'PATCH', path: `/sessions/${id}`,
         data: { model: 'fixture/model', routingMode: 'manual' } })

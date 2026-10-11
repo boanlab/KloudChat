@@ -577,7 +577,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
         buffer: Buffer.from('draft'),
       })
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('생성 실패 후 남을 초안')
@@ -620,7 +620,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
         buffer: Buffer.from('draft'),
       })
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
 
       await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
       await expect(page.getByLabel('프롬프트 입력')).toHaveValue('PATCH 실패 후 남을 초안')
@@ -633,7 +633,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await page.goto(`/s/${sessionId}`)
 
       await page.getByRole('button', { name: laneName }).click()
-      await page.getByRole('button', { name: /Mock · Economy B/ }).click()
+      await page.getByRole('menuitemradio', { name: /Mock · Economy B/ }).click()
 
       await expect.poll(() => state.patches.length).toBe(1)
       expect(state.patches[0]).toEqual({ model: 'external/economy-b', routingMode: 'manual' })
@@ -682,7 +682,7 @@ for (const mode of ['auto', 'auto_quality'] as const) {
       await page.goto(`/s/${sessionId}`)
       await page.getByLabel('프롬프트 입력').fill('설정 저장 뒤 전송')
       await page.getByRole('button', { name: /Mock · Premium/ }).click()
-      await page.getByRole('button', { name: laneName }).click()
+      await page.getByRole('menuitemradio', { name: laneName }).click()
       await expect.poll(() => state.patches.length).toBe(1)
 
       await page.getByLabel('프롬프트 입력').press('Enter')
@@ -717,7 +717,7 @@ test('품질 상향 응답은 절약 모드로 오표시하지 않고 모드를 
   await expect(routeBadge).toContainText('예상 39 크레딧 절약')
 
   await page.getByRole('button', { name: /Auto · 품질 우선/ }).click()
-  await page.getByRole('button', { name: /Mock · Economy B/ }).click()
+  await page.getByRole('menuitemradio', { name: /Mock · Economy B/ }).click()
   await page.reload()
   await openRoutingDetails(page)
   await expect(page.getByRole('button', { name: 'Mock · Economy B', exact: true })).toBeVisible()
@@ -819,7 +819,7 @@ test('절약에서 품질로 전환을 저장하지 못하면 이전 절약 모�
   await page.goto(`/s/${sessionId}`)
   await page.getByLabel('프롬프트 입력').fill('모드 변경 실패 후에도 남을 초안')
   await page.getByRole('button', { name: /Auto · 비용 절약/ }).click()
-  await page.getByRole('button', { name: /Auto · 품질 우선/ }).click()
+  await page.getByRole('menuitemradio', { name: /Auto · 품질 우선/ }).click()
 
   await expect(page.getByText('Auto를 켜지 못했습니다. 잠시 후 다시 시도하세요.')).toBeVisible()
   await expect(page.getByRole('button', { name: /Auto · 비용 절약/ })).toBeVisible()

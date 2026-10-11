@@ -185,7 +185,7 @@ async function routeReady(page: Page, path: string) {
     await expect(main.getByRole('heading', { level: 1, name: t(heading), exact: true }),
       `Audit route: expected screen heading is missing at ${path}`).toBeVisible()
   }
-  if (parent) await expect(main.locator(`[role="tab"][href="${path}"]`),
+  if (parent) await expect(main.locator(`a[href="${path}"]`).first(),
     `Audit route: selected tab is missing at ${path}`).toHaveAttribute('aria-current', 'page')
 }
 
