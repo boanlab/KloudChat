@@ -1462,20 +1462,37 @@ def _answer_in_flight(last: Message) -> bool:
     return (utcnow() - asked).total_seconds() < settings.chat_stall_sec
 
 
+#: A question's shape: 「얼마」, 「몇」, 「누구」, 「언제」, a question mark.
+_ASKS = re.compile(
+    r"얼마|몇\s{0,2}[가-힣]|누구|언제|어디|인가요|나요|\?|？"
+    r"|\b(?:what|who|when|how\s+much)\b", re.I)
+#: An ask to write or arrange something from what follows: 「안건 초안을 잡아 줘」.
+_DRAFTS = re.compile(r"초안|써\s{0,2}줘|작성|정리|잡아\s{0,2}줘|만들어|요약|다듬")
+
+
+def _asks_about_now(instruction: str) -> bool:
+    """Whether the person's own instruction asks a present-state question (「지금 주가랑」,
+    「올해 최저임금 얼마야?」) — not a present word inside a task (「우리가 지금 준비할 일」,
+    「이번 주 주간 보고서」, 「올해 RISE 사업 참여 중」)."""
+    return freshness.names_the_present(instruction) and (
+        freshness.current_fact_required(instruction) or bool(_ASKS.search(instruction)))
+
+
 def _reads_pasted_material(content: str) -> bool:
-    """A request about the material pasted under it (a commit log, notes, a source pack):
-    the dates and prices in that material are what it says, not a question about now. The
-    request's own words can still ask about the present (「지금 환율로」)."""
+    """A request about the material pasted under it (a commit log, notes, a source pack, the
+    person's own account of their meeting): the dates and prices in that material are what it
+    says, not a question about now. The request's own words can still ask about the present
+    (「지금 환율로」)."""
     from app.services.context import instruction_part, pasted_material
 
     if pasted_material(content):
-        return not freshness.names_the_present(instruction_part(content))
+        return not _asks_about_now(instruction_part(content))
     head, gap, rest = (content or "").partition("\n\n")
     lines = [line for line in rest.splitlines() if line.strip()]
     looks_pasted = len(rest.strip()) >= 120 and (
-        len(lines) >= 3 or bool(re.match(r"[\[#|「<]", rest.lstrip())))
-    return bool(gap) and len(head) <= 300 and looks_pasted and not freshness.names_the_present(
-        head)
+        len(lines) >= 3 or bool(re.match(r"[\[#|「<]", rest.lstrip()))
+        or bool(_DRAFTS.search(head)))
+    return bool(gap) and len(head) <= 300 and looks_pasted and not _asks_about_now(head)
 
 
 def _grounded_in_files(workspace: WorkspaceContext) -> bool:
