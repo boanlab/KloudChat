@@ -315,7 +315,11 @@ _WEB_SEARCH_BLOCKED = (
     "The user turned on web search, but this request has no search tool. "
     "Do not attempt a search or say that you searched. Answer usefully from the material "
     "provided and what you know, but do not assert details whose currency you could not "
-    "verify."
+    "verify.\n"
+    "- When the question is about a particular event, award, release or decision you cannot "
+    "check here, say so in one or two sentences and name where it is published. Add no "
+    "dates, places, names or procedures for it from memory (not 「ACL 2026(2026년 7월, ○○)」), "
+    "and no general background the person did not ask for."
 )
 
 
