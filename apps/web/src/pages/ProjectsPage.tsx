@@ -24,13 +24,13 @@ import { useT } from '@/lib/useT'
 export function ProjectsPage() {
   const t = useT()
   const navigate = useNavigate()
-  const { projects, createProject, deleteMany, loadWorkspace, workspaceLoading, workspaceFailed } =
+  const { projects, createProject, deleteMany, loadWorkspace, ensureWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
   const pick = useBulkSelect(projects)
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState({
     name: '',

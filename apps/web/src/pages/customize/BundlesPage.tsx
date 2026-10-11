@@ -99,15 +99,15 @@ export function BundlesPage() {
   const t = useT()
   const [params, setParams] = useSearchParams()
   const setNotice = useStore((s) => s.setNotice)
-  const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const [lists, setLists] = useState<Lists | null>(null)
   const [editing, setEditing] = useState<Bundle | null | 'new'>(params.get('new') ? 'new' : null)
   const [removing, setRemoving] = useState<Bundle | null>(null)
   const reload = useCallback(() => bundlesApi.list().then(setLists).catch(() => setLists({ shipped: [], mine: [], shared: [] })), [])
   useEffect(() => {
-    void loadWorkspace()
+    void ensureWorkspace()
     void reload()
-  }, [loadWorkspace, reload])
+  }, [ensureWorkspace, reload])
 
   const share = async (b: Bundle, visibility: 'org' | 'private') => {
     try {

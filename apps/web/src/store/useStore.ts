@@ -513,8 +513,13 @@ interface State {
   refreshArtifact: (id: string) => Promise<Artifact | null>
 
   // ── workspace ─────────────────────────────────────────────────────────
-  /** One call after sign-in; each screen also refreshes its own slice. */
+  /** One call after sign-in; each screen also refreshes its own slice. A call made while a
+   * load is running waits for one more load after it (shared by every such call), so what
+   * it gets is newer than the call; there are never two loads at once. */
   loadWorkspace: () => Promise<void>
+  /** A screen opening: the load already running when there is one, nothing when one finished
+   * a moment ago (a deep link mounts its screen as the sign-in load lands), else a fresh load. */
+  ensureWorkspace: () => Promise<void>
   /** The server defaults `emoji` to 📁. */
   createProject: (
     p: Pick<Project, 'name' | 'description' | 'instructions'> & Partial<Pick<Project, 'emoji'>>,
@@ -596,7 +601,17 @@ interface State {
 
 /** Bumped on every workspace write, so a stale fetch cannot overwrite newer state. */
 let workspaceEpoch = 0
-const touchWorkspace = () => ++workspaceEpoch
+/** A change here (or a sign-out): a load in flight is stale, and so is the last one. */
+const touchWorkspace = () => {
+  workspaceLoadedAt = 0
+  return ++workspaceEpoch
+}
+/** The workspace load running now, and the one queued behind it (`loadWorkspace`). */
+let workspaceLoad: Promise<void> | null = null
+let workspaceAgain: Promise<void> | null = null
+/** When the last workspace load finished (`ensureWorkspace` reuses it this long). */
+let workspaceLoadedAt = 0
+const WORKSPACE_FRESH_MS = 5_000
 
 /** Matches the server's page size. */
 const ARTIFACT_PAGE = 60
@@ -1100,50 +1115,69 @@ export const useStore = create<State>((set, get) => ({
   agents: [],
   connectorCatalog: [],
 
-  /** A partial failure still renders the rest. */
-  loadWorkspace: async () => {
-    const epoch = ++workspaceEpoch
-    // Artifacts load through their own (deduplicated) action.
-    void get().loadArtifacts({})
-    const results = await Promise.allSettled([
-      projectsApi.list(),
-      skillsApi.list(),
-      designsApi.list(),
-      designTemplatesApi.list(),
-      memoryApi.list(),
-      agentsApi.list(),
-      connectorsApi.list(),
-      connectorsApi.catalog(),
-      toolsApi.list(),
-    ])
-    const [
-      projects,
-      skills,
-      designs,
-      designTemplates,
-      memories,
-      agents,
-      connectors,
-      catalog,
-      tools,
-    ] = results
-    if (epoch !== workspaceEpoch) return
-    set((s) => ({
-      workspaceLoading: false,
-      workspaceFailed: results.some((r) => r.status === 'rejected'),
-      projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
-      skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
-      designs: designs.status === 'fulfilled' ? designs.value : s.designs,
-      designTemplates:
-        designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
-      availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
-      memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
-      agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
-      connectors:
-        connectors.status === 'fulfilled' ? connectors.value.map(toConnector) : s.connectors,
-      connectorCatalog: catalog.status === 'fulfilled' ? catalog.value : s.connectorCatalog,
-    }))
+  loadWorkspace: () => {
+    if (workspaceLoad) {
+      // Nine lists at once per load: a deep link opened with the sign-in load still running
+      // queued a second nine beside it on a one-worker API (ops OPS-11).
+      workspaceAgain ??= workspaceLoad.then(() => {
+        workspaceAgain = null
+        return get().loadWorkspace()
+      })
+      return workspaceAgain
+    }
+    /** A partial failure still renders the rest. */
+    const fetchWorkspace = async () => {
+      const epoch = ++workspaceEpoch
+      // Artifacts load through their own (deduplicated) action.
+      void get().loadArtifacts({})
+      const results = await Promise.allSettled([
+        projectsApi.list(),
+        skillsApi.list(),
+        designsApi.list(),
+        designTemplatesApi.list(),
+        memoryApi.list(),
+        agentsApi.list(),
+        connectorsApi.list(),
+        connectorsApi.catalog(),
+        toolsApi.list(),
+      ])
+      const [
+        projects,
+        skills,
+        designs,
+        designTemplates,
+        memories,
+        agents,
+        connectors,
+        catalog,
+        tools,
+      ] = results
+      if (epoch !== workspaceEpoch) return
+      set((s) => ({
+        workspaceLoading: false,
+        workspaceFailed: results.some((r) => r.status === 'rejected'),
+        projects: projects.status === 'fulfilled' ? projects.value.map(toProject) : s.projects,
+        skills: skills.status === 'fulfilled' ? skills.value.map(toSkill) : s.skills,
+        designs: designs.status === 'fulfilled' ? designs.value : s.designs,
+        designTemplates:
+          designTemplates.status === 'fulfilled' ? designTemplates.value : s.designTemplates,
+        availableTools: tools.status === 'fulfilled' ? tools.value : s.availableTools,
+        memories: memories.status === 'fulfilled' ? memories.value.map(toMemory) : s.memories,
+        agents: agents.status === 'fulfilled' ? agents.value.map(toAgent) : s.agents,
+        connectors:
+          connectors.status === 'fulfilled' ? connectors.value.map(toConnector) : s.connectors,
+        connectorCatalog: catalog.status === 'fulfilled' ? catalog.value : s.connectorCatalog,
+      }))
+    }
+    workspaceLoad = fetchWorkspace().finally(() => {
+      workspaceLoad = null
+      workspaceLoadedAt = Date.now()
+    })
+    return workspaceLoad
   },
+  ensureWorkspace: () =>
+    workspaceLoad ??
+    (Date.now() - workspaceLoadedAt < WORKSPACE_FRESH_MS ? Promise.resolve() : get().loadWorkspace()),
 
   usage: null,
   loadUsage: async (days = 7) => {

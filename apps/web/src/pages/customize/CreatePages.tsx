@@ -122,12 +122,12 @@ export function AgentCreatePage() {
   const t = useT()
   const navigate = useNavigate()
   const models = useStore((s) => s.models)
-  const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   useEffect(() => {
-    void loadWorkspace()
+    void ensureWorkspace()
     void ensureDesignTemplates()
-  }, [loadWorkspace, ensureDesignTemplates])
+  }, [ensureWorkspace, ensureDesignTemplates])
 
   // Cheapest chat model, the same rule the surface defaults use.
   const defaultModel =
@@ -179,10 +179,10 @@ export function AgentCreatePage() {
 export function SkillCreatePage() {
   const t = useT()
   const navigate = useNavigate()
-  const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   return (
     <>
       <HubTopBar tab="skills" tabLabel="스킬" title={t('새 스킬')} />

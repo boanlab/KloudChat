@@ -406,7 +406,7 @@ function Hub() {
   const navigate = useNavigate()
   const phone = useMediaQuery('(max-width: 40rem)')
   const { params, tab, sort, filter, all, update } = useHubParams()
-  const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const loadSkillStore = useStore((s) => s.loadSkillStore)
   const workspaceLoading = useStore((s) => s.workspaceLoading)
   const deleteMany = useStore((s) => s.deleteMany)
@@ -414,9 +414,9 @@ function Hub() {
   const [sheet, setSheet] = useState(false)
 
   useEffect(() => {
-    void loadWorkspace()
+    void ensureWorkspace()
     void loadSkillStore()
-  }, [loadWorkspace, loadSkillStore])
+  }, [ensureWorkspace, loadSkillStore])
 
   const showHidden = params.get('hidden') === '1'
   const admin = useStore((s) => s.user?.role === 'admin')

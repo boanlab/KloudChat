@@ -777,3 +777,14 @@ test('an administrator reads conversations only after giving a reason', async ({
   expect(asked.every((u) => new URL(u).searchParams.get('reason') === '남용 신고 확인')).toBe(true)
   expect(state.unexpected).toEqual([])
 })
+
+test('a deep link to an agent loads each workspace list once', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await page.goto(`/customize/agents/${AGENT}`)
+  await expect(page.getByTestId('item-detail-header')).toBeVisible({ timeout: 15_000 })
+  await page.waitForLoadState('networkidle')
+  // The sign-in load and the page's own share one request per list (ops OPS-11).
+  for (const list of ['/agents', '/projects', '/skills', '/memory']) {
+    expect(state.reads.filter((path) => path === list), list).toHaveLength(1)
+  }
+})

@@ -22,12 +22,12 @@ import { useT } from '@/lib/useT'
 
 export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT()
-  const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, workspaceLoading, workspaceFailed } =
+  const { memories, projects, deleteMemory, togglePinMemory, loadWorkspace, ensureWorkspace, workspaceLoading, workspaceFailed } =
     useStore()
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   const [filter, setFilter] = useState<MemoryType | 'all'>('all')
   const [draft, setDraft] = useState<MemoryEntry | null>(null)
   const [confirming, setConfirming] = useState<MemoryEntry | null>(null)

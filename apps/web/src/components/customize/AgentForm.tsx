@@ -367,10 +367,13 @@ export function AgentForm({
   const knowledgeChanged = useCallback(
     (hasKnowledge: boolean) => {
       setDraft((d) => (d.hasKnowledge === hasKnowledge ? d : { ...d, hasKnowledge }))
-      // The composer reads the saved agent, not this draft.
-      void loadWorkspace()
+      // The composer reads the saved agent, not this draft: refreshed when the list says
+      // otherwise than the saved agent — not on every reading of the list, which on opening
+      // the page sent the whole workspace a second time.
+      const stored = useStore.getState().agents.find((a) => a.id === savedId)
+      if (savedId && stored?.hasKnowledge !== hasKnowledge) void loadWorkspace()
     },
-    [loadWorkspace],
+    [loadWorkspace, savedId],
   )
 
   const needAgent = useCallback(async () => (await persist())?.id ?? null, [persist])
