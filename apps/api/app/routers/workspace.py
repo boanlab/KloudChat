@@ -741,8 +741,24 @@ async def open_file_as_document(file_id: str, user: CurrentUser, db: DbSession):
 
 @router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_file(file_id: str, user: CurrentUser, db: DbSession):
-    stored = await _own(db, StoredFile, "user_id", user, file_id)
+    await _own(db, StoredFile, "user_id", user, file_id)
+    # Locked and read afresh: a page reader finishing at this moment writes the row too, and
+    # must either be seen here (its vectors are forgotten below) or wait and see the row gone.
+    stored = (
+        await db.exec(
+            select(StoredFile)
+            .where(StoredFile.id == file_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if stored is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
     file_service.delete_blob(stored.storage_key)
+    if stored.ocr_state and not stored.indexed_at:
+        # Its read pages may be on their way into the shelf it belongs to.
+        if collection := await shelf_of(db, stored):
+            await index_client.forget_document(collection=collection, doc_id=stored.id)
     if stored.indexed_at:
         # The collection the write went to, when recorded; otherwise every collection the
         # document may sit in (a project conversation's upload: the project's, or, if

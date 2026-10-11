@@ -185,7 +185,8 @@ async def _reindex(db, stored: StoredFile) -> None:
         log.info("ocr reindex of %s skipped: %s", file_id, logs.safe(exc))
         await db.rollback()
     if collection and not await _still_there(db, file_id):
-        await index_client.forget_document(collection=collection, doc_id=file_id)
+        if not await index_client.forget_document(collection=collection, doc_id=file_id):
+            log.warning("ocr: vectors of deleted file %s may remain in its shelf", file_id)
 
 
 async def process(db, stored: StoredFile, token: str) -> None:

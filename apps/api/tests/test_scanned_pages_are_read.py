@@ -738,7 +738,9 @@ def test_a_picture_claiming_too_many_pixels_is_not_planned(monkeypatch):
 
 
 def test_frames_are_counted_only_up_to_the_page_limit():
-    assert ocr.plan("a.tif", "image/tiff", _picture("TIFF", 5), 2).pages == (1, 2)
+    found = ocr.plan("a.tif", "image/tiff", _picture("TIFF", 5), 2)
+    # One frame past the limit is counted, so the file shows it was cut short.
+    assert found.pages == (1, 2) and found.total == 3 and found.skipped == 1
 
 
 def test_every_picture_is_re_encoded_under_the_cap_before_a_model_sees_it(monkeypatch):
@@ -805,3 +807,26 @@ async def test_a_file_deleted_while_its_vectors_were_written_has_them_taken_out(
         await s.commit()
         await ocr_jobs._reindex(s, stored)
     assert forgotten == [("shelf-key", row.id)]
+
+
+async def test_deleting_a_file_being_read_clears_its_shelf_even_before_indexing(
+    client, db, monkeypatch
+):
+    from app.routers import workspace as ws
+
+    made = (
+        await client.post("/files", files={"file": ("scan.pdf", _pdf([None]), "application/pdf")})
+    ).json()
+    forgotten: list[tuple[str, str]] = []
+
+    async def shelf(db_, stored):
+        return "shelf-key"
+
+    async def forget(*, collection, doc_id):
+        forgotten.append((collection, doc_id))
+        return True
+
+    monkeypatch.setattr(ws, "shelf_of", shelf)
+    monkeypatch.setattr(index_client, "forget_document", forget)
+    assert (await client.delete(f"/files/{made['id']}")).status_code == 204
+    assert forgotten == [("shelf-key", made["id"])]

@@ -256,10 +256,12 @@ def plan(name: str, mime: str, data: bytes, max_pages: int) -> Plan | None:
             skipped=len(scanned) - len(kept),
         )
     if mime in IMAGE_TYPES:
-        frames = _frames(data, max_pages)
+        # One frame past the limit is counted, so a longer file shows it was cut short.
+        frames = _frames(data, max_pages + 1)
         if frames <= 0:
             return None
-        return Plan(kind="image", pages=tuple(range(1, frames + 1)), total=frames)
+        kept = tuple(range(1, min(frames, max_pages) + 1))
+        return Plan(kind="image", pages=kept, total=frames, skipped=frames - len(kept))
     return None
 
 
