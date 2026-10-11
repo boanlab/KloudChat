@@ -608,8 +608,9 @@ function Hub() {
         </div>
       )
     }
-    const popular = sortItems(hub.explore.filter((i) => i.installs > 0), 'popular')
-    const fresh = sortItems(hub.explore, 'recent')
+    const popular = sortItems(hub.explore.filter((i) => i.installs > 0), 'popular').slice(0, PER_SECTION)
+    // A card shows once: what 가장 많이 추가된 already holds is not repeated under 새.
+    const fresh = sortItems(hub.explore.filter((i) => !popular.includes(i)), 'recent')
     return (
       <div className="space-y-10">
         {toggleRow}
@@ -619,13 +620,15 @@ function Hub() {
               title={t('가장 많이 추가된 {kind}').replace('{kind}', kindWord)}
               onAll={() => update({ all: 'popular', sort: 'popular' })}
             />
-            <Grid>{popular.slice(0, PER_SECTION).map((item) => card(item, 'explore'))}</Grid>
+            <Grid>{popular.map((item) => card(item, 'explore'))}</Grid>
           </section>
         )}
-        <section aria-label={t('새 {kind}').replace('{kind}', kindWord)}>
-          <SectionHead title={t('새 {kind}').replace('{kind}', kindWord)} onAll={() => update({ all: 'new', sort: 'recent' })} />
-          <Grid>{fresh.slice(0, PER_SECTION).map((item) => card(item, 'explore'))}</Grid>
-        </section>
+        {fresh.length > 0 && (
+          <section aria-label={t('새 {kind}').replace('{kind}', kindWord)}>
+            <SectionHead title={t('새 {kind}').replace('{kind}', kindWord)} onAll={() => update({ all: 'new', sort: 'recent' })} />
+            <Grid>{fresh.slice(0, PER_SECTION).map((item) => card(item, 'explore'))}</Grid>
+          </section>
+        )}
       </div>
     )
   }

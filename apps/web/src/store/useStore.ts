@@ -306,6 +306,8 @@ interface State {
   /** Shared skills not yet copied into this account; loaded separately from the workspace. */
   skillStore: StoreSkill[]
   skillStoreLoading: boolean
+  /** Whether the shared skill list has answered once; until then 탐색 is loading, not empty. */
+  skillStoreLoaded: boolean
   /** The last listing failed; distinct from empty. */
   skillStoreError: boolean
   designs: DesignRow[]
@@ -1001,6 +1003,7 @@ export const useStore = create<State>((set, get) => ({
       artifacts: [],
       skills: [],
       skillStore: [],
+      skillStoreLoaded: false,
       designs: [],
       designTemplates: [],
       availableTools: [],
@@ -1092,6 +1095,7 @@ export const useStore = create<State>((set, get) => ({
   skills: [],
   skillStore: [],
   skillStoreLoading: false,
+  skillStoreLoaded: false,
   skillStoreError: false,
   designs: [],
   designTemplates: [],
@@ -2372,6 +2376,7 @@ export const useStore = create<State>((set, get) => ({
       skillStore: rows ? rows.map(toStoreSkill) : st.skillStore,
       skillStoreError: rows === null,
       skillStoreLoading: false,
+      skillStoreLoaded: true,
     }))
   },
   installSkill: async (id) => {

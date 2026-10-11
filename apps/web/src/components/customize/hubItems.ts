@@ -126,6 +126,8 @@ export function useHubItems(tab: HubTab, showHidden = false) {
   const skills = useStore((s) => s.skills)
   const skillStore = useStore((s) => s.skillStore)
   const me = useStore((s) => s.user?.id)
+  const workspaceLoading = useStore((s) => s.workspaceLoading)
+  const skillStoreLoaded = useStore((s) => s.skillStoreLoaded)
 
   const items = useMemo(() => {
     if (tab === 'agents') {
@@ -152,7 +154,8 @@ export function useHubItems(tab: HubTab, showHidden = false) {
     locked: items.locked,
     hiddenMine: items.mine.filter((i) => i.hidden).length,
     hiddenAny: items.mine.some((i) => i.hidden) || items.explore.some((i) => i.hidden),
-    loading: false,
+    // Before the lists answer, an empty tab is loading, not empty.
+    loading: workspaceLoading || (tab === 'skills' && !skillStoreLoaded),
   }
 }
 

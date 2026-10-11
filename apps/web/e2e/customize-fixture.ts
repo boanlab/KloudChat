@@ -219,7 +219,7 @@ export function conversationRows(n: number) {
   }))
 }
 
-export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false, decided = undefined as { distilled: string; prompt: string; decided: string[]; delayMs?: number }[] | undefined } = {}) {
+export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = false, conversations = 0, draft = agentDraft as Record<string, unknown>, admin = false, hiddenSkill = false, listDelayMs = 0, decided = undefined as { distilled: string; prompt: string; decided: string[]; delayMs?: number }[] | undefined } = {}) {
   // 「에이전트로 저장」's distillation replies, in order; by default the draft's own 지시.
   const decidedReplies = decided ? [...decided] : [{ distilled: 'ok', prompt: String(draft.systemPrompt ?? ''), decided: (draft.decided ?? []) as string[] }]
   const origin = new URL(String(testInfo.project.use.baseURL)).origin
@@ -273,6 +273,10 @@ export async function hubFixture(page: Page, testInfo: TestInfo, { emptyMine = f
       creditCost: 1, inputCreditCost: 1, supportsTools: true, contextWindow: 64000 }], defaultChatModel: 'fixture/base',
       litellmAvailable: false, autoRouting: { enabled: false, available: false } })
     if (method === 'GET' && path === '/credits') return json({ monthlyCredits: 1000, creditsUsed: 0, creditsRemaining: 1000 })
+    // A slow server: the hub's lists answer late.
+    if (listDelayMs && method === 'GET' && ['/agents', '/skills', '/skills/store'].includes(path)) {
+      await new Promise((resolve) => setTimeout(resolve, listDelayMs))
+    }
     if (method === 'GET' && path === '/agents') return json(agents)
     if (method === 'GET' && path === '/skills') return json(skills)
     if (method === 'GET' && path === '/skills/store') return json(store)

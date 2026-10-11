@@ -1416,7 +1416,8 @@ export function Composer({
   // Everything but dictation, the model and send sits behind 「+」 (a bottom sheet on a phone);
   // what is switched on shows as a chip above the input.
   const showTemplates = hasTemplates && (started || !sessionId) && !editing
-  const showSkills = !isMedia && usableSkills.length > 0
+  // Offered before any skill is added, so a new account can find them from here.
+  const showSkills = !isMedia
   // On a phone the microphone moves into 「+」 unless it is recording.
   const micInMenu = phone && canRecord && !recording && !transcribing
   const hasTools =
@@ -1578,7 +1579,9 @@ export function Composer({
               />
             </div>
             {shownSkills.length === 0 && (
-              <p className="px-2.5 py-1.5 text-sm text-faint">{t('맞는 스킬이 없습니다.')}</p>
+              <p className="px-2.5 py-1.5 text-sm text-faint">
+                {usableSkills.length === 0 ? t('아직 추가한 스킬이 없습니다.') : t('맞는 스킬이 없습니다.')}
+              </p>
             )}
             {shownSkills.map((s) => {
               const selected = activeSkills.some((skill) => skill.id === s.id)
@@ -1605,9 +1608,15 @@ export function Composer({
               )
             })}
             <MenuSeparator />
-            <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
-              {t('스킬 관리')}
-            </MenuItem>
+            {usableSkills.length === 0 ? (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills&view=explore')}>
+                {t('스킬 둘러보기')}
+              </MenuItem>
+            ) : (
+              <MenuItem icon={<Plus size={14} />} onClick={() => navigate('/customize?tab=skills')}>
+                {t('스킬 관리')}
+              </MenuItem>
+            )}
           </>
         )}
         {plusView === 'web' && (
