@@ -241,3 +241,19 @@ def test_a_year_and_a_count_is_not_a_month():
     material = "연도\tSCIE\tKCI\t학회발표\n2022\t2\t3\t5\n"
     assert trace.check("2022년 5건으로 가장 적었다.", material, ["5"], _TOOL_NUMBERS) == []
     assert [f["kind"] for f in trace.check("2022년 5월에 시작했다.", material, [])] == ["month"]
+
+
+def test_a_sheet_s_budget_cells_stay_in_the_rate_table():
+    # Research lane R-02: the 집행률 table's 예산·집행 cells and 「2022년 5건」 were blanked.
+    trace = skill_scripts.entry("grounding-check")
+    sheet = ("[시트 1: 연구비집행]\n연도\t항목\t예산(천원)\t집행(천원)\n"
+             "2024\t인건비\t42000\t40150\n2024\t연구활동비\t18000\t16320\n"
+             "2025\t인건비\t45000\t44100\n2025\t연구활동비\t20000\t14200\n\n"
+             "[시트 2: 논문실적]\n연도\tSCIE\tKCI\t학회발표\n2022\t2\t3\t5\n2023\t3\t2\t7\n")
+    computed = ["2024 인건비 95.60\n2024 연구활동비 90.67\n"
+                "2025 인건비 98.00\n2025 연구활동비 71.00"]
+    text = ("| 연도 | 항목 | 예산(천원) | 집행(천원) | 집행률(%) |\n|---|---|---|---|---|\n"
+            "| 2024 | 인건비 | 42,000 | 40,150 | 95.6 |\n"
+            "| 2025 | 연구활동비 | 20,000 | 14,200 | 71.0 |\n\n"
+            "SCIE+KCI 합계는 2022년 5건입니다. 연구비집행 시트는 2024·2025년 2개 연도만 있습니다.")
+    assert trace.check(text, "집행률을 표로 정리해 줘.\n" + sheet, computed, _TOOL_NUMBERS) == []

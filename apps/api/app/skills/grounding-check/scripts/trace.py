@@ -617,7 +617,8 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
                             "checked": checked or (bare and ("." in m.group("num") or value >= 10)
                                                    and not (value == int(value) and 1900 <= value <= 2100)),
                             "known": sources.match(value, unit, _decimals(m.group("num")))})
-            numbers[-1]["ok"] = numbers[-1]["known"] is not None or sources.quoted(value, line)
+            numbers[-1]["ok"] = numbers[-1]["known"] is not None or sources.quoted(
+                ko_number(m.group("num")), line)
     # Plain arithmetic of grounded numbers written together (a line, a table) is grounded too,
     # and so are sums, differences and shares of the big figures anywhere (a total and its
     # change); a value already grounded elsewhere in the text may be repeated. A difference
