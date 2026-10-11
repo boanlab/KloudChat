@@ -194,6 +194,9 @@ def pdf_layer(data: bytes) -> list[str]:
     from pypdf import PdfReader
 
     reader = PdfReader(io.BytesIO(data))
+    if len(reader.pages) > MAX_PAGES_CEILING:
+        # More pages than any reader takes; not planned at all.
+        raise ValueError("too many pages")
     pages: list[str] = []
     for page in reader.pages:
         try:
@@ -203,13 +206,29 @@ def pdf_layer(data: bytes) -> list[str]:
     return pages
 
 
-def _frames(data: bytes) -> int:
-    """Frames in a picture (a TIFF may hold many), without decoding them."""
+#: Pixels of one picture a reader or model is handed; more is a decompression bomb.
+MAX_PIXELS = 40_000_000
+
+
+def _frames(data: bytes, cap: int) -> int:
+    """Frames in a picture (a TIFF may hold many), counted by seeking and never past `cap`;
+    0 when it cannot be opened or its first frame claims more than MAX_PIXELS. Nothing is
+    decoded: Pillow reads sizes from the header."""
     from PIL import Image
 
     try:
         with Image.open(io.BytesIO(data)) as picture:
-            return max(1, int(getattr(picture, "n_frames", 1) or 1))
+            width, height = picture.size
+            if width * height > MAX_PIXELS:
+                return 0
+            frames = 0
+            while frames < cap:
+                try:
+                    picture.seek(frames)
+                except EOFError:
+                    break
+                frames += 1
+            return frames
     except Exception:  # noqa: BLE001 — Pillow raises many types for bad input
         return 0
 
@@ -237,11 +256,10 @@ def plan(name: str, mime: str, data: bytes, max_pages: int) -> Plan | None:
             skipped=len(scanned) - len(kept),
         )
     if mime in IMAGE_TYPES:
-        frames = _frames(data)
+        frames = _frames(data, max_pages)
         if frames <= 0:
             return None
-        kept = tuple(range(1, min(frames, max_pages) + 1))
-        return Plan(kind="image", pages=kept, total=frames, skipped=frames - len(kept))
+        return Plan(kind="image", pages=tuple(range(1, frames + 1)), total=frames)
     return None
 
 
@@ -334,6 +352,8 @@ async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> s
     current = await config(egress=True)
     if not current.vision_model or current.vision_model != cfg.vision_model:
         raise OcrError("vision model not available as strict-local")
+    if not await _every_deployment_contained(cfg.vision_model):
+        raise OcrError("vision model has a deployment that is not strict-local")
     base, master = await settings_store.litellm_config()
     if not base:
         raise OcrError("model gateway not configured")
@@ -375,6 +395,17 @@ async def vision_read(cfg: Config, picture: bytes, mime: str, api_key: str) -> s
         raise OcrError("vision model answered nothing")
     text = str((choices[0].get("message") or {}).get("content") or "").strip()
     return _unfence(text)
+
+
+async def _every_deployment_contained(alias: str) -> bool:
+    """Whether every deployment LiteLLM holds under `alias` is strict-local. The catalogue
+    names an alias by its first row; a second, outside deployment under the same name could
+    be picked by load balancing, so each row is checked here, uncached."""
+    try:
+        rows = [row for row in await litellm_service.model_info() if row.get("model_name") == alias]
+    except litellm_service.LiteLLMError:
+        return False
+    return bool(rows) and all(model_service.contained(row.get("model_info") or {}) for row in rows)
 
 
 _FENCE = re.compile(r"^```[a-zA-Z]*\n(.*)\n```$", re.S)
@@ -491,21 +522,23 @@ async def read_page(
 
 
 async def _picture_for_model(data: bytes, mime: str, page: int) -> tuple[bytes, str]:
-    """A picture a model accepts: the original when it is a single JPEG/PNG/WEBP, else the
-    chosen frame re-encoded as JPEG."""
-    if mime in ("image/jpeg", "image/png", "image/webp") and page == 1 and len(data) <= 8_000_000:
-        return data, mime
+    """The chosen frame as a JPEG of at most 2000 px a side. Every picture is decoded here
+    under the pixel cap and re-encoded, never handed on as uploaded."""
     return await asyncio.to_thread(_frame_jpeg, data, page), "image/jpeg"
 
 
 def _frame_jpeg(data: bytes, page: int) -> bytes:
     from PIL import Image
 
-    Image.MAX_IMAGE_PIXELS = 40_000_000
     try:
         with Image.open(io.BytesIO(data)) as picture:
             picture.seek(page - 1)
+            width, height = picture.size
+            if width * height > MAX_PIXELS:
+                raise OcrRefused("그림이 너무 커서 글자를 읽지 못했습니다.")
             frame = picture.convert("RGB")
+    except OcrRefused:
+        raise
     except Exception as exc:  # noqa: BLE001 — Pillow raises many types for bad input
         raise OcrRefused("그림을 열 수 없어 글자를 읽지 못했습니다.") from exc
     longest = max(frame.size)

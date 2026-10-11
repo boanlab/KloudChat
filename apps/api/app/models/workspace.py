@@ -128,6 +128,9 @@ class StoredFile(SQLModel, table=True):
     ocr_attempts: int = Field(default=0)
     #: When a worker last claimed or advanced the job; a stale one is taken over.
     ocr_claimed_at: datetime | None = Field(default=None, sa_column=_ts(nullable=True))
+    #: The claim's token: a worker writes only while the row still carries its own, so one
+    #: whose claim went stale and was taken over cannot touch the job again.
+    ocr_claim: str | None = Field(default=None, max_length=32)
     created_at: datetime = Field(default_factory=utcnow, sa_column=_ts(nullable=False))
 
 

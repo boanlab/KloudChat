@@ -1,8 +1,9 @@
 """Text from scanned pages: progress on the file row, and what each page was read as.
 
 - `files.ocr_state` (null: the file needed no OCR), `ocr_total`, `ocr_done`, `ocr_review`,
-  `ocr_attempts`, `ocr_claimed_at`: a background job reads the pages, claimed in the
-  database so two API replicas never read the same file and a stale claim is taken over.
+  `ocr_attempts`, `ocr_claimed_at`, `ocr_claim`: a background job reads the pages, claimed in
+  the database so two API replicas never read the same file, a stale claim is taken over, and
+  the worker that lost it cannot write again.
 - `file_pages`: one row per page of a file that went through OCR (the reader, its score,
   whether the two readings disagreed, line boxes for later highlighting).
 
@@ -39,6 +40,7 @@ def upgrade() -> None:
             "files", sa.Column(name, sa.Integer(), nullable=False, server_default="0")
         )
     op.add_column("files", sa.Column("ocr_claimed_at", ts, nullable=True))
+    op.add_column("files", sa.Column("ocr_claim", text(length=32), nullable=True))
     # The worker looks for open jobs only; a partial index keeps that cheap.
     op.create_index(
         "ix_files_ocr_open",
@@ -70,6 +72,7 @@ def downgrade() -> None:
     op.drop_table("file_pages")
     op.drop_index("ix_files_ocr_open", table_name="files")
     for name in (
+        "ocr_claim",
         "ocr_claimed_at",
         "ocr_attempts",
         "ocr_review",

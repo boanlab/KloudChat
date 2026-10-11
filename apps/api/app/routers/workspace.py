@@ -3235,30 +3235,29 @@ async def _index(db: DbSession, agent: Agent, stored: StoredFile) -> bool:
     return await _index_document(db, agent.owner_id, await _shelf_key(db, agent), stored)
 
 
-async def reindex_file(db: DbSession, stored: StoredFile) -> bool:
-    """After a file's text changed (its scanned pages were read): the index entry for it is
-    replaced in the collection its owner searches — the agent's, the project's, or the
-    conversation's."""
-    if not stored.text.strip():
-        return False
+async def shelf_of(db: DbSession, stored: StoredFile) -> str | None:
+    """The index collection the file's owner searches it in — the agent's, the project's, or
+    the conversation's — or None when it belongs to none."""
     if stored.agent_id:
         agent = await db.get(Agent, stored.agent_id)
-        return bool(agent) and await _index(db, agent, stored)
+        return await _shelf_key(db, agent) if agent is not None else None
     if stored.project_id:
         project = await db.get(Project, stored.project_id)
-        if project is None:
-            return False
-        return await _index_document(
-            db, stored.user_id, await _project_shelf_key(db, project), stored
-        )
+        return await _project_shelf_key(db, project) if project is not None else None
     if stored.session_id:
         session = await db.get(ChatSession, stored.session_id)
         if session is None or session.user_id != stored.user_id:
-            return False
-        return await _index_document(
-            db, stored.user_id, await _session_shelf_key(db, session), stored
-        )
-    return False
+            return None
+        return await _session_shelf_key(db, session)
+    return None
+
+
+async def reindex_file(db: DbSession, stored: StoredFile, collection: str) -> bool:
+    """After a file's text changed (its scanned pages were read): the index entry for it is
+    replaced in `collection` (from `shelf_of`)."""
+    if not stored.text.strip():
+        return False
+    return await _index_document(db, stored.user_id, collection, stored)
 
 
 async def _index_document(

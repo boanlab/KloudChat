@@ -152,6 +152,11 @@ def _data_boundary(info: dict[str, Any]) -> tuple[str, bool, bool]:
     return boundary, strict, privacy_only
 
 
+def contained(info: dict[str, Any]) -> bool:
+    """Whether one deployment's declared metadata makes it strict-local."""
+    return _data_boundary(info)[1]
+
+
 def _credits(usd: float) -> int:
     """USD → credits, rounded up so a priced model never shows as free."""
     if usd <= 0:

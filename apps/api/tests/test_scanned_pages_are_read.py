@@ -34,8 +34,16 @@ from app.models.user import CreditLedger, User, utcnow
 from app.models.workspace import FilePage, StoredFile
 from app.routers import workspace
 from app.services import files as file_service
+from app.services import (
+    index_client,
+    ocr,
+    ocr_jobs,
+    settings_store,
+    tools_gateway,
+    workspace_context,
+)
+from app.services import litellm as litellm_service
 from app.services import models as model_service
-from app.services import ocr, ocr_jobs, settings_store, tools_gateway, workspace_context
 
 
 @compiles(JSONB, "sqlite")
@@ -62,6 +70,11 @@ CATALOGUE = {
         },
     ],
 }
+
+
+CONTAINED = {"kchat_data_boundary": "self_hosted", "kchat_strict_local": True}
+#: What LiteLLM holds under each name; the vision alias has one contained deployment.
+DEPLOYMENTS = [{"model_name": VISION, "model_info": CONTAINED}]
 
 
 # ── documents ───────────────────────────────────────────────────────────
@@ -161,8 +174,12 @@ def configured(monkeypatch):
     async def egress():
         return CATALOGUE
 
+    async def deployments():
+        return list(DEPLOYMENTS)
+
     monkeypatch.setattr(settings_store, "tools_config", tools)
     monkeypatch.setattr(settings_store, "all_values", all_values)
+    monkeypatch.setattr(litellm_service, "model_info", deployments)
     monkeypatch.setattr(model_service, "list_models", catalogue)
     monkeypatch.setattr(model_service, "list_models_for_egress", egress)
     return values
@@ -688,3 +705,103 @@ def test_pages_read_count_as_free_work_in_usage():
     assert {"ocr.engine", "ocr.vision"} <= set(UNIT_REASONS)
     assert _unit_of("ocr-engine") == _unit_of("ocr-vision") == "pages"
     assert _unit_of("strict-local/qwen3.8-27b") == ""
+
+
+# ── after review: limits, every deployment, the claim, the index ──────
+
+
+async def test_an_alias_with_an_outside_deployment_is_never_shown_a_page(configured, monkeypatch):
+    cfg = await ocr.config()
+    twin = {"model_name": VISION, "model_info": {"kchat_data_boundary": "external"}}
+    monkeypatch.setattr(ocr_test_module(), "DEPLOYMENTS", [*DEPLOYMENTS, twin])
+    sent: list[object] = []
+
+    async def record(self, request):  # pragma: no cover — must not be reached
+        sent.append(request)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
+
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", record)
+    with pytest.raises(ocr.OcrError):
+        await ocr.vision_read(cfg, b"jpeg", "image/jpeg", "key")
+    assert sent == []
+
+
+def ocr_test_module():
+    import sys
+
+    return sys.modules[__name__]
+
+
+def test_a_picture_claiming_too_many_pixels_is_not_planned(monkeypatch):
+    monkeypatch.setattr(ocr, "MAX_PIXELS", 1000)
+    assert ocr.plan("big.png", "image/png", _picture(), 300) is None
+
+
+def test_frames_are_counted_only_up_to_the_page_limit():
+    assert ocr.plan("a.tif", "image/tiff", _picture("TIFF", 5), 2).pages == (1, 2)
+
+
+def test_every_picture_is_re_encoded_under_the_cap_before_a_model_sees_it(monkeypatch):
+    import asyncio
+
+    data, mime = asyncio.run(ocr._picture_for_model(_picture(), "image/png", 1))
+    assert mime == "image/jpeg" and data[:3] == b"\xff\xd8\xff"
+    monkeypatch.setattr(ocr, "MAX_PIXELS", 1000)
+    with pytest.raises(ocr.OcrRefused):
+        asyncio.run(ocr._picture_for_model(_picture(), "image/png", 1))
+
+
+async def test_a_worker_whose_claim_was_taken_over_writes_nothing(
+    db, configured, readers, monkeypatch
+):
+    row = await _stored(db, "scan.pdf", "application/pdf", _pdf([None, None]))
+    real = readers.engine_read
+
+    async def taken_over_then_read(cfg, data, page, *, want_image):
+        if page == 1:
+            # Another replica took the job over while this one was reading.
+            async with db() as s:
+                held = await s.get(StoredFile, row.id)
+                held.ocr_claim = "someone-else"
+                s.add(held)
+                await s.commit()
+        return await real(cfg, data, page, want_image=want_image)
+
+    monkeypatch.setattr(ocr, "engine_read", taken_over_then_read)
+    assert await ocr_jobs.run_one()
+    after, pages = await _reload(db, row.id)
+    assert after.ocr_claim == "someone-else" and after.ocr_state == "running"
+    assert [p for p in pages if p.source != "text"] == []
+
+
+async def test_a_file_deleted_while_its_vectors_were_written_has_them_taken_out(
+    db, configured, monkeypatch
+):
+    from app.routers import workspace as ws
+
+    row = await _stored(db, "scan.pdf", "application/pdf", _pdf([None]))
+    forgotten: list[tuple[str, str]] = []
+
+    async def shelf(db_, stored):
+        return "shelf-key"
+
+    async def delete_while_indexing(db_, stored, collection):
+        async with db() as s:
+            await s.delete(await s.get(StoredFile, stored.id))
+            await s.commit()
+        return True
+
+    async def forget(*, collection, doc_id):
+        forgotten.append((collection, doc_id))
+        return True
+
+    monkeypatch.setattr(ws, "shelf_of", shelf)
+    monkeypatch.setattr(ws, "reindex_file", delete_while_indexing)
+    monkeypatch.setattr(index_client, "forget_document", forget)
+    async with db() as s:
+        stored = await s.get(StoredFile, row.id)
+        stored.text = "읽은 글"
+        s.add(stored)
+        await s.commit()
+        await ocr_jobs._reindex(s, stored)
+    assert forgotten == [("shelf-key", row.id)]

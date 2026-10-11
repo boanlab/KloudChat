@@ -842,7 +842,7 @@ async def assemble(
         looked_at: dict[str, TurnPicture] = {}
         if vision:
             # A picture is shown to a model that can see it, even when its words were read
-            # out of it: the picture says more than the words.
+            # out of it (those go along as text too).
             for stored in ordered:
                 if not pictures.can_be_seen(stored.mime, stored.size):
                     continue
@@ -861,7 +861,9 @@ async def assemble(
         def being_read(stored) -> bool:
             return stored.ocr_state in ("queued", "running")
 
-        readable = [stored for stored in ordered if stored.text and stored.id not in looked_at]
+        # A picture whose words were read goes as both: the words stay in the text the
+        # privacy checks read, the picture shows the model what the words do not.
+        readable = [stored for stored in ordered if stored.text]
         unreadable = [
             stored
             for stored in ordered
@@ -874,8 +876,6 @@ async def assemble(
         spent = iter(used)
 
         def _fate(stored) -> ContextFile:
-            if stored.id in looked_at:
-                return ContextFile(stored.name, "picture", 0, 0)
             if being_read(stored):
                 kept = next(spent) if stored.text else None
                 return ContextFile(
@@ -888,6 +888,8 @@ async def assemble(
                 )
             if stored.text:
                 return next(spent)
+            if stored.id in looked_at:
+                return ContextFile(stored.name, "picture", 0, 0)
             if is_picture(stored):
                 return ContextFile(stored.name, "picture_unseen", 0, 0)
             return ContextFile(stored.name, "unreadable", 0, 0)
