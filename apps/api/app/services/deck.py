@@ -1982,6 +1982,11 @@ def requested_contents(slides: list[dict], request: str) -> dict[int, str]:
 
 #: Where a note turns into the deck's own Markdown: a heading, a fence, a 「발표 노트」 label.
 _DECK_IN_NOTES = re.compile(r"(?:^|\s)#{1,3}\s|```|\*{1,2}발표\s?노트\*{1,2}|(?:^|\s)-{2,3}\s+#")
+#: The next slides' JSON run on after a note:
+#: 「…기억해 두면 됩니다."}]}, {"title": "다음 시간 예고", …」.
+_JSON_RUN_ON = re.compile(
+    r'\\?"\s*[}\]]{1,4}\s*,?\s*[\[{]\s*\\?"(?:title|bullets|layout|speaker_notes|notes|body|rows|chart|slides)'
+    r'\\?"\s*:|\\?"\s*,\s*\\?"(?:title|bullets|layout|speaker_notes|notes|body|rows|chart)\\?"\s*:')
 #: Words in Latin letters a Korean deck may keep: names, acronyms, units, links.
 _KEPT_LATIN = re.compile(r"https?://\S+|\b[A-Z0-9][A-Z0-9.&/+-]{0,9}\b|\b[A-Z][a-z]{1,20}(?:[A-Z][a-z]{1,20}){1,6}\b")
 
@@ -2020,6 +2025,8 @@ def strip_json_residue(slides: list[dict]) -> list[int]:
             if m := _NOTE_WRAPPER.match(clean):
                 clean = m.group("body")
             clean = re.sub(r'\s*\\?"\s*\}\s*$', "", clean).replace('\\"', '"').strip()
+            if run_on := _JSON_RUN_ON.search(clean):
+                clean = clean[:run_on.start()].rstrip()
             if key == "notes" and (rest := _DECK_IN_NOTES.search(clean)):
                 # The whole deck as Markdown pasted after the slide's own note.
                 clean = clean[:rest.start()].rstrip(" -—")
@@ -2029,6 +2036,33 @@ def strip_json_residue(slides: list[dict]) -> list[int]:
         if hit:
             changed.append(index)
     return changed
+
+
+_TITLE_LABELS = ("발표\\s{0,2}제목", "논문\\s{0,2}제목", "제목", "title")
+_AUTHOR_LABELS = ("저자", "발표자", "발표\\s{0,2}자", "연구자", "authors?", "presenter")
+
+
+def _given_line(request: str, labels: tuple[str, ...]) -> str:
+    """The value of a 「제목: …」 line in the request's own words, or `""`."""
+    label = "|".join(labels)
+    pattern = re.compile(
+        rf"^[ \t]{{0,4}}[-*•]?[ \t]{{0,2}}(?:{label})[ \t]{{0,2}}[:：][ \t]{{0,2}}"
+        r"(?P<v>\S[^\n]{0,200})$", re.I | re.M)
+    m = pattern.search(request or "")
+    return m.group("v").strip().strip("「」\"'") if m else ""
+
+
+def given_cover(request: str, title: str, subtitle: str) -> tuple[str, str]:
+    """`(title, subtitle)` with what the request states: 「제목: …」 is the title word for word
+    and 「저자: …」 the cover's byline. A model's shortened title or dropped authors do not
+    stand (quality lane Q21)."""
+    given_title = _given_line(request, _TITLE_LABELS)
+    authors = _given_line(request, _AUTHOR_LABELS)
+    if given_title:
+        title = given_title
+    if authors and authors not in (subtitle or ""):
+        subtitle = authors
+    return title, subtitle
 
 
 def unnumbered(title: str) -> str:
@@ -3704,6 +3738,10 @@ async def write(
         yield {"type": "usage", **usage}
         return
 
+    # A title and authors the request spells out go on the cover as written.
+    title, subtitle = given_cover(request, title, subtitle)
+    if plan and plan[0].get("layout") == "title" and _given_line(request, _TITLE_LABELS):
+        plan[0]["title"] = title
     yield {
         "type": "step",
         "id": "outline",
@@ -4947,9 +4985,19 @@ def to_markdown(title: str, slides: list[dict]) -> str:
                 if isinstance(pair, (list, tuple)) and len(pair) >= 2:
                     parts.append(f"- {pair[0]} — {pair[1]}")
         if chart := slide.get("chart"):
-            for item in chart.get("series") or []:
-                values = " · ".join(str(v) for v in item.get("values") or [])
-                parts.append(f"- {item.get('name') or '계열'}: {values}")
+            # The chart's data as a table under its categories, not a 「P1: 0 · 7 · 0」 line.
+            categories = [str(c) for c in chart.get("categories") or []]
+            series = [item for item in chart.get("series") or [] if isinstance(item, dict)]
+            if series:
+                unit = f" ({chart['unit']})" if chart.get("unit") else ""
+                head = ["항목" + unit, *(categories or [str(n + 1) for n in range(
+                    max(len(item.get("values") or []) for item in series))])]
+                parts.append("\n| " + " | ".join(head) + " |")
+                parts.append("|" + "---|" * len(head))
+                for item in series:
+                    values = [str(v) for v in item.get("values") or []]
+                    values += [""] * (len(head) - 1 - len(values))
+                    parts.append(f"| {item.get('name') or '계열'} | " + " | ".join(values) + " |")
         if slide.get("notes"):
             parts.append(f"\n발표 노트: {slide['notes']}")
         parts.append("")
