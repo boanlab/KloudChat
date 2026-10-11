@@ -25,6 +25,8 @@ export function AgentKnowledge({
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState<'file' | 'url' | 'reindex' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Said once the first file saved the agent: leaving now keeps it. */
+  const [savedNote, setSavedNote] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const rowsRef = useRef<FileRow[]>([])
   // The drop hook must run above the unsaved-agent early return; the uploader
@@ -73,7 +75,10 @@ export function AgentKnowledge({
         setError(null)
         try {
           const id = await onNeedAgent()
-          if (id) await agentsApi.knowledge.upload(id, picked)
+          if (id) {
+            await agentsApi.knowledge.upload(id, picked)
+            setSavedNote(true)
+          }
         } catch (err) {
           setError(errorMessage(err, t('파일을 올리지 못했습니다.')))
         } finally {
@@ -182,9 +187,14 @@ export function AgentKnowledge({
   return (
     <Field
       label={t('자료')}
-      hint={t('이 에이전트가 검색해서 근거로 쓸 문서입니다. 대화마다 통째로 들어가지 않고, 필요할 때 찾아 씁니다.')}
+      hint={t('이 에이전트가 근거로 쓸 문서입니다. 질문마다 먼저 이 자료에서 찾아 답합니다. 짧은 자료는 통째로, 긴 자료는 질문과 맞는 대목만 들어갑니다.')}
     >
       <div className="relative space-y-2" {...dropHandlers}>
+        {savedNote && (
+          <p role="status" className="text-sm text-muted" data-testid="agent-saved-for-file">
+            {t('자료를 붙이려고 에이전트를 저장했습니다. 이 화면을 떠나도 에이전트는 남습니다.')}
+          </p>
+        )}
         {dragging && (
           <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-card border-2 border-dashed border-accent bg-accent-soft/90 text-base font-medium text-accent">
             {t('여기에 놓으면 자료로 추가됩니다')}

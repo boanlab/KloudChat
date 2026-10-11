@@ -76,7 +76,7 @@ from app.schemas.publishing import (
     VisitorRating,
     WithdrawIn,
 )
-from app.services import governance, publishing, stop_signal
+from app.services import governance, publishing, skill_packages, stop_signal
 from app.services import models as model_service
 
 log = logging.getLogger(__name__)
@@ -177,6 +177,14 @@ def _pub_out(pub: Publication, *, versions: list[PublicationVersion] | None = No
         out["versions"] = [_version_out(v, pub.active_version_id, pub.pending_version_id)
                            for v in versions]
     return out
+
+
+async def _named_out(db: DbSession, pub: Publication) -> dict[str, Any]:
+    """The bot as `_pub_out` gives it, with its agent's and its owner's names."""
+    agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
+    owner = await db.get(User, pub.owner_id)
+    return _pub_out(pub, agent_name=agent.name if agent is not None else "",
+                    owner_name=owner.name if owner is not None else "")
 
 
 async def _mine(db: DbSession, user: User, publication_id: str) -> Publication:
@@ -329,7 +337,8 @@ async def publish(payload: PublishIn, request: Request, user: CurrentUser, db: D
         _audit(db, user, "publication.requested", pub, request,
                visibility=pub.requested_visibility, version=version.number)
     await db.commit()
-    return _pub_out(pub, versions=await _versions(db, pub), agent_name=agent.name)
+    return _pub_out(pub, versions=await _versions(db, pub), agent_name=agent.name,
+                    owner_name=user.name)
 
 
 @router.get("/publications/{publication_id}")
@@ -337,7 +346,7 @@ async def get_publication(publication_id: str, user: CurrentUser, db: DbSession)
     pub = await _mine(db, user, publication_id)
     agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
     out = _pub_out(pub, versions=await _versions(db, pub),
-                   agent_name=agent.name if agent is not None else "")
+                   agent_name=agent.name if agent is not None else "", owner_name=user.name)
     # The owner has now seen what changed: the badge clears.
     pub.owner_seen_at = utcnow()
     db.add(pub)
@@ -455,6 +464,8 @@ async def new_version(publication_id: str, payload: VersionIn, request: Request,
     if not checked["ok"]:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail={"code": "cannot_publish", "problems": checked["problems"]})
+    if await publishing.same_as_latest(db, pub, agent, checked["model"]["id"]):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no_change")
     reviewed = publishing.opens_outside(pub)
     version = await publishing.make_version(db, user, pub, agent, checked["model"]["id"],
                                             payload.note, activate=not reviewed)
@@ -607,8 +618,18 @@ async def admin_reads(publication_id: str, user: CurrentUser, db: DbSession):
         AuditEvent.target == pub.id,
         col(AuditEvent.action).in_(["publication.admin_list", "publication.admin_read"]))
         .order_by(col(AuditEvent.at).desc()).limit(100))).all()
-    return [{"at": e.at, "kind": "list" if e.action == "publication.admin_list" else "read",
-             "reason": str((e.event_metadata or {}).get("reason") or "")} for e in rows]
+    out: list[dict[str, Any]] = []
+    for e in rows:
+        kind = "list" if e.action == "publication.admin_list" else "read"
+        reason = str((e.event_metadata or {}).get("reason") or "")
+        last = out[-1] if out else None
+        # One look at the list opens several conversations within the minute: one line.
+        if last is not None and last["kind"] == kind and last["reason"] == reason \
+                and abs((last["at"] - e.at).total_seconds()) < 60:
+            last["count"] += 1
+            continue
+        out.append({"at": e.at, "kind": kind, "reason": reason, "count": 1})
+    return out
 
 
 def _days(days: int) -> list[str]:
@@ -1083,9 +1104,19 @@ def _value(raw: Any) -> str:
     return str(getattr(raw, "value", raw))
 
 
+def _happened(step: Any) -> bool:
+    """A step that ran: a pipeline stage that did not apply (「카피 점검 · 해당 없음」) is the
+    working of the server, not a step of the visitor's answer."""
+    if not isinstance(step, dict):
+        return False
+    stage = step.get("stage")
+    return not (isinstance(stage, dict) and stage.get("status") == "skipped")
+
+
 def _visible_steps(steps: list | None, show: str) -> list | None:
     if show == "none" or not steps:
         return None
+    steps = [s for s in steps if _happened(s)]
     if show == "summary":
         return [{k: s.get(k) for k in _STEP_KEEP if k in s} for s in steps if isinstance(s, dict)]
     return [{k: v for k, v in s.items() if k != "outputs"} for s in steps if isinstance(s, dict)]
@@ -1218,6 +1249,10 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
     session.model = version.model
     session.publication_version_id = version.id
     db.add(session)
+    if session.kind is SessionKind.chat and sessions.turn_running_here(session.id):
+        # Refused before it is counted: a question sent while the last answer is still being
+        # written spends none of the visitor's limits.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     try:
         await publishing.admit(db, pub, visitor.id, ip_key=ip_key, channel=channel,
                                by_key=by_key)
@@ -1359,6 +1394,55 @@ async def _admin_pub(db: DbSession, publication_id: str) -> Publication:
     return pub
 
 
+def _request_kind(pub: Publication) -> str:
+    """What an open review is about: `visibility`, `channels`, or a new `version`."""
+    if pub.requested_visibility:
+        return "visibility"
+    if pub.requested_channels is not None and not pub.pending_version_id:
+        return "channels"
+    return "version"
+
+
+def _check_names(keys: list[str]) -> list[str]:
+    """Check skills as people know them: 「근거 없는 답 보류」, not `answer-hold`."""
+    out = []
+    for key in keys:
+        package = skill_packages.package_for(key)
+        out.append(package.name if package is not None and package.name else key)
+    return out
+
+
+async def _snapshot_facts(db: DbSession, version: PublicationVersion | None) -> dict[str, Any]:
+    """What one version answers with, for comparing two of them."""
+    snap = await db.get(Agent, version.agent_snapshot_id) if version else None
+    if snap is None:
+        return {}
+    files = (await db.exec(select(StoredFile).where(StoredFile.agent_id == snap.id)
+                           .order_by(col(StoredFile.created_at)))).all()
+    return {
+        "instructions": snap.system_prompt or "", "contact": snap.contact or "",
+        "model": snap.model or "", "tools": sorted(snap.tools or []),
+        "checks": _check_names(list(snap.check_skills or [])),
+        "knowledge": [f"{f.name} · {len(f.text or ''):,}자" for f in files],
+    }
+
+
+async def _version_changes(db: DbSession, pub: Publication) -> list[dict[str, Any]]:
+    """What the version waiting changes against the one answering now, field by field."""
+    if not pub.pending_version_id or not pub.active_version_id \
+            or pub.pending_version_id == pub.active_version_id:
+        return []
+    before = await _snapshot_facts(db, await db.get(PublicationVersion, pub.active_version_id))
+    after = await _snapshot_facts(db, await db.get(PublicationVersion, pub.pending_version_id))
+    return [{"field": key, "before": before.get(key), "after": after.get(key)}
+            for key in ("instructions", "contact", "model", "tools", "checks", "knowledge")
+            if before and after and before.get(key) != after.get(key)]
+
+
+#: Characters of each material file an administrator sees, personal details masked.
+_PREVIEW_CHARS = 1500
+
+
 @router.get("/admin/publications/{publication_id}/review")
 async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
     """What an administrator decides on: the version that would answer people without an
@@ -1384,7 +1468,9 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
         found = governance.findings({"knowledge": row.text}, scope="egress")
         knowledge.append({"name": row.name, "chars": len(row.text or ""),
                           "findings": [{"category": f.category, "count": f.count}
-                                       for f in found]})
+                                       for f in found],
+                          "preview": governance.mask((row.text or "")[:_PREVIEW_CHARS],
+                                                     scope="egress")[0]})
     return {
         "publication": _pub_out(pub, versions=await _versions(db, pub),
                                 owner_name=owner.name if owner else ""),
@@ -1396,13 +1482,17 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
             "instructions": snap.system_prompt, "contact": snap.contact or "",
             "guide": snap.guide or "", "starters": list(snap.starters or []),
             "tools": list(snap.tools or []), "checks": list(snap.check_skills or []),
+            "checkNames": _check_names(list(snap.check_skills or [])),
             "model": snap.model,
         } if snap else None,
+        "request": _request_kind(pub) if pub.review_state == ReviewState.pending.value else None,
+        "changes": await _version_changes(db, pub),
         "knowledge": knowledge,
         "history": [{"action": e.action, "at": e.at, "actorId": e.actor_id,
                      "metadata": {k: v for k, v in (e.event_metadata or {}).items()
                                   if k in ("visibility", "version", "decision", "reason",
-                                           "status", "previous", "pending", "channels")}}
+                                           "status", "previous", "pending", "channels",
+                                           "asked")}}
                     for e in history],
     }
 
@@ -1416,6 +1506,8 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     if pub.review_state != ReviewState.pending.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="nothing_to_review")
     now = utcnow()
+    # What was asked, on the record: an audience, channels, or a new version to check.
+    asked = _request_kind(pub)
     if payload.decision == "approve":
         candidate_id = pub.pending_version_id or pub.active_version_id
         version = await db.get(PublicationVersion, candidate_id) if candidate_id else None
@@ -1449,9 +1541,9 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
     publishing.flag_owner(pub)
     db.add(pub)
     _audit(db, admin, "publication.reviewed", pub, request, severity="warn",
-           decision=payload.decision, **detail)
+           decision=payload.decision, asked=asked, **detail)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 @router.post("/admin/publications/{publication_id}/withdraw")
@@ -1478,7 +1570,7 @@ async def admin_withdraw(publication_id: str, payload: WithdrawIn, request: Requ
     _audit(db, admin, "publication.withdrawn", pub, request, severity="warn",
            previous=previous, reason=reason)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 @router.post("/admin/publications/{publication_id}/status")
@@ -1498,12 +1590,14 @@ async def admin_status(publication_id: str, payload: AdminStatusIn, request: Req
     _audit(db, admin, "publication.admin_status", pub, request, severity="warn",
            status=payload.status, reason=payload.reason)
     await db.commit()
-    return _pub_out(pub)
+    return await _named_out(db, pub)
 
 
 def _reason(reason: str) -> str:
     reason = " ".join((reason or "").split())[:300]
-    if len(reason) < publishing.ADMIN_REASON_MIN:
+    # Words, not a key held down: 「ㅋㅋㅋㅋ」 or 「1234」 says nothing the owner can read.
+    if len(reason) < publishing.ADMIN_REASON_MIN \
+            or len({ch for ch in reason if ch.isalpha()}) < 2:
         raise HTTPException(status_code=422,
                             detail="reason_required")
     return reason

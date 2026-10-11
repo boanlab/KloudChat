@@ -440,11 +440,17 @@ async def test_closing_the_outside_audience_closes_every_channel_at_once(world):
 
 async def test_a_paused_or_revoked_bot_answers_no_channel(world):
     pub, key = await _with_api(world)
+    world.user = None
+    long = await _complete(world, key, pub["slug"], "가" * 8001)
+    # One question over the limit is too long itself, not a conversation carried too far.
+    assert long.status_code == 400 and long.json()["error"]["code"] == "too_long"
     world.as_("admin")
     await world.client.post(f"/admin/publications/{pub['id']}/status",
                             json={"status": "paused", "reason": "확인 중입니다"})
     world.user = None
-    assert (await _complete(world, key, pub["slug"])).status_code == 403
+    paused = await _complete(world, key, pub["slug"])
+    # The bot is paused, not the channel closed: said as such.
+    assert paused.status_code == 403 and paused.json()["error"]["code"] == "bot_paused"
     world.as_("admin")
     await world.client.post(f"/admin/publications/{pub['id']}/status",
                             json={"status": "revoked", "reason": "닫습니다"})
@@ -461,13 +467,21 @@ async def test_the_owner_sees_when_and_why_an_administrator_read_conversations(w
     world.as_("admin")
     refused = await world.client.get(f"/admin/publications/{pub['id']}/conversations")
     assert refused.status_code == 422
+    for empty in ("ㅋㅋㅋㅋ", "1234", "...."):
+        said = await world.client.get(f"/admin/publications/{pub['id']}/conversations",
+                                      params={"reason": empty})
+        assert said.status_code == 422, empty
     listed = await world.client.get(f"/admin/publications/{pub['id']}/conversations",
                                     params={"reason": "신고 확인"})
     rows = listed.json()
     assert rows and rows[0]["visitor"]["byKey"] is True
+    # The list opened twice in a minute for the same reason: one line, counted.
+    await world.client.get(f"/admin/publications/{pub['id']}/conversations",
+                           params={"reason": "신고 확인"})
     world.as_("owner")
     reads = (await world.client.get(f"/publications/{pub['id']}/admin-reads")).json()
     assert reads[0]["kind"] == "list" and reads[0]["reason"] == "신고 확인"
+    assert len(reads) == 1 and reads[0]["count"] == 2
 
 
 # ── a second bot, someone else's ───────────────────────────────────────

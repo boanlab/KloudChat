@@ -6,6 +6,7 @@ Real HTTP and SQLite; the model is a fake agent loop that reads the bot's tools.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 from datetime import timedelta
 from pathlib import Path
@@ -125,7 +126,9 @@ async def world(monkeypatch, tmp_path):
     async def run_turn(model, messages, tools, ctx, **kwargs):
         state.calls.append({"model": model, "messages": messages,
                             "tools": sorted(t.name for t in tools), "ctx": ctx,
-                            "strict": kwargs.get("strict_local")})
+                            "strict": kwargs.get("strict_local"),
+                            "preset": kwargs.get("preset_call"),
+                            "not_covered": kwargs.get("preset_empty_answer")})
         knowledge = next((t for t in tools if t.name == "search_knowledge"), None)
         if knowledge is not None and state.search:
             found = await knowledge.run({"query": "휴학 신청"})
@@ -285,6 +288,9 @@ async def test_a_version_is_a_hidden_fixed_copy_and_rollback_brings_one_back(wor
     back = (await world.client.post(
         f"/publications/{pub['id']}/versions/{v1['id']}/activate")).json()
     assert back["activeVersionId"] == v1["id"]
+    # Nothing changed since the newest version: a second click makes no third one.
+    same = await world.client.post(f"/publications/{pub['id']}/versions", json={"note": "또"})
+    assert same.status_code == 409 and same.json()["detail"] == "no_change"
 
 
 # ── the visitor's turn ─────────────────────────────────────────────────
@@ -317,6 +323,13 @@ async def test_the_turn_runs_strict_local_on_the_owners_account_with_nothing_els
     # The visitor's stream carries the answer and none of the owner's routing or credits.
     assert "휴학은 학기 개시일 전까지" in stream and "credits" not in stream
     assert "privacy_route" not in stream
+    # Stages that did not apply are not steps of the visitor's answer.
+    assert "해당 없음" not in stream
+    shown = publications._visible_steps([
+        {"id": "h0_0", "label": "자료 찾기", "status": "done"},
+        {"id": "stage:check:copy", "label": "카피 점검 · 해당 없음", "status": "done",
+         "stage": {"status": "skipped"}}], "summary")
+    assert [s["label"] for s in shown] == ["자료 찾기"]
     async with world.local() as db:
         session = await db.get(ChatSession, sid)
         assert session.user_id == "owner" and session.publication_id == pub["id"]
@@ -329,6 +342,19 @@ async def test_the_turn_runs_strict_local_on_the_owners_account_with_nothing_els
         audited = (await db.exec(select(AuditEvent).where(
             AuditEvent.action == "publication.published"))).all()
         assert audited and audited[0].actor_id == "owner"
+
+
+async def test_the_bot_searches_its_material_before_the_model_answers(world):
+    pub = await _publish(world)
+    await _ask(world, pub["slug"], "휴학은 언제까지 신청해요?")
+    (call,) = world.calls
+    # The server's own first call, with the visitor's question; the model is told the
+    # passages are in hand, to cite them and to say when they do not answer.
+    assert call["preset"] == ("search_knowledge", {"query": "휴학은 언제까지 신청해요?"})
+    assert "Material only" in call["messages"][0]["content"]
+    assert call["not_covered"] == (
+        "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다.\n\n"
+        "담당 부서·연락처: 학사지원팀 02-760-1234, haksa-desk@example.ac.kr")
 
 
 async def test_the_answer_cites_the_article_and_the_owner_counts_it(world):
@@ -435,6 +461,34 @@ async def test_the_limits_refuse_with_429_and_say_when_to_come_back(world):
     assert long.status_code == 422 and long.json()["detail"]["code"] == "too_long"
     # The owner may lower a limit, never raise it.
     assert publishing.clean_limits({"perBotPerMinute": 10_000}) == {"perBotPerMinute": 60}
+
+
+async def test_a_question_while_the_answer_is_still_written_is_refused_uncounted(world):
+    pub = await _publish(world, limits={"perVisitorPerMinute": 2})
+    slug = pub["slug"]
+    sid, _ = await _ask(world, slug, "휴학 기한")
+    sessions._STOPPING[sid] = {asyncio.Event()}
+    busy = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                   json={"content": "복학은요?"})
+    assert busy.status_code == 409 and busy.json()["detail"] == "session_busy"
+    sessions._STOPPING.pop(sid)
+    # The refused question took none of the minute's two.
+    again = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                    json={"content": "복학은요?"})
+    assert again.status_code == 200
+
+
+async def test_a_free_model_still_counts_one_credit_a_turn_against_the_daily_cap(world):
+    # strict-local/m is priced at 0: without a floor the cap would never be reached.
+    pub = await _publish(world, limits={"creditsPerDay": 2})
+    slug = pub["slug"]
+    sid, _ = await _ask(world, slug, "휴학 기한")
+    second = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                     json={"content": "복학 기한"})
+    assert second.status_code == 200
+    third = await world.client.post(f"/b/{slug}/conversations/{sid}/messages",
+                                    json={"content": "한 번 더"})
+    assert third.status_code == 429 and third.json()["detail"] == "daily_credits_reached"
 
 
 async def test_a_bot_runs_at_most_its_concurrency_and_then_waits_in_line(world):
@@ -663,3 +717,18 @@ def test_the_migrations_add_and_drop_what_publishing_needs_on_sqlite():
         assert "publications" not in inspector.get_table_names()
         assert {c["name"] for c in inspector.get_columns("sessions")} == {"id"}
         assert {c["name"] for c in inspector.get_columns("agents")} == {"id"}
+
+
+def test_frequent_topics_are_nouns_not_question_forms_or_verb_pieces():
+    # The ops lane's 「자주 나온 주제」 read 있나 · 빌릴 · 열어 · 시까지 · 비우면 · 1은.
+    asked = {
+        "연체료 있나요?": ["연체료"],
+        "일요일에도 열어요?": ["일요일"],
+        "대학원생은 몇 권 빌릴 수 있어요?": ["대학원생"],
+        "평일 몇 시까지 해요?": ["평일"],
+        "열람실 자리를 30분 비우면 어떻게 돼요?": ["열람실", "자리"],
+        "토요일 운영 시간은?": ["토요일", "운영", "시간"],
+    }
+    for question, words in asked.items():
+        assert publishing.topics(question) == words, question
+    assert "1은" not in publishing.topics("1은 2 더하기 3이면?")

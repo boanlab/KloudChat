@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
 import { TopBar } from '@/components/layout/TopBar'
-import { PageHeader } from '@/components/ui'
+import { Button, Modal, PageHeader } from '@/components/ui'
 import { adminApi, type SystemSettings } from '@/lib/api'
+import { useUnsaved } from '@/lib/unsaved'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/useT'
 import { AutoRoutingSection } from './settings/AutoRoutingSection'
@@ -61,6 +62,13 @@ export function AdminSystemPage() {
     void reload()
   }, [reload])
 
+  // A tab change drops what a section has not saved: asked first.
+  const unsaved = useUnsaved((s) => Object.values(s.dirty).some(Boolean))
+  const clearUnsaved = useUnsaved((s) => s.clear)
+  const navigate = useNavigate()
+  const here = useLocation().pathname.replace(/\/$/, '')
+  const [leavingTo, setLeavingTo] = useState<string | null>(null)
+
   return (
     <>
       <TopBar left={<span className="text-base font-medium">{t('시스템')}</span>} />
@@ -78,6 +86,11 @@ export function AdminSystemPage() {
               to={tab.to}
               end={tab.end}
               role="tab"
+              onClick={(event) => {
+                if (!unsaved || tab.to === here) return
+                event.preventDefault()
+                setLeavingTo(tab.to)
+              }}
               className={({ isActive }) =>
                 cn(
                   '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-base font-medium transition-colors',
@@ -181,6 +194,28 @@ export function AdminSystemPage() {
           <Route path="*" element={<Navigate to="/admin/system" replace />} />
         </Routes>
       </PageBody>
+      <Modal
+        open={leavingTo !== null}
+        onClose={() => setLeavingTo(null)}
+        title={t('저장하지 않은 변경 내용이 있습니다')}
+        description={t('다른 탭으로 옮기면 이 탭에서 바꾼 내용이 사라집니다.')}
+        footer={
+          <>
+            <Button onClick={() => setLeavingTo(null)}>{t('머물기')}</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const to = leavingTo
+                setLeavingTo(null)
+                clearUnsaved()
+                if (to) navigate(to)
+              }}
+            >
+              {t('버리고 옮기기')}
+            </Button>
+          </>
+        }
+      />
     </>
   )
 }

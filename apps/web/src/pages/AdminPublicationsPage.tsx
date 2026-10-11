@@ -33,13 +33,48 @@ const ACTION_LABEL: Record<string, string> = {
   'publication.published': '공개',
   'publication.requested': '승인 요청',
   'publication.reviewed': '검토',
-  'publication.withdrawn': '외부 공개 닫음',
+  'publication.withdrawn': '공개 범위 닫음',
   'publication.narrowed': '범위 좁힘',
   'publication.version': '새 판',
   'publication.request_withdrawn': '요청 취소',
   'publication.admin_status': '관리자 상태 변경',
   'publication.channels_requested': '채널 요청',
   'publication.channels_closed': '채널 닫음',
+}
+
+/** What approving does, by what was asked. */
+const REQUEST_CONSEQUENCE: Record<'visibility' | 'channels' | 'version', string> = {
+  visibility: '승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
+  channels: '승인하면 요청한 채널이 열려, 봇 키를 가진 프로그램이나 승인한 사이트에서도 이 챗봇이 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.',
+  version: '승인하면 아래 판이 지금 공개 범위와 채널에서 답합니다. 승인 전까지는 지금 판이 답합니다.',
+}
+
+/** A review on the record, by what was asked. */
+const ASKED_LABEL: Record<string, string> = {
+  visibility: '범위 요청',
+  channels: '채널 요청',
+  version: '새 판 확인',
+}
+
+/** The fields a version comparison names. */
+const CHANGE_LABEL: Record<string, string> = {
+  instructions: '지시',
+  contact: '담당 부서·연락처',
+  model: '답하는 모델',
+  tools: '도구',
+  checks: '검사',
+  knowledge: '자료',
+}
+
+/** Tools a bot may have, by their screen names. */
+const TOOL_LABEL: Record<string, string> = {
+  search_knowledge: '자료 찾기',
+  calculate: '계산기',
+}
+
+function changeWords(value: unknown, t: (s: string) => string): string {
+  if (Array.isArray(value)) return value.map((v) => t(TOOL_LABEL[String(v)] ?? String(v))).join('\n')
+  return value == null ? '' : String(value)
 }
 
 /** The channels in a set, as words: 「다른 사이트에 넣기(https://…) · API」. */
@@ -55,7 +90,7 @@ type Decision = 'approve' | 'reject' | 'withdraw' | 'paused' | 'approved' | 'rev
 const DECISION: Record<Decision, { title: string; hint: string; required: boolean; danger?: boolean }> = {
   approve: { title: '승인', hint: '만든 사람에게 보일 메모(선택)', required: false },
   reject: { title: '반려', hint: '만든 사람에게 보일 반려 사유', required: true, danger: true },
-  withdraw: { title: '외부 공개 닫기', hint: '구성원에게만 열린 상태로 돌리고, 다른 사이트·API·MCP 채널도 함께 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
+  withdraw: { title: '공개 범위 닫기', hint: '구성원에게만 열린 상태로 돌리고, 다른 사이트·API·MCP 채널도 함께 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
   paused: { title: '일시 중지', hint: '만든 사람에게 보일 사유', required: true },
   approved: { title: '다시 열기', hint: '감사 기록에 남길 사유', required: true },
   revoked: { title: '챗봇 닫기', hint: '누구도 쓸 수 없게 닫습니다. 만든 사람에게 보일 사유', required: true, danger: true },
@@ -257,8 +292,8 @@ function ReviewView({ id }: { id: string }) {
                 {channelWords(pub.requestedChannels, t) || t('없음')}
               </p>
             )}
-            <p className="text-sm text-muted">
-              {t('승인하면 아래 판이 로그인하지 않은 사람에게도 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.').replace(
+            <p className="text-sm text-muted" data-testid="admin-review-consequence">
+              {t(REQUEST_CONSEQUENCE[data.request ?? (pub.requestedVisibility ? 'visibility' : pub.requestedChannels && !pub.pendingVersionId ? 'channels' : 'version')]).replace(
                 '{n}',
                 (pub.limits.creditsPerDay ?? 0).toLocaleString(),
               )}
@@ -288,6 +323,28 @@ function ReviewView({ id }: { id: string }) {
 
         <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
           <div className="min-w-0 space-y-4">
+            {(data.changes?.length ?? 0) > 0 && (
+              <Card className="space-y-3 p-4" data-testid="admin-review-changes">
+                <p className="text-sm text-faint">{t('지금 답하는 판과 달라진 것')}</p>
+                <ul className="space-y-2">
+                  {data.changes!.map((change) => (
+                    <li key={change.field} className="space-y-1 text-sm">
+                      <p className="font-medium">{t(CHANGE_LABEL[change.field] ?? change.field)}</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <pre className="max-h-48 overflow-auto rounded-control bg-elevated px-3 py-2 text-sm whitespace-pre-wrap">
+                          <span className="block text-xs text-faint">{t('전')}</span>
+                          {changeWords(change.before, t) || '—'}
+                        </pre>
+                        <pre className="max-h-48 overflow-auto rounded-control bg-accent-soft px-3 py-2 text-sm whitespace-pre-wrap">
+                          <span className="block text-xs text-faint">{t('후')}</span>
+                          {changeWords(change.after, t) || '—'}
+                        </pre>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
             {data.agent && (
               <Card className="space-y-3 p-4" data-testid="admin-review-agent">
                 <p className="text-sm text-faint">{t('지시')}</p>
@@ -305,8 +362,9 @@ function ReviewView({ id }: { id: string }) {
                   </p>
                 )}
                 <p className="text-sm text-muted">
-                  {t('답하는 모델: {model}').replace('{model}', data.agent.model)} · {t('도구')}: {data.agent.tools.join(', ') || '—'} · {t('검사')}:{' '}
-                  {data.agent.checks.join(', ') || '—'}
+                  {t('답하는 모델: {model}').replace('{model}', data.agent.model)} · {t('도구')}:{' '}
+                  {data.agent.tools.map((tool) => t(TOOL_LABEL[tool] ?? tool)).join(', ') || '—'} · {t('검사')}:{' '}
+                  {(data.agent.checkNames ?? data.agent.checks).join(', ') || '—'}
                 </p>
               </Card>
             )}
@@ -325,6 +383,15 @@ function ReviewView({ id }: { id: string }) {
                           {file.findings.map((f) => `${t(FINDING_LABEL[f.category] ?? f.category)} ${f.count}`).join(', ')}
                         </span>
                       )}
+                      {file.preview && (
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-faint hover:text-fg">{t('내용 보기 (개인정보는 가림)')}</summary>
+                          <pre className="mt-1 max-h-64 overflow-auto rounded-control bg-elevated px-3 py-2 text-sm whitespace-pre-wrap" data-testid="admin-review-preview">
+                            {file.preview}
+                            {file.chars > file.preview.length && '\n…'}
+                          </pre>
+                        </details>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -342,7 +409,7 @@ function ReviewView({ id }: { id: string }) {
               <div className="flex flex-wrap gap-2">
                 {outside && (
                   <Button onClick={() => setDeciding('withdraw')}>
-                    {t('외부 공개 닫기')}
+                    {t(pub.visibility === 'link' ? '링크 공개 닫기' : '외부 공개 닫기')}
                   </Button>
                 )}
                 {pub.status === 'approved' && (
@@ -370,8 +437,10 @@ function ReviewView({ id }: { id: string }) {
                 {data.history.map((e, i) => (
                   <li key={i}>
                     <span>{t(ACTION_LABEL[e.action] ?? e.action)}</span>
+                    {typeof e.metadata.asked === 'string' && ASKED_LABEL[e.metadata.asked] && ` · ${t(ASKED_LABEL[e.metadata.asked])}`}
                     {typeof e.metadata.decision === 'string' && ` · ${e.metadata.decision === 'approve' ? t('승인') : t('반려')}`}
-                    {typeof e.metadata.visibility === 'string' && e.metadata.visibility && ` · ${t(VISIBILITY_LABEL[e.metadata.visibility as AdminPublication['visibility']] ?? '')}`}
+                    {typeof e.metadata.visibility === 'string' && e.metadata.visibility && e.metadata.asked !== 'channels' && e.metadata.asked !== 'version' &&
+                      ` · ${t(VISIBILITY_LABEL[e.metadata.visibility as AdminPublication['visibility']] ?? '')}`}
                     <span className="block text-xs text-faint">{formatDateTime(e.at)}</span>
                   </li>
                 ))}

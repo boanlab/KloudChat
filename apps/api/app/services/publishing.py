@@ -84,7 +84,11 @@ DEFAULT_LIMITS: dict[str, int] = {
 }
 #: The owner's own cap on what the bot may spend a day, in credits (`limits.creditsPerDay`).
 #: Required before the bot is opened outside; no default, since only the owner knows it.
+#: A turn that charged nothing (a self-hosted model priced at 0) still counts one credit
+#: against it (`FREE_TURNS`), so the cap bounds a free bot by its number of answers.
 CREDITS_PER_DAY = "creditsPerDay"
+#: Day counter of the bot's turns that charged no credits; each counts one toward the cap.
+FREE_TURNS = "freeTurns"
 CREDITS_PER_DAY_MAX = 100_000_000
 #: Visitors without an account, per address and day: new visitors (cookies) and conversations.
 #: Not the owner's to change; they bound what clearing cookies can buy.
@@ -238,7 +242,9 @@ async def admit(db: AsyncSession, pub: Publication, visitor_id: str, *,
         raise Refused("daily_turns_reached", 429, midnight)
     if await counted(db, pub.id, day, "tokens") >= limits["tokensPerDay"]:
         raise Refused("daily_tokens_reached", 429, midnight)
-    if (cap := credits_cap(pub)) is not None and await credits_today(db, pub.id, now) >= cap:
+    if (cap := credits_cap(pub)) is not None and (
+            await credits_today(db, pub.id, now) + await counted(db, pub.id, day, FREE_TURNS)
+            >= cap):
         raise Refused("daily_credits_reached", 429, midnight)
     await bump(db, pub.id, minute, f"turns:v:{visitor_id}")
     await bump(db, pub.id, day, f"turns:v:{visitor_id}")
@@ -508,6 +514,32 @@ async def preflight(db: AsyncSession, owner: User, agent: Agent, catalogue: list
         "knowledge": knowledge,
         "creditsRemaining": owner.credits_remaining,
     }
+
+
+def _answers_with(agent: Agent, model_id: str, tools: list[str], checks: list[str],
+                  files: list[StoredFile]) -> tuple:
+    """Everything a version answers with, for telling two apart."""
+    return (agent.name, agent.description, model_id, agent.system_prompt, sorted(tools),
+            sorted(checks), dict(agent.check_options or {}), agent.contact or "", agent.guide,
+            list(agent.starters or []), agent.temperature,
+            [(f.name, hashlib.sha256((f.text or "").encode()).hexdigest()) for f in files])
+
+
+async def same_as_latest(db: AsyncSession, pub: Publication, agent: Agent,
+                         model_id: str) -> bool:
+    """Whether the agent as it stands would publish exactly the newest version again (a second
+    click on 「새 판 공개」 while the first was still on its way)."""
+    latest = (await db.exec(select(PublicationVersion).where(
+        PublicationVersion.publication_id == pub.id)
+        .order_by(col(PublicationVersion.number).desc()).limit(1))).first()
+    snap = await db.get(Agent, latest.agent_snapshot_id) if latest is not None else None
+    if snap is None:
+        return False
+    copies = list((await db.exec(select(StoredFile).where(StoredFile.agent_id == snap.id)
+                                 .order_by(col(StoredFile.created_at)))).all())
+    return _answers_with(snap, snap.model, snap.tools or [], snap.check_skills or [], copies) \
+        == _answers_with(agent, model_id, _tools_of(agent), _post_checks(agent),
+                         await knowledge_rows(db, agent))
 
 
 async def make_version(db: AsyncSession, owner: User, pub: Publication, agent: Agent,
@@ -794,6 +826,32 @@ def resume_if_cleared(db: AsyncSession, pub: Publication, owner: User | None) ->
     return True
 
 
+# ── the visitor's answer ───────────────────────────────────────────────
+
+#: What a bot says when its material holds nothing for the question: the same sentence as
+#: the 「근거 없는 답 보류」 check's, so the owner's statistics count it either way.
+NOT_COVERED = "제공된 자료에서 이 질문에 대한 내용을 찾지 못했습니다."
+
+#: The system rule of a published bot's turn; the server has searched the material first.
+MATERIAL_ONLY_RULE = (
+    "Material only: you answer visitors from the material this bot was published with. The "
+    "server has already searched it with the question, and the passages are the first "
+    "search_knowledge result, numbered like [1]. Answer only from those passages (search "
+    "again with other words if they do not hold the answer), and put the passage number at "
+    "the end of each sentence that uses one, like [1]. Never answer from general knowledge "
+    "or guess a value, time, count or fee the passages do not state. When the material does "
+    f"not answer the question, say only 「{NOT_COVERED}」 and give the contact if the "
+    "instructions name one."
+)
+
+
+def not_covered_answer(contact: str) -> str:
+    """The bot's whole answer when its material search finds nothing for the question."""
+    contact = (contact or "").strip()
+    return NOT_COVERED + "\n\n" + (f"담당 부서·연락처: {contact}" if contact
+                                    else "담당 부서에 문의해 주세요.")
+
+
 # ── after a turn ───────────────────────────────────────────────────────
 
 
@@ -820,19 +878,35 @@ _STOP = frozenset("""
 _PARTICLES = ("에서는", "으로는", "에서", "으로", "에게", "까지", "부터", "이나", "이랑",
               "하고", "에는", "은", "는", "이", "가", "을", "를", "에", "의", "도", "로",
               "와", "과", "만", "요")
-_WORD = re.compile(r"[가-힣A-Za-z0-9]{2,20}")
+_WORD = re.compile(r"[가-힣A-Za-z0-9]{1,20}")
+#: Endings of a predicate (열어요, 비우면, 되는지): a verb or adjective, not a topic.
+_ENDINGS = ("어요", "아요", "해요", "나요", "까요", "가요", "세요", "에요", "예요", "죠", "니까",
+            "니다", "는지", "을까", "는데", "려면", "으면", "면", "는가", "던가")
 
 
 def topics(question: str, limit: int = 3) -> list[str]:
-    """A question's topic words, personal details masked first: what the owner sees counted."""
+    """A question's topic words, personal details masked first: what the owner sees counted.
+
+    A question form is caught whole before a particle is taken off (「있나요」 is not 「있나」),
+    and again after; a predicate (「열어요」 「비우면」, 「빌릴 수」) and a word with a digit in it
+    (「1은」 「22시」) carry no topic."""
     text, _ = governance.mask((question or "")[:1000], scope="egress")
+    words = _WORD.findall(text)
     out: list[str] = []
-    for word in _WORD.findall(text):
-        for particle in _PARTICLES:
-            if word.endswith(particle) and len(word) - len(particle) >= 2:
-                word = word[: -len(particle)]
+    for at, raw in enumerate(words):
+        if raw in _STOP or any(ch.isdigit() for ch in raw) or raw.endswith(_ENDINGS):
+            continue
+        if at + 1 < len(words) and words[at + 1] == "수":
+            # 「빌릴 수 있어요」: the word before 수 is a verb's form.
+            continue
+        word = raw
+        for _ in range(2):  # 「일요일에도」: particles stack
+            particle = next((p for p in _PARTICLES
+                             if word.endswith(p) and len(word) > len(p)), "")
+            if not particle:
                 break
-        if word.isdigit() or word in _STOP or len(word) < 2 or word in out:
+            word = word[: -len(particle)]
+        if word in _STOP or len(word) < 2 or word in out:
             continue
         out.append(word)
         if len(out) >= limit:
@@ -846,9 +920,12 @@ def masked(text: str, limit: int = 300) -> str:
 
 
 async def after_turn(db: AsyncSession, turn: PublishedTurn, *, question: str, answer: str,
-                     usage: dict[str, Any], failed: bool) -> None:
-    """Counts the turn for the owner's statistics. Caller commits."""
+                     usage: dict[str, Any], failed: bool, credits: int = 0) -> None:
+    """Counts the turn for the owner's statistics, and a turn that charged no `credits`
+    toward the daily credit cap. Caller commits."""
     day = day_window()
+    if credits <= 0:
+        await bump(db, turn.publication_id, day, FREE_TURNS)
     tokens = int(usage.get("inputTokens") or 0) + int(usage.get("outputTokens") or 0)
     await bump(db, turn.publication_id, day, "tokens", tokens)
     if failed or not answer.strip():

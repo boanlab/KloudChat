@@ -81,7 +81,7 @@ export function OcrSection({
 
       <div className="grid gap-4 border-t border-line pt-4 lg:grid-cols-3">
         <Field label={t('읽는 방식')}>
-          <Select value={mode} onChange={(e) => setMode(e.target.value as Ocr['mode'])}>
+          <Select value={mode} onChange={(e) => setMode(e.target.value as Ocr['mode'])} aria-label={t('읽는 방식')}>
             {(Object.keys(MODE_LABEL) as Ocr['mode'][]).map((key) => (
               <option key={key} value={key}>
                 {t(MODE_LABEL[key])}
@@ -93,7 +93,7 @@ export function OcrSection({
           label={t('비전 모델')}
           hint={t('그림을 읽는 strict-local 모델만 고를 수 있습니다. 쪽 그림은 이 모델 밖으로 나가지 않습니다.')}
         >
-          <Select value={visionModel} onChange={(e) => setVisionModel(e.target.value)}>
+          <Select value={visionModel} onChange={(e) => setVisionModel(e.target.value)} aria-label={t('비전 모델')}>
             <option value="">
               {ocr.visionChoices.length
                 ? t('자동 ({name})').replace(

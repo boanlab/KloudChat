@@ -61,6 +61,30 @@ export const ACTION_LABEL: Record<string, string> = {
   'privacy.send_raw_external': '원문 외부 전송',
   'privacy.mask_tool_output': '도구 결과 가림',
   'privacy.strict_tool_output': '도구 결과 strict-local 처리',
+  'publication.published': '챗봇 공개',
+  'publication.requested': '챗봇 공개 범위 승인 요청',
+  'publication.request_withdrawn': '챗봇 승인 요청 취소',
+  'publication.reviewed': '챗봇 공개 검토',
+  'publication.narrowed': '챗봇 공개 범위 좁힘',
+  'publication.withdrawn': '챗봇 링크·외부 공개 닫기',
+  'publication.version': '챗봇 새 판 공개',
+  'publication.rollback': '챗봇 판 되돌리기',
+  'publication.settings': '챗봇 설정 변경',
+  'publication.paused': '챗봇 일시 중지',
+  'publication.resumed': '챗봇 다시 열기',
+  'publication.admin_status': '관리자의 챗봇 상태 변경',
+  'publication.deleted': '챗봇 삭제',
+  'publication.channels_requested': '챗봇 채널 요청',
+  'publication.channels_closed': '챗봇 채널 닫기',
+  'publication.key_created': '챗봇 키 발급',
+  'publication.key_revoked': '챗봇 키 폐기',
+  'publication.consent': '챗봇 이용 안내 동의',
+  'publication.shared': '방문자의 대화 보내기',
+  'publication.conversation_read': '만든 사람의 챗봇 대화 열람',
+  'publication.admin_list': '관리자의 챗봇 대화 목록 열람',
+  'publication.admin_read': '관리자의 챗봇 대화 열람',
+  'publication.visitor_blocked': '챗봇 방문자 차단',
+  'publication.visitor_unblocked': '챗봇 방문자 차단 해제',
 }
 
 /** A sign-in row's outcome lives in its detail. */
@@ -86,6 +110,7 @@ export const ACTION_GROUPS: { id: string; label: string; codes: string }[] = [
   { id: 'issues', label: '문제 신고', codes: 'issue.*' },
   { id: 'privacy', label: '개인정보 · 라우팅', codes: 'privacy.*,pii.*,filter.*,routing.*' },
   { id: 'storage', label: '저장 공간', codes: 'storage.*' },
+  { id: 'publications', label: '챗봇 공개 · 채널', codes: 'publication.*' },
 ]
 
 /** Recorded field names (governance, system settings, accounts) to their screen labels. */
@@ -248,6 +273,11 @@ const DETAIL_WORD: Record<string, string> = {
 /** Free-text detail made readable, or '' when the label already says it. */
 export function detailWords(row: AuditRow, t: (s: string) => string): string {
   const detail = row.detail.trim()
+  // A chatbot row names the bot; an administrator's reading or closing also says why.
+  const reason = typeof row.metadata?.reason === 'string' ? row.metadata.reason.trim() : ''
+  if (row.action.startsWith('publication.') && reason) {
+    return [detail, t('사유: {reason}').replace('{reason}', reason)].filter(Boolean).join(' · ')
+  }
   if (!detail) return ''
   if (detail in DETAIL_WORD) return DETAIL_WORD[detail] ? t(DETAIL_WORD[detail]) : ''
   if (changedFields(row).length) return ''

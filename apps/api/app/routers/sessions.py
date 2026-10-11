@@ -268,6 +268,24 @@ async def _knowledge_shelf(
     return shelf, session.index_key or ""
 
 
+async def _has_agent_material(db: AsyncSession, user: User, session: ChatSession) -> bool:
+    """Whether the conversation's agent has material of its own on the shelf: the one shelf
+    nothing else puts in the prompt (uploads and project knowledge are carried by
+    `assemble`), so its turns search it first."""
+    if not session.agent_id:
+        return False
+    found = (
+        await db.exec(
+            select(StoredFile.id).where(
+                StoredFile.user_id == user.id,
+                StoredFile.agent_id == session.agent_id,
+                StoredFile.text != "",
+            ).limit(1)
+        )
+    ).first()
+    return found is not None
+
+
 #: Skills offered to the model per turn; the description must stay a paragraph, not a catalogue.
 _SKILL_SHELF_LIMIT = 12
 
@@ -3542,6 +3560,25 @@ def _freshness_followup_index(history: list[Message], session_id: str, content: 
     return None
 
 
+#: An agent turn whose material the server searched before the model was asked.
+_MATERIAL_FIRST_RULE = (
+    "Material first: the server has already searched this agent's attached material with the "
+    "question, and the passages are the first search_knowledge result, numbered like [1]. "
+    "Where they answer the question, answer from them and put the passage number at the end "
+    "of each sentence that uses one, like [1]. If they do not hold the answer, search again "
+    "with other words; what the material does not cover, say so instead of filling it in "
+    "from memory."
+)
+
+
+def _with_system_rule(messages: list[dict], rule: str) -> list[dict]:
+    """`messages` with `rule` appended to the system turn (a copy; the envelope is shared)."""
+    if messages and messages[0].get("role") == "system":
+        head = {**messages[0], "content": f"{messages[0].get('content') or ''}\n\n{rule}"}
+        return [head, *messages[1:]]
+    return [{"role": "system", "content": rule}, *messages]
+
+
 def _plans_first(session: ChatSession) -> bool:
     """Whether this surface offers an outline before writing (report and slides)."""
     return session.kind in (SessionKind.report, SessionKind.slides)
@@ -3800,6 +3837,8 @@ async def send_message(
     agent_row: WorkspaceAgent | None = None
     shelf: list[tuple[str, str, str | None]] = []
     shelf_key = ""
+    #: The agent's own material is on the shelf: the turn searches it before the model answers.
+    agent_material = False
     if session.agent_id:
         agent_row = await db.get(WorkspaceAgent, session.agent_id)
     # What the server runs for the turn's skills, and the person's own scripts the sandbox
@@ -3812,6 +3851,7 @@ async def send_message(
         active_skill_ids = await _standing_skill_ids(db, user, session, agent_row)
     if session.kind is SessionKind.chat and requested_model.get("supportsTools"):
         shelf, shelf_key = await _knowledge_shelf(db, user, session, agent_row)
+        agent_material = bool(shelf) and await _has_agent_material(db, user, session)
 
     requested_is_strict = _strict_model(requested_model)
     strict_candidate_available = _strict_route_possible(
@@ -4807,6 +4847,27 @@ async def send_message(
         place = weather_location(content)
         if place:
             preset_call = ("weather", {"location": place})
+    #: A published bot's answer when its material holds nothing for the question.
+    not_covered: str | None = None
+    if (
+        agent_material
+        and preset_call is None
+        and forced_tool is None
+        and not preflight_tool
+        and "search_knowledge" in tool_names
+    ):
+        # An agent's material reaches the model only through `search_knowledge`, and a
+        # model left to choose answered from memory instead (a bot said 연체료 하루 100원
+        # where its FAQ says there is none). The server searches with the question first,
+        # as it does a forced web search; the model may search again in other words.
+        preset_call = ("search_knowledge", {"query": content})
+        contact = agent_row.contact.strip() if agent_row is not None else ""
+        if published is not None:
+            not_covered = publishing.not_covered_answer(contact)
+        messages = _with_system_rule(
+            messages,
+            publishing.MATERIAL_ONLY_RULE if published is not None else _MATERIAL_FIRST_RULE,
+        )
     # A substantial chat request gets a short plan first: what an expert's answer would
     # hold, placed beside the question. Not on a turn routed down to an economy model.
     # A turn whose numbers must go through the calculator first is left to that
@@ -4874,6 +4935,7 @@ async def send_message(
                 # Short lookups are server presets. Long requests and weather
                 # without a named place use the allowed tool's forced planning hop.
                 preset_call=preset_call,
+                preset_empty_answer=not_covered,
                 freshness_request=content if fresh_fact else None,
                 caveat_request=(
                     content
@@ -4964,6 +5026,12 @@ async def _routed(record: StepRecord, events: AsyncIterator[str]) -> AsyncIterat
 #: request landing on a different replica still reaches whichever process is
 #: actually streaming the turn.
 _STOPPING: dict[str, set[asyncio.Event]] = {}
+
+
+def turn_running_here(session_id: str) -> bool:
+    """Whether this process is still writing an answer in the conversation (and nobody
+    pressed stop): a new question would be refused as `session_busy`."""
+    return any(not signal.is_set() for signal in _STOPPING.get(session_id, set()))
 
 
 def fire_stop_locally(session_id: str) -> None:
@@ -5309,6 +5377,8 @@ async def _answer_turn(
     calculation_expression: str | None = None,
     #: The server's own first call. See `agent.run_turn`.
     preset_call: tuple[str, dict[str, Any]] | None = None,
+    #: The whole answer when that call is a material search that finds nothing.
+    preset_empty_answer: str | None = None,
     freshness_request: str | None = None,
     caveat_request: str | None = None,
     #: Values masked out of the user's own words this turn; the answer at rest
@@ -5469,6 +5539,7 @@ async def _answer_turn(
                     if calculation_expression is not None else {}
                 ),
                 preset_call=preset_call,
+                **({"preset_empty_answer": preset_empty_answer} if preset_empty_answer else {}),
                 **({"freshness_request": freshness_request} if freshness_request else {}),
                 **({"caveat_request": caveat_request} if caveat_request else {}),
             ),
@@ -5890,7 +5961,8 @@ async def _answer_turn(
             async with SessionLocal() as db:
                 await publishing.after_turn(
                     db, published, question=published.question or first_user_message,
-                    answer=content, usage=usage, failed=bool(failed))
+                    answer=content, usage=usage, failed=bool(failed),
+                    credits=credits + title_credits + side_credits)
                 await db.commit()
         except Exception as exc:  # noqa: BLE001 — the answer is kept without its count
             log.warning("bot statistics for %s not counted: %s",

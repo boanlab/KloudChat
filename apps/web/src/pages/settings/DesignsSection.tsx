@@ -182,6 +182,7 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   const t = useT()
   const isAdmin = useStore((s) => s.user?.role === 'admin')
   const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const projects = useStore((s) => s.projects)
   const [rows, setRows] = useState<DesignRow[]>([])
   // 숨김 포함: a shipped theme kept for what already wears it (`listed: false`) is folded away.
@@ -203,8 +204,8 @@ export function DesignsSection({ initialMode }: { initialMode?: 'new' | 'extract
   useEffect(() => {
     void load()
     // Projects are needed for the delete confirmation count.
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
 
   const tokens = (draft?.tokens ?? blank().tokens) as DesignTokens
   const setTokens = (patch: Partial<DesignTokens>) =>

@@ -39,6 +39,7 @@ from app.models.chat import ChatSession, Message, Role, RoutingMode, SessionKind
 from app.models.publishing import (
     Publication,
     PublicationKey,
+    PublicationStatus,
     PublicationVersion,
     PublicationVisitor,
 )
@@ -126,6 +127,10 @@ async def keyed(request: Request, db: DbSession) -> tuple[Publication, Publicati
 
 
 def _channel(pub: Publication, name: str) -> None:
+    if pub.status == PublicationStatus.paused.value and name in publishing.channels_of(pub):
+        # The channel is open; the bot is not. Said as such, so the caller does not go
+        # asking for a channel that was never closed.
+        raise Failed(403, "bot_paused", _MESSAGES["bot_paused"], kind="permission_error")
     if not publishing.channel_open(pub, name):
         raise Failed(403, "channel_closed",
                      f"The bot's {name.upper()} channel is not open.",
@@ -254,6 +259,9 @@ async def _turn(db: DbSession, request: Request, pub: Publication, key: Publicat
     version = await _version(db, pub)
     limits = publishing.limits_of(pub)
     content = _with_record(history, question)
+    if len(question) > limits["maxInputChars"]:
+        # The question alone is over: shortening it, not the conversation, is the fix.
+        raise Failed(400, "too_long", _MESSAGES["too_long"])
     if len(history) > _HISTORY_MAX or len(content) > limits["maxInputChars"]:
         raise Failed(400, "history_too_long",
                      "The conversation carried is too long; continue it with the "
@@ -478,8 +486,9 @@ def _ask_tool(pub: Publication) -> dict[str, Any]:
         "name": "ask",
         "title": pub.title,
         "description": (f"{pub.title}: {about} " if about else f"{pub.title}. ")
-        + "Answers from the material this bot was published with, citing it; says so when "
-          "the material does not cover the question.",
+        + "The bot looks the question up in the material it was published with and answers "
+          "from what it finds; the passages it cites are listed in citations. An answer "
+          "without citations rests on no passage of that material.",
         "inputSchema": {
             "type": "object",
             "properties": {

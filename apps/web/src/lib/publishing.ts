@@ -121,9 +121,13 @@ export function noticeLines(view: 'off' | 'on', days: number, t: (s: string) => 
 /** A refused question, in words a visitor can act on. */
 export function botErrorMessage(err: unknown, t: (s: string) => string, maxChars?: number): string {
   const code = err instanceof ApiError ? err.detail : ''
+  const wait = err instanceof ApiError ? err.retryAfter : undefined
   switch (code) {
     case 'visitor_rate_limited':
-      return t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
+      // The minute's limit says how long is left; a day's says tomorrow.
+      return wait && wait <= 120
+        ? t('질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.').replace('{n}', String(wait))
+        : t('질문을 너무 자주 보냈습니다. 잠시 뒤 다시 보내 주세요.')
     case 'visitor_daily_limit':
       return t('오늘 보낼 수 있는 질문을 다 보냈습니다. 내일 다시 이용해 주세요.')
     case 'daily_credits_reached':
@@ -217,6 +221,7 @@ export function embedSnippet(slug: string): string {
 export const SCOPE_ERROR: Record<string, string> = {
   credits_cap_required: '구성원 밖으로 공개하려면 하루 최대 크레딧을 정해야 합니다.',
   revoked: '닫힌 챗봇입니다.',
+  no_change: '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.',
 }
 
 interface BotAttention {
@@ -265,10 +270,14 @@ export interface SettingsDraft {
   limits: BotLimits
 }
 
-/** A daily credit cap as typed: a whole number from 1, or undefined. */
+/** The largest daily credit cap the server stores (`publishing.CREDITS_PER_DAY_MAX`). */
+export const CREDITS_PER_DAY_MAX = 100_000_000
+
+/** A daily credit cap as typed: a whole number from 1 up to the largest, or undefined. */
 export function creditsCap(raw: string | number | undefined): number | undefined {
-  const value = Math.floor(Number(raw))
-  return Number.isFinite(value) && value >= 1 ? value : undefined
+  if (typeof raw === 'string' && !/^\s*\d+\s*$/.test(raw)) return undefined
+  const value = Number(raw)
+  return Number.isInteger(value) && value >= 1 && value <= CREDITS_PER_DAY_MAX ? value : undefined
 }
 
 export function toSettings(draft: SettingsDraft): PublicationSettings {

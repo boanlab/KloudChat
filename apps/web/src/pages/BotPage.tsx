@@ -411,7 +411,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
                   </span>
                 </p>
               )}
-              {!bot.consented ? (
+              {!bot.consented && closed ? null : !bot.consented ? (
                 <section aria-label={t('이용 안내')} className="rounded-card border border-line bg-panel px-5 py-4" data-testid="bot-notice">
                   <p className="mb-2 flex items-center gap-2 text-base font-medium">
                     <ShieldCheck size={16} className="text-accent" aria-hidden />
@@ -515,6 +515,8 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
             </div>
           </div>
 
+          {/* A bot that cannot answer now takes no question: only the notice above. */}
+          {!closed && (
           <footer className="border-t border-line px-4 pt-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
             <div className="mx-auto max-w-3xl">
               {error && (
@@ -558,6 +560,7 @@ export function BotPage({ onSignIn, embedded = false }: { onSignIn?: () => void;
               </p>
             </div>
           </footer>
+          )}
         </main>
       </div>
       <ConfirmDialog

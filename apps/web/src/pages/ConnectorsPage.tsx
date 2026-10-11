@@ -414,6 +414,7 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
     connectors,
     connectorCatalog,
     loadWorkspace,
+    ensureWorkspace,
     toggleConnectorTool,
     uninstallConnector,
     deleteMany,
@@ -423,8 +424,8 @@ export function ConnectorsPage({ embedded = false }: { embedded?: boolean } = {}
   } = useStore()
 
   useEffect(() => {
-    void loadWorkspace()
-  }, [loadWorkspace])
+    void ensureWorkspace()
+  }, [ensureWorkspace])
   const [tab, setTab] = useState<'installed' | 'catalog'>('installed')
   const [detail, setDetail] = useState<Connector | null>(null)
   const [credentialsFor, setCredentialsFor] = useState<CatalogEntry | null>(null)

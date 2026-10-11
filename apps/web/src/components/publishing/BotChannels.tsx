@@ -199,6 +199,7 @@ export function AdminReadsCard({ pub }: { pub: Publication }) {
                 .replace('{date}', formatDateTime(row.at))
                 .replace('{reason}', row.reason)}
               {row.kind === 'list' && <span className="text-faint"> · {t('대화 목록')}</span>}
+              {(row.count ?? 1) > 1 && <span className="text-faint"> · {t('{n}건').replace('{n}', String(row.count))}</span>}
             </li>
           ))}
         </ul>
@@ -237,11 +238,14 @@ export function ApiTab({ pub }: { pub: Publication }) {
 
   const key = made?.key ?? 'kcb_YOUR_KEY'
   const base = apiBase()
+  // The bot's own first suggested question, as a JSON string (and safe inside the shell's '…').
+  const question = JSON.stringify(pub.branding?.suggestedPrompts?.[0]?.trim() || t('무엇을 도와줄 수 있나요?'))
+  const shellQuestion = question.replace(/'/g, "'\\''")
   const curl = [
     `curl ${base}/bots/v1/chat/completions \\`,
     `  -H "Authorization: Bearer ${key}" \\`,
     `  -H "Content-Type: application/json" \\`,
-    `  -d '{"model": "${pub.slug}", "messages": [{"role": "user", "content": "휴학은 언제까지 신청하나요?"}]}'`,
+    `  -d '{"model": "${pub.slug}", "messages": [{"role": "user", "content": ${shellQuestion}}]}'`,
   ].join('\n')
   const python = [
     'from openai import OpenAI',
@@ -249,7 +253,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     `client = OpenAI(base_url="${base}/bots/v1", api_key="${key}")`,
     'reply = client.chat.completions.create(',
     `    model="${pub.slug}",`,
-    '    messages=[{"role": "user", "content": "휴학은 언제까지 신청하나요?"}],',
+    `    messages=[{"role": "user", "content": ${question}}],`,
     ')',
     'print(reply.choices[0].message.content)',
     '# citations: reply.model_extra["kloudchat"]["citations"]',
@@ -330,7 +334,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           {t('API로 부르기')}
         </p>
         <p className="text-sm text-muted">
-          {t('OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 검사를 마친 답만 보내므로 stream을 켜도 답이 끝난 뒤 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.')}
+          {t('OpenAI 호환 방식입니다. model에는 챗봇 주소를 씁니다. 답을 다 쓴 뒤에 보내므로 stream을 켜도 답이 한 번에 이어서 옵니다. 인용한 자료는 kloudchat.citations에 있습니다.')}
         </p>
         <CodeBlock code={curl} testId="api-curl" />
         <CodeBlock code={python} testId="api-python" />

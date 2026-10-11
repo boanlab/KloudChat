@@ -70,12 +70,15 @@ export const setAccessToken = (t: string | null) => {
 export class ApiError extends Error {
   readonly status: number
   readonly detail: string
+  /** Seconds the server asked to wait (`Retry-After` on a 429), when it said. */
+  readonly retryAfter?: number
 
-  constructor(status: number, detail: string) {
+  constructor(status: number, detail: string, retryAfter?: number) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.detail = detail
+    this.retryAfter = retryAfter
   }
 }
 
@@ -2101,7 +2104,8 @@ async function* postStream(
     // The 409 body was consumed above; reading it twice loses the code.
     const resolved = detail ?? (res.status === 409 ? `http_${res.status}` : await readDetail(res))
     if (res.status === 401) throw new UnauthorizedError(resolved)
-    throw new ApiError(res.status, resolved)
+    const wait = Number(res.headers.get('Retry-After'))
+    throw new ApiError(res.status, resolved, res.status === 429 && wait > 0 ? wait : undefined)
   }
   // A turn that stopped to ask (`_ask_before_writing`) answers in JSON, not a
   // stream; translated into events here so the runners need not know.
@@ -2237,6 +2241,8 @@ export interface BotAdminRead {
   at: string
   kind: 'list' | 'read'
   reason: string
+  /** Reads of the same kind and reason within a minute, shown as one line. */
+  count?: number
 }
 
 export interface Publication {
@@ -2479,9 +2485,15 @@ export interface PublicationReview {
     starters: string[]
     tools: string[]
     checks: string[]
+    /** The checks by the names people know (「근거 없는 답 보류」). */
+    checkNames?: string[]
     model: string
   } | null
-  knowledge: { name: string; chars: number; findings: { category: string; count: number }[] }[]
+  /** What the open review is about. */
+  request?: 'visibility' | 'channels' | 'version' | null
+  /** What the version waiting changes against the one answering now. */
+  changes?: { field: 'instructions' | 'contact' | 'model' | 'tools' | 'checks' | 'knowledge'; before: unknown; after: unknown }[]
+  knowledge: { name: string; chars: number; findings: { category: string; count: number }[]; preview?: string }[]
   history: { action: string; at: string; actorId: string | null; metadata: Record<string, unknown> }[]
 }
 

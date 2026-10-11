@@ -28,6 +28,7 @@ export function AgentDetailPage() {
   const agents = useStore((s) => s.agents)
   const me = useStore((s) => s.user?.id)
   const loadWorkspace = useStore((s) => s.loadWorkspace)
+  const ensureWorkspace = useStore((s) => s.ensureWorkspace)
   const workspaceLoading = useStore((s) => s.workspaceLoading)
   const ensureDesignTemplates = useStore((s) => s.ensureDesignTemplates)
   const upsertAgent = useStore((s) => s.upsertAgent)
@@ -41,9 +42,9 @@ export function AgentDetailPage() {
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
-    void loadWorkspace()
+    void ensureWorkspace()
     void ensureDesignTemplates()
-  }, [loadWorkspace, ensureDesignTemplates])
+  }, [ensureWorkspace, ensureDesignTemplates])
 
   const agent = agents.find((a) => a.id === agentId)
   if (!agent) {
