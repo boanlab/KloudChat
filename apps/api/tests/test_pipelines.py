@@ -116,7 +116,9 @@ def test_each_format_runs_what_the_if_chains_ran(fmt):
     # Documents written from the person's own material search nothing.
     assert (settings.search is False) == (fmt in NO_SEARCH)
     gaejo = fmt == "gaejo"
-    assert list(settings.outline) == (list(doc_formats.GAEJO_OUTLINE) if gaejo else [])
+    # A 공문 is one untitled 「본문」 (quality Q11).
+    assert list(settings.outline) == (list(doc_formats.GAEJO_OUTLINE) if gaejo
+                                      else ["본문"] if fmt == "official" else [])
     # Work documents read from their tables and lists draw no figures unless asked; a 공문
     # and a 보도자료 have no shipped 서식, so the format's own default says so.
     assert (settings.draws == "when-asked") == (fmt in DRAW_WHEN_ASKED | {"official", "press"})

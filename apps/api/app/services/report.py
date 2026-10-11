@@ -552,7 +552,15 @@ def _shaped(prompt: str, genre: str) -> str:
 
 
 def gaejo_body(sections: list[dict], fmt: doc_formats.DocFormat | None) -> list[dict]:
-    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times."""
+    """Bodies of a 개조식 format in canonical list Markdown with 공문서 dates and times; a
+    공문's body as its 1. 가. items, one paragraph each, with the same notation."""
+    if fmt is not None and fmt.id == "official":
+        return [
+            {**sec, "content": doc_formats.official_body(
+                doc_formats.official_notation(str(sec.get("content") or "")))}
+            if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")) else sec
+            for sec in sections
+        ]
     if fmt is None or fmt.lists != "gaejo":
         return sections
     return [

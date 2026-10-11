@@ -348,3 +348,44 @@ def test_a_listed_table_is_numbered_like_any_other_once_normalized():
             "  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n")
     out = report.normalize_document([{"heading": "성과", "content": body}])[0]["content"]
     assert "**표 1." in out and "\n| 항목 | 만족도 |\n|---|---|\n" in out and "- |" not in out
+
+
+S03 = ("각 학과에 보낼 협조 요청 공문을 써 줘.\n\n"
+       "- 제목 취지: 2027학년도 실험실습 기자재 수요조사 협조 요청\n"
+       "- 발신: 한빛대학교 기획처장 / 수신: 각 학과(부)장\n"
+       "- 제출 기한: 2026. 11. 6.(금) 18:00까지\n")
+
+
+def test_a_default_official_letter_is_one_body_without_chapters():
+    # quality Q11 (verify1 S03): the default 공문 came out as six chapter headings.
+    from app.services import process_settings, report
+
+    fmt = doc_formats.detect(S03)
+    assert fmt.id == "official" and fmt.closing
+    process = process_settings.resolve(template_id=None, format_id="official")
+    assert process.outline == ("본문",) and process.draws == "when-asked"
+    rule = report._genre_rule(S03, fmt)
+    assert rule.startswith("Genre: 공문(시행문)") and "no headings" in rule
+    sections = report.untitled_body([{"heading": "본문", "content": "x"}], process.outline)
+    assert sections[0]["heading"] == ""
+
+
+def test_an_official_letter_s_items_stand_on_lines_of_their_own():
+    from app.services import report
+
+    body = ("1. 2027학년도 수요조사를 하오니 협조하여 주시기 바랍니다.\n"
+            "  가. 제출 기한: 2026년 11월 6일(금) 18:00\n"
+            "    나. 제출 방법: 메일 제출\n"
+            "     ※ 학과장 확인 필수\n"
+            "2. 문의: 기획예산팀 윤서영(내선 2214)\n"
+            "붙임  실험실습 기자재 수요조사서 1부.")
+    out = report.gaejo_body([{"heading": "", "content": body}],
+                            doc_formats.BY_ID["official"])[0]["content"]
+    assert out.split("\n\n") == [
+        "1. 2027학년도 수요조사를 하오니 협조하여 주시기 바랍니다.",
+        "가. 제출 기한: 2026. 11. 6.(금) 18:00",
+        "나. 제출 방법: 메일 제출",
+        "※ 학과장 확인 필수",
+        "2. 문의: 기획예산팀 윤서영(내선 2214)",
+        "붙임  실험실습 기자재 수요조사서 1부.",
+    ]

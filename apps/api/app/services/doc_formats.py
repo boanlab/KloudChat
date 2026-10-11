@@ -99,7 +99,7 @@ FORMATS: tuple[DocFormat, ...] = (
     ),
     DocFormat(
         "official", "공문·안내문", r"공문|시행\s{0,3}문|안내문|공지문|협조\s{0,3}요청",
-        ("수신", "참조", "발신", "시행일"), numbering="official", head="memo",
+        ("수신", "참조", "발신", "시행일"), numbering="official", head="memo", closing=True,
     ),
     DocFormat(
         "incident", "장애 보고서",
@@ -631,6 +631,41 @@ def _tables_out_of_items(lines: list[str]) -> list[str]:
             continue
         out.append(line)
     return out
+
+
+#: A 공문 item line: 「1. …」, 「가. …」, 「1) …」, 「가) …」, 「※ …」, 「붙임 …」.
+_OFFICIAL_ITEM = re.compile(r"^\s{0,12}(?:\d{1,2}[.)]|[가-하][.)]|\(\d{1,2}\)|※|붙\s{0,2}임)\s")
+
+
+def official_body(text: str) -> str:
+    """A 공문 body with each item on a paragraph of its own: 「가. 일시: …」 written indented
+    under 「1.」 would otherwise run into it as one line (a Markdown continuation) or, at four
+    spaces, print as code. Tables and fences pass through, a blank line around them."""
+    out: list[str] = []
+    fenced = False
+
+    def table(line: str) -> bool:
+        return line.lstrip().startswith("|")
+
+    for line in (text or "").split("\n"):
+        if _FENCE_LINE.match(line):
+            fenced = not fenced
+            out.append(line)
+            continue
+        if fenced:
+            out.append(line)
+            continue
+        stripped = line.strip()
+        if not stripped:
+            out.append("")
+            continue
+        if _OFFICIAL_ITEM.match(line):
+            line = stripped
+        # A blank line between two lines, unless both are a table's rows.
+        if out and out[-1].strip() and not (table(out[-1]) and table(line)):
+            out.append("")
+        out.append(line)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip("\n")
 
 
 def tables_out_of_items(text: str) -> str:
