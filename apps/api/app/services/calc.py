@@ -45,6 +45,11 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
 - 결과는 한 줄에 하나씩 print 한다: 「항목 = 값 단위」. 표가 될 값은 행마다
   「행 이름 | 열1 = 값 | 열2 = 값」 처럼 한 줄에 적는다. 값은 유효숫자 4자리(정수는 그대로).
 - 문서에 필요한 값만, 60줄 이내로.
+- When the request asks for the result of a procedure or algorithm run on the material
+  (CPU 스케줄링의 FCFS·SJF·SRTF·라운드 로빈, 정렬, 일정·기한 계산), implement that procedure
+  step by step in code — never type the result — and print each run's order with start and
+  end times (「FCFS | 순서 = P1 0-7, P2 7-11」) and every value the request names
+  (「FCFS | 평균 대기시간 = 4.75」). State the tie-break rule you used in one printed line.
 
 코드 블록 하나만 답하라:
 ```python
