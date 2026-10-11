@@ -259,6 +259,8 @@ const EN: Record<string, string> = {
   '1부터 {max}까지의 정수로 적어 주세요.': 'Enter a whole number from 1 to {max}.',
   '질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.': 'Too many questions in a row. Send again in {n} seconds.',
   '지난 판과 달라진 것이 없어 새 판을 만들지 않았습니다.': 'Nothing changed since the last version, so no new version was made.',
+  '이 에이전트가 근거로 쓸 문서입니다. 질문마다 먼저 이 자료에서 찾아 답합니다. 짧은 자료는 통째로, 긴 자료는 질문과 맞는 대목만 들어갑니다.': 'Documents this agent answers from. Every question is looked up here first: short material goes in whole, long material by the passages that match the question.',
+  '자료를 붙이려고 에이전트를 저장했습니다. 이 화면을 떠나도 에이전트는 남습니다.': 'The agent was saved so the file could attach to it. It stays if you leave this page.',
   '무엇을 도와줄 수 있나요?': 'What can you help me with?',
   '승인하면 요청한 채널이 열려, 봇 키를 가진 프로그램이나 승인한 사이트에서도 이 챗봇이 답합니다. 비용은 만든 사람의 크레딧에서 나가며, 하루 최대 {n}크레딧입니다.': 'Approving opens the channels asked for: programs holding a bot key, or the approved sites, reach this chatbot too. The cost comes from the maker\'s credits, at most {n} credits a day.',
   '승인하면 아래 판이 지금 공개 범위와 채널에서 답합니다. 승인 전까지는 지금 판이 답합니다.': 'Approving lets the version below answer in the current audience and channels. Until then the current version answers.',
@@ -1430,8 +1432,6 @@ const EN: Record<string, string> = {
   '에이전트를 저장하면 자료를 붙일 수 있습니다': 'Save the agent first, then attach sources',
   '파일이나 URL 을 붙이면, 이 에이전트가 그 안에서 찾아 답합니다.':
     'Attach a file or a URL and this agent will search it to answer.',
-  '이 에이전트가 검색해서 근거로 쓸 문서입니다. 대화마다 통째로 들어가지 않고, 필요할 때 찾아 씁니다.':
-    'Documents this agent searches for evidence. Not pushed into every turn — looked up when needed.',
   'URL 은 추가한 시점의 내용을 저장합니다. 페이지가 바뀌어도 따라가지 않습니다.':
     'A URL is stored as it read at the time. It does not follow later changes.',
   '준비물': 'You bring',
