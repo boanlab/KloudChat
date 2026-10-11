@@ -3075,6 +3075,7 @@ async def rewrite_section(
     target = next((s for s in sections if s.get("id") == target_id), {})
     others = [str(s.get("content") or "") for s in sections if s.get("id") != target_id]
     body = _without_borrowed_tables(body, target.get("content") or "", others, note)
+    body = _keeps_its_tables(body, target.get("content") or "", note)
     if fmt is not None and fmt.lists == "gaejo":
         body = doc_formats.gaejo_markdown(doc_formats.official_notation(body))
     return body, spent
@@ -3093,6 +3094,44 @@ def _without_borrowed_tables(body: str, before: str, others: list[str], note: st
         return m.group(0)
 
     return re.sub(r"\n{3,}", "\n\n", _TABLE.sub(keep_or_drop, body)).strip()
+
+
+#: A note that asks for a table to go: 「표는 빼 줘」, 「표 1 삭제」.
+_DROPS_TABLE = re.compile(r"표[^.\n]{0,12}(?:빼|없애|삭제|지워|제외|말고|대신)")
+#: A table's caption line: 「**표 1. 연도별 예산**」, 「표 2 비교」.
+_CAPTION = re.compile(r"^\s{0,3}\**\s{0,2}(?:<표|표)\s{0,2}(\d{1,3})\b[^\n]{0,120}$")
+
+
+def _keeps_its_tables(body: str, before: str, note: str) -> str:
+    """A rewrite that lost the section's tables gets them back, with their captions: 「이 절만
+    다시 쓰기」 is about the prose, and 표 1 vanishing with it was a loss nobody asked for. Each
+    goes after the paragraph that first names it (「표 1」), else at the end."""
+    if _TABLE.search(body) or not _TABLE.search(before) or _DROPS_TABLE.search(note or ""):
+        return body
+    blocks: list[tuple[str, str]] = []
+    for m in _TABLE.finditer(before):
+        head = before[:m.start()].rstrip("\n").split("\n")[-1] if m.start() else ""
+        caption = head if _CAPTION.match(head) else ""
+        blocks.append((caption.strip(), m.group(0).strip()))
+    out = body.rstrip()
+    for caption, table in blocks:
+        number = _CAPTION.match(caption).group(1) if caption else ""
+        paragraphs = out.split("\n\n")
+        if caption and caption in (p.strip() for p in paragraphs):
+            # The rewrite kept the caption and lost the table under it.
+            at = [p.strip() for p in paragraphs].index(caption)
+            paragraphs.insert(at + 1, table)
+            out = "\n\n".join(paragraphs)
+            continue
+        block = f"{caption}\n\n{table}" if caption else table
+        at = next((i for i, p in enumerate(paragraphs)
+                   if number and re.search(rf"표\s{{0,2}}{number}(?!\d)", p)), None)
+        if at is None:
+            paragraphs.append(block)
+        else:
+            paragraphs.insert(at + 1, block)
+        out = "\n\n".join(paragraphs)
+    return out
 
 
 def _table_key(table: str) -> str:
