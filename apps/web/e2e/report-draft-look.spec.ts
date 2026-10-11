@@ -2,11 +2,9 @@ import { expect, test } from '@playwright/test'
 import { shellRead } from './shell-mocks'
 
 /**
- * A report being written wears the look it will be saved with. UX audit on the eval
- * instance: the panel showed 「편집형 / 보라」 while the sections streamed and switched to
- * 「미니멀 / 먹」 when the document arrived, because the draft knew no design until then.
- * The server now sends `design` before the first section; the stream here stops before
- * the saved artifact, so only the draft is on screen.
+ * A report being written wears the look it will be saved with. The server sends `design`
+ * before the first section; the stream here stops before the saved artifact, so only the
+ * draft is on screen.
  */
 
 test.use({ serviceWorkers: 'block' })

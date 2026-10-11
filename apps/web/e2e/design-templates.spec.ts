@@ -272,7 +272,7 @@ test('이미지·영상 표면에는 서식이 없고, 도식 칩은 도형으�
   test.setTimeout(120_000)
   await signIn(page)
 
-  // Image, audio and video 서식 were retired: no picker on those surfaces.
+  // Image, audio and video surfaces offer no 서식 picker.
   test.skip(!(await surfaceOn(page, 'image')), 'image 표면이 꺼져 있습니다')
   await expect(page.getByLabel('프롬프트 입력')).toBeVisible()
   expect(await toolNames(page)).not.toContain('양식 고르기')

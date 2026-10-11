@@ -60,8 +60,8 @@ export function fixtureAgent(id: string, name: string, extra: Record<string, unk
   return { ...agent(id, name), ...extra }
 }
 
-export const skillNames = ['초안 검토', '데이터 분석', '번역 검수']
-export const agentNames = ['논문 리뷰어', '예산 검토']
+const skillNames = ['초안 검토', '데이터 분석', '번역 검수']
+const agentNames = ['논문 리뷰어', '예산 검토']
 /** An agent that writes reports only: not offered on the chat screen's 「@」. */
 const reportAgent = { ...agent('a9'.padEnd(33, '9'), '회의록 정리'), kinds: ['report'], surface: 'report' }
 
@@ -89,7 +89,7 @@ function sessionRow(id: string, kind: string, messages: Record<string, unknown>[
   }
 }
 
-export type SentTurn = { path: string; body: Record<string, unknown> }
+type SentTurn = { path: string; body: Record<string, unknown> }
 
 export async function composerFixture(
   page: Page,

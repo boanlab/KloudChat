@@ -94,7 +94,7 @@ async function scan(page: Page, where: string): Promise<Finding[]> {
   )
 }
 
-export const AUDIT_ROUTES: [string, string][] = [
+const AUDIT_ROUTES: [string, string][] = [
   ['/', '홈'],
   ['/new/chat', '새 챗'],
   ['/new/report', '새 보고서'],

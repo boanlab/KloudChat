@@ -1,6 +1,6 @@
 /** What each work persona types for each job, with what a correct answer must contain. */
 
-export interface WorkPrompt {
+interface WorkPrompt {
   /** The request, as typed. */
   text: string
   /** Substrings the finished work must contain (case-insensitive); only what the request itself forces. */
@@ -8,7 +8,7 @@ export interface WorkPrompt {
 }
 
 /** `persona.work` → what that person types for that job. */
-export const workPrompts: Record<string, WorkPrompt> = {
+const workPrompts: Record<string, WorkPrompt> = {
   // ── 인문대 학부생 ──────────────────────────────────────────────────
   'hum-undergrad.concept': {
     text: '사학과 3학년입니다. 「미시사(microhistory)」가 무엇인지, 기존 사회사와 무엇이 다른지 사례 두 개와 반례 하나를 들어 설명해 주세요.',

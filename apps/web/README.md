@@ -31,26 +31,29 @@ container, with the proxy already pointed at the `api` service.
 ```
 src/
 ├── components/
-│   ├── artifacts/                    ArtifactPanel (branching by kind), ribbon, lint and fact-check results, version history
-│   ├── chat/                         Composer, MessageItem, StepTimeline, Markdown
-│   ├── media/JobCard.tsx             Asynchronous generation card (progress → result)
-│   ├── report/                       ReportPanel (TOC, section streaming, sources, export), DocumentEditor, block renderers
-│   ├── slides/                       DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
-│   ├── chart/ChartPanel.tsx          Chart, underlying-data tab, PNG/SVG/CSV
-│   ├── share/ShareButton.tsx         Read-only link creation and revocation
-│   ├── layout/                       AppShell, Sidebar, TopBar, Brand
-│   └── ui/index.tsx                  Button, Modal, Dropdown, Badge, …
+│   ├── artifacts/      ArtifactPanel (branching by kind), ribbon, lint and fact-check results, version history
+│   ├── chat/           Composer, MessageItem, StepTimeline, Markdown
+│   ├── report/         ReportPanel (TOC, section streaming, sources, export), DocumentEditor, block renderers
+│   ├── slides/         DeckPanel (renderer, thumbnail grid, per-slide editing), slide patterns, type scale
+│   ├── chart/          Chart, underlying-data tab, PNG/SVG/CSV
+│   ├── media/          Asynchronous generation card (progress → result)
+│   ├── agents/         An agent's knowledge, 진행 과정 and gap questions
+│   ├── customize/      사용자 지정 hub: agent, skill and 서식 forms, sharing, 체험
+│   ├── publishing/     Publish dialog, channels (link, embed, API, MCP), scope
+│   ├── issues/         문의·신고 dialog, thread, read-only session copy
+│   ├── share/          Read-only link creation and revocation
+│   ├── layout/         AppShell, Sidebar, TopBar, Brand
+│   └── ui/index.tsx    Button, Modal, Dropdown, Badge, …
 ├── lib/
-│   ├── api.ts                        ★ the single backend seam
-│   ├── kinds.ts                      Single source of truth for the five surfaces
-│   ├── i18n.ts                       Dictionary keyed on the Korean source string
-│   ├── useT.ts                       Hook translating into the current language
-│   ├── clipboard.ts                  Copy, with a fallback outside secure contexts
-│   ├── reportMarkdown.ts             Markdown round-trip for the document editor
-│   └── brand.ts                      Branding resolution and logo URL
-├── pages/                            One per route, plus settings/ tabs and sections
-├── store/useStore.ts                 Single zustand store
-└── types.ts                          Domain types (discriminated unions)
+│   ├── api.ts          the single backend seam
+│   ├── kinds.ts        single source of truth for the five surfaces
+│   ├── i18n.ts         dictionary keyed on the Korean source string
+│   ├── useT.ts         hook translating into the current language
+│   ├── shortcuts.ts    keyboard shortcuts and their help list
+│   └── …               small helpers (clipboard, brand, paging, Markdown round-trip, …)
+├── pages/              one per route, plus customize/ and settings/ sections
+├── store/useStore.ts   single zustand store
+└── types.ts            domain types (discriminated unions)
 ```
 
 Playwright specs live in `e2e/`, beside `src/`.
@@ -81,25 +84,36 @@ rather than in a cookie. The exception is deliberate and confined to
 
 ```bash
 npx playwright install chromium   # once
-npm run test:e2e
-npx playwright test --project=desktop
 ```
 
-The full suite needs a running stack and a seeded account —
-`bash scripts/e2e-seed.sh` from the repository root.
-
-The focused configs (`playwright.<name>.config.ts`) are what CI runs. Each
-starts its own Vite server on a fixed port and stubs the API with route
-handlers, so they need no stack:
+**Focused configs** (`playwright.<name>.config.ts`) need no stack. Each starts its
+own Vite server (dev, or `build` + `preview`) on a fixed port, points
+`API_BASE_URL` at an unused port and answers the API with `page.route` fixtures
+(`e2e/*-fixture.ts`, `e2e/shell-mocks.ts`, `e2e/fixtures/`). CI runs them one by
+one (`.github/workflows/ci.yml`):
 
 ```bash
-npx playwright test --config playwright.freshness.config.ts
+npx playwright test --config playwright.freshness.config.ts --workers=1
 ```
 
-**Do not override `--workers`.** The config pins `workers: 1`; every spec signs
-in as the same account and several pick "the most recent X".
+Exceptions: `playwright.chat-errors.config.ts` signs in to a running app and fakes
+only the turn's stream; `playwright.admin-models.config.ts` is fixture-only but
+not in CI. `ocr` and `ux` share port 5361, so run them one after the other.
 
-**Some specs spend real money** — roughly 4,400 credits for an image, 1,000 for
-audio, 12,000 for a video. Exclude them with `--grep-invert` while iterating.
+**The default config** (`playwright.config.ts`) runs the remaining specs against a
+running stack at `http://localhost:5173` with a seeded account
+(`bash scripts/e2e-seed.sh` from the repository root):
+
+```bash
+npx playwright test --project=desktop e2e/chat.spec.ts
+```
+
+It pins `workers: 1`; do not override it. Every spec signs in as the same account
+and several pick "the most recent X". Some specs spend real credits (roughly
+4,400 for an image, 1,000 for audio, 12,000 for a video); exclude them with
+`--grep-invert` while iterating.
+
+`tests/vite-config.test.mjs` (`npm run test:config`) checks that the Vite config
+resolves source aliases in workspace paths with spaces and non-ASCII characters.
 
 See [docs/development.md](../../docs/development.md) for the rest.

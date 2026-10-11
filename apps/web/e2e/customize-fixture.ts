@@ -17,7 +17,7 @@ const templateFixture = JSON.parse(readFileSync(new URL('./template-fixture.json
 
 export const at = '2026-10-08T07:00:00.000Z'
 const older = '2026-09-01T07:00:00.000Z'
-export const ME = 'fixture-user'
+const ME = 'fixture-user'
 export const newSessionId = 'b5555555555555555555555555555555'
 
 export function agentRow(id: string, name: string, extra: Record<string, unknown> = {}) {
@@ -30,7 +30,7 @@ export function agentRow(id: string, name: string, extra: Record<string, unknown
   }
 }
 
-export function skillRow(id: string, name: string, extra: Record<string, unknown> = {}) {
+function skillRow(id: string, name: string, extra: Record<string, unknown> = {}) {
   return {
     id, name, slug: id, description: `${name} 절차입니다.`, whenToUse: `${name}이 필요할 때`, body: `# ${name}\n\n1. 자료를 읽는다\n2. 정리한다`,
     catalogKey: null, source: 'personal', kinds: ['chat', 'report', 'slides'], requiredTools: [], estimatedTokens: 320,
@@ -48,7 +48,7 @@ function pipelineRow(id: string, name: string, extra: Record<string, unknown> = 
 }
 
 /** What a skill's server fields may name, as `GET /skills/server-catalogue` sends it. */
-export const serverCatalogue = {
+const serverCatalogue = {
   postChecks: [
     { ref: 'source-check/post', skill: '출처 점검', summary: '답의 수치·인용이 자료에 있는지 확인합니다.' },
     { ref: 'copy-editing/preserve', skill: '교정·윤문', summary: '원문의 값과 문장이 바뀌지 않았는지 봅니다.' },
@@ -69,7 +69,7 @@ export const serverCatalogue = {
 }
 
 /** The built-in 빠진 정보 detectors (`gap_questions.detector_catalogue`). */
-export const gapDetectors = [
+const gapDetectors = [
   { name: 'meeting_date', label: '회의 날짜(연도까지)' },
   { name: 'attendees', label: '참석자' },
   { name: 'prices', label: '비용으로 고를 때 대안별 금액' },
@@ -77,7 +77,7 @@ export const gapDetectors = [
 
 /** The shipped 묶음, as `GET /agent-bases` sends them (`app/bundles/*.toml`). */
 const targets = (report: string | null, chat: string | null) => ({ report, chat })
-export const shippedBundles = [
+const shippedBundles = [
   { ref: 'prepare', name: '쓰기 전에 준비하기', description: '빠진 정보를 먼저 묻고, 날짜·금액을 미리 계산해 둡니다.', shipped: true,
     ownerId: null, visibility: 'org', review: '', risky: false, items: [
       { id: 'ask', kind: 'check', ref: 'gap-check', settings: {}, label: '빠진 정보 먼저 묻기', default: true, targets: targets('check', 'check') },
@@ -116,7 +116,7 @@ export const bases = [
     draft: false, custom: true, asks: true, formatChecks: [],
     bundles: [{ bundle: 'prepare', items: { dates: false, amounts: false } }, { bundle: 'review', items: { numbers: true } }] },
 ]
-export const myBundle = { ref: 'user:b1111111111111111111111111111111', id: 'b1111111111111111111111111111111', name: '두 번 검토하고 PDF로',
+const myBundle = { ref: 'user:b1111111111111111111111111111111', id: 'b1111111111111111111111111111111', name: '두 번 검토하고 PDF로',
   description: '', shipped: false, ownerId: ME, visibility: 'private', review: '', risky: true, mine: true, reviewNote: '',
   stages: [{ id: 's1', kind: 'agent', ref: '@self', settings: {} }, { id: 's2', kind: 'export', ref: '', settings: { formats: ['pdf'] } }],
   items: [{ id: 's1', kind: 'agent', ref: '@self', settings: {}, label: '이 에이전트', default: true, targets: targets('self', 'self') },
@@ -159,14 +159,14 @@ export const mySkills = [
   skillRow('k3333333333333333333333333333333', '번역 검수', { enabled: false }),
 ]
 /** A shipped skill kept only as a part (`listed: false`): 숨김 포함 shows it. */
-export const hiddenSkillRow = skillRow('k8888888888888888888888888888888', '글자 수 맞춤', { source: 'built-in', catalogKey: 'text-fit', listed: false })
+const hiddenSkillRow = skillRow('k8888888888888888888888888888888', '글자 수 맞춤', { source: 'built-in', catalogKey: 'text-fit', listed: false })
 export const storeSkills = [
   { ...skillRow('k4444444444444444444444444444444', '견적 계산'), ownerId: 'admin', ownerName: '관리자', official: true, installed: false, installs: 31, visibility: 'org' },
   { ...skillRow('k5555555555555555555555555555555', '보도자료 교정'), ownerId: 'u2', ownerName: '김동료', official: false, installed: false, installs: 3, visibility: 'org' },
 ]
 
-export const myPipelines = [pipelineRow('p1111111111111111111111111111111', '비교 → 요약', { review: 'pending' })]
-export const storePipelines = [
+const myPipelines = [pipelineRow('p1111111111111111111111111111111', '비교 → 요약', { review: 'pending' })]
+const storePipelines = [
   pipelineRow('p2222222222222222222222222222222', '분석 → 비교 → 개조식', {
     ownerId: 'u2', ownerName: '김동료', review: 'approved', visibility: 'org', installs: 5, mine: false, installed: false,
   }),
@@ -202,7 +202,7 @@ const designs = [
 ]
 
 /** Two catalogue servers of different categories; the list shows them flat, official first. */
-export const connectorCatalog = [
+const connectorCatalog = [
   { slug: 'youtube', name: 'YouTube', description: '영상 자막과 정보를 읽습니다.', category: '미디어', transport: 'stdio', auth: 'none',
     kinds: ['chat', 'report', 'slides'], official: true, installed: false, requiredEnv: [] },
   { slug: 'arxiv', name: 'arXiv', description: '논문을 찾습니다.', category: '연구', transport: 'http', auth: 'none',

@@ -371,11 +371,6 @@ export async function editMode(page: Page, on = true) {
   if (((await toggle.getAttribute('aria-pressed')) === 'true') !== on) await toggle.click()
 }
 
-/** Opens the header's 「⤓ 내려받기 ▾」 menu (formerly 파일 › 내보내기). */
-export async function downloadMenu(page: Page) {
-  await panelHeader(page).getByRole('button', { name: '내려받기' }).click()
-}
-
 /** Picks an item of the header's ⋯ menu: 목차, 원문 편집, 버전 기록, 이걸로 새로 시작 … */
 export async function moreMenu(page: Page, item: string | RegExp) {
   await panelHeader(page).getByRole('button', { name: '더보기' }).click()

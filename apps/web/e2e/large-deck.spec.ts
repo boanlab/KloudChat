@@ -47,7 +47,6 @@ test('60장 덱을 열고 끝까지 탐색해 PPTX와 PDF로 내보낸다', asyn
     await expect(thumbnails).toHaveCount(60)
     await thumbnails.nth(59).click()
     await expect(panel.getByText('60번 장').first()).toBeVisible()
-    // 「보기」 is gone: its commands sit in the panel header now.
     // The 장 목록 button carries the count.
     await expect(panel.getByRole('button', { name: '장 목록' })).toHaveText(/60\/60|60장/)
 
