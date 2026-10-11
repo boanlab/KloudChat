@@ -3542,6 +3542,9 @@ async function streamReport(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
+  // The approved outline is spent: its card must not stay live to write the document again
+  // (a second press wrote an empty skeleton as v2). A new proposal arrives as its own event.
+  if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
     : draftId
@@ -3793,6 +3796,9 @@ async function streamDeck(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
+  // The approved outline is spent: its card must not stay live to write the document again
+  // (a second press wrote an empty skeleton as v2). A new proposal arrives as its own event.
+  if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
     : draftId

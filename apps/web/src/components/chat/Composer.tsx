@@ -1471,8 +1471,13 @@ export function Composer({
       movable && sessionId && sessionAgent
         ? agentHandoffSurface(text, sessionAgent.kinds, agentDocumentNames(sessionAgent, designTemplates))
         : null
-    if (agentHandoff && sessionId) {
-      void handOff(sessionId, agentHandoff, text, {
+    const generalHandoff = detected && !session?.agentId ? detected : null
+    // A conversation with turns behind it goes along as the document's material (its words as
+    // 「대화 기록.txt」, its files as they are); a deck asked for 「위에서 계산한 값으로」
+    // must not start from nothing and invent another example.
+    const carried = agentHandoff ?? (sessionId && (session?.messages.length ?? 0) > 0 ? generalHandoff : null)
+    if (carried && sessionId) {
+      void handOff(sessionId, carried, text, {
         attachments: sentAttachments,
         webSearch: sentWebSearch,
         onSession: (id) => navigate(`/s/${id}`),
@@ -1487,7 +1492,7 @@ export function Composer({
       })
       return
     }
-    const handoff = detected && !session?.agentId ? detected : null
+    const handoff = generalHandoff
     if (handoff) {
       let landedHandoffSessionId = sessionId
       void send(null, handoff, text, {

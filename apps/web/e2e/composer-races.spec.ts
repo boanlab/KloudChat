@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { composerFixture } from './composer-fixture'
+import { chatId, composerFixture } from './composer-fixture'
 
 /**
  * A fast typist must not lose what they typed: a send before the workspace has loaded waits
@@ -258,4 +258,94 @@ test('the counter shows near the limit and a message over it is not sent', async
   await expect(page.getByRole('alert')).toContainText('질문은 200,000자까지 보낼 수 있습니다.')
   expect(sends).toHaveLength(0)
   expect(unexpected).toEqual([])
+})
+
+test('words inside pasted material are not the request: a mail reply stays in chat', async ({ page }, info) => {
+  const { unexpected, sends, created } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill([
+    '아래 메일에 정중하게 회신 써 줘',
+    '---받은 메일---',
+    '안녕하세요. 공동 연구 중간 점검 회의 관련입니다. 발표 자료를 11월 6일까지 보내 주시면 검토해 드리겠습니다.',
+  ].join('\n'))
+  await input.press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(created.map((row) => row.kind)).toEqual(['chat'])
+  expect(unexpected).toEqual([])
+})
+
+test('「코드로 계산한 값」 in a deck request is not a request for code', async ({ page }, info) => {
+  const { created } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('강의용 슬라이드 만들어 줘. 대기시간은 코드로 계산한 값을 그대로 써 줘')
+  await input.press('Enter')
+  await expect.poll(() => created.length).toBe(1)
+  expect(created[0].kind).toBe('slides')
+})
+
+test('a document asked for in a conversation takes the conversation with it', async ({ page }, info) => {
+  const { sends } = await composerFixture(page, info)
+  const handed: string[] = []
+  const reportId = 'r0000000000000000000000000000001'
+  const transcript = { id: 'f0000000000000000000000000000077', name: '대화 기록.txt', size: 40, mime: 'text/plain',
+    tokens: 10, projectId: null, sessionId: reportId, preview: '', error: null, createdAt: '2026-10-09T07:00:00.000Z' }
+  await page.route('**/api/sessions/*/handoff', async (route) => {
+    handed.push(route.request().url())
+    await route.fulfill({ status: 201, json: { session: {
+      id: reportId, kind: 'report', title: '새 대화', model: 'fixture/model', routingMode: 'manual', projectId: null,
+      agentId: null, artifactId: null, pending: null, skillIds: [], renderTemplateId: null, pinned: false,
+      messageCount: 0, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z',
+      messages: [], preview: null, made: null }, attachments: [transcript] } })
+  })
+  await page.goto(`/s/${chatId}`)
+  const input = page.getByLabel('프롬프트 입력')
+  await expect(input).toBeVisible()
+  await input.fill('위 내용으로 결과 보고서 작성해 줘')
+  await input.press('Enter')
+  await expect.poll(() => handed.length).toBe(1)
+  expect(handed[0]).toContain(`/sessions/${chatId}/handoff`)
+  await expect.poll(() => sends.length).toBe(1)
+  expect(sends[0].path).toBe(`/sessions/${reportId}/messages`)
+  expect(sends[0].body.attachments).toEqual([transcript.id])
+})
+
+test('an approved outline card is spent: it does not stay live to write the document again', async ({ page }, info) => {
+  const { sends } = await composerFixture(page, info)
+  const pending = {
+    stage: 'outline', request: '신입생 OT 결과 보고서', attachments: [], answers: {},
+    plan: { title: '신입생 OT 결과 보고서', sections: ['개요', '결과', '다음 단계'] },
+  }
+  const reportId = 'c0000000000000000000000000000009'
+  const row = {
+    id: reportId, kind: 'report', title: '신입생 OT 결과 보고서', model: 'fixture/model', routingMode: 'manual',
+    projectId: null, agentId: null, artifactId: null, pending, skillIds: [], renderTemplateId: null, pinned: false,
+    messageCount: 1, createdAt: '2026-10-09T07:00:00.000Z', updatedAt: '2026-10-09T07:00:00.000Z', preview: null,
+    made: null, messages: [{ id: 'm0000000000000000000000000000091', role: 'user', content: '신입생 OT 결과 보고서',
+      attachments: [], createdAt: '2026-10-09T07:00:00.000Z' }],
+  }
+  const answered = gate()
+  await page.route(`**/api/sessions/${reportId}**`, async (route) => {
+    const request = route.request()
+    if (request.method() === 'POST' && request.url().endsWith('/messages')) {
+      sends.push({ path: `/sessions/${reportId}/messages`, body: request.postDataJSON() })
+      await answered.opened
+      return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"type":"done"}\n\n' })
+    }
+    if (request.method() === 'GET' && !request.url().includes('/jobs')) return route.fulfill({ json: row })
+    await route.fallback()
+  })
+  await page.goto(`/s/${reportId}`)
+  const approve = page.getByRole('button', { name: /이대로 생성/ })
+  await expect(approve).toBeVisible()
+  await approve.click()
+  await expect.poll(() => sends.length).toBe(1)
+  // While the document is being written the spent card offers nothing to press again.
+  await expect(page.getByRole('button', { name: /이대로 생성/ })).toHaveCount(0)
+  answered.open()
 })
