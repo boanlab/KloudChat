@@ -14,7 +14,7 @@ import logging
 import httpx
 
 from app.core.config import settings
-from app.services import diagram_shapes
+from app.services import diagram_shapes, flow_layout
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,10 @@ _MARGIN = 18.0
 
 
 def figure_size(graph: diagram_shapes.Graph) -> tuple[float, float]:
-    """The figure's box in points, sized to its layers and inside a 16:9 slide."""
+    """The figure's box in points, sized to its layers and inside a 16:9 slide. A flow is
+    sized for a document's text column, in rows (`flow_layout`)."""
+    if (rows := flow_layout.frame_size(graph)) is not None:
+        return rows
     placed = diagram_shapes.layout(graph, 100, 100)
     layers = len({round(p.x if graph.direction == "LR" else p.y, 3) for p in placed.values()})
     across = max(
