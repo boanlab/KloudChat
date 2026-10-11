@@ -132,3 +132,19 @@ test('slides: 발표 and 내려받기 in the header, editing tabs only while edi
   await expect(header(page).getByRole('button', { name: '강조색 고르기' })).toBeVisible()
   await shot(page, 'deck-design-tab', testInfo.project.name)
 })
+
+test('slides: a table slide opens its cells to edit, under labels that say which box is which', async ({ page }, testInfo) => {
+  await resultsFixture(page, testInfo)
+  await open(page, deckSession)
+  // The third slide is the table.
+  await panel(page).getByRole('button', { name: '다음 장' }).click()
+  await panel(page).getByRole('button', { name: '다음 장' }).click()
+  await header(page).getByRole('button', { name: '편집', exact: true }).click()
+  await expect(panel(page).getByLabel('슬라이드 텍스트')).toBeVisible()
+  await expect(panel(page).getByText('이 장 편집', { exact: true })).toBeVisible()
+  // No click on the drawn table is needed to reach its cells.
+  await expect(panel(page).getByLabel('1행 1열')).toBeVisible()
+  await panel(page).getByLabel('1행 1열').fill('기준(수정)')
+  await expect(panel(page).getByLabel('슬라이드 텍스트')).toHaveValue(/기준\(수정\)/)
+  await shot(page, 'deck-table-edit', testInfo.project.name)
+})

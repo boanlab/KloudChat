@@ -3341,7 +3341,7 @@ export function DeckPanel({
         {ribbon === 'text' && !editing && !bulkMode && <RibbonGroup label={t('슬라이드 작업')}>
           <Button size="sm" disabled={writing || !slide} onClick={() => void startEditing()}>
             <Pencil size={13} />
-            {t('이 장 고치기')}
+            {t('직접 고치기')}
           </Button>
           <Button
             size="sm"
@@ -3633,7 +3633,7 @@ export function DeckPanel({
               <div className="flex items-center gap-2">
                   <StickyNote size={13} className="shrink-0 text-faint" />
                   <span className="flex-1 text-xs font-semibold tracking-wide text-faint uppercase">
-                    {t('발표 노트')}
+                    {editing ? t('이 장 편집') : t('발표 노트')}
                   </span>
                   {!editing && (
                     <Dropdown
@@ -3713,6 +3713,7 @@ export function DeckPanel({
 
                 {editing ? (
                   <div className="mt-2 space-y-2">
+                    <p className="text-xs font-semibold text-muted">{t('슬라이드 텍스트')}</p>
                     <Textarea
                       rows={5}
                       value={draft}
@@ -3722,7 +3723,8 @@ export function DeckPanel({
                     <p className="text-xs text-faint">
                       {t('위 슬라이드에서 글자를 눌러 바로 고칠 수 있습니다. 아래 상자는 한 번에 훑어 고칠 때 씁니다 — 첫 줄이 제목, 나머지 줄이 각각 한 항목이고, | 로 나눈 줄은 표의 한 행입니다.')}
                     </p>
-                    {slideDraft && ['table', 'metrics', 'cards'].includes(selectedElement ?? '') && (
+                    {/* A table's cells are edited here; clicking one on the slide does not open them. */}
+                    {slideDraft && (['table', 'metrics', 'cards'].includes(selectedElement ?? '') || slideDraft.layout === 'table') && (
                       <SlideDataEditor
                         slide={slideDraft}
                         onChange={(next) => {
@@ -3850,6 +3852,7 @@ export function DeckPanel({
                         </Button>
                       </div>
                     )}
+                    <p className="text-xs font-semibold text-muted">{t('발표 노트')}</p>
                     <Textarea
                       rows={3}
                       value={notes}
