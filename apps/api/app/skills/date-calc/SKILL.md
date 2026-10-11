@@ -4,6 +4,7 @@ description: 「다음 주 금요일」「이번 달 말」「2주 뒤」 같은
 when_to_use: 회의록·일정·기한에 상대 날짜가 있을 때, 경력·사업 기간의 개월 수와 총합을 셀 때, 발주일에서 납기·영업일을 계산할 때.
 kinds: [chat]
 required_tools: [run_skill_script]
+post_check: dates
 version: 1.0.0
 ---
 Do not count dates in your head; resolve them with the script.
@@ -19,6 +20,8 @@ Do not count dates in your head; resolve them with the script.
 3. `weekend` and `holiday` in the result are for display only. Move a date only when the material says so.
 4. For `unresolved` (not settled to a single date) and `unclear` (inaudible through noise), do not guess a date:
    leave `unresolved` as 「미정」 and `unclear` as 「[기한]」, and keep the original wording in 비고. Write a repeat (`repeat`) like 「매주 월요일(2026-10-19부터)」.
+
+After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday.
 
 Weekends and public holidays follow 「관공서의 공휴일에 관한 규정」 (amended April 2026: 노동절·제헌절 added, substitute holidays included) and
 the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (published 2026-06-29). Holidays outside 2026–2027 are not included (`holidays_unknown`).

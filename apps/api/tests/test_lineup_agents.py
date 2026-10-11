@@ -50,7 +50,7 @@ _BINDINGS = {
     "comparison-report": ("report", "doc-comparison", "comparison", "기본"),
 }
 _TOOLS = {
-    "regulation-guide": ["search_knowledge", "calculate"],
+    "regulation-guide": ["search_knowledge", "calculate", "run_skill_script"],
     "data-analysis": ["run_code", "create_chart", "calculate"],
     "career-docs": ["run_skill_script", "calculate"],
 }
@@ -108,7 +108,8 @@ def test_each_agents_bindings_agree_with_its_kinds_templates_and_formats(key):
         # A skill the agent's own tools cannot run would be refused when switched on.
         assert set(skill.get("required_tools") or []) <= set(spec["tools"])
         assert set(skill["kinds"]) & set(spec["kinds"])
-    assert spec["skills"] == (["text-fit"] if key == "career-docs" else [])
+    own = {"career-docs": ["text-fit"], "regulation-guide": ["date-calc"]}
+    assert spec["skills"] == own.get(key, [])
 
 
 def test_career_docs_reads_its_surface_part_only():
