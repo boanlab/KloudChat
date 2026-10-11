@@ -220,7 +220,9 @@ when added to the `api` service's `environment:`.
 | `CREDITS_PER_USD` | `100000` | The single exchange rate. Adjust this when provider prices move, rather than re-cutting everyone's allowance. |
 | `LITELLM_BUDGET_HEADROOM` | `0.2` | How far above the KloudChat allowance the proxy-side budget sits. A backstop that sits exactly on the limit fires first, blocking someone with a number no screen shows them. |
 | `ARGON2_TIME_COST` / `ARGON2_MEMORY_COST` / `ARGON2_PARALLELISM` | `3` / `65536` / `4` | `memory_cost` is in KiB. |
-| `TITLE_MODEL` | `local/qwen3.8-27b` | Names conversations and extracts memories. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
+| `TITLE_MODEL` | `local/qwen3.8-flash` | Names conversations, extracts memories and writes the running summary of a long conversation. A strict-local turn uses its own model instead. Empty falls back to the session's own model — correct, but wasteful on an expensive one. Set through `KCHAT_TITLE_MODEL`. |
+| `CODE_MODEL` / `CODE_FALLBACK_MODEL` | `local/qwen3.8-27b` / `local/qwen3.8-flash` | Write the Python behind `run_code`: the first gets a try and a repair, the second one more try. The fallback also settles two cost readings of a comparison that disagree. A strict-local turn uses the `strict-local/` twin of a `local/` id and drops any other. |
+| `OUTLINE_MODEL_DEFAULT` / `ADAPTIVE_CLASSIFIER_MODEL_DEFAULT` | `local/qwen3.8-flash` / `strict-local/qwen3.8-flash` | The outline model and the Auto classifier of a fresh governance row; once an administrator saves **System → Routing**, the saved values win. |
 | `WEB_SEARCH_RESULTS` / `WEB_SEARCH_SCRAPE` | `5` / `3` | Each scrape is a page fetch; this trades answer quality against turn latency. |
 | `APP_BASE_URL` | — | Origin used to build password reset links. Never taken from the request `Host`, which is attacker-controlled. |
 | `TIMEZONE` | `Asia/Seoul` | IANA name. Used only for the date given to the model on every turn — every timestamp in the database stays UTC. Set through `KCHAT_TIMEZONE`. |
@@ -371,6 +373,50 @@ reset they asked for, or the confirmation of an address they signed up with.
 The Auto routing classifier, economy and upgrade models — see
 [Auto routing](#auto-routing) — and the outline model, which plans
 a document before the surface's own model writes it.
+
+#### Which model does what
+
+With the two self-hosted models, the defaults split the work by what each did
+better on Korean institutional requests (2026-10, measured with the app's own
+prompts; blind pairs judged twice):
+
+| Work | Model | Set by |
+| --- | --- | --- |
+| Chat answers, report and deck prose | `local/qwen3.8-27b` | the person's choice; `DEFAULT_CHAT_MODEL` (and the per-surface defaults) |
+| Outline, research plan, figure proposals | `local/qwen3.8-flash` | **Routing → 구성에 쓸 모델** (`outline_model_id`) |
+| Judging: key figures, cost and score readings, checks, repairs, title block | the outline model, else the writer | follows the outline model |
+| Calculation programs for a document (`calc`) | the outline model, else the writer | follows the outline model |
+| 빠진 정보 질문 judged against the material | the outline model's `strict-local/` twin, else the first strict-local model | follows the outline model |
+| Auto classifier | `strict-local/qwen3.8-flash` | **Routing → 난이도 분류 모델** |
+| Titles, memories, running summary | `local/qwen3.8-flash` | `TITLE_MODEL` |
+| `run_code` file programs | `local/qwen3.8-27b`, then Flash | `CODE_MODEL`, `CODE_FALLBACK_MODEL` |
+| Re-reading scanned pages | `strict-local/qwen3.8-flash` | **System → Features → Text from scans** |
+
+Why this split:
+
+- **Writing goes to the 27B.** In 12 blind chat pairs a judge preferred the
+  27B 10 times. Flash added details nobody gave, such as a booth size, setup
+  hours or a promise to pay costs in an official letter, which made the letter
+  unusable. It also let Chinese characters and English words slip into Korean
+  in 3 of 12 answers; the 27B did so in none of 18. Reports and decks came out
+  even, 3 to 3.
+- **Reading and judging go to Flash.** Copying costs out of the material, Flash
+  gave the right totals in 12 of 15 readings and the 27B in 8. The 27B returned
+  an empty key-figure list in 3 of 9 tries. In calculation programs, Flash's
+  values were right 93% of the time and the 27B's 84%, and Flash always closed
+  its code block. As the classifier, Flash answered 24 of 24 in a valid shape,
+  the 27B 22. In a long conversation's summary, Flash kept 8.5 of 11 key facts
+  and the 27B 6.5.
+- **Code that reads files stays on the 27B.** Flash's pandas code normalised
+  dates wrongly and returned wrong counts without failing (4 of 8 runs right,
+  27B 8 of 9).
+- **Thinking stays off.** Thinking on made Flash's readings exact, but it took
+  70–340 s a call instead of 2–20 s. In outlines it ran past 6,000 tokens of
+  thought before the JSON.
+- **Load is split by node.** Prose, the bulk of the tokens, runs on the 27B's
+  node, which serves more sequences at once. Flash's node takes the many short
+  readings. A single Flash stream is quicker, about 20 against 14 tokens a
+  second, but at eight streams at once Flash gives each about 8.
 
 ### Shared templates
 

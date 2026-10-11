@@ -52,6 +52,13 @@ async def test_code_output_becomes_the_writers_fixed_values(monkeypatch):
     assert usage == {"inputTokens": 10, "outputTokens": 14}
 
 
+def test_a_program_whose_block_was_never_closed_is_still_read():
+    # The 27B stops right after the code in about half its answers.
+    assert calc._code_of("```python\nimport math\nprint('a = 1')") == "import math\nprint('a = 1')"
+    assert calc._code_of("```python\nprint(1)\n```\n설명") == "print(1)"
+    assert calc._code_of("코드 없음") == ""
+
+
 @pytest.mark.asyncio
 async def test_no_sandbox_leaves_the_document_alone(monkeypatch):
     class Backends:

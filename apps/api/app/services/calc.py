@@ -81,6 +81,10 @@ def needed(request: str, context: list[str] | None = None) -> bool:
 
 def _code_of(text: str) -> str:
     match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000}?)```", text or "", re.S)
+    if not match:
+        # A model that stops right after the code leaves the block unclosed (the 27B did in 5
+        # of 12 answers); the program is still all there.
+        match = re.search(r"```(?:python|py)?\s{0,4}\n(.{1,20000})\Z", (text or "").rstrip(), re.S)
     return (match.group(1) if match else "").strip()
 
 

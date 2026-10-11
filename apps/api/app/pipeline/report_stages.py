@@ -603,10 +603,12 @@ class Calc(Base):
     async def run(self, bundle: Bundle, ctx: Context) -> AsyncIterator[dict]:
         report, req = _report(), bundle.request
         yield {"type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"}
+        # Copying the material's numbers into a program is a reading, not prose: the planner
+        # wrote correct values more often (93% against 84%) and closed its code block every time.
         computed, spent, status = await calc.computed_values(
-            req.text, bundle.material.grounds, complete=report._complete, model=req.model,
+            req.text, bundle.material.grounds, complete=report._complete, model=req.judge,
             api_key=req.api_key)
-        _count(bundle, spent)
+        _count(bundle, spent, planner=True)
         if computed:
             bundle.computed.values = computed
             bundle.material.trusted.append(Part(computed, "computed"))

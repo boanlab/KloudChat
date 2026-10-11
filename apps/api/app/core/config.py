@@ -163,6 +163,8 @@ class Settings(BaseSettings):
     code_interpreter_api_key: str = ""
     #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
     #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.
+    #: The 27B: on file tasks (messy CSV, mixed date formats) its pandas code was right in 8
+    #: of 9 runs, Flash's in 4 of 8, the misses silently wrong rather than failing.
     code_model: str = "local/qwen3.8-27b"
     code_fallback_model: str = "local/qwen3.8-flash"
     #: The sandbox runs inside the self-hosted stack with networking off, so its file
@@ -178,9 +180,11 @@ class Settings(BaseSettings):
     # Hits scraped in full; each is a page fetch.
     web_search_results: int = 5
     web_search_scrape: int = 3
-    # Names conversations and extracts memories; a small model is intended.
-    # Empty falls back to the session's own model.
-    title_model: str = "local/qwen3.8-27b"
+    # Names conversations, extracts memories and writes the running summary of a long
+    # conversation. Empty falls back to the session's own model; a strict-local turn always
+    # uses its own. Flash: the summary kept 8.5 of 11 key facts against the 27B's 6.5, titles
+    # and memories came out the same, and it keeps this side work off the chat model's node.
+    title_model: str = "local/qwen3.8-flash"
     #: Conversation model when the user has not chosen one; absent from the
     #: catalogue, the surface falls back to its cheapest. `local/`, not
     #: `strict-local/`: the strict alias is handed no network tool.
@@ -200,7 +204,9 @@ class Settings(BaseSettings):
     #: Defaults of the routing and outline settings for a fresh governance row; an
     #: administrator's saved choices always win. Lists are comma-separated ids.
     adaptive_routing_default: bool = True
-    adaptive_classifier_model_default: str = "strict-local/qwen3.8-27b"
+    #: Flash sorted 24 of 24 Korean requests into the allowed shapes; the 27B 22, the other
+    #: two answered in a shape the parser refuses (the route then keeps the quality model).
+    adaptive_classifier_model_default: str = "strict-local/qwen3.8-flash"
     adaptive_economy_models_default: str = "local/qwen3.8-flash"
     adaptive_quality_default: bool = True
     adaptive_quality_models_default: str = "deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash"

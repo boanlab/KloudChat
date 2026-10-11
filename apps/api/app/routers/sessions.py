@@ -3339,12 +3339,22 @@ def render_template_checks(session: ChatSession) -> tuple[str, ...]:
 
 
 def _gap_judge_model(user: User, catalogue_models: list[dict],
-                     requested: dict | None) -> str:
+                     requested: dict | None, planner: str | None = None) -> str:
     """The model that judges 빠진 정보 질문 of the judge type: the turn's own when it is
-    strict-local, else the first strict-local chat model the person may use; "" for none."""
+    strict-local, else the planner's strict-local entry, else the first strict-local chat
+    model the person may use; "" for none.
+
+    The planner is the judging model elsewhere; on 60 questions it found every answer the
+    material held (the 27B missed 2), so it judges here too when the person may use it."""
     if requested and requested.get("strictLocal"):
         return str(requested["id"])
     usable = _allowed_models(user, catalogue_models, kind="chat")
+    if planner:
+        twin = ("strict-local/" + planner.removeprefix("local/")
+                if planner.startswith("local/") else planner)
+        found = model_service.find(usable, twin)
+        if found is not None and found.get("strictLocal"):
+            return str(found["id"])
     return next((str(m["id"]) for m in sorted(usable, key=model_service.fallback_order)
                  if m.get("strictLocal")), "")
 
@@ -3980,7 +3990,8 @@ async def send_message(
     if gap_questions.needs_judge(asking):
         # The judge reads the material before the privacy route is settled: a model that keeps
         # it in the boundary, or nothing is asked on a guess.
-        judge_model = _gap_judge_model(user, catalogue_models, requested_model)
+        judge_model = _gap_judge_model(user, catalogue_models, requested_model,
+                                       policy.outline_model_id)
         judge_key = (await litellm_service.credentials_for(user))[1] if judge_model else ""
     first_draft = not revising and not approved_plan and (_plans_first(session) or not any(
         m.role is Role.assistant and not (m.routing or {}).get("askedCard") for m in history))
