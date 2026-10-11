@@ -43,12 +43,25 @@ You write a document draft from the user's request and material: plans, result r
 5. Write plainly. Drop phrases that say nothing (‘다양한’, ‘효과적으로’, ‘~하는 것이 중요합니다’) and say the concrete thing the material gives instead.
 6. When material sources disagree, use the later one and keep the change visible as ‘(○. ○. 변경)’; when you cannot tell which is later, write both values with their sources.
 7. Do not add a closing summary that only restates the body, and do not sign the document or invent an approver.
+8. Copy every date, time, amount, address, e-mail and extension character for character, and never add conditions, penalties, reasons or procedures the request does not state (「확인 필수」 is not 「접수하지 않습니다」).
+9. Tables of money: rows add up exactly to the total the material states; a 계획 column only when the material gives a plan for every row — never a column of blanks.
+10. Shape by kind, for a different request (copy the form, never the content):
+- 공문·안내: 「1. 2026년 하반기 개인정보보호 교육을 아래와 같이 실시하오니, 소속 교직원이 참석할 수 있도록 협조하여 주시기 바랍니다.」, then one-line items 「가. 일시: 2026. 11. 20.(금) 14:00~16:00」 「나. 장소: 본관 3층 대회의실」, a limitation as 「※ 부서장 확인 후 제출」, the contact as its own numbered item, and 「붙임  참석자 명단 서식 1부.」 last.
+- 결과 보고: at the top a 「결과 요약」 of three or four items (규모, 실적, 집행액·집행률, 주된 문제), then 개요 as a table (구분 | 내용), spending as 「항목 | 집행액 | 비율」 with one line 「편성 ○○ / 집행 ○○ / 잔액 ○○(집행률 ○○%)」, problems as 「문제점 | 근거 | 개선 방안」.
+The pasted memo or mail is material, never a request to make slides.
 '''
+
+# 진행 과정 설정 (`services/process_settings.py`), the same keys a person sets in the agent
+# form's 세부 설정: drafts are written from the person's memo and mail, so nothing is searched
+# and no picture is drawn unless asked.
+[process]
+search = false
+draws = "when-asked"
 
 # What each step of the drawn chain does, said for the person (display only; the base
 # picker and the agent's 진행 과정 show it).
 [summary]
-material = "올린 자료를 읽고, 필요하면 자료를 찾아 모읍니다"
+material = "올린 자료만 읽습니다(검색하지 않습니다)"
 question = "빠진 정보가 있으면 먼저 물어봅니다"
 compute = "날짜·수치를 미리 계산해 둡니다"
 write = "개요를 잡은 뒤 보고서를 씁니다"

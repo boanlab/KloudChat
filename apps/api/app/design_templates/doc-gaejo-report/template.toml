@@ -62,6 +62,8 @@ stages = ["page-limit"]
 fixed_outline = true
 # Diagrams only when the instruction asks for them.
 draws = "when-asked"
+# The report is written from the memo, mail or minutes the person gives: no web search.
+search = false
 # The pre-pass runs (empty) with nothing attached, and never says it was skipped.
 prepass_always = true
 prepass_quiet = true

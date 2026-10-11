@@ -72,7 +72,8 @@ def test_the_pattern_stays_fast_on_a_long_message():
 
 def test_the_persona_question_reads_the_guides_agent_page():
     question = _PERSONA
-    assert app_help.search(question)[0]["path"] == "chat/agents"
+    # The how-to page, or its worked example of the same agent (주간 업무 보고).
+    assert app_help.search(question)[0]["path"] in ("chat/agents", "chat/agent-examples")
     block = app_help.block(question)
     assert "에이전트 만들기" in block and "사용자 지정" in block
 

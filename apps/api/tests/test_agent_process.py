@@ -479,7 +479,7 @@ async def test_a_user_agent_on_a_base_with_its_bundles_is_the_official_agent(wir
                          doc_format=spec.get("doc_format"),
                          render_template_id=spec.get("template"),
                          check_skills=spec["checks"], check_options=spec["check_options"] or None,
-                         bundles=spec["bundles"])
+                         bundles=spec["bundles"], process_settings=spec.get("process"))
         db.add(official)
         await db.commit()
         made = await ws.create_agent(_agent(name="내 것", kinds=[spec["surface"]]), admin, db)

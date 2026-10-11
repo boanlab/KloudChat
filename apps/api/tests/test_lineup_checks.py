@@ -403,3 +403,13 @@ async def test_the_minutes_judge_runs_once_and_its_candidate_is_listed(monkeypat
     assert "담당 변경 미반영 후보" in quality["label"] and "남주무관" in quality["detail"]
     sections = next(e["sections"] for e in events if e["type"] == "report")
     assert "강주무관" in sections[1]["content"]
+
+
+def test_a_quote_with_no_vat_basis_is_flagged_only_when_the_material_speaks_of_vat():
+    """A weekly memo with 「A사 380만원 / B사 420만원」 and no word of VAT got a VAT question
+    raised in its 개조식 report from the block's 「부가세 기준 불분명」 (quality S17)."""
+    result = {"quotes": [{"vendor": "A사", "amount": 3_800_000, "vat_basis": "ambiguous"}]}
+    plain = report_checks._quote_block(result, material="디자인 업체 견적 A사 380만원")
+    assert "부가세 기준 불분명" not in plain and "A사: 3,800,000원" in plain
+    asked = report_checks._quote_block(result, material="견적 A사 380만원(부가세 별도 여부 확인)")
+    assert "부가세 기준 불분명" in asked

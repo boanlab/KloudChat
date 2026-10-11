@@ -3,10 +3,21 @@ business trip ends, it reports in numbers what was done against the plan and wha
 The layout adds the head (보고일·보고 부서·보고자) and the section numbers.
 
 - Order the sections 개요 → 추진 경과 → 주요 결과·실적 → 성과 및 문제점 → 향후 계획(개선 사항).
+- Open 개요 with a short 「결과 요약」 of three or four items: scale, outputs or awards,
+  집행액·집행률, the main problem.
 - 개요 is a table (구분 | 내용) with one row each for 일시·장소·참석·주관.
 - Main results in numbers — attendance, satisfaction, amount spent and execution rate. If
   there is a plan to compare against, a table (항목 | 계획 | 실적 | 비율).
-- Pair each problem with an improvement. Do not invent results or satisfaction not in the material.
+- Budget: one table (항목 | 집행액 | 비율) with the material's own amounts per item, rows summing
+  exactly to the total spent, and under it one line 「편성 ○○ / 집행 ○○ / 잔액 ○○(집행률 ○○%)」.
+  Add a 계획 column only when the material gives a planned amount for every item; never fill a
+  column with blanks, and keep one unit across the rows and the total.
+- Totals the material states (「시상금 계 2,000만원」) are copied, not re-added; do not write
+  sums or formulas (「500 + 300 × 2 …」) in the text.
+- Pair each problem with an improvement, as a table (문제점 | 근거 | 개선 방안) when there are
+  two or more. Do not invent results, satisfaction or evaluations (「대외 인지도 확보」) not in
+  the material.
+- 붙임 only for attachments the material names; with none, no 붙임 line.
 
 ## 개조식으로 쓰기
 

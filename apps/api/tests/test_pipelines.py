@@ -92,6 +92,11 @@ _OLD_ADOPT = {
 #: What `report_checks.amendments` added by format.
 _OLD_AMEND = {"client_proposal": ["requirement-ids", "quote-validity"],
               "comparison": ["option-status", "conflict-values", "unverified-options"]}
+#: Formats whose 서식 turns web search off: written from the person's own material.
+NO_SEARCH = {"career_history", "gaejo", "minutes", "result_report", "internal_draft"}
+#: Formats whose 서식 draws figures only when asked.
+DRAW_WHEN_ASKED = {"gaejo", "minutes", "comparison", "result_report", "internal_draft",
+                   "event_plan"}
 OPTIONAL = {"prepass", "page-limit", "minutes-repair", "minutes-reground", "career-periods-tidy"}
 
 
@@ -108,11 +113,12 @@ def test_each_format_runs_what_the_if_chains_ran(fmt):
     assert settings.has_stage("minutes-repair") == settings.has_stage("minutes-reground") \
         == (fmt == "minutes")
     assert settings.has_stage("career-periods-tidy") == (fmt == "career_history")
-    assert (settings.search is False) == (fmt == "career_history")
+    # Documents written from the person's own material search nothing.
+    assert (settings.search is False) == (fmt in NO_SEARCH)
     gaejo = fmt == "gaejo"
     assert list(settings.outline) == (list(doc_formats.GAEJO_OUTLINE) if gaejo else [])
-    # A one-page 개조식 memo and a 회의록 draw no figures unless asked.
-    assert (settings.draws == "when-asked") == (fmt in ("gaejo", "minutes"))
+    # Work documents read from their tables and lists draw no figures unless asked.
+    assert (settings.draws == "when-asked") == (fmt in DRAW_WHEN_ASKED)
     assert settings.prepass_always == settings.prepass_quiet == gaejo
     assert settings.date_base == ("meeting" if fmt == "minutes" else "text")
     assert list(settings.amend) == _OLD_AMEND.get(fmt, [])

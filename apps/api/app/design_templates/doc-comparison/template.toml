@@ -9,10 +9,10 @@ skills = []
 # Run by the server before and after writing (app/skills/README.md).
 check_skills = ["gap-check", "grounding-check"]
 name = "비교·분석 보고서"
-description = "대안을 같은 기준으로 견주고 조건과 함께 권고 · 가중치·점수식이 보이는 비교표"
+description = "대안을 같은 기준으로 견주고 조건과 함께 권고 · 첫해·이듬해 비용과 기준별 비교표"
 category = "업무"
-fills = ["비교할 대안", "필수 조건과 가중치", "대안별 자료"]
-example_prompt = "아래 대안들을 비교·분석 보고서로 정리해 줘. 필수 조건을 먼저 적용하고, 가중치와 점수식을 밝힌 비교표를 만들고, 자료끼리 값이 다르면 출처와 날짜를 나란히 적어 줘. 권고는 조건과 함께.\n\n대안: \n필수 조건·가중치: \n자료: "
+fills = ["비교할 대안", "판단 기준(가중치가 있으면 함께)", "대안별 자료"]
+example_prompt = "아래 대안들을 비교·분석 보고서로 정리해 줘. 판단 기준은 아래 순서대로 보고, 필수 조건이 있으면 먼저 적용해 줘. 비용은 첫해와 이듬해로 나눠 주고, 자료끼리 값이 다르면 출처와 날짜를 나란히 적어 줘. 권고는 조건과 함께.\n\n대안: \n판단 기준(가중치가 있으면 함께): \n필수 조건: \n자료: "
 seed_from = "_document"
 layouts = ["cover", "section"]
 
@@ -20,10 +20,10 @@ layouts = ["cover", "section"]
 # the instructions the model follows stay Korean, because the surfaces
 # they belong to answer in Korean by default.
 name_en = "Comparison report"
-description_en = "Weigh options on the same criteria and recommend with conditions · weights and scoring shown"
+description_en = "Weigh options on the same criteria and recommend with conditions · first-year and later-year cost, criterion by criterion"
 category_en = "Work"
-fills_en = ["Options", "Must-haves and weights", "Material per option"]
-example_prompt_en = "Turn the options below into a comparison report. Apply the must-haves first, build a comparison table with the weights and the scoring formula, and where sources disagree show both values with their dates. Recommend with conditions.\n\nOptions: \nMust-haves and weights: \nMaterial: "
+fills_en = ["Options", "Criteria (with weights, if any)", "Material per option"]
+example_prompt_en = "Turn the options below into a comparison report. Judge on the criteria below in this order, and apply the must-haves first if there are any. Split cost into the first year and later years, and where sources disagree show both values with their dates. Recommend with conditions.\n\nOptions: \nCriteria (with weights, if any): \nMust-haves: \nMaterial: "
 
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
@@ -55,4 +55,6 @@ prepass = ["quote-calc", "staffing", "compare-cost", "compare-check"]
 checks = ["lead-dates", "compare-cells", "staff-counts", "material-blanks"]
 judged = ["judge-bindings"]
 amend = ["option-status", "conflict-values", "unverified-options"]
+# Diagrams only when the instruction asks for them: a comparison is read from its table.
+draws = "when-asked"
 conflict_rule = "In the 「자료와 충돌」 section, write the two values side by side with their source, time and measurement conditions, and state in one line which value you followed and why (같은 조건 측정 > 최신 > 소개서). If the conditions differ, adopt neither and leave 「조건 다름」."

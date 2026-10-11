@@ -69,4 +69,6 @@ judged = ["judge-owners"]
 head = ["meeting-date"]
 # Diagrams only when the instruction asks for them: a 회의록 draws none by itself.
 draws = "when-asked"
+# Minutes are written from the meeting's own material: no web search.
+search = false
 conflict_rule = "The value of the later decision or later mail is final. Write the final value and leave 「○○에서 변경」 in 비고."
