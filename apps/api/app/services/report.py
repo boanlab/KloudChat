@@ -2261,6 +2261,51 @@ def mend_kpi_fences(body: str) -> str:
     return "\n".join(out)
 
 
+#: Columns that say nothing when every cell is empty; a 확인·서명 column left for a pen stays.
+_DROPPABLE_COLUMN = re.compile(r"기한|마감|완료\s{0,2}(?:예정)?일|일정|비고")
+
+
+def drop_empty_columns(body: str) -> str:
+    """A 기한·비고 column empty in every row (회의록의 「기한」 left blank throughout) goes, and its
+    name leaves a 「표 n. 항목·내용·기한」 caption next to the table."""
+    if "|" not in (body or ""):
+        return body
+    lines = body.split("\n")
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not lines[i].lstrip().startswith("|"):
+            out.append(lines[i])
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and lines[j].lstrip().startswith("|"):
+            j += 1
+        block = lines[i:j]
+        rows = [[c.strip() for c in line.strip().strip("|").split("|")] for line in block]
+        rule = next((k for k, row in enumerate(rows)
+                     if row and all(re.fullmatch(r":?-{2,}:?", c) for c in row if c)), None)
+        body_rows = rows[rule + 1:] if rule == 1 else []
+        width = len(rows[0])
+        empty = [c for c in range(width)
+                 if len(body_rows) >= 2 and c > 0 and _DROPPABLE_COLUMN.search(rows[0][c])
+                 and all(c >= len(r) or r[c] in ("", "-", "—") for r in body_rows)]
+        if empty and len(empty) < width - 1 and all(len(r) == width for r in rows):
+            gone = {rows[0][c] for c in empty}
+            block = ["| " + " | ".join(c for k, c in enumerate(r) if k not in empty) + " |"
+                     for r in rows]
+            for at in (len(out) - 1, len(out) - 2):
+                if 0 <= at < len(out) and _CAPTION_LINE.match(out[at] or ""):
+                    for name in gone:
+                        out[at] = re.sub(rf"\s{{0,2}}[·,/]\s{{0,2}}{re.escape(name)}(?=\s|$|[·,/])", "", out[at])
+            if j < len(lines) and _CAPTION_LINE.match(lines[j] or ""):
+                for name in gone:
+                    lines[j] = re.sub(rf"\s{{0,2}}[·,/]\s{{0,2}}{re.escape(name)}(?=\s|$|[·,/])", "", lines[j])
+        out += block
+        i = j
+    return "\n".join(out)
+
+
 def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     """The deterministic mends run again after the rewriting passes, which can undo them."""
     tidied = []
@@ -2276,6 +2321,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
             body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", mend_kpi_fences(body)))
+            body = drop_empty_columns(body)
             # 「<br>」 written for a line break: a cell keeps its parts with 「 · 」.
             body = "\n".join(
                 re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",
