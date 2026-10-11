@@ -9,6 +9,11 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 다듬기
+  '본문으로 건너뛰기': 'Skip to main content',
+  '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
+  '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
+  '새로고침': 'Reload',
   // 용어 · 사이드바 · 모델 고르기 · 챗봇
   '사용자가 누구인지 — 역할, 전문성, 선호': 'Who you are — role, expertise, preferences',
   '작업 방식에 대한 지시 — 왜 그런지 함께': 'How to work — with the reason why',

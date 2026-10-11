@@ -163,9 +163,10 @@ function Evidence({ evidence }: { evidence: StageEvidence }) {
   )
 }
 
+/** How long a stage took, in seconds; nothing for one that took no measurable time (「0ms」). */
 function seconds(ms?: number) {
-  if (ms === undefined) return null
-  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+  if (ms === undefined || ms < 50) return null
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
 
 function StageRow({

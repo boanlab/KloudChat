@@ -694,7 +694,8 @@ function MessageItemInner({
         ))}
 
         {!streaming && message.content && (
-          <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>
+          // Wraps on a phone: 「다른 모델로」 must not run off the right edge.
+          <div className="mt-2 flex items-center gap-1 text-faint max-sm:flex-wrap">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button

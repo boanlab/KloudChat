@@ -85,7 +85,8 @@ export function ButtonLink({
 
 const fieldBase =
   'w-full rounded-control border border-line bg-panel px-3 py-2 text-base text-fg placeholder:text-faint ' +
-  'transition-colors focus:border-accent focus:outline-none ' +
+  // A 1px border change alone is too faint to find (WCAG 2.4.11): a 2px halo with it.
+  'transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 ' +
   // A control that cannot take input must not look like one that can.
   'disabled:cursor-not-allowed disabled:bg-elevated disabled:opacity-60 ' +
   'aria-invalid:border-danger'
