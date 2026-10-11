@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
-import { Button, Field, Input, Switch, Textarea } from '@/components/ui'
+import { useId, useRef, useState } from 'react'
+import { Button, Field, Input, RequiredNote, Switch, Textarea } from '@/components/ui'
 import { errorMessage } from '@/lib/api'
+import { missingMessage } from '@/lib/formCheck'
 import { NAME_LIMIT } from '@/lib/limits'
 import { useT } from '@/lib/useT'
 import { cn } from '@/lib/utils'
@@ -18,12 +19,17 @@ export function LineNumberedEditor({
   label,
   placeholder,
   rows = 18,
+  id,
+  describedBy,
 }: {
   value: string
   onChange: (next: string) => void
   label: string
   placeholder?: string
   rows?: number
+  /** Set with a visible `<label htmlFor>`; the aria-label then stays off. */
+  id?: string
+  describedBy?: string
 }) {
   const gutter = useRef<HTMLDivElement>(null)
   const lines = Math.max(1, value.split('\n').length)
@@ -40,7 +46,9 @@ export function LineNumberedEditor({
         ))}
       </div>
       <textarea
-        aria-label={label}
+        id={id}
+        aria-label={id ? undefined : label}
+        aria-describedby={describedBy}
         value={value}
         rows={rows}
         spellCheck={false}
@@ -98,13 +106,22 @@ export function SkillForm({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const lang = useStore((s) => s.lang)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const [nameError, setNameError] = useState<string | null>(null)
+  const stepsId = useId()
   const edit = (patch: Partial<SkillDraft>) => {
     setDone(false)
     setDraft((d) => ({ ...d, ...patch }))
   }
 
   const save = async () => {
-    if (!draft.name.trim()) return
+    if (saving) return
+    if (!draft.name.trim()) {
+      setNameError(missingMessage(lang, t('이름')))
+      nameRef.current?.focus()
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -138,6 +155,7 @@ export function SkillForm({
     <form
       className="space-y-4"
       data-testid="skill-form"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault()
         void save()
@@ -148,11 +166,16 @@ export function SkillForm({
           {error}
         </p>
       )}
-      <Field label={t('이름')}>
+      <RequiredNote />
+      <Field label={t('이름')} required error={nameError}>
         <Input
+          ref={nameRef}
           value={draft.name}
           maxLength={NAME_LIMIT}
-          onChange={(e) => edit({ name: e.target.value })}
+          onChange={(e) => {
+            setNameError(null)
+            edit({ name: e.target.value })
+          }}
           placeholder={t('예: 주간 현황 보고')}
         />
       </Field>
@@ -164,13 +187,23 @@ export function SkillForm({
           placeholder={t('예: 지난주 작업을 성과·막힌 점·다음 할 일로 정리합니다. 진행 상황 요약을 부탁받았을 때 씁니다.')}
         />
       </Field>
-      <LineNumberedEditor
-        label={t('절차')}
-        value={draft.body}
-        onChange={(body) => edit({ body })}
-        placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
-        rows={current ? 14 : 16}
-      />
+      <div className="space-y-1.5">
+        <label htmlFor={stepsId} className="block text-base font-medium text-fg">
+          {t('절차')}
+        </label>
+        <LineNumberedEditor
+          id={stepsId}
+          describedBy={`${stepsId}-hint`}
+          label={t('절차')}
+          value={draft.body}
+          onChange={(body) => edit({ body })}
+          placeholder={t('1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다')}
+          rows={current ? 14 : 16}
+        />
+        <p id={`${stepsId}-hint`} className="text-sm text-faint">
+          {t('모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.')}
+        </p>
+      </div>
 
       <Group title={t('더 설정하기')} hint={current ? t('사용 시점, 필요한 도구') : t('사용 시점')}>
         <Field label={t('사용 시점')} hint={t('비워 두면 설명을 그대로 씁니다.')}>
@@ -225,9 +258,16 @@ export function SkillForm({
 
       <div className={cn('sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-line bg-bg/95 px-4 py-3 sm:-mx-6 sm:px-6', aboveBottomBar && 'max-sm:bottom-[4.25rem]')}>
         <span className="mr-auto flex items-center gap-1">
-          <Switch checked={!draft.enabled} onChange={(v) => edit({ enabled: !v })} label={t('초안')} />
-          <span className="text-sm text-muted">
-            {draft.enabled ? t('초안') : t('초안 · 아직 입력창에 안 나와요')}
+          <Switch
+            checked={!draft.enabled}
+            onChange={(v) => edit({ enabled: !v })}
+            label={t('초안으로 두기')}
+            describedBy={`${stepsId}-draft`}
+          />
+          <span id={`${stepsId}-draft`} className="text-sm text-muted">
+            {draft.enabled
+              ? t('초안 꺼짐 · 입력창에서 고를 수 있습니다')
+              : t('초안 켜짐 · 입력창에 나오지 않습니다')}
           </span>
         </span>
         {done && current && (
@@ -240,7 +280,7 @@ export function SkillForm({
             {t('취소')}
           </Button>
         )}
-        <Button type="submit" variant="primary" disabled={saving || !draft.name.trim()}>
+        <Button type="submit" variant="primary" aria-busy={saving || undefined}>
           {saving ? t('저장 중…') : current ? t('저장') : t('만들기')}
         </Button>
       </div>

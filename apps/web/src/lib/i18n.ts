@@ -9,6 +9,13 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 필수 칸 · 스킬 · 템플릿 · 프로젝트
+  '프로젝트를 만들지 못했습니다. 잠시 후 다시 시도하세요.': 'Could not create the project. Try again shortly.',
+  '모델이 이 순서대로 따릅니다. 한 줄에 한 단계씩 번호를 붙여 적습니다.': 'The model follows these in order. Write one numbered step per line.',
+  '초안으로 두기': 'Keep as a draft',
+  '초안 꺼짐 · 입력창에서 고를 수 있습니다': 'Draft off · can be picked in the composer',
+  '초안 켜짐 · 입력창에 나오지 않습니다': 'Draft on · not shown in the composer',
+  '예: 회의명, 일시, 장소, 참석자를 한 줄에 하나씩': 'e.g. meeting, date, place, attendees — one per line',
   // 프로젝트 · 웹 자료 · 참고 파일
   'http:// 또는 https://로 시작하는 주소를 입력하세요.': 'Enter an address that starts with http:// or https://.',
   '웹페이지 주소를 입력하세요.': 'Enter the web page address.',

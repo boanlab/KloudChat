@@ -28,8 +28,8 @@ test('skill form: exactly 이름, 설명 and the editor; 초안 keeps it out of 
   await form.getByRole('textbox', { name: '절차' }).fill('1. 성과\n2. 막힌 점\n3. 다음 할 일')
   // Line numbers follow the text.
   await expect(form.getByText('3', { exact: true }).first()).toBeVisible()
-  await form.getByRole('switch', { name: '초안' }).click()
-  await expect(form.getByText('초안 · 아직 입력창에 안 나와요')).toBeVisible()
+  await form.getByRole('switch', { name: '초안으로 두기' }).click()
+  await expect(form.getByText('초안 켜짐 · 입력창에 나오지 않습니다')).toBeVisible()
   await form.getByRole('button', { name: '만들기' }).click()
 
   await expect(page).toHaveURL(/\/customize\/skills\/k9999999999999999999999999999999$/)

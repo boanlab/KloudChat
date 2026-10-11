@@ -9,7 +9,18 @@ import { itemMeta, type HubItem } from './hubItems'
 import { ItemIconTile } from './ItemCard'
 
 /** A hub screen's top bar: 「사용자 지정 / {종류}」 back to the right tab. */
-export function HubTopBar({ tab, tabLabel, title }: { tab: string; tabLabel: string; title: string }) {
+export function HubTopBar({
+  tab,
+  tabLabel,
+  title,
+  to,
+}: {
+  tab: string
+  tabLabel: string
+  title: string
+  /** Where the middle crumb goes when it is not a hub tab (내 템플릿). */
+  to?: string
+}) {
   const t = useT()
   return (
     <TopBar
@@ -21,7 +32,7 @@ export function HubTopBar({ tab, tabLabel, title }: { tab: string; tabLabel: str
           <span className="text-faint" aria-hidden>
             /
           </span>
-          <Link to={`/customize?tab=${tab}`} className="shrink-0 text-muted hover:text-fg max-sm:hidden">
+          <Link to={to ?? `/customize?tab=${tab}`} className="shrink-0 text-muted hover:text-fg max-sm:hidden">
             {t(tabLabel)}
           </Link>
           <span className="text-faint max-sm:hidden" aria-hidden>
@@ -34,11 +45,11 @@ export function HubTopBar({ tab, tabLabel, title }: { tab: string; tabLabel: str
   )
 }
 
-export function BackLink({ tab, label }: { tab: string; label: string }) {
+export function BackLink({ tab, label, to }: { tab: string; label: string; to?: string }) {
   const t = useT()
   return (
     <Link
-      to={`/customize?tab=${tab}`}
+      to={to ?? `/customize?tab=${tab}`}
       className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-accent"
     >
       <ArrowLeft size={14} aria-hidden />
