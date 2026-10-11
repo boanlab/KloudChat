@@ -159,5 +159,39 @@ def strip_reports(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(out))
 
 
-__all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_REPORT", "WRITER_NOTE", "found", "scrub",
-           "strip_reports"]
+#: The writer apologising for its own tool call: 「방금 계산 도구를 잘못 호출했습니다」. The steps
+#: under the answer show what ran; a tool that failed is still said where it changes the answer.
+TOOL_APOLOGY = re.compile(
+    r"(?:도구|툴|tool|함수)(?:를|을)?\s{0,2}잘못\s{0,2}(?:호출|사용|실행|불러)", re.I)
+_SORRY = re.compile(r"^\s{0,4}(?:죄송합니다|죄송해요|미안합니다|사과드립니다)[.!]?\s{0,4}$")
+
+
+def strip_tool_apologies(text: str) -> str:
+    """`text` without sentences that apologise for a tool call, and a bare 「죄송합니다.」 left
+    in front of one. Fenced blocks, headings and table rows are left alone."""
+    if not text or not TOOL_APOLOGY.search(text):
+        return text
+    out: list[str] = []
+    fenced = False
+    for line in text.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+        if fenced or stripped.startswith(("```", "#", "|")) or not TOOL_APOLOGY.search(line):
+            out.append(line)
+            continue
+        sentences = [s for s in units.SENTENCE_BREAK.split(line) if s.strip()]
+        kept: list[str] = []
+        for sentence in sentences:
+            if TOOL_APOLOGY.search(sentence):
+                if kept and _SORRY.match(kept[-1]):
+                    kept.pop()
+                continue
+            kept.append(sentence)
+        if kept:
+            out.append(" ".join(s.strip() for s in kept))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).lstrip("\n")
+
+
+__all__ = ["DOCUMENT_TERMS", "JSON_LINE", "TERMS", "TOOL_APOLOGY", "TOOL_REPORT", "WRITER_NOTE",
+           "found", "scrub", "strip_reports", "strip_tool_apologies"]

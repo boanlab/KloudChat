@@ -34,6 +34,7 @@ from app.services import (
     settings_store,
     thinking,
     units,
+    weekdays,
 )
 from app.services import outline as plan_rules
 from app.services.context import (
@@ -1927,6 +1928,9 @@ def normalize_document(
     except Exception:  # noqa: BLE001 — a mend that fails leaves the text as it was
         log.exception("final tidy failed; the sections are kept as written")
     out = caption_figures_and_tables(out)
+    # Weekdays beside dates are the calendar's, whatever the writer counted.
+    out = [{**sec, "content": weekdays.fix_weekdays(
+        str(sec.get("content") or ""), context=f"{request}\n{context}")[0]} for sec in out]
     out = [
         sec if _REFERENCE_HEADING.search(str(sec.get("heading") or ""))
         else {**sec, "content": collapse_repeated_citations(str(sec.get("content") or ""))}
