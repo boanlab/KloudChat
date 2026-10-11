@@ -4,7 +4,7 @@ import base from './playwright.config'
 export default defineConfig({
   ...base,
   // The composer's clipboard paste and its 서식/figure chips ride along: same fixture style, no backend.
-  testMatch: ['session-hydration.spec.ts', 'composer-paste.spec.ts', 'media-templates-retired.spec.ts'],
+  testMatch: ['session-hydration.spec.ts', 'composer-paste.spec.ts', 'media-templates-retired.spec.ts', 'answer-outcomes.spec.ts'],
   retries: 0,
   reporter: 'list',
   use: { ...base.use, baseURL: 'http://127.0.0.1:5303', trace: 'retain-on-failure' },

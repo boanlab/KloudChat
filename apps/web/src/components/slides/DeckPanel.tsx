@@ -57,7 +57,7 @@ import { RunStagesButton } from '@/components/artifacts/RunStages'
 import { useStore } from '@/store/useStore'
 import { SlideChart } from '@/components/slides/SlideChart'
 import { PatternView } from '@/components/slides/PatternView'
-import { PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
+import { BASE_LAYOUTS, PATTERNS, patternOf, type Pattern } from '@/components/slides/patterns'
 import { BODY_BOTTOM, BODY_TOP, BULLET_GAP, FLOOR_PT, LEADING, PAD_X, TYPE, columnShares, tablePad, tableSize, titlePt, units } from '@/components/slides/typeScale'
 import { useT } from '@/lib/useT'
 import { PicturePicker } from '@/components/artifacts/PicturePicker'
@@ -209,25 +209,6 @@ const LOOKS: Record<VisualStyle, Look> = {
 }
 type Paired = (typeof PAIRED)[number]
 type SlideElement = 'title' | 'content' | 'image' | 'table' | 'chart' | 'metrics' | 'cards'
-const BASE_LAYOUTS: { id: Slide['layout']; label: string }[] = [
-  { id: 'title', label: '표지' },
-  { id: 'agenda', label: '목차' },
-  { id: 'section', label: '구분 장' },
-  { id: 'bullets', label: '글머리표' },
-  { id: 'two-column', label: '두 단' },
-  { id: 'quote', label: '인용문' },
-  { id: 'statement', label: '핵심 메시지' },
-  { id: 'table', label: '표' },
-  { id: 'metrics', label: '핵심 수치' },
-  { id: 'big-number', label: '큰 숫자' },
-  { id: 'chart', label: '차트' },
-  { id: 'bands', label: '항목과 설명' },
-  { id: 'cards', label: '카드' },
-  { id: 'steps', label: '단계' },
-  { id: 'tiles', label: '표식' },
-  { id: 'timeline', label: '연표' },
-  { id: 'closing', label: '마무리' },
-]
 
 /** Picker groups for the patterns, by arrangement; `slide_patterns.py` holds the table. */
 const PATTERN_GROUPS: { label: string; renders: Pattern['render'][] }[] = [

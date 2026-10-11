@@ -1,3 +1,5 @@
+import type { Slide } from '@/types'
+
 /**
  * Slide patterns beyond the base layouts. The mirror of
  * `apps/api/app/services/slide_patterns.wire()`: same order, same fields. A test keeps the
@@ -131,4 +133,31 @@ export function isPattern(layout: string | undefined | null): layout is PatternN
 /** The pattern a layout names, or `null`. */
 export function patternOf(layout: string | undefined | null): Pattern | null {
   return isPattern(layout) ? PATTERN_BY_NAME[layout] : null
+}
+
+/** The base layouts, as the layout picker and the outline name them. */
+export const BASE_LAYOUTS: { id: Slide['layout']; label: string }[] = [
+  { id: 'title', label: '표지' },
+  { id: 'agenda', label: '목차' },
+  { id: 'section', label: '구분 장' },
+  { id: 'bullets', label: '글머리표' },
+  { id: 'two-column', label: '두 단' },
+  { id: 'quote', label: '인용문' },
+  { id: 'statement', label: '핵심 메시지' },
+  { id: 'table', label: '표' },
+  { id: 'metrics', label: '핵심 수치' },
+  { id: 'big-number', label: '큰 숫자' },
+  { id: 'chart', label: '차트' },
+  { id: 'bands', label: '항목과 설명' },
+  { id: 'cards', label: '카드' },
+  { id: 'steps', label: '단계' },
+  { id: 'tiles', label: '표식' },
+  { id: 'timeline', label: '연표' },
+  { id: 'closing', label: '마무리' },
+]
+
+/** A layout's name for people: 「카드 3개」, not `cards-3`. Unknown ids get no name. */
+export function layoutLabel(layout: string | undefined | null): string | null {
+  if (!layout) return null
+  return BASE_LAYOUTS.find((row) => row.id === layout)?.label ?? PATTERN_BY_NAME[layout]?.label ?? null
 }

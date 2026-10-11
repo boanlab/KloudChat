@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import type { PendingPlan, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
+import { layoutLabel } from '@/components/slides/patterns'
 
 /** Clarification or outline approval before artifact generation. */
 export function ProposalCard({
@@ -244,7 +245,7 @@ export function ProposalCard({
               aria-label={t('{n}번 제목').replace('{n}', String(i + 1))}
               className="min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-1.5 py-0.5 hover:border-line focus:border-accent focus:bg-panel focus:outline-none"
             />
-            {item.layout && <Badge>{item.layout}</Badge>}
+            {layoutLabel(item.layout) && <Badge>{t(layoutLabel(item.layout) ?? '')}</Badge>}
             <Button
               variant="ghost"
               size="icon"
