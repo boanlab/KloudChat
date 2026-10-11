@@ -94,7 +94,7 @@ services:
       DEFAULT_VIDEO_MODEL: ${KCHAT_DEFAULT_VIDEO_MODEL:-google/veo-3.1-lite}
       # Conversation titles and memory extraction. A name the gateway does not
       # serve falls back to the session's own model.
-      TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.8-27b}
+      TITLE_MODEL: ${KCHAT_TITLE_MODEL:-local/qwen3.8-flash}
       # Applied only when the database holds no accounts. Blank: the first
       # signup becomes the administrator.
       BOOTSTRAP_ADMIN_EMAIL: ${KCHAT_ADMIN_EMAIL:-}

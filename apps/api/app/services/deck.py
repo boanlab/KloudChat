@@ -3366,11 +3366,12 @@ async def write(
             yield {
                 "type": "step", "id": "calc", "label": "코드로 수치 계산 중", "status": "running"
             }
+            # The planner's, as in a report: a reading of the material, not prose.
             computed, spent, status = await calc.computed_values(
-                request, document_context, complete=_complete, model=model, api_key=api_key
+                request, document_context, complete=_complete, model=outline_model or model,
+                api_key=api_key,
             )
-            usage["inputTokens"] += spent["inputTokens"]
-            usage["outputTokens"] += spent["outputTokens"]
+            plan_rules.count(usage, spent, planned_apart=bool(outline_model))
             if computed:
                 trusted_context = [*(trusted_context or []), computed]
             yield {

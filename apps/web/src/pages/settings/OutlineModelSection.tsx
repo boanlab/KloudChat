@@ -52,7 +52,7 @@ export function OutlineModelSection() {
         <div className="min-w-0 flex-1">
           <p className="text-base font-medium">{t('구성 단계 모델')}</p>
           <p className="text-sm text-muted">
-            {t('보고서·슬라이드는 구성을 한 번 잡고 그 뒤에 한 절씩 씁니다. 구성 호출은 문서당 한 번뿐이라 여기만 다른 모델로 두어도 비용은 거의 그대로입니다. 다만 이 인스턴스에서 재어 보니 레이아웃 다양성 같은 구조 지표는 달라지지 않았습니다 — 그 부분은 프롬프트 쪽에서 이미 해결됐습니다.')}
+            {t('보고서·슬라이드의 구성을 이 모델이 잡고, 쓰는 동안 자료의 수치 읽기·계산·검사 같은 판정도 이 모델이 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 판정 호출은 짧아서 여기만 다른 모델로 두어도 비용은 거의 그대로입니다.')}
           </p>
         </div>
       </div>
@@ -60,7 +60,7 @@ export function OutlineModelSection() {
       <div className="border-t border-line pt-4">
         <Field
           label={t('구성에 쓸 모델')}
-          hint={t('비워 두면 각 화면이 쓰는 모델이 구성까지 맡습니다. 본문은 언제나 화면의 모델이 씁니다. 개인정보 때문에 strict-local 로 보낸 대화, 그리고 본문 모델보다 데이터 경계가 넓은 경우에는 이 설정이 적용되지 않습니다.')}
+          hint={t('비워 두면 각 화면이 쓰는 모델이 구성과 판정까지 맡습니다. 개인정보 때문에 strict-local 로 보낸 대화에서는 이 모델의 strict-local 판이 맡고, 그런 판이 없거나 본문 모델보다 데이터 경계가 넓으면 본문 모델이 맡습니다.')}
         >
           <Select
             aria-label={t('구성에 쓸 모델')}
