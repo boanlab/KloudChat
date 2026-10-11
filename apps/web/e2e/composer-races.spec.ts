@@ -136,3 +136,22 @@ test('an empty file or a program is turned away before it is uploaded, with the 
   expect(uploads).toBe(0)
   expect(unexpected).toEqual([])
 })
+
+test('a request for a text message and a board notice is answered in chat, not made a report', async ({ page }, info) => {
+  const { unexpected, sends, created } = await composerFixture(page, info)
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models).toBe(true)
+  const input = page.getByLabel('프롬프트 입력')
+  await input.fill('첨부한 공문 보고 학생들에게 보낼 안내문(문자 메시지 1개, 학과 홈페이지 공지 1개)을 써 주세요')
+  await input.press('Enter')
+  await expect.poll(() => sends.length).toBe(1)
+  expect(created.map((row) => row.kind)).toEqual(['chat'])
+  // A document order with no short channel still goes to the report.
+  await page.goto('/')
+  await input.fill('총장님께 보내는 협조 공문 작성해 주세요')
+  await input.press('Enter')
+  await expect.poll(() => created.length).toBe(2)
+  expect(created[1].kind).toBe('report')
+  expect(unexpected).toEqual([])
+})

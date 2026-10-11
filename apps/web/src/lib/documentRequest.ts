@@ -27,6 +27,13 @@ const EDITING =
 const CODING =
   /(스크립트|코드|프로그램|함수|자동\s?생성|자동화|파이썬|python|javascript|typescript|api|sql|엑셀\s?매크로|매크로|script|code)/i
 
+/**
+ * Message-sized writing: a text message, a chat or mail, a post or notice for a board, a few
+ * lines. Answered in the chat even when the sentence calls it 안내문 or 공지문.
+ */
+const SHORT =
+  /(문자|메시지|카톡|카카오톡|알림톡|sms|이메일|메일|e-?mail|게시\s?글|게시물|공지\s?글|홈페이지\s?공지|팝업|배너|슬로건|캐치프레이즈|한\s?줄|두\s?줄|세\s?줄|\d{1,3}\s?(?:줄|자|글자|문장)(?:로|으로|\s?내외|\s?이내|\s?짜리)?(?![가-힣])|짧게|간단히|간단하게)/i
+
 const DECK = /(슬라이드|발표\s?자료|발표\s?장표|장표|피피티|ppt|pptx|프레젠테이션|presentation|slide deck|slides)/i
 
 function isOrder(s: string, noun: RegExp): boolean {
@@ -38,6 +45,7 @@ export function handoffSurface(text: string): 'report' | 'slides' | null {
   const s = text.trim()
   if (s.length < 6 || s.length > 1200) return null
   if (isOrder(s, DECK)) return 'slides'
+  if (SHORT.test(s)) return null
   if (isOrder(s, NOUN)) return 'report'
   return null
 }
