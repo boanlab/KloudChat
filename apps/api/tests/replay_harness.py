@@ -152,6 +152,14 @@ def pin_recorded_defaults(patch: Patch) -> None:
         patch(settings, name, value)
     pin_recorded_templates(patch)
 
+    # Model roles are read from the database first; a replay has none, so the pinned
+    # environment above is what is in force, whatever another test left in the cache.
+    async def model_roles():
+        return settings_store.model_roles_from({})
+
+    patch(settings_store, "model_roles", model_roles)
+    patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
+
 
 #: Shipped templates as they were when the records were made (`_pinned_templates/<id>/`):
 #: their instructions, genre, checklist, questions and 진행 과정 reach the prompts, so a later
@@ -183,14 +191,6 @@ def pin_recorded_templates(patch: Patch) -> None:
         )
     patch(design_templates, "_TEMPLATES", templates)
     patch(report, "_FORMAT_GENRES", design_templates.format_genres())
-
-    # Model roles are read from the database first; a replay has none, so the pinned
-    # environment above is what is in force, whatever another test left in the cache.
-    async def model_roles():
-        return settings_store.model_roles_from({})
-
-    patch(settings_store, "model_roles", model_roles)
-    patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
 
 
 # ── a fixed clock and fixed ids ─────────────────────────────────────────
