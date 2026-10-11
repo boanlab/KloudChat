@@ -10,6 +10,8 @@ options: titles=true 는 직함, products=true 는 제품·도구 이름도 대�
   bare=true 는 단위 없는 숫자(분석 표의 칸)도 대조, numbers="computed" 는 숫자를
   computed 와 요청에서만 찾음(데이터 파일의 원래 칸 값은 분석 결과가 아님). today 는 요청이
   「오늘」이라고 했을 때만 근거가 된다.
+자료에 명단(성명 열, 학번 옆 이름)이 있으면 글의 표·목록에 나오는 이름은 그 명단에 있어야 하고,
+  명단의 학번 옆이면 그 학번의 이름이어야 한다(옵션 없이 늘 대조).
 찾은 것: {"kind", "text", "line", "start", "end", "placeholder"}; kind 는 number·date·month·time·
 person·org·title·product·claim(자료에 기술 목록으로만 있는 도구로 일했다는 문장, 문장째 뺌).
 결과는 사람이 읽을 요약 줄과 마지막 줄 JSON 으로 낸다. 표준 라이브러리만 쓴다.
@@ -407,6 +409,10 @@ class Sources:
             self.rows = _row_keys(_data_rows(material))
             rates = {abs(v) for v in self._person_values(material) if abs(v) >= 100}
             self.priced = {round(r * abs(x), 6) for r in rates for x in pool if x}
+        #: The people an attached roster names (a payroll sheet's 성명 column), and each row ID's
+        #: (학번 「32221045」) names: a name the answer puts in a table or a list must be one of
+        #: them, and beside that ID, that ID's.
+        self.roster, self.id_names = _roster(material)
         self.skill_only: set[str] = set()
         lines = text.splitlines()
         for line in lines:
@@ -526,6 +532,140 @@ def _row_keys(rows: str) -> list[tuple[list[tuple[str, ...]], set[float]]]:
         elif len(keys) >= 2:
             # Two common cells together: 「김민지」 with 「2026-09-03」.
             out.append(([(a, b) for i, a in enumerate(keys) for b in keys[i + 1:]], values))
+    return out
+
+
+# ── people in a roster ────────────────────────────────────────────────────
+
+#: Korean surnames, the first syllable of a bare name in a table cell or a list item.
+SURNAMES = frozenset(
+    "김이박최정강조윤장임한오서신권황안송류유전홍고문양손배백허남심노하곽성차주우구민진나지엄채원천방"
+    "공현함변염여추도소석선설마길연위표명기반왕금옥육인맹제모탁국어은편용예경봉사부")
+#: A column that lists people: 「성명」, 「이름」, 「학생」, 「담당자」.
+NAME_HEADER = re.compile(r"^(?:성명|이름|학생\s?명?|학생\s?이름|직원\s?명?|근로자|담당자|참석자|대상자|"
+                         r"name|student)$", re.I)
+#: A row ID: a 학번·사번 of digits, maybe with a letter typed for a digit (「3222O781」).
+ROW_ID = re.compile(r"(?<![\w.-])(?=[0-9A-Za-z]*\d{4})[0-9A-Za-z]{5,15}(?![\w.-])")
+#: Words a name-shaped cell may hold that are not people: totals, notes, places.
+NOT_PERSON = re.compile(
+    r"^(?:합계|소계|총계|총합|평균|계|기타|비고|없음|전체|미상|미정|공란|누락|확인|해당\s?없음|중복|오류|"
+    r"이상|정상|주간|야간|오전|오후|본인|공통|전원|남|여|이상치|최댓값|최솟값|최대값|최소값|평균값|"
+    r"기준일|합계액|미입력|미기재|미확인)$"
+    r"|(?:팀|과|실|관|부|처|청|원|센터|학과|학부|대학|본부|위원회|사무국|회|단)$")
+#: An honorific or a role after a name in a cell: 「김민지 학생」, 「이준호 님」.
+_AFTER_NAME = re.compile(r"\s*(?:학생|님|씨|조교|선생님?|\(.*\))\s*$")
+
+
+def _cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        return [c.strip() for c in stripped.strip("|").split("|")]
+    if "\t" in line:
+        return [c.strip() for c in line.split("\t")]
+    return [c.strip().strip('"') for c in line.split(",")]
+
+
+def _person(cell: str) -> str:
+    """The name a cell holds alone (「 이준호」, 「**김민지** 학생」), or ''."""
+    name = _AFTER_NAME.sub("", cell.replace("*", "").strip())
+    if (re.fullmatch(r"[가-힣]{2,4}", name) and name[0] in SURNAMES
+            and not NOT_PERSON.search(name)):
+        return name
+    return ""
+
+
+def _roster(material: str) -> tuple[set[str], dict[str, set[str]]]:
+    """The names an attached table lists — its name column's, or beside a row ID — and the
+    names each ID's rows give. Empty unless at least two people are listed."""
+    names: set[str] = set()
+    by_id: dict[str, set[str]] = {}
+    column = -1
+    for line in (material or "").splitlines():
+        if not _data_row(line):
+            column = -1
+            continue
+        cells = _cells(line)
+        heads = [k for k, c in enumerate(cells) if NAME_HEADER.match(c.replace(" ", ""))]
+        if heads:
+            column = heads[0]
+            continue
+        ids = [c for c in cells if ROW_ID.fullmatch(c)]
+        if 0 <= column < len(cells):
+            people = [p] if (p := _person(cells[column])) else []
+        elif ids:
+            people = [p for c in cells if (p := _person(c))][:1]
+        else:
+            people = []
+        for person in people:
+            names.add(person)
+            for row_id in ids:
+                by_id.setdefault(row_id.upper(), set()).add(person)
+    return (names, by_id) if len(names) >= 2 else (set(), {})
+
+
+#: A list item that starts with a name: 「- 김민지(32221045): 12시간」, 「1. **이준호** — 11.5시간」.
+_LISTED = re.compile(
+    r"^\s{0,8}(?:[-*+•]|\d{1,2}[.)])\s{1,4}(?:\*\*)?(?P<name>[가-힣]{2,4})(?:\*\*)?"
+    r"(?=\s{0,2}(?:\(|:|：|—|–|-|,|·|/|\s학생|\s님|\s\d|$))")
+
+
+def _listed_people(lines: list[str], skip: set[int], sources: Sources,
+                   found: list[dict]) -> list[dict]:
+    """Names in the answer's tables and lists that the attached roster does not hold, or that
+    sit beside an ID the roster gives to someone else. Only when the material lists people;
+    a name the person typed is in the material too."""
+    if not sources.roster:
+        return []
+    out: list[dict] = []
+
+    def wrong(name: str, line: str) -> bool:
+        if not sources.has_text(name):
+            return True
+        ids = [m.group(0).upper() for m in ROW_ID.finditer(line)]
+        return any(i in sources.id_names and name not in sources.id_names[i] for i in ids)
+
+    def add(k: int, start: int, name: str) -> None:
+        if any(f["line"] == k and f["start"] < start + len(name) and start < f["end"]
+               for f in found):
+            return
+        out.append({"kind": "person", "text": name, "line": k, "start": start,
+                    "end": start + len(name), "placeholder": PLACEHOLDER["person"]})
+
+    column, start = -1, -1
+    for k, line in enumerate(lines):
+        stripped = line.strip()
+        if k in skip or not stripped.startswith("|"):
+            start = -1
+            m = _LISTED.match(line) if k not in skip else None
+            # A list item's lead word is a name only at three syllables or as the roster's
+            # own (「정리:」, 「이상 행」 are not people).
+            if m and _person(m.group("name")) and (
+                    len(m.group("name")) == 3 or m.group("name") in sources.roster) and (
+                    ROW_ID.search(line) or re.search(r"학번|사번|부서|소속", line)):
+                if wrong(m.group("name"), line):
+                    add(k, m.start("name"), m.group("name"))
+            continue
+        cells = stripped.strip("|").split("|")
+        if start < 0:
+            # A table's first row: its 성명 column, if it names one.
+            start = k
+            heads = [i for i, c in enumerate(cells)
+                     if NAME_HEADER.match(re.sub(r"[\s*]", "", c))]
+            column = heads[0] if heads else -1
+            if heads or not any(c.strip() in sources.roster for c in cells):
+                continue
+        if re.fullmatch(r"[\s|:\-]+", stripped):
+            continue
+        if column < 0:
+            # No 성명 header: the column where the roster's own names stand.
+            column = next((i for i, c in enumerate(cells) if _person(c) in sources.roster), -1)
+            if column < 0:
+                continue
+        if column >= len(cells) or not (name := _person(cells[column])):
+            continue
+        if wrong(name, line):
+            at = line.index("|") + 1 + sum(len(c) + 1 for c in cells[:column])
+            add(k, at + cells[column].index(name), name)
     return out
 
 
@@ -669,6 +809,7 @@ def check(text: str, material: str, computed: list[str] | str | None = None,
         start = m.start("num") if m.group("sign") is None else m.start()
         found.append(_finding("number", lines[n["line"]], n["line"], start, m.end()))
     found.extend(_claims(lines, skip, sources))
+    found.extend(_listed_people(lines, skip, sources, found))
     return sorted(found, key=lambda f: (f["line"], f["start"]))
 
 

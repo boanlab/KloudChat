@@ -22,6 +22,9 @@ Check the values in the finished text against the material. Do not judge in your
 3. What counts as grounds: values written in the request, material or user answers; values computed by code; simple calculations among those values
    (sums, differences, ratios, rates of change — between values on the same line or in the same table, or between large totals); rounding.
    Table-of-contents and ordinal numbers (「2차」「3학년」「표 1」), character counts, a single year, and the document counting its own items (「3가지」) are not checked.
+   When the material lists people (a roster: a 성명·이름 column, or names beside 학번·사번), a name in the text's tables
+   or list items must be one of them — and beside a 학번 the roster gives, that person's; otherwise it becomes 「[이름]」.
+   Names written in the request count as material.
 4. If any value was turned into a blank, say in one line what was blanked, and ask the user for the value to fill it.
 
 ## 서버가 쓰는 인터페이스
