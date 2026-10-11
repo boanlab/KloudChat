@@ -1,16 +1,4 @@
-"""A person's own 템플릿: made in the editor, chosen in the same pickers as the shipped ones.
-
-- `GET /user-templates` — the caller's and the ones shared with the organisation;
-- `GET /user-templates/catalogue` — what the editor offers (`user_templates.catalogue`);
-- `GET /user-templates/start/{template_id}` — a shipped document 서식 as the editor's fields;
-- `POST /user-templates`, `GET|PUT|DELETE /user-templates/{id}`;
-- `POST|DELETE /user-templates/{id}/form` — the form a template was made from (DOCX/HWPX),
-  kept as reference text for the writer.
-
-Everything a person writes is stored as text (`user_templates.plain`) and reaches a page only
-as text: a template carries no HTML or CSS. Only its owner edits it; a shared one is
-picked by others as it stands.
-"""
+"""User templates: stored as plain text only (no HTML/CSS); owner-only edits."""
 
 from __future__ import annotations
 
@@ -95,7 +83,7 @@ async def template_catalogue(user: CurrentUser):
 
 @router.get("/user-templates/start/{template_id}")
 async def start_from(template_id: str, user: CurrentUser):
-    """A shipped document 서식 as the editor's fields, to start a template of one's own from."""
+    """Shipped 서식 as editor fields."""
     template = design_templates.choosable(template_id)
     if template is None or template.kind != "document" or template.user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -139,8 +127,7 @@ async def update_template(template_id: str, payload: TemplateIn, user: CurrentUs
 async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
     row = await _owned(db, user, template_id)
     wire_id = user_templates.template_id(row)
-    # Agents that wrote in it go back to no template; conversations keep the id and are drawn
-    # in the shared seed.
+    # agents reset to no template; conversations keep the id (shared seed)
     await db.exec(update(Agent).where(col(Agent.render_template_id) == wire_id)
                   .values(render_template_id=None))
     await db.delete(row)
@@ -151,7 +138,7 @@ async def delete_template(template_id: str, user: CurrentUser, db: DbSession):
 @router.post("/user-templates/{template_id}/form")
 async def upload_form(template_id: str, user: CurrentUser, db: DbSession,
                       file: UploadFile = File(...)):
-    """The form a template was made from: its text kept as reference for the writer."""
+    """Source form (DOCX/HWPX) text kept as writer reference."""
     from app.services import files as file_service
 
     row = await _owned(db, user, template_id)
@@ -165,7 +152,7 @@ async def upload_form(template_id: str, user: CurrentUser, db: DbSession,
                             detail="template_form_too_large")
     try:
         text = file_service.extract_text(name, file.content_type or "", data)
-    except Exception as exc:  # noqa: BLE001 — an unreadable form is refused, not stored
+    except Exception as exc:  # noqa: BLE001 — unreadable form refused
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="template_form_unreadable") from exc
     row.form_name = user_templates.plain(name, 200)

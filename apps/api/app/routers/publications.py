@@ -1,30 +1,4 @@
-"""Published agents (공개 챗봇): the owner's screens, the bot page, and the administrator's
-review.
-
-A bot opens to the members of this instance as soon as it is published. Opening it to people
-without an account — by link (`link`) or listed on the public page (`external`) — is asked of
-an administrator, who approves the audience and the version together; on a bot open outside,
-each new version waits for the same review while the approved one keeps answering.
-
-- `/publications…` — the owner: preflight, publish, the audience and its review, versions and
-  rollback, settings, pause, statistics, blocking a visitor, and the conversations visitors
-  sent them (or, with 「대화 열람」 on, those started after the visitor's consent), personal
-  details masked.
-- `/bots`, `/public/bots`, `/b/{slug}…` — visitors: the members' list, the public list, a
-  bot's page, the notice and consent, their own conversations with it, 👍👎 and 「만든
-  사람에게 보내기」. A visitor without an account is a signed cookie and nothing more. A
-  visitor's turn is the ordinary turn (`sessions.send_message`) run on the owner's account
-  under the bot's fixed version (`services.publishing`).
-- `/admin/publications…` — administrators: the review queue, approving or refusing a request
-  (a refusal's reason reaches the owner), closing an outside audience, pausing or closing a
-  bot, and reading a conversation for an abuse review, with a reason that is recorded.
-
-A bot open outside reaches further through channels the owner asks for and an administrator
-opens with the audience (`/publications/{id}/channels`): framed on the owner's sites (the
-embed page sends `X-KloudChat-Embed` and keeps its own partitioned cookie), and the API and
-MCP channels in `routers/bot_api`, called with a key the owner issued for the bot
-(`/publications/{id}/keys`). Closing the outside audience closes every channel with it.
-"""
+"""Published agents (공개 챗봇): owner screens, visitor pages, admin review of outside audiences."""
 
 from __future__ import annotations
 
@@ -86,7 +60,7 @@ _STEP_KEEP = ("id", "label", "status", "category")
 _SOURCES = re.compile(r"\n{1,3}#{2,3} ?출처[ \t]{0,4}\n[\s\S]{0,8000}$")
 
 
-# ── shared pieces ──────────────────────────────────────────────────────
+# ── shared ──
 
 
 def _branding(raw: dict | None) -> dict[str, Any]:
@@ -99,7 +73,7 @@ def _branding(raw: dict | None) -> dict[str, Any]:
 
 
 def _apply(pub: Publication, payload: PublicationSettings) -> None:
-    """The owner's settings; what changes the notice raises the consent version."""
+    """Owner settings; notice changes bump consent version."""
     fields = payload.model_fields_set
     if "title" in fields and payload.title is not None:
         pub.title = " ".join(payload.title.split())[:80]
@@ -123,7 +97,7 @@ def _apply(pub: Publication, payload: PublicationSettings) -> None:
         pub.conversation_view = payload.conversation_view
         notice_changed = True
     if notice_changed:
-        # Visitors read the new notice before their next question.
+        # visitors re-read the notice before next question
         pub.consent_version = (pub.consent_version or 1) + 1
     pub.updated_at = utcnow()
 
@@ -140,12 +114,12 @@ def _version_out(v: PublicationVersion, active: str | None,
 
 
 def _needs_look(pub: Publication) -> bool:
-    """Something happened on the bot since its owner last opened its page."""
+    """Bot activity since owner's last visit."""
     if pub.attention_at is None:
         return False
     if pub.owner_seen_at is None:
         return True
-    # Stored in UTC; a driver may hand them back without the zone.
+    # UTC; driver may drop tzinfo
     return pub.attention_at.replace(tzinfo=None) > pub.owner_seen_at.replace(tzinfo=None)
 
 
@@ -180,7 +154,7 @@ def _pub_out(pub: Publication, *, versions: list[PublicationVersion] | None = No
 
 
 async def _named_out(db: DbSession, pub: Publication) -> dict[str, Any]:
-    """The bot as `_pub_out` gives it, with its agent's and its owner's names."""
+    """`_pub_out` plus agent and owner names."""
     agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
     owner = await db.get(User, pub.owner_id)
     return _pub_out(pub, agent_name=agent.name if agent is not None else "",
@@ -229,7 +203,7 @@ def _audit(db: DbSession, actor: User | None, action: str, pub: Publication, req
 
 
 async def _remove(db: DbSession, pub: Publication) -> None:
-    """The bot and everything it holds: conversations, versions and their copies, counts."""
+    """Bot and all its data: conversations, versions, copies, counts."""
     ids = list((await db.exec(select(ChatSession.id).where(
         ChatSession.publication_id == pub.id))).all())
     await publishing.delete_sessions(db, ids)
@@ -240,7 +214,7 @@ async def _remove(db: DbSession, pub: Publication) -> None:
     await db.delete(pub)
 
 
-# ── the owner ──────────────────────────────────────────────────────────
+# ── owner ──
 
 
 @router.get("/publications")
@@ -261,8 +235,7 @@ async def list_publications(user: CurrentUser, db: DbSession):
 
 @router.get("/publications/attention")
 async def attention(user: CurrentUser, db: DbSession):
-    """The badges: the caller's bots with something new to look at, and for an administrator
-    the requests waiting for review."""
+    """Badges: own bots with news; pending reviews for admins."""
     mine = (await db.exec(select(Publication).where(
         Publication.owner_id == user.id, col(Publication.attention_at).is_not(None)))).all()
     reviews = 0
@@ -273,7 +246,7 @@ async def attention(user: CurrentUser, db: DbSession):
 
 
 def _request(pub: Publication, visibility: str) -> None:
-    """Asks an administrator for a wider audience. Caller audits and commits."""
+    """Wider-audience request; caller audits and commits."""
     pub.requested_visibility = visibility
     pub.review_state = ReviewState.pending.value
     pub.review_note = ""
@@ -287,8 +260,7 @@ def _require_cap(pub: Publication) -> None:
 
 @router.post("/publications/preflight")
 async def preflight(payload: PreflightIn, user: CurrentUser, db: DbSession):
-    """Whether the agent can be published now, the internal model it would answer with, what
-    a bot leaves out, and personal details found in its knowledge."""
+    """Publish readiness, internal model, omissions, knowledge PII."""
     agent = await _own_agent(db, user, payload.agent_id)
     catalogue, safe = await _model_context(user)
     existing = (await db.exec(select(Publication).where(
@@ -301,8 +273,7 @@ async def preflight(payload: PreflightIn, user: CurrentUser, db: DbSession):
 
 @router.post("/publications", status_code=status.HTTP_201_CREATED)
 async def publish(payload: PublishIn, request: Request, user: CurrentUser, db: DbSession):
-    """Publishes the agent to members as version 1; a wider audience is asked of an
-    administrator at the same time."""
+    """Publish to members as v1; wider audience requested at once."""
     agent = await _own_agent(db, user, payload.agent_id)
     existing = (await db.exec(select(Publication).where(
         Publication.owner_id == user.id, Publication.agent_id == agent.id,
@@ -347,7 +318,7 @@ async def get_publication(publication_id: str, user: CurrentUser, db: DbSession)
     agent = await db.get(Agent, pub.agent_id) if pub.agent_id else None
     out = _pub_out(pub, versions=await _versions(db, pub),
                    agent_name=agent.name if agent is not None else "", owner_name=user.name)
-    # The owner has now seen what changed: the badge clears.
+    # badge cleared
     pub.owner_seen_at = utcnow()
     db.add(pub)
     await db.commit()
@@ -363,7 +334,7 @@ async def patch_publication(publication_id: str, payload: PublicationPatch, requ
     _apply(pub, payload)
     outside = publishing.opens_outside(pub) or pub.review_state == ReviewState.pending.value
     if outside:
-        # Open (or asked to open) outside: the daily credit cap stays.
+        # outside (open or requested): daily credit cap required
         _require_cap(pub)
         if payload.model_fields_set - {"status"}:
             _audit(db, user, "publication.settings", pub, request,
@@ -389,7 +360,7 @@ async def patch_publication(publication_id: str, payload: PublicationPatch, requ
 @router.delete("/publications/{publication_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_publication(publication_id: str, request: Request, user: CurrentUser,
                              db: DbSession):
-    """Closes the bot for good: its conversations, versions and statistics go with it."""
+    """Permanent close; conversations, versions, stats deleted."""
     pub = await _mine(db, user, publication_id)
     _audit(db, user, "publication.deleted", pub, request)
     await _remove(db, pub)
@@ -399,8 +370,7 @@ async def delete_publication(publication_id: str, request: Request, user: Curren
 @router.post("/publications/{publication_id}/scope")
 async def set_scope(publication_id: str, payload: ScopeIn, request: Request, user: CurrentUser,
                     db: DbSession):
-    """The audience: a narrower one applies at once; a wider one is asked of an administrator
-    (and needs a daily credit cap), while the bot keeps its present audience."""
+    """Audience: narrower applies now; wider needs admin review and daily cap."""
     pub = await _mine(db, user, publication_id)
     if pub.status == PublicationStatus.revoked.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
@@ -418,11 +388,11 @@ async def set_scope(publication_id: str, payload: ScopeIn, request: Request, use
                    previous=pub.visibility)
         pub.visibility = target
         pub.requested_visibility = ""
-        # A channel the narrower audience cannot carry closes with it, asked or open.
+        # channels the narrower audience can't carry close
         pub.channels = publishing.fit_channels(pub.channels, target)
         pub.requested_channels = publishing.fit_channels(pub.requested_channels, target)
         if target == PublicationVisibility.internal.value and pub.pending_version_id:
-            # Members only: a version waiting for review needs none, so it answers now.
+            # members only: pending version needs no review
             pub.active_version_id, pub.pending_version_id = pub.pending_version_id, None
         if pub.pending_version_id is None and not pub.requested_channels:
             pub.review_state = ReviewState.none.value
@@ -435,7 +405,7 @@ async def set_scope(publication_id: str, payload: ScopeIn, request: Request, use
 @router.delete("/publications/{publication_id}/review")
 async def withdraw_request(publication_id: str, request: Request, user: CurrentUser,
                            db: DbSession):
-    """Takes back a request: the wider audience, and the version waiting with it."""
+    """Request withdrawal: wider audience and pending version."""
     pub = await _mine(db, user, publication_id)
     if pub.review_state:
         _audit(db, user, "publication.request_withdrawn", pub, request,
@@ -453,8 +423,7 @@ async def withdraw_request(publication_id: str, request: Request, user: CurrentU
 @router.post("/publications/{publication_id}/versions", status_code=status.HTTP_201_CREATED)
 async def new_version(publication_id: str, payload: VersionIn, request: Request,
                       user: CurrentUser, db: DbSession):
-    """Publishes the agent as it stands now as the next version. On a bot open outside it
-    waits for review; the approved version answers meanwhile."""
+    """Next version from current agent; outside bots await review."""
     pub = await _mine(db, user, publication_id)
     if pub.status == PublicationStatus.revoked.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
@@ -481,8 +450,7 @@ async def new_version(publication_id: str, payload: VersionIn, request: Request,
 @router.post("/publications/{publication_id}/versions/{version_id}/activate")
 async def activate_version(publication_id: str, version_id: str, request: Request,
                            user: CurrentUser, db: DbSession):
-    """Rolls the bot back (or forward) to a version it had. On a bot open outside, a version
-    no administrator approved waits for review instead."""
+    """Rollback/forward; unapproved version on outside bot awaits review."""
     pub = await _mine(db, user, publication_id)
     version = await db.get(PublicationVersion, version_id)
     if version is None or version.publication_id != pub.id:
@@ -502,15 +470,13 @@ async def activate_version(publication_id: str, version_id: str, request: Reques
     return await get_publication(publication_id, user, db)
 
 
-# ── channels and keys ──────────────────────────────────────────────────
+# ── channels, keys ──
 
 
 @router.post("/publications/{publication_id}/channels")
 async def set_channels(publication_id: str, payload: ChannelsIn, request: Request,
                        user: CurrentUser, db: DbSession):
-    """The channels the owner wants, as a whole set. Closing one (or dropping a site) applies
-    at once; opening one is asked of an administrator with the audience it needs, and the
-    daily credit cap stays required."""
+    """Channel set: closing immediate; opening needs admin review and daily cap."""
     pub = await _mine(db, user, publication_id)
     if pub.status == PublicationStatus.revoked.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
@@ -528,7 +494,7 @@ async def set_channels(publication_id: str, payload: ChannelsIn, request: Reques
         wanted["api"] = {}
     if payload.mcp:
         wanted["mcp"] = {}
-    # The audience in force, or the one asked for alongside: a channel needs one to carry it.
+    # in-force or requested audience must carry the channel
     audience = pub.requested_visibility or pub.visibility
     for name in wanted:
         if not publishing.channel_allowed(audience, name):
@@ -576,7 +542,7 @@ async def list_keys(publication_id: str, user: CurrentUser, db: DbSession):
 @router.post("/publications/{publication_id}/keys", status_code=status.HTTP_201_CREATED)
 async def create_key(publication_id: str, payload: KeyIn, request: Request, user: CurrentUser,
                      db: DbSession):
-    """A key for this bot's API and MCP channels, returned once; only its hash is kept."""
+    """Bot API/MCP key, returned once; hash stored."""
     pub = await _mine(db, user, publication_id)
     if pub.status == PublicationStatus.revoked.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="revoked")
@@ -591,7 +557,6 @@ async def create_key(publication_id: str, payload: KeyIn, request: Request, user
     db.add(row)
     _audit(db, user, "publication.key_created", pub, request, keyId=row.id, name=row.name)
     await db.commit()
-    # The only response that carries the key.
     return {**_key_out(row), "key": key}
 
 
@@ -599,7 +564,7 @@ async def create_key(publication_id: str, payload: KeyIn, request: Request, user
                status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_key(publication_id: str, key_id: str, request: Request, user: CurrentUser,
                      db: DbSession):
-    """Stops the key at once; kept as a revoked row for the audit trail."""
+    """Immediate stop; revoked row kept for audit."""
     pub = await _mine(db, user, publication_id)
     row = await db.get(PublicationKey, key_id)
     if row is None or row.publication_id != pub.id or row.revoked_at is not None:
@@ -612,7 +577,7 @@ async def revoke_key(publication_id: str, key_id: str, request: Request, user: C
 
 @router.get("/publications/{publication_id}/admin-reads")
 async def admin_reads(publication_id: str, user: CurrentUser, db: DbSession):
-    """When an administrator read the bot's conversations, and why: the owner sees each one."""
+    """Admin conversation reads and reasons, visible to owner."""
     pub = await _mine(db, user, publication_id)
     rows = (await db.exec(select(AuditEvent).where(
         AuditEvent.target == pub.id,
@@ -623,7 +588,7 @@ async def admin_reads(publication_id: str, user: CurrentUser, db: DbSession):
         kind = "list" if e.action == "publication.admin_list" else "read"
         reason = str((e.event_metadata or {}).get("reason") or "")
         last = out[-1] if out else None
-        # One look at the list opens several conversations within the minute: one line.
+        # collapse same-minute reads into one line
         if last is not None and last["kind"] == kind and last["reason"] == reason \
                 and abs((last["at"] - e.at).total_seconds()) < 60:
             last["count"] += 1
@@ -640,7 +605,7 @@ def _days(days: int) -> list[str]:
 @router.get("/publications/{publication_id}/stats")
 async def stats(publication_id: str, user: CurrentUser, db: DbSession,
                 days: int = Query(30, ge=1, le=90)):
-    """Usage, frequent topics, unanswered questions (masked) and 👍👎 — never conversations."""
+    """Usage, topics, unanswered (masked), 👍👎; never conversations."""
     pub = await _mine(db, user, publication_id)
     windows = _days(days)
     rows = (await db.exec(select(PublicationCounter).where(
@@ -668,7 +633,7 @@ async def stats(publication_id: str, user: CurrentUser, db: DbSession,
         "days": days,
         "daily": [{"date": f"{w[1:5]}-{w[5:7]}-{w[7:9]}", **d} for w, d in by_day.items()],
         "totals": {**totals, "visitorsAll": visitors},
-        # Questions by where they came from: the bot's page, a site framing it, API, MCP.
+        # by origin: page, framing site, API, MCP
         "channels": by_channel,
         "topics": [{"word": w, "count": c}
                    for w, c in sorted(topics.items(), key=lambda kv: (-kv[1], kv[0]))[:15]],
@@ -677,14 +642,13 @@ async def stats(publication_id: str, user: CurrentUser, db: DbSession,
 
 
 def _visitor_out(visitor: PublicationVisitor | None) -> dict[str, Any] | None:
-    """A visitor as the owner may know them: a short label, whether they signed in, whether
-    they are blocked — never who they are."""
+    """Owner-visible visitor: label, signed-in, blocked; never identity."""
     if visitor is None:
         return None
     return {"id": visitor.id, "label": visitor.id[:6].upper(),
             "member": visitor.user_id is not None, "blocked": visitor.blocked,
             "blockedAt": visitor.blocked_at,
-            # A key of the owner's (API or MCP) rather than a person.
+            # owner's key (API/MCP), not a person
             "byKey": (visitor.anon_id or "").startswith("key:")}
 
 
@@ -715,8 +679,7 @@ async def _turn_counts(db: DbSession, ids: list[str]) -> dict[str, int]:
 
 @router.get("/publications/{publication_id}/conversations")
 async def owner_conversations(publication_id: str, user: CurrentUser, db: DbSession):
-    """The conversations the owner may read: those a visitor sent, and with 「대화 열람」 on,
-    those started after the visitor's consent."""
+    """Owner-readable conversations: sent ones, plus post-consent ones with 「대화 열람」."""
     pub = await _mine(db, user, publication_id)
     query = select(ChatSession).where(ChatSession.publication_id == pub.id)
     rows = [s for s in (await db.exec(query.order_by(col(ChatSession.updated_at).desc())
@@ -759,7 +722,7 @@ async def _set_blocked(db: DbSession, pub: Publication, visitor: PublicationVisi
 @router.post("/publications/{publication_id}/conversations/{session_id}/block")
 async def block_visitor(publication_id: str, session_id: str, request: Request,
                         user: CurrentUser, db: DbSession):
-    """Blocks the visitor of a conversation the owner may read: they can no longer ask."""
+    """Block the visitor of an owner-readable conversation."""
     pub = await _mine(db, user, publication_id)
     session = await db.get(ChatSession, session_id)
     if session is None or not publishing.owner_may_read(session, pub) or not session.visitor_id:
@@ -773,7 +736,7 @@ async def block_visitor(publication_id: str, session_id: str, request: Request,
 
 @router.get("/publications/{publication_id}/visitors")
 async def blocked_visitors(publication_id: str, user: CurrentUser, db: DbSession):
-    """The visitors the owner blocked."""
+    """Owner's blocked visitors."""
     pub = await _mine(db, user, publication_id)
     rows = (await db.exec(select(PublicationVisitor).where(
         PublicationVisitor.publication_id == pub.id, col(PublicationVisitor.blocked).is_(True))
@@ -792,12 +755,10 @@ async def unblock_visitor(publication_id: str, visitor_id: str, request: Request
     return _visitor_out(visitor)
 
 
-# ── visitors ───────────────────────────────────────────────────────────
+# ── visitors ──
 
 
-#: Sent by the page framed on another site: the caller is always a visitor without an
-#: account there, with its own cookie. A custom header, so another site cannot send it
-#: with a visitor's cookie without passing CORS.
+#: framed page marker (always anonymous); custom header → CORS blocks cross-site cookie use
 EMBED_HEADER = "X-KloudChat-Embed"
 
 
@@ -806,9 +767,7 @@ def _embedded(request: Request) -> bool:
 
 
 async def bot_caller(request: Request, db: DbSession) -> User | None:
-    """The signed-in member opening a bot, or None for a visitor without an account (and for
-    an account not cleared to act: pending or suspended). Resolved by hand, never required:
-    a bot open outside needs no account. Framed on another site, never a member."""
+    """Signed-in active member or None; optional auth; framed → never a member."""
     if _embedded(request):
         return None
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")
@@ -827,8 +786,7 @@ BotCaller = Annotated[User | None, Depends(bot_caller)]
 
 
 def _open_to(pub: Publication, user: User | None) -> bool:
-    """Who may open the page while it is open or paused: members, whatever its audience;
-    people without an account once an administrator opened it outside. Its owner always."""
+    """Open to: members always, anonymous once admin-opened outside, owner always."""
     if user is not None and pub.owner_id == user.id:
         return pub.status != PublicationStatus.revoked.value
     if pub.status not in (PublicationStatus.approved.value, PublicationStatus.paused.value):
@@ -838,8 +796,7 @@ def _open_to(pub: Publication, user: User | None) -> bool:
 
 async def _bot(db: DbSession, slug: str, user: User | None,
                request: Request | None = None) -> Publication:
-    # One answer for unknown, closed and not-for-you: the address gives nothing away. Framed
-    # on another site, the bot must have that channel open.
+    # same answer for unknown/closed/not-for-you; framed needs embed channel
     pub = (await db.exec(select(Publication).where(Publication.slug == slug[:80]))).first()
     if pub is None or not _open_to(pub, user) or (
             request is not None and _embedded(request)
@@ -862,15 +819,13 @@ def _anon_id(request: Request) -> str | None:
 
 
 def _ip_key(request: Request, user: User | None) -> str | None:
-    """The address a visitor without an account is counted by; members are not."""
+    """Address key for anonymous visitors; members None."""
     return None if user is not None else publishing.ip_key(client_ip(request))
 
 
 async def _visitor(db: DbSession, pub: Publication, user: User | None, request: Request, *,
                    create: bool = True) -> PublicationVisitor | None:
-    """The caller as this bot's visitor: a member by account, anyone else by their signed
-    cookie. Made on first need (counted per address for visitors without an account); with
-    `create` false, None until then."""
+    """Caller as bot visitor (account or signed cookie); lazy create; None if `create` false."""
     now = utcnow()
     if user is not None:
         row = (await db.exec(select(PublicationVisitor).where(
@@ -899,7 +854,7 @@ async def _visitor(db: DbSession, pub: Publication, user: User | None, request: 
                 raise _refused(refused) from None
             row = PublicationVisitor(publication_id=pub.id, anon_id=anon)
             await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
-    # A new row counted itself above (its `last_seen_at` is now); an old one once a day.
+    # new row already counted; old once a day
     if publishing.day_window(row.last_seen_at) != publishing.day_window(now):
         await publishing.bump(db, pub.id, publishing.day_window(now), "visitors")
     row.last_seen_at = now
@@ -925,8 +880,7 @@ def _ready(pub: Publication, visitor: PublicationVisitor) -> None:
 
 async def _answering(db: DbSession, pub: Publication,
                      user: User | None) -> PublicationVersion:
-    """The version a turn runs on. Someone without an account only ever reaches a version an
-    administrator approved; anything else reads as paused."""
+    """Turn version; anonymous only reach approved, else paused."""
     version = await db.get(PublicationVersion, pub.active_version_id) \
         if pub.active_version_id else None
     if version is None or (user is None and version.approved_at is None):
@@ -935,7 +889,7 @@ async def _answering(db: DbSession, pub: Publication,
 
 
 async def _colors(db: DbSession, rows: list[Publication]) -> dict[str, str]:
-    """Each bot's color, from the agent copy its active version runs."""
+    """Bot colors from active version's agent copy."""
     snaps = {v.id: v.agent_snapshot_id for v in (await db.exec(select(PublicationVersion).where(
         col(PublicationVersion.id).in_([p.active_version_id for p in rows
                                         if p.active_version_id])))).all()} if rows else {}
@@ -946,8 +900,7 @@ async def _colors(db: DbSession, rows: list[Publication]) -> dict[str, str]:
 
 @router.get("/bots")
 async def list_bots(user: CurrentUser, db: DbSession):
-    """The bots members can open — published to members or listed for everyone — and the
-    caller's own. A bot open by link is listed nowhere."""
+    """Member-openable bots plus caller's own; link-only bots unlisted."""
     listed = (PublicationVisibility.internal.value, PublicationVisibility.external.value)
     rows = list((await db.exec(select(Publication).where(
         (col(Publication.visibility).in_(listed)
@@ -969,7 +922,7 @@ async def list_bots(user: CurrentUser, db: DbSession):
 
 @router.get("/public/bots")
 async def public_bots(db: DbSession):
-    """The bots an administrator opened to everyone, for anyone: no account, no owner names."""
+    """Admin-opened public bots; no account, no owner names."""
     rows = list((await db.exec(select(Publication).where(
         Publication.visibility == PublicationVisibility.external.value,
         Publication.status == PublicationStatus.approved.value)
@@ -981,14 +934,12 @@ async def public_bots(db: DbSession):
 
 
 def _keep_visitor_cookie(request: Request, response: Response) -> None:
-    """Gives a browser without an account its signed visitor cookie, once."""
+    """Signed visitor cookie for anonymous browsers, once."""
     if _anon_id(request) is not None:
         return
     _, value = publishing.new_visitor_cookie()
     if _embedded(request):
-        # Framed on another site: sent there only as a third-party cookie, kept apart per
-        # site (partitioned), so the frame on one site is not the visitor on another.
-        # Written by hand: the cookie library takes `Partitioned` only from Python 3.14.
+        # framed: partitioned third-party cookie per site; by hand (`Partitioned` needs Python 3.14)
         response.headers.append(
             "set-cookie",
             f"{publishing.EMBED_VISITOR_COOKIE}={value}; "
@@ -1013,12 +964,12 @@ async def bot_page(slug: str, request: Request, response: Response, user: BotCal
     snap = await db.get(Agent, version.agent_snapshot_id) if version else None
     await db.commit()
     mine = user is not None and pub.owner_id == user.id
-    # A bot open by link is for whoever holds the link, not for search engines.
+    # link bots not for search engines
     if pub.visibility != PublicationVisibility.external.value:
         response.headers["X-Robots-Tag"] = "noindex"
     return {
         "slug": pub.slug, "title": pub.title, "description": pub.description,
-        # Members see who answers for the bot; people without an account see the bot.
+        # owner name for members only
         "ownerName": owner.name if owner and user is not None else "", "mine": mine,
         "signedIn": user is not None, "visibility": pub.visibility,
         "embedded": _embedded(request),
@@ -1036,7 +987,7 @@ async def bot_page(slug: str, request: Request, response: Response, user: BotCal
 @router.post("/b/{slug}/consent", status_code=status.HTTP_204_NO_CONTENT)
 async def consent(slug: str, payload: ConsentIn, request: Request, user: BotCaller,
                   db: DbSession):
-    """The visitor read the notice (and, with 「대화 열람」 on, agreed to it)."""
+    """Notice read (and agreed with 「대화 열람」)."""
     pub = await _bot(db, slug, user, request)
     if payload.version != pub.consent_version:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="consent_outdated")
@@ -1052,7 +1003,7 @@ async def consent(slug: str, payload: ConsentIn, request: Request, user: BotCall
 
 async def _visited(db: DbSession, pub: Publication, user: User | None, request: Request,
                    session_id: str) -> tuple[PublicationVisitor, ChatSession]:
-    """The caller's own conversation on this bot; anyone else's reads as not found."""
+    """Caller's own conversation; others 404."""
     visitor = await _visitor(db, pub, user, request, create=False)
     session = await db.get(ChatSession, session_id)
     if visitor is None or session is None or session.publication_id != pub.id \
@@ -1100,13 +1051,12 @@ async def start_conversation(slug: str, request: Request, user: BotCaller, db: D
 
 
 def _value(raw: Any) -> str:
-    """An enum column's value, however the driver handed it back."""
+    """Enum column value, any driver shape."""
     return str(getattr(raw, "value", raw))
 
 
 def _happened(step: Any) -> bool:
-    """A step that ran: a pipeline stage that did not apply (「카피 점검 · 해당 없음」) is the
-    working of the server, not a step of the visitor's answer."""
+    """Step ran; inapplicable stages (「해당 없음」) are server working, not answer steps."""
     if not isinstance(step, dict):
         return False
     stage = step.get("stage")
@@ -1156,8 +1106,7 @@ async def delete_my_conversation(slug: str, session_id: str, request: Request,
 
 
 def _visitor_stream(events, pub: Publication):
-    """The turn's events as a visitor sees them: the answer and, as the owner chose, its
-    working; nothing of the owner's account (credits, routes, memory, artifacts)."""
+    """Visitor view of turn events: answer and owner-chosen working; no owner account data."""
 
     async def relay():
         async for chunk in events:
@@ -1206,7 +1155,7 @@ def _too_many(code: str, retry_after: int | None) -> JSONResponse:
 @router.post("/b/{slug}/conversations/{session_id}/messages")
 async def visitor_send(slug: str, session_id: str, payload: VisitorMessage, request: Request,
                        user: BotCaller, db: DbSession):
-    """A visitor's question, answered by the bot's fixed version on its owner's account."""
+    """Visitor question on bot's fixed version, owner's account."""
     pub = await _bot(db, slug, user, request)
     visitor, session = await _visited(db, pub, user, request, session_id)
     _ready(pub, visitor)
@@ -1223,11 +1172,7 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
                              session: ChatSession, *, content: str, retry_of: str | None,
                              request: Request, user: User | None, ip_key: str | None,
                              channel: str, by_key: bool = False, question: str | None = None):
-    """One turn on the bot — from its page, a site framing it, or the API and MCP channels:
-    limits, the version in force (approved only, without an account), a running slot, then
-    the ordinary turn on the owner's account. Returns the turn's raw event stream, or the
-    response that refused it. `question`: the question alone, for the owner's statistics, when
-    `content` carries more (an API caller's earlier turns)."""
+    """One bot turn (page/frame/API/MCP): limits, version, slot, owner-account turn."""
     from app.routers import sessions
 
     limits = publishing.limits_of(pub)
@@ -1244,14 +1189,13 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
         await db.commit()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="bot_paused")
     version = await _answering(db, pub, user)
-    # The conversation runs on the version in force: a rollback reaches it at once.
+    # version in force: rollback reaches it at once
     session.agent_id = version.agent_snapshot_id
     session.model = version.model
     session.publication_version_id = version.id
     db.add(session)
     if session.kind is SessionKind.chat and sessions.turn_running_here(session.id):
-        # Refused before it is counted: a question sent while the last answer is still being
-        # written spends none of the visitor's limits.
+        # refused before counting: busy session spends no limits
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
     try:
         await publishing.admit(db, pub, visitor.id, ip_key=ip_key, channel=channel,
@@ -1293,7 +1237,7 @@ async def run_published_turn(db: DbSession, pub: Publication, visitor: Publicati
     if not isinstance(response, StreamingResponse):
         await turn.release()
         if response.status_code == status.HTTP_409_CONFLICT:
-            # A strict-local route the version named is gone: closed until the owner re-publishes.
+            # named strict-local route gone: closed until republish
             publishing.pause(db, pub, "model")
             await db.commit()
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1317,7 +1261,7 @@ async def visitor_stop(slug: str, session_id: str, request: Request, user: BotCa
 @router.patch("/b/{slug}/messages/{message_id}/rating")
 async def visitor_rate(slug: str, message_id: str, payload: VisitorRating, request: Request,
                        user: BotCaller, db: DbSession):
-    """👍👎 on one answer; the owner sees the counts, not the answer."""
+    """👍👎 on one answer; owner sees counts only."""
     pub = await _bot(db, slug, user, request)
     message = await db.get(Message, message_id)
     if message is None:
@@ -1340,8 +1284,7 @@ async def visitor_rate(slug: str, message_id: str, payload: VisitorRating, reque
 @router.post("/b/{slug}/conversations/{session_id}/share")
 async def visitor_share(slug: str, session_id: str, request: Request, user: BotCaller,
                         db: DbSession):
-    """「만든 사람에게 보내기」: this one conversation becomes readable to the bot's maker,
-    personal details masked."""
+    """「만든 사람에게 보내기」: conversation shared to maker, PII masked."""
     pub = await _bot(db, slug, user, request)
     visitor, session = await _visited(db, pub, user, request, session_id)
     if session.shared_at is None:
@@ -1365,13 +1308,13 @@ async def visitor_unshare(slug: str, session_id: str, request: Request, user: Bo
     return {"id": session.id, "sharedAt": None}
 
 
-# ── administrators ─────────────────────────────────────────────────────
+# ── admin ──
 
 
 @router.get("/admin/publications")
 async def admin_list(admin: AdminUser, db: DbSession,
                      review: str = Query("", pattern="^(|pending)$")):
-    """Every bot, requests waiting for review first; `review=pending` for the queue only."""
+    """All bots, pending first; `review=pending` for queue only."""
     query = select(Publication)
     if review:
         query = query.where(Publication.review_state == ReviewState.pending.value)
@@ -1395,7 +1338,7 @@ async def _admin_pub(db: DbSession, publication_id: str) -> Publication:
 
 
 def _request_kind(pub: Publication) -> str:
-    """What an open review is about: `visibility`, `channels`, or a new `version`."""
+    """Open review kind: `visibility`, `channels` or `version`."""
     if pub.requested_visibility:
         return "visibility"
     if pub.requested_channels is not None and not pub.pending_version_id:
@@ -1404,7 +1347,7 @@ def _request_kind(pub: Publication) -> str:
 
 
 def _check_names(keys: list[str]) -> list[str]:
-    """Check skills as people know them: 「근거 없는 답 보류」, not `answer-hold`."""
+    """Check skills by display name."""
     out = []
     for key in keys:
         package = skill_packages.package_for(key)
@@ -1413,7 +1356,7 @@ def _check_names(keys: list[str]) -> list[str]:
 
 
 async def _snapshot_facts(db: DbSession, version: PublicationVersion | None) -> dict[str, Any]:
-    """What one version answers with, for comparing two of them."""
+    """Version facts for comparison."""
     snap = await db.get(Agent, version.agent_snapshot_id) if version else None
     if snap is None:
         return {}
@@ -1428,7 +1371,7 @@ async def _snapshot_facts(db: DbSession, version: PublicationVersion | None) -> 
 
 
 async def _version_changes(db: DbSession, pub: Publication) -> list[dict[str, Any]]:
-    """What the version waiting changes against the one answering now, field by field."""
+    """Pending vs active version diff by field."""
     if not pub.pending_version_id or not pub.active_version_id \
             or pub.pending_version_id == pub.active_version_id:
         return []
@@ -1439,15 +1382,13 @@ async def _version_changes(db: DbSession, pub: Publication) -> list[dict[str, An
             if before and after and before.get(key) != after.get(key)]
 
 
-#: Characters of each material file an administrator sees, personal details masked.
+#: chars per material file shown to admin (PII masked)
 _PREVIEW_CHARS = 1500
 
 
 @router.get("/admin/publications/{publication_id}/review")
 async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
-    """What an administrator decides on: the version that would answer people without an
-    account — its instructions, contact line, checks, tools, model and material, with the
-    personal details the material holds — the bot's settings and limits, and its owner."""
+    """Review payload: anonymous-facing version, material PII, settings, limits, owner."""
     pub = await _admin_pub(db, publication_id)
     candidate_id = pub.pending_version_id or pub.active_version_id
     version = await db.get(PublicationVersion, candidate_id) if candidate_id else None
@@ -1500,13 +1441,12 @@ async def admin_review(publication_id: str, admin: AdminUser, db: DbSession):
 @router.post("/admin/publications/{publication_id}/review")
 async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
                        admin: AdminUser, db: DbSession):
-    """Approves a request — the audience asked for and the version waiting, together — or
-    refuses it with a reason the owner reads. The bot keeps what it had when refused."""
+    """Approve audience+version together, or refuse with owner-visible reason."""
     pub = await _admin_pub(db, publication_id)
     if pub.review_state != ReviewState.pending.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="nothing_to_review")
     now = utcnow()
-    # What was asked, on the record: an audience, channels, or a new version to check.
+    # recorded request kind
     asked = _request_kind(pub)
     if payload.decision == "approve":
         candidate_id = pub.pending_version_id or pub.active_version_id
@@ -1519,7 +1459,7 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
         if pub.requested_visibility:
             pub.visibility = pub.requested_visibility
         pub.requested_visibility = ""
-        # The channels asked for open with the audience; what it cannot carry stays shut.
+        # requested channels open with audience; uncarried stay shut
         if pub.requested_channels is not None:
             pub.channels = pub.requested_channels
         pub.channels = publishing.fit_channels(pub.channels, pub.visibility)
@@ -1549,14 +1489,13 @@ async def admin_decide(publication_id: str, payload: ReviewIn, request: Request,
 @router.post("/admin/publications/{publication_id}/withdraw")
 async def admin_withdraw(publication_id: str, payload: WithdrawIn, request: Request,
                          admin: AdminUser, db: DbSession):
-    """Closes the outside audience at once: members only again, with a reason the owner
-    reads. Visitors without an account lose the bot with their next request."""
+    """Close outside audience now (members only), with owner-visible reason."""
     pub = await _admin_pub(db, publication_id)
     reason = _reason(payload.reason)
     previous = pub.visibility
     pub.visibility = PublicationVisibility.internal.value
     pub.requested_visibility = ""
-    # Every channel goes with the outside audience: frames, the API and MCP stop at once.
+    # all channels close with outside audience
     pub.channels = None
     pub.requested_channels = None
     pub.review_state = ReviewState.none.value
@@ -1595,7 +1534,7 @@ async def admin_status(publication_id: str, payload: AdminStatusIn, request: Req
 
 def _reason(reason: str) -> str:
     reason = " ".join((reason or "").split())[:300]
-    # Words, not a key held down: 「ㅋㅋㅋㅋ」 or 「1234」 says nothing the owner can read.
+    # real words required, not key mashing
     if len(reason) < publishing.ADMIN_REASON_MIN \
             or len({ch for ch in reason if ch.isalpha()}) < 2:
         raise HTTPException(status_code=422,
@@ -1606,7 +1545,7 @@ def _reason(reason: str) -> str:
 @router.get("/admin/publications/{publication_id}/conversations")
 async def admin_conversations(publication_id: str, request: Request, admin: AdminUser,
                               db: DbSession, reason: str = Query("", max_length=300)):
-    """Every conversation of a bot, for an abuse review only: the reason is recorded."""
+    """All bot conversations for abuse review; reason recorded."""
     why = _reason(reason)
     pub = await db.get(Publication, publication_id)
     if pub is None:

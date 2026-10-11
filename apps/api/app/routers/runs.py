@@ -1,11 +1,4 @@
-"""Pipeline runs of a session: read them, and run one again from a stage (「이 단계부터 다시」).
-
-A run (`PipelineRun`) keeps the work bundle after each stage (`app.pipeline.runs`). A rerun
-restores the bundle as it stood before the chosen stage, adds the answers given with it as
-material, and runs that stage and every one after it again; the stages before it are not
-run and their records are carried over. The result is stored the way the turn stored it —
-a new version of the same artifact, a message, the bill — by the flow's own save stage.
-"""
+"""Session pipeline runs: read, and rerun from a stage (「이 단계부터 다시」)."""
 
 from __future__ import annotations
 
@@ -37,14 +30,14 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sessions", tags=["runs"])
 
-#: Flows whose runs keep snapshots and store their own result.
+#: flows whose runs keep snapshots and save their own result
 RERUNNABLE = ("write", "revise", "make", "compose")
 _MAX_ANSWER = 2000
 
 
 class RerunIn(Wire):
     from_stage: str = Field(min_length=1, max_length=80)
-    #: Answers to a gap card, by question id (`gap:<fact>`), merged as material.
+    #: gap-card answers by question id (`gap:<fact>`)
     answers: dict[str, str] | None = None
 
 
@@ -69,7 +62,7 @@ def _out(run: PipelineRun, *, evidence: bool) -> dict[str, Any]:
 async def _owned_run(db: DbSession, user: Any, session_id: str, run_id: str):
     session = await sessions._owned(db, user, session_id)
     run = await db.get(PipelineRun, run_id)
-    # Same answer for "missing" and "someone else's".
+    # same answer for missing and foreign
     if run is None or run.session_id != session.id or run.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="run_not_found")
     return session, run
@@ -94,8 +87,7 @@ async def get_run(session_id: str, run_id: str, user: CurrentUser, db: DbSession
 
 
 def answers_part(answers: dict[str, str], gaps: list[dict]) -> Part | None:
-    """The answers given with a rerun, as material the writer and the checks read:
-    「회의 일시: 10월 7일」 by the gap card's own labels."""
+    """Rerun answers as material, by gap-card labels."""
     asked = [{"id": f"{check_skills.GAP_PREFIX}{g.get('fact')}"} for g in gaps or []
              if isinstance(g, dict)]
     labels = {f"{check_skills.GAP_PREFIX}{g.get('fact')}": str(g.get("label") or "")
@@ -133,7 +125,7 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
                             else (SessionKind.report, SessionKind.slides)):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="run_not_rerunnable")
     if run.artifact_id and session.artifact_id and run.artifact_id != session.artifact_id:
-        # The document on screen is another one now; a rerun would land on it.
+        # on-screen document changed; rerun would land on it
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="run_not_current")
     if any(not signal.is_set() for signal in sessions._STOPPING.get(session.id, set())):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="session_busy")
@@ -158,7 +150,7 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"blocked_category:{hit}")
     if said and policy.pii_masking:
-        # Report and slides always mask, as a typed answer is masked on the card.
+        # report/slides always mask, like card answers
         answers = {k: governance.mask_legacy(v)[0] for k, v in answers.items()}
 
     await litellm_service.ensure_key(user)
@@ -167,7 +159,6 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
         await db.commit()
     _, api_key = await litellm_service.credentials_for(user)
     if composed:
-        # A user pipeline's run: its own steps, as they were when it ran.
         from app.routers import user_pipelines
 
         return StreamingResponse(
@@ -185,11 +176,10 @@ async def rerun(session_id: str, run_id: str, payload: RerunIn, user: CurrentUse
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="stage_not_rerunnable") from None
 
-    # A person's template the document is written in, loaded in this process for the rerun.
     await user_templates.load(db, user.id, [work.request.template_id])
     recorder = pipeline_runs.Recorder(run_id=uuid4().hex)
     recorder.pipeline, recorder.flow = run.pipeline, run.flow
-    # Only this pass's tokens are billed.
+    # bill this pass only
     work.usage = {k: 0 for k in work.usage} or {"inputTokens": 0, "outputTokens": 0}
     work.usage.setdefault("inputTokens", 0)
     work.usage.setdefault("outputTokens", 0)
@@ -241,7 +231,7 @@ async def _announced(stream, recorder: pipeline_runs.Recorder, parent: PipelineR
 async def _write_pass(work, pipe, recorder: pipeline_runs.Recorder, *, session_id: str,
                       user_id: str, start: str, carried: dict, attempts: dict,
                       parent: PipelineRun):
-    """A report's `write` flow from `start`, then what the stored report says."""
+    """Report `write` flow from `start`."""
     runner = Runner(pipe.stages("write"), name=f"{pipe.name}.write", recorder=recorder)
     runner.attempts = attempts
     recorder.begin(work, carried=carried)
@@ -255,7 +245,7 @@ async def _write_pass(work, pipe, recorder: pipeline_runs.Recorder, *, session_i
                 usage = {k: v for k, v in event.items() if k != "type"}
                 continue
             yield chat_service.sse(event)
-    except Exception as exc:  # noqa: BLE001 — the turn must still settle
+    except Exception as exc:  # noqa: BLE001 — turn must still settle
         log.exception("report rerun crashed for session %s", session_id)
         yield chat_service.sse(sessions._error_event("보고서를 만들지 못했습니다.", exc))
     finally:

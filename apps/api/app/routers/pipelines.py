@@ -1,13 +1,4 @@
-"""Read-only views of the pipelines and of what a run left on a document.
-
-- `GET /pipelines`, `GET /pipelines/{name}` — the pipeline files (`app/pipelines/*.toml`):
-  each flow's stages with their Korean label, kind and the check skills they run;
-- `GET /agents/{id}/pipeline` — the pipeline a workspace agent's turns run;
-- `GET /artifacts/{id}/marks` — the spans to highlight (`app.pipeline.marks`), found again
-  in the body as it stands now.
-
-Editing a pipeline is not offered here (phase 3).
-"""
+"""Read-only pipeline views and run marks on a document."""
 
 from __future__ import annotations
 
@@ -29,8 +20,7 @@ router = APIRouter(tags=["pipelines"])
 
 _FLOWS = ("pre", "plan", "write", "finish", "revise", "make")
 
-#: People's names for the built-in checks, judged checks and pre-pass steps a 진행 과정 설정
-#: names; a check skill package says its own name (SKILL.md `name`).
+#: display names for built-in/judged checks and pre-pass steps
 _CHECK_NAMES = {
     **process_settings.CHECKS, **process_settings.JUDGED,
     "proposal-rfp": "제안요청서 조건 읽기",
@@ -42,15 +32,14 @@ _CHECK_NAMES = {
 
 
 def check_name(key: str) -> str:
-    """A check's or pre-pass step's name as a person reads it; the id when none is known."""
+    """Check display name; id fallback."""
     package = skill_packages.package_for(key)
     return (package.name if package and package.name else "") or _CHECK_NAMES.get(key, key)
 
 
 def _stage_checks(name: str, process: process_settings.Process,
                   attached: tuple[str, ...]) -> list[str]:
-    """The checks a stage runs: check skills for the `check:` stages, the document's code and
-    judged checks for the stages that run them."""
+    """Checks a stage runs."""
     if name == "check:gaps":
         return check_skills.of_stage(attached, "pre")
     if name.startswith("check:"):
@@ -73,8 +62,7 @@ def _runs(name: str, stage: Any, process: process_settings.Process | None) -> bo
 
 def describe(pipe: registry.Pipeline, attached: tuple[str, ...] = (),
              process: process_settings.Process | None = None) -> dict[str, Any]:
-    """A pipeline's flows; with `process`, a document's: the optional stages it does not run
-    left out, and its calculations and checks by name."""
+    """Pipeline flows; with `process`, skipped optional stages dropped."""
     stages = registry.stages()
     shown = process or process_settings.DEFAULT
     flows = {}
@@ -125,8 +113,7 @@ async def get_pipeline(name: str, user: CurrentUser):
 
 def pipeline_for_agent(key: str | None, doc_format: str | None, surface: str | None
                        ) -> registry.Pipeline:
-    """The pipeline an agent's turns run: its bound format's, else the one naming the agent,
-    else the surface's default."""
+    """Agent's pipeline: bound format's, else agent-named, else surface default."""
     if doc_format:
         return registry.for_report(doc_format)
     if key:

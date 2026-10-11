@@ -1,8 +1,4 @@
-"""Service name and logo.
-
-The logo is a file on disk; settings hold only its name. Reading it needs no
-authentication: the sign-in screen renders it.
-"""
+"""Service name and logo; logo public (sign-in screen)."""
 
 from __future__ import annotations
 
@@ -21,7 +17,7 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["branding"])
 
-#: No SVG: it can carry script, and the logo loads on every visitor's sign-in screen.
+#: no SVG: script risk on public sign-in screen
 ALLOWED = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -41,7 +37,7 @@ def _logo_path(filename: str) -> Path:
 
 @router.get("/branding/logo")
 async def get_logo():
-    """The current logo, or 404 (the UI then draws the default mark)."""
+    """Current logo or 404 (UI default mark)."""
     values = await settings_store.all_values()
     filename = values.get(settings_store.BRAND_LOGO, "")
     mime = values.get(settings_store.BRAND_LOGO_MIME, "")
@@ -51,7 +47,7 @@ async def get_logo():
         data = _logo_path(filename).read_bytes()
     except OSError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no_logo") from None
-    # The filename carries a content hash, so a long cache lifetime is safe.
+    # content-hashed filename → long cache safe
     return Response(
         content=data, media_type=mime, headers={"Cache-Control": "public, max-age=86400"}
     )
@@ -70,8 +66,7 @@ async def upload_logo(
     data = await file.read()
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일입니다.")
-    # The declared type is the client's word; the bytes must agree before the logo is
-    # served to every visitor.
+    # declared type untrusted; bytes must match
     if files.sniff(file.filename or "", data) != mime:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -83,7 +78,6 @@ async def upload_logo(
             detail=f"{MAX_BYTES // (1024 * 1024)}MB 이하만 올릴 수 있습니다.",
         )
 
-    # Content-hashed filename: replacing the logo changes the URL.
     previous = (await settings_store.all_values()).get(settings_store.BRAND_LOGO, "")
     digest = hashlib.sha256(data).hexdigest()[:12]
     filename = f"logo-{digest}{ALLOWED[mime]}"

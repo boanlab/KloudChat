@@ -1,10 +1,4 @@
-"""Authentication routes: signup, login, refresh, sessions, password reset.
-
-Signup lands in `pending` unless this is the first account or the signup mode
-is `open`. Login issues a short access JWT plus a rotating refresh cookie.
-Every `/refresh` revokes the presented token; reuse of a revoked token outside
-the grace window revokes the whole family.
-"""
+"""Auth routes; rotating refresh cookie, revoked-token reuse outside grace burns the family."""
 
 from __future__ import annotations
 
@@ -104,7 +98,7 @@ async def _issue_session(
     request: Request | None = None,
 ) -> SessionOut:
     raw, digest = new_refresh_token()
-    # ip/user_agent are recorded on every token in the family, not only the first.
+    # ip/user_agent on every family token
     db.add(
         RefreshToken(
             user_id=user.id,
@@ -123,7 +117,7 @@ async def _issue_session(
     return SessionOut(access_token=token, expires_in=expires_in, user=UserOut.of(user))
 
 
-#: Audit actions shown on a user's own access log.
+#: audit actions on the user's own access log
 _ACCOUNT_ACTIONS = (
     "login",
     "signup",
@@ -160,8 +154,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_unavailable")
 
     if db.bind is not None and db.bind.dialect.name == "postgresql":
-        # Two first signups at once must not both become the administrator: the
-        # count below is read under a transaction-scoped advisory lock.
+        # advisory lock: concurrent first signups can't both become admin
         await db.exec(text("SELECT pg_advisory_xact_lock(7331)"))
     is_first = await user_count(db) == 0
     policy = await settings_store.signup_policy()
@@ -172,8 +165,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
             status_code=status.HTTP_403_FORBIDDEN, detail="signup_domain_not_allowed"
         )
 
-    # First account: admin, active. Otherwise `open` activates unless email
-    # verification is on; everything else waits as pending.
+    # first account: active admin; `open` activates unless verification on; else pending
     verify = policy.verification and not is_first
     if is_first:
         role, user_status = UserRole.admin, UserStatus.active
@@ -192,7 +184,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     )
     db.add(user)
     try:
-        # The unique index, not the SELECT above, guards against a concurrent signup.
+        # unique index (not the SELECT) guards concurrent signup
         await db.flush()
     except IntegrityError:
         await db.rollback()
@@ -204,7 +196,7 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
         grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
         await provision_user(user)
         await starter.seed_designs(db, user.id)
-        # Only the administrator holds the shared catalogue.
+        # shared catalogue: admin only
         if user.role is UserRole.admin:
             await starter.seed_catalog(db, user.id)
         db.add(user)
@@ -225,12 +217,11 @@ async def signup(payload: SignupRequest, request: Request, response: Response, d
     return SignupResponse(user=UserOut.of(user), session=session)
 
 
-#: Lifetime of a mailed signup link.
 VERIFY_TTL_MINUTES = 24 * 60
 
 
 def _issue_verification(db: AsyncSession, user: User) -> str:
-    """Adds a ticket row and returns the token to mail. The caller commits."""
+    """Ticket row added; token to mail returned. Caller commits."""
     token = secrets.token_urlsafe(32)
     db.add(
         EmailVerification(
@@ -255,7 +246,7 @@ async def _mail_verification(user: User, token: str) -> None:
 
 
 async def _activate(db: AsyncSession, user: User) -> None:
-    """Activates an account: allowance, proxy user, starter designs."""
+    """Activation: allowance, proxy user, starter designs."""
     user.status = UserStatus.active
     grant_initial_allowance(db, user, await settings_store.default_monthly_credits())
     await provision_user(user)
@@ -265,7 +256,7 @@ async def _activate(db: AsyncSession, user: User) -> None:
 
 @router.post("/verify-email", response_model=EmailVerifyResponse)
 async def verify_email(payload: EmailVerify, request: Request, response: Response, db: DbSession):
-    """Confirms the address; `open` mode then activates and signs in."""
+    """Address confirmation; `open` mode then activates and signs in."""
     row = (
         await db.exec(
             select(EmailVerification).where(
@@ -304,7 +295,7 @@ async def verify_email(payload: EmailVerify, request: Request, response: Respons
 
 @router.post("/verify-email/resend", status_code=status.HTTP_204_NO_CONTENT)
 async def resend_verification(user: CurrentIdentity, request: Request, db: DbSession):
-    """Re-mails the verification link, at most once a minute."""
+    """Verification re-mail, max once a minute."""
     if user.email_verified_at is not None or user.status is not UserStatus.pending:
         return
     if not await settings_store.mail_enabled():
@@ -325,12 +316,7 @@ async def resend_verification(user: CurrentIdentity, request: Request, db: DbSes
 
 
 async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
-    """When the lockout on `email` ends, or None if not locked.
-
-    Locked when the last `login_max_failures` sign-ins all failed and the newest is inside
-    the lockout window. Attempts while locked are recorded as `locked`, not `failed`, so
-    they do not extend the lock.
-    """
+    """Lockout end or None; attempts while locked recorded as `locked` (no extension)."""
     limit = max(1, settings.login_max_failures)
     rows = (
         await db.exec(
@@ -357,7 +343,7 @@ async def _locked_until(db: AsyncSession, email: str) -> datetime | None:
 async def login(payload: LoginRequest, request: Request, response: Response, db: DbSession):
     email = payload.email.lower().strip()
 
-    # Lockout is checked before any password work.
+    # lockout before any password work
     if (until := await _locked_until(db, email)) is not None:
         await _audit(db, request, "login", None, target=email, detail="locked", severity="warn")
         await db.commit()
@@ -369,7 +355,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
 
     user = (await db.exec(select(User).where(User.email == email))).first()
 
-    # Verified even for a missing user so timing does not leak registration.
+    # hash even for missing user: no registration timing leak
     stored = user.password_hash if user else hash_password("no-such-user-placeholder")
     if not verify_password(payload.password, stored) or user is None:
         await _audit(db, request, "login", None, target=email, detail="failed", severity="warn")
@@ -390,7 +376,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     await _audit(db, request, "login", user.id, target=email)
     await db.commit()
 
-    # Pending users get a session too: the waiting screen polls with it.
+    # pending users get a session (waiting-screen polling)
     return await _issue_session(db, response, user, request=request)
 
 
@@ -402,8 +388,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
 async def refresh(request: Request, response: Response, db: DbSession):
     raw = request.cookies.get(settings.refresh_cookie_name)
     if not raw:
-        # Not an error: a first visit asks whether it is signed in, and a 401 here was
-        # logged in the browser console on every such load.
+        # 204, not 401: avoids console errors on first visit
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     digest = hash_refresh_token(raw)
@@ -414,7 +399,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
 
     user = await db.get(User, row.user_id)
 
-    # Checked before replay so a suspension is not logged as token theft.
+    # before replay check: suspension not logged as theft
     if user is None or user.status is UserStatus.suspended:
         await _revoke_family(db, row.family_id, RevokeReason.suspended)
         await db.commit()
@@ -423,7 +408,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
 
     if not row.is_usable():
         if row.revoked_reason is RevokeReason.rotated and _within_grace(row):
-            # Concurrent refresh from two tabs: the loser gets its own successor.
+            # concurrent two-tab refresh: loser gets own successor
             if user.status is UserStatus.active:
                 await starter.sync_catalog(db, user)
             return await _issue_session(
@@ -432,7 +417,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
 
         _clear_refresh_cookie(response)
         if row.revoked_reason is RevokeReason.rotated:
-            # Replay outside the grace window: a copy escaped, burn the family.
+            # replay outside grace: burn the family
             await _revoke_family(db, row.family_id, RevokeReason.reuse)
             await _audit(
                 db, request, "login", row.user_id, detail="refresh_reuse", severity="alert"
@@ -442,7 +427,7 @@ async def refresh(request: Request, response: Response, db: DbSession):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="session_ended")
 
     if user.status is UserStatus.active:
-        # Synced here as well as at login: a long-lived session never logs in again.
+        # also synced here: long-lived sessions never re-login
         await starter.sync_catalog(db, user)
     row.revoked_at = utcnow()
     row.revoked_reason = RevokeReason.rotated
@@ -464,18 +449,18 @@ async def logout(request: Request, response: Response, db: DbSession):
 
 @router.get("/me", response_model=UserOut)
 async def me(user: CurrentIdentity):
-    """Reachable while pending: the waiting screen polls it."""
+    """Reachable while pending (waiting-screen poll)."""
     return UserOut.of(user)
 
 
 @router.patch("/me", response_model=UserOut)
 async def update_me(payload: ProfilePatch, user: CurrentIdentity, db: DbSession):
-    """Profile fields. Email is not editable."""
+    """Profile fields; email not editable."""
     patch = payload.model_dump(exclude_unset=True)
-    # Preferences are merged, not replaced.
+    # preferences merged
     if (prefs := patch.pop("preferences", None)) is not None:
         if prefs.get("privacy_default_action") == "send_raw_external":
-            # Grants future egress authority: read the policy fresh, never from cache.
+            # future egress authority: policy read uncached
             try:
                 policy = await governance_service.current_for_egress()
             except governance_service.GovernanceUnavailable:
@@ -505,7 +490,7 @@ async def change_password(
     user: CurrentIdentity,
     db: DbSession,
 ):
-    """Requires the current password and ends every other session."""
+    """Current password required; other sessions ended."""
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="wrong_current_password")
 
@@ -528,11 +513,10 @@ async def change_password(
     await _audit(db, request, "password.change", user.id, target=user.email)
     await db.commit()
 
-    # This session survives with a fresh refresh cookie.
+    # this session kept with fresh refresh cookie
     await _issue_session(db, response, user, request=request)
 
 
-#: Lifetime of a mailed password-reset link.
 RESET_TTL_MINUTES = 30
 
 
@@ -547,7 +531,7 @@ async def my_access_log(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
 ):
-    """This account's own security events, newest first, failed logins included, paged."""
+    """Own security events, newest first, failed logins included, paged."""
     conds = (AuditEvent.actor_id == user.id, col(AuditEvent.action).in_(_ACCOUNT_ACTIONS))
     total = (await db.exec(select(func.count()).select_from(AuditEvent).where(*conds))).one()
     rows = (
@@ -565,7 +549,7 @@ async def my_access_log(
 
 
 def _current_digest(request: Request) -> str | None:
-    """Digest of the caller's refresh cookie, or None when the request carries none."""
+    """Caller's refresh-cookie digest or None."""
     raw = request.cookies.get(settings.refresh_cookie_name)
     return hash_refresh_token(raw) if raw else None
 
@@ -578,10 +562,7 @@ async def my_sessions(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
 ):
-    """Live sign-ins, one per refresh-token family, a page at a time.
-
-    The caller's own comes first on page 1, then the rest by latest activity.
-    """
+    """Live sign-ins per refresh family, paged; caller's own first on page 1."""
     now = utcnow()
     rows = (
         await db.exec(
@@ -595,7 +576,7 @@ async def my_sessions(
         )
     ).all()
 
-    # The grace window can briefly leave two live tokens in one family.
+    # grace window: two live tokens per family possible
     current_digest = _current_digest(request)
     by_family: dict[str, list[RefreshToken]] = {}
     for row in rows:
@@ -617,7 +598,7 @@ async def my_sessions(
     out: list[ActiveSessionOut] = []
     for family_id, tokens in window:
         newest = max(tokens, key=lambda t: t.created_at)
-        # Family start comes from the whole chain, revoked ancestors included.
+        # family start from whole chain incl. revoked
         started = (
             await db.exec(
                 select(RefreshToken.created_at)
@@ -626,7 +607,6 @@ async def my_sessions(
                 .limit(1)
             )
         ).first() or newest.created_at
-        # Newest token that recorded a user agent or IP.
         described = next(
             (
                 t
@@ -656,7 +636,7 @@ async def my_sessions(
 async def end_session(
     family_id: str, user: CurrentUser, request: Request, response: Response, db: DbSession
 ):
-    """Revokes one of the caller's own families; another user's family is a 404."""
+    """Own family revoke; others' → 404."""
     rows = (
         await db.exec(
             select(RefreshToken).where(
@@ -677,7 +657,7 @@ async def end_session(
 
 @router.post("/me/sessions/revoke-others", response_model=SessionRevokeResult)
 async def end_other_sessions(user: CurrentUser, request: Request, db: DbSession):
-    """Revokes every family except the caller's current one."""
+    """All families except the current one revoked."""
     now = utcnow()
     current_digest = _current_digest(request)
     keep = None
@@ -708,8 +688,8 @@ async def end_other_sessions(user: CurrentUser, request: Request, db: DbSession)
 
 @router.get("/config")
 async def auth_config(db: DbSession):
-    """Unauthenticated instance capabilities for the sign-in and signup screens."""
-    # Display hint only; the authorizing endpoints re-read the policy uncached.
+    """Public instance capabilities for sign-in/signup screens."""
+    # display hint only; authorizing endpoints read uncached
     policy = await governance_service.current()
     signup = await settings_store.signup_policy()
     return {
@@ -728,9 +708,7 @@ async def auth_config(db: DbSession):
             "allowUserRawExternal": (policy.allow_user_raw_external and not policy.pii_masking),
         },
         "idleTimeoutMinutes": policy.idle_timeout_minutes,
-        # The rule every password form enforces, so the hints say what the server checks.
         "password": {"minLength": PASSWORD_MIN_LENGTH},
-        # How many wrong passwords in a row lock an address, and for how long.
         "login": {
             "maxFailures": max(1, settings.login_max_failures),
             "lockoutMinutes": settings.login_lockout_min,
@@ -740,7 +718,7 @@ async def auth_config(db: DbSession):
 
 @router.post("/password/forgot", status_code=status.HTTP_204_NO_CONTENT)
 async def forgot_password(payload: PasswordForgot, request: Request, db: DbSession):
-    """Mails a reset link. Always 204 so the response cannot reveal whether an account exists."""
+    """Reset link mail; always 204 (no account existence leak)."""
     email = payload.email.strip().lower()
     user = (await db.exec(select(User).where(User.email == email))).first()
 
@@ -779,7 +757,7 @@ async def forgot_password(payload: PasswordForgot, request: Request, db: DbSessi
 async def reset_password(
     payload: PasswordReset, request: Request, response: Response, db: DbSession
 ):
-    """Sets a new password from a mailed ticket and ends every session."""
+    """Password from mailed ticket; all sessions ended."""
     row = (
         await db.exec(
             select(PasswordResetRow).where(
@@ -803,7 +781,7 @@ async def reset_password(
     row.used_at = utcnow()
     db.add(row)
 
-    # Spend every outstanding ticket, not just this one.
+    # all outstanding tickets spent
     others = (
         await db.exec(
             select(PasswordResetRow).where(
@@ -831,12 +809,12 @@ async def reset_password(
     await _audit(db, request, "password.reset", user.id, target=user.email)
     await db.commit()
 
-    # Signed in on the spot: holding the address was just proved.
+    # signed in: address ownership just proved
     await _issue_session(db, response, user, request=request)
 
 
 def _within_grace(row: RefreshToken) -> bool:
-    """True when the token was rotated within `refresh_grace_sec` (a concurrent refresh)."""
+    """Rotated within `refresh_grace_sec` (concurrent refresh)."""
     if row.revoked_at is None:
         return False
     return (utcnow() - row.revoked_at).total_seconds() <= settings.refresh_grace_sec

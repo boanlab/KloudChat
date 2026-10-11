@@ -1,19 +1,4 @@
-"""「문의·신고」: people report a fault or ask for a feature; administrators work the queue.
-
-People (their own reports only):
-- `GET /issues/session-info/{session_id}` — what the form says about the session it can attach;
-- `POST /issues` — a report; with `shareSession` the session is copied into it, read-only
-  (`services.issue_snapshot`); a strict-local session also needs `confirmInternal`;
-- `GET /issues`, `GET /issues/unread`, `GET /issues/{id}`, `POST /issues/{id}/read`,
-  `POST /issues/{id}/replies`, `GET /issues/{id}/screenshot`.
-
-Administrators:
-- `GET /admin/issues` — filtered by kind, status, period, reporter, text, assignee;
-- `GET /admin/issues/{id}`, `PATCH /admin/issues/{id}` (status, hold reason, assignee),
-  `POST /admin/issues/{id}/replies`;
-- `GET /admin/issues/{id}/snapshot` — the shared session; every open is an audit event;
-- `GET /admin/issues/{id}/files/{index}` — a file copied with the snapshot.
-"""
+"""「문의·신고」: user reports (own only) and admin queue; snapshot opens audited."""
 
 from __future__ import annotations
 
@@ -46,16 +31,16 @@ router = APIRouter(tags=["issues"])
 API_VERSION = "0.1.0"
 _MAX_BODY = 4000
 _MAX_REPLY = 2000
-#: Screenshot: raster pictures only, by their bytes.
+#: raster only, by bytes
 SCREENSHOT_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024
-#: Per reporter: reports in a short and a long window, replies in the short one.
+#: per reporter: reports short+long window, replies short
 RATE_WINDOW = timedelta(minutes=10)
 RATE_REPORTS = 5
 RATE_DAY_REPORTS = 30
 RATE_REPLIES = 20
 
-#: Status workflow; on hold needs a reason. A resolved report can be opened again.
+#: status workflow; on_hold needs reason; resolved reopenable
 TRANSITIONS: dict[str, frozenset[str]] = {
     IssueStatus.received: frozenset({IssueStatus.checking, IssueStatus.resolved,
                                      IssueStatus.on_hold}),
@@ -69,13 +54,13 @@ class IssueIn(Wire):
     kind: IssueKind = IssueKind.bug
     body: str = Field(min_length=1, max_length=_MAX_BODY)
     session_id: str | None = Field(default=None, max_length=64)
-    #: 「이 세션을 관리자에게 공유합니다」. Unticked: no session content is attached.
+    #: unticked → no session content attached
     share_session: bool = False
-    #: The extra confirmation for a session that ran on the strict-local route.
+    #: extra confirmation for strict-local sessions
     confirm_internal: bool = False
     message_id: str | None = Field(default=None, max_length=64)
     artifact_id: str | None = Field(default=None, max_length=64)
-    #: A picture uploaded through `POST /files`; it moves into the report.
+    #: `POST /files` upload, moved into the report
     screenshot_file_id: str | None = Field(default=None, max_length=64)
     client: dict[str, Any] | None = None
 
@@ -87,7 +72,7 @@ class ReplyIn(Wire):
 class IssuePatch(Wire):
     status: IssueStatus | None = None
     hold_reason: str | None = Field(default=None, max_length=400)
-    #: An administrator's id; empty string clears it.
+    #: admin id; "" clears
     assignee_id: str | None = Field(default=None, max_length=64)
 
 
@@ -151,7 +136,7 @@ async def _replies(db: DbSession, report_id: str) -> list[IssueReply]:
 
 async def _own_report(db: DbSession, user: User, report_id: str) -> IssueReport:
     row = await db.get(IssueReport, report_id)
-    # Same answer for "missing" and "someone else's".
+    # same answer for missing and foreign
     if row is None or row.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="issue_not_found")
     return row
@@ -189,12 +174,9 @@ async def _rate_limit_replies(db: DbSession, user: User) -> None:
                             detail="issue_rate_limited")
 
 
-# ── people ─────────────────────────────────────────────────────────────
-
-
 @router.get("/issues/session-info/{session_id}")
 async def session_info(session_id: str, user: CurrentUser, db: DbSession):
-    """What the form shows about the session it may attach; nothing is stored."""
+    """Form preview of the attachable session; nothing stored."""
     session = await _owned_session(db, user, session_id)
     loaded = await issue_snapshot.load(db, session)
     return {
@@ -284,7 +266,7 @@ async def create_issue(payload: IssueIn, user: CurrentUser, db: DbSession):
                 db, user, payload.screenshot_file_id, report_id)
             copied.append(key)
             row.screenshot_key, row.screenshot_name, row.screenshot_mime = key, name, mime
-            # Uploaded for this report alone: it leaves the file box once copied.
+            # report-only upload: removed from file box after copy
             if not (stored.project_id or stored.session_id or stored.agent_id):
                 loose_upload = stored
         db.add(row)
@@ -314,7 +296,7 @@ async def list_issues(user: CurrentUser, db: DbSession):
 
 @router.get("/issues/unread")
 async def unread_issues(user: CurrentUser, db: DbSession):
-    """How many of my reports have an administrator's reply or status change I have not read."""
+    """Count of my reports with unread admin activity."""
     count = (await db.exec(
         select(func.count()).where(
             IssueReport.user_id == user.id,
@@ -379,9 +361,6 @@ async def my_screenshot(report_id: str, user: CurrentViewer, db: DbSession):
     return _image_response(await _own_report(db, user, report_id))
 
 
-# ── administrators ─────────────────────────────────────────────────────
-
-
 def _like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -428,7 +407,7 @@ async def admin_list(
     page: int = Query(1, ge=1),
     size: int = Query(30, ge=1, le=100),
 ):
-    """Newest first. `until` is exclusive; `assignee` is an id, `me` or `none`."""
+    """Newest first; `until` exclusive; `assignee` = id, `me` or `none`."""
     conds = []
     if kind and kind in IssueKind.__members__:
         conds.append(IssueReport.kind == kind)
@@ -529,7 +508,7 @@ async def admin_update(report_id: str, payload: IssuePatch, request: Request, ad
                                 detail="hold_reason_required")
         row.status = payload.status.value
         row.hold_reason = reason if payload.status is IssueStatus.on_hold else ""
-        # The change shows in the reporter's thread, with the reason when on hold.
+        # change shown in reporter's thread (with hold reason)
         db.add(IssueReply(report_id=row.id, author_id=admin.id, author_role="admin",
                           author_name=admin.name, body=row.hold_reason, status=row.status))
         row.admin_updated_at = now
@@ -561,7 +540,7 @@ async def reply_as_admin(report_id: str, payload: ReplyIn, admin: AdminUser, db:
 
 
 def _public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """The snapshot as the screen reads it: storage keys become flags."""
+    """Snapshot for display: storage keys → flags."""
     out = dict(snapshot)
     out["files"] = [
         {k: v for k, v in f.items() if k != "key"} | {"copied": bool(f.get("key"))}
@@ -576,7 +555,7 @@ def _public_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/admin/issues/{report_id}/snapshot")
 async def admin_snapshot(report_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """The shared session, read-only. Each open is written to the audit trail."""
+    """Shared session, read-only; each open audited."""
     row = await _admin_report(db, report_id)
     if not row.session_shared or not isinstance(row.snapshot, dict):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="snapshot_not_shared")
@@ -595,7 +574,7 @@ async def admin_screenshot(report_id: str, admin: AdminUser, db: DbSession):
 @router.get("/admin/issues/{report_id}/files/{index}")
 async def admin_snapshot_file(report_id: str, index: int, admin: AdminUser, db: DbSession,
                               artifact: bool = False):
-    """A blob copied with the snapshot: `files[index]`, or `artifacts[index]` with `artifact`."""
+    """Snapshot blob: `files[index]`, or `artifacts[index]` with `artifact`."""
     row = await _admin_report(db, report_id)
     snapshot = row.snapshot if row.session_shared and isinstance(row.snapshot, dict) else {}
     entries = snapshot.get("artifacts" if artifact else "files") or []

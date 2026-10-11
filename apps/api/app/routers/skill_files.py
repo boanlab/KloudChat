@@ -1,11 +1,4 @@
-"""Skills in and out as files: `POST /skills/import` reads SKILL.md, .zip or .skill
-uploads (a dry run shows what would be made), `GET /skills/{id}/export` writes one back;
-`/admin/skills` is the administrators' queue of skills with scripts asking to be shared.
-
-Imported skills are rows like any other personal skill. Nothing is written to disk: their
-Python scripts are kept in the row and run only in the code sandbox; see
-`services/skill_import.py`.
-"""
+"""Skill import/export as files and admin queue for script-bearing shares; scripts sandbox-only."""
 
 from __future__ import annotations
 
@@ -32,11 +25,11 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["workspace"])
 
-#: Import calls (dry runs included) per account per window.
+#: imports (dry runs too) per account per window
 RATE_LIMIT = 30
 RATE_WINDOW_SEC = 600
 _calls: dict[str, deque[float]] = defaultdict(deque)
-#: Multipart overhead allowed on top of the files themselves.
+#: multipart overhead allowance
 _MULTIPART_SLACK = 64 * 1024
 
 
@@ -74,9 +67,8 @@ class ImportPreviewOut(Wire):
     kept: list[str] = Field(default_factory=list)
     excluded: list[ExcludedOut] = Field(default_factory=list)
     findings: list[FindingOut] = Field(default_factory=list)
-    #: What the server would run for it (`SkillServer` fields), when anything.
     server: dict | None = None
-    #: Its own scripts: kept, run only in the sandbox.
+    #: kept; sandbox-only
     scripts: list[ScriptPreviewOut] = Field(default_factory=list)
 
     @classmethod
@@ -119,7 +111,7 @@ def _server_wire(fields: dict | None) -> dict | None:
 class ImportOut(Wire):
     dry_run: bool
     items: list[ImportPreviewOut]
-    #: Rows written; empty on a dry run.
+    #: empty on dry run
     created: list[SkillOut] = Field(default_factory=list)
 
 
@@ -146,8 +138,7 @@ async def import_skills(
     dry_run: bool = Query(False, alias="dryRun"),
     draft: bool = Query(False),
 ):
-    """Reads each upload into a skill. With `dryRun` nothing is written; otherwise every
-    file must pass (no block-level finding) and each becomes one personal skill."""
+    """Upload → skills; all-or-nothing on block findings; `dryRun` writes nothing."""
     limit = skill_import.MAX_FILES * skill_import.MAX_UPLOAD_BYTES + _MULTIPART_SLACK
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > limit:
@@ -163,7 +154,7 @@ async def import_skills(
     known = {str(row["name"]) for row in await tool_registry.tool_catalog(db, user)}
     previews: list[skill_import.Preview] = []
     for upload in files:
-        # One byte past the cap is enough to know it is too big.
+        # cap+1 bytes detects oversize
         data = await upload.read(skill_import.MAX_UPLOAD_BYTES + 1)
         previews.append(skill_import.inspect(upload.filename or "SKILL.md", data, known))
     items = [ImportPreviewOut.of(p) for p in previews]
@@ -222,7 +213,7 @@ async def import_skills(
 
 @router.get("/skills/{skill_id}/export")
 async def export_skill(skill_id: str, user: CurrentUser, db: DbSession):
-    """The caller's own skill as SKILL.md; anyone else's is not found."""
+    """Own skill as SKILL.md; others 404."""
     skill = await _own(db, Skill, "owner_id", user, skill_id)
     text = skill_import.to_skill_md(
         name=skill.name,
@@ -245,9 +236,6 @@ async def export_skill(skill_id: str, user: CurrentUser, db: DbSession):
     )
 
 
-# ── sharing a skill with scripts ────────────────────────────────────────
-
-
 class SkillReviewOut(Wire):
     skill: SkillOut
     owner_name: str = ""
@@ -262,8 +250,7 @@ _REVIEWS = ("pending", "approved", "rejected")
 
 @router.get("/admin/skills", response_model=list[SkillReviewOut])
 async def admin_skills(admin: AdminUser, db: DbSession, review: str = "pending"):
-    """Skills with scripts asking to be shared (or already decided), newest first. The
-    administrator reads the scripts here before anyone else can take a copy."""
+    """Script-bearing skills awaiting share review, newest first."""
     query = select(Skill).where(col(Skill.script_files).is_not(None)).order_by(
         col(Skill.updated_at).desc())
     if review in _REVIEWS:

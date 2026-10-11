@@ -1,11 +1,4 @@
-"""Reverse proxy from external OpenAI/Anthropic-compatible clients to LiteLLM.
-
-    OPENAI_BASE_URL=https://<this-server>/llm/v1
-    ANTHROPIC_BASE_URL=https://<this-server>/llm
-
-Authentication is by key, not session: the Authorization header is forwarded
-unchanged and LiteLLM validates it. The master key is never attached.
-"""
+"""External OpenAI/Anthropic clients → LiteLLM proxy; client key forwarded, never master."""
 
 from __future__ import annotations
 
@@ -23,12 +16,11 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
-#: Headers not forwarded: hop-by-hop, or ones httpx has to regenerate itself.
+#: hop-by-hop or httpx-regenerated headers
 _DROP_REQUEST = {"host", "content-length", "connection", "accept-encoding"}
 _DROP_RESPONSE = {"content-length", "content-encoding", "transfer-encoding", "connection"}
 
-#: The model endpoints external tools use, and nothing else: LiteLLM's admin UI, key/user
-#: management, spend and pass-through routes are never reachable from outside.
+#: model endpoints only; LiteLLM admin/key/spend/pass-through routes unreachable
 _ALLOWED = re.compile(
     r"(?:v1/)?(?:chat/completions|completions|responses(?:/[A-Za-z0-9_-]{1,80}){0,2}"
     r"|messages(?:/count_tokens)?|embeddings|rerank"
@@ -36,18 +28,16 @@ _ALLOWED = re.compile(
 )
 _ALLOWED_METHODS = {"GET", "POST", "DELETE"}
 
-#: Audio is transcribed only by the internal Whisper; no audio part goes to a model
-#: through this door (a model behind LiteLLM may be external). Checked on the raw body
-#: so no JSON shape (chat, responses, messages) slips past.
+#: no audio to models (may be external); raw-body check covers every JSON shape
 _AUDIO_PARTS = (b'"input_audio"', b'"audio_url"', b'"type":"audio"', b'"type": "audio"')
 _MAX_BODY = 32 * 1024 * 1024
 
-#: Same as the chat timeout: a coding agent's turn is long.
+#: long coding-agent turns
 _TIMEOUT = httpx.Timeout(settings.chat_timeout_sec, connect=10.0)
 
 
 def _one_line(value: str) -> str:
-    """Caller-controlled text, flattened before it reaches a log line."""
+    """Caller text flattened for logs."""
     return value.replace("\r", " ").replace("\n", " ")[:200]
 
 

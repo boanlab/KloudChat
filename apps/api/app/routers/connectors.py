@@ -1,5 +1,4 @@
-"""MCP connectors: install from the catalogue administrators keep, sync tools from the
-server, toggle per tool. `admin_router`: the catalogue itself (관리 › 커넥터 카탈로그)."""
+"""MCP connectors: catalogue install, tool sync, per-tool toggles; `admin_router` = catalogue."""
 
 from __future__ import annotations
 
@@ -57,8 +56,7 @@ async def _out(db: DbSession, connector: Connector) -> ConnectorOut:
 
 @router.get("/catalog")
 async def get_catalog(user: CurrentUser, db: DbSession):
-    """Installable servers (the administrators' catalogue), with the ones this user already
-    has marked. An unlisted entry is left out unless this user installed it."""
+    """Admin catalogue with installed marks; unlisted entries only if installed."""
     installed = {
         c.slug
         for c in (await db.exec(select(Connector).where(Connector.owner_id == user.id))).all()
@@ -74,7 +72,6 @@ async def get_catalog(user: CurrentUser, db: DbSession):
             "kinds": entry.get("kinds", ["chat"]),
             "official": True,
             "installed": entry["slug"] in installed,
-            # Credentials the install dialog must collect, with their labels.
             "requiredEnv": [
                 {
                     "key": field["key"],
@@ -139,8 +136,7 @@ async def install(
         category=entry["category"],
         transport=Transport(entry["transport"]),
         endpoint=entry["endpoint"],
-        # A supplied credential wins over a catalogue placeholder of the same name.
-        # The entry's values are stored sealed; opened, then sealed again with the person's.
+        # supplied credential over catalogue placeholder; unsealed then resealed with user's
         env=settings_store.encrypt_env({**settings_store.decrypt_env(entry.get("env")),
                                         **supplied}),
         auth_type=entry.get("auth", "none"),
@@ -150,7 +146,7 @@ async def install(
     db.add(connector)
     await db.commit()
     await db.refresh(connector)
-    # Best-effort: an unreachable server is still installed, with the error on the row.
+    # best-effort: unreachable server still installed, error on row
     await _sync(db, user, connector)
     return await _out(db, connector)
 
@@ -158,8 +154,7 @@ async def install(
 @router.post("", response_model=ConnectorOut, status_code=status.HTTP_201_CREATED)
 async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
     if payload.transport is Transport.stdio and user.role is not UserRole.admin:
-        # A stdio connector is a command the API server runs. Only an administrator
-        # may put one there; everyone else connects over HTTP or SSE.
+        # stdio = command on API server → admin only
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="stdio_requires_admin")
     connector = Connector(
         owner_id=user.id,
@@ -182,17 +177,14 @@ async def add_custom(payload: ConnectorIn, user: CurrentUser, db: DbSession):
 
 
 async def _sync(db: DbSession, user: User, connector: Connector) -> None:
-    """Reconciles stored tools with what the server exposes.
-
-    Existing `enabled` flags survive: a sync must not re-grant a revoked permission.
-    """
+    """Stored tools reconciled with server; `enabled` flags kept (no re-grant of revoked)."""
     env = mcp.substitute(
         await catalog.connector_env(connector), user_id=user.id, user_email=user.email
     )
     try:
         endpoint = await catalog.effective_endpoint(connector)
         discovered = await mcp.list_tools(connector.transport.value, endpoint, env)
-    except Exception as exc:  # noqa: BLE001 — a dead server is a status, not a 500
+    except Exception as exc:  # noqa: BLE001 — dead server is a status, not a 500
         log.info("connector %s sync failed: %s", connector.slug, exc)
         connector.status = ConnectorStatus.error
         connector.error = str(exc)[:500]
@@ -218,7 +210,7 @@ async def _sync(db: DbSession, user: User, connector: Connector) -> None:
                     description=spec.get("description") or "",
                     parameters=spec.get("inputSchema") or {"type": "object", "properties": {}},
                     read_only=read_only,
-                    # Write tools start off.
+                    # write tools start off
                     enabled=read_only,
                 )
             )
@@ -276,7 +268,7 @@ async def sync(connector_id: str, user: CurrentUser, db: DbSession):
 async def patch(connector_id: str, payload: ConnectorPatch, user: CurrentUser, db: DbSession):
     connector = await _own(db, user, connector_id)
     patch_fields = payload.model_dump(exclude_unset=True)
-    # Merged, not replaced, so a one-field rotation keeps the catalogue defaults.
+    # env merged, not replaced: keeps catalogue defaults
     if (env := patch_fields.pop("env", None)) is not None:
         connector.env = {**(connector.env or {}), **settings_store.encrypt_env(env)}
     for field, value in patch_fields.items():
@@ -337,8 +329,6 @@ async def uninstall(connector_id: str, user: CurrentUser, db: DbSession):
     await db.commit()
 
 
-# ── the catalogue, kept by administrators ─────────────────────────────────
-
 admin_router = APIRouter(prefix="/admin/connector-catalog", tags=["connectors"])
 
 
@@ -349,14 +339,14 @@ class CatalogEntryIn(Wire):
     category: str = Field(default="", max_length=30)
     transport: str = Field(max_length=10)
     endpoint: str = Field(min_length=1, max_length=500)
-    #: A value of `null` keeps the stored one (the form never sees stored values).
+    #: null keeps stored value (form never sees it)
     env: dict[str, str | None] = Field(default_factory=dict)
     required_env: list[dict[str, Any]] = Field(default_factory=list, max_length=8)
     tools_key_var: str = Field(default="", max_length=60)
     tools_key_feature: str = Field(default="", max_length=20)
     kinds: list[str] = Field(default_factory=lambda: ["chat"], max_length=3)
     enabled: bool = True
-    #: Shown in the members' catalogue; False keeps it installable and working, not offered.
+    #: False = installable but not offered
     listed: bool = True
     position: int = Field(default=0, ge=0, le=999)
 
@@ -382,7 +372,7 @@ async def _admin_list(db: DbSession) -> list[dict[str, Any]]:
 
 @admin_router.get("")
 async def admin_catalog(admin: AdminUser, db: DbSession):
-    """Every entry, disabled ones too; env values only as their keys (placeholders shown)."""
+    """All entries incl. disabled; env keys only."""
     return {"entries": await _admin_list(db), "kinds": list(catalog.KINDS),
             "transports": list(catalog.TRANSPORTS),
             "features": list(catalog.tools_gateway.FEATURES),
@@ -411,7 +401,7 @@ async def admin_edit_entry(entry_id: str, payload: CatalogEntryIn, admin: AdminU
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")
     fields = _fields(payload, previous=dict(row.env or {}))
     if fields["slug"] != row.slug:
-        # Installed connectors find their entry by slug: it stays.
+        # installed connectors resolve by slug
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail="catalog_slug_fixed")
     for key, value in fields.items():
@@ -425,8 +415,7 @@ async def admin_edit_entry(entry_id: str, payload: CatalogEntryIn, admin: AdminU
 
 @admin_router.delete("/{entry_id}")
 async def admin_remove_entry(entry_id: str, admin: AdminUser, db: DbSession, request: Request):
-    """Out of the catalogue: nobody installs it again; installed copies keep their own row's
-    address and lose the gateway key."""
+    """Catalogue removal; installed copies keep address, lose gateway key."""
     row = await db.get(ConnectorCatalogEntry, entry_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalog_entry_missing")

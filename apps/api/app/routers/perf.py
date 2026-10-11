@@ -1,5 +1,4 @@
-"""Admin 「성능 모니터링」: verdicts, current figures, peaks and charts from
-`metric_samples` (`services/perf`), and a Prometheus export of the latest values."""
+"""Admin 「성능 모니터링」 views over `metric_samples` and Prometheus export."""
 
 from __future__ import annotations
 
@@ -137,7 +136,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
     recent = await store.recent(db, since=now - timedelta(minutes=45), names=rules.NAMES)
     verdicts = rules.evaluate(recent, now, thresholds(), last)
     cur = await store.latest(db, since=now - timedelta(minutes=5))
-    # Only the newest minute of each source: a renamed or stopped container drops out.
+    # newest minute per source: stopped/renamed containers drop out
     newest: dict[str, datetime] = {}
     for (source, _, _), (at, _) in cur.items():
         newest[source] = max(newest.get(source, at), at)
@@ -174,7 +173,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
             "gpu_temp",
         ],
     )
-    # One bucket over the whole range: its peak is the range's peak.
+    # single bucket → range peak
     whole = await store.series(
         db,
         start=start,
@@ -439,7 +438,7 @@ async def overview(admin: AdminUser, db: DbSession, range: str = RangeName):  # 
 
 
 def _fold(points: list[Point], counts: bool) -> tuple[float, float]:
-    """Several buckets into one: sum for counts, else mean of means; max of peaks."""
+    """Bucket fold: sum for counts else mean; max of peaks."""
     total = sum(p[1] for p in points)
     return (total if counts else total / len(points)), max(p[2] for p in points)
 
@@ -452,7 +451,7 @@ async def series(
     names: str = Query(..., max_length=500),
     source: str | None = Query(None, max_length=40),
 ):
-    """Any stored series by name, bucketed for the range: {source, name, subject, points}."""
+    """Named series bucketed for range."""
     now = datetime.now(UTC)
     seconds, step = RANGES[range]
     wanted = [n.strip() for n in names.split(",") if n.strip()][:20]
@@ -471,7 +470,7 @@ async def series(
 
 @router.get("/metrics", response_class=PlainTextResponse)
 async def export(admin: AdminUser, db: DbSession) -> str:
-    """The latest value of every series in the Prometheus text format (for Grafana)."""
+    """Latest values, Prometheus text format."""
     lines: list[str] = []
     for (source, name, subject), (at, value) in sorted(
         (await store.latest(db, since=datetime.now(UTC) - timedelta(minutes=5))).items()

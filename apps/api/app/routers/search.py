@@ -1,10 +1,4 @@
-"""Search over the caller's own conversations and results (⌘K, 대화 기록).
-
-Reads this database only: no model, no index service and no outside call sees the query or
-what it matches, so a strict-local conversation is searched where it already lives. Every
-query is bounded to the caller's rows (`user_id`), and a match is shown as a short window
-of its text, never the whole message.
-"""
+"""Search over the caller's own conversations and results; DB only, no model or outside call."""
 
 from __future__ import annotations
 
@@ -25,7 +19,7 @@ from app.services import search_text
 
 router = APIRouter(tags=["search"])
 
-#: Characters read around the first match before the excerpt is cut to size.
+#: chars read around the first match before cutting
 _WINDOW = 480
 
 
@@ -39,9 +33,8 @@ class SessionHit(Wire):
     kind: str
     title: str
     title_parts: list[Run]
-    #: Where the words were found: the conversation's name, or one of its messages.
     matched_in: Literal["title", "message"]
-    #: The latest message that holds every word, as marked runs; empty for a title match.
+    #: latest message holding every word; empty for title match
     snippet: list[Run]
     message_id: str | None = None
     role: str | None = None
@@ -67,21 +60,19 @@ class SearchOut(Wire):
     terms: list[str]
     sessions: list[SessionHit]
     artifacts: list[ArtifactHit]
-    #: More of that group past `offset + limit`; ask again with the next offset.
     sessions_more: bool = False
     artifacts_more: bool = False
-    #: Conversations matching across every page; only when asked (`count=true`, 대화 기록).
+    #: only when `count=true`
     sessions_total: int | None = None
 
 
 def _cased(word: str) -> bool:
-    """Whether letter case can differ: Hangul and digits have none, so a plain LIKE (several
-    times faster than ILIKE on PostgreSQL) finds the same rows."""
+    """Case-sensitive script? Hangul/digits → plain LIKE (faster than ILIKE)."""
     return word.lower() != word.upper()
 
 
 def _position(dialect: str, column: Any, needle: str) -> ColumnElement:
-    """1-based place of `needle` (lower-cased) in `column`, ignoring case; 0 when absent."""
+    """1-based case-insensitive position; 0 if absent."""
     haystack = func.lower(column) if _cased(needle) else column
     if dialect == "postgresql":
         return func.strpos(haystack, needle)
@@ -89,14 +80,14 @@ def _position(dialect: str, column: Any, needle: str) -> ColumnElement:
 
 
 def _window(dialect: str, column: Any, needle: str) -> tuple[ColumnElement, ColumnElement]:
-    """A bounded slice of `column` around `needle`, and where it starts (1-based)."""
+    """Bounded slice around `needle` and its 1-based start."""
     place = _position(dialect, column, needle)
     start = case((place > _WINDOW // 3, place - _WINDOW // 3), else_=1)
     return func.substr(column, start, _WINDOW), start
 
 
 def _has(column: Any, word: str) -> ColumnElement:
-    """`column` contains `word`, ignoring case; answered by a trigram index where one exists."""
+    """Case-insensitive contains; trigram index where present."""
     pattern = search_text.like_pattern(word)
     if _cased(word):
         return col(column).ilike(pattern, escape="\\")
@@ -128,11 +119,9 @@ async def search(
         return out
     dialect = db.get_bind().dialect.name
     if dialect == "postgresql":
-        # The words decide the plan: a trigram index helps a long word and is a full index
-        # read for a short one. A cached generic plan (asyncpg prepares every statement)
-        # cannot see the difference, so each search is planned for its own words.
+        # per-word plan: asyncpg generic plans miss trigram vs short-word difference
         await db.exec(text("SET LOCAL plan_cache_mode = force_custom_plan"))
-    # The excerpt is cut around the longest word: the rarest, so the likeliest to matter.
+    # excerpt anchor: longest (rarest) word
     anchor = max(words, key=len)
 
     if scope in ("all", "sessions"):
@@ -148,7 +137,7 @@ async def search(
     return out
 
 
-#: Below this length a word has no trigram, so no index can narrow the messages.
+#: shorter words have no trigram
 _TRIGRAM = 3
 
 _SESSION_COLUMNS = (
@@ -174,8 +163,7 @@ def _message_match(words: list[str]) -> ColumnElement:
 
 async def _sessions(db, user_id: str, dialect: str, words: list[str], anchor: str,
                     limit: int, offset: int):
-    """Conversations named with every word first, then those with a message holding every
-    word; each group newest first. `offset` counts across both."""
+    """Title matches first, then message matches; each newest first; shared `offset`."""
     in_title = _all(ChatSession.title, words)
     mine = owned_by(user_id)
     titled_total = int((await db.exec(select(func.count()).where(mine, in_title))).one())
@@ -197,7 +185,7 @@ async def _sessions(db, user_id: str, dialect: str, words: list[str], anchor: st
 
 
 async def _sessions_total(db, user_id: str, words: list[str]) -> int:
-    """How many conversations match: named with the words, or holding them in a message."""
+    """Matching conversation count (title or message)."""
     in_title = _all(ChatSession.title, words)
     mine = owned_by(user_id)
     titled = int((await db.exec(select(func.count()).where(mine, in_title))).one())
@@ -216,7 +204,7 @@ _NO_MESSAGE: dict[str, Any] = {
 
 async def _latest_messages(db, dialect: str, words: list[str], anchor: str,
                            session_ids: list[str]) -> dict[str, dict[str, Any]]:
-    """The newest message holding every word in each of a page of conversations."""
+    """Newest all-words message per conversation in a page."""
     if not session_ids:
         return {}
     rows = (await db.exec(
@@ -233,11 +221,9 @@ async def _latest_messages(db, dialect: str, words: list[str], anchor: str,
 
 async def _message_hits(db, dialect: str, words: list[str], anchor: str, mine: ColumnElement,
                         in_title: ColumnElement, skip: int, wanted: int) -> list[SimpleNamespace]:
-    """Conversations not named with the words whose messages hold them, newest first."""
+    """Non-title-matched conversations whose messages match, newest first."""
     if dialect == "postgresql" and all(len(w) < _TRIGRAM for w in words):
-        # Short words have no trigram, so every message would be read. Walk the person's
-        # conversations newest first instead and stop once the page is full: a common word
-        # fills it from the first few, a rare one costs no more than the full scan.
+        # short words: no trigram → walk conversations newest first, stop when page full
         latest = (
             select(*_message_columns(dialect, anchor))
             .where(col(Message.session_id) == col(ChatSession.id), _message_match(words))
@@ -249,13 +235,11 @@ async def _message_hits(db, dialect: str, words: list[str], anchor: str, mine: C
             select(*_SESSION_COLUMNS, latest)
             .join(latest, true())
             .where(mine, not_(in_title))
-            # The (user, updated_at) index gives the order; the id only breaks ties, which an
-            # incremental sort does without reading past the page.
+            # (user, updated_at) index order; id tie-break via incremental sort
             .order_by(col(ChatSession.updated_at).desc(), col(ChatSession.id))
         )
     else:
-        # The trigram index (or a scan, off PostgreSQL) finds the messages; the newest per
-        # conversation is kept.
+        # trigram index (or scan off PG); newest per conversation
         ranked = (
             select(
                 col(Message.session_id).label("session_id"),
@@ -283,7 +267,7 @@ async def _message_hits(db, dialect: str, words: list[str], anchor: str, mine: C
 async def _artifacts(db, user_id: str, dialect: str, words: list[str], anchor: str,
                      limit: int, offset: int):
     excerpt, start = _window(dialect, Artifact.search_text, anchor)
-    # Each word in the title or the text; a title holding all of them ranks first.
+    # title-all-words ranks first
     matches = and_(*[or_(_has(Artifact.title, w), _has(Artifact.search_text, w)) for w in words])
     in_title = _all(Artifact.title, words)
     query = (

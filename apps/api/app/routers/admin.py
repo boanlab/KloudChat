@@ -1,7 +1,4 @@
-"""Admin routes: signup approval, allowances, suspension, system settings.
-
-The LiteLLM user is provisioned at approval, not signup.
-"""
+"""Admin routes: signup approval, allowances, suspension, settings; LiteLLM user at approval."""
 
 from __future__ import annotations
 
@@ -70,7 +67,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-#: (feature key, UI label, settings_store key).
 _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("search", "웹 검색", settings_store.TOOLS_SEARCH_URL),
     ("fetch", "문서 가져오기", settings_store.TOOLS_FETCH_URL),
@@ -81,7 +77,7 @@ _TOOL_FEATURES: list[tuple[str, str, str]] = [
     ("ocr", "글자 읽기(OCR)", settings_store.TOOLS_OCR_URL),
 ]
 
-#: Per-feature probe path. Each service exposes its health check differently.
+#: per-feature health probe path
 _TOOL_PROBES: dict[str, str] = {
     "search": "/healthz",
     "fetch": "/health",
@@ -111,7 +107,7 @@ def _audit(
     changes: dict[str, list] | None = None,
     metadata: dict | None = None,
 ) -> None:
-    """One admin event; `changes` is `{field: [old, new]}` from `audit_service.diff`."""
+    """One admin audit event; `changes` = `{field: [old, new]}`."""
     extra = dict(metadata or {})
     if changes:
         extra["changes"] = changes
@@ -128,9 +124,7 @@ def _audit(
     )
 
 
-# ── system settings ────────────────────────────────────────────────────
-
-#: Settings screen section of each audited field, for the audit row's target.
+#: settings section per audited field (audit target)
 _SETTING_SECTION: dict[str, str] = {
     "baseUrl": "proxy",
     "masterKey": "proxy",
@@ -175,7 +169,7 @@ _SETTING_SECTION: dict[str, str] = {
 
 
 async def _ocr_settings(values: dict[str, str]) -> dict:
-    """The OCR section: what is stored, what is in force, and the models a page may go to."""
+    """OCR section: stored, in force, allowed page models."""
     in_force = await ocr.config()
     catalogue = await model_service.list_models()
     return {
@@ -183,7 +177,7 @@ async def _ocr_settings(values: dict[str, str]) -> dict:
         "mode": values.get(settings_store.OCR_MODE) or "both",
         "visionModel": values.get(settings_store.OCR_VISION_MODEL) or "",
         "maxPages": in_force.max_pages,
-        # Narrowed to the readers actually reachable; null when none is.
+        # narrowed to reachable readers; null if none
         "modeInForce": in_force.mode,
         "visionModelInForce": in_force.vision_model,
         "engineConfigured": bool(in_force.engine_url),
@@ -195,8 +189,7 @@ async def _ocr_settings(values: dict[str, str]) -> dict:
 
 
 async def _check_ocr(payload: SystemSettingsIn) -> None:
-    """Refuses OCR values that would be unsafe or meaningless before anything is written: a
-    page may only ever go to a strict-local model that declares vision."""
+    """OCR guard: pages only to strict-local vision models."""
     if payload.ocr_enabled is not None and payload.ocr_enabled.strip() not in ("", "0", "1"):
         raise HTTPException(status_code=422, detail="ocr_enabled_invalid")
     if payload.ocr_mode is not None and payload.ocr_mode.strip() not in ("", *ocr.MODES):
@@ -214,8 +207,7 @@ async def _check_ocr(payload: SystemSettingsIn) -> None:
             raise HTTPException(status_code=422, detail="ocr_vision_model_not_strict_local")
 
 
-#: Model-role fields of `SystemSettingsIn`: stored key, the choice list it must come from,
-#: and whether "" is allowed.
+#: (stored key, choice list, "" allowed) per model-role field
 _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_chat", settings_store.MODEL_CHAT, "chat", False),
     ("model_report", settings_store.MODEL_REPORT, "report", True),
@@ -228,15 +220,12 @@ _MODEL_ROLE_FIELDS: tuple[tuple[str, str, str, bool], ...] = (
     ("model_code_fallback", settings_store.MODEL_CODE_FALLBACK, "helper", True),
 )
 
-#: Most monthly credits a new account may be granted by default (≈ $10,000).
+#: default monthly credit cap (≈ $10,000)
 _MAX_DEFAULT_CREDITS = 1_000_000_000
 
 
 def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
-    """The models each role may name. Side work that reads the conversation (titles,
-    memories, the code that reads files) stays on models this instance runs: a self-hosted
-    one, or a `local/` one whose `strict-local/` twin the gateway serves (the gateway marks
-    `local/` hybrid; a strict-local turn runs the twin, or the turn's own model)."""
+    """Allowed models per role; conversation-reading side work stays on instance-run models."""
     models = catalogue.get("models") or []
     self_hosted = {
         m["id"] for m in models
@@ -276,7 +265,7 @@ def _model_choices(catalogue: dict) -> dict[str, list[dict]]:
 
 
 async def _model_role_settings() -> dict:
-    """The 모델 section: the choice in force for each job and what each may be."""
+    """모델 section: in-force choice and options per job."""
     roles = await settings_store.model_roles()
     return {
         "chat": roles.chat,
@@ -296,9 +285,7 @@ async def _model_role_settings() -> dict:
 
 
 async def _check_model_roles(payload: SystemSettingsIn) -> None:
-    """Refuses a model a job may not use before anything is written. The value already in
-    force is always accepted, so a section that is saved whole does not fail on a model the
-    gateway stopped serving."""
+    """Model-role guard; in-force value always accepted (no fail on retired models)."""
     wanted = [
         (field, key, role, optional, getattr(payload, field).strip())
         for field, key, role, optional in _MODEL_ROLE_FIELDS
@@ -340,7 +327,7 @@ async def _check_model_roles(payload: SystemSettingsIn) -> None:
 
 @router.get("/settings")
 async def get_settings(admin: AdminUser, db: DbSession):
-    """Current system settings with the source of each value; never the master key itself."""
+    """Settings with value sources; master key never returned."""
     values = await settings_store.all_values(force=True)
     smtp = await settings_store.smtp_config()
     signup = await settings_store.signup_policy()
@@ -385,7 +372,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
             "modeSource": signup.mode_source,
             "domains": signup.domains,
             "verifyEmail": signup.verify_email,
-            # False when verification is requested but no mail server is set.
+            # False if verification requested but no mail server
             "verificationActive": signup.verification,
         },
         "enabledKinds": await settings_store.enabled_kinds(),
@@ -413,7 +400,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
             "perUsd": settings.credits_per_usd,
             "budgetHeadroom": settings.litellm_budget_headroom,
         },
-        # Served by the proxy but without a price; withheld from users.
+        # served but unpriced: withheld from users
         "unpricedModels": [
             {"id": model_id, "provider": provider}
             for model_id, provider in sorted(model_service.unpriced().items())
@@ -425,7 +412,7 @@ async def get_settings(admin: AdminUser, db: DbSession):
 async def put_settings(
     payload: SystemSettingsIn, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Writes the supplied fields; omitted keeps the stored value, "" clears it."""
+    """Supplied fields written; omitted kept, "" clears."""
     await _check_ocr(payload)
     await _check_model_roles(payload)
     before_stored = await settings_store.stored(db)
@@ -481,7 +468,7 @@ async def put_settings(
             before[field] = before_stored.get(key, "")
             after[field] = value.strip()
 
-    # Only what actually moved; a screen saves its whole section.
+    # moved fields only; screens save whole sections
     changes = audit_service.diff(before, after)
     if changes:
         sections = sorted({_SETTING_SECTION.get(f, "other") for f in changes})
@@ -504,13 +491,13 @@ async def put_settings(
 
 @router.post("/settings/test")
 async def test_settings(admin: AdminUser):
-    """Probes the proxy with the settings currently in effect."""
+    """Proxy probe with settings in effect."""
     if not await litellm_service.health(quick=True):
         return {"ok": False, "detail": "연결하지 못했습니다. 주소와 마스터 키를 확인하세요."}
     try:
         entries = await litellm_service.model_info()
     except litellm_service.LiteLLMError as exc:
-        # Logged, not returned: the message carries the upstream URL.
+        # logged, not returned: message carries upstream URL
         log.warning("model listing failed during settings test: %s", exc)
         return {
             "ok": False,
@@ -521,9 +508,8 @@ async def test_settings(admin: AdminUser):
 
 @router.post("/settings/test-tool/{feature}")
 async def test_tool(feature: str, admin: AdminUser):
-    """Probes one tool backend."""
-    # Any status below 500 counts as reachable (an MCP endpoint answers GET with
-    # 405), except the gateway's 401 for a missing or wrong tools key.
+    """Single tool backend probe."""
+    # <500 = reachable (MCP GET → 405), except gateway 401 (tools key)
     if feature not in _TOOL_PROBES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_feature")
 
@@ -540,7 +526,6 @@ async def test_tool(feature: str, admin: AdminUser):
         return {"ok": False, "detail": "연결하지 못했습니다. 주소를 확인하세요."}
 
     if response.status_code == 401 and await tools_gateway.is_tools_url(url):
-        # The gateway refuses `/tools/*` without the shared key.
         detail = (
             "게이트웨이가 도구 키를 거부했습니다. 양쪽 TOOLS_GATEWAY_KEY가 같은지 확인하세요."
             if settings.tools_gateway_key
@@ -556,8 +541,8 @@ async def test_tool(feature: str, admin: AdminUser):
 
 @router.post("/settings/smtp-test")
 async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
-    """Sends one real message with the stored SMTP settings; defaults to the requesting admin."""
-    # A missing service address is reported after the send, not used to refuse it.
+    """Real test mail via stored SMTP; default recipient = requesting admin."""
+    # missing service address reported after send, not a refusal
     config = await settings_store.smtp_config()
     missing = [
         label
@@ -591,7 +576,6 @@ async def test_smtp(payload: SmtpTestRequest, admin: AdminUser):
 
 @router.get("/users", response_model=list[UserOut])
 async def list_users(admin: AdminUser, db: DbSession):
-    # Pending first.
     users = (await db.exec(select(User).order_by(User.created_at.desc()))).all()
     rank = {UserStatus.pending: 0, UserStatus.active: 1, UserStatus.suspended: 2}
     users.sort(key=lambda u: rank.get(u.status, 3))
@@ -613,7 +597,7 @@ async def approve(
         else (user.monthly_credits or await settings_store.default_monthly_credits())
     )
     user.status = UserStatus.active
-    # Approval counts as verification.
+    # approval counts as verification
     user.email_verified_at = user.email_verified_at or utcnow()
     grant_initial_allowance(db, user, allowance)
     await provision_user(user)
@@ -648,7 +632,7 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
     await litellm_service.set_key_blocked(user, True)
     db.add(user)
 
-    # Access tokens stay valid until expiry; refresh must stop now.
+    # access tokens live until expiry; refresh stops now
     tokens = (
         await db.exec(
             select(RefreshToken).where(
@@ -678,13 +662,13 @@ async def suspend(user_id: str, request: Request, admin: AdminUser, db: DbSessio
 
 @router.post("/users/{user_id}/reject", response_model=UserOut)
 async def reject(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Turns down a pending signup. Lands in `suspended`, keeping the email taken."""
+    """Pending signup rejection → `suspended` (email stays taken)."""
     user = await _load(db, user_id)
     if user.status is not UserStatus.pending:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="not_pending")
 
     user.status = UserStatus.suspended
-    # A key exists only if signup ran in `open` mode.
+    # key exists only after `open`-mode signup
     await litellm_service.revoke_key(user)
     db.add(user)
     _audit(
@@ -697,7 +681,7 @@ async def reject(user_id: str, request: Request, admin: AdminUser, db: DbSession
 
 @router.post("/users/{user_id}/reinstate", response_model=UserOut)
 async def reinstate(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Undo of suspend. Lands in `active`, not `pending`."""
+    """Suspend undo → `active`."""
     user = await _load(db, user_id)
     if user.status is not UserStatus.suspended:
         return UserOut.of(user)
@@ -752,7 +736,7 @@ async def set_role(
 async def update_user(
     user_id: str, payload: UpdateUserRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Corrects a name or address. An address already in use is refused."""
+    """Name/address fix; in-use address refused."""
     user = await _load(db, user_id)
     changes: list[str] = []
     before = {"name": user.name, "email": user.email}
@@ -787,7 +771,7 @@ async def update_user(
 async def reset_password(
     user_id: str, payload: ResetPasswordRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Sets a new password and ends every sign-in the account holds."""
+    """New password; all sign-ins ended."""
     user = await _load(db, user_id)
     user.password_hash = hash_password(payload.password)
     db.add(user)
@@ -800,7 +784,7 @@ async def reset_password(
 
 @router.get("/users/{user_id}/keys", response_model=AdminKeysOut)
 async def list_user_keys(user_id: str, admin: AdminUser, db: DbSession):
-    """Every key the account holds: KloudChat's own (preview only) and the live named keys."""
+    """All account keys: KloudChat's (preview only) and live named keys."""
     user = await _load(db, user_id)
     rows = (
         await db.exec(
@@ -823,7 +807,7 @@ async def list_user_keys(user_id: str, admin: AdminUser, db: DbSession):
 async def revoke_user_key(
     user_id: str, key_id: str, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Revokes a key the person issued: deleted on the proxy, kept as a revoked row."""
+    """User-issued key revoke: proxy delete, revoked row kept."""
     user = await _load(db, user_id)
     row = await db.get(ApiKey, key_id)
     if row is None or row.user_id != user.id or row.revoked_at is not None:
@@ -839,7 +823,7 @@ async def revoke_user_key(
 async def replace_litellm_key(
     user_id: str, payload: ReplaceKeyRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Binds a key the proxy already knows as the account's KloudChat key, revoking the old one."""
+    """Bind a proxy-known key as the account's key; old one revoked."""
     user = await _load(db, user_id)
     if not await litellm_service.health():
         raise HTTPException(
@@ -865,7 +849,7 @@ async def replace_litellm_key(
 
 @router.get("/models")
 async def catalogue(admin: AdminUser):
-    """The whole model catalogue, for restricting accounts: not narrowed to the caller."""
+    """Full catalogue, not caller-narrowed."""
     rows = (await model_service.list_models())["models"]
     return [
         {"id": m["id"], "label": m.get("label") or m["id"], "kinds": list(m.get("kinds") or [])}
@@ -875,15 +859,15 @@ async def catalogue(admin: AdminUser):
 
 @router.post("/users/{user_id}/litellm-key", response_model=UserOut)
 async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, db: DbSession):
-    """Issues a new virtual key and revokes the old one first."""
+    """New virtual key; old revoked first."""
     user = await _load(db, user_id)
-    # Full timeout, not the quick probe used by the settings screen.
+    # full timeout, not the quick probe
     if not await litellm_service.health():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="litellm_unavailable"
         )
 
-    # Revoke first so the old key is never left live on the proxy.
+    # revoke first: old key never left live
     await litellm_service.revoke_key(user)
     await litellm_service.ensure_user(user)
     await litellm_service.issue_key(user)
@@ -891,7 +875,7 @@ async def rotate_litellm_key(user_id: str, request: Request, admin: AdminUser, d
     if not user.litellm_key:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="key_issuance_failed")
     if user.status is UserStatus.suspended:
-        # A rotation must not re-enable a suspended account.
+        # rotation must not unblock a suspended account
         await litellm_service.set_key_blocked(user, True)
 
     db.add(user)
@@ -909,7 +893,7 @@ async def delete_user(
     db: DbSession,
     purge_files: bool = Query(True, alias="purgeFiles"),
 ):
-    """Removes an account and everything it owns; `purgeFiles=false` leaves files to the sweep."""
+    """Account and owned data removal; `purgeFiles=false` leaves files to the sweep."""
     user = await _load(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cannot_delete_self")
@@ -927,7 +911,7 @@ async def delete_user(
     await litellm_service.revoke_key(user)
     email = user.email
 
-    # Messages and jobs reference sessions; delete them first.
+    # messages/jobs reference sessions: delete first
     owned_sessions = (
         await db.exec(select(ChatSession).where(ChatSession.user_id == user.id))
     ).all()
@@ -978,7 +962,7 @@ async def delete_user(
     await db.delete(user)
     _audit(db, request, admin, "user.delete", email if not purge_files else f"{email} (파일 포함)")
     await db.commit()
-    # Only after the commit: rows must never outlive their bytes.
+    # after commit only: rows never outlive bytes
     if purge_files:
         removed = file_service.remove_user_files(user.id)
         if removed:
@@ -989,8 +973,8 @@ async def delete_user(
 async def set_allowed_models(
     user_id: str, payload: AllowedModelsRequest, request: Request, admin: AdminUser, db: DbSession
 ):
-    """Restricts an account to a list of models; empty means the whole catalogue."""
-    # Pushed to every key the account holds so the proxy enforces it too.
+    """Model allowlist; empty = whole catalogue."""
+    # pushed to every key for proxy enforcement
     user = await _load(db, user_id)
     old_models = list(user.allowed_models or [])
     user.allowed_models = list(payload.models)
@@ -1030,7 +1014,7 @@ async def set_credits(
     user = await _load(db, user_id)
     old_allowance = user.monthly_credits
     set_allowance(db, user, payload.monthly_credits)
-    # The proxy budget mirrors the allowance.
+    # proxy budget mirrors allowance
     await litellm_service.sync_budget(user)
     _audit(
         db,

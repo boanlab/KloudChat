@@ -13,7 +13,7 @@ router = APIRouter(tags=["models"])
 
 
 async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
-    """Catalogue filtered to the user's allowlist, plus the auto-routing availability block."""
+    """Allowlist-filtered catalogue plus auto-routing availability."""
     catalogue = (
         await model_service.list_models(force=True) if force else await model_service.list_models()
     )
@@ -32,7 +32,7 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             by_id.get(model_id), allowed_model_ids=allowed
         )
     ]
-    # Coarse check only; the per-turn decision is `quality_candidates`.
+    # coarse check; per-turn decision in `quality_candidates`
     quality_ids = [
         model_id
         for model_id in list(policy.adaptive_quality_model_ids or [])[:3]
@@ -57,7 +57,7 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
             "reason": reason,
             "classifierModelId": classifier_id if classifier_ok else None,
             "economyModelIds": economy_ids,
-            # The upgrade lane shares the classifier; only the candidate list is its own.
+            # upgrade lane: shared classifier, own candidate list
             "qualityAvailable": bool(
                 policy.adaptive_quality_enabled and classifier_ok and quality_ids
             ),
@@ -77,7 +77,7 @@ async def _catalogue_for_user(user: CurrentUser, *, force: bool = False):
 
 @router.get("/models")
 async def list_models(user: CurrentUser):
-    """Catalogue filtered to the allowlist (the proxy enforces it; this trims the picker)."""
+    """Allowlist-filtered catalogue (proxy enforces; this trims the picker)."""
     return await _catalogue_for_user(user)
 
 

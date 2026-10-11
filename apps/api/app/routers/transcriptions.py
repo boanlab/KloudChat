@@ -15,7 +15,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["transcriptions"])
 
-#: Model name the usage ledger records seconds under.
 STT_MODEL = "whisper"
 
 
@@ -25,15 +24,15 @@ async def transcribe(
     db: DbSession,
     file: UploadFile = File(...),
     language: str | None = Form(None),
-    #: Recent conversation text, as a vocabulary hint for Whisper.
+    #: vocabulary hint for Whisper
     prompt: str = Form("", max_length=500),
 ):
-    """Audio → text for the composer. The recording is not stored."""
+    """Audio → text; recording not stored."""
     if not await transcribe_service.available():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="dictation_unavailable"
         )
-    # Only `ko`/`en` pin the language; otherwise Whisper detects it.
+    # only ko/en pinned; else Whisper auto-detect
     pinned = language if language in transcribe_service.SPOKEN else None
     data = await file.read()
     try:

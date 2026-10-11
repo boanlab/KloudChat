@@ -1,5 +1,4 @@
-"""Video jobs: one poll task per job; jobs left running by a restart are
-recovered on the next list request via `provider_job_id`."""
+"""Video jobs: one poll task each; restart orphans recovered on list via `provider_job_id`."""
 
 from __future__ import annotations
 
@@ -29,13 +28,13 @@ log = logging.getLogger(__name__)
 router = APIRouter(tags=["jobs"])
 
 _POLL_SECONDS = 6.0
-#: Past this the job is marked failed rather than left on "running".
+#: then marked failed
 _MAX_WAIT_SECONDS = 900.0
 
 _CREDITS_PER_USD = settings.credits_per_usd
 
 _running: set[asyncio.Task] = set()
-#: Job ids with a loop behind them, so recovery does not start a second one.
+#: watched job ids; prevents duplicate recovery loops
 _watching: set[str] = set()
 
 
@@ -56,7 +55,7 @@ async def _finish(job_id: str, **fields) -> None:
         job = await db.get(Job, job_id)
         if job is None:
             return
-        # A settled job is final; two loops can exist for one clip after a restart.
+        # settled = final; post-restart duplicate loops possible
         if job.status in (JobStatus.succeeded, JobStatus.failed, JobStatus.canceled):
             return
         for key, value in fields.items():
@@ -66,7 +65,7 @@ async def _finish(job_id: str, **fields) -> None:
 
 
 async def _poll_until_done(job_id: str) -> None:
-    # Instance key: a worker outliving the request must not hold the caller's.
+    # instance key: worker outlives the request
     base_url, master_key = await settings_store.litellm_config()
     waited = 0.0
     while waited < _MAX_WAIT_SECONDS:
@@ -89,8 +88,7 @@ async def _poll_until_done(job_id: str) -> None:
         )
 
         if progress.status in ("failed", "error", "canceled"):
-            # Not charged: the upstream does not bill for an undelivered clip.
-            # The job row carries the failure; the prompt message is not marked.
+            # not charged (upstream doesn't bill undelivered); prompt message untouched
             await _finish(
                 job_id,
                 status=JobStatus.failed,
@@ -101,8 +99,7 @@ async def _poll_until_done(job_id: str) -> None:
             return
 
         if progress.status in ("completed", "succeeded", "success") and progress.url:
-            # One finisher per clip, across replicas: the first to flip the stage owns the
-            # download, the artifact and the charge; a cancel that landed first wins.
+            # one finisher across replicas: first stage flip owns it; earlier cancel wins
             async with SessionLocal() as db:
                 claimed = await db.exec(
                     update(Job)
@@ -128,7 +125,7 @@ async def _poll_until_done(job_id: str) -> None:
                 user = await db.get(User, user_id)
                 job = await db.get(Job, job_id)
                 if user is None or job is None or job.status != JobStatus.running:
-                    # Cancelled while downloading: nothing is stored or charged.
+                    # cancelled mid-download: nothing stored or charged
                     return
                 db.add(
                     StoredFile(
@@ -162,11 +159,10 @@ async def _poll_until_done(job_id: str) -> None:
                 await db.flush()
                 session = await db.get(ChatSession, session_id)
                 if session is not None:
-                    # Linked on delivery: before that there is no artifact to point at.
                     session.artifact_id = artifact.id
                     session.updated_at = _now()
                     db.add(session)
-                # Charged on delivery; the upstream's reported cost wins over the estimate.
+                # charged on delivery; upstream cost over estimate
                 charged = (
                     round(progress.cost_usd * _CREDITS_PER_USD) if progress.cost_usd else estimated
                 )
@@ -179,7 +175,6 @@ async def _poll_until_done(job_id: str) -> None:
                     model=model_id,
                     surface="av",
                 )
-                # The answer row is written on delivery, under the prompt that asked.
                 db.add(
                     chat_service.media_answer(
                         session_id,
@@ -222,13 +217,12 @@ def _now():
 
 @router.post("/sessions/{session_id}/jobs", response_model=JobOut)
 async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUser, db: DbSession):
-    """Starts a video and returns immediately. The row is committed before the poll loop starts."""
+    """Start video; row committed before poll loop."""
     session = await db.get(ChatSession, session_id)
     if session is None or session.user_id != user.id or session.publication_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
 
-    # The same gate every external call passes: policy first, then the filter, then
-    # this account's model allowlist.
+    # same egress gate: policy, filter, model allowlist
     policy = await settings_store.egress_policy()
     hit = (
         governance.blocked_by(payload.prompt, policy.blocked_categories)
@@ -284,7 +278,6 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
 
     if not session.title:
         session.title = chat_service.provisional_title(payload.prompt)
-    # Title and prompt are written at submission; the answer arrives on delivery.
     db.add(chat_service.media_prompt(session.id, payload.prompt))
     session.updated_at = _now()
     db.add(session)
@@ -317,7 +310,7 @@ async def create_job(session_id: str, payload: VideoJobRequest, user: CurrentUse
 
 @router.get("/sessions/{session_id}/jobs", response_model=list[JobOut])
 async def list_jobs(session_id: str, user: CurrentUser, db: DbSession):
-    """This session's jobs, newest first. Also restarts poll loops lost to a restart."""
+    """Session jobs newest first; restarts lost poll loops."""
     rows = (
         await db.exec(
             select(Job)
@@ -334,7 +327,7 @@ async def list_jobs(session_id: str, user: CurrentUser, db: DbSession):
 
 @router.post("/jobs/{job_id}/cancel", response_model=JobOut)
 async def cancel_job(job_id: str, user: CurrentUser, db: DbSession):
-    """Stops watching locally; the upstream is not cancelled, only the on-delivery charge."""
+    """Local stop only; upstream not cancelled, no charge."""
     job = await db.get(Job, job_id)
     if job is None or job.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="not_found")
