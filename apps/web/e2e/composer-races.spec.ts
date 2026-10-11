@@ -115,6 +115,65 @@ test('a file attached while an agent conversation opens stays attached', async (
   expect(unexpected).toEqual([])
 })
 
+test('a file still uploading when the agent conversation opens shows there, then joins it', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  const create = gate()
+  const upload = gate()
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() === 'POST') await create.opened
+    await route.fallback()
+  })
+  await page.route('**/api/files', async (route) => {
+    await upload.opened
+    await route.fallback()
+  })
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models, { timeout: 15_000 }).toBe(true)
+  await page.getByRole('button', { name: '도구', exact: true }).click()
+  await page.getByRole('menuitem', { name: '에이전트' }).click()
+  await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
+  await page.waitForTimeout(500)
+  await page.getByLabel('파일 선택').setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('회의 메모') })
+  create.open()
+  await expect(page).toHaveURL(/\/s\//)
+  await expect(page.getByTitle('이 대화의 에이전트')).toContainText('논문 리뷰어')
+  // The upload is still on its way: the new conversation says so, not an empty box.
+  await expect(page.getByText('업로드 중')).toBeVisible()
+  upload.open()
+  await expect(page.getByRole('button', { name: 'notes.txt 제거' })).toBeVisible()
+  await expect(page.getByText('업로드 중')).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})
+
+test('a file that fails to upload after the agent conversation opened is reported there', async ({ page }, info) => {
+  const { unexpected } = await composerFixture(page, info)
+  const create = gate()
+  const upload = gate()
+  await page.route('**/api/sessions', async (route) => {
+    if (route.request().method() === 'POST') await create.opened
+    await route.fallback()
+  })
+  await page.route('**/api/files', async (route) => {
+    await upload.opened
+    await route.fulfill({ status: 500, json: { detail: 'boom' } })
+  })
+  const models = await modelsServed(page)
+  await page.goto('/')
+  await expect.poll(models, { timeout: 15_000 }).toBe(true)
+  await page.getByRole('button', { name: '도구', exact: true }).click()
+  await page.getByRole('menuitem', { name: '에이전트' }).click()
+  await page.getByRole('menuitem', { name: '논문 리뷰어' }).click()
+  await page.getByLabel('파일 선택').setInputFiles({ name: 'rules.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4') })
+  create.open()
+  await expect(page).toHaveURL(/\/s\//)
+  await expect(page.getByText('업로드 중')).toBeVisible()
+  upload.open()
+  await expect(page.getByRole('alert')).toContainText('첨부하지 못했습니다: rules.pdf')
+  await expect(page.getByText('업로드 중')).toHaveCount(0)
+  expect(unexpected).toEqual([])
+})
+
 test('an empty file or a program is turned away before it is uploaded, with the formats that work', async ({ page }, info) => {
   const { unexpected } = await composerFixture(page, info)
   let uploads = 0

@@ -400,6 +400,24 @@ function attachLate(sessionId: string, row: FileRow) {
   window.dispatchEvent(new CustomEvent(ATTACH_EVENT, { detail: { sessionId, row } }))
 }
 
+/** Uploads still on their way to a conversation a composer has moved to, by session id. */
+const lateUploads = new Map<string, number>()
+/** Names of those uploads that failed before that conversation's composer could say so. */
+const lateFailures = new Map<string, string[]>()
+const LATE_UPLOADS_EVENT = 'kloudchat:late-uploads'
+
+function countLateUpload(sessionId: string, delta: 1 | -1) {
+  const next = (lateUploads.get(sessionId) ?? 0) + delta
+  if (next > 0) lateUploads.set(sessionId, next)
+  else lateUploads.delete(sessionId)
+  window.dispatchEvent(new CustomEvent(LATE_UPLOADS_EVENT))
+}
+
+function failLate(sessionId: string, name: string) {
+  lateFailures.set(sessionId, [...(lateFailures.get(sessionId) ?? []), name])
+  window.dispatchEvent(new CustomEvent(LATE_UPLOADS_EVENT))
+}
+
 /** Puts `text` in the composer in place of what is there, without sending it. */
 export function fillComposer(text: string) {
   window.dispatchEvent(new CustomEvent(FILL_EVENT, { detail: text }))
@@ -519,7 +537,7 @@ export function Composer({
     window.addEventListener(ATTACH_EVENT, late)
     return () => window.removeEventListener(ATTACH_EVENT, late)
   }, [])
-  /** The conversation an agent pick is opening; files picked meanwhile wait for it. */
+  /** The conversation an agent pick opened or is opening; files picked meanwhile go to it. */
   const agentStart = useRef<Promise<string> | null>(null)
   // A scanned attachment is read in the background; its chip follows the pages.
   useOcrProgress(attachments, (row) =>
@@ -614,9 +632,27 @@ export function Composer({
     requestAnimationFrame(() => ref.current?.focus())
   }, [composerRestore, sessionId, setComposerRestore])
 
-  const [uploading, setUploading] = useState(false)
+  const [ownUploading, setUploading] = useState(false)
   /** Names of files whose upload failed, shown until the next upload attempt. */
   const [uploadFailed, setUploadFailed] = useState<string[]>([])
+  // A file picked while an agent's conversation was opening uploads under the composer that
+  // picked it; this conversation's composer shows it on its way, and says if it failed.
+  const [carriedUploads, setCarriedUploads] = useState(() => (sessionId ? lateUploads.get(sessionId) ?? 0 : 0))
+  useEffect(() => {
+    const sync = () => {
+      if (!sessionId) return setCarriedUploads(0)
+      setCarriedUploads(lateUploads.get(sessionId) ?? 0)
+      const failed = lateFailures.get(sessionId)
+      if (failed?.length) {
+        lateFailures.delete(sessionId)
+        setUploadFailed((current) => [...current, ...failed])
+      }
+    }
+    sync()
+    window.addEventListener(LATE_UPLOADS_EVENT, sync)
+    return () => window.removeEventListener(LATE_UPLOADS_EVENT, sync)
+  }, [sessionId])
+  const uploading = ownUploading || carriedUploads > 0
   const fileInput = useRef<HTMLInputElement>(null)
   // Dictation goes to the deployment's own Whisper, never to the browser
   // vendor's recognizer; the recording is not kept.
@@ -1228,25 +1264,33 @@ export function Composer({
     setUploadFailed(refused)
     if (!picked.length) return
     setUploading(true)
+    // A file picked while an agent's conversation is being opened belongs to that conversation.
+    const starting = agentStart.current
+    let carriedTo: string | null = null
     try {
-      // A file picked while an agent's conversation is being opened belongs to that conversation.
-      const starting = agentStart.current
       const uploadSession = starting ? (await starting.catch(() => null)) ?? sessionId : sessionId
+      if (starting && uploadSession && uploadSession !== sessionId) {
+        carriedTo = uploadSession
+        countLateUpload(uploadSession, 1)
+      }
+      const movedOn = () =>
+        !!uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)
       for (const file of picked) {
         const row = await uploadFile(file, {
           projectId: editing ? undefined : projectId ?? undefined,
           sessionId: editing ? undefined : uploadSession ?? undefined,
         }).catch(() => {
           // Said where the chips are: a file that never arrived must not look attached.
-          setUploadFailed((current) => [...current, file.name])
+          if (movedOn()) failLate(uploadSession!, file.name)
+          else setUploadFailed((current) => [...current, file.name])
           return null
         })
         if (!row || editContext.current !== editScope) continue
         if (editScope && useStore.getState().activeSessionId !== uploadSession) continue
-        if (uploadSession && (!composerMounted.current || liveSessionId.current !== uploadSession)) {
+        if (movedOn()) {
           // The composer moved on to the new conversation (or was replaced by its own);
           // the file follows the conversation it was uploaded for.
-          attachLate(uploadSession, row)
+          attachLate(uploadSession!, row)
           continue
         }
         if (!composerMounted.current) continue
@@ -1258,6 +1302,7 @@ export function Composer({
         })
       }
     } finally {
+      if (carriedTo) countLateUpload(carriedTo, -1)
       if (composerMounted.current) setUploading(false)
     }
   }
@@ -1899,9 +1944,9 @@ export function Composer({
                         carriedComposer = heldComposer(id)
                         navigate(`/s/${id}`)
                       })
-                      .catch((err: unknown) => setNotice(startFailure(err, t)))
-                      .finally(() => {
+                      .catch((err: unknown) => {
                         if (agentStart.current === starting) agentStart.current = null
+                        setNotice(startFailure(err, t))
                       })
                   }}
                 >
