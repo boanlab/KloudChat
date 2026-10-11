@@ -1,0 +1,76 @@
+kind = "document"
+# The document format it fixes (`doc_formats`): head fields, numbering, the format's
+# pipeline, and its genre rule in `genre.md`.
+doc_format = "gaejo"
+cover_page = false
+# 본문 서체는 디자인의 서체(명조·고딕)를 따른다. 제목은 고딕 그대로.
+body_face = "design"
+
+# 규칙은 서식 지침과 에이전트 지침에 둔다. 검사는 서버 훅이 맡는다.
+skills = []
+# Run by the server before and after writing (app/skills/README.md).
+check_skills = ["gap-check", "grounding-check"]
+
+name = "개조식 보고서"
+description = "검토·현황 보고를 □ ○ - ㆍ 개조식으로 · 맨 위 핵심 두 줄, 끝에 붙임"
+category = "업무"
+fills = ["보고할 내용", "보고 대상", "결정이 필요한 것"]
+example_prompt = "아래 내용을 과장님께 올릴 개조식 보고서로 정리해 줘. 맨 위에 핵심 두 줄을 두고, 현황 → 문제점 → 검토 의견 → 향후 조치 순서로, 수치는 단위와 함께 적어 줘. 붙임 자료가 있으면 끝에 적어 줘.\n\n보고할 내용: "
+seed_from = "_document"
+layouts = ["cover", "section"]
+
+# English half of the catalogue. The UI picks a side by language;
+# the instructions the model follows stay Korean, because the surfaces
+# they belong to answer in Korean by default.
+name_en = "Bullet-style briefing (개조식)"
+description_en = "Review or status briefing in Korean bullet style (□ ○ - ㆍ) · two-line summary on top"
+category_en = "Work"
+fills_en = ["What to report", "Reported to", "Decision needed"]
+example_prompt_en = "Turn this into a Korean bullet-style (개조식) briefing for my manager: a two-line summary on top, then status, problems, review and next steps, with units on every number, and the attachments at the end.\n\nWhat to report: "
+
+[wrap]
+cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
+block = '<section><h2>{title}</h2>{body}</section>'
+
+# 빠진 정보 질문: what to ask before writing when the material does not answer it
+# (`services/gap_questions.py`; each detector is a built-in name, keywords, a pattern or
+# the judge model). A person's agent edits the same list in its form.
+[[questions]]
+id = "addressee"
+label = "보고 대상"
+question = "누구에게 올리는 보고인가요? (예: 시설과장님)"
+why = "보고 대상이 없으면 머리의 보고 대상과 결정 요청의 높이를 정할 수 없습니다."
+placeholder = "[보고 대상]"
+detector = { type = "regex", pattern = '[가-힣]{1,10}(?:님|장|처장|과장|팀장|부장|원장|총장|이사|대표)\s{0,2}(?:께|에게|한테)|보고\s{0,2}대상|결재\s{0,2}(?:권자|라인|선)' }
+
+[[questions]]
+id = "reporter"
+label = "보고자"
+question = "보고자(부서·이름)는 누구인가요?"
+why = "머리의 보고자(부서) 칸에 들어갑니다."
+placeholder = "[보고자·부서]"
+detector = { type = "regex", pattern = '보고자|작성자|기안자|보고\s{0,2}부서|작성\s{0,2}부서|[가-힣]{2,10}(?:팀|과|실|처|센터|부)\s{0,2}[가-힣]{2,4}\s{0,2}(?:주무관|주임|대리|과장|팀장|연구원|사원|선생님)' }
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+prepass = ["date-calc", "quote-calc", "staffing"]
+# 개조식 문체 확인 comes with `structure.style`.
+checks = ["lead-dates", "staff-counts", "material-blanks"]
+stages = ["page-limit"]
+# The planner's outline is replaced by these sections unless a size is asked.
+fixed_outline = true
+# Diagrams only when the instruction asks for them.
+draws = "when-asked"
+# The pre-pass runs (empty) with nothing attached, and never says it was skipped.
+prepass_always = true
+prepass_quiet = true
+conflict_rule = "Use the latest value only for the same item the material explicitly changed, and record the change in one line."
+
+[process.structure]
+sections = ["현황", "문제점 및 검토", "향후 조치 및 결정 요청", "붙임"]
+style = "gaejo"
+# 핵심 두 줄 at the top of the first section.
+summary_lines = 2
+# One page, condensed to fit, unless the request asks another count.
+page_limit = 1

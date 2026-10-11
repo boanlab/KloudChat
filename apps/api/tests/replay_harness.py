@@ -149,6 +149,39 @@ def pin_recorded_defaults(patch: Patch) -> None:
 
     for name, value in RECORDED_DEFAULTS.items():
         patch(settings, name, value)
+    pin_recorded_templates(patch)
+
+
+#: Shipped templates as they were when the records were made (`_pinned_templates/<id>/`):
+#: their instructions, genre, checklist, questions and 진행 과정 reach the prompts, so a later
+#: edit of the shipped text would find no recorded reply. Only the folders kept there are pinned.
+PINNED_TEMPLATES = FIXTURES / "_pinned_templates"
+
+
+def pin_recorded_templates(patch: Patch) -> None:
+    import dataclasses
+    import tomllib
+
+    from app.services import design_templates, report
+
+    templates = dict(design_templates._TEMPLATES)
+    for folder in sorted(p for p in PINNED_TEMPLATES.iterdir() if p.is_dir()):
+        shipped = templates.get(folder.name)
+        if shipped is None:
+            continue
+        meta = tomllib.loads((folder / "template.toml").read_text(encoding="utf-8"))
+        templates[folder.name] = dataclasses.replace(
+            shipped,
+            instructions=design_templates._read(folder, "instructions.md"),
+            checklist=design_templates._read(folder, "checklist.md"),
+            genre=design_templates._read(folder, "genre.md").strip(),
+            questions=design_templates._questions(folder, meta),
+            process=design_templates._process(folder, meta),
+            check_skills=tuple(str(k) for k in (meta.get("check_skills") or [])),
+            check_options=design_templates._check_options(folder, meta),
+        )
+    patch(design_templates, "_TEMPLATES", templates)
+    patch(report, "_FORMAT_GENRES", design_templates.format_genres())
 
 
 # ── a fixed clock and fixed ids ─────────────────────────────────────────
