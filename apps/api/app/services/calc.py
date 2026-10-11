@@ -58,12 +58,24 @@ PROMPT = """아래 요청과 자료로 문서를 쓰기 전에, 문서에 들어
 {material}"""
 
 
+#: Citation marks (「[3]」, 「[1]~[10]」, 「[2, 5]」) are not data.
+_CITATION = re.compile(
+    r"\[\d{1,3}(?:\s{0,2}[-~,]\s{0,2}\d{1,3}){0,8}\](?:\s{0,2}~\s{0,2}\[\d{1,3}\])?")
+
+#: How long the code may take to settle its values (seconds): past it the writer goes on
+#: without them. Two pairs of runs on a slow model took six to seven minutes otherwise.
+DEADLINE = 120.0
+
+
 def needed(request: str, context: list[str] | None = None) -> bool:
-    """Whether the instruction asks for derived values over data that is present."""
+    """Whether the instruction asks for derived values over data that is present.
+
+    `context` is what the person gave (attachments, pasted material, answers): search pages
+    are not data to compute over, and a citation mark is not a number."""
     instruction = instruction_part(request or "")
     if not _ASKS.search(instruction):
         return False
-    data = "\n".join([request or "", *(context or [])])
+    data = _CITATION.sub(" ", "\n".join([request or "", *(context or [])]))
     return len(_NUMBER.findall(data)) >= 4
 
 
@@ -190,10 +202,13 @@ async def computed_values(
     complete,
     model: str,
     api_key: str,
+    deadline: float = DEADLINE,
 ) -> tuple[str, dict[str, int], str]:
-    """`(block for the writer, usage, status)`; status is done/failed/unavailable/skipped/disputed.
+    """`(block for the writer, usage, status)`; status is done/failed/unavailable/skipped/
+    disputed/timeout.
 
-    Independent programs must agree before any value is handed to the writer."""
+    Independent programs must agree before any value is handed to the writer, within
+    `deadline` seconds."""
     usage = {"inputTokens": 0, "outputTokens": 0}
     if not needed(request, context):
         return "", usage, "skipped"
@@ -233,11 +248,18 @@ async def computed_values(
         return ""
 
     # Up to two pairs of runs; a failed run does not count against agreement.
+    loop = asyncio.get_running_loop()
+    ends = loop.time() + deadline
     for pair in ((prompt, again), (again, again)):
-        results = await asyncio.gather(*(
-            _one_run(p_, material, complete=complete, model=model, api_key=api_key, usage=usage)
-            for p_ in pair
-        ))
+        try:
+            results = await asyncio.wait_for(asyncio.gather(*(
+                _one_run(p_, material, complete=complete, model=model, api_key=api_key,
+                         usage=usage)
+                for p_ in pair
+            )), timeout=max(0.0, ends - loop.time()))
+        except TimeoutError:
+            log.info("calculation runs passed %.0fs; the writer goes on without them", deadline)
+            return "", usage, "timeout"
         runs.extend(lines for lines in results if lines)
         if block := settled():
             return block, usage, "done"

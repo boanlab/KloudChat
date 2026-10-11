@@ -350,3 +350,46 @@ def test_a_product_inside_a_sum_is_not_rewritten_to_zero():
     # A wrong product standing alone is still corrected.
     wrong = "400명 × 48,000원 = 1,500만 원"
     assert fix_written_arithmetic(wrong) == "400명 × 48,000원 = 1,920만 원"
+
+
+#: Research lane R-07: a proposal whose method 「가중 평균」s, answered with citation marks.
+PROPOSAL = (
+    "한국연구재단 개인기초연구(중견연구) 연구계획서 초안을 써 줘. 연구기간은 3년.\n\n"
+    "덧붙인 조건: 제공된 검색 자료([1]~[10])의 범위 내에서만 인용 및 구성. "
+    "요약문을 원자적 주장으로 분해하고 NLI로 함의 여부를 판정해 주장별 점수를 가중 평균한다. "
+    "아직 실험 결과는 없다.")
+SEARCH_PAGE = "SummaC 0.72, QAGS 0.61, FactCC 0.55, 2023, 2024, 1,200 summaries [3][4]"
+
+
+def test_a_proposal_s_method_and_search_pages_ask_for_no_calculation():
+    from app.pipeline.bundle import Bundle, Part, Request
+    from app.pipeline.report_stages import Calc
+
+    assert not calc.needed(PROPOSAL)
+    bundle = Bundle(request=Request(text=PROPOSAL, model="m", api_key="k"))
+    bundle.material.parts = [Part(SEARCH_PAGE, "research")]
+    assert Calc().skip(bundle) == "nothing to compute in the request"
+    # The person's own figures still ask for it.
+    bundle.request.untrusted = ["측정 1: 12.0, 측정 2: 13.5, 측정 3: 11.8, 측정 4: 12.6"]
+    assert Calc().skip(bundle) == ""
+
+
+@pytest.mark.asyncio
+async def test_calculation_runs_stop_at_the_deadline(monkeypatch):
+    import asyncio
+
+    class Backends:
+        exec = "sandbox"
+
+    async def tools_config():
+        return Backends()
+
+    async def complete(model, messages, api_key, max_tokens=0):
+        await asyncio.sleep(5)
+        return "", {}
+
+    monkeypatch.setattr(calc.settings_store, "tools_config", tools_config)
+    block, usage, status = await calc.computed_values(
+        ENGINEERING, [], complete=complete, model="m", api_key="k", deadline=0.05
+    )
+    assert (block, status) == ("", "timeout")

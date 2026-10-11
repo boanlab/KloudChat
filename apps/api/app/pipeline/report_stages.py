@@ -576,6 +576,13 @@ class ApprovedPlan(Base):
                         if f.get("prompt")}
 
 
+def _given(bundle: Bundle) -> str:
+    """What the person gave: the request's own material, the files, and the code's output."""
+    req = bundle.request
+    return "\n\n".join([_report()._request_material(req.text), *req.untrusted,
+                         *req.tool_outputs]).strip()
+
+
 class Calc(Base):
     """Derived numbers (gains in dB, errors, totals) computed by code, not the writer; the
     printed values reach every section as given facts."""
@@ -586,7 +593,9 @@ class Calc(Base):
     writes = ("computed.values", "material.trusted")
 
     def skip(self, bundle: Bundle) -> str:
-        if not calc.needed(bundle.request.text, bundle.material.grounds):
+        # Over what the person gave, not the search pages (their figures are not data to
+        # compute; a proposal's method saying 「가중 평균」 asked for nothing).
+        if not calc.needed(bundle.request.text, [_given(bundle)]):
             return "nothing to compute in the request"
         return ""
 
@@ -606,6 +615,7 @@ class Calc(Base):
                 "done": "코드로 수치 계산·검산",
                 "unavailable": "코드 실행 없음 — 모델이 계산",
                 "disputed": "코드 계산이 서로 달라 쓰지 않음",
+                "timeout": "코드 계산 시간 초과 — 모델이 계산",
             }
             .get(status, "코드 계산 실패 — 모델이 계산"),
             "status": "done" if status == "done" else "error",
@@ -647,8 +657,7 @@ class Settle(Base):
         report, req = _report(), bundle.request
         # The figures settle from the person's files and the code's output, never from what an
         # earlier step of a composed run wrote (`req.derived`).
-        given = "\n\n".join([report._request_material(req.text), *req.untrusted,
-                              *req.tool_outputs]).strip()
+        given = _given(bundle)
         bundle.material.given = given
         if not given:
             return
