@@ -204,6 +204,8 @@ function same(held: Session, merged: Session): boolean {
   })
 }
 
+const openingSessions = new Map<string, Promise<boolean>>()
+
 async function waitForSessionPersistence(sessionId: string): Promise<void> {
   // Loop until the awaited promise is still the last one queued for this session.
   while (true) {
@@ -350,6 +352,8 @@ interface State {
   loadSessions: () => Promise<void>
   /** Fetches the transcript; false when it could not be fetched (never throws). */
   openSession: (id: string) => Promise<boolean>
+  /** `openSession` without the sharing of a request already in flight. */
+  fetchSession: (id: string) => Promise<boolean>
   /**
    * Continues an agent chat on the report or slides surface with the same agent: opens the
    * session, then sends `text` with the conversation (as a file) and the chat's files.
@@ -906,6 +910,13 @@ export const useStore = create<State>((set, get) => ({
           })
           .catch(() => {})
         scheduleRefresh(session.expiresIn, () => void get().bootstrap())
+        // A conversation opened by its address is asked for first, before the workspace's
+        // dozen requests take the browser's connections.
+        const opened = window.location.pathname.match(/^\/s\/([^/]+)/)?.[1]
+        if (opened && session.user.status === 'active' &&
+            !get().sessions.some((row) => row.id === opened && row.messages.length > 0)) {
+          void get().openSession(opened)
+        }
         void get().loadModels()
         void get().loadSessions()
         void get().loadWorkspace()
@@ -1359,7 +1370,16 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
-  openSession: async (id) => {
+  openSession: (id) => {
+    // One request per conversation at a time: the boot's early fetch and the page's own share it.
+    const pending = openingSessions.get(id)
+    if (pending) return pending
+    const started = get().fetchSession(id).finally(() => openingSessions.delete(id))
+    openingSessions.set(id, started)
+    return started
+  },
+
+  fetchSession: async (id) => {
     const owner = get().user?.id
     const epoch = get().accountEpoch
     const ownsAccount = () => owner === get().user?.id && epoch === get().accountEpoch

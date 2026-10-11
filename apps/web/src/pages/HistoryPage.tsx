@@ -257,7 +257,8 @@ export function HistoryPage() {
     }
   }
 
-  const everyone = allTotal ?? (urlQuery ? null : total)
+  // Before the first listing arrives the count is not known; 「0개」 would be wrong.
+  const everyone = allTotal ?? (urlQuery || !listing ? null : total)
 
   return (
     <>
