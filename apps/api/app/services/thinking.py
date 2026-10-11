@@ -39,6 +39,12 @@ def template_switch(model: str) -> dict:
     return {"chat_template_kwargs": {"enable_thinking": False}} if thinks_by_default(model) else {}
 
 
+def template_switch_on(model: str) -> dict:
+    """vLLM's chat-template field that turns a thinking Qwen3's thinking on, for the one
+    reading that is asked to deliberate; `{}` for other models."""
+    return {"chat_template_kwargs": {"enable_thinking": True}} if thinks_by_default(model) else {}
+
+
 #: What a model whose reasoning cannot be turned off is asked for instead: the least of
 #: it, so thinking does not consume the whole token ceiling.
 LEAST_REASONING = {"effort": "low"}

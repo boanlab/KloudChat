@@ -289,6 +289,7 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
             complete=report._complete, model=model, api_key=api_key,
             today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
             tiebreak_model=report._tiebreak_model(model), process=process,
+            deliberate=report._complete_thinking,
         )
     except Exception:  # noqa: BLE001 — the rewrite goes ahead without settled values
         log.exception("revision pre-pass failed")

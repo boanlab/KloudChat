@@ -20,7 +20,7 @@ from decimal import ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Any
 
 from app.core import logs
-from app.services import key_figures, placeholders, skill_scripts, units
+from app.services import key_figures, placeholders, skill_scripts, thinking, units
 from app.services.verify import Check, Doc, Finding, model_check
 
 log = logging.getLogger(__name__)
@@ -1074,6 +1074,11 @@ def _cost_block(result: dict) -> str:
 
 Complete = Callable[..., Any]
 
+#: The settling reading with thinking on: its time cap, and the tokens its thinking and its
+#: answer share (Flash+thinking took 150 s median on cost extraction; outlines hit 6,400).
+DELIBERATE_SEC = 360.0
+DELIBERATE_TOKENS = 12000
+
 
 def _failure(exc: Exception) -> str:
     """Why a pre-pass failed, in words the step can show."""
@@ -1136,8 +1141,11 @@ def _quote_key(result: dict) -> tuple:
 
 
 async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool],
-                tiebreak: str) -> tuple[Any, str, list]:
+                tiebreak: str, settle: Callable[[], Any] | None = None) -> tuple[Any, str, list]:
     """Two readings by the writer's model, a third by `tiebreak` when they differ.
+
+    `settle`, when given, is tried first for the third reading (a reading that thinks); when
+    it fails, times out or reads nothing, the third reading is `tiebreak`'s as before.
 
     Returns `(result, how, outcomes)`: the result two readings agree on and 「agreed」 or
     「voted」; `None` and 「split」 when they all differ, or 「empty」 when none gave one. Each
@@ -1161,7 +1169,16 @@ async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool]
 
     if same(0, 1):
         return outcomes[0][0], "agreed", outcomes
-    outcomes.append(await read(tiebreak))
+    third: Any = None
+    if settle is not None:
+        try:
+            third = await settle()
+        except Exception as exc:  # noqa: BLE001 — a timed-out or failed settling reading
+            log.info("pre-pass settling reading failed: %s", logs.safe(repr(exc)))
+            third = None
+        if third is not None and third[0] is None:
+            third = None
+    outcomes.append(third if third is not None else await read(tiebreak))
     plain = [o for o in outcomes if not isinstance(o, BaseException)]
     for i, j in ((0, 2), (1, 2)):
         if same(i, j):
@@ -1184,6 +1201,9 @@ class PrepassJob:
     today: dt.date | None
     tiebreak_model: str
     usage: dict
+    #: A completion with the model's thinking on, for the reading that settles a split
+    #: (`report._complete_thinking`); None keeps the plain third reading.
+    deliberate: Complete | None = None
 
     def count(self, more: dict) -> None:
         for key in ("inputTokens", "outputTokens"):
@@ -1193,7 +1213,7 @@ class PrepassJob:
 async def prepare(
     format_id: str | None, request: str, material: str, *, complete: Complete, model: str,
     api_key: str, usage: dict | None = None, today: dt.date | None = None,
-    tiebreak_model: str = "", process: Any = None,
+    tiebreak_model: str = "", process: Any = None, deliberate: Complete | None = None,
 ) -> Prepass:
     """The document's pre-pass: what code settles before a word is written.
 
@@ -1208,7 +1228,7 @@ async def prepare(
     if not (material or "").strip():
         return pre
     job = PrepassJob(format_id or "", request, material, complete, model, api_key, today,
-                     tiebreak_model, usage if usage is not None else {})
+                     tiebreak_model, usage if usage is not None else {}, deliberate)
     for name in process.prepass:
         token = CURRENT_STAGE.set(f"prepass:{name}")
         try:
@@ -1362,20 +1382,39 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
         given = f"{request}\n{material}"
         numbers = _material_numbers(given) + _calendar(given)
 
+        prompt = [{"role": "user", "content": _COST_PROMPT.format(
+            request=request[:3000], material=material[:10000])}]
+
         async def read_costs(override: str) -> tuple[dict | None, str]:
-            text, more = await complete(
-                override or model, [{"role": "user", "content": _COST_PROMPT.format(
-                    request=request[:3000], material=material[:10000])}], api_key, 2500,
-            )
+            text, more = await complete(override or model, prompt, api_key, 2500)
             count(more)
             why: list[str] = []
             return option_costs(_json(text), numbers, why), (why[0] if why else "")
+
+        # Two readings that differ are settled by one more on the outline model with its
+        # thinking on (Flash+thinking read 15/15 cost cases, 150 s median, against 12/15
+        # without); past the time cap the plain third reading settles, as before.
+        thinker = next((m for m in (model, tiebreak_model)
+                        if m and thinking.thinks_by_default(m)), "")
+        deliberated = False
+
+        async def think_costs() -> tuple[dict | None, str]:
+            nonlocal deliberated
+            async with asyncio.timeout(DELIBERATE_SEC):
+                text, more = await job.deliberate(thinker, prompt, api_key, DELIBERATE_TOKENS)
+            count(more)
+            why: list[str] = []
+            found = option_costs(_json(text), numbers, why)
+            deliberated = found is not None
+            return found, (why[0] if why else "")
 
         try:
             # One reading priced comparison-report-5's purchase at 167,900,000 or 185,900,000
             # against 197,900,000: totals reach the writer only when two readings agree, a
             # third by the larger model settling a split.
-            costs, how, outcomes = await _vote(read_costs, _costs_agree, tiebreak_model or model)
+            costs, how, outcomes = await _vote(
+                read_costs, _costs_agree, tiebreak_model or model,
+                think_costs if job.deliberate is not None and thinker else None)
             if costs is not None:
                 # A scenario is kept only when another agreeing reading gives it the same totals.
                 others = [o[0] for o in outcomes if o[0] is not None and o[0] is not costs
@@ -1397,7 +1436,8 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 if costs["dropped"]:
                     summary += f" (자료에 없는 값이라 뺀 것: {', '.join(costs['dropped'][:4])})"
                 if how == "voted":
-                    summary += " · 세 번 읽어 둘이 같은 값"
+                    summary += " · 세 번 읽어 둘이 같은 값" + (
+                        " (세 번째는 생각을 켜고 읽음)" if deliberated else "")
                 pre.runs.append({"skill": "compare-cost", "summary": summary})
             elif how == "split":
                 pre.costs_withheld = True

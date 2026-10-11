@@ -1147,6 +1147,7 @@ const EN: Record<string, string> = {
     'The request was not run because current information could not be verified. Provide verifiable sources or retry in an environment where search is permitted.',
   '계산 도구 결과 · 0으로 나눌 수 없음': 'Calculator result · Cannot divide by zero',
   '답변 모델 생성 없음': 'No answer-model generation',
+  '검산': 'calculation check',
   '답변 {n} 크레딧': 'Answer: {n} credits',
   '계산기가 직접 반환한 오류입니다. 답변 생성 비용만 0이며, 앞선 Auto 분류나 검색의 실행 여부와 비용은 별도입니다.':
     'This error came directly from the calculator. Only answer generation costs zero; earlier Auto classification or search activity and costs are separate.',

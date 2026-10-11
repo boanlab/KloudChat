@@ -228,6 +228,8 @@ export interface PrivacyRouting {
     cutoffSource: 'model_catalogue' | 'unknown'
   }
   lengthCheck?: LengthCheck
+  /** The model that ran a required calculation the answer model skipped. */
+  calculationModel?: string
 }
 
 /** A cover letter's 「[제출용 답안 n]」 blocks as the server measured them (text-fit). */

@@ -702,7 +702,7 @@ class Prepass(Base):
                     model=req.judge, api_key=req.api_key, usage=prepass_usage,
                     today=dt.datetime.now(ZoneInfo(settings.timezone)).date(),
                     tiebreak_model=report._tiebreak_model(req.judge),
-                    process=bundle.spec.settings,
+                    process=bundle.spec.settings, deliberate=report._complete_thinking,
                 )
             except Exception as exc:  # noqa: BLE001 — written without it; the step says so
                 log.exception("report pre-pass failed")

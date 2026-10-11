@@ -1006,6 +1006,44 @@ async def _complete(
     }
 
 
+#: A thinking answer's reasoning when the server returns it inline.
+_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.I)
+
+
+async def _complete_thinking(
+    model: str,
+    messages: list[dict[str, str]],
+    api_key: str,
+    max_tokens: int,
+) -> tuple[str, dict]:
+    """One non-streaming call with the model's thinking on (vLLM's chat-template switch).
+
+    For a self-hosted thinking model only; no retries — the caller caps its time and falls
+    back to a plain reading. Returns `(text, usage)` like `_complete`."""
+    switch = thinking.template_switch_on(model)
+    if not switch:
+        raise ValueError(f"{model} has no thinking switch")
+    base, _ = await settings_store.litellm_config()
+    async with httpx.AsyncClient(
+        base_url=base.rstrip("/"),
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=httpx.Timeout(settings.chat_timeout_sec, connect=10.0),
+    ) as client:
+        response = await client.post(
+            "/v1/chat/completions",
+            json={"model": model, "messages": messages, "max_tokens": max_tokens, **switch},
+        )
+        response.raise_for_status()
+        payload = response.json()
+    message = (payload.get("choices") or [{}])[0].get("message") or {}
+    text = _THINK_BLOCK.sub("", message.get("content") or "").strip()
+    raw = payload.get("usage") or {}
+    return text, {
+        "inputTokens": int(raw.get("prompt_tokens") or 0),
+        "outputTokens": int(raw.get("completion_tokens") or 0),
+    }
+
+
 #: Document look: asked for in Korean, stored as the English name the renderer knows.
 _STYLES = {"편집형": "editorial", "포스터형": "poster", "미니멀": "minimal"}
 
