@@ -3910,6 +3910,9 @@ def to_pdf(title: str, slides: list[dict], *, tokens: dict[str, str] | None = No
     style = design.normalise_tokens(tokens) if tokens else None
     font = fonts.korean(style["font"] if style else "gothic")
     bold = fonts.korean(style["font"] if style else "gothic", bold=True)
+    # A sign the face has no glyph for draws as a box: its look-alike instead.
+    slides = fonts.drawable_tree(slides, font, bold)
+    title = fonts.drawable(title, font, bold)
     ink = _hex_floats(style["ink"]) if style else _PDF_INK
     muted = _hex_floats(style["muted"]) if style else _PDF_MUTED
     mark = _logo_of(style)

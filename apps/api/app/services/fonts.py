@@ -98,4 +98,39 @@ def embedded(style: str = "gothic") -> bool:
     return korean(style).startswith("Nanum-")
 
 
-__all__ = ["embedded", "korean"]
+#: Look-alikes for characters a Korean face may lack: 「완료 − 도착」 drew 「완료 □ 도착」.
+_STAND_INS = {
+    "\u2212": "-", "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2015": "—",
+    "\u2009": " ", "\u202f": " ", "\u2007": " ", "\u200a": " ", "\u2044": "/", "\u2215": "/",
+    "\u2264": "<=", "\u2265": ">=", "\u2248": "≒", "\u2260": "!=", "\u2032": "'", "\u2033": '"',
+}
+
+
+def drawable(text: str, *names: str) -> str:
+    """`text` with each character none of the faces `names` can draw replaced by its stand-in
+    (a minus sign by a hyphen); a character with no stand-in is left as written."""
+    if not text or not any(ch in _STAND_INS for ch in text):
+        return text
+    maps = []
+    for name in names:
+        face = getattr(pdfmetrics.getFont(name), "face", None)
+        maps.append(getattr(face, "charToGlyph", None))
+    if any(m is None for m in maps):
+        # A CID font draws by code, with no table to ask: the stand-ins are safe there.
+        return "".join(_STAND_INS.get(ch, ch) for ch in text)
+    return "".join(_STAND_INS[ch] if ch in _STAND_INS and any(ord(ch) not in m for m in maps)
+                   else ch for ch in text)
+
+
+def drawable_tree(value, *names: str):
+    """Every string inside `value` (a slide's dicts and lists) made `drawable`."""
+    if isinstance(value, str):
+        return drawable(value, *names)
+    if isinstance(value, list):
+        return [drawable_tree(v, *names) for v in value]
+    if isinstance(value, dict):
+        return {k: drawable_tree(v, *names) for k, v in value.items()}
+    return value
+
+
+__all__ = ["drawable", "drawable_tree", "embedded", "korean"]
