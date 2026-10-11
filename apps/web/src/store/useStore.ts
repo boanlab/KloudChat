@@ -891,6 +891,8 @@ export const useStore = create<State>((set, get) => ({
       }
       try {
         const session = await auth.refresh()
+        // No refresh cookie: signed out, said with 204 rather than a logged 401.
+        if (!session) throw new Error('signed_out')
         rememberSignedOut(false)
         setAccessToken(session.accessToken)
         set({ authenticated: true, user: session.user, authLoading: false, authError: null })

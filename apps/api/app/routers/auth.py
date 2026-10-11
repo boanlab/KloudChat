@@ -393,11 +393,17 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     return await _issue_session(db, response, user, request=request)
 
 
-@router.post("/refresh", response_model=SessionOut)
+@router.post(
+    "/refresh",
+    response_model=SessionOut,
+    responses={204: {"description": "No refresh cookie: the browser is signed out."}},
+)
 async def refresh(request: Request, response: Response, db: DbSession):
     raw = request.cookies.get(settings.refresh_cookie_name)
     if not raw:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="no_refresh_token")
+        # Not an error: a first visit asks whether it is signed in, and a 401 here was
+        # logged in the browser console on every such load.
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     digest = hash_refresh_token(raw)
     row = (await db.exec(select(RefreshToken).where(RefreshToken.token_hash == digest))).first()
