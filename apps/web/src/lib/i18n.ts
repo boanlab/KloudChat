@@ -257,6 +257,7 @@ const EN: Record<string, string> = {
   '하루 최대 크레딧': 'Daily credit limit',
   '이 챗봇이 하루에 쓸 수 있는 내 크레딧입니다. 크레딧이 들지 않는 모델이면 질문 하나를 1크레딧으로 셉니다. 다 쓰면 그날은 멈추고 다음 날 다시 열립니다.': 'The credits of yours this chatbot may spend in a day. On a model that costs no credits, each question counts as 1 credit. Once spent it stops for the day and reopens the next.',
   '1부터 {max}까지의 정수로 적어 주세요.': 'Enter a whole number from 1 to {max}.',
+  '정책: 개인정보 마스킹과 내부 자료 처리처럼 대화가 지켜야 할 규칙을 정합니다. 감사 로그: 누가 언제 무엇을 했는지 남은 기록입니다.': 'Policy: the rules conversations keep, such as masking personal details and handling internal material. Audit log: who did what, and when.',
   '크레딧 없음': 'No credits',
   '1천 토큰당 입력 {in} · 출력 {out}크레딧': '{in} in · {out} out credits per 1,000 tokens',
   '질문을 너무 자주 보냈습니다. {n}초 뒤에 다시 보내 주세요.': 'Too many questions in a row. Send again in {n} seconds.',
@@ -1651,7 +1652,6 @@ const EN: Record<string, string> = {
   '이전 대화': 'Earlier conversations',
   '더 보기': 'Show more',
   '가입 승인과 월 크레딧 한도를 관리합니다. 한도는 매달 1일에 자동으로 리필되며, 남은 크레딧은 이월되지 않습니다.': 'Approve sign-ups and set monthly credit limits. Limits refill on the 1st; leftover credits do not carry over.',
-  '누가 언제 무엇을 했는지 남은 기록입니다. 로그인, 승인, 정지, 권한 변경, 설정 변경이 남습니다.': 'A record of who did what and when — sign-ins, approvals, suspensions, role changes and setting changes.',
   '실제 사용 기록을 집계한 값입니다. 아직 사용한 사람이 없으면 비어 있습니다.': 'Totalled from real usage. Empty means nobody has spent anything yet.',
   '이 인스턴스 전체에 적용되는 설정입니다. 저장 즉시 적용되며 재시작이 필요하지 않습니다.':
     'Settings that apply to the whole instance. Saved settings apply at once — no restart.',

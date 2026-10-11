@@ -36,7 +36,7 @@ export function AdminGovernancePage() {
       <PageBody>
         <PageHeader
           title={t('보안 · 감사')}
-          description={t('누가 언제 무엇을 했는지 남은 기록입니다. 로그인, 승인, 정지, 권한 변경, 설정 변경이 남습니다.')}
+          description={t('정책: 개인정보 마스킹과 내부 자료 처리처럼 대화가 지켜야 할 규칙을 정합니다. 감사 로그: 누가 언제 무엇을 했는지 남은 기록입니다.')}
         />
 
         <Tabs<'policy' | 'log'>
