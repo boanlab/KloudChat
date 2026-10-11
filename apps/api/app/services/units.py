@@ -233,6 +233,9 @@ def fix_written_arithmetic(text: str) -> str:
         lhs, rhs = m.group("lhs"), m.group("rhs")
         if "%" in (m.group("rhs_unit") or ""):
             return m.group(0)
+        # A product inside a sum (「3.2 + 0.9×5 = 7.7억」) is one term, not the whole left side.
+        if re.search(r"[+\-−±]\s{0,3}$", m.string[max(0, m.start() - 4):m.start()]):
+            return m.group(0)
         parts = re.split(r"\s?([×x*÷])\s?", lhs)
         try:
             value = _ko_number(parts[0])
@@ -252,7 +255,14 @@ def fix_written_arithmetic(text: str) -> str:
         if any(abs(ratio - 10**k) < 1e-6 * 10**k or abs(ratio - 10**-k) < 1e-6 * 10**-k
                for k in range(3, 9)):
             return m.group(0)
+        # A left side in plain digits that comes to under 1만 beside a 만·억 result is
+        # written in another scale (억 left off its operands), not miscomputed.
+        if re.search(r"[조억만]", rhs) and not re.search(r"[조억만천]", lhs) and abs(value) < 1e4:
+            return m.group(0)
         right = _ko_written(value, rhs)
+        # Never a 「0만」: a value too small for the result's scale is no correction.
+        if not re.search(r"[1-9]", right):
+            return m.group(0)
         fixes[rhs.strip()] = right
         return _swap_rhs(m, right)
 

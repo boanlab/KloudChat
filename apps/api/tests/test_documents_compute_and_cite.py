@@ -333,3 +333,20 @@ def test_a_monthly_pnl_row_is_worked_out_from_the_documents_own_inputs():
     # Two prices in the document: the inputs are not settled, nothing is corrected.
     two = {"heading": "제품", "content": "| 항목 | 값 |\n|---|---|\n| 판매가 | 12,000원 |"}
     assert report.fix_pnl_tables([assumptions, two, pnl])[2] == pnl
+
+
+def test_a_product_inside_a_sum_is_not_rewritten_to_zero():
+    from app.services.units import fix_written_arithmetic
+
+    for text in (
+        "3.2 + 0.9×5 = 7.7억 원입니다.",
+        "총비용은 1.2 + 0.09 × 3 = 1.47억 원이다.",
+        "| A안 5년 총비용 | 3.2 − 0.9×5 = 7.7억 원 |",
+    ):
+        assert fix_written_arithmetic(text) == text
+    # Plain digits under 1만 beside a 억 result: another scale, not a wrong product.
+    assert fix_written_arithmetic("0.9×5 = 4.5억 원") == "0.9×5 = 4.5억 원"
+    assert fix_written_arithmetic("0.9 × 5 = 4억 원") == "0.9 × 5 = 4억 원"
+    # A wrong product standing alone is still corrected.
+    wrong = "400명 × 48,000원 = 1,500만 원"
+    assert fix_written_arithmetic(wrong) == "400명 × 48,000원 = 1,920만 원"
