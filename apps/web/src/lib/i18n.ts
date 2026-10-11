@@ -9,6 +9,9 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 에이전트 · 두 번 저장
+  '같은 이름의 에이전트를 방금 만들었습니다.': 'You just made an agent with this name.',
+  '다른 이름으로': 'Use another name',
   // 불러오기 · 다시 시도
   '불러오지 못했습니다.': 'Could not load.',
   '평소보다 오래 걸립니다.': 'This is taking longer than usual.',

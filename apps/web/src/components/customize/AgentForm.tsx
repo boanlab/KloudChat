@@ -9,7 +9,7 @@ import { fullSettings, ProcessSettingsEditor } from '@/components/agents/Process
 import { DOC_FORMATS, RETIRED_FORMATS } from '@/components/report/docFormats'
 import { Button, Field, Input, ResourceStatus, Select, Textarea } from '@/components/ui'
 import { agentSaveError, type AgentErrorPlace } from '@/lib/agentErrors'
-import { agentsApi, errorMessage, processApi, templateText } from '@/lib/api'
+import { agentsApi, errorCode, errorMessage, processApi, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { processOf, processPayload, useProcessCatalogue, type ProcessDraft } from '@/lib/process'
 import { agentKinds, kindMeta, kindOrder } from '@/lib/kinds'
@@ -231,6 +231,8 @@ export function AgentForm({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [nameError, setNameError] = useState<string | null>(null)
+  // The agent a lost first save already made, offered to open instead of saving again.
+  const [twin, setTwin] = useState<Agent | null>(null)
   // 빠진 정보 질문 fields a save stopped on, by question id.
   const [gapErrors, setGapErrors] = useState<Record<string, GapProblem>>({})
   const formRef = useRef<HTMLFormElement>(null)
@@ -333,6 +335,15 @@ export function AgentForm({
       setSavedId(saved.id)
       return saved
     } catch (err) {
+      // A first save whose answer was lost, sent again: the handle is taken by the agent that
+      // first save made. Offer that one instead of 「이미 쓰는 핸들」.
+      if (creating && !savedId && errorCode(err) === 'slug_taken') {
+        const twin = await justMadeTwin(draftSlug, loadWorkspace)
+        if (twin) {
+          setTwin(twin)
+          return null
+        }
+      }
       const said = agentSaveError(err, t('저장하지 못했습니다. 입력한 내용을 확인해 주세요.'))
       setError(t(said.message))
       reveal(said.place)
@@ -340,7 +351,7 @@ export function AgentForm({
     } finally {
       setSaving(false)
     }
-  }, [draft, draftSlug, upsertAgent, t, reveal])
+  }, [draft, draftSlug, upsertAgent, t, reveal, creating, savedId, loadWorkspace])
 
   const save = async () => {
     const saved = await persist()
@@ -403,6 +414,29 @@ export function AgentForm({
           {error}
         </p>
       )}
+      {twin && (
+        <div
+          role="alert"
+          data-testid="agent-twin"
+          className="flex flex-wrap items-center gap-2 rounded-control border border-warn/40 bg-warn/5 px-3 py-2 text-base text-fg"
+        >
+          <span className="min-w-0 flex-1">{t('같은 이름의 에이전트를 방금 만들었습니다.')}</span>
+          <Button type="button" size="sm" variant="primary" onClick={() => onSaved(twin)}>
+            {t('열기')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setTwin(null)
+              nameRef.current?.focus()
+              nameRef.current?.select()
+            }}
+          >
+            {t('다른 이름으로')}
+          </Button>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Field label={t('이름')}>
@@ -414,6 +448,7 @@ export function AgentForm({
             aria-invalid={nameError ? true : undefined}
             onChange={(e) => {
               setNameError(null)
+              setTwin(null)
               edit({ ...draft, name: e.target.value })
             }}
             placeholder={t('예: 기술 검토 도우미')}
@@ -804,5 +839,21 @@ export function AgentForm({
         </Button>
       </div>
     </form>
+  )
+}
+
+/** My agent with `slug` made in the last ten minutes, read fresh from the server; else null. */
+async function justMadeTwin(slug: string, reload: () => Promise<void>): Promise<Agent | null> {
+  try {
+    await reload()
+  } catch {
+    return null
+  }
+  const { agents, user } = useStore.getState()
+  const recent = Date.now() - 10 * 60_000
+  return (
+    agents.find(
+      (a) => a.slug === slug && a.ownerId === user?.id && new Date(a.updatedAt).getTime() >= recent,
+    ) ?? null
   )
 }
