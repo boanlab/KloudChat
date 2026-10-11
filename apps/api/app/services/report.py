@@ -435,8 +435,7 @@ def _own_material(request: str) -> bool:
 
 #: Work documents whose facts all come from the person: a 보도자료 from the event's notes, a
 #: 공문 from the request, a 결과보고서 from the figures. The web brings nothing to them but
-#: unrelated references cited as grounds (quality lane Q7: 한국코드페어 공지·대학 게시판 in a
-#: press release, a 경북 수산물 기획전 in a grant application).
+#: unrelated references cited as grounds.
 _MATERIAL_FORMATS = frozenset({
     "press", "official", "result_report", "minutes", "internal_draft", "gaejo", "event_plan",
     "status", "incident",
@@ -455,8 +454,8 @@ def material_complete(request: str, format_id: str | None, *, has_files: bool = 
         _GRANT_APPLICATION.search(lead_instruction(request)))
     if (format_id or "") == "comparison" and not named:
         # A comparison whose options come priced in the request or its files is decided on
-        # them: a search turned S10's 「정보보호 인증(ISMS)」 into ISMS-P with a made-up gloss
-        # (quality Q7). Options named with nothing about them are still looked up.
+        # them, so a search cannot rename or gloss them. Options named with nothing about
+        # them are still looked up.
         priced = len(_MONEY.findall(request)) >= 2
         return has_files or (priced and _carries_material(request))
     return named and (has_files or _carries_material(request))
@@ -615,9 +614,9 @@ def _cell_sourced(
     if dates is not None and days:
         entries = report_checks.bound_rows(row, dates)
         if entries:
-            written = report_checks._cell_dates(cell, 0)
+            written = report_checks._cell_dates(cell)
             return any(report_checks.date_matches(w, e) for w in written for e in entries)
-        # A row that shares no word with any line: read as before.
+        # A row that shares no word with any line: the plain-text check below.
     elif dates is not None and flat in compact:
         return True
     for month, day in days:
@@ -861,7 +860,7 @@ def _section_role(heading: str, index: int, total: int, written: str) -> tuple[s
 
 
 #: Formats read as plain text — a 공문, a 보도자료, minutes, a result report, an internal
-#: draft: a KPI tile or a callout box is a briefing's device, not theirs (quality lane Q13).
+#: draft: a KPI tile or a callout box is a briefing's device, not theirs.
 PLAIN_FORMATS = frozenset({"official", "press", "minutes", "result_report", "internal_draft"})
 _BOX = re.compile(r"^```(?P<kind>kpi|callout)[ \t]*\n(?P<body>.*?)^```[ \t]*$\n?", re.S | re.M)
 
@@ -889,8 +888,7 @@ _BODY_ONLY = re.compile(r"^\s*(?:본문|내용|body)\s*$", re.I)
 
 
 def untitled_body(sections: list[dict], outline: tuple[str, ...] | list[str]) -> list[dict]:
-    """`sections` with the heading taken off when the fixed outline is one 「본문」 section
-    (quality lane Q11: a 공문 template's body came out as 「1. 협조 요청 사항 및 목적」 chapters)."""
+    """`sections` with the heading taken off when the fixed outline is one 「본문」 section."""
     if len(outline) != 1 or not _BODY_ONLY.match(outline[0]) or len(sections) != 1:
         return sections
     return [{**sections[0], "heading": ""}]
@@ -2263,7 +2261,7 @@ def fix_pnl_tables(sections: list[dict]) -> list[dict]:
 #: A sentence about the writing instructions, not the subject: 「쓸 수 있는 수치 목록에 따르면」,
 #: 「… 절이 아직 작성되지 않았습니다」. The reader never saw the instructions.
 #: The writer's own check of a settled block (「85,000,000원 × 0.10 = 8,500,000원이 견적 확정 블록의
-#: 7,727,273원과 다릅니다」, client-proposal-3) is talk about the instructions too.
+#: 7,727,273원과 다릅니다」) is talk about the instructions too.
 _PROMPT_TALK = re.compile(
     r"쓸 수 있는 수치|수치 목록|요청 자료(?:에|의|로)|작성 지침|아직 (?:작성|쓰이)지 않았|개요(?:에|의) 따르면"
     r"|(?:확정|계산)\s{0,2}블록|확정 날짜 블록"
@@ -3142,8 +3140,8 @@ def _request_material(request: str) -> str:
     """What the request itself gives as material, attachments or not: the pasted block,
     a memo after the first paragraph, or else the request's own price lines.
 
-    A one-line 「[견적 메모]」 under an attached RFP was neither pasted (no 「---」, under
-    400 characters) nor read, and the writer made the MM up (client-proposal-3)."""
+    Covers a one-line 「[견적 메모]」 under an attached RFP, which is neither pasted (no 「---」,
+    under 400 characters) nor an attachment."""
     if pasted := pasted_material(request):
         return pasted
     if memo := _pasted_without_marker(request):
@@ -3153,7 +3151,7 @@ def _request_material(request: str) -> str:
     if not lines:
         # Figures stated inline (「A안: 시간당 12,000원, 연간 2,000시간. B안: 구매가 1억
         # 2천만원 …」): the sentences that state amounts are the material, or the settled
-        # figures, the cost pre-pass and the trace had nothing to read (research R-03).
+        # figures, the cost pre-pass and the trace have nothing to read.
         sentences = re.split(r"(?<=[.!?。])\s+|\n+", instruction_part(request or ""))
         lines = [t.strip() for t in sentences if _WON.search(t)]
         if sum(len(_WON.findall(t)) for t in lines) < 2:

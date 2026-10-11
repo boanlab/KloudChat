@@ -90,8 +90,8 @@ def wanted(request: str) -> bool:
 
 
 #: Words that name the document or its funding programme, not its subject: 「연구계획서」,
-#: 「한국연구재단」, 「개인기초연구」, 「중견연구」, 「공모사업」, 「초안」 (verify1 R-09 searched
-#: 「한국연구재단 개인기초연구 중견연구 연구계획서」 and found nothing).
+#: 「한국연구재단」, 「개인기초연구」, 「중견연구」, 「공모사업」, 「초안」; left in the query, they
+#: find nothing.
 _DOC_WORD = re.compile(
     r"(?:계획서|보고서|제안서|신청서|기획서|초안|요약본|발표문)$|연구재단|재단$|기초연구|중견연구|"
     r"신진연구|리더연구|우수연구|개인연구|공모|사업$|과제$|연구기간|연구비")

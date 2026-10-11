@@ -9,7 +9,7 @@ within fixed limits; only text the person can read in the skill page is kept.
 - Python scripts under `scripts/` are kept in the row (`Skill.script_files`), shown in the
   preview with their own scan, and run only in the code sandbox through `run_skill_script`
   — never imported by the server, never written to `app/skills`. Other script types are
-  dropped as before. Sharing a skill with scripts waits for an administrator.
+  dropped. Sharing a skill with scripts waits for an administrator.
 
 Every problem is a `Finding`: `block` stops the upload (structure or safety), `warn`
 is shown and the upload may go on. The scans are heuristics, not a guarantee.

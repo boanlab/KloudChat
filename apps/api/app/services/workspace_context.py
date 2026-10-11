@@ -785,8 +785,7 @@ async def assemble(
     `file_budget`: characters of attached text to carry (`file_budget(model)`); the
     configured floor when not given.
     `how_to`: the turn asks how to use this app. Its answer is the user guide's, so the
-    person's memories and 개인 맞춤 설정 stay out: a remembered 「회의록은 영어로」 came back
-    as advice to write it into an agent's 지시.
+    person's memories and 개인 맞춤 설정 stay out, so they do not resurface as advice.
     `published`: a visitor's turn on a published bot, run on its owner's account. The
     owner's memories, 개인 맞춤 설정 and project stay out; the bot's agent copy and the files
     of the conversation are all it reads.
@@ -913,8 +912,7 @@ async def assemble(
     # long document carried for many turns costs at most the budget, never more.
     carried_files: tuple[ContextFile, ...] = ()
     # A document turn that brings no file of its own works from the files the session was
-    # given: a follow-up re-planned as a new outline lost the memo and wrote 「원문 자료
-    # 없음」 (gaejo-report-4).
+    # given, so a follow-up re-planned as a new outline keeps the memo.
     document_followup = (
         session.kind in (SessionKind.report, SessionKind.slides) and not attachment_ids
     )

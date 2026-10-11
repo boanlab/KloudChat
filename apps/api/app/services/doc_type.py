@@ -39,8 +39,8 @@ LEADING: dict[str, float] = {
 #: A format's own scale over `TYPE` and `LEADING`, by `doc_formats` id. The 개조식 보고 is a
 #: one-page 공문서-style memo: a larger body at 160%, headings two points over it, the
 #: title boxed above. 15 pt, the common 휴먼명조 size, holds about 25 lines on A4; the
-#: one-page memos this format writes run to 30–35 (lineup gaejo-report-1: 13 pt ran 2.4
-#: lines over, 12 pt fits). Its sizes replace the shared ones wherever that format is drawn.
+#: one-page memos this format writes run to 30–35, which fit at 12 pt. Its sizes replace
+#: the shared ones wherever that format is drawn.
 FORMAT_TYPE: dict[str, dict[str, float]] = {
     "gaejo": {
         "title": 18,

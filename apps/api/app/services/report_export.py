@@ -3813,7 +3813,7 @@ def _hwpx_para_properties(
     after it set in by as much.
 
     Hancom stores paragraph margins and spacing at twice their size: a plain `<hh:margin>`
-    is read that way, so 10 pt written as 1000 came out as 5 pt. The margins are written as
+    is read that way, so 10 pt written as 1000 reads as 5 pt. The margins are written as
     Hancom writes them: an `hp:switch` whose `HwpUnitChar` case holds the true lengths and
     whose default holds them doubled, for readers that do not know the namespace.
     """

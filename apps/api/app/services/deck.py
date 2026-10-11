@@ -2056,7 +2056,7 @@ def _given_line(request: str, labels: tuple[str, ...]) -> str:
 def given_cover(request: str, title: str, subtitle: str) -> tuple[str, str]:
     """`(title, subtitle)` with what the request states: 「제목: …」 is the title word for word
     and 「저자: …」 the cover's byline. A model's shortened title or dropped authors do not
-    stand (quality lane Q21)."""
+    stand."""
     given_title = _given_line(request, _TITLE_LABELS)
     authors = _given_line(request, _AUTHOR_LABELS)
     if given_title:
@@ -2159,8 +2159,7 @@ _BULLET_HARD = 160
 def _cut_at_word(text: str, limit: int) -> str:
     """`text` within `limit` characters, cut at the last space so no word is split.
 
-    The research lane's seminar deck cut 「…ROUGE-L의 0.42와 BERTScore의 0.」 mid-number at a
-    fixed 80; a line with no space to cut at is kept whole."""
+    A line with no space to cut at is kept whole."""
     if len(text) <= limit:
         return text
     at = text.rfind(" ", 0, limit + 1)
@@ -3419,9 +3418,8 @@ _STOP_WORDS = frozenset(
 def bilingual_terms_rule(request: str, material: list[str]) -> str:
     """A system rule to write terms as 한국어(English) when the request asks for it.
 
-    The research lane's seminar deck was asked 「용어는 영어 원문을 병기해 줘」 and showed
-    none, coining 「단문」 and 「추록」 instead. The material's own repeated English terms are
-    listed so the writer pairs those rather than inventing Korean ones.
+    The material's own repeated English terms are listed so the writer pairs those rather
+    than inventing Korean ones.
     """
     if not _BILINGUAL.search(request or ""):
         return ""

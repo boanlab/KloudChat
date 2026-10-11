@@ -1,8 +1,7 @@
 """「모든 문항에서 가장 낮다」 read against the table the answer printed, and narrowed by code.
 
-Quality lane Q19: an answer's own table had 교수법 lowest at 공과대학, yet its sentence said
-「예술대학은 모든 문항에서 가장 낮은 평균」. The table is right; the sweeping word is not. The
-claim is rewritten to the columns where the row really is the lowest (or highest).
+The table is taken as right and the sweeping word as wrong: the claim is rewritten to the
+columns where the row really is the lowest (or highest).
 """
 
 from __future__ import annotations

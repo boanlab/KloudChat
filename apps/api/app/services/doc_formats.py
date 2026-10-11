@@ -114,8 +114,8 @@ FORMATS: tuple[DocFormat, ...] = (
         numbering="korean", head="memo", lists="gaejo", closing=True,
     ),
     DocFormat(
-        # A public grant application 「사업계획서 … 공모사업 신청용」: before `plan`, whose
-        # 연구자·연구 기간 cover it fell to through the bare-계획서 fallback (verify1 S13).
+        # A public grant application 「사업계획서 … 공모사업 신청용」: before `plan`, so the
+        # bare-계획서 fallback does not give it the 연구자·연구 기간 cover.
         "grant", "공모·지원사업 계획서",
         r"공모\s{0,3}(?:사업)?[^\n]{0,30}?(?:계획|신청)"
         r"|(?:지원|보조|위탁|공모)\s{0,3}사업[^\n]{0,30}?(?:계획서|신청서)"
@@ -314,8 +314,7 @@ def _labelled(line: str, labels: dict[str, str]) -> dict[str, str]:
 def head_values(fmt: DocFormat, text: str) -> dict[str, str]:
     """Head fields the request and material state, read by code: 「일시: …」 labels, a memo's
     bracketed header 「[메모 — 교육과정위원회, 2026-10-12(월) 15:00~16:10, 공학관 302호]」,
-    「작성자는 나(조교 정다은)로」, 「[경력 정리 — 박준영]」. Lineup v1 left these blank though
-    the material gave them (minutes-1/4, career-docs-2)."""
+    「작성자는 나(조교 정다은)로」, 「[경력 정리 — 박준영]」."""
     wanted = {_base(f): f for f in fmt.fields}
     labels: dict[str, str] = {}
     for base, field_name in wanted.items():
@@ -611,8 +610,7 @@ _ITEM_CAPTION = re.compile(
 
 def _tables_out_of_items(lines: list[str]) -> list[str]:
     """Table rows written as list items come back out as a table, its caption above it,
-    a blank line around: S09's 만족도·예산 tables printed as 「○ | 항목 | 계획 |」 lines
-    in the PDF and DOCX (verify1 NEW-12)."""
+    a blank line around, so 「○ | 항목 | 계획 |」 does not print as a list line."""
     rows = [bool(_ITEM_ROW.match(line)) for line in lines]
     if sum(rows) < 2:
         return lines

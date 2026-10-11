@@ -130,7 +130,7 @@ def design_listed(name: str | None, owner_id: str | None = None,
                   catalog_owner: str | None = None) -> bool:
     """Whether a theme is shown in the pickers: False only for the catalogue owner's row of a
     shipped theme marked `listed: False`. A person's own copy of that name is theirs and stays
-    listed; new accounts are no longer given one (`seed_designs`)."""
+    listed; new accounts are not given one (`seed_designs`)."""
     return not (_hidden_design(name) and owner_id is not None and owner_id == catalog_owner)
 
 

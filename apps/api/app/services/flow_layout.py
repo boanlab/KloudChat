@@ -1,7 +1,7 @@
 """A long flowchart laid out in rows that read at the size the figure is printed.
 
 A flow drawn on one line grows as wide as its steps. A report prints a figure at the text
-width (about 466 pt on A4), so a 900 pt line of eleven steps came out at half size, its box
+width (about 466 pt on A4), so a 900 pt line of eleven steps prints at half size, its box
 text at 5 pt and its edge labels at 4. Here the steps are folded into rows instead, each
 read left to right, the rows stacked. How many steps share a row follows from the text: the
 most per row at which every box still takes `BOX_PT` in the frame it is drawn in, never so

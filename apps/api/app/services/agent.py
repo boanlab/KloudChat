@@ -1219,8 +1219,8 @@ async def run_turn(
                     continue
             if (spoken_now and hop and not blanks_retried and "run_code" in by_name
                     and hop < settings.max_tool_hops and _COMPUTABLE_BLANK.search(spoken_now)):
-                # 「[수치]일」 for a value the data computes (data-analysis-4 r2: the mean
-                # without the 187-day outlier): taken back and asked once to compute it.
+                # 「[수치]일」 for a value the data computes: taken back and asked once to
+                # compute it.
                 blanks_retried = True
                 log.info("numeric blank in a run_code answer, asking once to compute it")
                 streamed = "".join(hop_text)

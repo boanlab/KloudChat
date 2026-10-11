@@ -368,15 +368,14 @@ def governing_template(template_id: str | None, format_id: str | None):
 
 
 #: What a format does unless its 서식 or the agent says otherwise. A 공문, a 보도자료, minutes,
-#: a result report and an internal draft are read as plain text: pictures only when asked
-#: (quality lane Q13: 그림 2~3장 in a 공문 and a 보도자료).
+#: a result report and an internal draft are read as plain text: pictures only when asked.
 FORMAT_DEFAULTS: dict[str, dict[str, Any]] = {
     fmt: {"draws": "when-asked"}
     for fmt in ("official", "press", "minutes", "result_report", "internal_draft")
 }
 # A 공문 is one body of 1. 가. items under its head, never chapters: the outline is one
-# 「본문」 section, printed without a heading (quality lane Q11: the default 공문 came out as
-# six chapter headings). A person's template sets the same with 고정 목차 「본문」.
+# 「본문」 section, printed without a heading. A person's template sets the same with
+# 고정 목차 「본문」.
 FORMAT_DEFAULTS["official"] = {**FORMAT_DEFAULTS["official"], "fixed_outline": True,
                                "structure": {"sections": ("본문",)}}
 

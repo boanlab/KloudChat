@@ -186,8 +186,7 @@ _ENTRY = re.compile(r"^\s{0,3}(?:\[\d{1,3}\]|\d{1,3}[.)]|[-*·])\s")
 
 def drop_restated_references(sections: list[dict], sources: list[dict] | None) -> list[dict]:
     """The writer's own 「참고문헌」 entries that restate a source the server lists anyway,
-    taken out; the section goes when nothing else is in it. A research plan carried both
-    lists, the writer's half without authors or years (verify1 R-08)."""
+    taken out; the section goes when nothing else is in it."""
     titles = [k[:30] for k in (_key(str(src.get("title") or "")) for src in sources or [])
               if len(k) >= 8]
     if not titles:

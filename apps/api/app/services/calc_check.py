@@ -1,11 +1,9 @@
 """Slides read against the values code computed for them (`calc.computed_values`).
 
-The lecture deck of the quality lane showed 「FCFS 평균 대기시간 = 2」 and 「RR(q=2) 평균 9」 while
-the procedure gives 4.75 and 5.0, and its quality step said 「문제 없음」. Here a slide's number is
-compared with the computed value it names — the row (「FCFS」) from the line itself or from the
-slide's title, the value (「평균 대기시간」) from the line — and a different one is set back.
-A line that names two rows, or no value the code printed, is left alone: only an unambiguous
-claim is corrected.
+A slide's number is compared with the computed value it names — the row (「FCFS」) from
+the line itself or from the slide's title, the value (「평균 대기시간」) from the line — and a
+different one is set back. A line that names two rows, or no value the code printed, is left
+alone: only an unambiguous claim is corrected.
 """
 
 from __future__ import annotations

@@ -569,7 +569,7 @@ async def run(
 
     if korean_query and not any(hit.get("lane") == korean_papers.LANE for _, hit in picks):
         # Asked about Korean research and none was found: said, so the writer neither calls
-        # a survey above domestic nor fills 국내 동향 from memory (verify1 R-09).
+        # a survey above domestic nor fills 국내 동향 from memory.
         blocks.append(korean_papers.none_found(korean_query))
     return Findings(
         sources=sources,

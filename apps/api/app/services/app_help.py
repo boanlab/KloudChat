@@ -121,8 +121,7 @@ _GROUNDING = (
     "writing), ignore this block and do the task.\n"
 )
 
-#: How long a how-to answer is: a busy person wants the path, not the page (persona A/B 4th run:
-#: a correct answer ran to about 1.1k tokens).
+#: How long a how-to answer is: a busy person wants the path, not the page.
 _BRIEF = (
     "How to answer:\n"
     "- Brief. First line: where to start (screen › menu › button). Then at most 6 numbered "

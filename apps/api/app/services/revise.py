@@ -653,7 +653,7 @@ _SKELETON_WORDS = re.compile(
 def within_named_parts(plan: Plan, parts: list[str], message: str) -> Plan:
     """An `outline` plan whose words only move or add content inside parts it names
     (「예산 부족분 얘기를 맨 위로 올리래. 붙임에 … 추가해 줘」) is a pass over the document
-    as it is: re-planning it dropped the memo the document was written from (gaejo-report-4)."""
+    as it is, so re-planning does not drop the memo the document was written from."""
     if not plan.restructures or not parts:
         return plan
     text = " ".join((message or "").split())

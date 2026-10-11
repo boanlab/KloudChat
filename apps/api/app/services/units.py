@@ -153,9 +153,8 @@ _SCALED_WON = re.compile(
 
 
 def fix_double_scale(text: str, request: str) -> str:
-    """An amount the person gave, written in won and then scaled again: 「1,000만원」 came out
-    「10,000,000만 원」 (quality lane Q20). The digits already are the won amount, so the
-    scale word made it ten thousand times too large; it is written back as the person did."""
+    """An amount the person gave, written in won and then scaled again (「1,000만원」 as
+    「10,000,000만 원」), written back as the person did."""
     given = _given(request)
     if not given or not text:
         return text

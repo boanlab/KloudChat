@@ -3,7 +3,7 @@
 The writer is handed settled blocks (「# 확정 수치」, 「# 견적 확정 블록(코드 계산)」 …) and the
 pre-pass runs under step names (date-calc, quote-calc …). A document or answer that names
 them talks about how it was made: 「정확한 날짜는 코드 미해석」, 「확정 수치 블록에 해당 날짜
-해석값이 없어」, 「코드가 계산해 준 확정 날짜」 (lineup v1 minutes-1/4/5). The writer is told
+해석값이 없어」, 「코드가 계산해 준 확정 날짜」. The writer is told
 the blocks are internal (`WRITER_NOTE`); `scrub` takes out what slips through anyway.
 """
 

@@ -64,11 +64,10 @@ _STYLE_PHRASE = {
     ),
 }
 
-#: Chip names on the wire and on screen, in order. 자동 leaves the choice to
-#: the planner; 없음 sends no style; 차트 is drawn by `chart_code`. The screen's
-#: 구조도 · 흐름도 · 개념도 chips never reach here: they draw a figure with the deck
-#: export's shapes (`diagram.draw_native`). 도식 stays in `_STYLE_PHRASE` for clients
-#: that still send it.
+#: Chip names on the wire and on screen, in order (mirrored by the web composer). 자동 leaves
+#: the choice to the planner; 없음 sends no style; 차트 is drawn by `chart_code`. The
+#: 구조도 · 흐름도 · 개념도 chips never reach here (`diagram.draw_native`); 도식 is accepted
+#: on the wire through `_STYLE_PHRASE` but not offered.
 STYLE_CHOICES = [
     "자동",
     "인포그래픽",

@@ -43,7 +43,7 @@ def price_line(line: str) -> bool:
 
 _WEIGHTS = re.compile(
     r"가중치|중요도|배점|비중\s{0,2}\d|\d{1,3}\s{0,2}[:·/]\s{0,2}\d{1,3}\s{0,2}[:·/]\s{0,2}\d{1,3}"
-    # 「비용 50, 모바일 앱 30, HR 연동 20」 (comparison-report-4's follow-up): three or more
+    # 「비용 50, 모바일 앱 30, HR 연동 20」: three or more
     # criteria each with a bare number.
     r"|(?:[가-힣A-Za-z][가-힣A-Za-z ]{0,10}\s\d{1,3}(?:점|%)?\s{0,2}[,，]\s{0,2}){2,6}"
     r"[가-힣A-Za-z][가-힣A-Za-z ]{0,10}\s\d{1,3}(?:점|%)?(?!\d)")
@@ -240,9 +240,8 @@ _DAYS_BACK = {"오늘": 0, "금일": 0, "어제": 1, "어저께": 1, "그저께"
 def meeting_base(request: str, material: str, today: dt.date | None) -> tuple[dt.date | None, str]:
     """The base relative dates are read from, and where it came from: the text, the file's
     name, or the person saying the meeting was today or yesterday (the turn's date, KST).
-    A recording says no date aloud, so its 「다음 주 수요일」 stayed 미정 with 20261014 in the
-    file's name (minutes-2). Nothing else gives one: the day the material was handed over
-    became 「10월 8일에 열린 회의」 (minutes-3)."""
+    A recording says no date aloud, so the file's name (20261014) may carry it. Nothing else
+    gives one: the day the material was handed over is not the meeting's."""
     if found := meeting_date(request, material, today):
         return found, "text"
     if found := file_date(material):
@@ -558,8 +557,8 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
             reason = reason or _ruled_out(kept, material)
             priced = any(k in kept for k in ("monthly_price", "unit_price", "amount"))
             if not priced:
-                # An excluded item extracted without its price (「qty: 7, excluded」) failed
-                # the whole quote with KeyError 'unit_price' (client-proposal-5).
+                # An excluded item extracted without its price (「qty: 7, excluded」) is set
+                # aside, not priced.
                 if reason:
                     set_aside.append({"name": kept["name"], "excluded": True, "reason": reason})
                 else:
@@ -572,11 +571,9 @@ def grounded_quote_input(data: dict, material: str) -> tuple[dict, list[str]]:
             items.append(kept)
         elif isinstance(item, dict):
             dropped.append(str(item.get("name") or "?"))
-    # The prices' stated basis wins over the model's: a 「VAT 별도」 rate card summed as VAT
-    # included settled 공급가액 269,090,909 for a 296,000,000 subtotal (client-proposal-5).
-    # Prices that state no basis are VAT 별도, as quoted unit prices are: the extraction took a
-    # VAT-included budget's basis for the memo's 「월 7,000,000원」 and settled 85,000,000 as the
-    # VAT-included total (client-proposal-3).
+    # The prices' stated basis wins over the model's, so a 「VAT 별도」 rate card is not summed
+    # as VAT included. Prices that state no basis are VAT 별도, as quoted unit prices are,
+    # whatever basis a budget elsewhere in the material uses.
     stated = price_basis(material)
     basis = stated or "excl"
     out: dict[str, Any] = {"vat_basis": basis, "items": items}
@@ -676,7 +673,7 @@ def _quote_block(result: dict, excluded: list[dict] | None = None, assumed: bool
         elif _VAT_WORD.search(material):
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원(부가세 기준 불분명)")
         else:
-            # A memo that never mentions VAT gets no VAT question raised from it (S17).
+            # A memo that never mentions VAT gets no VAT question raised from it.
             lines.append(f"- 견적 {row['vendor']}: {row['amount']:,}원 (as the material writes it)")
     return "\n".join(lines)
 
@@ -941,8 +938,7 @@ def _plain(raw: Any) -> Any:
 def explicit_factors(item: dict, years: Any) -> dict | None:
     """An item given by named fields (unit_price, count, per, years, months, usage,
     threshold, rate) as the factors and `over` code multiplies: the model names what each
-    number is and code does the arithmetic it got wrong in comparison-report-5 (×5 vehicles
-    and the hours term dropped from car-sharing). `None` when a field the unit needs is missing."""
+    number is and code does the arithmetic. `None` when a field the unit needs is missing."""
     price = _plain(item.get("unit_price"))
     if price is None:
         return None
@@ -1171,8 +1167,7 @@ def conditional_items(items: list[dict], conditions: list[str],
 
     Only what lowers the cost (a discount, sign -1) is held back from the base. A cost the
     model tagged with the condition too (「구독료」 tagged 「연 단위 계약 시」 beside its
-    discount) is still paid without it: S10 dropped B안's licence from the no-contract
-    case and priced it at the one-time 3,000,000원 alone (verify1 NEW-3). A cost tagged
+    discount) is still paid without it. A cost tagged
     with the condition that matches an untagged one (same unit and count) replaces that
     one under the condition; with none to match, the base pays it at the full unit price."""
     base = [i for i in items if not i.get("when")]
@@ -1322,8 +1317,7 @@ def _same_totals(a: dict[str, dict], b: dict[str, dict]) -> bool:
 
 def settled_options(readings: list[dict]) -> tuple[dict[str, dict], list[str]]:
     """The options two readings price alike when the readings as a whole differ, and the
-    names of the rest. The GPU decision report (verify1 R-03) had its readings split over
-    one option, and every total — B안's 1억 4,700만 too — went to the writer as 「[금액]」."""
+    names of the rest, so one unsettled option does not blank every total."""
     kept: dict[str, dict] = {}
     unsettled: list[str] = []
     first = readings[0]["options"] if readings else {}
@@ -1382,7 +1376,7 @@ async def _vote(extract: Callable[[str], Any], agree: Callable[[Any, Any], bool]
     """Two readings by the writer's model, a third by `tiebreak` when they differ.
 
     `settle`, when given, is tried first for the third reading (a reading that thinks); when
-    it fails, times out or reads nothing, the third reading is `tiebreak`'s as before.
+    it fails, times out or reads nothing, the third reading is `tiebreak`'s.
 
     Returns `(result, how, outcomes)`: the result two readings agree on and 「agreed」 or
     「voted」; `None` and 「split」 when they all differ, or 「empty」 when none gave one. Each
@@ -1616,7 +1610,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
     complete, model, tiebreak_model, count = job.complete, job.model, job.tiebreak_model, job.count
     if len(_amounts(material)) >= 2:
         # Options priced by parts (unit price × count × years) settle their totals before
-        # writing; with no 「단가」 line quote-calc never ran (comparison-report-5).
+        # writing, also when no 「단가」 line runs quote-calc.
         given = f"{request}\n{material}"
         numbers = _material_numbers(given) + _calendar(given)
 
@@ -1631,7 +1625,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
 
         # Two readings that differ are settled by one more on the outline model with its
         # thinking on (Flash+thinking read 15/15 cost cases, 150 s median, against 12/15
-        # without); past the time cap the plain third reading settles, as before.
+        # without); past the time cap the plain third reading settles.
         thinker = next((m for m in (model, tiebreak_model)
                         if m and thinking.thinks_by_default(m)), "")
         deliberated = False
@@ -1647,9 +1641,8 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
             return found, (why[0] if why else "")
 
         try:
-            # One reading priced comparison-report-5's purchase at 167,900,000 or 185,900,000
-            # against 197,900,000: totals reach the writer only when two readings agree, a
-            # third by the larger model settling a split.
+            # Totals reach the writer only when two readings agree, a third by the larger
+            # model settling a split.
             costs, how, outcomes = await _vote(
                 read_costs, _costs_agree, tiebreak_model or model,
                 think_costs if job.deliberate is not None and thinker else None)
@@ -1688,7 +1681,7 @@ async def _compare_cost(pre: Prepass, job: PrepassJob) -> None:
                 pre.runs.append({"skill": "compare-cost", "error": True,
                                  "summary": f"{_COST_SPLIT} ({readings[:600]})"})
             else:
-                # Never silent: comparison-report-5 wrote its totals unaided with no step.
+                # Never silent: a failed total is recorded as a step.
                 why = next((o[1] for o in outcomes if o[1]), "")
                 pre.runs.append({"skill": "compare-cost", "error": True, "summary": "총비용 계산 못 함 ("
                                  + (why or "응답에서 대안별 비용 항목을 읽지 못함") + ")"})
@@ -1887,7 +1880,7 @@ def _total_slips(text: str, quote: dict) -> list[tuple[str, int, int]]:
 
 def _back_computed(quote: dict) -> set[int]:
     """Amounts got by reading a settled amount on the other VAT basis — 85,000,000 taken as
-    VAT included gives 77,272,727 + 7,727,273 (client-proposal-3) — that no settled value is."""
+    VAT included gives 77,272,727 + 7,727,273 — that no settled value is."""
     known = {int(quote.get(k) or 0) for k in ("subtotal", "discount", "supply", "vat", "total")}
     known |= {int(line.get("amount") or 0) for line in quote.get("lines") or []}
     for row in quote.get("scenarios") or []:
@@ -1925,7 +1918,7 @@ _RELATIVE_WORDS = re.compile(r"다음\s{0,2}주|이번\s{0,2}주|모레|내일|�
 _ISO_IN = re.compile(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})|(?<!\d)(\d{1,2})\s{0,2}(?:[/.]|월\s{0,2})(\d{1,2})(?!\d)")
 
 
-def _cell_dates(cell: str, base_year: int) -> list[tuple[int | None, int, int]]:
+def _cell_dates(cell: str) -> list[tuple[int | None, int, int]]:
     out = []
     for m in _ISO_IN.finditer(cell or ""):
         if m.group(1):
@@ -1991,7 +1984,7 @@ async def minutes_rows(doc: Doc, dates: list[dict]) -> tuple[list[Finding], dict
                                 "자료가 이 일에 준 기한(날짜·미정·[기한])으로")
             others = " ".join(c for k, c in enumerate(row) if k != due)
             entries = bound_rows(others, bound)
-            written = _cell_dates(when, int((dates[0]["base_date"] if dates else "2026")[:4]))
+            written = _cell_dates(when)
             evidence = ""
             if entries and written and not any(date_matches(w, e) for w in written for e in entries):
                 shown = ", ".join(dict.fromkeys(e["shown"] for e in entries))
@@ -2030,7 +2023,7 @@ def _row_still_wrong(line: str, table: Table, owner: int, due: int, note: int | 
     if not _DUE_CELL_OK.match(when) and (_RELATIVE_WORDS.search(when) or len(when) > 16):
         return True
     entries = bound_rows(" ".join(c for k, c in enumerate(row) if k != due), bound)
-    written = _cell_dates(when, 2026)
+    written = _cell_dates(when)
     return bool(entries and written and not any(date_matches(w, e) for w in written for e in entries))
 
 
@@ -2524,8 +2517,8 @@ def _said_headcounts(text: str, roles: dict[str, dict]) -> list[tuple[str, float
 
 
 async def staff_counts(doc: Doc, roles: dict[str, dict]) -> tuple[list[Finding], dict]:
-    """A role's headcount written as its MM (client-proposal-1: 「AI 엔지니어 3명(3.0MM),
-    데이터 엔지니어 1.5명」 where the plan is 1명 × 3.0MM and 1명 × 1.5MM)."""
+    """A role's headcount written as its MM (「AI 엔지니어 3명(3.0MM)」 where the plan is
+    1명 × 3.0MM)."""
     found: list[Finding] = []
     for index, sec in enumerate(doc.sections):
         content = str(sec.get("content") or "")
@@ -2615,9 +2608,7 @@ def _option_part(src: str, option: str) -> str:
 
 def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, str, str, list[str]]]:
     """Blanks whose value the material states near the same words: `(section, sentence or
-    row, blank, evidence lines)`. minutes-4 r2 wrote 「회당 [인원] 규모를 대강당 [석수]와 체육관
-    [석수]로」 with 「회당 900명」「대강당이 600석」「체육관 750」 in the transcript; minutes-5 r1
-    left the first meeting's deadlines as 「[기한]」 beside the table that gives them."""
+    row, blank, evidence lines)`, e.g. 「대강당 [석수]」 with 「대강당이 600석」 in the transcript."""
     lines = [ln.strip() for ln in (material or "").splitlines() if ln.strip()]
     out: list[tuple[int, str, str, list[str]]] = []
     for index, sec in enumerate(sections):
@@ -2627,8 +2618,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
             pieces = [line] if line.lstrip().startswith("|") else [
                 p for p in units.SENTENCE_BREAK.split(line) if placeholders.PLACEHOLDER.search(p)]
             # A paragraph about one option reads only that option's part of a material line
-            # that describes several: the GPU report's 「A안 … 연간 집행 비용 [금액]」 was filled
-            # with B안's 900만원 from the same request line (verify1 R-03).
+            # that describes several, so 「A안 … [금액]」 is not filled with B안's value.
             named_options = {m.group(1) for m in _OPTION_LABEL.finditer(line)}
             option = (next(iter(named_options)) if len(named_options) == 1
                       and not line.lstrip().startswith("|") else "")
@@ -2655,7 +2645,7 @@ def answerable_blanks(sections: list[dict], material: str) -> list[tuple[int, st
                         if value is None:
                             continue
                         # A value the sentence already carries (「교무처 마감 11/2」 in 비고)
-                        # was left out of the blank on purpose.
+                        # is not the blank's.
                         fresh = [v.group(0) for v in value.finditer(src)
                                  if _digits_of(v.group(0)) not in _digits_of(piece)]
                         if not fresh:
@@ -3186,7 +3176,7 @@ UNDATED_NOTE = "회의 일자 미기재로 날짜 미확정"
 
 def _day_known(day: str, known: str) -> bool:
     """Whether the material or request writes this month and day itself."""
-    found = _cell_dates(day, 0)
+    found = _cell_dates(day)
     if not found:
         return False
     _, month, date = found[0]
@@ -3197,7 +3187,7 @@ def _day_known(day: str, known: str) -> bool:
 
 def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tuple[list[dict], list[str]]:
     """With no meeting date in the request, the material or the file's name, a day written as
-    the meeting's (「2026년 10월 8일에 열린 … 회의」, minutes-3) becomes 「[회의 일자]」, and a
+    the meeting's (「2026년 10월 8일에 열린 … 회의」) becomes 「[회의 일자]」, and a
     deadline cell holding words (「다음 주 금요일」) or a day worked out from nothing becomes
     「[기한]」 with the words and why in 비고."""
     words = [d for d in dates if d.get("status") == _NO_BASE]
@@ -3235,7 +3225,7 @@ def minutes_undated(sections: list[dict], dates: list[dict], known: str) -> tupl
             if not when or placeholders.is_blank(when) or re.fullmatch(
                     r"\(?(?:미정|확인\s{0,2}필요|해당\s{0,2}없음|완료|-|—)\)?", when):
                 continue
-            dated = bool(_cell_dates(when, 0))
+            dated = bool(_cell_dates(when))
             value = "[기한]"
             if repeat := _REPEAT_CELL.search(when):
                 # 「매주 월요일」 holds without a start day; one worked out from nothing goes.
@@ -3472,7 +3462,7 @@ def _list_row_problems(line: str, bound: list[dict]) -> tuple[list[str], str]:
     if not _SOURCE_WORD.search(text):
         problems.append("출처(회의 또는 메일)를 앞 문장에 적는다")
     entries = bound_rows(text, bound)
-    written = _cell_dates(when, 2026)
+    written = _cell_dates(when)
     evidence = ""
     if entries and written and not any(date_matches(w, e) for w in written for e in entries):
         shown = ", ".join(dict.fromkeys(e["shown"] for e in entries))
@@ -3560,8 +3550,7 @@ def _strong_dates(row_text: str, bound: list[dict], action: str | None = None) -
         # as 미정 is the writer's call, and 「오늘」 is the meeting day, not a deadline.
         if d.get("kind") in _WRITTEN_DATES or d.get("date") == d.get("base_date"):
             continue
-        # Names and 「회의」 are on every row: 「매주 월요일」 went to 연구비 확인 and 숙소 예약
-        # through 한교수 alone (minutes-2).
+        # Names and 「회의」 are on every row, so a shared name alone does not bind a date.
         if action is not None and not _action_hits(action, d):
             continue
         near = words & _words(d.get("context") or d.get("source_line", ""))
@@ -3596,9 +3585,9 @@ def _task_column(header: list[str], others: tuple[int | None, ...]) -> int | Non
 
 def minutes_due_fill(sections: list[dict], dates: list[dict]) -> tuple[list[dict], int]:
     """Action rows left 「미정」 or 「[기한]」 though date-calc resolved their line get that date, the words
-    said moved to 비고: the prose said 10월 21일 while the cell stayed 미정 (minutes-2)."""
+    said moved to 비고, so the cell agrees with the prose."""
     # Read from the meeting's own date only: a line a later header or mail re-dated is left
-    # to the writer (minutes-5 read 「다음 주 월요일」 from 「11/13(금)」 as 11-16).
+    # to the writer.
     base = next((d.get("base_date") for d in dates), "")
     bound = [d for d in dates if d.get("status") in ("ok", "repeat")
              and d.get("base_date") == base and d.get("base_kind") in ("meeting", "given")]
@@ -3753,7 +3742,7 @@ def minutes_grounding(sections: list[dict], material: str) -> tuple[list[dict], 
     """Owners and quantities the material does not hold, repaired: an action row's owner who
     is named nowhere becomes 「[담당자]」; a spec row whose sizes and counts are not in
     the material is removed, a cell with one gets 「[수치]」 in its place, and a sentence stating
-    one is dropped. Booth sizes 4m×6m and 220V outlets came out of a seven-line memo (minutes-3).
+    one is dropped.
 
     Returns the sections and one code per repair (「minutes_owner」, 「minutes_spec」)."""
     flat = re.sub(r"\s+", "", material or "")
@@ -3943,7 +3932,7 @@ def _table_value(cell: str, must: dict) -> Any:
 def must_values_from_tables(data: dict, material: str) -> dict:
     """Option must-have values a pasted table states, read by code before the model's
     reading: a column header names the condition, a row names the option
-    (comparison-report-2 gave commute minutes 47/52/58 in a table the model left null)."""
+    (commute minutes 47/52/58 in a table)."""
     musts = [m for m in data.get("musts") or [] if isinstance(m, dict) and m.get("name")]
     if not musts:
         return data
@@ -4083,8 +4072,7 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
     if not doc.sections:
         return found, {}
     # Every part that states the recommendation, sentence by sentence: a summary that lists
-    # all three options before 「에듀노트를 권고합니다」 is read for the one it recommends
-    # (comparison-report-4 r2 kept the old pick in 요약 and 권고안 both).
+    # all three options before 「에듀노트를 권고합니다」 is read for the one it recommends.
     stating = [i for i, s in enumerate(doc.sections)
                if re.search(r"결론|권고|요약|추천|제언", str(s.get("heading") or ""))] or [0]
     for index in stating:

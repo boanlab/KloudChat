@@ -1,10 +1,8 @@
 """One document, one set of facts: what a follow-up changed is revised everywhere it shows.
 
 A follow-up that changes a criterion, a figure, a date or a decision lands on the parts the
-planner names; the summary, the conclusion and every part that states the old value kept it
-(lineup v1: comparison-report-4 re-weighted the criteria in two sections and kept the old
-recommendation in the summary; career-docs-3 fixed 경력 사항 and left 경력 요약 asking for the
-start month the person had just given). `dependents` widens the rewrite to those parts;
+planner names, while the summary, the conclusion and every part that states the old value
+keep it unless widened. `dependents` widens the rewrite to those parts;
 `conflicts` then reads the whole document for one named figure, total, date or recommended
 option written two ways, and `check` hands those to the verify stage's repair-once.
 """
@@ -281,7 +279,7 @@ async def settle_again(format_id: str, request: str, instruction: str, material:
     process = process_settings.for_format(format_id)
     if not process.prepass:
         return None
-    # Options listed in the request itself (comparison-report-4) are its material.
+    # Options listed in the request itself are its material.
     material = material if (material or "").strip() else request
     try:
         return await report_checks.prepare(

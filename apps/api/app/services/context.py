@@ -510,9 +510,8 @@ _ASKS_KOREAN = re.compile(r"한국어로|한글로|우리말로|\bin\s+Korean\b"
 def standing_language_rule(standing: list[str], asked: str) -> str:
     """The answer language a standing directive set, as a system rule; empty otherwise.
 
-    The chat default answers in the question's language, so a Korean question after
-    「지금부터 답은 영어로만」 pulled the answer back to Korean (research lane, R-10). The
-    latest question naming a language itself wins.
+    The chat default answers in the question's language; this keeps 「지금부터 답은 영어로만」
+    in force over later Korean questions. A question naming a language itself wins.
     """
     if _ASKS_ENGLISH.search(asked) or _ASKS_KOREAN.search(asked):
         return ""
