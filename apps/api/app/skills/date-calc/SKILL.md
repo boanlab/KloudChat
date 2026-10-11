@@ -21,7 +21,9 @@ Do not count dates in your head; resolve them with the script.
 4. For `unresolved` (not settled to a single date) and `unclear` (inaudible through noise), do not guess a date:
    leave `unresolved` as 「미정」 and `unclear` as 「[기한]」, and keep the original wording in 비고. Write a repeat (`repeat`) like 「매주 월요일(2026-10-19부터)」.
 
-After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday.
+An offset counts from the date said before it in the same sentence, or from the event it names when the text dates that event elsewhere: 「개강은 3월 2일」 and 「매 학기 개시 30일 전」 give 2027-01-31.
+
+After the answer is written, the server runs `dates` over it (`post_check`): a date the person's relative words resolve to (「개강 2027-03-02, 30일 전」 → 2027-01-31) that the answer missed by a few days, or left as a blank, is set to the worked-out date with its weekday. Every chat answer gets the same check for offsets counted from a date the person gave, with or without this skill.
 
 Weekends and public holidays follow 「관공서의 공휴일에 관한 규정」 (amended April 2026: 노동절·제헌절 added, substitute holidays included) and
 the 우주항공청 「2026년 월력요항」「2027년 월력요항」 (published 2026-06-29). Holidays outside 2026–2027 are not included (`holidays_unknown`).

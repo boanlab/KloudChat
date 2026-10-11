@@ -53,11 +53,32 @@ class Normalize(Base):
             normalized = internal_words.strip_reports(normalized)
         # The writer's apology for its own tool call is not the person's answer; the steps say it.
         normalized = internal_words.strip_tool_apologies(normalized)
+        # A date counted in the head from a date the person gave (「개강 2027-03-02, 30일 전」
+        # written 2월 1일) set to the calendar's first, so the weekday check below does not
+        # bend the weekday to the wrong day.
+        normalized = _dates_from_given(normalized, req, bundle.material.given)
         # A weekday counted in the head (「10월 15일(수)」 for a Thursday) set to the calendar's.
         normalized, _ = weekdays.fix_weekdays(
             normalized, context=f"{req.text}\n{bundle.material.given}",
             today=req.today if isinstance(req.today, dt.date) else None)
         bundle.document.answer = normalized
+
+
+def _dates_from_given(answer: str, req: Request, material: str) -> str:
+    """`answer` with each date an offset from the person's own date resolves to set by the
+    date-calc script (the 날짜 계산 skill's post check, offsets from today left out)."""
+    from app.services import skill_scripts
+
+    today = req.today if isinstance(req.today, dt.date) else dt.date.today()
+    try:
+        checked = skill_scripts.module("date-calc", "dates").post(answer, {
+            "request": req.text, "material": material, "today": today.isoformat(),
+            "anchored_only": True,
+        })
+    except Exception:  # noqa: BLE001 — the answer stands as written
+        log.exception("date check failed for session %s", req.session_id)
+        return answer
+    return str(checked.get("text") or answer)
 
 
 class TextFit(Base):

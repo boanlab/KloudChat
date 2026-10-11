@@ -132,3 +132,58 @@ def test_a_weekday_right_for_a_year_the_request_names_is_not_bent_to_another():
     text = "작성일 2026년 10월 11일(일)\n개강 3월 2일(화)"
     assert weekdays.fix_weekdays(text, context="2027년 3월 2일 개강", today=TODAY)[1] == []
 
+
+# ── verify1 N2: plain chat's date arithmetic is checked by code ───────────────
+
+N16 = ("2027학년도 1학기 개강이 2027년 3월 2일이에요. 개강 30일 전부터 14일 전까지가 장학금 신청 "
+       "기간이면 정확히 며칠(요일)부터 며칠(요일)까지예요?")
+N16_ANSWER = ("2027년 3월 2일(화) 기준, 개강 30일 전부터 14일 전까지는 2027년 2월 1일(월)부터 "
+              "2월 17일(수)까지입니다.")
+Q3 = "2027학년도 1학기 장학금 신청은 언제부터 언제까지예요? 개강은 3월 2일이에요."
+REGULATION = "제7조(신청 기간) 장학금 신청은 매 학기 개시 30일 전부터 14일 전까지 학생포털로 한다."
+
+
+def test_an_offset_from_an_event_dated_in_another_sentence_counts_from_that_date():
+    rows = skill_scripts.module("date-calc", "dates").scan(N16, TODAY)
+    shown = {r["text"]: r["shown"] for r in rows}
+    assert shown["30일 전"] == "2027-01-31(일)" and shown["14일 전"] == "2027-02-16(화)"
+    # The regulation's 「학기 개시」 is the 개강 the person dated on another line.
+    rows = skill_scripts.module("date-calc", "dates").scan(
+        f"{Q3}\n{REGULATION}", TODAY)
+    shown = {r["text"]: r["shown"] for r in rows}
+    assert shown["30일 전"] == "2027-01-31(일)" and shown["14일 전"] == "2027-02-16(화)"
+
+
+def test_plain_chat_date_arithmetic_is_set_to_the_calendar_before_weekdays_are():
+    bundle = _bundle(N16_ANSWER, request=N16)
+    asyncio.run(registry.stage("answer-normalize").apply(bundle, Context()))
+    assert bundle.document.answer == (
+        "2027년 3월 2일(화) 기준, 개강 30일 전부터 14일 전까지는 2027년 1월 31일(일)부터 "
+        "2월 16일(화)까지입니다.")
+
+
+def test_an_answer_that_works_from_the_persons_date_is_checked_against_its_own_offsets():
+    # The offsets are the regulation's (in the material), the date the person's.
+    bundle = _bundle("- 시작일: 2027년 3월 2일에서 30일 전은 2027년 2월 1일(월)입니다.\n"
+                     "- 마감일: 2027년 3월 2일에서 14일 전은 2027년 2월 17일(수)입니다.",
+                     request=Q3)
+    asyncio.run(registry.stage("answer-normalize").apply(bundle, Context()))
+    assert "2027년 1월 31일(일)" in bundle.document.answer
+    assert "2027년 2월 16일(화)" in bundle.document.answer
+
+
+def test_a_date_no_offset_of_the_persons_explains_is_left_to_the_weekday_check():
+    # 「30일 이내」 with no date of the person's to count from is not today's arithmetic.
+    bundle = _bundle("마감은 2026년 11월 12일(목)입니다.",
+                     request="신청 후 30일 이내 처리해요. 마감 언제예요?")
+    asyncio.run(registry.stage("answer-normalize").apply(bundle, Context()))
+    assert bundle.document.answer == "마감은 2026년 11월 12일(목)입니다."
+
+
+def test_date_arithmetic_on_a_given_date_does_not_force_a_web_search():
+    from app.services import context
+
+    assert not context.needs_web_search(N16)
+    assert context.search_plan("auto", N16) == (True, None)
+    # A schedule the person did not give is still looked up.
+    assert context.needs_web_search("2027학년도 1학기 개강일은 언제예요?")

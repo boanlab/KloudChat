@@ -770,6 +770,19 @@ _ASK_CUE = re.compile(
 )
 
 
+#: A date the person gives (「2027년 3월 2일」, 「2027-03-02」, 「3월 2일」) and an offset from it
+#: (「30일 전」, 「2주 뒤」): counting days is arithmetic, not something to look up.
+_GIVEN_DATE = re.compile(
+    r"(?<!\d)20\d{2}\s{0,2}(?:년|[-./])\s{0,2}\d{1,2}\s{0,2}(?:월|[-./])\s{0,2}\d{1,2}"
+    r"|(?<![\d./-])\d{1,2}\s{0,2}월\s{0,2}\d{1,2}\s{0,2}일")
+_DAY_OFFSET = re.compile(
+    r"\d{1,3}\s{0,2}(?:일|주|주일|개월|영업일)\s{0,2}(?:전|후|뒤|이내|이후|이전|째)")
+
+
+def _date_arithmetic(text: str) -> bool:
+    return bool(_GIVEN_DATE.search(text) and _DAY_OFFSET.search(text))
+
+
 def needs_web_search(request: str) -> bool:
     """Whether the words ask about something in the world that changes with time.
 
@@ -789,7 +802,7 @@ def needs_web_search(request: str) -> bool:
         return False
     if _RULE_OF_THUMB.search(text) and not re.search(r"최신|현재|지금|올해|요즘", text):
         return False
-    if re.search(r"다시\s*계산|계산해", text):
+    if re.search(r"다시\s*계산|계산해", text) or _date_arithmetic(text):
         return False
     # A bare time word (오늘, 내일, 몇 시) needs a world cue beside it.
     return bool(
