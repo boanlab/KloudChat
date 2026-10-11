@@ -2214,6 +2214,53 @@ def unfence_pictures(body: str) -> str:
 _JSON_PROSE_FENCE = re.compile(r"```json[ \t]{0,8}\n(\{[\s\S]{0,200000}?\})\s{0,8}\n```")
 
 
+#: One KPI row: a short value, a bar, a short name (「120만 원 | 안2 연간 비용」).
+_KPI_ROW = re.compile(r"^\s{0,3}(?![|`#>*-])[^|\n`]{1,24}?\s\|\s[^|\n`]{1,48}$")
+#: A lone backtick or two where a ```kpi fence was meant (「`」, 「``kpi」).
+_KPI_EDGE = re.compile(r"^\s{0,3}`{1,2}\s{0,2}(?:kpi)?\s{0,2}$", re.I)
+
+
+def mend_kpi_fences(body: str) -> str:
+    """A KPI block written with a lone backtick (or none) around its 「값 | 이름」 rows becomes a
+    ```kpi fence, so it renders as KPI tiles and never as stray 「`」 and 「a | b」 lines."""
+    if " | " not in (body or ""):
+        return body
+    lines = body.split("\n")
+    out: list[str] = []
+    fenced = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            out.append(line)
+            i += 1
+            continue
+        if fenced:
+            out.append(line)
+            i += 1
+            continue
+        opened = bool(_KPI_EDGE.match(line))
+        j = i + 1 if opened else i
+        rows: list[str] = []
+        while j < len(lines) and (_KPI_ROW.match(lines[j]) or not lines[j].strip()):
+            if lines[j].strip():
+                rows.append(lines[j].strip())
+            j += 1
+        closed = opened and j < len(lines) and bool(_KPI_EDGE.match(lines[j]))
+        # Fenced by stray backticks, or two to four bare rows that start with a figure.
+        bare = not opened and 2 <= len(rows) <= 4 and all(re.match(r"[\d+\-−]", r) for r in rows)
+        if rows and len(rows) <= 4 and (closed or bare):
+            out += ["```kpi", *rows, "```"]
+            i = j + 1 if closed else j
+            if not closed and i < len(lines) and not lines[i - 1].strip():
+                out.append("")
+            continue
+        out.append(line)
+        i += 1
+    return "\n".join(out)
+
+
 def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
     """The deterministic mends run again after the rewriting passes, which can undo them."""
     tidied = []
@@ -2228,7 +2275,7 @@ def final_tidy(sections: list[dict], settled: list | None = None) -> list[dict]:
             body = re.sub(r'\n?\s{0,200}"\s{0,200}\}\s{0,200}\}?\s{0,200}$', "", unwrap_json_prose(body).replace(
                 '\\n', "\n"))
         if not _REFERENCE_HEADING.search(str(sec.get("heading") or "")):
-            body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", body))
+            body = unfence_pictures(_LONE_LANGUAGE.sub(r"```\1", mend_kpi_fences(body)))
             # 「<br>」 written for a line break: a cell keeps its parts with 「 · 」.
             body = "\n".join(
                 re.sub(r"\s{0,32}<\s{0,8}br\s{0,8}/?\s{0,8}>\s{0,32}", " · " if line.lstrip().startswith("|") else " ",

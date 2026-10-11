@@ -1148,7 +1148,9 @@ class Figures(Base):
                 try:
                     made, spent, png = await diagrams.make(
                         diagrams.Planned(index, mark["kind"], mark["description"],
-                                         mark["caption"]),
+                                         mark["caption"], context=content,
+                                         document="\n\n".join(
+                                             str(s.get("content") or "") for s in sections)),
                         model=req.model, api_key=req.api_key, slide=False,
                     )
                 except Exception as exc:  # noqa: BLE001 — the text stands without its figure
