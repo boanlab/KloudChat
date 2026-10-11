@@ -755,12 +755,32 @@ test('the loader on another page opens the bot in a frame, the whole screen on a
   await expect(page.frameLocator('iframe[title="챗봇에게 묻기"]').getByTestId('bot-notice')).toBeVisible({ timeout: 15_000 })
   const box = await frame.boundingBox()
   const viewport = page.viewportSize()
-  if (testInfo.project.name === 'phone') expect(Math.round(box?.width ?? 0)).toBe(viewport?.width)
-  else expect(Math.round(box?.width ?? 0)).toBe(400)
+  if (testInfo.project.name === 'phone') {
+    expect(Math.round(box?.width ?? 0)).toBe(viewport?.width)
+    // The close button sits above the frame, not over the bot's own header.
+    const close = await page.getByRole('button', { name: '챗봇에게 묻기' }).boundingBox()
+    expect((close?.y ?? 0) + (close?.height ?? 0)).toBeLessThanOrEqual(box?.y ?? 0)
+  } else expect(Math.round(box?.width ?? 0)).toBe(400)
   await shot(page, 'widget-open', testInfo.project.name)
+  // Esc pressed inside the frame closes it too.
+  await page.frameLocator('iframe[title="챗봇에게 묻기"]').getByTestId('bot-notice').click()
   await page.keyboard.press('Escape')
   await expect(frame).toBeHidden()
   await expect(launcher).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('the loader on a site the bot was not approved for says so instead of an empty panel', async ({ page }, testInfo) => {
+  test.setTimeout(60_000)
+  await noAccount(page, testInfo)
+  await botRoutes(page, { anonymous: true })
+  const origin = new URL(String(testInfo.project.use.baseURL)).origin
+  // The browser refuses the frame (frame-ancestors): here, a page that never says it drew.
+  await page.route(`${origin}/embed/b/**`, (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>x</title>' }))
+  await page.setContent(`<!doctype html><html><body><h1>다른 사이트</h1>
+    <script src="${origin}/embed/widget.js" data-bot="${SLUG}"></script></body></html>`)
+  await page.getByRole('button', { name: '챗봇에게 묻기' }).click({ timeout: 15_000 })
+  await expect(page.getByRole('status')).toContainText('이 사이트에서는 챗봇을 열 수 없습니다', { timeout: 15_000 })
+  await expect(page.locator('iframe[title="챗봇에게 묻기"]')).toBeHidden()
 })
 
 test('an administrator reads conversations only after giving a reason', async ({ page }, testInfo) => {

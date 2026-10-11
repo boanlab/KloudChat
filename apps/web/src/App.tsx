@@ -143,6 +143,19 @@ function EmbedRoute() {
     setBotEmbedded(true)
     return true
   })
+  // The loader on the host page (`/embed/widget.js`) hears that the bot drew, and Esc pressed
+  // in here — where its own key listener cannot hear it — unless a dialog of the bot's is open.
+  useEffect(() => {
+    if (window.parent === window) return
+    window.parent.postMessage({ type: 'kloudchat:ready' }, '*')
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) {
+        window.parent.postMessage({ type: 'kloudchat:close' }, '*')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   return (
     <Suspense fallback={<Spinner />}>
       <BotPage embedded />
