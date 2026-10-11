@@ -1,125 +1,67 @@
 import { Shield } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Badge, Button, Card, Field, Input } from '@/components/ui'
-import { ApiError } from '@/lib/api'
+import { Link } from 'react-router-dom'
 import { USER_STATUS_LABEL } from '@/lib/userStatus'
 import { formatDate } from '@/lib/utils'
 import { useStore } from '@/store/useStore'
 import { useT } from '@/lib/useT'
 
-/** Name and password; email is the login identity and is not editable here. */
+/** Name; email is the login identity and is not editable here, and the password lives under 보안. */
 function ProfileFields() {
   const t = useT()
-  const { user, updateProfile, changePassword } = useStore()
+  const { user, updateProfile } = useStore()
   const [name, setName] = useState(user?.name ?? '')
   const [saved, setSaved] = useState(false)
-  const [pw, setPw] = useState({ current: '', next: '', confirm: '' })
-  const [pwState, setPwState] = useState<{ busy: boolean; error: string | null; done: boolean }>({
-    busy: false,
-    error: null,
-    done: false,
-  })
-
+  const [nameError, setNameError] = useState<string | null>(null)
+  const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     setName(user?.name ?? '')
   }, [user?.name])
 
-  const pwReady =
-    pw.current.length > 0 && pw.next.length >= 10 && pw.next === pw.confirm
-
   return (
     <div className="space-y-4 border-t border-line pt-5">
-        <div className="flex items-end gap-2">
-          <Field label={t('이름')}>
+        <form
+          className="flex items-start gap-2"
+          noValidate
+          onSubmit={async (e) => {
+            e.preventDefault()
+            if (!name.trim()) {
+              setNameError(t('이름을 입력하세요.'))
+              nameRef.current?.focus()
+              return
+            }
+            await updateProfile({ name: name.trim() })
+            setSaved(true)
+          }}
+        >
+          <Field label={t('이름')} required error={nameError}>
             <Input
+              ref={nameRef}
               value={name}
               onChange={(e) => {
                 setName(e.target.value)
                 setSaved(false)
+                setNameError(null)
               }}
               className="w-64"
             />
           </Field>
-          <Button
-            disabled={!name.trim() || name === user?.name}
-            title={
-              !name.trim()
-                ? t('이름을 입력하세요')
-                : name === user?.name
-                  ? t('바뀐 내용이 없습니다')
-                  : undefined
-            }
-            onClick={async () => {
-              await updateProfile({ name: name.trim() })
-              setSaved(true)
-            }}
-          >
-            {t('저장')}
-          </Button>
-          {saved && <span className="pb-2 text-sm text-success">{t('저장됨')}</span>}
-        </div>
+          {/* Lined up with the input, under the label. */}
+          <div className="flex items-center gap-2 pt-7">
+            <Button type="submit" disabled={name === user?.name} title={name === user?.name ? t('바뀐 내용이 없습니다') : undefined}>
+              {t('저장')}
+            </Button>
+            {saved && <span className="text-sm text-success">{t('저장됨')}</span>}
+          </div>
+        </form>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label={t('현재 비밀번호')}>
-            <Input
-              type="password"
-              autoComplete="current-password"
-              value={pw.current}
-              onChange={(e) => setPw({ ...pw, current: e.target.value })}
-            />
-          </Field>
-          <Field label={t('새 비밀번호')} hint={t('10자 이상')}>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              value={pw.next}
-              onChange={(e) => setPw({ ...pw, next: e.target.value })}
-            />
-          </Field>
-          <Field label={t('새 비밀번호 확인')}>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              value={pw.confirm}
-              onChange={(e) => setPw({ ...pw, confirm: e.target.value })}
-            />
-          </Field>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            disabled={!pwReady || pwState.busy}
-            title={!pwReady ? t('현재 비밀번호와 새 비밀번호를 모두 입력하세요') : undefined}
-            onClick={async () => {
-              setPwState({ busy: true, error: null, done: false })
-              try {
-                await changePassword(pw.current, pw.next)
-                setPw({ current: '', next: '', confirm: '' })
-                setPwState({ busy: false, error: null, done: true })
-              } catch (err) {
-                const detail = err instanceof ApiError ? err.detail : 'network_error'
-                setPwState({
-                  busy: false,
-                  done: false,
-                  error:
-                    detail === 'wrong_current_password'
-                      ? t('현재 비밀번호가 맞지 않습니다.')
-                      : t('변경에 실패했습니다.'),
-                })
-              }
-            }}
-          >
-            {pwState.busy ? t('변경 중…') : t('비밀번호 변경')}
-          </Button>
-          {pwState.done && (
-            <span className="text-sm text-success">
-              {t('변경했습니다. 다른 기기의 로그인은 모두 해제되었습니다.')}
-            </span>
-          )}
-          {pwState.error && <span className="text-sm text-danger">{pwState.error}</span>}
-          {pw.next.length > 0 && pw.next !== pw.confirm && (
-            <span className="text-sm text-warn">{t('새 비밀번호가 일치하지 않습니다.')}</span>
-          )}
-        </div>
+        <p className="text-base text-muted">
+          {t('비밀번호는 보안 탭에서 바꿉니다.')}{' '}
+          <Link to="/settings/access#password" className="font-medium text-accent hover:underline">
+            {t('비밀번호 변경으로 가기')}
+          </Link>
+        </p>
     </div>
   )
 }

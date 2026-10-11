@@ -11,23 +11,23 @@ test.beforeEach(async ({ page }) => {
 
 test('설정이 탭으로 나뉘고 각 탭이 URL을 가진다', async ({ page }) => {
   await page.goto('/settings')
-  await expect(page.getByRole('tab', { name: '프로필' })).toBeVisible()
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '프로필' })).toBeVisible()
   await expect(page.getByLabel('이름')).toBeVisible()
 
-  await page.getByRole('tab', { name: '환경설정' }).click()
+  await page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '환경설정' }).click()
   await expect(page).toHaveURL(/\/settings\/preferences$/)
   await expect(page.getByText('기본 모델')).toBeVisible()
 
-  await page.getByRole('tab', { name: 'API 키' }).click()
+  await page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: 'API 키' }).click()
   await expect(page).toHaveURL(/\/settings\/keys$/)
 
   // Deep-linkable.
   await page.reload()
   await expect(page).toHaveURL(/\/settings\/keys$/)
-  await expect(page.getByRole('tab', { name: 'API 키' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: 'API 키' })).toBeVisible({ timeout: 20_000 })
 
   // Instance configuration lives on the admin screens.
-  await expect(page.getByRole('tab', { name: '시스템' })).toHaveCount(0)
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '시스템' })).toHaveCount(0)
 })
 
 test('기본 모델도 단가와 데이터 경계를 보고 고른다', async ({ page }) => {

@@ -147,7 +147,7 @@ test('every old address lands where its screen went', async ({ page }, testInfo)
     await expect(page, from).toHaveURL(to, { timeout: 15_000 })
   }
   await page.goto('/memory')
-  await expect(page.getByRole('tab', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '설정 메뉴' }).getByRole('link', { name: '메모리' })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '새 메모리' })).toBeVisible()
   await page.goto('/designs')
   await expect(page.getByTestId('settings-themes')).toBeVisible()

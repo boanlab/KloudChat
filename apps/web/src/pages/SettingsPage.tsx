@@ -30,7 +30,7 @@ export function SettingsPage() {
   const { logout } = useStore()
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const strip = useRef<HTMLDivElement>(null)
+  const strip = useRef<HTMLElement>(null)
   // On a phone the tabs scroll: keep the open one in view.
   useEffect(() => {
     strip.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
@@ -56,13 +56,14 @@ export function SettingsPage() {
           }
         />
 
-        <div ref={strip} role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
+        {/* Links between pages, not tabs: each has its own address, and NavLink marks the open one
+            with aria-current. */}
+        <nav ref={strip} aria-label={t('설정 메뉴')} className="mb-5 flex gap-1 overflow-x-auto border-b border-line [scrollbar-width:none]">
           {tabs.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               end={tab.end}
-              role="tab"
               className={({ isActive }) =>
                 cn(
                   '-mb-px shrink-0 border-b-2 px-3 py-2 text-base font-medium whitespace-nowrap transition-colors',
@@ -75,7 +76,7 @@ export function SettingsPage() {
               {t(tab.label)}
             </NavLink>
           ))}
-        </div>
+        </nav>
 
         <Routes>
           <Route index element={<ProfileTab />} />
