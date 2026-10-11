@@ -1984,10 +1984,10 @@ async def test_a_gateway_hiccup_keeps_the_last_catalogue(monkeypatch):
 def test_a_self_hosted_qwen_is_told_not_to_think_through_its_chat_template():
     from app.services import thinking
 
-    local = thinking.switch("local/qwen3.8-flash-next")
+    local = thinking.switch("local/qwen3.8-flash")
     assert local["chat_template_kwargs"] == {"enable_thinking": False}
     assert local["reasoning"] == thinking.NO_REASONING
-    assert "chat_template_kwargs" in thinking.switch("strict-local/qwen3.8-flash-next")
+    assert "chat_template_kwargs" in thinking.switch("strict-local/qwen3.8-flash")
     # A self-hosted model that never thinks is not handed the template variable.
     assert "chat_template_kwargs" not in thinking.switch("local/qwen3.8-27b")
     assert "chat_template_kwargs" not in thinking.switch("deepseek/deepseek-v4-flash")
@@ -2016,7 +2016,7 @@ def test_the_default_local_model_plans_for_a_different_writer_but_not_for_itself
 
     local = {"id": settings.default_chat_model, "kinds": ["chat", "report", "slides"],
              "dataBoundary": "hybrid", "creditCost": 0}
-    other = {"id": "local/qwen3.8-flash-next", "kinds": ["chat", "report", "slides"],
+    other = {"id": "local/qwen3.8-flash", "kinds": ["chat", "report", "slides"],
              "dataBoundary": "hybrid", "creditCost": 0}
     user = SimpleNamespace(allowed_models=[], role="member")
     planner = sessions_router._planner_model(

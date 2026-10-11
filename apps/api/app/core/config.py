@@ -156,7 +156,7 @@ class Settings(BaseSettings):
     #: Writes the Python behind `run_code`; the fallback gets one try after it fails.
     #: A strict-local turn uses the `strict-local/` twin of a `local/` id, never another.
     code_model: str = "local/qwen3.8-27b"
-    code_fallback_model: str = "local/qwen3.8-flash-next"
+    code_fallback_model: str = "local/qwen3.8-flash"
     #: The sandbox runs inside the self-hosted stack with networking off, so its file
     #: tools are offered to strict-local turns too. Off for a sandbox hosted elsewhere.
     sandbox_in_boundary: bool = True
@@ -181,7 +181,7 @@ class Settings(BaseSettings):
     #: Self-hosted models that think unless told not to (name fragments, comma-separated).
     #: Only these get vLLM's `enable_thinking: false`; a model that never thinks is left
     #: alone, since the extra template variable is a risk for no gain there.
-    self_hosted_thinking_models: str = "flash-next"
+    self_hosted_thinking_models: str = "qwen3.8-flash"
     #: Default of the governance switch that keeps turns carrying internal material on
     #: strict-local models. On in production and on a fresh install; the test
     #: environment turns it off so flows with fake catalogues can be exercised.
@@ -190,10 +190,10 @@ class Settings(BaseSettings):
     #: administrator's saved choices always win. Lists are comma-separated ids.
     adaptive_routing_default: bool = True
     adaptive_classifier_model_default: str = "strict-local/qwen3.8-27b"
-    adaptive_economy_models_default: str = "local/qwen3.8-flash-next"
+    adaptive_economy_models_default: str = "local/qwen3.8-flash"
     adaptive_quality_default: bool = True
     adaptive_quality_models_default: str = "deepseek/deepseek-v4.1-flash,z-ai/glm-5.3-flash"
-    outline_model_default: str = "local/qwen3.8-flash-next"
+    outline_model_default: str = "local/qwen3.8-flash"
     #: The same for external chat models: off sends OpenRouter's `reasoning` switch; a
     #: provider that refuses it is remembered and thinks anyway.
     external_chat_thinking: bool = False
