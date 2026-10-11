@@ -128,6 +128,8 @@ export function AdminUsersPage() {
   // The whole catalogue for the restriction picker; the store's list is the caller's own.
   const [catalogue, setCatalogue] = useState<{ id: string; label: string }[] | null>(null)
   const [deleting, setDeleting] = useState<User | null>(null)
+  // 정지 asks first: it signs the person out and stops the bots they published.
+  const [suspending, setSuspending] = useState<User | null>(null)
   const [purgeFiles, setPurgeFiles] = useState(true)
   const [restricting, setRestricting] = useState<User | null>(null)
   const [draftCredits, setDraftCredits] = useState('')
@@ -391,10 +393,10 @@ export function AdminUsersPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={t('정지')}
+                          aria-label={t('{name} 정지').replace('{name}', u.name)}
                           title={t('이 계정의 접속을 막습니다')}
-                          disabled={busy.includes(u.id)}
-                          onClick={() => void run(u.id, () => suspendUser(u.id))}
+                          disabled={busy.includes(u.id) || u.id === user?.id}
+                          onClick={() => setSuspending(u)}
                         >
                           <UserX size={14} />
                         </Button>
@@ -402,7 +404,7 @@ export function AdminUsersPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          aria-label={t('정지 해제')}
+                          aria-label={t('{name} 정지 해제').replace('{name}', u.name)}
                           title={t('다시 접속할 수 있게 합니다')}
                           disabled={busy.includes(u.id)}
                           onClick={() => void run(u.id, () => reinstateUser(u.id))}
@@ -716,6 +718,18 @@ export function AdminUsersPage() {
       </Modal>
 
       <ConfirmDialog
+        open={!!suspending}
+        onClose={() => setSuspending(null)}
+        onConfirm={() => {
+          const target = suspending
+          setSuspending(null)
+          if (target) void run(target.id, () => suspendUser(target.id))
+        }}
+        title={t('{name}님의 접속을 막을까요?').replace('{name}', suspending?.name ?? '')}
+        description={t('바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.')}
+        confirmLabel={t('정지')}
+      />
+      <ConfirmDialog
         open={!!revokingKey}
         onClose={() => setRevokingKey(null)}
         onConfirm={() => {
@@ -801,7 +815,8 @@ function CreditDialog({
   const [confirmZero, setConfirmZero] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const trimmed = draft.trim()
+  // 「2,000,000」 as written in the list is taken as is.
+  const trimmed = draft.trim().replace(/,/g, '')
   const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : NaN
   const valid = Number.isSafeInteger(parsed) && parsed <= CREDIT_MAX
 
@@ -888,7 +903,11 @@ function CreditDialog({
         </Field>
         <Field
           label={t('월 크레딧')}
-          hint={t('이번 달 사용량은 그대로 유지됩니다.')}
+          hint={
+            valid
+              ? t('{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.').replace('{n}', parsed.toLocaleString())
+              : t('0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.')
+          }
           error={invalid ? t('0부터 100,000,000 사이의 정수로 입력하세요.') : null}
         >
           <Input

@@ -9,6 +9,13 @@
 export type Lang = 'ko' | 'en'
 
 const EN: Record<string, string> = {
+  // 관리자 · 정지 확인
+  '{name} 정지': 'Suspend {name}',
+  '{name} 정지 해제': 'Reinstate {name}',
+  '{name}님의 접속을 막을까요?': 'Block {name} from signing in?',
+  '바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.': 'They are signed out at once and their keys stop working. Bots they published stop too. Reinstate undoes this.',
+  '{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.': '{n} credits · 0–100,000,000 · this month\'s usage stays as it is.',
+  '0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.': '0–100,000,000 credits · this month\'s usage stays as it is.',
   // 다듬기
   '본문으로 건너뛰기': 'Skip to main content',
   '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
