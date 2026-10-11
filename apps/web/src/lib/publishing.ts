@@ -194,7 +194,7 @@ export type ChannelState = 'open' | 'pending' | 'closed' | 'unavailable'
 
 /** One channel as the owner reads it. */
 export function channelState(pub: Publication, channel: BotChannel): ChannelState {
-  if (pub.channels[channel]) return 'open'
+  if (pub.channels?.[channel]) return 'open'
   if (pub.reviewState === 'pending' && pub.requestedChannels?.[channel]) return 'pending'
   return channelAllowed(pub.requestedVisibility || pub.visibility, channel) ? 'closed' : 'unavailable'
 }

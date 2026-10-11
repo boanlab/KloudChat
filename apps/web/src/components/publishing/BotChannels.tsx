@@ -25,6 +25,7 @@ import {
   type ChannelState,
 } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
+import { formatDate, formatDateTime } from '@/lib/utils'
 
 const ICON: Record<BotChannel, typeof Plug> = { embed: PanelsTopLeft, api: Code2, mcp: Plug }
 
@@ -41,7 +42,7 @@ const STATE_TONE: Record<ChannelState, 'success' | 'accent' | 'neutral' | 'warn'
   unavailable: 'neutral',
 }
 
-const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString() : '')
+const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
 
 /** Copies a text and says so for a moment. */
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -81,7 +82,8 @@ function CodeBlock({ code, testId }: { code: string; testId?: string }) {
  */
 export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (next: Publication) => void }) {
   const t = useT()
-  const wantedNow = pub.requestedChannels ?? pub.channels
+  const open = pub.channels ?? {}
+  const wantedNow = pub.requestedChannels ?? open
   const [on, setOn] = useState<Record<BotChannel, boolean>>({
     embed: Boolean(wantedNow.embed),
     api: Boolean(wantedNow.api),
@@ -92,8 +94,8 @@ export function ChannelsCard({ pub, onChange }: { pub: Publication; onChange: (n
   const [error, setError] = useState<string | null>(null)
   const list = origins.split('\n').map((o) => o.trim()).filter(Boolean)
   const audience = pub.requestedVisibility || pub.visibility
-  const opening = CHANNELS.some((c) => on[c] && !pub.channels[c]) ||
-    (on.embed && list.some((o) => !(pub.channels.embed?.origins ?? []).includes(o.toLowerCase().replace(/\/$/, ''))))
+  const opening = CHANNELS.some((c) => on[c] && !open[c]) ||
+    (on.embed && list.some((o) => !(open.embed?.origins ?? []).includes(o.toLowerCase().replace(/\/$/, ''))))
   const changed =
     CHANNELS.some((c) => on[c] !== Boolean(wantedNow[c])) ||
     (on.embed && list.join('\n') !== (wantedNow.embed?.origins ?? []).join('\n'))
@@ -194,7 +196,7 @@ export function AdminReadsCard({ pub }: { pub: Publication }) {
           {rows.map((row, i) => (
             <li key={i} className="text-sm">
               {t('관리자가 열람함: {date} · 사유: {reason}')
-                .replace('{date}', new Date(row.at).toLocaleString())
+                .replace('{date}', formatDateTime(row.at))
                 .replace('{reason}', row.reason)}
               {row.kind === 'list' && <span className="text-faint"> · {t('대화 목록')}</span>}
             </li>
@@ -233,7 +235,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     }
   }
 
-  const key = made?.key ?? '<키>'
+  const key = made?.key ?? 'kcb_YOUR_KEY'
   const base = apiBase()
   const curl = [
     `curl ${base}/bots/v1/chat/completions \\`,
@@ -250,7 +252,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
     '    messages=[{"role": "user", "content": "휴학은 언제까지 신청하나요?"}],',
     ')',
     'print(reply.choices[0].message.content)',
-    '# 인용한 자료: reply.model_extra["kloudchat"]["citations"]',
+    '# citations: reply.model_extra["kloudchat"]["citations"]',
   ].join('\n')
   const mcpJson = JSON.stringify(
     { mcpServers: { [pub.slug]: { type: 'http', url: mcpUrl(pub.slug), headers: { Authorization: `Bearer ${key}` } } } },
@@ -352,7 +354,7 @@ export function ApiTab({ pub }: { pub: Publication }) {
           <Bot size={14} aria-hidden className="text-muted" />
           {t('채널별 질문 (최근 30일)')}
         </p>
-        {stats?.channels ? (
+        {stats ? (
           <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="channel-usage">
             {(['web', ...CHANNELS] as const).map((c) => (
               <li key={c} className="rounded-control border border-line px-3 py-2">

@@ -35,7 +35,7 @@ import {
   type SettingsDraft,
 } from '@/lib/publishing'
 import { useT } from '@/lib/useT'
-import { cn } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 
 type Tab = 'overview' | 'stats' | 'conversations' | 'api' | 'versions' | 'settings'
 const TABS: Tab[] = ['overview', 'stats', 'conversations', 'api', 'versions', 'settings']
@@ -63,7 +63,7 @@ function draftOf(pub: Publication): SettingsDraft {
   }
 }
 
-const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString() : '')
+const day = (iso: string | null | undefined) => (iso ? formatDate(iso) : '')
 
 /** /customize/publications/:id — a published bot's owner screen. */
 export function PublicationPage() {

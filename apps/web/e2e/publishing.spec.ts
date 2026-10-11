@@ -6,8 +6,10 @@ import { hubFixture, myAgents } from './customize-fixture'
  * or the public listing asked of an administrator), the bot's page for a member and for a
  * visitor without an account (notice, streaming, 👍👎, 만든 사람에게 보내기, paused, blocked),
  * the owner's dashboard (audience, review, blocking), the members' and the public list, the
- * administrator's review, and the same screens in English. Screenshots go to PUBLISHING_SHOTS
- * when it is set.
+ * administrator's review, and the same screens in English. Also the channels: asking for one,
+ * keys and the API tab, the page framed on another site and the loader that frames it, and an
+ * administrator reading conversations with a reason. Screenshots go to PUBLISHING_SHOTS when it
+ * is set.
  */
 
 const shots = process.env.PUBLISHING_SHOTS ?? ''
@@ -18,7 +20,9 @@ const SLUG = 'haksa-1a2b3c'
 const SID = 's1111111111111111111111111111111'
 
 const limits = { perVisitorPerMinute: 10, perVisitorPerDay: 200, perBotPerMinute: 60, perIpPerMinute: 20, perIpPerDay: 400,
-  turnsPerDay: 2000, tokensPerDay: 4000000, maxInputChars: 8000, turnsPerConversation: 100, concurrency: 4 }
+  turnsPerDay: 2000, tokensPerDay: 4000000, maxInputChars: 8000, turnsPerConversation: 100, concurrency: 4,
+  perKeyPerMinute: 30, perKeyPerDay: 2000 }
+const SITE = 'https://www.example.ac.kr'
 
 function publication(extra: Record<string, unknown> = {}) {
   return {
@@ -28,6 +32,7 @@ function publication(extra: Record<string, unknown> = {}) {
     showProcess: 'summary', showSources: true, retentionDays: 30, conversationView: 'off', consentVersion: 1,
     limits, defaults: limits, createdAt: at, updatedAt: at, publishedAt: at,
     requestedVisibility: '', reviewState: '', reviewNote: '', reviewedAt: null, pendingVersionId: null, needsLook: false,
+    channels: {}, requestedChannels: null,
     versions: [
       { id: 'v2', number: 2, model: 'strict-local/qwen', note: '2026학년도 학칙', active: true, createdAt: at,
         summary: { knowledge: [{ name: '학칙.pdf', chars: 12000 }] } },
@@ -57,14 +62,20 @@ function page_(extra: Record<string, unknown> = {}) {
 const ANSWER = '휴학은 학기 개시일 전까지 신청합니다 [1].\n\n### 출처\n- [1] 학칙.pdf · 제12조(휴학) · 3쪽 · 시행 2025. 3. 1.'
 
 /** The bot's routes on top of the hub fixture; every write is recorded. */
-async function botRoutes(page: Page, options: { paused?: boolean; english?: boolean; anonymous?: boolean; blocked?: boolean } = {}) {
+async function botRoutes(
+  page: Page,
+  options: { paused?: boolean; english?: boolean; anonymous?: boolean; blocked?: boolean; pub?: Record<string, unknown> } = {},
+) {
   const writes: { method: string; path: string; body: unknown }[] = []
+  /** Every bot call: whether it was marked as framed, and whether it carried an account. */
+  const botCalls: { path: string; embed: string | undefined; auth: string | undefined }[] = []
+  let keys: { id: string; name: string; preview: string; createdAt: string; lastUsedAt: string | null }[] = []
   let consented = false
   let shared: string | null = null
   let rating: string | null = null
   let asked = false
   let blocked = false
-  let pub = publication()
+  let pub = publication(options.pub)
   const english = options.english
   const bot = () => page_({
     consented, status: options.paused ? 'paused' : 'approved', blocked: options.blocked ?? false,
@@ -91,6 +102,10 @@ async function botRoutes(page: Page, options: { paused?: boolean; english?: bool
       body = null
     }
     if (method !== 'GET') writes.push({ method, path, body })
+    if (path.startsWith('/b/')) {
+      const headers = request.headers()
+      botCalls.push({ path, embed: headers['x-kloudchat-embed'], auth: headers.authorization })
+    }
     if (method === 'GET' && path === '/bots') {
       return json([
         { slug: SLUG, title: english ? 'Campus Help' : '학사 안내', description: english ? 'Answers from the campus rules.' : '학칙과 학사 일정을 안내합니다.',
@@ -203,12 +218,44 @@ async function botRoutes(page: Page, options: { paused?: boolean; english?: bool
         { id: 'm2', role: 'assistant', content: english ? 'Before term starts [1].' : ANSWER, rating: 'down', createdAt: at },
       ] })
     }
+    if (path === `/publications/${PUB}/admin-reads` && method === 'GET') {
+      return json([{ at, kind: 'read', reason: english ? 'Abuse report check' : '신고 확인' }])
+    }
+    if (path === `/publications/${PUB}/channels` && method === 'POST') {
+      const sent = body as { embed?: { on: boolean; origins: string[] }; api?: boolean; mcp?: boolean }
+      const wanted: Record<string, unknown> = {}
+      if (sent.embed?.on) wanted.embed = { origins: sent.embed.origins }
+      if (sent.api) wanted.api = {}
+      if (sent.mcp) wanted.mcp = {}
+      pub = { ...pub, requestedChannels: wanted, reviewState: 'pending', updatedAt: '2026-10-10T07:03:00.000Z' }
+      return json(pub)
+    }
+    if (path === `/publications/${PUB}/keys` && method === 'GET') return json(keys)
+    if (path === `/publications/${PUB}/keys` && method === 'POST') {
+      const made = { id: 'k1', name: (body as { name: string }).name, preview: 'kcb_AbCd…wxyz', createdAt: at, lastUsedAt: null }
+      keys = [made, ...keys]
+      return json({ ...made, key: 'kcb_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdwxyz' }, 201)
+    }
+    if (path === `/publications/${PUB}/keys/k1` && method === 'DELETE') {
+      keys = keys.filter((k) => k.id !== 'k1')
+      return route.fulfill({ status: 204 })
+    }
+    if (path === `/admin/publications/${PUB}/conversations` && method === 'GET') {
+      return json([{ id: SID, title: '휴학 신청 기한', sharedAt: null, viewable: false, updatedAt: at, turns: 1,
+        visitor: { id: 'vk', label: 'VK1234', member: false, blocked: false, blockedAt: null, byKey: true } }])
+    }
+    if (path === `/admin/publications/${PUB}/conversations/${SID}` && method === 'GET') {
+      return json({ id: SID, title: '휴학 신청 기한', sharedAt: null, updatedAt: at, turns: 1, messages: [
+        { id: 'm1', role: 'user', content: '휴학 기한이요? 제 번호는 [전화번호]', rating: null, createdAt: at },
+        { id: 'm2', role: 'assistant', content: ANSWER, rating: null, createdAt: at },
+      ] })
+    }
     if (path === `/publications/${PUB}/versions/v1/activate` && method === 'POST') {
       return json(publication({ activeVersionId: 'v1', versions: publication().versions.map((v) => ({ ...v, active: v.id === 'v1' })) }))
     }
     return route.fallback()
   })
-  return { writes }
+  return { writes, botCalls }
 }
 
 async function settle(page: Page) {
@@ -560,7 +607,7 @@ test('the publishing screens read in English', async ({ page }, testInfo) => {
   await expect(page.getByRole('heading', { level: 1, name: 'Campus Help' })).toBeVisible({ timeout: 15_000 })
   await settle(page)
   expect(untranslated(await page.getByRole('main').innerText()), 'Overview').toEqual([])
-  for (const tab of ['Statistics', 'Sent conversations', 'Versions', 'Settings']) {
+  for (const tab of ['Statistics', 'Sent conversations', 'API', 'Versions', 'Settings']) {
     await page.getByRole('tab', { name: tab }).click()
     await settle(page)
     expect(untranslated(await page.getByRole('main').innerText()), tab).toEqual([])
@@ -601,4 +648,125 @@ test('the administrator review reads in English', async ({ page }, testInfo) => 
   await page.goto(`/admin/publications/${PUB}`)
   await expect(page.getByTestId('admin-review-agent')).toBeVisible({ timeout: 15_000 })
   expect(untranslated(await page.getByRole('main').innerText())).toEqual([])
+})
+
+/* ── channels ──────────────────────────────────────────────────────────── */
+
+test('the owner asks for the API channel and makes a key shown once', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  const { writes } = await botRoutes(page, { pub: { visibility: 'link', limits: { ...limits, creditsPerDay: 3000 } } })
+  await page.goto(`/customize/publications/${PUB}`)
+  const channels = page.getByTestId('publication-channels')
+  await expect(channels).toBeVisible({ timeout: 15_000 })
+  // Framing needs the bot listed for everyone; a link bot cannot switch it on.
+  await expect(channels.getByTestId('channel-embed')).toContainText('이 공개 범위에서는 쓸 수 없음')
+  await expect(channels.getByTestId('channel-embed').getByRole('switch')).toBeDisabled()
+  await expect(page.getByTestId('publication-admin-reads')).toContainText('관리자가 열람함')
+  await expect(page.getByTestId('publication-admin-reads')).toContainText('신고 확인')
+  await channels.getByTestId('channel-api').getByRole('switch').click()
+  await expect(channels.getByTestId('channels-save')).toHaveText(/승인 요청/)
+  await shot(page, 'channels-ask', testInfo.project.name)
+  await channels.getByTestId('channels-save').click()
+  await expect(page.getByTestId('publication-review')).toContainText('채널 요청을 관리자가 확인하고 있습니다')
+  await expect(page.getByTestId('channel-api')).toContainText('승인 대기')
+  expect(writes.find((w) => w.path === `/publications/${PUB}/channels`)?.body).toEqual({ embed: { on: false, origins: [] }, api: true, mcp: false })
+
+  await page.getByRole('tab', { name: 'API' }).click()
+  const api = page.getByTestId('publication-api')
+  await expect(api).toContainText('API·MCP 채널이 아직 열리지 않았습니다')
+  await api.getByLabel('키 이름').fill('학과 홈페이지 서버')
+  await api.getByTestId('key-create').click()
+  await expect(page.getByTestId('new-key')).toContainText('kcb_AbCdEfGh')
+  await expect(page.getByTestId('new-key')).toContainText('지금 한 번만 보입니다')
+  await expect(page.getByTestId('api-curl')).toContainText(`"model": "${SLUG}"`)
+  await expect(page.getByTestId('api-curl')).toContainText('kcb_AbCdEfGh')
+  await expect(page.getByTestId('api-python')).toContainText('/api/bots/v1')
+  await expect(page.getByTestId('mcp-json')).toContainText(`/api/bots/mcp/${SLUG}`)
+  await expect(page.getByTestId('channel-usage')).toContainText('챗봇 페이지')
+  await shot(page, 'api-tab', testInfo.project.name)
+  await page.getByTestId('key-list').getByRole('button', { name: '폐기' }).click()
+  await page.getByRole('dialog', { name: '키 폐기' }).getByRole('button', { name: '폐기' }).click()
+  await expect(page.getByTestId('key-list')).toHaveCount(0)
+  expect(writes.map((w) => `${w.method} ${w.path}`)).toEqual(expect.arrayContaining([
+    `POST /publications/${PUB}/keys`, `DELETE /publications/${PUB}/keys/k1`,
+  ]))
+  expect(state.unexpected).toEqual([])
+})
+
+test('an open embed channel gives the line to paste', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo)
+  await botRoutes(page, { pub: { visibility: 'external', channels: { embed: { origins: [SITE] } }, limits: { ...limits, creditsPerDay: 3000 } } })
+  await page.goto(`/customize/publications/${PUB}`)
+  const embed = page.getByTestId('channel-embed')
+  await expect(embed).toContainText('열림', { timeout: 15_000 })
+  await expect(page.getByTestId('channel-origins')).toHaveValue(SITE)
+  await expect(page.getByTestId('embed-snippet')).toContainText('/embed/widget.js')
+  await expect(page.getByTestId('embed-snippet')).toContainText(`data-bot="${SLUG}"`)
+  await shot(page, 'channels-embed', testInfo.project.name)
+  expect(state.unexpected).toEqual([])
+})
+
+test('the framed page asks without an account and marks every call', async ({ page }, testInfo) => {
+  const state = await noAccount(page, testInfo)
+  const { botCalls } = await botRoutes(page, { anonymous: true })
+  const refreshes: string[] = []
+  page.on('request', (r) => r.url().endsWith('/api/auth/refresh') && refreshes.push(r.url()))
+  await page.goto(`/embed/b/${SLUG}`)
+  const notice = page.getByTestId('bot-notice')
+  await expect(notice).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: '챗봇 목록으로' })).toHaveCount(0)
+  await notice.getByRole('button', { name: '확인하고 시작' }).click()
+  await page.getByLabel('질문 입력').fill('휴학은 언제까지 신청하나요?')
+  await page.getByRole('button', { name: '보내기', exact: true }).click()
+  await expect(page.getByText('휴학은 학기 개시일 전까지 신청합니다')).toBeVisible()
+  await shot(page, 'embed-answer', testInfo.project.name)
+  expect(botCalls.length).toBeGreaterThan(3)
+  expect(botCalls.every((c) => c.embed === '1' && !c.auth)).toBe(true)
+  // A frame never signs in, so it never asks for the refresh cookie.
+  expect(refreshes).toEqual([])
+  expect(state.unexpected).toEqual([])
+})
+
+test('the loader on another page opens the bot in a frame, the whole screen on a phone', async ({ page }, testInfo) => {
+  await noAccount(page, testInfo)
+  await botRoutes(page, { anonymous: true })
+  const origin = new URL(String(testInfo.project.use.baseURL)).origin
+  await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><h1>학과 홈페이지</h1>
+    <script src="${origin}/embed/widget.js" data-bot="${SLUG}"></script></body></html>`)
+  const launcher = page.getByRole('button', { name: '챗봇에게 묻기' })
+  await expect(launcher).toBeVisible({ timeout: 15_000 })
+  await launcher.click()
+  const frame = page.locator('iframe[title="챗봇에게 묻기"]')
+  await expect(frame).toHaveAttribute('src', `${origin}/embed/b/${SLUG}`)
+  await expect(page.frameLocator('iframe[title="챗봇에게 묻기"]').getByTestId('bot-notice')).toBeVisible({ timeout: 15_000 })
+  const box = await frame.boundingBox()
+  const viewport = page.viewportSize()
+  if (testInfo.project.name === 'phone') expect(Math.round(box?.width ?? 0)).toBe(viewport?.width)
+  else expect(Math.round(box?.width ?? 0)).toBe(400)
+  await shot(page, 'widget-open', testInfo.project.name)
+  await page.keyboard.press('Escape')
+  await expect(frame).toBeHidden()
+  await expect(launcher).toHaveAttribute('aria-expanded', 'false')
+})
+
+test('an administrator reads conversations only after giving a reason', async ({ page }, testInfo) => {
+  const state = await hubFixture(page, testInfo, { admin: true })
+  await botRoutes(page)
+  const asked: string[] = []
+  page.on('request', (r) => r.url().includes(`/admin/publications/${PUB}/conversations`) && asked.push(r.url()))
+  await page.goto(`/admin/publications/${PUB}`)
+  const card = page.getByTestId('admin-conversations')
+  await expect(card).toBeVisible({ timeout: 15_000 })
+  await card.getByTestId('admin-conversations-open').click()
+  const modal = page.getByRole('dialog', { name: '대화 열람' })
+  await expect(modal.getByTestId('admin-conversations-confirm')).toBeDisabled()
+  await modal.getByTestId('admin-conversations-reason').fill('남용 신고 확인')
+  await modal.getByTestId('admin-conversations-confirm').click()
+  await expect(page.getByTestId('admin-conversation-list')).toContainText('API·MCP 키')
+  await page.getByTestId('admin-conversation-list').getByRole('button').first().click()
+  await expect(page.getByTestId('admin-conversation-transcript')).toContainText('[전화번호]')
+  await shot(page, 'admin-read', testInfo.project.name)
+  expect(asked.length).toBe(2)
+  expect(asked.every((u) => new URL(u).searchParams.get('reason') === '남용 신고 확인')).toBe(true)
+  expect(state.unexpected).toEqual([])
 })
