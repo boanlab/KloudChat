@@ -100,3 +100,35 @@ def test_the_date_skill_sets_the_answers_near_misses_and_blanks_to_the_scripts_d
     assert blank["text"] == "30일 전은 2027-01-31(일), 14일 전은 2027-02-16(화)입니다."
     right = "2027년 1월 31일(일) ~ 2월 16일(화)"
     assert dates.post(right, args)["text"] == right and not dates.post(right, args)["fixed"]
+
+
+# ── verify1 N1: the source's weekday and the academic year ─────────────────
+
+
+def test_a_weekday_the_source_states_for_that_day_is_left_alone():
+    # The transcript says 「3월 2일 화요일」 for 2027학년도; the header's 2026 date is not its year.
+    text = "**일시:** 2026년 10월 7일(수)\n## 2027학년도 학사일정\n1학기 개강 3월 2일(화)"
+    fixed, fixes = weekdays.fix_weekdays(
+        text, context="2027학년도 1학기 개강은 3월 2일 화요일", today=TODAY)
+    assert fixed == text and fixes == []
+    # Without the source's word, the academic-year heading alone sets the year.
+    fixed, fixes = weekdays.fix_weekdays(text, today=TODAY)
+    assert fixed == text and fixes == []
+    # A wrong weekday under that heading is still set to 2027's calendar.
+    wrong = "## 2027학년도 학사일정\n1학기 개강 3월 2일(월)"
+    assert weekdays.fix_weekdays(wrong, today=TODAY)[0] \
+        == "## 2027학년도 학사일정\n1학기 개강 3월 2일(화)"
+
+
+def test_an_academic_year_runs_from_march_to_february():
+    # 2027학년도 겨울 방학 끝, 2월 28일 is in 2028 (a Monday).
+    text = "2027학년도 2학기 종강 12월 17일(금), 2월 28일(월) 학년도 종료"
+    fixed, fixes = weekdays.fix_weekdays(text, today=TODAY)
+    assert fixes == [] and fixed == text
+
+
+def test_a_weekday_right_for_a_year_the_request_names_is_not_bent_to_another():
+    # The answer's own last full date is 2026; the request's year, 2027, fits the written weekday.
+    text = "작성일 2026년 10월 11일(일)\n개강 3월 2일(화)"
+    assert weekdays.fix_weekdays(text, context="2027년 3월 2일 개강", today=TODAY)[1] == []
+

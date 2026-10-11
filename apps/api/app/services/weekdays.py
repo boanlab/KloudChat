@@ -5,11 +5,15 @@ Every date the text writes with a weekday — 「2026년 10월 15일(목)」, �
 「10월 15일(목)」, 「10/15(목)」, 「15일(목)」 after a month, 「10월 15일 목요일」 — gets the
 calendar's weekday.
 
-The year comes from the text itself first (the last date that names one, so 「2027년 4월 13일(화)~
-19일(월)」 reads both days in 2027), then from what the person gave (the year the request and
-material name most), then from today: the year that puts the day nearest to today. A day far from
-today whose written weekday is right in the other near year is left alone, because the year
-is the guess there, not the weekday.
+The year comes from the text itself first (the last date or year above the day, so
+「2027년 4월 13일(화)~19일(월)」 reads both days in 2027 and 「2027학년도 학사일정」 sets 2027 for
+March to December and 2028 for January and February), then from what the person gave (the
+year the request and material name most), then from today: the year that puts the day nearest
+to today. A day far from today whose written weekday is right in the other near year is left
+alone, because the year is the guess there, not the weekday.
+
+The person's words win over the guess: a weekday the request or material gives for the same day
+(「3월 2일 화요일」) is kept, and so is a weekday that is right in a year the person names.
 """
 
 from __future__ import annotations
@@ -42,6 +46,8 @@ _DATE = re.compile(
 
 #: Years the person's words name: 「2027년」, 「2027학년도」, 「2027-03-02」.
 _YEAR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(?:년|학년도|[.\-/]\s{0,2}\d{1,2}\s{0,2}[.\-/])")
+#: A year the text sets for what follows: 「2027학년도」, 「2027년」 (also the head of a full date).
+_ANCHOR = re.compile(r"(?<!\d)(20\d{2})\s{0,2}(학년도|년)")
 #: The weekday inside a matched date, with what stands on either side of it.
 _WRITTEN = re.compile(rf"(\(\s{{0,2}}|\s)[{WEEKDAYS}]((?:요일)?\s{{0,2}}\)|요일$)")
 _FENCE = re.compile(r"```[\s\S]*?```")
@@ -65,6 +71,43 @@ def context_year(context: str) -> int | None:
     return max(years, key=lambda y: (years[y], y))
 
 
+def context_years(context: str) -> set[int]:
+    """Every year the person's words name."""
+    return {int(y) for y in _YEAR.findall(context or "")}
+
+
+def _stated(context: str) -> dict[tuple[int | None, int, int], set[str]]:
+    """The weekdays the person's words give each day: 「3월 2일 화요일」 → {(None, 3, 2): {화}}."""
+    out: dict[tuple[int | None, int, int], set[str]] = {}
+    for m in _DATE.finditer(context or ""):
+        g = m.groupdict()
+        if g["y"]:
+            key, wd = (int(g["y"]), int(g["m"]), int(g["d"])), g["a_wd"] or g["a_wd2"]
+        elif g["m2"]:
+            key, wd = (None, int(g["m2"]), int(g["d2"])), g["b_wd"] or g["b_wd2"]
+        elif g["m3"]:
+            key, wd = (None, int(g["m3"]), int(g["d3"])), g["c_wd"] or g["c_wd2"]
+        else:
+            continue
+        if wd:
+            out.setdefault(key, set()).add(wd)
+            out.setdefault((None, key[1], key[2]), set()).add(wd)
+    return out
+
+
+def _anchor_year(text: str, at: int, month: int) -> tuple[int, int] | None:
+    """The year the last 「NNNN학년도」/「NNNN년」 before `at` gives `month`, with its position."""
+    found = None
+    for m in _ANCHOR.finditer(text, 0, at):
+        found = m
+    if found is None:
+        return None
+    year = int(found.group(1))
+    if found.group(2) == "학년도" and month <= 2:
+        year += 1
+    return year, found.start()
+
+
 def _nearest(month: int, day: int, today: dt.date) -> tuple[dt.date, bool] | None:
     """The day in the year nearest to today, and whether that choice is clear."""
     candidates = []
@@ -80,6 +123,13 @@ def _nearest(month: int, day: int, today: dt.date) -> tuple[dt.date, bool] | Non
     return best, abs((best - today).days) <= _SURE_DAYS
 
 
+def _weekday_in(year: int, month: int, day: int) -> str:
+    try:
+        return WEEKDAYS[dt.date(year, month, day).weekday()]
+    except ValueError:
+        return ""
+
+
 def fix_weekdays(text: str, *, context: str = "",
                  today: dt.date | None = None) -> tuple[str, list[Fix]]:
     """`text` with every written weekday matching its date, and what was changed."""
@@ -87,11 +137,14 @@ def fix_weekdays(text: str, *, context: str = "",
         return text, []
     today = today or dt.date.today()
     given_year = context_year(context)
+    named = context_years(context)
+    stated = _stated(context)
     fences = [m.span() for m in _FENCE.finditer(text)]
     fixes: list[Fix] = []
     out: list[str] = []
     last = 0
     year: int | None = None
+    year_at = -1
     month: int | None = None
 
     for m in _DATE.finditer(text):
@@ -100,8 +153,9 @@ def fix_weekdays(text: str, *, context: str = "",
         g = m.groupdict()
         sure = True
         try:
+            explicit = bool(g["y"])
             if g["y"]:
-                year, month = int(g["y"]), int(g["m"])
+                year, month, year_at = int(g["y"]), int(g["m"]), m.start()
                 day = dt.date(year, month, int(g["d"]))
                 wd = g["a_wd"] or g["a_wd2"]
             else:
@@ -113,7 +167,11 @@ def fix_weekdays(text: str, *, context: str = "",
                     if month is None:
                         continue
                     dom, wd = int(g["d4"]), g["d_wd"] or g["d_wd2"]
-                if year is not None or given_year is not None:
+                anchored = _anchor_year(text, m.start(), month)
+                if anchored is not None and anchored[1] > year_at:
+                    # A heading or a year after the last full date (「## 2027학년도 학사일정」).
+                    day = dt.date(anchored[0], month, dom)
+                elif year is not None or given_year is not None:
                     day = dt.date(year or given_year, month, dom)
                 else:
                     near = _nearest(month, dom, today)
@@ -124,6 +182,13 @@ def fix_weekdays(text: str, *, context: str = "",
             continue
         real = WEEKDAYS[day.weekday()]
         if not wd or wd == real:
+            continue
+        # The person gave this day's weekday: theirs stands.
+        if wd in stated.get((day.year if explicit else None, day.month, day.day), set()) or (
+                not explicit and wd in stated.get((day.year, day.month, day.day), set())):
+            continue
+        # A day with no year of its own whose weekday is right in a year the person names.
+        if not explicit and any(_weekday_in(y, day.month, day.day) == wd for y in named):
             continue
         if not sure:
             # Far from today with no year anywhere: the weekday may be right for the other year.
@@ -149,4 +214,4 @@ def fix_weekdays(text: str, *, context: str = "",
     return "".join(out), fixes
 
 
-__all__ = ["Fix", "context_year", "fix_weekdays"]
+__all__ = ["Fix", "context_year", "context_years", "fix_weekdays"]
