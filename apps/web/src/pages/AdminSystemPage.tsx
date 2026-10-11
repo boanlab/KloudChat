@@ -15,6 +15,7 @@ import { OutlineModelSection } from './settings/OutlineModelSection'
 import { ProxySection } from './settings/ProxySection'
 import { SignupSection } from './settings/SignupSection'
 import { ToolsSection } from './settings/ToolsSection'
+import { OcrSection } from './settings/OcrSection'
 
 const tabs = [
   { to: '/admin/system', label: '프록시', end: true },
@@ -117,9 +118,15 @@ export function AdminSystemPage() {
                 </Group>
                 <Group
                   title={t('기능 연동')}
-                  description={t('웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사를 연결합니다.')}
+                  description={t('웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 글자 읽기를 연결합니다.')}
                 >
                   <ToolsSection settings={settings} onSaved={reload} />
+                </Group>
+                <Group
+                  title={t('글자 읽기(OCR)')}
+                  description={t('스캔본과 문서 사진의 글자를 읽는 방식과 모델을 정합니다.')}
+                >
+                  <OcrSection settings={settings} onSaved={reload} />
                 </Group>
               </div>
             }

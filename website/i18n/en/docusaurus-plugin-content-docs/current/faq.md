@@ -13,7 +13,7 @@ Your account is waiting for approval. The waiting screen switches over automatic
 A sentence that asks for a document, such as "Write a report" or "Make a slide deck", switches automatically to a new conversation on that screen. To continue in Chat, phrase the request around existing content, such as "Summarize this".
 
 ### It says the file I attached could not be read
-The file is a scanned image with no text information, or an older Office format (.doc, .ppt, .xls). Attach it again as a PDF, Word, Hangul, Excel, or text file that contains text. [Attaching files](chat/files)
+The file is an older Office format (.doc, .ppt, .xls), or a scan while text from scans (OCR) is not connected. Attach it again as a PDF, Word, Hangul, Excel, or text file that contains text, or ask the administrator to connect text from scans. [Attaching files](chat/files)
 
 ### My next question does not refer to the file I attached
 The attachment stays available throughout the same Chat conversation. Check whether the processing steps of the answer show "Attachment from an earlier turn". Other conversations and the report and slide screens do not carry earlier attachments over. If the file is long, only the parts related to your question are passed, so describe what you are looking for in detail.

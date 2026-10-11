@@ -236,7 +236,9 @@ export function AdminUsagePage() {
                         ? t('{n}초 받아씀').replace('{n}', m.units.toLocaleString())
                         : m.units && m.unit === 'chunks'
                           ? t('{n}청크 색인').replace('{n}', m.units.toLocaleString())
-                          : '',
+                          : m.units && m.unit === 'pages'
+                            ? t('{n}쪽 글자 읽음').replace('{n}', m.units.toLocaleString())
+                            : '',
                     ]
                       .filter(Boolean)
                       .join(' · '),

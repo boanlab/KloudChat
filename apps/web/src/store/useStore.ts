@@ -527,6 +527,8 @@ interface State {
     ids: string[],
   ) => Promise<number>
   uploadFile: (file: File, opts?: { projectId?: string; sessionId?: string }) => Promise<FileRow>
+  /** A fresher copy of a project file (its scanned pages were read meanwhile). */
+  refreshProjectFile: (row: FileRow) => void
   addProjectUrl: (projectId: string, url: string) => Promise<FileRow>
   deleteFile: (id: string) => Promise<void>
   /** Fetches the template list only if it is not already held. */
@@ -2169,6 +2171,14 @@ export const useStore = create<State>((set, get) => ({
     }
     return row
   },
+  refreshProjectFile: (row) =>
+    set((s) => ({
+      projects: s.projects.map((p) =>
+        p.files.some((f) => f.id === row.id)
+          ? { ...p, files: p.files.map((f) => (f.id === row.id ? toProjectFile(row) : f)) }
+          : p,
+      ),
+    })),
   addProjectUrl: async (projectId, url) => {
     touchWorkspace()
     const row = await filesApi.addProjectUrl(projectId, url)
@@ -2762,22 +2772,27 @@ function retold(step: Step): Partial<Step> {
         : step.id === 'context-earlier'
           ? tr('이전 턴 첨부')
           : tr('첨부 파일')
-    const short = step.files.filter((file) => file.state !== 'included')
+    // A picture the model saw counts as included, as on the server.
+    const short = step.files.filter((file) => file.state !== 'included' && file.state !== 'picture')
     const cut = short.filter((file) => file.state === 'truncated').length
-    const dropped = short.length - cut
+    const reading = short.filter((file) => file.state === 'reading').length
+    const dropped = short.length - cut - reading
     const fates = [
       ...(cut ? [tr('{n}개 잘림').replace('{n}', String(cut))] : []),
+      ...(reading ? [tr('{n}개 글자 읽는 중').replace('{n}', String(reading))] : []),
       ...(dropped ? [tr('{n}개 빠짐').replace('{n}', String(dropped))] : []),
     ]
+    const notes: Record<string, string> = {
+      omitted: '{name} 분량을 넘겨 제외',
+      reading: '{name} 글자 읽는 중',
+      picture_unseen: '{name} 그림 · 이 모델은 보지 못함',
+    }
     const note = (file: NonNullable<Step['files']>[number]) =>
       file.state === 'truncated'
         ? tr('{name} {kept}자만 반영')
             .replace('{name}', file.name)
             .replace('{kept}', file.keptChars.toLocaleString())
-        : tr(file.state === 'omitted' ? '{name} 분량을 넘겨 제외' : '{name} 읽지 못함').replace(
-            '{name}',
-            file.name,
-          )
+        : tr(notes[file.state] ?? '{name} 읽지 못함').replace('{name}', file.name)
     return {
       label: fates.length
         ? `${tr('{subject} {n}개 중').replace('{subject}', subject).replace('{n}', String(step.files.length))} ${fates.join(', ')}`
@@ -2893,6 +2908,10 @@ function toProjectFile(f: FileRow): ProjectFile {
     sourceUrl: f.sourceUrl,
     preview: f.preview,
     error: f.error,
+    ocrState: f.ocrState,
+    ocrTotal: f.ocrTotal,
+    ocrDone: f.ocrDone,
+    ocrReview: f.ocrReview,
   }
 }
 

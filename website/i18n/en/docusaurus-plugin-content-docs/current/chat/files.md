@@ -12,9 +12,9 @@ Attach files from **+** → **Attach** in the composer, and the model answers fr
 
 | Category | Formats | Conditions |
 |---|---|---|
-| Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | The file must contain text. Scanned images are not recognized. |
+| Documents | PDF, Word (.docx), Hangul (.hwp, .hwpx), PowerPoint (.pptx), Excel (.xlsx) | A scanned PDF is read page by page when the administrator has connected text from scans (OCR). |
 | Text and code | .txt, .md, .csv, .tsv, .json, and most code files | Read as text. |
-| Images | PNG, JPG, GIF, WebP | **4MB or smaller**. Sent only to **strict-local** models that support image recognition, marked 👁 in the list. |
+| Images | PNG, JPG, GIF, WebP, TIFF, BMP | The text of a document photo is read with OCR. The picture itself goes only to **strict-local** models that support image recognition (marked 👁), as PNG, JPG, GIF or WebP of **4MB or smaller**. |
 | Audio and video | mp3, wav, mp4, and similar | **25MB or smaller**. Converted to text and read when the administrator has connected speech transcription. |
 
 The maximum size for a single file is 200MB. Older Office formats (.doc, .ppt, .xls) are not supported. A file that could not be read appears as **Unread attachment** in the processing steps of the answer.
@@ -34,6 +34,16 @@ The Reports and Slides screens do not carry over attachments from earlier reques
 - State exactly what you are looking for. "Summarize this file" is less accurate than "List only the remote work application steps from this file".
 - Attach table-heavy material as Excel or CSV rather than PDF. It is read far more accurately that way.
 - For an attached Hangul file (.hwpx), select **Open as document** on the file chip to convert it straight into an editable report. The conversion calls no model, so it uses no credits.
+
+## Scanned PDFs and document photos
+
+When the administrator has connected text from scans (OCR), the text of PDF pages without a text layer and of document photos is read inside the organization after upload.
+
+- The file chip and the project and agent material lists show progress, such as **Reading text, page 3 of 10**. Ask before it finishes and the answer draws only on the pages read so far, and says it cannot know the rest.
+- The OCR engine reads first; pages it is unsure of, and pages with a table, are read again by a strict-local model that reads pictures. Page pictures go nowhere else.
+- Where the two readings differ in words or numbers, the file shows **n pages to check**. Compare important values such as amounts and dates with the original.
+- A photo with hardly any text is treated as a picture only.
+- The administrator sets how many pages of one document are read. Past that, the file shows **first n pages**.
 
 ## Attaching images
 

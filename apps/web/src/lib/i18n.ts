@@ -1640,7 +1640,6 @@ const EN: Record<string, string> = {
   '서비스 주소': 'Service address',
   '보냈습니다.': 'Sent.',
   '보내지 못했습니다.': 'Could not send.',
-  '웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사를 연결합니다.': 'Connects web search, page fetching, code execution, deep research and transcription.',
   '비밀번호 재설정이 켜져 있습니다. 로그인 화면에 재설정 링크가 보입니다.': 'Password reset is on — the sign-in page shows a reset link.',
   '이름 또는 이메일': 'Name or email',
   '사용자를 불러오지 못했습니다.': 'Could not load users.',
@@ -1808,6 +1807,45 @@ const EN: Record<string, string> = {
   '한도 대비': 'Of allowance',
   '저장 용량': 'Storage',
   '{n}초 받아씀': '{n}s transcribed',
+  '{n}쪽 글자 읽음': '{n} pages read',
+  'OCR 엔진 + 비전 모델':
+    'OCR engine + vision model',
+  'OCR 엔진만':
+    'OCR engine only',
+  '비전 모델만':
+    'Vision model only',
+  '지금은 글자를 읽을 수 없습니다. 아래 주소나 비전 모델을 확인하세요.':
+    'Text cannot be read right now. Check the address or the vision model below.',
+  '지금 쓰는 방식: {mode}':
+    'In use: {mode}',
+  '글자 읽기(OCR)':
+    'Text from scans (OCR)',
+  '스캔한 PDF 쪽과 문서 사진의 글자를 읽어 대화·프로젝트·에이전트 자료에서 찾을 수 있게 합니다. 엔진이 먼저 읽고, 자신 없는 쪽과 표가 있는 쪽은 비전 모델이 다시 읽습니다. 두 결과가 다르면 「확인 필요」로 표시합니다.':
+    'Reads the text of scanned PDF pages and document photos so chats, projects and agent material can use it. The engine reads first; pages it is unsure of, and pages with a table, are read again by the vision model. Where the two differ, the page is marked “to check”.',
+  '읽는 방식':
+    'How pages are read',
+  '비전 모델':
+    'Vision model',
+  '그림을 읽는 strict-local 모델만 고를 수 있습니다. 쪽 그림은 이 모델 밖으로 나가지 않습니다.':
+    'Only a strict-local model that reads pictures can be chosen. Page pictures go nowhere else.',
+  '자동 ({name})':
+    'Automatic ({name})',
+  '쓸 수 있는 모델 없음':
+    'No model available',
+  '문서 하나에서 읽는 최대 쪽 수':
+    'Most pages read in one document',
+  '1~2000쪽':
+    '1–2000 pages',
+  'OCR 엔진 주소가 없어 PDF 쪽은 읽지 못하고 사진만 비전 모델로 읽습니다.':
+    'With no OCR engine address, PDF pages are not read; only photos are read by the vision model.',
+  '스캔본과 문서 사진의 글자를 읽는 방식과 모델을 정합니다.':
+    'How the text of scans and document photos is read, and by which model.',
+  '웹 검색, 문서 가져오기, 코드 실행, 심층 조사, 음성 전사, 글자 읽기를 연결합니다.':
+    'Connects web search, page fetching, code execution, deep research, transcription and text from scans.',
+  '글자 읽는 중 {done}/{total}쪽': 'Reading text, page {done} of {total}',
+  'OCR로 읽음': 'Read with OCR',
+  '앞 {n}쪽까지': 'first {n} pages',
+  '확인 필요 {n}쪽': '{n} pages to check',
   '{n}청크 색인': '{n} chunks indexed',
   '말로 쓰기': 'Dictate',
   '녹음 끝내기': 'Stop recording',
@@ -3214,6 +3252,9 @@ const EN: Record<string, string> = {
   '{subject} {n}개 중': 'Of {n} {subject},',
   '{n}개 잘림': '{n} cut short',
   '{n}개 빠짐': '{n} left out',
+  '{n}개 글자 읽는 중': '{n} still being read',
+  '{name} 글자 읽는 중': '{name} — scanned pages still being read',
+  '{name} 그림 · 이 모델은 보지 못함': '{name} — a picture this model cannot see',
   '{name} {kept}자만 반영': '{name} — only {kept} characters used',
   '{name} 분량을 넘겨 제외': '{name} — over budget, left out',
   '{name} 읽지 못함': '{name} — could not be read',

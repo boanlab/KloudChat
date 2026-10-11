@@ -43,6 +43,7 @@ import { ModelPicker } from './ModelPicker'
 import { useFileDrop, usePasteFiles } from '@/lib/useFileDrop'
 import { useT } from '@/lib/useT'
 import { isListed } from '@/lib/listed'
+import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 
 /** Shown when a send timed out at the gateway: the turn may be running on the server. */
 const GATEWAY_NOTICE =
@@ -476,6 +477,14 @@ export function Composer({
   /** Uploaded files; the turn sends their ids. */
   const [attachments, setAttachments] = useState<FileRow[]>([])
   const liveAttachments = useRef(attachments)
+  // A scanned attachment is read in the background; its chip follows the pages.
+  useOcrProgress(attachments, (row) =>
+    setAttachments((current) => {
+      const next = current.map((item) => (item.id === row.id ? row : item))
+      liveAttachments.current = next
+      return next
+    }),
+  )
   liveAttachments.current = attachments
   const [pendingPrivacy, setPendingPrivacy] = useState<PendingPrivacy | null>(null)
   const [reusableSessionId, setReusableSessionId] = useState<string | null>(null)
@@ -1908,19 +1917,36 @@ export function Composer({
                 </button>
               </Badge>
             ))}
-            {attachments.map((f) => (
+            {attachments.map((f) => {
+              const reading = ocrNote(f, t)
+              return (
               <span
                 key={f.id}
+                data-ocr={f.ocrState ?? undefined}
                 className={cn(
                   'flex items-center gap-1.5 rounded-control border px-1.5 py-0.5 text-xs',
                   f.error
                     ? 'border-warn/40 bg-warn/5 text-warn'
                     : 'border-line bg-elevated',
                 )}
-                title={f.error ?? t('{n} 토큰').replace('{n}', f.tokens.toLocaleString())}
+                title={
+                  f.error ??
+                  (reading
+                    ? reading.text
+                    : t('{n} 토큰').replace('{n}', f.tokens.toLocaleString()))
+                }
               >
-                <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
+                {isReading(f) ? (
+                  <Loader2 size={10} className="animate-spin text-faint" />
+                ) : (
+                  <Paperclip size={10} className={f.error ? '' : 'text-faint'} />
+                )}
                 {f.name}
+                {reading && (
+                  <span className={reading.tone === 'warn' ? 'text-warn' : 'text-faint'}>
+                    {reading.text}
+                  </span>
+                )}
                 {f.error && <TriangleAlert size={10} />}
                 <button
                   onClick={() =>
@@ -1937,7 +1963,8 @@ export function Composer({
                   <X size={10} />
                 </button>
               </span>
-            ))}
+              )
+            })}
             {uploading && (
               <span className="flex items-center gap-1.5 rounded-control border border-line bg-elevated px-1.5 py-0.5 text-xs text-faint">
                 <Loader2 size={10} className="animate-spin" />

@@ -54,7 +54,8 @@ Search for the message exactly as it appears on the screen.
 | This agent reads its instructions from the original, and the original has been deleted or is no longer public | The original of an agent with private content is gone | Use another agent |
 | The agent for this conversation is turned off, so you cannot send | The agent is disabled or deleted | Start a new conversation |
 | The microphone is unavailable. Check the microphone permission in your browser | No microphone or no permission | Browser permission |
-| No text could be read from this file | A scanned copy or an unsupported format | Use a file that contains text |
+| No text could be read from this file | An unsupported format, or a scan while text from scans (OCR) is not connected | Use a file that contains text, or ask the administrator to connect text from scans |
+| The text could not be read. Upload it again in a moment | The text-from-scans service did not answer | Upload it again later |
 | Sign-in failed five times in a row, so the account is locked for 15 minutes | Locked | Try again after 15 minutes |
 | Sign-ups are not being accepted right now | The administrator has blocked sign-up | Ask your administrator for an account |
 

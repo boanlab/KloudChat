@@ -1,4 +1,4 @@
-import { ArrowLeft, Brain, ExternalLink, FileText, Link2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Brain, ExternalLink, FileText, Link2, Loader2, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { PageBody } from '@/components/layout/AppShell'
@@ -24,7 +24,8 @@ import { downloadFile, errorMessage, templateText } from '@/lib/api'
 import { currentLang } from '@/lib/i18n'
 import { PROJECT_EMOJIS, kindMeta, kindOrder } from '@/lib/kinds'
 import { memoryTypeLabel } from '@/lib/memoryTypes'
-import { formatTokens, relativeTime } from '@/lib/utils'
+import { cn, formatTokens, relativeTime } from '@/lib/utils'
+import { ocrNote, useOcrProgress } from '@/lib/ocr'
 import {
   MemoryEditor,
   emptyMemory,
@@ -86,8 +87,11 @@ export function ProjectDetailPage() {
     deleteFile,
     moveSessionToProject,
     deleteMemory,
+    refreshProjectFile,
   } = useStore()
   const project = projects.find((p) => p.id === projectId)
+  // Scanned knowledge files are read in the background; their rows follow the pages.
+  useOcrProgress(project?.files ?? [], refreshProjectFile)
   const [tab, setTab] = useState<Tab>('sessions')
   const [instructions, setInstructions] = useState(project?.instructions ?? '')
   const [dirty, setDirty] = useState(false)
@@ -621,6 +625,21 @@ export function ProjectDetailPage() {
                           {t('내용을 읽지 못함: {error}').replace('{error}', f.error)}
                         </span>
                       )}
+                      {(() => {
+                        const reading = ocrNote(f, t)
+                        return reading ? (
+                          <span
+                            data-ocr={f.ocrState ?? undefined}
+                            className={cn(
+                              'flex items-center gap-1 text-xs',
+                              reading.tone === 'warn' ? 'text-warn' : 'text-faint',
+                            )}
+                          >
+                            {reading.tone === 'busy' && <Loader2 size={11} className="animate-spin" />}
+                            {reading.text}
+                          </span>
+                        ) : null
+                      })()}
                     </span>
                     {f.preview && (
                       <Button variant="ghost" size="sm" onClick={() => setExpandedFile((id) => id === f.id ? null : f.id)}>

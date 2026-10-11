@@ -308,19 +308,33 @@ export interface SystemSettings {
     /** `verifyEmail` with a mail server behind it. */
     verificationActive: boolean
   }
-  /** Feature integration: one gateway address fans out into six features. */
+  /** Feature integration: one gateway address fans out into the features. */
   tools: {
     /** Gateway address. Empty means each feature was configured on its own,
      *  or the environment is supplying them. */
     backendBaseUrl: string
     features: {
-      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index'
+      key: 'search' | 'fetch' | 'exec' | 'research' | 'stt' | 'index' | 'ocr'
       label: string
       url: string
       /** `backend` means derived from the gateway address rather than typed
        *  into this field. */
       source: 'database' | 'backend' | 'environment'
     }[]
+  }
+  /** Text from scanned pages: as stored, and as in force once the readers that are
+   *  actually reachable are taken into account. */
+  ocr: {
+    enabled: boolean
+    mode: 'both' | 'engine' | 'vision'
+    /** Stored choice; empty means the first of `visionChoices`. */
+    visionModel: string
+    maxPages: number
+    modeInForce: 'both' | 'engine' | 'vision' | null
+    visionModelInForce: string
+    engineConfigured: boolean
+    /** Strict-local models that declare vision: the only ones a page may go to. */
+    visionChoices: { id: string; label: string }[]
   }
   /** Instance economics, served so the screens quoting them cannot drift. */
   credits: {
@@ -429,6 +443,11 @@ export const adminApi = {
     toolsResearchUrl?: string
     toolsSttUrl?: string
     toolsIndexUrl?: string
+    toolsOcrUrl?: string
+    ocrEnabled?: string
+    ocrMode?: string
+    ocrVisionModel?: string
+    ocrMaxPages?: string
     smtpHost?: string
     smtpPort?: string
     smtpSecurity?: string
@@ -1045,6 +1064,12 @@ export interface FileRow {
   error: string | null
   /** False when the vector index does not cover this document yet. */
   indexed?: boolean
+  /** Scanned pages being read: null when none were needed. */
+  ocrState?: 'queued' | 'running' | 'done' | 'failed' | null
+  /** Pages to read (past the limit included), pages read, pages whose two readings differ. */
+  ocrTotal?: number
+  ocrDone?: number
+  ocrReview?: number
   createdAt: string
 }
 
@@ -1072,6 +1097,8 @@ export const filesApi = {
     }
     return (await res.json()) as FileRow
   },
+  /** One file, for a screen following its scanned pages being read. */
+  get: (id: string) => call<FileRow>(`/files/${id}`),
   addProjectUrl: (projectId: string, url: string) =>
     call<FileRow>(`/projects/${projectId}/knowledge/url`, body({ url })),
   downloadUrl: (id: string) => `${BASE_URL}/files/${id}/content`,

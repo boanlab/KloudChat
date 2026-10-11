@@ -451,7 +451,7 @@ export interface Step {
   memories?: string[]
   files?: {
     name: string
-    state: 'included' | 'truncated' | 'omitted' | 'unreadable'
+    state: 'included' | 'truncated' | 'omitted' | 'unreadable' | 'picture' | 'picture_unseen' | 'reading'
     keptChars: number
     totalChars: number
   }[]
@@ -917,6 +917,10 @@ export interface ProjectFile {
   sourceUrl?: string | null
   preview: string
   error?: string | null
+  ocrState?: 'queued' | 'running' | 'done' | 'failed' | null
+  ocrTotal?: number
+  ocrDone?: number
+  ocrReview?: number
 }
 
 /** A skill's server fields (`services/skill_specs.py`): each names shipped scripts only. */

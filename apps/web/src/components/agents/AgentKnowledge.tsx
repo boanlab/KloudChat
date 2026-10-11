@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Field, Input } from '@/components/ui'
 import { agentsApi, downloadFile, errorMessage, type FileRow } from '@/lib/api'
 import { useFileDrop } from '@/lib/useFileDrop'
+import { isReading, ocrNote, useOcrProgress } from '@/lib/ocr'
 import { useT } from '@/lib/useT'
 
 /**
@@ -41,6 +42,11 @@ export function AgentKnowledge({
       onKnowledgeChange?.(next.some((row) => !row.error && row.tokens > 0))
     },
     [onKnowledgeChange],
+  )
+
+  // A scanned document is read in the background; its row follows the pages.
+  useOcrProgress(rows, (row) =>
+    replaceRows(rowsRef.current.map((item) => (item.id === row.id ? row : item))),
   )
 
   useEffect(() => {
@@ -262,8 +268,24 @@ export function AgentKnowledge({
                   </span>
                 ) : (
                   <>
+                    {(() => {
+                      const reading = ocrNote(f, t)
+                      return reading ? (
+                        <span
+                          data-ocr={f.ocrState ?? undefined}
+                          className={
+                            reading.tone === 'warn'
+                              ? 'flex shrink-0 items-center gap-1 text-xs text-warn'
+                              : 'flex shrink-0 items-center gap-1 text-xs text-faint'
+                          }
+                        >
+                          {isReading(f) && <Loader2 size={11} className="animate-spin" />}
+                          {reading.text}
+                        </span>
+                      ) : null
+                    })()}
                     {/* Un-indexed rows are found by word search only. */}
-                    {f.indexed === false && (
+                    {f.indexed === false && !isReading(f) && (
                       <span
                         title={t('낱말 검색으로는 찾지만, 뜻으로 찾는 검색에는 아직 안 들어갔습니다')}
                         className="flex shrink-0 items-center gap-1 text-xs text-faint"

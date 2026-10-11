@@ -241,10 +241,11 @@ export function MyUsagePage() {
   )
 }
 
-/** Work done by free models: seconds transcribed or chunks embedded. */
+/** Work done by free models: seconds transcribed, chunks embedded, pages read. */
 function unitsLabel(units: number | undefined, unit: string | undefined, t: (s: string) => string): string {
   if (!units) return ''
   if (unit === 'seconds') return t('{n}초 받아씀').replace('{n}', units.toLocaleString())
   if (unit === 'chunks') return t('{n}청크 색인').replace('{n}', units.toLocaleString())
+  if (unit === 'pages') return t('{n}쪽 글자 읽음').replace('{n}', units.toLocaleString())
   return ''
 }

@@ -14,6 +14,7 @@ const OVERRIDE_KEYS: Record<Feature['key'], string> = {
   research: 'toolsResearchUrl',
   stt: 'toolsSttUrl',
   index: 'toolsIndexUrl',
+  ocr: 'toolsOcrUrl',
 }
 
 const SOURCE_LABEL: Record<Feature['source'], string> = {
