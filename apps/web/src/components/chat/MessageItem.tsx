@@ -716,7 +716,7 @@ function MessageItemInner({
         ))}
 
         {!streaming && message.content && (
-          <div className={cn('mt-2 flex items-center gap-1 text-faint', toolAnswer && 'max-sm:flex-wrap')}>
+          <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-faint">
             <span className="flex items-center gap-1">
             {copyButton(t('복사'))}
             <Button
@@ -805,7 +805,7 @@ function MessageItemInner({
               </span>
             )}
             {message.usage && user?.preferences.showUsage !== false && (
-              <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')}>
+              <span className={cn('ml-1 text-xs', toolAnswer && 'max-sm:ml-0 max-sm:basis-full')} data-testid="usage-line">
                 {freshness
                   ? t('모델 실행 없음')
                   : toolAnswer

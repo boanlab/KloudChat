@@ -41,7 +41,7 @@ async function sessionFixture(page: Page, testInfo: TestInfo, messages: Row[], e
       privacy: { externalDataGuard: false }, passwordResetEnabled: false, dictationEnabled: false,
     } })
     if (method === 'GET' && path === '/models') return route.fulfill({ json: {
-      models: [{ id: 'fixture/model', label: 'Fixture', name: 'Fixture', vendor: 'Fixture',
+      models: [{ id: 'fixture/model', label: 'Qwen · Qwen3.8 27b (local)', name: 'Qwen3.8 27b', vendor: 'Qwen',
         provider: 'fixture', kinds: ['chat', 'report', 'slides'], modality: 'chat',
         dataBoundary: 'external', creditCost: 1, inputCreditCost: 1, supportsTools: true,
         contextWindow: 64000 }],
@@ -144,4 +144,21 @@ test('once the deck is made, the box asks what to change, not for a new topic', 
   }], { kind: 'slides', artifactId: '55555555555555555555555555555555' })
   await page.goto(`/s/${id}`)
   await expect(page.getByLabel('프롬프트 입력')).toHaveAttribute('placeholder', '고칠 곳을 적으세요. 예: 3번 장을 표로 바꿔 줘')
+})
+
+test('the model and token line stays one or two lines in a narrow column', async ({ page }, testInfo) => {
+  await sessionFixture(page, testInfo, [question, {
+    id: 'm2', role: 'assistant', content: '분석을 마쳤습니다.', createdAt: at, model: 'fixture/model', steps: [],
+    usage: { inputTokens: 11600, outputTokens: 1700, credits: 0 },
+  }])
+  await page.setViewportSize({ width: 360, height: 800 })
+  await page.goto(`/s/${id}`)
+  const line = page.getByTestId('usage-line')
+  await expect(line).toContainText('11.6k in')
+  const lines = await line.evaluate((el) => {
+    const height = el.getBoundingClientRect().height
+    return Math.round(height / parseFloat(getComputedStyle(el).lineHeight))
+  })
+  // It wrapped word by word into four or five lines before.
+  expect(lines).toBeLessThanOrEqual(2)
 })
