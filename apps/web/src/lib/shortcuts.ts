@@ -1,6 +1,8 @@
 /**
  * Keyboard shortcuts: the list the dialog prints is the list the handler
- * matches. Chords follow ChatGPT's; `mod` is ⌘ on a Mac and Ctrl elsewhere.
+ * matches. `mod` is ⌘ on a Mac and Ctrl elsewhere. No chord a browser keeps for itself:
+ * Shift+Esc (Chrome's task manager), Ctrl+Shift+C/I (developer tools) and Ctrl+Shift+O
+ * (bookmarks) never reach the page, so those actions use Alt+Shift or a bare key.
  */
 
 type ShortcutId =
@@ -18,20 +20,25 @@ type ShortcutId =
 interface Shortcut {
   id: ShortcutId
   label: string
-  /** `mod` renders as ⌘ or Ctrl; the last entry is the key itself. */
+  /** `mod` renders as ⌘ or Ctrl, `alt` as ⌥ or Alt; the last entry is the key itself. */
   keys: string[]
   /** `key` as the browser reports it, compared case-insensitively. */
   key: string
+  /** Matched instead of `key` when set: with ⌥ held a Mac reports another character. */
+  code?: string
   mod?: boolean
   shift?: boolean
+  alt?: boolean
+  /** Only when no text field has focus (a bare key would otherwise be typed). */
+  outsideFields?: boolean
 }
 
 export const SHORTCUTS: Shortcut[] = [
-  { id: 'new-chat', label: '새 대화 열기', keys: ['mod', 'Shift', 'O'], key: 'o', mod: true, shift: true },
-  { id: 'focus-composer', label: '입력창에 집중', keys: ['Shift', 'Esc'], key: 'Escape', shift: true },
+  { id: 'new-chat', label: '새 대화 열기', keys: ['alt', 'Shift', 'N'], key: 'n', code: 'KeyN', alt: true, shift: true },
+  { id: 'focus-composer', label: '입력창에 집중', keys: ['/'], key: '/', outsideFields: true },
   { id: 'copy-last-code', label: '마지막 코드 블록 복사', keys: ['mod', 'Shift', ';'], key: ';', mod: true, shift: true },
-  { id: 'copy-last-answer', label: '마지막 답변 복사', keys: ['mod', 'Shift', 'C'], key: 'c', mod: true, shift: true },
-  { id: 'personalization', label: '개인 맞춤 설정', keys: ['mod', 'Shift', 'I'], key: 'i', mod: true, shift: true },
+  { id: 'copy-last-answer', label: '마지막 답변 복사', keys: ['alt', 'Shift', 'C'], key: 'c', code: 'KeyC', alt: true, shift: true },
+  { id: 'personalization', label: '개인 맞춤 설정', keys: ['alt', 'Shift', 'P'], key: 'p', code: 'KeyP', alt: true, shift: true },
   { id: 'toggle-dictation', label: '말로 쓰기 시작·끝내기', keys: ['mod', 'Shift', 'M'], key: 'm', mod: true, shift: true },
   { id: 'toggle-sidebar', label: '사이드바 토글', keys: ['mod', 'Shift', 'S'], key: 's', mod: true, shift: true },
   { id: 'delete-conversation', label: '대화 삭제', keys: ['mod', 'Shift', '⌫'], key: 'Backspace', mod: true, shift: true },
@@ -49,15 +56,25 @@ export const COMPOSER_KEYS: { label: string; note?: string; keys: string[] }[] =
 export const isMac = () =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 
+/** Whether focus is somewhere that takes typing. */
+function typing(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.closest !== 'function') return false
+  return Boolean(el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]'))
+}
+
 /** The chord a keydown is, or null. Shift+; arrives as `:` on US layouts. */
 export function shortcutFor(e: KeyboardEvent): Shortcut | null {
   const mod = isMac() ? e.metaKey : e.ctrlKey
+  // The other platform's modifier is no chord of ours.
+  const other = isMac() ? e.ctrlKey : e.metaKey
   const key = e.key === ':' ? ';' : e.key
   for (const s of SHORTCUTS) {
-    if (Boolean(s.mod) !== mod) continue
+    if (Boolean(s.mod) !== mod || other) continue
     if (Boolean(s.shift) !== e.shiftKey) continue
-    if (e.altKey) continue
-    if (key.toLowerCase() === s.key.toLowerCase()) return s
+    if (Boolean(s.alt) !== e.altKey) continue
+    if (s.outsideFields && typing(e.target)) continue
+    if (s.code ? e.code === s.code : key.toLowerCase() === s.key.toLowerCase()) return s
   }
   return null
 }

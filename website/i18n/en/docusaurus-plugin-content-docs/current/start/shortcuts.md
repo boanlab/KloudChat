@@ -4,7 +4,7 @@ title: Keyboard shortcuts
 
 # Keyboard shortcuts
 
-Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` instead of `Ctrl`. Shortcuts are not available on the mobile screen.
+Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` instead of `Ctrl` and `⌥` instead of `Alt`. Shortcuts are not available on the mobile screen.
 
 ![Shortcut list](/img/guide/shortcuts.png)
 
@@ -12,13 +12,13 @@ Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` 
 
 | Action | Shortcut |
 |---|---|
-| Open a new conversation | `Ctrl+Shift+O` |
-| Move to the composer | `Shift+Esc` |
+| Open a new conversation | `Alt+Shift+N` |
+| Move to the composer | `/` (outside a text field) |
 | Search conversations | `Ctrl+K` |
 | Collapse or expand the sidebar | `Ctrl+Shift+S` |
-| Copy the last answer | `Ctrl+Shift+C` |
+| Copy the last answer | `Alt+Shift+C` |
 | Copy the last code block | `Ctrl+Shift+;` |
-| Open personalization settings | `Ctrl+Shift+I` |
+| Open personalization settings | `Alt+Shift+P` |
 | Start or stop dictation | `Ctrl+Shift+M` |
 | Delete the conversation | `Ctrl+Shift+⌫` |
 | Show the shortcut list | `Ctrl+/` |

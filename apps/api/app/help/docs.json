@@ -816,7 +816,7 @@
 "path": "start/home",
 "title": "홈 화면 구성",
 "heading": "사이드바",
-"text": "| 영역 | 설명 |\n|---|---|\n| 검색 | 지난 대화를 **제목**으로 검색합니다. 단축키 `Ctrl+K`. |\n| 새 대화 | 홈 화면으로 이동해 새 작업을 시작합니다. 단축키 `Ctrl+Shift+O`. |\n| 프로젝트 · 아티팩트 | 자료를 묶어 둔 작업 공간과 생성된 아티팩트 갤러리로 이동합니다. |\n| 대화 목록 | **고정됨**, **작업 목록**(최근 대화), **이전 대화 … 더 보기** 순으로 표시됩니다. 아이콘으로 종류를 구분하며, 항목의 `…` 메뉴에서 이름 바꾸기, 고정, 프로젝트에서 빼기, 삭제를 수행합니다. |\n| 이번 달 크레딧 | 남은 사용량입니다. 누르면 사용량 화면으로 이동합니다. **무료**로 표시된 모델은 크레딧을 소모하지 않습니다. |\n| 계정 메뉴 | 사용자 지정(에이전트·묶음, 스킬, 커넥터), 대화 기록, 계정(연동 안내, 사용량, 설정 — 메모리·테마 포함, 단축키), 관리자 메뉴, 로그아웃. |"
+"text": "| 영역 | 설명 |\n|---|---|\n| 검색 | 지난 대화를 **제목**으로 검색합니다. 단축키 `Ctrl+K`. |\n| 새 대화 | 홈 화면으로 이동해 새 작업을 시작합니다. 단축키 `Alt+Shift+N`. |\n| 프로젝트 · 아티팩트 | 자료를 묶어 둔 작업 공간과 생성된 아티팩트 갤러리로 이동합니다. |\n| 대화 목록 | **고정됨**, **작업 목록**(최근 대화), **이전 대화 … 더 보기** 순으로 표시됩니다. 아이콘으로 종류를 구분하며, 항목의 `…` 메뉴에서 이름 바꾸기, 고정, 프로젝트에서 빼기, 삭제를 수행합니다. |\n| 이번 달 크레딧 | 남은 사용량입니다. 누르면 사용량 화면으로 이동합니다. **무료**로 표시된 모델은 크레딧을 소모하지 않습니다. |\n| 계정 메뉴 | 사용자 지정(에이전트·묶음, 스킬, 커넥터), 대화 기록, 계정(연동 안내, 사용량, 설정 — 메모리·테마 포함, 단축키), 관리자 메뉴, 로그아웃. |"
 },
 {
 "lang": "ko",
@@ -851,14 +851,14 @@
 "path": "start/shortcuts",
 "title": "키보드 단축키",
 "heading": "",
-"text": "화면 어디에서든 `Ctrl+/` 를 누르면 전체 목록을 확인할 수 있습니다. macOS에서는 `Ctrl` 대신 `⌘` 를 사용합니다. 모바일 화면에서는 단축키를 제공하지 않습니다."
+"text": "화면 어디에서든 `Ctrl+/` 를 누르면 전체 목록을 확인할 수 있습니다. macOS에서는 `Ctrl` 대신 `⌘`, `Alt` 대신 `⌥` 를 사용합니다. 모바일 화면에서는 단축키를 제공하지 않습니다."
 },
 {
 "lang": "ko",
 "path": "start/shortcuts",
 "title": "키보드 단축키",
 "heading": "전역 단축키",
-"text": "| 기능 | 단축키 |\n|---|---|\n| 새 대화 열기 | `Ctrl+Shift+O` |\n| 입력창으로 이동 | `Shift+Esc` |\n| 대화 검색 | `Ctrl+K` |\n| 사이드바 접기·펴기 | `Ctrl+Shift+S` |\n| 마지막 답변 복사 | `Ctrl+Shift+C` |\n| 마지막 코드 블록 복사 | `Ctrl+Shift+;` |\n| 개인 맞춤 설정 열기 | `Ctrl+Shift+I` |\n| 말로 쓰기 시작·종료 | `Ctrl+Shift+M` |\n| 대화 삭제 | `Ctrl+Shift+⌫` |\n| 단축키 목록 표시 | `Ctrl+/` |"
+"text": "| 기능 | 단축키 |\n|---|---|\n| 새 대화 열기 | `Alt+Shift+N` |\n| 입력창으로 이동 | `/` (입력 칸 밖에서) |\n| 대화 검색 | `Ctrl+K` |\n| 사이드바 접기·펴기 | `Ctrl+Shift+S` |\n| 마지막 답변 복사 | `Alt+Shift+C` |\n| 마지막 코드 블록 복사 | `Ctrl+Shift+;` |\n| 개인 맞춤 설정 열기 | `Alt+Shift+P` |\n| 말로 쓰기 시작·종료 | `Ctrl+Shift+M` |\n| 대화 삭제 | `Ctrl+Shift+⌫` |\n| 단축키 목록 표시 | `Ctrl+/` |"
 },
 {
 "lang": "ko",
@@ -1971,7 +1971,7 @@
 "path": "start/home",
 "title": "Home screen layout",
 "heading": "Sidebar",
-"text": "| Area | Description |\n|---|---|\n| Search | Searches past conversations by **title**. Shortcut `Ctrl+K`. |\n| New chat | Goes to the home screen so you can start new work. Shortcut `Ctrl+Shift+O`. |\n| Projects · Artifacts | Goes to the workspace that holds your grouped files and to the gallery of generated artifacts. |\n| Conversation list | Shown in the order **Pinned**, **conversation list** (recent conversations) and **Earlier conversations … Show more**. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |\n| Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |\n| Account menu | Customize (agents and bundles, skills, connectors), conversation history, account (integration guide, usage, settings including memory and themes, shortcuts), administrator menu, sign out. |"
+"text": "| Area | Description |\n|---|---|\n| Search | Searches past conversations by **title**. Shortcut `Ctrl+K`. |\n| New chat | Goes to the home screen so you can start new work. Shortcut `Alt+Shift+N`. |\n| Projects · Artifacts | Goes to the workspace that holds your grouped files and to the gallery of generated artifacts. |\n| Conversation list | Shown in the order **Pinned**, **conversation list** (recent conversations) and **Earlier conversations … Show more**. Icons show the type of each item. The `…` menu on an item lets you rename it, pin it, remove it from a project and delete it. |\n| Credit this month | The usage you have left. Press it to go to the usage screen. A model marked **Free** does not consume credit. |\n| Account menu | Customize (agents and bundles, skills, connectors), conversation history, account (integration guide, usage, settings including memory and themes, shortcuts), administrator menu, sign out. |"
 },
 {
 "lang": "en",
@@ -2006,14 +2006,14 @@
 "path": "start/shortcuts",
 "title": "Keyboard shortcuts",
 "heading": "",
-"text": "Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` instead of `Ctrl`. Shortcuts are not available on the mobile screen."
+"text": "Press `Ctrl+/` anywhere on the screen to see the full list. On macOS, use `⌘` instead of `Ctrl` and `⌥` instead of `Alt`. Shortcuts are not available on the mobile screen."
 },
 {
 "lang": "en",
 "path": "start/shortcuts",
 "title": "Keyboard shortcuts",
 "heading": "Global shortcuts",
-"text": "| Action | Shortcut |\n|---|---|\n| Open a new conversation | `Ctrl+Shift+O` |\n| Move to the composer | `Shift+Esc` |\n| Search conversations | `Ctrl+K` |\n| Collapse or expand the sidebar | `Ctrl+Shift+S` |\n| Copy the last answer | `Ctrl+Shift+C` |\n| Copy the last code block | `Ctrl+Shift+;` |\n| Open personalization settings | `Ctrl+Shift+I` |\n| Start or stop dictation | `Ctrl+Shift+M` |\n| Delete the conversation | `Ctrl+Shift+⌫` |\n| Show the shortcut list | `Ctrl+/` |"
+"text": "| Action | Shortcut |\n|---|---|\n| Open a new conversation | `Alt+Shift+N` |\n| Move to the composer | `/` (outside a text field) |\n| Search conversations | `Ctrl+K` |\n| Collapse or expand the sidebar | `Ctrl+Shift+S` |\n| Copy the last answer | `Alt+Shift+C` |\n| Copy the last code block | `Ctrl+Shift+;` |\n| Open personalization settings | `Alt+Shift+P` |\n| Start or stop dictation | `Ctrl+Shift+M` |\n| Delete the conversation | `Ctrl+Shift+⌫` |\n| Show the shortcut list | `Ctrl+/` |"
 },
 {
 "lang": "en",
