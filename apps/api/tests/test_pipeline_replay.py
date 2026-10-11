@@ -33,6 +33,7 @@ def replay(monkeypatch):
         return dataclasses.replace(await real(), search="")
 
     monkeypatch.setattr(settings_store, "tools_config", without_search)
+    harness.pin_recorded_defaults(monkeypatch.setattr)
     return monkeypatch
 
 

@@ -135,6 +135,22 @@ def install_renderer(patch: Patch) -> None:
     patch(diagram_render, "render_png", render_png)
 
 
+#: Model defaults in force when the records were made. A call's key holds its model, so
+#: a later default would find no recorded reply.
+RECORDED_DEFAULTS = {
+    "code_fallback_model": "local/qwen3.5-122b",
+    "adaptive_economy_models_default": "local/qwen3.5-122b",
+    "outline_model_default": "local/qwen3.5-122b",
+}
+
+
+def pin_recorded_defaults(patch: Patch) -> None:
+    from app.core.config import settings
+
+    for name, value in RECORDED_DEFAULTS.items():
+        patch(settings, name, value)
+
+
 # ── a fixed clock and fixed ids ─────────────────────────────────────────
 
 

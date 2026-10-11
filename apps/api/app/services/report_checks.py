@@ -3717,7 +3717,7 @@ async def comparison_recommendation(doc: Doc, musts: dict | None, scored: dict |
     return found, {}
 
 
-# ── the judge (122B): one call per document, shown not rewritten ────────
+# ── the judge (the larger self-hosted model): one call per document, shown not rewritten ────────
 
 #: Seconds a judge call may take; past it the document goes on unjudged.
 JUDGE_TIMEOUT = 60.0
