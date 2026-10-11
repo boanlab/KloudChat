@@ -2042,6 +2042,7 @@ export function DeckPanel({
     // Written onto the prop too: the artifacts screen renders a copy, not the store row.
     if (data.slides) deck.slides = data.slides
     deck.version = row.version
+    useStore.getState().noteArtifactVersion(deck.id, row.version)
   }
   // One rewrite per slide (see `byWhere`), sequential because they share a version.
   const fixAllFindings = async (findings: LintFinding[]) => {
@@ -2065,6 +2066,7 @@ export function DeckPanel({
         const data = (row.data ?? {}) as { slides?: Slide[] }
         if (data.slides) deck.slides = data.slides
         deck.version = row.version
+        useStore.getState().noteArtifactVersion(deck.id, row.version)
       } catch {
         failed.push(where)
       }
@@ -2144,6 +2146,7 @@ export function DeckPanel({
       const next = (row.data as { slides?: Slide[] } | null)?.slides
       if (next) deck.slides = next
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
     } catch (err) {
       setError(errorMessage(err, t('확인하지 못했습니다.')))
     } finally {
@@ -2308,6 +2311,7 @@ export function DeckPanel({
     if (latest && onServer) {
       deck.slides = onServer
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
     }
     const current = deck.slides[index]
     if (!current) return
@@ -2355,6 +2359,7 @@ export function DeckPanel({
       if (!data.slides) throw new Error(t('다시 쓰지 못했습니다.'))
       deck.slides = data.slides
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(data.slides)
     } catch (err) {
       setError(errorMessage(err, t('다시 쓰지 못했습니다.')))
@@ -2479,6 +2484,7 @@ export function DeckPanel({
       deck.slides = slides
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(slides)
       setSlideDraft(null)
       setEditing(false)
@@ -2506,6 +2512,7 @@ export function DeckPanel({
       const slides = data.slides ?? []
       deck.slides = slides
       deck.version = latest.version
+      useStore.getState().noteArtifactVersion(deck.id, latest.version)
       if (data.design) deck.design = data.design
       baseline.current = JSON.stringify(slides)
       const current = slides[Math.min(index, Math.max(slides.length - 1, 0))]
@@ -2554,6 +2561,7 @@ export function DeckPanel({
       deck.slides = next
       if (savedDesign) deck.design = savedDesign
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
       setEditing(false)
       setSlideDraft(null)
@@ -2605,6 +2613,7 @@ export function DeckPanel({
       deck.slides = next
       if (design) deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(next)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2642,6 +2651,7 @@ export function DeckPanel({
       deck.design = design
       setBulkAccent(nextAccent)
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       baseline.current = JSON.stringify(deck.slides)
     } catch (err) {
       setError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -2676,6 +2686,7 @@ export function DeckPanel({
       })
       deck.design = design
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setVisualStyle(nextStyle)
     } catch (err) {
       setError(errorMessage(err, t('테마를 바꾸지 못했습니다.')))
@@ -2800,6 +2811,7 @@ export function DeckPanel({
       })
       deck.reviewComments = comments
       deck.version = row.version
+      useStore.getState().noteArtifactVersion(deck.id, row.version)
       setReviewComments(comments)
     } catch (err) {
       setError(errorMessage(err, t('검토 메모를 저장하지 못했습니다.')))
@@ -3335,7 +3347,10 @@ export function DeckPanel({
         >
         {ribbon === 'text' && (editing || bulkMode) && (
           <RibbonGroup wide label={t('슬라이드 편집')}>
-            <div ref={setEditToolbarSlot} className="flex items-center" />
+            <div ref={setEditToolbarSlot} className="peer flex items-center" />
+            <span className="hidden px-2 text-xs text-muted peer-empty:inline">
+              {t('슬라이드의 글자를 누르면 글자 도구가 나옵니다')}
+            </span>
           </RibbonGroup>
         )}
         {ribbon === 'text' && !editing && !bulkMode && <RibbonGroup label={t('슬라이드 작업')}>

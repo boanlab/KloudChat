@@ -632,6 +632,7 @@ export function ReportPanel({
       })
       report.citationStyle = style
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
     } catch (err) {
       setCitationError(errorMessage(err, t('인용 형식을 바꾸지 못했습니다.')))
     } finally {
@@ -650,6 +651,7 @@ export function ReportPanel({
       })
       report.sources = sources
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       return true
     } catch (err) {
       setCitationError(errorMessage(err, t('참고 자료를 저장하지 못했습니다.')))
@@ -690,6 +692,7 @@ export function ReportPanel({
       const data = (row.data ?? {}) as { sections?: ReportSection[] }
       if (data.sections) report.sections = data.sections
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
     } catch (err) {
       setCheckError(errorMessage(err, t('확인하지 못했습니다.')))
     } finally {
@@ -740,6 +743,7 @@ export function ReportPanel({
     // Written onto the prop too: the artifacts screen renders a copy, not the store row.
     if (data.sections) report.sections = data.sections
     report.version = row.version
+    useStore.getState().noteArtifactVersion(report.id, row.version)
   }
 
   // One rewrite per section (see `byWhere`), sequential because they share a version.
@@ -767,6 +771,7 @@ export function ReportPanel({
         const data = (row.data ?? {}) as { sections?: ReportSection[] }
         if (data.sections) report.sections = data.sections
         report.version = row.version
+        useStore.getState().noteArtifactVersion(report.id, row.version)
       } catch {
         failed.push(where)
       }
@@ -804,6 +809,7 @@ export function ReportPanel({
       const data = (row.data ?? {}) as { sections?: ReportSection[] }
       if (data.sections) report.sections = data.sections
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       setRewriting(null)
     } catch (err) {
       setRewriteError(errorMessage(err, t('다시 쓰지 못했습니다.')))
@@ -845,6 +851,7 @@ export function ReportPanel({
       report.title = latest.title
       report.sections = onServer
       report.version = latest.version
+      useStore.getState().noteArtifactVersion(report.id, latest.version)
     }
     const current = toMarkdown(report)
     baseline.current = current
@@ -887,6 +894,7 @@ export function ReportPanel({
       })
       report.sections = next
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       setTick((n) => n + 1)
     } catch (err) {
       setSaveError(errorMessage(err, t('저장하지 못했습니다.')))
@@ -915,6 +923,7 @@ export function ReportPanel({
       })
       report.sections = next
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       setTick((n) => n + 1)
       return true
     } catch (err) {
@@ -986,6 +995,7 @@ export function ReportPanel({
       })
       report.templateId = id
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
     } catch (err) {
       setTemplateId(was)
       setSaveError(errorMessage(err, t('템플릿을 바꾸지 못했습니다.')))
@@ -1012,6 +1022,7 @@ export function ReportPanel({
       })
       report.design = design
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       setVisualStyle(next)
       setView('page')
       setTick((value) => value + 1)
@@ -1038,6 +1049,7 @@ export function ReportPanel({
       const row = await artifactsApi.update(report.id, { data: documentBody({ ...report, design }), summary: t('문서 색 변경'), expectedVersion: latest.version })
       report.design = design
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       setDocumentAccent(accent)
       setView('page')
       setTick((value) => value + 1)
@@ -1143,6 +1155,7 @@ export function ReportPanel({
       report.sections = sections
       report.title = title
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       if (pageSettingsEdits) report.pageSettings = pageSettingsEdits
       if (reviewCommentEdits) report.reviewComments = reviewCommentEdits
       if (titleBlockEdits) report.titleBlock = titleBlockEdits
@@ -1181,6 +1194,7 @@ export function ReportPanel({
       const data = latest.data as Partial<ReportArtifact>
       report.title = latest.title
       report.version = latest.version
+      useStore.getState().noteArtifactVersion(report.id, latest.version)
       report.sections = data.sections ?? []
       report.pageSettings = data.pageSettings
       report.reviewComments = data.reviewComments
@@ -1237,6 +1251,7 @@ export function ReportPanel({
       report.title = title
       report.sections = parsed.sections
       report.version = row.version
+      useStore.getState().noteArtifactVersion(report.id, row.version)
       baseline.current = toMarkdown({ ...report, title, sections: parsed.sections })
       openEditor(false)
     } catch (err) {
@@ -1261,6 +1276,7 @@ export function ReportPanel({
       report.title = latest.title
       report.sections = sections
       report.version = latest.version
+      useStore.getState().noteArtifactVersion(report.id, latest.version)
       const current = toMarkdown({ title: latest.title, sections })
       baseline.current = current
       setDraft(current)
@@ -1704,7 +1720,11 @@ export function ReportPanel({
           >
           {ribbon === 'text' && view === 'page' && documentLayout === 'edit' && (
             <RibbonGroup wide label={t('서식')}>
-              <div ref={setToolbarSlot} className="flex items-center" />
+              <div ref={setToolbarSlot} className="peer flex items-center" />
+              {/* Until the editor puts its tools here, say where they come from. */}
+              <span className="hidden px-2 text-xs text-muted peer-empty:inline">
+                {t('본문을 누르면 글자 도구가 나옵니다')}
+              </span>
             </RibbonGroup>
           )}
           {ribbon === 'insert' && <RibbonGroup label={t('그림')}><AddSectionImage report={report} /></RibbonGroup>}

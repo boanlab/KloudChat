@@ -142,3 +142,17 @@ test('a shared conversation shows the card with nothing to change it', async ({ 
   await card(page).getByRole('button', { name: '보기' }).click()
   await shot(page, 'shared-card', testInfo.project.name)
 })
+
+test('a deck saved in the panel moves the card under its answer to the new version', async ({ page }, testInfo) => {
+  const recorded = await resultsFixture(page, testInfo)
+  await openSession(page, deckSession)
+  await expect(panel(page)).toBeVisible()
+  const header = panel(page).locator('header').first()
+  await header.getByRole('button', { name: '편집', exact: true }).click()
+  await panel(page).getByLabel('슬라이드 텍스트').fill('행사 신청 흐름\n고친 첫 장')
+  await header.getByRole('button', { name: '저장' }).click()
+  await expect(panel(page).getByLabel('슬라이드 텍스트')).toHaveCount(0)
+  await closePanel(page)
+  await expect(card(page)).toContainText('v1 · 지금 v2')
+  expect(recorded.unexpected).toEqual([])
+})

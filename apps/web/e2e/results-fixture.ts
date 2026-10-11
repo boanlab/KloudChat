@@ -75,7 +75,7 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     session(reportSession, 'report', audit.title, reportId, reportMessages),
     session(deckSession, 'slides', deckFixture.title, deckId, deckMessages),
   ]
-  const artifacts: Record<string, { title: string; data: unknown }> = { [reportId]: report, [deckId]: deck }
+  const artifacts: Record<string, { title: string; data: unknown; version?: number }> = { [reportId]: report, [deckId]: deck }
   const models = [{ id: 'fixture/base', label: 'Fixture', name: 'Fixture', vendor: 'Fixture', provider: 'fixture',
     kinds: ['chat', 'report', 'slides'], modality: 'chat', dataBoundary: 'external', creditCost: 1,
     inputCreditCost: 1, supportsTools: true, contextWindow: 64000 }]
@@ -137,6 +137,13 @@ export async function resultsFixture(page: Page, testInfo: TestInfo, options: { 
     }
     const single = path.match(/^\/artifacts\/([0-9a-f]{32})$/)
     if (method === 'GET' && single && artifacts[single[1]]) return route.fulfill({ json: artifacts[single[1]] })
+    if (method === 'PATCH' && single && artifacts[single[1]]) {
+      // A panel's save: the next version, as the server answers it.
+      const was = artifacts[single[1]]
+      const body = request.postDataJSON() as { data?: unknown }
+      artifacts[single[1]] = { ...was, data: body.data ?? was.data, version: (was.version ?? 1) + 1, updatedAt: later }
+      return route.fulfill({ json: artifacts[single[1]] })
+    }
     if (method === 'GET' && /^\/artifacts\/[0-9a-f]{32}\/marks$/.test(path)) return route.fulfill({ json: null })
     if (method === 'POST' && path === '/files') {
       const body = request.postDataBuffer()?.toString('utf8') ?? ''

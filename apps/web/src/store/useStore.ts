@@ -513,6 +513,9 @@ interface State {
   clearMediaError: () => void
   /** Replaces the store's copy with the server's, and returns it. */
   refreshArtifact: (id: string) => Promise<Artifact | null>
+  /** The newest saved version of an artifact the panels saved in place; the answer's card reads it. */
+  artifactVersions: Record<string, number>
+  noteArtifactVersion: (id: string, version: number) => void
 
   // ── workspace ─────────────────────────────────────────────────────────
   /** One call after sign-in; each screen also refreshes its own slice. */
@@ -2093,6 +2096,9 @@ export const useStore = create<State>((set, get) => ({
     if (id) void get().refreshArtifact(id)
   },
 
+  artifactVersions: {},
+  noteArtifactVersion: (id, version) =>
+    set((s) => (s.artifactVersions[id] === version ? s : { artifactVersions: { ...s.artifactVersions, [id]: version } })),
   refreshArtifact: async (id) => {
     const row = await artifactsApi.get(id).catch(() => null)
     if (!row) return null

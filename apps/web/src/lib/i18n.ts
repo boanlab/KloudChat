@@ -3431,6 +3431,8 @@ const EN: Record<string, string> = {
   '끊긴 답 · 끝까지 쓰지 못했습니다': 'Cut off · this answer was not finished',
   '아직 추가한 스킬이 없습니다.': 'No skills added yet.',
   '스킬 둘러보기': 'Browse skills',
+  '본문을 누르면 글자 도구가 나옵니다': 'Click the text to bring up the text tools',
+  '슬라이드의 글자를 누르면 글자 도구가 나옵니다': 'Click text on the slide to bring up the text tools',
   '문서 형식도 여기서 고릅니다': 'The document format is chosen here too',
   '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
     'Attach one to a project and its slides, reports and images come out in the same colour and type.',

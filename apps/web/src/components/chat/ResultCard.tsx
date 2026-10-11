@@ -48,14 +48,17 @@ function CardFace({
 export function ResultCard({ artifact, version }: { artifact: Artifact; version?: number }) {
   const t = useT()
   const openArtifactAt = useStore((s) => s.openArtifactAt)
+  // A panel saves in place; the version it saved is noted beside the artifact.
+  const saved = useStore((s) => s.artifactVersions[artifact.id])
+  const current = Math.max(artifact.version, saved ?? 0)
   // `version` is what this turn wrote; the artifact may have moved on since.
-  const older = version !== undefined && version < artifact.version
+  const older = version !== undefined && version < current
   const meta = [
     t(artifactLabel[artifact.kind]),
     sizeLine(artifact.kind, artifact as unknown as Record<string, unknown>, t),
     older
-      ? t('v{n} · 지금 v{m}').replace('{n}', String(version)).replace('{m}', String(artifact.version))
-      : `v${artifact.version}`,
+      ? t('v{n} · 지금 v{m}').replace('{n}', String(version)).replace('{m}', String(current))
+      : `v${current}`,
   ].filter(Boolean).join(' · ')
   const checks: DownloadCheck[] = exportChecks(artifact).map((check) => ({
     label: t(check.label).replace('{count}', String(check.count)).replace('{n}', String(check.count)),
