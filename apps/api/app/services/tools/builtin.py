@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.services import (
     credibility,
     index_client,
+    kci,
     knowledge,
     netguard,
     settings_store,
@@ -643,6 +644,8 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     if not query:
         return ToolResult(content="오류: query 가 비었습니다.", failed=True)
     kind = str(args.get("kind") or "web")
+    if kind == "kci":
+        return await _kci_search(query)
     if kind not in ("web", *_LANES):
         kind = "web"
     if kind == "web" and _PAPER_CUES.search(query):
@@ -696,6 +699,11 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
             )
     except (httpx.HTTPError, ValueError) as exc:
         return ToolResult(content=f"오류: 검색에 실패했습니다 ({exc}).", failed=True)
+    if kind == "papers" and kci.wanted(query):
+        # A question about Korean research: KCI's papers first.
+        found = await kci.search(kci.query_for(query) or query, 4)
+        seen = {str(h.get("url") or "") for h in found}
+        hits = [*found, *(h for h in hits if str(h.get("url") or "") not in seen)]
     hits = [
         {
             **hit,
@@ -759,6 +767,32 @@ async def web_search(args: dict[str, Any]) -> ToolResult:
     )
 
 
+async def _kci_search(query: str) -> ToolResult:
+    """Korean scholarly papers from KCI, each with its authors, year, journal and DOI when
+    the Open API key is set (`services/kci.py`)."""
+    hits = await kci.search(kci.query_for(query) or query, max(settings.web_search_results, 8))
+    if not hits:
+        return ToolResult(content=f"'{query}' 에 대한 KCI 검색 결과가 없습니다.",
+                          detail="KCI 0개 결과", empty=True)
+    lines = [f"'{query}' KCI(한국학술지인용색인) 검색 결과:\n"]
+    usable: list[str] = []
+    for i, hit in enumerate(hits, 1):
+        meta = " · ".join(x for x in (
+            ", ".join(hit.get("authors") or []), str(hit.get("published") or ""),
+            str(hit.get("journal") or ""),
+            f"DOI {hit['doi']}" if hit.get("doi") else "") if x)
+        lines.append(f"[{i}] {hit['title']}\n{hit['url']}\n" + (f"{meta}\n" if meta else "")
+                     + str(hit.get("snippet") or ""))
+        lines.append("")
+        if (url := _search_source_url(hit.get("url"))) is not None:
+            usable.append(url)
+    return ToolResult(
+        content="\n".join(lines),
+        detail=f"KCI {len(hits)}개 결과" + ("" if kci.configured() else " · 웹 검색으로 찾음"),
+        search_evidence=SearchEvidence(tuple(usable)) if usable else None,
+    )
+
+
 async def fetch_url(args: dict[str, Any]) -> ToolResult:
     url = str(args.get("url") or "").strip()
     if not url.startswith(("http://", "https://")):
@@ -782,7 +816,8 @@ WEB_SEARCH = Tool(
         "바깥세상의 사실을 확인할 때 사용하세요. 이 대화 안의 내용이나 사용자가 준 "
         "자료를 찾는 데는 쓰지 않습니다. 논문·학술 자료는 kind=papers, "
         "코드·라이브러리·오류 메시지는 kind=code, 시사·사건은 kind=news 로 검색하면 "
-        "그 분야 엔진이 함께 답합니다. 공식 출처가 필요하면 site 나 official 을, "
+        "그 분야 엔진이 함께 답합니다. 국내 학술 논문(한국 연구·국내 동향)은 kind=kci 로 "
+        "KCI(한국학술지인용색인)를 찾습니다. 공식 출처가 필요하면 site 나 official 을, "
         "최근 것만 필요하면 time_range 를, 해외 자료는 language=en 을 주세요."
     ),
     parameters={
@@ -794,10 +829,11 @@ WEB_SEARCH = Tool(
             },
             "kind": {
                 "type": "string",
-                "enum": ["web", "news", "papers", "code"],
+                "enum": ["web", "news", "papers", "kci", "code"],
                 "description": (
                     "검색 종류. web: 일반(기본). news: 뉴스·시사. papers: 논문·학술 "
-                    "(Google Scholar, OpenAlex, arXiv 등). code: 개발 (GitHub, Stack Overflow 등)."
+                    "(Google Scholar, OpenAlex, arXiv 등). kci: 국내 학술 논문(KCI). "
+                    "code: 개발 (GitHub, Stack Overflow 등)."
                 ),
             },
             "site": {

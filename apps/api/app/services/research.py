@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 
-from app.services import credibility, settings_store, thinking
+from app.services import credibility, kci, settings_store, thinking
 from app.services.tools.builtin import scrape, searxng
 
 log = logging.getLogger(__name__)
@@ -435,9 +435,16 @@ async def run(
     queries, spent = await _plan(request, model, api_key, scholarly=scholarly)
     if scholarly:
         max_sources = max(max_sources, _SCHOLAR_SOURCES)
-    hit_lists = await asyncio.gather(
-        *(_gather(backends.search, q, scholarly=scholarly) for q in queries)
+    # A request about Korean scholarship (「국내 동향」, 「국내외 연구」, 「KCI」) asks KCI too,
+    # as a query of its own: papers with their authors, year, journal and DOI.
+    kci_query = kci.query_for(request, queries) if kci.wanted(request) else ""
+    hit_lists, kci_hits = await asyncio.gather(
+        asyncio.gather(*(_gather(backends.search, q, scholarly=scholarly) for q in queries)),
+        kci.search(kci_query) if kci_query else asyncio.sleep(0, []),
     )
+    hit_lists = list(hit_lists)
+    if kci_hits:
+        queries, hit_lists = [*queries, kci_query], [*hit_lists, kci_hits]
 
     # Filtered and ranked per query before anything is fetched; picked
     # round-robin across queries, one publisher and one URL at most.
@@ -497,7 +504,8 @@ async def run(
             if work and any(_same_work(work, other) for other in seen_works):
                 continue
             host = _publisher(url)
-            if host in seen_hosts and not (scholarly and _scholarly_host(url)):
+            if host in seen_hosts and not (scholarly and _scholarly_host(url)) \
+                    and hit.get("lane") != "kci":
                 continue
             seen_urls.add(url)
             seen_hosts.add(host)

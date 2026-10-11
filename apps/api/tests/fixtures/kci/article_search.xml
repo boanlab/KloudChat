@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MetaData>
+  <inputData>
+    <key>00000001</key><apiCode>articleSearch</apiCode>
+    <title><![CDATA[거대언어모델 요약]]></title><page>1</page><displayCount>6</displayCount>
+  </inputData>
+  <outputData>
+    <result><total>2</total></result>
+    <record>
+      <journalInfo journal-id="SER000000001">
+        <journal-name>정보과학회논문지</journal-name>
+        <publisher-name>한국정보과학회</publisher-name>
+        <pub-year>2024</pub-year><pub-mon>05</pub-mon>
+        <volume>51</volume><issue>5</issue>
+      </journalInfo>
+      <articleInfo article-id="ART003000001">
+        <article-categories>컴퓨터학</article-categories>
+        <title-group>
+          <article-title lang="original"><![CDATA[거대언어모델 기반 학술 문헌 요약의 사실 일관성 평가]]></article-title>
+          <article-title lang="english"><![CDATA[Evaluating Factual Consistency of LLM Summaries of Scholarly Articles]]></article-title>
+        </title-group>
+        <author-group>
+          <author english="Kim Minji">김민지(단국대학교)</author>
+          <author>이준호(단국대학교)</author>
+          <author>박서연(한국대학교)</author>
+          <author>최하늘(서울대학교)</author>
+        </author-group>
+        <abstract-group>
+          <abstract lang="original"><![CDATA[거대언어모델이 만든 학술 문헌 요약의 사실 일관성을 평가한다.]]></abstract>
+          <abstract lang="english"><![CDATA[We evaluate factual consistency.]]></abstract>
+        </abstract-group>
+        <fpage>401</fpage><lpage>412</lpage>
+        <doi><![CDATA[http://dx.doi.org/10.5626/JOK.2024.51.5.401]]></doi>
+        <citation-count kci="3" wos="0">3</citation-count>
+        <url><![CDATA[https://www.kci.go.kr/kciportal/ci/sereArticleSearch/ciSereArtiView.kci?sereArticleSearchBean.artiId=ART003000001]]></url>
+        <verified>N</verified>
+      </articleInfo>
+    </record>
+    <record>
+      <journalInfo>
+        <journal-name>한국콘텐츠학회논문지</journal-name>
+        <pub-year>2023</pub-year>
+      </journalInfo>
+      <articleInfo article-id="ART003000002">
+        <title-group>
+          <article-title lang="original"><![CDATA[한국어 문서 요약 모델의 환각 유형 분석]]></article-title>
+        </title-group>
+        <author-group><author>정우성(시설대학교)</author></author-group>
+        <doi />
+        <url><![CDATA[https://www.kci.go.kr/kciportal/ci/sereArticleSearch/ciSereArtiView.kci?sereArticleSearchBean.artiId=ART003000002]]></url>
+      </articleInfo>
+    </record>
+  </outputData>
+</MetaData>
