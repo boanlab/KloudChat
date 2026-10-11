@@ -1469,6 +1469,22 @@ def _grounded_in_files(workspace: WorkspaceContext) -> bool:
     )
 
 
+#: Words that point past the files: 「웹에서」, 「인터넷」, 「공식 사이트」, 「출처 링크」.
+_NAMES_THE_WEB = re.compile(r"웹|인터넷|온라인|외부\s{0,2}자료|공식\s{0,2}(?:사이트|홈페이지)|링크")
+
+
+def _answers_from_files(content: str, workspace: WorkspaceContext) -> bool:
+    """Whether the files this turn carries are what the question is about: they reached the
+    model, and the words neither ask to search nor ask about now or the literature."""
+    return (
+        _grounded_in_files(workspace)
+        and not requests_web_search(content)
+        and not _NAMES_THE_WEB.search(content or "")
+        and not freshness.names_the_present(content)
+        and not literature_request(content)
+    )
+
+
 def _asked_about(content: str, history: list[Message]) -> str:
     """What to read a carried file around: this question, then the one before it.
 
@@ -3914,6 +3930,18 @@ async def send_message(
         if forced_by_freshness and forced_tool == "web_search":
             forced_tool = None
             web_search_auto = payload.web_search == "auto"
+
+    if (
+        forced_tool == "web_search"
+        and session.kind is SessionKind.chat
+        and payload.web_search == "auto"
+        and _answers_from_files(content, workspace)
+    ):
+        # A question the attached or project files answer (「프로젝트에 올린 연구비 자료로 2024년
+        # 집행률을 계산해 줘」) reads them; a year in it is not a news question. The tool stays
+        # offered for the model to call if the files fall short.
+        forced_tool = None
+        web_search_auto = True
 
     requested_tools = strict_tools if requested_is_strict else candidate_tools
 
