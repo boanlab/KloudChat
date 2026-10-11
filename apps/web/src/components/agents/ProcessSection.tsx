@@ -385,7 +385,7 @@ export function ProcessSection({
   }
   const ownWords = `${agent.name}\n${agent.description}\n${agent.systemPrompt}`
   const exportAs = askedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
-  // R2: ticking the export by hand picks the format the words name too, as the switch does.
+  // Ticking the export by hand picks the format the words name too, as the switch does.
   const namedAs = namedFormat(ownWords, cat?.exportFormats ?? ['docx', 'pdf', 'hwpx', 'md'])
   // Every way here starts from a person who wants a file: the export comes ticked with it.
   const toDocumentBase = documentBase && !fixed ? () => pickBase(documentBase.key, exportAs) : undefined

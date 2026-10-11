@@ -88,30 +88,6 @@ function newId(steps: PipelineStep[]) {
   return `s${n}`
 }
 
-/** A pipeline's steps as one line of chips: 데이터 분석 → 비교 보고서 → 근거 대조 … */
-export function StepChips({ steps, className }: { steps: PipelineStep[]; className?: string }) {
-  const t = useT()
-  const agents = useStore((s) => s.agents)
-  const cat = useCatalogue()
-  if (steps.length === 0) return <p className={cn('text-sm text-faint', className)}>{t('단계가 없습니다.')}</p>
-  return (
-    <p className={cn('flex flex-wrap items-center gap-1 text-sm text-muted', className)} data-testid="step-chips">
-      {steps.map((s, i) => {
-        const Icon = KIND_ICON[s.kind] ?? Settings2
-        return (
-          <span key={s.id} className="flex items-center gap-1">
-            {i > 0 && <span className="text-faint" aria-hidden>→</span>}
-            <span className="flex items-center gap-1 rounded-control bg-elevated px-1.5 py-0.5">
-              <Icon size={11} className="text-accent" aria-hidden />
-              {t(stepTitle(s, agents, cat))}
-            </span>
-          </span>
-        )
-      })}
-    </p>
-  )
-}
-
 /**
  * The steps of an agent's 직접 구성 or of a 묶음, in order, each with its settings. Controlled:
  * the caller saves. `selfName` offers the agent's own step (`@self`) in 「+ 단계 추가」.

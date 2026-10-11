@@ -54,7 +54,7 @@ const EN: Record<string, string> = {
   '바로 로그아웃되고 키도 막힙니다. 이 사람이 공개한 챗봇도 함께 멈춥니다. 「정지 해제」로 되돌릴 수 있습니다.': 'They are signed out at once and their keys stop working. Bots they published stop too. Reinstate undoes this.',
   '{n} 크레딧 · 0~100,000,000 · 이번 달 사용량은 그대로 유지됩니다.': '{n} credits · 0–100,000,000 · this month\'s usage stays as it is.',
   '0~100,000,000 크레딧 · 이번 달 사용량은 그대로 유지됩니다.': '0–100,000,000 credits · this month\'s usage stays as it is.',
-  // 다듬기
+  // 건너뛰기 링크 · 새 버전 안내
   '본문으로 건너뛰기': 'Skip to main content',
   '새 버전으로 다시 불러와야 합니다': 'Reload to get the new version',
   '그사이 KloudChat이 새로 배포되었습니다. 새로고침하면 이어서 쓸 수 있고, 대화 내용은 서버에 그대로 있습니다.': 'KloudChat was updated in the meantime. Reload to carry on; your conversations are kept on the server.',
@@ -70,7 +70,6 @@ const EN: Record<string, string> = {
   '내부 전용': 'Internal only',
   '로컬': 'Local',
   '외부': 'External',
-  '이 모델이 답하지 못하면 외부 모델로 넘길 수 있습니다.': 'If this model cannot answer, the request may go to an external model.',
   // 에이전트 · 두 번 저장
   '같은 이름의 에이전트를 방금 만들었습니다.': 'You just made an agent with this name.',
   '다른 이름으로': 'Use another name',
@@ -128,7 +127,6 @@ const EN: Record<string, string> = {
   '{field} 값을 확인하세요.': 'Check the {field}.',
   '입력한 값을 확인하세요.': 'Check what you entered.',
   '제목': 'Title',
-  // 공개 챗봇 · 규정·업무 안내
   // 공개 챗봇 채널 · 키 · 관리자 열람
   'API·MCP 채널이 아직 열리지 않았습니다. 개요의 채널에서 켜고 관리자 승인을 받으면 아래 키로 부를 수 있습니다. 키는 미리 만들어 둘 수 있습니다.': 'The API and MCP channels are not open yet. Switch them on under Channels in Overview; once an administrator approves, call the bot with a key below. You can make keys ahead of time.',
   'API로 부르기': 'Call it through the API',
@@ -265,7 +263,6 @@ const EN: Record<string, string> = {
   '주소 복사': 'Copy address',
   '공개할 수 있는지 확인하는 중…': 'Checking whether it can be published…',
   '공개 전 확인': 'Before publishing',
-  '공개 범위: 이 기관 구성원(로그인한 사람)': 'Who can use it: members of this instance (signed in)',
   '내부 모델로만 답합니다: {model}': 'Answers with an internal model only: {model}',
   '지금은 공개할 수 없습니다.': 'It cannot be published right now.',
   '챗봇에서는 쓰지 않는 것': 'Not used by the chatbot',
@@ -453,14 +450,12 @@ const EN: Record<string, string> = {
   '목록을 불러오지 못했습니다. 잠시 뒤 다시 열어 주세요.': 'Could not load the list. Please open the page again shortly.',
   '지금은 공개된 챗봇이 없습니다.': 'No chatbots are open right now.',
   '공개': 'Published',
-  '외부 공개 닫음': 'Closed to the public',
   '범위 좁힘': 'Audience narrowed',
   '새 판': 'New version',
   '관리자 상태 변경': 'Status changed by an administrator',
   '만든 사람에게 보일 메모(선택)': 'Note for the maker (optional)',
   '만든 사람에게 보일 반려 사유': 'Reason for declining, shown to the maker',
   '외부 공개 닫기': 'Close to people without an account',
-  '구성원에게만 열린 상태로 돌립니다. 만든 사람에게 보일 사유': 'Returns it to members only. Reason shown to the maker',
   '만든 사람에게 보일 사유': 'Reason shown to the maker',
   '감사 기록에 남길 사유': 'Reason kept in the audit log',
   '챗봇 닫기': 'Close chatbot',
@@ -479,7 +474,7 @@ const EN: Record<string, string> = {
   '일시 중지되었습니다.': 'Paused.',
   '자료가 없습니다.': 'No material.',
   '{n}자': '{n} characters',
-  // 페르소나 2차 비교에서 나온 고침
+  // 진행 과정 · 파일 내보내기 · 빠진 정보 질문
   '파일로 내보내기(문서 과정에서)': 'Export to a file (in a document process)',
   '기본 과정(보고서)으로 바꾸기': 'Switch to a report base',
   '「이 에이전트가 만드는 것」에서 보고서(문서)를 고르세요': 'Choose Report (document) under “What this agent makes”',
@@ -802,7 +797,7 @@ const EN: Record<string, string> = {
   '커넥터 카탈로그 삭제': 'Connector catalogue entry removed',
   '진행 과정 반려': 'Process rejected',
   '이 대화에서 정한 것:': 'Settled in this conversation:',
-  // 템플릿·테마 (formerly 양식·디자인)
+  // 템플릿·테마
   '테마': 'Theme',
   '기본 템플릿': 'Default templates',
   '{kind} 템플릿': '{kind} template',
@@ -1394,24 +1389,6 @@ const EN: Record<string, string> = {
   '공유 링크': 'Share link',
   '공유된 대화': 'Shared conversation',
   '공유됨': 'Shared',
-  '아직 스킬이 없습니다':
-    'No skills yet',
-  '워크스페이스 스토어에서 필요한 절차를 가져오거나, 직접 하나 만들어 시작하세요.':
-    'Import one from the workspace store, or write your own.',
-  '스토어 둘러보기':
-    'Browse the store',
-  '아직 에이전트가 없습니다':
-    'No agents yet',
-  '기본으로 제공되는 에이전트는 없습니다. 직접 만들거나, 동료가 공개한 에이전트를 스토어에서 가져오세요.':
-    'No agents ship built in. Make your own, or take one a colleague shared from the store.',
-  '공유된 에이전트가 없습니다':
-    'Nothing shared yet',
-  '내 에이전트를 편집해 모두에게 공개하면 여기에 올라갑니다.':
-    'Edit one of your agents and share it to list it here.',
-  '아직 공유된 스킬이 없습니다. 내 스킬을 편집해 워크스페이스에 공유할 수 있습니다.':
-    'Nothing shared yet. Edit one of your skills to share it with the workspace.',
-  '공유된 스킬 목록을 불러오지 못했습니다. 잠시 뒤 다시 열어 보세요.':
-    'Could not load the shared skills. Try opening this again in a moment.',
   '공유하면 워크스페이스 스토어에 올라가고, 다른 사용자가 각자 사본을 가져갑니다. 내가 고쳐도 이미 가져간 사본은 그대로입니다.':
     'Sharing lists it in the workspace store, where others take their own copy. Editing yours afterwards leaves those copies alone.',
   '관리': 'Manage',
@@ -1447,7 +1424,6 @@ const EN: Record<string, string> = {
   '그림 크게 보기': 'View picture full size',
   '답변이 도착했습니다': 'The answer has arrived',
   '답변이 실패했습니다': 'The answer failed',
-  '지난 30일': 'Previous 30 days',
   '로그인이 갱신되었습니다. 다시 보내 주세요.': 'Your sign-in was renewed. Please send again.',
   '로그인이 만료되었습니다. 다시 로그인한 뒤 보내 주세요.': 'Your sign-in expired. Sign in again, then send.',
   '이 대화는 아직 답을 쓰고 있습니다. 답이 끝나거나 중지한 뒤 보내 주세요.':
@@ -1563,8 +1539,6 @@ const EN: Record<string, string> = {
   '문구': 'Prompt',
   '예시 문서': 'Sample document',
   '분류': 'Group',
-  '쉼표로 구분. 고르기 전에 보이는 항목입니다':
-    'Comma separated. Shown on the card before it is picked.',
   '파일을 올리지 못했습니다.': 'Could not upload the file.',
   '크기': 'Size',
   '대본': 'Script',
@@ -1721,8 +1695,6 @@ const EN: Record<string, string> = {
   '비밀번호를 바꿨습니다. 새 비밀번호로 로그인하세요.': 'Password changed. Sign in with the new one.',
   '비밀번호를 바꾸지 못했습니다. 링크를 다시 요청하세요.': 'Could not change the password. Request a new link.',
   '새 비밀번호를 정하면 바로 로그인됩니다. 다른 기기의 로그인은 모두 해제됩니다.': 'Setting a new password signs you in and signs out every other device.',
-  '관리자 승인이 끝나면 크레딧이 배정되고 바로 쓸 수 있습니다.': 'Once an administrator approves you, credits are assigned and you can start.',
-  '10자 이상, 숫자와 기호 포함': '10+ characters, with a number and a symbol',
   '홍길동': 'Your name',
   '검색 결과가 없습니다': 'No results',
   '아직 대화가 없습니다': 'No conversations yet',
@@ -1859,7 +1831,6 @@ const EN: Record<string, string> = {
   '정보 수정': 'Edit account',
   '비밀번호 초기화': 'Reset password',
   '새 비밀번호를 정해 본인에게 따로 전달하세요. 저장하면 이 계정의 모든 로그인이 풀립니다.': 'Choose a new password and hand it over separately. Saving signs this account out everywhere.',
-  '8자 이상': 'At least 8 characters',
   '임의 생성': 'Generate',
   '초기화': 'Reset',
   '비밀번호를 바꿨습니다. 이 계정의 기존 로그인은 모두 풀렸습니다.': 'Password changed. Every existing sign-in for this account has ended.',
@@ -1905,8 +1876,6 @@ const EN: Record<string, string> = {
   '1. 입력 자료와 판단 기준을 확인한다\n2. 결과와 근거, 미확인 항목을 구분한다':
     '1. Check the inputs and decision criteria\n2. Separate results, evidence, and unverified items',
   '1k당 {in} / {out}': '{in} / {out} per 1k',
-  '이 목록의 카드에 이 핸들로 표시됩니다. 비워 두면 자동으로 만듭니다.':
-    'Shown as the handle on cards in this list. Left empty, one is generated.',
   'API 서버와 같은 호스트에서 실행됩니다.': 'Runs on the same host as the API server.',
   'LiteLLM 에도 {limit} 한도로 반영됩니다 (여유분 {pct}%).':
     'LiteLLM gets a {limit} ceiling to match ({pct}% headroom).',
@@ -2257,7 +2226,7 @@ const EN: Record<string, string> = {
   '날짜 없음': 'No date',
   '어제': 'Yesterday',
   // ── 보고서 편집기 ──────────────────────────────────────
-  // 아이콘 대신 쓰는 두 글자. 영어에서는 Row/Col 이 같은 자리를 쓴다.
+  // 아이콘 대신 쓰는 두 글자. 영어는 Row/Col.
   '행+': 'Row+',
   '행−': 'Row−',
   '열+': 'Col+',
@@ -2671,8 +2640,6 @@ const EN: Record<string, string> = {
   '저장하지 않고 닫기': 'Close without saving',
   '변경 내용 버리기': 'Discard the changes',
   // ── 작업 시작하기 ──────────────────────────────────────
-  '하려는 일을 고르면 필요한 자료와 아티팩트의 템플릿까지 함께 준비됩니다.':
-    'Pick the job and the material it needs — and its template — are set with it.',
   '어떤 템플릿으로 받을까요?': 'Which template should it come in?',
   '모델 목록을 다시 읽지 못했습니다.': 'Could not reload the model list.',
   '모델 목록을 다시 읽었습니다 · 모델 {n}종': 'Model list reloaded · {n} models',
@@ -2699,10 +2666,6 @@ const EN: Record<string, string> = {
   '저장했습니다': 'Saved',
   '그림을 넣지 못했습니다.': 'Could not add the picture.',
   '그림 넣기': 'Add a picture',
-  '아직 만든 그림이 없습니다. 이미지 화면에서 만들면 여기에 나타납니다.':
-    'No pictures yet. Anything you make on the image surface appears here.',
-  '이미지 화면이 꺼져 있어 넣을 그림을 만들 수 없습니다. 관리자가 설정에서 켤 수 있습니다.':
-    'The image surface is switched off, so there is nothing to put here yet. An administrator can turn it on in the system settings.',
   '어느 자리에 넣을까요?': 'Where should it go?',
   '{name}에 그림 넣기': 'Add a picture to {name}',
   '다시 만들기': 'Make it again',
@@ -2710,10 +2673,6 @@ const EN: Record<string, string> = {
     'Click any words on the slide above to change them. The box below is for going through the whole slide at once — first line the title, one line per item, and a line split by | is a table row.',
   '원문 편집':
     'Edit the source',
-  '굵게·표·그림을 그대로 보면서 고칩니다':
-    'Edit with bold, tables and pictures as they will look',
-  '마크다운으로 한 번에 고칩니다':
-    'Edit the whole thing as Markdown',
   '커넥터 {n}개': '{n} connectors',
   '참고한 자료가 없습니다.':
     'No sources were used.',
@@ -2732,8 +2691,6 @@ const EN: Record<string, string> = {
   '제목을 직접 고치거나, 크게 바꿀 것이 있으면 아래 입력창에 적어 주세요.': 'Edit the titles here, or type a bigger change in the box below.',
   '고친 구성으로 생성해 주세요': 'Write it as I edited it',
   '프롬프트 고치기': 'Edit the prompt',
-  '이미지 화면에서 만든 그림이 문서 안에 그대로 들어갑니다. 링크가 아니라 파일 안에 담기므로 인쇄와 공유에서도 함께 보입니다.':
-    'A picture you made on the image surface goes inside the document itself — not linked to, so it prints and travels with the file.',
   '넣는 중…': 'Adding…',
   '넣기': 'Add',
   '그림 아래에 붙일 설명 (선택)': 'Caption, printed under the picture (optional)',
@@ -2760,7 +2717,6 @@ const EN: Record<string, string> = {
   '메일 서버가 인정하는 주소여야 합니다. 그렇지 않으면 발송이 거부됩니다.':
     'The mail server has to accept this address, or it will refuse to send.',
   '메일 설정 저장': 'Save mail settings',
-  '모델 목록을 불러오는 중입니다': 'Loading the model list',
   '모델 불러오는 중…': 'Loading models…',
   '모델에게 매번 함께 전달됩니다. 말투, 지켜야 할 것, 기본 전제를 적어 두세요.':
     'Sent to the model every time. Put the tone, the rules and the standing assumptions here.',
@@ -2793,8 +2749,6 @@ const EN: Record<string, string> = {
     'Not configured, so password reset is off. The sign-in screen tells people to ask an administrator.',
   '설치에 실패했습니다.': 'The install failed.',
   '설치한 커넥터가 없습니다': 'No connectors installed',
-  '스킬의 기본 정보를 채웁니다. 저장하면 워크스페이스에 등록됩니다.':
-    'Fill in what the skill is. Saving registers it in the workspace.',
   '슬라이드 텍스트': 'Slide text',
   '승인 대기 {n}건': '{n} awaiting approval',
   '승인을 기다리는 중입니다': 'Waiting for approval',
@@ -2951,8 +2905,6 @@ const EN: Record<string, string> = {
   '자산': 'Assets',
   '에이전트에게 맡기기': 'Hand it to an agent',
   '자세히 보기': 'View details',
-  '지침·도구·자료를 갖춘 에이전트가 대신 진행합니다. 같은 프로젝트 안에서는 서로의 결론을 이어받습니다.':
-    'An agent with its own instructions, tools and documents does the work. Inside a project they pick up each other\u2019s conclusions.',
   '여기에 놓으면 첨부됩니다': 'Drop to attach',
   '여기에 놓으면 자료로 추가됩니다': 'Drop to add as a document',
   '여기에 놓으면 참고 파일로 추가됩니다': 'Drop to add as a reference file',
@@ -2964,10 +2916,6 @@ const EN: Record<string, string> = {
   '알면 적어 주세요. 비워 두면 빈칸으로 둡니다': 'Fill it in if you know it; left empty, it stays a blank',
   '이대로 생성해 주세요': 'Write this',
   '있는 자료로 진행해 주세요': 'Go with what arrived',
-  '고를 것이 없으면 아래 입력창에 직접 적어도 됩니다.':
-    'If none of these fit, write your own answer in the box below.',
-  '고칠 곳이 있으면 아래 입력창에 적어 주세요. 다시 구성해 옵니다.':
-    'To change anything, say so in the box below and it will plan again.',
   '답을 적거나, 위에서 고르세요': 'Answer here, or choose above',
   '고칠 곳을 적어 주세요. 그대로 좋으면 위 버튼을 누르세요':
     'Say what to change — or press the button above to write it as it is',
@@ -3028,8 +2976,6 @@ const EN: Record<string, string> = {
   '모두에게 공개': 'Open to everyone',
   '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
     'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',
-  '고정된 시스템 프롬프트, 모델, 도구 권한을 묶어 둔 전문 작업자입니다. 입력창의 @ 버튼으로 새 대화를 맡기고, 잘 만든 것은 스토어에 공개합니다.':
-    "A specialist with a fixed system prompt, model and tool permissions. Hand one a new conversation from the composer's @ button, and open the good ones in the store.",
   '워크스페이스 스토어': 'Workspace store',
   '원문': 'Source',
   '이 계정은 모델 {n}개로 제한되어 있습니다. 발급한 키도 같은 범위만 호출할 수 있습니다.':
@@ -3038,8 +2984,6 @@ const EN: Record<string, string> = {
   '이 기간에 사용 기록이 없습니다': 'Nothing used in this period',
   '이 기간에는 과금되는 모델을 쓰지 않았습니다': 'no billed models were used in this period',
   '이 메모리를 언제 참고할지 판단하는 한 줄 요약입니다.': 'One line that decides when this memory gets pulled in.',
-  '이 설명을 보고 모델이 스킬을 쓸지 판단합니다. 구체적일수록 좋습니다.':
-    'The model reads this to decide whether to use the skill. The more specific the better.',
   '이 스킬이 무엇을 하는지 한 줄로': 'What this skill does, in one line',
   '이 절만 다시 쓰기': 'Rewrite just this section',
   '이 종류의 아티팩트는 아직 공유 화면에서 보여 줄 수 없습니다.':
@@ -3083,18 +3027,11 @@ const EN: Record<string, string> = {
   '크레딧이 차감되지 않았습니다': 'Nothing was charged',
   '키가 발급되었습니다': 'Key issued',
   '텍스트 (노트 포함)': 'Text (with notes)',
-  '설치해 둔 절차입니다. 입력창에서 이번 요청에 적용할 스킬을 최대 3개 고릅니다.':
-    'Installed procedures. Select up to three for each request in the composer.',
   '{name} 설치 상태': '{name} installation status',
   '설치됨': 'Installed',
   '사용 중지': 'Unavailable',
   '필수 도구': 'Required tools',
-  '선택한 도구가 현재 모델과 에이전트에 허용된 경우에만 이 스킬을 실행합니다.':
-    'This skill runs only when its tools are allowed by the current model and agent.',
   '직접 선택': 'Choose tools',
-  '업무·기술 보고서': 'Business & technical report',
-  '목적과 독자를 정하고 근거와 다음 행동으로 맺는 문서':
-    'A document grounded in evidence, ending with clear next actions',
   '목적': 'Purpose',
   '독자': 'Audience',
   '프로젝트 정보': 'Project details',
@@ -3133,21 +3070,8 @@ const EN: Record<string, string> = {
     'At the end of a conversation, records only what stays true about you. Nothing already known is written again.',
   '토큰·크레딧 표시': 'Show tokens and credits',
   '각 응답 아래에 모델·토큰·크레딧을 표시합니다.': 'Puts the model, tokens and credits under each response.',
-  '리포트 도우미': 'Report assistant',
-  '업무·기술 보고서를 구조부터 잡아 근거 중심으로 작성합니다.':
-    'Structures evidence-based business and technical reports.',
   '회의록 정리': 'Meeting minutes',
-  '회의 메모를 결정·조치·미결로 정리합니다.': 'Sorts meeting notes into decisions, actions and open items.',
-  '데이터 분석 도우미': 'Data analysis assistant',
-  '표·설문 데이터를 집계하고 차트로 만듭니다.': 'Aggregates tabular and survey data and turns it into charts.',
-  '전개를 단계별로 보여 주고 검산까지 합니다.': 'Shows each step of the working and checks the arithmetic.',
-  '원문 읽기 도우미': 'Close reading assistant',
-  '논문·기술 문서를 근거 중심으로 검토합니다.': 'Reviews papers and technical documents against their evidence.',
   '계산·단위 검증': 'Calculation & unit verification',
-  '계산식과 단위, 분모, 기준 시점을 코드로 검산하고 근거를 남깁니다.':
-    'Checks formulas, units, denominators and baselines in code and records provenance.',
-  '답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환이 포함될 때.':
-    'When figures drive a decision or require unit conversion.',
   '글에 적힌 계산식·증감률·비중·단위 변환을 스크립트로 다시 계산해 적힌 값과 대조하고, 어긋난 곳을 알려 줍니다.':
     'Recomputes the formulas, changes, shares and unit conversions in a text with a script, compares them with the stated values and flags mismatches.',
   '답이나 문서의 수치가 의사결정 근거가 되거나 단위 변환·증감률·비중이 여러 개 들어 있을 때.':
@@ -3162,8 +3086,6 @@ const EN: Record<string, string> = {
   'PDF 표 → 엑셀': 'PDF table → Excel',
   '글자를 고를 수 있는 PDF(텍스트 PDF)의 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다. 스캔한 PDF(이미지)는 읽지 못합니다.':
     'Moves the tables in a text PDF (one whose text can be selected) into Excel sheets, joining tables that continue across pages and dropping repeated headers. Scanned PDFs (images) cannot be read.',
-  'PDF에 들어 있는 표를 쪽을 넘어 이어 붙이고 반복 머리글을 지워 엑셀 시트로 옮깁니다.':
-    'Moves the tables in a PDF into Excel sheets, joining tables that continue across pages and dropping repeated headers.',
   '첨부한 PDF의 표(거래내역, 단가표, 명세서 등)를 엑셀로 옮기거나 표의 숫자로 계산해야 할 때.':
     'When the tables in an attached PDF (statements, price lists, itemised bills) must go into Excel or be calculated with.',
   '스크립트': 'Scripts',
@@ -3174,71 +3096,21 @@ const EN: Record<string, string> = {
   '출력 보기': 'Show output',
   '{n}번째 시도의 코드': 'Code from attempt {n}',
   '의사결정 메모': 'Decision memo',
-  '대안과 판단 기준을 비교해 권고안, 리스크, 다음 행동으로 정리합니다.':
-    'Compares options and criteria, then states a recommendation, risks and next actions.',
-  '여러 선택지 중 하나를 결정하거나 승인받기 위한 짧은 문서를 만들 때.':
-    'When choosing among options or preparing a short approval memo.',
   '독자별 리스크 검토': 'Audience-based risk review',
-  '같은 아티팩트를 경영·보안·비기술 이해관계자의 질문으로 검토합니다.':
-    'Reviews one artifact through management, security and nontechnical lenses.',
-  '보고서·제안·발표를 배포하거나 의사결정자에게 올리기 직전.':
-    'Before distributing a report, proposal or presentation to decision-makers.',
   '공문 작성': 'Official correspondence',
-  '공문-작성': 'official-correspondence',
-  '발표 노트 작성': 'Speaker notes',
-  '장마다 실제로 말할 문장을 씁니다. 화면 글자를 반복하지 않습니다.':
-    'Writes what you will actually say on each slide, rather than repeating what is on it.',
-  '고객사에 맞춘 제안 슬라이드를 구성합니다.': 'Builds a pitch deck shaped around the client.',
-  '외국어 자료를 옮기고 용어를 정리합니다.': 'Translates foreign-language material and settles the terminology.',
-  '대화나 녹취를 결정사항·조치사항·미결로 나눕니다.':
-    'Splits a conversation or transcript into decisions, actions and open items.',
-  'PR·스택트레이스를 읽고 원인을 좁힙니다.': 'Reads PRs and stack traces and narrows down the cause.',
-  '수치에 근거 붙이기': 'Source every number',
-  '글에 등장하는 모든 숫자에 출처를 달고, 없는 것은 표시합니다.':
-    'Attaches a source to every number in the text and flags the ones with none.',
-  '보고서·발표처럼 수치가 남의 판단 근거가 되는 글을 쓸 때.':
-    'When writing something — a report, a talk — where numbers inform someone else\'s judgement.',
-  '인용 형식 맞추기': 'Match the citation style',
-  'APA · 시카고 · IEEE 중 하나로 참고문헌과 본문 인용을 정리합니다.':
-    'Puts the bibliography and in-text citations into APA, Chicago or IEEE.',
-  '제출용 글에서 인용 형식이 정해져 있을 때. 형식이 지정되지 않았으면 먼저 묻는다.':
-    'When a submission specifies a citation style. If none is given, ask first.',
-  '용어 일관성': 'Consistent terminology',
-  '한 문서 안에서 같은 개념을 계속 같은 말로 부릅니다.':
-    'Keeps calling the same concept by the same name throughout a document.',
-  '번역, 장문 보고서, 절을 나눠 쓰는 글처럼 같은 개념이 여러 번 나올 때.':
-    'For translations, long reports and anything written section by section, where a concept recurs.',
   '공문 문체': 'Official register',
-  '기관 공문·결재 문서의 문체와 구성으로 씁니다.':
-    'Writes in the register and structure of institutional correspondence.',
-  '대내외 공문, 협조 요청, 결재 상신 문서를 쓸 때.':
-    'When writing correspondence, requests for cooperation, or documents going up for approval.',
-  '회의 내용을 정리할 때. 받아쓴 텍스트나 메모를 넘겨받았을 때.':
-    'When writing up a meeting, or handed a transcript or notes.',
-  '슬라이드를 만든 뒤 발표 노트를 채울 때.': 'After building a deck, when filling in the speaker notes.',
-  '코드나 PR 을 검토할 때.': 'When reviewing code or a PR.',
-  '동작·경계조건·실패 처리 순으로 봅니다. 취향은 마지막에.':
-    'Looks at behaviour, then edge cases, then failure handling. Taste comes last.',
   '시간': 'Time',
   '현재 시각과 타임존 변환. \'오늘\'이 며칠인지 서버 시계로 알려 줍니다.':
     'Current time and timezone conversion; tells what "today" is from the server clock.',
-  '현재 시각과 타임존 변환. \'오늘\'을 모델이 지어내지 않게 합니다.':
-    'Current time and timezone conversion, so the model stops inventing what "today" is.',
   'YouTube 전사': 'YouTube transcript',
   '영상의 자막을 가져오고, 없으면 음성을 전사합니다.':
     'Fetches a video\'s captions, or transcribes the audio when there are none.',
   '심층 리서치': 'Deep research',
-  'arXiv·웹을 반복 탐색하는 ReAct 에이전트. 수 분에서 수십 분 걸립니다.':
-    'A ReAct agent that works over arXiv and the web in rounds. Takes minutes to tens of minutes.',
   '보이는 항목 전체 선택': 'Select everything shown',
   '선택 {n}개 삭제': 'Delete {n} selected',
 
   '새 작업': 'New',
 
-  '코드 리뷰어': 'Code reviewer',
-  '코드 리뷰 관점': 'Code review lens',
-  '제안 발표 도우미': 'Pitch deck assistant',
-  '수식 풀이': 'Worked equations',
   '미디어': 'Media',
   '⌘/Ctrl+Enter 저장 · Esc 취소 · 저장하면 이전 판은 버전 기록에 남습니다': '⌘/Ctrl+Enter to save · Esc to cancel · the previous version is kept in history',
 
@@ -3287,7 +3159,6 @@ const EN: Record<string, string> = {
   '사전 계산(수정 반영) 해당 없음': 'Pre-calculation (revision) not applicable',
   '새 대화': 'New chat',
   '아티팩트 열기': 'Open artifact',
-  '{n}단계': '{n} steps',
   '1단계': '1 step',
   '문서 읽기': 'Read document',
   '아티팩트 생성': 'Create artifact',
@@ -3412,12 +3283,6 @@ const EN: Record<string, string> = {
   '답변이 중간에 끊겨 여기까지만 남았습니다.': 'The answer broke off, and this is what remains.',
   '여기서 멈췄습니다.': 'Stopped here.',
 
-  // ── 대화가 무엇을 만들었는지 ────────────────────────────────────
-  '이미지 {n}장': '{n} pictures',
-  '영상 {n}개': '{n} clips',
-  '내레이션 {n}개': '{n} narrations',
-  '음악 {n}곡': '{n} tracks',
-
   // ── 왜 눌리지 않는지 ────────────────────────────────────────────
   '절약 모델은 3개까지만 추가할 수 있습니다': 'At most three economy models',
   '이미 가장 먼저 시도하는 모델입니다': 'Already tried first',
@@ -3433,10 +3298,6 @@ const EN: Record<string, string> = {
   // ── 컨트롤 상태 ─────────────────────────────────────────────────
   '이 답변이 도움이 되었습니다': 'This answer helped',
   '이 답변이 잘못되었습니다': 'This answer was wrong',
-  '스킬과 지식 문서는 원본 소유자의 것이라 함께 오지 않습니다. 직접 연결하고 다시 올리세요.':
-    'Skills and knowledge files belong to whoever shared it and do not come along. Attach and upload your own.',
-
-  // ── 서식이 채워 둔 옵션 ─────────────────────────────────────────
 
   // ── 테마가 실제로 닿는 곳 ──────────────────────────────
   '말투는 대화·보고서·슬라이드에, 색과 서체는 슬라이드와 보고서 표지에, 스타일은 이미지에 적용됩니다. 오디오·동영상에는 적용되지 않습니다.':
@@ -3506,7 +3367,7 @@ const EN: Record<string, string> = {
   '이 에이전트로 대화를 시작합니다.': 'Starting this conversation with the agent.',
   '{kind}에서 이 에이전트의 지시대로 답합니다.': 'It answers on {kind} the way this agent tells it to.',
 
-  // ── 시작점 (legacy label on old turns) ──────────────────────────
+  // ── 시작점 (stored on older turns) ──────────────────────────
   '시작점 {name}': 'From {name}',
 
   // ── 관리자 화면의 탭 ────────────────────────────────────────────
@@ -3517,7 +3378,6 @@ const EN: Record<string, string> = {
 
   // ── 서식 카탈로그 ───────────────────────────────────────────────
   '서식': 'Formatting',
-  '{name} 예시': '{name} example',
   '파일 첨부': 'A file attached',
   '도식을 만들지 못했습니다.': 'The figure could not be made.',
   '아티팩트의 구성을 고릅니다. 색과 글꼴은 테마가 정합니다.': 'Pick how the artifact is structured. The theme sets its colours and fonts.',
@@ -3534,8 +3394,6 @@ const EN: Record<string, string> = {
   '인상': 'Impression',
   '장 목록을 접었다 폅니다': 'Show or hide the slide list',
   '편집하기 좋은 한 줄 문서로 봅니다': 'Show it as one flowing document, easier to edit',
-  '제품이 갖고 있는 아티팩트의 종류입니다. 고르면 그 화면이 열리고 예시 문장이 입력창에 들어갑니다.':
-    'The kinds of artifact the product makes. Pick one and its screen opens with the example sentence in the composer.',
 
   // ── 프로젝트의 기본 서식 ────────────────────────────────────────
   '이 프로젝트에서 새로 시작하는 작업이 어떤 템플릿으로 나올지 정합니다. 대화마다 다시 고를 수 있습니다.':
@@ -3543,10 +3401,6 @@ const EN: Record<string, string> = {
 
   // ── 버전 기록 ───────────────────────────────────────────────────
   '되돌리지 못했습니다.': 'Could not restore.',
-
-  // ── 테마 현관 ─────────────────────────────────────────────────
-  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다. 지난 공문이나 보고서에서 읽어 올 수도 있습니다.':
-    'Attach one to a project and its slides, reports and images come out in the same colour and type. One can also be read out of an earlier letter or report.',
 
   // ── 문서에서 테마 읽기 ───────────────────────────────────────────
   '문서에서 가져오기': 'Read from a document',
@@ -3570,7 +3424,6 @@ const EN: Record<string, string> = {
 
 
   '검토': 'Review',
-  '{name} 검토': 'Review {name}',
   '{n}쪽 즈음': 'around page {n}',
   '그림을 넣을까요?': 'Add figures?',
   '이 대목 고치기': 'Fix this',
@@ -3616,8 +3469,6 @@ const EN: Record<string, string> = {
   '볼 곳 {n}': '{n} to look at',
 
   // ── 템플릿 ───────────────────────────────────────────────
-  '고르면 예시 문장이 입력창에 들어갑니다. 문장은 바꿔도 됩니다.':
-    'Picking one puts its example into the composer. The sentence is yours to change.',
   '원본 HTML': 'Original HTML',
   '텍스트': 'Text',
   '문서를 만들지 못했습니다.': 'The document could not be produced.',
@@ -3634,8 +3485,6 @@ const EN: Record<string, string> = {
   '본문을 누르면 글자 도구가 나옵니다': 'Click the text to bring up the text tools',
   '슬라이드의 글자를 누르면 글자 도구가 나옵니다': 'Click text on the slide to bring up the text tools',
   '문서 형식도 여기서 고릅니다': 'The document format is chosen here too',
-  '프로젝트에 붙이면 슬라이드·보고서·이미지가 같은 색과 서체로 나옵니다.':
-    'Attach one to a project and its slides, reports and images come out in the same colour and type.',
   '한 줄 설명': 'One-line description',
   '예: 학과 공식 문서': 'e.g. Department standard document',
   '강조색': 'Accent',
@@ -3668,7 +3517,6 @@ const EN: Record<string, string> = {
   '다시 접속할 수 있게 합니다': 'Let this account sign in again',
   '이름을 입력하세요': 'Enter a name',
   '바뀐 내용이 없습니다': 'Nothing has changed',
-  '현재 비밀번호와 새 비밀번호를 모두 입력하세요': 'Enter both the current and the new password',
   '추가할 주제를 입력하세요': 'Enter a topic to add',
   '지울 대화가 없습니다': 'There is nothing to delete',
   '대화 빠른 검색': 'Find a conversation',
@@ -3792,8 +3640,6 @@ const EN: Record<string, string> = {
   '올린 자료를 읽습니다': 'Reads the files you upload',
   '빠진 정보가 있으면 먼저 물어봅니다': 'Asks first when something is missing',
   '날짜·수치를 미리 계산해 둡니다': 'Works out dates and figures in advance',
-  '아티팩트를 씁니다': 'Writes the artifact',
-  '다 쓴 뒤 근거를 확인합니다': 'Checks the sources once it is written',
   '파일로 내보냅니다': 'Exports it as a file',
   '올린 녹음 기록·메모를 읽습니다': 'Reads the recording transcripts and notes you upload',
   '회의 날짜처럼 빠진 정보가 있으면 먼저 물어봅니다': 'Asks first when something like the meeting date is missing',
@@ -3811,7 +3657,6 @@ const EN: Record<string, string> = {
   '제안서를 씁니다': 'Writes the proposal',
   '견적 합계·일정·인원과 쪽수 제한을 확인합니다': 'Checks the quote totals, schedule, headcount and page limit',
   '비교할 대안의 자료를 읽습니다': 'Reads the material on the options to compare',
-  '대안별 총비용과 가중 점수를 계산해 둡니다': 'Works out each option’s total cost and weighted score',
   '비교·분석 보고서를 씁니다': 'Writes the comparison report',
   '비교표의 빈칸과 점수가 계산과 맞는지 확인합니다': 'Checks the comparison table for blanks and scores that differ from the calculation',
   '답의 표기를 다듬습니다': 'Tidies how the answer is written',
@@ -4023,7 +3868,6 @@ const EN: Record<string, string> = {
   '비워 두면 설명을 그대로 씁니다.': 'Left blank, the description is used.',
   '필요한 도구': 'Required tools',
   '고른 도구를 지금 쓸 수 있을 때만 이 스킬을 실행합니다.': 'The skill runs only when these tools are available.',
-  '초안 · 아직 입력창에 안 나와요': 'Draft · not in the composer yet',
   '사용자 지정': 'Customize',
   '공유 · 복제 · 삭제': 'Share · Duplicate · Delete',
   '인기': 'Popular',

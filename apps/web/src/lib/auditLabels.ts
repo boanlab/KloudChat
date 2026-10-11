@@ -239,8 +239,8 @@ export function changedFields(row: AuditRow): string[] {
 }
 
 /**
- * The row's target as words. A settings change names its sections — older rows
- * carried a stray `litellm` here whatever was saved.
+ * The row's target as words. A settings change names its sections (recorded, else derived
+ * from the changed fields) rather than its stored target.
  */
 export function targetParts(row: AuditRow): string[] {
   if (row.action === 'settings.update') {

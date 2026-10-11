@@ -20,9 +20,9 @@ import { useStore } from '@/store/useStore'
 import type { Agent, SessionKind } from '@/types'
 import { useT } from '@/lib/useT'
 
-/** Within this many pixels of the bottom the transcript still follows new text. */
 /** Automatic retries of a transcript that did not arrive, before the page asks the reader. */
 const LOAD_RETRIES = 3
+/** Within this many pixels of the bottom the transcript still follows new text. */
 const FOLLOW_GAP_PX = 120
 /** Further than this from the bottom, the 「맨 아래로」 button shows. */
 const AWAY_GAP_PX = 320

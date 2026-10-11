@@ -877,7 +877,7 @@ export function Composer({
   // Same gate as the gallery button.
   const hasTemplates =
     offersTemplates(kind) && designTemplates.some((row) => row.surface === kind)
-  // The empty screen, with its own gallery button, is gone.
+  // Past the empty screen, which has its own gallery button.
   const started = (session?.messages.length ?? 0) > 0
   const model = models.find(
     (candidate) => candidate.id === effectiveModelId(session, kind, agents, modelByKind),

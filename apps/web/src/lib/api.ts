@@ -21,7 +21,6 @@ import type {
   DesignTokens,
   DocMarks,
   PipelineCatalogue,
-  PipelineDefinition,
   PipelineStep,
   PipelineVerdict,
   UserPipeline,
@@ -1921,7 +1920,7 @@ export const jobsApi = {
   cancel: (id: string) => call<JobRow>(`/jobs/${id}/cancel`, { method: 'POST' }),
 }
 
-/* ── pipeline runs and definitions ─────────────────────────────────────── */
+/* ── pipeline runs ─────────────────────────────────────────────────────── */
 
 /** A run as stored: every stage with its evidence. */
 export interface RunRow extends PipelineRun {
@@ -2009,12 +2008,6 @@ export const bundlesApi = {
     call<Bundle>(`/bundles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (id: string) => call<void>(`/bundles/${id}`, { method: 'DELETE' }),
   share: (id: string, visibility: 'org' | 'private') => call<Bundle>(`/bundles/${id}/share`, body({ visibility })),
-}
-
-export const pipelinesApi = {
-  list: () => call<{ name: string; formats: string[]; agents: string[]; flows: string[] }[]>('/pipelines'),
-  get: (name: string) => call<PipelineDefinition>(`/pipelines/${encodeURIComponent(name)}`),
-  forAgent: (agentId: string) => call<PipelineDefinition>(`/agents/${agentId}/pipeline`),
 }
 
 /* ── streaming ──────────────────────────────────────────────────────────*/

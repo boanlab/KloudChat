@@ -72,13 +72,8 @@ const DOC_ACCENTS: [string, string][] = [
 ]
 
 /**
- * A ribbon group's own name, actually on screen.
- *
- * `RibbonGroup`'s `label` is an `aria-label` only — nothing a sighted person
- * reads. Fine for a group that is one self-explanatory button, but "매거진형"
- * next to "보고 문서" gives no hint that one is a look and the other an export
- * format. Set inline, before the value, so it costs no extra row and keeps
- * the group as tall as its single-line neighbours.
+ * A ribbon group's name on screen (`RibbonGroup`'s `label` is aria-only), inline before the
+ * value so the group keeps one row: a look and an export format side by side need telling apart.
  */
 function RibbonCaption({ children }: { children: ReactNode }) {
   return <span className="font-semibold text-faint">{children}</span>
@@ -251,7 +246,6 @@ function citedSections(source: Source, sections: ReportSection[]): ReportSection
   return sections.filter((section) => marker.test(sectionText(section)))
 }
 
-/** Every numbered marker found in the body, including numbers with no source. */
 /** Print tree portalled to `<body>`, outside the panel's clipping containers; `@media print` swaps it in. */
 function PrintDocument({ report }: { report: ReportArtifact }) {
   const t = useT()

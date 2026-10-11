@@ -421,21 +421,6 @@ export interface PipelineCatalogue {
   reviewModels: { id: string; label: string }[]
 }
 
-/** A pipeline definition, read-only (editing is phase 3). */
-export interface PipelineDefinition {
-  name: string
-  formats?: string[]
-  agents?: string[]
-  options?: Record<string, unknown>
-  checks?: string[]
-  flows: Record<string, { name: string; label: string; kind: StageKind; checks?: string[] }[]>
-  lists?: Record<string, string[]>
-  /** What each step of the drawn chain does, in plain words (keyed by `ChainStep`). */
-  summary?: Record<string, string>
-  /** People's names for the check and pre-pass ids above. */
-  checkNames?: Record<string, string>
-}
-
 /** A unit of visible work inside an assistant turn. */
 export interface Step {
   id: string
@@ -508,8 +493,7 @@ export interface Message {
   artifactVersion?: number
   /** `id` names the stored blob; absent only on the optimistic row while the upload is in flight. */
   attachments?: { id?: string; name: string; size: number | string; type: string }[]
-  /** `estimated` on a stopped turn: the server counts tokens itself since the proxy's final chunk never arrives. */
-  /** Also `outlineInputTokens`, `model:<id>:inputTokens` … when a planner or reviewer ran (`lib/usage.ts`). */
+  /** `estimated` on a stopped turn, whose final usage chunk never arrives. Also `outlineInputTokens`, `model:<id>:inputTokens` … when a planner or reviewer ran (`lib/usage.ts`). */
   usage?: {
     inputTokens: number
     outputTokens: number

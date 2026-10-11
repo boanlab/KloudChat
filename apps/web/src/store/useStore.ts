@@ -1145,8 +1145,7 @@ export const useStore = create<State>((set, get) => ({
 
   loadWorkspace: () => {
     if (workspaceLoad) {
-      // Nine lists at once per load: a deep link opened with the sign-in load still running
-      // queued a second nine beside it on a one-worker API (ops OPS-11).
+      // One load in flight at a time; a second request queues behind it.
       workspaceAgain ??= workspaceLoad.then(() => {
         workspaceAgain = null
         return get().loadWorkspace()
@@ -1158,8 +1157,7 @@ export const useStore = create<State>((set, get) => ({
       const epoch = ++workspaceEpoch
       // Artifacts load through their own (deduplicated) action.
       void get().loadArtifacts({})
-      // Each list is shown as soon as it arrives: the slowest one (a busy connector
-      // catalogue) used to hold back the agent list in the composer's menu for 15~45 s.
+      // Each list is shown as soon as it arrives, so a slow one holds back no other.
       const fresh = () => epoch === workspaceEpoch
       const each = <T,>(load: Promise<T>, apply: (value: T) => Partial<State>) =>
         load.then((value) => {
@@ -3580,8 +3578,8 @@ async function streamReport(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
-  // The approved outline is spent: its card must not stay live to write the document again
-  // (a second press wrote an empty skeleton as v2). A new proposal arrives as its own event.
+  // The approved outline is spent: its card must not stay live to write the document again.
+  // A new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)
@@ -3834,8 +3832,8 @@ async function streamDeck(
 
   // A planning pass produces no document, so it opens none; a rerun writes into the one there is.
   const willWrite = gate.approve === true && !gate.rerun
-  // The approved outline is spent: its card must not stay live to write the document again
-  // (a second press wrote an empty skeleton as v2). A new proposal arrives as its own event.
+  // The approved outline is spent: its card must not stay live to write the document again.
+  // A new proposal arrives as its own event.
   if (gate.approve === true) setPending(set, sessionId, () => null)
   const targetId = gate.rerun
     ? (get().sessions.find((c) => c.id === sessionId)?.artifactId ?? draftId)

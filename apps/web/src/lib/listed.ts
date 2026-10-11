@@ -4,11 +4,3 @@
 export function isListed(row: { listed?: boolean }): boolean {
   return row.listed !== false
 }
-
-/** The rows a picker offers: the listed ones, plus any already chosen (`keep`, by id). */
-export function pickable<T extends { id: string; listed?: boolean }>(
-  rows: T[],
-  keep: ReadonlyArray<string | null | undefined> = [],
-): T[] {
-  return rows.filter((row) => isListed(row) || keep.includes(row.id))
-}

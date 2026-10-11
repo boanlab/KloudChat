@@ -245,7 +245,7 @@ function Foot({
 /** The 「내 템플릿」 chip's key; no category a template writes can equal it. */
 const MINE = '\u0000mine'
 
-/** 양식 picker for one surface. */
+/** 템플릿 picker for one surface. */
 export function DesignGalleryModal({
   kind,
   sessionId,
@@ -442,7 +442,7 @@ export function DesignGalleryModal({
 }
 
 /** Whether a surface offers the picker; one gate for the gallery and composer buttons. Only
- * the writing surfaces have 서식: image, audio and video ones were retired. */
+ * the writing surfaces have 서식. */
 export function offersTemplates(kind: SessionKind): boolean {
   return kind === 'report' || kind === 'slides'
 }

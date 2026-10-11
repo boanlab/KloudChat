@@ -18,9 +18,8 @@ export interface DownloadCheck {
 }
 
 /**
- * 「⤓ 내려받기 ▾」: every format the artifact leaves as, by the same export endpoint the
- * ribbon used. When there is something to look at first (unsupported numbers, a slide that
- * may be cut off) the menu says so above the formats, the way 파일 › 내보내기 did.
+ * 「⤓ 내려받기 ▾」: every format the artifact leaves as, through the export endpoint. What to
+ * look at first (unsupported numbers, a slide that may be cut off) is listed above the formats.
  */
 export function DownloadMenu({
   artifact,

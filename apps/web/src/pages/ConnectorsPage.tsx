@@ -42,7 +42,6 @@ const statusMeta: Record<ConnectorStatus, { label: string; tone: 'success' | 'wa
   disconnected: { label: '미연결', tone: 'neutral' },
 }
 
-/** An installed connector; catalogue entries are a separate shape with no id. */
 /** Whether a connector's surfaces narrow where it is offered: all of chat, report and slides
  *  (or none named) say nothing worth a chip. */
 const narrowed = (kinds: readonly string[]) =>

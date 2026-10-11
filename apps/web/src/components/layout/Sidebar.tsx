@@ -330,7 +330,7 @@ export function Sidebar() {
             </section>
           )}
           {visible.length > 0 && (
-            // One heading: with this few rows, 오늘 · 어제 · 지난 7일 buckets were mostly one-row headings.
+            // One heading: with this few rows, day buckets would mostly hold a single row.
             <section className="mb-2">
               <p className="px-2.5 pb-1 text-xs font-semibold tracking-wide text-faint uppercase">
                 {t('최근')}

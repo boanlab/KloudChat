@@ -52,9 +52,8 @@ const PublicationPage = lazy(() =>
 )
 
 /**
- * The old addresses of the screens the 사용자 지정 hub took in. Each lands on its tab, keeping
- * the query it carried. Workflows became an agent's 진행 과정 and its 묶음 (the 에이전트 tab);
- * themes and memory moved to 설정.
+ * Earlier addresses of the 사용자 지정 hub's screens, each landing on its tab with the query it
+ * carried: workflows on the 에이전트 tab, themes and memory in 설정.
  */
 function ToHub({ tab }: { tab: string }) {
   const { search } = useLocation()
