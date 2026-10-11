@@ -466,6 +466,7 @@ async def read_page(
             await vision_read(cfg, picture, str(found.get("image_mime") or "image/jpeg"), api_key)
         )
         layout["engine_text"] = engine_text
+        layout["vision_model"] = cfg.vision_model
         review = UNREADABLE_MARK in vision_text or (
             bool(engine_text.strip() or vision_text.strip()) and disagree(engine_text, vision_text)
         )

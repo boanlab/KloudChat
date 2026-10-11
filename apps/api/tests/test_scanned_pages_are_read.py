@@ -680,3 +680,11 @@ async def test_without_the_engine_a_pdf_is_not_queued_but_a_photo_is(db, configu
     photo = await _stored(db, "page.png", "image/png", _picture())
     assert scan.ocr_state is None and scan.error
     assert photo.ocr_state == "queued"
+
+
+def test_pages_read_count_as_free_work_in_usage():
+    from app.routers.usage import UNIT_REASONS, _unit_of
+
+    assert {"ocr.engine", "ocr.vision"} <= set(UNIT_REASONS)
+    assert _unit_of("ocr-engine") == _unit_of("ocr-vision") == "pages"
+    assert _unit_of("strict-local/qwen3.8-27b") == ""

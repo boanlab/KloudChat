@@ -214,7 +214,7 @@ async def process(db, stored: StoredFile) -> None:
                 )
             if read.vision_used:
                 record_units(
-                    db, owner, reason="ocr.vision", model=cfg.vision_model, units=1, unit="pages"
+                    db, owner, reason="ocr.vision", model="ocr-vision", units=1, unit="pages"
                 )
         await db.commit()
 

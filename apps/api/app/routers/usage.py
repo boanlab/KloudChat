@@ -36,8 +36,8 @@ me_router = APIRouter(prefix="/me", tags=["usage"])
 #: Ledger reasons with no assistant turn behind them; each row counts as one request.
 MEDIA_REASONS = ("image.generate", "image.chart", "audio.generate", "video.generate")
 
-#: Free work measured in `units` (seconds, chunks); each row counts as one request.
-UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search")
+#: Free work measured in `units` (seconds, chunks, pages); each row counts as one request.
+UNIT_REASONS = ("speech.transcribe", "index.embed", "index.search", "ocr.engine", "ocr.vision")
 
 #: Web searches ride on the turn that ran them: `units` searches, no request of
 #: their own, no model, so they reach the totals and the days but not the bars.
@@ -157,8 +157,11 @@ def _events(since: datetime, user_id: str | None = None):
 
 
 def _unit_of(model: str | None) -> str:
-    """Unit name for a model's `units` column: seconds for STT, chunks for embeddings."""
+    """Unit name for a model's `units` column: seconds for STT, chunks for embeddings, pages
+    for the two OCR readers."""
     name = (model or "").lower()
+    if name.startswith("ocr-"):
+        return "pages"
     if "whisper" in name or "stt" in name:
         return "seconds"
     if "bge" in name or "embed" in name:
