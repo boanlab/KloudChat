@@ -4,7 +4,7 @@ import base from './playwright.config'
 /** The composer's 「+」 menu and phone layout against fixture data (`composer-fixture.ts`). */
 export default defineConfig({
   ...base,
-  testMatch: ['composer-plus.spec.ts', 'composer-races.spec.ts'],
+  testMatch: ['composer-plus.spec.ts', 'composer-races.spec.ts', 'share-sign-in.spec.ts'],
   reporter: process.env.CI ? 'github' : 'list',
   workers: 1,
   use: { ...base.use, baseURL: 'http://127.0.0.1:5352', trace: 'retain-on-failure' },

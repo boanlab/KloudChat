@@ -120,6 +120,16 @@ function useLandingAfterSignIn(authenticated: boolean, role: string | undefined)
   }, [authenticated, role, navigate])
 }
 
+/** A share link: open to anyone it is shared with; a link for signed-in people offers 로그인
+ *  in place and opens once signed in, on the same address. */
+function ShareRoute() {
+  const authenticated = useStore((s) => s.authenticated)
+  const authLoading = useStore((s) => s.authLoading)
+  const [signingIn, setSigningIn] = useState(false)
+  if (signingIn && !authenticated && !authLoading) return <LoginPage />
+  return <SharedPage onSignIn={() => setSigningIn(true)} />
+}
+
 /** A published bot's page: its own screen, no app shell. Members open any bot they may see;
  *  a bot an administrator opened outside needs no account. Signing in is offered when the
  *  address does not open without one. */
@@ -243,7 +253,7 @@ export default function App() {
       <Suspense fallback={<Spinner />}>
         <Routes>
           {/* Share links and bots opened outside need no account, so these sit outside the auth gate. */}
-          <Route path="/share/:token" element={<SharedPage />} />
+          <Route path="/share/:token" element={<ShareRoute />} />
           <Route path="/b" element={<PublicBotsPage />} />
           <Route path="/b/:slug" element={<BotRoute />} />
           <Route path="/embed/b/:slug" element={<EmbedRoute />} />

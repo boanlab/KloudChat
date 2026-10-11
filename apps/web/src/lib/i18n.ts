@@ -2844,8 +2844,8 @@ const EN: Record<string, string> = {
     'Anyone signed in to this instance can open it.',
   '이 인스턴스에 로그인한 사람은 누구나 이 대화를 열 수 있습니다.':
     'Anyone signed in to this instance can open this conversation.',
-  '로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.':
-    'This one needs you signed in. Sign in and open it again.',
+  '로그인해야 열 수 있는 자료입니다. 로그인하면 이 화면에서 바로 열립니다.':
+    'This one needs you signed in. Sign in and it opens right here.',
   '모두에게 공개': 'Open to everyone',
   '공개하면 이 인스턴스에 로그인한 누구나 스토어에서 복사해 갈 수 있습니다. 원본은 계속 내 것입니다.':
     'Once open, anyone signed in to this instance can copy it from the store. The original stays yours.',

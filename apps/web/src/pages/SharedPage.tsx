@@ -1,4 +1,4 @@
-import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock } from 'lucide-react'
+import { Bot, Boxes, FileText, Layers, LayoutGrid, Lock, LogIn } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Markdown } from '@/components/chat/Markdown'
@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils'
 import { TitleBlock } from '@/components/report/TitleBlock'
 import { cleanTitleBlock, closingIndex, counterStyle, fmtClass, formatCss, sectionNumbers, shapedSection } from '@/components/report/docFormats'
 import { fontFamilyFor } from '@/components/report/docType'
-import { Badge } from '@/components/ui'
+import { Badge, Button } from '@/components/ui'
+import { useStore } from '@/store/useStore'
 import { ApiError, sharesApi, type MessageRow, type SharedContext, type SharedPayload } from '@/lib/api'
 import { SharedResultCard } from '@/components/chat/ResultCard'
 import { currentLang, translate } from '@/lib/i18n'
@@ -65,17 +66,23 @@ function StartedWithPanel({ context }: { context: SharedContext }) {
 }
 
 /** Read-only view of a shared artifact or conversation; outside the app shell, the URL is the whole permission. */
-export function SharedPage() {
+export function SharedPage({ onSignIn }: { onSignIn?: () => void } = {}) {
   const t = useT()
   const { token = '' } = useParams()
   const [payload, setPayload] = useState<SharedPayload | null>(null)
   const [error, setError] = useState<'gone' | 'signin' | 'failed' | null>(null)
+  // A link for signed-in people is asked again once the sign-in (or the refresh cookie) lands.
+  const authenticated = useStore((s) => s.authenticated)
 
   useEffect(() => {
     let live = true
     sharesApi
       .read(token)
-      .then((p) => live && setPayload(p))
+      .then((p) => {
+        if (!live) return
+        setError(null)
+        setPayload(p)
+      })
       .catch((err) => {
         if (!live) return
         if (err instanceof ApiError && err.status === 401) setError('signin')
@@ -85,7 +92,7 @@ export function SharedPage() {
     return () => {
       live = false
     }
-  }, [token])
+  }, [token, authenticated])
 
   if (error) {
     return (
@@ -96,10 +103,16 @@ export function SharedPage() {
         </h1>
         <p className="mt-1.5 text-base text-muted">
           {error === 'signin'
-            ? t('로그인해야 열 수 있는 자료입니다. 로그인한 뒤 다시 열어 주세요.')
+            ? t('로그인해야 열 수 있는 자료입니다. 로그인하면 이 화면에서 바로 열립니다.')
             : /* Expired, revoked and mistyped are not distinguished: that would confirm a link existed. */
               t('링크가 철회되었거나 주소가 올바르지 않습니다.')}
         </p>
+        {error === 'signin' && onSignIn && (
+          <Button className="mx-auto mt-4" onClick={onSignIn}>
+            <LogIn size={14} />
+            {t('로그인')}
+          </Button>
+        )}
       </div>
     )
   }
