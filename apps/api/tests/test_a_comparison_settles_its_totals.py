@@ -241,7 +241,9 @@ async def test_a_split_is_settled_by_the_larger_model_agreeing_with_one():
     assert run["summary"].endswith("세 번 읽어 둘이 같은 값")
 
 
-async def test_three_readings_that_all_differ_hand_the_writer_no_totals():
+async def test_three_readings_that_all_differ_hand_the_writer_only_the_options_they_share():
+    # The readings differ over 구매 alone: 장기렌트 and 카셰어링 still reach the writer
+    # (verify1 R-03: one unsettled option blanked every total).
     complete, _ = _by_turn(_wrong(3), REPLY, _wrong(5))
     pre = await report_checks.prepare("comparison", REQUEST, PACK, complete=complete,
                                       model="m", api_key="k", tiebreak_model="big")
@@ -249,6 +251,24 @@ async def test_three_readings_that_all_differ_hand_the_writer_no_totals():
     assert run["error"] and run["summary"].startswith("총비용 계산 불일치 — 직접 확인 필요 (")
     assert pre.costs is None and pre.costs_withheld
     assert not any(b.startswith("# 총비용 계산(코드)\n") for b in pre.blocks)
+    partial = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 일부만 확정"))
+    assert "Not settled: 구매" in partial and "197,900,000" not in partial
+    assert "장기렌트 합계" not in partial and "| 장기렌트 | 합계 |  | 282,000,000 |" in partial
+
+
+async def test_readings_that_differ_on_every_option_hand_the_writer_no_totals():
+    def shifted(k: int) -> dict:
+        reply = json.loads(json.dumps(REPLY))
+        for option in reply["options"]:
+            option["items"] = option["items"][k:]
+        return reply
+
+    complete, _ = _by_turn(shifted(1), REPLY, json.loads(json.dumps(_wrong(2))) | {
+        "options": [_wrong(2)["options"][0],
+                    *({**o, "items": o["items"][:1]} for o in REPLY["options"][1:])]})
+    pre = await report_checks.prepare("comparison", REQUEST, PACK, complete=complete,
+                                      model="m", api_key="k", tiebreak_model="big")
+    assert pre.costs is None and pre.costs_withheld
     withheld = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 확정 못 함"))
     assert "leave them as 「[금액]」" in withheld and "197,900,000" not in withheld
 
@@ -485,3 +505,84 @@ def test_the_cost_block_s_figures_ground_the_writer_s_amounts():
     text = ("B안은 연 단위 계약 시 첫해 8,712,000원, 이듬해부터 연 5,712,000원이다. "
             "A안은 연 3,840,000원으로, 첫해 차이는 4,872,000원이다.")
     assert trace.check(text, COLLAB, [block]) == []
+
+
+def _collab(items_b: list[dict]) -> dict:
+    numbers = report_checks._material_numbers(COLLAB) + report_checks._calendar(COLLAB)
+    reply = {"period": "1년", "years": 1, "options": [COLLAB_REPLY["options"][0],
+                                                     {"name": "B안", "items": items_b}]}
+    return report_checks.option_costs(reply, numbers)
+
+
+ONCE = {"name": "전환 컨설팅", "unit_price": 3000000, "count": 1, "per": "once"}
+
+
+def test_a_licence_tagged_with_the_discount_s_condition_is_still_paid_without_it():
+    # S10 built-in (verify1 NEW-3): the licence carried 「연 단위 계약 시」 beside its
+    # discount, and the no-contract case priced B안 at the one-time 3,000,000원 alone.
+    costs = _collab([
+        {"name": "구독료", "unit_price": 14000, "count": 40, "per": "month",
+         "when": "연 단위 계약 시"},
+        {"name": "연 단위 계약 할인", "unit_price": 14000, "count": 40, "per": "month",
+         "rate": 0.15, "sign": -1, "when": "연 단위 계약 시"}, ONCE])
+    base = costs["options"]["B안"]
+    assert (base["total"], base["first_year"], base["next_year"]) == (
+        9_720_000, 9_720_000, 6_720_000)
+    cond = next(sc for sc in costs["scenarios"] if sc["name"] == "연 단위 계약 시")["options"]
+    assert (cond["B안"]["first_year"], cond["B안"]["next_year"]) == (8_712_000, 5_712_000)
+    assert costs["lowest"] == "A안"
+
+
+def test_a_discounted_price_under_a_condition_replaces_the_full_one_only_there():
+    costs = _collab([
+        {"name": "구독료", "unit_price": 14000, "count": 40, "per": "month"},
+        {"name": "구독료(연 계약)", "unit_price": 14000, "count": 40, "per": "month",
+         "rate": 0.85, "when": "연 단위 계약 시"}, ONCE])
+    assert costs["options"]["B안"]["total"] == 9_720_000
+    cond = next(sc for sc in costs["scenarios"] if sc["name"] == "연 단위 계약 시")["options"]
+    assert cond["B안"]["total"] == 8_712_000
+
+
+def test_a_discounted_price_alone_is_paid_in_full_without_its_condition():
+    costs = _collab([
+        {"name": "구독료(연 계약)", "unit_price": 14000, "count": 40, "per": "month",
+         "rate": 0.85, "when": "연 단위 계약 시"}, ONCE])
+    assert costs["options"]["B안"]["total"] == 9_720_000
+    cond = next(sc for sc in costs["scenarios"] if sc["name"] == "연 단위 계약 시")["options"]
+    assert cond["B안"]["total"] == 8_712_000
+
+
+def test_two_years_running_is_a_figure_the_cost_block_states():
+    # S10 built-in: 「A안이 2년 연속 더 적고」 came out as 「[수치] 연속」.
+    trace = __import__("app.services.skill_scripts", fromlist=["entry"]).entry("grounding-check")
+    numbers = report_checks._material_numbers(COLLAB) + report_checks._calendar(COLLAB)
+    block = report_checks._cost_block(report_checks.option_costs(COLLAB_REPLY, numbers))
+    assert "첫해·이듬해 2년 연속 A안" in block
+    assert trace.check("비용 기준에서 A안이 2년 연속 더 적습니다.", COLLAB, [block]) == []
+
+
+GPU = ("연구실 GPU 연산 자원 도입 안을 비교해서 결정 보고서로 써 줘. "
+       "A안: 클라우드 GPU(A100 80GB 4장) 시간당 12,000원, 연간 예상 사용 2,000시간, "
+       "초기비용 없음. B안: 온프레미스 서버(A100 80GB "
+       "4장) 구매가 1억 2천만원, 연간 전기·유지비 900만원, 내용연수 5년. 필수 조건: 연구비 연간 "
+       "집행 한도 3,000만원 이내, 데이터 외부 반출 불가(민감 데이터 포함). 3년 총비용과 필수 조건 "
+       "충족 여부로 권고해 줘.")
+
+
+def _gpu(cards: int) -> dict:
+    return {"period": "3년", "years": 3, "options": [
+        {"name": "A안", "items": [{"name": "클라우드 사용료", "unit_price": 12000, "count": cards,
+                                   "per": "시간", "usage": 2000}]},
+        {"name": "B안", "items": [
+            {"name": "구매가", "unit_price": 120000000, "count": 1, "per": "once"},
+            {"name": "전기·유지비", "unit_price": 9000000, "count": 1, "per": "year"}]}]}
+
+
+async def test_the_gpu_decision_keeps_the_settled_option_s_totals_when_the_other_splits():
+    # verify1 R-03: A안 read as 1 or 4 cards each time; B안's 1억 4,700만 went out as [금액].
+    complete, _ = _by_turn(_gpu(1), _gpu(4), _gpu(5))
+    pre = await report_checks.prepare("comparison", GPU, GPU, complete=complete,
+                                      model="m", api_key="k", tiebreak_model="big")
+    partial = next(b for b in pre.blocks if b.startswith("# 총비용 계산(코드): 일부만 확정"))
+    assert "B안 147,000,000원" in partial and "B안 129,000,000원" in partial
+    assert "Not settled: A안" in partial
