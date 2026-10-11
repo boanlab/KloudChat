@@ -37,3 +37,6 @@ block = '<section><h2>{title}</h2>{body}</section>'
 [process]
 prepass = ["date-calc"]
 checks = ["lead-dates", "material-blanks"]
+# Written from the person's own results: no web search, and no picture unless asked.
+search = false
+draws = "when-asked"

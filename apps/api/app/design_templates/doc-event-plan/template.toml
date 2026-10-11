@@ -37,3 +37,5 @@ block = '<section><h2>{title}</h2>{body}</section>'
 [process]
 prepass = ["date-calc"]
 checks = ["lead-dates", "material-blanks"]
+# A plan is read from its tables: no picture unless asked.
+draws = "when-asked"

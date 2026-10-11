@@ -29,3 +29,10 @@ example_prompt_en = "Write this up as an internal approval draft (간이기안�
 [wrap]
 cover = '<div class="cover"><h1>{title}</h1>{body}</div>'
 block = '<section><h2>{title}</h2>{body}</section>'
+
+# 진행 과정 설정 (`services/process_settings.py`): what writing in this 서식 does besides
+# writing. A person's agent or template sets the same keys in its form.
+[process]
+# An internal draft is written from the person's own memo: no web search, no picture unless asked.
+search = false
+draws = "when-asked"
