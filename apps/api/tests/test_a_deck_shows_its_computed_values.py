@@ -1,5 +1,5 @@
 """A deck shows the values code computed for it, and its quality check reads the slides
-against them — the CPU scheduling lecture of the round-1 re-check (Q3, NEW-8)."""
+against them (a CPU scheduling lecture)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 from app.services import calc, calc_check, deck
 from app.services.tools.base import ToolResult
 
-#: Two independent programs for the quality lane's CPU scheduling lecture (S08).
+#: Two independent programs for the CPU scheduling lecture.
 _RUN_A = [
     "동점 규칙 = 같은 조건이면 먼저 도착한 프로세스",
     "FCFS | 순서 = P1 0-7, P2 7-11, P3 11-12, P4 12-16",
@@ -41,8 +41,8 @@ LECTURE = (
 
 
 def test_two_runs_of_a_procedure_agree_row_by_row():
-    # Each row prints its order and its average on separate lines under one key: before,
-    # both lines were one item 「FCFS」, so the two runs could never agree.
+    # Each row prints its order and its average on separate lines under one key: two items,
+    # not one item 「FCFS」 the two runs could never agree on.
     assert calc.agree(_RUN_A, _RUN_B) and calc.agree(_RUN_B, _RUN_A)
     kept = calc.confirmed(_RUN_A, _RUN_B)
     assert "FCFS | 평균 대기시간 = 4.75" in kept and "SRTF | 평균 대기시간 = 3" in kept
@@ -99,7 +99,7 @@ _BLOCK = "# 코드로 계산한 값\n설명.\n\n" + "\n".join(_RUN_A)
 
 
 def _v1_deck() -> list[dict]:
-    """The S08 v1 deck's slides as shipped (verify1/quality_findings/.../v1/artifact.md)."""
+    """A drafted deck's slides with hand-worked values that disagree with the computed ones."""
     return [
         {"layout": "bullets", "title": "선입선출(FCFS) 스케줄링",
          "bullets": ["도착 순서대로 실행, 선점 없음", "간트: P1(7) P2(4) P3(1) P4(4)",

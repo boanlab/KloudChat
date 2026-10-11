@@ -373,7 +373,7 @@ def test_a_request_naming_an_attachment_that_did_arrive_is_not_asked_about():
 
 
 def test_a_question_neither_offers_to_invent_nor_cites_unseen_references():
-    # Research lane R-11: 「가상하여 작성」 offered, 「[1]~[10]」 the person never saw.
+    # Neither 「가상하여 작성」 offered nor 「[1]~[10]」 the person never saw.
     text = json.dumps({"needs": [{
         "question": "국내 동향에 인용할 논문을 검색 자료([1]~[10]) 밖에서도 찾을까요? [3]",
         "options": ["제공된 검색 자료([1]~[10])의 범위 내에서만 인용 및 구성",

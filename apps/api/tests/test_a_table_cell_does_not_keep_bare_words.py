@@ -1,7 +1,7 @@
 """A table cell whose amounts were taken out does not keep the bare words around them.
 
-The research lane's seminar deck showed 「검토 , LLM」: 「검토 150건, LLM 5개」 lost both
-amounts (not in the request as written) and kept the nouns and the comma.
+「검토 150건, LLM 5개」 with both amounts taken out (not in the request as written) does not
+become 「검토 , LLM」.
 """
 
 from __future__ import annotations

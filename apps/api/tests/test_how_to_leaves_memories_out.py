@@ -1,8 +1,8 @@
 """A question about using KloudChat is answered from its guide alone: the person's memories
 and 개인 맞춤 설정 stay out of that turn.
 
-Persona A/B, 3rd run (P3): a seeded wrong memory 「보고서 언어(항상 영어로)」 came back in the
-how-to answer as advice to write 「회의록은 영어로 작성한다」 into the new agent's 지시.
+A wrong memory such as 「보고서 언어(항상 영어로)」 does not turn into how-to advice to write
+「회의록은 영어로 작성한다」 into the new agent's 지시.
 """
 
 from __future__ import annotations

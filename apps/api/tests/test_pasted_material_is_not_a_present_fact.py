@@ -1,6 +1,6 @@
 """A request about material pasted under it is not a question about now: the dates, prices
-and versions in that material are what it says (the current-fact guard used to fire on them
-and add 「학습 시점의 지식」 to a release note written from a commit log)."""
+and versions in that material are what it says, so the current-fact guard adds no
+「학습 시점의 지식」 to a release note written from a commit log."""
 
 from app.routers.sessions import _reads_pasted_material
 from app.services import freshness
@@ -31,9 +31,8 @@ def test_the_request_itself_can_still_ask_about_now():
 
 
 def test_a_present_word_inside_the_task_is_not_a_question_about_now():
-    # Quality lane Q8: work requests over the person's own memo got 「학습 시점의 지식 … 웹
-    # 검색을 켜서 확인하세요」 because 「지금 준비할 일」, 「이번 주」, 「예정」 read as a
-    # present fact.
+    # 「지금 준비할 일」, 「이번 주」, 「예정」 in a work request over the person's own memo
+    # are not a present fact and draw no 「학습 시점의 지식 … 웹 검색을 켜서 확인하세요」.
     policy = ("아래 발표문을 부서장 보고용으로 정리해 줘. 우리 대학(올해 RISE 사업 참여 중)에 "
               "미치는 영향 3가지와 우리가 지금 준비할 일을 정리해 줘.\n\n---\n"
               + "교육부는 2027년부터 대학 재정지원사업을 개편한다. " * 12)

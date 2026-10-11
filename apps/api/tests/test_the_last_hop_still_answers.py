@@ -602,7 +602,7 @@ async def _run_two_hop(monkeypatch, first: str, final: str):
 
 @pytest.mark.asyncio
 async def test_figures_written_before_the_tool_answered_are_withdrawn(monkeypatch) -> None:
-    """data-analysis-5: a draft 「198행 … 3.43 vs 3.44」 before run_code is not the answer."""
+    """A draft 「198행 … 3.43 vs 3.44」 before run_code is not the answer."""
     events, visible, seen = await _run_two_hop(monkeypatch, _DRAFT, _FINAL)
     assert visible == _FINAL
     assert any(e["type"] == "retract" and e["text"] == _DRAFT for e in events)
@@ -649,7 +649,7 @@ async def test_a_turn_without_tools_is_unchanged(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_the_stored_answer_is_the_post_tool_answer_only(monkeypatch) -> None:
-    """data-analysis-5 r2 stored both 「결론」 blocks; only the one after run_code stays."""
+    """Of two 「결론」 blocks, only the one after run_code is stored."""
     from test_privacy import _external_model
     from test_tool_result_answer import _database
 

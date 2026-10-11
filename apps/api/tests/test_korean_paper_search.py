@@ -396,8 +396,7 @@ async def test_the_search_tool_offers_korean_papers(monkeypatch):
 
 
 def test_the_subject_is_the_quoted_topic_not_the_document_s_words():
-    # verify1 R-09: 「한국연구재단 개인기초연구 중견연구 연구계획서」 was searched and
-    # found nothing.
+    # Not 「한국연구재단 개인기초연구 중견연구 연구계획서」, which finds nothing.
     request = ("한국연구재단 개인기초연구(중견연구) 연구계획서 초안을 써 줘. "
                "주제는 \"대형 언어모델 기반 학술 문헌 요약의 사실 일관성 평가 방법 연구\"이고, "
                "연구기간은 3년, 국내외 연구 동향을 포함해 줘.")

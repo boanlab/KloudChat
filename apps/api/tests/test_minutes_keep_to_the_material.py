@@ -1,4 +1,4 @@
-"""Minutes keep to what the material holds (lineup v1 minutes-2, -3, -5)."""
+"""Minutes keep to what the material holds."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import datetime as dt
 
 from app.services import report_checks
 
-# ── minutes-2: a recording says no date aloud ───────────────────────────
+# ── a recording says no date aloud ───────────────────────────
 
 #: What the recording says, as the transcript gives it: no date anywhere in the words.
 SPOKEN = """한교수: 자, 시작합시다. 오늘은 세 가지. KCC 논문, GPU 서버, 그리고 학회 출장.
@@ -50,7 +50,7 @@ def test_the_file_name_gives_the_meeting_date_when_the_words_do_not():
         dt.date(2026, 10, 14), "file")
     for name in ("회의_2026-10-14.m4a", "회의_2026_10_14.txt", "회의 20261014.mp3"):
         assert report_checks.file_date(f"## {name}\n본문") == dt.date(2026, 10, 14)
-    # The day the material came in is not the meeting's (minutes-3).
+    # The day the material came in is not the meeting's.
     assert report_checks.meeting_base("", "## 메모.txt\n본문", dt.date(2026, 10, 15)) == (None, "")
     said = "## 녹음_20261014.mp3\n[회의 2026-10-07(수) 메모]\n다음 주 수요일까지"
     assert report_checks.meeting_base("", said, None) == (dt.date(2026, 10, 7), "text")
@@ -81,7 +81,7 @@ async def test_a_resolved_deadline_reaches_the_table_cell():
     assert n == 2
 
 
-# ── minutes-3: a seven-line memo, booth specs made up as 확정 ──────────────
+# ── a seven-line memo: no booth specs made up as 확정 ──────────────
 
 MEMO_3 = (
     "축제 부스 회의\n- 부스 위치 A동 앞으로 (회장)\n- 메뉴: 닭꼬치 + 음료. 단가는 다음에\n"
@@ -91,7 +91,7 @@ MEMO_3 = (
     "- 지민 중간고사 겹쳐서 포스터는 수아가 하기로\n"
 )
 REQUEST_3 = "축제 준비 회의 때 휴대폰에 막 적은 거야. 회의록으로 만들어 줘."
-#: Excerpts of minutes-3 r1 as written.
+#: Excerpts of a minutes draft as written.
 SPEC_SECTION = (
     "운영 환경 요건은 다음과 같습니다. 냉각장비는 1대(미정)를 배치하고, 음료 보관을 위한 "
     "냉동고를 1대 "
@@ -130,7 +130,7 @@ def test_made_up_specs_and_owners_are_repaired_by_code():
     assert report_checks.minutes_grounding(fixed, f"{REQUEST_3}\n{MEMO_3}")[1] == []
 
 
-# ── minutes-5: owners and amounts the memo and mails hold stay ───────────
+# ── owners and amounts the memo and mails hold stay ───────────
 
 MATERIAL_5 = (
     "[2차 회의 메모 — 2026-10-07(수) 16:00, 인문관 410호, 참석: 배교수(학과장 대행), 신조교, 류○○, "

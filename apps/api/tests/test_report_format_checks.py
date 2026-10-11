@@ -1,5 +1,5 @@
-"""The lineup formats' pre-pass and checks: resolved deadlines kept (W3), conflicting values kept
-side by side (W4), and each format's code checks found, repaired once and checked again (W2)."""
+"""The lineup formats' pre-pass and checks: resolved deadlines kept, conflicting values kept
+side by side, and each format's code checks found, repaired once and checked again."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _bound(material: str = MINUTES_1) -> list[dict]:
     return [r for r in rows if r["status"] in ("ok", "repeat")]
 
 
-# ── W3: a resolved deadline is kept because of its source line ─────────
+# ── a resolved deadline is kept because of its source line ─────────
 
 
 def test_a_resolved_deadline_survives_the_owner_date_guard():
@@ -54,7 +54,7 @@ def test_a_date_on_another_line_does_not_bind_a_row():
              "| 강의계획서 초안 | 이교수 | 2026-10-30(금) |\n")
     bound = _bound(material)
     assert "| [기한] |" in report._unsourced_owner_dates(table, material, bound)
-    # The old reading accepted any 10/30 anywhere in the material.
+    # Without the bound lines, any 10/30 anywhere in the material counts.
     assert "2026-10-30" in report._unsourced_owner_dates(table, material)
 
 
@@ -110,7 +110,7 @@ def test_a_one_paragraph_request_has_no_pasted_memo():
     assert report._pasted_without_marker("회의록으로 정리해 줘. 작성자는 나로.") == ""
     assert report._pasted_without_marker("정리해 줘.\n\n짧은 메모") == ""
 
-# ── W4: two values for one thing are kept, never merged ────────────────
+# ── two values for one thing are kept, never merged ────────────────
 
 BACKUP = (
     "세이프볼트 제품 소개서: 1TB 복구 2시간.\n"
@@ -146,7 +146,7 @@ def test_a_figure_the_material_contests_becomes_a_conflict_not_a_drop():
     assert figures == []
     assert conflicts and {v["value"].replace(" ", "") for v in conflicts[0].values} >= {"600만원"}
     assert len(conflicts[0].values) == 2
-    # The old entry point still drops it, for the deck.
+    # `key_figures.parse`, the deck's reading, drops it.
     assert key_figures.parse(reply, material) == []
 
 
@@ -466,7 +466,7 @@ async def test_the_schedule_repair_is_told_the_period_and_checked_again():
     assert left == [] and "5개월 차: 재진단" in fixed[0]["content"]
 
 
-# ── 개조식: the body counted through the 붙임 list as exported (B3) ──────
+# ── 개조식: the body counted through the 붙임 list as exported ──────
 
 _GAEJO_BLOCK = {"head": "memo", "label": "개조식 보고서", "lists": "gaejo", "format": "gaejo",
                 "closing": True, "numbering": "korean",
@@ -492,7 +492,7 @@ async def test_a_table_attached_in_full_is_not_a_body_page():
     assert await report_checks.body_pages("보고", _gaejo_sections(10), _GAEJO_BLOCK) == (1, 1)
 
 
-# ── lead times: 「발주 후 8주」 from the material's own date (B2) ─────────
+# ── lead times: 「발주 후 8주」 from the material's own date ─────────
 
 AV_PACK = (
     "# 자료 1 — 교육청 공문 요지(2026. 10. 1.)\n"

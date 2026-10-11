@@ -125,7 +125,7 @@ async def test_a_template_made_in_the_editor_runs_the_recorded_turn_as_the_shipp
     _same_but_the_format_id(got, golden, made.id, fmt)
 
 
-# ── 검토 규칙, structure rules and attachable checks (G4) ─────────────────
+# ── 검토 규칙, structure rules and attachable checks ─────────────────
 
 
 async def test_a_rule_in_words_is_judged_quoted_and_never_rewritten():

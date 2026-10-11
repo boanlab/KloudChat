@@ -522,7 +522,7 @@ async def test_a_persons_bundle_is_ticked_like_a_shipped_one(wired):
             {"kind": "agent", "ref": "@self"},
             {"kind": "export", "settings": {"formats": ["pdf", "hwpx"]}}]), me, db)
         assert not safe["risky"] and files["risky"]
-        # Not a pipeline to start a 직접 구성 from, and not in the old store.
+        # Not a pipeline to start a 직접 구성 from, and not in the pipeline list.
         assert await up.list_mine(me, db) == []
 
         made = await ws.create_agent(_agent(kinds=["report"], visibility=Visibility.org),
@@ -578,7 +578,7 @@ def test_the_migration_retires_backfills_and_clears_on_sqlite():
     assert (migration.revision, migration.down_revision) == ("0060", "0059")
     assert set(migration.RETIRED_AGENTS) == set(starter.retired_agents())
     assert migration.BASE_FOR_FORMAT == bases.BY_FORMAT
-    # The agents shipped when 0060 ran; one added since brings its checks from its own file.
+    # Only the agents the migration lists; any other brings its checks from its own file.
     for spec in [s for s in starter._AGENTS if s["key"] in migration.CHECKS]:
         assert migration.CHECKS[spec["key"]] == list(spec.get("checks") or []), spec["key"]
         assert migration.OPTIONS.get(spec["key"]) == (spec["check_options"] or None)
@@ -632,11 +632,11 @@ def test_the_migration_retires_backfills_and_clears_on_sqlite():
         assert not {"retired", "base_key"} & columns
 
 
-# ── persona A/B fixes ───────────────────────────────────────────────────
+# ── the agent form's format, export and steps ───────────────────────────────────────────────────
 
 
 async def test_the_format_follows_the_template_the_agent_writes_in(wired):
-    """B-11: a 기록 정리 base writing in 결과 보고서 stores that format, not 회의록."""
+    """A 기록 정리 base writing in 결과 보고서 stores that format, not 회의록."""
     me, _, _ = await _people(wired.local)
     async with wired.local() as db:
         made = await ws.create_agent(_agent(kinds=["report"],
@@ -647,7 +647,7 @@ async def test_the_format_follows_the_template_the_agent_writes_in(wired):
 
 
 async def test_a_chat_agent_stores_no_export_it_cannot_make(wired):
-    """B-11: 바로 답하기 with 마무리하기 ticked keeps no export setting it never runs."""
+    """바로 답하기 with 마무리하기 ticked keeps no export setting it never runs."""
     me, _, _ = await _people(wired.local)
     async with wired.local() as db:
         made = await ws.create_agent(_agent(kinds=["chat"]), me, db)
@@ -659,7 +659,7 @@ async def test_a_chat_agent_stores_no_export_it_cannot_make(wired):
 
 
 async def test_a_new_agents_own_steps_are_judged_as_they_will_run(wired):
-    """B-5: before the agent is saved, `@self` is the agent the form makes."""
+    """Before the agent is saved, `@self` is the agent the form makes."""
     me, _, _ = await _people(wired.local)
     steps = [{"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": "@self"},
              {"kind": "export", "settings": {"formats": ["docx"]}}]
@@ -678,7 +678,7 @@ async def test_a_new_agents_own_steps_are_judged_as_they_will_run(wired):
     t.id for t in design_templates.all_templates()
     if t.doc_format and t.surface.value == "report" and design_templates.choosable(t.id)))
 async def test_the_stored_format_is_always_the_templates(wired, template_id):
-    """B-11 invariant: whatever the form sends, an agent whose template fixes a document format
+    """Whatever the form sends, an agent whose template fixes a document format
     never stores another — on create, and on a save that changes only the template. (None stays
     None: the template's format applies at run time.)"""
     fixed = design_templates.get(template_id).doc_format
@@ -701,7 +701,7 @@ async def test_the_stored_format_is_always_the_templates(wired, template_id):
 
 
 async def test_a_template_without_a_format_keeps_the_chosen_one(wired):
-    """B-11: the 문서 형식 field is what a template that fixes none writes in; it stays. With
+    """The 문서 형식 field is what a template that fixes none writes in; it stays. With
     a template that fixes one and no format sent, none is stored."""
     me, _, _ = await _people(wired.local)
     async with wired.local() as db:
@@ -713,7 +713,7 @@ async def test_a_template_without_a_format_keeps_the_chosen_one(wired):
 
 
 async def test_a_confirm_step_is_judged_with_the_questions_on_the_form(wired):
-    """N2: 「확인 질문 … 건너뜁니다」 goes once the form has a 빠진 정보 질문, saved or not."""
+    """「확인 질문 … 건너뜁니다」 goes once the form has a 빠진 정보 질문, saved or not."""
     me, _, _ = await _people(wired.local)
     steps = [{"kind": "human", "ref": "gaps"}, {"kind": "agent", "ref": "@self"}]
     question = {"id": "q1", "question": "결정할 사항이 무엇인가요?",

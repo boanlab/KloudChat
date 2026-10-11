@@ -20,8 +20,7 @@ from app.services import doc_formats, process_settings, report_checks
 
 AGENTS = Path(__file__).resolve().parents[1] / "app" / "agents"
 
-# What the if-chains in `report.write`, `report_checks.prepare`, `checks` and `model_checks`
-# did, by format: the pipelines must give the same.
+# The steps each format expects, written out by hand: the pipelines must give the same.
 DATE = {"minutes", "event_plan", "client_proposal", "gaejo", "result_report"}
 QUOTE = {"client_proposal", "comparison", "gaejo"}
 PREPASS = DATE | QUOTE | {"comparison", "career_history"}
@@ -116,7 +115,7 @@ def test_each_format_runs_what_the_if_chains_ran(fmt):
     # Documents written from the person's own material search nothing.
     assert (settings.search is False) == (fmt in NO_SEARCH)
     gaejo = fmt == "gaejo"
-    # A 공문 is one untitled 「본문」 (quality Q11).
+    # A 공문 is one untitled 「본문」.
     assert list(settings.outline) == (list(doc_formats.GAEJO_OUTLINE) if gaejo
                                       else ["본문"] if fmt == "official" else [])
     # Work documents read from their tables and lists draw no figures unless asked; a 공문

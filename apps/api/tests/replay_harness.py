@@ -159,15 +159,15 @@ def pin_recorded_defaults(patch: Patch) -> None:
 
     patch(settings_store, "model_roles", model_roles)
     patch(settings_store, "cached_model_roles", lambda: settings_store.model_roles_from({}))
-    # The records read the genre from the whole instruction, memo lines included (the
-    # minutes run's 「캡스톤디자인」 line named the project-proposal genre); the genre is now
-    # read from the ask's first paragraph first, which changes that run's prompts.
+    # The records read the genre from the whole instruction, memo lines included (a minutes
+    # memo's 「캡스톤디자인」 line names the project-proposal genre); the code reads the ask's
+    # first paragraph first, which would change those prompts.
     patch(report, "lead_instruction", context.instruction_part)
     pin_recorded_prompts(patch)
 
 
 #: Pre-pass prompts as they were when the records were made (`_pinned_prompts/`): a call's key
-#: holds its prompt. The cost block's first/next-year and gap lines came later too.
+#: holds its prompt. The records carry no first/next-year or gap lines in the cost block.
 PINNED_PROMPTS = FIXTURES / "_pinned_prompts"
 
 

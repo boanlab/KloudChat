@@ -1,6 +1,6 @@
-"""A chat answer's links and pictures point only where a browser can go (Q18, NEW-13): the
-budget agent's `![부서별 집행률](sandbox:chart_1.png)` drew a broken picture, the CSV turn's
-`[x.xlsx](x.xlsx)` was a dead link, and `[산점도: …](artifact:산점도: …)` showed as raw text."""
+"""A chat answer's links and pictures point only where a browser can go: no broken
+`![부서별 집행률](sandbox:chart_1.png)`, no dead `[x.xlsx](x.xlsx)`, and no raw
+`[산점도: …](artifact:산점도: …)` text."""
 
 from __future__ import annotations
 

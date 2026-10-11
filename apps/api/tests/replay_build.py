@@ -1,4 +1,4 @@
-"""Builds the replay fixtures from the lineup acceptance runs.
+"""Builds the replay fixtures from recorded agent runs.
 
     python tests/replay_build.py <accept-runs-dir> <data-dir> [<out-dir> [<cases>]] [--live]
 

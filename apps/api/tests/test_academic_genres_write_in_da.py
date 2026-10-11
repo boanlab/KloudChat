@@ -12,7 +12,7 @@ def _section_prompt(genre: str) -> str:
 
 
 def test_a_research_plan_is_written_in_the_plain_register():
-    # Research lane R-20: the 연구계획서 came out in 「~합니다」.
+    # A 연구계획서 is written in 「~다」, not 「~합니다」.
     genre = report._genre_rule(_PLAN)
     assert "연구·조사 계획서" in genre
     for prompt in (_section_prompt(genre), report._shaped(report._DRAFT_PROMPT.format(

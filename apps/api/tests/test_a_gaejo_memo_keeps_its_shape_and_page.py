@@ -1,6 +1,5 @@
 """A 1-page 개조식 보고 keeps its fixed sections, draws no pictures it was not asked for, and is
-condensed toward the measured overflow (lineup v1 gaejo-report-1__r0: 7 sections, 2 figures,
-3 pages after one condense)."""
+condensed toward the measured overflow, not left at 7 sections, 2 figures and 3 pages."""
 
 from __future__ import annotations
 
@@ -8,7 +7,7 @@ import json
 
 from app.services import diagrams, doc_formats, report, report_checks
 
-#: gaejo-report-1's request, as sent.
+#: A 개조식 보고 request, as sent.
 REQUEST = (
     "아래 메모를 시설과장님께 올릴 1쪽 개조식 보고로 바꿔 줘. 보고자는 시설팀 김도윤 주무관.\n\n"
     "시설과장님께 올릴 내용 정리입니다. 본관 엘리베이터 3대는 1998년에 설치되어 올해로 28년째 "
@@ -107,8 +106,8 @@ async def test_a_condense_round_that_loses_a_number_is_dropped_whole():
 
 
 async def test_a_fixed_outline_of_one_section_is_offered_not_refused(monkeypatch):
-    # Quality lane Q10: a person's 서식 with `fixed_outline` and sections 「본문」 ended every run
-    # in 「보고서 개요를 만들지 못했습니다」 (the outline floor of three sections).
+    # A person's 서식 with `fixed_outline` and the one section 「본문」 is not held to the outline
+    # floor of three sections (「보고서 개요를 만들지 못했습니다」).
     async def complete(model, messages, api_key, max_tokens, **kwargs):
         return json.dumps({"title": "협조 요청", "sections": ["본문"]}, ensure_ascii=False), {
             "inputTokens": 1, "outputTokens": 1}

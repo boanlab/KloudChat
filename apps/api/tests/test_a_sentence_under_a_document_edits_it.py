@@ -115,7 +115,7 @@ def test_a_whole_document_pass_says_so():
 # ── an edit inside named parts is not a new outline ────────────────────
 
 GAEJO_PARTS = ["현황", "문제점 및 검토", "향후 조치 및 결정 요청", "붙임"]
-#: gaejo-report-4's follow-up; the judge called it `outline` and the re-plan lost the memo.
+#: A 개조식 follow-up a judge may call `outline`; a re-plan must keep the memo.
 GAEJO_FOLLOW_UP = (
     "처장님이 예산 부족분 얘기를 맨 위로 올리래. 그리고 붙임에 ‘불량 실험실 13곳 조치 계획’도 "
     "하나 추가해 줘(내가 따로 만들 거야, 제목만)."

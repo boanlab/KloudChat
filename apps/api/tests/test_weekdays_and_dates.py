@@ -1,4 +1,4 @@
-"""Weekdays and dates an answer writes, set right by code (staff sweep STAFF-03/04/10).
+"""Weekdays and dates an answer writes, set right by code.
 
 A model counts weekdays and day offsets in its head and misses: 「10월 15일(수)」 for a
 Thursday, 「2027-02-01(일)」 for 「개강 2027-03-02, 30일 전」 (2027-01-31). Every weekday beside
@@ -102,7 +102,7 @@ def test_the_date_skill_sets_the_answers_near_misses_and_blanks_to_the_scripts_d
     assert dates.post(right, args)["text"] == right and not dates.post(right, args)["fixed"]
 
 
-# ── verify1 N1: the source's weekday and the academic year ─────────────────
+# ── the source's weekday and the academic year ─────────────────
 
 
 def test_a_weekday_the_source_states_for_that_day_is_left_alone():
@@ -133,7 +133,7 @@ def test_a_weekday_right_for_a_year_the_request_names_is_not_bent_to_another():
     assert weekdays.fix_weekdays(text, context="2027년 3월 2일 개강", today=TODAY)[1] == []
 
 
-# ── verify1 N2: plain chat's date arithmetic is checked by code ───────────────
+# ── plain chat's date arithmetic is checked by code ───────────────
 
 N16 = ("2027학년도 1학기 개강이 2027년 3월 2일이에요. 개강 30일 전부터 14일 전까지가 장학금 신청 "
        "기간이면 정확히 며칠(요일)부터 며칠(요일)까지예요?")

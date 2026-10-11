@@ -1,7 +1,6 @@
 """A follow-up that asks for the document as a file hands the file over and edits nothing.
 
-Sentences are the lineup v1 diagnostic runs' own follow-ups (client-proposal-1..5,
-minutes-1, gaejo-report-1, comparison-report-1).
+Sentences are real follow-ups to proposals, minutes, 개조식 and comparison reports.
 """
 
 from __future__ import annotations

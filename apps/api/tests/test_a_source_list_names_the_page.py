@@ -1,6 +1,6 @@
 """The 출처 list under a searched answer names each page by its title, not its URL slug.
 
-The research lane saw 「arxiv.org · 2508.11823v1」 and
+Not 「arxiv.org · 2508.11823v1」 or
 「proceedings.neurips.cc · 3c1e1fdf305195cd620c118aaa9717ad Abstract Confer」.
 """
 

@@ -1,6 +1,6 @@
 """The minutes repair keeps what the memo grounds: a difference of two quotes, a bare
 「정원 40」, the number of agenda items the memo lists, and the clause beside an unknown
-number; a comparison table written with an empty corner cell stays a table (S01, verify1)."""
+number; a comparison table written with an empty corner cell stays a table."""
 
 from __future__ import annotations
 

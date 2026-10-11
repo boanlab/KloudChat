@@ -359,7 +359,7 @@ def test_a_product_inside_a_sum_is_not_rewritten_to_zero():
     assert fix_written_arithmetic(wrong) == "400명 × 48,000원 = 1,920만 원"
 
 
-#: Research lane R-07: a proposal whose method 「가중 평균」s, answered with citation marks.
+#: A proposal whose method 「가중 평균」s, answered with citation marks.
 PROPOSAL = (
     "한국연구재단 개인기초연구(중견연구) 연구계획서 초안을 써 줘. 연구기간은 3년.\n\n"
     "덧붙인 조건: 제공된 검색 자료([1]~[10])의 범위 내에서만 인용 및 구성. "

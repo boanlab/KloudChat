@@ -1,5 +1,5 @@
-"""An amount the person gave is not written in won and then scaled again (quality lane Q20:
-「감축 인원 1명당 연 1,000만원」 came out 「1명당 연 10,000,000만 원」 five times)."""
+"""An amount the person gave is not written in won and then scaled again (「감축 인원 1명당
+연 1,000만원」 never becomes 「1명당 연 10,000,000만 원」)."""
 
 from app.services import units
 

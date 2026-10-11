@@ -1,7 +1,7 @@
-"""quote-calc leaves out the item a requirement rules out (lineup v1 client-proposal-5__r1).
+"""quote-calc leaves out the item a requirement rules out.
 
-The company pack priced 외부 LLM API 사용료 next to the domestic GPU it is replaced by,
-while SER-002 keeps processing in the country; the run settled 296,000,000 / 325,600,000.
+The company pack prices 외부 LLM API 사용료 next to the domestic GPU that replaces it, while
+SER-002 keeps processing in the country; the API line is not in the total.
 """
 
 from __future__ import annotations
@@ -122,9 +122,9 @@ def test_a_budget_s_basis_is_not_the_prices_basis():
                                      "- PM 7MM × 10,500,000원\n") == ""
 
 
-# ── client-proposal-5 r1/r2: 「quote-calc: 견적 계산 실패」 ─────────────────
-# The log said `quote pre-pass failed: 'unit_price'`: the extraction marked the API line
-# excluded and left its price out, and the script read `item["unit_price"]`.
+# ── an excluded line without a price: no 「quote-calc: 견적 계산 실패」 ─────────────────
+# The extraction marks the API line excluded and leaves its price out; the script must not
+# need `item["unit_price"]` for it.
 
 UNPRICED_EXCLUSION = {
     "vat_basis": "excl",
@@ -186,7 +186,7 @@ def test_the_script_names_the_item_that_has_no_price():
         raise AssertionError("no price should not be computed")
 
 
-# ── client-proposal-3: the 견적 메모 is in the request, the RFP is attached ────────
+# ── the 견적 메모 is in the request, the RFP is attached ────────
 
 KAFI_REQUEST = (
     "농식품정보원 접근성 사업 제안서 초안 만들어 줘. RFP는 PDF에서 긁어서 페이지 번호가 섞여 있어. "

@@ -1,8 +1,7 @@
 """「지금부터 답은 영어로만」 holds after the next Korean question.
 
-The research lane asked for English answers from now on; the next answer was English, the
-one after (a Korean question) Korean again: the chat default answers in the question's
-language, and the replayed rule lost to it.
+The chat default answers in the question's language; a language the person set for the
+conversation wins over it on every later turn.
 """
 
 from __future__ import annotations

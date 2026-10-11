@@ -1,8 +1,8 @@
 """What kind of document is asked for is read from the ask, not from the memo under it.
 
-Quality lane Q6/Q9: 「아래 자료로 행사 결과보고서 써 줘」 over a memo line 「- 문제: 2일차 새벽 …
-와이파이 장애」 came out as an 장애 보고서, and a 공모사업 신청용 사업계획서 took the start-up
-business-plan genre (핵심 가정, monthly profit and loss).
+「아래 자료로 행사 결과보고서 써 줘」 over a memo line 「- 문제: 2일차 새벽 … 와이파이 장애」 is a
+result report, not an 장애 보고서; a 공모사업 신청용 사업계획서 is not the start-up business-plan
+genre (핵심 가정, monthly profit and loss).
 """
 
 from __future__ import annotations
@@ -55,8 +55,8 @@ def test_a_grant_application_is_not_a_start_up_business_plan():
 
 
 def test_a_work_document_with_its_material_is_not_searched():
-    # Quality lane Q7: a press release and a grant application written from the person's
-    # notes cited unrelated web pages (a 한국코드페어 notice, a 경북 수산물 기획전) as grounds.
+    # A press release or grant application written from the person's notes is not searched,
+    # so no unrelated web page is cited as grounds.
     memo = "\n".join(f"- 항목 {n}: 자료 내용 {n}번째 줄, 참가 {n * 10}명" for n in range(1, 15))
     press = f"아래 내용으로 보도자료 써 줘.\n\n{memo}"
     assert report.material_complete(press, "press")
@@ -71,8 +71,7 @@ def test_a_work_document_with_its_material_is_not_searched():
 
 
 def test_plain_work_documents_draw_only_when_asked_and_keep_no_tiles():
-    # Quality lane Q13: a 공문 with two generated pictures, a 보도자료 with KPI tiles and a
-    # callout, a 회의록 with KPI 「42명·50만원·9편」.
+    # No generated pictures in a 공문, no KPI tiles or callouts in a 보도자료 or 회의록.
     from app.services import process_settings
 
     for fmt in ("official", "press", "minutes", "result_report", "internal_draft"):
@@ -91,7 +90,7 @@ def test_plain_work_documents_draw_only_when_asked_and_keep_no_tiles():
 
 
 def test_a_single_body_section_prints_without_a_chapter_heading():
-    # Quality lane Q11: a 공문 template's body was always written under chapter titles.
+    # A 공문's single 「본문」 prints without a chapter title.
     from app.services import report_export
 
     body = [{"id": "s0", "heading": "본문",
@@ -107,8 +106,7 @@ def test_a_single_body_section_prints_without_a_chapter_heading():
 
 
 def test_a_comparison_whose_options_come_priced_is_not_searched():
-    # S10 (verify1 Q7): the default comparison report searched and renamed the source's
-    # ISMS to ISMS-P.
+    # The default comparison report does not search, so the source's ISMS stays ISMS.
     request = open_scenario_s10()
     # 「비교·검토하는 보고서」 names the comparison format.
     assert doc_formats.detect(lead_instruction(request)).id == "comparison"

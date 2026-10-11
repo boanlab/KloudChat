@@ -2,7 +2,7 @@
 
 
 def test_a_line_repeated_in_a_later_section_goes_from_it():
-    # Research lane R-13: lint flagged the repeat (P1) and the document shipped with it.
+    # Lint flags the repeat (P1); the finish also removes it.
     from app.services import lint
 
     said = "- 사실 일관성 평가는 요약의 신뢰도를 좌우하는 핵심 과제이다."

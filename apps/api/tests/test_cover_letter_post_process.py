@@ -204,8 +204,8 @@ async def test_a_chat_turn_measures_rewrites_and_records_the_counts(monkeypatch)
     assert any('"lengthCheck"' in chunk for chunk in chunks)
 
 
-#: career-docs-1__r0's answer as written: its own count table without outer pipes (397 / 573),
-#: which the old block reader took into block 2 and the number check flagged.
+#: An answer with its own count table without outer pipes (397 / 573): not part of block 2,
+#: and not flagged by the number check.
 R0_ANSWER = (
     "[제출용 답안 1]\n"
     "학생식당 잔반 데이터를 활용해 다음 날 식수를 예측하고 발주량 조정안을"
@@ -283,7 +283,7 @@ async def test_a_block_still_short_after_two_rewrites_is_said_with_the_measured_
     assert "1 | 공백 포함 700자 이내 | 528자 | 700자" in out.content
 
 
-# ── the lineup runs (B4): out of range, measured, and left that way ─────────────────────────
+# ── recorded answers: out of range, measured, and left that way ─────────────────────────
 
 RUNS = Path(__file__).parent / "fixtures/cover-letter"
 
@@ -297,7 +297,7 @@ def _block_of(prompt: str) -> str:
 
 
 async def test_career_docs_1_a_short_block_is_lengthened_from_the_material():
-    """r1 kept 492 of 700 characters (floor 560) and said 「두 답안 모두 한도 이내」."""
+    """The recorded answer: 492 of 700 characters (floor 560), 「두 답안 모두 한도 이내」."""
     request, answer = _run("career-docs-1", "request"), _run("career-docs-1", "answer")
     asked: list[str] = []
     added = (" 인턴 기간에는 예약 데이터 1만 2천 건을 직접 정리하며 노쇼율 12.4%를 계산했고, "
@@ -325,7 +325,7 @@ async def test_career_docs_1_a_short_block_is_lengthened_from_the_material():
 
 
 async def test_career_docs_4_bytes_are_repaired_and_the_answer_states_the_server_count():
-    """r1: 538 of 1,000 bytes (한글 2바이트), a 「바이트는 확인하지 못함」 table and note."""
+    """The recorded answer: 538 of 1,000 bytes (한글 2바이트), 「바이트는 확인하지 못함」."""
     request, answer = _run("career-docs-4", "request"), _run("career-docs-4", "answer")
     asked: list[str] = []
 
@@ -355,7 +355,8 @@ async def test_career_docs_4_bytes_are_repaired_and_the_answer_states_the_server
 
 
 async def test_career_docs_5_each_block_gets_two_tries_and_the_closest_is_kept():
-    """r1: Q2 435 characters without spaces (floor 540), Q3 1,868 UTF-8 bytes (limit 1,500)."""
+    """The recorded answer: Q2 435 characters without spaces (floor 540), Q3 1,868 UTF-8
+    bytes (limit 1,500)."""
     request, answer = _run("career-docs-5", "request"), _run("career-docs-5", "answer")
     material = request + "\n" + _run("career-docs-5", "material")
     tries: dict[int, int] = {}

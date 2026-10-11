@@ -41,7 +41,7 @@ def test_the_three_packages_ship_with_their_scripts():
 
 # ── date-calc ───────────────────────────────────────────────────────────
 
-#: tasks.json minutes-1..5 (+ minutes-6 mail scene): base, phrase, expected date.
+#: Meeting-memo date phrases: base, phrase, expected date.
 MINUTES = [
     ("2026-10-12", "다음 주 금요일", "2026-10-23"),
     ("2026-10-12", "이번 주 금요일", "2026-10-16"),

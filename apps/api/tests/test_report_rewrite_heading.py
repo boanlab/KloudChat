@@ -84,7 +84,7 @@ _WITH_TABLE = ("국내 동향은 다음과 같다.\n\n**표 1. 국내 연구 비
 @pytest.mark.parametrize(
     ("generated", "note", "expected"),
     [
-        # Research lane R-09: the rewrite dropped 표 1 and kept the sentence that names it.
+        # A rewrite that drops 표 1 but keeps the sentence naming it gets the table back.
         ("국내 동향을 새로 정리했다.\n\n표 1에서 보듯 두 갈래다.", "",
          "국내 동향을 새로 정리했다.\n\n표 1에서 보듯 두 갈래다.\n\n**표 1. 국내 연구 비교**\n\n"
          "| 연구 | 방법 |\n|---|---|\n| 가 | NLI |\n| 나 | QA |"),

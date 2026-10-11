@@ -99,7 +99,7 @@ def test_the_writer_s_arithmetic_about_the_block_never_reaches_the_document():
         "공급가액 1,000,000원 × 0.1 = 100,000원이 위 값과 다르다. 다음 문장.") == "다음 문장."
 
 
-# ── minutes-2: one recurring line, one row ─────────────────────────────
+# ── one recurring line, one row ─────────────────────────────
 
 RECORDING = "## 녹음_연구실주간미팅_20261014_1000.mp3\n" + SPOKEN
 #: The run's table before the fill: three rows left 미정, the recurring one written.
@@ -144,9 +144,9 @@ async def test_a_recurring_deadline_on_another_row_is_found():
     assert len(rows) == 1 and "연구비 확인" in rows[0]
 
 
-# ── minutes-3: no meeting date anywhere ──────────────────────────────
+# ── no meeting date anywhere ──────────────────────────────
 
-#: Excerpts of minutes-3 r1 as written, from a base of the day the memo came in.
+#: Excerpts of a minutes draft as written, from a base of the day the memo came in.
 RUN_OVERVIEW = (
     "2026년 10월 8일에 열린 축제 부스 준비 회의에서는 부스 위치와 운영 메뉴를 확인했습니다."
 )
@@ -221,7 +221,7 @@ async def test_the_head_s_date_is_the_read_one_or_a_blank():
 
 
 def test_a_memo_day_with_its_weekday_is_the_meeting_date():
-    # Quality lane Q16: 「[메모] 10/8(목) 14시 … 주간회의」 left 「회의 일자: [회의 일자]」.
+    # 「[메모] 10/8(목) 14시 … 주간회의」 fills 「회의 일자」, not a blank.
     import datetime as _dt
 
     from app.services import report_checks as _rc

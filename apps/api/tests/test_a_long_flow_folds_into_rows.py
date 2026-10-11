@@ -6,7 +6,7 @@ from pptx.util import Pt
 from app.services import diagram_render, flow_layout
 from app.services import diagram_shapes as ds
 
-#: Figure 1 of the persona sweep (R-12): eleven steps that came out 2449 × 425 on one line.
+#: Eleven steps: 2449 × 425 on one line unless folded.
 FIG1 = """flowchart LR
   sum[요약문] --> dec(원자적 주장 분해) --> list[주장 목록]
   list --> num(수치 정합성 검사기)

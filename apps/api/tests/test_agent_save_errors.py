@@ -1,6 +1,6 @@
-"""N1: every refusal of an agent save reads as a Korean sentence on the form, never a code.
+"""Every refusal of an agent save reads as a Korean sentence on the form, never a code.
 
-「저장하지 못했습니다. (gap_keywords_empty)」 reached a person (persona A/B, 2nd run). The form
+No 「저장하지 못했습니다. (gap_keywords_empty)」 on screen: the form
 maps each code to a sentence and a place (`apps/web/src/lib/agentErrors.ts`); this holds every
 code the agent save, its 빠진 정보 질문, its 세부 설정 and its 진행 과정 can raise to that map.
 """

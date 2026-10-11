@@ -1,4 +1,4 @@
-"""D2: the reference list holds only what the body cites, numbered by first citation."""
+"""The reference list holds only what the body cites, numbered by first citation."""
 
 import io
 import zipfile
@@ -92,7 +92,7 @@ def test_a_cut_off_title_is_read_whole():
     assert research._titled_from_page(whole, page) == whole
 
 
-# ── verify1 R-08: the writer's own 참고문헌 beside the server's list ──────
+# ── the writer's own 참고문헌 beside the server's list ──────
 
 RESTATED = (
     "[1] A systematic survey of text summarization: From statistical methods to large "

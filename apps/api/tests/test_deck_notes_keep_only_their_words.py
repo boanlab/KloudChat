@@ -1,8 +1,8 @@
 """A slide's note keeps its own words only, and the deck's Markdown shows a chart as a table.
 
-Quality lane Q22: the last slide's note carried the next slides' JSON
-(「…기억해 두면 됩니다."}]}, {"title": "다음 시간 예고", …」), and the Markdown export printed a
-chart's data as 「- P1: 0 · 7 · 0 · 0 · 0」 bullets.
+The last slide's note never carries the next slides' JSON
+(「…기억해 두면 됩니다."}]}, {"title": "다음 시간 예고", …」), and the Markdown export does not
+print a chart's data as 「- P1: 0 · 7 · 0 · 0 · 0」 bullets.
 """
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ def test_a_chart_reads_as_a_table_in_the_markdown():
 
 
 def test_the_cover_carries_the_requested_title_and_authors_as_written():
-    # Quality lane Q21: the cover shortened the title and dropped the authors.
     request = ("다음 주 학회 구두 발표용 슬라이드 만들어 줘. 발표 15분.\n\n"
                "제목: 소형 언어모델을 위한 검색 증강 생성에서의 문서 재순위화 경량화\n"
                "저자: 이서준, 김나래, 최영훈(한빛대학교 컴퓨터공학과)\n\n초록: …")

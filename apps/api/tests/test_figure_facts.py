@@ -1,5 +1,5 @@
-"""A comparison figure is checked against its section's table before it is kept
-(staff sweep STAFF-02): a box that says what the table does not leaves the figure out, and a
+"""A comparison figure is checked against its section's table before it is kept:
+a box that says what the table does not leaves the figure out, and a
 highlight on an option the report does not recommend comes off."""
 
 from __future__ import annotations

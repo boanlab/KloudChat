@@ -1,6 +1,5 @@
-"""A chat turn that ran code answers with the code's values — the lecture turn of the round-1
-re-check said 「SRTF, RR(q=4), 우선순위는 코드가 실행 한도에 막혀 … 수동 계산」 while six of its
-eight code runs were done, and its hand-worked averages were wrong."""
+"""A chat turn that ran code answers with the code's values: no 「코드가 실행 한도에 막혀 … 수동
+계산」 while its runs finished, and no hand-worked averages in place of the computed ones."""
 
 from __future__ import annotations
 

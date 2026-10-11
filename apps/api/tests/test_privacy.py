@@ -3049,7 +3049,7 @@ async def test_a_masked_turn_masks_the_step_code_and_output(monkeypatch, hook) -
     assert "555-2671" not in done["stdout"]
     assert done["codeAttempt"] == 1 and done["code"].startswith("print(")
 
-    # A tool without a trace still yields the old step shape.
+    # A tool without a trace yields the plain step shape.
     hops = 0
     plain = Tool(name="run_code", description="t", parameters={"type": "object"},
                  run=plain_tool, label="파일 작업")

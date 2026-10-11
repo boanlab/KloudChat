@@ -1,6 +1,6 @@
-"""verify1 NEW-6 (STAFF-01, STAFF-10, R-02): what an answer works out from given values stays.
+"""What an answer works out from given values stays.
 
-The grounding trace blanked values that are plain arithmetic of grounded ones
+The grounding trace keeps values that are plain arithmetic of grounded ones
 (「22시간을 제외하면 49.5시간, 544,500원」), dates counted from a given date by the material's
 own offsets (「개강 3월 2일, 30일 전」 → 2027년 1월 31일), and cells copied from the attached
 sheet under a 「(천원)」 header.
@@ -25,7 +25,7 @@ def _numbers(found: list[dict]) -> list[str]:
     return [f["text"] for f in found if f["kind"] == "number"]
 
 
-# ── STAFF-01: payroll ────────────────────────────────────────────────────
+# ── payroll ────────────────────────────────────────────────────
 
 PAYROLL_REQUEST = ("근로장학생 근무현황 엑셀이에요. 학생별로 9월 근무시간 합계 내 주시고, "
                    "시간당 11,000원 곱해서 지급액도 계산해 주세요. 이상한 행(중복, 학번 오류, "
@@ -48,7 +48,7 @@ def test_an_invented_payroll_figure_is_still_blanked():
     assert _numbers(found) == ["52.5시간", "612,000원"]
 
 
-# ── R-02: cells copied from the attached sheet ───────────────────────────
+# ── cells copied from the attached sheet ───────────────────────────
 
 GRANT_REQUEST = ("첨부한 연구비 파일에서 연도·항목별 예산 대비 집행률을 표로 정리하고, 연도별로 "
                  "항목 집행률을 비교하는 막대 차트 하나 만들어 줘. 논문실적 시트는 연도별 "
@@ -74,7 +74,7 @@ def test_a_sheet_cell_moved_to_another_row_is_still_blanked():
     assert _numbers(found) == ["42,500"]
 
 
-# ── STAFF-10 Q3: dates counted from the person's date ────────────────────
+# ── dates counted from the person's date ────────────────────
 
 RULES = ("[장학금지급규정.pdf]\n제7조(신청 기간) 장학금 신청은 매 학기 개시 30일 전부터 "
          "14일 전까지 학생포털로 한다.")

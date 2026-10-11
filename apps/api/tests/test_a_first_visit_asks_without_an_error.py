@@ -1,7 +1,7 @@
 """A browser with no refresh cookie is told it is signed out with 204, not 401.
 
-Every first visit asks `/auth/refresh`; the 401 was logged as an error in the console
-(research lane R-25). A presented cookie is still checked as before.
+Every first visit asks `/auth/refresh`, and a 401 shows as a console error. A presented cookie
+is still checked.
 """
 
 from __future__ import annotations

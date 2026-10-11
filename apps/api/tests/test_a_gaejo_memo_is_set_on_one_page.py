@@ -1,7 +1,7 @@
 """A 개조식 보고 is set like a 1쪽 공문서 보고 in every renderer: its own type scale and spacing
 (`doc_type.FORMAT_*`), the 붙임 section as the closing 「붙임  1. ○○ 1부.  끝.」 lines rather
-than a numbered heading, and a ※ note under an item with ※ as its own marker (lineup
-gaejo-report-1__r1: ~900 characters ran to two pages, 「4. 붙임」 and 「○ ※ …」)."""
+than a numbered heading, and a ※ note under an item with ※ as its own marker (~900
+characters on one page, no 「4. 붙임」 heading, no 「○ ※ …」)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.services import doc_formats, doc_type, fonts, report_export
 _WEB = Path(__file__).resolve().parents[3] / "apps/web/src/components/report"
 _SEED = Path(__file__).resolve().parents[3] / "apps/api/app/design_templates/_document/seed.html"
 
-#: gaejo-report-1__r1's sections, as the model wrote them.
+#: A 개조식 보고's sections, as a model wrote them.
 SECTIONS = [
     {"id": "s0", "heading": "현황", "level": 1, "content": (
         "```callout\n핵심\n3호기 조건부 합격 및 2026년 9월 기준 고장 신고 19건 발생 확인\n"

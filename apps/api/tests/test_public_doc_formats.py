@@ -19,7 +19,7 @@ from app.services import design_templates, doc_formats, report, report_export
 @pytest.mark.parametrize(
     ("request_text", "expected"),
     [
-        # Misrouted before: 결과 보고서 → lab, 장애인 → incident, 계획서 → plan, the rest none.
+        # A word inside (결과 보고서, 장애인, 계획서) does not pick lab, incident or plan.
         ("신입생 환영 행사 결과 보고서를 써 줘", "result_report"),
         ("부산 출장 결과 보고서 정리해 줘", "result_report"),
         ("만족도 설문 결과 보고서를 만들어 줘", "result_report"),
@@ -28,7 +28,7 @@ from app.services import design_templates, doc_formats, report, report_export
         ("전산 장비 구매 건 기안문 작성해 줘", "internal_draft"),
         ("세종시 출장 보고서 써 줘", "result_report"),
         ("개조식 보고서로 정리해 줘", "gaejo"),
-        # Kept as they were.
+        # Lab reports and research plans stay theirs.
         ("아래 내용으로 회로실험 결과 보고서를 써 줘.", "lab"),
         ("아래 내용으로 사회조사방법론 조사 계획서를 써 줘.", "plan"),
         ("졸업 작품 계획서 써 줘", "plan"),
@@ -93,7 +93,7 @@ def test_the_template_format_names_the_genre_and_drops_the_prose_rules():
     genre = report._genre_rule("신입생 행사 문서", fmt)
     assert genre.startswith("Genre: 추진 계획(안)") and "개조식" in genre
     assert "금113,560원(금일십일만삼천오백육십원)" in genre and "2026. 10. 7." in genre
-    # Without a template the words decide, as before.
+    # Without a template the words decide.
     assert report._genre_rule("신입생 행사 문서") == ""
     assert report._genre_rule("행사 결과 보고서 써 줘").startswith("Genre: 결과 보고서")
     assert report._genre_rule("장애인 지원 현황 보고") .startswith("Genre: 현황")
@@ -313,7 +313,7 @@ def test_documents_of_other_formats_keep_their_lists(kind: str):
 
 
 def test_a_grant_application_has_its_own_format_not_the_research_plan():
-    # verify1 S13: 「사업계획서 … 공모사업 신청용」 got the 연구자·연구 기간 cover.
+    # 「사업계획서 … 공모사업 신청용」 is a grant application, not the 연구자·연구 기간 cover.
     ask = ("아래 메모로 「2027 지역 상생 디지털 배움터」 사업계획서 써 줘. 한빛시 공모사업 "
            "신청용이고, 심사위원이 읽는 문서야.")
     fmt = doc_formats.detect(ask)
@@ -331,7 +331,7 @@ def test_a_grant_application_s_cover_reads_its_institution_and_period():
 
 
 def test_table_rows_written_as_list_items_come_back_as_a_table():
-    # verify1 NEW-12 (S09 개조식 결과 보고서): 「○ | 항목 | 계획 |」 lines in the PDF/DOCX.
+    # A 개조식 결과 보고서's table rows as list items, not 「○ | 항목 | 계획 |」 lines.
     body = ("- 만족도(응답 141명)\n  - 표: 만족도 조사 결과\n  - | 항목 | 만족도(5점 만점) |\n"
             "  - |---|---|\n  - | 전반 만족 | 4.5 |\n  - | 멘토링 | 4.6 |\n- 예산 집행\n"
             "  - 편성 4,500만원 / 집행 4,215만원\n")
@@ -357,7 +357,7 @@ S03 = ("각 학과에 보낼 협조 요청 공문을 써 줘.\n\n"
 
 
 def test_a_default_official_letter_is_one_body_without_chapters():
-    # quality Q11 (verify1 S03): the default 공문 came out as six chapter headings.
+    # The default 공문: one body, no chapter headings.
     from app.services import process_settings, report
 
     fmt = doc_formats.detect(S03)

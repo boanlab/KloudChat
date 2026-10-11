@@ -141,15 +141,15 @@ def test_the_presentation_theme_is_hidden_and_kept():
     assert DesignSystemOut.of(row, owner_id="admin", catalog_owner="admin").listed is False
     assert DesignSystemOut.of(DesignSystem(owner_id="admin", name="기본", tokens={}),
                              owner_id="admin", catalog_owner="admin").listed
-    # R4: a person's own theme of that name is theirs, not the catalogue's: it stays listed.
+    # A person's own theme of that name is theirs, not the catalogue's: it stays listed.
     mine = DesignSystem(owner_id="u", name="발표용 청록", tokens={"accent": "#0f766e"})
     assert DesignSystemOut.of(mine, owner_id="u", catalog_owner="admin").listed is True
 
 
 @pytest.mark.asyncio
 async def test_a_persons_own_copy_of_the_hidden_theme_stays_listed(db):
-    """R4: only the catalogue owner's row is unlisted; a member's own seeded copy shows in
-    their list, and a new account is no longer given one."""
+    """Only the catalogue owner's row is unlisted; a member's own seeded copy shows in
+    their list, and a new account is not given one."""
     owner = User(email="owner@example.com", name="Owner", password_hash="x", role=UserRole.admin)
     db.add(owner)
     await db.commit()
@@ -359,7 +359,7 @@ def test_an_unknown_id_is_still_refused():
         sessions_router._resolved_template_id("deck-nope", SessionKind.slides)
 
 
-# ── R1: the catalogue syncs at startup, not only at the owner's sign-in ──
+# ── the catalogue syncs at startup, not only at the owner's sign-in ──
 
 
 @pytest.mark.asyncio

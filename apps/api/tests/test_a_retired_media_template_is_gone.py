@@ -41,7 +41,7 @@ async def test_the_gallery_lists_no_media_template(surface):
         assert rows == []
     else:
         assert {row.surface for row in rows} == {"report", "slides"}
-    # The card no longer carries the media blanks or chip defaults.
+    # The card carries no media blanks or chip defaults.
     assert all("arguments" not in row.model_dump(by_alias=True) for row in rows)
 
 

@@ -1,8 +1,7 @@
-"""comparison-report-5: options priced by parts settle their 5-year totals before writing.
+"""Options priced by parts settle their 5-year totals before writing.
 
-Both runs had no pre-pass step at all: the pack has no 「단가」 or 「×」 line, so quote-calc
-never ran, and without weights or must-haves nothing else did. r1 wrote 213,500,000 /
-277,500,000 / 197,050,000 against 197,900,000 / 282,000,000 / 296,250,000.
+The pack has no 「단가」 or 「×」 line for quote-calc and no weights or must-haves, yet the
+totals (197,900,000 / 282,000,000 / 296,250,000) are computed by code, not by the writer.
 """
 
 from __future__ import annotations
@@ -101,10 +100,10 @@ async def test_the_pre_pass_runs_without_weights_and_says_so():
     assert "- 시나리오 「연 25,000km」: 구매 207,900,000원" in block
 
 
-# ── B9: the pre-pass that came back empty said nothing (lineup v1, deploy 3) ──
+# ── a pre-pass that comes back empty says so ──
 
-#: What the 27B model answered on the pack: the prompt's own example (then this very
-#: pack) echoed back as one option, so no total was settled and no step was recorded.
+#: A reply that echoes the prompt's own example (then this very pack) back as one option:
+#: no total settles.
 ECHOED = {
     "period": "5년",
     "options": [{"name": "구매", "items": [
@@ -114,7 +113,7 @@ ECHOED = {
         {"name": "초과 주행료", "factors": [5, 120, 5], "over": [15000, 20000]}]}],
     "scenarios": [{"name": "연 25,000km", "replace": [{"from": 15000, "to": 25000}]}],
 }
-#: comparison-report-1: the material pasted in the request, priced per person per month.
+#: The material pasted in the request, priced per person per month.
 MESSENGER = (
     "사내 메신저 세 개 비교 보고서 써 줘. 직원 80명이고 SSO 연동은 필수, "
     "화상회의는 한 번에 60명까지 되면 돼. 연간 비용 기준으로 하나 골라 줘.\n\n"
@@ -123,7 +122,7 @@ MESSENGER = (
     "- 팀링크: 기본 요금제 1인 월 4,500원(SSO 미지원) / 엔터프라이즈 1인 월 8,000원(SSO 지원), "
     "해외 데이터센터, 화상회의 최대 50명\n"
     "- 워크닷: 1인 월 7,500원, SSO 지원, 국내 데이터센터, 화상회의 최대 300명")
-#: The 27B model's reply on it: 12 months a year, a number the material never writes.
+#: A reply on it with 12 months a year, a number the material never writes.
 MESSENGER_REPLY = {"period": "1년", "options": [
     {"name": "톡플로우", "items": [{"name": "구독료", "factors": [80, 6000, 12]}]},
     {"name": "팀링크", "items": [{"name": "구독료", "factors": [80, 8000, 12]}]},
@@ -142,7 +141,7 @@ def _answering(cost: dict, check: dict | None = None):
 
 
 def test_the_cost_prompt_does_not_carry_a_task_s_own_numbers():
-    # The example was the fleet pack itself; the model copied it back as the answer.
+    # An example that is a task's own pack gets copied back as the answer.
     assert "48000000" not in report_checks._COST_PROMPT
     assert "8800000" not in report_checks._COST_PROMPT
 
@@ -243,7 +242,7 @@ async def test_a_split_is_settled_by_the_larger_model_agreeing_with_one():
 
 async def test_three_readings_that_all_differ_hand_the_writer_only_the_options_they_share():
     # The readings differ over 구매 alone: 장기렌트 and 카셰어링 still reach the writer
-    # (verify1 R-03: one unsettled option blanked every total).
+    # (one unsettled option does not blank every total).
     complete, _ = _by_turn(_wrong(3), REPLY, _wrong(5))
     pre = await report_checks.prepare("comparison", REQUEST, PACK, complete=complete,
                                       model="m", api_key="k", tiebreak_model="big")
@@ -334,7 +333,7 @@ async def test_a_split_drops_the_sandbox_s_totals_too(monkeypatch):
     assert any("[금액]" in s for s in seen)
 
 
-# ── B10: named factor fields; code does the multiplying ──────────────────
+# ── named factor fields; code does the multiplying ──────────────────
 
 #: The pack in the named-field schema: what each number is, never the product.
 NAMED = {
@@ -372,7 +371,7 @@ def test_named_fields_price_the_pack_with_code_doing_the_products():
     far = {n: e["total"] for n, e in costs["scenarios"][0]["options"].items()}
     assert far == {"구매": 207_900_000, "장기렌트": 307_000_000, "카셰어링": 343_750_000}
     rows = {r["name"]: r for r in costs["options"]["카셰어링"]["rows"]}
-    # r2's 45,004,750: the hours term and ×5 vehicles lost. Here both are fields.
+    # The hours term and ×5 vehicles are fields, so neither is lost from the product.
     assert rows["시간 요금"]["amount"] == 225_000_000
     assert rows["주행 요금"]["amount"] == 71_250_000
     excess = next(r for r in costs["options"]["장기렌트"]["rows"] if r["name"] == "초과 주행료")
@@ -402,7 +401,7 @@ def test_a_monthly_price_over_years_takes_twelve_from_code_not_the_model():
     assert costs["options"]["가"]["total"] == 17_280_000 == costs["options"]["나"]["total"]
 
 
-#: Research lane R-03: every figure inline in one paragraph, no price line, nothing attached.
+#: Every figure inline in one paragraph, no price line, nothing attached.
 GPU = ("연구실 GPU 연산 자원 도입 안을 비교해서 결정 보고서로 써 줘. A안: 클라우드 GPU(A100 80GB "
        "4장) 시간당 12,000원, 연간 예상 사용 2,000시간, 초기비용 없음. B안: 온프레미스 서버(A100 "
        "80GB 4장) 구매가 1억 2천만원, 연간 전기·유지비 900만원, 내용연수 5년. 필수 조건: "
@@ -447,7 +446,7 @@ def test_a_kpi_tile_groups_a_long_amount():
     assert "72,000,000원 | A안 3년 총비용" in out and "2026년 | 도입 연도" in out
 
 
-#: Quality lane Q14 / built-in tuning S10: a conditional discount and a one-time cost.
+#: A conditional discount and a one-time cost.
 COLLAB = ("우리 팀(교직원 40명) 업무 협업 도구 두 가지 안을 비교·검토하는 보고서 써 줘.\n\n"
           "A안: 사내 메신저 유지 + 화상회의 라이선스 추가\n"
           "- 화상회의 라이선스 1인당 월 8,000원 × 40명\n\n"
@@ -518,8 +517,8 @@ ONCE = {"name": "전환 컨설팅", "unit_price": 3000000, "count": 1, "per": "o
 
 
 def test_a_licence_tagged_with_the_discount_s_condition_is_still_paid_without_it():
-    # S10 built-in (verify1 NEW-3): the licence carried 「연 단위 계약 시」 beside its
-    # discount, and the no-contract case priced B안 at the one-time 3,000,000원 alone.
+    # The licence carries 「연 단위 계약 시」 beside its discount; the no-contract case still
+    # pays it, not the one-time 3,000,000원 alone.
     costs = _collab([
         {"name": "구독료", "unit_price": 14000, "count": 40, "per": "month",
          "when": "연 단위 계약 시"},
@@ -553,7 +552,7 @@ def test_a_discounted_price_alone_is_paid_in_full_without_its_condition():
 
 
 def test_two_years_running_is_a_figure_the_cost_block_states():
-    # S10 built-in: 「A안이 2년 연속 더 적고」 came out as 「[수치] 연속」.
+    # 「A안이 2년 연속 더 적고」 stays, not 「[수치] 연속」.
     trace = __import__("app.services.skill_scripts", fromlist=["entry"]).entry("grounding-check")
     numbers = report_checks._material_numbers(COLLAB) + report_checks._calendar(COLLAB)
     block = report_checks._cost_block(report_checks.option_costs(COLLAB_REPLY, numbers))
@@ -579,7 +578,7 @@ def _gpu(cards: int) -> dict:
 
 
 async def test_the_gpu_decision_keeps_the_settled_option_s_totals_when_the_other_splits():
-    # verify1 R-03: A안 read as 1 or 4 cards each time; B안's 1억 4,700만 went out as [금액].
+    # A안 read as 1 or 4 cards: B안's settled 1억 4,700만 is still stated, not [금액].
     complete, _ = _by_turn(_gpu(1), _gpu(4), _gpu(5))
     pre = await report_checks.prepare("comparison", GPU, GPU, complete=complete,
                                       model="m", api_key="k", tiebreak_model="big")
@@ -589,7 +588,7 @@ async def test_the_gpu_decision_keeps_the_settled_option_s_totals_when_the_other
 
 
 def test_a_blank_about_one_option_is_not_answered_from_another_option_s_figures():
-    # verify1 R-03: 「A안 … 연간 집행 비용 역시 [금액]」 was filled with B안's 900만원.
+    # 「A안 … 연간 집행 비용 역시 [금액]」 is not filled with B안's 900만원.
     line = ("A안의 비용은 사용량에 비례합니다. 이 안은 초기비용이 없으므로 첫해와 이듬해 이후 "
             "비용이 같습니다. 연간 유지비 역시 [금액]으로 한도 3,000만원 이내 여부는 확인이 "
             "필요합니다.")

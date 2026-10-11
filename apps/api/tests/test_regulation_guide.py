@@ -205,8 +205,8 @@ def test_a_partial_answer_gets_the_contact_as_written_once():
 
 
 def test_a_full_answer_does_not_end_by_sending_the_reader_to_a_department():
-    """Staff sweep STAFF-10: a complete, cited answer ended 「담당 부서에 문의해 주세요.」 with no
-    department named; an answer that says the material falls short keeps it."""
+    """A complete, cited answer does not end 「담당 부서에 문의해 주세요.」 with no department
+    named; an answer that says the material falls short keeps it."""
     note = skill_scripts.entry("contact-note")
     bare = check_skills.options_for(None, {}, surface="chat")
     answer = ("장학금은 등록금의 50%입니다 [3]. 중복 지급은 하지 않습니다 [5].\n\n"
@@ -261,7 +261,7 @@ def test_the_contact_reaches_the_model_word_for_word():
 def test_the_official_agent_is_a_chat_agent_on_its_material_with_the_publishing_checks():
     spec = starter.agent_spec("regulation-guide")
     assert not spec.get("draft") and "regulation-guide" not in starter.draft_agents()
-    # 날짜 계산 works out 「개강 30일 전」 and checks the answer's dates (staff sweep STAFF-10).
+    # 날짜 계산 works out 「개강 30일 전」 and checks the answer's dates.
     assert spec["tools"] == ["search_knowledge", "calculate", "run_skill_script"]
     assert spec["skills"] == ["date-calc"]
     assert spec["checks"] == ["grounding-check", "answer-hold", "contact-note", "pii-mask"]

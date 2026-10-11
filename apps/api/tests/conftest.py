@@ -16,8 +16,7 @@ os.environ.setdefault("ADAPTIVE_QUALITY_MODELS_DEFAULT", "")
 os.environ.setdefault("OUTLINE_MODEL_DEFAULT", "")
 # Every pipeline stage is held to the bundle fields it declares (`app.pipeline.runner`).
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STRICT", "1")
-# The stage records are on in production; the suite's recorded streams predate them, so they
-# are off here and turned on by the tests that read them.
+# Stage records off: the recorded streams carry none; tests that read them turn them on.
 os.environ.setdefault("KLOUDCHAT_PIPELINE_STEPS", "0")
 
 from typing import Any

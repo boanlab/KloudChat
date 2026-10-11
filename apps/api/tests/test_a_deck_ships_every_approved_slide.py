@@ -1,6 +1,5 @@
-"""A deck ships every approved slide, reads 「10장 내외」 as a count, and keeps whole bullets —
-the seminar deck of the round-1 re-check shipped 7 of 9 approved slides with bullets cut at 80
-characters mid-word (NEW-4). The retold-slide case is in test_explicit_document_size.py."""
+"""A deck ships every approved slide, reads 「10장 내외」 as a count, and keeps whole bullets,
+never cut mid-word. The retold-slide case is in test_explicit_document_size.py."""
 
 from __future__ import annotations
 

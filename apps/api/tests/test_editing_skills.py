@@ -179,7 +179,7 @@ def test_lost_added_and_reformatted_values_are_caught():
     assert {t["raw"] for t in result["lost"]} == {"12명", "김민수"}
     assert {t["raw"] for t in result["added"]} == {"13명", "95%"}
     assert [(t["raw"], t["now"]) for t in result["format_changed"]] == [("1,200만 원", "1200만 원")]
-    # The user asked for it: no longer a loss.
+    # Allowed by the user: not a loss.
     allowed = preserve().report(ORIGINAL, edited, allow=["12명", "13명", "김민수"])
     assert {t["raw"] for t in allowed["lost"]} == set()
     assert {t["raw"] for t in allowed["added"]} == {"95%"}

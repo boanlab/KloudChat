@@ -1,7 +1,6 @@
 """A professor's research plan is not headed 「지도교수」.
 
-The research lane's 연구계획서 (한국연구재단 중견연구) came out with an empty 지도교수 row
-on its cover. In the 연구·조사 계획서 head, 지도교수 and 연구 기간 are shown only when the
+In the 연구·조사 계획서 head, 지도교수 and 연구 기간 are shown only when the
 request or its material gives them; a student's plan that names an advisor keeps the row.
 """
 

@@ -1,8 +1,8 @@
 """A question about KloudChat itself is answered from its own user guide, read in process.
 
-「에이전트를 어떻게 만들어?」 got generic advice (persona A/B, both builds): the chat did not
-know the app. The guide's sections ship with the API (`app/help/docs.json`) and the best few
-are given to the turn as a trusted block.
+「에이전트를 어떻게 만들어?」 gets the app's own answer, not generic advice. The guide's
+sections ship with the API (`app/help/docs.json`) and the best few are given to the turn as a
+trusted block.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.services import app_help
 
 _API = Path(__file__).resolve().parents[1]
 _SCRIPT = _API / "scripts" / "build_help.py"
-#: P3's question (persona A/B, 2nd run): missed, then answered with a feature that is not there.
+#: A how-to question with its reason first.
 _PERSONA = "매주 과장님께 올릴 1쪽 요약을 대신 써 줄 에이전트를 만들고 싶어. 여기서 어떻게 만들어?"
 
 
@@ -35,7 +35,7 @@ def test_the_shipped_guide_is_the_websites():
 @pytest.mark.parametrize("text", [
     "에이전트를 어떻게 만들어?", "스킬은 어디서 추가해?", "어디서 메모리를 지워?",
     "이 앱에서 테마 바꾸는 법 알려줘", "How do I create an agent?", "KloudChat 단축키 뭐야",
-    # Persona A/B 2nd run (P3): the reason before the question pushed 「어떻게」 past 12 letters.
+    # The reason before the question puts 「어떻게」 past 12 letters.
     _PERSONA,
     "여기서 내 에이전트 만들 수 있어?", "회의록을 워드 파일로 받고 싶은데 여기서 할 수 있어?",
     "KloudChat에서 파일로 내보내려면 어디를 눌러?", "이 앱에서 결과를 파일로 받으려면?",
@@ -68,8 +68,7 @@ _SENIOR = "글씨를 좀 크게 볼수 있나요? 그리고 회의록 만드는 
 
 
 def test_a_question_about_the_screen_reads_the_text_size_and_agent_pages():
-    """Staff sweep STAFF-09: 글씨·기능 questions were not taken for app questions, and the model
-    sent the person to a font-size setting that does not exist."""
+    """글씨·기능 questions are app questions, answered from the text-size and agent pages."""
     assert app_help.about_app(_SENIOR)
     found = [(row["path"], row["heading"]) for row in app_help.search(_SENIOR)]
     assert ("personal/settings", "글씨·글자 크기 키우기") in found
@@ -121,7 +120,7 @@ def _agents_page(lang: str) -> dict[str, str]:
 
 
 def test_the_guide_says_export_is_its_own_tick_not_part_of_finish():
-    """Persona A/B 3rd run (P3): the answer said ticking 마무리하기 adds export; in the form
+    """Ticking 마무리하기 does not add export: in the form
     「다 쓰면 파일로 내보내기」 is a checkbox of its own, off in every base process."""
     ko, en = _agents_page("ko"), _agents_page("en")
     assert "**다 쓰면 파일로 내보내기** 체크 상자가 따로" in ko["묶음"]
@@ -133,7 +132,7 @@ def test_the_guide_says_export_is_its_own_tick_not_part_of_finish():
 
 
 def test_the_guide_puts_document_format_where_the_form_shows_it():
-    """「템플릿·테마에서 문서 형식도 고릅니다」 was wrong for an agent on a base process: the
+    """Not 「템플릿·테마에서 문서 형식도 고릅니다」 for an agent on a base process: the
     field shows only on 바로 답하기 or 직접 구성; a base's template sets the format."""
     ko = _agents_page("ko")
     shape = ko["템플릿·테마와 자료"]
@@ -161,7 +160,7 @@ def test_every_agent_page_section_fits_whole():
 
 @pytest.mark.parametrize("question,lang", [(_PERSONA, "ko"), ("How do I create an agent?", "en")])
 def test_a_how_to_answer_is_asked_to_be_brief_and_link_the_guide(question, lang, monkeypatch):
-    """R5: a correct how-to answer ran to ~1.1k tokens. The block asks for the starting path,
+    """A how-to answer stays short: the block asks for the starting path,
     at most 6 steps and ~250 words, and a link to the guide page for the rest."""
     from app.core.config import settings
 

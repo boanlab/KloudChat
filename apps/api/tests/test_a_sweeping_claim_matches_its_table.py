@@ -1,5 +1,5 @@
-"""「모든 문항에서 가장 낮은」 is narrowed to what the answer's own table shows (quality lane
-Q19: 교수법 was lowest at 공과대학, not 예술대학)."""
+"""「모든 문항에서 가장 낮은」 is narrowed to what the answer's own table shows (e.g.
+교수법 lowest at 공과대학, not 예술대학)."""
 
 from app.services import superlatives
 

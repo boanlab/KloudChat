@@ -406,8 +406,8 @@ async def test_the_minutes_judge_runs_once_and_its_candidate_is_listed(monkeypat
 
 
 def test_a_quote_with_no_vat_basis_is_flagged_only_when_the_material_speaks_of_vat():
-    """A weekly memo with 「A사 380만원 / B사 420만원」 and no word of VAT got a VAT question
-    raised in its 개조식 report from the block's 「부가세 기준 불분명」 (quality S17)."""
+    """A weekly memo with 「A사 380만원 / B사 420만원」 and no word of VAT raises no VAT question
+    from the block's 「부가세 기준 불분명」."""
     result = {"quotes": [{"vendor": "A사", "amount": 3_800_000, "vat_basis": "ambiguous"}]}
     plain = report_checks._quote_block(result, material="디자인 업체 견적 A사 380만원")
     assert "부가세 기준 불분명" not in plain and "A사: 3,800,000원" in plain

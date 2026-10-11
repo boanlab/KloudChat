@@ -1,4 +1,4 @@
-"""Fixes from the lineup v1 acceptance run, each pinned with the run's own text."""
+"""Lineup agents' checks and repairs, each pinned with a real answer's text."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 from app.services import report_checks
 
-# ── B11: values a pasted table gives are not 「조건 미확인」 ─────────────────
+# ── values a pasted table gives are not 「조건 미확인」 ─────────────────
 
 OFFICE_REQUEST = (
     "사무실 이전 후보 세 곳 비교해서 대표님께 올릴 보고서 써 줘. 3년 계약 기준 총비용으로 "
@@ -19,7 +19,7 @@ OFFICE_TABLE = (
     "| 성수 B빌딩 | 7,200,000원 | 1,900,000원 | 48,000,000원 | 1억 5천만 원 | 52 |\n"
     "| 문정 C센터 | 6,300,000원 | 1,100,000원 | 75,000,000원 | 8천만 원 | 58 |\n"
     "(통근 시간: 9월 직원 설문 41명 응답 평균)")
-#: comparison-report-2 r2: the reading named the condition but left every value null.
+#: A reading that names the condition but leaves every value null.
 OFFICE_READING = {
     "criteria": [],
     "musts": [{"name": "직원 평균 통근 시간", "kind": "max", "limit": 50, "unit": "분"}],
@@ -57,7 +57,7 @@ def test_a_reading_with_no_options_takes_them_from_the_table():
 
 from app.services import internal_words, report  # noqa: E402
 
-#: minutes-4 r2's action table and closing paragraph.
+#: A minutes action table and closing paragraph.
 MINUTES_4_TABLE = (
     "| 할 일 | 담당 | 기한 | 출처 | 비고 |\n|---|---|---|---|---|\n"
     "| 안전교육 자료 제작 | 유주임 | 미정 | 회의 | 1월 중순(1월 15일까지)으로 합의, 정확한 날짜는 "
@@ -210,7 +210,7 @@ OT_LINES = (
     "체육관은 "
     "동아리 박람회로.\n"
     "염○○: 회당 900명인데 대강당이 600석이면 300명은요?")
-#: minutes-4 r2's open-items paragraph.
+#: A minutes open-items paragraph.
 MINUTES_4_OPEN = (
     "기획단 운영비와 티셔츠 제작 여부는 본부 예산 배정이 확정된 후에 다시 상정하며, 현재 단계에서 "
     "금액을 "
@@ -222,7 +222,7 @@ FIRST_MEETING = ("[1차 회의(2026-09-23) 실행 항목]\n| 할 일 | 담당 | 
                  "배교수 | 10/2 |\n"
                  "| 세미나실 예약 | 신조교 | 9/30 |\n| 포스터 세션 공고 | 류○○(대학원생) | 10/9 |\n"
                  "- 기조연사: 배교수 섭외 완료(10/1 수락), 1명")
-#: minutes-5 r1's follow-up table.
+#: A minutes follow-up table.
 MINUTES_5_ROWS = (
     "| 할 일 | 담당 | 원 기한 | 완료일 | 상태 | 비고 | 출처 |\n|---|---|---|---|---|---|---|\n"
     "| 기조연사 섭외 | 배교수 | [기한] | 10/1 | 완료 | 10/1 수락 | 회의 |\n"
@@ -353,7 +353,7 @@ async def _answer(monkeypatch, replies: list[list[str]]) -> tuple[str, list[dict
 
 
 async def test_a_numeric_blank_after_run_code_is_computed_once(monkeypatch):
-    # data-analysis-4 r2: 「2025-0012(187일)를 제외하면 2025년 평균 처리일수는 [수치]일」.
+    # 「2025-0012(187일)를 제외하면 2025년 평균 처리일수는 [수치]일」.
     blank = "2025-0012(187일)를 제외하면 2025년 평균 처리일수는 [수치]일로 더 낮아집니다."
     shown, seen = await _answer(monkeypatch, [
         _RUN, _said(blank), _RUN, _said("2025-0012(187일)를 제외하면 평균은 9.09일입니다.")])
@@ -386,7 +386,7 @@ LMS_REQUEST = (
     "기본 제공\n"
     "우리 직원 300명.")
 LMS_FOLLOW_UP = "SCORM은 필수야. 그리고 비용 50, 모바일 앱 30, HR 연동 20으로 다시 봐 줘."
-#: comparison-report-4 r2's headings; the planner rewrote 2 and 4 only.
+#: A comparison report's headings, after a planner rewrite of 2 and 4 only.
 LMS_NAMES = ["요약", "결정 기준과 필수 조건", "대안별 기본 정보와 비용 전제", "솔루션별 종합 비교",
              "출처별 가격과 기능 차이", "조건 미확인 사항과 리스크", "권고안과 다음 단계"]
 LMS_SUMMARY = (
@@ -417,7 +417,7 @@ def test_career_start_month_follow_up_reaches_the_summary():
 
 
 async def test_the_old_recommendation_left_in_summary_and_conclusion_is_repaired(monkeypatch):
-    """r2: re-weighted in two parts, the summary and 권고안 still recommend the cheapest."""
+    """Re-weighted in two parts: the summary and 권고안 follow the new weights, not the cheapest."""
     reading = {
         "criteria": [{"name": "비용", "weight": 50, "kind": "cost"},
                      {"name": "모바일 앱", "weight": 30, "kind": "yesno"},
@@ -464,7 +464,7 @@ async def test_the_old_recommendation_left_in_summary_and_conclusion_is_repaired
 
 
 def test_a_total_written_two_ways_takes_the_changed_part_s_value():
-    """client-proposal-4 r2: the rewritten 견적 says one 공급가액, 요청 사항 still another."""
+    """The rewritten 견적 says one 공급가액 and 요청 사항 another: the changed part's value wins."""
     parts = [
         {"heading": "견적: 범위 조정 반영", "content": (
             "〔표〕와 같이 조정된 공급가액은 45,000,000원으로, 고객 측에서 명시한 VAT 별도 예산 "
@@ -555,7 +555,7 @@ def test_the_revision_widens_settles_and_aligns():
 STAFF_PLAN = ("[투입 계획 — 내부 메모]\n- PM 1명 1.0MM, AI 엔지니어 1명 3.0MM, 데이터 엔지니어 1명 "
               "1.5MM\n"
               "- GPU 서버 임차: 월 1,200,000원 × 3개월")
-#: client-proposal-1 r1 and r2.
+#: Two staffing paragraphs of one proposal.
 STAFF_R1 = ("본 사업에는 PM 1명(1.0MM), AI 엔지니어 3명(3.0MM), 데이터 엔지니어 1.5명(1.5MM)이 "
             "투입되며, "
             "GPU 서버 임차를 수행사가 제공합니다(표 3).")

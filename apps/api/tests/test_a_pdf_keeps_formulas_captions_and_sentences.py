@@ -1,5 +1,5 @@
-"""The research lane's research plan PDF: 「Σᵢ wᵢ」 drew empty boxes, 「표 1.」 stood alone at
-the foot of a page with its table on the next, and a paragraph broke after 「vs.」."""
+"""A research plan PDF draws 「Σᵢ wᵢ」, keeps 「표 1.」 on the page of its table, and does not
+break a paragraph after 「vs.」."""
 
 from __future__ import annotations
 

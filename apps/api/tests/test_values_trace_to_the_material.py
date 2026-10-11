@@ -209,8 +209,8 @@ _TOOL_NUMBERS = check_skills.options_for(None, {"tool_numbers": True})
 
 
 def test_a_rate_in_a_long_request_is_the_person_s_value():
-    # The request's prose commas and 「11,000」 used to make it read as a CSV row, so the
-    # rate it gives was blanked as a number no tool printed.
+    # Prose commas and 「11,000」 do not make the request a CSV row: the rate it gives is the
+    # person's, not a number no tool printed.
     trace = skill_scripts.entry("grounding-check")
     request = ("근로장학생 근무현황 엑셀이에요. 학생별로 9월 근무시간 합계 내 주시고, 시간당 "
                "11,000원 곱해서 지급액도 계산해 주세요. 이상한 행(중복, 학번 오류, 날짜 누락 등)은 "
@@ -244,7 +244,7 @@ def test_a_year_and_a_count_is_not_a_month():
 
 
 def test_a_sheet_s_budget_cells_stay_in_the_rate_table():
-    # Research lane R-02: the 집행률 table's 예산·집행 cells and 「2022년 5건」 were blanked.
+    # The 집행률 table's 예산·집행 cells and 「2022년 5건」 stay.
     trace = skill_scripts.entry("grounding-check")
     sheet = ("[시트 1: 연구비집행]\n연도\t항목\t예산(천원)\t집행(천원)\n"
              "2024\t인건비\t42000\t40150\n2024\t연구활동비\t18000\t16320\n"
@@ -260,7 +260,7 @@ def test_a_sheet_s_budget_cells_stay_in_the_rate_table():
 
 
 def test_a_unit_noted_once_on_the_material_line_scales_its_figures():
-    # Quality lane Q4: 「식음료 870 / … 단위 만원」 → a table under 「집행액(만원)」 kept 870.
+    # 「식음료 870 / … 단위 만원」 → 870 under 「집행액(만원)」 stays.
     trace = skill_scripts.entry("grounding-check")
     material = ("아래 자료로 행사 결과보고서 써 줘.\n\n"
                 "- 예산: 편성 4,500만원 / 집행 4,215만원 (시상금 2,000 / 식음료 870 / "
@@ -274,7 +274,7 @@ def test_a_unit_noted_once_on_the_material_line_scales_its_figures():
 
 
 def test_a_blanked_value_takes_its_worked_calculation_with_it():
-    # Quality lane Q4: 「[수치] ÷ 30 ÷ 10개월 = 0만원/대/월」 was left after the blank.
+    # No 「[수치] ÷ 30 ÷ 10개월 = 0만원/대/월」 left after the blank.
     trace = skill_scripts.entry("grounding-check")
     line = "대당 월 비용은 7,200만원 ÷ 30 ÷ 10개월 = 24만원/대/월이다."
     at = line.index("7,200만원")
@@ -287,8 +287,8 @@ def test_a_blanked_value_takes_its_worked_calculation_with_it():
 
 
 def test_a_deadline_copied_wrong_goes_back_to_the_person_s_day_even_if_a_page_holds_it():
-    # Quality lane Q5: 「2026. 11. 6.(금) 18:00까지」 came out as 「2026년 11월 18일(수) 00시
-    # 2214분까지」 (내선 2214 run into the time) and a search page holding 11월 18일 excused it.
+    # 「2026. 11. 6.(금) 18:00까지」 written as 「2026년 11월 18일(수) 00시 2214분까지」 (내선 2214
+    # run into the time) goes back, even with a search page holding 11월 18일.
     trace = skill_scripts.entry("grounding-check")
     request = ("각 학과에 보낼 협조 요청 공문을 써 줘.\n\n- 제출 기한: 2026. 11. 6.(금) 18:00까지\n"
                "- 담당: 기획예산팀 윤서영 (내선 2214)")
@@ -304,12 +304,12 @@ def test_a_deadline_copied_wrong_goes_back_to_the_person_s_day_even_if_a_page_ho
     assert trace.check("관련 공고는 2026년 12월 3일에 나왔다.", elsewhere, [], options) == []
     other = trace.check("설명회는 2026년 11월 18일에 연다.", f"{request}\n{page}", [], options)
     assert [f["placeholder"] for f in other] == ["[일자]"]
-    # Without the person's text (older callers) the trace reads as before.
+    # Without the person's text, the page's day passes.
     assert trace.check("설명회는 2026년 11월 18일에 연다.", f"{request}\n{page}", []) == []
 
 
 def test_a_kpi_block_is_traced_like_the_text():
-    # Quality lane Q14: a KPI's wrong 「이듬해 차이 96,000원」 went out unchecked.
+    # A KPI's 「이듬해 차이 96,000원」 is traced too.
     trace = skill_scripts.entry("grounding-check")
     material = "A안 연 3,840,000원, B안 연 5,712,000원"
     text = "```kpi\n3,840,000원 | A안 연간\n96,000원 | 이듬해 차이\n```"

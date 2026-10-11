@@ -1,4 +1,4 @@
-"""Research lane R-08: one work cited once, its year and venue kept, its link live in DOCX."""
+"""References: one work cited once, its year and venue kept, its link live in DOCX."""
 
 import io
 import zipfile

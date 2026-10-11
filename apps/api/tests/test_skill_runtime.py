@@ -1276,7 +1276,7 @@ async def test_research_with_no_search_backend_and_no_material_is_refused_plainl
         await _resolve_skills(
             _SkillDb([research]), _user(), _session(), None, [research.id],
             {"run_skill_script"})
-    # Another missing tool is still the old refusal.
+    # Any other missing tool gets the plain refusal.
     coder = _skill(catalog_key="x", required_tools=["web_search", "execute_code"])
     with pytest.raises(WorkspaceContextError, match="skill_tools_unavailable"):
         await _resolve_skills(_SkillDb([coder]), _user(), _session(), None, [coder.id], set())

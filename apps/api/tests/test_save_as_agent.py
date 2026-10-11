@@ -259,7 +259,7 @@ def test_the_model_reads_rules_in_english_and_writes_korean():
 
 
 async def test_a_draft_with_nothing_settled_has_no_empty_header(db, monkeypatch, calls):
-    """N7: the lines the model returns that say nothing (「없음」, the header echoed, a dash)
+    """The lines the model returns that say nothing (「없음」, the header echoed, a dash)
     leave the 지시 empty, never a bare 「이 대화에서 정한 것:」."""
 
     async def nothing(model, messages, api_key, *, strict_local, masker=None):
@@ -277,7 +277,7 @@ async def test_a_draft_with_nothing_settled_has_no_empty_header(db, monkeypatch,
 
 async def test_a_distillation_that_fails_says_so_instead_of_an_empty_field(
         db, monkeypatch, calls):
-    """N1: a distillation that timed out is 「failed」, never an empty 지시 that reads as
+    """A distillation that timed out is 「failed」, never an empty 지시 that reads as
     「filled in」; nothing settled is 「empty」; the form can ask for the rest first."""
     me, _ = await _people(db)
     session = await _talk(db, me)
@@ -311,7 +311,7 @@ async def test_a_distillation_that_fails_says_so_instead_of_an_empty_field(
 
 
 async def test_the_distillation_has_its_own_timeout_and_one_retry(monkeypatch):
-    """N1: the call waits `agent_draft_timeout_sec` (not the title's), retries a timeout once,
+    """The call waits `agent_draft_timeout_sec` (not the title's), retries a timeout once,
     keeps strict-local's no-fallback rule, and raises when both tries fail."""
     import httpx
 

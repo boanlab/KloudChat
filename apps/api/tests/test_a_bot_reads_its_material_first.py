@@ -1,6 +1,6 @@
-"""An agent's material is searched by the server before the model answers (ops OPS-01): a bot
-left to choose whether to call `search_knowledge` answered from memory — 연체료 하루 100원,
-일요일 09~18시 — where its FAQ said there was none and it was closed. With the passages in
+"""An agent's material is searched by the server before the model answers, not left to the
+model's choice of `search_knowledge` (no 연체료 하루 100원 or 일요일 09~18시 from memory where
+its FAQ says there is none and it is closed). With the passages in
 hand the 「공개 전 점검」 hold keeps answers the material gives, and a search that finds
 nothing answers that the material does not cover the question."""
 

@@ -213,8 +213,8 @@ def test_a_toggle_with_no_tool_behind_it_still_says_so() -> None:
 
 
 def test_a_blocked_search_answers_an_event_question_briefly():
-    # Research lane R-22: strict-local said it could not check ACL 2026, then added a date
-    # and a city for it and a paragraph on how awards are usually decided.
+    # Strict-local that cannot check ACL 2026 says so briefly: no date, city or paragraph on
+    # how awards are usually decided.
     from app.models.chat import SessionKind
     from app.services.context import system_prompt
 

@@ -1,4 +1,4 @@
-"""D3 (STAFF-01): with a roster attached, the people an answer lists come from it."""
+"""With a roster attached, the people an answer lists come from it."""
 
 from pathlib import Path
 
@@ -10,7 +10,7 @@ _REQUEST = ("근로장학생 근무현황 엑셀이에요. 학생별로 9월 근
             "따로 표시해 주세요.")
 _MATERIAL = f"{_REQUEST}\n{files._from_xlsx(_SHEET.read_bytes())}"
 
-#: The answer STAFF-01 recorded: names invented (김민준, 최지우, 이하늘, 정하늘, 오유진) and a real
+#: An answer with names invented (김민준, 최지우, 이하늘, 정하늘, 오유진) and a real
 #: name beside another student's 학번 (박서연 at 이준호's 32211876).
 _ANSWER = """학생별 9월 근무시간 합계와 지급액
 

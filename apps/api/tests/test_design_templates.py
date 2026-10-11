@@ -188,7 +188,7 @@ class _Markup(HTMLParser):
 @pytest.mark.parametrize(
     "payload",
     [
-        # Attributes a regex pass did not know about.
+        # Attributes a regex pass would miss.
         '<table><tr><td background="javascript:alert(1)">셀</td></tr></table>',
         '<p title="x" onmouseover="alert(1)" data-x="javascript:alert(1)">본문</p>',
         '<img srcset="x onerror=alert(1)" src="data:image/png;base64,iVBORw0KGgo=">',
@@ -249,7 +249,7 @@ def test_blocks_land_inside_the_structure_the_seed_styles():
 
 
 def test_a_group_wrapper_holds_the_sections_and_leaves_the_cover_outside():
-    # No shipped 서식 groups its sections now; the wrapper is still read from `template.toml`.
+    # No shipped 서식 groups its sections; the wrapper is still read from `template.toml`.
     grouped = dataclasses.replace(
         dt.rendering(dt.GENERIC_ID), wrap_group='<div class="grid">{blocks}</div>'
     )
@@ -801,7 +801,7 @@ def test_a_default_reaches_the_surface_it_was_set_for_and_no_other():
     [
         None,
         {},
-        # Stored ids the catalogue no longer has, or has on another surface.
+        # Stored ids the catalogue does not have, or has on another surface.
         {"report": "doc-gone"},
         {"report": "deck-editorial"},
     ],

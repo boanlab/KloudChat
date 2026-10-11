@@ -1,5 +1,5 @@
-"""A 개조식 보고 keeps its 공문서 dates whole (lineup v1 gaejo-report-3__r1: 「- 1안: 2026. 11.」,
-「12. 31. 만료)」 split off its item and 「12. 7.(월) 오픈)가 …」 that lost its start): no
+"""A 개조식 보고 keeps its 공문서 dates whole (no 「- 1안: 2026. 11.」 with 「12. 31. 만료)」 split
+off its item, no 「12. 7.(월) 오픈)가 …」 without its start): no
 sentence splitter ends a sentence inside 「2026. 11. 16.(월)」, typed markers are list lines,
 and a date cut at its dots is joined back by the 개조식 normaliser."""
 
@@ -9,7 +9,7 @@ from app.services import deck, doc_formats, quality_gate, report, units
 
 GAEJO = next(f for f in doc_formats.FORMATS if f.id == "gaejo")
 
-#: The run's material, shortened.
+#: The material, shortened.
 MAIL = (
     "[메일] 비즈웍스: 전자결재 이관은 2026-11-23(월) 오픈 가능. "
     "메일 계정 640개는 2026-11-16 완료.\n"
@@ -18,7 +18,7 @@ MAIL = (
     "[메일] 정보화팀: 2안이면 기존 그룹웨어 유지보수 계약을 2026-12-31까지 연장, "
     "금3,200,000원 추가.\n"
 )
-#: The draft as the run's model wrote it: dates already in 공문서 notation, inside items and
+#: A model's draft: dates already in 공문서 notation, inside items and
 #: parentheses.
 DRAFT = """## 현황
 - 신규 그룹웨어 계약 및 이관 현황
@@ -113,7 +113,7 @@ def test_no_splitter_breaks_inside_a_dotted_date_or_number_run():
     tail = "- 메일 계정 이관 완료 예정일: 2026. 11. 16."
     assert [m.group(0) for m in report._SENTENCE.finditer(tail + " ")] == [tail]
     assert report._SPACED_SENTENCE_END.split(line) == want
-    # gaejo-report-5__r1 lost 「- A사: 2026.」 and kept 「12. 17. 12. 18.) 1일 여유」.
+    # The item keeps 「- A사: 2026.」 with 「12. 17. …」, not 「12. 17. 12. 18.) 1일 여유」 alone.
     run5 = "  - A사: 2026. 12. 17. 완료(8주), 기한(2026. 12. 18.) 1일 여유"
     assert units.SENTENCE_BREAK.split(run5) == [run5]
     assert report.trim_restatements(run5, ["2026. 12. 17. 2026. 12. 18. 완료 기한"])[1] in (

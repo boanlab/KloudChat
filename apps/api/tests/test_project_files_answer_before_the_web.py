@@ -10,7 +10,7 @@ from app.schemas.chat import SendMessage
 from app.services.tools.builtin import CALCULATE, FETCH_URL, WEB_SEARCH
 from app.services.workspace_context import ContextBlock, ContextFile, WorkspaceContext
 
-#: Research lane R-23: answered from grant.xlsx in the project, yet a web search ran first.
+#: Answered from grant.xlsx in the project, with no web search first.
 _ASK = ("프로젝트에 올린 연구비 집행 자료로 2024년과 2025년 연도별 예산 대비 집행률(%)을 "
         "항목별로 계산하고, 집행률이 90% 미만인 항목을 표시해 줘.")
 

@@ -1,4 +1,4 @@
-"""A minutes document's finish (staff sweep STAFF-12/23): an empty 기한 column goes with its
+"""A minutes document's finish: an empty 기한 column goes with its
 name in the caption, and the turn's line names the document's genre."""
 
 from __future__ import annotations
